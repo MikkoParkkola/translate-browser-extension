@@ -33,6 +33,7 @@ async function translateNode(node) {
   const text = node.textContent.trim();
   if (!text) return;
   try {
+    if (currentConfig.debug) console.log('QTDEBUG: translating node', text.slice(0, 20));
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     const { text: translated } = await window.qwenTranslate({
@@ -43,13 +44,14 @@ async function translateNode(node) {
       source: currentConfig.sourceLanguage,
       target: currentConfig.targetLanguage,
       signal: controller.signal,
+      debug: currentConfig.debug,
     });
     clearTimeout(timeout);
     node.textContent = translated;
     mark(node);
   } catch (e) {
     showError(`${e.message}. See console for details.`);
-    console.error('Translation error:', e);
+    console.error('QTERROR: translation error', e);
   }
 }
 
@@ -86,9 +88,10 @@ function observe() {
 async function start() {
   currentConfig = await window.qwenLoadConfig();
   if (!currentConfig.apiKey) {
-    console.warn('Qwen Translator: API key not configured.');
+    console.warn('QTWARN: API key not configured.');
     return;
   }
+  if (currentConfig.debug) console.log('QTDEBUG: starting automatic translation');
   scan();
   observe();
 }
