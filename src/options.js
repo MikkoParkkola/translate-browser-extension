@@ -27,9 +27,13 @@ function attachSearch(select, input) {
   });
 }
 
+function withSlash(url) {
+  return url.endsWith('/') ? url : `${url}/`;
+}
+
 async function fetchModels() {
-  const endpoint = endpointInput.value;
-  const key = apiKeyInput.value;
+  const endpoint = withSlash(endpointInput.value.trim());
+  const key = apiKeyInput.value.trim();
   try {
     const url = `${endpoint}services/aigc/mt/text-translator/models`;
     console.log('Fetching models from', url);
@@ -78,7 +82,7 @@ window.qwenLoadConfig().then(cfg => {
 document.getElementById('save').addEventListener('click', () => {
   const cfg = {
     apiKey: apiKeyInput.value.trim(),
-    apiEndpoint: endpointInput.value.trim(),
+    apiEndpoint: withSlash(endpointInput.value.trim()),
     model: modelSelect.value,
     targetLanguage: targetSelect.value,
     ignoredLanguages: [...ignoredSelect.selectedOptions].map(o => o.value),

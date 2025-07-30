@@ -5,9 +5,10 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'translate') {
     const { endpoint, apiKey, model, text, target } = msg.opts;
+    const ep = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
-    const url = `${endpoint}services/aigc/mt/text-translator/generation`;
+    const url = `${ep}services/aigc/mt/text-translator/generation`;
     console.log('Background translating via', url);
     fetch(url, {
       method: 'POST',

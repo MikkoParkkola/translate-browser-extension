@@ -5,8 +5,12 @@ if (typeof window === 'undefined') {
 
 const cache = new Map();
 
+function withSlash(url) {
+  return url.endsWith('/') ? url : `${url}/`;
+}
+
 async function doFetch({ endpoint, apiKey, model, text, target, signal }) {
-  const url = `${endpoint}services/aigc/mt/text-translator/generation`;
+  const url = `${withSlash(endpoint)}services/aigc/mt/text-translator/generation`;
   console.log('Sending translation request to', url);
   const body = {
     model,
@@ -41,9 +45,10 @@ async function qwenTranslate({ endpoint, apiKey, model, text, target, signal }) 
   }
 
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+    const ep = withSlash(endpoint);
     const result = await new Promise((resolve, reject) => {
       console.log('Requesting translation via background script');
-      chrome.runtime.sendMessage({ action: 'translate', opts: { endpoint, apiKey, model, text, target } }, res => {
+      chrome.runtime.sendMessage({ action: 'translate', opts: { endpoint: ep, apiKey, model, text, target } }, res => {
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
         } else if (res && res.error) {
