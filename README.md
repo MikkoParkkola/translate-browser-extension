@@ -27,6 +27,9 @@ The language and model lists include search boxes to make selection easier.
 Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content.
 If translation fails, an error message appears at the bottom-right of the page. Translations are cached for the current session to minimise API calls.
 
+### Troubleshooting
+Both model refreshes and translation requests write trace logs to the browser console. Copy any on-page error and check the console for a matching entry to diagnose problems.
+
 ## Development
 Run the unit tests with:
 ```sh

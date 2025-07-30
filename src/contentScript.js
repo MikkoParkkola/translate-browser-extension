@@ -18,7 +18,7 @@ function showError(message) {
     });
     document.body.appendChild(el);
   }
-  el.textContent = message;
+  el.textContent = `Qwen Translator: ${message}`;
 }
 
 function mark(node) {
@@ -50,7 +50,7 @@ async function translateNode(node) {
     node.textContent = translated;
     mark(node);
   } catch (e) {
-    showError(e.message);
+    showError(`${e.message}. See console for details.`);
     console.error('Translation error:', e);
   }
 }
