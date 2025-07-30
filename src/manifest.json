@@ -16,14 +16,14 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["translator.js", "config.js", "languages.js"],
+      "resources": ["translator.js", "config.js", "languages.js", "throttle.js"],
       "matches": ["<all_urls>"]
     }
   ],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["config.js", "translator.js", "contentScript.js"],
+      "js": ["config.js", "throttle.js", "translator.js", "contentScript.js"],
       "run_at": "document_idle"
     }
   ]

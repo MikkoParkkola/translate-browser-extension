@@ -1,8 +1,19 @@
 let fetchFn = typeof fetch !== 'undefined' ? fetch : undefined;
+let runWithRateLimit;
+let approxTokens;
+
 if (typeof window === 'undefined') {
   fetchFn = require('cross-fetch');
+  ({ runWithRateLimit, approxTokens } = require('./throttle'));
+} else {
+  if (window.qwenThrottle) {
+    ({ runWithRateLimit, approxTokens } = window.qwenThrottle);
+  } else if (typeof require !== 'undefined') {
+    ({ runWithRateLimit, approxTokens } = require('./throttle'));
+  } else {
+    throw new Error('Throttle module not available');
+  }
 }
-const { runWithRateLimit, approxTokens } = require('./throttle');
 
 const cache = new Map();
 
