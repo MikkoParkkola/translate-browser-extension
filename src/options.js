@@ -35,7 +35,7 @@ async function fetchModels() {
   const endpoint = withSlash(endpointInput.value.trim());
   const key = apiKeyInput.value.trim();
   try {
-    const url = `${endpoint}services/aigc/mt/text-translator/models`;
+    const url = `${endpoint}models`;
     console.log('Fetching models from', url);
     const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${key}` }
@@ -46,11 +46,15 @@ async function fetchModels() {
     }
     const data = await res.json();
     modelSelect.innerHTML = '';
-    data.models.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m.model; opt.textContent = m.model;
-      modelSelect.appendChild(opt);
-    });
+    const list = Array.isArray(data.models) ? data.models : data;
+    list
+      .filter(m => m.model && m.model.includes('qwen-mt'))
+      .forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.model;
+        opt.textContent = m.model;
+        modelSelect.appendChild(opt);
+      });
     attachSearch(modelSelect, modelSearch);
   } catch (e) {
     console.error('Model fetch error:', e);
