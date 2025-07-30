@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Qwen Translator",
+  "description": "Translate pages using Qwen-MT-Turbo",
+  "version": "1.0",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Qwen Translator"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["contentScript.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
