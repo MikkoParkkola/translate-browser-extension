@@ -28,6 +28,10 @@ Click **Test Settings** in the popup to verify the configuration. The extension 
 Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content.
 If translation fails, an error message appears at the bottom-right of the page. Translations are cached for the current session to minimise API calls.
 
+### Rate Limiting
+The extension and CLI queue translation requests to stay within the provider limits.
+You can adjust the limits under **Requests per minute** and **Tokens per minute** in the extension popup or via `--requests` and `--tokens` on the CLI. Defaults are 60 requests and 100,000 tokens every 60 seconds.
+
 ### Troubleshooting
 Both model refreshes and translation requests write trace logs to the browser console. Copy any on-page error and check the console for a matching entry to diagnose problems.
 
@@ -43,7 +47,8 @@ A simple translator CLI is included in `cli/translate.js`. It streams translatio
 
 ### Usage
 ```sh
-node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] -s <source_lang> -t <target_lang>
+node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--tokens M] -s <source_lang> -t <target_lang>
 ```
+If no endpoint is specified the tool defaults to `https://dashscope-intl.aliyuncs.com/api/v1`.
 Press `Ctrl+C` or `Ctrl+D` to exit.
 
