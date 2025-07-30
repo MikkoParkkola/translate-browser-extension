@@ -35,7 +35,8 @@ async function fetchModels() {
   const endpoint = withSlash(endpointInput.value.trim());
   const key = apiKeyInput.value.trim();
   try {
-    const url = `${endpoint}models`;
+    // if the endpoint already points to the models path do not append again
+    const url = endpoint.endsWith('models/') ? endpoint : `${endpoint}models`;
     console.log('Fetching models from', url);
     const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${key}` }
@@ -46,13 +47,20 @@ async function fetchModels() {
     }
     const data = await res.json();
     modelSelect.innerHTML = '';
-    const list = Array.isArray(data.models) ? data.models : data;
+    const list = Array.isArray(data.models)
+      ? data.models
+      : Array.isArray(data.data)
+        ? data.data
+        : Array.isArray(data)
+          ? data
+          : [];
     list
-      .filter(m => m.model && m.model.includes('qwen-mt'))
-      .forEach(m => {
+      .map(m => (typeof m === 'string' ? m : m.model || m.id))
+      .filter(n => typeof n === 'string' && n.includes('qwen-mt'))
+      .forEach(name => {
         const opt = document.createElement('option');
-        opt.value = m.model;
-        opt.textContent = m.model;
+        opt.value = name;
+        opt.textContent = name;
         modelSelect.appendChild(opt);
       });
     attachSearch(modelSelect, modelSearch);
