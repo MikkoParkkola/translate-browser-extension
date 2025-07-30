@@ -3,6 +3,9 @@ const endpointInput = document.getElementById('apiEndpoint');
 const modelSelect = document.getElementById('model');
 const targetSelect = document.getElementById('target');
 const ignoredSelect = document.getElementById('ignored');
+const modelSearch = document.getElementById('modelSearch');
+const targetSearch = document.getElementById('targetSearch');
+const ignoredSearch = document.getElementById('ignoredSearch');
 const autoCheckbox = document.getElementById('auto');
 const msg = document.getElementById('msg');
 
@@ -12,6 +15,15 @@ function populateLanguages() {
     opt.value = l.code; opt.textContent = l.name;
     targetSelect.appendChild(opt.cloneNode(true));
     ignoredSelect.appendChild(opt);
+  });
+}
+
+function attachSearch(select, input) {
+  input.addEventListener('input', () => {
+    const q = input.value.toLowerCase();
+    [...select.options].forEach(o => {
+      o.hidden = !o.textContent.toLowerCase().includes(q);
+    });
   });
 }
 
@@ -30,6 +42,7 @@ async function fetchModels() {
       opt.value = m.model; opt.textContent = m.model;
       modelSelect.appendChild(opt);
     });
+    attachSearch(modelSelect, modelSearch);
   } catch (e) {
     msg.textContent = e.message;
   }
@@ -38,6 +51,8 @@ async function fetchModels() {
 document.getElementById('refresh').addEventListener('click', fetchModels);
 
 populateLanguages();
+attachSearch(targetSelect, targetSearch);
+attachSearch(ignoredSelect, ignoredSearch);
 
 window.qwenLoadConfig().then(cfg => {
   apiKeyInput.value = cfg.apiKey;
