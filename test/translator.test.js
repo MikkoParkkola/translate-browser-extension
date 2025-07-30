@@ -10,20 +10,20 @@ beforeEach(() => {
 
 test('translate success', async () => {
   fetch.mockResponseOnce(JSON.stringify({output:{text:'hello'}}));
-  const res = await translate({endpoint:'https://example.com/', apiKey:'key', model:'m', text:'hola', target:'en'});
+  const res = await translate({endpoint:'https://example.com/', apiKey:'key', model:'m', text:'hola', source:'es', target:'en'});
   expect(res.text).toBe('hello');
 });
 
 test('translate error', async () => {
   fetch.mockResponseOnce(JSON.stringify({message:'bad'}), {status:400});
-  await expect(translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'x', target:'en'})).rejects.toThrow('bad');
+  await expect(translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'x', source:'es', target:'en'})).rejects.toThrow('bad');
 });
 
 test('translate caching', async () => {
   fetch.mockResponseOnce(JSON.stringify({output:{text:'hi'}}));
-  const first = await translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'hola', target:'en'});
+  const first = await translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'hola', source:'es', target:'en'});
   expect(first.text).toBe('hi');
-  const cached = await translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'hola', target:'en'});
+  const cached = await translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'hola', source:'es', target:'en'});
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(cached.text).toBe('hi');
 });
