@@ -1,6 +1,6 @@
 let fetchFn = typeof fetch !== 'undefined' ? fetch : undefined;
-let runWithRateLimit;
-let approxTokens;
+var runWithRateLimit;
+var approxTokens;
 
 if (typeof window === 'undefined') {
   fetchFn = require('cross-fetch');
@@ -11,7 +11,8 @@ if (typeof window === 'undefined') {
   } else if (typeof require !== 'undefined') {
     ({ runWithRateLimit, approxTokens } = require('./throttle'));
   } else {
-    throw new Error('Throttle module not available');
+    runWithRateLimit = fn => fn();
+    approxTokens = () => 0;
   }
 }
 
