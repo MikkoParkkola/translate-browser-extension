@@ -5,11 +5,7 @@ if (typeof window === 'undefined') {
 
 const cache = new Map();
 
-async function qwenTranslate({ endpoint, apiKey, model, text, target, signal }) {
-  const cacheKey = `${target}:${text}`;
-  if (cache.has(cacheKey)) {
-    return cache.get(cacheKey);
-  }
+async function doFetch({ endpoint, apiKey, model, text, target, signal }) {
   const url = `${endpoint}services/aigc/mt/text-translator/generation`;
   const body = {
     model,
@@ -34,8 +30,34 @@ async function qwenTranslate({ endpoint, apiKey, model, text, target, signal }) 
   if (!data.output || !data.output.text) {
     throw new Error('Invalid API response');
   }
-  cache.set(cacheKey, data.output);
   return data.output;
+}
+
+async function qwenTranslate({ endpoint, apiKey, model, text, target, signal }) {
+  const cacheKey = `${target}:${text}`;
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey);
+  }
+
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+    const result = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ action: 'translate', opts: { endpoint, apiKey, model, text, target } }, res => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else if (res && res.error) {
+          reject(new Error(res.error));
+        } else {
+          resolve(res);
+        }
+      });
+    });
+    cache.set(cacheKey, result);
+    return result;
+  }
+
+  const data = await doFetch({ endpoint, apiKey, model, text, target, signal });
+  cache.set(cacheKey, data);
+  return data;
 }
 function qwenClearCache() {
   cache.clear();
