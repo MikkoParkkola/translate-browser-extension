@@ -45,7 +45,9 @@ function runWithRateLimit(fn, text) {
   });
 }
 
-module.exports = { runWithRateLimit, configure, approxTokens };
+if (typeof module !== 'undefined') {
+  module.exports = { runWithRateLimit, configure, approxTokens };
+}
 
 if (typeof window !== 'undefined') {
   window.qwenThrottle = { runWithRateLimit, configure, approxTokens };
