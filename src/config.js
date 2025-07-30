@@ -7,6 +7,7 @@ const defaultCfg = {
   autoTranslate: false,
   requestLimit: 60,
   tokenLimit: 100000,
+  debug: false,
 };
 
 function qwenLoadConfig() {
