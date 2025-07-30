@@ -10,20 +10,21 @@ function withSlash(url) {
 }
 
 async function doFetch({ endpoint, apiKey, model, text, source, target, signal }) {
-  const streamPath = `${withSlash(endpoint)}services/aigc/mt/text-translator/generation-stream`;
-  const url = (typeof window === 'undefined')
-    ? `${withSlash(endpoint)}services/aigc/mt/text-translator/generation`
-    : streamPath;
+  const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
   console.log('Sending translation request to', url);
   const body = {
     model,
-    input: { source_language: source, target_language: target, text },
+    input: { messages: [{ role: 'user', content: text }] },
+    parameters: {
+      translation_options: { source_lang: source, target_lang: target },
+    },
   };
   const resp = await fetchFn(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: apiKey,
+      ...(typeof window !== 'undefined' ? { 'X-DashScope-SSE': 'enable' } : {}),
     },
     body: JSON.stringify(body),
     signal,
@@ -36,10 +37,13 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal }
   }
   if (!resp.body || typeof resp.body.getReader !== 'function') {
     const data = await resp.json();
-    if (!data.output || !data.output.text) {
+    const text =
+      data.output?.text ||
+      data.output?.choices?.[0]?.message?.content;
+    if (!text) {
       throw new Error('Invalid API response');
     }
-    return data.output;
+    return { text };
   }
 
   const reader = resp.body.getReader();
@@ -62,9 +66,10 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal }
       }
       try {
         const obj = JSON.parse(data);
-        if (obj.output && obj.output.text) {
-          result += obj.output.text;
-        }
+        const chunk =
+          obj.output?.text ||
+          obj.output?.choices?.[0]?.message?.content || '';
+        result += chunk;
       } catch {}
     }
   }
