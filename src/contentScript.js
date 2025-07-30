@@ -35,18 +35,16 @@ async function translateNode(node) {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
-    const { text: translated, detected_language } = await window.qwenTranslate({
+    const { text: translated } = await window.qwenTranslate({
       endpoint: currentConfig.apiEndpoint,
       apiKey: currentConfig.apiKey,
       model: currentConfig.model,
       text,
+      source: currentConfig.sourceLanguage,
       target: currentConfig.targetLanguage,
       signal: controller.signal,
     });
     clearTimeout(timeout);
-    if (currentConfig.ignoredLanguages.includes(detected_language) || detected_language === currentConfig.targetLanguage) {
-      return;
-    }
     node.textContent = translated;
     mark(node);
   } catch (e) {

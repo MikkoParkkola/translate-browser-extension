@@ -15,13 +15,12 @@ Remove the extension from the browser's extension management page.
 Reload the unpacked extension after replacing the files with a newer version.
 
 ## Configuration
-Use the extension options page to set:
+Use the popup to configure:
 - API key and optional endpoint (keep your API key private)
-- Translation model (`qwen-mt-plus` or `qwen-mt-turbo`)
-  - Click **Refresh** to retrieve the model list from the `/models` API
-- Target language and ignored languages
+- Translation model name (defaults to `qwen-mt-turbo`)
+- Source and target languages
 - Automatic translation toggle
-The language and model lists include search boxes to make selection easier.
+Click **Test Settings** in the popup to verify the configuration. The extension uses the streaming API for responsive translations.
 
 ## Usage
 Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content.

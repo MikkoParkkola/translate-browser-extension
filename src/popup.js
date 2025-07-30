@@ -1,17 +1,66 @@
+const apiKeyInput = document.getElementById('apiKey');
+const endpointInput = document.getElementById('apiEndpoint');
+const modelInput = document.getElementById('model');
+const sourceSelect = document.getElementById('source');
+const targetSelect = document.getElementById('target');
+const autoCheckbox = document.getElementById('auto');
+const status = document.getElementById('status');
+
+function populateLanguages() {
+  window.qwenLanguages.forEach(l => {
+    const opt = document.createElement('option');
+    opt.value = l.code; opt.textContent = l.name;
+    sourceSelect.appendChild(opt.cloneNode(true));
+    targetSelect.appendChild(opt);
+  });
+}
+
+populateLanguages();
+
 window.qwenLoadConfig().then(cfg => {
-  if (!cfg.apiKey) {
-    document.getElementById('status').textContent = 'Set API key in options';
-  }
+  apiKeyInput.value = cfg.apiKey;
+  endpointInput.value = cfg.apiEndpoint;
+  modelInput.value = cfg.model;
+  sourceSelect.value = cfg.sourceLanguage;
+  targetSelect.value = cfg.targetLanguage;
+  autoCheckbox.checked = cfg.autoTranslate;
+  if (!cfg.apiKey) status.textContent = 'Set API key';
 });
 
 document.getElementById('translate').addEventListener('click', () => {
   chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
     chrome.tabs.sendMessage(tabs[0].id, {action: 'start'});
   });
-  document.getElementById('status').textContent = 'Translation started';
-  console.log('Translate button clicked');
 });
 
-document.getElementById('options').addEventListener('click', () => {
-  chrome.runtime.openOptionsPage();
+document.getElementById('save').addEventListener('click', () => {
+  const cfg = {
+    apiKey: apiKeyInput.value.trim(),
+    apiEndpoint: endpointInput.value.trim(),
+    model: modelInput.value.trim(),
+    sourceLanguage: sourceSelect.value,
+    targetLanguage: targetSelect.value,
+    autoTranslate: autoCheckbox.checked,
+  };
+  window.qwenSaveConfig(cfg).then(() => {
+    status.textContent = 'Saved';
+    setTimeout(() => { status.textContent = ''; }, 2000);
+  });
+});
+
+document.getElementById('test').addEventListener('click', async () => {
+  status.textContent = 'Testing...';
+  try {
+    await window.qwenTranslate({
+      endpoint: endpointInput.value.trim(),
+      apiKey: apiKeyInput.value.trim(),
+      model: modelInput.value.trim(),
+      source: sourceSelect.value,
+      text: 'hello',
+      target: targetSelect.value,
+    });
+    status.textContent = 'Configuration OK';
+  } catch (e) {
+    status.textContent = `Error: ${e.message}`;
+  }
 });
