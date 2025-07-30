@@ -22,9 +22,9 @@ function withSlash(url) {
   return url.endsWith('/') ? url : `${url}/`;
 }
 
-async function doFetch({ endpoint, apiKey, model, text, source, target, signal }) {
+async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug }) {
   const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
-  console.log('Sending translation request to', url);
+  if (debug) console.log('QTDEBUG: sending translation request to', url);
   const body = {
     model,
     input: { messages: [{ role: 'user', content: text }] },
@@ -89,7 +89,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal }
   return { text: result };
 }
 
-async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal }) {
+async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false }) {
   const cacheKey = `${source}:${target}:${text}`;
   if (cache.has(cacheKey)) {
     return cache.get(cacheKey);
@@ -98,8 +98,8 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
     const ep = withSlash(endpoint);
     const result = await new Promise((resolve, reject) => {
-      console.log('Requesting translation via background script');
-      chrome.runtime.sendMessage({ action: 'translate', opts: { endpoint: ep, apiKey, model, text, source, target } }, res => {
+      if (debug) console.log('QTDEBUG: requesting translation via background script');
+      chrome.runtime.sendMessage({ action: 'translate', opts: { endpoint: ep, apiKey, model, text, source, target, debug } }, res => {
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
         } else if (res && res.error) {
@@ -109,19 +109,21 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
         }
       });
     });
+    if (debug) console.log('QTDEBUG: background response received');
     cache.set(cacheKey, result);
     return result;
   }
 
   try {
     const data = await runWithRateLimit(
-      () => doFetch({ endpoint, apiKey, model, text, source, target, signal }),
+      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug }),
       approxTokens(text)
     );
     cache.set(cacheKey, data);
+    if (debug) console.log('QTDEBUG: translation successful');
     return data;
   } catch (e) {
-    console.error('Translation request failed:', e);
+    console.error('QTERROR: translation request failed', e);
     throw e;
   }
 }
