@@ -36,6 +36,7 @@ async function translateNode(node) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     const { text: translated, detected_language } = await window.qwenTranslate({
+
       endpoint: currentConfig.apiEndpoint,
       apiKey: currentConfig.apiKey,
       model: currentConfig.model,
