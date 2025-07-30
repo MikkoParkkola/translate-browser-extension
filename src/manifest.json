@@ -4,6 +4,9 @@
   "description": "Translate pages using Qwen-MT-Turbo",
   "version": "1.0",
   "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [
+    "https://dashscope-intl.aliyuncs.com/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
