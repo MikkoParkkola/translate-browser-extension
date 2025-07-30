@@ -1,6 +1,26 @@
 let observer;
 let currentConfig;
 
+function showError(message) {
+  let el = document.getElementById('qwen-error');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'qwen-error';
+    Object.assign(el.style, {
+      position: 'fixed',
+      bottom: '10px',
+      right: '10px',
+      background: 'rgba(255,0,0,0.8)',
+      color: '#fff',
+      padding: '5px 10px',
+      zIndex: 2147483647,
+      fontSize: '12px',
+    });
+    document.body.appendChild(el);
+  }
+  el.textContent = message;
+}
+
 function mark(node) {
   node.dataset.qwenTranslated = 'true';
 }
@@ -13,19 +33,25 @@ async function translateNode(node) {
   const text = node.textContent.trim();
   if (!text) return;
   try {
-    const {text: translated, detected_language} = await window.qwenTranslate({
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const { text: translated, detected_language } = await window.qwenTranslate({
+
       endpoint: currentConfig.apiEndpoint,
       apiKey: currentConfig.apiKey,
       model: currentConfig.model,
       text,
-      target: currentConfig.targetLanguage
+      target: currentConfig.targetLanguage,
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
     if (currentConfig.ignoredLanguages.includes(detected_language) || detected_language === currentConfig.targetLanguage) {
       return;
     }
     node.textContent = translated;
     mark(node);
   } catch (e) {
+    showError(e.message);
     console.error('Translation error:', e);
   }
 }
