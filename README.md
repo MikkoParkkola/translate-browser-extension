@@ -7,6 +7,8 @@ This Chrome extension translates the content of the active tab using Alibaba Clo
 2. Build the extension by copying the `src` folder contents into a folder of your choice.
 3. In your Chromium based browser open the extensions page and enable "Developer mode".
 4. Choose "Load unpacked" and select the folder containing the extension files.
+   The extension requests the "tabs" permission so the popup can send
+   messages to the active tab for translation.
 
 ## Uninstallation
 Remove the extension from the browser's extension management page.

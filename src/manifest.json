@@ -3,7 +3,7 @@
   "name": "Qwen Translator",
   "description": "Translate pages using Qwen-MT-Turbo",
   "version": "1.0",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage", "activeTab", "tabs", "scripting"],
   "host_permissions": [
     "https://dashscope-intl.aliyuncs.com/*"
   ],
@@ -14,6 +14,12 @@
     "default_popup": "popup.html",
     "default_title": "Qwen Translator"
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["translator.js", "config.js", "languages.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
