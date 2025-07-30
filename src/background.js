@@ -8,17 +8,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const ep = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
-    const url = `${ep}services/aigc/mt/text-translator/generation-stream`;
+    const url = `${ep}services/aigc/text-generation/generation`;
     console.log('Background translating via', url);
     fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: apiKey,
+        'X-DashScope-SSE': 'enable',
       },
       body: JSON.stringify({
         model,
-        input: { source_language: source, target_language: target, text },
+        input: { messages: [{ role: 'user', content: text }] },
+        parameters: {
+          translation_options: { source_lang: source, target_lang: target },
+        },
       }),
       signal: controller.signal,
     })
@@ -46,7 +50,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             if (data === '[DONE]') { reader.cancel(); break; }
             try {
               const obj = JSON.parse(data);
-              if (obj.output && obj.output.text) result += obj.output.text;
+              const chunk =
+                obj.output?.text ||
+                obj.output?.choices?.[0]?.message?.content || '';
+              result += chunk;
             } catch {}
           }
         }
