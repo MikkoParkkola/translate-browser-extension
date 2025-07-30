@@ -37,3 +37,13 @@ Run the unit tests with:
 npm install
 npm test
 ```
+
+## Command Line Utility
+A simple translator CLI is included in `cli/translate.js`. It streams translations as you type.
+
+### Usage
+```sh
+node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] -s <source_lang> -t <target_lang>
+```
+Press `Ctrl+C` or `Ctrl+D` to exit.
+
