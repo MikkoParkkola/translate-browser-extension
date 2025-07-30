@@ -1,4 +1,5 @@
 const { qwenTranslate: translate, qwenClearCache } = require('../src/translator.js');
+const { configure } = require('../src/throttle');
 const fetchMock = require('jest-fetch-mock');
 
 beforeAll(() => { fetchMock.enableMocks(); });
@@ -6,6 +7,7 @@ beforeAll(() => { fetchMock.enableMocks(); });
 beforeEach(() => {
   fetch.resetMocks();
   qwenClearCache();
+  configure({ requestLimit: 60, tokenLimit: 100000, windowMs: 60000 });
 });
 
 test('translate success', async () => {
@@ -26,4 +28,25 @@ test('translate caching', async () => {
   const cached = await translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'hola', source:'es', target:'en'});
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(cached.text).toBe('hi');
+});
+
+test('rate limiting queues requests', async () => {
+  jest.useFakeTimers();
+  configure({ requestLimit: 2, tokenLimit: 100000, windowMs: 1000 });
+  fetch
+    .mockResponseOnce(JSON.stringify({output:{text:'a'}}))
+    .mockResponseOnce(JSON.stringify({output:{text:'b'}}))
+    .mockResponseOnce(JSON.stringify({output:{text:'c'}}));
+
+  const p1 = translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'1', source:'es', target:'en'});
+  const p2 = translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'2', source:'es', target:'en'});
+  const p3 = translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'3', source:'es', target:'en'});
+
+  await Promise.resolve();
+  expect(fetch).toHaveBeenCalledTimes(2);
+  jest.advanceTimersByTime(1000);
+  const res3 = await p3;
+  expect(res3.text).toBe('c');
+  expect(fetch).toHaveBeenCalledTimes(3);
+  jest.useRealTimers();
 });

@@ -2,22 +2,30 @@
 
 const readline = require('readline');
 const fetch = require('cross-fetch');
+const { runWithRateLimit, approxTokens, configure } = require('../src/throttle');
 
 function withSlash(url) {
   return url.endsWith('/') ? url : `${url}/`;
 }
 
 async function translateStream({ endpoint, apiKey, model, text, source, target }, onData) {
-  const url = `${withSlash(endpoint)}services/aigc/mt/text-translator/generation-stream`;
-  const body = { model, input: { source_language: source, target_language: target, text } };
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
+  const body = {
+    model,
+    input: { messages: [{ role: 'user', content: text }] },
+    parameters: { translation_options: { source_lang: source, target_lang: target } },
+  };
+  const resp = await runWithRateLimit(
+    () => fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: apiKey,
+      },
+      body: JSON.stringify(body),
+    }),
+    approxTokens(text)
+  );
 
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ message: resp.statusText }));
@@ -65,23 +73,31 @@ function parseArgs() {
     else if (a === '-m' || a === '--model') opts.model = args[++i];
     else if (a === '-s' || a === '--source') opts.source = args[++i];
     else if (a === '-t' || a === '--target') opts.target = args[++i];
+    else if (a === '--requests') opts.requestLimit = parseInt(args[++i], 10);
+    else if (a === '--tokens') opts.tokenLimit = parseInt(args[++i], 10);
     else if (a === '-h' || a === '--help') opts.help = true;
   }
   return opts;
 }
 
 async function main() {
-  const DEFAULT_ENDPOINT = 'https://dashscope.aliyuncs.com';
+  const DEFAULT_ENDPOINT = 'https://dashscope-intl.aliyuncs.com/api/v1';
   const DEFAULT_MODEL = 'qwen-mt-turbo';
   const opts = parseArgs();
 
   if (opts.help || !opts.apiKey || !opts.source || !opts.target) {
-    console.log('Usage: node translate.js -k <apiKey> [-e endpoint] [-m model] -s <source> -t <target>');
+    console.log('Usage: node translate.js -k <apiKey> [-e endpoint] [-m model] [-\-requests N] [-\-tokens M] -s <source> -t <target>');
     process.exit(opts.help ? 0 : 1);
   }
 
   opts.endpoint = opts.endpoint || DEFAULT_ENDPOINT;
   opts.model = opts.model || DEFAULT_MODEL;
+
+  configure({
+    requestLimit: opts.requestLimit || 60,
+    tokenLimit: opts.tokenLimit || 100000,
+    windowMs: 60000,
+  });
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: '> ' });
   rl.prompt();

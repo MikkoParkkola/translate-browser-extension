@@ -2,6 +2,7 @@ let fetchFn = typeof fetch !== 'undefined' ? fetch : undefined;
 if (typeof window === 'undefined') {
   fetchFn = require('cross-fetch');
 }
+const { runWithRateLimit, approxTokens } = require('./throttle');
 
 const cache = new Map();
 
@@ -101,7 +102,10 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   }
 
   try {
-    const data = await doFetch({ endpoint, apiKey, model, text, source, target, signal });
+    const data = await runWithRateLimit(
+      () => doFetch({ endpoint, apiKey, model, text, source, target, signal }),
+      approxTokens(text)
+    );
     cache.set(cacheKey, data);
     return data;
   } catch (e) {

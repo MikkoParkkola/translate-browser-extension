@@ -5,6 +5,8 @@ const defaultCfg = {
   sourceLanguage: 'en',
   targetLanguage: 'en',
   autoTranslate: false,
+  requestLimit: 60,
+  tokenLimit: 100000,
 };
 
 function qwenLoadConfig() {
