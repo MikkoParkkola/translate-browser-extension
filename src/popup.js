@@ -3,6 +3,8 @@ const endpointInput = document.getElementById('apiEndpoint');
 const modelInput = document.getElementById('model');
 const sourceSelect = document.getElementById('source');
 const targetSelect = document.getElementById('target');
+const reqLimitInput = document.getElementById('requestLimit');
+const tokenLimitInput = document.getElementById('tokenLimit');
 const autoCheckbox = document.getElementById('auto');
 const status = document.getElementById('status');
 
@@ -23,6 +25,8 @@ window.qwenLoadConfig().then(cfg => {
   modelInput.value = cfg.model;
   sourceSelect.value = cfg.sourceLanguage;
   targetSelect.value = cfg.targetLanguage;
+  reqLimitInput.value = cfg.requestLimit;
+  tokenLimitInput.value = cfg.tokenLimit;
   autoCheckbox.checked = cfg.autoTranslate;
   if (!cfg.apiKey) status.textContent = 'Set API key';
 });
@@ -40,6 +44,8 @@ document.getElementById('save').addEventListener('click', () => {
     model: modelInput.value.trim(),
     sourceLanguage: sourceSelect.value,
     targetLanguage: targetSelect.value,
+    requestLimit: parseInt(reqLimitInput.value, 10) || 60,
+    tokenLimit: parseInt(tokenLimitInput.value, 10) || 100000,
     autoTranslate: autoCheckbox.checked,
   };
   window.qwenSaveConfig(cfg).then(() => {

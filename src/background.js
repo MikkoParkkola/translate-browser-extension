@@ -1,3 +1,6 @@
+importScripts('throttle.js');
+const { runWithRateLimit, approxTokens, configure } = self.qwenThrottle;
+
 chrome.runtime.onInstalled.addListener(() => {
   console.log('Qwen Translator installed');
 });
@@ -10,22 +13,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const timer = setTimeout(() => controller.abort(), 10000);
     const url = `${ep}services/aigc/text-generation/generation`;
     console.log('Background translating via', url);
-    fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: apiKey,
-        'X-DashScope-SSE': 'enable',
-      },
-      body: JSON.stringify({
-        model,
-        input: { messages: [{ role: 'user', content: text }] },
-        parameters: {
-          translation_options: { source_lang: source, target_lang: target },
+
+    chrome.storage.sync.get({ requestLimit: 60, tokenLimit: 100000 }, cfg => {
+      configure({ requestLimit: cfg.requestLimit, tokenLimit: cfg.tokenLimit, windowMs: 60000 });
+
+      runWithRateLimit(() => fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: apiKey,
+          'X-DashScope-SSE': 'enable',
         },
-      }),
-      signal: controller.signal,
-    })
+        body: JSON.stringify({
+          model,
+          input: { messages: [{ role: 'user', content: text }] },
+          parameters: {
+            translation_options: { source_lang: source, target_lang: target },
+          },
+        }),
+        signal: controller.signal,
+      }), approxTokens(text))
       .then(async resp => {
         clearTimeout(timer);
         if (!resp.ok) {
@@ -64,6 +71,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         console.error('Background translation error:', err);
         sendResponse({ error: err.message });
       });
+    });
     return true;
   }
 });
