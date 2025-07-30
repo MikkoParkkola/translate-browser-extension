@@ -6,7 +6,9 @@ const targetSelect = document.getElementById('target');
 const reqLimitInput = document.getElementById('requestLimit');
 const tokenLimitInput = document.getElementById('tokenLimit');
 const autoCheckbox = document.getElementById('auto');
+const debugCheckbox = document.getElementById('debug');
 const status = document.getElementById('status');
+const versionDiv = document.getElementById('version');
 
 function populateLanguages() {
   window.qwenLanguages.forEach(l => {
@@ -28,8 +30,11 @@ window.qwenLoadConfig().then(cfg => {
   reqLimitInput.value = cfg.requestLimit;
   tokenLimitInput.value = cfg.tokenLimit;
   autoCheckbox.checked = cfg.autoTranslate;
+  debugCheckbox.checked = !!cfg.debug;
   if (!cfg.apiKey) status.textContent = 'Set API key';
 });
+
+versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
 
 document.getElementById('translate').addEventListener('click', () => {
   chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
@@ -47,6 +52,7 @@ document.getElementById('save').addEventListener('click', () => {
     requestLimit: parseInt(reqLimitInput.value, 10) || 60,
     tokenLimit: parseInt(tokenLimitInput.value, 10) || 100000,
     autoTranslate: autoCheckbox.checked,
+    debug: debugCheckbox.checked,
   };
   window.qwenSaveConfig(cfg).then(() => {
     status.textContent = 'Saved';
@@ -56,6 +62,11 @@ document.getElementById('save').addEventListener('click', () => {
 
 document.getElementById('test').addEventListener('click', async () => {
   status.textContent = 'Testing...';
+  console.log('QTDEBUG: starting configuration test');
+  const timer = setTimeout(() => {
+    console.error('QTERROR: configuration test timed out');
+    status.textContent = 'Error: timeout';
+  }, 15000);
   try {
     await window.qwenTranslate({
       endpoint: endpointInput.value.trim(),
@@ -64,9 +75,13 @@ document.getElementById('test').addEventListener('click', async () => {
       source: sourceSelect.value,
       text: 'hello',
       target: targetSelect.value,
+      debug: debugCheckbox.checked,
     });
     status.textContent = 'Configuration OK';
+    console.log('QTDEBUG: configuration test successful');
   } catch (e) {
     status.textContent = `Error: ${e.message}`;
+    console.error('QTERROR: configuration test failed', e);
   }
+  clearTimeout(timer);
 });
