@@ -31,10 +31,15 @@ async function fetchModels() {
   const endpoint = endpointInput.value;
   const key = apiKeyInput.value;
   try {
-    const res = await fetch(`${endpoint}services/aigc/mt/models`, {
+    const url = `${endpoint}services/aigc/mt/text-translator/models`;
+    console.log('Fetching models from', url);
+    const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${key}` }
     });
-    if (!res.ok) throw new Error('Failed fetching models');
+    if (!res.ok) {
+      const errTxt = await res.text().catch(() => res.statusText);
+      throw new Error(`Model fetch failed (${res.status}): ${errTxt}`);
+    }
     const data = await res.json();
     modelSelect.innerHTML = '';
     data.models.forEach(m => {
@@ -44,7 +49,9 @@ async function fetchModels() {
     });
     attachSearch(modelSelect, modelSearch);
   } catch (e) {
+    console.error('Model fetch error:', e);
     msg.textContent = e.message;
+    setTimeout(() => { msg.textContent = ''; }, 5000);
   }
 }
 
@@ -79,5 +86,6 @@ document.getElementById('save').addEventListener('click', () => {
   };
   window.qwenSaveConfig(cfg).then(() => {
     msg.textContent = 'Saved';
+    setTimeout(() => { msg.textContent = ''; }, 2000);
   });
 });

@@ -7,6 +7,7 @@ const cache = new Map();
 
 async function doFetch({ endpoint, apiKey, model, text, target, signal }) {
   const url = `${endpoint}services/aigc/mt/text-translator/generation`;
+  console.log('Sending translation request to', url);
   const body = {
     model,
     input: { source_language: 'auto', target_language: target, text },
@@ -24,7 +25,7 @@ async function doFetch({ endpoint, apiKey, model, text, target, signal }) {
     const err = await resp
       .json()
       .catch(() => ({ message: resp.statusText }));
-    throw new Error(err.message || 'Translation failed');
+    throw new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
   }
   const data = await resp.json();
   if (!data.output || !data.output.text) {
@@ -41,6 +42,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, target, signal }) 
 
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
     const result = await new Promise((resolve, reject) => {
+      console.log('Requesting translation via background script');
       chrome.runtime.sendMessage({ action: 'translate', opts: { endpoint, apiKey, model, text, target } }, res => {
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
@@ -55,9 +57,14 @@ async function qwenTranslate({ endpoint, apiKey, model, text, target, signal }) 
     return result;
   }
 
-  const data = await doFetch({ endpoint, apiKey, model, text, target, signal });
-  cache.set(cacheKey, data);
-  return data;
+  try {
+    const data = await doFetch({ endpoint, apiKey, model, text, target, signal });
+    cache.set(cacheKey, data);
+    return data;
+  } catch (e) {
+    console.error('Translation request failed:', e);
+    throw e;
+  }
 }
 function qwenClearCache() {
   cache.clear();

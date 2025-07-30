@@ -7,7 +7,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const { endpoint, apiKey, model, text, target } = msg.opts;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
-    fetch(`${endpoint}services/aigc/mt/text-translator/generation`, {
+    const url = `${endpoint}services/aigc/mt/text-translator/generation`;
+    console.log('Background translating via', url);
+    fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -23,7 +25,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         clearTimeout(timer);
         if (!resp.ok) {
           const err = await resp.json().catch(() => ({ message: resp.statusText }));
-          sendResponse({ error: err.message || 'Translation failed' });
+          sendResponse({ error: `HTTP ${resp.status}: ${err.message}` });
           return;
         }
         const data = await resp.json();
@@ -35,6 +37,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       })
       .catch(err => {
         clearTimeout(timer);
+        console.error('Background translation error:', err);
         sendResponse({ error: err.message });
       });
     return true;
