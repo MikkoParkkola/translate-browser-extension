@@ -1,5 +1,5 @@
 importScripts('throttle.js');
-const { runWithRateLimit, approxTokens, configure } = self.qwenThrottle;
+const { runWithRetry, approxTokens, configure } = self.qwenThrottle;
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log('Qwen Translator installed');
@@ -8,8 +8,6 @@ chrome.runtime.onInstalled.addListener(() => {
 async function handleTranslate(opts) {
   const { endpoint, apiKey, model, text, source, target, debug } = opts;
   const ep = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10000);
   const url = `${ep}services/aigc/text-generation/generation`;
   if (debug) console.log('QTDEBUG: background translating via', url);
 
@@ -19,24 +17,40 @@ async function handleTranslate(opts) {
   configure({ requestLimit: cfg.requestLimit, tokenLimit: cfg.tokenLimit, windowMs: 60000 });
 
   try {
-    const resp = await runWithRateLimit(() => fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: apiKey,
-        'X-DashScope-SSE': 'enable',
-      },
-      body: JSON.stringify({
-        model,
-        input: { messages: [{ role: 'user', content: text }] },
-        parameters: {
-          translation_options: { source_lang: source, target_lang: target },
+    const attempt = async () => {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 10000);
+      try {
+        const r = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: apiKey,
+          'X-DashScope-SSE': 'enable',
         },
-      }),
-      signal: controller.signal,
-    }), approxTokens(text));
+        body: JSON.stringify({
+          model,
+          input: { messages: [{ role: 'user', content: text }] },
+          parameters: { translation_options: { source_lang: source, target_lang: target } },
+        }),
+        signal: controller.signal,
+      });
+        if (!r.ok && r.status >= 500) {
+          const err = new Error(`HTTP ${r.status}`);
+          err.retryable = true;
+          throw err;
+        }
+        return r;
+      } catch (e) {
+        e.retryable = true;
+        throw e;
+      } finally {
+        clearTimeout(t);
+      }
+    };
 
-    clearTimeout(timer);
+    const resp = await runWithRetry(attempt, approxTokens(text), 3, debug);
+
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ message: resp.statusText }));
       if (debug) console.log('QTDEBUG: background HTTP error', err);
@@ -70,7 +84,6 @@ async function handleTranslate(opts) {
     if (debug) console.log('QTDEBUG: background translation completed');
     return { text: result };
   } catch (err) {
-    clearTimeout(timer);
     console.error('QTERROR: background translation error', err);
     return { error: err.message };
   }
