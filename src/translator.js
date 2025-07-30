@@ -9,12 +9,15 @@ function withSlash(url) {
   return url.endsWith('/') ? url : `${url}/`;
 }
 
-async function doFetch({ endpoint, apiKey, model, text, target, signal }) {
-  const url = `${withSlash(endpoint)}services/aigc/mt/text-translator/generation`;
+async function doFetch({ endpoint, apiKey, model, text, source, target, signal }) {
+  const streamPath = `${withSlash(endpoint)}services/aigc/mt/text-translator/generation-stream`;
+  const url = (typeof window === 'undefined')
+    ? `${withSlash(endpoint)}services/aigc/mt/text-translator/generation`
+    : streamPath;
   console.log('Sending translation request to', url);
   const body = {
     model,
-    input: { source_language: 'auto', target_language: target, text },
+    input: { source_language: source, target_language: target, text },
   };
   const resp = await fetchFn(url, {
     method: 'POST',
@@ -31,15 +34,45 @@ async function doFetch({ endpoint, apiKey, model, text, target, signal }) {
       .catch(() => ({ message: resp.statusText }));
     throw new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
   }
-  const data = await resp.json();
-  if (!data.output || !data.output.text) {
-    throw new Error('Invalid API response');
+  if (!resp.body || typeof resp.body.getReader !== 'function') {
+    const data = await resp.json();
+    if (!data.output || !data.output.text) {
+      throw new Error('Invalid API response');
+    }
+    return data.output;
   }
-  return data.output;
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const data = trimmed.slice(5).trim();
+      if (data === '[DONE]') {
+        reader.cancel();
+        break;
+      }
+      try {
+        const obj = JSON.parse(data);
+        if (obj.output && obj.output.text) {
+          result += obj.output.text;
+        }
+      } catch {}
+    }
+  }
+  return { text: result };
 }
 
-async function qwenTranslate({ endpoint, apiKey, model, text, target, signal }) {
-  const cacheKey = `${target}:${text}`;
+async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal }) {
+  const cacheKey = `${source}:${target}:${text}`;
   if (cache.has(cacheKey)) {
     return cache.get(cacheKey);
   }
@@ -48,7 +81,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, target, signal }) 
     const ep = withSlash(endpoint);
     const result = await new Promise((resolve, reject) => {
       console.log('Requesting translation via background script');
-      chrome.runtime.sendMessage({ action: 'translate', opts: { endpoint: ep, apiKey, model, text, target } }, res => {
+      chrome.runtime.sendMessage({ action: 'translate', opts: { endpoint: ep, apiKey, model, text, source, target } }, res => {
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
         } else if (res && res.error) {
@@ -63,7 +96,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, target, signal }) 
   }
 
   try {
-    const data = await doFetch({ endpoint, apiKey, model, text, target, signal });
+    const data = await doFetch({ endpoint, apiKey, model, text, source, target, signal });
     cache.set(cacheKey, data);
     return data;
   } catch (e) {

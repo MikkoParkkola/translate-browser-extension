@@ -1,10 +1,10 @@
 const defaultCfg = {
   apiKey: '',
-  apiEndpoint: 'https://dashscope-intl.aliyuncs.com/api/v1/',
-  targetLanguage: 'en',
-  ignoredLanguages: [],
-  autoTranslate: false,
+  apiEndpoint: 'https://dashscope-intl.aliyuncs.com/api/v1',
   model: 'qwen-mt-turbo',
+  sourceLanguage: 'en',
+  targetLanguage: 'en',
+  autoTranslate: false,
 };
 
 function qwenLoadConfig() {
