@@ -16,9 +16,9 @@ Reload the unpacked extension after replacing the files with a newer version.
 
 ## Configuration
 Use the extension options page to set:
-- API key and optional endpoint
-  (keep your API key private)
-- Translation model (click Refresh to fetch available models)
+- API key and optional endpoint (keep your API key private)
+- Translation model (`qwen-mt-plus` or `qwen-mt-turbo`)
+  - Click **Refresh** to retrieve the model list from the `/models` API
 - Target language and ignored languages
 - Automatic translation toggle
 The language and model lists include search boxes to make selection easier.
