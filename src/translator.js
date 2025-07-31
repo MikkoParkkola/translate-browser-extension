@@ -25,7 +25,7 @@ function withSlash(url) {
   return url.endsWith('/') ? url : `${url}/`;
 }
 
-async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData }) {
+async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true }) {
   const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
   if (debug) {
     console.log('QTDEBUG: sending translation request to', url);
@@ -41,13 +41,14 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
   if (debug) console.log('QTDEBUG: request body', body);
   let resp;
   try {
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: apiKey,
+    };
+    if (stream) headers['X-DashScope-SSE'] = 'enable';
     resp = await fetchFn(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: apiKey,
-        'X-DashScope-SSE': 'enable',
-      },
+      headers,
       body: JSON.stringify(body),
       signal,
     });
@@ -68,7 +69,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
     if (resp.status >= 500) error.retryable = true;
     throw error;
   }
-  if (!resp.body || typeof resp.body.getReader !== 'function') {
+  if (!stream || !resp.body || typeof resp.body.getReader !== 'function') {
     if (debug) console.log('QTDEBUG: received non-streaming response');
     const data = await resp.json();
     const text =
@@ -115,7 +116,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
   return { text: result };
 }
 
-async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false }) {
+async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false }) {
   if (debug) {
     console.log('QTDEBUG: qwenTranslate called with', {
       endpoint,
@@ -147,7 +148,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
 
   try {
     const data = await runWithRetry(
-      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug }),
+      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, stream }),
       approxTokens(text),
       3,
       debug
@@ -164,7 +165,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   }
 }
 
-async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false }, onData) {
+async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true }, onData) {
   if (debug) {
     console.log('QTDEBUG: qwenTranslateStream called with', {
       endpoint,
@@ -183,7 +184,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
   }
   try {
     const data = await runWithRetry(
-      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData }),
+      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
       approxTokens(text),
       3,
       debug
