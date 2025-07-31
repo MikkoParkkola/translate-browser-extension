@@ -96,9 +96,12 @@ async function start() {
   observe();
 }
 
-chrome.runtime.onMessage.addListener((msg) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'start') {
     start();
+  }
+  if (msg.action === 'test-read') {
+    sendResponse({ title: document.title });
   }
 });
 
