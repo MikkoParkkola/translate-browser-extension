@@ -22,7 +22,7 @@ Use the popup to configure:
 - Translation model name (defaults to `qwen-mt-turbo`)
 - Source and target languages
 - Automatic translation toggle
-Click **Test Settings** in the popup to verify the configuration. The extension uses the streaming API for responsive translations.
+Click **Test Settings** in the popup to verify the configuration. The extension uses the same non-streaming API implementation as the CLI and aborts the request if no response is received within 20 seconds.
 
 ## Usage
 Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content.
@@ -43,11 +43,11 @@ npm test
 ```
 
 ## Command Line Utility
-A simple translator CLI is included in `cli/translate.js`. It streams translations as you type.
+A simple translator CLI is included in `cli/translate.js`. It streams translations as you type by default. Use `--no-stream` for request/response mode.
 
 ### Usage
 ```sh
-node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--tokens M] [-d] -s <source_lang> -t <target_lang>
+node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--tokens M] [-d] [--no-stream] -s <source_lang> -t <target_lang>
 ```
 If no endpoint is specified the tool defaults to `https://dashscope-intl.aliyuncs.com/api/v1`.
 Use `-d` to print detailed request and response logs.
