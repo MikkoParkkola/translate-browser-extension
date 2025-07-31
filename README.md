@@ -24,10 +24,12 @@ Use the popup to configure:
 - Automatic translation toggle
 Click **Test Settings** in the popup to run a short diagnostic. The extension performs several quick checks:
 1. Connect to the configured API endpoint
-2. Validate the API key with a simple translation request
-3. Send a streaming translation request
-4. Read the contents of the active tab
-5. Verify that extension settings can be saved
+2. Send an OPTIONS preflight request to the translation URL
+3. Perform a direct non-stream translation
+4. Perform the same translation via the background service worker
+5. Send a streaming translation request
+6. Read the contents of the active tab
+7. Verify that extension settings can be saved
 Each step displays a pass or fail result and honours the debug logging preference.
 
 ## Usage

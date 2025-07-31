@@ -106,7 +106,22 @@ document.getElementById('test').addEventListener('click', async () => {
     } finally { clearTimeout(t); }
   })) && allOk;
 
-  allOk = (await run('Non-stream translation', async () => {
+  const transUrl = cfg.endpoint.replace(/\/?$/, '/') + 'services/aigc/text-generation/generation';
+
+  allOk = (await run('Preflight', async () => {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 5000);
+    try {
+      await fetch(transUrl, { method: 'OPTIONS', signal: controller.signal });
+    } finally { clearTimeout(t); }
+  })) && allOk;
+
+  allOk = (await run('Direct translation', async () => {
+    const res = await window.qwenTranslate({ ...cfg, text: 'hello', stream: false, noProxy: true });
+    if (!res.text) throw new Error('empty response');
+  })) && allOk;
+
+  allOk = (await run('Background translation', async () => {
     const res = await window.qwenTranslate({ ...cfg, text: 'hello', stream: false });
     if (!res.text) throw new Error('empty response');
   })) && allOk;
