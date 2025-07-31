@@ -26,7 +26,6 @@ async function handleTranslate(opts) {
         headers: {
           'Content-Type': 'application/json',
           Authorization: apiKey,
-          'X-DashScope-SSE': 'enable',
         },
         body: JSON.stringify({
           model,
@@ -57,32 +56,12 @@ async function handleTranslate(opts) {
       return { error: `HTTP ${resp.status}: ${err.message}` };
     }
 
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let result = '';
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data:')) continue;
-        const data = trimmed.slice(5).trim();
-        if (data === '[DONE]') { reader.cancel(); break; }
-        try {
-          const obj = JSON.parse(data);
-          const chunk =
-            obj.output?.text ||
-            obj.output?.choices?.[0]?.message?.content || '';
-          result += chunk;
-        } catch {}
-      }
-    }
+    const data = await resp.json();
+    const text =
+      data.output?.text ||
+      data.output?.choices?.[0]?.message?.content || '';
     if (debug) console.log('QTDEBUG: background translation completed');
-    return { text: result };
+    return { text };
   } catch (err) {
     console.error('QTERROR: background translation error', err);
     return { error: err.message };
