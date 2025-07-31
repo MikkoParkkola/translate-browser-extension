@@ -62,21 +62,21 @@ document.getElementById('save').addEventListener('click', () => {
 
 document.getElementById('test').addEventListener('click', async () => {
   status.textContent = 'Testing...';
-  console.log('QTDEBUG: starting configuration test');
+  const cfg = {
+    endpoint: endpointInput.value.trim(),
+    apiKey: apiKeyInput.value.trim(),
+    model: modelInput.value.trim(),
+    source: sourceSelect.value,
+    target: targetSelect.value,
+    debug: true,
+  };
+  console.log('QTDEBUG: starting configuration test', cfg);
   const timer = setTimeout(() => {
     console.error('QTERROR: configuration test timed out');
     status.textContent = 'Error: timeout';
   }, 15000);
   try {
-    await window.qwenTranslate({
-      endpoint: endpointInput.value.trim(),
-      apiKey: apiKeyInput.value.trim(),
-      model: modelInput.value.trim(),
-      source: sourceSelect.value,
-      text: 'hello',
-      target: targetSelect.value,
-      debug: debugCheckbox.checked,
-    });
+    await window.qwenTranslate({ ...cfg, text: 'hello' });
     status.textContent = 'Configuration OK';
     console.log('QTDEBUG: configuration test successful');
   } catch (e) {
