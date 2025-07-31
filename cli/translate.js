@@ -1,79 +1,8 @@
 #!/usr/bin/env node
 
 const readline = require('readline');
-const fetch = globalThis.fetch || require('cross-fetch');
-const { runWithRateLimit, approxTokens, configure } = require('../src/throttle');
-
-function withSlash(url) {
-  return url.endsWith('/') ? url : `${url}/`;
-}
-
-async function translateStream({ endpoint, apiKey, model, text, source, target, debug }, onData) {
-  const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
-  const body = {
-    model,
-    input: { messages: [{ role: 'user', content: text }] },
-    parameters: { translation_options: { source_lang: source, target_lang: target } },
-  };
-  if (debug) {
-    console.log('QTDEBUG: sending CLI request to', url);
-    console.log('QTDEBUG: request params', { model, source, target, text });
-  }
-  const resp = await runWithRateLimit(
-    () => fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: apiKey,
-        'X-DashScope-SSE': 'enable',
-      },
-      body: JSON.stringify(body),
-    }),
-    approxTokens(text)
-  );
-
-  if (debug) console.log('QTDEBUG: response status', resp.status);
-
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ message: resp.statusText }));
-    throw new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
-  }
-
-  if (!resp.body || typeof resp.body.getReader !== 'function') {
-    if (debug) console.log('QTDEBUG: received non-streaming response');
-    const data = await resp.json();
-    if (data.output && data.output.text) onData(data.output.text);
-    return;
-  }
-
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop();
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith('data:')) continue;
-      const data = trimmed.slice(5).trim();
-      if (data === '[DONE]') {
-        reader.cancel();
-        return;
-      }
-      try {
-        const obj = JSON.parse(data);
-        const chunk = obj.output && obj.output.text;
-        if (chunk) {
-          if (debug) console.log('QTDEBUG: chunk received', chunk);
-          onData(chunk);
-        }
-      } catch {}
-    }
-  }
-}
+const { configure } = require('../src/throttle');
+const { qwenTranslateStream } = require('../src/translator');
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -127,7 +56,7 @@ async function main() {
     line = line.trim();
     if (!line) { rl.prompt(); return; }
     try {
-      await translateStream({ ...opts, text: line, debug: opts.debug }, chunk => {
+      await qwenTranslateStream({ ...opts, text: line, debug: opts.debug }, chunk => {
         if (opts.debug) console.log('QTDEBUG: chunk received', chunk);
         process.stdout.write(chunk);
       });
