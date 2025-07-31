@@ -22,7 +22,13 @@ Use the popup to configure:
 - Translation model name (defaults to `qwen-mt-turbo`)
 - Source and target languages
 - Automatic translation toggle
-Click **Test Settings** in the popup to verify the configuration. The extension uses the same non-streaming API implementation as the CLI and aborts the request if no response is received within 20 seconds.
+Click **Test Settings** in the popup to run a short diagnostic. The extension performs several quick checks:
+1. Connect to the configured API endpoint
+2. Validate the API key with a simple translation request
+3. Send a streaming translation request
+4. Read the contents of the active tab
+5. Verify that extension settings can be saved
+Each step displays a pass or fail result and honours the debug logging preference.
 
 ## Usage
 Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content.
