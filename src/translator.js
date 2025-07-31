@@ -25,7 +25,7 @@ function withSlash(url) {
   return url.endsWith('/') ? url : `${url}/`;
 }
 
-async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug }) {
+async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData }) {
   const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
   if (debug) {
     console.log('QTDEBUG: sending translation request to', url);
@@ -38,6 +38,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       translation_options: { source_lang: source, target_lang: target },
     },
   };
+  if (debug) console.log('QTDEBUG: request body', body);
   let resp;
   try {
     resp = await fetchFn(url, {
@@ -50,7 +51,10 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       body: JSON.stringify(body),
       signal,
     });
-    if (debug) console.log('QTDEBUG: response status', resp.status);
+    if (debug) {
+      console.log('QTDEBUG: response status', resp.status);
+      console.log('QTDEBUG: response headers', Object.fromEntries(resp.headers.entries()));
+    }
   } catch (e) {
     e.retryable = true;
     throw e;
@@ -92,6 +96,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       const trimmed = line.trim();
       if (!trimmed.startsWith('data:')) continue;
       const data = trimmed.slice(5).trim();
+      if (debug) console.log('QTDEBUG: raw line', data);
       if (data === '[DONE]') {
         reader.cancel();
         break;
@@ -102,6 +107,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
           obj.output?.text ||
           obj.output?.choices?.[0]?.message?.content || '';
         result += chunk;
+        if (onData && chunk) onData(chunk);
         if (debug && chunk) console.log('QTDEBUG: chunk received', chunk);
       } catch {}
     }
@@ -157,13 +163,50 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     throw e;
   }
 }
+
+async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false }, onData) {
+  if (debug) {
+    console.log('QTDEBUG: qwenTranslateStream called with', {
+      endpoint,
+      apiKeySet: Boolean(apiKey),
+      model,
+      source,
+      target,
+      text: text && text.slice ? text.slice(0, 20) + (text.length > 20 ? '...' : '') : text,
+    });
+  }
+  const cacheKey = `${source}:${target}:${text}`;
+  if (cache.has(cacheKey)) {
+    const data = cache.get(cacheKey);
+    if (onData) onData(data.text);
+    return data;
+  }
+  try {
+    const data = await runWithRetry(
+      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData }),
+      approxTokens(text),
+      3,
+      debug
+    );
+    cache.set(cacheKey, data);
+    if (debug) {
+      console.log('QTDEBUG: translation successful');
+      console.log('QTDEBUG: final text', data.text);
+    }
+    return data;
+  } catch (e) {
+    console.error('QTERROR: translation request failed', e);
+    throw e;
+  }
+}
 function qwenClearCache() {
   cache.clear();
 }
 if (typeof window !== 'undefined') {
   window.qwenTranslate = qwenTranslate;
+  window.qwenTranslateStream = qwenTranslateStream;
   window.qwenClearCache = qwenClearCache;
 }
 if (typeof module !== 'undefined') {
-  module.exports = { qwenTranslate, qwenClearCache };
+  module.exports = { qwenTranslate, qwenTranslateStream, qwenClearCache };
 }
