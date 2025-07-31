@@ -4,9 +4,13 @@ var runWithRetry;
 var approxTokens;
 
 if (typeof window === 'undefined') {
-  // Node 18+ provides a global fetch implementation
-  fetchFn = typeof fetch !== 'undefined' ? fetch : require('cross-fetch');
-  ({ runWithRateLimit, runWithRetry, approxTokens } = require('./throttle'));
+  if (typeof self !== 'undefined' && self.qwenThrottle) {
+    ({ runWithRateLimit, runWithRetry, approxTokens } = self.qwenThrottle);
+  } else {
+    // Node 18+ provides a global fetch implementation
+    fetchFn = typeof fetch !== 'undefined' ? fetch : require('cross-fetch');
+    ({ runWithRateLimit, runWithRetry, approxTokens } = require('./throttle'));
+  }
 } else {
   if (window.qwenThrottle) {
     ({ runWithRateLimit, runWithRetry, approxTokens } = window.qwenThrottle);
@@ -132,7 +136,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     return cache.get(cacheKey);
   }
 
-  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+  if (typeof window !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
     const ep = withSlash(endpoint);
     if (debug) console.log('QTDEBUG: requesting translation via background script');
     const result = await chrome.runtime
@@ -207,6 +211,11 @@ if (typeof window !== 'undefined') {
   window.qwenTranslate = qwenTranslate;
   window.qwenTranslateStream = qwenTranslateStream;
   window.qwenClearCache = qwenClearCache;
+}
+if (typeof self !== 'undefined' && typeof window === 'undefined') {
+  self.qwenTranslate = qwenTranslate;
+  self.qwenTranslateStream = qwenTranslateStream;
+  self.qwenClearCache = qwenClearCache;
 }
 if (typeof module !== 'undefined') {
   module.exports = { qwenTranslate, qwenTranslateStream, qwenClearCache };
