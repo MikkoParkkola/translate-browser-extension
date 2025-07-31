@@ -34,6 +34,7 @@ You can adjust the limits under **Requests per minute** and **Tokens per minute*
 
 ### Troubleshooting
 Both model refreshes and translation requests write trace logs to the browser console. Copy any on-page error and check the console for a matching entry to diagnose problems.
+If the **Test Settings** button reports a timeout, the network request may be blocked by Content Security Policy or CORS restrictions. The extension automatically falls back to `XMLHttpRequest` when `fetch` fails, but some environments may still prevent the call entirely.
 
 ## Development
 Run the unit tests with:
