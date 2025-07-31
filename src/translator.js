@@ -45,7 +45,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       headers: {
         'Content-Type': 'application/json',
         Authorization: apiKey,
-        ...(typeof window !== 'undefined' ? { 'X-DashScope-SSE': 'enable' } : {}),
+        'X-DashScope-SSE': 'enable',
       },
       body: JSON.stringify(body),
       signal,
@@ -110,6 +110,16 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
 }
 
 async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false }) {
+  if (debug) {
+    console.log('QTDEBUG: qwenTranslate called with', {
+      endpoint,
+      apiKeySet: Boolean(apiKey),
+      model,
+      source,
+      target,
+      text: text && text.slice ? text.slice(0, 20) + (text.length > 20 ? '...' : '') : text,
+    });
+  }
   const cacheKey = `${source}:${target}:${text}`;
   if (cache.has(cacheKey)) {
     return cache.get(cacheKey);

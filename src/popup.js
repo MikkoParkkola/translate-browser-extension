@@ -68,7 +68,7 @@ document.getElementById('test').addEventListener('click', async () => {
     model: modelInput.value.trim(),
     source: sourceSelect.value,
     target: targetSelect.value,
-    debug: debugCheckbox.checked,
+    debug: true,
   };
   console.log('QTDEBUG: starting configuration test', cfg);
   const timer = setTimeout(() => {

@@ -8,24 +8,31 @@ function withSlash(url) {
   return url.endsWith('/') ? url : `${url}/`;
 }
 
-async function translateStream({ endpoint, apiKey, model, text, source, target }, onData) {
+async function translateStream({ endpoint, apiKey, model, text, source, target, debug }, onData) {
   const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
   const body = {
     model,
     input: { messages: [{ role: 'user', content: text }] },
     parameters: { translation_options: { source_lang: source, target_lang: target } },
   };
+  if (debug) {
+    console.log('QTDEBUG: sending CLI request to', url);
+    console.log('QTDEBUG: request params', { model, source, target, text });
+  }
   const resp = await runWithRateLimit(
     () => fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: apiKey,
+        'X-DashScope-SSE': 'enable',
       },
       body: JSON.stringify(body),
     }),
     approxTokens(text)
   );
+
+  if (debug) console.log('QTDEBUG: response status', resp.status);
 
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ message: resp.statusText }));
@@ -33,6 +40,7 @@ async function translateStream({ endpoint, apiKey, model, text, source, target }
   }
 
   if (!resp.body || typeof resp.body.getReader !== 'function') {
+    if (debug) console.log('QTDEBUG: received non-streaming response');
     const data = await resp.json();
     if (data.output && data.output.text) onData(data.output.text);
     return;
@@ -57,7 +65,11 @@ async function translateStream({ endpoint, apiKey, model, text, source, target }
       }
       try {
         const obj = JSON.parse(data);
-        if (obj.output && obj.output.text) onData(obj.output.text);
+        const chunk = obj.output && obj.output.text;
+        if (chunk) {
+          if (debug) console.log('QTDEBUG: chunk received', chunk);
+          onData(chunk);
+        }
       } catch {}
     }
   }
@@ -75,6 +87,7 @@ function parseArgs() {
     else if (a === '-t' || a === '--target') opts.target = args[++i];
     else if (a === '--requests') opts.requestLimit = parseInt(args[++i], 10);
     else if (a === '--tokens') opts.tokenLimit = parseInt(args[++i], 10);
+    else if (a === '-d' || a === '--debug') opts.debug = true;
     else if (a === '-h' || a === '--help') opts.help = true;
   }
   return opts;
@@ -86,12 +99,21 @@ async function main() {
   const opts = parseArgs();
 
   if (opts.help || !opts.apiKey || !opts.source || !opts.target) {
-    console.log('Usage: node translate.js -k <apiKey> [-e endpoint] [-m model] [-\-requests N] [-\-tokens M] -s <source> -t <target>');
+    console.log('Usage: node translate.js -k <apiKey> [-e endpoint] [-m model] [-\-requests N] [-\-tokens M] [-d] -s <source> -t <target>');
     process.exit(opts.help ? 0 : 1);
   }
 
   opts.endpoint = opts.endpoint || DEFAULT_ENDPOINT;
   opts.model = opts.model || DEFAULT_MODEL;
+
+  if (opts.debug) {
+    console.log('QTDEBUG: starting CLI with options', {
+      endpoint: opts.endpoint,
+      model: opts.model,
+      source: opts.source,
+      target: opts.target,
+    });
+  }
 
   configure({
     requestLimit: opts.requestLimit || 60,
@@ -105,7 +127,10 @@ async function main() {
     line = line.trim();
     if (!line) { rl.prompt(); return; }
     try {
-      await translateStream({ ...opts, text: line }, chunk => process.stdout.write(chunk));
+      await translateStream({ ...opts, text: line, debug: opts.debug }, chunk => {
+        if (opts.debug) console.log('QTDEBUG: chunk received', chunk);
+        process.stdout.write(chunk);
+      });
       process.stdout.write('\n');
     } catch (err) {
       console.error(err.stack || err.toString());
