@@ -96,9 +96,41 @@ async function start() {
   observe();
 }
 
-chrome.runtime.onMessage.addListener((msg) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'start') {
+    if (currentConfig && currentConfig.debug) console.log('QTDEBUG: start message received');
     start();
+  }
+  if (msg.action === 'test-read') {
+    sendResponse({ title: document.title });
+  }
+  if (msg.action === 'test-e2e') {
+    const cfg = msg.cfg || {};
+    const original = 'Hello world';
+    const el = document.createElement('span');
+    el.id = 'qwen-test-element';
+    el.textContent = original;
+    document.body.appendChild(el);
+    window.qwenTranslate({
+      endpoint: cfg.endpoint,
+      apiKey: cfg.apiKey,
+      model: cfg.model,
+      text: original,
+      source: cfg.source,
+      target: cfg.target,
+      debug: cfg.debug,
+      stream: false,
+    })
+      .then(res => {
+        el.textContent = res.text;
+        sendResponse({ text: res.text });
+        setTimeout(() => el.remove(), 1000);
+      })
+      .catch(err => {
+        el.remove();
+        sendResponse({ error: err.message });
+      });
+    return true;
   }
 });
 
