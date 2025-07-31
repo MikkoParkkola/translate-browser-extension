@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const readline = require('readline');
-const fetch = require('cross-fetch');
+const fetch = globalThis.fetch || require('cross-fetch');
 const { runWithRateLimit, approxTokens, configure } = require('../src/throttle');
 
 function withSlash(url) {

@@ -54,6 +54,7 @@ async function runWithRetry(fn, text, attempts = 3, debug = false) {
   let wait = 500;
   for (let i = 0; i < attempts; i++) {
     try {
+      if (debug) console.log('QTDEBUG: attempt', i + 1);
       return await runWithRateLimit(fn, tokens);
     } catch (err) {
       if (!err.retryable || i === attempts - 1) throw err;
