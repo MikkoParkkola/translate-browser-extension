@@ -47,8 +47,9 @@ A simple translator CLI is included in `cli/translate.js`. It streams translatio
 
 ### Usage
 ```sh
-node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--tokens M] -s <source_lang> -t <target_lang>
+node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--tokens M] [-d] -s <source_lang> -t <target_lang>
 ```
 If no endpoint is specified the tool defaults to `https://dashscope-intl.aliyuncs.com/api/v1`.
+Use `-d` to print detailed request and response logs.
 Press `Ctrl+C` or `Ctrl+D` to exit.
 

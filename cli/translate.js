@@ -1,67 +1,8 @@
 #!/usr/bin/env node
 
 const readline = require('readline');
-const fetch = require('cross-fetch');
-const { runWithRateLimit, approxTokens, configure } = require('../src/throttle');
-
-function withSlash(url) {
-  return url.endsWith('/') ? url : `${url}/`;
-}
-
-async function translateStream({ endpoint, apiKey, model, text, source, target }, onData) {
-  const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
-  const body = {
-    model,
-    input: { messages: [{ role: 'user', content: text }] },
-    parameters: { translation_options: { source_lang: source, target_lang: target } },
-  };
-  const resp = await runWithRateLimit(
-    () => fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: apiKey,
-      },
-      body: JSON.stringify(body),
-    }),
-    approxTokens(text)
-  );
-
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ message: resp.statusText }));
-    throw new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
-  }
-
-  if (!resp.body || typeof resp.body.getReader !== 'function') {
-    const data = await resp.json();
-    if (data.output && data.output.text) onData(data.output.text);
-    return;
-  }
-
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop();
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith('data:')) continue;
-      const data = trimmed.slice(5).trim();
-      if (data === '[DONE]') {
-        reader.cancel();
-        return;
-      }
-      try {
-        const obj = JSON.parse(data);
-        if (obj.output && obj.output.text) onData(obj.output.text);
-      } catch {}
-    }
-  }
-}
+const { configure } = require('../src/throttle');
+const { qwenTranslateStream } = require('../src/translator');
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -75,6 +16,7 @@ function parseArgs() {
     else if (a === '-t' || a === '--target') opts.target = args[++i];
     else if (a === '--requests') opts.requestLimit = parseInt(args[++i], 10);
     else if (a === '--tokens') opts.tokenLimit = parseInt(args[++i], 10);
+    else if (a === '-d' || a === '--debug') opts.debug = true;
     else if (a === '-h' || a === '--help') opts.help = true;
   }
   return opts;
@@ -86,12 +28,21 @@ async function main() {
   const opts = parseArgs();
 
   if (opts.help || !opts.apiKey || !opts.source || !opts.target) {
-    console.log('Usage: node translate.js -k <apiKey> [-e endpoint] [-m model] [-\-requests N] [-\-tokens M] -s <source> -t <target>');
+    console.log('Usage: node translate.js -k <apiKey> [-e endpoint] [-m model] [-\-requests N] [-\-tokens M] [-d] -s <source> -t <target>');
     process.exit(opts.help ? 0 : 1);
   }
 
   opts.endpoint = opts.endpoint || DEFAULT_ENDPOINT;
   opts.model = opts.model || DEFAULT_MODEL;
+
+  if (opts.debug) {
+    console.log('QTDEBUG: starting CLI with options', {
+      endpoint: opts.endpoint,
+      model: opts.model,
+      source: opts.source,
+      target: opts.target,
+    });
+  }
 
   configure({
     requestLimit: opts.requestLimit || 60,
@@ -105,7 +56,10 @@ async function main() {
     line = line.trim();
     if (!line) { rl.prompt(); return; }
     try {
-      await translateStream({ ...opts, text: line }, chunk => process.stdout.write(chunk));
+      await qwenTranslateStream({ ...opts, text: line, debug: opts.debug }, chunk => {
+        if (opts.debug) console.log('QTDEBUG: chunk received', chunk);
+        process.stdout.write(chunk);
+      });
       process.stdout.write('\n');
     } catch (err) {
       console.error(err.stack || err.toString());
