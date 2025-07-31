@@ -4,9 +4,13 @@ var runWithRetry;
 var approxTokens;
 
 if (typeof window === 'undefined') {
-  // Node 18+ provides a global fetch implementation
-  fetchFn = typeof fetch !== 'undefined' ? fetch : require('cross-fetch');
-  ({ runWithRateLimit, runWithRetry, approxTokens } = require('./throttle'));
+  if (typeof self !== 'undefined' && self.qwenThrottle) {
+    ({ runWithRateLimit, runWithRetry, approxTokens } = self.qwenThrottle);
+  } else {
+    // Node 18+ provides a global fetch implementation
+    fetchFn = typeof fetch !== 'undefined' ? fetch : require('cross-fetch');
+    ({ runWithRateLimit, runWithRetry, approxTokens } = require('./throttle'));
+  }
 } else {
   if (window.qwenThrottle) {
     ({ runWithRateLimit, runWithRetry, approxTokens } = window.qwenThrottle);
@@ -21,11 +25,42 @@ if (typeof window === 'undefined') {
 
 const cache = new Map();
 
+function fetchViaXHR(url, { method = 'GET', headers = {}, body, signal }, debug) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, url, true);
+    Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+    xhr.responseType = 'text';
+    if (signal) {
+      if (signal.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+      const onAbort = () => {
+        xhr.abort();
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+      xhr.addEventListener('loadend', () => signal.removeEventListener('abort', onAbort));
+    }
+    xhr.onload = () => {
+      const resp = {
+        ok: xhr.status >= 200 && xhr.status < 300,
+        status: xhr.status,
+        json: async () => JSON.parse(xhr.responseText || 'null'),
+        text: async () => xhr.responseText,
+        headers: new Headers(),
+      };
+      if (debug) console.log('QTDEBUG: XHR status', xhr.status);
+      resolve(resp);
+    };
+    xhr.onerror = () => reject(new Error('Network error'));
+    xhr.send(body);
+  });
+}
+
 function withSlash(url) {
   return url.endsWith('/') ? url : `${url}/`;
 }
 
-async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData }) {
+async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true }) {
   const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
   if (debug) {
     console.log('QTDEBUG: sending translation request to', url);
@@ -41,13 +76,14 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
   if (debug) console.log('QTDEBUG: request body', body);
   let resp;
   try {
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: apiKey,
+    };
+    if (stream) headers['X-DashScope-SSE'] = 'enable';
     resp = await fetchFn(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: apiKey,
-        'X-DashScope-SSE': 'enable',
-      },
+      headers,
       body: JSON.stringify(body),
       signal,
     });
@@ -56,8 +92,25 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       console.log('QTDEBUG: response headers', Object.fromEntries(resp.headers.entries()));
     }
   } catch (e) {
-    e.retryable = true;
-    throw e;
+    if (!stream && typeof XMLHttpRequest !== 'undefined') {
+      if (debug) console.log('QTDEBUG: fetch failed, falling back to XHR');
+      resp = await fetchViaXHR(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: apiKey,
+          },
+          body: JSON.stringify(body),
+          signal,
+        },
+        debug
+      );
+    } else {
+      e.retryable = true;
+      throw e;
+    }
   }
   if (!resp.ok) {
     const err = await resp
@@ -68,7 +121,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
     if (resp.status >= 500) error.retryable = true;
     throw error;
   }
-  if (!resp.body || typeof resp.body.getReader !== 'function') {
+  if (!stream || !resp.body || typeof resp.body.getReader !== 'function') {
     if (debug) console.log('QTDEBUG: received non-streaming response');
     const data = await resp.json();
     const text =
@@ -115,7 +168,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
   return { text: result };
 }
 
-async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false }) {
+async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false }) {
   if (debug) {
     console.log('QTDEBUG: qwenTranslate called with', {
       endpoint,
@@ -131,7 +184,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     return cache.get(cacheKey);
   }
 
-  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+  if (typeof window !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
     const ep = withSlash(endpoint);
     if (debug) console.log('QTDEBUG: requesting translation via background script');
     const result = await chrome.runtime
@@ -147,7 +200,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
 
   try {
     const data = await runWithRetry(
-      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug }),
+      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, stream }),
       approxTokens(text),
       3,
       debug
@@ -164,7 +217,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   }
 }
 
-async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false }, onData) {
+async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true }, onData) {
   if (debug) {
     console.log('QTDEBUG: qwenTranslateStream called with', {
       endpoint,
@@ -183,7 +236,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
   }
   try {
     const data = await runWithRetry(
-      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData }),
+      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
       approxTokens(text),
       3,
       debug
@@ -206,6 +259,11 @@ if (typeof window !== 'undefined') {
   window.qwenTranslate = qwenTranslate;
   window.qwenTranslateStream = qwenTranslateStream;
   window.qwenClearCache = qwenClearCache;
+}
+if (typeof self !== 'undefined' && typeof window === 'undefined') {
+  self.qwenTranslate = qwenTranslate;
+  self.qwenTranslateStream = qwenTranslateStream;
+  self.qwenClearCache = qwenClearCache;
 }
 if (typeof module !== 'undefined') {
   module.exports = { qwenTranslate, qwenTranslateStream, qwenClearCache };
