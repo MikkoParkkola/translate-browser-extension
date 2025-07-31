@@ -25,6 +25,37 @@ if (typeof window === 'undefined') {
 
 const cache = new Map();
 
+function fetchViaXHR(url, { method = 'GET', headers = {}, body, signal }, debug) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, url, true);
+    Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+    xhr.responseType = 'text';
+    if (signal) {
+      if (signal.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+      const onAbort = () => {
+        xhr.abort();
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+      xhr.addEventListener('loadend', () => signal.removeEventListener('abort', onAbort));
+    }
+    xhr.onload = () => {
+      const resp = {
+        ok: xhr.status >= 200 && xhr.status < 300,
+        status: xhr.status,
+        json: async () => JSON.parse(xhr.responseText || 'null'),
+        text: async () => xhr.responseText,
+        headers: new Headers(),
+      };
+      if (debug) console.log('QTDEBUG: XHR status', xhr.status);
+      resolve(resp);
+    };
+    xhr.onerror = () => reject(new Error('Network error'));
+    xhr.send(body);
+  });
+}
+
 function withSlash(url) {
   return url.endsWith('/') ? url : `${url}/`;
 }
@@ -61,8 +92,25 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       console.log('QTDEBUG: response headers', Object.fromEntries(resp.headers.entries()));
     }
   } catch (e) {
-    e.retryable = true;
-    throw e;
+    if (!stream && typeof XMLHttpRequest !== 'undefined') {
+      if (debug) console.log('QTDEBUG: fetch failed, falling back to XHR');
+      resp = await fetchViaXHR(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: apiKey,
+          },
+          body: JSON.stringify(body),
+          signal,
+        },
+        debug
+      );
+    } else {
+      e.retryable = true;
+      throw e;
+    }
   }
   if (!resp.ok) {
     const err = await resp
