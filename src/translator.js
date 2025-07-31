@@ -168,7 +168,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
   return { text: result };
 }
 
-async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false }) {
+async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false }) {
   if (debug) {
     console.log('QTDEBUG: qwenTranslate called with', {
       endpoint,
@@ -184,7 +184,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     return cache.get(cacheKey);
   }
 
-  if (typeof window !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+  if (!noProxy && typeof window !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
     const ep = withSlash(endpoint);
     if (debug) console.log('QTDEBUG: requesting translation via background script');
     const result = await chrome.runtime
@@ -217,7 +217,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   }
 }
 
-async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true }, onData) {
+async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false }, onData) {
   if (debug) {
     console.log('QTDEBUG: qwenTranslateStream called with', {
       endpoint,
