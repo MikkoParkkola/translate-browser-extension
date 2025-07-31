@@ -37,7 +37,10 @@ window.qwenLoadConfig().then(cfg => {
 versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
 
 document.getElementById('translate').addEventListener('click', () => {
+  const debug = debugCheckbox.checked;
   chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+    if (!tabs[0]) return;
+    if (debug) console.log('QTDEBUG: sending start message to tab', tabs[0].id);
     chrome.tabs.sendMessage(tabs[0].id, {action: 'start'});
   });
 });
@@ -135,8 +138,39 @@ document.getElementById('test').addEventListener('click', async () => {
   allOk = (await run('Read active tab', async () => {
     const tabs = await new Promise(r => chrome.tabs.query({ active: true, currentWindow: true }, r));
     if (!tabs[0]) throw new Error('no tab');
-    const resp = await chrome.tabs.sendMessage(tabs[0].id, { action: 'test-read' }).catch(() => null);
+    const tab = tabs[0];
+    const url = tab.url || '';
+    if (!/^https?:/i.test(url)) {
+      throw new Error('active tab not accessible; open a regular web page');
+    }
+    const resp = await new Promise((resolve, reject) => {
+      chrome.tabs.sendMessage(tab.id, { action: 'test-read' }, res => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(res);
+        }
+      });
+    });
     if (!resp || typeof resp.title !== 'string') throw new Error('no response');
+  })) && allOk;
+
+  allOk = (await run('Tab translation', async () => {
+    const tabs = await new Promise(r => chrome.tabs.query({ active: true, currentWindow: true }, r));
+    if (!tabs[0]) throw new Error('no tab');
+    const resp = await new Promise((resolve, reject) => {
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'test-e2e', cfg }, res => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(res);
+        }
+      });
+    });
+    if (!resp || resp.error) throw new Error(resp ? resp.error : 'no response');
+    if (!resp.text || resp.text.toLowerCase() === 'hello world') {
+      throw new Error('translation failed');
+    }
   })) && allOk;
 
   allOk = (await run('Storage access', async () => {
