@@ -111,22 +111,29 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     el.id = 'qwen-test-element';
     el.textContent = original;
     document.body.appendChild(el);
-    window.qwenTranslate({
-      endpoint: cfg.endpoint,
-      apiKey: cfg.apiKey,
-      model: cfg.model,
-      text: original,
-      source: cfg.source,
-      target: cfg.target,
-      debug: cfg.debug,
-      stream: false,
-    })
+    if (cfg.debug) console.log('QTDEBUG: test-e2e request received');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    window
+      .qwenTranslate({
+        endpoint: cfg.endpoint,
+        apiKey: cfg.apiKey,
+        model: cfg.model,
+        text: original,
+        source: cfg.source,
+        target: cfg.target,
+        debug: cfg.debug,
+        stream: false,
+        signal: controller.signal,
+      })
       .then(res => {
+        clearTimeout(timer);
         el.textContent = res.text;
         sendResponse({ text: res.text });
         setTimeout(() => el.remove(), 1000);
       })
       .catch(err => {
+        clearTimeout(timer);
         el.remove();
         sendResponse({ error: err.message });
       });

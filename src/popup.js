@@ -159,10 +159,14 @@ document.getElementById('test').addEventListener('click', async () => {
     const tabs = await new Promise(r => chrome.tabs.query({ active: true, currentWindow: true }, r));
     if (!tabs[0]) throw new Error('no tab');
     const resp = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('timeout waiting for tab response')), 15000);
+      log('QTDEBUG: sending test-e2e request to tab', tabs[0].id);
       chrome.tabs.sendMessage(tabs[0].id, { action: 'test-e2e', cfg }, res => {
+        clearTimeout(timer);
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
         } else {
+          log('QTDEBUG: tab responded', res);
           resolve(res);
         }
       });

@@ -33,6 +33,7 @@ Click **Test Settings** in the popup to run a short diagnostic. The extension pe
 8. Verify that extension settings can be saved
 Each step displays a pass or fail result and honours the debug logging preference.
 The active tab check may fail on browser-internal pages (such as the Chrome Web Store or settings). Open a regular web page before running the test.
+The final end-to-end tab translation aborts after about 10 seconds if no response is received.
 
 ## Usage
 Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content.
@@ -46,6 +47,7 @@ You can adjust the limits under **Requests per minute** and **Tokens per minute*
 Both model refreshes and translation requests write trace logs to the browser console. Copy any on-page error and check the console for a matching entry to diagnose problems.
 If the **Test Settings** button reports a timeout, the network request may be blocked by Content Security Policy or CORS restrictions. The extension automatically falls back to `XMLHttpRequest` when `fetch` fails, but some environments may still prevent the call entirely.
 If the **Read active tab** check fails, make sure the currently focused tab is a normal web page; the extension cannot access Chrome or extension pages.
+If the tab translation step fails, the page may block script execution or DOM updates.
 
 ## Development
 Run the unit tests with:
