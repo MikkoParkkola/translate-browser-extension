@@ -1,16 +1,19 @@
-const queue = [];
-let config = {
-  requestLimit: 60,
-  tokenLimit: 100000,
-  windowMs: 60000,
-};
-let availableRequests = config.requestLimit;
-let availableTokens = config.tokenLimit;
-let interval = setInterval(() => {
-  availableRequests = config.requestLimit;
-  availableTokens = config.tokenLimit;
-  processQueue();
-}, config.windowMs);
+;(function (root) {
+  if (root.qwenThrottle) return
+
+  const queue = []
+  let config = {
+    requestLimit: 60,
+    tokenLimit: 100000,
+    windowMs: 60000,
+  }
+  let availableRequests = config.requestLimit
+  let availableTokens = config.tokenLimit
+  let interval = setInterval(() => {
+    availableRequests = config.requestLimit
+    availableTokens = config.tokenLimit
+    processQueue()
+  }, config.windowMs)
 
 function approxTokens(text) {
   return Math.max(1, Math.ceil(text.length / 4));
@@ -65,12 +68,23 @@ async function runWithRetry(fn, text, attempts = 3, debug = false) {
   }
 }
 
-if (typeof module !== 'undefined') {
-  module.exports = { runWithRateLimit, runWithRetry, configure, approxTokens };
-}
+  if (typeof module !== 'undefined') {
+    module.exports = { runWithRateLimit, runWithRetry, configure, approxTokens }
+  }
 
-if (typeof window !== 'undefined') {
-  window.qwenThrottle = { runWithRateLimit, runWithRetry, configure, approxTokens };
-} else if (typeof self !== 'undefined') {
-  self.qwenThrottle = { runWithRateLimit, runWithRetry, configure, approxTokens };
-}
+  if (typeof window !== 'undefined') {
+    root.qwenThrottle = {
+      runWithRateLimit,
+      runWithRetry,
+      configure,
+      approxTokens,
+    }
+  } else if (typeof self !== 'undefined') {
+    root.qwenThrottle = {
+      runWithRateLimit,
+      runWithRetry,
+      configure,
+      approxTokens,
+    }
+  }
+})(typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : globalThis)
