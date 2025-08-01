@@ -19,7 +19,7 @@ function approxTokens(text) {
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
-function configure(opts = {}) {
+function throttleConfigure(opts = {}) {
   Object.assign(config, opts);
   availableRequests = config.requestLimit;
   availableTokens = config.tokenLimit;
@@ -69,21 +69,21 @@ async function runWithRetry(fn, text, attempts = 3, debug = false) {
 }
 
   if (typeof module !== 'undefined') {
-    module.exports = { runWithRateLimit, runWithRetry, configure, approxTokens }
+    module.exports = { runWithRateLimit, runWithRetry, configure: throttleConfigure, approxTokens }
   }
 
   if (typeof window !== 'undefined') {
     root.qwenThrottle = {
       runWithRateLimit,
       runWithRetry,
-      configure,
+      configure: throttleConfigure,
       approxTokens,
     }
   } else if (typeof self !== 'undefined') {
     root.qwenThrottle = {
       runWithRateLimit,
       runWithRetry,
-      configure,
+      configure: throttleConfigure,
       approxTokens,
     }
   }
