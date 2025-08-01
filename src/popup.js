@@ -124,6 +124,19 @@ document.getElementById('test').addEventListener('click', async () => {
     if (!res.text) throw new Error('empty response');
   })) && allOk;
 
+  allOk = (await run('Background ping', async () => {
+    const resp = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ action: 'ping', debug: cfg.debug }, res => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(res);
+        }
+      });
+    });
+    if (!resp || !resp.ok) throw new Error('no response');
+  })) && allOk;
+
   allOk = (await run('Background translation', async () => {
     const res = await window.qwenTranslate({ ...cfg, text: 'hello', stream: false });
     if (!res.text) throw new Error('empty response');
