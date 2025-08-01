@@ -22,7 +22,18 @@ Use the popup to configure:
 - Translation model name (defaults to `qwen-mt-turbo`)
 - Source and target languages
 - Automatic translation toggle
-Click **Test Settings** in the popup to verify the configuration. The extension uses the streaming API for responsive translations.
+Click **Test Settings** in the popup to run a short diagnostic. The extension performs several quick checks:
+1. Connect to the configured API endpoint
+2. Send an OPTIONS preflight request to the translation URL
+3. Perform a direct non-stream translation
+4. Perform the same translation via the background service worker
+5. Send a streaming translation request
+6. Read the contents of the active tab
+7. Translate a short string inside the active tab
+8. Verify that extension settings can be saved
+Each step displays a pass or fail result and honours the debug logging preference.
+The active tab check may fail on browser-internal pages (such as the Chrome Web Store or settings). Open a regular web page before running the test.
+The final end-to-end tab translation aborts after about 10 seconds if no response is received.
 
 ## Usage
 Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content.
@@ -34,6 +45,9 @@ You can adjust the limits under **Requests per minute** and **Tokens per minute*
 
 ### Troubleshooting
 Both model refreshes and translation requests write trace logs to the browser console. Copy any on-page error and check the console for a matching entry to diagnose problems.
+If the **Test Settings** button reports a timeout, the network request may be blocked by Content Security Policy or CORS restrictions. The extension automatically falls back to `XMLHttpRequest` when `fetch` fails, but some environments may still prevent the call entirely.
+If the **Read active tab** check fails, make sure the currently focused tab is a normal web page; the extension cannot access Chrome or extension pages.
+If the tab translation step fails, the page may block script execution or DOM updates.
 
 ## Development
 Run the unit tests with:
@@ -43,11 +57,11 @@ npm test
 ```
 
 ## Command Line Utility
-A simple translator CLI is included in `cli/translate.js`. It streams translations as you type.
+A simple translator CLI is included in `cli/translate.js`. It streams translations as you type by default. Use `--no-stream` for request/response mode.
 
 ### Usage
 ```sh
-node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--tokens M] [-d] -s <source_lang> -t <target_lang>
+node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--tokens M] [-d] [--no-stream] -s <source_lang> -t <target_lang>
 ```
 If no endpoint is specified the tool defaults to `https://dashscope-intl.aliyuncs.com/api/v1`.
 Use `-d` to print detailed request and response logs.
