@@ -55,9 +55,4 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ ok: true });
     return true;
   }
-  if (msg.action === 'ping') {
-    if (msg.debug) console.log('QTDEBUG: ping received');
-    sendResponse({ ok: true });
-    return true;
-  }
 });

@@ -55,6 +55,7 @@ If the **Read active tab** check fails, make sure the currently focused tab is a
 If the tab translation step fails, the page may block script execution or DOM updates.
 Some sites impose strict Content Security Policies that prevent the test element from executing or restrict network requests. Open a simple page such as `https://example.com` before running the tests. Console errors from third-party resources do not affect the translation check.
 Enable **Debug logging** in the popup to see details about the active tab and any error stack returned by the content script.
+If a translated page appears unchanged, verify that the source and target languages are configured correctly. With debug logging enabled the console warns when the translation result matches the original text.
 
 ## Development
 Run the unit tests with:
