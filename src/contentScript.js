@@ -47,6 +47,12 @@ async function translateNode(node) {
       debug: currentConfig.debug,
     });
     clearTimeout(timeout);
+    if (currentConfig.debug) {
+      console.log('QTDEBUG: node translation result', { original: text.slice(0, 50), translated: translated.slice(0, 50) });
+      if (translated.trim().toLowerCase() === text.trim().toLowerCase()) {
+        console.warn('QTWARN: translated text is identical to source; check language configuration');
+      }
+    }
     node.textContent = translated;
     mark(node);
   } catch (e) {
