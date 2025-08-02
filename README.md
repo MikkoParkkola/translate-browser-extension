@@ -43,12 +43,14 @@ The sample phrase is chosen based on the configured source language so the trans
 
 ## Usage
 Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content as well as embedded frames or third-party widgets whenever the browser grants access. If translation fails the affected text is kept in a queue and retried until the API succeeds. When the translated text matches the original the node is marked as untranslatable and skipped. Translations are cached for the current session to minimise API calls.
+Identical strings are translated only once and reused across matching nodes, and hidden or off-screen elements are ignored so tokens are spent only on visible text.
+Translated nodes keep their original leading and trailing whitespace and the navigation menu is processed before the rest of the page so key controls appear quickly. While translations are running the extension's toolbar icon shows an activity badge and a temporary status box in the bottom-right corner of the page reports current work or errors. The box disappears automatically when the extension is idle.
 
 ### Rate Limiting
 The extension and CLI queue translation requests to stay within the provider limits.
 The background worker maintains a single queue so multiple page nodes are translated sequentially rather than all at once, preventing bursts that would trigger HTTP 429 errors. Nodes are batched into combined translation requests to reduce the overall query count. If the provider still returns a 429 response the request is retried automatically.
 You can adjust the limits under **Requests per minute** and **Tokens per minute** in the extension popup or via `--requests` and `--tokens` on the CLI. Defaults are 60 requests and 100,000 tokens every 60 seconds.
-The popup displays live usage for the last minute and colour-coded bars turn yellow or red as limits are approached. Usage statistics refresh every second.
+The popup displays live usage for the last minute and colour-coded bars turn yellow or red as limits are approached. Usage statistics refresh every second and also show total requests, total tokens and the current queue length.
 
 ### Troubleshooting
 Both model refreshes and translation requests write trace logs to the browser console. Copy any on-page error and check the console for a matching entry to diagnose problems.

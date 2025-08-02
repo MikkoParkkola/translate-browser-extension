@@ -279,9 +279,32 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
 }
 
 async function qwenTranslateBatch({ texts = [], ...opts }) {
-  const joined = texts.join('\n');
-  const res = await qwenTranslate({ ...opts, text: joined });
-  return { texts: res.text.split('\n') };
+  const results = new Array(texts.length);
+  const indexMap = new Map();
+  texts.forEach((t, i) => {
+    const key = `${opts.source}:${opts.target}:${t}`;
+    if (cache.has(key)) {
+      results[i] = cache.get(key).text;
+    } else {
+      if (!indexMap.has(t)) indexMap.set(t, []);
+      indexMap.get(t).push(i);
+    }
+  });
+  const unique = Array.from(indexMap.keys());
+  if (unique.length) {
+    const joined = unique.join('\n');
+    const res = await qwenTranslate({ ...opts, text: joined });
+    const translated = res.text.split('\n');
+    translated.forEach((tr, idx) => {
+      const orig = unique[idx];
+      const key = `${opts.source}:${opts.target}:${orig}`;
+      cache.set(key, { text: tr });
+      indexMap.get(orig).forEach(i => {
+        results[i] = tr;
+      });
+    });
+  }
+  return { texts: results };
 }
 function qwenClearCache() {
   cache.clear();

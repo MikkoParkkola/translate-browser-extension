@@ -11,6 +11,8 @@
   let availableTokens = config.tokenLimit
   const requestTimes = []
   const tokenTimes = []
+  let totalRequests = 0
+  let totalTokens = 0
   let interval = setInterval(() => {
     availableRequests = config.requestLimit
     availableTokens = config.tokenLimit
@@ -37,6 +39,8 @@ function recordUsage(tokens) {
   const now = Date.now();
   requestTimes.push(now);
   tokenTimes.push({ time: now, tokens });
+  totalRequests++
+  totalTokens += tokens
   prune(now);
 }
 
@@ -91,6 +95,9 @@ function getUsage() {
     tokens: tokensUsed,
     requestLimit: config.requestLimit,
     tokenLimit: config.tokenLimit,
+    totalRequests,
+    totalTokens,
+    queue: queue.length,
   };
 }
 
