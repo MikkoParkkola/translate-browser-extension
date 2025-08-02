@@ -9,6 +9,10 @@ const autoCheckbox = document.getElementById('auto');
 const debugCheckbox = document.getElementById('debug');
 const status = document.getElementById('status');
 const versionDiv = document.getElementById('version');
+const reqCount = document.getElementById('reqCount');
+const tokenCount = document.getElementById('tokenCount');
+const reqBar = document.getElementById('reqBar');
+const tokenBar = document.getElementById('tokenBar');
 
 function populateLanguages() {
   window.qwenLanguages.forEach(l => {
@@ -35,6 +39,24 @@ window.qwenLoadConfig().then(cfg => {
 });
 
 versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
+
+function setBar(el, ratio) {
+  el.style.width = Math.min(100, ratio * 100) + '%';
+  el.style.background = ratio < 0.5 ? 'green' : ratio < 0.8 ? 'gold' : 'red';
+}
+
+function refreshUsage() {
+  chrome.runtime.sendMessage({ action: 'usage' }, res => {
+    if (chrome.runtime.lastError || !res) return;
+    reqCount.textContent = `${res.requests}/${res.requestLimit}`;
+    tokenCount.textContent = `${res.tokens}/${res.tokenLimit}`;
+    setBar(reqBar, res.requests / res.requestLimit);
+    setBar(tokenBar, res.tokens / res.tokenLimit);
+  });
+}
+
+setInterval(refreshUsage, 1000);
+refreshUsage();
 
 document.getElementById('translate').addEventListener('click', () => {
   const debug = debugCheckbox.checked;

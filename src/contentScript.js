@@ -1,4 +1,4 @@
-let observer;
+let observers = [];
 let currentConfig;
 
 function showError(message) {
@@ -61,8 +61,8 @@ async function translateNode(node) {
   }
 }
 
-function scan() {
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+function scan(root = document.body) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
   const nodes = [];
   let node;
   while ((node = walker.nextNode())) {
@@ -72,23 +72,31 @@ function scan() {
     }
   }
   nodes.forEach(n => translateNode(n.parentElement));
+  if (root.querySelectorAll) {
+    root.querySelectorAll('*').forEach(el => {
+      if (el.shadowRoot) scan(el.shadowRoot);
+    });
+  }
 }
 
-function observe() {
-  observer = new MutationObserver((mutations) => {
+function observe(root = document.body) {
+  const obs = new MutationObserver((mutations) => {
     for (const m of mutations) {
       m.addedNodes.forEach(n => {
         if (n.nodeType === Node.ELEMENT_NODE) {
-          const walker = document.createTreeWalker(n, NodeFilter.SHOW_TEXT, null);
-          let node;
-          while ((node = walker.nextNode())) {
-            translateNode(node.parentElement);
-          }
+          scan(n);
         }
+        if (n.shadowRoot) observe(n.shadowRoot);
       });
     }
   });
-  observer.observe(document.body, {childList: true, subtree: true});
+  obs.observe(root, { childList: true, subtree: true });
+  observers.push(obs);
+  if (root.querySelectorAll) {
+    root.querySelectorAll('*').forEach(el => {
+      if (el.shadowRoot) observe(el.shadowRoot);
+    });
+  }
 }
 
 async function start() {
