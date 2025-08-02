@@ -112,15 +112,15 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       throw e;
     }
   }
-  if (!resp.ok) {
-    const err = await resp
-      .json()
-      .catch(() => ({ message: resp.statusText }));
-    const error = new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
-    if (debug) console.log('QTDEBUG: HTTP error response', error.message);
-    if (resp.status >= 500) error.retryable = true;
-    throw error;
-  }
+    if (!resp.ok) {
+      const err = await resp
+        .json()
+        .catch(() => ({ message: resp.statusText }));
+      const error = new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
+      if (debug) console.log('QTDEBUG: HTTP error response', error.message);
+      if (resp.status >= 500 || resp.status === 429) error.retryable = true;
+      throw error;
+    }
   if (!stream || !resp.body || typeof resp.body.getReader !== 'function') {
     if (debug) console.log('QTDEBUG: received non-streaming response');
     const data = await resp.json();
@@ -184,13 +184,38 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     return cache.get(cacheKey);
   }
 
-  if (!noProxy && typeof window !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+  if (
+    !noProxy &&
+    typeof window !== 'undefined' &&
+    typeof chrome !== 'undefined' &&
+    chrome.runtime &&
+    chrome.runtime.sendMessage
+  ) {
     const ep = withSlash(endpoint);
     if (debug) console.log('QTDEBUG: requesting translation via background script');
-    const result = await chrome.runtime
-      .sendMessage({ action: 'translate', opts: { endpoint: ep, apiKey, model, text, source, target, debug } })
-      .catch(err => { throw new Error(err.message || err); });
-    if (result && result.error) {
+    const result = await new Promise((resolve, reject) => {
+      try {
+        chrome.runtime.sendMessage(
+          {
+            action: 'translate',
+            opts: { endpoint: ep, apiKey, model, text, source, target, debug },
+          },
+          res => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(res);
+            }
+          }
+        );
+      } catch (err) {
+        reject(err);
+      }
+    });
+    if (!result) {
+      throw new Error('No response from background');
+    }
+    if (result.error) {
       throw new Error(result.error);
     }
     if (debug) console.log('QTDEBUG: background response received');
@@ -252,19 +277,27 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     throw e;
   }
 }
+
+async function qwenTranslateBatch({ texts = [], ...opts }) {
+  const joined = texts.join('\n');
+  const res = await qwenTranslate({ ...opts, text: joined });
+  return { texts: res.text.split('\n') };
+}
 function qwenClearCache() {
   cache.clear();
 }
 if (typeof window !== 'undefined') {
   window.qwenTranslate = qwenTranslate;
   window.qwenTranslateStream = qwenTranslateStream;
+  window.qwenTranslateBatch = qwenTranslateBatch;
   window.qwenClearCache = qwenClearCache;
 }
 if (typeof self !== 'undefined' && typeof window === 'undefined') {
   self.qwenTranslate = qwenTranslate;
   self.qwenTranslateStream = qwenTranslateStream;
+  self.qwenTranslateBatch = qwenTranslateBatch;
   self.qwenClearCache = qwenClearCache;
 }
 if (typeof module !== 'undefined') {
-  module.exports = { qwenTranslate, qwenTranslateStream, qwenClearCache };
+  module.exports = { qwenTranslate, qwenTranslateStream, qwenTranslateBatch, qwenClearCache };
 }
