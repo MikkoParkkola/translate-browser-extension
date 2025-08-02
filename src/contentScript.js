@@ -47,6 +47,12 @@ async function translateNode(node) {
       debug: currentConfig.debug,
     });
     clearTimeout(timeout);
+    if (currentConfig.debug) {
+      console.log('QTDEBUG: node translation result', { original: text.slice(0, 50), translated: translated.slice(0, 50) });
+      if (translated.trim().toLowerCase() === text.trim().toLowerCase()) {
+        console.warn('QTWARN: translated text is identical to source; check language configuration');
+      }
+    }
     node.textContent = translated;
     mark(node);
   } catch (e) {
@@ -128,14 +134,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       })
       .then(res => {
         clearTimeout(timer);
+        if (cfg.debug) console.log('QTDEBUG: test-e2e translation result', res);
+        if (!res || typeof res.text !== 'string') {
+          throw new Error('invalid response');
+        }
         el.textContent = res.text;
+        if (cfg.debug) console.log('QTDEBUG: test-e2e sending response');
         sendResponse({ text: res.text });
         setTimeout(() => el.remove(), 1000);
       })
       .catch(err => {
         clearTimeout(timer);
+        if (cfg.debug) console.log('QTDEBUG: test-e2e sending error', err);
         el.remove();
-        sendResponse({ error: err.message });
+        sendResponse({ error: err.message, stack: err.stack });
       });
     return true;
   }
