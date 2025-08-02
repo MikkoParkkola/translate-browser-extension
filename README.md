@@ -54,6 +54,7 @@ If the **Test Settings** button reports a timeout, the network request may be bl
 If the **Read active tab** check fails, make sure the currently focused tab is a normal web page; the extension cannot access Chrome or extension pages.
 If the tab translation step fails, the page may block script execution or DOM updates.
 Some sites impose strict Content Security Policies that prevent the test element from executing or restrict network requests. Open a simple page such as `https://example.com` before running the tests. Console errors from third-party resources do not affect the translation check.
+Enable **Debug logging** in the popup to see details about the active tab and any error stack returned by the content script.
 
 ## Development
 Run the unit tests with:
