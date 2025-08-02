@@ -128,14 +128,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       })
       .then(res => {
         clearTimeout(timer);
+        if (cfg.debug) console.log('QTDEBUG: test-e2e translation result', res);
+        if (!res || typeof res.text !== 'string') {
+          throw new Error('invalid response');
+        }
         el.textContent = res.text;
+        if (cfg.debug) console.log('QTDEBUG: test-e2e sending response');
         sendResponse({ text: res.text });
         setTimeout(() => el.remove(), 1000);
       })
       .catch(err => {
         clearTimeout(timer);
+        if (cfg.debug) console.log('QTDEBUG: test-e2e sending error', err);
         el.remove();
-        sendResponse({ error: err.message });
+        sendResponse({ error: err.message, stack: err.stack });
       });
     return true;
   }
