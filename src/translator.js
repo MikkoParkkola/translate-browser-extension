@@ -277,19 +277,27 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     throw e;
   }
 }
+
+async function qwenTranslateBatch({ texts = [], ...opts }) {
+  const joined = texts.join('\n');
+  const res = await qwenTranslate({ ...opts, text: joined });
+  return { texts: res.text.split('\n') };
+}
 function qwenClearCache() {
   cache.clear();
 }
 if (typeof window !== 'undefined') {
   window.qwenTranslate = qwenTranslate;
   window.qwenTranslateStream = qwenTranslateStream;
+  window.qwenTranslateBatch = qwenTranslateBatch;
   window.qwenClearCache = qwenClearCache;
 }
 if (typeof self !== 'undefined' && typeof window === 'undefined') {
   self.qwenTranslate = qwenTranslate;
   self.qwenTranslateStream = qwenTranslateStream;
+  self.qwenTranslateBatch = qwenTranslateBatch;
   self.qwenClearCache = qwenClearCache;
 }
 if (typeof module !== 'undefined') {
-  module.exports = { qwenTranslate, qwenTranslateStream, qwenClearCache };
+  module.exports = { qwenTranslate, qwenTranslateStream, qwenTranslateBatch, qwenClearCache };
 }

@@ -61,6 +61,64 @@ async function translateNode(node) {
   }
 }
 
+async function translateBatch(elements) {
+  const texts = elements.map(el => el.textContent.trim());
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await window.qwenTranslateBatch({
+      endpoint: currentConfig.apiEndpoint,
+      apiKey: currentConfig.apiKey,
+      model: currentConfig.model,
+      texts,
+      source: currentConfig.sourceLanguage,
+      target: currentConfig.targetLanguage,
+      signal: controller.signal,
+      debug: currentConfig.debug,
+    });
+    clearTimeout(timeout);
+    res.texts.forEach((t, i) => {
+      const el = elements[i];
+      if (currentConfig.debug) {
+        console.log('QTDEBUG: node translation result', { original: texts[i].slice(0, 50), translated: t.slice(0, 50) });
+        if (t.trim().toLowerCase() === texts[i].trim().toLowerCase()) {
+          console.warn('QTWARN: translated text is identical to source; check language configuration');
+        }
+      }
+      el.textContent = t;
+      mark(el);
+    });
+  } catch (e) {
+    clearTimeout(timeout);
+    showError(`${e.message}. See console for details.`);
+    console.error('QTERROR: batch translation error', e);
+    for (const el of elements) {
+      await translateNode(el);
+    }
+  }
+}
+
+function batchNodes(nodes) {
+  const maxTokens = 800;
+  const batches = [];
+  let current = [];
+  let tokens = 0;
+  const approx = window.qwenThrottle ? window.qwenThrottle.approxTokens : t => Math.ceil(t.length / 4);
+  nodes.forEach(el => {
+    const text = el.textContent.trim();
+    const tok = approx(text);
+    if (current.length && tokens + tok > maxTokens) {
+      batches.push(current);
+      current = [];
+      tokens = 0;
+    }
+    current.push(el);
+    tokens += tok;
+  });
+  if (current.length) batches.push(current);
+  batches.forEach(b => translateBatch(b));
+}
+
 function scan(root = document.body) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
   const nodes = [];
@@ -68,10 +126,10 @@ function scan(root = document.body) {
   while ((node = walker.nextNode())) {
     const parent = node.parentElement;
     if (parent && !isMarked(parent) && node.textContent.trim()) {
-      nodes.push(node);
+      nodes.push(parent);
     }
   }
-  nodes.forEach(n => translateNode(n.parentElement));
+  if (nodes.length) batchNodes(nodes);
   if (root.querySelectorAll) {
     root.querySelectorAll('*').forEach(el => {
       if (el.shadowRoot) scan(el.shadowRoot);
