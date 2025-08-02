@@ -13,6 +13,9 @@ const reqCount = document.getElementById('reqCount');
 const tokenCount = document.getElementById('tokenCount');
 const reqBar = document.getElementById('reqBar');
 const tokenBar = document.getElementById('tokenBar');
+const totalReq = document.getElementById('totalReq');
+const totalTok = document.getElementById('totalTok');
+const queueLen = document.getElementById('queueLen');
 
 function populateLanguages() {
   window.qwenLanguages.forEach(l => {
@@ -52,6 +55,9 @@ function refreshUsage() {
     tokenCount.textContent = `${res.tokens}/${res.tokenLimit}`;
     setBar(reqBar, res.requests / res.requestLimit);
     setBar(tokenBar, res.tokens / res.tokenLimit);
+    totalReq.textContent = res.totalRequests;
+    totalTok.textContent = res.totalTokens;
+    queueLen.textContent = res.queue;
   });
 }
 

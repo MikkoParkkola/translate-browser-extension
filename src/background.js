@@ -5,6 +5,17 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 let throttleReady;
+let activeTranslations = 0;
+
+function updateBadge() {
+  if (activeTranslations > 0) {
+    chrome.action.setBadgeText({ text: '...' });
+    chrome.action.setBadgeBackgroundColor({ color: '#0d6efd' });
+  } else {
+    chrome.action.setBadgeText({ text: '' });
+  }
+}
+updateBadge();
 function ensureThrottle() {
   if (!throttleReady) {
     throttleReady = new Promise(resolve => {
@@ -33,6 +44,8 @@ async function handleTranslate(opts) {
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
+  activeTranslations++;
+  updateBadge();
 
   try {
     const result = await self.qwenTranslate({
@@ -53,6 +66,8 @@ async function handleTranslate(opts) {
     return { error: err.message };
   } finally {
     clearTimeout(timeout);
+    activeTranslations--;
+    updateBadge();
   }
 }
 
