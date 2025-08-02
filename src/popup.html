@@ -8,6 +8,9 @@
     input[type=text], select { width:100%; box-sizing:border-box; margin-top:2px; }
     button { width: 100%; margin-top:6px; padding:6px; }
     #status { margin-top:5px; font-size:12px; color:#555; min-height:16px; }
+    #usage { margin-top:6px; font-size:11px; }
+    .bar { height:6px; background:#ddd; margin-top:2px; }
+    .bar > div { height:100%; width:0%; background:green; }
   </style>
 </head>
 <body>
@@ -21,6 +24,12 @@
   <label>Tokens per minute <input type="number" id="tokenLimit"></label>
   <label><input type="checkbox" id="auto"> Translate automatically</label>
   <label><input type="checkbox" id="debug"> Debug logging</label>
+  <div id="usage">
+    <div>Requests <span id="reqCount">0/0</span></div>
+    <div class="bar"><div id="reqBar"></div></div>
+    <div>Tokens <span id="tokenCount">0/0</span></div>
+    <div class="bar"><div id="tokenBar"></div></div>
+  </div>
   <button id="save">Save</button>
   <button id="test">Test Settings</button>
   <div id="status"></div>

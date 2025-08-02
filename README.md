@@ -49,6 +49,7 @@ If translation fails, an error message appears at the bottom-right of the page. 
 The extension and CLI queue translation requests to stay within the provider limits.
 The background worker maintains a single queue so multiple page nodes are translated sequentially rather than all at once, preventing bursts that would trigger HTTP 429 errors. If the provider still returns a 429 response the request is retried automatically.
 You can adjust the limits under **Requests per minute** and **Tokens per minute** in the extension popup or via `--requests` and `--tokens` on the CLI. Defaults are 60 requests and 100,000 tokens every 60 seconds.
+The popup displays live usage for the last minute and colour-coded bars turn yellow or red as limits are approached.
 
 ### Troubleshooting
 Both model refreshes and translation requests write trace logs to the browser console. Copy any on-page error and check the console for a matching entry to diagnose problems.
@@ -58,6 +59,7 @@ If the tab translation step fails, the page may block script execution or DOM up
 Some sites impose strict Content Security Policies that prevent the test element from executing or restrict network requests. Open a simple page such as `https://example.com` before running the tests. Console errors from third-party resources do not affect the translation check.
 Enable **Debug logging** in the popup to see details about the active tab and any error stack returned by the content script.
 If a translated page appears unchanged, verify that the source and target languages are configured correctly. With debug logging enabled the console warns when the translation result matches the original text.
+Shadow DOM content is scanned and translated automatically, but cross-origin iframes cannot be modified by the extension.
 
 ## Development
 Run the unit tests with:

@@ -68,4 +68,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ ok: true });
     return true;
   }
+  if (msg.action === 'usage') {
+    ensureThrottle().then(() => {
+      const stats = self.qwenThrottle.getUsage();
+      sendResponse(stats);
+    });
+    return true;
+  }
 });
