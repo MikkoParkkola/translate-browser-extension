@@ -9,6 +9,13 @@ const autoCheckbox = document.getElementById('auto');
 const debugCheckbox = document.getElementById('debug');
 const status = document.getElementById('status');
 const versionDiv = document.getElementById('version');
+const reqCount = document.getElementById('reqCount');
+const tokenCount = document.getElementById('tokenCount');
+const reqBar = document.getElementById('reqBar');
+const tokenBar = document.getElementById('tokenBar');
+const totalReq = document.getElementById('totalReq');
+const totalTok = document.getElementById('totalTok');
+const queueLen = document.getElementById('queueLen');
 
 function populateLanguages() {
   window.qwenLanguages.forEach(l => {
@@ -35,6 +42,27 @@ window.qwenLoadConfig().then(cfg => {
 });
 
 versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
+
+function setBar(el, ratio) {
+  el.style.width = Math.min(100, ratio * 100) + '%';
+  el.style.background = ratio < 0.5 ? 'green' : ratio < 0.8 ? 'gold' : 'red';
+}
+
+function refreshUsage() {
+  chrome.runtime.sendMessage({ action: 'usage' }, res => {
+    if (chrome.runtime.lastError || !res) return;
+    reqCount.textContent = `${res.requests}/${res.requestLimit}`;
+    tokenCount.textContent = `${res.tokens}/${res.tokenLimit}`;
+    setBar(reqBar, res.requests / res.requestLimit);
+    setBar(tokenBar, res.tokens / res.tokenLimit);
+    totalReq.textContent = res.totalRequests;
+    totalTok.textContent = res.totalTokens;
+    queueLen.textContent = res.queue;
+  });
+}
+
+setInterval(refreshUsage, 1000);
+refreshUsage();
 
 document.getElementById('translate').addEventListener('click', () => {
   const debug = debugCheckbox.checked;
@@ -124,6 +152,19 @@ document.getElementById('test').addEventListener('click', async () => {
     if (!res.text) throw new Error('empty response');
   })) && allOk;
 
+  allOk = (await run('Background ping', async () => {
+    const resp = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ action: 'ping', debug: cfg.debug }, res => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(res);
+        }
+      });
+    });
+    if (!resp || !resp.ok) throw new Error('no response');
+  })) && allOk;
+
   allOk = (await run('Background translation', async () => {
     const res = await window.qwenTranslate({ ...cfg, text: 'hello', stream: false });
     if (!res.text) throw new Error('empty response');
@@ -158,12 +199,21 @@ document.getElementById('test').addEventListener('click', async () => {
   allOk = (await run('Tab translation', async () => {
     const tabs = await new Promise(r => chrome.tabs.query({ active: true, currentWindow: true }, r));
     if (!tabs[0]) throw new Error('no tab');
+    const tab = tabs[0];
+    log('QTDEBUG: active tab for tab translation test', { id: tab.id, url: tab.url });
+    const sample = cfg.source && cfg.source.toLowerCase().startsWith('fi')
+      ? 'Hei maailma'
+      : 'Hello world';
     const resp = await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('timeout waiting for tab response')), 15000);
-      log('QTDEBUG: sending test-e2e request to tab', tabs[0].id);
-      chrome.tabs.sendMessage(tabs[0].id, { action: 'test-e2e', cfg }, res => {
+      const timer = setTimeout(() => {
+        log('QTERROR: tab translation timed out', { id: tab.id, url: tab.url });
+        reject(new Error('timeout waiting for tab response'));
+      }, 15000);
+      log('QTDEBUG: sending test-e2e request to tab', tab.id);
+      chrome.tabs.sendMessage(tab.id, { action: 'test-e2e', cfg, original: sample }, res => {
         clearTimeout(timer);
         if (chrome.runtime.lastError) {
+          log('QTERROR: tab message failed', chrome.runtime.lastError.message);
           reject(new Error(chrome.runtime.lastError.message));
         } else {
           log('QTDEBUG: tab responded', res);
@@ -171,10 +221,16 @@ document.getElementById('test').addEventListener('click', async () => {
         }
       });
     });
-    if (!resp || resp.error) throw new Error(resp ? resp.error : 'no response');
-    if (!resp.text || resp.text.toLowerCase() === 'hello world') {
+    if (!resp || resp.error) {
+      const err = new Error(resp ? resp.error : 'no response');
+      if (resp && resp.stack) err.stack = resp.stack;
+      log('QTERROR: tab returned error', err.message);
+      throw err;
+    }
+    if (!resp.text || resp.text.toLowerCase() === sample.toLowerCase()) {
       throw new Error('translation failed');
     }
+    log('QTDEBUG: tab translation succeeded', resp.text);
   })) && allOk;
 
   allOk = (await run('Storage access', async () => {

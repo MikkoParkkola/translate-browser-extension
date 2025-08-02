@@ -1,16 +1,19 @@
-let observer;
+let observers = [];
 let currentConfig;
+const batchQueue = [];
+let processing = false;
+let statusTimer;
 
-function showError(message) {
-  let el = document.getElementById('qwen-error');
+function setStatus(message, isError = false) {
+  let el = document.getElementById('qwen-status');
   if (!el) {
     el = document.createElement('div');
-    el.id = 'qwen-error';
+    el.id = 'qwen-status';
     Object.assign(el.style, {
       position: 'fixed',
       bottom: '10px',
       right: '10px',
-      background: 'rgba(255,0,0,0.8)',
+      background: 'rgba(0,0,0,0.6)',
       color: '#fff',
       padding: '5px 10px',
       zIndex: 2147483647,
@@ -18,19 +21,56 @@ function showError(message) {
     });
     document.body.appendChild(el);
   }
+  el.style.background = isError ? 'rgba(255,0,0,0.8)' : 'rgba(0,0,0,0.6)';
   el.textContent = `Qwen Translator: ${message}`;
+  if (statusTimer) clearTimeout(statusTimer);
+  if (isError) statusTimer = setTimeout(clearStatus, 5000);
+}
+
+function clearStatus() {
+  const el = document.getElementById('qwen-status');
+  if (el) el.remove();
+}
+
+function showError(message) {
+  setStatus(message, true);
 }
 
 function mark(node) {
   node.dataset.qwenTranslated = 'true';
 }
 
+function markUntranslatable(node) {
+  node.dataset.qwenUntranslatable = 'true';
+}
+
 function isMarked(node) {
-  return node.dataset && node.dataset.qwenTranslated === 'true';
+  return (
+    node.dataset &&
+    (node.dataset.qwenTranslated === 'true' || node.dataset.qwenUntranslatable === 'true')
+  );
+}
+
+const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE']);
+
+function isVisible(el) {
+  if (!el) return false;
+  if (el.closest('[hidden],[aria-hidden="true"]')) return false;
+  const style = window.getComputedStyle(el);
+  if (style.visibility === 'hidden' || style.display === 'none') return false;
+  if (!el.getClientRects().length) return false;
+  return true;
+}
+
+function shouldTranslate(el) {
+  return !isMarked(el) && !SKIP_TAGS.has(el.tagName) && isVisible(el);
 }
 
 async function translateNode(node) {
-  const text = node.textContent.trim();
+  const original = node.textContent || '';
+  const leading = original.match(/^\s*/)[0];
+  const trailing = original.match(/\s*$/)[0];
+  const text = original.trim();
   if (!text) return;
   try {
     if (currentConfig.debug) console.log('QTDEBUG: translating node', text.slice(0, 20));
@@ -47,7 +87,13 @@ async function translateNode(node) {
       debug: currentConfig.debug,
     });
     clearTimeout(timeout);
-    node.textContent = translated;
+    if (currentConfig.debug) {
+      console.log('QTDEBUG: node translation result', { original: text.slice(0, 50), translated: translated.slice(0, 50) });
+      if (translated.trim().toLowerCase() === text.trim().toLowerCase()) {
+        console.warn('QTWARN: translated text is identical to source; check language configuration');
+      }
+    }
+    node.textContent = leading + translated + trailing;
     mark(node);
   } catch (e) {
     showError(`${e.message}. See console for details.`);
@@ -55,34 +101,139 @@ async function translateNode(node) {
   }
 }
 
-function scan() {
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+async function translateBatch(elements) {
+  const originals = elements.map(el => el.textContent || '');
+  const texts = originals.map(t => t.trim());
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  let res;
+  try {
+    res = await window.qwenTranslateBatch({
+      endpoint: currentConfig.apiEndpoint,
+      apiKey: currentConfig.apiKey,
+      model: currentConfig.model,
+      texts,
+      source: currentConfig.sourceLanguage,
+      target: currentConfig.targetLanguage,
+      signal: controller.signal,
+      debug: currentConfig.debug,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+  res.texts.forEach((t, i) => {
+    const el = elements[i];
+    const orig = originals[i];
+    const leading = orig.match(/^\s*/)[0];
+    const trailing = orig.match(/\s*$/)[0];
+    if (currentConfig.debug) {
+      console.log('QTDEBUG: node translation result', { original: texts[i].slice(0, 50), translated: t.slice(0, 50) });
+    }
+    if (t.trim().toLowerCase() === texts[i].trim().toLowerCase()) {
+      markUntranslatable(el);
+      if (currentConfig.debug) {
+        console.warn('QTWARN: translated text is identical to source; marking as untranslatable');
+      }
+    } else {
+      el.textContent = leading + t + trailing;
+      mark(el);
+    }
+  });
+}
+
+function enqueueBatch(batch) {
+  batchQueue.push(batch);
+  if (!processing) processQueue();
+}
+
+async function processQueue() {
+  processing = true;
+  setStatus('Translating...');
+  while (batchQueue.length) {
+    setStatus(`Translating (${batchQueue.length} left)...`);
+    const batch = batchQueue.shift();
+    try {
+      await translateBatch(batch);
+    } catch (e) {
+      showError(`${e.message}. See console for details.`);
+      console.error('QTERROR: batch translation error', e);
+      batchQueue.push(batch);
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+  processing = false;
+  clearStatus();
+}
+
+function batchNodes(nodes) {
+  const maxTokens = 1000;
+  const batches = [];
+  let current = [];
+  let tokens = 0;
+  const approx = window.qwenThrottle ? window.qwenThrottle.approxTokens : t => Math.ceil(t.length / 4);
+  const seen = new Set();
+  nodes.forEach(el => {
+    const text = el.textContent.trim();
+    const tok = approx(text);
+    const unique = !seen.has(text);
+    if (current.length && tokens + (unique ? tok : 0) > maxTokens) {
+      batches.push(current);
+      current = [];
+      tokens = 0;
+      seen.clear();
+    }
+    current.push(el);
+    if (unique) {
+      tokens += tok;
+      seen.add(text);
+    }
+  });
+  if (current.length) batches.push(current);
+  batches.forEach(b => enqueueBatch(b));
+}
+
+function scan(root = document.body) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
   const nodes = [];
   let node;
   while ((node = walker.nextNode())) {
     const parent = node.parentElement;
-    if (parent && !isMarked(parent) && node.textContent.trim()) {
-      nodes.push(node);
+    if (parent && node.textContent.trim() && shouldTranslate(parent)) {
+      nodes.push(parent);
     }
   }
-  nodes.forEach(n => translateNode(n.parentElement));
+  if (nodes.length) batchNodes(nodes);
+  if (root.querySelectorAll) {
+    root.querySelectorAll('iframe,object,embed').forEach(el => {
+      try {
+        const doc = el.contentDocument || el.getSVGDocument?.();
+        if (doc) scan(doc);
+      } catch {}
+    });
+    root.querySelectorAll('*').forEach(el => {
+      if (el.shadowRoot) scan(el.shadowRoot);
+    });
+  }
 }
 
-function observe() {
-  observer = new MutationObserver((mutations) => {
+function observe(root = document.body) {
+  const obs = new MutationObserver((mutations) => {
     for (const m of mutations) {
       m.addedNodes.forEach(n => {
         if (n.nodeType === Node.ELEMENT_NODE) {
-          const walker = document.createTreeWalker(n, NodeFilter.SHOW_TEXT, null);
-          let node;
-          while ((node = walker.nextNode())) {
-            translateNode(node.parentElement);
-          }
+          scan(n);
         }
+        if (n.shadowRoot) observe(n.shadowRoot);
       });
     }
   });
-  observer.observe(document.body, {childList: true, subtree: true});
+  obs.observe(root, { childList: true, subtree: true });
+  observers.push(obs);
+  if (root.querySelectorAll) {
+    root.querySelectorAll('*').forEach(el => {
+      if (el.shadowRoot) observe(el.shadowRoot);
+    });
+  }
 }
 
 async function start() {
@@ -92,8 +243,14 @@ async function start() {
     return;
   }
   if (currentConfig.debug) console.log('QTDEBUG: starting automatic translation');
-  scan();
+  setStatus('Scanning page...');
+  const nav = document.querySelector('nav');
+  if (nav) scan(nav);
+  const main = document.querySelector('main');
+  if (main && main !== nav) scan(main);
+  scan(document.body);
   observe();
+  if (!batchQueue.length) clearStatus();
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -106,7 +263,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.action === 'test-e2e') {
     const cfg = msg.cfg || {};
-    const original = 'Hello world';
+    const original = msg.original || 'Hello world';
     const el = document.createElement('span');
     el.id = 'qwen-test-element';
     el.textContent = original;
@@ -128,14 +285,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       })
       .then(res => {
         clearTimeout(timer);
+        if (cfg.debug) console.log('QTDEBUG: test-e2e translation result', res);
+        if (!res || typeof res.text !== 'string') {
+          throw new Error('invalid response');
+        }
         el.textContent = res.text;
+        if (cfg.debug) console.log('QTDEBUG: test-e2e sending response');
         sendResponse({ text: res.text });
         setTimeout(() => el.remove(), 1000);
       })
       .catch(err => {
         clearTimeout(timer);
+        if (cfg.debug) console.log('QTDEBUG: test-e2e sending error', err);
         el.remove();
-        sendResponse({ error: err.message });
+        sendResponse({ error: err.message, stack: err.stack });
       });
     return true;
   }
