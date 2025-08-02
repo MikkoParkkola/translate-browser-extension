@@ -1,22 +1,27 @@
-const queue = [];
-let config = {
-  requestLimit: 60,
-  tokenLimit: 100000,
-  windowMs: 60000,
-};
-let availableRequests = config.requestLimit;
-let availableTokens = config.tokenLimit;
-let interval = setInterval(() => {
-  availableRequests = config.requestLimit;
-  availableTokens = config.tokenLimit;
-  processQueue();
-}, config.windowMs);
+;(function (root) {
+  if (root.qwenThrottle) return
+
+  const queue = []
+  let config = {
+    requestLimit: 60,
+    tokenLimit: 100000,
+    windowMs: 60000,
+  }
+  let availableRequests = config.requestLimit
+  let availableTokens = config.tokenLimit
+  const requestTimes = []
+  const tokenTimes = []
+  let interval = setInterval(() => {
+    availableRequests = config.requestLimit
+    availableTokens = config.tokenLimit
+    processQueue()
+  }, config.windowMs)
 
 function approxTokens(text) {
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
-function configure(opts = {}) {
+function throttleConfigure(opts = {}) {
   Object.assign(config, opts);
   availableRequests = config.requestLimit;
   availableTokens = config.tokenLimit;
@@ -28,11 +33,24 @@ function configure(opts = {}) {
   }, config.windowMs);
 }
 
+function recordUsage(tokens) {
+  const now = Date.now();
+  requestTimes.push(now);
+  tokenTimes.push({ time: now, tokens });
+  prune(now);
+}
+
+function prune(now = Date.now()) {
+  while (requestTimes.length && now - requestTimes[0] > config.windowMs) requestTimes.shift();
+  while (tokenTimes.length && now - tokenTimes[0].time > config.windowMs) tokenTimes.shift();
+}
+
 function processQueue() {
   while (queue.length && availableRequests > 0 && availableTokens >= queue[0].tokens) {
     const item = queue.shift();
     availableRequests--;
     availableTokens -= item.tokens;
+    recordUsage(item.tokens);
     item.fn().then(item.resolve, item.reject);
   }
 }
@@ -65,12 +83,36 @@ async function runWithRetry(fn, text, attempts = 3, debug = false) {
   }
 }
 
-if (typeof module !== 'undefined') {
-  module.exports = { runWithRateLimit, runWithRetry, configure, approxTokens };
+function getUsage() {
+  prune();
+  const tokensUsed = tokenTimes.reduce((s, t) => s + t.tokens, 0);
+  return {
+    requests: requestTimes.length,
+    tokens: tokensUsed,
+    requestLimit: config.requestLimit,
+    tokenLimit: config.tokenLimit,
+  };
 }
 
-if (typeof window !== 'undefined') {
-  window.qwenThrottle = { runWithRateLimit, runWithRetry, configure, approxTokens };
-} else if (typeof self !== 'undefined') {
-  self.qwenThrottle = { runWithRateLimit, runWithRetry, configure, approxTokens };
-}
+  if (typeof module !== 'undefined') {
+    module.exports = { runWithRateLimit, runWithRetry, configure: throttleConfigure, approxTokens, getUsage }
+  }
+
+  if (typeof window !== 'undefined') {
+    root.qwenThrottle = {
+      runWithRateLimit,
+      runWithRetry,
+      configure: throttleConfigure,
+      approxTokens,
+      getUsage,
+    }
+  } else if (typeof self !== 'undefined') {
+    root.qwenThrottle = {
+      runWithRateLimit,
+      runWithRetry,
+      configure: throttleConfigure,
+      approxTokens,
+      getUsage,
+    }
+  }
+})(typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : globalThis)
