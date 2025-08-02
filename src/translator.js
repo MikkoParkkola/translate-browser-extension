@@ -188,9 +188,17 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     const ep = withSlash(endpoint);
     if (debug) console.log('QTDEBUG: requesting translation via background script');
     const result = await chrome.runtime
-      .sendMessage({ action: 'translate', opts: { endpoint: ep, apiKey, model, text, source, target, debug } })
-      .catch(err => { throw new Error(err.message || err); });
-    if (result && result.error) {
+      .sendMessage({
+        action: 'translate',
+        opts: { endpoint: ep, apiKey, model, text, source, target, debug },
+      })
+      .catch(err => {
+        throw new Error(err.message || err);
+      });
+    if (!result) {
+      throw new Error('No response from background');
+    }
+    if (result.error) {
       throw new Error(result.error);
     }
     if (debug) console.log('QTDEBUG: background response received');
