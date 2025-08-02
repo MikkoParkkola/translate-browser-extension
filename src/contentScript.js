@@ -1,5 +1,7 @@
 let observers = [];
 let currentConfig;
+const batchQueue = [];
+let processing = false;
 
 function showError(message) {
   let el = document.getElementById('qwen-error');
@@ -25,8 +27,15 @@ function mark(node) {
   node.dataset.qwenTranslated = 'true';
 }
 
+function markUntranslatable(node) {
+  node.dataset.qwenUntranslatable = 'true';
+}
+
 function isMarked(node) {
-  return node.dataset && node.dataset.qwenTranslated === 'true';
+  return (
+    node.dataset &&
+    (node.dataset.qwenTranslated === 'true' || node.dataset.qwenUntranslatable === 'true')
+  );
 }
 
 async function translateNode(node) {
@@ -65,8 +74,9 @@ async function translateBatch(elements) {
   const texts = elements.map(el => el.textContent.trim());
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
+  let res;
   try {
-    const res = await window.qwenTranslateBatch({
+    res = await window.qwenTranslateBatch({
       endpoint: currentConfig.apiEndpoint,
       apiKey: currentConfig.apiKey,
       model: currentConfig.model,
@@ -76,30 +86,49 @@ async function translateBatch(elements) {
       signal: controller.signal,
       debug: currentConfig.debug,
     });
+  } finally {
     clearTimeout(timeout);
-    res.texts.forEach((t, i) => {
-      const el = elements[i];
+  }
+  res.texts.forEach((t, i) => {
+    const el = elements[i];
+    if (currentConfig.debug) {
+      console.log('QTDEBUG: node translation result', { original: texts[i].slice(0, 50), translated: t.slice(0, 50) });
+    }
+    if (t.trim().toLowerCase() === texts[i].trim().toLowerCase()) {
+      markUntranslatable(el);
       if (currentConfig.debug) {
-        console.log('QTDEBUG: node translation result', { original: texts[i].slice(0, 50), translated: t.slice(0, 50) });
-        if (t.trim().toLowerCase() === texts[i].trim().toLowerCase()) {
-          console.warn('QTWARN: translated text is identical to source; check language configuration');
-        }
+        console.warn('QTWARN: translated text is identical to source; marking as untranslatable');
       }
+    } else {
       el.textContent = t;
       mark(el);
-    });
-  } catch (e) {
-    clearTimeout(timeout);
-    showError(`${e.message}. See console for details.`);
-    console.error('QTERROR: batch translation error', e);
-    for (const el of elements) {
-      await translateNode(el);
+    }
+  });
+}
+
+function enqueueBatch(batch) {
+  batchQueue.push(batch);
+  if (!processing) processQueue();
+}
+
+async function processQueue() {
+  processing = true;
+  while (batchQueue.length) {
+    const batch = batchQueue.shift();
+    try {
+      await translateBatch(batch);
+    } catch (e) {
+      showError(`${e.message}. See console for details.`);
+      console.error('QTERROR: batch translation error', e);
+      batchQueue.push(batch);
+      await new Promise(r => setTimeout(r, 1000));
     }
   }
+  processing = false;
 }
 
 function batchNodes(nodes) {
-  const maxTokens = 800;
+  const maxTokens = 1000;
   const batches = [];
   let current = [];
   let tokens = 0;
@@ -116,7 +145,7 @@ function batchNodes(nodes) {
     tokens += tok;
   });
   if (current.length) batches.push(current);
-  batches.forEach(b => translateBatch(b));
+  batches.forEach(b => enqueueBatch(b));
 }
 
 function scan(root = document.body) {
@@ -131,6 +160,12 @@ function scan(root = document.body) {
   }
   if (nodes.length) batchNodes(nodes);
   if (root.querySelectorAll) {
+    root.querySelectorAll('iframe,object,embed').forEach(el => {
+      try {
+        const doc = el.contentDocument || el.getSVGDocument?.();
+        if (doc) scan(doc);
+      } catch {}
+    });
     root.querySelectorAll('*').forEach(el => {
       if (el.shadowRoot) scan(el.shadowRoot);
     });

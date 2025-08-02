@@ -42,8 +42,7 @@ The final end-to-end tab translation aborts after about 10 seconds if no respons
 The sample phrase is chosen based on the configured source language so the translated text differs from the original.
 
 ## Usage
-Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content.
-If translation fails, an error message appears at the bottom-right of the page. Translations are cached for the current session to minimise API calls.
+Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content as well as embedded frames or third-party widgets whenever the browser grants access. If translation fails the affected text is kept in a queue and retried until the API succeeds. When the translated text matches the original the node is marked as untranslatable and skipped. Translations are cached for the current session to minimise API calls.
 
 ### Rate Limiting
 The extension and CLI queue translation requests to stay within the provider limits.
@@ -59,7 +58,7 @@ If the tab translation step fails, the page may block script execution or DOM up
 Some sites impose strict Content Security Policies that prevent the test element from executing or restrict network requests. Open a simple page such as `https://example.com` before running the tests. Console errors from third-party resources do not affect the translation check.
 Enable **Debug logging** in the popup to see details about the active tab and any error stack returned by the content script.
 If a translated page appears unchanged, verify that the source and target languages are configured correctly. With debug logging enabled the console warns when the translation result matches the original text.
-Shadow DOM content is scanned and translated automatically, but cross-origin iframes cannot be modified by the extension.
+Shadow DOM content and same-origin iframes are scanned and translated automatically. Cross-origin frames may be translated when host permissions allow access, otherwise they are skipped.
 
 ## Development
 Run the unit tests with:
