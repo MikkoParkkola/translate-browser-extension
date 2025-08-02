@@ -1,6 +1,4 @@
 importScripts('throttle.js', 'translator.js');
-const { configure } = self.qwenThrottle;
-const { qwenTranslate } = self;
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log('Qwen Translator installed');
@@ -14,13 +12,17 @@ async function handleTranslate(opts) {
   const cfg = await new Promise(resolve =>
     chrome.storage.sync.get({ requestLimit: 60, tokenLimit: 100000 }, resolve)
   );
-  configure({ requestLimit: cfg.requestLimit, tokenLimit: cfg.tokenLimit, windowMs: 60000 });
+  self.qwenThrottle.configure({
+    requestLimit: cfg.requestLimit,
+    tokenLimit: cfg.tokenLimit,
+    windowMs: 60000,
+  });
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
 
   try {
-    const result = await qwenTranslate({
+    const result = await self.qwenTranslate({
       endpoint: ep,
       apiKey,
       model,
@@ -41,8 +43,16 @@ async function handleTranslate(opts) {
   }
 }
 
-chrome.runtime.onMessage.addListener((msg, sender) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'translate') {
-    return handleTranslate(msg.opts);
+    handleTranslate(msg.opts)
+      .then(sendResponse)
+      .catch(err => sendResponse({ error: err.message }));
+    return true;
+  }
+  if (msg.action === 'ping') {
+    if (msg.debug) console.log('QTDEBUG: ping received');
+    sendResponse({ ok: true });
+    return true;
   }
 });
