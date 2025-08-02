@@ -112,15 +112,15 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       throw e;
     }
   }
-  if (!resp.ok) {
-    const err = await resp
-      .json()
-      .catch(() => ({ message: resp.statusText }));
-    const error = new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
-    if (debug) console.log('QTDEBUG: HTTP error response', error.message);
-    if (resp.status >= 500) error.retryable = true;
-    throw error;
-  }
+    if (!resp.ok) {
+      const err = await resp
+        .json()
+        .catch(() => ({ message: resp.statusText }));
+      const error = new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
+      if (debug) console.log('QTDEBUG: HTTP error response', error.message);
+      if (resp.status >= 500 || resp.status === 429) error.retryable = true;
+      throw error;
+    }
   if (!stream || !resp.body || typeof resp.body.getReader !== 'function') {
     if (debug) console.log('QTDEBUG: received non-streaming response');
     const data = await resp.json();
