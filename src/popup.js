@@ -173,13 +173,16 @@ document.getElementById('test').addEventListener('click', async () => {
     if (!tabs[0]) throw new Error('no tab');
     const tab = tabs[0];
     log('QTDEBUG: active tab for tab translation test', { id: tab.id, url: tab.url });
+    const sample = cfg.source && cfg.source.toLowerCase().startsWith('fi')
+      ? 'Hei maailma'
+      : 'Hello world';
     const resp = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         log('QTERROR: tab translation timed out', { id: tab.id, url: tab.url });
         reject(new Error('timeout waiting for tab response'));
       }, 15000);
       log('QTDEBUG: sending test-e2e request to tab', tab.id);
-      chrome.tabs.sendMessage(tab.id, { action: 'test-e2e', cfg }, res => {
+      chrome.tabs.sendMessage(tab.id, { action: 'test-e2e', cfg, original: sample }, res => {
         clearTimeout(timer);
         if (chrome.runtime.lastError) {
           log('QTERROR: tab message failed', chrome.runtime.lastError.message);
@@ -196,7 +199,7 @@ document.getElementById('test').addEventListener('click', async () => {
       log('QTERROR: tab returned error', err.message);
       throw err;
     }
-    if (!resp.text || resp.text.toLowerCase() === 'hello world') {
+    if (!resp.text || resp.text.toLowerCase() === sample.toLowerCase()) {
       throw new Error('translation failed');
     }
     log('QTDEBUG: tab translation succeeded', resp.text);

@@ -39,6 +39,7 @@ Click **Test Settings** in the popup to run a short diagnostic. The extension pe
 Each step displays a pass or fail result and honours the debug logging preference.
 The active tab check may fail on browser-internal pages (such as the Chrome Web Store or settings). Open a regular web page before running the test.
 The final end-to-end tab translation aborts after about 10 seconds if no response is received.
+The sample phrase is chosen based on the configured source language so the translated text differs from the original.
 
 ## Usage
 Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content.

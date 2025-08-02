@@ -112,7 +112,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.action === 'test-e2e') {
     const cfg = msg.cfg || {};
-    const original = 'Hello world';
+    const original = msg.original || 'Hello world';
     const el = document.createElement('span');
     el.id = 'qwen-test-element';
     el.textContent = original;
