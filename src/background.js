@@ -45,7 +45,15 @@ async function handleTranslate(opts) {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'translate') {
-    return handleTranslate(msg.opts);
+    handleTranslate(msg.opts)
+      .then(sendResponse)
+      .catch(err => sendResponse({ error: err.message }));
+    return true;
+  }
+  if (msg.action === 'ping') {
+    if (msg.debug) console.log('QTDEBUG: ping received');
+    sendResponse({ ok: true });
+    return true;
   }
   if (msg.action === 'ping') {
     if (msg.debug) console.log('QTDEBUG: ping received');
