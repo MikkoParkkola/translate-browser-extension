@@ -4,19 +4,32 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('Qwen Translator installed');
 });
 
+let throttleReady;
+function ensureThrottle() {
+  if (!throttleReady) {
+    throttleReady = new Promise(resolve => {
+      chrome.storage.sync.get(
+        { requestLimit: 60, tokenLimit: 100000 },
+        cfg => {
+          self.qwenThrottle.configure({
+            requestLimit: cfg.requestLimit,
+            tokenLimit: cfg.tokenLimit,
+            windowMs: 60000,
+          });
+          resolve();
+        }
+      );
+    });
+  }
+  return throttleReady;
+}
+
 async function handleTranslate(opts) {
   const { endpoint, apiKey, model, text, source, target, debug } = opts;
   const ep = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
   if (debug) console.log('QTDEBUG: background translating via', ep);
 
-  const cfg = await new Promise(resolve =>
-    chrome.storage.sync.get({ requestLimit: 60, tokenLimit: 100000 }, resolve)
-  );
-  self.qwenThrottle.configure({
-    requestLimit: cfg.requestLimit,
-    tokenLimit: cfg.tokenLimit,
-    windowMs: 60000,
-  });
+  await ensureThrottle();
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);

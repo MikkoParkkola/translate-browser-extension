@@ -46,6 +46,7 @@ If translation fails, an error message appears at the bottom-right of the page. 
 
 ### Rate Limiting
 The extension and CLI queue translation requests to stay within the provider limits.
+The background worker maintains a single queue so multiple page nodes are translated sequentially rather than all at once, preventing bursts that would trigger HTTP 429 errors. If the provider still returns a 429 response the request is retried automatically.
 You can adjust the limits under **Requests per minute** and **Tokens per minute** in the extension popup or via `--requests` and `--tokens` on the CLI. Defaults are 60 requests and 100,000 tokens every 60 seconds.
 
 ### Troubleshooting
