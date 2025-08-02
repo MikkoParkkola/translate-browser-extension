@@ -5,6 +5,7 @@
   "version": "1.3.1",
   "permissions": ["storage", "activeTab", "tabs", "scripting"],
   "host_permissions": [
+    "<all_urls>",
     "https://dashscope-intl.aliyuncs.com/*"
   ],
   "background": {
@@ -24,7 +25,8 @@
     {
       "matches": ["<all_urls>"],
       "js": ["config.js", "throttle.js", "translator.js", "contentScript.js"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ]
 }
