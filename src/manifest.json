@@ -29,4 +29,8 @@
       "all_frames": true
     }
   ]
+  ,
+  "safari": {
+    "id": "com.example.qwentranslator"
+  }
 }
