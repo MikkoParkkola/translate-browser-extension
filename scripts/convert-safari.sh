@@ -7,6 +7,11 @@ OUT_DIR="$SCRIPT_DIR/../safari"
 
 mkdir -p "$OUT_DIR"
 
+if ! command -v xcrun >/dev/null 2>&1; then
+  echo "xcrun is required to build Safari extensions." >&2
+  exit 1
+fi
+
 # Convert for macOS
 xcrun safari-web-extension-converter "$SRC_DIR" \
   --app-name "Qwen Translator" \
