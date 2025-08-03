@@ -3,6 +3,8 @@ let currentConfig;
 const batchQueue = [];
 let processing = false;
 let statusTimer;
+const pending = new Set();
+let flushTimer;
 
 function setStatus(message, isError = false) {
   let el = document.getElementById('qwen-status');
@@ -166,7 +168,7 @@ async function processQueue() {
 }
 
 function batchNodes(nodes) {
-  const maxTokens = 1000;
+  const maxTokens = 6000;
   const batches = [];
   let current = [];
   let tokens = 0;
@@ -192,28 +194,46 @@ function batchNodes(nodes) {
   batches.forEach(b => enqueueBatch(b));
 }
 
-function scan(root = document.body) {
+function collectNodes(root, out) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
-  const nodes = [];
   let node;
   while ((node = walker.nextNode())) {
     const parent = node.parentElement;
     if (parent && node.textContent.trim() && shouldTranslate(parent)) {
-      nodes.push(parent);
+      out.push(parent);
     }
   }
-  if (nodes.length) batchNodes(nodes);
   if (root.querySelectorAll) {
     root.querySelectorAll('iframe,object,embed').forEach(el => {
       try {
         const doc = el.contentDocument || el.getSVGDocument?.();
-        if (doc) scan(doc);
+        if (doc) collectNodes(doc, out);
       } catch {}
     });
     root.querySelectorAll('*').forEach(el => {
-      if (el.shadowRoot) scan(el.shadowRoot);
+      if (el.shadowRoot) collectNodes(el.shadowRoot, out);
     });
   }
+}
+
+function flushPending() {
+  const nodes = [];
+  pending.forEach(n => collectNodes(n, nodes));
+  pending.clear();
+  flushTimer = null;
+  if (nodes.length) batchNodes(nodes);
+}
+
+function scheduleScan(node) {
+  if (!node) return;
+  pending.add(node);
+  if (!flushTimer) flushTimer = setTimeout(flushPending, 50);
+}
+
+function scan(root = document.body) {
+  const nodes = [];
+  collectNodes(root, nodes);
+  if (nodes.length) batchNodes(nodes);
 }
 
 function observe(root = document.body) {
@@ -221,7 +241,7 @@ function observe(root = document.body) {
     for (const m of mutations) {
       m.addedNodes.forEach(n => {
         if (n.nodeType === Node.ELEMENT_NODE) {
-          scan(n);
+          scheduleScan(n);
         }
         if (n.shadowRoot) observe(n.shadowRoot);
       });
@@ -244,11 +264,9 @@ async function start() {
   }
   if (currentConfig.debug) console.log('QTDEBUG: starting automatic translation');
   setStatus('Scanning page...');
-  const nav = document.querySelector('nav');
-  if (nav) scan(nav);
-  const main = document.querySelector('main');
-  if (main && main !== nav) scan(main);
-  scan(document.body);
+  const nodes = [];
+  collectNodes(document.body, nodes);
+  if (nodes.length) batchNodes(nodes);
   observe();
   if (!batchQueue.length) clearStatus();
 }
