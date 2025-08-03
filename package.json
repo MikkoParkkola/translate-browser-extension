@@ -4,7 +4,8 @@
   "description": "Extension to translate web pages using Qwen-MT-Turbo model",
   "main": "index.js",
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "build:safari": "bash scripts/convert-safari.sh"
   },
   "keywords": [],
   "author": "",

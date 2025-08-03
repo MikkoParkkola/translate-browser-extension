@@ -20,6 +20,15 @@ Remove the extension from the browser's extension management page.
 ## Upgrade
 Reload the unpacked extension after replacing the files with a newer version.
 
+### Safari (macOS and iOS/iPadOS)
+Run the Safari converter on a Mac to produce an Xcode project for both macOS and iOS/iPadOS:
+
+```sh
+npm run build:safari
+```
+
+Open the generated project in Xcode to sign and build the extension for the desired platform.
+
 ## Configuration
 Use the popup to configure:
 - API key and optional endpoint (keep your API key private)
