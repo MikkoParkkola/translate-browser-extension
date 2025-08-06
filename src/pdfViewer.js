@@ -56,8 +56,20 @@
           console.error('PDF translation failed', e);
         }
       }
+      const measure = document.createElement('canvas').getContext('2d');
       textContent.items.forEach((it, i) => {
         it.str = translated[i];
+        const style = textContent.styles[it.fontName];
+        if (style) {
+          const fontSize = Math.hypot(it.transform[0], it.transform[1]);
+          measure.font = `${fontSize}px ${style.fontFamily}`;
+          const w = measure.measureText(it.str).width;
+          if (w > 0 && it.width) {
+            const scale = it.width / w;
+            it.transform[0] *= scale;
+            it.transform[1] *= scale;
+          }
+        }
       });
       pdfjsLib.renderTextLayer({
         textContent,
