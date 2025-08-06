@@ -33,19 +33,16 @@
       canvas.height = viewport.height;
       pageDiv.appendChild(canvas);
       await page.render({ canvasContext: ctx, viewport }).promise;
-      const textLayerDiv = document.createElement('div');
-      textLayerDiv.className = 'textLayer';
-      pageDiv.appendChild(textLayerDiv);
       const textContent = await page.getTextContent();
-      const items = textContent.items.map(i => i.str);
-      let translated = items;
-      if (items.length) {
+      const original = textContent.items.map(i => i.str);
+      let translated = original;
+      if (original.length) {
         try {
           const res = await window.qwenTranslateBatch({
             endpoint: cfg.apiEndpoint,
             apiKey: cfg.apiKey,
             model: cfg.model,
-            texts: items,
+            texts: original,
             source: cfg.sourceLanguage,
             target: cfg.targetLanguage,
             debug: cfg.debug,
@@ -56,14 +53,37 @@
           console.error('PDF translation failed', e);
         }
       }
+      const measure = document.createElement('canvas').getContext('2d');
+      const vpTransform = viewport.transform;
       textContent.items.forEach((it, i) => {
-        it.str = translated[i];
-      });
-      pdfjsLib.renderTextLayer({
-        textContent,
-        container: textLayerDiv,
-        viewport,
-        textDivs: [],
+        const style = textContent.styles[it.fontName];
+        if (!style) return;
+        if (!translated[i] || translated[i] === original[i]) return;
+        const fontSize = Math.hypot(it.transform[0], it.transform[1]);
+        const font = `${fontSize}px ${style.fontFamily}`;
+        measure.font = font;
+        const ow = measure.measureText(original[i]).width;
+        const tw = measure.measureText(translated[i]).width;
+        const ot = it.transform;
+        let nt = ot;
+        if (ow > 0 && tw > 0) {
+          const scale = ow / tw;
+          nt = [ot[0] * scale, ot[1] * scale, ot[2], ot[3], ot[4], ot[5]];
+        }
+        ctx.save();
+        const er = pdfjsLib.Util.transform(vpTransform, ot);
+        ctx.setTransform(er[0], er[1], er[2], er[3], er[4], er[5]);
+        ctx.font = font;
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.fillText(original[i], 0, 0);
+        ctx.restore();
+        ctx.save();
+        const tr = pdfjsLib.Util.transform(vpTransform, nt);
+        ctx.setTransform(tr[0], tr[1], tr[2], tr[3], tr[4], tr[5]);
+        ctx.font = font;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillText(translated[i], 0, 0);
+        ctx.restore();
       });
     }
   } catch (e) {
