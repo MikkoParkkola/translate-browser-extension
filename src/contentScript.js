@@ -1,3 +1,4 @@
+if (!location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'))) {
 let observers = [];
 let currentConfig;
 const batchQueue = [];
@@ -5,6 +6,25 @@ let processing = false;
 let statusTimer;
 const pending = new Set();
 let flushTimer;
+
+function replacePdfEmbeds() {
+  if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+  const viewerBase = chrome.runtime.getURL('pdfViewer.html');
+  document
+    .querySelectorAll(
+      'embed[type="application/pdf"],embed[src$=".pdf"],iframe[src$=".pdf"]'
+    )
+    .forEach(el => {
+      const url = el.src;
+      if (!url || url.startsWith('about:') || url.startsWith('chrome')) return;
+      const iframe = document.createElement('iframe');
+      iframe.src = viewerBase + '?file=' + encodeURIComponent(url);
+      iframe.style.width = el.style.width || el.getAttribute('width') || '100%';
+      iframe.style.height = el.style.height || el.getAttribute('height') || '600px';
+      el.replaceWith(iframe);
+    });
+}
+replacePdfEmbeds();
 
 function setStatus(message, isError = false) {
   let el = document.getElementById('qwen-status');
@@ -328,4 +348,5 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   window.addEventListener('DOMContentLoaded', () => {
     window.qwenLoadConfig().then(cfg => { if (cfg.autoTranslate) start(); });
   });
+}
 }

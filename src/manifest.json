@@ -17,7 +17,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["translator.js", "config.js", "languages.js", "throttle.js"],
+      "resources": ["translator.js", "config.js", "languages.js", "throttle.js", "pdfViewer.html", "pdfViewer.js", "pdf.min.js", "pdf.worker.min.js"],
       "matches": ["<all_urls>"]
     }
   ],
@@ -29,8 +29,4 @@
       "all_frames": true
     }
   ]
-  ,
-  "safari": {
-    "id": "com.example.qwentranslator"
-  }
 }
