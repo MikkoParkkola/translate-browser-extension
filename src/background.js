@@ -4,6 +4,22 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('Qwen Translator installed');
 });
 
+// Redirect top-level PDF navigations to our custom viewer
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  const url = changeInfo.url || tab.url;
+  if (!url) return;
+  if (url.startsWith(chrome.runtime.getURL('pdfViewer.html'))) return;
+  try {
+    const u = new URL(url);
+    if ((u.protocol === 'http:' || u.protocol === 'https:') && u.pathname.toLowerCase().endsWith('.pdf')) {
+      const viewer = chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(url);
+      chrome.tabs.update(tabId, { url: viewer });
+    }
+  } catch (e) {
+    // ignore invalid URLs
+  }
+});
+
 let throttleReady;
 let activeTranslations = 0;
 
