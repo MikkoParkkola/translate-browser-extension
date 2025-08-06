@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Qwen PDF Viewer</title>
+  <style>
+    html, body { margin:0; padding:0; height:100%; }
+    #viewer { position:relative; height:100%; overflow:auto; }
+    .page { position:relative; margin:10px auto; }
+    canvas { display:block; }
+    .textLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
+    .textLayer span { position:absolute; white-space:pre; transform-origin:0% 0%; }
+  </style>
+</head>
+<body>
+  <div id="viewer"></div>
+  <script src="pdf.min.js"></script>
+  <script src="config.js"></script>
+  <script src="translator.js"></script>
+  <script src="throttle.js"></script>
+  <script src="pdfViewer.js"></script>
+</body>
+</html>

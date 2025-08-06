@@ -4,6 +4,18 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('Qwen Translator installed');
 });
 
+// Redirect top-level PDF requests to our custom viewer
+chrome.webRequest.onBeforeRequest.addListener(
+  details => {
+    if (details.type === 'main_frame' && details.url.toLowerCase().endsWith('.pdf')) {
+      const viewer = chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(details.url);
+      return { redirectUrl: viewer };
+    }
+  },
+  { urls: ['<all_urls>'] },
+  ['blocking']
+);
+
 let throttleReady;
 let activeTranslations = 0;
 
