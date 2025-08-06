@@ -16,7 +16,10 @@
   }
 
   try {
-    const loadingTask = pdfjsLib.getDocument({ url: file });
+    const resp = await fetch(file);
+    if (!resp.ok) throw new Error(`unexpected status ${resp.status}`);
+    const buffer = await resp.arrayBuffer();
+    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
     const pdf = await loadingTask.promise;
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
