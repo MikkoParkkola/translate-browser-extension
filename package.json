@@ -17,5 +17,8 @@
     "jest": "^30.0.5",
     "jest-environment-jsdom": "^30.0.5",
     "jest-fetch-mock": "^3.0.3"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^3.10.111"
   }
 }
