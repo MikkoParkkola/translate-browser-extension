@@ -60,15 +60,16 @@
         if (!style) return;
         const fontSize = Math.hypot(it.transform[0], it.transform[1]);
         measure.font = `${fontSize}px ${style.fontFamily}`;
-        const w = measure.measureText(translated[i]).width;
+        const ow = measure.measureText(original[i]).width;
+        const tw = measure.measureText(translated[i]).width;
         let a = it.transform[0];
         let b = it.transform[1];
         let c = it.transform[2];
         let d = it.transform[3];
         let e = it.transform[4];
         let f = it.transform[5];
-        if (w > 0 && it.width) {
-          const scale = it.width / w;
+        if (ow > 0 && tw > 0) {
+          const scale = ow / tw;
           a *= scale;
           b *= scale;
         }
