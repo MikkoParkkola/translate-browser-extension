@@ -8,6 +8,7 @@ const pending = new Set();
 let flushTimer;
 
 function replacePdfEmbeds() {
+  if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
   const viewerBase = chrome.runtime.getURL('pdfViewer.html');
   document
     .querySelectorAll(
@@ -15,6 +16,7 @@ function replacePdfEmbeds() {
     )
     .forEach(el => {
       const url = el.src;
+      if (!url || url.startsWith('about:') || url.startsWith('chrome')) return;
       const iframe = document.createElement('iframe');
       iframe.src = viewerBase + '?file=' + encodeURIComponent(url);
       iframe.style.width = el.style.width || el.getAttribute('width') || '100%';
