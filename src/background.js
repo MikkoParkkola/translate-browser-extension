@@ -7,9 +7,15 @@ chrome.runtime.onInstalled.addListener(() => {
 // Redirect top-level PDF requests to our custom viewer
 chrome.webRequest.onBeforeRequest.addListener(
   details => {
-    if (details.type === 'main_frame' && details.url.toLowerCase().endsWith('.pdf')) {
-      const viewer = chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(details.url);
-      return { redirectUrl: viewer };
+    if (details.type !== 'main_frame') return;
+    try {
+      const url = new URL(details.url);
+      if ((url.protocol === 'http:' || url.protocol === 'https:') && url.pathname.toLowerCase().endsWith('.pdf')) {
+        const viewer = chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(details.url);
+        return { redirectUrl: viewer };
+      }
+    } catch (e) {
+      // ignore invalid URLs
     }
   },
   { urls: ['<all_urls>'] },
