@@ -4,23 +4,21 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('Qwen Translator installed');
 });
 
-// Redirect top-level PDF requests to our custom viewer
-chrome.webRequest.onBeforeRequest.addListener(
-  details => {
-    if (details.type !== 'main_frame') return;
-    try {
-      const url = new URL(details.url);
-      if ((url.protocol === 'http:' || url.protocol === 'https:') && url.pathname.toLowerCase().endsWith('.pdf')) {
-        const viewer = chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(details.url);
-        return { redirectUrl: viewer };
-      }
-    } catch (e) {
-      // ignore invalid URLs
+// Redirect top-level PDF navigations to our custom viewer
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  const url = changeInfo.url || tab.url;
+  if (!url) return;
+  if (url.startsWith(chrome.runtime.getURL('pdfViewer.html'))) return;
+  try {
+    const u = new URL(url);
+    if ((u.protocol === 'http:' || u.protocol === 'https:') && u.pathname.toLowerCase().endsWith('.pdf')) {
+      const viewer = chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(url);
+      chrome.tabs.update(tabId, { url: viewer });
     }
-  },
-  { urls: ['<all_urls>'] },
-  ['blocking']
-);
+  } catch (e) {
+    // ignore invalid URLs
+  }
+});
 
 let throttleReady;
 let activeTranslations = 0;
