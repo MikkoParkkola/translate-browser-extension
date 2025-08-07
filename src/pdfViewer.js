@@ -65,23 +65,25 @@
         const ow = measure.measureText(original[i]).width;
         const tw = measure.measureText(translated[i]).width;
         const ot = it.transform;
-        let nt = ot;
-        if (ow > 0 && tw > 0) {
-          const scale = ow / tw;
-          nt = [ot[0] * scale, ot[1] * scale, ot[2], ot[3], ot[4], ot[5]];
+        
+        // Calculate font scaling to fit translated text in original space
+        let scaledFontSize = fontSize;
+        if (ow > 0 && tw > 0 && tw > ow) {
+          scaledFontSize = fontSize * (ow / tw);
         }
+        const scaledFont = `${scaledFontSize}px ${style.fontFamily}`;
+        
         ctx.save();
-        const er = pdfjsLib.Util.transform(vpTransform, ot);
-        ctx.setTransform(er[0], er[1], er[2], er[3], er[4], er[5]);
-        ctx.font = font;
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.fillText(original[i], 0, 0);
-        ctx.restore();
-        ctx.save();
-        const tr = pdfjsLib.Util.transform(vpTransform, nt);
-        ctx.setTransform(tr[0], tr[1], tr[2], tr[3], tr[4], tr[5]);
-        ctx.font = font;
-        ctx.globalCompositeOperation = 'source-over';
+        const transform = pdfjsLib.Util.transform(vpTransform, ot);
+        ctx.setTransform(transform[0], transform[1], transform[2], transform[3], transform[4], transform[5]);
+        
+        // Draw white background to cover original text
+        ctx.fillStyle = 'white';
+        ctx.fillRect(-2, -fontSize * 0.8, ow + 4, fontSize * 1.2);
+        
+        // Draw translated text
+        ctx.fillStyle = 'black';
+        ctx.font = scaledFont;
         ctx.fillText(translated[i], 0, 0);
         ctx.restore();
       });
