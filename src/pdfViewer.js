@@ -165,7 +165,7 @@ import { isWasmAvailable } from './wasm/engine.js';
           const bar = document.querySelector('.topbar');
           engineSelect = document.createElement('select');
           engineSelect.id = 'engineSelect'; engineSelect.className = 'btn';
-          engineSelect.innerHTML = '<option value="auto">Engine: Auto</option><option value="mupdf">Engine: MuPDF</option><option value="pdfium">Engine: PDFium</option><option value="simple">Engine: Simple</option>';
+          engineSelect.innerHTML = '<option value="auto">Engine: Auto</option><option value="mupdf">Engine: MuPDF</option><option value="pdfium">Engine: PDFium</option><option value="overlay">Engine: Overlay</option><option value="simple">Engine: Simple</option>';
           bar?.insertBefore(engineSelect, document.getElementById('regenStatus'));
         }
         engineSelect.addEventListener('change', () => {
