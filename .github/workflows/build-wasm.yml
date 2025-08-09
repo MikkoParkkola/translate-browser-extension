@@ -20,10 +20,28 @@ jobs:
           persist-credentials: true
 
       # Build MuPDF via emscripten (AGPL). This may take several minutes.
+      - name: Set up Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v12
+        with:
+          version: latest
       - name: Build MuPDF (wasm)
         run: |
-          sudo apt-get update && sudo apt-get install -y docker.io || true
-          bash scripts/build-mupdf.sh
+          set -euo pipefail
+          WORKDIR=$(mktemp -d)
+          echo "Workdir: $WORKDIR"
+          pushd "$WORKDIR"
+          git clone --depth=1 https://github.com/ArtifexSoftware/mupdf.git
+          cd mupdf
+          emmake make generate
+          emmake make wasm -j2 || emmake make wasm
+          FOUND_WASM=$(ls -1 **/*.wasm 2>/dev/null | grep -E '/(build|platform)/' | head -n1 || true)
+          FOUND_JS=$(ls -1 **/*.js 2>/dev/null | grep -E 'mupdf.*\.js$' | head -n1 || true)
+          if [[ -z "$FOUND_WASM" || -z "$FOUND_JS" ]]; then echo "MuPDF wasm/js not found" >&2; exit 1; fi
+          mkdir -p "$GITHUB_WORKSPACE/src/wasm/vendor"
+          cp "$FOUND_WASM" "$GITHUB_WORKSPACE/src/wasm/vendor/mupdf.wasm"
+          cp "$FOUND_JS" "$GITHUB_WORKSPACE/src/wasm/vendor/mupdf.js"
+          popd
+          rm -rf "$WORKDIR"
       - name: Commit MuPDF artifacts
         run: |
           git config user.name "github-actions"
