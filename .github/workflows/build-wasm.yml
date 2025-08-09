@@ -6,6 +6,7 @@ on:
     paths:
       - 'scripts/**'
       - '.github/workflows/build-wasm.yml'
+      - 'tools/icu4x-segmenter/**'
 
 jobs:
   build:
