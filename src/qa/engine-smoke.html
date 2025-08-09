@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Engine Smoke</title>
+  <style>
+    body { font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 10px; }
+    #out { border:1px solid #ddd; display:inline-block; }
+  </style>
+  <script src="../pdf.min.js"></script>
+  <script src="../wasm/vendor/pdf-lib.js"></script>
+</head>
+<body>
+  <div>Engine smoke test: <span id="status">running…</span></div>
+  <div id="out"></div>
+  <script type="module">
+    import * as engine from '../wasm/engine.js';
+    // Mock translator: identity mapping to avoid network
+    window.qwenTranslateBatch = async ({ texts }) => ({ texts });
+    // pdf.js worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '../pdf.worker.min.js';
+
+    const qs = new URLSearchParams(location.search);
+    const eng = qs.get('engine') || 'simple';
+    const status = document.getElementById('status');
+    const out = document.getElementById('out');
+
+    async function makePdf(bytes) {
+      const doc = await pdfLib.PDFDocument.create();
+      const page = doc.addPage([400, 300]);
+      const font = await doc.embedFont(pdfLib.StandardFonts.Helvetica);
+      const txt = 'Hello engine test';
+      page.drawText(txt, { x: 50, y: 150, size: 18, font });
+      return await doc.save();
+    }
+
+    (async () => {
+      try {
+        const input = await makePdf();
+        const cfg = { useWasmEngine: true, wasmEngine: eng };
+        const blob = await engine.rewritePdf(input, cfg, (p)=>{ /* progress noop */ });
+        // Render first page
+        const buf = await blob.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+        const page = await pdf.getPage(1);
+        const viewport = page.getViewport({ scale: 1 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width; canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        out.appendChild(canvas);
+        window.smokeOk = true;
+        status.textContent = 'ok ('+eng+')';
+      } catch (e) {
+        console.error(e);
+        status.textContent = 'failed: '+e.message;
+      }
+    })();
+  </script>
+</body>
+</html>
