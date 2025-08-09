@@ -8,18 +8,35 @@ const defaultCfg = {
   requestLimit: 60,
   tokenLimit: 100000,
   debug: false,
+  useWasmEngine: true,
+  autoOpenAfterSave: true,
 };
 
 function qwenLoadConfig() {
-  return new Promise((resolve) => {
-    chrome.storage.sync.get(defaultCfg, (cfg) => resolve(cfg));
-  });
+  // For local testing (pdfViewer.html), prioritize window.qwenConfig
+  if (typeof window !== 'undefined' && window.qwenConfig) {
+    return Promise.resolve({ ...defaultCfg, ...window.qwenConfig });
+  }
+
+  // For the Chrome extension
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+    return new Promise((resolve) => {
+      chrome.storage.sync.get(defaultCfg, (cfg) => resolve(cfg));
+    });
+  }
+
+  // Fallback for other environments (like Node.js for jest tests)
+  return Promise.resolve(defaultCfg);
 }
 
 function qwenSaveConfig(cfg) {
-  return new Promise((resolve) => {
-    chrome.storage.sync.set(cfg, resolve);
-  });
+  // Only save if in the Chrome extension context
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+    return new Promise((resolve) => {
+      chrome.storage.sync.set(cfg, resolve);
+    });
+  }
+  return Promise.resolve(); // Otherwise, do nothing
 }
 
 if (typeof window !== 'undefined') {
@@ -27,6 +44,7 @@ if (typeof window !== 'undefined') {
   window.qwenLoadConfig = qwenLoadConfig;
   window.qwenSaveConfig = qwenSaveConfig;
 }
+
 if (typeof module !== 'undefined') {
   module.exports = { qwenLoadConfig, qwenSaveConfig, defaultCfg };
 }

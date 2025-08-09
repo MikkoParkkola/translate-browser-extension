@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>PDF Translation Rendering Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .test-container { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background-color: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        canvas { border: 1px solid #ddd; margin: 10px; }
+        .test-section { margin: 15px 0; }
+        .code { background: #f8f9fa; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <h1>PDF Translation Rendering Test</h1>
+    
+    <div class="test-container">
+        <h2>Coordinate System Test</h2>
+        <p>Testing PDF coordinate transformations to ensure text is right-side up:</p>
+        <canvas id="coordTest" width="400" height="200"></canvas>
+        <div id="coordStatus" class="status"></div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Font Rendering Test</h2>
+        <p>Testing different font mappings:</p>
+        <canvas id="fontTest" width="600" height="300"></canvas>
+        <div id="fontStatus" class="status"></div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Text Wrapping Test</h2>
+        <p>Testing long text wrapping vs horizontal compression:</p>
+        <canvas id="wrapTest" width="500" height="200"></canvas>
+        <div id="wrapStatus" class="status"></div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Background Coverage Test</h2>
+        <p>Testing that translated text properly covers original text:</p>
+        <canvas id="bgTest" width="400" height="150"></canvas>
+        <div id="bgStatus" class="status"></div>
+    </div>
+
+    <script>
+        // Test coordinate system handling
+        function testCoordinateSystem() {
+            const canvas = document.getElementById('coordTest');
+            const ctx = canvas.getContext('2d');
+            const status = document.getElementById('coordStatus');
+            
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Simulate PDF transforms
+            const testTransforms = [
+                { name: 'Normal', matrix: [12, 0, 0, 12, 50, 50], text: 'Normal Text' },
+                { name: 'Y-Flipped', matrix: [12, 0, 0, -12, 50, 100], text: 'Should be upright' },
+                { name: 'Rotated', matrix: [8, 6, -6, 8, 200, 100], text: 'Rotated' }
+            ];
+            
+            let allCorrect = true;
+            
+            testTransforms.forEach((test, i) => {
+                ctx.save();
+                
+                // Apply viewport transform (similar to PDF.js)
+                ctx.setTransform(1, 0, 0, -1, 0, canvas.height);
+                
+                const [a, b, c, d, e, f] = test.matrix;
+                const fontSize = Math.hypot(a, b);
+                
+                // Use the fixed coordinate system logic
+                const scaleX = Math.sign(a) * Math.hypot(a, b);
+                const scaleY = -Math.sign(d) * Math.hypot(c, d);
+                
+                ctx.translate(e, f);
+                ctx.scale(scaleX / fontSize, scaleY / fontSize);
+                
+                // Draw background
+                ctx.fillStyle = 'white';
+                ctx.fillRect(-2, -fontSize-2, 120, fontSize+4);
+                
+                // Draw text
+                ctx.font = fontSize + 'px Arial';
+                ctx.fillStyle = 'black';
+                ctx.textBaseline = 'alphabetic';
+                ctx.fillText(test.text, 0, 0);
+                
+                // Draw coordinate indicator
+                ctx.fillStyle = 'red';
+                ctx.fillRect(-1, -1, 2, 2);
+                
+                ctx.restore();
+                
+                // Label the test
+                ctx.fillStyle = 'blue';
+                ctx.font = '12px Arial';
+                ctx.fillText(test.name, 10, 20 + i * 15);
+            });
+            
+            status.className = 'status success';
+            status.textContent = '✓ Coordinate system tests completed - check that all text is right-side up';
+        }
+        
+        // Test font mapping
+        function testFontMapping() {
+            const canvas = document.getElementById('fontTest');
+            const ctx = canvas.getContext('2d');
+            const status = document.getElementById('fontStatus');
+            
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const fontTests = [
+                { pdf: 'TimesNewRoman', expected: 'Times, "Times New Roman", serif' },
+                { pdf: 'Arial-Bold', expected: 'Arial, Helvetica, sans-serif (bold)' },
+                { pdf: 'Helvetica-Oblique', expected: 'Arial, Helvetica, sans-serif (italic)' },
+                { pdf: 'CourierNew', expected: '"Courier New", Courier, monospace' },
+                { pdf: 'Calibri', expected: 'Calibri, Arial, sans-serif' },
+                { pdf: 'Georgia', expected: 'Georgia, serif' }
+            ];
+            
+            let y = 30;
+            fontTests.forEach(test => {
+                // Simulate font mapping logic
+                let fontFamily = 'Times, serif';
+                let fontWeight = 'normal';
+                let fontStyle = 'normal';
+                
+                const fontName = test.pdf.toLowerCase();
+                if (fontName.includes('times') || fontName.includes('roman')) {
+                    fontFamily = 'Times, "Times New Roman", serif';
+                } else if (fontName.includes('arial') || fontName.includes('helvetica')) {
+                    fontFamily = 'Arial, Helvetica, sans-serif';
+                } else if (fontName.includes('courier')) {
+                    fontFamily = '"Courier New", Courier, monospace';
+                } else if (fontName.includes('calibri')) {
+                    fontFamily = 'Calibri, Arial, sans-serif';
+                } else if (fontName.includes('georgia')) {
+                    fontFamily = 'Georgia, serif';
+                }
+                
+                if (fontName.includes('bold')) fontWeight = 'bold';
+                if (fontName.includes('italic') || fontName.includes('oblique')) fontStyle = 'italic';
+                
+                const finalFont = `${fontStyle} ${fontWeight} 16px ${fontFamily}`;
+                
+                ctx.font = finalFont;
+                ctx.fillStyle = 'black';
+                ctx.fillText(`${test.pdf}: Sample Text`, 20, y);
+                
+                ctx.font = '12px Arial';
+                ctx.fillStyle = 'gray';
+                ctx.fillText(`→ ${finalFont}`, 250, y);
+                
+                y += 35;
+            });
+            
+            status.className = 'status success';
+            status.textContent = '✓ Font mapping tests completed - fonts should match expected styles';
+        }
+        
+        // Test text wrapping logic
+        function testTextWrapping() {
+            const canvas = document.getElementById('wrapTest');
+            const ctx = canvas.getContext('2d');
+            const status = document.getElementById('wrapStatus');
+            
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const longText = "This is a very long translation that would normally be compressed horizontally";
+            const originalWidth = 100;
+            
+            ctx.font = '14px Arial';
+            const translatedWidth = ctx.measureText(longText).width;
+            const compressionRatio = originalWidth / translatedWidth;
+            
+            // Draw original space indicator
+            ctx.strokeStyle = 'red';
+            ctx.strokeRect(20, 20, originalWidth, 20);
+            ctx.fillStyle = 'red';
+            ctx.font = '12px Arial';
+            ctx.fillText('Original space', 20, 15);
+            
+            // Test compression approach
+            ctx.save();
+            ctx.translate(20, 60);
+            ctx.fillStyle = 'blue';
+            ctx.font = '14px Arial';
+            ctx.fillText('Compressed: ', 0, 0);
+            ctx.scale(compressionRatio, 1);
+            ctx.fillText(longText, 80 / compressionRatio, 0);
+            ctx.restore();
+            
+            // Test wrapping approach
+            ctx.fillStyle = 'green';
+            ctx.font = '12px Arial';
+            ctx.fillText('Wrapped:', 20, 100);
+            
+            if (compressionRatio < 0.6) {
+                const words = longText.split(' ');
+                const maxLineWidth = originalWidth * 1.2;
+                let lines = [];
+                let currentLine = '';
+                
+                for (const word of words) {
+                    const testLine = currentLine ? `${currentLine} ${word}` : word;
+                    if (ctx.measureText(testLine).width <= maxLineWidth) {
+                        currentLine = testLine;
+                    } else {
+                        if (currentLine) lines.push(currentLine);
+                        currentLine = word;
+                    }
+                }
+                if (currentLine) lines.push(currentLine);
+                
+                ctx.font = '14px Arial';
+                lines.forEach((line, i) => {
+                    ctx.fillText(line, 20, 120 + i * 18);
+                });
+                
+                status.className = 'status success';
+                status.textContent = `✓ Text wrapping: ${lines.length} lines instead of ${(compressionRatio * 100).toFixed(0)}% compression`;
+            } else {
+                ctx.font = '14px Arial';
+                ctx.fillText('(Would use scaling)', 20, 120);
+                
+                status.className = 'status success';
+                status.textContent = `✓ Moderate compression: ${(compressionRatio * 100).toFixed(0)}% scale factor`;
+            }
+        }
+        
+        // Test background coverage
+        function testBackgroundCoverage() {
+            const canvas = document.getElementById('bgTest');
+            const ctx = canvas.getContext('2d');
+            const status = document.getElementById('bgStatus');
+            
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Simulate original text (in red to show if not covered)
+            ctx.fillStyle = 'red';
+            ctx.font = '16px Arial';
+            ctx.fillText('Original text that should be hidden', 50, 50);
+            ctx.fillText('Multi-line original', 50, 100);
+            ctx.fillText('text content', 50, 120);
+            
+            // Simulate translated text with background
+            ctx.save();
+            
+            // Background coverage
+            ctx.fillStyle = 'white';
+            const bgPadding = 2;
+            const textWidth = ctx.measureText('Translated replacement text').width;
+            const lineHeight = 20;
+            
+            ctx.fillRect(50 - bgPadding, 35 - bgPadding, textWidth + bgPadding * 2, lineHeight + bgPadding * 2);
+            ctx.fillRect(50 - bgPadding, 85 - bgPadding, 200 + bgPadding * 2, lineHeight * 2 + bgPadding * 2);
+            
+            // Translated text
+            ctx.fillStyle = 'black';
+            ctx.fillText('Translated replacement text', 50, 50);
+            ctx.fillText('Multi-line translated', 50, 100);
+            ctx.fillText('content here', 50, 120);
+            
+            ctx.restore();
+            
+            status.className = 'status success';
+            status.textContent = '✓ Background coverage test - red text should be completely hidden by white backgrounds';
+        }
+        
+        // Run all tests
+        window.onload = function() {
+            testCoordinateSystem();
+            testFontMapping();
+            testTextWrapping();
+            testBackgroundCoverage();
+        };
+    </script>
+</body>
+</html>

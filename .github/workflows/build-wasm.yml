@@ -1,0 +1,56 @@
+name: Build WASM Engine
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/build-wasm.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build MuPDF (WASM) with Emscripten (placeholder)
+        uses: addnab/docker-run-action@v3
+        with:
+          image: emscripten/emsdk:latest
+          options: -v ${{ github.workspace }}:/work -w /work
+          run: |
+            echo "TODO: Clone MuPDF and build wasm target here"
+            echo "See BUILDING_WASM.md for instructions"
+
+      - name: Install Rust and wasm-pack
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+          override: true
+      - name: Install wasm-pack
+        run: |
+          curl -sSfL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+
+      - name: Build ICU4X segmenter (wasm-pack)
+        run: |
+          cd tools/icu4x-segmenter
+          wasm-pack build --release --target web
+          cd ../..
+          mkdir -p src/wasm/vendor
+          cp tools/icu4x-segmenter/pkg/icu4x_segmenter_wasm_bg.wasm src/wasm/vendor/icu4x_segmenter.wasm
+          cp tools/icu4x-segmenter/pkg/icu4x_segmenter_wasm.js src/wasm/vendor/icu4x_segmenter.js
+
+      - name: Commit vendorized ICU4X segmenter
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add src/wasm/vendor/icu4x_segmenter.wasm src/wasm/vendor/icu4x_segmenter.js
+          git commit -m "ci: vendor ICU4X segmenter wasm/js" || echo "No changes"
+          git push || true
+
+      - name: Report vendor dir
+        run: |
+          ls -la src/wasm/vendor || true
+          ls -la src/wasm/vendor/fonts || true

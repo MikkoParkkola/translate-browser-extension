@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Quick PDF Translation Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .info { background: #e8f4fd; padding: 15px; border-radius: 5px; margin: 10px 0; }
+        .warning { background: #fff3cd; padding: 15px; border-radius: 5px; margin: 10px 0; }
+        .test-link { display: block; padding: 10px; margin: 5px 0; background: #007bff; color: white; text-decoration: none; border-radius: 4px; text-align: center; }
+        .test-link:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>Quick PDF Translation Test Setup</h1>
+    
+    <div class="info">
+        <h3>Setup Instructions:</h3>
+        <ol>
+            <li>Load the extension in Chrome (Developer Mode → Load Unpacked → select `src` folder)</li>
+            <li>Configure API settings in extension popup:
+                <ul>
+                    <li>API Key: <code>sk-f734eca57cb64b6b8f4b7b7e14f02e6b</code></li>
+                    <li>Source: Dutch (nl)</li>
+                    <li>Target: English (en)</li>
+                </ul>
+            </li>
+            <li>Test with the PDFs below</li>
+        </ol>
+    </div>
+    
+    <div class="warning">
+        <h3>What to Test:</h3>
+        <ul>
+            <li>✅ Text should be <strong>right-side up</strong> (not upside down)</li>
+            <li>✅ Fonts should match original as closely as possible</li>
+            <li>✅ Long text should <strong>wrap to multiple lines</strong> instead of being horizontally compressed</li>
+            <li>✅ Original text should be completely hidden by white backgrounds</li>
+            <li>✅ No text should be cut off at page margins</li>
+        </ul>
+    </div>
+    
+    <h2>Test PDFs:</h2>
+    <a href="Bericht_646850130.pdf" class="test-link" target="_blank">
+        📄 Test PDF 1: CZ Insurance Document (Dutch)
+    </a>
+    
+    <a href="Dutch-Short-Stories-For-Beginners.pdf" class="test-link" target="_blank">
+        📄 Test PDF 2: Dutch Short Stories (Various fonts and layouts)
+    </a>
+    
+    <div class="info">
+        <h3>Expected Improvements:</h3>
+        <p>This updated version includes:</p>
+        <ul>
+            <li><strong>Fixed coordinate system:</strong> All text rendered right-side up</li>
+            <li><strong>Enhanced font mapping:</strong> Better matching of PDF fonts to web fonts</li>
+            <li><strong>Smart text wrapping:</strong> Long translations wrap instead of extreme horizontal compression</li>
+            <li><strong>Improved background coverage:</strong> Complete hiding of original text</li>
+            <li><strong>Canvas bounds checking:</strong> No text cutoff at margins</li>
+        </ul>
+    </div>
+    
+    <div class="warning">
+        <h3>Debugging:</h3>
+        <p>If issues occur, check browser console (F12) for error messages related to:</p>
+        <ul>
+            <li>PDF loading errors</li>
+            <li>API translation failures</li>
+            <li>Canvas rendering problems</li>
+        </ul>
+    </div>
+</body>
+</html>

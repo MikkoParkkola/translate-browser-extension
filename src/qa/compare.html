@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>PDF Compare</title>
+  <style>
+    body { margin: 0; font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    header { position: sticky; top: 0; background: #fff; border-bottom: 1px solid #eee; padding: 8px; display: flex; gap: 8px; align-items: center; z-index: 2; }
+    #wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 0; height: calc(100vh - 44px); }
+    .col { overflow: auto; border-right: 1px solid #eee; }
+    canvas { display: block; margin: 0 auto; }
+  </style>
+  <script src="../pdf.min.js"></script>
+</head>
+<body>
+  <header>
+    <input id="src1" placeholder="Original PDF URL" style="width: 40%" />
+    <input id="src2" placeholder="Translated PDF URL" style="width: 40%" />
+    <button id="loadBtn">Load</button>
+    <label><input type="checkbox" id="diffChk"/> Show diff</label>
+    <span id="status" style="color:#666"></span>
+  </header>
+  <div id="wrap">
+    <div class="col" id="left"></div>
+    <div class="col" id="right"></div>
+  </div>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '../pdf.worker.min.js';
+    const left = document.getElementById('left');
+    const right = document.getElementById('right');
+    const status = document.getElementById('status');
+    const diffChk = document.getElementById('diffChk');
+
+    async function renderDoc(url, container) {
+      const resp = await fetch(url);
+      const buf = await resp.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+      container.innerHTML = '';
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const viewport = page.getViewport({ scale: 1.25 });
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = viewport.width; canvas.height = viewport.height;
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        container.appendChild(canvas);
+      }
+    }
+
+    function makeDiff() {
+      const a = left.querySelectorAll('canvas');
+      const b = right.querySelectorAll('canvas');
+      const n = Math.min(a.length, b.length);
+      for (let i=0;i<n;i++) {
+        const ca = a[i], cb = b[i];
+        const w = Math.min(ca.width, cb.width), h = Math.min(ca.height, cb.height);
+        const da = ca.getContext('2d').getImageData(0,0,w,h);
+        const db = cb.getContext('2d').getImageData(0,0,w,h);
+        const out = new ImageData(w,h);
+        for (let j=0;j<da.data.length; j+=4) {
+          const dr = Math.abs(da.data[j]-db.data[j]);
+          const dg = Math.abs(da.data[j+1]-db.data[j+1]);
+          const dbb= Math.abs(da.data[j+2]-db.data[j+2]);
+          const d = Math.max(dr,dg,dbb);
+          out.data[j] = 255; out.data[j+1]=0; out.data[j+2]=0; out.data[j+3] = Math.min(255, d*2);
+        }
+        const overlay = document.createElement('canvas');
+        overlay.width=w; overlay.height=h;
+        overlay.getContext('2d').putImageData(out,0,0);
+        overlay.style.position='absolute'; overlay.style.pointerEvents='none';
+        const wrap = document.createElement('div');
+        wrap.style.position='relative'; wrap.appendChild(cb.cloneNode()); wrap.appendChild(overlay);
+        right.replaceChild(wrap, cb);
+      }
+    }
+
+    document.getElementById('loadBtn').onclick = async () => {
+      const u1 = document.getElementById('src1').value.trim();
+      const u2 = document.getElementById('src2').value.trim();
+      try {
+        status.textContent='Loading…';
+        await Promise.all([renderDoc(u1,left), renderDoc(u2,right)]);
+        if (diffChk.checked) makeDiff();
+        status.textContent='';
+      } catch(e) {
+        console.error(e); status.textContent='Failed: '+e.message;
+      }
+    };
+  </script>
+</body>
+</html>
+

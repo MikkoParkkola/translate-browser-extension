@@ -36,8 +36,14 @@ This is a Chrome/Safari browser extension that translates web pages using Alibab
 ### Development
 ```bash
 npm install          # Install dependencies
-npm test            # Run Jest unit tests
-npm run build:safari # Convert to Safari extension
+npm test            # Run Jest unit tests (uses jsdom environment)
+npm run build:safari # Convert to Safari extension via script
+```
+
+### CLI Usage
+The standalone CLI translator in `cli/translate.js`:
+```bash
+node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--tokens M] [-d] [--no-stream] -s <source_lang> -t <target_lang>
 ```
 
 ### Testing
@@ -92,3 +98,13 @@ The extension includes comprehensive diagnostics via the popup's "Test Settings"
 - Intercepts PDF URLs and redirects to custom viewer
 - Embeds are automatically replaced with iframe to custom viewer
 - PDF.js integration for text extraction and translation overlay
+
+## Extension Installation
+For Chrome/Chromium browsers:
+1. Build by copying `src/` folder contents 
+2. Load unpacked extension in developer mode
+3. Ensure folder contains `manifest.json` and all core files
+
+For Safari (macOS/iOS):
+1. Run `npm run build:safari` to generate Xcode project
+2. Sign and build in Xcode for target platform

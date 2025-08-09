@@ -1,92 +1,240 @@
+import { regeneratePdfFromUrl } from './wasm/pipeline.js';
+import { isWasmAvailable } from './wasm/engine.js';
+
 (async function() {
+  function isLikelyDutch(text) {
+    if (!text) return false;
+    const clean = (text || '').toLowerCase();
+    // Ignore mostly non-letters
+    const letters = clean.replace(/[^a-zà-ÿ]/g, '');
+    if (letters.length < 3) return false;
+    const words = clean.match(/[a-zà-ÿ]{2,}/g) || [];
+    if (!words.length) return false;
+    const dutchHints = [
+      ' de ', ' het ', ' een ', ' en ', ' ik ', ' jij ', ' je ', ' u ', ' wij ', ' we ', ' jullie ',
+      ' niet ', ' met ', ' op ', ' voor ', ' naar ', ' van ', ' dat ', ' die ', ' te ', ' zijn ',
+      ' ook ', ' maar ', ' omdat ', ' zodat ', ' hier ', ' daar ', ' hoe ', ' wat ', ' waar ', ' wanneer '
+    ];
+    const englishHints = [
+      ' the ', ' and ', ' of ', ' to ', ' in ', ' is ', ' you ', ' that ', ' it ', ' for ', ' on ', ' with ',
+      ' as ', ' are ', ' this ', ' be ', ' or ', ' by ', ' from ', ' at ', ' an '
+    ];
+    let dScore = 0, eScore = 0;
+    const padded = ` ${clean} `;
+    dutchHints.forEach(h => { if (padded.includes(h)) dScore += 2; });
+    englishHints.forEach(h => { if (padded.includes(h)) eScore += 2; });
+    // Character patterns common in Dutch
+    if (clean.includes('ij')) dScore += 1;
+    if (clean.includes('een ')) dScore += 1; // article 'een'
+    // Penalize if overwhelmingly English common words
+    // Simple heuristic: ratio of short function words
+    const commonEn = (clean.match(/\b(the|and|of|to|in|is|for|on|with|as|are)\b/g) || []).length;
+    const commonNl = (clean.match(/\b(de|het|een|en|ik|je|niet|met|voor|naar|van|dat|die|te|zijn)\b/g) || []).length;
+    dScore += commonNl;
+    eScore += commonEn;
+    return dScore >= eScore + 1; // require a bit more Dutch evidence than English
+  }
+
+  function shouldTranslateLine(text, cfg) {
+    if (!text || !text.trim()) return false;
+    // Skip if already target language (English)
+    if ((cfg.targetLanguage || '').toLowerCase().startsWith('en')) {
+      if (!isLikelyDutch(text)) return false;
+    }
+    // Skip lines that are mostly numbers/symbols
+    const letters = (text.match(/[A-Za-zÀ-ÿ]/g) || []).length;
+    const nonLetters = (text.replace(/[A-Za-zÀ-ÿ]/g, '').length);
+    if (letters < 2 || letters < nonLetters / 2) return false;
+    return true;
+  }
   const params = new URL(location.href).searchParams;
   const file = params.get('file');
   const viewer = document.getElementById('viewer');
   if (!file) {
     viewer.textContent = 'No PDF specified';
+    console.log('DEBUG: No PDF file specified.');
     return;
   }
 
-  pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('pdf.worker.min.js');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdf.worker.min.js', import.meta.url).href;
+  console.log('DEBUG: PDF.js worker source set.');
 
   const cfg = await window.qwenLoadConfig();
+  // Show engine readiness status
+  (async () => {
+    const statEl = document.getElementById('engineStatus');
+    if (!statEl) return;
+    try {
+      const ready = await isWasmAvailable();
+      if (ready) {
+        statEl.textContent = 'Engine: Ready';
+        statEl.style.color = '#2e7d32';
+      } else {
+        statEl.textContent = 'Engine: Missing components (requires: hb.wasm, pdfium.wasm, mupdf.wasm, icu4x_segmenter.wasm)';
+        statEl.style.color = '#d32f2f';
+      }
+    } catch (e) {
+      statEl.textContent = 'Engine: Unknown';
+      statEl.style.color = '#f57c00';
+    }
+  })();
   if (!cfg.apiKey) {
     viewer.textContent = 'API key not configured';
+    console.log('DEBUG: API key not configured.');
     return;
   }
+  console.log('DEBUG: API key loaded.');
 
   try {
+    console.log(`DEBUG: Attempting to fetch PDF from: ${file}`);
     const resp = await fetch(file);
-    if (!resp.ok) throw new Error(`unexpected status ${resp.status}`);
+    if (!resp.ok) {
+      throw new Error(`unexpected status ${resp.status}`);
+    }
+    console.log('DEBUG: PDF fetched successfully.');
     const buffer = await resp.arrayBuffer();
     const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
+    console.log('DEBUG: PDF loading task created.');
     const pdf = await loadingTask.promise;
+    console.log(`DEBUG: PDF loaded. Number of pages: ${pdf.numPages}`);
+
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      console.log(`DEBUG: Processing page ${pageNum}`);
       const page = await pdf.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 1.2 });
+      const viewport = page.getViewport({ scale: 1.5 });
+      console.log(`DEBUG: Page ${pageNum} viewport created.`);
+
       const pageDiv = document.createElement('div');
       pageDiv.className = 'page';
+      pageDiv.style.width = `${viewport.width}px`;
+      pageDiv.style.height = `${viewport.height}px`;
+      pageDiv.style.position = 'relative'; // Needed for absolute positioning of text
       viewer.appendChild(pageDiv);
+
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
+      const outputScale = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(viewport.width * outputScale);
+      canvas.height = Math.floor(viewport.height * outputScale);
+      canvas.style.width = `${viewport.width}px`;
+      canvas.style.height = `${viewport.height}px`;
       pageDiv.appendChild(canvas);
-      await page.render({ canvasContext: ctx, viewport }).promise;
+
+      // Hook up the regenerate button to current file with progress overlay
+      const regenBtn = document.getElementById('regenBtn');
+      const useWasmFlag = document.getElementById('useWasmFlag');
+      const autoOpenFlag = document.getElementById('autoOpenFlag');
+      if (useWasmFlag && autoOpenFlag && !useWasmFlag.dataset.bound) {
+        useWasmFlag.dataset.bound = '1';
+        // Initialize from storage/config
+        chrome.storage.sync.get({ useWasmEngine: cfg.useWasmEngine, autoOpenAfterSave: cfg.autoOpenAfterSave }, s => {
+          useWasmFlag.checked = !!s.useWasmEngine;
+          autoOpenFlag.checked = !!s.autoOpenAfterSave;
+        });
+        useWasmFlag.addEventListener('change', () => {
+          chrome.storage.sync.set({ useWasmEngine: useWasmFlag.checked });
+        });
+        autoOpenFlag.addEventListener('change', () => {
+          chrome.storage.sync.set({ autoOpenAfterSave: autoOpenFlag.checked });
+        });
+      }
+      if (regenBtn && !regenBtn.dataset.bound) {
+        regenBtn.dataset.bound = '1';
+        regenBtn.addEventListener('click', async () => {
+          const overlay = document.getElementById('regenOverlay');
+          const text = document.getElementById('regenText');
+          const bar = document.getElementById('regenBar');
+          const setProgress = (msg, p) => { if (text) text.textContent = msg; if (bar && typeof p === 'number') bar.style.width = `${Math.max(0,Math.min(100,p))}%`; };
+          try {
+            regenBtn.disabled = true;
+            let cfgNow = await window.qwenLoadConfig();
+            // Merge with runtime flags
+            const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave'], r));
+            cfgNow = { ...cfgNow, ...flags };
+            if (!cfgNow.apiKey) { alert('Configure API key first.'); return; }
+            if (overlay) overlay.style.display = 'flex'; setProgress('Preparing…', 2);
+            const blob = await regeneratePdfFromUrl(file, cfgNow, (p)=>{
+              if (!p) return;
+              let pct = 0;
+              if (p.phase === 'collect') { pct = Math.round((p.page / p.total) * 20); setProgress(`Collecting text… (${p.page}/${p.total})`, pct); }
+              if (p.phase === 'translate') { pct = 20 + Math.round((p.page / p.total) * 40); setProgress(`Translating… (${p.page}/${p.total})`, pct); }
+              if (p.phase === 'render') { pct = 60 + Math.round((p.page / p.total) * 40); setProgress(`Rendering pages… (${p.page}/${p.total})`, pct); }
+            });
+            const url = URL.createObjectURL(blob);
+            // Trigger download via Chrome downloads API if available
+            try {
+              if (chrome && chrome.downloads && chrome.downloads.download) {
+                const ts = new Date();
+                const fname = `translated-${ts.getFullYear()}${String(ts.getMonth()+1).padStart(2,'0')}${String(ts.getDate()).padStart(2,'0')}-${String(ts.getHours()).padStart(2,'0')}${String(ts.getMinutes()).padStart(2,'0')}${String(ts.getSeconds()).padStart(2,'0')}.pdf`;
+                chrome.downloads.download({ url, filename: fname, saveAs: false });
+              } else {
+                const a = document.createElement('a'); a.href = url; a.download = 'translated.pdf'; a.click();
+              }
+            } catch {}
+            // Open the translated PDF in a new viewer tab automatically
+            try {
+              const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(url);
+              const autoOpen = cfgNow.autoOpenAfterSave !== false;
+              if (autoOpen) {
+                if (chrome && chrome.tabs && chrome.tabs.create) {
+                  chrome.tabs.create({ url: viewerUrl });
+                } else {
+                  window.open(viewerUrl, '_blank');
+                }
+              }
+            } catch {}
+            // Revoke later (after viewer loads)
+            setTimeout(()=>URL.revokeObjectURL(url), 30000);
+            if (text) setProgress('Done', 100);
+          } catch (e) {
+            console.error('Regeneration failed', e);
+            if (text) setProgress('Failed: ' + e.message, 100);
+          } finally {
+            regenBtn.disabled = false;
+            const overlay = document.getElementById('regenOverlay');
+            if (overlay) setTimeout(()=>{ overlay.style.display = 'none'; const b = document.getElementById('regenBar'); if (b) b.style.width = '0%'; }, 800);
+          }
+        });
+      }
+      console.log(`DEBUG: Canvas created for page ${pageNum}.`);
+
+      const renderContext = {
+        canvasContext: ctx,
+        viewport: viewport,
+        transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined,
+      };
+      console.log(`DEBUG: Rendering page ${pageNum} to canvas.`);
+      await page.render(renderContext).promise;
+      console.log(`DEBUG: Page ${pageNum} rendered to canvas.`);
+
+      // Build a DOM text layer that exactly matches PDF.js layout
       const textContent = await page.getTextContent();
       const original = textContent.items.map(i => i.str);
-      let translated = original;
-      if (original.length) {
-        try {
-          const res = await window.qwenTranslateBatch({
-            endpoint: cfg.apiEndpoint,
-            apiKey: cfg.apiKey,
-            model: cfg.model,
-            texts: original,
-            source: cfg.sourceLanguage,
-            target: cfg.targetLanguage,
-            debug: cfg.debug,
-            stream: false,
-          });
-          translated = res.texts;
-        } catch (e) {
-          console.error('PDF translation failed', e);
-        }
-      }
-      const measure = document.createElement('canvas').getContext('2d');
-      const vpTransform = viewport.transform;
-      textContent.items.forEach((it, i) => {
-        const style = textContent.styles[it.fontName];
-        if (!style) return;
-        if (!translated[i] || translated[i] === original[i]) return;
-        const fontSize = Math.hypot(it.transform[0], it.transform[1]);
-        const font = `${fontSize}px ${style.fontFamily}`;
-        measure.font = font;
-        const ow = measure.measureText(original[i]).width;
-        const tw = measure.measureText(translated[i]).width;
-        const ot = it.transform;
-        
-        // Calculate font scaling to fit translated text in original space
-        let scaledFontSize = fontSize;
-        if (ow > 0 && tw > 0 && tw > ow) {
-          scaledFontSize = fontSize * (ow / tw);
-        }
-        const scaledFont = `${scaledFontSize}px ${style.fontFamily}`;
-        
-        ctx.save();
-        const transform = pdfjsLib.Util.transform(vpTransform, ot);
-        ctx.setTransform(transform[0], transform[1], transform[2], transform[3], transform[4], transform[5]);
-        
-        // Draw white background to cover original text
-        ctx.fillStyle = 'white';
-        ctx.fillRect(-2, -fontSize * 0.8, ow + 4, fontSize * 1.2);
-        
-        // Draw translated text
-        ctx.fillStyle = 'black';
-        ctx.font = scaledFont;
-        ctx.fillText(translated[i], 0, 0);
-        ctx.restore();
+      console.log(`DEBUG: Extracted ${original.length} text items from page ${pageNum}.`);
+
+      // Create text layer container
+      const textLayer = document.createElement('div');
+      textLayer.className = 'textLayer';
+      textLayer.style.position = 'absolute';
+      textLayer.style.left = '0';
+      textLayer.style.top = '0';
+      textLayer.style.width = `${viewport.width}px`;
+      textLayer.style.height = `${viewport.height}px`;
+      textLayer.style.pointerEvents = 'none';
+      textLayer.style.zIndex = '10';
+      textLayer.style.setProperty('--scale-factor', String(viewport.scale || 1));
+      pageDiv.appendChild(textLayer);
+
+      // Render the text layer using PDF.js so positions and spacing match exactly
+      const textLayerTask = pdfjsLib.renderTextLayer({
+        textContentSource: textContent,
+        container: textLayer,
+        viewport,
+        enhanceTextSelection: false,
       });
+      await textLayerTask.promise;
+
+      // Selection enabled via textLayer above; no translation until user clicks regenerate
     }
   } catch (e) {
     console.error('Error loading PDF', e);
@@ -96,5 +244,6 @@
     link.textContent = 'Open original PDF';
     link.target = '_blank';
     viewer.appendChild(link);
+    console.log(`DEBUG: Caught error: ${e.message}`);
   }
 })();
