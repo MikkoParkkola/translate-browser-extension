@@ -214,6 +214,25 @@ import { isWasmAvailable } from './wasm/engine.js';
           });
         }
       }
+      // Bind Preview button (out of regen click handler)
+      if (previewBtn && !previewBtn.dataset.bound) {
+        previewBtn.dataset.bound = '1';
+        previewBtn.addEventListener('click', async () => {
+          try {
+            let cfgNow = await window.qwenLoadConfig();
+            const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine','wasmStrict'], r));
+            cfgNow = { ...cfgNow, ...flags, useWasmEngine: true }; // force engine path for preview
+            const blob = await regeneratePdfFromUrl(file, cfgNow, null);
+            const url = URL.createObjectURL(blob);
+            const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + '?translated=1&file=' + encodeURIComponent(url);
+            window.location.href = viewerUrl;
+          } catch (e) {
+            console.error('Preview failed', e);
+            alert('Preview failed: ' + (e && e.message || e));
+          }
+        });
+      }
+
       if (regenBtn && !regenBtn.dataset.bound) {
         regenBtn.dataset.bound = '1';
         regenBtn.addEventListener('click', async () => {
