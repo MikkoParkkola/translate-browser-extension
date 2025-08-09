@@ -19,7 +19,19 @@ jobs:
         with:
           persist-credentials: true
 
-      # MuPDF build to be added in separate step once upstream build commands are validated.
+      # Build MuPDF via emscripten (AGPL). This may take several minutes.
+      - name: Build MuPDF (wasm)
+        run: |
+          sudo apt-get update && sudo apt-get install -y docker.io || true
+          bash scripts/build-mupdf.sh
+      - name: Commit MuPDF artifacts
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git add src/wasm/vendor/mupdf.wasm src/wasm/vendor/mupdf.js
+          git commit -m "ci: vendor MuPDF wasm/js (AGPL)" || echo "No changes"
+          git push || true
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable

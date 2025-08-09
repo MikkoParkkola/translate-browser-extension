@@ -1,5 +1,10 @@
 // PDFium engine wrapper scaffold. Replace with real integration.
 export async function init({ baseURL }) {
+  // Try to load PDFium vendor JS if present; otherwise fall back.
+  let mod = null;
+  try {
+    mod = await import(/* @vite-ignore */ baseURL + 'pdfium.js');
+  } catch {}
   // PoC: return the original PDF as-is. Replace with real PDFium glue.
   async function rewrite(buffer, cfg, onProgress) {
     try {
