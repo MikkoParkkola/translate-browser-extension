@@ -1,0 +1,53 @@
+name: Build Safari
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to build (branch or tag)'
+        required: false
+        default: 'main'
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  convert:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Convert to Safari projects
+        run: |
+          bash scripts/convert-safari.sh
+
+      - name: Zip Safari projects
+        run: |
+          set -euo pipefail
+          cd safari
+          for d in */ ; do
+            [ -d "$d" ] || continue
+            name=$(echo "$d" | sed 's/[\/ ]/_/g; s/_$//')
+            zip -r "../${name}.zip" "$d"
+          done
+          ls -la .. | sed -n '1,200p'
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: safari-projects
+          path: |
+            *.zip
+
+      - name: Upload to GitHub Release (if tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            *.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
