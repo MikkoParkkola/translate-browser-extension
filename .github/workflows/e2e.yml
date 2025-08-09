@@ -28,6 +28,16 @@ jobs:
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps
 
+      - name: Check repo for public PDFs at root (privacy)
+        run: |
+          set -euo pipefail
+          found=$(git ls-files '*.pdf' | grep -E '^[^/]+\.pdf$' || true)
+          if [ -n "$found" ]; then
+            echo "Found public PDFs at repository root (disallowed):" >&2
+            echo "$found" >&2
+            exit 1
+          fi
+
       - name: Run E2E tests
         run: npm run test:e2e
 

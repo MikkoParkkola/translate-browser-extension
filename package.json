@@ -15,6 +15,7 @@
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@playwright/test": "^1.45.2",
+    "pdf-lib": "^1.17.1",
     "cross-fetch": "^4.1.0",
     "jest": "^30.0.5",
     "jest-environment-jsdom": "^30.0.5",

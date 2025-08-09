@@ -1,6 +1,7 @@
 // End-to-end PDF visual comparison using Playwright and the in-repo compare.html
 const { test, expect } = require('@playwright/test');
 const http = require('http');
+const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const fs = require('fs');
 const path = require('path');
 
@@ -21,6 +22,23 @@ async function createServer(rootDir) {
       try {
         let urlPath = decodeURIComponent(req.url.split('?')[0]);
         if (urlPath === '/' || urlPath === '') urlPath = '/index.html';
+        // Synthetic PDFs for testing privacy-safe E2E
+        if (urlPath.startsWith('/gen/simple.pdf')) {
+          const u = new URL('http://x' + req.url);
+          const text = u.searchParams.get('text') || 'Hello';
+          (async () => {
+            const pdf = await PDFDocument.create();
+            const page = pdf.addPage([400, 300]);
+            const font = await pdf.embedFont(StandardFonts.Helvetica);
+            const size = 24;
+            const width = font.widthOfTextAtSize(text, size);
+            page.drawText(text, { x: (400 - width) / 2, y: 150, size, font, color: rgb(0.1, 0.1, 0.1) });
+            const bytes = await pdf.save();
+            res.setHeader('Content-Type', 'application/pdf');
+            res.end(Buffer.from(bytes));
+          })().catch(e => { res.statusCode = 500; res.end(String(e)); });
+          return;
+        }
         const filePath = path.join(rootDir, urlPath);
         if (!filePath.startsWith(rootDir)) {
           res.statusCode = 403; res.end('forbidden'); return;
@@ -75,7 +93,7 @@ test.describe('PDF visual compare', () => {
   }
 
   test('identical PDFs produce near-zero diff', async ({ page }, testInfo) => {
-    const pdf = '/translated.pdf';
+    const pdf = '/gen/simple.pdf?text=Hello';
     const { diffScore, diffPages, canvases } = await openCompare(page, pdf, pdf, true);
     try {
       expect(canvases).toBeGreaterThan(0);
@@ -108,8 +126,8 @@ test.describe('PDF visual compare', () => {
   });
 
   test('different PDFs produce noticeable diff', async ({ page }, testInfo) => {
-    const a = '/translated.pdf';
-    const b = '/translated_1.pdf';
+    const a = '/gen/simple.pdf?text=Hello';
+    const b = '/gen/simple.pdf?text=World';
     const { diffScore, diffPages, canvases } = await openCompare(page, a, b, true);
     try {
       expect(canvases).toBeGreaterThan(0);
