@@ -123,8 +123,18 @@ import { isWasmAvailable } from './wasm/engine.js';
   function setModeUI(mode) {
     if (btnOriginal) btnOriginal.dataset.active = mode === 'original' ? '1' : '0';
     if (btnTranslated) btnTranslated.dataset.active = mode === 'translated' ? '1' : '0';
-    if (badge) { badge.textContent = mode === 'translated' ? 'Translated' : 'Original'; badge.style.color = mode === 'translated' ? '#2e7d32' : '#666'; }
-    if (translatedMenu) translatedMenu.style.display = mode === 'translated' ? translatedMenu.style.display : 'none';
+    if (badge) {
+      badge.textContent = mode === 'translated' ? 'Translated' : 'Original';
+      badge.style.color = mode === 'translated' ? '#2e7d32' : '#666';
+    }
+    if (btnTranslatedMenu) btnTranslatedMenu.style.display = mode === 'translated' ? '' : 'none';
+    if (btnTranslated) {
+      btnTranslated.style.borderRadius =
+        btnTranslatedMenu && btnTranslatedMenu.style.display !== 'none'
+          ? '0'
+          : '0 8px 8px 0';
+    }
+    if (translatedMenu) translatedMenu.style.display = 'none';
   }
 
   async function generateTranslatedBlobUrl(originalUrl) {
