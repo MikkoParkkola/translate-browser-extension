@@ -23,7 +23,7 @@ jobs:
           cache: 'npm'
 
       - name: Install deps
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps
@@ -38,4 +38,3 @@ jobs:
           name: playwright-report
           path: playwright-report
           if-no-files-found: ignore
-
