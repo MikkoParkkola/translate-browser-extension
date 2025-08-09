@@ -14,12 +14,12 @@
   </style>
 </head>
   <body>
-  <div style="padding:8px; border-bottom:1px solid #eee; display:flex; gap:8px; align-items:center; position:sticky; top:0; background:#fff; z-index:5">
-    <button id="regenBtn">Download Translated PDF (beta)</button>
-    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#333"><input type="checkbox" id="useWasmFlag"> Use WASM engine</label>
-    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#333"><input type="checkbox" id="autoOpenFlag" checked> Auto-open after save</label>
-    <span id="regenStatus" style="font-size:12px;color:#555"></span>
-    <span id="engineStatus" style="margin-left:auto;font-size:12px;color:#666">Engine: checking…</span>
+  <div class="topbar">
+    <button id="regenBtn" class="btn primary">Download Translated PDF</button>
+    <label class="chk"><input type="checkbox" id="useWasmFlag"> Use WASM engine</label>
+    <label class="chk"><input type="checkbox" id="autoOpenFlag" checked> Auto-open after save</label>
+    <span id="regenStatus" class="muted"></span>
+    <span id="engineStatus" class="muted" style="margin-left:auto">Engine: checking…</span>
   </div>
   <div id="viewer"></div>
   <script src="pdf.min.js"></script>
@@ -29,14 +29,24 @@
   <script src="throttle.js"></script>
   <script type="module" src="pdfViewer.js"></script>
   <style>
-    #regenOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display:none; align-items:center; justify-content:center; z-index: 9999; }
-    #regenOverlay .panel { background:#fff; padding:16px; border-radius:8px; width:420px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
-    #regenOverlay .bar { height:8px; background:#eee; border-radius:4px; overflow:hidden; }
-    #regenOverlay .bar > div { height:8px; width:0%; background:#0d6efd; transition: width 0.2s; }
+    .topbar { padding:10px 12px; border-bottom:1px solid #eee; display:flex; gap:12px; align-items:center; position:sticky; top:0; background:#fff; z-index:5 }
+    .btn { appearance:none; border:1px solid #cfd4dc; background:#f7f9fc; color:#14213d; padding:8px 12px; border-radius:8px; cursor:pointer; font: 13px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    .btn:hover { background:#eef3fb; }
+    .btn:disabled { opacity:0.6; cursor:not-allowed; }
+    .btn.primary { border-color:#0d6efd; background:#0d6efd; color:#fff; }
+    .btn.primary:hover { background:#0b5ed7; }
+    .chk { display:flex;align-items:center;gap:6px;font-size:12px;color:#333 }
+    .muted { font-size:12px;color:#666 }
+    #regenOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display:none; align-items:center; justify-content:center; z-index: 9999; }
+    #regenOverlay .panel { background:#fff; padding:18px; border-radius:12px; width:440px; box-shadow: 0 16px 48px rgba(0,0,0,0.25); }
+    #regenOverlay .bar { height:10px; background:#f0f3f7; border-radius:6px; overflow:hidden; margin-top:8px }
+    #regenOverlay .bar > div { height:10px; width:0%; background:linear-gradient(90deg, #0d6efd, #8bb9ff); transition: width 0.25s; border-radius:6px }
+    #regenOverlay .spinner { width:16px; height:16px; border:2px solid #cfe0ff; border-top-color:#0d6efd; border-radius:50%; display:inline-block; animation: spin 1s linear infinite; margin-right:8px }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
   <div id="regenOverlay">
     <div class="panel">
-      <div id="regenText" style="margin-bottom:8px; font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial; color:#222">Preparing…</div>
+      <div id="regenText" style="margin-bottom:8px; font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial; color:#222"><span class="spinner"></span>Preparing…</div>
       <div class="bar"><div id="regenBar"></div></div>
     </div>
   </div>

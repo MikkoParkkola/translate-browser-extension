@@ -84,6 +84,25 @@ test.describe('PDF visual compare', () => {
     } catch (e) {
       const shot = await page.screenshot({ path: `playwright-report/identical-failure.png`, fullPage: true });
       await testInfo.attach('identical-screenshot', { body: shot, contentType: 'image/png' });
+      // Try to export overlay canvases
+      try {
+        const overlays = await page.evaluate(() => {
+          const arr = [];
+          document.querySelectorAll('#right div').forEach(div => {
+            const canvases = div.querySelectorAll('canvas');
+            if (canvases.length >= 2) {
+              const overlay = canvases[1];
+              arr.push(overlay.toDataURL('image/png'));
+            }
+          });
+          return arr;
+        });
+        for (let i=0;i<overlays.length;i++) {
+          const b64 = overlays[i].split(',')[1] || '';
+          const buf = Buffer.from(b64, 'base64');
+          await testInfo.attach(`identical-overlay-${i+1}.png`, { body: buf, contentType: 'image/png' });
+        }
+      } catch {}
       throw e;
     }
   });
@@ -100,6 +119,25 @@ test.describe('PDF visual compare', () => {
     } catch (e) {
       const shot = await page.screenshot({ path: `playwright-report/different-failure.png`, fullPage: true });
       await testInfo.attach('different-screenshot', { body: shot, contentType: 'image/png' });
+      // Try to export overlay canvases
+      try {
+        const overlays = await page.evaluate(() => {
+          const arr = [];
+          document.querySelectorAll('#right div').forEach(div => {
+            const canvases = div.querySelectorAll('canvas');
+            if (canvases.length >= 2) {
+              const overlay = canvases[1];
+              arr.push(overlay.toDataURL('image/png'));
+            }
+          });
+          return arr;
+        });
+        for (let i=0;i<overlays.length;i++) {
+          const b64 = overlays[i].split(',')[1] || '';
+          const buf = Buffer.from(b64, 'base64');
+          await testInfo.attach(`different-overlay-${i+1}.png`, { body: buf, contentType: 'image/png' });
+        }
+      } catch {}
       throw e;
     }
   });
