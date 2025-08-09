@@ -15,14 +15,17 @@ async function chooseEngine(base, requested) {
   const icuOk = (await check(base, 'icu4x_segmenter.wasm')) || (await check(base, 'icu4x_segmenter_wasm_bg.wasm'));
   const pdfiumOk = await check(base, 'pdfium.wasm');
   const mupdfOk = await check(base, 'mupdf.wasm');
+  const overlayOk = await check(base, 'pdf-lib.js');
 
   function pick() {
     if (wants === 'mupdf') return 'mupdf';
     if (wants === 'pdfium') return 'pdfium';
+    if (wants === 'overlay') return 'overlay';
     if (wants === 'simple') return 'simple';
-    // auto: prefer MuPDF if present; else PDFium; else Simple engine
+    // auto: prefer MuPDF if present; else PDFium; else Overlay; else Simple
     if (mupdfOk) return 'mupdf';
     if (pdfiumOk) return 'pdfium';
+    if (overlayOk) return 'overlay';
     return 'simple';
   }
   const choice = pick();

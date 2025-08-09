@@ -52,7 +52,25 @@ import { isWasmAvailable } from './wasm/engine.js';
   const MAX_PDF_BYTES = 32 * 1024 * 1024; // 32 MiB
   function assertAllowedScheme(urlStr) {
     let u;
-    try { u = new URL(urlStr); } catch { throw new Error('Invalid PDF URL'); }
+    try {
+    // Preflight: check selected engine assets
+    async function head(url){ try{ const r=await fetch(url,{method:'HEAD'}); return r.ok; }catch{return false;} }
+    const vendorBase = chrome.runtime.getURL('wasm/vendor/');
+    const engine = (await new Promise(r=>chrome.storage.sync.get({wasmEngine: cfg.wasmEngine||'auto'}, r))).wasmEngine || "auto";
+    let missing = [];
+    if (engine==='overlay') {
+      const ok = await head(vendorBase+'pdf-lib.js'); if(!ok) missing.push('pdf-lib.js');
+    } else if (engine==='mupdf') {
+      const ok1 = await head(vendorBase+'mupdf.wasm'); const ok2 = await head(vendorBase+'mupdf.js'); if(!(ok1&&ok2)) missing.push('mupdf.wasm/js');
+    } else if (engine==='pdfium') {
+      const ok1 = await head(vendorBase+'pdfium.wasm'); const ok2 = await head(vendorBase+'pdfium.js'); if(!(ok1&&ok2)) missing.push('pdfium.wasm/js');
+    }
+    const es = document.getElementById('engineStatus');
+    if (es) {
+      if (missing.length) { es.textContent = `Engine: missing ${missing.join(', ')}`; es.style.color = '#d32f2f'; }
+      else { es.textContent = `Engine: Ready (${engine})`; es.style.color = '#2e7d32'; }
+    }
+ u = new URL(urlStr); } catch { throw new Error('Invalid PDF URL'); }
     const ok = u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'file:' || u.protocol === 'blob:';
     if (!ok) throw new Error('Blocked PDF URL scheme');
     return u;
