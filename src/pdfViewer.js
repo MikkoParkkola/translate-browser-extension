@@ -52,25 +52,7 @@ import { isWasmAvailable } from './wasm/engine.js';
   const MAX_PDF_BYTES = 32 * 1024 * 1024; // 32 MiB
   function assertAllowedScheme(urlStr) {
     let u;
-    try {
-    // Preflight: check selected engine assets
-    async function head(url){ try{ const r=await fetch(url,{method:'HEAD'}); return r.ok; }catch{return false;} }
-    const vendorBase = chrome.runtime.getURL('wasm/vendor/');
-    const engine = (await new Promise(r=>chrome.storage.sync.get({wasmEngine: cfg.wasmEngine||'auto'}, r))).wasmEngine || "auto";
-    let missing = [];
-    if (engine==='overlay') {
-      const ok = await head(vendorBase+'pdf-lib.js'); if(!ok) missing.push('pdf-lib.js');
-    } else if (engine==='mupdf') {
-      const ok1 = await head(vendorBase+'mupdf.wasm'); const ok2 = await head(vendorBase+'mupdf.js'); if(!(ok1&&ok2)) missing.push('mupdf.wasm/js');
-    } else if (engine==='pdfium') {
-      const ok1 = await head(vendorBase+'pdfium.wasm'); const ok2 = await head(vendorBase+'pdfium.js'); if(!(ok1&&ok2)) missing.push('pdfium.wasm/js');
-    }
-    const es = document.getElementById('engineStatus');
-    if (es) {
-      if (missing.length) { es.textContent = `Engine: missing ${missing.join(', ')}`; es.style.color = '#d32f2f'; }
-      else { es.textContent = `Engine: Ready (${engine})`; es.style.color = '#2e7d32'; }
-    }
- u = new URL(urlStr); } catch { throw new Error('Invalid PDF URL'); }
+    try { u = new URL(urlStr); } catch { throw new Error('Invalid PDF URL'); }
     const ok = u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'file:' || u.protocol === 'blob:';
     if (!ok) throw new Error('Blocked PDF URL scheme');
     return u;
@@ -86,6 +68,20 @@ import { isWasmAvailable } from './wasm/engine.js';
   console.log('DEBUG: PDF.js worker source set.');
 
   const cfg = await window.qwenLoadConfig();
+(async () => {
+    try {
+      const vendorBase = chrome.runtime.getURL('wasm/vendor/');
+      const s = await new Promise(r=>chrome.storage.sync.get({ wasmEngine: cfg.wasmEngine || 'auto' }, r));
+      const engine = s.wasmEngine || 'auto';
+      async function head(u){ try{ const r=await fetch(u,{method:'HEAD'}); return r.ok; }catch{return false;} }
+      let missing=[];
+      if (engine==='overlay') { if(!await head(vendorBase+'pdf-lib.js')) missing.push('pdf-lib.js'); }
+      else if (engine==='mupdf') { const ok1=await head(vendorBase+'mupdf-wasm.wasm'); const ok2=await head(vendorBase+'mupdf.js'); const ok3=await head(vendorBase+'mupdf-wasm.js'); if(!(ok1&&ok2&&ok3)) missing.push('mupdf wasm/js'); }
+      else if (engine==='pdfium') { const ok1=await head(vendorBase+'pdfium.wasm'); const ok2=await head(vendorBase+'pdfium.js'); if(!(ok1&&ok2)) missing.push('pdfium wasm/js'); }
+      const es = document.getElementById('engineStatus');
+      if (es) { if (missing.length){ es.textContent = 'Engine: missing '+missing.join(', '); es.style.color = '#d32f2f'; } else { es.textContent = 'Engine: Ready ('+engine+')'; es.style.color = '#2e7d32'; } }
+    } catch {}
+  })();
   // Show engine readiness status
   (async () => {
     const statEl = document.getElementById('engineStatus');
@@ -163,6 +159,8 @@ import { isWasmAvailable } from './wasm/engine.js';
       const useWasmFlag = document.getElementById('useWasmFlag');
       const autoOpenFlag = document.getElementById('autoOpenFlag');
       let engineSelect = document.getElementById('engineSelect');
+      const strictWasmFlag = document.getElementById('strictWasmFlag');
+      const inspectBtn = document.getElementById('inspectBtn');
       if (useWasmFlag && autoOpenFlag && !useWasmFlag.dataset.bound) {
         useWasmFlag.dataset.bound = '1';
         // Initialize from storage/config
@@ -189,6 +187,18 @@ import { isWasmAvailable } from './wasm/engine.js';
         engineSelect.addEventListener('change', () => {
           chrome.storage.sync.set({ wasmEngine: engineSelect.value });
         });
+        if (inspectBtn && !inspectBtn.dataset.bound) {
+          inspectBtn.dataset.bound = '1';
+          inspectBtn.addEventListener('click', async () => {
+            try {
+              let eng = engineSelect ? engineSelect.value : 'auto';
+              const base = chrome.runtime.getURL('wasm/vendor/');
+              let modPath = eng === 'pdfium' ? 'pdfium.js' : (eng === 'mupdf' ? 'mupdf.js' : (eng === 'overlay' ? 'overlay.engine.js' : (eng === 'simple' ? 'simple.engine.js' : 'mupdf.engine.js')));
+              const mod = await import(base + modPath);
+              console.log('Engine module', modPath, 'keys:', Object.keys(mod));
+            } catch (e) { console.error('Inspect Engine failed', e); }
+          });
+        }
         if (strictWasmFlag) {
           strictWasmFlag.addEventListener('change', () => {
             chrome.storage.sync.set({ wasmStrict: strictWasmFlag.checked });
