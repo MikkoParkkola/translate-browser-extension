@@ -17,8 +17,10 @@ test('translate success', async () => {
 });
 
 test('translate error', async () => {
+  const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
   fetch.mockResponseOnce(JSON.stringify({message:'bad'}), {status:400});
   await expect(translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'x', source:'es', target:'en'})).rejects.toThrow('bad');
+  spy.mockRestore();
 });
 
 test('translate caching', async () => {
