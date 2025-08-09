@@ -73,7 +73,7 @@ import { isWasmAvailable } from './wasm/engine.js';
     const statEl = document.getElementById('engineStatus');
     if (!statEl) return;
     try {
-      const ready = await isWasmAvailable();
+      const ready = await isWasmAvailable(cfg);
       if (ready) {
         statEl.textContent = 'Engine: Ready';
         statEl.style.color = '#2e7d32';
@@ -144,18 +144,31 @@ import { isWasmAvailable } from './wasm/engine.js';
       const regenBtn = document.getElementById('regenBtn');
       const useWasmFlag = document.getElementById('useWasmFlag');
       const autoOpenFlag = document.getElementById('autoOpenFlag');
+      let engineSelect = document.getElementById('engineSelect');
       if (useWasmFlag && autoOpenFlag && !useWasmFlag.dataset.bound) {
         useWasmFlag.dataset.bound = '1';
         // Initialize from storage/config
-        chrome.storage.sync.get({ useWasmEngine: cfg.useWasmEngine, autoOpenAfterSave: cfg.autoOpenAfterSave }, s => {
+        chrome.storage.sync.get({ useWasmEngine: cfg.useWasmEngine, autoOpenAfterSave: cfg.autoOpenAfterSave, wasmEngine: cfg.wasmEngine || 'auto' }, s => {
           useWasmFlag.checked = !!s.useWasmEngine;
           autoOpenFlag.checked = !!s.autoOpenAfterSave;
+          if (engineSelect) engineSelect.value = s.wasmEngine || 'auto';
         });
         useWasmFlag.addEventListener('change', () => {
           chrome.storage.sync.set({ useWasmEngine: useWasmFlag.checked });
         });
         autoOpenFlag.addEventListener('change', () => {
           chrome.storage.sync.set({ autoOpenAfterSave: autoOpenFlag.checked });
+        });
+        if (!engineSelect) {
+          // Create engine selector
+          const bar = document.querySelector('.topbar');
+          engineSelect = document.createElement('select');
+          engineSelect.id = 'engineSelect'; engineSelect.className = 'btn';
+          engineSelect.innerHTML = '<option value="auto">Engine: Auto</option><option value="mupdf">Engine: MuPDF</option><option value="pdfium">Engine: PDFium</option>';
+          bar?.insertBefore(engineSelect, document.getElementById('regenStatus'));
+        }
+        engineSelect.addEventListener('change', () => {
+          chrome.storage.sync.set({ wasmEngine: engineSelect.value });
         });
       }
       if (regenBtn && !regenBtn.dataset.bound) {
@@ -169,7 +182,7 @@ import { isWasmAvailable } from './wasm/engine.js';
             regenBtn.disabled = true;
             let cfgNow = await window.qwenLoadConfig();
             // Merge with runtime flags
-            const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave'], r));
+            const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine'], r));
             cfgNow = { ...cfgNow, ...flags };
             if (!cfgNow.apiKey) { alert('Configure API key first.'); return; }
             if (overlay) overlay.style.display = 'flex'; setProgress('Preparing…', 2);
