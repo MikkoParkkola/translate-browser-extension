@@ -91,3 +91,10 @@ jobs:
         run: |
           test -f src/wasm/vendor/icu4x_segmenter_wasm_bg.wasm
           test -f src/wasm/vendor/icu4x_segmenter_wasm.js
+      - name: Smoke check other vendor assets
+        run: |
+          echo "Listing vendor dir:" && ls -la src/wasm/vendor
+          test -f src/wasm/vendor/hb.wasm
+          test -f src/wasm/vendor/hb.js
+          test -f src/wasm/vendor/pdfium.wasm
+          test -f src/wasm/vendor/pdfium.js

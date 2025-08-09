@@ -49,6 +49,14 @@ import { isWasmAvailable } from './wasm/engine.js';
   }
   const params = new URL(location.href).searchParams;
   const file = params.get('file');
+  const MAX_PDF_BYTES = 32 * 1024 * 1024; // 32 MiB
+  function assertAllowedScheme(urlStr) {
+    let u;
+    try { u = new URL(urlStr); } catch { throw new Error('Invalid PDF URL'); }
+    const ok = u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'file:' || u.protocol === 'blob:';
+    if (!ok) throw new Error('Blocked PDF URL scheme');
+    return u;
+  }
   const viewer = document.getElementById('viewer');
   if (!file) {
     viewer.textContent = 'No PDF specified';
@@ -87,12 +95,24 @@ import { isWasmAvailable } from './wasm/engine.js';
 
   try {
     console.log(`DEBUG: Attempting to fetch PDF from: ${file}`);
+    const u = assertAllowedScheme(file);
+    // Best-effort HEAD
+    if (u.protocol === 'http:' || u.protocol === 'https:') {
+      try {
+        const head = await fetch(file, { method: 'HEAD' });
+        const len = Number(head.headers.get('content-length') || '0');
+        if (Number.isFinite(len) && len > 0 && len > MAX_PDF_BYTES) throw new Error('PDF too large');
+        const ctype = (head.headers.get('content-type') || '').toLowerCase();
+        if (ctype && !ctype.includes('pdf') && !u.pathname.toLowerCase().endsWith('.pdf')) throw new Error('Not a PDF content-type');
+      } catch (e) { console.warn('HEAD check failed or returned unexpected headers', e?.message || e); }
+    }
     const resp = await fetch(file);
     if (!resp.ok) {
       throw new Error(`unexpected status ${resp.status}`);
     }
     console.log('DEBUG: PDF fetched successfully.');
     const buffer = await resp.arrayBuffer();
+    if (buffer.byteLength > MAX_PDF_BYTES) throw new Error('PDF too large');
     const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
     console.log('DEBUG: PDF loading task created.');
     const pdf = await loadingTask.promise;
