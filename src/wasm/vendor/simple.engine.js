@@ -167,7 +167,7 @@ export async function init({ baseURL }) {
     const translatedBlocks = await translateChunks(pagesText);
 
     // Wrap translated text into lines per page
-    const wrappedPages = pagesText.map((p, idx) => {
+    const wrappedPages = pagesText.map((p, idx) => ({
       const block = (translatedBlocks[idx] || '').trim();
       const words = block.split(/\s+/);
       const maxChars = 90; // rough wrap target
@@ -178,10 +178,10 @@ export async function init({ baseURL }) {
         else { cur = (cur ? cur + ' ' : '') + w; }
       }
       if (cur) lines.push(cur);
-      return { width: p.width, height: p.height, lines };
-    });
+      return { width: p.width, height: p.height, text: (translated[idx]||'').trim() };
+    }));
 
-    const blob = buildSimplePdf(wrappedPages, onProgress);
+    const blob = await buildSimplePdf(wrappedPages, onProgress);
     return blob;
   }
   return { rewrite };

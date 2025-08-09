@@ -34,11 +34,12 @@ export async function init({ baseURL }) {
 
     // Use pdf-lib if present; otherwise fall back to Simple engine
     let pdfLib;
-    try { pdfLib = window.pdfLib || (await import(baseURL + 'pdf-lib.js')); } catch {}
+    try { pdfLib = window.PDFLib || (await import(baseURL + 'pdf-lib.js')).PDFLib || (await import(baseURL + 'pdf-lib.js')); } catch {}
     if (!pdfLib || !(pdfLib.PDFDocument)) {
       throw new Error('pdf-lib not available for Overlay engine');
     }
-    const { PDFDocument, StandardFonts, rgb } = pdfLib;
+    const lib = pdfLib.PDFDocument ? pdfLib : (pdfLib.default ? pdfLib.default : pdfLib);
+    const { PDFDocument, StandardFonts, rgb } = lib;
     const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.Helvetica);
     for (let i=0;i<pageData.length;i++) {
