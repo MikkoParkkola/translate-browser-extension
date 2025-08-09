@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: Build MuPDF (WASM) with Emscripten (placeholder)
         uses: addnab/docker-run-action@v3
@@ -21,18 +23,30 @@ jobs:
           image: emscripten/emsdk:latest
           options: -v ${{ github.workspace }}:/work -w /work
           run: |
-            echo "TODO: Clone MuPDF and build wasm target here"
-            echo "See BUILDING_WASM.md for instructions"
+            set -euo pipefail
+            echo "Cloning MuPDF…"
+            git clone --depth=1 https://github.com/ArtifexSoftware/mupdf.git mupdf-src
+            cd mupdf-src
+            echo "Building MuPDF WASM (this is a placeholder, adjust target as needed)…"
+            # Placeholder: upstream build steps vary by version; uncomment and adapt lines below per upstream docs.
+            # make generate
+            # make wasm
+            cd ..
+            mkdir -p src/wasm/vendor
+            # TODO: copy actual wasm/js outputs once built; placeholder creates empty files to unblock CI structure.
+            touch src/wasm/vendor/mupdf.wasm
+            echo "export async function init(){ return { rewrite: async()=>{ throw new Error('MuPDF rewrite not implemented yet'); } } }" > src/wasm/vendor/mupdf.js
 
-      - name: Install Rust and wasm-pack
-        uses: actions-rs/toolchain@v1
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          target: wasm32-unknown-unknown
-          override: true
+          targets: wasm32-unknown-unknown
       - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.3.0
+      - name: Set cargo env
         run: |
-          curl -sSfL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
+          echo "RUSTFLAGS=-C debuginfo=0" >> $GITHUB_ENV
 
       - name: Build ICU4X segmenter (wasm-pack)
         run: |
@@ -47,9 +61,27 @@ jobs:
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
           git add src/wasm/vendor/icu4x_segmenter.wasm src/wasm/vendor/icu4x_segmenter.js
           git commit -m "ci: vendor ICU4X segmenter wasm/js" || echo "No changes"
           git push || true
+
+      - name: Commit placeholder MuPDF artifacts (to be replaced by real build)
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git add src/wasm/vendor/mupdf.wasm src/wasm/vendor/mupdf.js
+          git commit -m "ci: add placeholder MuPDF wasm/js (replace with real build)" || echo "No changes"
+          git push || true
+
+      - name: Upload segmenter artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: icu4x-segmenter-wasm
+          path: |
+            src/wasm/vendor/icu4x_segmenter.wasm
+            src/wasm/vendor/icu4x_segmenter.js
 
       - name: Report vendor dir
         run: |
