@@ -20,6 +20,8 @@
     <label class="chk"><input type="checkbox" id="autoOpenFlag" checked> Auto-open after save</label>
     <span id="regenStatus" class="muted"></span>
     <span id="engineStatus" class="muted" style="margin-left:auto">Engine: checking…</span>
+    <label class="chk" title="Only run real WASM engines when assets are present; no fallbacks."><input type="checkbox" id="strictWasmFlag"> Strict</label>
+    <button id="inspectBtn" class="btn" title="Log current engine module exports to console">Inspect Engine</button>
   </div>
   <div id="viewer"></div>
   <script src="pdf.min.js"></script>

@@ -89,20 +89,86 @@ export async function init({ baseURL }) {
       pagesText.push({ width, height, text });
     }
 
-    // Translate per-page text blocks
+    // Translate per-page text blocks with chunking to respect token limits
     const endpoint = cfg.apiEndpoint || cfg.endpoint;
     const model = cfg.model || cfg.modelName;
     const source = cfg.sourceLanguage || cfg.source;
     const target = cfg.targetLanguage || cfg.target;
 
-    const texts = pagesText.map(p => p.text);
     if (!window.qwenTranslateBatch) throw new Error('translator not available');
-    const tr = await window.qwenTranslateBatch({ texts, endpoint, apiKey: cfg.apiKey, model, source, target });
-    const translated = tr.texts || [];
+    const approx = (s) => {
+      try { if (window.qwenThrottle && typeof window.qwenThrottle.approxTokens === 'function') return window.qwenThrottle.approxTokens(s); } catch {}
+      return Math.ceil((s || '').length / 4);
+    };
+    function splitIntoChunks(text, maxTokens) {
+      const chunks = [];
+      const parts = (text || '').split(/(\.|!|\?|\n)/g);
+      let cur = '';
+      for (let i = 0; i < parts.length; i++) {
+        const seg = parts[i] || '';
+        const next = cur ? cur + seg : seg;
+        if (approx(next) > maxTokens && cur) { chunks.push(cur.trim()); cur = seg; }
+        else { cur = next; }
+      }
+      if (cur && cur.trim()) chunks.push(cur.trim());
+      // If still too large (very long segment), hard split
+      const out = [];
+      for (const c of chunks) {
+        if (approx(c) <= maxTokens) { out.push(c); continue; }
+        let start = 0;
+        while (start < c.length) {
+          const sliceLen = Math.max(128, Math.floor(maxTokens * 4));
+          out.push(c.slice(start, start + sliceLen));
+          start += sliceLen;
+        }
+      }
+      return out;
+    }
+    async function translateChunks(pages, budgetTokens = 1200) {
+      const mapping = []; // [{page, idx, text}]
+      pages.forEach((p, pageIndex) => {
+        const chunks = splitIntoChunks(p.text, Math.max(200, Math.floor(budgetTokens * 0.6)));
+        chunks.forEach((t, idx) => mapping.push({ page: pageIndex, idx, text: t }));
+      });
+      const results = new Array(mapping.length);
+      let i = 0;
+      while (i < mapping.length) {
+        let group = [];
+        let tokens = 0;
+        const maxPerRequest = budgetTokens;
+        while (i < mapping.length) {
+          const t = mapping[i].text;
+          const tk = approx(t);
+          if (group.length && tokens + tk > maxPerRequest) break;
+          group.push(mapping[i]); tokens += tk; i++;
+          if (group.length >= 40) break;
+        }
+        const texts = group.map(g => g.text);
+        try {
+          if (onProgress) onProgress({ phase: 'translate', page: Math.min(mapping[i-1]?.page + 1, pages.length), total: pages.length });
+          const tr = await window.qwenTranslateBatch({ texts, endpoint, apiKey: cfg.apiKey, model, source, target });
+          const outs = (tr && Array.isArray(tr.texts)) ? tr.texts : [];
+          for (let k = 0; k < group.length; k++) results[mapping.indexOf(group[k])] = outs[k] || group[k].text;
+        } catch (e) {
+          // On 400 or similar, reduce budget and retry smaller groups
+          if (e && /HTTP 400/i.test(e.message || '')) {
+            return translateChunks(pages, Math.max(400, Math.floor(budgetTokens * 0.6)));
+          } else {
+            throw e;
+          }
+        }
+      }
+      // Reassemble per page
+      const perPage = pages.map(() => []);
+      mapping.forEach((m, idx) => { perPage[m.page][m.idx] = results[idx]; });
+      return perPage.map(arr => (arr.filter(Boolean).join(' ')));
+    }
+
+    const translatedBlocks = await translateChunks(pagesText);
 
     // Wrap translated text into lines per page
     const wrappedPages = pagesText.map((p, idx) => {
-      const block = (translated[idx] || '').trim();
+      const block = (translatedBlocks[idx] || '').trim();
       const words = block.split(/\s+/);
       const maxChars = 90; // rough wrap target
       const lines = [];
@@ -120,4 +186,3 @@ export async function init({ baseURL }) {
   }
   return { rewrite };
 }
-

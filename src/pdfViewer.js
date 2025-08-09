@@ -148,9 +148,10 @@ import { isWasmAvailable } from './wasm/engine.js';
       if (useWasmFlag && autoOpenFlag && !useWasmFlag.dataset.bound) {
         useWasmFlag.dataset.bound = '1';
         // Initialize from storage/config
-        chrome.storage.sync.get({ useWasmEngine: cfg.useWasmEngine, autoOpenAfterSave: cfg.autoOpenAfterSave, wasmEngine: cfg.wasmEngine || 'auto' }, s => {
+        chrome.storage.sync.get({ useWasmEngine: cfg.useWasmEngine, autoOpenAfterSave: cfg.autoOpenAfterSave, wasmEngine: cfg.wasmEngine || 'auto', wasmStrict: !!cfg.wasmStrict }, s => {
           useWasmFlag.checked = !!s.useWasmEngine;
           autoOpenFlag.checked = !!s.autoOpenAfterSave;
+          if (strictWasmFlag) strictWasmFlag.checked = !!s.wasmStrict;
           if (engineSelect) engineSelect.value = s.wasmEngine || 'auto';
         });
         useWasmFlag.addEventListener('change', () => {
@@ -170,6 +171,11 @@ import { isWasmAvailable } from './wasm/engine.js';
         engineSelect.addEventListener('change', () => {
           chrome.storage.sync.set({ wasmEngine: engineSelect.value });
         });
+        if (strictWasmFlag) {
+          strictWasmFlag.addEventListener('change', () => {
+            chrome.storage.sync.set({ wasmStrict: strictWasmFlag.checked });
+          });
+        }
       }
       if (regenBtn && !regenBtn.dataset.bound) {
         regenBtn.dataset.bound = '1';
@@ -182,7 +188,7 @@ import { isWasmAvailable } from './wasm/engine.js';
             regenBtn.disabled = true;
             let cfgNow = await window.qwenLoadConfig();
             // Merge with runtime flags
-            const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine'], r));
+            const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine','wasmStrict'], r));
             cfgNow = { ...cfgNow, ...flags };
             if (!cfgNow.apiKey) { alert('Configure API key first.'); return; }
             if (overlay) overlay.style.display = 'flex'; setProgress('Preparing…', 2);
@@ -193,6 +199,19 @@ import { isWasmAvailable } from './wasm/engine.js';
               if (p.phase === 'translate') { pct = 20 + Math.round((p.page / p.total) * 40); setProgress(`Translating… (${p.page}/${p.total})`, pct); }
               if (p.phase === 'render') { pct = 60 + Math.round((p.page / p.total) * 40); setProgress(`Rendering pages… (${p.page}/${p.total})`, pct); }
             });
+      if (inspectBtn && !inspectBtn.dataset.bound) {
+        inspectBtn.dataset.bound = '1';
+        inspectBtn.addEventListener('click', async () => {
+          try {
+            let eng = engineSelect ? engineSelect.value : 'auto';
+            const base = chrome.runtime.getURL('wasm/vendor/');
+            let modPath = eng === 'pdfium' ? 'pdfium.js' : (eng === 'mupdf' ? 'mupdf.js' : (eng === 'simple' ? 'simple.engine.js' : 'mupdf.engine.js'));
+            const mod = await import(base + modPath);
+            console.log('Engine module', modPath, "keys:", Object.keys(mod));
+          } catch (e) { console.error('Inspect Engine failed', e); }
+        });
+      }
+
             const url = URL.createObjectURL(blob);
             // Trigger download via Chrome downloads API if available
             try {

@@ -36,8 +36,19 @@ async function loadEngine(cfg) {
     const requested = cfg && cfg.wasmEngine;
     const { choice, hbOk, icuOk, pdfiumOk, mupdfOk } = await chooseEngine(base, requested);
     if (!choice) { _lastChoice = 'auto'; }
+    // Strict mode: if requested engine assets missing, do not fallback
+    const strict = !!(cfg && cfg.wasmStrict);
+    if (strict) {
+      const need = requested || 'auto';
+      if (need === 'mupdf' && !mupdfOk) throw new Error('MuPDF assets missing in strict mode');
+      if (need === 'pdfium' && !pdfiumOk) throw new Error('PDFium assets missing in strict mode');
+    }
     _lastChoice = choice;
-    const wrapper = choice === 'pdfium' ? 'pdfium.engine.js' : (choice === 'mupdf' ? 'mupdf.engine.js' : 'simple.engine.js');
+    let wrapper = 'simple.engine.js';
+    if (choice === 'mupdf') wrapper = 'mupdf.engine.js';
+    else if (choice === 'pdfium') wrapper = 'pdfium.engine.js';
+    else if (choice === 'simple') wrapper = 'simple.engine.js';
+    else if (choice === 'overlay') wrapper = 'overlay.engine.js';
     let engineMod;
     try {
       engineMod = await import(/* @vite-ignore */ base + wrapper);
