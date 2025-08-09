@@ -38,9 +38,9 @@ jobs:
           wasm-pack build --release --target web
           cd ../..
           mkdir -p src/wasm/vendor
-          # Copy generated files using wildcards to avoid name drift
-          cp tools/icu4x-segmenter/pkg/*_bg.wasm src/wasm/vendor/icu4x_segmenter.wasm
-          cp tools/icu4x-segmenter/pkg/*.js src/wasm/vendor/icu4x_segmenter.js
+          # Copy generated files (deterministic names from wasm-pack)
+          cp tools/icu4x-segmenter/pkg/icu4x_segmenter_wasm_bg.wasm src/wasm/vendor/icu4x_segmenter.wasm
+          cp tools/icu4x-segmenter/pkg/icu4x_segmenter_wasm.js src/wasm/vendor/icu4x_segmenter.js
 
       - name: Commit vendorized ICU4X segmenter
         run: |
