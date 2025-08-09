@@ -1,9 +1,14 @@
 // PDFium engine wrapper scaffold. Replace with real integration.
 export async function init({ baseURL }) {
-  // TODO: load and initialize pdfium.wasm/js + helpers (hb, icu4x)
+  // PoC: return the original PDF as-is. Replace with real PDFium glue.
   async function rewrite(buffer, cfg, onProgress) {
-    throw new Error('PDFium rewrite engine not implemented yet. Provide pdfium wasm + glue.');
+    try {
+      if (onProgress) onProgress({ phase: 'rewrite', page: 1, total: 1 });
+      const blob = new Blob([buffer], { type: 'application/pdf' });
+      return blob;
+    } catch (e) {
+      throw new Error('PDFium PoC rewrite failed: ' + e.message);
+    }
   }
   return { rewrite };
 }
-

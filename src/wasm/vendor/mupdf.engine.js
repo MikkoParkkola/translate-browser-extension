@@ -1,9 +1,14 @@
 // MuPDF engine wrapper scaffold. Replace with real integration.
 export async function init({ baseURL }) {
-  // TODO: load and initialize mupdf.wasm/js + helpers (hb, icu4x)
+  // PoC: return the original PDF as-is. Replace with real MuPDF glue.
   async function rewrite(buffer, cfg, onProgress) {
-    throw new Error('MuPDF rewrite engine not implemented yet. Provide mupdf wasm + glue.');
+    try {
+      if (onProgress) onProgress({ phase: 'rewrite', page: 1, total: 1 });
+      const blob = new Blob([buffer], { type: 'application/pdf' });
+      return blob;
+    } catch (e) {
+      throw new Error('MuPDF PoC rewrite failed: ' + e.message);
+    }
   }
   return { rewrite };
 }
-

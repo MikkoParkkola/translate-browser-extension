@@ -12,20 +12,18 @@ async function check(base, path) {
 async function chooseEngine(base, requested) {
   const wants = (requested || 'auto').toLowerCase();
   const hbOk = await check(base, 'hb.wasm');
-  const icuOk = await Promise.any([
-    check(base, 'icu4x_segmenter.wasm'),
-    check(base, 'icu4x_segmenter_wasm_bg.wasm')
-  ]).catch(()=>false);
+  const icuOk = (await check(base, 'icu4x_segmenter.wasm')) || (await check(base, 'icu4x_segmenter_wasm_bg.wasm'));
   const pdfiumOk = await check(base, 'pdfium.wasm');
   const mupdfOk = await check(base, 'mupdf.wasm');
 
   function pick() {
-    if (wants === 'mupdf') return mupdfOk && hbOk && icuOk ? 'mupdf' : null;
-    if (wants === 'pdfium') return pdfiumOk && hbOk && icuOk ? 'pdfium' : null;
-    // auto: prefer MuPDF if present else PDFium
-    if (mupdfOk && hbOk && icuOk) return 'mupdf';
-    if (pdfiumOk && hbOk && icuOk) return 'pdfium';
-    return null;
+    // For PoC, allow selection even if assets missing (wrapper will act as no-op)
+    if (wants === 'mupdf') return 'mupdf';
+    if (wants === 'pdfium') return 'pdfium';
+    // auto: prefer MuPDF if present; else PDFium; else default to MuPDF as no-op
+    if (mupdfOk) return 'mupdf';
+    if (pdfiumOk) return 'pdfium';
+    return 'mupdf';
   }
   const choice = pick();
   return { choice, hbOk, icuOk, pdfiumOk, mupdfOk };
@@ -37,13 +35,9 @@ async function loadEngine(cfg) {
     const base = new URL('./vendor/', import.meta.url).href;
     const requested = cfg && cfg.wasmEngine;
     const { choice, hbOk, icuOk, pdfiumOk, mupdfOk } = await chooseEngine(base, requested);
-    if (!choice) {
-      available = false;
-      _impl = { async rewritePdf() { throw new Error('WASM engine not available. Missing vendor assets.'); } };
-      return _impl;
-    }
+    if (!choice) { _lastChoice = 'auto'; }
     _lastChoice = choice;
-    const wrapper = choice === 'mupdf' ? 'mupdf.engine.js' : 'pdfium.engine.js';
+    const wrapper = choice === 'pdfium' ? 'pdfium.engine.js' : 'mupdf.engine.js';
     let engineMod;
     try {
       engineMod = await import(/* @vite-ignore */ base + wrapper);
