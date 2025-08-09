@@ -17,13 +17,13 @@ async function chooseEngine(base, requested) {
   const mupdfOk = await check(base, 'mupdf.wasm');
 
   function pick() {
-    // For PoC, allow selection even if assets missing (wrapper will act as no-op)
     if (wants === 'mupdf') return 'mupdf';
     if (wants === 'pdfium') return 'pdfium';
-    // auto: prefer MuPDF if present; else PDFium; else default to MuPDF as no-op
+    if (wants === 'simple') return 'simple';
+    // auto: prefer MuPDF if present; else PDFium; else Simple engine
     if (mupdfOk) return 'mupdf';
     if (pdfiumOk) return 'pdfium';
-    return 'mupdf';
+    return 'simple';
   }
   const choice = pick();
   return { choice, hbOk, icuOk, pdfiumOk, mupdfOk };
@@ -37,7 +37,7 @@ async function loadEngine(cfg) {
     const { choice, hbOk, icuOk, pdfiumOk, mupdfOk } = await chooseEngine(base, requested);
     if (!choice) { _lastChoice = 'auto'; }
     _lastChoice = choice;
-    const wrapper = choice === 'pdfium' ? 'pdfium.engine.js' : 'mupdf.engine.js';
+    const wrapper = choice === 'pdfium' ? 'pdfium.engine.js' : (choice === 'mupdf' ? 'mupdf.engine.js' : 'simple.engine.js');
     let engineMod;
     try {
       engineMod = await import(/* @vite-ignore */ base + wrapper);
