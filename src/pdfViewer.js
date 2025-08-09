@@ -49,6 +49,7 @@ import { isWasmAvailable } from './wasm/engine.js';
   }
   const params = new URL(location.href).searchParams;
   const file = params.get('file');
+  const origFile = params.get('orig') || file;
   const MAX_PDF_BYTES = 32 * 1024 * 1024; // 32 MiB
   function assertAllowedScheme(urlStr) {
     let u;
@@ -60,10 +61,10 @@ import { isWasmAvailable } from './wasm/engine.js';
   const viewer = document.getElementById('viewer');
 
   const badge = document.getElementById('modeBadge');
+  const isTranslatedParam = params.get('translated') === '1';
   if (badge) {
-    const isTranslated = params.get('translated') === '1';
-    badge.textContent = isTranslated ? 'Translated Preview' : 'Original';
-    badge.style.color = isTranslated ? '#2e7d32' : '#666';
+    badge.textContent = isTranslatedParam ? 'Translated' : 'Original';
+    badge.style.color = isTranslatedParam ? '#2e7d32' : '#666';
   }
 
   if (!file) {
@@ -76,6 +77,144 @@ import { isWasmAvailable } from './wasm/engine.js';
   console.log('DEBUG: PDF.js worker source set.');
 
   const cfg = await window.qwenLoadConfig();
+
+  // Setup engine dropdown with available options and sensible default
+  (async () => {
+    try {
+      const vendorBase = chrome.runtime.getURL('wasm/vendor/');
+      async function head(u){ try{ const r=await fetch(u,{method:'HEAD'}); return r.ok; }catch{return false;} }
+      const avail = {
+        mupdf: await head(vendorBase+'mupdf.wasm') && await head(vendorBase+'mupdf.js') && await head(vendorBase+'mupdf-wasm.js'),
+        pdfium: await head(vendorBase+'pdfium.wasm') && await head(vendorBase+'pdfium.js'),
+        overlay: await head(vendorBase+'pdf-lib.js'),
+        simple: true,
+      };
+      const best = avail.mupdf ? 'mupdf' : (avail.pdfium ? 'pdfium' : (avail.overlay ? 'overlay' : 'simple'));
+      const sel = document.getElementById('engineSelect');
+      if (sel && !sel.dataset.inited) {
+        sel.dataset.inited = '1';
+        // Build options list
+        const opts = [];
+        opts.push({ v: 'auto', t: 'Engine: Auto' });
+        if (avail.mupdf) opts.push({ v: 'mupdf', t: 'Engine: MuPDF' });
+        if (avail.pdfium) opts.push({ v: 'pdfium', t: 'Engine: PDFium' });
+        if (avail.overlay) opts.push({ v: 'overlay', t: 'Engine: Overlay' });
+        opts.push({ v: 'simple', t: 'Engine: Simple' });
+        sel.innerHTML = opts.map(o => `<option value="${o.v}">${o.t}</option>`).join('');
+        // Load stored choice; if none, choose best available
+        chrome.storage.sync.get({ wasmEngine: cfg.wasmEngine || '' }, s => {
+          const choice = s.wasmEngine || best || 'auto';
+          sel.value = choice;
+        });
+        sel.addEventListener('change', () => {
+          chrome.storage.sync.set({ wasmEngine: sel.value });
+        });
+      }
+    } catch {}
+  })();
+
+  // Wire up view toggles and save menu
+  const btnOriginal = document.getElementById('btnOriginal');
+  const btnTranslated = document.getElementById('btnTranslated');
+  const btnTranslatedMenu = document.getElementById('btnTranslatedMenu');
+  const translatedMenu = document.getElementById('translatedMenu');
+  const actionSaveTranslated = document.getElementById('actionSaveTranslated');
+
+  function setModeUI(mode) {
+    if (btnOriginal) btnOriginal.dataset.active = mode === 'original' ? '1' : '0';
+    if (btnTranslated) btnTranslated.dataset.active = mode === 'translated' ? '1' : '0';
+    if (badge) { badge.textContent = mode === 'translated' ? 'Translated' : 'Original'; badge.style.color = mode === 'translated' ? '#2e7d32' : '#666'; }
+    if (translatedMenu) translatedMenu.style.display = mode === 'translated' ? translatedMenu.style.display : 'none';
+  }
+
+  async function generateTranslatedBlobUrl(originalUrl) {
+    const overlay = document.getElementById('regenOverlay');
+    const text = document.getElementById('regenText');
+    const bar = document.getElementById('regenBar');
+    const setProgress = (msg, p) => { if (text) text.textContent = msg; if (bar && typeof p === 'number') bar.style.width = `${Math.max(0,Math.min(100,p))}%`; };
+    let cfgNow = await window.qwenLoadConfig();
+    const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine','wasmStrict'], r));
+    cfgNow = { ...cfgNow, ...flags, useWasmEngine: true };
+    if (!cfgNow.apiKey) { alert('Configure API key first.'); throw new Error('API key missing'); }
+    if (overlay) overlay.style.display = 'flex'; setProgress('Preparing…', 2);
+    try {
+      const blob = await regeneratePdfFromUrl(originalUrl, cfgNow, (p)=>{
+        if (!p) return;
+        let pct = 0;
+        if (p.phase === 'collect') { pct = Math.round((p.page / p.total) * 20); setProgress(`Collecting text… (${p.page}/${p.total})`, pct); }
+        if (p.phase === 'translate') { pct = 20 + Math.round((p.page / p.total) * 40); setProgress(`Translating… (${p.page}/${p.total})`, pct); }
+        if (p.phase === 'render') { pct = 60 + Math.round((p.page / p.total) * 40); setProgress(`Rendering pages… (${p.page}/${p.total})`, pct); }
+      });
+      const url = URL.createObjectURL(blob);
+      return url;
+    } finally {
+      if (overlay) setTimeout(()=>{ overlay.style.display = 'none'; const b = document.getElementById('regenBar'); if (b) b.style.width = '0%'; }, 800);
+    }
+  }
+
+  function gotoOriginal(originalUrl) {
+    const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(originalUrl) + '&orig=' + encodeURIComponent(originalUrl);
+    window.location.href = viewerUrl;
+  }
+  function gotoTranslated(originalUrl, translatedBlobUrl) {
+    const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + `?translated=1&file=${encodeURIComponent(translatedBlobUrl)}&orig=${encodeURIComponent(originalUrl)}`;
+    window.location.href = viewerUrl;
+  }
+
+  if (btnOriginal && !btnOriginal.dataset.bound) {
+    btnOriginal.dataset.bound = '1';
+    btnOriginal.addEventListener('click', () => gotoOriginal(origFile));
+  }
+  if (btnTranslated && !btnTranslated.dataset.bound) {
+    btnTranslated.dataset.bound = '1';
+    btnTranslated.addEventListener('click', async () => {
+      try {
+        const blobUrl = isTranslatedParam ? file : await generateTranslatedBlobUrl(origFile);
+        gotoTranslated(origFile, blobUrl);
+      } catch (e) { console.error('Translate view failed', e); }
+    });
+  }
+  if (btnTranslatedMenu && !btnTranslatedMenu.dataset.bound) {
+    btnTranslatedMenu.dataset.bound = '1';
+    btnTranslatedMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!isTranslatedParam) return; // only usable in translated view
+      if (translatedMenu) translatedMenu.style.display = translatedMenu.style.display === 'block' ? 'none' : 'block';
+    });
+    // Hide menu on outside click
+    document.addEventListener('click', () => { if (translatedMenu) translatedMenu.style.display = 'none'; });
+  }
+  if (actionSaveTranslated && !actionSaveTranslated.dataset.bound) {
+    actionSaveTranslated.dataset.bound = '1';
+    actionSaveTranslated.addEventListener('click', async () => {
+      try {
+        let url = file;
+        if (!isTranslatedParam) {
+          url = await generateTranslatedBlobUrl(origFile);
+        }
+        if (chrome && chrome.downloads && chrome.downloads.download) {
+          const ts = new Date();
+          const fname = `translated-${ts.getFullYear()}${String(ts.getMonth()+1).padStart(2,'0')}${String(ts.getDate()).padStart(2,'0')}-${String(ts.getHours()).padStart(2,'0')}${String(ts.getMinutes()).padStart(2,'0')}${String(ts.getSeconds()).padStart(2,'0')}.pdf`;
+          chrome.downloads.download({ url, filename: fname, saveAs: false });
+        } else {
+          const a = document.createElement('a'); a.href = url; a.download = 'translated.pdf'; a.click();
+        }
+      } catch (e) { console.error('Save translated failed', e); }
+    });
+  }
+
+  // Default view based on autoTranslate
+  const initialMode = isTranslatedParam ? 'translated' : (cfg.autoTranslate ? 'translated' : 'original');
+  setModeUI(initialMode);
+  if (initialMode === 'translated' && !isTranslatedParam && origFile) {
+    try {
+      const blobUrl = await generateTranslatedBlobUrl(origFile);
+      gotoTranslated(origFile, blobUrl);
+      return; // stop rendering original while navigating
+    } catch (e) {
+      console.error('Auto-translate preview failed', e);
+    }
+  }
 (async () => {
     try {
       const vendorBase = chrome.runtime.getURL('wasm/vendor/');
@@ -162,163 +301,7 @@ import { isWasmAvailable } from './wasm/engine.js';
       canvas.style.height = `${viewport.height}px`;
       pageDiv.appendChild(canvas);
 
-      // Hook up the regenerate button to current file with progress overlay
-      const regenBtn = document.getElementById('regenBtn');
-      const previewBtn = document.getElementById('previewBtn');
-      const useWasmFlag = document.getElementById('useWasmFlag');
-      const autoOpenFlag = document.getElementById('autoOpenFlag');
-      let engineSelect = document.getElementById('engineSelect');
-      const strictWasmFlag = document.getElementById('strictWasmFlag');
-      const inspectBtn = document.getElementById('inspectBtn');
-      if (useWasmFlag && autoOpenFlag && !useWasmFlag.dataset.bound) {
-        useWasmFlag.dataset.bound = '1';
-        // Initialize from storage/config
-        chrome.storage.sync.get({ useWasmEngine: cfg.useWasmEngine, autoOpenAfterSave: cfg.autoOpenAfterSave, wasmEngine: cfg.wasmEngine || 'auto', wasmStrict: !!cfg.wasmStrict }, s => {
-          useWasmFlag.checked = !!s.useWasmEngine;
-          autoOpenFlag.checked = !!s.autoOpenAfterSave;
-          if (strictWasmFlag) strictWasmFlag.checked = !!s.wasmStrict;
-          if (engineSelect) engineSelect.value = s.wasmEngine || 'auto';
-        });
-        useWasmFlag.addEventListener('change', () => {
-          chrome.storage.sync.set({ useWasmEngine: useWasmFlag.checked });
-        });
-        autoOpenFlag.addEventListener('change', () => {
-          chrome.storage.sync.set({ autoOpenAfterSave: autoOpenFlag.checked });
-        });
-        if (!engineSelect) {
-          // Create engine selector
-          const bar = document.querySelector('.topbar');
-          engineSelect = document.createElement('select');
-          engineSelect.id = 'engineSelect'; engineSelect.className = 'btn';
-          engineSelect.innerHTML = '<option value="auto">Engine: Auto</option><option value="mupdf">Engine: MuPDF</option><option value="pdfium">Engine: PDFium</option><option value="overlay">Engine: Overlay</option><option value="simple">Engine: Simple</option>';
-          bar?.insertBefore(engineSelect, document.getElementById('regenStatus'));
-        }
-        engineSelect.addEventListener('change', () => {
-          chrome.storage.sync.set({ wasmEngine: engineSelect.value });
-        });
-        if (inspectBtn && !inspectBtn.dataset.bound) {
-          inspectBtn.dataset.bound = '1';
-          inspectBtn.addEventListener('click', async () => {
-            try {
-              let eng = engineSelect ? engineSelect.value : 'auto';
-              const base = chrome.runtime.getURL('wasm/vendor/');
-              let modPath = eng === 'pdfium' ? 'pdfium.js' : (eng === 'mupdf' ? 'mupdf.js' : (eng === 'overlay' ? 'overlay.engine.js' : (eng === 'simple' ? 'simple.engine.js' : 'mupdf.engine.js')));
-              const mod = await import(base + modPath);
-              console.log('Engine module', modPath, 'keys:', Object.keys(mod));
-            } catch (e) { console.error('Inspect Engine failed', e); }
-          });
-        }
-        if (strictWasmFlag) {
-          strictWasmFlag.addEventListener('change', () => {
-            chrome.storage.sync.set({ wasmStrict: strictWasmFlag.checked });
-          });
-        }
-      }
-      // Bind Preview button (out of regen click handler)
-      if (previewBtn && !previewBtn.dataset.bound) {
-        previewBtn.dataset.bound = '1';
-        previewBtn.addEventListener('click', async () => {
-          try {
-            let cfgNow = await window.qwenLoadConfig();
-            const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine','wasmStrict'], r));
-            cfgNow = { ...cfgNow, ...flags, useWasmEngine: true }; // force engine path for preview
-            const blob = await regeneratePdfFromUrl(file, cfgNow, null);
-            const url = URL.createObjectURL(blob);
-            const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + '?translated=1&file=' + encodeURIComponent(url);
-            window.location.href = viewerUrl;
-          } catch (e) {
-            console.error('Preview failed', e);
-            alert('Preview failed: ' + (e && e.message || e));
-          }
-        });
-      }
-
-      if (regenBtn && !regenBtn.dataset.bound) {
-        regenBtn.dataset.bound = '1';
-        regenBtn.addEventListener('click', async () => {
-          if (previewBtn && !previewBtn.dataset.bound) {
-            previewBtn.dataset.bound = '1';
-            previewBtn.addEventListener('click', async () => {
-              try {
-                let cfgNow = await window.qwenLoadConfig();
-                const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine','wasmStrict'], r));
-                cfgNow = { ...cfgNow, ...flags };
-                const blob = await regeneratePdfFromUrl(file, cfgNow, null);
-                const url = URL.createObjectURL(blob);
-                const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + '?translated=1&file=' + encodeURIComponent(url);
-                window.location.href = viewerUrl;
-              } catch(e) { console.error('Preview failed', e); }
-            });
-          }
-
-          const overlay = document.getElementById('regenOverlay');
-          const text = document.getElementById('regenText');
-          const bar = document.getElementById('regenBar');
-          const setProgress = (msg, p) => { if (text) text.textContent = msg; if (bar && typeof p === 'number') bar.style.width = `${Math.max(0,Math.min(100,p))}%`; };
-          try {
-            regenBtn.disabled = true;
-            let cfgNow = await window.qwenLoadConfig();
-            // Merge with runtime flags
-            const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine','wasmStrict'], r));
-            cfgNow = { ...cfgNow, ...flags };
-            if (!cfgNow.apiKey) { alert('Configure API key first.'); return; }
-            if (overlay) overlay.style.display = 'flex'; setProgress('Preparing…', 2);
-            const blob = await regeneratePdfFromUrl(file, cfgNow, (p)=>{
-              if (!p) return;
-              let pct = 0;
-              if (p.phase === 'collect') { pct = Math.round((p.page / p.total) * 20); setProgress(`Collecting text… (${p.page}/${p.total})`, pct); }
-              if (p.phase === 'translate') { pct = 20 + Math.round((p.page / p.total) * 40); setProgress(`Translating… (${p.page}/${p.total})`, pct); }
-              if (p.phase === 'render') { pct = 60 + Math.round((p.page / p.total) * 40); setProgress(`Rendering pages… (${p.page}/${p.total})`, pct); }
-            });
-      if (inspectBtn && !inspectBtn.dataset.bound) {
-        inspectBtn.dataset.bound = '1';
-        inspectBtn.addEventListener('click', async () => {
-          try {
-            let eng = engineSelect ? engineSelect.value : 'auto';
-            const base = chrome.runtime.getURL('wasm/vendor/');
-            let modPath = eng === 'pdfium' ? 'pdfium.js' : (eng === 'mupdf' ? 'mupdf.js' : (eng === 'simple' ? 'simple.engine.js' : 'mupdf.engine.js'));
-            const mod = await import(base + modPath);
-            console.log('Engine module', modPath, "keys:", Object.keys(mod));
-          } catch (e) { console.error('Inspect Engine failed', e); }
-        });
-      }
-
-            const url = URL.createObjectURL(blob);
-            // Trigger download via Chrome downloads API if available
-            try {
-              if (chrome && chrome.downloads && chrome.downloads.download) {
-                const ts = new Date();
-                const fname = `translated-${ts.getFullYear()}${String(ts.getMonth()+1).padStart(2,'0')}${String(ts.getDate()).padStart(2,'0')}-${String(ts.getHours()).padStart(2,'0')}${String(ts.getMinutes()).padStart(2,'0')}${String(ts.getSeconds()).padStart(2,'0')}.pdf`;
-                chrome.downloads.download({ url, filename: fname, saveAs: false });
-              } else {
-                const a = document.createElement('a'); a.href = url; a.download = 'translated.pdf'; a.click();
-              }
-            } catch {}
-            // Open the translated PDF in a new viewer tab automatically
-            try {
-              const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(url);
-              const autoOpen = cfgNow.autoOpenAfterSave !== false;
-              if (autoOpen) {
-                if (chrome && chrome.tabs && chrome.tabs.create) {
-                  chrome.tabs.create({ url: viewerUrl });
-                } else {
-                  window.open(viewerUrl, '_blank');
-                }
-              }
-            } catch {}
-            // Revoke later (after viewer loads)
-            setTimeout(()=>URL.revokeObjectURL(url), 30000);
-            if (text) setProgress('Done', 100);
-          } catch (e) {
-            console.error('Regeneration failed', e);
-            if (text) setProgress('Failed: ' + e.message, 100);
-          } finally {
-            regenBtn.disabled = false;
-            const overlay = document.getElementById('regenOverlay');
-            if (overlay) setTimeout(()=>{ overlay.style.display = 'none'; const b = document.getElementById('regenBar'); if (b) b.style.width = '0%'; }, 800);
-          }
-        });
-      }
+      // UI bindings handled above; no per-page hooks needed
       console.log(`DEBUG: Canvas created for page ${pageNum}.`);
 
       const renderContext = {
