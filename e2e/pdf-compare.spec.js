@@ -77,7 +77,8 @@ test.describe('PDF visual compare', () => {
   });
 
   async function openCompare(page, leftRel, rightRel, doDiff = true) {
-    const url = `${baseUrl}/src/qa/compare.html?src1=${encodeURIComponent(leftRel)}&src2=${encodeURIComponent(rightRel)}&diff=${doDiff?1:0}&autoload=1`;
+    const base = 'http://127.0.0.1:8080';
+    const url = `${base}/src/qa/compare.html?src1=${encodeURIComponent(leftRel)}&src2=${encodeURIComponent(rightRel)}&diff=${doDiff?1:0}&autoload=1`;
     await page.goto(url);
     // Wait for canvases to render by waiting until status isn’t "Loading…"
     await page.waitForFunction(() => {
@@ -93,7 +94,7 @@ test.describe('PDF visual compare', () => {
   }
 
   test('identical PDFs produce near-zero diff', async ({ page }, testInfo) => {
-    const pdf = '/gen/simple.pdf?text=Hello';
+    const pdf = '/translated.pdf';
     const { diffScore, diffPages, canvases } = await openCompare(page, pdf, pdf, true);
     try {
       expect(canvases).toBeGreaterThan(0);
@@ -126,8 +127,8 @@ test.describe('PDF visual compare', () => {
   });
 
   test('different PDFs produce noticeable diff', async ({ page }, testInfo) => {
-    const a = '/gen/simple.pdf?text=Hello';
-    const b = '/gen/simple.pdf?text=World';
+    const a = '/translated.pdf';
+    const b = '/translated_1.pdf';
     const { diffScore, diffPages, canvases } = await openCompare(page, a, b, true);
     try {
       expect(canvases).toBeGreaterThan(0);

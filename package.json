@@ -19,7 +19,8 @@
     "cross-fetch": "^4.1.0",
     "jest": "^30.0.5",
     "jest-environment-jsdom": "^30.0.5",
-    "jest-fetch-mock": "^3.0.3"
+    "jest-fetch-mock": "^3.0.3",
+    "http-server": "^14.1.1"
   },
   "dependencies": {
     "pdfjs-dist": "^3.10.111"
