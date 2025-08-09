@@ -52,13 +52,22 @@ jobs:
           git push || true
 
       - name: Commit placeholder MuPDF artifacts (to be replaced by real build)
+        shell: bash
         run: |
+          set -euo pipefail
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
-          git add src/wasm/vendor/mupdf.wasm src/wasm/vendor/mupdf.js
-          git commit -m "ci: add placeholder MuPDF wasm/js (replace with real build)" || echo "No changes"
-          git push || true
+          files=()
+          [[ -f src/wasm/vendor/mupdf.wasm ]] && files+=("src/wasm/vendor/mupdf.wasm")
+          [[ -f src/wasm/vendor/mupdf.js ]] && files+=("src/wasm/vendor/mupdf.js")
+          if [[ ${#files[@]} -gt 0 ]]; then
+            git add "${files[@]}"
+            git commit -m "ci: add/update MuPDF wasm/js placeholders (replace with real build)" || echo "No changes"
+            git push || true
+          else
+            echo "No MuPDF placeholder files present; skipping commit." >&2
+          fi
 
       - name: Upload segmenter artifacts
         uses: actions/upload-artifact@v4
