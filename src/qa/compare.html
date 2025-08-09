@@ -51,6 +51,8 @@
       const a = left.querySelectorAll('canvas');
       const b = right.querySelectorAll('canvas');
       const n = Math.min(a.length, b.length);
+      let total = 0;
+      let denom = 0;
       for (let i=0;i<n;i++) {
         const ca = a[i], cb = b[i];
         const w = Math.min(ca.width, cb.width), h = Math.min(ca.height, cb.height);
@@ -63,6 +65,8 @@
           const dbb= Math.abs(da.data[j+2]-db.data[j+2]);
           const d = Math.max(dr,dg,dbb);
           out.data[j] = 255; out.data[j+1]=0; out.data[j+2]=0; out.data[j+3] = Math.min(255, d*2);
+          total += d;
+          denom += 255;
         }
         const overlay = document.createElement('canvas');
         overlay.width=w; overlay.height=h;
@@ -72,6 +76,9 @@
         wrap.style.position='relative'; wrap.appendChild(cb.cloneNode()); wrap.appendChild(overlay);
         right.replaceChild(wrap, cb);
       }
+      const score = denom ? (total / denom) / n : 0;
+      window.diffScore = score; // 0..~1 lower is better
+      return score;
     }
 
     document.getElementById('loadBtn').onclick = async () => {
@@ -80,13 +87,31 @@
       try {
         status.textContent='Loading…';
         await Promise.all([renderDoc(u1,left), renderDoc(u2,right)]);
-        if (diffChk.checked) makeDiff();
-        status.textContent='';
+        if (diffChk.checked) {
+          const s = makeDiff();
+          status.textContent = `Diff score: ${Number((s*100).toFixed(3))}%`;
+        } else {
+          status.textContent='';
+        }
       } catch(e) {
         console.error(e); status.textContent='Failed: '+e.message;
       }
     };
+
+    // E2E support: allow query params to auto-load
+    (function initFromQuery(){
+      const qs = new URLSearchParams(location.search);
+      const s1 = qs.get('src1');
+      const s2 = qs.get('src2');
+      const autoload = qs.get('autoload');
+      const diff = qs.get('diff');
+      if (s1) document.getElementById('src1').value = s1;
+      if (s2) document.getElementById('src2').value = s2;
+      if (diff === '1' || diff === 'true') diffChk.checked = true;
+      if (autoload === '1' || autoload === 'true') {
+        document.getElementById('loadBtn').click();
+      }
+    })();
   </script>
 </body>
 </html>
-

@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "jest",
-    "build:safari": "bash scripts/convert-safari.sh"
+    "build:safari": "bash scripts/convert-safari.sh",
+    "test:e2e": "playwright test"
   },
   "keywords": [],
   "author": "",
@@ -13,6 +14,7 @@
   "type": "commonjs",
   "devDependencies": {
     "@types/jest": "^30.0.0",
+    "@playwright/test": "^1.45.2",
     "cross-fetch": "^4.1.0",
     "jest": "^30.0.5",
     "jest-environment-jsdom": "^30.0.5",
