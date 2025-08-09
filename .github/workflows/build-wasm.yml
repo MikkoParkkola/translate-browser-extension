@@ -38,7 +38,10 @@ jobs:
           wasm-pack build --release --target web
           cd ../..
           mkdir -p src/wasm/vendor
-          # Copy generated files (deterministic names from wasm-pack)
+          # Copy generated files: keep original wasm-pack names and provide compatibility copies
+          cp tools/icu4x-segmenter/pkg/icu4x_segmenter_wasm_bg.wasm src/wasm/vendor/icu4x_segmenter_wasm_bg.wasm
+          cp tools/icu4x-segmenter/pkg/icu4x_segmenter_wasm.js src/wasm/vendor/icu4x_segmenter_wasm.js
+          # Back-compat copies used by docs/status pages (safe duplicates)
           cp tools/icu4x-segmenter/pkg/icu4x_segmenter_wasm_bg.wasm src/wasm/vendor/icu4x_segmenter.wasm
           cp tools/icu4x-segmenter/pkg/icu4x_segmenter_wasm.js src/wasm/vendor/icu4x_segmenter.js
 
@@ -74,6 +77,8 @@ jobs:
         with:
           name: icu4x-segmenter-wasm
           path: |
+            src/wasm/vendor/icu4x_segmenter_wasm_bg.wasm
+            src/wasm/vendor/icu4x_segmenter_wasm.js
             src/wasm/vendor/icu4x_segmenter.wasm
             src/wasm/vendor/icu4x_segmenter.js
 
@@ -81,3 +86,8 @@ jobs:
         run: |
           ls -la src/wasm/vendor || true
           ls -la src/wasm/vendor/fonts || true
+
+      - name: Verify segmenter vendor files present
+        run: |
+          test -f src/wasm/vendor/icu4x_segmenter_wasm_bg.wasm
+          test -f src/wasm/vendor/icu4x_segmenter_wasm.js

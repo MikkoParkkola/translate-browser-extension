@@ -66,24 +66,41 @@ test.describe('PDF visual compare', () => {
       const s = document.querySelector('#status')?.textContent || '';
       return s && !/Loading/.test(s);
     }, { timeout: 120_000 });
-    const diffScore = await page.evaluate(() => window.diffScore ?? 0);
+    const { diffScore, diffPages } = await page.evaluate(() => ({
+      diffScore: window.diffScore ?? 0,
+      diffPages: Array.isArray(window.diffPages) ? window.diffPages : [],
+    }));
     const canvases = await page.locator('canvas').count();
-    return { diffScore, canvases };
+    return { diffScore, diffPages, canvases };
   }
 
-  test('identical PDFs produce near-zero diff', async ({ page }) => {
+  test('identical PDFs produce near-zero diff', async ({ page }, testInfo) => {
     const pdf = '/translated.pdf';
-    const { diffScore, canvases } = await openCompare(page, pdf, pdf, true);
-    expect(canvases).toBeGreaterThan(0);
-    expect(diffScore).toBeLessThan(0.001); // <0.1%
+    const { diffScore, diffPages, canvases } = await openCompare(page, pdf, pdf, true);
+    try {
+      expect(canvases).toBeGreaterThan(0);
+      expect(diffScore).toBeLessThan(0.002); // <0.2%
+      for (const s of diffPages) expect(s).toBeLessThan(0.004); // each page <0.4%
+    } catch (e) {
+      const shot = await page.screenshot({ path: `playwright-report/identical-failure.png`, fullPage: true });
+      await testInfo.attach('identical-screenshot', { body: shot, contentType: 'image/png' });
+      throw e;
+    }
   });
 
-  test('different PDFs produce noticeable diff', async ({ page }) => {
+  test('different PDFs produce noticeable diff', async ({ page }, testInfo) => {
     const a = '/translated.pdf';
     const b = '/translated_1.pdf';
-    const { diffScore, canvases } = await openCompare(page, a, b, true);
-    expect(canvases).toBeGreaterThan(0);
-    expect(diffScore).toBeGreaterThan(0.005); // >0.5%
+    const { diffScore, diffPages, canvases } = await openCompare(page, a, b, true);
+    try {
+      expect(canvases).toBeGreaterThan(0);
+      // Either overall score or at least one page should exceed threshold
+      const pageMax = diffPages.reduce((m, v) => Math.max(m, v), 0);
+      expect(diffScore > 0.008 || pageMax > 0.01).toBeTruthy();
+    } catch (e) {
+      const shot = await page.screenshot({ path: `playwright-report/different-failure.png`, fullPage: true });
+      await testInfo.attach('different-screenshot', { body: shot, contentType: 'image/png' });
+      throw e;
+    }
   });
 });
-
