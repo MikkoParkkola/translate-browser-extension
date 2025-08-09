@@ -1,0 +1,44 @@
+name: E2E PDF Compare
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/**'
+      - 'e2e/**'
+      - '.github/workflows/e2e.yml'
+      - 'package.json'
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm install --no-audit --no-fund
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      - name: Check repo for public PDFs at root (privacy)
+        run: |
+          set -euo pipefail
+          found=$(git ls-files '*.pdf' | grep -E '^[^/]+\.pdf$' || true)
+          if [ -n "$found" ]; then
+            echo "Found public PDFs at repository root (disallowed):" >&2
+            echo "$found" >&2
+            exit 1
+          fi
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+      # Privacy: do not upload screenshots or artifacts by default to avoid exposing PDFs/PII

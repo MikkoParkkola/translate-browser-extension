@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>PDF Coordinate System Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        canvas { border: 1px solid #ccc; margin: 10px; }
+        .test { margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>PDF Coordinate System Test</h1>
+    
+    <div class="test">
+        <h3>Test 1: Normal PDF Transform [12, 0, 0, 12, 100, 200]</h3>
+        <p>Should show: RIGHT-SIDE UP text</p>
+        <canvas id="test1" width="300" height="150"></canvas>
+    </div>
+    
+    <div class="test">
+        <h3>Test 2: Negative Y Transform [12, 0, 0, -12, 100, 100]</h3>
+        <p>Should show: RIGHT-SIDE UP text (corrected from upside down)</p>
+        <canvas id="test2" width="300" height="150"></canvas>
+    </div>
+    
+    <div class="test">
+        <h3>Test 3: Current Implementation Logic</h3>
+        <p>Transform matrix analysis:</p>
+        <div id="analysis"></div>
+    </div>
+
+    <script>
+        function testCoordinateSystem() {
+            // Test 1: Normal transform
+            const canvas1 = document.getElementById('test1');
+            const ctx1 = canvas1.getContext('2d');
+            
+            // Clear and setup
+            ctx1.fillStyle = '#f0f0f0';
+            ctx1.fillRect(0, 0, canvas1.width, canvas1.height);
+            
+            // Simulate PDF.js viewport transform (flips Y-axis)
+            const vpTransform = [1, 0, 0, -1, 0, canvas1.height];
+            ctx1.setTransform(...vpTransform);
+            
+            // Apply PDF text transform [12, 0, 0, 12, 100, 200]
+            const transform1 = [12, 0, 0, 12, 100, 50];
+            const fontSize1 = Math.hypot(transform1[0], transform1[1]);
+            
+            ctx1.save();
+            const textX1 = transform1[4];
+            const textY1 = transform1[5];
+            const scaleX1 = Math.sign(transform1[0]) * Math.hypot(transform1[0], transform1[1]);
+            const scaleY1 = -Math.sign(transform1[3]) * Math.hypot(transform1[2], transform1[3]);
+            
+            ctx1.translate(textX1, textY1);
+            ctx1.scale(scaleX1 / fontSize1, scaleY1 / fontSize1);
+            
+            // Draw background
+            ctx1.fillStyle = 'white';
+            ctx1.fillRect(-2, -fontSize1-2, 120, fontSize1+4);
+            
+            // Draw text
+            ctx1.font = fontSize1 + 'px Arial';
+            ctx1.fillStyle = 'black';
+            ctx1.textBaseline = 'alphabetic';
+            ctx1.fillText('TEST TEXT', 0, 0);
+            
+            ctx1.restore();
+            
+            // Test 2: Negative Y transform
+            const canvas2 = document.getElementById('test2');
+            const ctx2 = canvas2.getContext('2d');
+            
+            ctx2.fillStyle = '#f0f0f0';
+            ctx2.fillRect(0, 0, canvas2.width, canvas2.height);
+            
+            ctx2.setTransform(...vpTransform);
+            
+            // Apply negative Y transform [12, 0, 0, -12, 100, 100]
+            const transform2 = [12, 0, 0, -12, 100, 50];
+            const fontSize2 = Math.hypot(transform2[0], transform2[1]);
+            
+            ctx2.save();
+            const textX2 = transform2[4];
+            const textY2 = transform2[5];
+            const scaleX2 = Math.sign(transform2[0]) * Math.hypot(transform2[0], transform2[1]);
+            const scaleY2 = -Math.sign(transform2[3]) * Math.hypot(transform2[2], transform2[3]);
+            
+            ctx2.translate(textX2, textY2);
+            ctx2.scale(scaleX2 / fontSize2, scaleY2 / fontSize2);
+            
+            // Draw background
+            ctx2.fillStyle = 'white';
+            ctx2.fillRect(-2, -fontSize2-2, 120, fontSize2+4);
+            
+            // Draw text
+            ctx2.font = fontSize2 + 'px Arial';
+            ctx2.fillStyle = 'black';
+            ctx2.textBaseline = 'alphabetic';
+            ctx2.fillText('TEST TEXT', 0, 0);
+            
+            ctx2.restore();
+            
+            // Analysis
+            const analysis = document.getElementById('analysis');
+            analysis.innerHTML = `
+                <h4>Transform Analysis:</h4>
+                <p><strong>Test 1 [12, 0, 0, 12, ...]:</strong></p>
+                <ul>
+                    <li>scaleX = Math.sign(12) * Math.hypot(12, 0) = 1 * 12 = 12</li>
+                    <li>scaleY = -Math.sign(12) * Math.hypot(0, 12) = -1 * 12 = -12</li>
+                    <li>Result: Flips Y-axis to correct orientation</li>
+                </ul>
+                <p><strong>Test 2 [12, 0, 0, -12, ...]:</strong></p>
+                <ul>
+                    <li>scaleX = Math.sign(12) * Math.hypot(12, 0) = 1 * 12 = 12</li>
+                    <li>scaleY = -Math.sign(-12) * Math.hypot(0, -12) = -(-1) * 12 = 12</li>
+                    <li>Result: Corrects upside-down text to normal orientation</li>
+                </ul>
+                <p><strong>Expected:</strong> Both tests should show right-side up text</p>
+            `;
+        }
+        
+        window.onload = testCoordinateSystem;
+    </script>
+</body>
+</html>

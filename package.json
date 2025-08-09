@@ -5,20 +5,25 @@
   "main": "index.js",
   "scripts": {
     "test": "jest",
-    "build:safari": "bash scripts/convert-safari.sh"
+    "build:safari": "bash scripts/convert-safari.sh",
+    "test:e2e": "playwright test"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "AGPL-3.0-or-later",
   "type": "commonjs",
   "devDependencies": {
+    "@playwright/test": "^1.45.2",
     "@types/jest": "^30.0.0",
     "cross-fetch": "^4.1.0",
+    "http-server": "^14.1.1",
     "jest": "^30.0.5",
     "jest-environment-jsdom": "^30.0.5",
-    "jest-fetch-mock": "^3.0.3"
+    "jest-fetch-mock": "^3.0.3",
+    "pdf-lib": "^1.17.1"
   },
   "dependencies": {
+    "mupdf": "^1.26.4",
     "pdfjs-dist": "^3.10.111"
   }
 }

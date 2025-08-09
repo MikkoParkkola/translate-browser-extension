@@ -11,7 +11,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (url.startsWith(chrome.runtime.getURL('pdfViewer.html'))) return;
   try {
     const u = new URL(url);
-    if ((u.protocol === 'http:' || u.protocol === 'https:') && u.pathname.toLowerCase().endsWith('.pdf')) {
+    if ((u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'file:') && u.pathname.toLowerCase().endsWith('.pdf')) {
       const viewer = chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(url);
       chrome.tabs.update(tabId, { url: viewer });
     }

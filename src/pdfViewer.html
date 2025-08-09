@@ -8,16 +8,69 @@
     #viewer { position:relative; height:100%; overflow:auto; }
     .page { position:relative; margin:10px auto; }
     canvas { display:block; }
-    .textLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
-    .textLayer span { position:absolute; white-space:pre; transform-origin:0% 0%; }
+    .textLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:2; --scale-factor: 1; }
+    .textLayer span { position:absolute; white-space:pre; transform-origin:0% 0%; line-height:1; display:inline-block; color: transparent; background: transparent; text-shadow: none; }
+    .page { box-shadow: 0 0 0 1px rgba(0,0,0,0.1); }
+      .annotationLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:15; }
   </style>
 </head>
-<body>
+  <body>
+  <div class="topbar">
+    <div class="toggle-group">
+      <button id="btnOriginal" class="btn" data-active="0">Original</button>
+      <div class="btn-split">
+        <button id="btnTranslated" class="btn" data-active="0">Translated</button>
+        <button id="btnTranslatedMenu" class="btn caret" title="More">▼</button>
+        <div id="translatedMenu" class="dropdown">
+          <button id="actionSaveTranslated" class="menu-item">Save translated PDF</button>
+        </div>
+      </div>
+    </div>
+    <span class="sep"></span>
+    <select id="engineSelect" class="btn" title="Translation engine"></select>
+    <span id="engineStatus" class="muted">Engine: checking…</span>
+    <span id="modeBadge" class="muted" style="margin-left:auto"></span>
+  </div>
   <div id="viewer"></div>
   <script src="pdf.min.js"></script>
+  <script src="config.local.js"></script>
   <script src="config.js"></script>
   <script src="translator.js"></script>
   <script src="throttle.js"></script>
-  <script src="pdfViewer.js"></script>
-</body>
+  <script type="module" src="pdfViewer.js"></script>
+  <style>
+    .topbar { padding:10px 12px; border-bottom:1px solid #eee; display:flex; gap:12px; align-items:center; position:sticky; top:0; background:#fff; z-index:5 }
+    .btn { appearance:none; border:1px solid #cfd4dc; background:#f7f9fc; color:#14213d; padding:8px 12px; border-radius:8px; cursor:pointer; font: 13px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    .btn:hover { background:#eef3fb; }
+    .btn:disabled { opacity:0.6; cursor:not-allowed; }
+    .btn.primary { border-color:#0d6efd; background:#0d6efd; color:#fff; }
+    .btn.primary:hover { background:#0b5ed7; }
+    .toggle-group { display:flex; gap:0 }
+    .toggle-group .btn { border-radius:8px 0 0 8px; }
+    .toggle-group .btn + .btn { border-left:0 }
+    .btn-split { position:relative; display:flex }
+    .btn-split .btn { border-radius:0; }
+    .btn-split .btn.caret { width:34px; padding:8px 0; border-left:0; border-radius:0 8px 8px 0; }
+    .btn[data-active="1"], .btn.active { background:#0d6efd; color:#fff; border-color:#0d6efd; }
+    .dropdown { position:absolute; top:100%; left:0; background:#fff; border:1px solid #cfd4dc; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.15); display:none; min-width:220px; padding:6px; z-index:10 }
+    .menu-item { appearance:none; display:block; width:100%; text-align:left; border:0; background:transparent; padding:8px 10px; border-radius:6px; cursor:pointer; font:13px system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    .menu-item:hover { background:#f2f6ff; }
+    .sep { width:1px; height:24px; background:#e5e7eb; display:inline-block }
+    .chk { display:flex;align-items:center;gap:6px;font-size:12px;color:#333 }
+    .muted { font-size:12px;color:#666 }
+    #regenOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display:none; align-items:center; justify-content:center; z-index: 9999; }
+    #regenOverlay .panel { background:#fff; padding:18px; border-radius:12px; width:440px; box-shadow: 0 16px 48px rgba(0,0,0,0.25); }
+    #regenOverlay .bar { height:10px; background:#f0f3f7; border-radius:6px; overflow:hidden; margin-top:8px }
+    #regenOverlay .bar > div { height:10px; width:0%; background:linear-gradient(90deg, #0d6efd, #8bb9ff); transition: width 0.25s; border-radius:6px }
+    #regenOverlay .spinner { width:16px; height:16px; border:2px solid #cfe0ff; border-top-color:#0d6efd; border-radius:50%; display:inline-block; animation: spin 1s linear infinite; margin-right:8px }
+    @keyframes spin { to { transform: rotate(360deg); } }
+      .annotationLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:15; }
+  </style>
+  <div id="regenOverlay">
+    <div class="panel">
+      <div id="regenText" style="margin-bottom:8px; font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial; color:#222"><span class="spinner"></span>Preparing…</div>
+      <div class="bar"><div id="regenBar"></div></div>
+    </div>
+  </div>
+  </body>
 </html>

@@ -294,15 +294,22 @@ async function qwenTranslateBatch({ texts = [], ...opts }) {
   if (unique.length) {
     const joined = unique.join('\n');
     const res = await qwenTranslate({ ...opts, text: joined });
-    const translated = res.text.split('\n');
-    translated.forEach((tr, idx) => {
+    const translated = (res && typeof res.text === 'string') ? res.text.split('\n') : [];
+    const n = Math.min(unique.length, translated.length);
+    for (let idx = 0; idx < n; idx++) {
       const orig = unique[idx];
+      const tr = translated[idx] || '';
       const key = `${opts.source}:${opts.target}:${orig}`;
       cache.set(key, { text: tr });
-      indexMap.get(orig).forEach(i => {
-        results[i] = tr;
-      });
-    });
+      const arr = indexMap.get(orig);
+      if (arr && arr.forEach) arr.forEach(i => { results[i] = tr; });
+    }
+    // If fewer translations returned than inputs, fill remaining with originals
+    for (let idx = n; idx < unique.length; idx++) {
+      const orig = unique[idx];
+      const arr = indexMap.get(orig);
+      if (arr && arr.forEach) arr.forEach(i => { results[i] = orig; });
+    }
   }
   return { texts: results };
 }

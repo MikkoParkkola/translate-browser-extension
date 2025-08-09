@@ -78,6 +78,18 @@ npm install
 npm test
 ```
 
+Run the end-to-end PDF visual comparison tests (headless) with:
+```sh
+npm install
+npm run test:e2e
+```
+These tests launch a headless browser to open `src/qa/compare.html`, render two PDFs via `pdf.js`, and compute a visual diff score. The page also supports automation via query params: `?src1=/path/A.pdf&src2=/path/B.pdf&diff=1&autoload=1`, and exposes `window.diffScore` (0..1, lower is better).
+
+Privacy and test PDFs
+- Do not commit personal or private PDFs to the repository. Root-level `*.pdf` files are ignored by `.gitignore` and CI checks will fail if any are present.
+- E2E tests use synthetic PDFs generated at runtime (via `pdf-lib`) to avoid storing files.
+- For local testing with private PDFs, open the viewer (`src/pdfViewer.html`) using `file:` or temporary `blob:` URLs; do not upload such files to the repo or CI.
+
 ## Command Line Utility
 A simple translator CLI is included in `cli/translate.js`. It streams translations as you type by default. Use `--no-stream` for request/response mode.
 
@@ -88,4 +100,3 @@ node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--to
 If no endpoint is specified the tool defaults to `https://dashscope-intl.aliyuncs.com/api/v1`.
 Use `-d` to print detailed request and response logs.
 Press `Ctrl+C` or `Ctrl+D` to exit.
-

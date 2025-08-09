@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>PDF Translation Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        .config { background-color: #f0f0f0; }
+        iframe { width: 100%; height: 600px; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+    <h1>Qwen PDF Translation Test</h1>
+    
+    <div class="test-section config">
+        <h2>Configuration Test</h2>
+        <p>Please ensure your extension is configured with:</p>
+        <ul>
+            <li>API Key: sk-f734eca57cb64b6b8f4b7b7e14f02e6b</li>
+            <li>Source Language: Dutch (nl)</li>
+            <li>Target Language: English (en)</li>
+        </ul>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test PDF 1: CZ Insurance Document</h2>
+        <iframe src="http://localhost:8080/src/pdfViewer.html?file=../Bericht_646850130.pdf&_t=1722960000000"></iframe>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test PDF 2: Dutch Short Stories</h2>
+        <iframe src="http://localhost:8080/src/pdfViewer.html?file=../Dutch-Short-Stories-For-Beginners.pdf&_t=1722960000000"></iframe>
+    </div>
+    
+    <div class="test-section">
+        <h2>Expected Improvements</h2>
+        <ul>
+            <li><strong>Font Matching:</strong> Translated text should use similar fonts to original</li>
+            <li><strong>No Horizontal Condensing:</strong> Text should not be extremely compressed horizontally</li>
+            <li><strong>Text Wrapping:</strong> Long translations should wrap to multiple lines instead of condensing</li>
+            <li><strong>Complete Coverage:</strong> Original text should be completely hidden by white background</li>
+            <li><strong>Proper Spacing:</strong> Letter and word spacing should be preserved</li>
+            <li><strong>No Margin Cutoff:</strong> Text should not be cut off at page margins</li>
+        </ul>
+    </div>
+</body>
+</html>

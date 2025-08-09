@@ -1,0 +1,130 @@
+name: Build WASM Engine
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/build-wasm.yml'
+      - 'tools/icu4x-segmenter/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      # Build MuPDF via emscripten (AGPL). This may take several minutes.
+      - name: Set up Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v12
+        with:
+          version: latest
+      - name: Build MuPDF (wasm)
+        run: |
+          set -euo pipefail
+          WORKDIR=$(mktemp -d)
+          echo "Workdir: $WORKDIR"
+          pushd "$WORKDIR"
+          git clone --depth=1 https://github.com/ArtifexSoftware/mupdf.git
+          cd mupdf
+          emmake make generate
+          emmake make wasm -j2 || emmake make wasm
+          FOUND_WASM=$(ls -1 **/*.wasm 2>/dev/null | grep -E '/(build|platform)/' | head -n1 || true)
+          FOUND_JS=$(ls -1 **/*.js 2>/dev/null | grep -E 'mupdf.*\.js$' | head -n1 || true)
+          if [[ -z "$FOUND_WASM" || -z "$FOUND_JS" ]]; then echo "MuPDF wasm/js not found" >&2; exit 1; fi
+          mkdir -p "$GITHUB_WORKSPACE/src/wasm/vendor"
+          cp "$FOUND_WASM" "$GITHUB_WORKSPACE/src/wasm/vendor/mupdf.wasm"
+          cp "$FOUND_JS" "$GITHUB_WORKSPACE/src/wasm/vendor/mupdf.js"
+          popd
+          rm -rf "$WORKDIR"
+      - name: Commit MuPDF artifacts
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git add src/wasm/vendor/mupdf.wasm src/wasm/vendor/mupdf.js
+          git commit -m "ci: vendor MuPDF wasm/js (AGPL)" || echo "No changes"
+          git push || true
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.3.0
+      - name: Set cargo env
+        run: |
+          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
+          echo "RUSTFLAGS=-C debuginfo=0" >> $GITHUB_ENV
+
+      - name: Build ICU4X segmenter (wasm-pack)
+        run: |
+          cd tools/icu4x-segmenter
+          wasm-pack build --release --target web
+          cd ../..
+          mkdir -p src/wasm/vendor
+          # Copy generated files: keep original wasm-pack names and provide compatibility copies
+          cp tools/icu4x-segmenter/pkg/icu4x_segmenter_wasm_bg.wasm src/wasm/vendor/icu4x_segmenter_wasm_bg.wasm
+          cp tools/icu4x-segmenter/pkg/icu4x_segmenter_wasm.js src/wasm/vendor/icu4x_segmenter_wasm.js
+          # Back-compat copies used by docs/status pages (safe duplicates)
+          cp tools/icu4x-segmenter/pkg/icu4x_segmenter_wasm_bg.wasm src/wasm/vendor/icu4x_segmenter.wasm
+          cp tools/icu4x-segmenter/pkg/icu4x_segmenter_wasm.js src/wasm/vendor/icu4x_segmenter.js
+
+      - name: Commit vendorized ICU4X segmenter
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git add src/wasm/vendor/icu4x_segmenter.wasm src/wasm/vendor/icu4x_segmenter.js
+          git commit -m "ci: vendor ICU4X segmenter wasm/js" || echo "No changes"
+          git push || true
+
+      - name: Commit placeholder MuPDF artifacts (to be replaced by real build)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          files=()
+          [[ -f src/wasm/vendor/mupdf.wasm ]] && files+=("src/wasm/vendor/mupdf.wasm")
+          [[ -f src/wasm/vendor/mupdf.js ]] && files+=("src/wasm/vendor/mupdf.js")
+          if [[ ${#files[@]} -gt 0 ]]; then
+            git add "${files[@]}"
+            git commit -m "ci: add/update MuPDF wasm/js placeholders (replace with real build)" || echo "No changes"
+            git push || true
+          else
+            echo "No MuPDF placeholder files present; skipping commit." >&2
+          fi
+
+      - name: Upload segmenter artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: icu4x-segmenter-wasm
+          path: |
+            src/wasm/vendor/icu4x_segmenter_wasm_bg.wasm
+            src/wasm/vendor/icu4x_segmenter_wasm.js
+            src/wasm/vendor/icu4x_segmenter.wasm
+            src/wasm/vendor/icu4x_segmenter.js
+
+      - name: Report vendor dir
+        run: |
+          ls -la src/wasm/vendor || true
+          ls -la src/wasm/vendor/fonts || true
+
+      - name: Verify segmenter vendor files present
+        run: |
+          test -f src/wasm/vendor/icu4x_segmenter_wasm_bg.wasm
+          test -f src/wasm/vendor/icu4x_segmenter_wasm.js
+      - name: Smoke check other vendor assets
+        run: |
+          echo "Listing vendor dir:" && ls -la src/wasm/vendor
+          test -f src/wasm/vendor/hb.wasm
+          test -f src/wasm/vendor/hb.js
+          test -f src/wasm/vendor/pdfium.wasm
+          test -f src/wasm/vendor/pdfium.js
