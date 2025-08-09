@@ -1,2 +1,10 @@
 node_modules/
 src/config.local.js
+# Private PDFs and large artifacts at repo root
+/*.pdf
+!src/**/*.pdf
+!e2e/**/*.pdf
+
+# Playwright outputs
+playwright-report/
+test-results/
