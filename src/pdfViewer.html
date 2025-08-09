@@ -11,18 +11,20 @@
     .textLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:2; --scale-factor: 1; }
     .textLayer span { position:absolute; white-space:pre; transform-origin:0% 0%; line-height:1; display:inline-block; color: transparent; background: transparent; text-shadow: none; }
     .page { box-shadow: 0 0 0 1px rgba(0,0,0,0.1); }
+      .annotationLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:15; }
   </style>
 </head>
   <body>
   <div class="topbar">
     <button id="regenBtn" class="btn primary">Download Translated PDF</button>
+    <button id="previewBtn" class="btn">Preview Translated</button></button>
     <label class="chk"><input type="checkbox" id="useWasmFlag"> Use WASM engine</label>
     <label class="chk"><input type="checkbox" id="autoOpenFlag" checked> Auto-open after save</label>
     <span id="regenStatus" class="muted"></span>
     <span id="engineStatus" class="muted" style="margin-left:auto">Engine: checking…</span>
     <label class="chk" title="Only run real WASM engines when assets are present; no fallbacks."><input type="checkbox" id="strictWasmFlag"> Strict</label>
     <button id="inspectBtn" class="btn" title="Log current engine module exports to console">Inspect Engine</button>
-  </div>
+    <span id="modeBadge" class="muted" style="margin-left:8px"></span></div>
   <div id="viewer"></div>
   <script src="pdf.min.js"></script>
   <script src="config.local.js"></script>
@@ -45,6 +47,7 @@
     #regenOverlay .bar > div { height:10px; width:0%; background:linear-gradient(90deg, #0d6efd, #8bb9ff); transition: width 0.25s; border-radius:6px }
     #regenOverlay .spinner { width:16px; height:16px; border:2px solid #cfe0ff; border-top-color:#0d6efd; border-radius:50%; display:inline-block; animation: spin 1s linear infinite; margin-right:8px }
     @keyframes spin { to { transform: rotate(360deg); } }
+      .annotationLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:15; }
   </style>
   <div id="regenOverlay">
     <div class="panel">

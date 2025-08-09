@@ -58,6 +58,14 @@ import { isWasmAvailable } from './wasm/engine.js';
     return u;
   }
   const viewer = document.getElementById('viewer');
+
+  const badge = document.getElementById('modeBadge');
+  if (badge) {
+    const isTranslated = params.get('translated') === '1';
+    badge.textContent = isTranslated ? 'Translated Preview' : 'Original';
+    badge.style.color = isTranslated ? '#2e7d32' : '#666';
+  }
+
   if (!file) {
     viewer.textContent = 'No PDF specified';
     console.log('DEBUG: No PDF file specified.');
@@ -156,6 +164,7 @@ import { isWasmAvailable } from './wasm/engine.js';
 
       // Hook up the regenerate button to current file with progress overlay
       const regenBtn = document.getElementById('regenBtn');
+      const previewBtn = document.getElementById('previewBtn');
       const useWasmFlag = document.getElementById('useWasmFlag');
       const autoOpenFlag = document.getElementById('autoOpenFlag');
       let engineSelect = document.getElementById('engineSelect');
@@ -208,6 +217,21 @@ import { isWasmAvailable } from './wasm/engine.js';
       if (regenBtn && !regenBtn.dataset.bound) {
         regenBtn.dataset.bound = '1';
         regenBtn.addEventListener('click', async () => {
+          if (previewBtn && !previewBtn.dataset.bound) {
+            previewBtn.dataset.bound = '1';
+            previewBtn.addEventListener('click', async () => {
+              try {
+                let cfgNow = await window.qwenLoadConfig();
+                const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine','wasmStrict'], r));
+                cfgNow = { ...cfgNow, ...flags };
+                const blob = await regeneratePdfFromUrl(file, cfgNow, null);
+                const url = URL.createObjectURL(blob);
+                const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + '?translated=1&file=' + encodeURIComponent(url);
+                window.location.href = viewerUrl;
+              } catch(e) { console.error('Preview failed', e); }
+            });
+          }
+
           const overlay = document.getElementById('regenOverlay');
           const text = document.getElementById('regenText');
           const bar = document.getElementById('regenBar');
