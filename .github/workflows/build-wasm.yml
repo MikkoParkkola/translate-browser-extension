@@ -11,31 +11,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           persist-credentials: true
 
-      - name: Build MuPDF (WASM) with Emscripten (placeholder)
-        uses: addnab/docker-run-action@v3
-        with:
-          image: emscripten/emsdk:latest
-          options: -v ${{ github.workspace }}:/work -w /work
-          run: |
-            set -euo pipefail
-            echo "Cloning MuPDF…"
-            git clone --depth=1 https://github.com/ArtifexSoftware/mupdf.git mupdf-src
-            cd mupdf-src
-            echo "Building MuPDF WASM (this is a placeholder, adjust target as needed)…"
-            # Placeholder: upstream build steps vary by version; uncomment and adapt lines below per upstream docs.
-            # make generate
-            # make wasm
-            cd ..
-            mkdir -p src/wasm/vendor
-            # TODO: copy actual wasm/js outputs once built; placeholder creates empty files to unblock CI structure.
-            touch src/wasm/vendor/mupdf.wasm
-            echo "export async function init(){ return { rewrite: async()=>{ throw new Error('MuPDF rewrite not implemented yet'); } } }" > src/wasm/vendor/mupdf.js
+      # MuPDF build to be added in separate step once upstream build commands are validated.
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -54,8 +38,9 @@ jobs:
           wasm-pack build --release --target web
           cd ../..
           mkdir -p src/wasm/vendor
-          cp tools/icu4x-segmenter/pkg/icu4x_segmenter_wasm_bg.wasm src/wasm/vendor/icu4x_segmenter.wasm
-          cp tools/icu4x-segmenter/pkg/icu4x_segmenter_wasm.js src/wasm/vendor/icu4x_segmenter.js
+          # Copy generated files using wildcards to avoid name drift
+          cp tools/icu4x-segmenter/pkg/*_bg.wasm src/wasm/vendor/icu4x_segmenter.wasm
+          cp tools/icu4x-segmenter/pkg/*.js src/wasm/vendor/icu4x_segmenter.js
 
       - name: Commit vendorized ICU4X segmenter
         run: |
