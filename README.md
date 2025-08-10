@@ -28,6 +28,7 @@ npm run build:safari
 ```
 
 Open the generated project in Xcode to sign and build the extension for the desired platform.
+See `safari/README.md` for detailed iOS/iPadOS deployment steps.
 
 ## Configuration
 Use the popup to configure:
