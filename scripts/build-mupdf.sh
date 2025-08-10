@@ -19,8 +19,8 @@ if [[ ! -f "$mupd/mupdf-wasm.wasm" || ! -f "$mupd/mupdf-wasm.js" ]]; then
   exit 1
 fi
 mkdir -p "$ROOT_DIR/src/wasm/vendor"
-cp "$mupd/mupdf-wasm.wasm" "$ROOT_DIR/src/wasm/vendor/mupdf.wasm"
-cp "$mupd/mupdf-wasm.js" "$ROOT_DIR/src/wasm/vendor/mupdf.js"
+cp "$mupd/mupdf-wasm.wasm" "$ROOT_DIR/src/wasm/vendor/mupdf-wasm.wasm"
+cp "$mupd/mupdf-wasm.js" "$ROOT_DIR/src/wasm/vendor/mupdf-wasm.js"
 popd >/dev/null
 rm -rf "$WORKDIR"
 echo "MuPDF artifacts copied to src/wasm/vendor/."

@@ -2,33 +2,33 @@
 export async function init({ baseURL }) {
   let mupdf;
   try {
+    // Load the MuPDF vendor script which pulls in the WASM glue.
     mupdf = await import(/* @vite-ignore */ baseURL + 'mupdf.js');
   } catch (e) {
     throw new Error('MuPDF vendor not found');
   }
   function approxTokens(s){ return Math.ceil(((s||'').length)/4); }
   function splitIntoChunks(text, maxTokens){
-    const chunks=[]; const parts=(text||'').split(/(\.|!|\?|
-)/g);
+    const chunks=[]; const parts=(text||'').split(/(\.|!|\?|\n)/g);
     let cur='';
     for(const seg of parts){ const next=cur?cur+seg:seg; if(approxTokens(next)>maxTokens && cur){ chunks.push(cur.trim()); cur=seg; } else { cur=next; } }
     if(cur&&cur.trim()) chunks.push(cur.trim());
     const out=[]; for(const c of chunks){ if(approxTokens(c)<=maxTokens){ out.push(c); continue;} let start=0; const step=Math.max(128, Math.floor(maxTokens*4)); while(start<c.length){ out.push(c.slice(start,start+step)); start+=step; } }
     return out;
   }
-  async function translatePages(pageTexts, cfg, onProgress, budget=1200){
+  async function translatePages(pageTexts, cfg, onProgress, budget=800){
     const endpoint = cfg.apiEndpoint || cfg.endpoint;
     const model = cfg.model || cfg.modelName;
     const source = cfg.sourceLanguage || cfg.source;
     const target = cfg.targetLanguage || cfg.target;
     const mapping=[]; pageTexts.forEach((t,i)=> splitIntoChunks(t, Math.max(200, Math.floor(budget*0.6))).forEach((c,idx)=>mapping.push({page:i,idx,text:c})) );
     const results=new Array(mapping.length); let i=0;
-    while(i<mapping.length){ let group=[]; let tokens=0; const maxPer=budget; while(i<mapping.length){ const tk=approxTokens(mapping[i].text); if(group.length && tokens+tk>maxPer) break; group.push(mapping[i]); tokens+=tk; i++; if(group.length>=40) break; }
+    while(i<mapping.length){ let group=[]; let tokens=0; const maxPer=budget; while(i<mapping.length){ const tk=approxTokens(mapping[i].text); if(group.length && tokens+tk>maxPer) break; group.push(mapping[i]); tokens+=tk; i++; if(group.length>=40) break;}
       const texts=group.map(g=>g.text);
       try{
         if(onProgress) onProgress({ phase:'translate', page: Math.min(group[group.length-1].page+1, pageTexts.length), total: pageTexts.length });
-        const tr= await window.qwenTranslateBatch({ texts, endpoint, apiKey: cfg.apiKey, model, source, target });
-        const outs = (tr && Array.isArray(tr.texts))? tr.texts: texts; for(let k=0;k<group.length;k++) results[mapping.indexOf(group[k])]=outs[k]||group[k].text;
+        const tr= await window.qwenTranslateBatch({ texts, endpoint, apiKey: cfg.apiKey, model, source, target, tokenBudget: budget });
+      const outs = (tr && Array.isArray(tr.texts))? tr.texts: texts; for(let k=0;k<group.length;k++) results[mapping.indexOf(group[k])]=outs[k]||group[k].text;
       } catch(e){ if(/HTTP 400/i.test(e?.message||'')){ return translatePages(pageTexts,cfg,onProgress, Math.max(400,Math.floor(budget*0.6))); } else { throw e; } }
     }
     const perPage=pageTexts.map(()=>[]); mapping.forEach((m,idx)=> perPage[m.page][m.idx]=results[idx]);

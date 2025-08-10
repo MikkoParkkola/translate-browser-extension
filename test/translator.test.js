@@ -1,4 +1,5 @@
-const { qwenTranslate: translate, qwenClearCache } = require('../src/translator.js');
+const translator = require('../src/translator.js');
+const { qwenTranslate: translate, qwenClearCache, qwenTranslateBatch } = translator;
 const { configure } = require('../src/throttle');
 const fetchMock = require('jest-fetch-mock');
 
@@ -51,4 +52,58 @@ test('rate limiting queues requests', async () => {
   expect(res3.text).toBe('c');
   expect(fetch).toHaveBeenCalledTimes(3);
   jest.useRealTimers();
+});
+
+test('batch splits requests by token budget', async () => {
+  fetch.mockResponses(
+    JSON.stringify({ output: { text: 'A' } }),
+    JSON.stringify({ output: { text: 'B' } }),
+    JSON.stringify({ output: { text: 'C' } })
+  );
+  const inputs = ['a'.repeat(80), 'b'.repeat(80), 'c'.repeat(80)];
+  const res = await qwenTranslateBatch({
+    texts: inputs,
+    source: 'en',
+    target: 'es',
+    tokenBudget: 30,
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    model: 'm',
+  });
+  expect(res.texts).toEqual(['A', 'B', 'C']);
+  expect(fetch).toHaveBeenCalledTimes(3);
+});
+
+test('batch splits oversized single text', async () => {
+  fetch.mockResponses(
+    JSON.stringify({ output: { text: 'A1' } }),
+    JSON.stringify({ output: { text: 'A2' } })
+  );
+  const long = 'a'.repeat(220);
+  const res = await qwenTranslateBatch({
+    texts: [long],
+    source: 'en',
+    target: 'es',
+    tokenBudget: 30,
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    model: 'm',
+  });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(res.texts[0]).toBe('A1 A2');
+});
+
+test('batch propagates HTTP 400 errors', async () => {
+  fetch.mockResponseOnce(JSON.stringify({ message: 'Parameter limit exceeded' }), { status: 400 });
+  await expect(
+    qwenTranslateBatch({
+      texts: ['too long'],
+      source: 'en',
+      target: 'es',
+      tokenBudget: 50,
+      endpoint: 'https://e/',
+      apiKey: 'k',
+      model: 'm',
+    })
+  ).rejects.toThrow('HTTP 400');
 });
