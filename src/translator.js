@@ -278,7 +278,12 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
   }
 }
 
-async function qwenTranslateBatch({ texts = [], ...opts }) {
+async function qwenTranslateBatch({
+  texts = [],
+  tokenBudget = 1800,
+  maxBatchSize = 40,
+  ...opts
+}) {
   const results = new Array(texts.length);
   const indexMap = new Map();
   texts.forEach((t, i) => {
@@ -291,22 +296,48 @@ async function qwenTranslateBatch({ texts = [], ...opts }) {
     }
   });
   const unique = Array.from(indexMap.keys());
-  if (unique.length) {
-    const joined = unique.join('\n');
-    const res = await qwenTranslate({ ...opts, text: joined });
-    const translated = (res && typeof res.text === 'string') ? res.text.split('\n') : [];
-    const n = Math.min(unique.length, translated.length);
+  let group = [];
+  let tokens = 0;
+  const groups = [];
+  unique.forEach(t => {
+    const tk = approxTokens(t) + 1;
+    if (
+      group.length &&
+      (tokens + tk > tokenBudget || group.length >= maxBatchSize)
+    ) {
+      groups.push(group);
+      group = [];
+      tokens = 0;
+    }
+    group.push(t);
+    tokens += tk;
+  });
+  if (group.length) groups.push(group);
+  for (const g of groups) {
+    const joined = g.join('\n');
+    let res;
+    try {
+      res = await qwenTranslate({ ...opts, text: joined });
+    } catch (e) {
+      g.forEach(orig => {
+        const arr = indexMap.get(orig);
+        if (arr && arr.forEach) arr.forEach(i => { results[i] = orig; });
+      });
+      continue;
+    }
+    const translated =
+      res && typeof res.text === 'string' ? res.text.split('\n') : [];
+    const n = Math.min(g.length, translated.length);
     for (let idx = 0; idx < n; idx++) {
-      const orig = unique[idx];
+      const orig = g[idx];
       const tr = translated[idx] || '';
       const key = `${opts.source}:${opts.target}:${orig}`;
       cache.set(key, { text: tr });
       const arr = indexMap.get(orig);
       if (arr && arr.forEach) arr.forEach(i => { results[i] = tr; });
     }
-    // If fewer translations returned than inputs, fill remaining with originals
-    for (let idx = n; idx < unique.length; idx++) {
-      const orig = unique[idx];
+    for (let idx = n; idx < g.length; idx++) {
+      const orig = g[idx];
       const arr = indexMap.get(orig);
       if (arr && arr.forEach) arr.forEach(i => { results[i] = orig; });
     }
