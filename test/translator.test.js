@@ -1,4 +1,5 @@
-const { qwenTranslate: translate, qwenClearCache } = require('../src/translator.js');
+const translator = require('../src/translator.js');
+const { qwenTranslate: translate, qwenClearCache, qwenTranslateBatch } = translator;
 const { configure } = require('../src/throttle');
 const fetchMock = require('jest-fetch-mock');
 
@@ -51,4 +52,24 @@ test('rate limiting queues requests', async () => {
   expect(res3.text).toBe('c');
   expect(fetch).toHaveBeenCalledTimes(3);
   jest.useRealTimers();
+});
+
+test('batch splits requests by token budget', async () => {
+  fetch.mockResponses(
+    JSON.stringify({ output: { text: 'A' } }),
+    JSON.stringify({ output: { text: 'B' } }),
+    JSON.stringify({ output: { text: 'C' } })
+  );
+  const inputs = ['a'.repeat(80), 'b'.repeat(80), 'c'.repeat(80)];
+  const res = await qwenTranslateBatch({
+    texts: inputs,
+    source: 'en',
+    target: 'es',
+    tokenBudget: 30,
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    model: 'm',
+  });
+  expect(res.texts).toEqual(['A', 'B', 'C']);
+  expect(fetch).toHaveBeenCalledTimes(3);
 });
