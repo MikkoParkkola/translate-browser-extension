@@ -6,7 +6,20 @@ let _impl = null;
 let _lastChoice = 'auto';
 
 async function check(base, path) {
-  try { const r = await fetch(base + path, { method: 'HEAD' }); return r.ok; } catch { return false; }
+  const attempts = [
+    { method: 'GET', headers: { Range: 'bytes=0-0' } },
+    { method: 'HEAD' },
+    { method: 'GET' },
+  ];
+  for (const init of attempts) {
+    try {
+      const r = await fetch(base + path, init);
+      if (r.ok) return true;
+    } catch {
+      /* ignore and try next */
+    }
+  }
+  return false;
 }
 
 export async function chooseEngine(base, requested) {
