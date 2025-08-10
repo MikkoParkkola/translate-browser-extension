@@ -18,7 +18,7 @@ Quick Local Build (Docker)
    - Enter the repo and build the wasm target (consult MuPDF docs; target names vary by version):
      docker run --rm -v "$PWD":/src -w /src emscripten/emsdk:latest bash -lc "make generate && make wasm"
    - Copy resulting wasm/js artifacts to:
-     src/wasm/vendor/mupdf.wasm
+    src/wasm/vendor/mupdf.wasm
      src/wasm/vendor/mupdf.js
 
 2) ICU4X Segmenter (Unicode License)

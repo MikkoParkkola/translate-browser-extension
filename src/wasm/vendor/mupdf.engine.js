@@ -2,7 +2,9 @@
 export async function init({ baseURL }) {
   let mupdf;
   try {
-    mupdf = await import(/* @vite-ignore */ baseURL + 'mupdf.js');
+    // Load the MuPDF WASM bundle under the standard `mupdf.js` naming
+    // and instantiate it to expose `PDFDocument` etc.
+    mupdf = await (await import(/* @vite-ignore */ baseURL + 'mupdf.js')).default();
   } catch (e) {
     throw new Error('MuPDF vendor not found');
   }
@@ -16,7 +18,7 @@ export async function init({ baseURL }) {
     const out=[]; for(const c of chunks){ if(approxTokens(c)<=maxTokens){ out.push(c); continue;} let start=0; const step=Math.max(128, Math.floor(maxTokens*4)); while(start<c.length){ out.push(c.slice(start,start+step)); start+=step; } }
     return out;
   }
-  async function translatePages(pageTexts, cfg, onProgress, budget=1200){
+  async function translatePages(pageTexts, cfg, onProgress, budget=800){
     const endpoint = cfg.apiEndpoint || cfg.endpoint;
     const model = cfg.model || cfg.modelName;
     const source = cfg.sourceLanguage || cfg.source;
@@ -27,8 +29,8 @@ export async function init({ baseURL }) {
       const texts=group.map(g=>g.text);
       try{
         if(onProgress) onProgress({ phase:'translate', page: Math.min(group[group.length-1].page+1, pageTexts.length), total: pageTexts.length });
-        const tr= await window.qwenTranslateBatch({ texts, endpoint, apiKey: cfg.apiKey, model, source, target });
-        const outs = (tr && Array.isArray(tr.texts))? tr.texts: texts; for(let k=0;k<group.length;k++) results[mapping.indexOf(group[k])]=outs[k]||group[k].text;
+        const tr= await window.qwenTranslateBatch({ texts, endpoint, apiKey: cfg.apiKey, model, source, target, tokenBudget: budget });
+      const outs = (tr && Array.isArray(tr.texts))? tr.texts: texts; for(let k=0;k<group.length;k++) results[mapping.indexOf(group[k])]=outs[k]||group[k].text;
       } catch(e){ if(/HTTP 400/i.test(e?.message||'')){ return translatePages(pageTexts,cfg,onProgress, Math.max(400,Math.floor(budget*0.6))); } else { throw e; } }
     }
     const perPage=pageTexts.map(()=>[]); mapping.forEach((m,idx)=> perPage[m.page][m.idx]=results[idx]);
