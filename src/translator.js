@@ -278,40 +278,95 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
   }
 }
 
-async function qwenTranslateBatch({ texts = [], ...opts }) {
-  const results = new Array(texts.length);
-  const indexMap = new Map();
+async function qwenTranslateBatch({
+  texts = [],
+  tokenBudget = 1000,
+  maxBatchSize = 40,
+  ...opts
+}) {
+  const mapping = [];
   texts.forEach((t, i) => {
     const key = `${opts.source}:${opts.target}:${t}`;
     if (cache.has(key)) {
-      results[i] = cache.get(key).text;
-    } else {
-      if (!indexMap.has(t)) indexMap.set(t, []);
-      indexMap.get(t).push(i);
+      mapping.push({ index: i, chunk: 0, text: cache.get(key).text, cached: true });
+      return;
     }
+    const pieces = splitLongText(t, tokenBudget);
+    pieces.forEach((p, idx) => mapping.push({ index: i, chunk: idx, text: p }));
   });
-  const unique = Array.from(indexMap.keys());
-  if (unique.length) {
-    const joined = unique.join('\n');
-    const res = await qwenTranslate({ ...opts, text: joined });
-    const translated = (res && typeof res.text === 'string') ? res.text.split('\n') : [];
-    const n = Math.min(unique.length, translated.length);
-    for (let idx = 0; idx < n; idx++) {
-      const orig = unique[idx];
-      const tr = translated[idx] || '';
-      const key = `${opts.source}:${opts.target}:${orig}`;
-      cache.set(key, { text: tr });
-      const arr = indexMap.get(orig);
-      if (arr && arr.forEach) arr.forEach(i => { results[i] = tr; });
+  const byIndex = new Map();
+  mapping.forEach(m => {
+    if (!byIndex.has(m.index)) byIndex.set(m.index, []);
+    byIndex.get(m.index).push(m);
+  });
+  const groups = [];
+  let group = [];
+  let tokens = 0;
+  for (const m of mapping.filter(m => !m.cached)) {
+    const tk = approxTokens(m.text) + 1;
+    if (group.length && (tokens + tk > tokenBudget || group.length >= maxBatchSize)) {
+      groups.push(group);
+      group = [];
+      tokens = 0;
     }
-    // If fewer translations returned than inputs, fill remaining with originals
-    for (let idx = n; idx < unique.length; idx++) {
-      const orig = unique[idx];
-      const arr = indexMap.get(orig);
-      if (arr && arr.forEach) arr.forEach(i => { results[i] = orig; });
+    group.push(m);
+    tokens += tk;
+  }
+  if (group.length) groups.push(group);
+  for (const g of groups) {
+    const joined = g.map(m => m.text).join('\n');
+    let res;
+    try {
+      res = await qwenTranslate({ ...opts, text: joined });
+    } catch (e) {
+      g.forEach(m => { m.result = m.text; });
+      continue;
+    }
+    const translated = res && typeof res.text === 'string' ? res.text.split('\n') : [];
+    for (let i = 0; i < g.length; i++) {
+      g[i].result = translated[i] || g[i].text;
+      const key = `${opts.source}:${opts.target}:${g[i].text}`;
+      cache.set(key, { text: g[i].result });
     }
   }
+  const results = new Array(texts.length).fill('');
+  byIndex.forEach((arr, idx) => {
+    const parts = arr
+      .sort((a, b) => a.chunk - b.chunk)
+      .map(m => (m.result !== undefined ? m.result : m.text));
+    results[idx] = parts.join(' ').trim();
+  });
   return { texts: results };
+}
+
+function splitLongText(text, maxTokens) {
+  const parts = (text || '').split(/(?<=[\.?!])\s+/);
+  const chunks = [];
+  let cur = '';
+  for (const part of parts) {
+    const next = cur ? cur + ' ' + part : part;
+    if (approxTokens(next) > maxTokens && cur) {
+      chunks.push(cur);
+      cur = part;
+    } else {
+      cur = next;
+    }
+  }
+  if (cur) chunks.push(cur);
+  const out = [];
+  for (const ch of chunks) {
+    if (approxTokens(ch) <= maxTokens) {
+      out.push(ch);
+    } else {
+      let start = 0;
+      const step = Math.max(128, Math.floor(maxTokens * 4));
+      while (start < ch.length) {
+        out.push(ch.slice(start, start + step));
+        start += step;
+      }
+    }
+  }
+  return out;
 }
 function qwenClearCache() {
   cache.clear();
