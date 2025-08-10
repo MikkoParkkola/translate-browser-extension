@@ -319,6 +319,7 @@ async function qwenTranslateBatch({
     try {
       res = await qwenTranslate({ ...opts, text: joined });
     } catch (e) {
+      if (/HTTP\s+400/i.test(e.message || '')) throw e;
       g.forEach(m => { m.result = m.text; });
       continue;
     }

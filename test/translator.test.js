@@ -92,3 +92,18 @@ test('batch splits oversized single text', async () => {
   expect(fetch).toHaveBeenCalledTimes(2);
   expect(res.texts[0]).toBe('A1 A2');
 });
+
+test('batch propagates HTTP 400 errors', async () => {
+  fetch.mockResponseOnce(JSON.stringify({ message: 'Parameter limit exceeded' }), { status: 400 });
+  await expect(
+    qwenTranslateBatch({
+      texts: ['too long'],
+      source: 'en',
+      target: 'es',
+      tokenBudget: 50,
+      endpoint: 'https://e/',
+      apiKey: 'k',
+      model: 'm',
+    })
+  ).rejects.toThrow('HTTP 400');
+});

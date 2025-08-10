@@ -42,6 +42,46 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 let throttleReady;
 let activeTranslations = 0;
+let iconFrame = 0;
+
+async function updateIcon() {
+  iconFrame++;
+  await ensureThrottle();
+  const { requests, tokens, requestLimit, tokenLimit } = self.qwenThrottle.getUsage();
+  function color(rem, limit) {
+    if (rem <= 0) return '#d9534f';
+    if (rem / limit < 0.2) return '#f0ad4e';
+    return '#5cb85c';
+  }
+  const reqColor = color(requestLimit - requests, requestLimit);
+  const tokColor = color(tokenLimit - tokens, tokenLimit);
+  const canvas = new OffscreenCanvas(19, 19);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 19, 19);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, 19, 19);
+  const pulse = 0.6 + 0.4 * Math.sin(iconFrame / 3);
+  if (activeTranslations > 0) {
+    ctx.strokeStyle = `rgba(13,110,253,${pulse})`;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, 17, 17);
+  } else {
+    ctx.strokeStyle = '#999';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, 19, 19);
+  }
+  const blink = iconFrame % 20 < 10;
+  ctx.fillStyle = requestLimit - requests <= 0 && blink ? '#fff' : reqColor;
+  ctx.beginPath();
+  ctx.arc(6, 9.5, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = tokenLimit - tokens <= 0 && blink ? '#fff' : tokColor;
+  ctx.beginPath();
+  ctx.arc(13, 9.5, 4, 0, Math.PI * 2);
+  ctx.fill();
+  const imageData = ctx.getImageData(0, 0, 19, 19);
+  chrome.action.setIcon({ imageData: { 19: imageData } });
+}
 
 async function updateIcon() {
   await ensureThrottle();
@@ -89,7 +129,7 @@ function updateBadge() {
   updateIcon();
 }
 updateBadge();
-setInterval(updateIcon, 5000);
+setInterval(updateIcon, 500);
 function ensureThrottle() {
   if (!throttleReady) {
     throttleReady = new Promise(resolve => {
