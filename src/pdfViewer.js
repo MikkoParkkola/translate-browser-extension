@@ -1,5 +1,6 @@
 import { regeneratePdfFromUrl } from './wasm/pipeline.js';
 import { isWasmAvailable } from './wasm/engine.js';
+import { safeFetchPdf } from './wasm/pdfFetch.js';
 
 (async function() {
   function isLikelyDutch(text) {
@@ -50,14 +51,6 @@ import { isWasmAvailable } from './wasm/engine.js';
   const params = new URL(location.href).searchParams;
   const file = params.get('file');
   const origFile = params.get('orig') || file;
-  const MAX_PDF_BYTES = 32 * 1024 * 1024; // 32 MiB
-  function assertAllowedScheme(urlStr) {
-    let u;
-    try { u = new URL(urlStr); } catch { throw new Error('Invalid PDF URL'); }
-    const ok = u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'file:' || u.protocol === 'blob:';
-    if (!ok) throw new Error('Blocked PDF URL scheme');
-    return u;
-  }
   const viewer = document.getElementById('viewer');
 
   const badge = document.getElementById('modeBadge');
@@ -84,7 +77,7 @@ import { isWasmAvailable } from './wasm/engine.js';
       const vendorBase = chrome.runtime.getURL('wasm/vendor/');
       async function head(u){ try{ const r=await fetch(u,{method:'HEAD'}); return r.ok; }catch{return false;} }
       const avail = {
-        mupdf: await head(vendorBase+'mupdf-wasm.wasm') && await head(vendorBase+'mupdf.js') && await head(vendorBase+'mupdf-wasm.js'),
+        mupdf: (await head(vendorBase+'mupdf.wasm') || await head(vendorBase+'mupdf-wasm.wasm')) && await head(vendorBase+'mupdf.js') && await head(vendorBase+'mupdf-wasm.js'),
         pdfium: await head(vendorBase+'pdfium.wasm') && await head(vendorBase+'pdfium.js'),
         overlay: await head(vendorBase+'pdf-lib.js'),
         simple: true,
@@ -225,21 +218,7 @@ import { isWasmAvailable } from './wasm/engine.js';
       console.error('Auto-translate preview failed', e);
     }
   }
-(async () => {
-    try {
-      const vendorBase = chrome.runtime.getURL('wasm/vendor/');
-      const s = await new Promise(r=>chrome.storage.sync.get({ wasmEngine: cfg.wasmEngine || 'auto' }, r));
-      const engine = s.wasmEngine || 'auto';
-      async function head(u){ try{ const r=await fetch(u,{method:'HEAD'}); return r.ok; }catch{return false;} }
-      let missing=[];
-      if (engine==='overlay') { if(!await head(vendorBase+'pdf-lib.js')) missing.push('pdf-lib.js'); }
-      else if (engine==='mupdf') { const ok1=await head(vendorBase+'mupdf-wasm.wasm'); const ok2=await head(vendorBase+'mupdf.js'); const ok3=await head(vendorBase+'mupdf-wasm.js'); if(!(ok1&&ok2&&ok3)) missing.push('mupdf wasm/js'); }
-      else if (engine==='pdfium') { const ok1=await head(vendorBase+'pdfium.wasm'); const ok2=await head(vendorBase+'pdfium.js'); if(!(ok1&&ok2)) missing.push('pdfium wasm/js'); }
-      const es = document.getElementById('engineStatus');
-      if (es) { if (missing.length){ es.textContent = 'Engine: missing '+missing.join(', '); es.style.color = '#d32f2f'; } else { es.textContent = 'Engine: Ready ('+engine+')'; es.style.color = '#2e7d32'; } }
-    } catch {}
-  })();
-  // Show engine readiness status
+    // Show engine readiness status
   (async () => {
     const statEl = document.getElementById('engineStatus');
     if (!statEl) return;
@@ -249,7 +228,7 @@ import { isWasmAvailable } from './wasm/engine.js';
         statEl.textContent = 'Engine: Ready';
         statEl.style.color = '#2e7d32';
       } else {
-        statEl.textContent = 'Engine: Missing components (requires: hb.wasm, pdfium.wasm, mupdf.wasm, icu4x_segmenter.wasm)';
+        statEl.textContent = 'Engine: Missing components (requires: hb.wasm, pdfium.wasm, mupdf.wasm or mupdf-wasm.wasm, icu4x_segmenter.wasm)';
         statEl.style.color = '#d32f2f';
       }
     } catch (e) {
@@ -265,25 +244,9 @@ import { isWasmAvailable } from './wasm/engine.js';
   console.log('DEBUG: API key loaded.');
 
   try {
-    console.log(`DEBUG: Attempting to fetch PDF from: ${file}`);
-    const u = assertAllowedScheme(file);
-    // Best-effort HEAD
-    if (u.protocol === 'http:' || u.protocol === 'https:') {
-      try {
-        const head = await fetch(file, { method: 'HEAD' });
-        const len = Number(head.headers.get('content-length') || '0');
-        if (Number.isFinite(len) && len > 0 && len > MAX_PDF_BYTES) throw new Error('PDF too large');
-        const ctype = (head.headers.get('content-type') || '').toLowerCase();
-        if (ctype && !ctype.includes('pdf') && !u.pathname.toLowerCase().endsWith('.pdf')) throw new Error('Not a PDF content-type');
-      } catch (e) { console.warn('HEAD check failed or returned unexpected headers', e?.message || e); }
-    }
-    const resp = await fetch(file);
-    if (!resp.ok) {
-      throw new Error(`unexpected status ${resp.status}`);
-    }
-    console.log('DEBUG: PDF fetched successfully.');
-    const buffer = await resp.arrayBuffer();
-    if (buffer.byteLength > MAX_PDF_BYTES) throw new Error('PDF too large');
+      console.log(`DEBUG: Attempting to fetch PDF from: ${file}`);
+      const buffer = await safeFetchPdf(file);
+      console.log('DEBUG: PDF fetched successfully.');
     const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
     console.log('DEBUG: PDF loading task created.');
     const pdf = await loadingTask.promise;
