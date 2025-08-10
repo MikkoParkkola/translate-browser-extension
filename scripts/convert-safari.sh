@@ -25,3 +25,8 @@ xcrun safari-web-extension-converter "$SRC_DIR" \
   --bundle-identifier "com.example.qwentranslator.ios" \
   --project-location "$OUT_DIR" \
   --ios-only
+
+# Ensure vendor WASM assets are copied into each generated extension bundle
+find "$OUT_DIR" -type d -name "*Extension" | while read -r extDir; do
+  rsync -a "$SRC_DIR/wasm" "$extDir/"
+done

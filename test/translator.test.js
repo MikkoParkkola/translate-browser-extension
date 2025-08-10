@@ -73,3 +73,22 @@ test('batch splits requests by token budget', async () => {
   expect(res.texts).toEqual(['A', 'B', 'C']);
   expect(fetch).toHaveBeenCalledTimes(3);
 });
+
+test('batch splits oversized single text', async () => {
+  fetch.mockResponses(
+    JSON.stringify({ output: { text: 'A1' } }),
+    JSON.stringify({ output: { text: 'A2' } })
+  );
+  const long = 'a'.repeat(220);
+  const res = await qwenTranslateBatch({
+    texts: [long],
+    source: 'en',
+    target: 'es',
+    tokenBudget: 30,
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    model: 'm',
+  });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(res.texts[0]).toBe('A1 A2');
+});

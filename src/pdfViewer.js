@@ -228,7 +228,7 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
         statEl.textContent = 'Engine: Ready';
         statEl.style.color = '#2e7d32';
       } else {
-        statEl.textContent = 'Engine: Missing components (requires: hb.wasm, pdfium.wasm, mupdf-wasm.wasm, icu4x_segmenter.wasm)';
+        statEl.textContent = 'Engine: Missing components (requires: hb.wasm, pdfium.wasm, mupdf-wasm.wasm, icu4x_segmenter.wasm, pdf-lib.js)';
         statEl.style.color = '#d32f2f';
       }
     } catch (e) {
