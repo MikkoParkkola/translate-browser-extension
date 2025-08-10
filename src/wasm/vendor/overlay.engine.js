@@ -32,14 +32,24 @@ export async function init({ baseURL }) {
     const tr = await window.qwenTranslateBatch({ texts, endpoint, apiKey: cfg.apiKey, model, source, target });
     const outTexts = (tr && Array.isArray(tr.texts)) ? tr.texts : texts;
 
-    // Use pdf-lib if present; otherwise fall back to Simple engine
-    let pdfLib;
-    try { pdfLib = window.PDFLib || (await import(baseURL + 'pdf-lib.js')).PDFLib || (await import(baseURL + 'pdf-lib.js')); } catch {}
+    // Use pdf-lib via global script; dynamically inject if needed
+    let pdfLib = window.PDFLib;
+    if (!pdfLib) {
+      try {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = baseURL + 'pdf-lib.js';
+          s.onload = resolve;
+          s.onerror = reject;
+          document.head.appendChild(s);
+        });
+        pdfLib = window.PDFLib;
+      } catch {}
+    }
     if (!pdfLib || !(pdfLib.PDFDocument)) {
       throw new Error('pdf-lib not available for Overlay engine');
     }
-    const lib = pdfLib.PDFDocument ? pdfLib : (pdfLib.default ? pdfLib.default : pdfLib);
-    const { PDFDocument, StandardFonts, rgb } = lib;
+    const { PDFDocument, StandardFonts, rgb } = pdfLib;
     const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.Helvetica);
     for (let i=0;i<pageData.length;i++) {

@@ -14,13 +14,13 @@ docker run --rm -v "$PWD":/src -w /src emscripten/emsdk:latest bash -lc "set -e;
 # Copy artifacts from platform/wasm/dist
 echo "Copying MuPDF wasm/js artifacts..."
 mupd=platform/wasm/dist
-if [[ ! -f "$mupd/mupdf-wasm.wasm" || ! -f "$mupd/mupdf-wasm.js" ]]; then
+if [[ ! -f "$mupd/mupdf.wasm" || ! -f "$mupd/mupdf.js" ]]; then
   echo "MuPDF wasm artifacts not found in platform/wasm/dist" >&2
   exit 1
 fi
 mkdir -p "$ROOT_DIR/src/wasm/vendor"
-cp "$mupd/mupdf-wasm.wasm" "$ROOT_DIR/src/wasm/vendor/mupdf.wasm"
-cp "$mupd/mupdf-wasm.js" "$ROOT_DIR/src/wasm/vendor/mupdf.js"
+cp "$mupd/mupdf.wasm" "$ROOT_DIR/src/wasm/vendor/mupdf.wasm"
+cp "$mupd/mupdf.js" "$ROOT_DIR/src/wasm/vendor/mupdf.js"
 popd >/dev/null
 rm -rf "$WORKDIR"
 echo "MuPDF artifacts copied to src/wasm/vendor/."
