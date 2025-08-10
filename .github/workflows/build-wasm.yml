@@ -38,8 +38,8 @@ jobs:
           FOUND_JS=$(ls -1 **/*.js 2>/dev/null | grep -E 'mupdf.*\.js$' | head -n1 || true)
           if [[ -z "$FOUND_WASM" || -z "$FOUND_JS" ]]; then echo "MuPDF wasm/js not found" >&2; exit 1; fi
           mkdir -p "$GITHUB_WORKSPACE/src/wasm/vendor"
-          cp "$FOUND_WASM" "$GITHUB_WORKSPACE/src/wasm/vendor/mupdf.wasm"
-          cp "$FOUND_JS" "$GITHUB_WORKSPACE/src/wasm/vendor/mupdf.js"
+          cp "$FOUND_WASM" "$GITHUB_WORKSPACE/src/wasm/vendor/mupdf-wasm.wasm"
+          cp "$FOUND_JS" "$GITHUB_WORKSPACE/src/wasm/vendor/mupdf-wasm.js"
           popd
           rm -rf "$WORKDIR"
       - name: Commit MuPDF artifacts
@@ -47,7 +47,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
-          git add src/wasm/vendor/mupdf.wasm src/wasm/vendor/mupdf.js
+          git add src/wasm/vendor/mupdf-wasm.wasm src/wasm/vendor/mupdf-wasm.js
           git commit -m "ci: vendor MuPDF wasm/js (AGPL)" || echo "No changes"
           git push || true
 
@@ -92,8 +92,8 @@ jobs:
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
           files=()
-          [[ -f src/wasm/vendor/mupdf.wasm ]] && files+=("src/wasm/vendor/mupdf.wasm")
-          [[ -f src/wasm/vendor/mupdf.js ]] && files+=("src/wasm/vendor/mupdf.js")
+          [[ -f src/wasm/vendor/mupdf-wasm.wasm ]] && files+=("src/wasm/vendor/mupdf-wasm.wasm")
+          [[ -f src/wasm/vendor/mupdf-wasm.js ]] && files+=("src/wasm/vendor/mupdf-wasm.js")
           if [[ ${#files[@]} -gt 0 ]]; then
             git add "${files[@]}"
             git commit -m "ci: add/update MuPDF wasm/js placeholders (replace with real build)" || echo "No changes"
