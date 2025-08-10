@@ -2,8 +2,9 @@
 export async function init({ baseURL }) {
   let mupdf;
   try {
-    // Use the MuPDF WASM bundle that expects `mupdf-wasm.wasm`
-    mupdf = await import(/* @vite-ignore */ baseURL + 'mupdf-wasm.js');
+    // Load the MuPDF WASM bundle under the standard `mupdf.js` naming
+    // and instantiate it to expose `PDFDocument` etc.
+    mupdf = await (await import(/* @vite-ignore */ baseURL + 'mupdf.js')).default();
   } catch (e) {
     throw new Error('MuPDF vendor not found');
   }
