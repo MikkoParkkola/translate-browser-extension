@@ -84,7 +84,7 @@ import { isWasmAvailable } from './wasm/engine.js';
       const vendorBase = chrome.runtime.getURL('wasm/vendor/');
       async function head(u){ try{ const r=await fetch(u,{method:'HEAD'}); return r.ok; }catch{return false;} }
       const avail = {
-        mupdf: await head(vendorBase+'mupdf-wasm.wasm') && await head(vendorBase+'mupdf.js') && await head(vendorBase+'mupdf-wasm.js'),
+        mupdf: (await head(vendorBase+'mupdf.wasm') || await head(vendorBase+'mupdf-wasm.wasm')) && await head(vendorBase+'mupdf.js') && await head(vendorBase+'mupdf-wasm.js'),
         pdfium: await head(vendorBase+'pdfium.wasm') && await head(vendorBase+'pdfium.js'),
         overlay: await head(vendorBase+'pdf-lib.js'),
         simple: true,
@@ -233,7 +233,7 @@ import { isWasmAvailable } from './wasm/engine.js';
       async function head(u){ try{ const r=await fetch(u,{method:'HEAD'}); return r.ok; }catch{return false;} }
       let missing=[];
       if (engine==='overlay') { if(!await head(vendorBase+'pdf-lib.js')) missing.push('pdf-lib.js'); }
-      else if (engine==='mupdf') { const ok1=await head(vendorBase+'mupdf-wasm.wasm'); const ok2=await head(vendorBase+'mupdf.js'); const ok3=await head(vendorBase+'mupdf-wasm.js'); if(!(ok1&&ok2&&ok3)) missing.push('mupdf wasm/js'); }
+      else if (engine==='mupdf') { const ok1=(await head(vendorBase+'mupdf.wasm')) || (await head(vendorBase+'mupdf-wasm.wasm')); const ok2=await head(vendorBase+'mupdf.js'); const ok3=await head(vendorBase+'mupdf-wasm.js'); if(!(ok1&&ok2&&ok3)) missing.push('mupdf wasm/js'); }
       else if (engine==='pdfium') { const ok1=await head(vendorBase+'pdfium.wasm'); const ok2=await head(vendorBase+'pdfium.js'); if(!(ok1&&ok2)) missing.push('pdfium wasm/js'); }
       const es = document.getElementById('engineStatus');
       if (es) { if (missing.length){ es.textContent = 'Engine: missing '+missing.join(', '); es.style.color = '#d32f2f'; } else { es.textContent = 'Engine: Ready ('+engine+')'; es.style.color = '#2e7d32'; } }
@@ -249,7 +249,7 @@ import { isWasmAvailable } from './wasm/engine.js';
         statEl.textContent = 'Engine: Ready';
         statEl.style.color = '#2e7d32';
       } else {
-        statEl.textContent = 'Engine: Missing components (requires: hb.wasm, pdfium.wasm, mupdf.wasm, icu4x_segmenter.wasm)';
+        statEl.textContent = 'Engine: Missing components (requires: hb.wasm, pdfium.wasm, mupdf.wasm or mupdf-wasm.wasm, icu4x_segmenter.wasm)';
         statEl.style.color = '#d32f2f';
       }
     } catch (e) {
