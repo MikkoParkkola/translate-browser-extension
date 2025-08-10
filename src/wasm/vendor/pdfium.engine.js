@@ -1,19 +1,12 @@
 // PDFium engine wrapper scaffold. Replace with real integration.
 export async function init({ baseURL }) {
-  // Try to load PDFium vendor JS if present; otherwise fall back.
-  let mod = null;
+  // Use PDFium if a real integration exists; otherwise fall back to overlay engine
   try {
-    mod = await import(/* @vite-ignore */ baseURL + 'pdfium.js');
-  } catch {}
-  // PoC: return the original PDF as-is. Replace with real PDFium glue.
-  async function rewrite(buffer, cfg, onProgress) {
-    try {
-      if (onProgress) onProgress({ phase: 'rewrite', page: 1, total: 1 });
-      const blob = new Blob([buffer], { type: 'application/pdf' });
-      return blob;
-    } catch (e) {
-      throw new Error('PDFium PoC rewrite failed: ' + e.message);
+    const mod = await import(/* @vite-ignore */ baseURL + 'pdfium.js');
+    if (mod && typeof mod.rewrite === 'function') {
+      return { rewrite: mod.rewrite };
     }
-  }
-  return { rewrite };
+  } catch {}
+  const { init: overlayInit } = await import(/* @vite-ignore */ baseURL + 'overlay.engine.js');
+  return overlayInit({ baseURL });
 }
