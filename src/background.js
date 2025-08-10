@@ -83,6 +83,42 @@ async function updateIcon() {
   chrome.action.setIcon({ imageData: { 19: imageData } });
 }
 
+async function updateIcon() {
+  await ensureThrottle();
+  const { requests, tokens, requestLimit, tokenLimit } = self.qwenThrottle.getUsage();
+  function color(rem, limit) {
+    if (rem <= 0) return '#d9534f';
+    if (rem / limit < 0.2) return '#f0ad4e';
+    return '#5cb85c';
+  }
+  const reqColor = color(requestLimit - requests, requestLimit);
+  const tokColor = color(tokenLimit - tokens, tokenLimit);
+  const canvas = new OffscreenCanvas(19, 19);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 19, 19);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, 19, 19);
+  if (activeTranslations > 0) {
+    ctx.strokeStyle = '#0d6efd';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, 17, 17);
+  } else {
+    ctx.strokeStyle = '#999';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, 19, 19);
+  }
+  ctx.fillStyle = reqColor;
+  ctx.beginPath();
+  ctx.arc(6, 9.5, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = tokColor;
+  ctx.beginPath();
+  ctx.arc(13, 9.5, 4, 0, Math.PI * 2);
+  ctx.fill();
+  const imageData = ctx.getImageData(0, 0, 19, 19);
+  chrome.action.setIcon({ imageData: { 19: imageData } });
+}
+
 function updateBadge() {
   if (activeTranslations > 0) {
     chrome.action.setBadgeText({ text: '...' });
