@@ -26,7 +26,7 @@
         "pdfViewer.html", "pdfViewer.js", "pdf.min.js", "pdf.worker.min.js",
         "wasm/pipeline.js", "wasm/pdfgen.js", "wasm/engine.js",
         "wasm/vendor/hb.wasm", "wasm/vendor/icu4x_segmenter.wasm",
-        "wasm/vendor/mupdf.js", "wasm/vendor/mupdf.wasm",
+        "wasm/vendor/mupdf-wasm.js", "wasm/vendor/mupdf-wasm.wasm",
         "wasm/vendor/pdfium.js", "wasm/vendor/pdfium.wasm",
         "wasm/vendor/*", "config.local.js", "qa/compare.html"
       ],

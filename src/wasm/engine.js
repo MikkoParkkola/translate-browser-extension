@@ -23,7 +23,7 @@ export async function chooseEngine(base, requested) {
   const hbOk = await check(base, 'hb.wasm');
   const icuOk = (await check(base, 'icu4x_segmenter.wasm')) || (await check(base, 'icu4x_segmenter_wasm_bg.wasm'));
   const pdfiumOk = await check(base, 'pdfium.wasm');
-  const mupdfOk = await check(base, 'mupdf.wasm');
+  const mupdfOk = await check(base, 'mupdf-wasm.wasm');
   const overlayOk = await check(base, 'pdf-lib.js');
 
   function pick() {
