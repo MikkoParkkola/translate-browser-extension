@@ -7,7 +7,7 @@ set -euo pipefail
 # - Git
 #
 # Output:
-# - src/wasm/vendor/mupdf.wasm
+# - src/wasm/vendor/mupdf-wasm.wasm
 # - src/wasm/vendor/mupdf.js (loader wrapper you may provide or adapt)
 #
 # Note: MuPDF is AGPL-licensed; ensure compliance when distributing.
@@ -18,7 +18,7 @@ mkdir -p "$VENDOR_DIR"
 
 echo "This script outlines building MuPDF WASM with Emscripten."
 echo "For a turnkey build, use the official MuPDF build instructions with EMSDK."
-echo "Artifacts should be copied to: $VENDOR_DIR/mupdf.wasm and $VENDOR_DIR/mupdf.js"
+echo "Artifacts should be copied to: $VENDOR_DIR/mupdf-wasm.wasm and $VENDOR_DIR/mupdf.js"
 
 cat <<'EOS'
 Suggested steps:
@@ -28,9 +28,9 @@ Suggested steps:
 3) Build WASM target (see MuPDF docs; enable wasm/js target):
    make generate
    # then build wasm target per upstream instructions (varies by version)
-4) Copy the resulting wasm/js artifacts into src/wasm/vendor/ as mupdf.wasm and mupdf.js
+4) Copy the resulting wasm/js artifacts into src/wasm/vendor/ as mupdf-wasm.wasm and mupdf.js
 5) Ensure that src/wasm/vendor/mupdf.js implements init({baseURL}) and rewrite(buffer,cfg,onProgress)
 EOS
 
-echo "Build guidance printed. Please follow steps to produce mupdf.wasm/js."
+echo "Build guidance printed. Please follow steps to produce mupdf-wasm.wasm/js."
 

@@ -2,7 +2,7 @@ Building WASM Engine Artifacts
 
 Goal
 - Produce browser‑ready WASM artifacts for the in‑extension PDF rewrite engine:
-  - MuPDF: `src/wasm/vendor/mupdf.wasm`, `src/wasm/vendor/mupdf.js`
+  - MuPDF: `src/wasm/vendor/mupdf-wasm.wasm`, `src/wasm/vendor/mupdf.js`
   - ICU4X Segmenter: `src/wasm/vendor/icu4x_segmenter.wasm`, `src/wasm/vendor/icu4x_segmenter.js`
 
 Prerequisites
@@ -18,7 +18,7 @@ Quick Local Build (Docker)
    - Enter the repo and build the wasm target (consult MuPDF docs; target names vary by version):
      docker run --rm -v "$PWD":/src -w /src emscripten/emsdk:latest bash -lc "make generate && make wasm"
    - Copy resulting wasm/js artifacts to:
-     src/wasm/vendor/mupdf.wasm
+    src/wasm/vendor/mupdf-wasm.wasm
      src/wasm/vendor/mupdf.js
 
 2) ICU4X Segmenter (Unicode License)

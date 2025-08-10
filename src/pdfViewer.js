@@ -77,7 +77,7 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
       const vendorBase = chrome.runtime.getURL('wasm/vendor/');
       async function head(u){ try{ const r=await fetch(u,{method:'HEAD'}); return r.ok; }catch{return false;} }
       const avail = {
-        mupdf: (await head(vendorBase+'mupdf.wasm') || await head(vendorBase+'mupdf-wasm.wasm')) && await head(vendorBase+'mupdf.js') && await head(vendorBase+'mupdf-wasm.js'),
+        mupdf: await head(vendorBase+'mupdf.js') && (await head(vendorBase+'mupdf-wasm.wasm') || await head(vendorBase+'mupdf.wasm')),
         pdfium: await head(vendorBase+'pdfium.wasm') && await head(vendorBase+'pdfium.js'),
         overlay: await head(vendorBase+'pdf-lib.js'),
         simple: true,
@@ -228,7 +228,7 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
         statEl.textContent = 'Engine: Ready';
         statEl.style.color = '#2e7d32';
       } else {
-        statEl.textContent = 'Engine: Missing components (requires: hb.wasm, pdfium.wasm, mupdf.wasm or mupdf-wasm.wasm, icu4x_segmenter.wasm)';
+          statEl.textContent = 'Engine: Missing components (requires: hb.wasm, pdfium.wasm, mupdf-wasm.wasm or mupdf.wasm, icu4x_segmenter.wasm, pdf-lib.js)';
         statEl.style.color = '#d32f2f';
       }
     } catch (e) {

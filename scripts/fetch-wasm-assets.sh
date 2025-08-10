@@ -13,7 +13,7 @@ echo "Vendor dir: $VENDOR_DIR"
 echo "NOTE: Update the URLs below to exact release artifacts you trust."
 
 # 1) MuPDF (AGPL) — engine (example placeholder URL; replace with actual release)
-# curl -L -o "$VENDOR_DIR/mupdf.wasm" https://example.com/mupdf/mupdf.wasm
+# curl -L -o "$VENDOR_DIR/mupdf-wasm.wasm" https://example.com/mupdf/mupdf-wasm.wasm
 # curl -L -o "$VENDOR_DIR/mupdf.js" https://example.com/mupdf/mupdf.js
 
 # 2) HarfBuzz (MIT) — text shaping (placeholder URLs)

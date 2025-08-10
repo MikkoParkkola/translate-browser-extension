@@ -4,7 +4,7 @@ Place the following prebuilt assets in this folder to enable true PDF text rewri
 
 Required
 - MuPDF or PDFium (WASM build)
-  - mupdf.js, mupdf.wasm (or pdfium.js, pdfium.wasm)
+- mupdf.js, mupdf-wasm.wasm (or pdfium.js, pdfium.wasm)
 - HarfBuzz (WASM) for text shaping
   - hb.js, hb.wasm (from harfbuzzjs releases)
 - ICU4X Segmenter (WASM) for line breaking and BiDi
