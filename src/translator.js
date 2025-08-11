@@ -313,8 +313,9 @@ async function qwenTranslateBatch({
     tokens += tk;
   }
   if (group.length) groups.push(group);
+  const SEP = '\uE000';
   for (const g of groups) {
-    const joined = g.map(m => m.text).join('\n');
+    const joined = g.map(m => m.text.replaceAll(SEP, '')).join(SEP);
     let res;
     try {
       res = await qwenTranslate({ ...opts, text: joined });
@@ -323,7 +324,8 @@ async function qwenTranslateBatch({
       g.forEach(m => { m.result = m.text; });
       continue;
     }
-    const translated = res && typeof res.text === 'string' ? res.text.split('\n') : [];
+    const translated =
+      res && typeof res.text === 'string' ? res.text.split(SEP) : [];
     for (let i = 0; i < g.length; i++) {
       g[i].result = translated[i] || g[i].text;
       const key = `${opts.source}:${opts.target}:${g[i].text}`;

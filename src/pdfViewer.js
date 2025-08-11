@@ -52,6 +52,7 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
   const file = params.get('file');
   const origFile = params.get('orig') || file;
   const viewer = document.getElementById('viewer');
+  const thumbs = document.getElementById('thumbs');
 
   const badge = document.getElementById('modeBadge');
   const isTranslatedParam = params.get('translated') === '1';
@@ -77,8 +78,11 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
       const vendorBase = chrome.runtime.getURL('wasm/vendor/');
       async function head(u){ try{ const r=await fetch(u,{method:'HEAD'}); return r.ok; }catch{return false;} }
       const avail = {
-        mupdf: await head(vendorBase+'mupdf-wasm.js') && (await head(vendorBase+'mupdf-wasm.wasm') || await head(vendorBase+'mupdf.wasm')),
-        pdfium: await head(vendorBase+'pdfium.wasm') && await head(vendorBase+'pdfium.js'),
+        mupdf: await head(vendorBase+'mupdf.engine.js') && await head(vendorBase+'mupdf.wasm'),
+        pdfium:
+          (await head(vendorBase+'pdfium.engine.js')) &&
+          (await head(vendorBase+'pdfium.js')) &&
+          (await head(vendorBase+'pdfium.wasm')),
         overlay: await head(vendorBase+'pdf-lib.js'),
         simple: true,
       };
@@ -172,9 +176,15 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
     btnTranslated.dataset.bound = '1';
     btnTranslated.addEventListener('click', async () => {
       try {
+        btnTranslated.disabled = true;
+        btnOriginal && (btnOriginal.disabled = true);
         const blobUrl = isTranslatedParam ? file : await generateTranslatedBlobUrl(origFile);
         gotoTranslated(origFile, blobUrl);
       } catch (e) { console.error('Translate view failed', e); }
+      finally {
+        btnTranslated.disabled = false;
+        btnOriginal && (btnOriginal.disabled = false);
+      }
     });
   }
   if (btnTranslatedMenu && !btnTranslatedMenu.dataset.bound) {
@@ -274,6 +284,11 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
       canvas.style.height = `${viewport.height}px`;
       pageDiv.appendChild(canvas);
 
+      const num = document.createElement('div');
+      num.className = 'pageNumber';
+      num.textContent = pageNum;
+      pageDiv.appendChild(num);
+
       // UI bindings handled above; no per-page hooks needed
       console.log(`DEBUG: Canvas created for page ${pageNum}.`);
 
@@ -285,6 +300,22 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
       console.log(`DEBUG: Rendering page ${pageNum} to canvas.`);
       await page.render(renderContext).promise;
       console.log(`DEBUG: Page ${pageNum} rendered to canvas.`);
+
+      if (thumbs) {
+        const thumbCanvas = document.createElement('canvas');
+        const scale = 0.2;
+        thumbCanvas.width = Math.floor(viewport.width * scale);
+        thumbCanvas.height = Math.floor(viewport.height * scale);
+        const tctx = thumbCanvas.getContext('2d');
+        tctx.drawImage(canvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
+        const holder = document.createElement('div');
+        holder.className = 'thumb';
+        holder.appendChild(thumbCanvas);
+        holder.addEventListener('click', () => {
+          pageDiv.scrollIntoView({ behavior: 'smooth' });
+        });
+        thumbs.appendChild(holder);
+      }
 
       // Build a DOM text layer that exactly matches PDF.js layout
       const textContent = await page.getTextContent();
@@ -322,6 +353,7 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
     link.href = file;
     link.textContent = 'Open original PDF';
     link.target = '_blank';
+    viewer.appendChild(document.createTextNode(' '));
     viewer.appendChild(link);
     console.log(`DEBUG: Caught error: ${e.message}`);
   }

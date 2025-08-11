@@ -5,8 +5,8 @@
   <style>
     body {
       font-family: system-ui, sans-serif;
-      width: 300px;
-      min-height: 520px;
+      width: 360px;
+      min-height: 640px;
       padding: 12px;
       margin: 0;
       background: #fff;
@@ -80,6 +80,15 @@
 </head>
 <body>
   <button id="translate" title="Translate the current tab">Translate Page</button>
+  <div id="usage">
+    <div>Requests <span id="reqCount">0/0</span></div>
+    <div class="bar"><div id="reqBar"></div></div>
+    <div>Tokens <span id="tokenCount">0/0</span></div>
+    <div class="bar"><div id="tokenBar"></div></div>
+    <div>Total Requests <span id="totalReq">0</span></div>
+    <div>Total Tokens <span id="totalTok">0</span></div>
+    <div>Queue <span id="queueLen">0</span></div>
+  </div>
   <label>API Key <input type="text" id="apiKey"></label>
   <label>API Endpoint <input type="text" id="apiEndpoint"></label>
   <label>Model <input type="text" id="model"></label>
@@ -94,15 +103,6 @@
     <button id="test">Test Settings</button>
   </div>
   <div id="status"></div>
-  <div id="usage">
-    <div>Requests <span id="reqCount">0/0</span></div>
-    <div class="bar"><div id="reqBar"></div></div>
-    <div>Tokens <span id="tokenCount">0/0</span></div>
-    <div class="bar"><div id="tokenBar"></div></div>
-    <div>Total Requests <span id="totalReq">0</span></div>
-    <div>Total Tokens <span id="totalTok">0</span></div>
-    <div>Queue <span id="queueLen">0</span></div>
-  </div>
   <div id="version"></div>
   <script src="throttle.js"></script>
   <script src="translator.js"></script>

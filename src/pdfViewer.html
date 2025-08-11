@@ -5,13 +5,16 @@
   <title>Qwen PDF Viewer</title>
   <style>
     html, body { margin:0; padding:0; height:100%; }
+    #thumbs { display:flex; gap:6px; overflow-x:auto; padding:6px; border-bottom:1px solid #eee; background:#fafafa }
     #viewer { position:relative; height:100%; overflow:auto; }
     .page { position:relative; margin:10px auto; }
     canvas { display:block; }
     .textLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:2; --scale-factor: 1; }
     .textLayer span { position:absolute; white-space:pre; transform-origin:0% 0%; line-height:1; display:inline-block; color: transparent; background: transparent; text-shadow: none; }
     .page { box-shadow: 0 0 0 1px rgba(0,0,0,0.1); }
-      .annotationLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:15; }
+    .annotationLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:15; }
+    .thumb { cursor:pointer; }
+    .pageNumber { position:absolute; top:4px; right:8px; background:rgba(0,0,0,0.6); color:#fff; padding:2px 5px; border-radius:4px; font-size:12px; }
   </style>
 </head>
   <body>
@@ -31,6 +34,7 @@
     <span id="engineStatus" class="muted">Engine: checking…</span>
     <span id="modeBadge" class="muted" style="margin-left:auto"></span>
   </div>
+  <div id="thumbs"></div>
   <div id="viewer"></div>
   <script src="pdf.min.js"></script>
   <script src="config.local.js"></script>

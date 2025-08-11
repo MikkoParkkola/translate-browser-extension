@@ -45,6 +45,9 @@ function setStatus(message, isError = false) {
   }
   el.style.background = isError ? 'rgba(255,0,0,0.8)' : 'rgba(0,0,0,0.6)';
   el.textContent = `Qwen Translator: ${message}`;
+  try {
+    chrome.runtime.sendMessage({ action: 'popup-status', text: message, error: isError });
+  } catch {}
   if (statusTimer) clearTimeout(statusTimer);
   if (isError) statusTimer = setTimeout(clearStatus, 5000);
 }
@@ -52,6 +55,7 @@ function setStatus(message, isError = false) {
 function clearStatus() {
   const el = document.getElementById('qwen-status');
   if (el) el.remove();
+  try { chrome.runtime.sendMessage({ action: 'popup-clear-status' }); } catch {}
 }
 
 function showError(message) {
