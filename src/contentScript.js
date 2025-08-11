@@ -59,14 +59,25 @@ function showError(message) {
 }
 
 function mark(node) {
-  node.dataset.qwenTranslated = 'true';
+  if (node.nodeType === Node.TEXT_NODE) {
+    node.__qwenTranslated = true;
+  } else if (node.dataset) {
+    node.dataset.qwenTranslated = 'true';
+  }
 }
 
 function markUntranslatable(node) {
-  node.dataset.qwenUntranslatable = 'true';
+  if (node.nodeType === Node.TEXT_NODE) {
+    node.__qwenUntranslatable = true;
+  } else if (node.dataset) {
+    node.dataset.qwenUntranslatable = 'true';
+  }
 }
 
 function isMarked(node) {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node.__qwenTranslated || node.__qwenUntranslatable;
+  }
   return (
     node.dataset &&
     (node.dataset.qwenTranslated === 'true' || node.dataset.qwenUntranslatable === 'true')
@@ -84,8 +95,10 @@ function isVisible(el) {
   return true;
 }
 
-function shouldTranslate(el) {
-  return !isMarked(el) && !SKIP_TAGS.has(el.tagName) && isVisible(el);
+function shouldTranslate(node) {
+  const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  if (!el) return false;
+  return !isMarked(node) && !SKIP_TAGS.has(el.tagName) && isVisible(el);
 }
 
 async function translateNode(node) {
@@ -218,9 +231,8 @@ function collectNodes(root, out) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
   let node;
   while ((node = walker.nextNode())) {
-    const parent = node.parentElement;
-    if (parent && node.textContent.trim() && shouldTranslate(parent)) {
-      out.push(parent);
+    if (node.textContent.trim() && shouldTranslate(node)) {
+      out.push(node);
     }
   }
   if (root.querySelectorAll) {
@@ -348,5 +360,15 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   window.addEventListener('DOMContentLoaded', () => {
     window.qwenLoadConfig().then(cfg => { if (cfg.autoTranslate) start(); });
   });
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    translateBatch,
+    collectNodes,
+    setCurrentConfig: cfg => {
+      currentConfig = cfg;
+    },
+  };
 }
 }
