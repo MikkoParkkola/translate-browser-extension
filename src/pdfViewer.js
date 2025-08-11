@@ -166,7 +166,7 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
             WASM_ASSETS.forEach(a => {
               chrome.downloads.download({ url: a.url, filename: `wasm/vendor/${a.path}` });
             });
-            alert('After download, move the "wasm" folder into the extension directory and reload.');
+            alert('After download, copy the "wasm" folder into the extension directory (merge with existing files) and reload.');
           });
         } else {
           dlBtn.style.display = 'none';

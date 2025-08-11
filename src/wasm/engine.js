@@ -7,6 +7,10 @@ export const WASM_ASSETS = [
   { path: 'mupdf.engine.js', url: 'https://unpkg.com/mupdf@1.26.4/dist/mupdf.js' },
   { path: 'pdfium.wasm', url: 'https://unpkg.com/pdfium-wasm@0.0.2/dist/pdfium.wasm' },
   { path: 'pdfium.js', url: 'https://unpkg.com/pdfium-wasm@0.0.2/dist/pdfium.js' },
+  {
+    path: 'pdfium.engine.js',
+    url: 'https://raw.githubusercontent.com/alibaba/Qwen-translator-extension/main/src/wasm/vendor/pdfium.engine.js',
+  },
   { path: 'hb.wasm', url: 'https://unpkg.com/harfbuzzjs@0.4.8/hb.wasm' },
   { path: 'hb.js', url: 'https://unpkg.com/harfbuzzjs@0.4.8/hb.js' },
   {
@@ -18,6 +22,22 @@ export const WASM_ASSETS = [
     url: 'https://raw.githubusercontent.com/alibaba/Qwen-translator-extension/main/src/wasm/vendor/icu4x_segmenter.js',
   },
   { path: 'pdf-lib.js', url: 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js' },
+  {
+    path: 'overlay.engine.js',
+    url: 'https://raw.githubusercontent.com/alibaba/Qwen-translator-extension/main/src/wasm/vendor/overlay.engine.js',
+  },
+  {
+    path: 'simple.engine.js',
+    url: 'https://raw.githubusercontent.com/alibaba/Qwen-translator-extension/main/src/wasm/vendor/simple.engine.js',
+  },
+  {
+    path: 'fonts/NotoSans-Regular.ttf',
+    url: 'https://fonts.gstatic.com/s/notosans/v39/o-0mIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjcz6L1SoM-jCpoiyD9A99d.ttf',
+  },
+  {
+    path: 'fonts/NotoSans-Bold.ttf',
+    url: 'https://fonts.gstatic.com/s/notosans/v39/o-0mIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjcz6L1SoM-jCpoiyAaBN9d.ttf',
+  },
 ];
 
 let available = false;

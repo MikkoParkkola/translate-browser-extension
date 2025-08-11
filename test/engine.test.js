@@ -41,18 +41,17 @@ describe('chooseEngine', () => {
 
   it('loads engines after assets downloaded', async () => {
     const { chooseEngine, WASM_ASSETS, downloadWasmAssets } = loadEngine();
-    const os = require('os');
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wasm-'));
-    await downloadWasmAssets(tmp, (url, dest) => {
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
-      fs.writeFileSync(dest, '');
-    });
-    fs.writeFileSync(path.join(tmp, 'pdfium.engine.js'), '');
-    global.fetch = jest.fn(url => {
-      const rel = url.replace('base/', '');
-      const p = path.join(tmp, rel);
-      if (fs.existsSync(p)) return Promise.resolve({ ok: true });
-      return Promise.reject(new Error('missing'));
+  const os = require('os');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wasm-'));
+  await downloadWasmAssets(tmp, (url, dest) => {
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, '');
+  });
+  global.fetch = jest.fn(url => {
+    const rel = url.replace('base/', '');
+    const p = path.join(tmp, rel);
+    if (fs.existsSync(p)) return Promise.resolve({ ok: true });
+    return Promise.reject(new Error('missing'));
     });
     const { choice, mupdfOk, pdfiumOk } = await chooseEngine('base/', 'auto');
     for (const a of WASM_ASSETS) {
