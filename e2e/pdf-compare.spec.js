@@ -94,7 +94,7 @@ test.describe('PDF visual compare', () => {
   }
 
   test('identical PDFs produce near-zero diff', async ({ page }, testInfo) => {
-    const pdf = '/translated.pdf';
+    const pdf = '/e2e/pdfs/translated.pdf';
     const { diffScore, diffPages, canvases } = await openCompare(page, pdf, pdf, true);
     try {
       expect(canvases).toBeGreaterThan(0);
@@ -127,8 +127,8 @@ test.describe('PDF visual compare', () => {
   });
 
   test('different PDFs produce noticeable diff', async ({ page }, testInfo) => {
-    const a = '/translated.pdf';
-    const b = '/translated_1.pdf';
+    const a = '/e2e/pdfs/translated.pdf';
+    const b = '/e2e/pdfs/translated_1.pdf';
     const { diffScore, diffPages, canvases } = await openCompare(page, a, b, true);
     try {
       expect(canvases).toBeGreaterThan(0);

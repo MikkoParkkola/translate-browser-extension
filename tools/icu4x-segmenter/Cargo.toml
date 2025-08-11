@@ -10,3 +10,6 @@ crate-type = ["cdylib"]
 wasm-bindgen = "0.2"
 icu_segmenter = { version = "1.5", features = ["compiled_data"] }
 
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+

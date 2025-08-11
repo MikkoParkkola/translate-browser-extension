@@ -12,3 +12,7 @@ test-results/
 # Vendored artifacts generated locally
 src/wasm/vendor/mupdf.wasm
 src/wasm/vendor/*.zip
+
+# Rust build artifacts
+tools/icu4x-segmenter/target/
+tools/icu4x-segmenter/pkg/
