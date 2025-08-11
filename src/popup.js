@@ -16,6 +16,16 @@ const tokenBar = document.getElementById('tokenBar');
 const totalReq = document.getElementById('totalReq');
 const totalTok = document.getElementById('totalTok');
 const queueLen = document.getElementById('queueLen');
+const translateBtn = document.getElementById('translate');
+const saveBtn = document.getElementById('save');
+const testBtn = document.getElementById('test');
+
+function safeFetch(url, opts) {
+  return fetch(url, opts).catch(err => {
+    console.warn('Failed to fetch', url, err.message);
+    throw err;
+  });
+}
 
 function populateLanguages() {
   window.qwenLanguages.forEach(l => {
@@ -27,6 +37,21 @@ function populateLanguages() {
 }
 
 populateLanguages();
+
+function setWorking(w) {
+  [translateBtn, saveBtn, testBtn].forEach(b => { if (b) b.disabled = w; });
+}
+
+chrome.runtime.onMessage.addListener(msg => {
+  if (msg.action === 'popup-status') {
+    status.textContent = msg.text || '';
+    setWorking(true);
+  }
+  if (msg.action === 'popup-clear-status') {
+    status.textContent = '';
+    setWorking(false);
+  }
+});
 
 window.qwenLoadConfig().then(cfg => {
   apiKeyInput.value = cfg.apiKey;
@@ -64,7 +89,7 @@ function refreshUsage() {
 setInterval(refreshUsage, 1000);
 refreshUsage();
 
-document.getElementById('translate').addEventListener('click', () => {
+translateBtn.addEventListener('click', () => {
   const debug = debugCheckbox.checked;
   chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
     if (!tabs[0]) return;
@@ -73,7 +98,11 @@ document.getElementById('translate').addEventListener('click', () => {
   });
 });
 
-document.getElementById('save').addEventListener('click', () => {
+saveBtn.addEventListener('click', () => {
+  if (!window.qwenSaveConfig) {
+    status.textContent = 'Config library not loaded. This may happen if the script was blocked.';
+    return;
+  }
   const cfg = {
     apiKey: apiKeyInput.value.trim(),
     apiEndpoint: endpointInput.value.trim(),
@@ -91,8 +120,12 @@ document.getElementById('save').addEventListener('click', () => {
   });
 });
 
-document.getElementById('test').addEventListener('click', async () => {
+testBtn.addEventListener('click', async () => {
   status.textContent = 'Testing...';
+  if (!window.qwenTranslate || !window.qwenTranslateStream) {
+    status.textContent = 'Translation library not loaded. This may happen if the script was blocked.';
+    return;
+  }
   const list = document.createElement('ul');
   list.style.margin = '0';
   list.style.paddingLeft = '20px';
@@ -133,7 +166,7 @@ document.getElementById('test').addEventListener('click', async () => {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 5000);
     try {
-      await fetch(cfg.endpoint, { method: 'GET', signal: controller.signal });
+      await safeFetch(cfg.endpoint, { method: 'GET', signal: controller.signal });
     } finally { clearTimeout(t); }
   })) && allOk;
 
@@ -143,7 +176,7 @@ document.getElementById('test').addEventListener('click', async () => {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 5000);
     try {
-      await fetch(transUrl, { method: 'OPTIONS', signal: controller.signal });
+      await safeFetch(transUrl, { method: 'OPTIONS', signal: controller.signal });
     } finally { clearTimeout(t); }
   })) && allOk;
 

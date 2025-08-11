@@ -5,7 +5,8 @@
   <style>
     body {
       font-family: system-ui, sans-serif;
-      width: 260px;
+      width: 360px;
+      min-height: 640px;
       padding: 12px;
       margin: 0;
       background: #fff;
@@ -37,11 +38,21 @@
       cursor: pointer;
     }
     button:hover { background: #1565c0; }
+    .buttons {
+      display: flex;
+      gap: 8px;
+    }
+    .buttons button { flex: 1; }
     #status {
       margin-top: 8px;
       font-size: 12px;
       color: #555;
-      min-height: 16px;
+      min-height: 40px;
+      max-height: 120px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      padding: 4px;
+      background: #fafafa;
     }
     #usage {
       margin-top: 12px;
@@ -69,15 +80,6 @@
 </head>
 <body>
   <button id="translate" title="Translate the current tab">Translate Page</button>
-  <label>API Key <input type="text" id="apiKey"></label>
-  <label>API Endpoint <input type="text" id="apiEndpoint"></label>
-  <label>Model <input type="text" id="model"></label>
-  <label>Source <select id="source"></select></label>
-  <label>Target <select id="target"></select></label>
-  <label>Requests per minute <input type="number" id="requestLimit"></label>
-  <label>Tokens per minute <input type="number" id="tokenLimit"></label>
-  <label><input type="checkbox" id="auto"> Translate automatically</label>
-  <label><input type="checkbox" id="debug"> Debug logging</label>
   <div id="usage">
     <div>Requests <span id="reqCount">0/0</span></div>
     <div class="bar"><div id="reqBar"></div></div>
@@ -87,8 +89,19 @@
     <div>Total Tokens <span id="totalTok">0</span></div>
     <div>Queue <span id="queueLen">0</span></div>
   </div>
-  <button id="save">Save</button>
-  <button id="test">Test Settings</button>
+  <label>API Key <input type="text" id="apiKey"></label>
+  <label>API Endpoint <input type="text" id="apiEndpoint"></label>
+  <label>Model <input type="text" id="model"></label>
+  <label>Source <select id="source"></select></label>
+  <label>Target <select id="target"></select></label>
+  <label>Requests per minute <input type="number" id="requestLimit"></label>
+  <label>Tokens per minute <input type="number" id="tokenLimit"></label>
+  <label><input type="checkbox" id="auto"> Translate automatically</label>
+  <label><input type="checkbox" id="debug"> Debug logging</label>
+  <div class="buttons">
+    <button id="save">Save</button>
+    <button id="test">Test Settings</button>
+  </div>
   <div id="status"></div>
   <div id="version"></div>
   <script src="throttle.js"></script>

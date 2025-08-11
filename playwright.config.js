@@ -9,7 +9,7 @@ const config = {
   },
   testDir: 'e2e',
   webServer: {
-    command: 'npx http-server -p 8080 -c-1 .',
+    command: "npx http-server -p 8080 -c-1 . -H 'Permissions-Policy: accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=(), camera=()'",
     url: 'http://127.0.0.1:8080',
     reuseExistingServer: true,
     timeout: 120000
