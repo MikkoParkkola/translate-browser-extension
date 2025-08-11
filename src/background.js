@@ -59,57 +59,75 @@ async function updateIcon() {
   iconFrame++;
   await ensureThrottle();
   const { requests, tokens, requestLimit, tokenLimit } = self.qwenThrottle.getUsage();
-  function color(rem, limit) {
-    if (rem <= 0) return '#d9534f';
-    if (rem / limit < 0.2) return '#f0ad4e';
-    return '#5cb85c';
-  }
-  const reqColor = color(requestLimit - requests, requestLimit);
-  const tokColor = color(tokenLimit - tokens, tokenLimit);
-  const reqPct = Math.min(1, Math.max(0, (requestLimit - requests) / requestLimit));
-  const tokPct = Math.min(1, Math.max(0, (tokenLimit - tokens) / tokenLimit));
-  const size = 19;
+
+  const size = 128; // Use a higher resolution canvas for better quality
   const c = new OffscreenCanvas(size, size);
   const ctx = c.getContext('2d');
   ctx.clearRect(0, 0, size, size);
-  // outer activity ring / spinner
-  ctx.lineWidth = 3;
-  if (activeTranslations > 0) {
-    const angle = (iconFrame / 10) % (Math.PI * 2);
-    ctx.strokeStyle = '#0d6efd';
-    ctx.beginPath();
-    ctx.arc(9.5, 9.5, 8, angle, angle + Math.PI / 2);
-    ctx.stroke();
-  } else {
-    ctx.strokeStyle = '#adb5bd';
-    ctx.beginPath();
-    ctx.arc(9.5, 9.5, 8, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-  // usage rings
-  const blink = iconFrame % 20 < 10;
   ctx.lineCap = 'round';
-  ctx.lineWidth = 4;
-  // request ring background
-  ctx.strokeStyle = '#e9ecef';
+
+  // Base icon: a simple, modern "Q"
+  ctx.fillStyle = '#4285F4'; // Google blue, as a placeholder
+  ctx.font = 'bold 80px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Q', size / 2, size / 2 + 5);
+
+  // Busy indicator: a subtle pulsating glow
+  if (activeTranslations > 0) {
+    const pulse = (Math.sin(iconFrame / 5) + 1) / 2; // 0 to 1
+    ctx.shadowColor = 'rgba(66, 133, 244, 0.7)';
+    ctx.shadowBlur = pulse * 15;
+    ctx.fillStyle = 'rgba(66, 133, 244, 0.2)';
+    ctx.beginPath();
+    ctx.arc(size/2, size/2, size/2 - 5, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.shadowBlur = 0; // Reset shadow
+  }
+
+  // Rate limit status: two concentric progress rings
+  const reqPct = Math.max(0, requests / requestLimit);
+  const tokPct = Math.max(0, tokens / tokenLimit);
+
+  function getColor(pct) {
+    if (pct >= 1) return '#d9534f'; // red
+    if (pct > 0.8) return '#f0ad4e'; // yellow
+    return '#5cb85c'; // green
+  }
+
+  // Draw request ring
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = '#e9ecef'; // background
   ctx.beginPath();
-  ctx.arc(9.5, 9.5, 6, 0, Math.PI * 2);
+  ctx.arc(size/2, size/2, size/2 - 8, 0, 2 * Math.PI);
   ctx.stroke();
-  ctx.strokeStyle = requestLimit - requests <= 0 && blink ? '#fff' : reqColor;
+
+  ctx.strokeStyle = getColor(reqPct);
   ctx.beginPath();
-  ctx.arc(9.5, 9.5, 6, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * reqPct);
+  ctx.arc(size/2, size/2, size/2 - 8, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * reqPct);
   ctx.stroke();
-  // token ring background
+
+  // Draw token ring
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = '#e9ecef'; // background
   ctx.beginPath();
-  ctx.strokeStyle = '#e9ecef';
-  ctx.arc(9.5, 9.5, 3, 0, Math.PI * 2);
+  ctx.arc(size/2, size/2, size/2 - 22, 0, 2 * Math.PI);
   ctx.stroke();
-  ctx.strokeStyle = tokenLimit - tokens <= 0 && blink ? '#fff' : tokColor;
+
+  ctx.strokeStyle = getColor(tokPct);
   ctx.beginPath();
-  ctx.arc(9.5, 9.5, 3, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * tokPct);
+  ctx.arc(size/2, size/2, size/2 - 22, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * tokPct);
   ctx.stroke();
+
+
+  // Set icon for multiple sizes
   const imageData = ctx.getImageData(0, 0, size, size);
-  chrome.action.setIcon({ imageData: { 19: imageData } });
+  chrome.action.setIcon({
+    imageData: {
+      128: imageData,
+      // Chrome will scale down the 128px icon for other sizes
+    }
+  });
 }
 
 function updateBadge() {
