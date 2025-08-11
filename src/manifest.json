@@ -21,7 +21,7 @@
     "service_worker": "background.js"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; connect-src 'self' https: file: blob: data:; img-src 'self' https: file: blob: data:;"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; connect-src 'self' https: file: blob: data:; img-src 'self' https: file: blob: data:; font-src 'self';"
   },
   "action": {
     "default_popup": "popup.html",

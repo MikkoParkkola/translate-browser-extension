@@ -3,106 +3,181 @@
 <head>
   <meta charset="utf-8">
   <style>
+    :root {
+      --bg-color: #f8f9fa;
+      --text-color: #212529;
+      --input-bg: #fff;
+      --input-border: #ced4da;
+      --input-focus-border: #86b7fe;
+      --primary-color: #0d6efd;
+      --primary-hover-color: #0b5ed7;
+      --secondary-bg: #e9ecef;
+      --secondary-hover-bg: #dee2e6;
+      --bar-bg: #e9ecef;
+      --green: #198754;
+      --yellow: #ffc107;
+      --red: #dc3545;
+      --body-width: 380px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-color: #212529;
+        --text-color: #f8f9fa;
+        --input-bg: #343a40;
+        --input-border: #495057;
+        /* ... other dark mode colors */
+      }
+    }
+
     body {
-      font-family: system-ui, sans-serif;
-      width: 360px;
-      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      width: var(--body-width);
+      padding: 1rem;
       margin: 0;
-      background: #fff;
+      background-color: var(--bg-color);
+      color: var(--text-color);
       display: flex;
       flex-direction: column;
-      gap: 8px;
-    }
-    label {
-      font-size: 12px;
-      color: #333;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    input[type=text], input[type=number], select {
-      width: 100%;
-      box-sizing: border-box;
-      padding: 6px 8px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      background: #fafafa;
-    }
-    button {
-      width: 100%;
-      padding: 8px;
-      border: none;
-      border-radius: 6px;
-      background: #1976d2;
-      color: #fff;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    button:hover { background: #1565c0; }
-    .buttons {
-      display: flex;
-      gap: 8px;
-    }
-    .buttons button { flex: 1; }
-    #status {
-      font-size: 12px;
-      color: #555;
-      min-height: 40px;
-      max-height: 120px;
+      gap: 0.75rem;
+      max-height: 580px;
       overflow-y: auto;
-      border: 1px solid #ccc;
-      padding: 4px;
-      background: #fafafa;
     }
-    #usage {
-      font-size: 11px;
-      display: grid;
-      gap: 4px;
+
+    /* View switching logic */
+    .view-container > .setup-view,
+    .view-container > .main-view {
+      display: none;
     }
-    .bar {
-      height: 6px;
-      background: #eee;
-      border-radius: 3px;
-      overflow: hidden;
+    .view-container.show-setup .setup-view {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
     }
-    .bar > div {
-      height: 100%;
-      width: 0%;
-      background: #1976d2;
+    .view-container.show-main .main-view {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
     }
-    #version {
-      font-size: 11px;
-      color: #777;
-      text-align: center;
-    }
+
+    /* ... (rest of the styles from previous version) ... */
+    .main-actions { display: flex; gap: 0.5rem; align-items: center; }
+    #translate { flex-grow: 1; }
+    .auto-translate-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
+    .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--secondary-bg); transition: .4s; border-radius: 20px; }
+    .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: var(--primary-color); }
+    input:checked + .slider:before { transform: translateX(14px); }
+    .usage-section { font-size: 0.75rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem 1rem; padding: 0.5rem; background: var(--secondary-bg); border-radius: 8px; }
+    .usage-item { display: flex; flex-direction: column; }
+    .bar { height: 6px; background: var(--bar-bg); border-radius: 3px; overflow: hidden; margin-top: 2px; }
+    .bar > div { height: 100%; width: 0%; transition: width 0.2s ease-in-out, background-color 0.2s ease-in-out; }
+    .form-group { display: flex; flex-direction: column; gap: 0.5rem; }
+    label { font-size: 0.875rem; }
+    input[type=text], input[type=number], select { width: 100%; box-sizing: border-box; padding: 0.5rem 0.75rem; border: 1px solid var(--input-border); border-radius: 6px; background-color: var(--input-bg); color: var(--text-color); font-size: 1rem; }
+    input:focus, select:focus { outline: none; border-color: var(--input-focus-border); box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25); }
+    button { padding: 0.6rem 1rem; border: none; border-radius: 6px; background-color: var(--primary-color); color: #fff; font-weight: 600; cursor: pointer; transition: background-color 0.15s ease-in-out; }
+    button:hover { background-color: var(--primary-hover-color); }
+    button#test { background-color: var(--secondary-bg); color: var(--text-color); }
+    button#test:hover { background-color: var(--secondary-hover-bg); }
+    #status { font-size: 0.875rem; min-height: 40px; max-height: 150px; overflow-y: auto; border: 1px solid var(--input-border); padding: 0.5rem; background-color: var(--input-bg); border-radius: 6px; white-space: pre-wrap; }
+    #version { font-size: 0.75rem; text-align: center; opacity: 0.7; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    summary { cursor: pointer; font-weight: 600; }
   </style>
 </head>
 <body>
-  <button id="translate" title="Translate the current tab">Translate Page</button>
-  <div id="usage">
-    <div>Requests <span id="reqCount">0/0</span></div>
-    <div class="bar"><div id="reqBar"></div></div>
-    <div>Tokens <span id="tokenCount">0/0</span></div>
-    <div class="bar"><div id="tokenBar"></div></div>
-    <div>Total Requests <span id="totalReq">0</span></div>
-    <div>Total Tokens <span id="totalTok">0</span></div>
-    <div>Queue <span id="queueLen">0</span></div>
+  <div id="viewContainer" class="view-container">
+    <!-- ===== SETUP VIEW ===== -->
+    <div class="setup-view">
+      <h3>Initial Setup</h3>
+      <p>Please configure the essential settings to start using the extension.</p>
+      <div class="form-group">
+        <label for="setup-apiKey">API Key</label>
+        <input type="text" id="setup-apiKey" placeholder="Enter your API key">
+
+        <label for="setup-apiEndpoint">API Endpoint</label>
+        <input type="text" id="setup-apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1">
+
+        <label for="setup-model">Model</label>
+        <input type="text" id="setup-model" placeholder="e.g., qwen-mt-turbo">
+      </div>
+      <p>Your settings are saved automatically.</p>
+    </div>
+
+    <!-- ===== MAIN VIEW ===== -->
+    <div class="main-view">
+      <div class="main-actions">
+        <button id="translate" title="Translate the current tab">Translate Page</button>
+        <div class="auto-translate-toggle">
+          <label class="switch">
+            <input type="checkbox" id="auto">
+            <span class="slider"></span>
+          </label>
+          <span>Auto</span>
+        </div>
+      </div>
+
+      <div class="usage-section">
+        <div class="usage-item">
+          <span>Requests: <span id="reqCount">0/0</span></span>
+          <div class="bar"><div id="reqBar"></div></div>
+        </div>
+        <div class="usage-item">
+          <span>Tokens: <span id="tokenCount">0/0</span></span>
+          <div class="bar"><div id="tokenBar"></div></div>
+        </div>
+        <div class="usage-item">Total Requests: <span id="totalReq">0</span></div>
+        <div class="usage-item">Total Tokens: <span id="totalTok">0</span></div>
+        <div class="usage-item">Queue: <span id="queueLen">0</span></div>
+      </div>
+
+      <div class="grid-2">
+        <div>
+          <label for="source">Source Language</label>
+          <select id="source"></select>
+        </div>
+        <div>
+          <label for="target">Target Language</label>
+          <select id="target"></select>
+        </div>
+      </div>
+
+      <details>
+        <summary>Advanced Settings</summary>
+        <div class="form-group" style="padding-top: 0.75rem">
+          <label for="apiKey">API Key</label>
+          <input type="text" id="apiKey" placeholder="Enter your API key">
+
+          <label for="apiEndpoint">API Endpoint</label>
+          <input type="text" id="apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1">
+
+          <label for="model">Model</label>
+          <input type="text" id="model">
+
+          <div class="grid-2">
+            <div>
+              <label for="requestLimit">Requests/min</label>
+              <input type="number" id="requestLimit">
+            </div>
+            <div>
+              <label for="tokenLimit">Tokens/min</label>
+              <input type="number" id="tokenLimit">
+            </div>
+          </div>
+
+          <label><input type="checkbox" id="debug"> Debug logging</label>
+        </div>
+      </details>
+
+      <button id="test">Test Settings</button>
+      <div id="status"></div>
+      <div id="version"></div>
+    </div>
   </div>
-  <label>API Key <input type="text" id="apiKey"></label>
-  <label>API Endpoint <input type="text" id="apiEndpoint"></label>
-  <label>Model <input type="text" id="model"></label>
-  <label>Source <select id="source"></select></label>
-  <label>Target <select id="target"></select></label>
-  <label>Requests per minute <input type="number" id="requestLimit"></label>
-  <label>Tokens per minute <input type="number" id="tokenLimit"></label>
-  <label><input type="checkbox" id="auto"> Translate automatically</label>
-  <label><input type="checkbox" id="debug"> Debug logging</label>
-  <div class="buttons">
-    <button id="save">Save</button>
-    <button id="test">Test Settings</button>
-  </div>
-  <div id="status"></div>
-  <div id="version"></div>
+
   <script src="throttle.js"></script>
   <script src="translator.js"></script>
   <script src="config.js"></script>
