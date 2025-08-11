@@ -1,13 +1,20 @@
 const { test, expect } = require('@playwright/test');
 
 async function serveIfNeeded(page) {
-  // fallback: use built-in file URL if server not present; adjust in harness if needed
+  const httpBase = 'http://127.0.0.1:8080';
+  try {
+    const res = await page.goto(httpBase + '/404', {
+      waitUntil: 'domcontentloaded',
+      timeout: 5000,
+    });
+    if (res) return httpBase;
+  } catch {}
+  return 'file://' + process.cwd();
 }
 
 test.describe('Engine smoke', () => {
   async function runSmoke(page, engine) {
-    // Best-effort local file URL fallback if server not available
-    const base = 'file://' + process.cwd();
+    const base = await serveIfNeeded(page);
     const url = `${base}/src/qa/engine-smoke.html?engine=${engine}`;
     await page.goto(url);
     await page.waitForFunction(() => window.smokeOk === true, { timeout: 120000 });
