@@ -52,12 +52,14 @@ export async function init({ baseURL }) {
       const texts = group.map(g => g.text);
       try {
         if (onProgress) onProgress({ phase: 'translate', page: Math.min(group[group.length - 1].page + 1, pageTexts.length), total: pageTexts.length });
-        const tr = await window.qwenTranslateBatch({ texts, endpoint, apiKey: cfg.apiKey, model, source, target });
+        const tr = await window.qwenTranslateBatch({ texts, endpoint, apiKey: cfg.apiKey, model, source, target, tokenBudget: budget });
         const outs = (tr && Array.isArray(tr.texts)) ? tr.texts : texts;
         for (let k = 0; k < group.length; k++) results[mapping.indexOf(group[k])] = outs[k] || group[k].text;
       } catch (e) {
         if (/HTTP 400/i.test(e?.message || '')) {
-          return translatePages(pageTexts, cfg, onProgress, Math.max(400, Math.floor(budget * 0.6)));
+          const next = Math.max(100, Math.floor(budget * 0.6));
+          if (next === budget) throw e;
+          return translatePages(pageTexts, cfg, onProgress, next);
         } else { throw e; }
       }
     }

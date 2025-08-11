@@ -3,8 +3,9 @@ WASM Vendor Assets
 Place the following prebuilt assets in this folder to enable true PDF text rewriting in the extension:
 
 Required
-- MuPDF or PDFium (WASM build)
-  - mupdf.js, mupdf-wasm.js, mupdf-wasm.wasm (or pdfium.js, pdfium.wasm)
+ - MuPDF or PDFium (WASM build)
+  - mupdf-wasm.js with mupdf-wasm.wasm (copy to mupdf.wasm locally if compatibility is required; repository omits the duplicate)
+  - or pdfium.js with pdfium.wasm
 - HarfBuzz (WASM) for text shaping
   - hb.js, hb.wasm (from harfbuzzjs releases)
 - ICU4X Segmenter (WASM) for line breaking and BiDi

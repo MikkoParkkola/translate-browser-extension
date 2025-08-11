@@ -28,7 +28,7 @@ Suggested steps:
 3) Build WASM target (see MuPDF docs; enable wasm/js target):
    make generate
    # then build wasm target per upstream instructions (varies by version)
-4) Copy the resulting wasm/js artifacts into src/wasm/vendor/ as mupdf-wasm.wasm and mupdf-wasm.js
+4) Copy the resulting wasm/js artifacts into src/wasm/vendor/ as mupdf-wasm.wasm and mupdf-wasm.js (also duplicate the wasm file as mupdf.wasm for compatibility)
 5) Ensure that src/wasm/vendor/mupdf-wasm.js implements init({baseURL}) and rewrite(buffer,cfg,onProgress)
 EOS
 

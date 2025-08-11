@@ -21,6 +21,7 @@ fi
 mkdir -p "$ROOT_DIR/src/wasm/vendor"
 cp "$mupd/mupdf-wasm.wasm" "$ROOT_DIR/src/wasm/vendor/mupdf-wasm.wasm"
 cp "$mupd/mupdf-wasm.js" "$ROOT_DIR/src/wasm/vendor/mupdf-wasm.js"
+cp "$mupd/mupdf-wasm.wasm" "$ROOT_DIR/src/wasm/vendor/mupdf.wasm"
 popd >/dev/null
 rm -rf "$WORKDIR"
 echo "MuPDF artifacts copied to src/wasm/vendor/."

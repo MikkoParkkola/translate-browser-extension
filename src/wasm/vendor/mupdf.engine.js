@@ -2,8 +2,9 @@
 export async function init({ baseURL }) {
   let mupdf;
   try {
-    // Load the MuPDF vendor script which pulls in the WASM glue.
-    mupdf = await import(/* @vite-ignore */ baseURL + 'mupdf.js');
+    // Load the MuPDF WASM bundle (module factory) and instantiate it.
+    const init = await import(/* @vite-ignore */ baseURL + 'mupdf-wasm.js');
+    mupdf = await init.default();
   } catch (e) {
     throw new Error('MuPDF vendor not found');
   }
@@ -29,7 +30,13 @@ export async function init({ baseURL }) {
         if(onProgress) onProgress({ phase:'translate', page: Math.min(group[group.length-1].page+1, pageTexts.length), total: pageTexts.length });
         const tr= await window.qwenTranslateBatch({ texts, endpoint, apiKey: cfg.apiKey, model, source, target, tokenBudget: budget });
       const outs = (tr && Array.isArray(tr.texts))? tr.texts: texts; for(let k=0;k<group.length;k++) results[mapping.indexOf(group[k])]=outs[k]||group[k].text;
-      } catch(e){ if(/HTTP 400/i.test(e?.message||'')){ return translatePages(pageTexts,cfg,onProgress, Math.max(400,Math.floor(budget*0.6))); } else { throw e; } }
+      } catch(e){
+        if(/HTTP 400/i.test(e?.message||'')){
+          const next=Math.max(100,Math.floor(budget*0.6));
+          if(next===budget) throw e;
+          return translatePages(pageTexts,cfg,onProgress,next);
+        } else { throw e; }
+      }
     }
     const perPage=pageTexts.map(()=>[]); mapping.forEach((m,idx)=> perPage[m.page][m.idx]=results[idx]);
     return perPage.map(arr=> (arr.filter(Boolean).join(' ')));

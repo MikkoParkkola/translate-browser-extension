@@ -15,6 +15,7 @@ echo "NOTE: Update the URLs below to exact release artifacts you trust."
 # 1) MuPDF (AGPL) — engine (example placeholder URL; replace with actual release)
 # curl -L -o "$VENDOR_DIR/mupdf-wasm.wasm" https://example.com/mupdf/mupdf-wasm.wasm
 # curl -L -o "$VENDOR_DIR/mupdf-wasm.js" https://example.com/mupdf/mupdf-wasm.js
+# cp "$VENDOR_DIR/mupdf-wasm.wasm" "$VENDOR_DIR/mupdf.wasm"  # optional compatibility alias
 
 # 2) HarfBuzz (MIT) — text shaping (placeholder URLs)
 # curl -L -o "$VENDOR_DIR/harfbuzz.wasm" https://example.com/harfbuzz/harfbuzz.wasm

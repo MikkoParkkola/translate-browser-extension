@@ -4,7 +4,7 @@ Goal
 - Replace text objects in PDFs inside the extension using a WASM engine (MuPDF/PDFium) with HarfBuzz + ICU4X and embedded Noto fonts. Fully language‑agnostic, vector‑accurate, selectable text.
 
 Artifacts to vendor under src/wasm/vendor/
-- Engine: mupdf-wasm.js + mupdf-wasm.wasm (or pdfium.js + pdfium.wasm)
+- Engine: mupdf-wasm.js + mupdf-wasm.wasm (also exposed as mupdf.wasm) or pdfium.js + pdfium.wasm
 - Shaping: harfbuzz.js + harfbuzz.wasm
 - Line breaking/BiDi: icu4x_segmenter.js + icu4x_segmenter.wasm
 - Fonts: Noto subsets in fonts/ (regular + bold at minimum; CJK/Arabic/Indic optional, loaded lazily)
