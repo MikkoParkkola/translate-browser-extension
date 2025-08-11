@@ -356,6 +356,33 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       });
     return true;
   }
+  if (msg.action === 'translate-selection') {
+    (async () => {
+      const sel = window.getSelection();
+      const text = sel && sel.toString().trim();
+      if (!text) return;
+      const cfg = currentConfig || (await window.qwenLoadConfig());
+      try {
+        const { text: translated } = await window.qwenTranslate({
+          endpoint: cfg.apiEndpoint,
+          apiKey: cfg.apiKey,
+          model: cfg.model,
+          text,
+          source: cfg.sourceLanguage,
+          target: cfg.targetLanguage,
+          debug: cfg.debug,
+        });
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        const node = document.createTextNode(translated);
+        range.insertNode(node);
+        mark(node);
+        sel.removeAllRanges();
+      } catch (e) {
+        showError('Translation failed');
+      }
+    })();
+  }
 });
 
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
