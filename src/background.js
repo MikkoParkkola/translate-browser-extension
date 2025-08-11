@@ -62,28 +62,24 @@ async function updateIcon() {
   ctx.clearRect(0, 0, 19, 19);
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, 19, 19);
-  const pulse = 0.6 + 0.4 * Math.sin(iconFrame / 3);
-  if (activeTranslations > 0) {
-    ctx.strokeStyle = `rgba(13,110,253,${pulse})`;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(1, 1, 17, 17);
-  } else {
-    ctx.strokeStyle = '#999';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(0, 0, 19, 19);
-  }
-  // draw usage bars
+  const pulse = activeTranslations > 0 ? 0.6 + 0.4 * Math.sin(iconFrame / 3) : 1;
+  ctx.strokeStyle = activeTranslations > 0 ? `rgba(13,110,253,${pulse})` : '#ccc';
+  ctx.lineWidth = activeTranslations > 0 ? 2 : 1;
+  ctx.beginPath();
+  ctx.arc(9.5, 9.5, 8, 0, Math.PI * 2);
+  ctx.stroke();
+  // usage rings
   const blink = iconFrame % 20 < 10;
-  const barH = 14;
-  ctx.strokeStyle = '#ccc';
-  ctx.strokeRect(2, 3, 5, barH);
-  ctx.strokeRect(12, 3, 5, barH);
-  const reqH = Math.round(barH * reqPct);
-  ctx.fillStyle = requestLimit - requests <= 0 && blink ? '#fff' : reqColor;
-  ctx.fillRect(2, 3 + (barH - reqH), 5, reqH);
-  const tokH = Math.round(barH * tokPct);
-  ctx.fillStyle = tokenLimit - tokens <= 0 && blink ? '#fff' : tokColor;
-  ctx.fillRect(12, 3 + (barH - tokH), 5, tokH);
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = requestLimit - requests <= 0 && blink ? '#fff' : reqColor;
+  ctx.beginPath();
+  ctx.arc(9.5, 9.5, 6, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * reqPct);
+  ctx.stroke();
+  ctx.strokeStyle = tokenLimit - tokens <= 0 && blink ? '#fff' : tokColor;
+  ctx.beginPath();
+  ctx.arc(9.5, 9.5, 3, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * tokPct);
+  ctx.stroke();
   const imageData = ctx.getImageData(0, 0, 19, 19);
   chrome.action.setIcon({ imageData: { 19: imageData } });
 }
