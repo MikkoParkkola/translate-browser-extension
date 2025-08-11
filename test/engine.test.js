@@ -25,6 +25,9 @@ describe('chooseEngine', () => {
       'base/pdfium.engine.js',
       'base/pdfium.js',
       'base/pdfium.wasm',
+      'base/hb.wasm',
+      'base/icu4x_segmenter.wasm',
+      'base/pdf-lib.js',
     ]);
     global.fetch = jest.fn((url) => {
       if (ok.has(url)) return Promise.resolve({ ok: true });
