@@ -38,7 +38,7 @@
         "wasm/vendor/mupdf.engine.js", "wasm/vendor/mupdf.wasm",
         "wasm/vendor/pdfium.engine.js", "wasm/vendor/pdfium.js", "wasm/vendor/pdfium.wasm",
         "wasm/vendor/pdf-lib.js",
-        "wasm/vendor/*", "config.local.js", "qa/compare.html"
+        "wasm/vendor/*", "wasm/vendor/fonts/*", "config.local.js", "qa/compare.html"
       ],
       "matches": ["<all_urls>"]
     }
