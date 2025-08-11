@@ -6,7 +6,16 @@ let _impl = null;
 let _lastChoice = 'auto';
 
 async function check(base, path) {
-  try { const r = await fetch(base + path, { method: 'HEAD' }); return r.ok; } catch { return false; }
+  try {
+    // Some environments disallow HEAD for extension resources; fetch a single byte instead
+    const r = await fetch(base + path, {
+      method: 'GET',
+      headers: { Range: 'bytes=0-0' },
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
 }
 
 export async function chooseEngine(base, requested) {
@@ -14,7 +23,7 @@ export async function chooseEngine(base, requested) {
   const hbOk = await check(base, 'hb.wasm');
   const icuOk = (await check(base, 'icu4x_segmenter.wasm')) || (await check(base, 'icu4x_segmenter_wasm_bg.wasm'));
   const pdfiumOk = await check(base, 'pdfium.wasm');
-  const mupdfOk = (await check(base, 'mupdf.wasm')) || (await check(base, 'mupdf-wasm.wasm'));
+  const mupdfOk = (await check(base, 'mupdf-wasm.wasm')) || (await check(base, 'mupdf.wasm'));
   const overlayOk = await check(base, 'pdf-lib.js');
 
   function pick() {

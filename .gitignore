@@ -8,3 +8,7 @@ src/config.local.js
 # Playwright outputs
 playwright-report/
 test-results/
+
+# Vendored artifacts generated locally
+src/wasm/vendor/mupdf.wasm
+src/wasm/vendor/*.zip
