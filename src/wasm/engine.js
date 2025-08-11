@@ -6,13 +6,15 @@ let _impl = null;
 let _lastChoice = 'auto';
 
 async function check(base, path) {
+  const url = base + path;
   try {
-    // Some environments disallow HEAD for extension resources; fetch a single byte instead
-    const r = await fetch(base + path, {
-      method: 'GET',
-      headers: { Range: 'bytes=0-0' },
-    });
-    return r.ok;
+    const head = await fetch(url, { method: 'HEAD' });
+    if (head.ok) return true;
+  } catch {}
+  try {
+    // Fallback for environments where HEAD is disallowed
+    const get = await fetch(url);
+    return get.ok;
   } catch {
     return false;
   }
@@ -103,4 +105,8 @@ export async function isWasmAvailable(cfg) {
 export async function rewritePdf(buffer, cfg, onProgress) {
   const impl = await loadEngine(cfg);
   return impl.rewritePdf(buffer, cfg, onProgress);
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = { chooseEngine, isWasmAvailable, rewritePdf };
 }
