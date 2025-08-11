@@ -1,3 +1,4 @@
+// Main view elements
 const apiKeyInput = document.getElementById('apiKey');
 const endpointInput = document.getElementById('apiEndpoint');
 const modelInput = document.getElementById('model');
@@ -17,14 +18,55 @@ const totalReq = document.getElementById('totalReq');
 const totalTok = document.getElementById('totalTok');
 const queueLen = document.getElementById('queueLen');
 const translateBtn = document.getElementById('translate');
-const saveBtn = document.getElementById('save');
 const testBtn = document.getElementById('test');
 
-function safeFetch(url, opts) {
-  return fetch(url, opts).catch(err => {
-    console.warn('Failed to fetch', url, err.message);
-    throw err;
-  });
+// Setup view elements
+const setupApiKeyInput = document.getElementById('setup-apiKey');
+const setupApiEndpointInput = document.getElementById('setup-apiEndpoint');
+const setupModelInput = document.getElementById('setup-model');
+
+const viewContainer = document.getElementById('viewContainer');
+
+let saveTimeout;
+
+function saveConfig() {
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    if (!window.qwenSaveConfig) {
+      status.textContent = 'Config library not loaded.';
+      return;
+    }
+    const cfg = {
+      apiKey: apiKeyInput.value.trim(),
+      apiEndpoint: endpointInput.value.trim(),
+      model: modelInput.value.trim(),
+      sourceLanguage: sourceSelect.value,
+      targetLanguage: targetSelect.value,
+      requestLimit: parseInt(reqLimitInput.value, 10) || 60,
+      tokenLimit: parseInt(tokenLimitInput.value, 10) || 100000,
+      autoTranslate: autoCheckbox.checked,
+      debug: debugCheckbox.checked,
+    };
+    window.qwenSaveConfig(cfg).then(() => {
+      status.textContent = 'Settings saved.';
+      updateView(cfg); // Re-check the view after saving
+      setTimeout(() => { if (status.textContent === 'Settings saved.') status.textContent = ''; }, 2000);
+    });
+  }, 500); // Debounce saves by 500ms
+}
+
+function syncInputs(from, to) {
+  to.value = from.value;
+}
+
+function updateView(cfg) {
+  if (cfg.apiKey && cfg.apiEndpoint && cfg.model) {
+    viewContainer.classList.remove('show-setup');
+    viewContainer.classList.add('show-main');
+  } else {
+    viewContainer.classList.remove('show-main');
+    viewContainer.classList.add('show-setup');
+  }
 }
 
 function safeFetch(url, opts) {
@@ -46,7 +88,7 @@ function populateLanguages() {
 populateLanguages();
 
 function setWorking(w) {
-  [translateBtn, saveBtn, testBtn].forEach(b => { if (b) b.disabled = w; });
+  [translateBtn, testBtn].forEach(b => { if (b) b.disabled = w; });
 }
 
 chrome.runtime.onMessage.addListener(msg => {
@@ -61,23 +103,57 @@ chrome.runtime.onMessage.addListener(msg => {
 });
 
 window.qwenLoadConfig().then(cfg => {
-  apiKeyInput.value = cfg.apiKey;
-  endpointInput.value = cfg.apiEndpoint;
-  modelInput.value = cfg.model;
+  // Populate main view
+  apiKeyInput.value = cfg.apiKey || '';
+  endpointInput.value = cfg.apiEndpoint || '';
+  modelInput.value = cfg.model || '';
   sourceSelect.value = cfg.sourceLanguage;
   targetSelect.value = cfg.targetLanguage;
   reqLimitInput.value = cfg.requestLimit;
   tokenLimitInput.value = cfg.tokenLimit;
   autoCheckbox.checked = cfg.autoTranslate;
   debugCheckbox.checked = !!cfg.debug;
-  if (!cfg.apiKey) status.textContent = 'Set API key';
+
+  // Populate setup view
+  setupApiKeyInput.value = cfg.apiKey || '';
+  setupApiEndpointInput.value = cfg.apiEndpoint || '';
+  setupModelInput.value = cfg.model || '';
+
+  updateView(cfg);
+
+  // Add event listeners for auto-saving and syncing
+  const allInputs = [
+    { main: apiKeyInput, setup: setupApiKeyInput, event: 'input' },
+    { main: endpointInput, setup: setupApiEndpointInput, event: 'input' },
+    { main: modelInput, setup: setupModelInput, event: 'input' },
+  ];
+
+  allInputs.forEach(({main, setup, event}) => {
+    main.addEventListener(event, () => {
+      syncInputs(main, setup);
+      saveConfig();
+    });
+    setup.addEventListener(event, () => {
+      syncInputs(setup, main);
+      saveConfig();
+    });
+  });
+
+  [reqLimitInput, tokenLimitInput].forEach(el => el.addEventListener('input', saveConfig));
+  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox].forEach(el => el.addEventListener('change', saveConfig));
 });
 
 versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
 
 function setBar(el, ratio) {
   el.style.width = Math.min(100, ratio * 100) + '%';
-  el.style.background = ratio < 0.5 ? 'green' : ratio < 0.8 ? 'gold' : 'red';
+  if (ratio >= 1) {
+    el.style.backgroundColor = 'var(--red)';
+  } else if (ratio > 0.8) {
+    el.style.backgroundColor = 'var(--yellow)';
+  } else {
+    el.style.backgroundColor = 'var(--green)';
+  }
 }
 
 function refreshUsage() {
@@ -102,28 +178,6 @@ translateBtn.addEventListener('click', () => {
     if (!tabs[0]) return;
     if (debug) console.log('QTDEBUG: sending start message to tab', tabs[0].id);
     chrome.tabs.sendMessage(tabs[0].id, {action: 'start'});
-  });
-});
-
-saveBtn.addEventListener('click', () => {
-  if (!window.qwenSaveConfig) {
-    status.textContent = 'Config library not loaded. This may happen if the script was blocked.';
-    return;
-  }
-  const cfg = {
-    apiKey: apiKeyInput.value.trim(),
-    apiEndpoint: endpointInput.value.trim(),
-    model: modelInput.value.trim(),
-    sourceLanguage: sourceSelect.value,
-    targetLanguage: targetSelect.value,
-    requestLimit: parseInt(reqLimitInput.value, 10) || 60,
-    tokenLimit: parseInt(tokenLimitInput.value, 10) || 100000,
-    autoTranslate: autoCheckbox.checked,
-    debug: debugCheckbox.checked,
-  };
-  window.qwenSaveConfig(cfg).then(() => {
-    status.textContent = 'Saved';
-    setTimeout(() => { status.textContent = ''; }, 2000);
   });
 });
 
@@ -157,10 +211,10 @@ testBtn.addEventListener('click', async () => {
     list.appendChild(item);
     try {
       await fn();
-      item.textContent = `${name}: \u2713`;
+      item.textContent = `${name}: ✓`;
       return true;
     } catch (e) {
-      item.textContent = `${name}: \u2717 ${e.message}`;
+      item.textContent = `${name}: ✗ ${e.message}`;
       item.title = e.stack || e.message;
       log(`QTERROR: ${name} failed`, e);
       return false;
