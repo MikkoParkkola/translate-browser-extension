@@ -17,6 +17,13 @@ const totalReq = document.getElementById('totalReq');
 const totalTok = document.getElementById('totalTok');
 const queueLen = document.getElementById('queueLen');
 
+function safeFetch(url, opts) {
+  return fetch(url, opts).catch(err => {
+    console.warn('Failed to fetch', url, err.message);
+    throw err;
+  });
+}
+
 function populateLanguages() {
   window.qwenLanguages.forEach(l => {
     const opt = document.createElement('option');
@@ -74,6 +81,10 @@ document.getElementById('translate').addEventListener('click', () => {
 });
 
 document.getElementById('save').addEventListener('click', () => {
+  if (!window.qwenSaveConfig) {
+    status.textContent = 'Config library not loaded. This may happen if the script was blocked.';
+    return;
+  }
   const cfg = {
     apiKey: apiKeyInput.value.trim(),
     apiEndpoint: endpointInput.value.trim(),
@@ -93,6 +104,10 @@ document.getElementById('save').addEventListener('click', () => {
 
 document.getElementById('test').addEventListener('click', async () => {
   status.textContent = 'Testing...';
+  if (!window.qwenTranslate || !window.qwenTranslateStream) {
+    status.textContent = 'Translation library not loaded. This may happen if the script was blocked.';
+    return;
+  }
   const list = document.createElement('ul');
   list.style.margin = '0';
   list.style.paddingLeft = '20px';
@@ -133,7 +148,7 @@ document.getElementById('test').addEventListener('click', async () => {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 5000);
     try {
-      await fetch(cfg.endpoint, { method: 'GET', signal: controller.signal });
+      await safeFetch(cfg.endpoint, { method: 'GET', signal: controller.signal });
     } finally { clearTimeout(t); }
   })) && allOk;
 
@@ -143,7 +158,7 @@ document.getElementById('test').addEventListener('click', async () => {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 5000);
     try {
-      await fetch(transUrl, { method: 'OPTIONS', signal: controller.signal });
+      await safeFetch(transUrl, { method: 'OPTIONS', signal: controller.signal });
     } finally { clearTimeout(t); }
   })) && allOk;
 
