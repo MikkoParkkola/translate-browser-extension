@@ -25,6 +25,8 @@ jobs:
         with:
           version: latest
       - name: Build MuPDF (wasm)
+        id: build_mupdf
+        continue-on-error: true
         run: |
           set -euo pipefail
           WORKDIR=$(mktemp -d)
@@ -43,6 +45,7 @@ jobs:
           popd
           rm -rf "$WORKDIR"
       - name: Commit MuPDF artifacts
+        if: steps.build_mupdf.outcome == 'success'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
