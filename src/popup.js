@@ -27,6 +27,13 @@ function safeFetch(url, opts) {
   });
 }
 
+function safeFetch(url, opts) {
+  return fetch(url, opts).catch(err => {
+    console.warn('Failed to fetch', url, err.message);
+    throw err;
+  });
+}
+
 function populateLanguages() {
   window.qwenLanguages.forEach(l => {
     const opt = document.createElement('option');
