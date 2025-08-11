@@ -1,5 +1,5 @@
 import { regeneratePdfFromUrl } from './wasm/pipeline.js';
-import { isWasmAvailable } from './wasm/engine.js';
+import { chooseEngine, WASM_ASSETS } from './wasm/engine.js';
 import { safeFetchPdf } from './wasm/pdfFetch.js';
 
 (async function() {
@@ -119,25 +119,16 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
     }
   });
 
-  // Setup engine dropdown with available options and sensible default
+  // Setup engine dropdown and status with available options and sensible default
   (async () => {
     try {
       const vendorBase = chrome.runtime.getURL('wasm/vendor/');
-      async function head(u){ try{ const r=await fetch(u,{method:'HEAD'}); return r.ok; }catch{return false;} }
-      const avail = {
-        mupdf: await head(vendorBase+'mupdf.engine.js') && await head(vendorBase+'mupdf.wasm'),
-        pdfium:
-          (await head(vendorBase+'pdfium.engine.js')) &&
-          (await head(vendorBase+'pdfium.js')) &&
-          (await head(vendorBase+'pdfium.wasm')),
-        overlay: await head(vendorBase+'pdf-lib.js'),
-        simple: true,
-      };
+      const { hbOk, icuOk, pdfiumOk, mupdfOk, overlayOk } = await chooseEngine(vendorBase, cfg.wasmEngine);
+      const avail = { mupdf: mupdfOk, pdfium: pdfiumOk, overlay: overlayOk, simple: true };
       const best = avail.mupdf ? 'mupdf' : (avail.pdfium ? 'pdfium' : (avail.overlay ? 'overlay' : 'simple'));
       const sel = document.getElementById('engineSelect');
       if (sel && !sel.dataset.inited) {
         sel.dataset.inited = '1';
-        // Build options list
         const opts = [];
         opts.push({ v: 'auto', t: 'Engine: Auto' });
         if (avail.mupdf) opts.push({ v: 'mupdf', t: 'Engine: MuPDF' });
@@ -145,7 +136,6 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
         if (avail.overlay) opts.push({ v: 'overlay', t: 'Engine: Overlay' });
         opts.push({ v: 'simple', t: 'Engine: Simple' });
         sel.innerHTML = opts.map(o => `<option value="${o.v}">${o.t}</option>`).join('');
-        // Load stored choice; if none, choose best available
         chrome.storage.sync.get({ wasmEngine: cfg.wasmEngine || '' }, s => {
           const choice = s.wasmEngine || best || 'auto';
           sel.value = choice;
@@ -154,7 +144,40 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
           chrome.storage.sync.set({ wasmEngine: sel.value });
         });
       }
-    } catch {}
+      const statEl = document.getElementById('engineStatus');
+      if (statEl) {
+        const names = [];
+        if (mupdfOk) names.push('MuPDF');
+        if (pdfiumOk) names.push('PDFium');
+        if (overlayOk) names.push('Overlay');
+        if (names.length) {
+          statEl.textContent = `Available engines: ${names.join(', ')}`;
+          statEl.style.color = '#2e7d32';
+        } else {
+          statEl.textContent = 'No PDF engines available';
+          statEl.style.color = '#d32f2f';
+        }
+      }
+      const dlBtn = document.getElementById('downloadEngines');
+      if (dlBtn) {
+        if (!hbOk || !icuOk || !mupdfOk || !pdfiumOk || !overlayOk) {
+          dlBtn.style.display = '';
+          dlBtn.addEventListener('click', () => {
+            WASM_ASSETS.forEach(a => {
+              chrome.downloads.download({ url: a.url, filename: `qwen-wasm/${a.path}` });
+            });
+          });
+        } else {
+          dlBtn.style.display = 'none';
+        }
+      }
+    } catch (e) {
+      const statEl = document.getElementById('engineStatus');
+      if (statEl) {
+        statEl.textContent = 'Engine: Unknown';
+        statEl.style.color = '#f57c00';
+      }
+    }
   })();
 
   // Wire up view toggles and save menu
@@ -275,24 +298,6 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
       console.error('Auto-translate preview failed', e);
     }
   }
-    // Show engine readiness status
-  (async () => {
-    const statEl = document.getElementById('engineStatus');
-    if (!statEl) return;
-    try {
-      const ready = await isWasmAvailable(cfg);
-      if (ready) {
-        statEl.textContent = 'Engine: Ready';
-        statEl.style.color = '#2e7d32';
-      } else {
-        statEl.textContent = 'Engine: Missing components (requires: hb.wasm, pdfium.wasm, mupdf.wasm or mupdf-wasm.wasm, icu4x_segmenter.wasm, pdf-lib.js)';
-        statEl.style.color = '#d32f2f';
-      }
-    } catch (e) {
-      statEl.textContent = 'Engine: Unknown';
-      statEl.style.color = '#f57c00';
-    }
-  })();
   if (!cfg.apiKey) {
     viewer.textContent = 'API key not configured';
     console.log('DEBUG: API key not configured.');
