@@ -55,6 +55,8 @@ async function updateIcon() {
   }
   const reqColor = color(requestLimit - requests, requestLimit);
   const tokColor = color(tokenLimit - tokens, tokenLimit);
+  const reqPct = Math.min(1, Math.max(0, (requestLimit - requests) / requestLimit));
+  const tokPct = Math.min(1, Math.max(0, (tokenLimit - tokens) / tokenLimit));
   const canvas = new OffscreenCanvas(19, 19);
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, 19, 19);
@@ -70,26 +72,24 @@ async function updateIcon() {
     ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, 19, 19);
   }
+  // draw usage bars
   const blink = iconFrame % 20 < 10;
+  const barH = 14;
+  ctx.strokeStyle = '#ccc';
+  ctx.strokeRect(2, 3, 5, barH);
+  ctx.strokeRect(12, 3, 5, barH);
+  const reqH = Math.round(barH * reqPct);
   ctx.fillStyle = requestLimit - requests <= 0 && blink ? '#fff' : reqColor;
-  ctx.beginPath();
-  ctx.arc(6, 9.5, 4, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.fillRect(2, 3 + (barH - reqH), 5, reqH);
+  const tokH = Math.round(barH * tokPct);
   ctx.fillStyle = tokenLimit - tokens <= 0 && blink ? '#fff' : tokColor;
-  ctx.beginPath();
-  ctx.arc(13, 9.5, 4, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.fillRect(12, 3 + (barH - tokH), 5, tokH);
   const imageData = ctx.getImageData(0, 0, 19, 19);
   chrome.action.setIcon({ imageData: { 19: imageData } });
 }
 
 function updateBadge() {
-  if (activeTranslations > 0) {
-    chrome.action.setBadgeText({ text: '...' });
-    chrome.action.setBadgeBackgroundColor({ color: '#0d6efd' });
-  } else {
-    chrome.action.setBadgeText({ text: '' });
-  }
+  chrome.action.setBadgeText({ text: '' });
   updateIcon();
 }
 updateBadge();
