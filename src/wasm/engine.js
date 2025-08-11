@@ -1,6 +1,17 @@
 // WASM engine loader and interface (MuPDF/PDFium + HarfBuzz + ICU4X + Noto)
 // Looks for vendor assets under src/wasm/vendor/ and loads the selected engine.
 
+export const WASM_ASSETS = [
+  { path: 'mupdf.wasm', url: 'https://unpkg.com/mupdf@1.26.4/dist/mupdf-wasm.wasm' },
+  { path: 'mupdf-wasm.js', url: 'https://unpkg.com/mupdf@1.26.4/dist/mupdf-wasm.js' },
+  { path: 'mupdf.engine.js', url: 'https://unpkg.com/mupdf@1.26.4/dist/mupdf.js' },
+  { path: 'pdfium.wasm', url: 'https://unpkg.com/pdfium-wasm@0.0.2/dist/pdfium.wasm' },
+  { path: 'pdfium.js', url: 'https://unpkg.com/pdfium-wasm@0.0.2/dist/pdfium.js' },
+  { path: 'hb.wasm', url: 'https://unpkg.com/harfbuzzjs@0.4.8/hb.wasm' },
+  { path: 'hb.js', url: 'https://unpkg.com/harfbuzzjs@0.4.8/hb.js' },
+  { path: 'pdf-lib.js', url: 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js' },
+];
+
 let available = false;
 let _impl = null;
 let _lastChoice = 'auto';
@@ -30,7 +41,8 @@ export async function chooseEngine(base, requested) {
     (await check(base, 'pdfium.wasm'));
   const mupdfOk =
     (await check(base, 'mupdf.engine.js')) &&
-    (await check(base, 'mupdf.wasm'));
+    (await check(base, 'mupdf-wasm.js')) &&
+    ((await check(base, 'mupdf.wasm')) || (await check(base, 'mupdf-wasm.wasm')));
   const overlayOk = await check(base, 'pdf-lib.js');
 
   function pick() {
@@ -45,7 +57,24 @@ export async function chooseEngine(base, requested) {
     return 'simple';
   }
   const choice = pick();
-  return { choice, hbOk, icuOk, pdfiumOk, mupdfOk };
+  return { choice, hbOk, icuOk, pdfiumOk, mupdfOk, overlayOk };
+}
+
+export async function downloadWasmAssets(dir, downloader) {
+  const fs = require('fs');
+  const path = require('path');
+  const dl =
+    downloader ||
+    (async (url, dest) => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Failed to download ' + url);
+      const buf = Buffer.from(await res.arrayBuffer());
+      await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+      await fs.promises.writeFile(dest, buf);
+    });
+  for (const a of WASM_ASSETS) {
+    await dl(a.url, path.join(dir, a.path));
+  }
 }
 
 async function loadEngine(cfg) {
@@ -108,5 +137,11 @@ export async function rewritePdf(buffer, cfg, onProgress) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { chooseEngine, isWasmAvailable, rewritePdf };
+  module.exports = {
+    chooseEngine,
+    isWasmAvailable,
+    rewritePdf,
+    WASM_ASSETS,
+    downloadWasmAssets,
+  };
 }
