@@ -10,7 +10,8 @@
     "scripting",
     "downloads",
     "webRequest",
-    "webRequestBlocking"
+    "webRequestBlocking",
+    "contextMenus"
   ],
   "host_permissions": [
     "<all_urls>",

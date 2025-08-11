@@ -5,8 +5,10 @@
   <title>Qwen PDF Viewer</title>
   <style>
     html, body { margin:0; padding:0; height:100%; }
-    #thumbs { display:flex; gap:6px; overflow-x:auto; padding:6px; border-bottom:1px solid #eee; background:#fafafa }
-    #viewer { position:relative; height:100%; overflow:auto; }
+    body { display:flex; flex-direction:column; }
+    #main { flex:1; display:flex; height:100%; }
+    #thumbs { width:120px; display:flex; flex-direction:column; gap:6px; overflow-y:auto; padding:6px; border-right:1px solid #eee; background:#fafafa }
+    #viewer { flex:1; position:relative; height:100%; overflow:auto; }
     .page { position:relative; margin:10px auto; }
     canvas { display:block; }
     .textLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:2; --scale-factor: 1; }
@@ -14,7 +16,7 @@
     .page { box-shadow: 0 0 0 1px rgba(0,0,0,0.1); }
     .annotationLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:15; }
     .thumb { cursor:pointer; }
-    .pageNumber { position:absolute; top:4px; right:8px; background:rgba(0,0,0,0.6); color:#fff; padding:2px 5px; border-radius:4px; font-size:12px; }
+    .pageNumber { position:absolute; top:4px; left:8px; right:auto; background:rgba(0,0,0,0.6); color:#fff; padding:2px 5px; border-radius:4px; font-size:12px; }
   </style>
 </head>
   <body>
@@ -32,10 +34,17 @@
     <span class="sep"></span>
     <select id="engineSelect" class="btn" title="Translation engine"></select>
     <span id="engineStatus" class="muted">Engine: checking…</span>
+    <span class="sep"></span>
+    <div class="toggle-group">
+      <button id="zoomOut" class="btn">-</button>
+      <button id="zoomIn" class="btn">+</button>
+    </div>
     <span id="modeBadge" class="muted" style="margin-left:auto"></span>
   </div>
-  <div id="thumbs"></div>
-  <div id="viewer"></div>
+  <div id="main">
+    <div id="thumbs"></div>
+    <div id="viewer"></div>
+  </div>
   <script src="pdf.min.js"></script>
   <script src="config.local.js"></script>
   <script src="config.js"></script>
