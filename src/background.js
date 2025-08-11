@@ -61,33 +61,42 @@ async function updateIcon() {
   const c = new OffscreenCanvas(size, size);
   const ctx = c.getContext('2d');
   ctx.clearRect(0, 0, size, size);
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, size, size);
-  const pulse = activeTranslations > 0 ? 0.6 + 0.4 * Math.sin(iconFrame / 3) : 1;
-  // outer activity ring
-  ctx.strokeStyle = activeTranslations > 0 ? `rgba(13,110,253,${pulse})` : '#adb5bd';
-  ctx.lineWidth = activeTranslations > 0 ? 4 : 3;
-  ctx.beginPath();
-  ctx.arc(9.5, 9.5, 8, 0, Math.PI * 2);
-  ctx.stroke();
+  // outer activity ring / spinner
+  ctx.lineWidth = 3;
+  if (activeTranslations > 0) {
+    const angle = (iconFrame / 10) % (Math.PI * 2);
+    ctx.strokeStyle = '#0d6efd';
+    ctx.beginPath();
+    ctx.arc(9.5, 9.5, 8, angle, angle + Math.PI / 2);
+    ctx.stroke();
+  } else {
+    ctx.strokeStyle = '#adb5bd';
+    ctx.beginPath();
+    ctx.arc(9.5, 9.5, 8, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   // usage rings
   const blink = iconFrame % 20 < 10;
-  ctx.lineCap = 'butt';
+  ctx.lineCap = 'round';
   ctx.lineWidth = 4;
+  // request ring background
+  ctx.strokeStyle = '#e9ecef';
+  ctx.beginPath();
+  ctx.arc(9.5, 9.5, 6, 0, Math.PI * 2);
+  ctx.stroke();
   ctx.strokeStyle = requestLimit - requests <= 0 && blink ? '#fff' : reqColor;
   ctx.beginPath();
   ctx.arc(9.5, 9.5, 6, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * reqPct);
+  ctx.stroke();
+  // token ring background
+  ctx.beginPath();
+  ctx.strokeStyle = '#e9ecef';
+  ctx.arc(9.5, 9.5, 3, 0, Math.PI * 2);
   ctx.stroke();
   ctx.strokeStyle = tokenLimit - tokens <= 0 && blink ? '#fff' : tokColor;
   ctx.beginPath();
   ctx.arc(9.5, 9.5, 3, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * tokPct);
   ctx.stroke();
-  if (activeTranslations > 0) {
-    ctx.fillStyle = '#0d6efd';
-    ctx.beginPath();
-    ctx.arc(9.5, 9.5, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
   const imageData = ctx.getImageData(0, 0, size, size);
   chrome.action.setIcon({ imageData: { 19: imageData } });
 }
