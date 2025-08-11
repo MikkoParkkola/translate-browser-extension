@@ -2,6 +2,17 @@ importScripts('throttle.js', 'translator.js');
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log('Qwen Translator installed');
+  chrome.contextMenus.create({
+    id: 'qwen-translate-selection',
+    title: 'Translate selection',
+    contexts: ['selection'],
+  });
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'qwen-translate-selection' && tab && tab.id) {
+    chrome.tabs.sendMessage(tab.id, { action: 'translate-selection' });
+  }
 });
 
 // Redirect PDF navigations before the browser's viewer loads

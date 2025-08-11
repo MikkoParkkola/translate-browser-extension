@@ -53,6 +53,26 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
   const origFile = params.get('orig') || file;
   const viewer = document.getElementById('viewer');
   const thumbs = document.getElementById('thumbs');
+  const zoomInBtn = document.getElementById('zoomIn');
+  const zoomOutBtn = document.getElementById('zoomOut');
+  let currentZoom = 1;
+
+  function applyZoom() {
+    document.querySelectorAll('.page').forEach(p => {
+      p.style.zoom = currentZoom;
+    });
+  }
+
+  if (zoomInBtn && zoomOutBtn) {
+    zoomInBtn.addEventListener('click', () => {
+      currentZoom = Math.min(currentZoom + 0.1, 3);
+      applyZoom();
+    });
+    zoomOutBtn.addEventListener('click', () => {
+      currentZoom = Math.max(currentZoom - 0.1, 0.1);
+      applyZoom();
+    });
+  }
 
   const badge = document.getElementById('modeBadge');
   const isTranslatedParam = params.get('translated') === '1';
@@ -71,6 +91,33 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
   console.log('DEBUG: PDF.js worker source set.');
 
   const cfg = await window.qwenLoadConfig();
+
+  chrome.runtime.onMessage.addListener(msg => {
+    if (msg.action === 'translate-selection') {
+      (async () => {
+        const sel = window.getSelection();
+        const text = sel && sel.toString().trim();
+        if (!text) return;
+        try {
+          const { text: translated } = await window.qwenTranslate({
+            endpoint: cfg.apiEndpoint,
+            apiKey: cfg.apiKey,
+            model: cfg.model,
+            text,
+            source: cfg.sourceLanguage,
+            target: cfg.targetLanguage,
+            debug: cfg.debug,
+          });
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+          range.insertNode(document.createTextNode(translated));
+          sel.removeAllRanges();
+        } catch (e) {
+          console.error('Failed to translate selection', e);
+        }
+      })();
+    }
+  });
 
   // Setup engine dropdown with available options and sensible default
   (async () => {
@@ -273,6 +320,7 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
       pageDiv.style.width = `${viewport.width}px`;
       pageDiv.style.height = `${viewport.height}px`;
       pageDiv.style.position = 'relative'; // Needed for absolute positioning of text
+      pageDiv.style.zoom = currentZoom;
       viewer.appendChild(pageDiv);
 
       const canvas = document.createElement('canvas');
