@@ -17,8 +17,9 @@
     import * as engine from '../wasm/engine.js';
     // Mock translator: identity mapping to avoid network
     window.qwenTranslateBatch = async ({ texts }) => ({ texts });
-    // pdf.js worker
+    // pdf.js worker (disabled due to file:// restrictions in tests)
     pdfjsLib.GlobalWorkerOptions.workerSrc = '../pdf.worker.min.js';
+    pdfjsLib.disableWorker = true;
 
     const qs = new URLSearchParams(location.search);
     const eng = qs.get('engine') || 'simple';
@@ -26,9 +27,9 @@
     const out = document.getElementById('out');
 
     async function makePdf(bytes) {
-      const doc = await pdfLib.PDFDocument.create();
+      const doc = await PDFLib.PDFDocument.create();
       const page = doc.addPage([400, 300]);
-      const font = await doc.embedFont(pdfLib.StandardFonts.Helvetica);
+      const font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
       const txt = 'Hello engine test';
       page.drawText(txt, { x: 50, y: 150, size: 18, font });
       return await doc.save();

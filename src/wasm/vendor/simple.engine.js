@@ -167,19 +167,23 @@ export async function init({ baseURL }) {
     const translatedBlocks = await translateChunks(pagesText);
 
     // Wrap translated text into lines per page
-    const wrappedPages = pagesText.map((p, idx) => ({
+    const wrappedPages = pagesText.map((p, idx) => {
       const block = (translatedBlocks[idx] || '').trim();
       const words = block.split(/\s+/);
       const maxChars = 90; // rough wrap target
       const lines = [];
       let cur = '';
       for (const w of words) {
-        if ((cur + ' ' + w).trim().length > maxChars) { lines.push(cur.trim()); cur = w; }
-        else { cur = (cur ? cur + ' ' : '') + w; }
+        if ((cur + ' ' + w).trim().length > maxChars) {
+          lines.push(cur.trim());
+          cur = w;
+        } else {
+          cur = (cur ? cur + ' ' : '') + w;
+        }
       }
       if (cur) lines.push(cur);
-      return { width: p.width, height: p.height, text: (translated[idx]||'').trim() };
-    }));
+      return { width: p.width, height: p.height, lines };
+    });
 
     const blob = await buildSimplePdf(wrappedPages, onProgress);
     return blob;
