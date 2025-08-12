@@ -33,85 +33,52 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 let throttleReady;
 let activeTranslations = 0;
-let iconFrame = 0;
+let translationStatus = { active: false };
 
 async function updateIcon() {
-  iconFrame++;
   await ensureThrottle();
-  const { requests, tokens, requestLimit, tokenLimit } = self.qwenThrottle.getUsage();
+  const { requests, requestLimit } = self.qwenThrottle.getUsage();
+  const pct = requestLimit ? Math.min(requests / requestLimit, 1) : 0;
 
-  const size = 128; // Use a higher resolution canvas for better quality
+  const size = 128;
   const c = new OffscreenCanvas(size, size);
   const ctx = c.getContext('2d');
   ctx.clearRect(0, 0, size, size);
-  ctx.lineCap = 'round';
 
-  // Base icon: a simple, modern "Q"
-  ctx.fillStyle = '#4285F4'; // Google blue, as a placeholder
-  ctx.font = 'bold 80px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('Q', size / 2, size / 2 + 5);
+  // outer ring
+  const ringWidth = 12;
+  ctx.lineWidth = ringWidth;
+  ctx.strokeStyle = '#c0c0c0';
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2 - ringWidth, 0, 2 * Math.PI);
+  ctx.stroke();
 
-  // Busy indicator: a subtle pulsating glow
+  // inner circle reflects request usage
+  let radius = 14;
+  let color = '#d0d4da';
   if (activeTranslations > 0) {
-    const pulse = (Math.sin(iconFrame / 5) + 1) / 2; // 0 to 1
-    ctx.shadowColor = 'rgba(66, 133, 244, 0.7)';
-    ctx.shadowBlur = pulse * 15;
-    ctx.fillStyle = 'rgba(66, 133, 244, 0.2)';
-    ctx.beginPath();
-    ctx.arc(size/2, size/2, size/2 - 5, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.shadowBlur = 0; // Reset shadow
+    const minR = 10;
+    const maxR = size / 2 - ringWidth - 4;
+    radius = minR + pct * (maxR - minR);
+    const hue = (1 - pct) * 120; // green to red
+    color = `hsl(${hue}, 70%, 45%)`;
   }
 
-  // Rate limit status: two concentric progress rings
-  const reqPct = Math.max(0, requests / requestLimit);
-  const tokPct = Math.max(0, tokens / tokenLimit);
-
-  function getColor(pct) {
-    if (pct >= 1) return '#d9534f'; // red
-    if (pct > 0.8) return '#f0ad4e'; // yellow
-    return '#5cb85c'; // green
-  }
-
-  // Draw request ring
-  ctx.lineWidth = 10;
-  ctx.strokeStyle = '#e9ecef'; // background
+  ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.arc(size/2, size/2, size/2 - 8, 0, 2 * Math.PI);
-  ctx.stroke();
+  ctx.arc(size / 2, size / 2, radius, 0, 2 * Math.PI);
+  ctx.fill();
 
-  ctx.strokeStyle = getColor(reqPct);
-  ctx.beginPath();
-  ctx.arc(size/2, size/2, size/2 - 8, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * reqPct);
-  ctx.stroke();
-
-  // Draw token ring
-  ctx.lineWidth = 10;
-  ctx.strokeStyle = '#e9ecef'; // background
-  ctx.beginPath();
-  ctx.arc(size/2, size/2, size/2 - 22, 0, 2 * Math.PI);
-  ctx.stroke();
-
-  ctx.strokeStyle = getColor(tokPct);
-  ctx.beginPath();
-  ctx.arc(size/2, size/2, size/2 - 22, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * tokPct);
-  ctx.stroke();
-
-
-  // Set icon for multiple sizes
   const imageData = ctx.getImageData(0, 0, size, size);
-  chrome.action.setIcon({
-    imageData: {
-      128: imageData,
-      // Chrome will scale down the 128px icon for other sizes
-    }
-  });
+  chrome.action.setIcon({ imageData: { 128: imageData } });
 }
 
 function updateBadge() {
-  chrome.action.setBadgeText({ text: '' });
+  const busy = activeTranslations > 0;
+  chrome.action.setBadgeText({ text: busy ? '…' : '' });
+  if (chrome.action.setBadgeBackgroundColor) {
+    chrome.action.setBadgeBackgroundColor({ color: busy ? '#ff4500' : '#00000000' });
+  }
   updateIcon();
 }
 updateBadge();
@@ -188,6 +155,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const stats = self.qwenThrottle.getUsage();
       sendResponse(stats);
     });
+    return true;
+  }
+  if (msg.action === 'translation-status') {
+    translationStatus = msg.status || { active: false };
+    sendResponse({ ok: true });
+    return true;
+  }
+  if (msg.action === 'get-status') {
+    sendResponse(translationStatus);
     return true;
   }
 });
