@@ -45,6 +45,7 @@ export const WASM_ASSETS = [
 let available = false;
 let _impl = null;
 let _lastChoice = 'auto';
+const fetched = {};
 
 async function check(base, path) {
   const url = base + path;
@@ -110,6 +111,40 @@ export async function downloadWasmAssets(dir, downloader) {
   }
 }
 
+export async function ensureWasmAssets() {
+  const base = new URL('./vendor/', import.meta.url || 'file:///').href;
+  for (const a of WASM_ASSETS) {
+    if (fetched[a.path]) continue;
+    const ok = await check(base, a.path);
+    if (ok) continue;
+    try {
+      const res = await fetch(a.url);
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      if (a.path.endsWith('.wasm') || a.path.endsWith('.ttf') || a.path.endsWith('.otf')) {
+        fetched[a.path] = await res.arrayBuffer();
+      } else {
+        const txt = await res.text();
+        if (typeof URL !== 'undefined' && URL.createObjectURL) {
+          fetched[a.path] = URL.createObjectURL(new Blob([txt], { type: 'text/javascript' }));
+        } else {
+          fetched[a.path] = 'data:text/javascript;base64,' + Buffer.from(txt).toString('base64');
+        }
+      }
+    } catch (e) {
+      throw new Error(`Failed to download ${a.path}: ${e.message}`);
+    }
+  }
+}
+
+export function resolveAssetPath(p) {
+  const base = new URL('./vendor/', import.meta.url || 'file:///').href;
+  return typeof fetched[p] === 'string' ? fetched[p] : base + p;
+}
+
+export function getAssetBuffer(p) {
+  return fetched[p] || null;
+}
+
 async function loadEngine(cfg) {
   if (_impl && cfg && (cfg.wasmEngine || 'auto') === _lastChoice) return _impl;
   console.log('DEBUG: loadEngine start', cfg && cfg.wasmEngine);
@@ -134,21 +169,23 @@ async function loadEngine(cfg) {
     else if (choice === 'overlay') wrapper = 'overlay.engine.js';
     if (choice === 'mupdf') {
       console.log('DEBUG: MuPDF base path', base);
-      let wasmBinary = null;
-      try {
-        const wasmResp = await fetch(base + 'mupdf-wasm.wasm');
-        if (wasmResp.ok) {
-          wasmBinary = await wasmResp.arrayBuffer();
-          console.log('DEBUG: MuPDF wasm fetched', wasmBinary.byteLength, 'bytes');
-        } else {
-          console.error('DEBUG: MuPDF wasm fetch status', wasmResp.status);
+      let wasmBinary = getAssetBuffer('mupdf-wasm.wasm') || getAssetBuffer('mupdf.wasm');
+      if (!wasmBinary) {
+        try {
+          const wasmResp = await fetch(resolveAssetPath('mupdf-wasm.wasm'));
+          if (wasmResp.ok) {
+            wasmBinary = await wasmResp.arrayBuffer();
+            console.log('DEBUG: MuPDF wasm fetched', wasmBinary.byteLength, 'bytes');
+          } else {
+            console.error('DEBUG: MuPDF wasm fetch status', wasmResp.status);
+          }
+        } catch (e) {
+          console.error('DEBUG: MuPDF wasm fetch failed', e);
         }
-      } catch (e) {
-        console.error('DEBUG: MuPDF wasm fetch failed', e);
       }
       globalThis.$libmupdf_wasm_Module = {
         locateFile: (p) => {
-          const loc = base + p;
+          const loc = resolveAssetPath(p);
           console.log('DEBUG: MuPDF locateFile', p, '->', loc);
           return loc;
         },
@@ -161,14 +198,33 @@ async function loadEngine(cfg) {
     let engineMod;
     try {
       console.log(`DEBUG: importing wrapper ${wrapper}`);
-      engineMod = await import(/* @vite-ignore */ base + wrapper);
+      engineMod = await import(/* @vite-ignore */ resolveAssetPath(wrapper));
+      if (!engineMod || typeof engineMod.init !== 'function') {
+        throw new Error('wrapper missing init');
+      }
     } catch (e) {
       console.error('DEBUG: wrapper import failed', e);
+      if (requested && requested !== 'auto' && !strict) {
+        console.log('DEBUG: falling back to auto engine');
+        return await loadEngine({ ...cfg, wasmEngine: 'auto' });
+      }
       available = false;
       _impl = { async rewritePdf() { throw new Error(`WASM ${choice} wrapper not wired. Implement rewrite() in src/wasm/vendor/${wrapper}`); } };
       return _impl;
     }
-    const engine = await engineMod.init({ baseURL: base, hasHB: hbOk, hasICU: icuOk, hasPDF: choice === 'pdfium' ? pdfiumOk : mupdfOk });
+    let engine;
+    try {
+      engine = await engineMod.init({ baseURL: base, hasHB: hbOk, hasICU: icuOk, hasPDF: choice === 'pdfium' ? pdfiumOk : mupdfOk });
+    } catch (e) {
+      console.error('DEBUG: engine init failed', e);
+      if (requested && requested !== 'auto' && !strict) {
+        console.log('DEBUG: falling back to auto engine');
+        return await loadEngine({ ...cfg, wasmEngine: 'auto' });
+      }
+      available = false;
+      _impl = { async rewritePdf() { throw new Error('WASM engine not available. Place vendor assets under src/wasm/vendor/.'); } };
+      return _impl;
+    }
     console.log('DEBUG: engine module initialized');
     if (!engine || typeof engine.rewrite !== 'function') {
       available = false;
@@ -187,6 +243,9 @@ async function loadEngine(cfg) {
     };
     available = true;
     console.log('DEBUG: engine loaded', choice);
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+      try { chrome.storage.sync.set({ wasmEngine: choice }); } catch {}
+    }
   } catch (e) {
     available = false;
     console.error('DEBUG: loadEngine failed', e);
@@ -215,5 +274,8 @@ if (typeof module !== 'undefined') {
     rewritePdf,
     WASM_ASSETS,
     downloadWasmAssets,
+    ensureWasmAssets,
+    resolveAssetPath,
+    getAssetBuffer,
   };
 }
