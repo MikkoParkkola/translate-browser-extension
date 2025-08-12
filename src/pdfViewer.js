@@ -57,6 +57,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   const thumbs = document.getElementById('thumbs');
   const zoomInBtn = document.getElementById('zoomIn');
   const zoomOutBtn = document.getElementById('zoomOut');
+  const zoomResetBtn = document.getElementById('zoomReset');
   let currentZoom = 1;
 
   function applyZoom() {
@@ -72,6 +73,12 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     });
     zoomOutBtn.addEventListener('click', () => {
       currentZoom = Math.max(currentZoom - 0.1, 0.1);
+      applyZoom();
+    });
+  }
+  if (zoomResetBtn) {
+    zoomResetBtn.addEventListener('click', () => {
+      currentZoom = 1;
       applyZoom();
     });
   }

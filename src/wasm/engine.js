@@ -162,13 +162,32 @@ async function loadEngine(cfg) {
     try {
       console.log(`DEBUG: importing wrapper ${wrapper}`);
       engineMod = await import(/* @vite-ignore */ base + wrapper);
+      if (!engineMod || typeof engineMod.init !== 'function') {
+        throw new Error('wrapper missing init');
+      }
     } catch (e) {
       console.error('DEBUG: wrapper import failed', e);
+      if (requested && requested !== 'auto' && !strict) {
+        console.log('DEBUG: falling back to auto engine');
+        return await loadEngine({ ...cfg, wasmEngine: 'auto' });
+      }
       available = false;
       _impl = { async rewritePdf() { throw new Error(`WASM ${choice} wrapper not wired. Implement rewrite() in src/wasm/vendor/${wrapper}`); } };
       return _impl;
     }
-    const engine = await engineMod.init({ baseURL: base, hasHB: hbOk, hasICU: icuOk, hasPDF: choice === 'pdfium' ? pdfiumOk : mupdfOk });
+    let engine;
+    try {
+      engine = await engineMod.init({ baseURL: base, hasHB: hbOk, hasICU: icuOk, hasPDF: choice === 'pdfium' ? pdfiumOk : mupdfOk });
+    } catch (e) {
+      console.error('DEBUG: engine init failed', e);
+      if (requested && requested !== 'auto' && !strict) {
+        console.log('DEBUG: falling back to auto engine');
+        return await loadEngine({ ...cfg, wasmEngine: 'auto' });
+      }
+      available = false;
+      _impl = { async rewritePdf() { throw new Error('WASM engine not available. Place vendor assets under src/wasm/vendor/.'); } };
+      return _impl;
+    }
     console.log('DEBUG: engine module initialized');
     if (!engine || typeof engine.rewrite !== 'function') {
       available = false;
@@ -187,6 +206,9 @@ async function loadEngine(cfg) {
     };
     available = true;
     console.log('DEBUG: engine loaded', choice);
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+      try { chrome.storage.sync.set({ wasmEngine: choice }); } catch {}
+    }
   } catch (e) {
     available = false;
     console.error('DEBUG: loadEngine failed', e);

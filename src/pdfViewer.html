@@ -36,9 +36,10 @@
       <select id="engineSelect" class="btn" title="Translation engine"></select>
       <span id="engineStatus" class="muted">Engine: checking…</span>
     <span class="sep"></span>
-    <div class="toggle-group">
-      <button id="zoomOut" class="btn">-</button>
-      <button id="zoomIn" class="btn">+</button>
+    <div class="toggle-group" id="zoomControls">
+      <button id="zoomOut" class="btn" title="Zoom out">−</button>
+      <button id="zoomReset" class="btn" title="Reset zoom">100%</button>
+      <button id="zoomIn" class="btn" title="Zoom in">+</button>
     </div>
     <span id="modeBadge" class="muted" style="margin-left:auto"></span>
   </div>
@@ -62,6 +63,9 @@
     .toggle-group { display:flex; gap:0 }
     .toggle-group .btn { border-radius:8px 0 0 8px; }
     .toggle-group .btn + .btn { border-left:0 }
+    .toggle-group .btn:last-child { border-radius:0 8px 8px 0; }
+    #zoomControls .btn { width:34px; padding:8px 0; }
+    #zoomReset { width:50px; }
     .btn-split { position:relative; display:flex }
     .btn-split .btn { border-radius:0; }
     .btn-split .btn.caret { width:34px; padding:8px 0; border-left:0; border-radius:0 8px 8px 0; }
