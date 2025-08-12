@@ -150,6 +150,58 @@ chrome.runtime.sendMessage({ action: 'get-status' }, s => {
     }
     setWorking(true);
   }
+  if (msg.action === 'translation-status' && msg.status) {
+    const s = msg.status;
+    if (s.active) {
+      if (s.phase === 'translate') {
+        let txt = `Translating ${s.request || 0}/${s.requests || 0}`;
+        if (s.sample) txt += `: ${s.sample.slice(0, 60)}`;
+        if (typeof s.elapsedMs === 'number') txt += ` · ${(s.elapsedMs / 1000).toFixed(1)}s`;
+        if (typeof s.etaMs === 'number') txt += ` · ETA ${(s.etaMs / 1000).toFixed(1)}s`;
+        status.textContent = txt;
+      } else {
+        const { phase, page, total } = s;
+        const parts = [];
+        if (phase) parts.push(phase.charAt(0).toUpperCase() + phase.slice(1));
+        if (page && total) parts.push(`${page}/${total}`);
+        status.textContent = parts.join(' ');
+      }
+      setWorking(true);
+    } else {
+      if (s.summary) {
+        const t = s.summary;
+        const bits = [
+          `Done in ${(t.elapsedMs / 1000).toFixed(1)}s`,
+          `${t.words} words`,
+          `${t.requests} req`,
+          `${t.tokens} tokens`,
+          `${t.wordsPerSecond.toFixed(1)} w/s`,
+          `${t.wordsPerRequest.toFixed(1)} w/req`,
+        ];
+        status.textContent = bits.join(', ');
+      } else {
+        status.textContent = '';
+      }
+      setWorking(false);
+    }
+  }
+});
+
+chrome.runtime.sendMessage({ action: 'get-status' }, s => {
+  if (s && s.active) {
+    if (s.phase === 'translate') {
+      let txt = `Translating ${s.request || 0}/${s.requests || 0}`;
+      if (s.sample) txt += `: ${s.sample.slice(0, 60)}`;
+      status.textContent = txt;
+    } else {
+      const { phase, page, total } = s;
+      const parts = [];
+      if (phase) parts.push(phase.charAt(0).toUpperCase() + phase.slice(1));
+      if (page && total) parts.push(`${page}/${total}`);
+      status.textContent = parts.join(' ');
+    }
+    setWorking(true);
+  }
 });
 
 window.qwenLoadConfig().then(cfg => {
