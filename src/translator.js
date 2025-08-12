@@ -74,11 +74,12 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
     },
   };
   if (debug) console.log('QTDEBUG: request body', body);
+  const auth = apiKey && /^bearer\s/i.test(apiKey) ? apiKey : `Bearer ${apiKey}`;
   let resp;
   try {
     const headers = {
       'Content-Type': 'application/json',
-      Authorization: apiKey,
+      Authorization: auth,
     };
     if (stream) headers['X-DashScope-SSE'] = 'enable';
     resp = await fetchFn(url, {
@@ -100,7 +101,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: apiKey,
+            Authorization: auth,
           },
           body: JSON.stringify(body),
           signal,

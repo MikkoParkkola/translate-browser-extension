@@ -17,6 +17,13 @@ test('translate success', async () => {
   expect(res.text).toBe('hello');
 });
 
+test('adds bearer prefix automatically', async () => {
+  fetch.mockResponseOnce(JSON.stringify({output:{text:'hello'}}));
+  await translate({endpoint:'https://e/', apiKey:'abc123', model:'m', text:'hi', source:'en', target:'es'});
+  const headers = fetch.mock.calls[0][1].headers;
+  expect(headers.Authorization).toBe('Bearer abc123');
+});
+
 test('translate error', async () => {
   const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
   fetch.mockResponseOnce(JSON.stringify({message:'bad'}), {status:400});
