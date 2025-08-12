@@ -1,5 +1,11 @@
 const translator = require('../src/translator.js');
-const { qwenTranslate: translate, qwenClearCache, qwenTranslateBatch } = translator;
+const {
+  qwenTranslate: translate,
+  qwenClearCache,
+  qwenTranslateBatch,
+  _getTokenBudget,
+  _setTokenBudget,
+} = translator;
 const { configure } = require('../src/throttle');
 const fetchMock = require('jest-fetch-mock');
 
@@ -9,6 +15,7 @@ beforeEach(() => {
   fetch.resetMocks();
   qwenClearCache();
   configure({ requestLimit: 60, tokenLimit: 100000, windowMs: 60000 });
+  _setTokenBudget(0);
 });
 
 test('translate success', async () => {
@@ -115,7 +122,7 @@ test('batch splits oversized single text', async () => {
 });
 
 test('batch propagates HTTP 400 errors', async () => {
-  fetch.mockResponseOnce(JSON.stringify({ message: 'Parameter limit exceeded' }), { status: 400 });
+  fetch.mockResponseOnce(JSON.stringify({ message: 'bad request' }), { status: 400 });
   await expect(
     qwenTranslateBatch({
       texts: ['too long'],
@@ -127,6 +134,37 @@ test('batch propagates HTTP 400 errors', async () => {
       model: 'm',
     })
   ).rejects.toThrow('HTTP 400');
+});
+
+test('batch locks token budget after parameter limit error', async () => {
+  fetch
+    .mockResponseOnce(JSON.stringify({ output: { text: 'A' } }))
+    .mockResponseOnce(JSON.stringify({ message: 'Parameter limit exceeded' }), { status: 400 })
+    .mockResponseOnce(JSON.stringify({ output: { text: 'B' } }));
+
+  _setTokenBudget(1000, false);
+
+  await qwenTranslateBatch({
+    texts: ['a'],
+    source: 'en',
+    target: 'es',
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    model: 'm',
+  });
+  const grown = _getTokenBudget();
+  expect(grown).toBeGreaterThan(1000);
+
+  await qwenTranslateBatch({
+    texts: ['b'],
+    source: 'en',
+    target: 'es',
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    model: 'm',
+  });
+  expect(_getTokenBudget()).toBe(1000);
+  expect(fetch).toHaveBeenCalledTimes(3);
 });
 
 test('batch retranslates unchanged lines', async () => {
@@ -143,6 +181,20 @@ test('batch retranslates unchanged lines', async () => {
   });
   expect(res.texts).toEqual(['FOO', 'BAR']);
   expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+test('token budget grows after successful batch', async () => {
+  fetch.mockResponseOnce(JSON.stringify({ output: { text: 'A\uE000B' } }));
+  _setTokenBudget(1000, false);
+  await qwenTranslateBatch({
+    texts: ['a', 'b'],
+    source: 'en',
+    target: 'es',
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    model: 'm',
+  });
+  expect(_getTokenBudget()).toBeGreaterThan(1000);
 });
 
 test('batch groups multiple texts into single request by default', async () => {

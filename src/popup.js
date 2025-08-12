@@ -6,6 +6,7 @@ const sourceSelect = document.getElementById('source');
 const targetSelect = document.getElementById('target');
 const reqLimitInput = document.getElementById('requestLimit');
 const tokenLimitInput = document.getElementById('tokenLimit');
+const tokenBudgetInput = document.getElementById('tokenBudget');
 const autoCheckbox = document.getElementById('auto');
 const debugCheckbox = document.getElementById('debug');
 const status = document.getElementById('status');
@@ -44,6 +45,7 @@ function saveConfig() {
       targetLanguage: targetSelect.value,
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
       tokenLimit: parseInt(tokenLimitInput.value, 10) || 100000,
+      tokenBudget: parseInt(tokenBudgetInput.value, 10) || 0,
       autoTranslate: autoCheckbox.checked,
       debug: debugCheckbox.checked,
     };
@@ -163,6 +165,7 @@ window.qwenLoadConfig().then(cfg => {
   targetSelect.value = cfg.targetLanguage;
   reqLimitInput.value = cfg.requestLimit;
   tokenLimitInput.value = cfg.tokenLimit;
+  tokenBudgetInput.value = cfg.tokenBudget || '';
   autoCheckbox.checked = cfg.autoTranslate;
   debugCheckbox.checked = !!cfg.debug;
 
@@ -191,7 +194,7 @@ window.qwenLoadConfig().then(cfg => {
     });
   });
 
-  [reqLimitInput, tokenLimitInput].forEach(el => el.addEventListener('input', saveConfig));
+  [reqLimitInput, tokenLimitInput, tokenBudgetInput].forEach(el => el.addEventListener('input', saveConfig));
   [sourceSelect, targetSelect, autoCheckbox, debugCheckbox].forEach(el => el.addEventListener('change', saveConfig));
 });
 

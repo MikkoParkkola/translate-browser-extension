@@ -308,6 +308,9 @@ function observe(root = document.body) {
 
 async function start() {
   currentConfig = await window.qwenLoadConfig();
+  if (window.qwenSetTokenBudget) {
+    window.qwenSetTokenBudget(currentConfig.tokenBudget || 0);
+  }
   if (!currentConfig.apiKey) {
     console.warn('QTWARN: API key not configured.');
     return;

@@ -123,6 +123,9 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   console.log('DEBUG: PDF.js worker source set.');
 
   const cfg = await window.qwenLoadConfig();
+  if (window.qwenSetTokenBudget) {
+    window.qwenSetTokenBudget(cfg.tokenBudget || 0);
+  }
 
   chrome.runtime.onMessage.addListener(msg => {
     if (msg.action === 'translate-selection') {
@@ -238,6 +241,9 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     const setProgress = (msg, p) => { if (text) text.textContent = msg; if (bar && typeof p === 'number') bar.style.width = `${Math.max(0,Math.min(100,p))}%`; };
     await prepareWasm();
     let cfgNow = await window.qwenLoadConfig();
+    if (window.qwenSetTokenBudget) {
+      window.qwenSetTokenBudget(cfgNow.tokenBudget || 0);
+    }
     const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine','wasmStrict'], r));
     cfgNow = { ...cfgNow, ...flags, useWasmEngine: true };
     if (!cfgNow.apiKey) { alert('Configure API key first.'); throw new Error('API key missing'); }
