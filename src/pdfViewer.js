@@ -279,6 +279,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
       chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary } });
       throw e;
     } finally {
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false } });
       if (overlay) setTimeout(()=>{ overlay.style.display = 'none'; const b = document.getElementById('regenBar'); if (b) b.style.width = '0%'; }, 800);
     }
   }
