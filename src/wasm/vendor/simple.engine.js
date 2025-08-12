@@ -41,7 +41,7 @@ function buildSimplePdf(pages, onProgress) {
       y -= leading;
     });
     stream += 'ET\n';
-    const content = `<< /Length ${stream.length} >>\nstream\n${stream}endstream`;
+    const content = `<< /Length ${stream.length} >>\nstream\n${stream}endstream\n`;
     contentObjs.push({ num: contentNum, body: content });
     if (onProgress) onProgress({ phase: 'render', page: i + 1, total: pages.length });
   });
@@ -50,10 +50,10 @@ function buildSimplePdf(pages, onProgress) {
   add('1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj');
   add(`2 0 obj << /Type /Pages /Count ${pages.length} /Kids [ ${kids.join(' ')} ] >> endobj`);
   add('3 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj');
-  pageObjs.forEach((p, idx) => {
+  pageObjs.forEach((p) => {
     add(`${p.num} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 ${Math.round(p.w)} ${Math.round(p.h)}] /Resources << /Font << /F1 3 0 R >> >> /Contents ${p.content} >> endobj`);
   });
-  contentObjs.forEach((c) => add(`${c.num} 0 obj ${c.body} endobj`));
+  contentObjs.forEach((c) => add(`${c.num} 0 obj\n${c.body}endobj`));
 
   const xrefPos = buf.length;
   buf += 'xref\n';
@@ -63,7 +63,7 @@ function buildSimplePdf(pages, onProgress) {
     const off = String(offsets[i]).padStart(10, '0');
     buf += `${off} 00000 n \n`;
   }
-  buf += `trailer << /Size ${contentObjs.length + pageObjs.length + 3 + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF`; 
+  buf += `trailer << /Size ${contentObjs.length + pageObjs.length + 3 + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF\n`;
   return new Blob([new TextEncoder().encode(buf)], { type: 'application/pdf' });
 }
 
