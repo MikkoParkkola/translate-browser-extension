@@ -9,6 +9,9 @@
     #main { flex:1; display:flex; height:100%; }
     #thumbs { width:120px; display:flex; flex-direction:column; gap:6px; overflow-y:auto; padding:6px; border-right:1px solid #eee; background:#fafafa }
     #viewer { flex:1; position:relative; height:100%; overflow:auto; }
+    body.compare #thumbs { display:none; }
+    body.compare #viewer { display:flex; overflow:auto; }
+    body.compare .pdfPane { flex:1; overflow:auto; }
     .page { position:relative; margin:10px auto; }
     canvas { display:block; }
     .textLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:2; --scale-factor: 1; }
@@ -31,6 +34,7 @@
           <button id="actionSaveTranslated" class="menu-item">Save translated PDF</button>
         </div>
       </div>
+      <button id="btnCompare" class="btn" data-active="0">Compare</button>
     </div>
     <span class="sep"></span>
       <select id="engineSelect" class="btn" title="Translation engine"></select>
@@ -63,6 +67,7 @@
     .toggle-group { display:flex; gap:0 }
     .toggle-group .btn { border-radius:8px 0 0 8px; }
     .toggle-group .btn + .btn { border-left:0 }
+    .toggle-group .btn-split + .btn { border-left:0 }
     .toggle-group .btn:last-child { border-radius:0 8px 8px 0; }
     #zoomControls .btn { width:34px; padding:8px 0; border-radius:0; }
     #zoomControls .btn:first-child { border-radius:8px 0 0 8px; }

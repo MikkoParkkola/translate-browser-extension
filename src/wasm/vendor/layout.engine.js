@@ -23,8 +23,11 @@ export function groupTextItems(textContent, viewport, ctx) {
     const y = viewport.height - m[5];
     const width = (it.width || 0) * viewport.scale;
     if (ctx) {
-      ctx.fillStyle = '#fff';
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = '#000';
       ctx.fillRect(x, y - size, width, size * 1.2);
+      ctx.restore();
     }
     let line = lines.find(l => Math.abs(l.y - y) < size * 0.5);
     if (!line) {

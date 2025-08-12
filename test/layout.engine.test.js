@@ -33,7 +33,7 @@ describe('groupTextItems', () => {
     global.pdfjsLib = { Util: { transform: (_v, t) => t } };
   });
   const viewport = { transform: [1, 0, 0, 1, 0, 0], width: 100, height: 100, scale: 1 };
-  const ctx = { fillStyle: '', fillRect: () => {} };
+  const ctx = { fillStyle: '', fillRect: () => {}, save: () => {}, restore: () => {} };
   it('splits items into separate lines when y differs enough', () => {
     const { groupTextItems } = loadLayout();
     const textContent = {
@@ -58,5 +58,20 @@ describe('groupTextItems', () => {
     const lines = groupTextItems(textContent, viewport, ctx);
     expect(lines).toHaveLength(1);
     expect(lines[0].text).toBe('foo bar');
+  });
+
+  it('clears original text using destination-out', () => {
+    const ops = [];
+    const ctx2 = {
+      globalCompositeOperation: 'source-over',
+      save: () => ops.push('save'),
+      restore: () => ops.push('restore'),
+      fillStyle: '',
+      fillRect: () => ops.push(ctx2.globalCompositeOperation),
+    };
+    const { groupTextItems } = loadLayout();
+    const textContent = { items: [ { str: 'foo', transform: [1,0,0,1,10,90], width:10 } ] };
+    groupTextItems(textContent, viewport, ctx2);
+    expect(ops).toContain('destination-out');
   });
 });

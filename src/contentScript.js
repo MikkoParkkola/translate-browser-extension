@@ -55,7 +55,6 @@ function setStatus(message, isError = false) {
 function clearStatus() {
   const el = document.getElementById('qwen-status');
   if (el) el.remove();
-  try { chrome.runtime.sendMessage({ action: 'popup-clear-status' }); } catch {}
 }
 
 function showError(message) {

@@ -107,10 +107,12 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
 
   const badge = document.getElementById('modeBadge');
   const isTranslatedParam = params.get('translated') === '1';
+  const isCompareParam = params.get('compare') === '1';
   document.body.classList.toggle('translated', isTranslatedParam);
+  document.body.classList.toggle('compare', isCompareParam);
   if (badge) {
-    badge.textContent = isTranslatedParam ? 'Translated' : 'Original';
-    badge.style.color = isTranslatedParam ? '#2e7d32' : '#666';
+    badge.textContent = isCompareParam ? 'Compare' : (isTranslatedParam ? 'Translated' : 'Original');
+    badge.style.color = isCompareParam ? '#0d6efd' : (isTranslatedParam ? '#2e7d32' : '#666');
   }
 
   if (!file && !sessionKey) {
@@ -212,6 +214,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   // Wire up view toggles and save menu
   const btnOriginal = document.getElementById('btnOriginal');
   const btnTranslated = document.getElementById('btnTranslated');
+  const btnCompare = document.getElementById('btnCompare');
   const btnTranslatedMenu = document.getElementById('btnTranslatedMenu');
   const translatedMenu = document.getElementById('translatedMenu');
   const actionSaveTranslated = document.getElementById('actionSaveTranslated');
@@ -219,9 +222,10 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   function setModeUI(mode) {
     if (btnOriginal) btnOriginal.dataset.active = mode === 'original' ? '1' : '0';
     if (btnTranslated) btnTranslated.dataset.active = mode === 'translated' ? '1' : '0';
+    if (btnCompare) btnCompare.dataset.active = mode === 'compare' ? '1' : '0';
     if (badge) {
-      badge.textContent = mode === 'translated' ? 'Translated' : 'Original';
-      badge.style.color = mode === 'translated' ? '#2e7d32' : '#666';
+      badge.textContent = mode === 'compare' ? 'Compare' : (mode === 'translated' ? 'Translated' : 'Original');
+      badge.style.color = mode === 'compare' ? '#0d6efd' : (mode === 'translated' ? '#2e7d32' : '#666');
     }
     if (btnTranslatedMenu) btnTranslatedMenu.style.display = mode === 'translated' ? '' : 'none';
     if (btnTranslated) {
@@ -284,6 +288,11 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + `?translated=1&session=${encodeURIComponent(sessionKey)}&orig=${encodeURIComponent(originalUrl)}`;
     window.location.href = viewerUrl;
   }
+  function gotoCompare(originalUrl, sessionKey) {
+    console.log('DEBUG: navigating to compare', { originalUrl, sessionKey });
+    const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + `?compare=1&session=${encodeURIComponent(sessionKey)}&orig=${encodeURIComponent(originalUrl)}`;
+    window.location.href = viewerUrl;
+  }
 
   if (btnOriginal && !btnOriginal.dataset.bound) {
     btnOriginal.dataset.bound = '1';
@@ -300,6 +309,21 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
       } catch (e) { console.error('Translate view failed', e); }
       finally {
         btnTranslated.disabled = false;
+        btnOriginal && (btnOriginal.disabled = false);
+      }
+    });
+  }
+  if (btnCompare && !btnCompare.dataset.bound) {
+    btnCompare.dataset.bound = '1';
+    btnCompare.addEventListener('click', async () => {
+      try {
+        btnCompare.disabled = true;
+        btnOriginal && (btnOriginal.disabled = true);
+        const key = isTranslatedParam ? sessionKey : await generateTranslatedSessionKey(origFile);
+        gotoCompare(origFile, key);
+      } catch (e) { console.error('Compare view failed', e); }
+      finally {
+        btnCompare.disabled = false;
         btnOriginal && (btnOriginal.disabled = false);
       }
     });
@@ -334,7 +358,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   }
 
   // Default view based on autoTranslate
-  const initialMode = isTranslatedParam ? 'translated' : (cfg.autoTranslate ? 'translated' : 'original');
+  const initialMode = isCompareParam ? 'compare' : (isTranslatedParam ? 'translated' : (cfg.autoTranslate ? 'translated' : 'original'));
   setModeUI(initialMode);
   if (initialMode === 'translated' && !isTranslatedParam && origFile) {
     try {
@@ -344,6 +368,22 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     } catch (e) {
       console.error('Auto-translate preview failed', e);
     }
+  }
+  if (isCompareParam) {
+    if (!sessionKey) {
+      viewer.textContent = 'No translated PDF for comparison';
+      return;
+    }
+    viewer.innerHTML = '';
+    const left = document.createElement('iframe');
+    left.className = 'pdfPane';
+    left.src = chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(origFile) + '&orig=' + encodeURIComponent(origFile);
+    const right = document.createElement('iframe');
+    right.className = 'pdfPane';
+    right.src = chrome.runtime.getURL('pdfViewer.html') + `?translated=1&session=${encodeURIComponent(sessionKey)}&orig=${encodeURIComponent(origFile)}`;
+    viewer.appendChild(left);
+    viewer.appendChild(right);
+    return;
   }
   if (!cfg.apiKey) {
     viewer.textContent = 'API key not configured';
