@@ -132,6 +132,11 @@ async function loadEngine(cfg) {
     else if (choice === 'pdfium') wrapper = 'pdfium.engine.js';
     else if (choice === 'simple') wrapper = 'simple.engine.js';
     else if (choice === 'overlay') wrapper = 'overlay.engine.js';
+    if (choice === 'mupdf') {
+      globalThis.$libmupdf_wasm_Module = {
+        locateFile: (p) => base + p,
+      };
+    }
     let engineMod;
     try {
       console.log(`DEBUG: importing wrapper ${wrapper}`);
