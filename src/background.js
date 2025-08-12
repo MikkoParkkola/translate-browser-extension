@@ -111,7 +111,11 @@ async function updateIcon() {
 }
 
 function updateBadge() {
-  chrome.action.setBadgeText({ text: '' });
+  const busy = activeTranslations > 0;
+  chrome.action.setBadgeText({ text: busy ? '…' : '' });
+  if (chrome.action.setBadgeBackgroundColor) {
+    chrome.action.setBadgeBackgroundColor({ color: busy ? '#ff4500' : '#00000000' });
+  }
   updateIcon();
 }
 updateBadge();
