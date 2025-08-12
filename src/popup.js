@@ -211,14 +211,9 @@ window.qwenLoadConfig().then(cfg => {
 versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
 
 function setBar(el, ratio) {
-  el.style.width = Math.min(100, ratio * 100) + '%';
-  if (ratio >= 1) {
-    el.style.backgroundColor = 'var(--red)';
-  } else if (ratio > 0.8) {
-    el.style.backgroundColor = 'var(--yellow)';
-  } else {
-    el.style.backgroundColor = 'var(--green)';
-  }
+  const r = Math.max(0, Math.min(1, ratio));
+  el.style.width = r * 100 + '%';
+  el.style.backgroundColor = window.qwenUsageColor ? window.qwenUsageColor(r) : 'var(--green)';
 }
 
 function refreshUsage() {

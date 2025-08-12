@@ -1,4 +1,4 @@
-importScripts('throttle.js', 'translator.js');
+importScripts('throttle.js', 'translator.js', 'usageColor.js');
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log('Qwen Translator installed');
@@ -37,8 +37,10 @@ let translationStatus = { active: false };
 
 async function updateIcon() {
   await ensureThrottle();
-  const { requests, requestLimit } = self.qwenThrottle.getUsage();
-  const pct = requestLimit ? Math.min(requests / requestLimit, 1) : 0;
+  const { requests, requestLimit, tokens, tokenLimit } = self.qwenThrottle.getUsage();
+  const reqPct = requestLimit ? requests / requestLimit : 0;
+  const tokPct = tokenLimit ? tokens / tokenLimit : 0;
+  const pct = Math.min(Math.max(reqPct, tokPct), 1);
 
   const size = 128;
   const c = new OffscreenCanvas(size, size);
@@ -53,16 +55,11 @@ async function updateIcon() {
   ctx.arc(size / 2, size / 2, size / 2 - ringWidth, 0, 2 * Math.PI);
   ctx.stroke();
 
-  // inner circle reflects request usage
-  let radius = 14;
-  let color = '#d0d4da';
-  if (activeTranslations > 0) {
-    const minR = 10;
-    const maxR = size / 2 - ringWidth - 4;
-    radius = minR + pct * (maxR - minR);
-    const hue = (1 - pct) * 120; // green to red
-    color = `hsl(${hue}, 70%, 45%)`;
-  }
+  // inner circle reflects highest quota usage
+  const minR = 10;
+  const maxR = size / 2 - ringWidth - 4;
+  const radius = minR + pct * (maxR - minR);
+  const color = self.qwenUsageColor ? self.qwenUsageColor(pct) : '#d0d4da';
 
   ctx.fillStyle = color;
   ctx.beginPath();
