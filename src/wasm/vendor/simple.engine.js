@@ -63,7 +63,7 @@ function buildSimplePdf(pages, onProgress) {
     const off = String(offsets[i]).padStart(10, '0');
     buf += `${off} 00000 n \n`;
   }
-  buf += `trailer << /Size ${contentObjs.length + pageObjs.length + 3 + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF`; 
+  buf += `trailer << /Size ${contentObjs.length + pageObjs.length + 3 + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF\n`;
   return new Blob([new TextEncoder().encode(buf)], { type: 'application/pdf' });
 }
 
