@@ -76,11 +76,11 @@ export async function chooseEngine(base, requested) {
   console.log('DEBUG: engine assets', { hbOk, icuOk, pdfiumOk, mupdfOk, overlayOk });
 
   function pick() {
-    if (wants === 'mupdf') return 'mupdf';
-    if (wants === 'pdfium') return 'pdfium';
-    if (wants === 'overlay') return 'overlay';
+    if (wants === 'mupdf') return mupdfOk ? 'mupdf' : (pdfiumOk ? 'pdfium' : (overlayOk ? 'overlay' : 'simple'));
+    if (wants === 'pdfium') return pdfiumOk ? 'pdfium' : (mupdfOk ? 'mupdf' : (overlayOk ? 'overlay' : 'simple'));
+    if (wants === 'overlay') return overlayOk ? 'overlay' : (pdfiumOk ? 'pdfium' : (mupdfOk ? 'mupdf' : 'simple'));
     if (wants === 'simple') return 'simple';
-    // auto: prefer MuPDF if present; else PDFium; else Overlay; else Simple
+    // auto: prefer PDFium if present; then MuPDF; then Overlay; else Simple
     if (pdfiumOk) return 'pdfium';
     if (mupdfOk) return 'mupdf';
     if (overlayOk) return 'overlay';

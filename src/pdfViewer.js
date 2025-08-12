@@ -78,6 +78,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
 
   const badge = document.getElementById('modeBadge');
   const isTranslatedParam = params.get('translated') === '1';
+  document.body.classList.toggle('translated', isTranslatedParam);
   if (badge) {
     badge.textContent = isTranslatedParam ? 'Translated' : 'Original';
     badge.style.color = isTranslatedParam ? '#2e7d32' : '#666';
@@ -283,7 +284,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
         if (!isTranslatedParam) {
           key = await generateTranslatedSessionKey(origFile);
         }
-        const buf = readPdfFromSession(key);
+        const buf = await readPdfFromSession(key);
         const blob = new Blob([buf], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
         if (chrome && chrome.downloads && chrome.downloads.download) {
@@ -319,7 +320,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   try {
     let buffer;
     if (sessionKey) {
-      buffer = readPdfFromSession(sessionKey);
+      buffer = await readPdfFromSession(sessionKey);
       console.log('DEBUG: Loaded PDF from session storage.');
     } else {
       console.log(`DEBUG: Attempting to fetch PDF from: ${file}`);
