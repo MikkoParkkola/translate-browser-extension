@@ -7,17 +7,21 @@
     tokenLimit: 100000,
     windowMs: 60000,
   }
-  let availableRequests = config.requestLimit
-  let availableTokens = config.tokenLimit
+  // sliding window trackers for quota enforcement (all requests)
+  const allRequestTimes = []
+  const allTokenTimes = []
+  // successful requests
   const requestTimes = []
   const tokenTimes = []
+  // failed requests
+  const failedRequestTimes = []
+  const failedTokenTimes = []
   let totalRequests = 0
   let totalTokens = 0
-  let interval = setInterval(() => {
-    availableRequests = config.requestLimit
-    availableTokens = config.tokenLimit
-    processQueue()
-  }, config.windowMs)
+  let failedTotalRequests = 0
+  let failedTotalTokens = 0
+  let processing = false
+  let lastActivity = 0
 
 function approxTokens(text) {
   return Math.max(1, Math.ceil(text.length / 4));
@@ -25,38 +29,91 @@ function approxTokens(text) {
 
 function throttleConfigure(opts = {}) {
   Object.assign(config, opts);
-  availableRequests = config.requestLimit;
-  availableTokens = config.tokenLimit;
-  if (interval) clearInterval(interval);
-  interval = setInterval(() => {
-    availableRequests = config.requestLimit;
-    availableTokens = config.tokenLimit;
-    processQueue();
-  }, config.windowMs);
+  lastActivity = 0;
 }
 
-function recordUsage(tokens) {
+function recordAll(tokens) {
+  const now = Date.now();
+  allRequestTimes.push(now);
+  allTokenTimes.push({ time: now, tokens });
+  lastActivity = now;
+  prune(now);
+}
+
+function recordSuccess(tokens) {
   const now = Date.now();
   requestTimes.push(now);
   tokenTimes.push({ time: now, tokens });
-  totalRequests++
-  totalTokens += tokens
+  totalRequests++;
+  totalTokens += tokens;
+  lastActivity = now;
+  prune(now);
+}
+
+function recordFailure(tokens) {
+  const now = Date.now();
+  failedRequestTimes.push(now);
+  failedTokenTimes.push({ time: now, tokens });
+  failedTotalRequests++;
+  failedTotalTokens += tokens;
+  lastActivity = now;
   prune(now);
 }
 
 function prune(now = Date.now()) {
-  while (requestTimes.length && now - requestTimes[0] > config.windowMs) requestTimes.shift();
-  while (tokenTimes.length && now - tokenTimes[0].time > config.windowMs) tokenTimes.shift();
+  const cutoff = now - config.windowMs;
+  while (allRequestTimes.length && allRequestTimes[0] <= cutoff) allRequestTimes.shift();
+  while (allTokenTimes.length && allTokenTimes[0].time <= cutoff) allTokenTimes.shift();
+  while (requestTimes.length && requestTimes[0] <= cutoff) requestTimes.shift();
+  while (tokenTimes.length && tokenTimes[0].time <= cutoff) tokenTimes.shift();
+  while (failedRequestTimes.length && failedRequestTimes[0] <= cutoff) failedRequestTimes.shift();
+  while (failedTokenTimes.length && failedTokenTimes[0].time <= cutoff) failedTokenTimes.shift();
+}
+
+function nextFreeTime(now = Date.now()) {
+  const oldestReq = allRequestTimes[0] || 0;
+  const oldestTok = allTokenTimes[0] ? allTokenTimes[0].time : 0;
+  const t = Math.min(oldestReq, oldestTok);
+  return t ? t + config.windowMs : now;
 }
 
 function processQueue() {
-  while (queue.length && availableRequests > 0 && availableTokens >= queue[0].tokens) {
-    const item = queue.shift();
-    availableRequests--;
-    availableTokens -= item.tokens;
-    recordUsage(item.tokens);
-    item.fn().then(item.resolve, item.reject);
-  }
+  if (processing) return;
+  processing = true;
+  const step = () => {
+    prune();
+    const now = Date.now();
+    const usedReq = allRequestTimes.length;
+    const usedTok = allTokenTimes.reduce((s, t) => s + t.tokens, 0);
+    let availReq = config.requestLimit - usedReq;
+    let availTok = config.tokenLimit - usedTok;
+    while (queue.length && availReq > 0 && availTok >= queue[0].tokens) {
+      const item = queue.shift();
+      recordAll(item.tokens);
+      availReq--;
+      availTok -= item.tokens;
+      Promise.resolve()
+        .then(item.fn)
+        .then(
+          res => {
+            recordSuccess(item.tokens);
+            item.resolve(res);
+          },
+          err => {
+            recordFailure(item.tokens);
+            item.reject(err);
+          }
+        );
+      setTimeout(step, Math.ceil(config.windowMs / config.requestLimit));
+      return;
+    }
+    processing = false;
+    if (queue.length) {
+      const wait = Math.max(0, nextFreeTime() - Date.now());
+      setTimeout(processQueue, wait);
+    }
+  };
+  step();
 }
 
 function runWithRateLimit(fn, text) {
@@ -71,9 +128,10 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function runWithRetry(fn, text, attempts = 6, debug = false) {
+async function runWithRetry(fn, text, opts = {}) {
   const tokens = typeof text === 'number' ? text : approxTokens(text || '');
-  let wait = 500;
+  const { attempts = 6, debug = false, onRetry, retryDelay = 500 } = opts;
+  let wait = retryDelay;
   for (let i = 0; i < attempts; i++) {
     try {
       if (debug) console.log('QTDEBUG: attempt', i + 1);
@@ -81,6 +139,7 @@ async function runWithRetry(fn, text, attempts = 6, debug = false) {
     } catch (err) {
       if (!err.retryable || i === attempts - 1) throw err;
       const delayMs = err.retryAfter || wait;
+      if (onRetry) onRetry({ attempt: i + 1, delayMs, error: err });
       if (debug) console.log('QTDEBUG: retrying after error', err.message);
       await delay(delayMs);
       wait = delayMs * 2;
@@ -88,16 +147,23 @@ async function runWithRetry(fn, text, attempts = 6, debug = false) {
   }
 }
 
+function sumTokens(arr) {
+  return arr.reduce((s, t) => s + t.tokens, 0);
+}
+
 function getUsage() {
   prune();
-  const tokensUsed = tokenTimes.reduce((s, t) => s + t.tokens, 0);
   return {
     requests: requestTimes.length,
-    tokens: tokensUsed,
+    tokens: sumTokens(tokenTimes),
+    failedRequests: failedRequestTimes.length,
+    failedTokens: sumTokens(failedTokenTimes),
     requestLimit: config.requestLimit,
     tokenLimit: config.tokenLimit,
     totalRequests,
     totalTokens,
+    failedTotalRequests,
+    failedTotalTokens,
     queue: queue.length,
   };
 }

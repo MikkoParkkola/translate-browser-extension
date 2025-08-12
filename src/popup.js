@@ -9,6 +9,9 @@ const tokenLimitInput = document.getElementById('tokenLimit');
 const tokenBudgetInput = document.getElementById('tokenBudget');
 const autoCheckbox = document.getElementById('auto');
 const debugCheckbox = document.getElementById('debug');
+const smartThrottleInput = document.getElementById('smartThrottle');
+const tokensPerReqInput = document.getElementById('tokensPerReq');
+const retryDelayInput = document.getElementById('retryDelay');
 const status = document.getElementById('status');
 const versionDiv = document.getElementById('version');
 const reqCount = document.getElementById('reqCount');
@@ -18,6 +21,8 @@ const tokenBar = document.getElementById('tokenBar');
 const totalReq = document.getElementById('totalReq');
 const totalTok = document.getElementById('totalTok');
 const queueLen = document.getElementById('queueLen');
+const failedReq = document.getElementById('failedReq');
+const failedTok = document.getElementById('failedTok');
 const translateBtn = document.getElementById('translate');
 const testBtn = document.getElementById('test');
 const progressBar = document.getElementById('progress');
@@ -47,6 +52,9 @@ function saveConfig() {
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
       tokenLimit: parseInt(tokenLimitInput.value, 10) || 100000,
       tokenBudget: parseInt(tokenBudgetInput.value, 10) || 0,
+      smartThrottle: smartThrottleInput.checked,
+      tokensPerReq: parseInt(tokensPerReqInput.value, 10) || 0,
+      retryDelay: parseInt(retryDelayInput.value, 10) || 0,
       autoTranslate: autoCheckbox.checked,
       debug: debugCheckbox.checked,
     };
@@ -94,6 +102,19 @@ function setWorking(w) {
   [translateBtn, testBtn].forEach(b => { if (b) b.disabled = w; });
 }
 
+function updateThrottleInputs() {
+  const manual = !smartThrottleInput.checked;
+  [reqLimitInput, tokenLimitInput, tokensPerReqInput, retryDelayInput].forEach(el => {
+    el.disabled = !manual;
+    if (!manual) {
+      el.placeholder = el.dataset.auto || '';
+      el.value = '';
+    } else {
+      el.placeholder = '';
+    }
+  });
+}
+
 chrome.runtime.onMessage.addListener(msg => {
   if (msg.action === 'popup-status') {
     status.textContent = msg.text || '';
@@ -108,17 +129,32 @@ chrome.runtime.onMessage.addListener(msg => {
         progressBar.style.display = 'block';
       }
       if (s.phase === 'translate') {
-        let txt = `Translating ${s.request || 0}/${s.requests || 0}`;
+        let txt = `Translating paragraph ${s.progress ? s.progress.done : 0} of ${s.progress ? s.progress.total : 0}`;
         if (s.sample) txt += `: ${s.sample.slice(0, 60)}`;
         if (typeof s.elapsedMs === 'number') txt += ` · ${(s.elapsedMs / 1000).toFixed(1)}s`;
         if (typeof s.etaMs === 'number') txt += ` · ETA ${(s.etaMs / 1000).toFixed(1)}s`;
         status.textContent = txt;
+      } else if (s.phase === 'retry') {
+        status.textContent = `Rate limit reached. Retrying in ${(s.delayMs / 1000).toFixed(1)}s...`;
+      } else if (s.phase === 'finalize') {
+        status.textContent = 'Finalizing page...';
       } else {
         const { phase, page, total } = s;
         const parts = [];
         if (phase) parts.push(phase.charAt(0).toUpperCase() + phase.slice(1));
         if (page && total) parts.push(`${page}/${total}`);
         status.textContent = parts.join(' ');
+      }
+      if (s.usage) {
+        reqCount.textContent = `${s.usage.requests}/${s.usage.requestLimit}`;
+        tokenCount.textContent = `${s.usage.tokens}/${s.usage.tokenLimit}`;
+        setBar(reqBar, s.usage.requests / s.usage.requestLimit);
+        setBar(tokenBar, s.usage.tokens / s.usage.tokenLimit);
+        totalReq.textContent = s.usage.totalRequests;
+        totalTok.textContent = s.usage.totalTokens;
+        failedReq.textContent = s.usage.failedTotalRequests;
+        failedTok.textContent = s.usage.failedTotalTokens;
+        queueLen.textContent = s.usage.queue;
       }
       setWorking(true);
     } else {
@@ -178,6 +214,9 @@ window.qwenLoadConfig().then(cfg => {
   tokenBudgetInput.value = cfg.tokenBudget || '';
   autoCheckbox.checked = cfg.autoTranslate;
   debugCheckbox.checked = !!cfg.debug;
+  smartThrottleInput.checked = cfg.smartThrottle !== false;
+  tokensPerReqInput.value = cfg.tokensPerReq || '';
+  retryDelayInput.value = cfg.retryDelay || '';
 
   // Populate setup view
   setupApiKeyInput.value = cfg.apiKey || '';
@@ -204,8 +243,9 @@ window.qwenLoadConfig().then(cfg => {
     });
   });
 
-  [reqLimitInput, tokenLimitInput, tokenBudgetInput].forEach(el => el.addEventListener('input', saveConfig));
-  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox].forEach(el => el.addEventListener('change', saveConfig));
+  updateThrottleInputs();
+  [reqLimitInput, tokenLimitInput, tokenBudgetInput, tokensPerReqInput, retryDelayInput].forEach(el => el.addEventListener('input', saveConfig));
+  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox, smartThrottleInput].forEach(el => el.addEventListener('change', () => { updateThrottleInputs(); saveConfig(); }));
 });
 
 versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
@@ -226,6 +266,16 @@ function refreshUsage() {
     totalReq.textContent = res.totalRequests;
     totalTok.textContent = res.totalTokens;
     queueLen.textContent = res.queue;
+    failedReq.textContent = res.failedTotalRequests;
+    failedTok.textContent = res.failedTotalTokens;
+    reqLimitInput.dataset.auto = res.requestLimit;
+    tokenLimitInput.dataset.auto = res.tokenLimit;
+    tokensPerReqInput.dataset.auto = Math.floor(res.tokenLimit / res.requestLimit || 0);
+    if (smartThrottleInput.checked) {
+      reqLimitInput.placeholder = reqLimitInput.dataset.auto;
+      tokenLimitInput.placeholder = tokenLimitInput.dataset.auto;
+      tokensPerReqInput.placeholder = tokensPerReqInput.dataset.auto;
+    }
   });
 }
 
