@@ -21,6 +21,7 @@ describe('chooseEngine', () => {
     const { chooseEngine } = loadEngine();
     const ok = new Set([
       'base/mupdf.engine.js',
+      'base/mupdf-wasm.wasm',
       'base/mupdf.wasm',
       'base/pdfium.engine.js',
       'base/pdfium.js',
@@ -34,6 +35,26 @@ describe('chooseEngine', () => {
       return Promise.reject(new Error('missing'));
     });
     const { choice, mupdfOk, pdfiumOk } = await chooseEngine('base/', 'auto');
+    expect(mupdfOk).toBe(false);
+    expect(pdfiumOk).toBe(true);
+    expect(choice).toBe('pdfium');
+  });
+
+  it('downgrades requested mupdf when assets missing', async () => {
+    const { chooseEngine } = loadEngine();
+    const ok = new Set([
+      'base/pdfium.engine.js',
+      'base/pdfium.js',
+      'base/pdfium.wasm',
+      'base/hb.wasm',
+      'base/icu4x_segmenter.wasm',
+      'base/pdf-lib.js',
+    ]);
+    global.fetch = jest.fn(url => {
+      if (ok.has(url)) return Promise.resolve({ ok: true });
+      return Promise.reject(new Error('missing'));
+    });
+    const { choice, mupdfOk, pdfiumOk } = await chooseEngine('base/', 'mupdf');
     expect(mupdfOk).toBe(false);
     expect(pdfiumOk).toBe(true);
     expect(choice).toBe('pdfium');
