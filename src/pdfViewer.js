@@ -179,10 +179,16 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
         });
         sel.addEventListener('change', () => {
           chrome.storage.sync.set({ wasmEngine: sel.value }, async () => {
-            if (document.body.classList.contains('translated')) {
+            const isTranslatedView = document.body.classList.contains('translated');
+            const isCompareView = document.body.classList.contains('compare');
+            if (isTranslatedView || isCompareView) {
               try {
                 const key = await generateTranslatedSessionKey(origFile);
-                gotoTranslated(origFile, key);
+                if (isCompareView) {
+                  gotoCompare(origFile, key);
+                } else {
+                  gotoTranslated(origFile, key);
+                }
               } catch (e) { console.error('Engine switch failed', e); }
             }
           });

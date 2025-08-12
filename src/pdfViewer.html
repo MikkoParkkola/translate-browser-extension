@@ -16,7 +16,6 @@
     canvas { display:block; }
     .textLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:2; --scale-factor: 1; }
     .textLayer span { position:absolute; white-space:pre; transform-origin:0% 0%; line-height:1; display:inline-block; color: transparent; background: transparent; text-shadow: none; }
-    body.translated .textLayer span { color: #000; }
     .page { box-shadow: 0 0 0 1px rgba(0,0,0,0.1); }
     .annotationLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:15; }
     .thumb { cursor:pointer; }
@@ -65,10 +64,10 @@
     .btn.primary { border-color:#0d6efd; background:#0d6efd; color:#fff; }
     .btn.primary:hover { background:#0b5ed7; }
     .toggle-group { display:flex; gap:0 }
-    .toggle-group .btn { border-radius:8px 0 0 8px; }
-    .toggle-group .btn + .btn { border-left:0 }
-    .toggle-group .btn-split + .btn { border-left:0 }
-    .toggle-group .btn:last-child { border-radius:0 8px 8px 0; }
+    .toggle-group > .btn { border-radius:8px 0 0 8px; }
+    .toggle-group > .btn + .btn { border-left:0 }
+    .toggle-group > .btn-split + .btn { border-left:0; border-radius:0 8px 8px 0; }
+    .toggle-group > .btn:last-child { border-radius:0 8px 8px 0; }
     #zoomControls .btn { width:34px; padding:8px 0; border-radius:0; }
     #zoomControls .btn:first-child { border-radius:8px 0 0 8px; }
     #zoomControls .btn:last-child { border-radius:0 8px 8px 0; }

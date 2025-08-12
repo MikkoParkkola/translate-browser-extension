@@ -58,6 +58,11 @@ export function groupTextItems(textContent, viewport, ctx) {
 }
 
 export async function init({ baseURL }) {
+  function shouldTranslate(text) {
+    const letters = (text.match(/[A-Za-zÀ-ÿ]/g) || []).length;
+    const nonLetters = text.replace(/[A-Za-zÀ-ÿ]/g, '').length;
+    return letters >= 2 && letters >= nonLetters / 2;
+  }
   async function rewrite(buffer, cfg, onProgress) {
     if (typeof pdfjsLib === 'undefined') throw new Error('pdf.js not loaded');
     if (!window.qwenTranslateBatch) throw new Error('translator not available');
@@ -81,7 +86,14 @@ export async function init({ baseURL }) {
       const imgBytes = await (await fetch(imgUrl)).arrayBuffer();
       pages.push({ width: viewport.width, height: viewport.height, items, image: imgBytes });
     }
-    const texts = pages.flatMap(p => p.items.map(i => i.text));
+    const texts = [];
+    pages.forEach(p => p.items.forEach(i => {
+      if (shouldTranslate(i.text)) {
+        texts.push(i.text);
+      } else {
+        i.skip = true;
+      }
+    }));
     let outTexts = texts;
     if (texts.length) {
       const endpoint = cfg.apiEndpoint || cfg.endpoint;
@@ -101,6 +113,7 @@ export async function init({ baseURL }) {
     }
     let idx = 0;
     pages.forEach(p => p.items.forEach(it => {
+      if (it.skip) return;
       it.text = (outTexts[idx++] || it.text).replace(/\r?\n/g, ' ');
     }));
     let pdfLib = window.PDFLib;
