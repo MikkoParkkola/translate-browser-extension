@@ -2,6 +2,7 @@
 
 const readline = require('readline');
 const { configure } = require('../src/throttle');
+const { modelTokenLimits } = require('../src/config');
 const { qwenTranslateStream, qwenTranslate } = require('../src/translator');
 
 function parseArgs() {
@@ -49,7 +50,7 @@ async function main() {
 
   configure({
     requestLimit: opts.requestLimit || 60,
-    tokenLimit: opts.tokenLimit || 100000,
+    tokenLimit: opts.tokenLimit || modelTokenLimits[opts.model] || modelTokenLimits['qwen-mt-turbo'],
     windowMs: 60000,
   });
 

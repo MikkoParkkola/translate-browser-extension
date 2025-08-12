@@ -84,7 +84,7 @@ function ensureThrottle() {
   if (!throttleReady) {
     throttleReady = new Promise(resolve => {
       chrome.storage.sync.get(
-        { requestLimit: 60, tokenLimit: 100000 },
+        { requestLimit: 60, tokenLimit: 31980 },
         cfg => {
           self.qwenThrottle.configure({
             requestLimit: cfg.requestLimit,
@@ -152,6 +152,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const stats = self.qwenThrottle.getUsage();
       sendResponse(stats);
     });
+    return true;
+  }
+  if (msg.action === 'config-changed') {
+    throttleReady = null;
+    ensureThrottle().then(() => sendResponse({ ok: true }));
     return true;
   }
   if (msg.action === 'translation-status') {
