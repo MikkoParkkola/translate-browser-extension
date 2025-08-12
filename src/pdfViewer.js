@@ -1,5 +1,5 @@
 import { regeneratePdfFromUrl } from './wasm/pipeline.js';
-import { chooseEngine } from './wasm/engine.js';
+import { chooseEngine, ensureWasmAssets } from './wasm/engine.js';
 import { safeFetchPdf } from './wasm/pdfFetch.js';
 import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
 
@@ -57,7 +57,30 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   const thumbs = document.getElementById('thumbs');
   const zoomInBtn = document.getElementById('zoomIn');
   const zoomOutBtn = document.getElementById('zoomOut');
+  const zoomResetBtn = document.getElementById('zoomReset');
   let currentZoom = 1;
+
+  const wasmOverlay = document.getElementById('wasmOverlay');
+  const wasmRetry = document.getElementById('wasmRetry');
+  const wasmError = document.getElementById('wasmError');
+  async function prepareWasm() {
+    try {
+      await ensureWasmAssets();
+    } catch (e) {
+      if (wasmError) wasmError.textContent = e.message || String(e);
+      if (wasmOverlay) wasmOverlay.style.display = 'flex';
+    }
+  }
+  if (wasmRetry) wasmRetry.addEventListener('click', async () => {
+    if (wasmError) wasmError.textContent = '';
+    try {
+      await ensureWasmAssets();
+      if (wasmOverlay) wasmOverlay.style.display = 'none';
+    } catch (e) {
+      if (wasmError) wasmError.textContent = e.message || String(e);
+    }
+  });
+  await prepareWasm();
 
   function applyZoom() {
     document.querySelectorAll('.page').forEach(p => {
@@ -75,13 +98,21 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
       applyZoom();
     });
   }
+  if (zoomResetBtn) {
+    zoomResetBtn.addEventListener('click', () => {
+      currentZoom = 1;
+      applyZoom();
+    });
+  }
 
   const badge = document.getElementById('modeBadge');
   const isTranslatedParam = params.get('translated') === '1';
+  const isCompareParam = params.get('compare') === '1';
   document.body.classList.toggle('translated', isTranslatedParam);
+  document.body.classList.toggle('compare', isCompareParam);
   if (badge) {
-    badge.textContent = isTranslatedParam ? 'Translated' : 'Original';
-    badge.style.color = isTranslatedParam ? '#2e7d32' : '#666';
+    badge.textContent = isCompareParam ? 'Compare' : (isTranslatedParam ? 'Translated' : 'Original');
+    badge.style.color = isCompareParam ? '#0d6efd' : (isTranslatedParam ? '#2e7d32' : '#666');
   }
 
   if (!file && !sessionKey) {
@@ -94,6 +125,9 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   console.log('DEBUG: PDF.js worker source set.');
 
   const cfg = await window.qwenLoadConfig();
+  if (window.qwenSetTokenBudget) {
+    window.qwenSetTokenBudget(cfg.tokenBudget || 0);
+  }
 
   chrome.runtime.onMessage.addListener(msg => {
     if (msg.action === 'translate-selection') {
@@ -144,7 +178,20 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
           sel.value = choice;
         });
         sel.addEventListener('change', () => {
-          chrome.storage.sync.set({ wasmEngine: sel.value });
+          chrome.storage.sync.set({ wasmEngine: sel.value }, async () => {
+            const isTranslatedView = document.body.classList.contains('translated');
+            const isCompareView = document.body.classList.contains('compare');
+            if (isTranslatedView || isCompareView) {
+              try {
+                const key = await generateTranslatedSessionKey(origFile);
+                if (isCompareView) {
+                  gotoCompare(origFile, key);
+                } else {
+                  gotoTranslated(origFile, key);
+                }
+              } catch (e) { console.error('Engine switch failed', e); }
+            }
+          });
         });
       }
       const statEl = document.getElementById('engineStatus');
@@ -173,6 +220,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   // Wire up view toggles and save menu
   const btnOriginal = document.getElementById('btnOriginal');
   const btnTranslated = document.getElementById('btnTranslated');
+  const btnCompare = document.getElementById('btnCompare');
   const btnTranslatedMenu = document.getElementById('btnTranslatedMenu');
   const translatedMenu = document.getElementById('translatedMenu');
   const actionSaveTranslated = document.getElementById('actionSaveTranslated');
@@ -180,9 +228,10 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   function setModeUI(mode) {
     if (btnOriginal) btnOriginal.dataset.active = mode === 'original' ? '1' : '0';
     if (btnTranslated) btnTranslated.dataset.active = mode === 'translated' ? '1' : '0';
+    if (btnCompare) btnCompare.dataset.active = mode === 'compare' ? '1' : '0';
     if (badge) {
-      badge.textContent = mode === 'translated' ? 'Translated' : 'Original';
-      badge.style.color = mode === 'translated' ? '#2e7d32' : '#666';
+      badge.textContent = mode === 'compare' ? 'Compare' : (mode === 'translated' ? 'Translated' : 'Original');
+      badge.style.color = mode === 'compare' ? '#0d6efd' : (mode === 'translated' ? '#2e7d32' : '#666');
     }
     if (btnTranslatedMenu) btnTranslatedMenu.style.display = mode === 'translated' ? '' : 'none';
     if (btnTranslated) {
@@ -200,23 +249,35 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     const text = document.getElementById('regenText');
     const bar = document.getElementById('regenBar');
     const setProgress = (msg, p) => { if (text) text.textContent = msg; if (bar && typeof p === 'number') bar.style.width = `${Math.max(0,Math.min(100,p))}%`; };
+    await prepareWasm();
     let cfgNow = await window.qwenLoadConfig();
+    if (window.qwenSetTokenBudget) {
+      window.qwenSetTokenBudget(cfgNow.tokenBudget || 0);
+    }
     const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine','wasmStrict'], r));
     cfgNow = { ...cfgNow, ...flags, useWasmEngine: true };
     if (!cfgNow.apiKey) { alert('Configure API key first.'); throw new Error('API key missing'); }
     if (overlay) overlay.style.display = 'flex'; setProgress('Preparing…', 2);
+    let summary;
     try {
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'prepare' } });
       const blob = await regeneratePdfFromUrl(originalUrl, cfgNow, (p)=>{
         if (!p) return;
+        chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p } });
+        if (p.stats) summary = p.stats;
         let pct = 0;
         if (p.phase === 'collect') { pct = Math.round((p.page / p.total) * 20); setProgress(`Collecting text… (${p.page}/${p.total})`, pct); }
-        if (p.phase === 'translate') { pct = 20 + Math.round((p.page / p.total) * 40); setProgress(`Translating… (${p.page}/${p.total})`, pct); }
+        if (p.phase === 'translate') { pct = 20 + Math.round((p.request / p.requests) * 40); setProgress(`Translating… (${p.request}/${p.requests})`, pct); }
         if (p.phase === 'render') { pct = 60 + Math.round((p.page / p.total) * 40); setProgress(`Rendering pages… (${p.page}/${p.total})`, pct); }
       });
       console.log('DEBUG: translation finished, blob size', blob.size);
       const key = await storePdfInSession(blob);
       console.log('DEBUG: stored translated PDF key', key);
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary } });
       return key;
+    } catch (e) {
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary } });
+      throw e;
     } finally {
       if (overlay) setTimeout(()=>{ overlay.style.display = 'none'; const b = document.getElementById('regenBar'); if (b) b.style.width = '0%'; }, 800);
     }
@@ -230,6 +291,11 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   function gotoTranslated(originalUrl, sessionKey) {
     console.log('DEBUG: navigating to translated', { originalUrl, sessionKey });
     const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + `?translated=1&session=${encodeURIComponent(sessionKey)}&orig=${encodeURIComponent(originalUrl)}`;
+    window.location.href = viewerUrl;
+  }
+  function gotoCompare(originalUrl, sessionKey) {
+    console.log('DEBUG: navigating to compare', { originalUrl, sessionKey });
+    const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + `?compare=1&session=${encodeURIComponent(sessionKey)}&orig=${encodeURIComponent(originalUrl)}`;
     window.location.href = viewerUrl;
   }
 
@@ -248,6 +314,21 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
       } catch (e) { console.error('Translate view failed', e); }
       finally {
         btnTranslated.disabled = false;
+        btnOriginal && (btnOriginal.disabled = false);
+      }
+    });
+  }
+  if (btnCompare && !btnCompare.dataset.bound) {
+    btnCompare.dataset.bound = '1';
+    btnCompare.addEventListener('click', async () => {
+      try {
+        btnCompare.disabled = true;
+        btnOriginal && (btnOriginal.disabled = true);
+        const key = isTranslatedParam ? sessionKey : await generateTranslatedSessionKey(origFile);
+        gotoCompare(origFile, key);
+      } catch (e) { console.error('Compare view failed', e); }
+      finally {
+        btnCompare.disabled = false;
         btnOriginal && (btnOriginal.disabled = false);
       }
     });
@@ -282,7 +363,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   }
 
   // Default view based on autoTranslate
-  const initialMode = isTranslatedParam ? 'translated' : (cfg.autoTranslate ? 'translated' : 'original');
+  const initialMode = isCompareParam ? 'compare' : (isTranslatedParam ? 'translated' : (cfg.autoTranslate ? 'translated' : 'original'));
   setModeUI(initialMode);
   if (initialMode === 'translated' && !isTranslatedParam && origFile) {
     try {
@@ -292,6 +373,22 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     } catch (e) {
       console.error('Auto-translate preview failed', e);
     }
+  }
+  if (isCompareParam) {
+    if (!sessionKey) {
+      viewer.textContent = 'No translated PDF for comparison';
+      return;
+    }
+    viewer.innerHTML = '';
+    const left = document.createElement('iframe');
+    left.className = 'pdfPane';
+    left.src = chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(origFile) + '&orig=' + encodeURIComponent(origFile);
+    const right = document.createElement('iframe');
+    right.className = 'pdfPane';
+    right.src = chrome.runtime.getURL('pdfViewer.html') + `?translated=1&session=${encodeURIComponent(sessionKey)}&orig=${encodeURIComponent(origFile)}`;
+    viewer.appendChild(left);
+    viewer.appendChild(right);
+    return;
   }
   if (!cfg.apiKey) {
     viewer.textContent = 'API key not configured';

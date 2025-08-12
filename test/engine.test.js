@@ -83,3 +83,18 @@ describe('chooseEngine', () => {
     expect(choice).toBe('pdfium');
   });
 });
+
+describe('ensureWasmAssets', () => {
+  const origFetch = global.fetch;
+  afterEach(() => { global.fetch = origFetch; });
+  it('downloads missing assets', async () => {
+    const { ensureWasmAssets, resolveAssetPath } = loadEngine();
+    global.fetch = jest.fn((url, opts) => {
+      if (!url.startsWith('https://')) return Promise.resolve({ ok: false });
+      return Promise.resolve({ ok: true, text: async () => '', arrayBuffer: async () => new ArrayBuffer(8) });
+    });
+    await expect(ensureWasmAssets()).resolves.toBeUndefined();
+    const u = resolveAssetPath('mupdf.engine.js');
+    expect(/^blob:|^data:/.test(u)).toBe(true);
+  });
+});

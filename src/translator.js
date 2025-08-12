@@ -114,7 +114,15 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
         .catch(() => ({ message: resp.statusText }));
       const error = new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
       if (debug) console.log('QTDEBUG: HTTP error response', error.message);
-      if (resp.status >= 500 || resp.status === 429) error.retryable = true;
+      if (resp.status >= 500 || resp.status === 429) {
+        error.retryable = true;
+        const ra = resp.headers.get('retry-after');
+        if (ra) {
+          const ms = parseInt(ra, 10) * 1000;
+          if (ms > 0) error.retryAfter = ms;
+        }
+        if (resp.status === 429 && !error.retryAfter) error.retryAfter = 60000;
+      }
       throw error;
     }
   if (!stream || !resp.body || typeof resp.body.getReader !== 'function') {
@@ -274,12 +282,83 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
   }
 }
 
-async function qwenTranslateBatch({
+let dynamicTokenBudget = 7000;
+let lastGoodBudget = 0;
+let budgetLocked = false;
+const MIN_TOKEN_BUDGET = 1000;
+const MAX_TOKEN_BUDGET = 16000;
+const GROWTH_FACTOR = 1.2;
+
+async function qwenTranslateBatch(params) {
+  if (params.tokenBudget) return batchOnce(params);
+  let tokenBudget = dynamicTokenBudget;
+  while (true) {
+    try {
+      const res = await batchOnce({ ...params, tokenBudget });
+      if (!budgetLocked) {
+        lastGoodBudget = tokenBudget;
+        if (tokenBudget < MAX_TOKEN_BUDGET) {
+          tokenBudget = Math.min(
+            MAX_TOKEN_BUDGET,
+            Math.floor(tokenBudget * GROWTH_FACTOR)
+          );
+          dynamicTokenBudget = tokenBudget;
+        }
+      }
+      return res;
+    } catch (e) {
+      if (/Parameter limit exceeded/i.test(e.message || '') && tokenBudget > MIN_TOKEN_BUDGET) {
+        if (lastGoodBudget) {
+          tokenBudget = lastGoodBudget;
+          dynamicTokenBudget = tokenBudget;
+          budgetLocked = true;
+          if (typeof window !== 'undefined' && window.qwenLoadConfig && window.qwenSaveConfig) {
+            try {
+              const cfg = await window.qwenLoadConfig();
+              if (!cfg.tokenBudget) {
+                cfg.tokenBudget = tokenBudget;
+                await window.qwenSaveConfig(cfg);
+              }
+            } catch {}
+          }
+          continue;
+        }
+        tokenBudget = Math.max(MIN_TOKEN_BUDGET, Math.floor(tokenBudget / 2));
+        dynamicTokenBudget = tokenBudget;
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
+function _getTokenBudget() {
+  return dynamicTokenBudget;
+}
+
+function _setTokenBudget(v, lock = v > 0) {
+  if (v > 0) {
+    dynamicTokenBudget = v;
+    lastGoodBudget = v;
+  } else {
+    dynamicTokenBudget = 7000;
+    lastGoodBudget = 0;
+  }
+  budgetLocked = lock;
+}
+
+async function batchOnce({
   texts = [],
-  tokenBudget = 1000,
-  maxBatchSize = 40,
+  tokenBudget = dynamicTokenBudget,
+  maxBatchSize = 2000,
+  retries = 1,
+  onProgress,
+  _stats,
   ...opts
 }) {
+  const stats = _stats || { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
+  const SEP = '\uE000';
+
   const mapping = [];
   texts.forEach((t, i) => {
     const key = `${opts.source}:${opts.target}:${t}`;
@@ -295,6 +374,7 @@ async function qwenTranslateBatch({
     if (!byIndex.has(m.index)) byIndex.set(m.index, []);
     byIndex.get(m.index).push(m);
   });
+
   const groups = [];
   let group = [];
   let tokens = 0;
@@ -309,25 +389,38 @@ async function qwenTranslateBatch({
     tokens += tk;
   }
   if (group.length) groups.push(group);
-  const SEP = '\uE000';
+  stats.totalRequests += groups.length;
+
   for (const g of groups) {
-    const joined = g.map(m => m.text.replaceAll(SEP, '')).join(SEP);
+    const joinedText = g.map(m => m.text.replaceAll(SEP, '')).join(SEP);
+    const words = joinedText.replaceAll(SEP, ' ').trim().split(/\s+/).filter(Boolean).length;
     let res;
     try {
-      res = await qwenTranslate({ ...opts, text: joined });
+      res = await qwenTranslate({ ...opts, text: joinedText });
     } catch (e) {
       if (/HTTP\s+400/i.test(e.message || '')) throw e;
-      g.forEach(m => { m.result = m.text; });
+      g.forEach(m => {
+        m.result = m.text;
+      });
       continue;
     }
-    const translated =
-      res && typeof res.text === 'string' ? res.text.split(SEP) : [];
+    const tk = approxTokens(joinedText);
+    stats.tokens += tk;
+    stats.words += words;
+    stats.requests++;
+    const translated = res && typeof res.text === 'string' ? res.text.split(SEP) : [];
     for (let i = 0; i < g.length; i++) {
       g[i].result = translated[i] || g[i].text;
       const key = `${opts.source}:${opts.target}:${g[i].text}`;
       cache.set(key, { text: g[i].result });
     }
+    const elapsedMs = Date.now() - stats.start;
+    const avg = elapsedMs / stats.requests;
+    const etaMs = avg * (stats.totalRequests - stats.requests);
+    if (onProgress)
+      onProgress({ phase: 'translate', request: stats.requests, requests: stats.totalRequests, sample: g[0].text.slice(0, 80), elapsedMs, etaMs });
   }
+
   const results = new Array(texts.length).fill('');
   byIndex.forEach((arr, idx) => {
     const parts = arr
@@ -335,7 +428,46 @@ async function qwenTranslateBatch({
       .map(m => (m.result !== undefined ? m.result : m.text));
     results[idx] = parts.join(' ').trim();
   });
-  return { texts: results };
+
+  const retryTexts = [];
+  const retryIdx = [];
+  for (let i = 0; i < results.length; i++) {
+    const orig = (texts[i] || '').trim();
+    const out = (results[i] || '').trim();
+    if (orig && out === orig && opts.source !== opts.target) {
+      retryTexts.push(orig);
+      retryIdx.push(i);
+      const key = `${opts.source}:${opts.target}:${orig}`;
+      cache.delete(key);
+    }
+  }
+  if (retryTexts.length && retries > 0) {
+    const retr = await qwenTranslateBatch({
+      texts: retryTexts,
+      tokenBudget,
+      maxBatchSize,
+      retries: retries - 1,
+      onProgress,
+      _stats: stats,
+      ...opts,
+    });
+    for (let i = 0; i < retryIdx.length; i++) {
+      results[retryIdx[i]] = retr.texts[i];
+      const key = `${opts.source}:${opts.target}:${retryTexts[i]}`;
+      cache.set(key, { text: retr.texts[i] });
+    }
+  }
+
+  if (!_stats) {
+    stats.elapsedMs = Date.now() - stats.start;
+    stats.wordsPerSecond = stats.words / (stats.elapsedMs / 1000 || 1);
+    stats.wordsPerRequest = stats.words / (stats.requests || 1);
+    stats.tokensPerRequest = stats.tokens / (stats.requests || 1);
+    if (onProgress)
+      onProgress({ phase: 'translate', request: stats.requests, requests: stats.totalRequests, done: true, stats });
+  }
+
+  return { texts: results, stats };
 }
 
 function splitLongText(text, maxTokens) {
@@ -375,13 +507,22 @@ if (typeof window !== 'undefined') {
   window.qwenTranslateStream = qwenTranslateStream;
   window.qwenTranslateBatch = qwenTranslateBatch;
   window.qwenClearCache = qwenClearCache;
+  window.qwenSetTokenBudget = _setTokenBudget;
 }
 if (typeof self !== 'undefined' && typeof window === 'undefined') {
   self.qwenTranslate = qwenTranslate;
   self.qwenTranslateStream = qwenTranslateStream;
   self.qwenTranslateBatch = qwenTranslateBatch;
   self.qwenClearCache = qwenClearCache;
+  self.qwenSetTokenBudget = _setTokenBudget;
 }
 if (typeof module !== 'undefined') {
-  module.exports = { qwenTranslate, qwenTranslateStream, qwenTranslateBatch, qwenClearCache };
+  module.exports = {
+    qwenTranslate,
+    qwenTranslateStream,
+    qwenTranslateBatch,
+    qwenClearCache,
+    _getTokenBudget,
+    _setTokenBudget,
+  };
 }

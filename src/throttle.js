@@ -71,7 +71,7 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function runWithRetry(fn, text, attempts = 3, debug = false) {
+async function runWithRetry(fn, text, attempts = 6, debug = false) {
   const tokens = typeof text === 'number' ? text : approxTokens(text || '');
   let wait = 500;
   for (let i = 0; i < attempts; i++) {
@@ -80,9 +80,10 @@ async function runWithRetry(fn, text, attempts = 3, debug = false) {
       return await runWithRateLimit(fn, tokens);
     } catch (err) {
       if (!err.retryable || i === attempts - 1) throw err;
+      const delayMs = err.retryAfter || wait;
       if (debug) console.log('QTDEBUG: retrying after error', err.message);
-      await delay(wait);
-      wait *= 2;
+      await delay(delayMs);
+      wait = delayMs * 2;
     }
   }
 }

@@ -6,6 +6,7 @@ const sourceSelect = document.getElementById('source');
 const targetSelect = document.getElementById('target');
 const reqLimitInput = document.getElementById('requestLimit');
 const tokenLimitInput = document.getElementById('tokenLimit');
+const tokenBudgetInput = document.getElementById('tokenBudget');
 const autoCheckbox = document.getElementById('auto');
 const debugCheckbox = document.getElementById('debug');
 const status = document.getElementById('status');
@@ -19,6 +20,7 @@ const totalTok = document.getElementById('totalTok');
 const queueLen = document.getElementById('queueLen');
 const translateBtn = document.getElementById('translate');
 const testBtn = document.getElementById('test');
+const progressBar = document.getElementById('progress');
 
 // Setup view elements
 const setupApiKeyInput = document.getElementById('setup-apiKey');
@@ -44,6 +46,7 @@ function saveConfig() {
       targetLanguage: targetSelect.value,
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
       tokenLimit: parseInt(tokenLimitInput.value, 10) || 100000,
+      tokenBudget: parseInt(tokenBudgetInput.value, 10) || 0,
       autoTranslate: autoCheckbox.checked,
       debug: debugCheckbox.checked,
     };
@@ -96,9 +99,70 @@ chrome.runtime.onMessage.addListener(msg => {
     status.textContent = msg.text || '';
     setWorking(true);
   }
-  if (msg.action === 'popup-clear-status') {
-    status.textContent = '';
-    setWorking(false);
+  if (msg.action === 'translation-status' && msg.status) {
+    const s = msg.status;
+    if (s.active) {
+      if (s.progress && typeof s.progress.total === 'number') {
+        progressBar.max = s.progress.total || 1;
+        progressBar.value = s.progress.done || 0;
+        progressBar.style.display = 'block';
+      }
+      if (s.phase === 'translate') {
+        let txt = `Translating ${s.request || 0}/${s.requests || 0}`;
+        if (s.sample) txt += `: ${s.sample.slice(0, 60)}`;
+        if (typeof s.elapsedMs === 'number') txt += ` · ${(s.elapsedMs / 1000).toFixed(1)}s`;
+        if (typeof s.etaMs === 'number') txt += ` · ETA ${(s.etaMs / 1000).toFixed(1)}s`;
+        status.textContent = txt;
+      } else {
+        const { phase, page, total } = s;
+        const parts = [];
+        if (phase) parts.push(phase.charAt(0).toUpperCase() + phase.slice(1));
+        if (page && total) parts.push(`${page}/${total}`);
+        status.textContent = parts.join(' ');
+      }
+      setWorking(true);
+    } else {
+      progressBar.style.display = 'none';
+      progressBar.value = 0;
+      progressBar.max = 1;
+      if (s.summary) {
+        const t = s.summary;
+        const bits = [
+          `Done in ${(t.elapsedMs / 1000).toFixed(1)}s`,
+          `${t.words} words`,
+          `${t.requests} req`,
+          `${t.tokens} tokens`,
+          `${t.wordsPerSecond.toFixed(1)} w/s`,
+          `${t.wordsPerRequest.toFixed(1)} w/req`,
+        ];
+        status.textContent = bits.join(', ');
+      } else {
+        status.textContent = '';
+      }
+      setWorking(false);
+    }
+  }
+});
+
+chrome.runtime.sendMessage({ action: 'get-status' }, s => {
+  if (s && s.active) {
+    if (s.progress && typeof s.progress.total === 'number') {
+      progressBar.max = s.progress.total || 1;
+      progressBar.value = s.progress.done || 0;
+      progressBar.style.display = 'block';
+    }
+    if (s.phase === 'translate') {
+      let txt = `Translating ${s.request || 0}/${s.requests || 0}`;
+      if (s.sample) txt += `: ${s.sample.slice(0, 60)}`;
+      status.textContent = txt;
+    } else {
+      const { phase, page, total } = s;
+      const parts = [];
+      if (phase) parts.push(phase.charAt(0).toUpperCase() + phase.slice(1));
+      if (page && total) parts.push(`${page}/${total}`);
+      status.textContent = parts.join(' ');
+    }
+    setWorking(true);
   }
 });
 
@@ -111,6 +175,7 @@ window.qwenLoadConfig().then(cfg => {
   targetSelect.value = cfg.targetLanguage;
   reqLimitInput.value = cfg.requestLimit;
   tokenLimitInput.value = cfg.tokenLimit;
+  tokenBudgetInput.value = cfg.tokenBudget || '';
   autoCheckbox.checked = cfg.autoTranslate;
   debugCheckbox.checked = !!cfg.debug;
 
@@ -139,7 +204,7 @@ window.qwenLoadConfig().then(cfg => {
     });
   });
 
-  [reqLimitInput, tokenLimitInput].forEach(el => el.addEventListener('input', saveConfig));
+  [reqLimitInput, tokenLimitInput, tokenBudgetInput].forEach(el => el.addEventListener('input', saveConfig));
   [sourceSelect, targetSelect, autoCheckbox, debugCheckbox].forEach(el => el.addEventListener('change', saveConfig));
 });
 
