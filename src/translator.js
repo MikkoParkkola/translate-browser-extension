@@ -276,10 +276,16 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
 
 async function qwenTranslateBatch({
   texts = [],
-  tokenBudget = 7000,
-  maxBatchSize = 200,
+  tokenBudget = 70000,
+  maxBatchSize = 2000,
+  retries = 1,
+  onProgress,
+  _stats,
   ...opts
 }) {
+  const stats = _stats || { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
+  const SEP = '\uE000';
+
   const mapping = [];
   texts.forEach((t, i) => {
     const key = `${opts.source}:${opts.target}:${t}`;
@@ -295,6 +301,7 @@ async function qwenTranslateBatch({
     if (!byIndex.has(m.index)) byIndex.set(m.index, []);
     byIndex.get(m.index).push(m);
   });
+
   const groups = [];
   let group = [];
   let tokens = 0;
@@ -309,25 +316,35 @@ async function qwenTranslateBatch({
     tokens += tk;
   }
   if (group.length) groups.push(group);
-  const SEP = '\uE000';
+  stats.totalRequests += groups.length;
+
   for (const g of groups) {
-    const joined = g.map(m => m.text.replaceAll(SEP, '')).join(SEP);
+    const joinedText = g.map(m => m.text.replaceAll(SEP, '')).join(SEP);
+    const words = joinedText.replaceAll(SEP, ' ').trim().split(/\s+/).filter(Boolean).length;
     let res;
     try {
-      res = await qwenTranslate({ ...opts, text: joined });
+      res = await qwenTranslate({ ...opts, text: joinedText });
     } catch (e) {
       if (/HTTP\s+400/i.test(e.message || '')) throw e;
       g.forEach(m => { m.result = m.text; });
       continue;
     }
-    const translated =
-      res && typeof res.text === 'string' ? res.text.split(SEP) : [];
+    const tk = approxTokens(joinedText);
+    stats.tokens += tk;
+    stats.words += words;
+    stats.requests++;
+    const translated = res && typeof res.text === 'string' ? res.text.split(SEP) : [];
     for (let i = 0; i < g.length; i++) {
       g[i].result = translated[i] || g[i].text;
       const key = `${opts.source}:${opts.target}:${g[i].text}`;
       cache.set(key, { text: g[i].result });
     }
+    const elapsedMs = Date.now() - stats.start;
+    const avg = elapsedMs / stats.requests;
+    const etaMs = avg * (stats.totalRequests - stats.requests);
+    if (onProgress) onProgress({ phase: 'translate', request: stats.requests, requests: stats.totalRequests, sample: g[0].text.slice(0,80), elapsedMs, etaMs });
   }
+
   const results = new Array(texts.length).fill('');
   byIndex.forEach((arr, idx) => {
     const parts = arr
@@ -335,24 +352,45 @@ async function qwenTranslateBatch({
       .map(m => (m.result !== undefined ? m.result : m.text));
     results[idx] = parts.join(' ').trim();
   });
+
+  const retryTexts = [];
+  const retryIdx = [];
   for (let i = 0; i < results.length; i++) {
     const orig = (texts[i] || '').trim();
     const out = (results[i] || '').trim();
     if (orig && out === orig && opts.source !== opts.target) {
-      try {
-        const key = `${opts.source}:${opts.target}:${orig}`;
-        cache.delete(key);
-        const retr = await qwenTranslate({ ...opts, text: orig, stream: false });
-        if (retr && typeof retr.text === 'string') {
-          results[i] = retr.text;
-          cache.set(key, { text: retr.text });
-        }
-      } catch (e) {
-        if (opts.debug) console.error('QTDEBUG: fallback translation failed', e);
-      }
+      retryTexts.push(orig);
+      retryIdx.push(i);
+      const key = `${opts.source}:${opts.target}:${orig}`;
+      cache.delete(key);
     }
   }
-  return { texts: results };
+  if (retryTexts.length && retries > 0) {
+    const retr = await qwenTranslateBatch({
+      texts: retryTexts,
+      tokenBudget,
+      maxBatchSize,
+      retries: retries - 1,
+      onProgress,
+      _stats: stats,
+      ...opts,
+    });
+    for (let i = 0; i < retryIdx.length; i++) {
+      results[retryIdx[i]] = retr.texts[i];
+      const key = `${opts.source}:${opts.target}:${retryTexts[i]}`;
+      cache.set(key, { text: retr.texts[i] });
+    }
+  }
+
+  if (!_stats) {
+    stats.elapsedMs = Date.now() - stats.start;
+    stats.wordsPerSecond = stats.words / (stats.elapsedMs / 1000 || 1);
+    stats.wordsPerRequest = stats.words / (stats.requests || 1);
+    stats.tokensPerRequest = stats.tokens / (stats.requests || 1);
+    if (onProgress) onProgress({ phase: 'translate', request: stats.requests, requests: stats.totalRequests, done: true, stats });
+  }
+
+  return { texts: results, stats };
 }
 
 function splitLongText(text, maxTokens) {

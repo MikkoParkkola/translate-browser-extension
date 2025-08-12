@@ -85,11 +85,21 @@ export async function init({ baseURL }) {
       const model = cfg.model || cfg.modelName;
       const source = cfg.sourceLanguage || cfg.source;
       const target = cfg.targetLanguage || cfg.target;
-      const tr = await window.qwenTranslateBatch({ texts, endpoint, apiKey: cfg.apiKey, model, source, target });
+      const tr = await window.qwenTranslateBatch({
+        texts,
+        endpoint,
+        apiKey: cfg.apiKey,
+        model,
+        source,
+        target,
+        onProgress,
+      });
       outTexts = (tr && Array.isArray(tr.texts)) ? tr.texts : texts;
     }
     let idx = 0;
-    pages.forEach(p => p.items.forEach(it => { it.text = outTexts[idx++] || it.text; }));
+    pages.forEach(p => p.items.forEach(it => {
+      it.text = (outTexts[idx++] || it.text).replace(/\r?\n/g, ' ');
+    }));
     let pdfLib = window.PDFLib;
     if (!pdfLib) {
       try {

@@ -242,21 +242,26 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     cfgNow = { ...cfgNow, ...flags, useWasmEngine: true };
     if (!cfgNow.apiKey) { alert('Configure API key first.'); throw new Error('API key missing'); }
     if (overlay) overlay.style.display = 'flex'; setProgress('Preparing…', 2);
+    let summary;
     try {
       chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'prepare' } });
       const blob = await regeneratePdfFromUrl(originalUrl, cfgNow, (p)=>{
         if (!p) return;
         chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p } });
+        if (p.stats) summary = p.stats;
         let pct = 0;
         if (p.phase === 'collect') { pct = Math.round((p.page / p.total) * 20); setProgress(`Collecting text… (${p.page}/${p.total})`, pct); }
-        if (p.phase === 'translate') { pct = 20 + Math.round((p.page / p.total) * 40); setProgress(`Translating… (${p.page}/${p.total})`, pct); }
+        if (p.phase === 'translate') { pct = 20 + Math.round((p.request / p.requests) * 40); setProgress(`Translating… (${p.request}/${p.requests})`, pct); }
         if (p.phase === 'render') { pct = 60 + Math.round((p.page / p.total) * 40); setProgress(`Rendering pages… (${p.page}/${p.total})`, pct); }
       });
       console.log('DEBUG: translation finished, blob size', blob.size);
       const key = await storePdfInSession(blob);
       console.log('DEBUG: stored translated PDF key', key);
-      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false } });
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary } });
       return key;
+    } catch (e) {
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary } });
+      throw e;
     } finally {
       chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false } });
       if (overlay) setTimeout(()=>{ overlay.style.display = 'none'; const b = document.getElementById('regenBar'); if (b) b.style.width = '0%'; }, 800);

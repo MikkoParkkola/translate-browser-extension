@@ -158,3 +158,22 @@ test('batch groups multiple texts into single request by default', async () => {
   expect(res.texts).toEqual(['A', 'B', 'C']);
   expect(fetch).toHaveBeenCalledTimes(1);
 });
+
+test('batch reports stats and progress', async () => {
+  fetch.mockResponseOnce(JSON.stringify({ output: { text: 'A\uE000B' } }));
+  const events = [];
+  const res = await qwenTranslateBatch({
+    texts: ['a', 'b'],
+    source: 'en',
+    target: 'es',
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    model: 'm',
+    onProgress: e => events.push(e),
+  });
+  expect(res.texts).toEqual(['A', 'B']);
+  expect(res.stats.requests).toBe(1);
+  expect(events[0].request).toBe(1);
+  expect(events[0].requests).toBe(1);
+  expect(events[0].phase).toBe('translate');
+});
