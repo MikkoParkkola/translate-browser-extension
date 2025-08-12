@@ -15,26 +15,6 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
-// Redirect PDF navigations before the browser's viewer loads
-chrome.webRequest.onBeforeRequest.addListener(
-  details => {
-    if (details.url.startsWith(chrome.runtime.getURL('pdfViewer.html'))) return;
-    try {
-      const u = new URL(details.url);
-      if (
-        (u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'file:') &&
-        u.pathname.toLowerCase().endsWith('.pdf')
-      ) {
-        const viewer =
-          chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(details.url);
-        return { redirectUrl: viewer };
-      }
-    } catch {}
-  },
-  { urls: ['<all_urls>'], types: ['main_frame'] },
-  ['blocking']
-);
-
 // Redirect top-level PDF navigations to our custom viewer
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   const url = changeInfo.url || tab.url;
