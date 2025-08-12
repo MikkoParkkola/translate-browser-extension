@@ -276,8 +276,8 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
 
 async function qwenTranslateBatch({
   texts = [],
-  tokenBudget = 1000,
-  maxBatchSize = 40,
+  tokenBudget = 7000,
+  maxBatchSize = 200,
   ...opts
 }) {
   const mapping = [];
@@ -335,6 +335,23 @@ async function qwenTranslateBatch({
       .map(m => (m.result !== undefined ? m.result : m.text));
     results[idx] = parts.join(' ').trim();
   });
+  for (let i = 0; i < results.length; i++) {
+    const orig = (texts[i] || '').trim();
+    const out = (results[i] || '').trim();
+    if (orig && out === orig && opts.source !== opts.target) {
+      try {
+        const key = `${opts.source}:${opts.target}:${orig}`;
+        cache.delete(key);
+        const retr = await qwenTranslate({ ...opts, text: orig, stream: false });
+        if (retr && typeof retr.text === 'string') {
+          results[i] = retr.text;
+          cache.set(key, { text: retr.text });
+        }
+      } catch (e) {
+        if (opts.debug) console.error('QTDEBUG: fallback translation failed', e);
+      }
+    }
+  }
   return { texts: results };
 }
 

@@ -128,3 +128,33 @@ test('batch propagates HTTP 400 errors', async () => {
     })
   ).rejects.toThrow('HTTP 400');
 });
+
+test('batch retranslates unchanged lines', async () => {
+  fetch
+    .mockResponseOnce(JSON.stringify({ output: { text: 'foo\uE000BAR' } }))
+    .mockResponseOnce(JSON.stringify({ output: { text: 'FOO' } }));
+  const res = await qwenTranslateBatch({
+    texts: ['foo', 'bar'],
+    source: 'en',
+    target: 'es',
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    model: 'm',
+  });
+  expect(res.texts).toEqual(['FOO', 'BAR']);
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+test('batch groups multiple texts into single request by default', async () => {
+  fetch.mockResponseOnce(JSON.stringify({ output: { text: 'A\uE000B\uE000C' } }));
+  const res = await qwenTranslateBatch({
+    texts: ['a', 'b', 'c'],
+    source: 'en',
+    target: 'es',
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    model: 'm',
+  });
+  expect(res.texts).toEqual(['A', 'B', 'C']);
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
