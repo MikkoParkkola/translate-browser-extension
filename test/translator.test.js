@@ -80,6 +80,9 @@ test('rate limiting queues requests', async () => {
   expect(fetch).toHaveBeenCalledTimes(1);
   jest.advanceTimersByTime(500);
   await Promise.resolve();
+  expect(fetch).toHaveBeenCalledTimes(1);
+  jest.advanceTimersByTime(500);
+  await Promise.resolve();
   expect(fetch).toHaveBeenCalledTimes(2);
   jest.advanceTimersByTime(500);
   const res3 = await p3;

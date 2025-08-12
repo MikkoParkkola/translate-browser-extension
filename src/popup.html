@@ -194,6 +194,19 @@
             </div>
           </div>
 
+          <label><input type="checkbox" id="smartThrottle" checked title="Enable intelligent adaptive throttling"> Intelligent throttling</label>
+
+          <div class="grid-2">
+            <div>
+              <label for="tokensPerReq" title="Target tokens per request when intelligent throttling is off">Tokens/request</label>
+              <input type="number" id="tokensPerReq" disabled>
+            </div>
+            <div>
+              <label for="retryDelay" title="Base retry delay in seconds when a rate limit is hit">Retry delay (s)</label>
+              <input type="number" id="retryDelay" disabled>
+            </div>
+          </div>
+
           <label><input type="checkbox" id="debug"> Debug logging</label>
         </div>
       </details>
