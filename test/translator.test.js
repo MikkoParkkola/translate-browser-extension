@@ -211,6 +211,23 @@ test('batch groups multiple texts into single request by default', async () => {
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 
+test('batch falls back on separator mismatch', async () => {
+  fetch
+    .mockResponseOnce(JSON.stringify({ output: { text: 'A' } }))
+    .mockResponseOnce(JSON.stringify({ output: { text: 'A1' } }))
+    .mockResponseOnce(JSON.stringify({ output: { text: 'B1' } }));
+  const res = await qwenTranslateBatch({
+    texts: ['a', 'b'],
+    source: 'en',
+    target: 'es',
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    model: 'm',
+  });
+  expect(res.texts).toEqual(['A1', 'B1']);
+  expect(fetch).toHaveBeenCalledTimes(3);
+});
+
 test('batch reports stats and progress', async () => {
   fetch.mockResponseOnce(JSON.stringify({ output: { text: 'A\uE000B' } }));
   const events = [];

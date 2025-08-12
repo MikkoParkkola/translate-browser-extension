@@ -409,6 +409,27 @@ async function batchOnce({
     stats.words += words;
     stats.requests++;
     const translated = res && typeof res.text === 'string' ? res.text.split(SEP) : [];
+    if (translated.length !== g.length) {
+      if (tokenBudget > MIN_TOKEN_BUDGET) {
+        dynamicTokenBudget = Math.max(MIN_TOKEN_BUDGET, Math.floor(tokenBudget / 2));
+      }
+      for (const m of g) {
+        let out;
+        try {
+          const single = await qwenTranslate({ ...opts, text: m.text });
+          out = single.text;
+        } catch {
+          out = m.text;
+        }
+        m.result = out;
+        const key = `${opts.source}:${opts.target}:${m.text}`;
+        cache.set(key, { text: out });
+        stats.requests++;
+        stats.tokens += approxTokens(m.text);
+        stats.words += m.text.trim().split(/\s+/).filter(Boolean).length;
+      }
+      continue;
+    }
     for (let i = 0; i < g.length; i++) {
       g[i].result = translated[i] || g[i].text;
       const key = `${opts.source}:${opts.target}:${g[i].text}`;

@@ -13,6 +13,7 @@
   const tokenTimes = []
   let totalRequests = 0
   let totalTokens = 0
+  let processing = false
   let interval = setInterval(() => {
     availableRequests = config.requestLimit
     availableTokens = config.tokenLimit
@@ -50,13 +51,32 @@ function prune(now = Date.now()) {
 }
 
 function processQueue() {
-  while (queue.length && availableRequests > 0 && availableTokens >= queue[0].tokens) {
-    const item = queue.shift();
-    availableRequests--;
-    availableTokens -= item.tokens;
-    recordUsage(item.tokens);
-    item.fn().then(item.resolve, item.reject);
-  }
+  if (processing) return;
+  processing = true;
+  const step = () => {
+    while (queue.length && availableRequests > 0 && availableTokens >= queue[0].tokens) {
+      const item = queue.shift();
+      availableRequests--;
+      availableTokens -= item.tokens;
+      recordUsage(item.tokens);
+      item.fn().then(item.resolve, item.reject);
+      const usage = getUsage();
+      const ratio = Math.max(
+        usage.requests / config.requestLimit,
+        usage.tokens / config.tokenLimit
+      );
+      if (ratio > 0.5) {
+        setTimeout(step, Math.ceil(config.windowMs / config.requestLimit));
+        return;
+      }
+    }
+    processing = false;
+    if (queue.length && availableRequests > 0 && availableTokens >= queue[0].tokens) {
+      processing = true;
+      setTimeout(step, 0);
+    }
+  };
+  step();
 }
 
 function runWithRateLimit(fn, text) {
