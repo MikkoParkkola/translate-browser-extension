@@ -1,4 +1,4 @@
-import { isWasmAvailable, rewritePdf } from './engine.js';
+import { isWasmAvailable, rewritePdf, WASM_ASSETS } from './engine.js';
 import { safeFetchPdf } from './pdfFetch.js';
 
 export async function regeneratePdfFromUrl(fileUrl, cfg, onProgress) {
