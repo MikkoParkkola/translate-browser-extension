@@ -32,6 +32,13 @@ test('emits progress updates during batch translation', async () => {
   await translateBatch(nodes, { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 });
   expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
     action: 'translation-status',
-    status: expect.objectContaining({ active: true, phase: 'translate', request: 1, requests: 2 })
+    status: expect.objectContaining({ active: true, phase: 'translate', request: 1, requests: 2, progress: expect.any(Object) })
   }));
+});
+
+test('skips reference superscripts', () => {
+  document.body.innerHTML = '<p>Hi<sup class="reference">[1]</sup></p>';
+  const nodes = [];
+  collectNodes(document.body, nodes);
+  expect(nodes.map(n => n.textContent)).toEqual(['Hi']);
 });

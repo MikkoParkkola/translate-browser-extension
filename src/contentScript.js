@@ -6,6 +6,7 @@ let processing = false;
 let statusTimer;
 const pending = new Set();
 let flushTimer;
+let progress = { total: 0, done: 0 };
 
 function replacePdfEmbeds() {
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
@@ -101,6 +102,7 @@ function isVisible(el) {
 function shouldTranslate(node) {
   const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
   if (!el) return false;
+  if (el.tagName === 'SUP' || el.closest('sup')) return false;
   return !isMarked(node) && !SKIP_TAGS.has(el.tagName) && isVisible(el);
 }
 
@@ -158,7 +160,7 @@ async function translateBatch(elements, stats) {
     };
     if (stats) {
       opts.onProgress = p => {
-        chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p } });
+        chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p, progress } });
       };
       opts._stats = stats;
     }
@@ -184,10 +186,28 @@ async function translateBatch(elements, stats) {
       mark(el);
     }
   });
+  progress.done += elements.length;
+  const elapsedMs = stats ? Date.now() - stats.start : 0;
+  const avg = progress.done ? elapsedMs / progress.done : 0;
+  const etaMs = avg * (progress.total - progress.done);
+  chrome.runtime.sendMessage({
+    action: 'translation-status',
+    status: {
+      active: true,
+      phase: 'translate',
+      request: stats ? stats.requests : 0,
+      requests: stats ? stats.totalRequests : 0,
+      sample: texts[0],
+      elapsedMs,
+      etaMs,
+      progress,
+    },
+  });
 }
 
 function enqueueBatch(batch) {
   batchQueue.push(batch);
+  progress.total += batch.length;
   if (!processing) processQueue();
 }
 
@@ -195,7 +215,7 @@ async function processQueue() {
   processing = true;
   setStatus('Translating...');
   const stats = { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
-  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'translate' } });
+  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'translate', progress } });
   while (batchQueue.length) {
     setStatus(`Translating (${batchQueue.length} left)...`);
     const batch = batchQueue.shift();
@@ -307,6 +327,7 @@ function observe(root = document.body) {
 
 async function start() {
   currentConfig = await window.qwenLoadConfig();
+  progress = { total: 0, done: 0 };
   if (window.qwenSetTokenBudget) {
     window.qwenSetTokenBudget(currentConfig.tokenBudget || 0);
   }

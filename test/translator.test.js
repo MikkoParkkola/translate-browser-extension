@@ -229,3 +229,14 @@ test('batch reports stats and progress', async () => {
   expect(events[0].requests).toBe(1);
   expect(events[0].phase).toBe('translate');
 });
+
+test('retries after 429 with backoff', async () => {
+  fetch
+    .mockResponseOnce(JSON.stringify({ message: 'slow' }), { status: 429, headers: { 'retry-after': '1' } })
+    .mockResponseOnce(JSON.stringify({ output: { text: 'ok' } }));
+  const start = Date.now();
+  const res = await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hi', source: 'en', target: 'es' });
+  expect(res.text).toBe('ok');
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(Date.now() - start).toBeGreaterThanOrEqual(1000);
+}, 10000);

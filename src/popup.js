@@ -20,6 +20,7 @@ const totalTok = document.getElementById('totalTok');
 const queueLen = document.getElementById('queueLen');
 const translateBtn = document.getElementById('translate');
 const testBtn = document.getElementById('test');
+const progressBar = document.getElementById('progress');
 
 // Setup view elements
 const setupApiKeyInput = document.getElementById('setup-apiKey');
@@ -101,6 +102,11 @@ chrome.runtime.onMessage.addListener(msg => {
   if (msg.action === 'translation-status' && msg.status) {
     const s = msg.status;
     if (s.active) {
+      if (s.progress && typeof s.progress.total === 'number') {
+        progressBar.max = s.progress.total || 1;
+        progressBar.value = s.progress.done || 0;
+        progressBar.style.display = 'block';
+      }
       if (s.phase === 'translate') {
         let txt = `Translating ${s.request || 0}/${s.requests || 0}`;
         if (s.sample) txt += `: ${s.sample.slice(0, 60)}`;
@@ -116,6 +122,9 @@ chrome.runtime.onMessage.addListener(msg => {
       }
       setWorking(true);
     } else {
+      progressBar.style.display = 'none';
+      progressBar.value = 0;
+      progressBar.max = 1;
       if (s.summary) {
         const t = s.summary;
         const bits = [
@@ -137,6 +146,11 @@ chrome.runtime.onMessage.addListener(msg => {
 
 chrome.runtime.sendMessage({ action: 'get-status' }, s => {
   if (s && s.active) {
+    if (s.progress && typeof s.progress.total === 'number') {
+      progressBar.max = s.progress.total || 1;
+      progressBar.value = s.progress.done || 0;
+      progressBar.style.display = 'block';
+    }
     if (s.phase === 'translate') {
       let txt = `Translating ${s.request || 0}/${s.requests || 0}`;
       if (s.sample) txt += `: ${s.sample.slice(0, 60)}`;

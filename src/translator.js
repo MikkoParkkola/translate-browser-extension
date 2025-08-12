@@ -114,7 +114,15 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
         .catch(() => ({ message: resp.statusText }));
       const error = new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
       if (debug) console.log('QTDEBUG: HTTP error response', error.message);
-      if (resp.status >= 500 || resp.status === 429) error.retryable = true;
+      if (resp.status >= 500 || resp.status === 429) {
+        error.retryable = true;
+        const ra = resp.headers.get('retry-after');
+        if (ra) {
+          const ms = parseInt(ra, 10) * 1000;
+          if (ms > 0) error.retryAfter = ms;
+        }
+        if (resp.status === 429 && !error.retryAfter) error.retryAfter = 60000;
+      }
       throw error;
     }
   if (!stream || !resp.body || typeof resp.body.getReader !== 'function') {
