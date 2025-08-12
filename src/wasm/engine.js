@@ -2,7 +2,7 @@
 // Looks for vendor assets under src/wasm/vendor/ and loads the selected engine.
 
 export const WASM_ASSETS = [
-  { path: 'mupdf.wasm', url: 'https://unpkg.com/mupdf@1.26.4/dist/mupdf-wasm.wasm' },
+  { path: 'mupdf-wasm.wasm', url: 'https://unpkg.com/mupdf@1.26.4/dist/mupdf-wasm.wasm' },
   { path: 'mupdf-wasm.js', url: 'https://unpkg.com/mupdf@1.26.4/dist/mupdf-wasm.js' },
   { path: 'mupdf.engine.js', url: 'https://unpkg.com/mupdf@1.26.4/dist/mupdf.js' },
   { path: 'pdfium.wasm', url: 'https://unpkg.com/pdfium-wasm@0.0.2/dist/pdfium.wasm' },
