@@ -1,3 +1,8 @@
+const modelTokenLimits = {
+  'qwen-mt-turbo': 31980,
+  'qwen-mt-plus': 23797,
+};
+
 const defaultCfg = {
   apiKey: '',
   apiEndpoint: 'https://dashscope-intl.aliyuncs.com/api/v1',
@@ -6,8 +11,11 @@ const defaultCfg = {
   targetLanguage: 'en',
   autoTranslate: false,
   requestLimit: 60,
-  tokenLimit: 100000,
+  tokenLimit: modelTokenLimits['qwen-mt-turbo'],
   tokenBudget: 0,
+  smartThrottle: true,
+  tokensPerReq: 0,
+  retryDelay: 0,
   debug: false,
   useWasmEngine: true,
   autoOpenAfterSave: true,
@@ -44,8 +52,9 @@ if (typeof window !== 'undefined') {
   window.qwenDefaultConfig = defaultCfg;
   window.qwenLoadConfig = qwenLoadConfig;
   window.qwenSaveConfig = qwenSaveConfig;
+  window.qwenModelTokenLimits = modelTokenLimits;
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { qwenLoadConfig, qwenSaveConfig, defaultCfg };
+  module.exports = { qwenLoadConfig, qwenSaveConfig, defaultCfg, modelTokenLimits };
 }

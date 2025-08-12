@@ -2,24 +2,26 @@ let fetchFn = typeof fetch !== 'undefined' ? fetch : undefined;
 var runWithRateLimit;
 var runWithRetry;
 var approxTokens;
+var getUsage;
 
 if (typeof window === 'undefined') {
   if (typeof self !== 'undefined' && self.qwenThrottle) {
-    ({ runWithRateLimit, runWithRetry, approxTokens } = self.qwenThrottle);
+    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = self.qwenThrottle);
   } else {
     // Node 18+ provides a global fetch implementation
     fetchFn = typeof fetch !== 'undefined' ? fetch : require('cross-fetch');
-    ({ runWithRateLimit, runWithRetry, approxTokens } = require('./throttle'));
+    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = require('./throttle'));
   }
 } else {
   if (window.qwenThrottle) {
-    ({ runWithRateLimit, runWithRetry, approxTokens } = window.qwenThrottle);
+    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = window.qwenThrottle);
   } else if (typeof require !== 'undefined') {
-    ({ runWithRateLimit, runWithRetry, approxTokens } = require('./throttle'));
+    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = require('./throttle'));
   } else {
     runWithRateLimit = fn => fn();
     runWithRetry = fn => fn();
     approxTokens = () => 0;
+    getUsage = () => ({ requestLimit: 1, tokenLimit: 1, requests: 0, tokens: 0 });
   }
 }
 
@@ -172,7 +174,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
   return { text: result };
 }
 
-async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false }) {
+async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay }) {
   if (debug) {
     console.log('QTDEBUG: qwenTranslate called with', {
       endpoint,
@@ -231,8 +233,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     const data = await runWithRetry(
       () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, stream }),
       approxTokens(text),
-      3,
-      debug
+      { attempts: 3, debug, onRetry, retryDelay }
     );
     cache.set(cacheKey, data);
     if (debug) {
@@ -246,7 +247,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   }
 }
 
-async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false }, onData) {
+async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay }, onData) {
   if (debug) {
     console.log('QTDEBUG: qwenTranslateStream called with', {
       endpoint,
@@ -267,8 +268,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     const data = await runWithRetry(
       () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
       approxTokens(text),
-      3,
-      debug
+      { attempts: 3, debug, onRetry, retryDelay }
     );
     cache.set(cacheKey, data);
     if (debug) {
@@ -292,9 +292,16 @@ const GROWTH_FACTOR = 1.2;
 async function qwenTranslateBatch(params) {
   if (params.tokenBudget) return batchOnce(params);
   let tokenBudget = dynamicTokenBudget;
+  try {
+    const usage = getUsage ? getUsage() : {};
+    const remainingReq = Math.max(1, (usage.requestLimit || 1) - (usage.requests || 0));
+    const remainingTok = Math.max(1, (usage.tokenLimit || 1) - (usage.tokens || 0));
+    const per = Math.floor(remainingTok / remainingReq);
+    if (per > tokenBudget) tokenBudget = per;
+  } catch {}
   while (true) {
     try {
-      const res = await batchOnce({ ...params, tokenBudget });
+      const res = await batchOnce({ ...params, tokenBudget, onRetry: params.onRetry, retryDelay: params.retryDelay });
       if (!budgetLocked) {
         lastGoodBudget = tokenBudget;
         if (tokenBudget < MAX_TOKEN_BUDGET) {
@@ -353,6 +360,8 @@ async function batchOnce({
   maxBatchSize = 2000,
   retries = 1,
   onProgress,
+  onRetry,
+  retryDelay,
   _stats,
   ...opts
 }) {
@@ -396,7 +405,7 @@ async function batchOnce({
     const words = joinedText.replaceAll(SEP, ' ').trim().split(/\s+/).filter(Boolean).length;
     let res;
     try {
-      res = await qwenTranslate({ ...opts, text: joinedText });
+      res = await qwenTranslate({ ...opts, text: joinedText, onRetry, retryDelay });
     } catch (e) {
       if (/HTTP\s+400/i.test(e.message || '')) throw e;
       g.forEach(m => {
@@ -409,6 +418,27 @@ async function batchOnce({
     stats.words += words;
     stats.requests++;
     const translated = res && typeof res.text === 'string' ? res.text.split(SEP) : [];
+    if (translated.length !== g.length) {
+      if (tokenBudget > MIN_TOKEN_BUDGET) {
+        dynamicTokenBudget = Math.max(MIN_TOKEN_BUDGET, Math.floor(tokenBudget / 2));
+      }
+      for (const m of g) {
+        let out;
+        try {
+          const single = await qwenTranslate({ ...opts, text: m.text, onRetry, retryDelay });
+          out = single.text;
+        } catch {
+          out = m.text;
+        }
+        m.result = out;
+        const key = `${opts.source}:${opts.target}:${m.text}`;
+        cache.set(key, { text: out });
+        stats.requests++;
+        stats.tokens += approxTokens(m.text);
+        stats.words += m.text.trim().split(/\s+/).filter(Boolean).length;
+      }
+      continue;
+    }
     for (let i = 0; i < g.length; i++) {
       g[i].result = translated[i] || g[i].text;
       const key = `${opts.source}:${opts.target}:${g[i].text}`;
@@ -448,6 +478,8 @@ async function batchOnce({
       maxBatchSize,
       retries: retries - 1,
       onProgress,
+      onRetry,
+      retryDelay,
       _stats: stats,
       ...opts,
     });
