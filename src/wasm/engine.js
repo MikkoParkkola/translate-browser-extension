@@ -2,7 +2,7 @@
 // Looks for vendor assets under src/wasm/vendor/ and loads the selected engine.
 
 export const WASM_ASSETS = [
-  { path: 'mupdf.wasm', url: 'https://unpkg.com/mupdf@1.26.4/dist/mupdf-wasm.wasm' },
+  { path: 'mupdf-wasm.wasm', url: 'https://unpkg.com/mupdf@1.26.4/dist/mupdf-wasm.wasm' },
   { path: 'mupdf-wasm.js', url: 'https://unpkg.com/mupdf@1.26.4/dist/mupdf-wasm.js' },
   { path: 'mupdf.engine.js', url: 'https://unpkg.com/mupdf@1.26.4/dist/mupdf.js' },
   { path: 'pdfium.wasm', url: 'https://unpkg.com/pdfium-wasm@0.0.2/dist/pdfium.wasm' },
@@ -61,6 +61,7 @@ async function check(base, path) {
 
 export async function chooseEngine(base, requested) {
   const wants = (requested || 'auto').toLowerCase();
+  console.log('DEBUG: chooseEngine requested', wants);
   const hbOk = await check(base, 'hb.wasm');
   const icuOk = (await check(base, 'icu4x_segmenter.wasm')) || (await check(base, 'icu4x_segmenter_wasm_bg.wasm'));
   const pdfiumOk =
@@ -72,19 +73,21 @@ export async function chooseEngine(base, requested) {
     (await check(base, 'mupdf-wasm.js')) &&
     ((await check(base, 'mupdf.wasm')) || (await check(base, 'mupdf-wasm.wasm')));
   const overlayOk = await check(base, 'pdf-lib.js');
+  console.log('DEBUG: engine assets', { hbOk, icuOk, pdfiumOk, mupdfOk, overlayOk });
 
   function pick() {
-    if (wants === 'mupdf') return 'mupdf';
-    if (wants === 'pdfium') return 'pdfium';
-    if (wants === 'overlay') return 'overlay';
+    if (wants === 'mupdf') return mupdfOk ? 'mupdf' : (pdfiumOk ? 'pdfium' : (overlayOk ? 'overlay' : 'simple'));
+    if (wants === 'pdfium') return pdfiumOk ? 'pdfium' : (mupdfOk ? 'mupdf' : (overlayOk ? 'overlay' : 'simple'));
+    if (wants === 'overlay') return overlayOk ? 'overlay' : (pdfiumOk ? 'pdfium' : (mupdfOk ? 'mupdf' : 'simple'));
     if (wants === 'simple') return 'simple';
-    // auto: prefer MuPDF if present; else PDFium; else Overlay; else Simple
+    // auto: prefer PDFium if present; then MuPDF; then Overlay; else Simple
     if (pdfiumOk) return 'pdfium';
     if (mupdfOk) return 'mupdf';
     if (overlayOk) return 'overlay';
     return 'simple';
   }
   const choice = pick();
+  console.log('DEBUG: chooseEngine selected', choice);
   return { choice, hbOk, icuOk, pdfiumOk, mupdfOk, overlayOk };
 }
 
@@ -107,11 +110,13 @@ export async function downloadWasmAssets(dir, downloader) {
 
 async function loadEngine(cfg) {
   if (_impl && cfg && (cfg.wasmEngine || 'auto') === _lastChoice) return _impl;
+  console.log('DEBUG: loadEngine start', cfg && cfg.wasmEngine);
   try {
     const base = new URL('./vendor/', import.meta.url).href;
     const requested = cfg && cfg.wasmEngine;
     const { choice, hbOk, icuOk, pdfiumOk, mupdfOk } = await chooseEngine(base, requested);
     if (!choice) { _lastChoice = 'auto'; }
+    console.log('DEBUG: loadEngine choice', choice);
     // Strict mode: if requested engine assets missing, do not fallback
     const strict = !!(cfg && cfg.wasmStrict);
     if (strict) {
@@ -127,13 +132,16 @@ async function loadEngine(cfg) {
     else if (choice === 'overlay') wrapper = 'overlay.engine.js';
     let engineMod;
     try {
+      console.log(`DEBUG: importing wrapper ${wrapper}`);
       engineMod = await import(/* @vite-ignore */ base + wrapper);
     } catch (e) {
+      console.error('DEBUG: wrapper import failed', e);
       available = false;
       _impl = { async rewritePdf() { throw new Error(`WASM ${choice} wrapper not wired. Implement rewrite() in src/wasm/vendor/${wrapper}`); } };
       return _impl;
     }
     const engine = await engineMod.init({ baseURL: base, hasHB: hbOk, hasICU: icuOk, hasPDF: choice === 'pdfium' ? pdfiumOk : mupdfOk });
+    console.log('DEBUG: engine module initialized');
     if (!engine || typeof engine.rewrite !== 'function') {
       available = false;
       _impl = { async rewritePdf() { throw new Error(`WASM ${choice} wrapper missing rewrite()`); } };
@@ -141,25 +149,33 @@ async function loadEngine(cfg) {
     }
     _impl = {
       async rewritePdf(buffer, cfg2, onProgress) {
+        console.log(`DEBUG: rewritePdf called size ${buffer.byteLength} bytes`);
         if (onProgress) onProgress({ phase: 'rewrite', page: 0, total: 1 });
-        return await engine.rewrite(buffer, cfg2, onProgress);
+        return await engine.rewrite(buffer, cfg2, p => {
+          console.log('DEBUG: engine progress', p);
+          if (onProgress) onProgress(p);
+        });
       },
     };
     available = true;
+    console.log('DEBUG: engine loaded', choice);
   } catch (e) {
     available = false;
+    console.error('DEBUG: loadEngine failed', e);
     _impl = { async rewritePdf() { throw new Error('WASM engine not available. Place vendor assets under src/wasm/vendor/.'); } };
   }
   return _impl;
 }
 
 export async function isWasmAvailable(cfg) {
+  console.log('DEBUG: isWasmAvailable check');
   if (_impl && (cfg?.wasmEngine || 'auto') === _lastChoice) return available;
   await loadEngine(cfg);
   return available;
 }
 
 export async function rewritePdf(buffer, cfg, onProgress) {
+  console.log(`DEBUG: rewritePdf entry size ${buffer.byteLength} bytes`);
   const impl = await loadEngine(cfg);
   return impl.rewritePdf(buffer, cfg, onProgress);
 }

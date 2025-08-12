@@ -16,15 +16,10 @@ export async function init({ baseURL }) {
       if (onProgress) onProgress({ phase: 'collect', page: i, total });
       const page = await pdf.getPage(i);
       const viewport = page.getViewport({ scale: 1.5 });
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.floor(viewport.width);
-      canvas.height = Math.floor(viewport.height);
-      const ctx = canvas.getContext('2d');
-      await page.render({ canvasContext: ctx, viewport }).promise;
       const textContent = await page.getTextContent();
       const items = textContent.items.map(it => (it.str||'').trim()).filter(Boolean);
       const block = items.join(' ');
-      pageData.push({ w: canvas.width, h: canvas.height, img: canvas.toDataURL('image/jpeg', 0.85), text: block });
+      pageData.push({ w: Math.floor(viewport.width), h: Math.floor(viewport.height), text: block });
     }
 
     // Translate all blocks
@@ -75,21 +70,43 @@ export async function init({ baseURL }) {
     const { PDFDocument, StandardFonts, rgb } = pdfLib;
     const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.Helvetica);
+
+    function wrapText(text, font, size, maxWidth) {
+      const words = (text || '').split(/\s+/);
+      const lines = [];
+      let line = '';
+      for (const w of words) {
+        const test = line ? line + ' ' + w : w;
+        if (font.widthOfTextAtSize(test, size) > maxWidth && line) {
+          lines.push(line);
+          line = w;
+        } else {
+          line = test;
+        }
+      }
+      if (line) lines.push(line);
+      return lines.join('\n');
+    }
     for (let i=0;i<pageData.length;i++) {
       if (onProgress) onProgress({ phase: 'render', page: i+1, total });
       const p = pageData[i];
       const page = doc.addPage([p.w, p.h]);
-      const jpgBytes = atob(p.img.split(',')[1]);
-      const arr = new Uint8Array(jpgBytes.length);
-      for (let j=0;j<jpgBytes.length;j++) arr[j]=jpgBytes.charCodeAt(j);
-      const jpg = await doc.embedJpg(arr);
-      page.drawImage(jpg, { x:0, y:0, width:p.w, height:p.h });
-      // Draw translated text block in a box for readability
+      // Clear original page by painting a white background
+      page.drawRectangle({ x: 0, y: 0, width: p.w, height: p.h, color: rgb(1, 1, 1) });
       const margin = 40;
-      const boxW = p.w - margin*2;
-      const text = (outTexts[i]||'').trim();
+      const boxW = p.w - margin * 2;
+      const text = (outTexts[i] || '').trim();
       if (text) {
-        page.drawText(text, { x: margin, y: p.h - margin - 14, size: 12, font, color: rgb(0.05,0.05,0.05), maxWidth: boxW, lineHeight: 14 });
+        // Wrap long lines to avoid overflow
+        const wrapped = wrapText(text, font, 12, boxW);
+        page.drawText(wrapped, {
+          x: margin,
+          y: p.h - margin - 12,
+          size: 12,
+          font,
+          color: rgb(0.05, 0.05, 0.05),
+          lineHeight: 14,
+        });
       }
     }
     const bytes = await doc.save();

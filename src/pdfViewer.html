@@ -13,6 +13,7 @@
     canvas { display:block; }
     .textLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:2; --scale-factor: 1; }
     .textLayer span { position:absolute; white-space:pre; transform-origin:0% 0%; line-height:1; display:inline-block; color: transparent; background: transparent; text-shadow: none; }
+    body.translated .textLayer span { color: #000; }
     .page { box-shadow: 0 0 0 1px rgba(0,0,0,0.1); }
     .annotationLayer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:15; }
     .thumb { cursor:pointer; }
@@ -34,7 +35,6 @@
     <span class="sep"></span>
       <select id="engineSelect" class="btn" title="Translation engine"></select>
       <span id="engineStatus" class="muted">Engine: checking…</span>
-      <button id="downloadEngines" class="btn" style="display:none">Setup engines</button>
     <span class="sep"></span>
     <div class="toggle-group">
       <button id="zoomOut" class="btn">-</button>
