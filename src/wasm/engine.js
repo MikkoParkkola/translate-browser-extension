@@ -133,8 +133,29 @@ async function loadEngine(cfg) {
     else if (choice === 'simple') wrapper = 'simple.engine.js';
     else if (choice === 'overlay') wrapper = 'overlay.engine.js';
     if (choice === 'mupdf') {
+      console.log('DEBUG: MuPDF base path', base);
+      let wasmBinary = null;
+      try {
+        const wasmResp = await fetch(base + 'mupdf-wasm.wasm');
+        if (wasmResp.ok) {
+          wasmBinary = await wasmResp.arrayBuffer();
+          console.log('DEBUG: MuPDF wasm fetched', wasmBinary.byteLength, 'bytes');
+        } else {
+          console.error('DEBUG: MuPDF wasm fetch status', wasmResp.status);
+        }
+      } catch (e) {
+        console.error('DEBUG: MuPDF wasm fetch failed', e);
+      }
       globalThis.$libmupdf_wasm_Module = {
-        locateFile: (p) => base + p,
+        locateFile: (p) => {
+          const loc = base + p;
+          console.log('DEBUG: MuPDF locateFile', p, '->', loc);
+          return loc;
+        },
+        wasmBinary,
+        onAbort: (msg) => console.error('DEBUG: MuPDF abort', msg),
+        print: (...args) => console.log('DEBUG: MuPDF', ...args),
+        printErr: (...args) => console.error('DEBUG: MuPDF', ...args),
       };
     }
     let engineMod;

@@ -11,7 +11,7 @@ export async function init({ baseURL }) {
       const page = await pdf.getPage(i);
       const viewport = page.getViewport({ scale: 1 });
       const textContent = await page.getTextContent();
-      const items = [];
+      const lines = [];
       for (const it of textContent.items) {
         const text = (it.str || '').trim();
         if (!text) continue;
@@ -19,8 +19,22 @@ export async function init({ baseURL }) {
         const size = Math.hypot(m[0], m[2]);
         const x = m[4];
         const y = viewport.height - m[5];
-        items.push({ text, x, y, size });
+        let line = lines.find(l => Math.abs(l.y - y) < size * 0.5);
+        if (!line) {
+          line = { y, x, size, parts: [] };
+          lines.push(line);
+        }
+        line.x = Math.min(line.x, x);
+        line.parts.push({ x, text });
       }
+      const items = lines
+        .sort((a, b) => b.y - a.y)
+        .map(l => ({
+          text: l.parts.sort((a, b) => a.x - b.x).map(p => p.text).join(' '),
+          x: l.x,
+          y: l.y,
+          size: l.size,
+        }));
       pages.push({ width: viewport.width, height: viewport.height, items });
     }
     const texts = pages.flatMap(p => p.items.map(i => i.text));
