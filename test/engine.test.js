@@ -21,6 +21,7 @@ describe('chooseEngine', () => {
     const { chooseEngine } = loadEngine();
     const ok = new Set([
       'base/mupdf.engine.js',
+      'base/mupdf-wasm.wasm',
       'base/mupdf.wasm',
       'base/pdfium.engine.js',
       'base/pdfium.js',

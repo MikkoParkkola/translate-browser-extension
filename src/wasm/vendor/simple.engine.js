@@ -33,13 +33,13 @@ function buildSimplePdf(pages, onProgress) {
     const leading = 14;
     let x = margin;
     let y = p.height - margin;
-    let stream = 'BT\n/F1 ' + fontSize + ' Tf\n';
-    p.lines.forEach((line) => {
-      if (y < margin + leading) { return; }
+    let stream = `BT\n/F1 ${fontSize} Tf\n${x} ${y} Td\n`;
+    for (const line of p.lines) {
+      if (y < margin + leading) break;
       const text = escapePdfText(line);
-      stream += `${x} ${y} Td (${text}) Tj\n`;
+      stream += `(${text}) Tj\n0 -${leading} Td\n`;
       y -= leading;
-    });
+    }
     stream += 'ET\n';
     const content = `<< /Length ${stream.length} >>\nstream\n${stream}endstream\n`;
     contentObjs.push({ num: contentNum, body: content });

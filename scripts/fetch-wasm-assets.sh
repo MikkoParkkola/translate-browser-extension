@@ -12,6 +12,8 @@ echo "Vendor dir: $VENDOR_DIR"
 # 1) MuPDF
 echo "Downloading MuPDF..."
 curl -L -o "$VENDOR_DIR/mupdf-wasm.wasm" https://unpkg.com/mupdf@1.26.4/dist/mupdf-wasm.wasm
+# Some upstream wrappers still look for mupdf.wasm; provide both names.
+cp "$VENDOR_DIR/mupdf-wasm.wasm" "$VENDOR_DIR/mupdf.wasm"
 curl -L -o "$VENDOR_DIR/mupdf-wasm.js" https://unpkg.com/mupdf@1.26.4/dist/mupdf-wasm.js
 curl -L -o "$VENDOR_DIR/mupdf.engine.js" https://unpkg.com/mupdf@1.26.4/dist/mupdf.js
 

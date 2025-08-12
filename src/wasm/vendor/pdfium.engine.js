@@ -1,23 +1,19 @@
 export async function init({ baseURL }) {
-  let pdfium;
-  try {
-    const mod = await import(/* @vite-ignore */ baseURL + 'pdfium.js');
-    pdfium = mod?.default ? await mod.default() : mod;
-  } catch {}
-  if (!pdfium) {
-    const { init: overlayInit } = await import(/* @vite-ignore */ baseURL + 'overlay.engine.js');
-    return overlayInit({ baseURL });
+  function approxTokens(s) {
+    return Math.ceil((s || '').length / 4);
   }
-
-  function approxTokens(s) { return Math.ceil(((s || '').length) / 4); }
   function splitIntoChunks(text, maxTokens) {
     const chunks = [];
     const parts = (text || '').split(/(\.|!|\?|\n)/g);
     let cur = '';
     for (const seg of parts) {
       const next = cur ? cur + seg : seg;
-      if (approxTokens(next) > maxTokens && cur) { chunks.push(cur.trim()); cur = seg; }
-      else { cur = next; }
+      if (approxTokens(next) > maxTokens && cur) {
+        chunks.push(cur.trim());
+        cur = seg;
+      } else {
+        cur = next;
+      }
     }
     if (cur && cur.trim()) chunks.push(cur.trim());
     const out = [];
@@ -29,13 +25,13 @@ export async function init({ baseURL }) {
     }
     return out;
   }
-  async function translatePages(pageTexts, cfg, onProgress, budget = 1200) {
+  async function translatePages(pages, cfg, onProgress, budget = 1200) {
     const endpoint = cfg.apiEndpoint || cfg.endpoint;
     const model = cfg.model || cfg.modelName;
     const source = cfg.sourceLanguage || cfg.source;
     const target = cfg.targetLanguage || cfg.target;
     const mapping = [];
-    pageTexts.forEach((t, i) => splitIntoChunks(t, Math.max(200, Math.floor(budget * 0.6)))
+    pages.forEach((t, i) => splitIntoChunks(t, Math.max(200, Math.floor(budget * 0.6)))
       .forEach((c, idx) => mapping.push({ page: i, idx, text: c })));
     const results = new Array(mapping.length);
     let i = 0;
@@ -51,7 +47,7 @@ export async function init({ baseURL }) {
       }
       const texts = group.map(g => g.text);
       try {
-        if (onProgress) onProgress({ phase: 'translate', page: Math.min(group[group.length - 1].page + 1, pageTexts.length), total: pageTexts.length });
+        if (onProgress) onProgress({ phase: 'translate', page: Math.min(group[group.length - 1].page + 1, pages.length), total: pages.length });
         const tr = await window.qwenTranslateBatch({ texts, endpoint, apiKey: cfg.apiKey, model, source, target, tokenBudget: budget });
         const outs = (tr && Array.isArray(tr.texts)) ? tr.texts : texts;
         for (let k = 0; k < group.length; k++) results[mapping.indexOf(group[k])] = outs[k] || group[k].text;
@@ -59,88 +55,84 @@ export async function init({ baseURL }) {
         if (/HTTP 400/i.test(e?.message || '')) {
           const next = Math.max(100, Math.floor(budget * 0.6));
           if (next === budget) throw e;
-          return translatePages(pageTexts, cfg, onProgress, next);
-        } else { throw e; }
+          return translatePages(pages, cfg, onProgress, next);
+        } else {
+          throw e;
+        }
       }
     }
-    const perPage = pageTexts.map(() => []);
+    const perPage = pages.map(() => []);
     mapping.forEach((m, idx) => { perPage[m.page][m.idx] = results[idx]; });
     return perPage.map(arr => (arr.filter(Boolean).join(' ')));
   }
-  async function extractPageTexts(buffer, onProgress) {
+  function wrapText(text, font, size, maxWidth) {
+    const words = (text || '').split(/\s+/);
+    const lines = [];
+    let line = '';
+    for (const w of words) {
+      const test = line ? line + ' ' + w : w;
+      if (font.widthOfTextAtSize(test, size) > maxWidth && line) {
+        lines.push(line);
+        line = w;
+      } else {
+        line = test;
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+  async function rewrite(buffer, cfg, onProgress) {
     if (typeof pdfjsLib === 'undefined') throw new Error('pdf.js not loaded');
-    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+    if (!window.qwenTranslateBatch) throw new Error('translator not available');
+    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
+    const pdf = await loadingTask.promise;
     const total = pdf.numPages;
-    const out = [];
+    const pages = [];
     for (let p = 1; p <= total; p++) {
       if (onProgress) onProgress({ phase: 'collect', page: p, total });
       const page = await pdf.getPage(p);
+      const viewport = page.getViewport({ scale: 1.5 });
       const tc = await page.getTextContent();
       const items = tc.items.map(i => (i.str || '').trim()).filter(Boolean);
-      out.push(items.join(' '));
+      pages.push({ w: Math.floor(viewport.width), h: Math.floor(viewport.height), text: items.join(' ') });
     }
-    return out;
-  }
-
-  async function rewrite(buffer, cfg, onProgress) {
-    try {
-      const pageTexts = await extractPageTexts(buffer, onProgress);
-      const translated = await translatePages(pageTexts, cfg, onProgress);
-      let doc;
+    const translated = await translatePages(pages.map(p => p.text), cfg, onProgress);
+    let pdfLib = window.PDFLib;
+    if (!pdfLib) {
       try {
-        doc = pdfium.PDFDocument ? new pdfium.PDFDocument(new Uint8Array(buffer))
-          : pdfium.createDocument ? pdfium.createDocument(new Uint8Array(buffer))
-          : new pdfium(new Uint8Array(buffer));
-      } catch (e) {
-        throw new Error('pdfium open failed: ' + e.message);
-      }
-      const total = doc.countPages ? doc.countPages()
-        : doc.getPageCount ? doc.getPageCount()
-        : translated.length;
-      for (let i = 0; i < total; i++) {
-        if (onProgress) onProgress({ phase: 'render', page: i + 1, total });
-        const page = doc.loadPage ? doc.loadPage(i) : (doc.getPage ? doc.getPage(i) : null);
-        if (!page) continue;
-        try {
-          let box = [0, 0, 612, 792];
-          try {
-            const obj = page.getObject && page.getObject();
-            let media = obj && (obj.get && (obj.get('CropBox') || obj.get('MediaBox')));
-            if (media && media.isArray) {
-              const arr = media.asJS();
-              if (Array.isArray(arr) && arr.length >= 4) box = arr.map(Number);
-            }
-          } catch {}
-          const margin = 36;
-          const rect = [box[0] + margin, box[1] + margin, box[2] - margin, box[3] - margin];
-          const annot = page.createAnnotation ? page.createAnnotation('FreeText') : null;
-          if (annot) {
-            try { annot.setRect && annot.setRect(rect); } catch {}
-            try { annot.setDefaultAppearance && annot.setDefaultAppearance('Helvetica', 12, [0,0,0]); } catch {}
-            const text = (translated[i] || '').trim();
-            try {
-              if (annot.setRichContents) {
-                annot.setRichContents(text, `<p>${text.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</p>`);
-              } else if (annot.setContents) {
-                annot.setContents(text);
-              }
-            } catch {}
-          }
-          page.update && page.update();
-        } catch {}
-      }
-      let buf;
-      try { buf = doc.saveToBuffer ? doc.saveToBuffer('') : doc.save && doc.save(); } catch (e) {}
-      const bytes = buf && buf.asUint8Array ? buf.asUint8Array() : buf;
-      if (!bytes) throw new Error('pdfium save failed');
-      return new Blob([bytes], { type: 'application/pdf' });
-    } catch (e) {
-      console.warn('PDFium rewrite failed, falling back to overlay engine', e);
-      const { init: overlayInit } = await import(/* @vite-ignore */ baseURL + 'overlay.engine.js');
-      const overlay = await overlayInit({ baseURL });
-      return overlay.rewrite(buffer, cfg, onProgress);
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = baseURL + 'pdf-lib.js';
+          s.onload = resolve;
+          s.onerror = reject;
+          document.head.appendChild(s);
+        });
+        pdfLib = window.PDFLib;
+      } catch {}
     }
+    if (!pdfLib || !(pdfLib.PDFDocument)) {
+      throw new Error('pdf-lib not available for PDFium engine');
+    }
+    const { PDFDocument, StandardFonts, rgb } = pdfLib;
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    for (let i = 0; i < pages.length; i++) {
+      if (onProgress) onProgress({ phase: 'render', page: i + 1, total: pages.length });
+      const p = pages[i];
+      const page = doc.addPage([p.w, p.h]);
+      page.drawRectangle({ x: 0, y: 0, width: p.w, height: p.h, color: rgb(1, 1, 1) });
+      const margin = 40;
+      const boxW = p.w - margin * 2;
+      const lines = wrapText((translated[i] || '').trim(), font, 12, boxW);
+      let y = p.h - margin - 12;
+      for (const line of lines) {
+        page.drawText(line, { x: margin, y, size: 12, font, color: rgb(0.05,0.05,0.05) });
+        y -= 14;
+        if (y < margin) break;
+      }
+    }
+    const bytes = await doc.save();
+    return new Blob([bytes], { type: 'application/pdf' });
   }
-
   return { rewrite };
 }

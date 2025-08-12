@@ -97,16 +97,19 @@ export async function init({ baseURL }) {
       const boxW = p.w - margin * 2;
       const text = (outTexts[i] || '').trim();
       if (text) {
-        // Wrap long lines to avoid overflow
-        const wrapped = wrapText(text, font, 12, boxW);
-        page.drawText(wrapped, {
-          x: margin,
-          y: p.h - margin - 12,
-          size: 12,
-          font,
-          color: rgb(0.05, 0.05, 0.05),
-          lineHeight: 14,
-        });
+        const wrapped = wrapText(text, font, 12, boxW).split('\n');
+        let y = p.h - margin - 12;
+        for (const line of wrapped) {
+          page.drawText(line, {
+            x: margin,
+            y,
+            size: 12,
+            font,
+            color: rgb(0.05, 0.05, 0.05),
+          });
+          y -= 14;
+          if (y < margin) break;
+        }
       }
     }
     const bytes = await doc.save();
