@@ -32,7 +32,7 @@
     {
       "resources": [
         "translator.js", "config.js", "languages.js", "throttle.js",
-        "pdfViewer.html", "pdfViewer.js", "pdf.min.js", "pdf.worker.min.js",
+        "pdfViewer.html", "pdfViewer.js", "sessionPdf.js", "pdf.min.js", "pdf.worker.min.js",
         "wasm/pipeline.js", "wasm/pdfgen.js", "wasm/engine.js",
         "wasm/vendor/hb.wasm", "wasm/vendor/icu4x_segmenter.wasm",
         "wasm/vendor/mupdf.engine.js", "wasm/vendor/mupdf.wasm",

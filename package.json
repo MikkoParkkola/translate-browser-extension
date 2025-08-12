@@ -17,6 +17,7 @@
     "@types/jest": "^30.0.0",
     "cross-fetch": "^4.1.0",
     "http-server": "^14.1.1",
+    "fake-indexeddb": "^5.0.2",
     "jest": "^30.0.5",
     "jest-environment-jsdom": "^30.0.5",
     "jest-fetch-mock": "^3.0.3",

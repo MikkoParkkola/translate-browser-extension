@@ -1,6 +1,7 @@
 import { regeneratePdfFromUrl } from './wasm/pipeline.js';
 import { chooseEngine, WASM_ASSETS } from './wasm/engine.js';
 import { safeFetchPdf } from './wasm/pdfFetch.js';
+import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
 
 (async function() {
   function isLikelyDutch(text) {
@@ -50,6 +51,7 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
   }
   const params = new URL(location.href).searchParams;
   const file = params.get('file');
+  const sessionKey = params.get('session');
   const origFile = params.get('orig') || file;
   const viewer = document.getElementById('viewer');
   const thumbs = document.getElementById('thumbs');
@@ -76,12 +78,13 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
 
   const badge = document.getElementById('modeBadge');
   const isTranslatedParam = params.get('translated') === '1';
+  document.body.classList.toggle('translated', isTranslatedParam);
   if (badge) {
     badge.textContent = isTranslatedParam ? 'Translated' : 'Original';
     badge.style.color = isTranslatedParam ? '#2e7d32' : '#666';
   }
 
-  if (!file) {
+  if (!file && !sessionKey) {
     viewer.textContent = 'No PDF specified';
     console.log('DEBUG: No PDF file specified.');
     return;
@@ -205,7 +208,8 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
     if (translatedMenu) translatedMenu.style.display = 'none';
   }
 
-  async function generateTranslatedBlobUrl(originalUrl) {
+  async function generateTranslatedSessionKey(originalUrl) {
+    console.log('DEBUG: starting translation for', originalUrl);
     const overlay = document.getElementById('regenOverlay');
     const text = document.getElementById('regenText');
     const bar = document.getElementById('regenBar');
@@ -223,19 +227,23 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
         if (p.phase === 'translate') { pct = 20 + Math.round((p.page / p.total) * 40); setProgress(`Translating… (${p.page}/${p.total})`, pct); }
         if (p.phase === 'render') { pct = 60 + Math.round((p.page / p.total) * 40); setProgress(`Rendering pages… (${p.page}/${p.total})`, pct); }
       });
-      const url = URL.createObjectURL(blob);
-      return url;
+      console.log('DEBUG: translation finished, blob size', blob.size);
+      const key = await storePdfInSession(blob);
+      console.log('DEBUG: stored translated PDF key', key);
+      return key;
     } finally {
       if (overlay) setTimeout(()=>{ overlay.style.display = 'none'; const b = document.getElementById('regenBar'); if (b) b.style.width = '0%'; }, 800);
     }
   }
 
   function gotoOriginal(originalUrl) {
+    console.log('DEBUG: navigating to original', originalUrl);
     const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(originalUrl) + '&orig=' + encodeURIComponent(originalUrl);
     window.location.href = viewerUrl;
   }
-  function gotoTranslated(originalUrl, translatedBlobUrl) {
-    const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + `?translated=1&file=${encodeURIComponent(translatedBlobUrl)}&orig=${encodeURIComponent(originalUrl)}`;
+  function gotoTranslated(originalUrl, sessionKey) {
+    console.log('DEBUG: navigating to translated', { originalUrl, sessionKey });
+    const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + `?translated=1&session=${encodeURIComponent(sessionKey)}&orig=${encodeURIComponent(originalUrl)}`;
     window.location.href = viewerUrl;
   }
 
@@ -249,8 +257,8 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
       try {
         btnTranslated.disabled = true;
         btnOriginal && (btnOriginal.disabled = true);
-        const blobUrl = isTranslatedParam ? file : await generateTranslatedBlobUrl(origFile);
-        gotoTranslated(origFile, blobUrl);
+        const key = isTranslatedParam ? sessionKey : await generateTranslatedSessionKey(origFile);
+        gotoTranslated(origFile, key);
       } catch (e) { console.error('Translate view failed', e); }
       finally {
         btnTranslated.disabled = false;
@@ -272,10 +280,13 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
     actionSaveTranslated.dataset.bound = '1';
     actionSaveTranslated.addEventListener('click', async () => {
       try {
-        let url = file;
+        let key = sessionKey;
         if (!isTranslatedParam) {
-          url = await generateTranslatedBlobUrl(origFile);
+          key = await generateTranslatedSessionKey(origFile);
         }
+        const buf = await readPdfFromSession(key);
+        const blob = new Blob([buf], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
         if (chrome && chrome.downloads && chrome.downloads.download) {
           const ts = new Date();
           const fname = `translated-${ts.getFullYear()}${String(ts.getMonth()+1).padStart(2,'0')}${String(ts.getDate()).padStart(2,'0')}-${String(ts.getHours()).padStart(2,'0')}${String(ts.getMinutes()).padStart(2,'0')}${String(ts.getSeconds()).padStart(2,'0')}.pdf`;
@@ -292,8 +303,8 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
   setModeUI(initialMode);
   if (initialMode === 'translated' && !isTranslatedParam && origFile) {
     try {
-      const blobUrl = await generateTranslatedBlobUrl(origFile);
-      gotoTranslated(origFile, blobUrl);
+      const key = await generateTranslatedSessionKey(origFile);
+      gotoTranslated(origFile, key);
       return; // stop rendering original while navigating
     } catch (e) {
       console.error('Auto-translate preview failed', e);
@@ -307,9 +318,15 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
   console.log('DEBUG: API key loaded.');
 
   try {
+    let buffer;
+    if (sessionKey) {
+      buffer = await readPdfFromSession(sessionKey);
+      console.log('DEBUG: Loaded PDF from session storage.');
+    } else {
       console.log(`DEBUG: Attempting to fetch PDF from: ${file}`);
-      const buffer = await safeFetchPdf(file);
+      buffer = await safeFetchPdf(file);
       console.log('DEBUG: PDF fetched successfully.');
+    }
     const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
     console.log('DEBUG: PDF loading task created.');
     const pdf = await loadingTask.promise;
