@@ -140,14 +140,14 @@ async function translateNode(node) {
   }
 }
 
-async function translateBatch(elements) {
+async function translateBatch(elements, stats) {
   const originals = elements.map(el => el.textContent || '');
   const texts = originals.map(t => t.trim());
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   let res;
   try {
-    res = await window.qwenTranslateBatch({
+    const opts = {
       endpoint: currentConfig.apiEndpoint,
       apiKey: currentConfig.apiKey,
       model: currentConfig.model,
@@ -156,7 +156,14 @@ async function translateBatch(elements) {
       target: currentConfig.targetLanguage,
       signal: controller.signal,
       debug: currentConfig.debug,
-    });
+    };
+    if (stats) {
+      opts.onProgress = p => {
+        chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p } });
+      };
+      opts._stats = stats;
+    }
+    res = await window.qwenTranslateBatch(opts);
   } finally {
     clearTimeout(timeout);
   }
@@ -188,11 +195,13 @@ function enqueueBatch(batch) {
 async function processQueue() {
   processing = true;
   setStatus('Translating...');
+  const stats = { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
+  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'translate' } });
   while (batchQueue.length) {
     setStatus(`Translating (${batchQueue.length} left)...`);
     const batch = batchQueue.shift();
     try {
-      await translateBatch(batch);
+      await translateBatch(batch, stats);
     } catch (e) {
       showError(`${e.message}. See console for details.`);
       console.error('QTERROR: batch translation error', e);
@@ -200,6 +209,11 @@ async function processQueue() {
       await new Promise(r => setTimeout(r, 1000));
     }
   }
+  stats.elapsedMs = Date.now() - stats.start;
+  stats.wordsPerSecond = stats.words / (stats.elapsedMs / 1000 || 1);
+  stats.wordsPerRequest = stats.words / (stats.requests || 1);
+  stats.tokensPerRequest = stats.tokens / (stats.requests || 1);
+  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary: stats } });
   processing = false;
   clearStatus();
 }
@@ -294,6 +308,9 @@ function observe(root = document.body) {
 
 async function start() {
   currentConfig = await window.qwenLoadConfig();
+  if (window.qwenSetTokenBudget) {
+    window.qwenSetTokenBudget(currentConfig.tokenBudget || 0);
+  }
   if (!currentConfig.apiKey) {
     console.warn('QTWARN: API key not configured.');
     return;

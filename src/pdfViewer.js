@@ -1,5 +1,5 @@
 import { regeneratePdfFromUrl } from './wasm/pipeline.js';
-import { chooseEngine } from './wasm/engine.js';
+import { chooseEngine, ensureWasmAssets } from './wasm/engine.js';
 import { safeFetchPdf } from './wasm/pdfFetch.js';
 import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
 
@@ -57,7 +57,30 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   const thumbs = document.getElementById('thumbs');
   const zoomInBtn = document.getElementById('zoomIn');
   const zoomOutBtn = document.getElementById('zoomOut');
+  const zoomResetBtn = document.getElementById('zoomReset');
   let currentZoom = 1;
+
+  const wasmOverlay = document.getElementById('wasmOverlay');
+  const wasmRetry = document.getElementById('wasmRetry');
+  const wasmError = document.getElementById('wasmError');
+  async function prepareWasm() {
+    try {
+      await ensureWasmAssets();
+    } catch (e) {
+      if (wasmError) wasmError.textContent = e.message || String(e);
+      if (wasmOverlay) wasmOverlay.style.display = 'flex';
+    }
+  }
+  if (wasmRetry) wasmRetry.addEventListener('click', async () => {
+    if (wasmError) wasmError.textContent = '';
+    try {
+      await ensureWasmAssets();
+      if (wasmOverlay) wasmOverlay.style.display = 'none';
+    } catch (e) {
+      if (wasmError) wasmError.textContent = e.message || String(e);
+    }
+  });
+  await prepareWasm();
 
   function applyZoom() {
     document.querySelectorAll('.page').forEach(p => {
@@ -72,6 +95,12 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     });
     zoomOutBtn.addEventListener('click', () => {
       currentZoom = Math.max(currentZoom - 0.1, 0.1);
+      applyZoom();
+    });
+  }
+  if (zoomResetBtn) {
+    zoomResetBtn.addEventListener('click', () => {
+      currentZoom = 1;
       applyZoom();
     });
   }
@@ -94,6 +123,9 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   console.log('DEBUG: PDF.js worker source set.');
 
   const cfg = await window.qwenLoadConfig();
+  if (window.qwenSetTokenBudget) {
+    window.qwenSetTokenBudget(cfg.tokenBudget || 0);
+  }
 
   chrome.runtime.onMessage.addListener(msg => {
     if (msg.action === 'translate-selection') {
@@ -144,7 +176,14 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
           sel.value = choice;
         });
         sel.addEventListener('change', () => {
-          chrome.storage.sync.set({ wasmEngine: sel.value });
+          chrome.storage.sync.set({ wasmEngine: sel.value }, async () => {
+            if (document.body.classList.contains('translated')) {
+              try {
+                const key = await generateTranslatedSessionKey(origFile);
+                gotoTranslated(origFile, key);
+              } catch (e) { console.error('Engine switch failed', e); }
+            }
+          });
         });
       }
       const statEl = document.getElementById('engineStatus');
@@ -200,23 +239,35 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     const text = document.getElementById('regenText');
     const bar = document.getElementById('regenBar');
     const setProgress = (msg, p) => { if (text) text.textContent = msg; if (bar && typeof p === 'number') bar.style.width = `${Math.max(0,Math.min(100,p))}%`; };
+    await prepareWasm();
     let cfgNow = await window.qwenLoadConfig();
+    if (window.qwenSetTokenBudget) {
+      window.qwenSetTokenBudget(cfgNow.tokenBudget || 0);
+    }
     const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine','wasmStrict'], r));
     cfgNow = { ...cfgNow, ...flags, useWasmEngine: true };
     if (!cfgNow.apiKey) { alert('Configure API key first.'); throw new Error('API key missing'); }
     if (overlay) overlay.style.display = 'flex'; setProgress('Preparing…', 2);
+    let summary;
     try {
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'prepare' } });
       const blob = await regeneratePdfFromUrl(originalUrl, cfgNow, (p)=>{
         if (!p) return;
+        chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p } });
+        if (p.stats) summary = p.stats;
         let pct = 0;
         if (p.phase === 'collect') { pct = Math.round((p.page / p.total) * 20); setProgress(`Collecting text… (${p.page}/${p.total})`, pct); }
-        if (p.phase === 'translate') { pct = 20 + Math.round((p.page / p.total) * 40); setProgress(`Translating… (${p.page}/${p.total})`, pct); }
+        if (p.phase === 'translate') { pct = 20 + Math.round((p.request / p.requests) * 40); setProgress(`Translating… (${p.request}/${p.requests})`, pct); }
         if (p.phase === 'render') { pct = 60 + Math.round((p.page / p.total) * 40); setProgress(`Rendering pages… (${p.page}/${p.total})`, pct); }
       });
       console.log('DEBUG: translation finished, blob size', blob.size);
       const key = await storePdfInSession(blob);
       console.log('DEBUG: stored translated PDF key', key);
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary } });
       return key;
+    } catch (e) {
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary } });
+      throw e;
     } finally {
       if (overlay) setTimeout(()=>{ overlay.style.display = 'none'; const b = document.getElementById('regenBar'); if (b) b.style.width = '0%'; }, 800);
     }

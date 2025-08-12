@@ -7,6 +7,7 @@ const defaultCfg = {
   autoTranslate: false,
   requestLimit: 60,
   tokenLimit: 100000,
+  tokenBudget: 0,
   debug: false,
   useWasmEngine: true,
   autoOpenAfterSave: true,
