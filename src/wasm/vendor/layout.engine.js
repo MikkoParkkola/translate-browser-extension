@@ -1,4 +1,61 @@
+import { resolveAssetPath } from '../engine.js';
+
+export function dedupeItems(items) {
+  const out = [];
+  const seen = new Set();
+  for (const it of items) {
+    const key = `${it.text}@@${Math.round(it.x)}_${Math.round(it.y)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(it);
+  }
+  return out;
+}
+
+export function groupTextItems(textContent, viewport) {
+  const lines = [];
+  for (const it of textContent.items) {
+    const raw = (it.str || '').trim();
+    if (!raw) continue;
+    const m = pdfjsLib.Util.transform(viewport.transform, it.transform);
+    const size = Math.hypot(m[0], m[2]);
+    const x = m[4];
+    const y = viewport.height - m[5];
+    const width = (it.width || 0) * viewport.scale;
+    let line = lines.find(l => Math.abs(l.y - y) < size * 0.5);
+    if (!line) {
+      line = { y, x, size, parts: [] };
+      lines.push(line);
+    }
+    line.x = Math.min(line.x, x);
+    const exists = line.parts.find(p => Math.abs(p.x - x) < size * 0.1 && p.text === raw);
+    if (exists) continue;
+    line.parts.push({ x, text: raw, width });
+  }
+  return lines
+    .sort((a, b) => b.y - a.y)
+    .map(l => {
+      l.parts.sort((a, b) => a.x - b.x);
+      let txt = '';
+      let prevEnd = null;
+      for (const part of l.parts) {
+        if (prevEnd != null) {
+          const gap = part.x - prevEnd;
+          if (gap > l.size * 0.3) txt += ' ';
+        }
+        txt += part.text;
+        prevEnd = part.x + part.width;
+      }
+      return { text: txt, x: l.x, y: l.y, size: l.size };
+    });
+}
+
 export async function init({ baseURL }) {
+  function shouldTranslate(text) {
+    const letters = (text.match(/[A-Za-zÀ-ÿ]/g) || []).length;
+    const nonLetters = text.replace(/[A-Za-zÀ-ÿ]/g, '').length;
+    return letters >= 2 && letters >= nonLetters / 2;
+  }
   async function rewrite(buffer, cfg, onProgress) {
     if (typeof pdfjsLib === 'undefined') throw new Error('pdf.js not loaded');
     if (!window.qwenTranslateBatch) throw new Error('translator not available');
@@ -11,50 +68,46 @@ export async function init({ baseURL }) {
       const page = await pdf.getPage(i);
       const viewport = page.getViewport({ scale: 1 });
       const textContent = await page.getTextContent();
-      const lines = [];
-      for (const it of textContent.items) {
-        const text = (it.str || '').trim();
-        if (!text) continue;
-        const m = pdfjsLib.Util.transform(viewport.transform, it.transform);
-        const size = Math.hypot(m[0], m[2]);
-        const x = m[4];
-        const y = viewport.height - m[5];
-        let line = lines.find(l => Math.abs(l.y - y) < size * 0.5);
-        if (!line) {
-          line = { y, x, size, parts: [] };
-          lines.push(line);
-        }
-        line.x = Math.min(line.x, x);
-        line.parts.push({ x, text });
-      }
-      const items = lines
-        .sort((a, b) => b.y - a.y)
-        .map(l => ({
-          text: l.parts.sort((a, b) => a.x - b.x).map(p => p.text).join(' '),
-          x: l.x,
-          y: l.y,
-          size: l.size,
-        }));
+      const rawItems = groupTextItems(textContent, viewport);
+      const items = dedupeItems(rawItems);
       pages.push({ width: viewport.width, height: viewport.height, items });
     }
-    const texts = pages.flatMap(p => p.items.map(i => i.text));
+    const texts = [];
+    pages.forEach(p => p.items.forEach(i => {
+      if (shouldTranslate(i.text)) {
+        texts.push(i.text);
+      } else {
+        i.skip = true;
+      }
+    }));
     let outTexts = texts;
     if (texts.length) {
       const endpoint = cfg.apiEndpoint || cfg.endpoint;
       const model = cfg.model || cfg.modelName;
       const source = cfg.sourceLanguage || cfg.source;
       const target = cfg.targetLanguage || cfg.target;
-      const tr = await window.qwenTranslateBatch({ texts, endpoint, apiKey: cfg.apiKey, model, source, target });
+      const tr = await window.qwenTranslateBatch({
+        texts,
+        endpoint,
+        apiKey: cfg.apiKey,
+        model,
+        source,
+        target,
+        onProgress,
+      });
       outTexts = (tr && Array.isArray(tr.texts)) ? tr.texts : texts;
     }
     let idx = 0;
-    pages.forEach(p => p.items.forEach(it => { it.text = outTexts[idx++] || it.text; }));
+    pages.forEach(p => p.items.forEach(it => {
+      if (it.skip) return;
+      it.text = (outTexts[idx++] || it.text).replace(/\r?\n/g, ' ');
+    }));
     let pdfLib = window.PDFLib;
     if (!pdfLib) {
       try {
         await new Promise((resolve, reject) => {
           const s = document.createElement('script');
-          s.src = baseURL + 'pdf-lib.js';
+          s.src = resolveAssetPath('pdf-lib.js');
           s.onload = resolve;
           s.onerror = reject;
           document.head.appendChild(s);
@@ -74,7 +127,20 @@ export async function init({ baseURL }) {
       const page = doc.addPage([p.width, p.height]);
       page.drawRectangle({ x: 0, y: 0, width: p.width, height: p.height, color: rgb(1, 1, 1) });
       for (const it of p.items) {
-        page.drawText(it.text, { x: it.x, y: it.y, size: it.size || 12, font, color: rgb(0.05, 0.05, 0.05) });
+        let size = it.size || 12;
+        const maxW = p.width - it.x - 10;
+        let w = font.widthOfTextAtSize(it.text, size);
+        if (w > maxW && maxW > 0) {
+          size = size * (maxW / w);
+          w = font.widthOfTextAtSize(it.text, size);
+        }
+        page.drawText(it.text, {
+          x: it.x,
+          y: it.y,
+          size,
+          font,
+          color: rgb(0.05, 0.05, 0.05),
+        });
       }
     }
     const bytes = await doc.save();

@@ -6,6 +6,7 @@ let processing = false;
 let statusTimer;
 const pending = new Set();
 let flushTimer;
+let progress = { total: 0, done: 0 };
 
 function replacePdfEmbeds() {
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
@@ -55,7 +56,6 @@ function setStatus(message, isError = false) {
 function clearStatus() {
   const el = document.getElementById('qwen-status');
   if (el) el.remove();
-  try { chrome.runtime.sendMessage({ action: 'popup-clear-status' }); } catch {}
 }
 
 function showError(message) {
@@ -102,6 +102,7 @@ function isVisible(el) {
 function shouldTranslate(node) {
   const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
   if (!el) return false;
+  if (el.tagName === 'SUP' || el.closest('sup')) return false;
   return !isMarked(node) && !SKIP_TAGS.has(el.tagName) && isVisible(el);
 }
 
@@ -140,14 +141,14 @@ async function translateNode(node) {
   }
 }
 
-async function translateBatch(elements) {
+async function translateBatch(elements, stats) {
   const originals = elements.map(el => el.textContent || '');
   const texts = originals.map(t => t.trim());
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   let res;
   try {
-    res = await window.qwenTranslateBatch({
+    const opts = {
       endpoint: currentConfig.apiEndpoint,
       apiKey: currentConfig.apiKey,
       model: currentConfig.model,
@@ -156,7 +157,14 @@ async function translateBatch(elements) {
       target: currentConfig.targetLanguage,
       signal: controller.signal,
       debug: currentConfig.debug,
-    });
+    };
+    if (stats) {
+      opts.onProgress = p => {
+        chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p, progress } });
+      };
+      opts._stats = stats;
+    }
+    res = await window.qwenTranslateBatch(opts);
   } finally {
     clearTimeout(timeout);
   }
@@ -178,21 +186,41 @@ async function translateBatch(elements) {
       mark(el);
     }
   });
+  progress.done += elements.length;
+  const elapsedMs = stats ? Date.now() - stats.start : 0;
+  const avg = progress.done ? elapsedMs / progress.done : 0;
+  const etaMs = avg * (progress.total - progress.done);
+  chrome.runtime.sendMessage({
+    action: 'translation-status',
+    status: {
+      active: true,
+      phase: 'translate',
+      request: stats ? stats.requests : 0,
+      requests: stats ? stats.totalRequests : 0,
+      sample: texts[0],
+      elapsedMs,
+      etaMs,
+      progress,
+    },
+  });
 }
 
 function enqueueBatch(batch) {
   batchQueue.push(batch);
+  progress.total += batch.length;
   if (!processing) processQueue();
 }
 
 async function processQueue() {
   processing = true;
   setStatus('Translating...');
+  const stats = { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
+  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'translate', progress } });
   while (batchQueue.length) {
     setStatus(`Translating (${batchQueue.length} left)...`);
     const batch = batchQueue.shift();
     try {
-      await translateBatch(batch);
+      await translateBatch(batch, stats);
     } catch (e) {
       showError(`${e.message}. See console for details.`);
       console.error('QTERROR: batch translation error', e);
@@ -200,6 +228,11 @@ async function processQueue() {
       await new Promise(r => setTimeout(r, 1000));
     }
   }
+  stats.elapsedMs = Date.now() - stats.start;
+  stats.wordsPerSecond = stats.words / (stats.elapsedMs / 1000 || 1);
+  stats.wordsPerRequest = stats.words / (stats.requests || 1);
+  stats.tokensPerRequest = stats.tokens / (stats.requests || 1);
+  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary: stats } });
   processing = false;
   clearStatus();
 }
@@ -294,6 +327,10 @@ function observe(root = document.body) {
 
 async function start() {
   currentConfig = await window.qwenLoadConfig();
+  progress = { total: 0, done: 0 };
+  if (window.qwenSetTokenBudget) {
+    window.qwenSetTokenBudget(currentConfig.tokenBudget || 0);
+  }
   if (!currentConfig.apiKey) {
     console.warn('QTWARN: API key not configured.');
     return;
