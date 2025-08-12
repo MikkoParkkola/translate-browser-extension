@@ -276,8 +276,8 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
 
 async function qwenTranslateBatch({
   texts = [],
-  tokenBudget = 1000,
-  maxBatchSize = 40,
+  tokenBudget = 7000,
+  maxBatchSize = 200,
   ...opts
 }) {
   const mapping = [];

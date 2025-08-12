@@ -34,6 +34,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 let throttleReady;
 let activeTranslations = 0;
 let iconFrame = 0;
+let translationStatus = { active: false };
 
 async function updateIcon() {
   iconFrame++;
@@ -192,6 +193,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const stats = self.qwenThrottle.getUsage();
       sendResponse(stats);
     });
+    return true;
+  }
+  if (msg.action === 'translation-status') {
+    translationStatus = msg.status || { active: false };
+    sendResponse({ ok: true });
+    return true;
+  }
+  if (msg.action === 'get-status') {
+    sendResponse(translationStatus);
     return true;
   }
 });

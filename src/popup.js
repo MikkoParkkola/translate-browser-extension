@@ -100,6 +100,30 @@ chrome.runtime.onMessage.addListener(msg => {
     status.textContent = '';
     setWorking(false);
   }
+  if (msg.action === 'translation-status' && msg.status) {
+    if (msg.status.active) {
+      const { phase, page, total } = msg.status;
+      const parts = [];
+      if (phase) parts.push(phase.charAt(0).toUpperCase() + phase.slice(1));
+      if (page && total) parts.push(`${page}/${total}`);
+      status.textContent = parts.join(' ');
+      setWorking(true);
+    } else {
+      status.textContent = '';
+      setWorking(false);
+    }
+  }
+});
+
+chrome.runtime.sendMessage({ action: 'get-status' }, s => {
+  if (s && s.active) {
+    const { phase, page, total } = s;
+    const parts = [];
+    if (phase) parts.push(phase.charAt(0).toUpperCase() + phase.slice(1));
+    if (page && total) parts.push(`${page}/${total}`);
+    status.textContent = parts.join(' ');
+    setWorking(true);
+  }
 });
 
 window.qwenLoadConfig().then(cfg => {

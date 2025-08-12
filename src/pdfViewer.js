@@ -173,7 +173,14 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
           sel.value = choice;
         });
         sel.addEventListener('change', () => {
-          chrome.storage.sync.set({ wasmEngine: sel.value });
+          chrome.storage.sync.set({ wasmEngine: sel.value }, async () => {
+            if (document.body.classList.contains('translated')) {
+              try {
+                const key = await generateTranslatedSessionKey(origFile);
+                gotoTranslated(origFile, key);
+              } catch (e) { console.error('Engine switch failed', e); }
+            }
+          });
         });
       }
       const statEl = document.getElementById('engineStatus');
@@ -236,8 +243,10 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     if (!cfgNow.apiKey) { alert('Configure API key first.'); throw new Error('API key missing'); }
     if (overlay) overlay.style.display = 'flex'; setProgress('Preparing…', 2);
     try {
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'prepare' } });
       const blob = await regeneratePdfFromUrl(originalUrl, cfgNow, (p)=>{
         if (!p) return;
+        chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p } });
         let pct = 0;
         if (p.phase === 'collect') { pct = Math.round((p.page / p.total) * 20); setProgress(`Collecting text… (${p.page}/${p.total})`, pct); }
         if (p.phase === 'translate') { pct = 20 + Math.round((p.page / p.total) * 40); setProgress(`Translating… (${p.page}/${p.total})`, pct); }
@@ -246,8 +255,10 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
       console.log('DEBUG: translation finished, blob size', blob.size);
       const key = await storePdfInSession(blob);
       console.log('DEBUG: stored translated PDF key', key);
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false } });
       return key;
     } finally {
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false } });
       if (overlay) setTimeout(()=>{ overlay.style.display = 'none'; const b = document.getElementById('regenBar'); if (b) b.style.width = '0%'; }, 800);
     }
   }
