@@ -33,4 +33,8 @@ test.describe('Engine smoke', () => {
   test('Overlay engine smoke', async ({ page }) => {
     await runSmoke(page, 'overlay');
   });
+
+  test('PDFium engine smoke', async ({ page }) => {
+    await runSmoke(page, 'pdfium');
+  });
 });

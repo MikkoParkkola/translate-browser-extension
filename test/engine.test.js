@@ -59,6 +59,6 @@ describe('chooseEngine', () => {
     }
     expect(mupdfOk).toBe(true);
     expect(pdfiumOk).toBe(true);
-    expect(choice).toBe('mupdf');
+    expect(choice).toBe('pdfium');
   });
 });

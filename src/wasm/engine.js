@@ -79,8 +79,8 @@ export async function chooseEngine(base, requested) {
     if (wants === 'overlay') return 'overlay';
     if (wants === 'simple') return 'simple';
     // auto: prefer MuPDF if present; else PDFium; else Overlay; else Simple
-    if (mupdfOk) return 'mupdf';
     if (pdfiumOk) return 'pdfium';
+    if (mupdfOk) return 'mupdf';
     if (overlayOk) return 'overlay';
     return 'simple';
   }
