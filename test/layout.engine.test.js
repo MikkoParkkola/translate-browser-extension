@@ -60,18 +60,17 @@ describe('groupTextItems', () => {
     expect(lines[0].text).toBe('foo bar');
   });
 
-  it('clears original text using destination-out', () => {
-    const ops = [];
+  it('whites out original text', () => {
     const ctx2 = {
-      globalCompositeOperation: 'source-over',
-      save: () => ops.push('save'),
-      restore: () => ops.push('restore'),
+      calls: [],
+      save: () => ctx2.calls.push('save'),
+      restore: () => ctx2.calls.push('restore'),
       fillStyle: '',
-      fillRect: () => ops.push(ctx2.globalCompositeOperation),
+      fillRect: () => ctx2.calls.push(ctx2.fillStyle),
     };
     const { groupTextItems } = loadLayout();
     const textContent = { items: [ { str: 'foo', transform: [1,0,0,1,10,90], width:10 } ] };
     groupTextItems(textContent, viewport, ctx2);
-    expect(ops).toContain('destination-out');
+    expect(ctx2.calls).toContain('#fff');
   });
 });

@@ -24,9 +24,8 @@ export function groupTextItems(textContent, viewport, ctx) {
     const width = (it.width || 0) * viewport.scale;
     if (ctx) {
       ctx.save();
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.fillStyle = '#000';
-      ctx.fillRect(x, y - size, width, size * 1.2);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(x - 1, y - size * 1.1, width + 2, size * 1.4);
       ctx.restore();
     }
     let line = lines.find(l => Math.abs(l.y - y) < size * 0.5);
@@ -78,6 +77,8 @@ export async function init({ baseURL }) {
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       await page.render({ canvasContext: ctx, viewport }).promise;
       const textContent = await page.getTextContent();
       const rawItems = groupTextItems(textContent, viewport, ctx);
