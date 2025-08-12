@@ -1,5 +1,5 @@
 import { regeneratePdfFromUrl } from './wasm/pipeline.js';
-import { chooseEngine } from './wasm/engine.js';
+import { chooseEngine, ensureWasmAssets } from './wasm/engine.js';
 import { safeFetchPdf } from './wasm/pdfFetch.js';
 import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
 
@@ -59,6 +59,28 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   const zoomOutBtn = document.getElementById('zoomOut');
   const zoomResetBtn = document.getElementById('zoomReset');
   let currentZoom = 1;
+
+  const wasmOverlay = document.getElementById('wasmOverlay');
+  const wasmRetry = document.getElementById('wasmRetry');
+  const wasmError = document.getElementById('wasmError');
+  async function prepareWasm() {
+    try {
+      await ensureWasmAssets();
+    } catch (e) {
+      if (wasmError) wasmError.textContent = e.message || String(e);
+      if (wasmOverlay) wasmOverlay.style.display = 'flex';
+    }
+  }
+  if (wasmRetry) wasmRetry.addEventListener('click', async () => {
+    if (wasmError) wasmError.textContent = '';
+    try {
+      await ensureWasmAssets();
+      if (wasmOverlay) wasmOverlay.style.display = 'none';
+    } catch (e) {
+      if (wasmError) wasmError.textContent = e.message || String(e);
+    }
+  });
+  await prepareWasm();
 
   function applyZoom() {
     document.querySelectorAll('.page').forEach(p => {
@@ -207,6 +229,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     const text = document.getElementById('regenText');
     const bar = document.getElementById('regenBar');
     const setProgress = (msg, p) => { if (text) text.textContent = msg; if (bar && typeof p === 'number') bar.style.width = `${Math.max(0,Math.min(100,p))}%`; };
+    await prepareWasm();
     let cfgNow = await window.qwenLoadConfig();
     const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine','wasmStrict'], r));
     cfgNow = { ...cfgNow, ...flags, useWasmEngine: true };
