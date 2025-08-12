@@ -34,6 +34,12 @@ const setupModelInput = document.getElementById('setup-model');
 
 const viewContainer = document.getElementById('viewContainer');
 
+const modelTokenLimits = (window.qwenModelTokenLimits) || { 'qwen-mt-turbo': 31980, 'qwen-mt-plus': 23797 };
+
+function getDefaultTokenLimit(model) {
+  return modelTokenLimits[model] || modelTokenLimits['qwen-mt-turbo'];
+}
+
 let saveTimeout;
 
 function saveConfig() {
@@ -43,14 +49,15 @@ function saveConfig() {
       status.textContent = 'Config library not loaded.';
       return;
     }
+    const model = modelInput.value.trim() || 'qwen-mt-turbo';
     const cfg = {
       apiKey: apiKeyInput.value.trim(),
       apiEndpoint: endpointInput.value.trim(),
-      model: modelInput.value.trim(),
+      model,
       sourceLanguage: sourceSelect.value,
       targetLanguage: targetSelect.value,
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
-      tokenLimit: parseInt(tokenLimitInput.value, 10) || 100000,
+      tokenLimit: parseInt(tokenLimitInput.value, 10) || getDefaultTokenLimit(model),
       tokenBudget: parseInt(tokenBudgetInput.value, 10) || 0,
       smartThrottle: smartThrottleInput.checked,
       tokensPerReq: parseInt(tokensPerReqInput.value, 10) || 0,
@@ -61,6 +68,10 @@ function saveConfig() {
     window.qwenSaveConfig(cfg).then(() => {
       status.textContent = 'Settings saved.';
       updateView(cfg); // Re-check the view after saving
+      if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({ action: 'config-changed' }, () => {});
+      }
+      refreshUsage();
       setTimeout(() => { if (status.textContent === 'Settings saved.') status.textContent = ''; }, 2000);
     });
   }, 500); // Debounce saves by 500ms
@@ -229,17 +240,19 @@ window.qwenLoadConfig().then(cfg => {
   const allInputs = [
     { main: apiKeyInput, setup: setupApiKeyInput, event: 'input' },
     { main: endpointInput, setup: setupApiEndpointInput, event: 'input' },
-    { main: modelInput, setup: setupModelInput, event: 'input' },
+    { main: modelInput, setup: setupModelInput, event: 'change' },
   ];
 
   allInputs.forEach(({main, setup, event}) => {
     main.addEventListener(event, () => {
       syncInputs(main, setup);
       saveConfig();
+      if (event === 'change') refreshUsage();
     });
     setup.addEventListener(event, () => {
       syncInputs(setup, main);
       saveConfig();
+      if (event === 'change') refreshUsage();
     });
   });
 

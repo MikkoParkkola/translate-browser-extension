@@ -6,7 +6,8 @@ const {
   _getTokenBudget,
   _setTokenBudget,
 } = translator;
-const { configure } = require('../src/throttle');
+const { configure, reset } = require('../src/throttle');
+const { modelTokenLimits } = require('../src/config');
 const fetchMock = require('jest-fetch-mock');
 
 beforeAll(() => { fetchMock.enableMocks(); });
@@ -14,7 +15,8 @@ beforeAll(() => { fetchMock.enableMocks(); });
 beforeEach(() => {
   fetch.resetMocks();
   qwenClearCache();
-  configure({ requestLimit: 60, tokenLimit: 100000, windowMs: 60000 });
+  reset();
+  configure({ requestLimit: 60, tokenLimit: modelTokenLimits['qwen-mt-turbo'], windowMs: 60000 });
   _setTokenBudget(0);
 });
 
@@ -63,7 +65,7 @@ test('translate caching', async () => {
 
 test('rate limiting queues requests', async () => {
   jest.useFakeTimers();
-  configure({ requestLimit: 2, tokenLimit: 100000, windowMs: 1000 });
+  configure({ requestLimit: 2, tokenLimit: modelTokenLimits['qwen-mt-turbo'] * 100, windowMs: 1000 });
   fetch
     .mockResponseOnce(JSON.stringify({output:{text:'a'}}))
     .mockResponseOnce(JSON.stringify({output:{text:'b'}}))
@@ -73,6 +75,10 @@ test('rate limiting queues requests', async () => {
   const p2 = translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'2', source:'es', target:'en'});
   const p3 = translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'3', source:'es', target:'en'});
 
+  jest.advanceTimersByTime(0);
+  await Promise.resolve();
+  expect(fetch).toHaveBeenCalledTimes(1);
+  jest.advanceTimersByTime(500);
   await Promise.resolve();
   expect(fetch).toHaveBeenCalledTimes(1);
   jest.advanceTimersByTime(500);
@@ -82,6 +88,7 @@ test('rate limiting queues requests', async () => {
   const res3 = await p3;
   expect(res3.text).toBe('c');
   expect(fetch).toHaveBeenCalledTimes(3);
+  jest.runOnlyPendingTimers();
   jest.useRealTimers();
 });
 

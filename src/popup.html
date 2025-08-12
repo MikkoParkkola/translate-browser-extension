@@ -98,13 +98,16 @@
       <p>Please configure the essential settings to start using the extension.</p>
       <div class="form-group">
         <label for="setup-apiKey">API Key</label>
-        <input type="text" id="setup-apiKey" placeholder="Enter your API key">
+        <input type="text" id="setup-apiKey" placeholder="Enter your API key" title="DashScope API key (required)">
 
         <label for="setup-apiEndpoint">API Endpoint</label>
-        <input type="text" id="setup-apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1">
+        <input type="text" id="setup-apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1" title="DashScope API endpoint">
 
         <label for="setup-model">Model</label>
-        <input type="text" id="setup-model" placeholder="e.g., qwen-mt-turbo">
+        <select id="setup-model" title="Select translation model. Turbo is cheaper; Plus is higher quality.">
+          <option value="qwen-mt-turbo">qwen-mt-turbo</option>
+          <option value="qwen-mt-plus">qwen-mt-plus</option>
+        </select>
       </div>
       <p>Your settings are saved automatically.</p>
     </div>
@@ -153,27 +156,43 @@
         <summary>Advanced Settings</summary>
         <div class="form-group" style="padding-top: 0.75rem">
           <label for="apiKey">API Key</label>
-          <input type="text" id="apiKey" placeholder="Enter your API key">
+          <input type="text" id="apiKey" placeholder="Enter your API key" title="DashScope API key (required)">
 
           <label for="apiEndpoint">API Endpoint</label>
-          <input type="text" id="apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1">
+          <input type="text" id="apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1" title="DashScope API endpoint">
 
           <label for="model">Model</label>
-          <input type="text" id="model">
+          <select id="model" title="Translation model. Turbo is default; Plus offers higher quality at higher cost.">
+            <option value="qwen-mt-turbo">qwen-mt-turbo</option>
+            <option value="qwen-mt-plus">qwen-mt-plus</option>
+          </select>
 
           <div class="grid-2">
             <div>
               <label for="requestLimit">Requests/min</label>
-              <input type="number" id="requestLimit">
+              <input type="number" id="requestLimit" title="Maximum requests per minute. Leave empty to use automatic limit.">
             </div>
             <div>
               <label for="tokenLimit">Tokens/min</label>
-              <input type="number" id="tokenLimit">
+              <input type="number" id="tokenLimit" title="Maximum combined input+output tokens per minute. Leave empty for automatic limit.">
             </div>
           </div>
 
           <label for="tokenBudget">Token budget</label>
-          <input type="number" id="tokenBudget" placeholder="auto">
+          <input type="number" id="tokenBudget" placeholder="auto" title="Optional hard cap for total tokens used in this session.">
+
+          <label><input type="checkbox" id="smartThrottle" checked title="Enable intelligent adaptive throttling"> Intelligent throttling</label>
+
+          <div class="grid-2">
+            <div>
+              <label for="tokensPerReq" title="Target tokens per request when intelligent throttling is off">Tokens/request</label>
+              <input type="number" id="tokensPerReq" disabled title="Desired tokens per request when manual throttling is enabled">
+            </div>
+            <div>
+              <label for="retryDelay" title="Base retry delay in seconds when a rate limit is hit">Retry delay (s)</label>
+              <input type="number" id="retryDelay" disabled title="Seconds to wait before first retry after a rate limit error">
+            </div>
+          </div>
 
           <label><input type="checkbox" id="smartThrottle" checked title="Enable intelligent adaptive throttling"> Intelligent throttling</label>
 

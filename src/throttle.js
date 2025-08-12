@@ -4,7 +4,7 @@
   const queue = []
   let config = {
     requestLimit: 60,
-    tokenLimit: 100000,
+    tokenLimit: 31980,
     windowMs: 60000,
   }
   // sliding window trackers for quota enforcement (all requests)
@@ -29,6 +29,22 @@ function approxTokens(text) {
 
 function throttleConfigure(opts = {}) {
   Object.assign(config, opts);
+  lastActivity = 0;
+}
+
+function reset() {
+  queue.length = 0;
+  allRequestTimes.length = 0;
+  allTokenTimes.length = 0;
+  requestTimes.length = 0;
+  tokenTimes.length = 0;
+  failedRequestTimes.length = 0;
+  failedTokenTimes.length = 0;
+  totalRequests = 0;
+  totalTokens = 0;
+  failedTotalRequests = 0;
+  failedTotalTokens = 0;
+  processing = false;
   lastActivity = 0;
 }
 
@@ -169,7 +185,7 @@ function getUsage() {
 }
 
   if (typeof module !== 'undefined') {
-    module.exports = { runWithRateLimit, runWithRetry, configure: throttleConfigure, approxTokens, getUsage }
+    module.exports = { runWithRateLimit, runWithRetry, configure: throttleConfigure, approxTokens, getUsage, reset }
   }
 
   if (typeof window !== 'undefined') {
@@ -179,6 +195,7 @@ function getUsage() {
       configure: throttleConfigure,
       approxTokens,
       getUsage,
+      reset,
     }
   } else if (typeof self !== 'undefined') {
     root.qwenThrottle = {
@@ -187,6 +204,7 @@ function getUsage() {
       configure: throttleConfigure,
       approxTokens,
       getUsage,
+      reset,
     }
   }
 })(typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : globalThis)
