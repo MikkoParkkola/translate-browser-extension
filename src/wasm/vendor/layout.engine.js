@@ -24,8 +24,15 @@ export function groupTextItems(textContent, viewport, ctx) {
     const width = (it.width || 0) * viewport.scale;
     if (ctx) {
       ctx.save();
+      const rectX = x - 1;
+      const rectY = y - size * 1.1;
+      const rectW = width + 2;
+      const rectH = size * 1.4;
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillRect(rectX, rectY, rectW, rectH);
+      ctx.globalCompositeOperation = 'destination-over';
       ctx.fillStyle = '#fff';
-      ctx.fillRect(x - 1, y - size * 1.1, width + 2, size * 1.4);
+      ctx.fillRect(rectX, rectY, rectW, rectH);
       ctx.restore();
     }
     let line = lines.find(l => Math.abs(l.y - y) < size * 0.5);

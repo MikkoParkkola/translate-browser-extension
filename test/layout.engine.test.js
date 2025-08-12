@@ -66,11 +66,13 @@ describe('groupTextItems', () => {
       save: () => ctx2.calls.push('save'),
       restore: () => ctx2.calls.push('restore'),
       fillStyle: '',
-      fillRect: () => ctx2.calls.push(ctx2.fillStyle),
+      globalCompositeOperation: '',
+      fillRect: () => ctx2.calls.push(`fill:${ctx2.fillStyle}:${ctx2.globalCompositeOperation}`),
     };
     const { groupTextItems } = loadLayout();
     const textContent = { items: [ { str: 'foo', transform: [1,0,0,1,10,90], width:10 } ] };
     groupTextItems(textContent, viewport, ctx2);
-    expect(ctx2.calls).toContain('#fff');
+    expect(ctx2.calls).toContain('fill::destination-out');
+    expect(ctx2.calls).toContain('fill:#fff:destination-over');
   });
 });
