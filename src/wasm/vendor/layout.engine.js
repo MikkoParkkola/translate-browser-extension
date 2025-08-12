@@ -1,3 +1,5 @@
+import { resolveAssetPath } from '../engine.js';
+
 export async function init({ baseURL }) {
   async function rewrite(buffer, cfg, onProgress) {
     if (typeof pdfjsLib === 'undefined') throw new Error('pdf.js not loaded');
@@ -54,7 +56,7 @@ export async function init({ baseURL }) {
       try {
         await new Promise((resolve, reject) => {
           const s = document.createElement('script');
-          s.src = baseURL + 'pdf-lib.js';
+          s.src = resolveAssetPath('pdf-lib.js');
           s.onload = resolve;
           s.onerror = reject;
           document.head.appendChild(s);
