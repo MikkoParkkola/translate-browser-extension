@@ -24,6 +24,20 @@ test('adds bearer prefix automatically', async () => {
   expect(headers.Authorization).toBe('Bearer abc123');
 });
 
+test('uses existing bearer prefix after trimming', async () => {
+  fetch.mockResponseOnce(JSON.stringify({output:{text:'ok'}}));
+  await translate({endpoint:'https://e/', apiKey:'  Bearer xyz  ', model:'m', text:'hi', source:'en', target:'es'});
+  const headers = fetch.mock.calls[0][1].headers;
+  expect(headers.Authorization).toBe('Bearer xyz');
+});
+
+test('omits authorization header when api key missing', async () => {
+  fetch.mockResponseOnce(JSON.stringify({output:{text:'hi'}}));
+  await translate({endpoint:'https://e/', apiKey:'', model:'m', text:'hi', source:'en', target:'es'});
+  const headers = fetch.mock.calls[0][1].headers;
+  expect(headers.Authorization).toBeUndefined();
+});
+
 test('translate error', async () => {
   const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
   fetch.mockResponseOnce(JSON.stringify({message:'bad'}), {status:400});
