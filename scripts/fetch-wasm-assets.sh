@@ -19,7 +19,6 @@ curl -L -o "$VENDOR_DIR/mupdf.engine.js" https://unpkg.com/mupdf@1.26.4/dist/mup
 echo "Downloading PDFium..."
 curl -L -o "$VENDOR_DIR/pdfium.wasm" https://unpkg.com/pdfium-wasm@0.0.2/dist/pdfium.wasm
 curl -L -o "$VENDOR_DIR/pdfium.js" https://unpkg.com/pdfium-wasm@0.0.2/dist/pdfium.js
-curl -L -o "$VENDOR_DIR/pdfium.engine.js" https://raw.githubusercontent.com/alibaba/Qwen-translator-extension/main/src/wasm/vendor/pdfium.engine.js
 
 # 3) HarfBuzz
 echo "Downloading HarfBuzz..."
@@ -28,14 +27,12 @@ curl -L -o "$VENDOR_DIR/hb.js" https://unpkg.com/harfbuzzjs@0.4.8/hb.js
 
 # 4) ICU4X segmenter
 echo "Downloading ICU4X segmenter..."
-curl -L -o "$VENDOR_DIR/icu4x_segmenter.wasm" https://raw.githubusercontent.com/alibaba/Qwen-translator-extension/main/src/wasm/vendor/icu4x_segmenter.wasm
-curl -L -o "$VENDOR_DIR/icu4x_segmenter.js" https://raw.githubusercontent.com/alibaba/Qwen-translator-extension/main/src/wasm/vendor/icu4x_segmenter.js
+# Prebuilt ICU4X segmenter shipped with repository; no download needed
 
 # 5) pdf-lib and wrappers
 echo "Downloading pdf-lib and wrappers..."
 curl -L -o "$VENDOR_DIR/pdf-lib.js" https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js
-curl -L -o "$VENDOR_DIR/overlay.engine.js" https://raw.githubusercontent.com/alibaba/Qwen-translator-extension/main/src/wasm/vendor/overlay.engine.js
-curl -L -o "$VENDOR_DIR/simple.engine.js" https://raw.githubusercontent.com/alibaba/Qwen-translator-extension/main/src/wasm/vendor/simple.engine.js
+# Overlay and simple engine wrappers are included in the repository
 
 # 6) Noto Fonts
 echo "Downloading Noto Fonts..."

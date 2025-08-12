@@ -1,5 +1,5 @@
 import { regeneratePdfFromUrl } from './wasm/pipeline.js';
-import { chooseEngine, WASM_ASSETS } from './wasm/engine.js';
+import { chooseEngine } from './wasm/engine.js';
 import { safeFetchPdf } from './wasm/pdfFetch.js';
 import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
 
@@ -161,20 +161,6 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
           statEl.style.color = '#d32f2f';
         }
       }
-      const dlBtn = document.getElementById('downloadEngines');
-      if (dlBtn) {
-        if (!hbOk || !icuOk || !mupdfOk || !pdfiumOk || !overlayOk) {
-          dlBtn.style.display = '';
-          dlBtn.addEventListener('click', () => {
-            WASM_ASSETS.forEach(a => {
-              chrome.downloads.download({ url: a.url, filename: `wasm/vendor/${a.path}` });
-            });
-            alert('After download, copy the "wasm" folder into the extension directory (merge with existing files) and reload.');
-          });
-        } else {
-          dlBtn.style.display = 'none';
-        }
-      }
     } catch (e) {
       const statEl = document.getElementById('engineStatus');
       if (statEl) {
@@ -287,13 +273,10 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
         const buf = await readPdfFromSession(key);
         const blob = new Blob([buf], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
-        if (chrome && chrome.downloads && chrome.downloads.download) {
-          const ts = new Date();
-          const fname = `translated-${ts.getFullYear()}${String(ts.getMonth()+1).padStart(2,'0')}${String(ts.getDate()).padStart(2,'0')}-${String(ts.getHours()).padStart(2,'0')}${String(ts.getMinutes()).padStart(2,'0')}${String(ts.getSeconds()).padStart(2,'0')}.pdf`;
-          chrome.downloads.download({ url, filename: fname, saveAs: false });
-        } else {
-          const a = document.createElement('a'); a.href = url; a.download = 'translated.pdf'; a.click();
-        }
+        const a = document.createElement('a');
+        const ts = new Date();
+        const fname = `translated-${ts.getFullYear()}${String(ts.getMonth()+1).padStart(2,'0')}${String(ts.getDate()).padStart(2,'0')}-${String(ts.getHours()).padStart(2,'0')}${String(ts.getMinutes()).padStart(2,'0')}${String(ts.getSeconds()).padStart(2,'0')}.pdf`;
+        a.href = url; a.download = fname; a.click();
       } catch (e) { console.error('Save translated failed', e); }
     });
   }

@@ -6,7 +6,8 @@
   "scripts": {
     "test": "jest",
     "build:safari": "bash scripts/convert-safari.sh",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "postinstall": "bash scripts/fetch-wasm-assets.sh"
   },
   "keywords": [],
   "author": "",
