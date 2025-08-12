@@ -33,7 +33,6 @@ describe('groupTextItems', () => {
     global.pdfjsLib = { Util: { transform: (_v, t) => t } };
   });
   const viewport = { transform: [1, 0, 0, 1, 0, 0], width: 100, height: 100, scale: 1 };
-  const ctx = { fillStyle: '', fillRect: () => {}, save: () => {}, restore: () => {} };
   it('splits items into separate lines when y differs enough', () => {
     const { groupTextItems } = loadLayout();
     const textContent = {
@@ -42,7 +41,7 @@ describe('groupTextItems', () => {
         { str: 'bar', transform: [1, 0, 0, 1, 10, 70], width: 10 },
       ],
     };
-    const lines = groupTextItems(textContent, viewport, ctx);
+    const lines = groupTextItems(textContent, viewport);
     expect(lines).toHaveLength(2);
     expect(lines[0].text).toBe('bar');
     expect(lines[1].text).toBe('foo');
@@ -55,24 +54,8 @@ describe('groupTextItems', () => {
         { str: 'bar', transform: [1, 0, 0, 1, 50, 89.6], width: 10 },
       ],
     };
-    const lines = groupTextItems(textContent, viewport, ctx);
+    const lines = groupTextItems(textContent, viewport);
     expect(lines).toHaveLength(1);
     expect(lines[0].text).toBe('foo bar');
-  });
-
-  it('whites out original text', () => {
-    const ctx2 = {
-      calls: [],
-      save: () => ctx2.calls.push('save'),
-      restore: () => ctx2.calls.push('restore'),
-      fillStyle: '',
-      globalCompositeOperation: '',
-      fillRect: () => ctx2.calls.push(`fill:${ctx2.fillStyle}:${ctx2.globalCompositeOperation}`),
-    };
-    const { groupTextItems } = loadLayout();
-    const textContent = { items: [ { str: 'foo', transform: [1,0,0,1,10,90], width:10 } ] };
-    groupTextItems(textContent, viewport, ctx2);
-    expect(ctx2.calls).toContain('fill::destination-out');
-    expect(ctx2.calls).toContain('fill:#fff:destination-over');
   });
 });

@@ -12,7 +12,7 @@ export function dedupeItems(items) {
   return out;
 }
 
-export function groupTextItems(textContent, viewport, ctx) {
+export function groupTextItems(textContent, viewport) {
   const lines = [];
   for (const it of textContent.items) {
     const raw = (it.str || '').trim();
@@ -22,19 +22,6 @@ export function groupTextItems(textContent, viewport, ctx) {
     const x = m[4];
     const y = viewport.height - m[5];
     const width = (it.width || 0) * viewport.scale;
-    if (ctx) {
-      ctx.save();
-      const rectX = x - 1;
-      const rectY = y - size * 1.1;
-      const rectW = width + 2;
-      const rectH = size * 1.4;
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.fillRect(rectX, rectY, rectW, rectH);
-      ctx.globalCompositeOperation = 'destination-over';
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(rectX, rectY, rectW, rectH);
-      ctx.restore();
-    }
     let line = lines.find(l => Math.abs(l.y - y) < size * 0.5);
     if (!line) {
       line = { y, x, size, parts: [] };
@@ -88,11 +75,9 @@ export async function init({ baseURL }) {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       await page.render({ canvasContext: ctx, viewport }).promise;
       const textContent = await page.getTextContent();
-      const rawItems = groupTextItems(textContent, viewport, ctx);
+      const rawItems = groupTextItems(textContent, viewport);
       const items = dedupeItems(rawItems);
-      const imgUrl = canvas.toDataURL('image/png');
-      const imgBytes = await (await fetch(imgUrl)).arrayBuffer();
-      pages.push({ width: viewport.width, height: viewport.height, items, image: imgBytes });
+      pages.push({ width: viewport.width, height: viewport.height, items });
     }
     const texts = [];
     pages.forEach(p => p.items.forEach(i => {
