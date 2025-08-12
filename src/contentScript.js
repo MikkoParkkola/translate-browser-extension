@@ -164,6 +164,13 @@ async function translateBatch(elements, stats) {
       };
       opts._stats = stats;
     }
+    opts.onRetry = info => {
+      setStatus(`Rate limit reached. Retrying in ${(info.delayMs / 1000).toFixed(1)}s...`);
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'retry', delayMs: info.delayMs, progress } });
+    };
+    if (currentConfig.retryDelay) {
+      opts.retryDelay = currentConfig.retryDelay * 1000;
+    }
     res = await window.qwenTranslateBatch(opts);
   } finally {
     clearTimeout(timeout);
@@ -190,6 +197,7 @@ async function translateBatch(elements, stats) {
   const elapsedMs = stats ? Date.now() - stats.start : 0;
   const avg = progress.done ? elapsedMs / progress.done : 0;
   const etaMs = avg * (progress.total - progress.done);
+  const usage = window.qwenThrottle ? window.qwenThrottle.getUsage() : null;
   chrome.runtime.sendMessage({
     action: 'translation-status',
     status: {
@@ -201,6 +209,7 @@ async function translateBatch(elements, stats) {
       elapsedMs,
       etaMs,
       progress,
+      usage,
     },
   });
 }
@@ -213,11 +222,11 @@ function enqueueBatch(batch) {
 
 async function processQueue() {
   processing = true;
-  setStatus('Translating...');
+  setStatus('Translating paragraph 1 of ' + progress.total + '...');
   const stats = { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
   chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'translate', progress } });
   while (batchQueue.length) {
-    setStatus(`Translating (${batchQueue.length} left)...`);
+    setStatus(`Translating paragraph ${progress.done + 1} of ${progress.total}...`);
     const batch = batchQueue.shift();
     try {
       await translateBatch(batch, stats);
@@ -232,6 +241,8 @@ async function processQueue() {
   stats.wordsPerSecond = stats.words / (stats.elapsedMs / 1000 || 1);
   stats.wordsPerRequest = stats.words / (stats.requests || 1);
   stats.tokensPerRequest = stats.tokens / (stats.requests || 1);
+  setStatus('Finalizing page...');
+  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'finalize', progress } });
   chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary: stats } });
   processing = false;
   clearStatus();
@@ -329,7 +340,8 @@ async function start() {
   currentConfig = await window.qwenLoadConfig();
   progress = { total: 0, done: 0 };
   if (window.qwenSetTokenBudget) {
-    window.qwenSetTokenBudget(currentConfig.tokenBudget || 0);
+    const tb = currentConfig.tokensPerReq || currentConfig.tokenBudget || 0;
+    window.qwenSetTokenBudget(tb);
   }
   if (!currentConfig.apiKey) {
     console.warn('QTWARN: API key not configured.');

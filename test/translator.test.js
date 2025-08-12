@@ -74,8 +74,11 @@ test('rate limiting queues requests', async () => {
   const p3 = translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'3', source:'es', target:'en'});
 
   await Promise.resolve();
+  expect(fetch).toHaveBeenCalledTimes(1);
+  jest.advanceTimersByTime(500);
+  await Promise.resolve();
   expect(fetch).toHaveBeenCalledTimes(2);
-  jest.advanceTimersByTime(1000);
+  jest.advanceTimersByTime(500);
   const res3 = await p3;
   expect(res3.text).toBe('c');
   expect(fetch).toHaveBeenCalledTimes(3);
