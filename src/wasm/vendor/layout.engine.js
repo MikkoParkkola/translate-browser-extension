@@ -67,6 +67,13 @@ export async function init({ baseURL }) {
       if (onProgress) onProgress({ phase: 'collect', page: i, total });
       const page = await pdf.getPage(i);
       const viewport = page.getViewport({ scale: 1 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport }).promise;
       const textContent = await page.getTextContent();
       const rawItems = groupTextItems(textContent, viewport);
       const items = dedupeItems(rawItems);
@@ -125,7 +132,12 @@ export async function init({ baseURL }) {
       if (onProgress) onProgress({ phase: 'render', page: i + 1, total: pages.length });
       const p = pages[i];
       const page = doc.addPage([p.width, p.height]);
-      page.drawRectangle({ x: 0, y: 0, width: p.width, height: p.height, color: rgb(1, 1, 1) });
+      if (p.image) {
+        const img = await doc.embedPng(p.image);
+        page.drawImage(img, { x: 0, y: 0, width: p.width, height: p.height });
+      } else {
+        page.drawRectangle({ x: 0, y: 0, width: p.width, height: p.height, color: rgb(1, 1, 1) });
+      }
       for (const it of p.items) {
         let size = it.size || 12;
         const maxW = p.width - it.x - 10;
