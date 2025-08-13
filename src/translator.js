@@ -13,9 +13,9 @@ var _setCacheEntryTimestamp;
 var LZString;
 var attempts = 6;
 var runWithRateLimit;
+var runWithRetry;
 var approxTokens;
 var getUsage;
-var runWithRetry;
 
 if (typeof window === 'undefined') {
   if (typeof self !== 'undefined' && self.qwenTransport) {
@@ -62,6 +62,8 @@ if (typeof window === 'undefined') {
     ({ runWithRetry } = self.qwenRetry);
   } else if (typeof require !== 'undefined') {
     ({ runWithRetry } = require('./retry'));
+  } else {
+    runWithRetry = fn => fn();
   }
 }
 

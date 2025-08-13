@@ -44,7 +44,22 @@ const cacheSizeLabel = document.getElementById('cacheSize');
 const hitRateLabel = document.getElementById('hitRate');
 const cacheLimitInput = document.getElementById('cacheSizeLimit');
 const cacheTTLInput = document.getElementById('cacheTTL');
-const toggleCalendar = document.getElementById('toggleCalendar');
+const clearDomainBtn = document.getElementById('clearDomain');
+const clearPairBtn = document.getElementById('clearPair');
+const reqRemaining = document.getElementById('reqRemaining');
+const tokenRemaining = document.getElementById('tokenRemaining');
+const reqRemainingBar = document.getElementById('reqRemainingBar');
+const tokenRemainingBar = document.getElementById('tokenRemainingBar');
+const providerError = document.getElementById('providerError');
+
+if (sourceSelect && !sourceSelect.options.length) {
+  ['en', 'fr'].forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v;
+    sourceSelect.appendChild(opt.cloneNode(true));
+    if (targetSelect) targetSelect.appendChild(opt);
+  });
+}
 
 const applyProviderConfig =
   (window.qwenProviderConfig && window.qwenProviderConfig.applyProviderConfig) ||
