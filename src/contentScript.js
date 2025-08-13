@@ -173,6 +173,7 @@ async function translateBatch(elements, stats) {
       signal: controller.signal,
       debug: currentConfig.debug,
       force: forceTranslate,
+      domain: location.hostname,
     };
     if (currentConfig.dualMode) {
       opts.models = [
@@ -366,12 +367,6 @@ async function start(force = false) {
     const tb = currentConfig.tokensPerReq || currentConfig.tokenBudget || 0;
     window.qwenSetTokenBudget(tb);
   }
-  if (window.qwenSetCacheLimit) {
-    window.qwenSetCacheLimit(currentConfig.cacheMaxEntries || 1000);
-  }
-  if (window.qwenSetCacheTTL) {
-    window.qwenSetCacheTTL(currentConfig.cacheTTL || 30 * 24 * 60 * 60 * 1000);
-  }
   if (!currentConfig.apiKey) {
     console.warn('QTWARN: API key not configured.');
     return;
@@ -392,6 +387,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.action === 'clear-cache') {
     if (window.qwenClearCache) window.qwenClearCache();
+  }
+  if (msg.action === 'clear-cache-domain') {
+    if (window.qwenClearCacheDomain) window.qwenClearCacheDomain(msg.domain);
+  }
+  if (msg.action === 'clear-cache-pair') {
+    if (window.qwenClearCacheLangPair) window.qwenClearCacheLangPair(msg.source, msg.target);
   }
   if (msg.action === 'test-read') {
     sendResponse({ title: document.title });
@@ -418,6 +419,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         debug: cfg.debug,
         stream: false,
         signal: controller.signal,
+        domain: location.hostname,
       })
       .then(res => {
         clearTimeout(timer);
@@ -454,6 +456,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           source: cfg.sourceLanguage,
           target: cfg.targetLanguage,
           debug: cfg.debug,
+          domain: location.hostname,
           force: true,
         });
         const range = sel.getRangeAt(0);
