@@ -44,3 +44,40 @@ test('expired entry removed from storage when accessed', async () => {
   expect(stored.k1).toBeUndefined();
   _setCacheTTL(30 * 24 * 60 * 60 * 1000);
 });
+
+test('tracks hits and misses', async () => {
+  const {
+    cacheReady,
+    setCache,
+    getCache,
+    qwenGetCacheStats,
+    qwenResetCacheStats,
+  } = require('../src/cache');
+  await cacheReady;
+  qwenResetCacheStats();
+  setCache('k1', { text: 'one', domain: 'a.com' });
+  expect(getCache('k1').text).toBe('one');
+  expect(getCache('missing')).toBeUndefined();
+  const stats = qwenGetCacheStats();
+  expect(stats.hits).toBe(1);
+  expect(stats.misses).toBe(1);
+});
+
+test('clear cache by domain and language pair', async () => {
+  const {
+    cacheReady,
+    setCache,
+    getCache,
+    qwenClearCacheDomain,
+    qwenClearCacheLangPair,
+  } = require('../src/cache');
+  await cacheReady;
+  setCache('qwen:en:fr:hello', { text: 'bonjour', domain: 'example.com' });
+  setCache('qwen:en:fr:hi', { text: 'salut', domain: 'example.com' });
+  setCache('qwen:en:es:hola', { text: 'hola', domain: 'other.com' });
+  qwenClearCacheDomain('example.com');
+  expect(getCache('qwen:en:fr:hello')).toBeUndefined();
+  expect(getCache('qwen:en:es:hola')).toBeTruthy();
+  qwenClearCacheLangPair('en', 'es');
+  expect(getCache('qwen:en:es:hola')).toBeUndefined();
+});
