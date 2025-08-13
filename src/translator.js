@@ -67,12 +67,19 @@ if (typeof window === 'undefined') {
     ({ getProvider } = require('./providers'));
     require('./providers/qwen');
   }
+  if (typeof window !== 'undefined' && window.qwenThrottle) {
+    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = window.qwenThrottle);
+  } else if (typeof self !== 'undefined' && self.qwenThrottle) {
+    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = self.qwenThrottle);
+  } else if (typeof require !== 'undefined') {
+    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = require('./throttle'));
+  }
 }
 
-async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, force = false }) {
+async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, force = false }) {
   await cacheReady;
+  const modelList = Array.isArray(models) ? models : models ? [models] : [model];
   if (debug) {
-    const modelList = Array.isArray(models) ? models : models ? [models] : [model];
     console.log('QTDEBUG: qwenTranslate called with', {
       provider,
       endpoint,
@@ -176,10 +183,10 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text,
   }
 }
 
-async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay, force = false }, onData) {
+async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay, force = false }, onData) {
   await cacheReady;
+  const modelList = Array.isArray(models) ? models : models ? [models] : [model];
   if (debug) {
-    const modelList = Array.isArray(models) ? models : models ? [models] : [model];
     console.log('QTDEBUG: qwenTranslateStream called with', {
       endpoint,
       apiKeySet: Boolean(apiKey),
