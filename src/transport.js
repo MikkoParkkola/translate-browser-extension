@@ -12,7 +12,6 @@
       ({ getProvider } = self.qwenProviders);
     } else {
       ({ getProvider } = require('./providers'));
-      require('./providers/qwen');
     }
   } else {
     if (root.qwenRetry) {
@@ -28,7 +27,6 @@
       ({ getProvider } = self.qwenProviders);
     } else if (typeof require !== 'undefined') {
       ({ getProvider } = require('./providers'));
-      require('./providers/qwen');
     }
   }
   async function translate(opts) {

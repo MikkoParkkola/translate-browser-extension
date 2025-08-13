@@ -34,6 +34,16 @@ async function translate({ endpoint, apiKey, model, text, source, target, signal
   if (!t) throw new Error('Invalid API response');
   return { text: t };
 }
-const { registerProvider } = require('./index');
-registerProvider('deepl', { translate, label: 'DeepL', configFields: ['apiKey', 'apiEndpoint', 'model'] });
-module.exports = { translate };
+const provider = {
+  translate,
+  label: 'DeepL',
+  configFields: ['apiKey', 'apiEndpoint', 'model'],
+};
+
+if (typeof window !== 'undefined' && window.qwenProviders) {
+  window.qwenProviders.registerProvider('deepl', provider);
+} else if (typeof self !== 'undefined' && self.qwenProviders) {
+  self.qwenProviders.registerProvider('deepl', provider);
+}
+
+module.exports = provider;

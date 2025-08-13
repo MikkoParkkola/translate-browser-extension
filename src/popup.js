@@ -1,56 +1,56 @@
 // Main view elements
-const apiKeyInput = document.getElementById('apiKey');
-const endpointInput = document.getElementById('apiEndpoint');
-const modelInput = document.getElementById('model');
-const providerSelect = document.getElementById('provider');
-const sourceSelect = document.getElementById('source');
-const targetSelect = document.getElementById('target');
-const reqLimitInput = document.getElementById('requestLimit');
-const tokenLimitInput = document.getElementById('tokenLimit');
-const tokenBudgetInput = document.getElementById('tokenBudget');
-const autoCheckbox = document.getElementById('auto');
-const debugCheckbox = document.getElementById('debug');
-const smartThrottleInput = document.getElementById('smartThrottle');
-const tokensPerReqInput = document.getElementById('tokensPerReq');
-const retryDelayInput = document.getElementById('retryDelay');
-const status = document.getElementById('status');
-const versionDiv = document.getElementById('version');
-const reqCount = document.getElementById('reqCount');
-const tokenCount = document.getElementById('tokenCount');
-const reqBar = document.getElementById('reqBar');
-const tokenBar = document.getElementById('tokenBar');
-const reqRemaining = document.getElementById('reqRemaining');
-const tokenRemaining = document.getElementById('tokenRemaining');
-const providerError = document.getElementById('providerError');
-const reqRemainingBar = document.getElementById('reqRemainingBar');
-const tokenRemainingBar = document.getElementById('tokenRemainingBar');
-const turboReq = document.getElementById('turboReq');
-const plusReq = document.getElementById('plusReq');
-const turboReqBar = document.getElementById('turboReqBar');
-const plusReqBar = document.getElementById('plusReqBar');
-const totalReq = document.getElementById('totalReq');
-const totalTok = document.getElementById('totalTok');
-const queueLen = document.getElementById('queueLen');
-const failedReq = document.getElementById('failedReq');
-const failedTok = document.getElementById('failedTok');
-const translateBtn = document.getElementById('translate');
-const testBtn = document.getElementById('test');
-const progressBar = document.getElementById('progress');
-const clearCacheBtn = document.getElementById('clearCache');
-const clearDomainBtn = document.getElementById('clearDomain');
-const clearPairBtn = document.getElementById('clearPair');
-const forceCheckbox = document.getElementById('force');
-const cacheSizeLabel = document.getElementById('cacheSize');
-const hitRateLabel = document.getElementById('hitRate');
-const cacheLimitInput = document.getElementById('cacheSizeLimit');
-const cacheTTLInput = document.getElementById('cacheTTL');
-const clearDomainBtn = document.getElementById('clearDomain');
-const clearPairBtn = document.getElementById('clearPair');
-const reqRemaining = document.getElementById('reqRemaining');
-const tokenRemaining = document.getElementById('tokenRemaining');
-const reqRemainingBar = document.getElementById('reqRemainingBar');
-const tokenRemainingBar = document.getElementById('tokenRemainingBar');
-const providerError = document.getElementById('providerError');
+const dom =
+  (typeof window !== 'undefined' && window.qwenPopupDOM) ||
+  (typeof require !== 'undefined' ? require('./popup/dom') : {});
+
+const {
+  apiKeyInput,
+  endpointInput,
+  modelInput,
+  providerSelect,
+  sourceSelect,
+  targetSelect,
+  reqLimitInput,
+  tokenLimitInput,
+  tokenBudgetInput,
+  autoCheckbox,
+  debugCheckbox,
+  smartThrottleInput,
+  tokensPerReqInput,
+  retryDelayInput,
+  status,
+  versionDiv,
+  reqCount,
+  tokenCount,
+  reqBar,
+  tokenBar,
+  reqRemaining,
+  tokenRemaining,
+  providerError,
+  reqRemainingBar,
+  tokenRemainingBar,
+  turboReq,
+  plusReq,
+  turboReqBar,
+  plusReqBar,
+  totalReq,
+  totalTok,
+  queueLen,
+  failedReq,
+  failedTok,
+  translateBtn,
+  testBtn,
+  progressBar,
+  clearCacheBtn,
+  clearDomainBtn,
+  clearPairBtn,
+  forceCheckbox,
+  cacheSizeLabel,
+  hitRateLabel,
+  domainCountsDiv,
+  cacheLimitInput,
+  cacheTTLInput,
+} = dom;
 
 if (sourceSelect && !sourceSelect.options.length) {
   ['en', 'fr'].forEach(v => {
@@ -349,7 +349,7 @@ window.qwenLoadConfig().then(cfg => {
   });
   if (window.qwenSetCacheLimit) window.qwenSetCacheLimit(cfg.cacheMaxEntries || 1000);
   if (window.qwenSetCacheTTL) window.qwenSetCacheTTL(cfg.cacheTTL || 30 * 24 * 60 * 60 * 1000);
-  updateCacheInfo();
+  updateCacheSize();
 });
 
 if (versionDiv) versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
@@ -504,7 +504,7 @@ if (clearCacheBtn) {
       tabs.forEach(t => chrome.tabs.sendMessage(t.id, { action: 'clear-cache' }, () => {}));
     });
     status.textContent = 'Cache cleared.';
-    updateCacheInfo();
+    updateCacheSize();
     setTimeout(() => {
       if (status.textContent === 'Cache cleared.') status.textContent = '';
     }, 2000);

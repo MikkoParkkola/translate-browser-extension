@@ -28,6 +28,16 @@ async function translate({ endpoint, apiKey, model, text, source, target, signal
   if (!t) throw new Error('Invalid API response');
   return { text: t };
 }
-const { registerProvider } = require('./index');
-registerProvider('google', { translate, label: 'Google', configFields: ['apiKey', 'apiEndpoint', 'model'] });
-module.exports = { translate };
+const provider = {
+  translate,
+  label: 'Google',
+  configFields: ['apiKey', 'apiEndpoint', 'model'],
+};
+
+if (typeof window !== 'undefined' && window.qwenProviders) {
+  window.qwenProviders.registerProvider('google', provider);
+} else if (typeof self !== 'undefined' && self.qwenProviders) {
+  self.qwenProviders.registerProvider('google', provider);
+}
+
+module.exports = provider;
