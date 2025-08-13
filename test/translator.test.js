@@ -1,4 +1,4 @@
-global.attempts = 6;
+const transport = require('../src/transport.js');
 const translator = require('../src/translator.js');
 const batch = require('../src/batch.js');
 const {
@@ -8,6 +8,7 @@ const {
   qwenSetCacheLimit,
   qwenSetCacheTTL,
   _setCacheEntryTimestamp,
+  _setGetUsage,
 } = translator;
 const { qwenTranslateBatch, _getTokenBudget, _setTokenBudget } = batch;
 const { configure, reset, _setGetUsage } = require('../src/throttle');

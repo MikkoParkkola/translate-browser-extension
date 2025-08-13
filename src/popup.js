@@ -29,6 +29,17 @@ const totalTok = document.getElementById('totalTok');
 const queueLen = document.getElementById('queueLen');
 const failedReq = document.getElementById('failedReq');
 const failedTok = document.getElementById('failedTok');
+const costTurbo24h = document.getElementById('costTurbo24h');
+const costPlus24h = document.getElementById('costPlus24h');
+const costTotal24h = document.getElementById('costTotal24h');
+const costTurbo7d = document.getElementById('costTurbo7d');
+const costPlus7d = document.getElementById('costPlus7d');
+const costTotal7d = document.getElementById('costTotal7d');
+const costTurbo30d = document.getElementById('costTurbo30d');
+const costPlus30d = document.getElementById('costPlus30d');
+const costTotal30d = document.getElementById('costTotal30d');
+const costCalendar = document.getElementById('costCalendar');
+const toggleCalendar = document.getElementById('toggleCalendar');
 const translateBtn = document.getElementById('translate');
 const testBtn = document.getElementById('test');
 const progressBar = document.getElementById('progress');
@@ -37,6 +48,10 @@ const forceCheckbox = document.getElementById('force');
 const cacheSizeLabel = document.getElementById('cacheSize');
 const cacheLimitInput = document.getElementById('cacheSizeLimit');
 const cacheTTLInput = document.getElementById('cacheTTL');
+
+function formatCost(n) {
+  return '$' + n.toFixed(2);
+}
 
 const applyProviderConfig =
   (window.qwenProviderConfig && window.qwenProviderConfig.applyProviderConfig) ||
