@@ -5,31 +5,55 @@ if (typeof window === 'undefined' && typeof fetchFn === 'undefined' && typeof re
 function withSlash(url) {
   return url.endsWith('/') ? url : url + '/';
 }
-async function translate({ endpoint, apiKey, model, text, source, target, signal, debug }) {
-  const url = `${withSlash(endpoint)}language/translate/v2`;
-  if (debug) console.log('QTDEBUG: Google request', { model, text, source, target });
-  const body = { q: text, source, target, format: 'text' };
+async function translate({ endpoint = 'https://translation.googleapis.com/v3/', apiKey, projectId, location, model, text, source, target, signal }) {
+  const base = withSlash(endpoint);
+  const url = `${base}projects/${projectId}/locations/${location}:translateText`;
+  const body = {
+    contents: [text],
+    mimeType: 'text/plain',
+    sourceLanguageCode: source,
+    targetLanguageCode: target,
+  };
   if (model) body.model = model;
   const headers = { 'Content-Type': 'application/json' };
   const key = (apiKey || '').trim();
   if (key) headers.Authorization = /^Bearer\s/i.test(key) ? key : `Bearer ${key}`;
-  const resp = await fetchFn(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    signal,
-  });
+  const resp = await fetchFn(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ message: resp.statusText }));
     throw new Error(err.error?.message || err.message || `HTTP ${resp.status}`);
   }
   const data = await resp.json();
-  const t = data.data?.translations?.[0]?.translatedText;
+  const t = data.translations?.[0]?.translatedText;
   if (!t) throw new Error('Invalid API response');
-  return { text: t };
+  return { text: t, usage: { chars: data.totalCharacters } };
+}
+async function translateDocument({ endpoint = 'https://translation.googleapis.com/v3/', apiKey, projectId, location, file, mimeType, source, target, signal }) {
+  const base = withSlash(endpoint);
+  const url = `${base}projects/${projectId}/locations/${location}:translateDocument`;
+  const body = {
+    documentInputConfig: { content: Buffer.from(file).toString('base64'), mimeType },
+    sourceLanguageCode: source,
+    targetLanguageCode: target,
+  };
+  const headers = { 'Content-Type': 'application/json' };
+  const key = (apiKey || '').trim();
+  if (key) headers.Authorization = /^Bearer\s/i.test(key) ? key : `Bearer ${key}`;
+  const resp = await fetchFn(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ message: resp.statusText }));
+    throw new Error(err.error?.message || err.message || `HTTP ${resp.status}`);
+  }
+  const data = await resp.json();
+  const out = data.documentTranslation?.byteStreamOutputs?.[0];
+  return {
+    file: Buffer.from(out || '', 'base64'),
+    usage: { chars: data.totalCharacters },
+  };
 }
 const provider = {
   translate,
+  translateDocument,
   label: 'Google',
   configFields: ['apiKey', 'apiEndpoint', 'model'],
 };

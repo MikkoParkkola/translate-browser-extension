@@ -11,7 +11,7 @@
     ({ approxTokens, getUsage } = require('./throttle'));
     require('./retry');
     ({ cacheReady, getCache, setCache, removeCache } = require('./cache'));
-    require('./transport');
+    const { translateRequest, streamRequest } = require('./transport');
     ({ qwenTranslate } = require('./translator'));
   } else {
     if (window.qwenThrottle) {
@@ -34,7 +34,7 @@
     } else if (typeof self !== 'undefined' && self.qwenTranslate) {
       qwenTranslate = self.qwenTranslate;
     } else if (typeof require !== 'undefined') {
-      require('./transport');
+      const { translateRequest, streamRequest } = require('./transport');
       ({ qwenTranslate } = require('./translator'));
     }
     if (!window.qwenRetry && typeof require !== 'undefined') {

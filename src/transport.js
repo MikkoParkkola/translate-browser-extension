@@ -29,7 +29,7 @@
       ({ getProvider } = require('./providers'));
     }
   }
-  async function translate(opts) {
+  async function translateRequest(opts) {
     const { provider = 'qwen', text, debug, onRetry, retryDelay, onData } = opts;
     return runWithRetry(
       () => {
@@ -41,7 +41,12 @@
       { attempts: opts.attempts, debug, onRetry, retryDelay }
     );
   }
-  const api = { translate };
+
+  async function streamRequest(opts, onData) {
+    return translateRequest({ ...opts, stream: true, onData });
+  }
+
+  const api = { translateRequest, streamRequest };
   if (typeof module !== 'undefined') {
     module.exports = api;
   }

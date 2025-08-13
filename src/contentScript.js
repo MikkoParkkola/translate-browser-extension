@@ -1,5 +1,5 @@
 if (typeof window === 'undefined' && typeof require !== 'undefined') {
-  require('./transport');
+  const { translateRequest, streamRequest } = require('./transport');
   require('./retry');
 }
 if (!location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'))) {

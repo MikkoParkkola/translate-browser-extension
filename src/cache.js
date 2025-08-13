@@ -74,7 +74,11 @@ if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
         pruned[k] = v;
       }
     });
-    globalThis.localStorage.setItem('qwenCache', JSON.stringify(pruned));
+    if (Object.keys(pruned).length) {
+      globalThis.localStorage.setItem('qwenCache', JSON.stringify(pruned));
+    } else {
+      globalThis.localStorage.removeItem('qwenCache');
+    }
   } catch {
     try {
       globalThis.localStorage.removeItem('qwenCache');
@@ -115,7 +119,7 @@ function getCache(key) {
 }
 
 function setCache(key, value, origin) {
-  const entry = { ...value, origin, ts: Date.now() };
+  const entry = { ...value, origin: origin || value.domain, ts: Date.now() };
   cache.set(key, entry);
   if (cache.size > MAX_CACHE_ENTRIES) {
     const first = cache.keys().next().value;
@@ -212,37 +216,9 @@ function _setCacheEntryTimestamp(key, ts) {
     persistCache(key, entry);
   }
 }
-
-function qwenGetCacheStats() {
-  const total = hits + misses;
-  return { hits, misses, hitRate: total ? hits / total : 0 };
-}
-
 function qwenResetCacheStats() {
-  hits = 0;
-  misses = 0;
-}
-
-function qwenGetDomainCounts() {
-  const counts = {};
-  cache.forEach(v => {
-    const d = v.domain || 'unknown';
-    counts[d] = (counts[d] || 0) + 1;
-  });
-  return counts;
-}
-
-function qwenClearCacheDomain(domain) {
-  cache.forEach((v, k) => {
-    if (v.domain === domain) removeCache(k);
-  });
-}
-
-function qwenClearCacheLangPair(source, target) {
-  cache.forEach((v, k) => {
-    const parts = k.split(':');
-    if (parts[1] === source && parts[2] === target) removeCache(k);
-  });
+  hitCount = 0;
+  missCount = 0;
 }
 
 const api = {
@@ -253,17 +229,13 @@ const api = {
   qwenClearCache,
   qwenGetCacheSize,
   qwenGetCompressionErrors,
-   qwenGetCacheStats,
-   qwenGetDomainCounts,
-   qwenClearCacheDomain,
-   qwenClearCacheLangPair,
-  qwenSetCacheLimit,
-  qwenSetCacheTTL,
   qwenGetCacheStats,
-  qwenResetCacheStats,
   qwenGetDomainCounts,
   qwenClearCacheDomain,
   qwenClearCacheLangPair,
+  qwenSetCacheLimit,
+  qwenSetCacheTTL,
+  qwenResetCacheStats,
   _setMaxCacheEntries,
   _setCacheTTL,
   _setCacheEntryTimestamp,
@@ -272,8 +244,7 @@ const api = {
 if (typeof window !== 'undefined') {
   window.qwenCache = api;
   Object.assign(window, api);
-}
-if (typeof self !== 'undefined' && typeof window === 'undefined') {
+} else if (typeof self !== 'undefined') {
   self.qwenCache = api;
   Object.assign(self, api);
 }

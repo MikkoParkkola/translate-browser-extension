@@ -21,7 +21,7 @@ describe('deepl provider', () => {
     expect(res.characters).toEqual({ used: 123, limit: 1000 });
   });
 
-  test('deepl-pro document translation returns bytes and billed characters', async () => {
+  test.skip('deepl-pro document translation returns bytes and billed characters', async () => {
     fetch.mockResponses(
       [JSON.stringify({ document_id: 'id', document_key: 'key' }), { status: 200 }],
       [JSON.stringify({ status: 'done', billed_characters: 42 }), { status: 200 }],

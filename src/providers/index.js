@@ -16,7 +16,10 @@ function listProviders() {
 if (typeof require !== 'undefined') {
   registerProvider('qwen', require('./qwen'));
   registerProvider('google', require('./google'));
-  registerProvider('deepl', require('./deepl'));
+  const deepl = require('./deepl');
+  registerProvider('deepl', deepl.basic);
+  registerProvider('deepl-free', deepl.free);
+  registerProvider('deepl-pro', deepl.pro);
 }
 
 if (typeof window !== 'undefined') {
