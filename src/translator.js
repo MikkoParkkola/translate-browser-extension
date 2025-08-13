@@ -2,15 +2,30 @@ var runWithRateLimit;
 var runWithRetry;
 var approxTokens;
 var getUsage;
-var LZString;
 var getProvider;
+var cacheReady;
+var getCache;
+var setCache;
+var removeCache;
+var qwenClearCache;
+var qwenGetCacheSize;
+var qwenSetCacheLimit;
+var qwenSetCacheTTL;
+var _setMaxCacheEntries;
+var _setCacheTTL;
+var _setCacheEntryTimestamp;
+var LZString;
 
 if (typeof window === 'undefined') {
   if (typeof self !== 'undefined' && self.qwenThrottle) {
     ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = self.qwenThrottle);
-    LZString = self.LZString;
+    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
+    LZString = require('lz-string');
+    ({ getProvider } = require('./providers'));
+    require('./providers/qwen');
   } else {
     ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = require('./throttle'));
+    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
     LZString = require('lz-string');
     ({ getProvider } = require('./providers'));
     require('./providers/qwen');
@@ -29,6 +44,13 @@ if (typeof window === 'undefined') {
   LZString = (typeof window !== 'undefined' ? window.LZString : undefined) ||
     (typeof self !== 'undefined' ? self.LZString : undefined) ||
     (typeof require !== 'undefined' ? require('lz-string') : undefined);
+  if (typeof window !== 'undefined' && window.qwenCache) {
+    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = window.qwenCache);
+  } else if (typeof self !== 'undefined' && self.qwenCache) {
+    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = self.qwenCache);
+  } else if (typeof require !== 'undefined') {
+    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
+  }
   if (typeof window !== 'undefined' && window.qwenProviders) {
     ({ getProvider } = window.qwenProviders);
   } else if (typeof self !== 'undefined' && self.qwenProviders) {
@@ -38,123 +60,6 @@ if (typeof window === 'undefined') {
     require('./providers/qwen');
   }
 }
-
-const cache = new Map();
-let MAX_CACHE_ENTRIES = 1000;
-let CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-let cacheReady = Promise.resolve();
-
-function encodeCacheValue(val) {
-  try {
-    const json = JSON.stringify(val);
-    return LZString ? LZString.compressToUTF16(json) : json;
-  } catch {
-    return val;
-  }
-}
-
-function decodeCacheValue(val) {
-  if (typeof val !== 'string') return val;
-  if (LZString) {
-    try {
-      const json = LZString.decompressFromUTF16(val);
-      if (json) return JSON.parse(json);
-    } catch {}
-  }
-  try {
-    return JSON.parse(val);
-  } catch {
-    return val;
-  }
-}
-
-if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-  cacheReady = new Promise(resolve => {
-    chrome.storage.local.get(['qwenCache'], res => {
-      const data = res && res.qwenCache ? res.qwenCache : {};
-      const pruned = {};
-      const now = Date.now();
-      Object.entries(data).forEach(([k, v]) => {
-        const val = decodeCacheValue(v);
-        if (val && (!val.ts || now - val.ts <= CACHE_TTL_MS)) {
-          cache.set(k, val);
-          pruned[k] = v;
-        }
-      });
-      chrome.storage.local.set({ qwenCache: pruned });
-      resolve();
-    });
-  });
-} else if (typeof localStorage !== 'undefined') {
-  try {
-    const data = JSON.parse(localStorage.getItem('qwenCache') || '{}');
-    const pruned = {};
-    const now = Date.now();
-    Object.entries(data).forEach(([k, v]) => {
-      const val = decodeCacheValue(v);
-      if (val && (!val.ts || now - val.ts <= CACHE_TTL_MS)) {
-        cache.set(k, val);
-        pruned[k] = v;
-      }
-    });
-    localStorage.setItem('qwenCache', JSON.stringify(pruned));
-  } catch {}
-}
-
-function persistCache(key, value) {
-  const encoded = encodeCacheValue(value);
-  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-    chrome.storage.local.get(['qwenCache'], res => {
-      const obj = res && res.qwenCache ? res.qwenCache : {};
-      obj[key] = encoded;
-      chrome.storage.local.set({ qwenCache: obj });
-    });
-  } else if (typeof localStorage !== 'undefined') {
-    try {
-      const obj = JSON.parse(localStorage.getItem('qwenCache') || '{}');
-      obj[key] = encoded;
-      localStorage.setItem('qwenCache', JSON.stringify(obj));
-    } catch {}
-  }
-}
-
-function getCache(key) {
-  const entry = cache.get(key);
-  if (!entry) return;
-  if (entry.ts && Date.now() - entry.ts > CACHE_TTL_MS) {
-    removeCache(key);
-    return;
-  }
-  return entry;
-}
-
-function setCache(key, value) {
-  const entry = { ...value, ts: Date.now() };
-  cache.set(key, entry);
-  if (cache.size > MAX_CACHE_ENTRIES) {
-    const first = cache.keys().next().value;
-    removeCache(first);
-  }
-  persistCache(key, entry);
-}
-
-function removeCache(key) {
-  cache.delete(key);
-  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-    chrome.storage.local.get(['qwenCache'], res => {
-      const obj = res && res.qwenCache ? res.qwenCache : {};
-      delete obj[key];
-      chrome.storage.local.set({ qwenCache: obj });
-    });
-  } else if (typeof localStorage !== 'undefined') {
-    try {
-      const obj = JSON.parse(localStorage.getItem('qwenCache') || '{}');
-      delete obj[key];
-      localStorage.setItem('qwenCache', JSON.stringify(obj));
-    } catch {}
-  }
-}
-
 
 async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, force = false }) {
   await cacheReady;
@@ -557,42 +462,6 @@ function splitLongText(text, maxTokens) {
     }
   }
   return out;
-}
-function qwenClearCache() {
-  cache.clear();
-  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-    chrome.storage.local.remove('qwenCache');
-  } else if (typeof localStorage !== 'undefined') {
-    localStorage.removeItem('qwenCache');
-  }
-}
-
-function qwenGetCacheSize() {
-  return cache.size;
-}
-
-function _setMaxCacheEntries(n) {
-  MAX_CACHE_ENTRIES = n;
-}
-
-function _setCacheTTL(ms) {
-  CACHE_TTL_MS = ms;
-}
-
-function qwenSetCacheLimit(n) {
-  _setMaxCacheEntries(n);
-}
-
-function qwenSetCacheTTL(ms) {
-  _setCacheTTL(ms);
-}
-
-function _setCacheEntryTimestamp(key, ts) {
-  const entry = cache.get(key);
-  if (entry) {
-    entry.ts = ts;
-    persistCache(key, entry);
-  }
 }
 if (typeof window !== 'undefined') {
   window.qwenTranslate = qwenTranslate;
