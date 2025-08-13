@@ -34,6 +34,29 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 let throttleReady;
 let activeTranslations = 0;
 let translationStatus = { active: false };
+let usingPlus = false;
+const PRICES = {
+  'qwen-mt-turbo': { in: 0.16, out: 0.49 },
+  'qwen-mt-plus': { in: 2.46, out: 7.37 },
+};
+const modelUsage = {
+  'qwen-mt-turbo': {
+    requests: 0,
+    tokens: 0,
+    tokensIn: 0,
+    tokensOut: 0,
+    requestLimit: 60,
+    tokenLimit: 31980,
+  },
+  'qwen-mt-plus': {
+    requests: 0,
+    tokens: 0,
+    tokensIn: 0,
+    tokensOut: 0,
+    requestLimit: 60,
+    tokenLimit: 23797,
+  },
+};
 
 async function updateIcon() {
   await ensureThrottle();
@@ -59,7 +82,11 @@ async function updateIcon() {
   const minR = 10;
   const maxR = size / 2 - ringWidth - 4;
   const radius = minR + pct * (maxR - minR);
-  const color = self.qwenUsageColor ? self.qwenUsageColor(pct) : '#d0d4da';
+  const color = usingPlus
+    ? '#e74c3c'
+    : self.qwenUsageColor
+    ? self.qwenUsageColor(pct)
+    : '#d0d4da';
 
   ctx.fillStyle = color;
   ctx.beginPath();
@@ -72,9 +99,12 @@ async function updateIcon() {
 
 function updateBadge() {
   const busy = activeTranslations > 0;
-  chrome.action.setBadgeText({ text: busy ? '…' : '' });
+  const text = usingPlus ? 'P' : busy ? '…' : '';
+  chrome.action.setBadgeText({ text });
   if (chrome.action.setBadgeBackgroundColor) {
-    chrome.action.setBadgeBackgroundColor({ color: busy ? '#ff4500' : '#00000000' });
+    chrome.action.setBadgeBackgroundColor({
+      color: usingPlus ? '#ff4500' : busy ? '#ff4500' : '#00000000',
+    });
   }
   updateIcon();
 }
@@ -91,6 +121,10 @@ function ensureThrottle() {
             tokenLimit: cfg.tokenLimit,
             windowMs: 60000,
           });
+          Object.keys(modelUsage).forEach(m => {
+            modelUsage[m].requestLimit = cfg.requestLimit;
+            modelUsage[m].tokenLimit = cfg.tokenLimit;
+          });
           resolve();
         }
       );
@@ -99,8 +133,21 @@ function ensureThrottle() {
   return throttleReady;
 }
 
+function recordUsage(model, tokensIn, tokensOut) {
+  return new Promise(resolve => {
+    const entry = { time: Date.now(), model, tokensIn, tokensOut };
+    chrome.storage.local.get('usageHistory', data => {
+      const history = Array.isArray(data.usageHistory) ? data.usageHistory : [];
+      history.push(entry);
+      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      const filtered = history.filter(e => e.time >= cutoff);
+      chrome.storage.local.set({ usageHistory: filtered }, resolve);
+    });
+  });
+}
+
 async function handleTranslate(opts) {
-  const { endpoint, apiKey, model, text, source, target, debug } = opts;
+  const { endpoint, apiKey, model, models, text, source, target, debug } = opts;
   const ep = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
   if (debug) console.log('QTDEBUG: background translating via', ep);
 
@@ -109,6 +156,9 @@ async function handleTranslate(opts) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
   activeTranslations++;
+  usingPlus =
+    model === 'qwen-mt-plus' ||
+    (Array.isArray(models) && models[0] === 'qwen-mt-plus');
   updateBadge();
 
   try {
@@ -116,6 +166,7 @@ async function handleTranslate(opts) {
       endpoint: ep,
       apiKey,
       model,
+      models,
       text,
       source,
       target,
@@ -123,6 +174,18 @@ async function handleTranslate(opts) {
       signal: controller.signal,
       stream: false,
     });
+    const usedModel = model;
+    if (modelUsage[usedModel]) {
+      modelUsage[usedModel].requests++;
+      try {
+        const tokensIn = self.qwenThrottle.approxTokens(text);
+        const tokensOut = self.qwenThrottle.approxTokens(result.text || '');
+        modelUsage[usedModel].tokens += tokensIn + tokensOut;
+        modelUsage[usedModel].tokensIn += tokensIn;
+        modelUsage[usedModel].tokensOut += tokensOut;
+        await recordUsage(usedModel, tokensIn, tokensOut);
+      } catch {}
+    }
     if (debug) console.log('QTDEBUG: background translation completed');
     return result;
   } catch (err) {
@@ -131,6 +194,7 @@ async function handleTranslate(opts) {
   } finally {
     clearTimeout(timeout);
     activeTranslations--;
+    usingPlus = false;
     updateBadge();
   }
 }
@@ -149,8 +213,50 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.action === 'usage') {
     ensureThrottle().then(() => {
-      const stats = self.qwenThrottle.getUsage();
-      sendResponse(stats);
+      chrome.storage.local.get('usageHistory', data => {
+        const stats = self.qwenThrottle.getUsage();
+        stats.models = modelUsage;
+        const history = Array.isArray(data.usageHistory) ? data.usageHistory : [];
+        const now = Date.now();
+        const windows = { '24h': 24 * 60 * 60 * 1000, '7d': 7 * 24 * 60 * 60 * 1000, '30d': 30 * 24 * 60 * 60 * 1000 };
+        const costs = {
+          'qwen-mt-turbo': { '24h': 0, '7d': 0, '30d': 0 },
+          'qwen-mt-plus': { '24h': 0, '7d': 0, '30d': 0 },
+          total: { '24h': 0, '7d': 0, '30d': 0 },
+          daily: [],
+        };
+        history.forEach(h => {
+          const price = PRICES[h.model] || { in: 0, out: 0 };
+          const cost = (h.tokensIn * price.in + h.tokensOut * price.out) / 1e6;
+          if (now - h.time <= windows['24h']) {
+            costs[h.model]['24h'] += cost;
+            costs.total['24h'] += cost;
+          }
+          if (now - h.time <= windows['7d']) {
+            costs[h.model]['7d'] += cost;
+            costs.total['7d'] += cost;
+          }
+          if (now - h.time <= windows['30d']) {
+            costs[h.model]['30d'] += cost;
+            costs.total['30d'] += cost;
+          }
+        });
+        for (let i = 29; i >= 0; i--) {
+          const dayStart = new Date(now - i * 24 * 60 * 60 * 1000);
+          dayStart.setHours(0, 0, 0, 0);
+          const dayEnd = dayStart.getTime() + 24 * 60 * 60 * 1000;
+          const dayCost = history.reduce((sum, h) => {
+            if (h.time >= dayStart.getTime() && h.time < dayEnd) {
+              const price = PRICES[h.model] || { in: 0, out: 0 };
+              return sum + (h.tokensIn * price.in + h.tokensOut * price.out) / 1e6;
+            }
+            return sum;
+          }, 0);
+          costs.daily.push({ date: dayStart.toISOString().slice(0, 10), cost: dayCost });
+        }
+        stats.costs = costs;
+        sendResponse(stats);
+      });
     });
     return true;
   }
@@ -169,3 +275,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 });
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    updateBadge,
+    updateIcon,
+    handleTranslate,
+    setUsingPlus: v => {
+      usingPlus = v;
+    },
+    _setActiveTranslations: v => {
+      activeTranslations = v;
+    },
+  };
+}

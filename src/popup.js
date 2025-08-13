@@ -12,12 +12,17 @@ const debugCheckbox = document.getElementById('debug');
 const smartThrottleInput = document.getElementById('smartThrottle');
 const tokensPerReqInput = document.getElementById('tokensPerReq');
 const retryDelayInput = document.getElementById('retryDelay');
+const dualModeInput = document.getElementById('dualMode');
 const status = document.getElementById('status');
 const versionDiv = document.getElementById('version');
 const reqCount = document.getElementById('reqCount');
 const tokenCount = document.getElementById('tokenCount');
 const reqBar = document.getElementById('reqBar');
 const tokenBar = document.getElementById('tokenBar');
+const turboReq = document.getElementById('turboReq');
+const plusReq = document.getElementById('plusReq');
+const turboReqBar = document.getElementById('turboReqBar');
+const plusReqBar = document.getElementById('plusReqBar');
 const totalReq = document.getElementById('totalReq');
 const totalTok = document.getElementById('totalTok');
 const queueLen = document.getElementById('queueLen');
@@ -26,6 +31,17 @@ const failedTok = document.getElementById('failedTok');
 const translateBtn = document.getElementById('translate');
 const testBtn = document.getElementById('test');
 const progressBar = document.getElementById('progress');
+const costTurbo24h = document.getElementById('costTurbo24h');
+const costPlus24h = document.getElementById('costPlus24h');
+const costTotal24h = document.getElementById('costTotal24h');
+const costTurbo7d = document.getElementById('costTurbo7d');
+const costPlus7d = document.getElementById('costPlus7d');
+const costTotal7d = document.getElementById('costTotal7d');
+const costTurbo30d = document.getElementById('costTurbo30d');
+const costPlus30d = document.getElementById('costPlus30d');
+const costTotal30d = document.getElementById('costTotal30d');
+const toggleCalendar = document.getElementById('toggleCalendar');
+const costCalendar = document.getElementById('costCalendar');
 
 // Setup view elements
 const setupApiKeyInput = document.getElementById('setup-apiKey');
@@ -64,6 +80,7 @@ function saveConfig() {
       retryDelay: parseInt(retryDelayInput.value, 10) || 0,
       autoTranslate: autoCheckbox.checked,
       debug: debugCheckbox.checked,
+      dualMode: dualModeInput.checked,
     };
     window.qwenSaveConfig(cfg).then(() => {
       status.textContent = 'Settings saved.';
@@ -218,6 +235,7 @@ window.qwenLoadConfig().then(cfg => {
   apiKeyInput.value = cfg.apiKey || '';
   endpointInput.value = cfg.apiEndpoint || '';
   modelInput.value = cfg.model || '';
+  dualModeInput.checked = !!cfg.dualMode;
   sourceSelect.value = cfg.sourceLanguage;
   targetSelect.value = cfg.targetLanguage;
   reqLimitInput.value = cfg.requestLimit;
@@ -258,7 +276,7 @@ window.qwenLoadConfig().then(cfg => {
 
   updateThrottleInputs();
   [reqLimitInput, tokenLimitInput, tokenBudgetInput, tokensPerReqInput, retryDelayInput].forEach(el => el.addEventListener('input', saveConfig));
-  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox, smartThrottleInput].forEach(el => el.addEventListener('change', () => { updateThrottleInputs(); saveConfig(); }));
+  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox, smartThrottleInput, dualModeInput].forEach(el => el.addEventListener('change', () => { updateThrottleInputs(); saveConfig(); }));
 });
 
 versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
@@ -267,6 +285,10 @@ function setBar(el, ratio) {
   const r = Math.max(0, Math.min(1, ratio));
   el.style.width = r * 100 + '%';
   el.style.backgroundColor = window.qwenUsageColor ? window.qwenUsageColor(r) : 'var(--green)';
+}
+
+function formatCost(v) {
+  return '$' + v.toFixed(2);
 }
 
 function refreshUsage() {
@@ -281,6 +303,36 @@ function refreshUsage() {
     queueLen.textContent = res.queue;
     failedReq.textContent = res.failedTotalRequests;
     failedTok.textContent = res.failedTotalTokens;
+    if (res.models) {
+      const turbo = res.models['qwen-mt-turbo'] || { requests: 0, requestLimit: 0 };
+      const plus = res.models['qwen-mt-plus'] || { requests: 0, requestLimit: 0 };
+      turboReq.textContent = `${turbo.requests}/${turbo.requestLimit}`;
+      plusReq.textContent = `${plus.requests}/${plus.requestLimit}`;
+      setBar(turboReqBar, turbo.requestLimit ? turbo.requests / turbo.requestLimit : 0);
+      setBar(plusReqBar, plus.requestLimit ? plus.requests / plus.requestLimit : 0);
+    }
+    if (res.costs) {
+      const turbo = res.costs['qwen-mt-turbo'];
+      const plus = res.costs['qwen-mt-plus'];
+      const total = res.costs.total;
+      costTurbo24h.textContent = formatCost(turbo['24h'] || 0);
+      costPlus24h.textContent = formatCost(plus['24h'] || 0);
+      costTotal24h.textContent = formatCost(total['24h'] || 0);
+      costTurbo7d.textContent = formatCost(turbo['7d'] || 0);
+      costPlus7d.textContent = formatCost(plus['7d'] || 0);
+      costTotal7d.textContent = formatCost(total['7d'] || 0);
+      costTurbo30d.textContent = formatCost(turbo['30d'] || 0);
+      costPlus30d.textContent = formatCost(plus['30d'] || 0);
+      costTotal30d.textContent = formatCost(total['30d'] || 0);
+      if (res.costs.daily) {
+        costCalendar.innerHTML = '';
+        res.costs.daily.forEach(d => {
+          const div = document.createElement('div');
+          div.textContent = `${d.date}: ${formatCost(d.cost)}`;
+          costCalendar.appendChild(div);
+        });
+      }
+    }
     reqLimitInput.dataset.auto = res.requestLimit;
     tokenLimitInput.dataset.auto = res.tokenLimit;
     tokensPerReqInput.dataset.auto = Math.floor(res.tokenLimit / res.requestLimit || 0);
@@ -294,6 +346,13 @@ function refreshUsage() {
 
 setInterval(refreshUsage, 1000);
 refreshUsage();
+
+if (toggleCalendar) {
+  toggleCalendar.addEventListener('click', () => {
+    costCalendar.style.display =
+      costCalendar.style.display === 'none' ? 'block' : 'none';
+  });
+}
 
 translateBtn.addEventListener('click', () => {
   const debug = debugCheckbox.checked;
@@ -324,6 +383,12 @@ testBtn.addEventListener('click', async () => {
     target: targetSelect.value,
     debug: debugCheckbox.checked,
   };
+  if (dualModeInput.checked) {
+    cfg.models = [
+      cfg.model,
+      cfg.model === 'qwen-mt-plus' ? 'qwen-mt-turbo' : 'qwen-mt-plus',
+    ];
+  }
 
   function log(...args) { if (cfg.debug) console.log(...args); }
   log('QTDEBUG: starting configuration test', cfg);
@@ -456,6 +521,22 @@ testBtn.addEventListener('click', async () => {
     const result = await new Promise(resolve => chrome.storage.sync.get([key], resolve));
     if (result[key] !== '1') throw new Error('write failed');
     await chrome.storage.sync.remove([key]);
+  })) && allOk;
+
+  allOk = (await run('Determine token limit', async () => {
+    const limit = await window.qwenLimitDetector.detectTokenLimit(text =>
+      window.qwenTranslate({ ...cfg, text, stream: false, noProxy: true })
+    );
+    await chrome.storage.sync.set({ tokenLimit: limit });
+    tokenLimitInput.value = limit;
+  })) && allOk;
+
+  allOk = (await run('Determine request limit', async () => {
+    const limit = await window.qwenLimitDetector.detectRequestLimit(() =>
+      window.qwenTranslate({ ...cfg, text: 'ping', stream: false, noProxy: true })
+    );
+    await chrome.storage.sync.set({ requestLimit: limit });
+    reqLimitInput.value = limit;
   })) && allOk;
 
   if (allOk) {
