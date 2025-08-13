@@ -1,8 +1,10 @@
-var runWithRateLimit;
-var runWithRetry;
-var approxTokens;
+var transportTranslate;
 var getUsage;
-var getProvider;
+var _getUsage = () => (getUsage ? getUsage() : {});
+function _setGetUsage(fn) {
+  _getUsage = fn;
+}
+const attempts = 6;
 var cacheReady;
 var getCache;
 var setCache;
@@ -17,29 +19,32 @@ var _setCacheEntryTimestamp;
 var LZString;
 
 if (typeof window === 'undefined') {
-  if (typeof self !== 'undefined' && self.qwenThrottle) {
-    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = self.qwenThrottle);
-    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
-    LZString = require('lz-string');
-    ({ getProvider } = require('./providers'));
-    require('./providers/qwen');
+  if (typeof self !== 'undefined' && self.qwenTransport) {
+    ({ translate: transportTranslate } = self.qwenTransport);
   } else {
-    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = require('./throttle'));
-    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
-    LZString = require('lz-string');
-    ({ getProvider } = require('./providers'));
-    require('./providers/qwen');
+    ({ translate: transportTranslate } = require('./transport'));
   }
-} else {
-  if (window.qwenThrottle) {
-    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = window.qwenThrottle);
-  } else if (typeof require !== 'undefined') {
-    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = require('./throttle'));
+  if (typeof self !== 'undefined' && self.qwenThrottle) {
+    ({ getUsage } = self.qwenThrottle);
   } else {
-    runWithRateLimit = fn => fn();
-    runWithRetry = fn => fn();
-    approxTokens = () => 0;
-    getUsage = () => ({ requestLimit: 1, tokenLimit: 1, requests: 0, tokens: 0 });
+    ({ getUsage } = require('./throttle'));
+  }
+  ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
+  LZString = require('lz-string');
+} else {
+  if (window.qwenTransport) {
+    ({ translate: transportTranslate } = window.qwenTransport);
+  } else if (typeof require !== 'undefined') {
+    ({ translate: transportTranslate } = require('./transport'));
+  } else {
+    transportTranslate = async () => { throw new Error('Transport not available'); };
+  }
+  if (window.qwenThrottle) {
+    ({ getUsage } = window.qwenThrottle);
+  } else if (typeof require !== 'undefined') {
+    ({ getUsage } = require('./throttle'));
+  } else {
+    getUsage = () => ({ requestLimit: 1, requests: 0 });
   }
   LZString = (typeof window !== 'undefined' ? window.LZString : undefined) ||
     (typeof self !== 'undefined' ? self.LZString : undefined) ||
@@ -51,18 +56,21 @@ if (typeof window === 'undefined') {
   } else if (typeof require !== 'undefined') {
     ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
   }
-  if (typeof window !== 'undefined' && window.qwenProviders) {
-    ({ getProvider } = window.qwenProviders);
-  } else if (typeof self !== 'undefined' && self.qwenProviders) {
-    ({ getProvider } = self.qwenProviders);
-  } else if (typeof require !== 'undefined' && !getProvider) {
-    ({ getProvider } = require('./providers'));
-    require('./providers/qwen');
-  }
 }
 
 async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, attempts = 6, force = false }) {
   await cacheReady;
+  const list = Array.isArray(models) && models.length ? models : model ? [model] : [];
+  let modelList = list.slice();
+  if (modelList.length > 1) {
+    try {
+      const usage = _getUsage();
+      const ratio = (usage.requests || 0) / Math.max(1, usage.requestLimit || 1);
+      model = ratio < 0.5 ? modelList[0] : modelList[1];
+    } catch {}
+  } else {
+    model = modelList[0];
+  }
   if (debug) {
     const modelList = Array.isArray(models) ? models : models ? [models] : [model];
     console.log('QTDEBUG: qwenTranslate called with', {
@@ -159,6 +167,31 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, model
       throw e;
     }
   } catch (e) {
+    if (modelList && modelList.length > 1 && model === modelList[0]) {
+      try {
+        model = modelList[1];
+        const data = await transportTranslate({
+          provider,
+          endpoint,
+          apiKey,
+          model,
+          text,
+          source,
+          target,
+          signal,
+          debug,
+          stream,
+          onRetry,
+          retryDelay,
+          attempts,
+        });
+        setCache(cacheKey, data);
+        return data;
+      } catch (err) {
+        console.error('QTERROR: translation request failed', err);
+        throw err;
+      }
+    }
     console.error('QTERROR: translation request failed', e);
     throw e;
   }
@@ -166,6 +199,17 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, model
 
 async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay, attempts = 6, force = false }, onData) {
   await cacheReady;
+  const list = Array.isArray(models) && models.length ? models : model ? [model] : [];
+  let modelList = list.slice();
+  if (modelList.length > 1) {
+    try {
+      const usage = _getUsage();
+      const ratio = (usage.requests || 0) / Math.max(1, usage.requestLimit || 1);
+      model = ratio < 0.5 ? modelList[0] : modelList[1];
+    } catch {}
+  } else {
+    model = modelList[0];
+  }
   if (debug) {
     const modelList = Array.isArray(models) ? models : models ? [models] : [model];
     console.log('QTDEBUG: qwenTranslateStream called with', {

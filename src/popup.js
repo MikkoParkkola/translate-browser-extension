@@ -52,6 +52,10 @@ const costTotal30d = document.getElementById('costTotal30d');
 const costCalendar = document.getElementById('costCalendar');
 const toggleCalendar = document.getElementById('toggleCalendar');
 
+function formatCost(n) {
+  return '$' + n.toFixed(2);
+}
+
 const applyProviderConfig =
   (window.qwenProviderConfig && window.qwenProviderConfig.applyProviderConfig) ||
   (typeof require !== 'undefined'
