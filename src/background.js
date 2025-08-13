@@ -269,21 +269,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
-  if (msg.action === 'clear-cache') {
-    if (self.qwenClearCache) self.qwenClearCache();
-    sendResponse({ ok: true });
-    return true;
-  }
   if (msg.action === 'config-changed') {
     throttleReady = null;
-    chrome.storage.sync.get(
-      { cacheMaxEntries: 1000, cacheTTL: 30 * 24 * 60 * 60 * 1000 },
-      cfg => {
-        if (self.qwenSetCacheLimit) self.qwenSetCacheLimit(cfg.cacheMaxEntries);
-        if (self.qwenSetCacheTTL) self.qwenSetCacheTTL(cfg.cacheTTL);
-        ensureThrottle().then(() => sendResponse({ ok: true }));
-      }
-    );
+    ensureThrottle().then(() => sendResponse({ ok: true }));
     return true;
   }
   if (msg.action === 'translation-status') {

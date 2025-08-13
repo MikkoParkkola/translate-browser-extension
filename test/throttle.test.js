@@ -1,4 +1,4 @@
-const { runWithRateLimit, configure, getUsage } = require('../src/throttle');
+const { runWithRateLimit, runWithRetry, configure, getUsage } = require('../src/throttle');
 
 jest.useFakeTimers();
 
