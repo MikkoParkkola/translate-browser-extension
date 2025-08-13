@@ -45,26 +45,39 @@ test('expired entry removed from storage when accessed', async () => {
   _setCacheTTL(30 * 24 * 60 * 60 * 1000);
 });
 
-test('qwenClearCache wipes memory and storage', async () => {
-  const { cacheReady, setCache, qwenClearCache, qwenGetCacheSize } = require('../src/cache');
+test('tracks hits and misses', async () => {
+  const {
+    cacheReady,
+    setCache,
+    getCache,
+    qwenGetCacheStats,
+    qwenResetCacheStats,
+  } = require('../src/cache');
   await cacheReady;
-  setCache('a', { text: 'one' });
-  setCache('b', { text: 'two' });
-  expect(qwenGetCacheSize()).toBe(2);
-  expect(JSON.parse(localStorage.getItem('qwenCache')).a).toBeTruthy();
-  qwenClearCache();
-  expect(qwenGetCacheSize()).toBe(0);
-  expect(localStorage.getItem('qwenCache')).toBeNull();
+  qwenResetCacheStats();
+  setCache('k1', { text: 'one', domain: 'a.com' });
+  expect(getCache('k1').text).toBe('one');
+  expect(getCache('missing')).toBeUndefined();
+  const stats = qwenGetCacheStats();
+  expect(stats.hits).toBe(1);
+  expect(stats.misses).toBe(1);
 });
 
-test('qwenGetCacheSize reflects TTL expiry', async () => {
-  const { cacheReady, setCache, getCache, qwenGetCacheSize, _setCacheTTL, _setCacheEntryTimestamp } = require('../src/cache');
+test('clear cache by domain and language pair', async () => {
+  const {
+    cacheReady,
+    setCache,
+    getCache,
+    qwenClearCacheDomain,
+    qwenClearCacheLangPair,
+  } = require('../src/cache');
   await cacheReady;
-  _setCacheTTL(1000);
-  setCache('x', { text: 'old' });
-  expect(qwenGetCacheSize()).toBe(1);
-  _setCacheEntryTimestamp('x', Date.now() - 2000);
-  expect(getCache('x')).toBeUndefined();
-  expect(qwenGetCacheSize()).toBe(0);
-  _setCacheTTL(30 * 24 * 60 * 60 * 1000);
+  setCache('qwen:en:fr:hello', { text: 'bonjour', domain: 'example.com' });
+  setCache('qwen:en:fr:hi', { text: 'salut', domain: 'example.com' });
+  setCache('qwen:en:es:hola', { text: 'hola', domain: 'other.com' });
+  qwenClearCacheDomain('example.com');
+  expect(getCache('qwen:en:fr:hello')).toBeUndefined();
+  expect(getCache('qwen:en:es:hola')).toBeTruthy();
+  qwenClearCacheLangPair('en', 'es');
+  expect(getCache('qwen:en:es:hola')).toBeUndefined();
 });

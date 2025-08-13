@@ -203,7 +203,7 @@
           }
           m.result = out;
           const key = `${provider}:${opts.source}:${opts.target}:${m.text}`;
-          setCache(key, { text: out });
+          setCache(key, { text: out, domain: opts.domain });
           stats.requests++;
           stats.tokens += approxTokens(m.text);
           stats.words += m.text.trim().split(/\s+/).filter(Boolean).length;
@@ -213,7 +213,7 @@
       for (let i = 0; i < g.length; i++) {
         g[i].result = translated[i] || g[i].text;
         const key = `${provider}:${opts.source}:${opts.target}:${g[i].text}`;
-        setCache(key, { text: g[i].result });
+        setCache(key, { text: g[i].result, domain: opts.domain });
       }
       const elapsedMs = Date.now() - stats.start;
       const avg = elapsedMs / stats.requests;
@@ -257,7 +257,7 @@
       retryIdx.forEach((idx, i) => {
         results[idx] = retr.texts[i];
         const key = `${provider}:${opts.source}:${opts.target}:${texts[idx]}`;
-        setCache(key, { text: results[idx] });
+        setCache(key, { text: results[idx], domain: opts.domain });
       });
     }
 
@@ -265,7 +265,7 @@
       arr.forEach(i => {
         results[i] = results[orig];
         const key = `${provider}:${opts.source}:${opts.target}:${texts[i]}`;
-        setCache(key, { text: results[orig] });
+        setCache(key, { text: results[orig], domain: opts.domain });
       });
     });
 

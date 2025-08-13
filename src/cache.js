@@ -3,6 +3,8 @@ let MAX_CACHE_ENTRIES = 1000;
 let CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 let cacheReady = Promise.resolve();
 let LZString;
+let hits = 0;
+let misses = 0;
 
 if (typeof window === 'undefined') {
   LZString = require('lz-string');
@@ -88,11 +90,16 @@ function persistCache(key, value) {
 
 function getCache(key) {
   const entry = cache.get(key);
-  if (!entry) return;
-  if (entry.ts && Date.now() - entry.ts > CACHE_TTL_MS) {
-    removeCache(key);
+  if (!entry) {
+    misses++;
     return;
   }
+  if (entry.ts && Date.now() - entry.ts > CACHE_TTL_MS) {
+    removeCache(key);
+    misses++;
+    return;
+  }
+  hits++;
   return entry;
 }
 
@@ -125,6 +132,7 @@ function removeCache(key) {
 
 function qwenClearCache() {
   cache.clear();
+  qwenResetCacheStats();
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
     chrome.storage.local.remove('qwenCache');
   } else if (typeof localStorage !== 'undefined') {
@@ -160,6 +168,38 @@ function _setCacheEntryTimestamp(key, ts) {
   }
 }
 
+function qwenGetCacheStats() {
+  const total = hits + misses;
+  return { hits, misses, hitRate: total ? hits / total : 0 };
+}
+
+function qwenResetCacheStats() {
+  hits = 0;
+  misses = 0;
+}
+
+function qwenGetDomainCounts() {
+  const counts = {};
+  cache.forEach(v => {
+    const d = v.domain || 'unknown';
+    counts[d] = (counts[d] || 0) + 1;
+  });
+  return counts;
+}
+
+function qwenClearCacheDomain(domain) {
+  cache.forEach((v, k) => {
+    if (v.domain === domain) removeCache(k);
+  });
+}
+
+function qwenClearCacheLangPair(source, target) {
+  cache.forEach((v, k) => {
+    const parts = k.split(':');
+    if (parts[1] === source && parts[2] === target) removeCache(k);
+  });
+}
+
 const api = {
   cacheReady,
   getCache,
@@ -169,6 +209,11 @@ const api = {
   qwenGetCacheSize,
   qwenSetCacheLimit,
   qwenSetCacheTTL,
+  qwenGetCacheStats,
+  qwenResetCacheStats,
+  qwenGetDomainCounts,
+  qwenClearCacheDomain,
+  qwenClearCacheLangPair,
   _setMaxCacheEntries,
   _setCacheTTL,
   _setCacheEntryTimestamp,
