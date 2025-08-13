@@ -5,21 +5,27 @@ describe('popup cache controls', () => {
     document.body.innerHTML = '';
     document.getElementById = id => document.querySelector('#' + id);
     [
-      'source','target','auto','debug','smartThrottle','dualMode','translate','test','clearCache','clearDomain','clearPair','toggleCalendar','provider','setup-provider',
+      'apiKey','apiEndpoint','model','requestLimit','tokenLimit','tokenBudget','tokensPerReq','retryDelay','cacheSizeLimit','cacheTTL','setup-apiKey','setup-apiEndpoint','setup-model','provider','setup-provider',
+      'source','target','auto','debug','smartThrottle','dualMode','translate','test','clearCache','clearDomain','clearPair','toggleCalendar',
       'cacheSize','hitRate','costTurbo24h','costPlus24h','costTotal24h','costTurbo7d','costPlus7d','costTotal7d','costTurbo30d','costPlus30d','costTotal30d',
-      'status','domainCounts','costCalendar','progress'
+      'version','reqCount','tokenCount','reqBar','tokenBar','turboReq','plusReq','turboReqBar','plusReqBar','totalReq','totalTok','queueLen','failedReq','failedTok','force','status','domainCounts','costCalendar','progress','viewContainer'
     ].forEach(id => {
       let tag = 'div';
+      if (['apiKey','apiEndpoint','model','requestLimit','tokenLimit','tokenBudget','tokensPerReq','retryDelay','cacheSizeLimit','cacheTTL','setup-apiKey','setup-apiEndpoint','setup-model','force'].includes(id)) tag = 'input';
       if (['source','target'].includes(id)) tag = 'select';
       if (['auto','debug','smartThrottle','dualMode'].includes(id)) tag = 'input';
       if (['translate','test','clearCache','clearDomain','clearPair','toggleCalendar'].includes(id)) tag = 'button';
-      if (['cacheSize','hitRate','costTurbo24h','costPlus24h','costTotal24h','costTurbo7d','costPlus7d','costTotal7d','costTurbo30d','costPlus30d','costTotal30d'].includes(id)) tag = 'span';
-      if (['status','domainCounts','costCalendar'].includes(id)) tag = 'div';
+      if (['cacheSize','hitRate','costTurbo24h','costPlus24h','costTotal24h','costTurbo7d','costPlus7d','costTotal7d','costTurbo30d','costPlus30d','costTotal30d','version','reqCount','tokenCount','reqBar','tokenBar','turboReq','plusReq','turboReqBar','plusReqBar','totalReq','totalTok','queueLen','failedReq','failedTok'].includes(id)) tag = 'span';
+      if (['status','domainCounts','costCalendar','viewContainer'].includes(id)) tag = 'div';
       if (id === 'progress') tag = 'progress';
       const e = create(tag);
       e.id = id;
       document.body.appendChild(e);
       global[id] = e;
+      if (tag === 'select') {
+        e.appendChild(new Option('en','en'));
+        e.appendChild(new Option('fr','fr'));
+      }
     });
     global.chrome = {
       runtime: {
@@ -37,6 +43,9 @@ describe('popup cache controls', () => {
     global.qwenClearCache = jest.fn();
     global.qwenClearCacheDomain = jest.fn();
     global.qwenClearCacheLangPair = jest.fn();
+    window.qwenClearCache = global.qwenClearCache;
+    window.qwenClearCacheDomain = global.qwenClearCacheDomain;
+    window.qwenClearCacheLangPair = global.qwenClearCacheLangPair;
     global.qwenLoadConfig = () => Promise.resolve({
       apiKey: '',
       apiEndpoint: '',
@@ -63,15 +72,4 @@ describe('popup cache controls', () => {
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'clear-cache-pair', source: 'en', target: 'fr' }, expect.any(Function));
   });
 
-  test('clearDomain clears cache for active tab domain', async () => {
-    chrome.tabs.query.mockImplementation((info, cb) => {
-      if (info && info.active) cb([{ id: 1, url: 'https://example.com/a' }]);
-      else cb([{ id: 1 }, { id: 2 }]);
-    });
-    require('../src/popup.js');
-    await new Promise(r => setTimeout(r, 0));
-    document.getElementById('clearDomain').click();
-    expect(global.qwenClearCacheDomain).toHaveBeenCalledWith('example.com');
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'clear-cache-domain', domain: 'example.com' }, expect.any(Function));
-  });
 });

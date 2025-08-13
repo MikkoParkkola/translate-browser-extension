@@ -13,7 +13,6 @@ const debugCheckbox = document.getElementById('debug');
 const smartThrottleInput = document.getElementById('smartThrottle');
 const tokensPerReqInput = document.getElementById('tokensPerReq');
 const retryDelayInput = document.getElementById('retryDelay');
-const dualModeInput = document.getElementById('dualMode');
 const status = document.getElementById('status');
 const versionDiv = document.getElementById('version');
 const reqCount = document.getElementById('reqCount');
@@ -29,9 +28,6 @@ const totalTok = document.getElementById('totalTok');
 const queueLen = document.getElementById('queueLen');
 const failedReq = document.getElementById('failedReq');
 const failedTok = document.getElementById('failedTok');
-const reqRemaining = document.getElementById('reqRemaining');
-const tokenRemaining = document.getElementById('tokenRemaining');
-const providerError = document.getElementById('providerError');
 const translateBtn = document.getElementById('translate');
 const testBtn = document.getElementById('test');
 const progressBar = document.getElementById('progress');
@@ -40,7 +36,7 @@ const clearDomainBtn = document.getElementById('clearDomain');
 const clearPairBtn = document.getElementById('clearPair');
 const forceCheckbox = document.getElementById('force');
 const cacheSizeLabel = document.getElementById('cacheSize');
-const compressionErrorsLabel = document.getElementById('compressionErrors');
+const hitRateLabel = document.getElementById('hitRate');
 const cacheLimitInput = document.getElementById('cacheSizeLimit');
 const cacheTTLInput = document.getElementById('cacheTTL');
 const toggleCalendar = document.getElementById('toggleCalendar');
@@ -77,13 +73,11 @@ function saveConfig() {
       return;
     }
     const model = modelInput.value.trim() || 'qwen-mt-turbo';
-    const provider = providerSelect.value;
     const cfg = {
       ...currentCfg,
       apiKey: apiKeyInput.value.trim(),
       apiEndpoint: endpointInput.value.trim(),
       model,
-      provider,
       sourceLanguage: sourceSelect.value,
       targetLanguage: targetSelect.value,
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
@@ -304,7 +298,6 @@ window.qwenLoadConfig().then(cfg => {
     { main: apiKeyInput, setup: setupApiKeyInput, event: 'input' },
     { main: endpointInput, setup: setupApiEndpointInput, event: 'input' },
     { main: modelInput, setup: setupModelInput, event: 'change' },
-    { main: providerSelect, setup: setupProviderInput, event: 'change' },
   ];
 
   allInputs.forEach(({ main, setup, event }) => {
@@ -336,7 +329,7 @@ window.qwenLoadConfig().then(cfg => {
   });
   if (window.qwenSetCacheLimit) window.qwenSetCacheLimit(cfg.cacheMaxEntries || 1000);
   if (window.qwenSetCacheTTL) window.qwenSetCacheTTL(cfg.cacheTTL || 30 * 24 * 60 * 60 * 1000);
-  updateCacheSize();
+  updateCacheInfo();
 });
 
 if (versionDiv) versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
@@ -355,9 +348,15 @@ function updateCacheSize() {
   if (cacheSizeLabel && window.qwenGetCacheSize) {
     cacheSizeLabel.textContent = `Cache: ${window.qwenGetCacheSize()}`;
   }
-  if (compressionErrorsLabel && window.qwenGetCompressionErrors) {
-    const n = window.qwenGetCompressionErrors();
-    compressionErrorsLabel.textContent = n ? `Errors: ${n}` : '';
+  if (hitRateLabel && window.qwenGetCacheStats) {
+    const s = window.qwenGetCacheStats();
+    const rate = s.hits + s.misses ? ((s.hits / (s.hits + s.misses)) * 100).toFixed(1) : '0.0';
+    hitRateLabel.textContent = `Hit Rate: ${rate}%`;
+  }
+  if (domainCountsDiv && window.qwenGetDomainCounts) {
+    const counts = window.qwenGetDomainCounts();
+    const parts = Object.entries(counts).map(([d, c]) => `${d}: ${c}`);
+    domainCountsDiv.textContent = parts.length ? parts.join(', ') : '';
   }
 }
 
@@ -418,9 +417,9 @@ function refreshUsage() {
     lastQuotaCheck = now;
     const prov =
       (window.qwenProviders && window.qwenProviders.getProvider(providerSelect.value)) || {};
-    if (prov.quota) {
+    if (prov.getQuota) {
       prov
-        .quota({
+        .getQuota({
           endpoint: endpointInput.value.trim(),
           apiKey: apiKeyInput.value.trim(),
           model: modelInput.value.trim(),
@@ -442,6 +441,10 @@ function refreshUsage() {
             if (providerError) providerError.textContent = '';
             currentCfg.providerError = '';
           }
+          providerError.textContent = warn;
+          currentCfg.providerError = warn;
+          const snapshot = { time: Date.now(), ...q };
+          currentCfg.quotaHistory = [...(currentCfg.quotaHistory || []), snapshot];
           if (window.qwenSaveConfig) window.qwenSaveConfig(currentCfg);
         })
         .catch(err => {
@@ -481,7 +484,7 @@ if (clearCacheBtn) {
       tabs.forEach(t => chrome.tabs.sendMessage(t.id, { action: 'clear-cache' }, () => {}));
     });
     status.textContent = 'Cache cleared.';
-    updateCacheSize();
+    updateCacheInfo();
     setTimeout(() => {
       if (status.textContent === 'Cache cleared.') status.textContent = '';
     }, 2000);

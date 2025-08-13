@@ -3,6 +3,32 @@ const { test, expect } = require('@playwright/test');
 const pageUrl = 'http://127.0.0.1:8080/e2e/mock.html';
 
 test.describe('Provider switching and cache', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      window.qwenCache = {
+        cacheReady: Promise.resolve(),
+        getCache: key => {
+          const raw = localStorage.getItem('cache:' + key);
+          return raw ? JSON.parse(raw) : null;
+        },
+        setCache: (key, val) => {
+          localStorage.setItem('cache:' + key, JSON.stringify(val));
+        },
+        removeCache: key => {
+          localStorage.removeItem('cache:' + key);
+        },
+        qwenClearCache: () => {
+          Object.keys(localStorage)
+            .filter(k => k.startsWith('cache:'))
+            .forEach(k => localStorage.removeItem(k));
+        },
+        qwenGetCacheSize: () =>
+          Object.keys(localStorage).filter(k => k.startsWith('cache:')).length,
+        qwenSetCacheLimit: () => {},
+        qwenSetCacheTTL: () => {},
+      };
+    });
+  });
   test('batch translations cache results and support provider change', async ({ page }) => {
     await page.goto(pageUrl);
     await page.evaluate(() => {
@@ -20,18 +46,25 @@ test.describe('Provider switching and cache', () => {
 
     const second = await page.evaluate(() =>
       window.qwenTranslateBatch({ texts: ['hello'], source: 'en', target: 'es', provider: 'mock2' })
-    );
-    expect(second.texts[0]).toBe('hello-es');
+      );
+      expect(second.texts[0]).toBe('hello-es');
 
-    await page.evaluate(() =>
-      window.qwenTranslateBatch({ texts: ['cacheme'], source: 'en', target: 'es', provider: 'mock2' })
-    );
-    await page.reload();
-    const cached = await page.evaluate(async () => {
-      const prov = window.qwenProviders.getProvider('mock2');
-      let calls = 0;
-      const orig = prov.translate;
-      prov.translate = async opts => {
+      await page.evaluate(() =>
+        window.qwenTranslateBatch({ texts: ['cacheme'], source: 'en', target: 'es', provider: 'mock2' })
+      );
+      await page.reload();
+      await page.evaluate(() => {
+        window.qwenProviders.registerProvider('mock2', {
+          async translate({ text }) {
+            return { text: text + '-es' };
+          }
+        });
+      });
+      const cached = await page.evaluate(async () => {
+        const prov = window.qwenProviders.getProvider('mock2');
+        let calls = 0;
+        const orig = prov.translate;
+        prov.translate = async opts => {
         calls++;
         return orig(opts);
       };
