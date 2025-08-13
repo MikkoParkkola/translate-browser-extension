@@ -8,6 +8,9 @@ const targetSelect = document.getElementById('target');
 const reqLimitInput = document.getElementById('requestLimit');
 const tokenLimitInput = document.getElementById('tokenLimit');
 const tokenBudgetInput = document.getElementById('tokenBudget');
+const reqThresholdInput = document.getElementById('requestThreshold');
+const tokenThresholdInput = document.getElementById('tokenThreshold');
+const providerOrderInput = document.getElementById('providerOrder');
 const autoCheckbox = document.getElementById('auto');
 const debugCheckbox = document.getElementById('debug');
 const smartThrottleInput = document.getElementById('smartThrottle');
@@ -51,6 +54,11 @@ const cacheLimitInput = document.getElementById('cacheSizeLimit');
 const cacheTTLInput = document.getElementById('cacheTTL');
 const clearDomainBtn = document.getElementById('clearDomain');
 const clearPairBtn = document.getElementById('clearPair');
+const reqRemaining = document.getElementById('reqRemaining');
+const tokenRemaining = document.getElementById('tokenRemaining');
+const reqRemainingBar = document.getElementById('reqRemainingBar');
+const tokenRemainingBar = document.getElementById('tokenRemainingBar');
+const providerError = document.getElementById('providerError');
 
 if (sourceSelect && !sourceSelect.options.length) {
   ['en', 'fr'].forEach(v => {
@@ -105,6 +113,12 @@ function saveConfig() {
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
       tokenLimit: parseInt(tokenLimitInput.value, 10) || getDefaultTokenLimit(model),
       tokenBudget: parseInt(tokenBudgetInput.value, 10) || 0,
+      requestThreshold: parseInt(reqThresholdInput.value, 10) || 0,
+      tokenThreshold: parseInt(tokenThresholdInput.value, 10) || 0,
+      providerOrder: providerOrderInput.value
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean),
       smartThrottle: smartThrottleInput.checked,
       tokensPerReq: parseInt(tokensPerReqInput.value, 10) || 0,
       retryDelay: parseInt(retryDelayInput.value, 10) || 0,
@@ -296,6 +310,9 @@ window.qwenLoadConfig().then(cfg => {
   if (reqLimitInput) reqLimitInput.value = cfg.requestLimit;
   if (tokenLimitInput) tokenLimitInput.value = cfg.tokenLimit;
   if (tokenBudgetInput) tokenBudgetInput.value = cfg.tokenBudget || '';
+  if (reqThresholdInput) reqThresholdInput.value = cfg.requestThreshold || '';
+  if (tokenThresholdInput) tokenThresholdInput.value = cfg.tokenThreshold || '';
+  if (providerOrderInput) providerOrderInput.value = (cfg.providerOrder || []).join(', ');
   if (autoCheckbox) autoCheckbox.checked = cfg.autoTranslate;
   if (debugCheckbox) debugCheckbox.checked = !!cfg.debug;
   if (smartThrottleInput) smartThrottleInput.checked = cfg.smartThrottle !== false;
@@ -339,7 +356,18 @@ window.qwenLoadConfig().then(cfg => {
   if (setupProviderInput) setupProviderInput.addEventListener('change', updateProviderFields);
 
   updateThrottleInputs();
-  [reqLimitInput, tokenLimitInput, tokenBudgetInput, tokensPerReqInput, retryDelayInput, cacheLimitInput, cacheTTLInput].forEach(el => { if (el) el.addEventListener('input', saveConfig); });
+  [
+    reqLimitInput,
+    tokenLimitInput,
+    tokenBudgetInput,
+    reqThresholdInput,
+    tokenThresholdInput,
+    providerOrderInput,
+    tokensPerReqInput,
+    retryDelayInput,
+    cacheLimitInput,
+    cacheTTLInput,
+  ].forEach(el => { if (el) el.addEventListener('input', saveConfig); });
   [sourceSelect, targetSelect, autoCheckbox, debugCheckbox, smartThrottleInput].forEach(el => { if (el) el.addEventListener('change', () => { updateThrottleInputs(); saveConfig(); }); });
   if (window.qwenSetCacheLimit) window.qwenSetCacheLimit(cfg.cacheMaxEntries || 1000);
   if (window.qwenSetCacheTTL) window.qwenSetCacheTTL(cfg.cacheTTL || 30 * 24 * 60 * 60 * 1000);

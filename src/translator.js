@@ -43,11 +43,18 @@ if (typeof window === 'undefined') {
     require('./providers/qwen');
   }
   if (typeof window !== 'undefined' && window.qwenThrottle) {
-    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = window.qwenThrottle);
+    ({ runWithRateLimit, approxTokens, getUsage } = window.qwenThrottle);
   } else if (typeof self !== 'undefined' && self.qwenThrottle) {
-    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = self.qwenThrottle);
+    ({ runWithRateLimit, approxTokens, getUsage } = self.qwenThrottle);
   } else if (typeof require !== 'undefined') {
-    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = require('./throttle'));
+    ({ runWithRateLimit, approxTokens, getUsage } = require('./throttle'));
+  }
+  if (typeof window !== 'undefined' && window.qwenRetry) {
+    ({ runWithRetry } = window.qwenRetry);
+  } else if (typeof self !== 'undefined' && self.qwenRetry) {
+    ({ runWithRetry } = self.qwenRetry);
+  } else if (typeof require !== 'undefined') {
+    ({ runWithRetry } = require('./retry'));
   }
 }
 
