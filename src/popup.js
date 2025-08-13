@@ -12,12 +12,17 @@ const debugCheckbox = document.getElementById('debug');
 const smartThrottleInput = document.getElementById('smartThrottle');
 const tokensPerReqInput = document.getElementById('tokensPerReq');
 const retryDelayInput = document.getElementById('retryDelay');
+const dualModeInput = document.getElementById('dualMode');
 const status = document.getElementById('status');
 const versionDiv = document.getElementById('version');
 const reqCount = document.getElementById('reqCount');
 const tokenCount = document.getElementById('tokenCount');
 const reqBar = document.getElementById('reqBar');
 const tokenBar = document.getElementById('tokenBar');
+const turboReq = document.getElementById('turboReq');
+const plusReq = document.getElementById('plusReq');
+const turboReqBar = document.getElementById('turboReqBar');
+const plusReqBar = document.getElementById('plusReqBar');
 const totalReq = document.getElementById('totalReq');
 const totalTok = document.getElementById('totalTok');
 const queueLen = document.getElementById('queueLen');
@@ -26,6 +31,17 @@ const failedTok = document.getElementById('failedTok');
 const translateBtn = document.getElementById('translate');
 const testBtn = document.getElementById('test');
 const progressBar = document.getElementById('progress');
+const costDayTurbo = document.getElementById('costDayTurbo');
+const costDayPlus = document.getElementById('costDayPlus');
+const costDayTotal = document.getElementById('costDayTotal');
+const costWeekTurbo = document.getElementById('costWeekTurbo');
+const costWeekPlus = document.getElementById('costWeekPlus');
+const costWeekTotal = document.getElementById('costWeekTotal');
+const costMonthTurbo = document.getElementById('costMonthTurbo');
+const costMonthPlus = document.getElementById('costMonthPlus');
+const costMonthTotal = document.getElementById('costMonthTotal');
+const toggleCostCal = document.getElementById('toggleCostCal');
+const costCalendar = document.getElementById('costCalendar');
 
 // Setup view elements
 const setupApiKeyInput = document.getElementById('setup-apiKey');
@@ -64,6 +80,7 @@ function saveConfig() {
       retryDelay: parseInt(retryDelayInput.value, 10) || 0,
       autoTranslate: autoCheckbox.checked,
       debug: debugCheckbox.checked,
+      dualMode: dualModeInput.checked,
     };
     window.qwenSaveConfig(cfg).then(() => {
       status.textContent = 'Settings saved.';
@@ -218,6 +235,7 @@ window.qwenLoadConfig().then(cfg => {
   apiKeyInput.value = cfg.apiKey || '';
   endpointInput.value = cfg.apiEndpoint || '';
   modelInput.value = cfg.model || '';
+  dualModeInput.checked = !!cfg.dualMode;
   sourceSelect.value = cfg.sourceLanguage;
   targetSelect.value = cfg.targetLanguage;
   reqLimitInput.value = cfg.requestLimit;
@@ -258,7 +276,7 @@ window.qwenLoadConfig().then(cfg => {
 
   updateThrottleInputs();
   [reqLimitInput, tokenLimitInput, tokenBudgetInput, tokensPerReqInput, retryDelayInput].forEach(el => el.addEventListener('input', saveConfig));
-  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox, smartThrottleInput].forEach(el => el.addEventListener('change', () => { updateThrottleInputs(); saveConfig(); }));
+  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox, smartThrottleInput, dualModeInput].forEach(el => el.addEventListener('change', () => { updateThrottleInputs(); saveConfig(); }));
 });
 
 versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
@@ -267,6 +285,10 @@ function setBar(el, ratio) {
   const r = Math.max(0, Math.min(1, ratio));
   el.style.width = r * 100 + '%';
   el.style.backgroundColor = window.qwenUsageColor ? window.qwenUsageColor(r) : 'var(--green)';
+}
+
+function setCost(el, val) {
+  if (el) el.textContent = val.toFixed(2);
 }
 
 function refreshUsage() {
@@ -281,6 +303,30 @@ function refreshUsage() {
     queueLen.textContent = res.queue;
     failedReq.textContent = res.failedTotalRequests;
     failedTok.textContent = res.failedTotalTokens;
+    if (res.models) {
+      const turbo = res.models['qwen-mt-turbo'] || { requests: 0, requestLimit: 0 };
+      const plus = res.models['qwen-mt-plus'] || { requests: 0, requestLimit: 0 };
+      turboReq.textContent = `${turbo.requests}/${turbo.requestLimit}`;
+      plusReq.textContent = `${plus.requests}/${plus.requestLimit}`;
+      setBar(turboReqBar, turbo.requestLimit ? turbo.requests / turbo.requestLimit : 0);
+      setBar(plusReqBar, plus.requestLimit ? plus.requests / plus.requestLimit : 0);
+    }
+    if (res.costs) {
+      setCost(costDayTurbo, res.costs.day.turbo);
+      setCost(costDayPlus, res.costs.day.plus);
+      setCost(costDayTotal, res.costs.day.total);
+      setCost(costWeekTurbo, res.costs.week.turbo);
+      setCost(costWeekPlus, res.costs.week.plus);
+      setCost(costWeekTotal, res.costs.week.total);
+      setCost(costMonthTurbo, res.costs.month.turbo);
+      setCost(costMonthPlus, res.costs.month.plus);
+      setCost(costMonthTotal, res.costs.month.total);
+      if (res.costs.calendar && costCalendar) {
+        costCalendar.innerHTML = res.costs.calendar
+          .map(d => `${d.date}: $${d.total.toFixed(2)}`)
+          .join('<br>');
+      }
+    }
     reqLimitInput.dataset.auto = res.requestLimit;
     tokenLimitInput.dataset.auto = res.tokenLimit;
     tokensPerReqInput.dataset.auto = Math.floor(res.tokenLimit / res.requestLimit || 0);
@@ -294,6 +340,14 @@ function refreshUsage() {
 
 setInterval(refreshUsage, 1000);
 refreshUsage();
+
+if (toggleCostCal) {
+  toggleCostCal.addEventListener('click', () => {
+    const show = costCalendar.style.display === 'none';
+    costCalendar.style.display = show ? 'block' : 'none';
+    toggleCostCal.textContent = show ? 'Hide Cost Calendar' : 'Show Cost Calendar';
+  });
+}
 
 translateBtn.addEventListener('click', () => {
   const debug = debugCheckbox.checked;
@@ -324,6 +378,12 @@ testBtn.addEventListener('click', async () => {
     target: targetSelect.value,
     debug: debugCheckbox.checked,
   };
+  if (dualModeInput.checked) {
+    cfg.models = [
+      cfg.model,
+      cfg.model === 'qwen-mt-plus' ? 'qwen-mt-turbo' : 'qwen-mt-plus',
+    ];
+  }
 
   function log(...args) { if (cfg.debug) console.log(...args); }
   log('QTDEBUG: starting configuration test', cfg);

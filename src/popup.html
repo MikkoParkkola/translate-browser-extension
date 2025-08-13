@@ -17,7 +17,7 @@
       --green: #198754;
       --yellow: #ffc107;
       --red: #dc3545;
-      --body-width: 380px;
+      --body-width: 430px;
     }
 
     @media (prefers-color-scheme: dark) {
@@ -134,12 +134,35 @@
           <span>Tokens: <span id="tokenCount">0/0</span></span>
           <div class="bar"><div id="tokenBar"></div></div>
         </div>
+        <div class="usage-item">
+          <span>Turbo: <span id="turboReq">0/0</span></span>
+          <div class="bar"><div id="turboReqBar"></div></div>
+        </div>
+        <div class="usage-item">
+          <span>Plus: <span id="plusReq">0/0</span></span>
+          <div class="bar"><div id="plusReqBar"></div></div>
+        </div>
         <div class="usage-item">Total Requests: <span id="totalReq">0</span></div>
         <div class="usage-item">Total Tokens: <span id="totalTok">0</span></div>
         <div class="usage-item">Queue: <span id="queueLen">0</span></div>
         <div class="usage-item">Failed Requests: <span id="failedReq">0</span></div>
         <div class="usage-item">Failed Tokens: <span id="failedTok">0</span></div>
       </div>
+
+      <div class="usage-section" id="costSection">
+        <div class="usage-item">24h Turbo: $<span id="costDayTurbo">0</span></div>
+        <div class="usage-item">24h Plus: $<span id="costDayPlus">0</span></div>
+        <div class="usage-item">24h Total: $<span id="costDayTotal">0</span></div>
+        <div class="usage-item">7d Turbo: $<span id="costWeekTurbo">0</span></div>
+        <div class="usage-item">7d Plus: $<span id="costWeekPlus">0</span></div>
+        <div class="usage-item">7d Total: $<span id="costWeekTotal">0</span></div>
+        <div class="usage-item">30d Turbo: $<span id="costMonthTurbo">0</span></div>
+        <div class="usage-item">30d Plus: $<span id="costMonthPlus">0</span></div>
+        <div class="usage-item">30d Total: $<span id="costMonthTotal">0</span></div>
+      </div>
+
+      <button id="toggleCostCal">Show Cost Calendar</button>
+      <div id="costCalendar" style="display:none; font-size:0.75rem"></div>
 
       <div class="grid-2">
         <div>
@@ -166,6 +189,8 @@
             <option value="qwen-mt-turbo">qwen-mt-turbo</option>
             <option value="qwen-mt-plus">qwen-mt-plus</option>
           </select>
+
+          <label><input type="checkbox" id="dualMode"> Use plus model when turbo is limited</label>
 
           <div class="grid-2">
             <div>
