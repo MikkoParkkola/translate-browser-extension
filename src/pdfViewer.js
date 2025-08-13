@@ -136,10 +136,17 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
         const text = sel && sel.toString().trim();
         if (!text) return;
         try {
+          const models = cfg.dualMode
+            ? [
+                cfg.model,
+                cfg.model === 'qwen-mt-plus' ? 'qwen-mt-turbo' : 'qwen-mt-plus',
+              ]
+            : undefined;
           const { text: translated } = await window.qwenTranslate({
             endpoint: cfg.apiEndpoint,
             apiKey: cfg.apiKey,
             model: cfg.model,
+            models,
             text,
             source: cfg.sourceLanguage,
             target: cfg.targetLanguage,

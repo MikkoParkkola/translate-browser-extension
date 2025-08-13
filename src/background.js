@@ -35,6 +35,10 @@ let throttleReady;
 let activeTranslations = 0;
 let translationStatus = { active: false };
 let usingPlus = false;
+const modelUsage = {
+  'qwen-mt-turbo': { requests: 0, tokens: 0, requestLimit: 60, tokenLimit: 31980 },
+  'qwen-mt-plus': { requests: 0, tokens: 0, requestLimit: 60, tokenLimit: 23797 },
+};
 
 async function updateIcon() {
   await ensureThrottle();
@@ -99,6 +103,10 @@ function ensureThrottle() {
             tokenLimit: cfg.tokenLimit,
             windowMs: 60000,
           });
+          Object.keys(modelUsage).forEach(m => {
+            modelUsage[m].requestLimit = cfg.requestLimit;
+            modelUsage[m].tokenLimit = cfg.tokenLimit;
+          });
           resolve();
         }
       );
@@ -135,6 +143,16 @@ async function handleTranslate(opts) {
       signal: controller.signal,
       stream: false,
     });
+    const usedModel = model;
+    if (modelUsage[usedModel]) {
+      modelUsage[usedModel].requests++;
+      try {
+        const tokens =
+          self.qwenThrottle.approxTokens(text) +
+          self.qwenThrottle.approxTokens(result.text || '');
+        modelUsage[usedModel].tokens += tokens;
+      } catch {}
+    }
     if (debug) console.log('QTDEBUG: background translation completed');
     return result;
   } catch (err) {
@@ -163,6 +181,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'usage') {
     ensureThrottle().then(() => {
       const stats = self.qwenThrottle.getUsage();
+      stats.models = modelUsage;
       sendResponse(stats);
     });
     return true;

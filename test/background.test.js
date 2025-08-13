@@ -1,5 +1,5 @@
 describe('background icon plus indicator', () => {
-  let updateBadge, setUsingPlus, _setActiveTranslations;
+  let updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate;
   beforeEach(() => {
     jest.resetModules();
     global.chrome = {
@@ -31,9 +31,13 @@ describe('background icon plus indicator', () => {
       }
       getContext() { return this.ctx; }
     };
-    global.qwenThrottle = { configure: jest.fn(), getUsage: () => ({ requests: 0, requestLimit: 60, tokens: 0, tokenLimit: 60 }) };
+    global.qwenThrottle = {
+      configure: jest.fn(),
+      getUsage: () => ({ requests: 0, requestLimit: 60, tokens: 0, tokenLimit: 60 }),
+      approxTokens: t => t.length,
+    };
     global.qwenUsageColor = () => '#00ff00';
-    ({ updateBadge, setUsingPlus, _setActiveTranslations } = require('../src/background.js'));
+    ({ updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate } = require('../src/background.js'));
     chrome.action.setBadgeText.mockClear();
   });
 
@@ -42,5 +46,20 @@ describe('background icon plus indicator', () => {
     _setActiveTranslations(1);
     updateBadge();
     expect(chrome.action.setBadgeText).toHaveBeenCalledWith({ text: 'P' });
+  });
+
+  test('reports per-model usage', async () => {
+    global.qwenTranslate = jest.fn().mockResolvedValue({ text: 'ok' });
+    await handleTranslate({
+      endpoint: 'https://e/',
+      apiKey: 'k',
+      model: 'qwen-mt-plus',
+      text: 'hi',
+      source: 'en',
+      target: 'es',
+    });
+    const listener = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+    const usage = await new Promise(resolve => listener({ action: 'usage' }, null, resolve));
+    expect(usage.models['qwen-mt-plus'].requests).toBe(1);
   });
 });
