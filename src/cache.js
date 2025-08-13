@@ -19,7 +19,8 @@ function encodeCacheValue(val) {
     const json = JSON.stringify(val);
     return LZString ? LZString.compressToUTF16(json) : json;
   } catch {
-    return val;
+    compressionErrors++;
+    try { return JSON.stringify(val); } catch { return val; }
   }
 }
 
@@ -29,12 +30,17 @@ function decodeCacheValue(val) {
     try {
       const json = LZString.decompressFromUTF16(val);
       if (json) return JSON.parse(json);
-    } catch {}
+      compressionErrors++;
+    } catch {
+      compressionErrors++;
+      return null;
+    }
   }
   try {
     return JSON.parse(val);
   } catch {
-    return val;
+    compressionErrors++;
+    return null;
   }
 }
 
@@ -144,6 +150,10 @@ function qwenGetCacheSize() {
   return cache.size;
 }
 
+function qwenGetCompressionErrors() {
+  return compressionErrors;
+}
+
 function _setMaxCacheEntries(n) {
   MAX_CACHE_ENTRIES = n;
 }
@@ -207,6 +217,7 @@ const api = {
   removeCache,
   qwenClearCache,
   qwenGetCacheSize,
+  qwenGetCompressionErrors,
   qwenSetCacheLimit,
   qwenSetCacheTTL,
   qwenGetCacheStats,

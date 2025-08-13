@@ -17,6 +17,19 @@ test('evicted entries removed from persistent storage', async () => {
   qwenSetCacheLimit(1000);
 });
 
+test('evicts oldest entry from memory when limit exceeded', async () => {
+  const { cacheReady, setCache, getCache, qwenSetCacheLimit } = require('../src/cache');
+  await cacheReady;
+  qwenSetCacheLimit(2);
+  setCache('a', { text: '1' });
+  setCache('b', { text: '2' });
+  setCache('c', { text: '3' });
+  expect(getCache('a')).toBeUndefined();
+  expect(getCache('b').text).toBe('2');
+  expect(getCache('c').text).toBe('3');
+  qwenSetCacheLimit(1000);
+});
+
 test('prunes expired entries from storage on load', async () => {
   const stale = { text: 'old', ts: Date.now() - 40 * 24 * 60 * 60 * 1000 };
   localStorage.setItem('qwenCache', JSON.stringify({ a: JSON.stringify(stale) }));

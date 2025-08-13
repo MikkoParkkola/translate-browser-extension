@@ -1,12 +1,13 @@
 {
   "name": "qwen-translator-extension",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "Extension to translate web pages using Qwen-MT-Turbo model",
   "main": "index.js",
   "scripts": {
     "test": "jest",
     "build:safari": "bash scripts/convert-safari.sh",
     "test:e2e": "playwright test",
+    "e2e": "playwright test",
     "postinstall": "bash scripts/fetch-wasm-assets.sh"
   },
   "keywords": [],
