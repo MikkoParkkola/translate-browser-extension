@@ -13,10 +13,12 @@ var qwenClearCache;
 var qwenGetCacheSize;
 var qwenSetCacheLimit;
 var qwenSetCacheTTL;
+var qwenGetCompressionErrors;
 var _setMaxCacheEntries;
 var _setCacheTTL;
 var _setCacheEntryTimestamp;
 var LZString;
+var attempts = 6;
 
 if (typeof window === 'undefined') {
   if (typeof self !== 'undefined' && self.qwenTransport) {
@@ -46,15 +48,12 @@ if (typeof window === 'undefined') {
   } else {
     getUsage = () => ({ requestLimit: 1, requests: 0 });
   }
-  LZString = (typeof window !== 'undefined' ? window.LZString : undefined) ||
-    (typeof self !== 'undefined' ? self.LZString : undefined) ||
-    (typeof require !== 'undefined' ? require('lz-string') : undefined);
-  if (typeof window !== 'undefined' && window.qwenCache) {
-    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = window.qwenCache);
+  if (window.qwenCache) {
+    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenGetCompressionErrors, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = window.qwenCache);
   } else if (typeof self !== 'undefined' && self.qwenCache) {
-    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = self.qwenCache);
+    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenGetCompressionErrors, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = self.qwenCache);
   } else if (typeof require !== 'undefined') {
-    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
+    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenGetCompressionErrors, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
   }
 }
 
@@ -250,6 +249,7 @@ if (typeof window !== 'undefined') {
   window.qwenTranslateStream = qwenTranslateStream;
   window.qwenClearCache = qwenClearCache;
   window.qwenGetCacheSize = qwenGetCacheSize;
+  window.qwenGetCompressionErrors = qwenGetCompressionErrors;
   window.qwenSetCacheLimit = qwenSetCacheLimit;
   window.qwenSetCacheTTL = qwenSetCacheTTL;
 }
@@ -258,6 +258,7 @@ if (typeof self !== 'undefined' && typeof window === 'undefined') {
   self.qwenTranslateStream = qwenTranslateStream;
   self.qwenClearCache = qwenClearCache;
   self.qwenGetCacheSize = qwenGetCacheSize;
+  self.qwenGetCompressionErrors = qwenGetCompressionErrors;
   self.qwenSetCacheLimit = qwenSetCacheLimit;
   self.qwenSetCacheTTL = qwenSetCacheTTL;
 }

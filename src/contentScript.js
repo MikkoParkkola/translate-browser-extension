@@ -137,6 +137,7 @@ async function translateNode(node) {
       target: currentConfig.targetLanguage,
       signal: controller.signal,
       debug: currentConfig.debug,
+      domain: location.hostname,
     });
     clearTimeout(timeout);
     if (currentConfig.debug) {
@@ -452,6 +453,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           source: cfg.sourceLanguage,
           target: cfg.targetLanguage,
           debug: cfg.debug,
+          force: true,
         });
         const range = sel.getRangeAt(0);
         range.deleteContents();
