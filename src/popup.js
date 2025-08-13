@@ -37,6 +37,7 @@ const clearPairBtn = document.getElementById('clearPair');
 const forceCheckbox = document.getElementById('force');
 const cacheSizeLabel = document.getElementById('cacheSize');
 const hitRateLabel = document.getElementById('hitRate');
+const domainCountsDiv = document.getElementById('domainCounts');
 const cacheLimitInput = document.getElementById('cacheSizeLimit');
 const cacheTTLInput = document.getElementById('cacheTTL');
 const toggleCalendar = document.getElementById('toggleCalendar');
@@ -329,7 +330,7 @@ window.qwenLoadConfig().then(cfg => {
   });
   if (window.qwenSetCacheLimit) window.qwenSetCacheLimit(cfg.cacheMaxEntries || 1000);
   if (window.qwenSetCacheTTL) window.qwenSetCacheTTL(cfg.cacheTTL || 30 * 24 * 60 * 60 * 1000);
-  updateCacheInfo();
+  updateCacheSize();
 });
 
 if (versionDiv) versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
@@ -484,7 +485,7 @@ if (clearCacheBtn) {
       tabs.forEach(t => chrome.tabs.sendMessage(t.id, { action: 'clear-cache' }, () => {}));
     });
     status.textContent = 'Cache cleared.';
-    updateCacheInfo();
+    updateCacheSize();
     setTimeout(() => {
       if (status.textContent === 'Cache cleared.') status.textContent = '';
     }, 2000);

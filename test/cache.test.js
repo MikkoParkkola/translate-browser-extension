@@ -37,7 +37,7 @@ test('prunes expired entries from storage on load', async () => {
   const cache = require('../src/cache');
   await cache.cacheReady;
   expect(cache.qwenGetCacheSize()).toBe(0);
-  expect(localStorage.getItem('qwenCache')).toBe('{}');
+  expect(localStorage.getItem('qwenCache')).toBeNull();
 });
 
 test('expired entry removed from storage when accessed', async () => {

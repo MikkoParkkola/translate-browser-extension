@@ -61,9 +61,9 @@ if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       resolve();
     });
   });
-} else if (typeof localStorage !== 'undefined') {
+} else if (typeof globalThis !== 'undefined' && globalThis.localStorage) {
   try {
-    const data = JSON.parse(localStorage.getItem('qwenCache') || '{}');
+    const data = JSON.parse(globalThis.localStorage.getItem('qwenCache') || '{}');
     const pruned = {};
     const now = Date.now();
     Object.entries(data).forEach(([k, v]) => {
@@ -73,8 +73,12 @@ if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
         pruned[k] = v;
       }
     });
-    localStorage.setItem('qwenCache', JSON.stringify(pruned));
-  } catch {}
+    globalThis.localStorage.setItem('qwenCache', JSON.stringify(pruned));
+  } catch {
+    try {
+      globalThis.localStorage.removeItem('qwenCache');
+    } catch {}
+  }
 }
 
 function persistCache(key, value) {
