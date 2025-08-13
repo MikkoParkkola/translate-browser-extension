@@ -134,6 +134,14 @@
           <span>Tokens: <span id="tokenCount">0/0</span></span>
           <div class="bar"><div id="tokenBar"></div></div>
         </div>
+        <div class="usage-item">
+          <span>Turbo: <span id="turboReq">0/0</span></span>
+          <div class="bar"><div id="turboReqBar"></div></div>
+        </div>
+        <div class="usage-item">
+          <span>Plus: <span id="plusReq">0/0</span></span>
+          <div class="bar"><div id="plusReqBar"></div></div>
+        </div>
         <div class="usage-item">Total Requests: <span id="totalReq">0</span></div>
         <div class="usage-item">Total Tokens: <span id="totalTok">0</span></div>
         <div class="usage-item">Queue: <span id="queueLen">0</span></div>
@@ -166,6 +174,8 @@
             <option value="qwen-mt-turbo">qwen-mt-turbo</option>
             <option value="qwen-mt-plus">qwen-mt-plus</option>
           </select>
+
+          <label><input type="checkbox" id="dualMode"> Use plus model when turbo is limited</label>
 
           <div class="grid-2">
             <div>
