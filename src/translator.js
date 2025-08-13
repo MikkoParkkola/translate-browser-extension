@@ -75,6 +75,16 @@ if (typeof window === 'undefined') {
   } else if (typeof require !== 'undefined') {
     ({ runWithRetry } = require('./retry'));
   }
+
+  if (!runWithRetry) {
+    if (typeof window !== 'undefined' && window.qwenRetry) {
+      ({ runWithRetry } = window.qwenRetry);
+    } else if (typeof self !== 'undefined' && self.qwenRetry) {
+      ({ runWithRetry } = self.qwenRetry);
+    } else if (typeof require !== 'undefined') {
+      ({ runWithRetry } = require('./retry'));
+    }
+  }
 }
 
 if (typeof transportTranslate !== 'function') {
