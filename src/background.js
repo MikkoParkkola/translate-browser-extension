@@ -1,4 +1,13 @@
-importScripts('throttle.js', 'lz-string.min.js', 'cache.js', 'providers/index.js', 'providers/qwen.js', 'transport.js', 'translator.js', 'usageColor.js');
+importScripts(
+  'throttle.js',
+  'lz-string.min.js',
+  'cache.js',
+  'providers/index.js',
+  'providers/qwen.js',
+  'translator.js',
+  'usageColor.js',
+  'config.js'
+);
 
 chrome.storage.sync.get(
   { cacheMaxEntries: 1000, cacheTTL: 30 * 24 * 60 * 60 * 1000 },
@@ -65,6 +74,22 @@ const modelUsage = {
     tokenLimit: 23797,
   },
 };
+
+
+let config = { providerOrder: ['qwen'], requestThreshold: 0, tokenThreshold: 0 };
+let providerIndex = 0;
+function loadConfig() {
+  if (self.qwenLoadConfig) {
+    self.qwenLoadConfig().then(c => {
+      const order = Array.isArray(c.providerOrder) && c.providerOrder.length ? c.providerOrder : ['qwen'];
+      config.providerOrder = order;
+      config.requestThreshold = c.requestThreshold || 0;
+      config.tokenThreshold = c.tokenThreshold || 0;
+      if (providerIndex >= order.length) providerIndex = 0;
+    });
+  }
+}
+loadConfig();
 
 
 async function updateIcon() {
@@ -142,9 +167,9 @@ function ensureThrottle() {
   return throttleReady;
 }
 
-function recordUsage(model, tokensIn, tokensOut) {
+function recordUsage(model, tokensIn, tokensOut, provider) {
   return new Promise(resolve => {
-    const entry = { time: Date.now(), model, tokensIn, tokensOut };
+    const entry = { time: Date.now(), model, tokensIn, tokensOut, provider };
     chrome.storage.local.get('usageHistory', data => {
       const history = Array.isArray(data.usageHistory) ? data.usageHistory : [];
       history.push(entry);
@@ -153,6 +178,35 @@ function recordUsage(model, tokensIn, tokensOut) {
       chrome.storage.local.set({ usageHistory: filtered }, resolve);
     });
   });
+}
+
+async function chooseProvider(opts) {
+  const order = Array.isArray(config.providerOrder) && config.providerOrder.length ? config.providerOrder : [opts.provider || 'qwen'];
+  let current = order[providerIndex % order.length];
+  const prov = self.qwenProviders && self.qwenProviders.getProvider ? self.qwenProviders.getProvider(current) : null;
+  let switchProvider = false;
+  if (prov && prov.getQuota && (config.requestThreshold || config.tokenThreshold)) {
+    try {
+      const quota = await prov.getQuota({ endpoint: opts.endpoint, apiKey: opts.apiKey, model: opts.model });
+      const remainReq = quota.remaining && typeof quota.remaining.requests === 'number' ? quota.remaining.requests : Infinity;
+      const remainTok = quota.remaining && typeof quota.remaining.tokens === 'number' ? quota.remaining.tokens : Infinity;
+      const local = modelUsage[opts.model] || {};
+      const localReq = (local.requestLimit || 0) - (local.requests || 0);
+      const localTok = (local.tokenLimit || 0) - (local.tokens || 0);
+      const minReq = Math.min(remainReq, localReq);
+      const minTok = Math.min(remainTok, localTok);
+      if ((config.requestThreshold && minReq <= config.requestThreshold) || (config.tokenThreshold && minTok <= config.tokenThreshold)) {
+        switchProvider = true;
+      }
+    } catch (e) {
+      // ignore quota errors
+    }
+  }
+  if (switchProvider && order.length > 1) {
+    providerIndex = (providerIndex + 1) % order.length;
+    current = order[providerIndex];
+  }
+  return current;
 }
 
 async function handleTranslate(opts) {
@@ -170,8 +224,9 @@ async function handleTranslate(opts) {
   updateBadge();
 
   try {
+    const chosenProvider = await chooseProvider({ provider, endpoint, apiKey, model });
     const result = await self.qwenTranslate({
-      provider,
+      provider: chosenProvider,
       endpoint,
       apiKey,
       model,
@@ -192,10 +247,11 @@ async function handleTranslate(opts) {
         modelUsage[usedModel].tokens += tokensIn + tokensOut;
         modelUsage[usedModel].tokensIn += tokensIn;
         modelUsage[usedModel].tokensOut += tokensOut;
-        await recordUsage(usedModel, tokensIn, tokensOut);
+        await recordUsage(usedModel, tokensIn, tokensOut, chosenProvider);
       } catch {}
     }
     if (debug) console.log('QTDEBUG: background translation completed');
+    console.log('QTCOST: provider', chosenProvider);
     return result;
   } catch (err) {
     console.error('QTERROR: background translation error', err);
@@ -286,7 +342,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.action === 'config-changed') {
     throttleReady = null;
-    ensureThrottle().then(() => sendResponse({ ok: true }));
+    chrome.storage.sync.get(
+      { cacheMaxEntries: 1000, cacheTTL: 30 * 24 * 60 * 60 * 1000 },
+      cfg => {
+        if (self.qwenSetCacheLimit) self.qwenSetCacheLimit(cfg.cacheMaxEntries);
+        if (self.qwenSetCacheTTL) self.qwenSetCacheTTL(cfg.cacheTTL);
+        loadConfig();
+        ensureThrottle().then(() => sendResponse({ ok: true }));
+      }
+    );
     return true;
   }
   if (msg.action === 'translation-status') {
@@ -310,6 +374,9 @@ if (typeof module !== 'undefined') {
     },
     _setActiveTranslations: v => {
       activeTranslations = v;
+    },
+    _setConfig: c => {
+      config = { ...config, ...c };
     },
   };
 }

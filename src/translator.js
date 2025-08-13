@@ -74,8 +74,6 @@ if (typeof window === 'undefined') {
     ({ runWithRetry } = self.qwenRetry);
   } else if (typeof require !== 'undefined') {
     ({ runWithRetry } = require('./retry'));
-  } else {
-    runWithRetry = fn => fn();
   }
 }
 

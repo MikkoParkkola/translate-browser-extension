@@ -189,6 +189,23 @@
             <option value="qwen-mt-plus">qwen-mt-plus</option>
           </select>
 
+          <label for="provider">Provider</label>
+          <select id="provider" title="Select translation provider"></select>
+
+          <label for="providerOrder">Provider order</label>
+          <input type="text" id="providerOrder" placeholder="qwen" title="Comma-separated provider order for automatic switching">
+
+          <div class="grid-2">
+            <div>
+              <label for="requestThreshold">Request threshold</label>
+              <input type="number" id="requestThreshold" title="Switch provider when remaining requests fall below this number">
+            </div>
+            <div>
+              <label for="tokenThreshold">Token threshold</label>
+              <input type="number" id="tokenThreshold" title="Switch provider when remaining tokens fall below this number">
+            </div>
+          </div>
+
           <div class="grid-2">
             <div>
               <label for="requestLimit">Requests/min</label>
