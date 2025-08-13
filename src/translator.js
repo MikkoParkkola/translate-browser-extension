@@ -32,16 +32,26 @@ if (typeof window === 'undefined') {
   } else if (typeof require !== 'undefined') {
     ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenGetCompressionErrors, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
   }
+  if (typeof window !== 'undefined' && window.qwenProviders) {
+    ({ getProvider } = window.qwenProviders);
+  } else if (typeof self !== 'undefined' && self.qwenProviders) {
+    ({ getProvider } = self.qwenProviders);
+  } else if (typeof require !== 'undefined' && !getProvider) {
+    ({ getProvider } = require('./providers'));
+    require('./providers/qwen');
+  }
+  if (typeof window !== 'undefined' && window.qwenThrottle) {
+    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = window.qwenThrottle);
+  } else if (typeof self !== 'undefined' && self.qwenThrottle) {
+    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = self.qwenThrottle);
+  } else if (typeof require !== 'undefined') {
+    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = require('./throttle'));
+  }
 }
 
 async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, force = false }) {
   await cacheReady;
-  const modelList =
-    typeof models === 'undefined'
-      ? [model]
-      : Array.isArray(models)
-      ? models
-      : [models];
+  const modelList = Array.isArray(models) ? models : models ? [models] : [model];
   if (debug) {
     console.log('QTDEBUG: qwenTranslate called with', {
       provider,
@@ -154,12 +164,7 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, model
 
 async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay, force = false }, onData) {
   await cacheReady;
-  const modelList =
-    typeof models === 'undefined'
-      ? [model]
-      : Array.isArray(models)
-      ? models
-      : [models];
+  const modelList = Array.isArray(models) ? models : models ? [models] : [model];
   if (debug) {
     console.log('QTDEBUG: qwenTranslateStream called with', {
       endpoint,
