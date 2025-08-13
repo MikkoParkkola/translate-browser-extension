@@ -1,5 +1,12 @@
 const sendMessage = jest.fn();
-global.chrome = { runtime: { getURL: () => 'chrome-extension://abc/', onMessage: { addListener: () => {} }, sendMessage } };
+let messageListener;
+global.chrome = {
+  runtime: {
+    getURL: () => 'chrome-extension://abc/',
+    onMessage: { addListener: cb => { messageListener = cb; } },
+    sendMessage,
+  },
+};
 
 window.qwenTranslateBatch = async ({ texts, onProgress }) => {
   if (onProgress) onProgress({ phase: 'translate', request: 1, requests: 2, sample: texts[0] });
@@ -89,4 +96,39 @@ test('reuses cached translations for repeated text nodes', async () => {
   expect(nodes.map(n => n.textContent)).toEqual(['XHelloX', 'XHelloX']);
 
   window.qwenTranslateBatch = stub;
+});
+
+test('batches DOM nodes respecting token limit', async () => {
+  sendMessage.mockClear();
+  window.qwenTranslateBatch = jest.fn(async ({ texts }) => ({ texts }));
+  window.qwenLoadConfig = async () => ({ apiKey: 'k', apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'en', targetLanguage: 'es', debug: false });
+  window.qwenThrottle = { approxTokens: jest.fn(() => 4000), getUsage: () => ({}) };
+  document.body.innerHTML = '<p><span>A</span><span>A</span><span>B</span></p>';
+  messageListener({ action: 'start' });
+  await new Promise(r => setTimeout(r, 0));
+  await new Promise(r => setTimeout(r, 0));
+  const calls = window.qwenTranslateBatch.mock.calls.map(c => c[0].texts);
+  expect(calls).toContainEqual(['A', 'A']);
+  expect(calls).toContainEqual(['B']);
+  delete window.qwenThrottle;
+});
+
+test('passes force flag to batch translator', async () => {
+  const batch = jest.fn(async ({ texts }) => ({ texts }));
+  window.qwenTranslateBatch = batch;
+  document.body.innerHTML = '';
+  window.qwenLoadConfig = async () => ({ apiKey: 'k', apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'en', targetLanguage: 'es', debug: false });
+  messageListener({ action: 'start', force: true });
+  await Promise.resolve();
+  window.qwenThrottle = { approxTokens: jest.fn(() => 1), getUsage: () => ({}) };
+  const node = document.createTextNode('Hi');
+  await translateBatch([node]);
+  expect(batch).toHaveBeenCalledWith(expect.objectContaining({ force: true }));
+});
+
+test('clears cache on clear-cache message', () => {
+  const clear = jest.fn();
+  window.qwenClearCache = clear;
+  messageListener({ action: 'clear-cache' });
+  expect(clear).toHaveBeenCalled();
 });

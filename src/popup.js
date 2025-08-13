@@ -3,6 +3,7 @@ const apiKeyInput = document.getElementById('apiKey');
 const endpointInput = document.getElementById('apiEndpoint');
 const modelInput = document.getElementById('model');
 const providerSelect = document.getElementById('provider');
+const providerOrderInput = document.getElementById('providerOrder');
 const sourceSelect = document.getElementById('source');
 const targetSelect = document.getElementById('target');
 const reqLimitInput = document.getElementById('requestLimit');
@@ -29,6 +30,9 @@ const totalTok = document.getElementById('totalTok');
 const queueLen = document.getElementById('queueLen');
 const failedReq = document.getElementById('failedReq');
 const failedTok = document.getElementById('failedTok');
+const reqRemaining = document.getElementById('reqRemaining');
+const tokenRemaining = document.getElementById('tokenRemaining');
+const providerError = document.getElementById('providerError');
 const translateBtn = document.getElementById('translate');
 const testBtn = document.getElementById('test');
 const progressBar = document.getElementById('progress');
@@ -63,6 +67,8 @@ function getDefaultTokenLimit(model) {
 }
 
 let saveTimeout;
+let currentCfg = {};
+let lastQuotaCheck = 0;
 
 function saveConfig() {
   clearTimeout(saveTimeout);
@@ -73,11 +79,17 @@ function saveConfig() {
     }
     const model = modelInput.value.trim() || 'qwen-mt-turbo';
     const provider = providerSelect.value;
+    const providerOrder = providerOrderInput.value
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
     const cfg = {
+      ...currentCfg,
       apiKey: apiKeyInput.value.trim(),
       apiEndpoint: endpointInput.value.trim(),
       model,
       provider,
+      providerOrder: providerOrder.length ? providerOrder : [provider],
       sourceLanguage: sourceSelect.value,
       targetLanguage: targetSelect.value,
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
@@ -91,8 +103,12 @@ function saveConfig() {
       cacheMaxEntries: parseInt(cacheLimitInput.value, 10) || 1000,
       cacheTTL: (parseInt(cacheTTLInput.value, 10) || 30) * 24 * 60 * 60 * 1000,
     };
+    currentCfg = cfg;
     if (window.qwenSetCacheLimit) window.qwenSetCacheLimit(cfg.cacheMaxEntries);
     if (window.qwenSetCacheTTL) window.qwenSetCacheTTL(cfg.cacheTTL);
+    if (window.qwenProviders && window.qwenProviders.setProviderOrder) {
+      window.qwenProviders.setProviderOrder(cfg.providerOrder);
+    }
     window.qwenSaveConfig(cfg).then(() => {
       status.textContent = 'Settings saved.';
       updateView(cfg); // Re-check the view after saving
@@ -261,11 +277,13 @@ chrome.runtime.sendMessage({ action: 'get-status' }, s => {
 });
 
 window.qwenLoadConfig().then(cfg => {
+  currentCfg = cfg;
   // Populate main view
   apiKeyInput.value = cfg.apiKey || '';
   endpointInput.value = cfg.apiEndpoint || '';
   modelInput.value = cfg.model || '';
   providerSelect.value = cfg.provider || 'qwen';
+  providerOrderInput.value = (cfg.providerOrder || []).join(', ');
   sourceSelect.value = cfg.sourceLanguage;
   targetSelect.value = cfg.targetLanguage;
   reqLimitInput.value = cfg.requestLimit;
@@ -279,6 +297,10 @@ window.qwenLoadConfig().then(cfg => {
   cacheLimitInput.value = cfg.cacheMaxEntries || '';
   cacheTTLInput.value = Math.floor((cfg.cacheTTL || 30 * 24 * 60 * 60 * 1000) / (24 * 60 * 60 * 1000));
 
+  reqRemaining.textContent = cfg.remainingRequests || 0;
+  tokenRemaining.textContent = cfg.remainingTokens || 0;
+  providerError.textContent = cfg.providerError || '';
+
   // Populate setup view
   setupApiKeyInput.value = cfg.apiKey || '';
   setupApiEndpointInput.value = cfg.apiEndpoint || '';
@@ -287,6 +309,9 @@ window.qwenLoadConfig().then(cfg => {
 
   updateView(cfg);
   updateProviderFields();
+  if (window.qwenProviders && window.qwenProviders.setProviderOrder) {
+    window.qwenProviders.setProviderOrder(cfg.providerOrder || [cfg.provider || 'qwen']);
+  }
 
   // Add event listeners for auto-saving and syncing
   const allInputs = [
@@ -311,6 +336,7 @@ window.qwenLoadConfig().then(cfg => {
 
   providerSelect.addEventListener('change', updateProviderFields);
   setupProviderInput.addEventListener('change', updateProviderFields);
+  providerOrderInput.addEventListener('input', saveConfig);
 
   updateThrottleInputs();
   [reqLimitInput, tokenLimitInput, tokenBudgetInput, tokensPerReqInput, retryDelayInput, cacheLimitInput, cacheTTLInput].forEach(el => el.addEventListener('input', saveConfig));
@@ -342,6 +368,10 @@ function updateCacheInfo() {
     const parts = Object.entries(counts).map(([d, c]) => `${d}: ${c}`);
     domainCountsDiv.textContent = parts.length ? parts.join(', ') : '';
   }
+}
+
+function formatCost(c) {
+  return '$' + c.toFixed(2);
 }
 
 function refreshUsage() {
@@ -395,6 +425,45 @@ function refreshUsage() {
       tokensPerReqInput.placeholder = tokensPerReqInput.dataset.auto;
     }
   });
+
+  const now = Date.now();
+  if (now - lastQuotaCheck > 60000) {
+    lastQuotaCheck = now;
+    const prov =
+      (window.qwenProviders && window.qwenProviders.getProvider(providerSelect.value)) || {};
+    if (prov.quota) {
+      prov
+        .quota({
+          endpoint: endpointInput.value.trim(),
+          apiKey: apiKeyInput.value.trim(),
+          model: modelInput.value.trim(),
+          debug: debugCheckbox.checked,
+        })
+        .then(q => {
+          if (typeof q.requests === 'number') {
+            reqRemaining.textContent = q.requests;
+            currentCfg.remainingRequests = q.requests;
+          }
+          if (typeof q.tokens === 'number') {
+            tokenRemaining.textContent = q.tokens;
+            currentCfg.remainingTokens = q.tokens;
+          }
+          if (q.error) {
+            providerError.textContent = q.error;
+            currentCfg.providerError = q.error;
+          } else {
+            providerError.textContent = '';
+            currentCfg.providerError = '';
+          }
+          if (window.qwenSaveConfig) window.qwenSaveConfig(currentCfg);
+        })
+        .catch(err => {
+          providerError.textContent = err.message;
+          currentCfg.providerError = err.message;
+          if (window.qwenSaveConfig) window.qwenSaveConfig(currentCfg);
+        });
+    }
+  }
 }
 
 setInterval(refreshUsage, 1000);

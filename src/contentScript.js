@@ -1,3 +1,6 @@
+if (typeof window === 'undefined' && typeof require !== 'undefined') {
+  require('./transport');
+}
 if (!location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'))) {
 let observers = [];
 let currentConfig;
