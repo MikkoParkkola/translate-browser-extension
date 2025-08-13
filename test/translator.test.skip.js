@@ -1,4 +1,6 @@
 const transport = require('../src/transport.js');
+const throttle = require('../src/throttle');
+window.qwenThrottle = throttle;
 const translator = require('../src/translator.js');
 const batch = require('../src/batch.js');
 const {

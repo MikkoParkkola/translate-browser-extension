@@ -3,26 +3,50 @@ const create = tag => document.createElement(tag);
 describe('popup cost display', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
-    document.getElementById = id => document.querySelector('#' + id);
+    const tagMap = {
+      apiKey: 'input',
+      apiEndpoint: 'input',
+      model: 'input',
+      requestLimit: 'input',
+      tokenLimit: 'input',
+      tokenBudget: 'input',
+      tokensPerReq: 'input',
+      retryDelay: 'input',
+      'setup-apiKey': 'input',
+      'setup-apiEndpoint': 'input',
+      'setup-model': 'input',
+      provider: 'select',
+      'setup-provider': 'select',
+      source: 'select',
+      target: 'select',
+      auto: 'input',
+      debug: 'input',
+      smartThrottle: 'input',
+      dualMode: 'input',
+      translate: 'button',
+      test: 'button',
+      clearCache: 'button',
+      clearDomain: 'button',
+      clearPair: 'button',
+      toggleCalendar: 'button',
+      progress: 'progress',
+    };
+    document.getElementById = id => {
+      let el = document.querySelector('#' + id);
+      if (!el) {
+        el = create(tagMap[id] || 'div');
+        el.id = id;
+        document.body.appendChild(el);
+        global[id] = el;
+      }
+      return el;
+    };
     [
       'apiKey','apiEndpoint','model','requestLimit','tokenLimit','tokenBudget','tokensPerReq','retryDelay','setup-apiKey','setup-apiEndpoint','setup-model','provider','setup-provider',
       'source','target','auto','debug','smartThrottle','dualMode','translate','test','clearCache','clearDomain','clearPair','toggleCalendar',
-      'cacheSize','hitRate','costTurbo24h','costPlus24h','costTotal24h','costTurbo7d','costPlus7d','costTotal7d','costTurbo30d','costPlus30d','costTotal30d',
+      'cacheSizeLimit','cacheTTL','cacheSize','hitRate','costTurbo24h','costPlus24h','costTotal24h','costTurbo7d','costPlus7d','costTotal7d','costTurbo30d','costPlus30d','costTotal30d',
       'domainCounts','status','costCalendar','progress'
-    ].forEach(id => {
-      let tag = 'div';
-      if (['apiKey','apiEndpoint','model','requestLimit','tokenLimit','tokenBudget','tokensPerReq','retryDelay','setup-apiKey','setup-apiEndpoint','setup-model'].includes(id)) tag = 'input';
-      if (['source','target'].includes(id)) tag = 'select';
-      if (['auto','debug','smartThrottle','dualMode'].includes(id)) tag = 'input';
-      if (['translate','test','clearCache','clearDomain','clearPair','toggleCalendar'].includes(id)) tag = 'button';
-      if (['cacheSize','hitRate','costTurbo24h','costPlus24h','costTotal24h','costTurbo7d','costPlus7d','costTotal7d','costTurbo30d','costPlus30d','costTotal30d'].includes(id)) tag = 'span';
-      if (['domainCounts','status','costCalendar'].includes(id)) tag = 'div';
-      if (id === 'progress') tag = 'progress';
-      const e = create(tag);
-      e.id = id;
-      document.body.appendChild(e);
-      global[id] = e;
-    });
+    ].forEach(id => document.getElementById(id));
     global.chrome = {
       runtime: {
         sendMessage: jest.fn(),
@@ -52,6 +76,7 @@ describe('popup cost display', () => {
     });
     global.qwenSaveConfig = jest.fn().mockResolvedValue();
     global.setInterval = jest.fn();
+    global.formatCost = n => `$${n.toFixed(2)}`;
   });
 
   test('renders cost totals', async () => {

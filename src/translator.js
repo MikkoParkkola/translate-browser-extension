@@ -38,17 +38,22 @@ if (typeof window === 'undefined') {
   }
   ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
   LZString = require('lz-string');
-} else {
-  if (window.qwenTransport) {
-    ({ translate: transportTranslate } = window.qwenTransport);
-  } else if (typeof require !== 'undefined') {
-    ({ translate: transportTranslate } = require('./transport'));
   } else {
-    runWithRateLimit = fn => fn();
-    runWithRetry = fn => fn();
-    approxTokens = () => 0;
-    getUsage = () => ({ requestLimit: 1, tokenLimit: 1, requests: 0, tokens: 0 });
-  }
+    if (window.qwenTransport) {
+      ({ translate: transportTranslate } = window.qwenTransport);
+    } else if (typeof require !== 'undefined') {
+      ({ translate: transportTranslate } = require('./transport'));
+    }
+    if (window.qwenThrottle) {
+      ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = window.qwenThrottle);
+    } else if (typeof require !== 'undefined') {
+      ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = require('./throttle'));
+    } else {
+      runWithRateLimit = fn => fn();
+      runWithRetry = fn => fn();
+      approxTokens = () => 0;
+      getUsage = () => ({ requestLimit: 1, tokenLimit: 1, requests: 0, tokens: 0 });
+    }
   LZString = (typeof window !== 'undefined' ? window.LZString : undefined) ||
     (typeof self !== 'undefined' ? self.LZString : undefined) ||
     (typeof require !== 'undefined' ? require('lz-string') : undefined);
@@ -71,8 +76,15 @@ if (typeof window === 'undefined') {
 
 async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, force = false }) {
   await cacheReady;
+  const modelList =
+    typeof models !== 'undefined'
+      ? Array.isArray(models)
+        ? models
+        : models
+        ? [models]
+        : [model]
+      : [model];
   if (debug) {
-    const modelList = Array.isArray(models) ? models : models ? [models] : [model];
     console.log('QTDEBUG: qwenTranslate called with', {
       provider,
       endpoint,
