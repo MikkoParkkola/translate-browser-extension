@@ -182,6 +182,14 @@ function withSlash(url) {
   return url.endsWith('/') ? url : `${url}/`;
 }
 
+function collapseSpacing(text) {
+  if (typeof text !== 'string') return text;
+  return text
+    .split(/\s{2,}/)
+    .map(seg => (/^(?:\p{L}\s)+\p{L}$/u.test(seg) ? seg.replace(/\s+/g, '') : seg))
+    .join(' ');
+}
+
 async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true }) {
   const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
   if (debug) {
@@ -300,7 +308,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     console.log('QTDEBUG: qwenTranslate called with', {
       endpoint,
       apiKeySet: Boolean(apiKey),
-      model,
+      models: modelList,
       source,
       target,
       text: text && text.slice ? text.slice(0, 20) + (text.length > 20 ? '...' : '') : text,
@@ -326,7 +334,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
         chrome.runtime.sendMessage(
           {
             action: 'translate',
-            opts: { endpoint: ep, apiKey, model, text, source, target, debug },
+            opts: { endpoint: ep, apiKey, model: modelList[0], text, source, target, debug },
           },
           res => {
             if (chrome.runtime.lastError) {
@@ -351,11 +359,11 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     return result;
   }
 
-  try {
-    const data = await runWithRetry(
-      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, stream }),
+  const attempt = (m, attempts = 3) =>
+    runWithRetry(
+      () => doFetch({ endpoint, apiKey, model: m, text, source, target, signal, debug, stream }),
       approxTokens(text),
-      { attempts: 3, debug, onRetry, retryDelay }
+      { attempts, debug, onRetry, retryDelay }
     );
     setCache(cacheKey, data);
     if (debug) {
@@ -375,7 +383,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     console.log('QTDEBUG: qwenTranslateStream called with', {
       endpoint,
       apiKeySet: Boolean(apiKey),
-      model,
+      models: modelList,
       source,
       target,
       text: text && text.slice ? text.slice(0, 20) + (text.length > 20 ? '...' : '') : text,
@@ -389,11 +397,11 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
       return data;
     }
   }
-  try {
-    const data = await runWithRetry(
-      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
+  const attempt = (m, attempts = 3) =>
+    runWithRetry(
+      () => doFetch({ endpoint, apiKey, model: m, text, source, target, signal, debug, onData, stream }),
       approxTokens(text),
-      { attempts: 3, debug, onRetry, retryDelay }
+      { attempts, debug, onRetry, retryDelay }
     );
     setCache(cacheKey, data);
     if (debug) {

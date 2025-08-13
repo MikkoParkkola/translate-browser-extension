@@ -117,10 +117,17 @@ async function translateNode(node) {
     if (currentConfig.debug) console.log('QTDEBUG: translating node', text.slice(0, 20));
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
+    const models = currentConfig.dualMode
+      ? [
+          currentConfig.model,
+          currentConfig.model === 'qwen-mt-plus' ? 'qwen-mt-turbo' : 'qwen-mt-plus',
+        ]
+      : undefined;
     const { text: translated } = await window.qwenTranslate({
       endpoint: currentConfig.apiEndpoint,
       apiKey: currentConfig.apiKey,
       model: currentConfig.model,
+      models,
       text,
       source: currentConfig.sourceLanguage,
       target: currentConfig.targetLanguage,
@@ -160,6 +167,12 @@ async function translateBatch(elements, stats) {
       debug: currentConfig.debug,
       force: forceTranslate,
     };
+    if (currentConfig.dualMode) {
+      opts.models = [
+        currentConfig.model,
+        currentConfig.model === 'qwen-mt-plus' ? 'qwen-mt-turbo' : 'qwen-mt-plus',
+      ];
+    }
     if (stats) {
       opts.onProgress = p => {
         chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p, progress } });
