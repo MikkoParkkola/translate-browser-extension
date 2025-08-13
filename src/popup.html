@@ -17,7 +17,7 @@
       --green: #198754;
       --yellow: #ffc107;
       --red: #dc3545;
-      --body-width: 380px;
+      --body-width: 430px;
     }
 
     @media (prefers-color-scheme: dark) {
@@ -148,6 +148,21 @@
         <div class="usage-item">Failed Requests: <span id="failedReq">0</span></div>
         <div class="usage-item">Failed Tokens: <span id="failedTok">0</span></div>
       </div>
+
+      <div class="usage-section" id="costSection">
+        <div class="usage-item">24h Turbo: $<span id="costDayTurbo">0</span></div>
+        <div class="usage-item">24h Plus: $<span id="costDayPlus">0</span></div>
+        <div class="usage-item">24h Total: $<span id="costDayTotal">0</span></div>
+        <div class="usage-item">7d Turbo: $<span id="costWeekTurbo">0</span></div>
+        <div class="usage-item">7d Plus: $<span id="costWeekPlus">0</span></div>
+        <div class="usage-item">7d Total: $<span id="costWeekTotal">0</span></div>
+        <div class="usage-item">30d Turbo: $<span id="costMonthTurbo">0</span></div>
+        <div class="usage-item">30d Plus: $<span id="costMonthPlus">0</span></div>
+        <div class="usage-item">30d Total: $<span id="costMonthTotal">0</span></div>
+      </div>
+
+      <button id="toggleCostCal">Show Cost Calendar</button>
+      <div id="costCalendar" style="display:none; font-size:0.75rem"></div>
 
       <div class="grid-2">
         <div>

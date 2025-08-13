@@ -1,5 +1,5 @@
 describe('background icon plus indicator', () => {
-  let updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate;
+  let updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate, recordCost, getCostStats;
   beforeEach(() => {
     jest.resetModules();
     global.chrome = {
@@ -37,7 +37,7 @@ describe('background icon plus indicator', () => {
       approxTokens: t => t.length,
     };
     global.qwenUsageColor = () => '#00ff00';
-    ({ updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate } = require('../src/background.js'));
+    ({ updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate, recordCost, getCostStats } = require('../src/background.js'));
     chrome.action.setBadgeText.mockClear();
   });
 
@@ -61,5 +61,25 @@ describe('background icon plus indicator', () => {
     const listener = chrome.runtime.onMessage.addListener.mock.calls[0][0];
     const usage = await new Promise(resolve => listener({ action: 'usage' }, null, resolve));
     expect(usage.models['qwen-mt-plus'].requests).toBe(1);
+  });
+
+  test('aggregates cost over time windows', () => {
+    const day = 24 * 60 * 60 * 1000;
+    const now = 40 * day;
+    recordCost('qwen-mt-turbo', 1_000_000, 1_000_000, now - day / 2);
+    recordCost('qwen-mt-plus', 1_000_000, 1_000_000, now - 3 * day);
+    recordCost('qwen-mt-plus', 1_000_000, 1_000_000, now - 10 * day);
+    recordCost('qwen-mt-plus', 1_000_000, 1_000_000, now - 40 * day);
+    const stats = getCostStats(now);
+    expect(stats.day.total).toBeCloseTo(0.65);
+    expect(stats.week.total).toBeCloseTo(0.65 + 9.83);
+    expect(stats.month.total).toBeCloseTo(0.65 + 9.83 + 9.83);
+    const today = new Date(now - day / 2).toISOString().slice(0, 10);
+    const threeDays = new Date(now - 3 * day).toISOString().slice(0, 10);
+    const tenDays = new Date(now - 10 * day).toISOString().slice(0, 10);
+    const cal = Object.fromEntries(stats.calendar.map(d => [d.date, d.total]));
+    expect(cal[today]).toBeCloseTo(0.65);
+    expect(cal[threeDays]).toBeCloseTo(9.83);
+    expect(cal[tenDays]).toBeCloseTo(9.83);
   });
 });

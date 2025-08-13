@@ -40,6 +40,54 @@ const modelUsage = {
   'qwen-mt-plus': { requests: 0, tokens: 0, requestLimit: 60, tokenLimit: 23797 },
 };
 
+const costRates = {
+  'qwen-mt-turbo': { in: 0.16 / 1e6, out: 0.49 / 1e6 },
+  'qwen-mt-plus': { in: 2.46 / 1e6, out: 7.37 / 1e6 },
+};
+const usageHistory = [];
+
+function recordCost(model, inTok, outTok, ts = Date.now()) {
+  usageHistory.push({ model, inTok, outTok, ts });
+}
+
+function getCostStats(now = Date.now()) {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const periods = {
+    day: { turbo: 0, plus: 0, total: 0 },
+    week: { turbo: 0, plus: 0, total: 0 },
+    month: { turbo: 0, plus: 0, total: 0 },
+  };
+  const calendarMap = new Map();
+  usageHistory.forEach(ev => {
+    if (now - ev.ts > 30 * dayMs) return;
+    const rates = costRates[ev.model];
+    if (!rates) return;
+    const cost = ev.inTok * rates.in + ev.outTok * rates.out;
+    const target = ev.model === 'qwen-mt-plus' ? 'plus' : 'turbo';
+    if (now - ev.ts <= dayMs) {
+      periods.day[target] += cost;
+      periods.day.total += cost;
+    }
+    if (now - ev.ts <= 7 * dayMs) {
+      periods.week[target] += cost;
+      periods.week.total += cost;
+    }
+    periods.month[target] += cost;
+    periods.month.total += cost;
+    const date = new Date(ev.ts).toISOString().slice(0, 10);
+    if (!calendarMap.has(date)) {
+      calendarMap.set(date, { turbo: 0, plus: 0, total: 0 });
+    }
+    const dayStats = calendarMap.get(date);
+    dayStats[target] += cost;
+    dayStats.total += cost;
+  });
+  const calendar = Array.from(calendarMap.entries())
+    .map(([date, vals]) => ({ date, ...vals }))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  return { ...periods, calendar };
+}
+
 async function updateIcon() {
   await ensureThrottle();
   const { requests, requestLimit, tokens, tokenLimit } = self.qwenThrottle.getUsage();
@@ -147,10 +195,10 @@ async function handleTranslate(opts) {
     if (modelUsage[usedModel]) {
       modelUsage[usedModel].requests++;
       try {
-        const tokens =
-          self.qwenThrottle.approxTokens(text) +
-          self.qwenThrottle.approxTokens(result.text || '');
-        modelUsage[usedModel].tokens += tokens;
+        const inTok = self.qwenThrottle.approxTokens(text);
+        const outTok = self.qwenThrottle.approxTokens(result.text || '');
+        modelUsage[usedModel].tokens += inTok + outTok;
+        recordCost(usedModel, inTok, outTok);
       } catch {}
     }
     if (debug) console.log('QTDEBUG: background translation completed');
@@ -182,6 +230,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     ensureThrottle().then(() => {
       const stats = self.qwenThrottle.getUsage();
       stats.models = modelUsage;
+      stats.costs = getCostStats();
       sendResponse(stats);
     });
     return true;
@@ -213,5 +262,7 @@ if (typeof module !== 'undefined') {
     _setActiveTranslations: v => {
       activeTranslations = v;
     },
+    recordCost,
+    getCostStats,
   };
 }
