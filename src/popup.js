@@ -2,6 +2,7 @@
 const apiKeyInput = document.getElementById('apiKey');
 const endpointInput = document.getElementById('apiEndpoint');
 const modelInput = document.getElementById('model');
+const failoverStrategyInput = document.getElementById('failoverStrategy');
 const providerSelect = document.getElementById('provider');
 const sourceSelect = document.getElementById('source');
 const targetSelect = document.getElementById('target');
@@ -100,6 +101,7 @@ function saveConfig() {
       apiKey: apiKeyInput.value.trim(),
       apiEndpoint: endpointInput.value.trim(),
       model,
+      failoverStrategy: failoverStrategyInput.value,
       sourceLanguage: sourceSelect.value,
       targetLanguage: targetSelect.value,
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
@@ -298,6 +300,7 @@ globalThis.qwenLoadConfig().then(cfg => {
   if (apiKeyInput) apiKeyInput.value = cfg.apiKey || '';
   if (endpointInput) endpointInput.value = cfg.apiEndpoint || '';
   if (modelInput) modelInput.value = cfg.model || '';
+  if (failoverStrategyInput) failoverStrategyInput.value = cfg.failoverStrategy || 'balanced';
   if (providerSelect) providerSelect.value = cfg.provider || 'qwen';
   if (sourceSelect) sourceSelect.value = cfg.sourceLanguage;
   if (targetSelect) targetSelect.value = cfg.targetLanguage;
@@ -330,6 +333,7 @@ globalThis.qwenLoadConfig().then(cfg => {
     { main: apiKeyInput, setup: setupApiKeyInput, event: 'input' },
     { main: endpointInput, setup: setupApiEndpointInput, event: 'input' },
     { main: modelInput, setup: setupModelInput, event: 'change' },
+    { main: failoverStrategyInput, setup: null, event: 'change' },
   ];
 
   allInputs.forEach(({ main, setup, event }) => {

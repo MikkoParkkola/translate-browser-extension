@@ -154,6 +154,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
             apiKey: cfg.apiKey,
             model: cfg.model,
             models,
+            failover: cfg.failoverStrategy,
             text,
             source: cfg.sourceLanguage,
             target: cfg.targetLanguage,
