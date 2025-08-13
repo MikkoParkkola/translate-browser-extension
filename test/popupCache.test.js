@@ -2,6 +2,7 @@ const create = tag => document.createElement(tag);
 
 describe('popup cache controls', () => {
   beforeEach(() => {
+    jest.resetModules();
     document.body.innerHTML = '';
     document.getElementById = id => document.querySelector('#' + id);
     [

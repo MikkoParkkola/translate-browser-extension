@@ -17,6 +17,7 @@ const defaultCfg = {
   remainingRequests: 0,
   remainingTokens: 0,
   providerError: '',
+  quotaHistory: [],
   smartThrottle: true,
   tokensPerReq: 0,
   retryDelay: 0,
