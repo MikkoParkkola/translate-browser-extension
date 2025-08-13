@@ -33,10 +33,14 @@ const translateBtn = document.getElementById('translate');
 const testBtn = document.getElementById('test');
 const progressBar = document.getElementById('progress');
 const clearCacheBtn = document.getElementById('clearCache');
+const clearDomainBtn = document.getElementById('clearDomain');
+const clearPairBtn = document.getElementById('clearPair');
 const forceCheckbox = document.getElementById('force');
 const cacheSizeLabel = document.getElementById('cacheSize');
+const hitRateLabel = document.getElementById('hitRate');
 const cacheLimitInput = document.getElementById('cacheSizeLimit');
 const cacheTTLInput = document.getElementById('cacheTTL');
+const domainCountsDiv = document.getElementById('domainCounts');
 
 const applyProviderConfig =
   (window.qwenProviderConfig && window.qwenProviderConfig.applyProviderConfig) ||
@@ -313,7 +317,7 @@ window.qwenLoadConfig().then(cfg => {
   [sourceSelect, targetSelect, autoCheckbox, debugCheckbox, smartThrottleInput].forEach(el => el.addEventListener('change', () => { updateThrottleInputs(); saveConfig(); }));
   if (window.qwenSetCacheLimit) window.qwenSetCacheLimit(cfg.cacheMaxEntries || 1000);
   if (window.qwenSetCacheTTL) window.qwenSetCacheTTL(cfg.cacheTTL || 30 * 24 * 60 * 60 * 1000);
-  updateCacheSize();
+  updateCacheInfo();
 });
 
 versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
@@ -324,9 +328,19 @@ function setBar(el, ratio) {
   el.style.backgroundColor = window.qwenUsageColor ? window.qwenUsageColor(r) : 'var(--green)';
 }
 
-function updateCacheSize() {
+function updateCacheInfo() {
   if (cacheSizeLabel && window.qwenGetCacheSize) {
     cacheSizeLabel.textContent = `Cache: ${window.qwenGetCacheSize()}`;
+  }
+  if (hitRateLabel && window.qwenGetCacheStats) {
+    const s = window.qwenGetCacheStats();
+    const rate = s.hits + s.misses ? ((s.hits / (s.hits + s.misses)) * 100).toFixed(1) : '0.0';
+    hitRateLabel.textContent = `Hit Rate: ${rate}%`;
+  }
+  if (domainCountsDiv && window.qwenGetDomainCounts) {
+    const counts = window.qwenGetDomainCounts();
+    const parts = Object.entries(counts).map(([d, c]) => `${d}: ${c}`);
+    domainCountsDiv.textContent = parts.length ? parts.join(', ') : '';
   }
 }
 
@@ -411,9 +425,49 @@ if (clearCacheBtn) {
       tabs.forEach(t => chrome.tabs.sendMessage(t.id, { action: 'clear-cache' }, () => {}));
     });
     status.textContent = 'Cache cleared.';
-    updateCacheSize();
+    updateCacheInfo();
     setTimeout(() => {
       if (status.textContent === 'Cache cleared.') status.textContent = '';
+    }, 2000);
+  });
+}
+
+if (clearDomainBtn) {
+  clearDomainBtn.addEventListener('click', () => {
+    chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+      if (!tabs[0]) return;
+      let domain = '';
+      try {
+        domain = new URL(tabs[0].url || '').hostname;
+      } catch {}
+      if (!domain) return;
+      if (window.qwenClearCacheDomain) window.qwenClearCacheDomain(domain);
+      chrome.runtime.sendMessage({ action: 'clear-cache-domain', domain }, () => {});
+      chrome.tabs.query({}, ts => {
+        ts.forEach(t => chrome.tabs.sendMessage(t.id, { action: 'clear-cache-domain', domain }, () => {}));
+      });
+      status.textContent = `Cache cleared for ${domain}.`;
+      updateCacheInfo();
+      setTimeout(() => {
+        if (status.textContent === `Cache cleared for ${domain}.`) status.textContent = '';
+      }, 2000);
+    });
+  });
+}
+
+if (clearPairBtn) {
+  clearPairBtn.addEventListener('click', () => {
+    const source = sourceSelect.value;
+    const target = targetSelect.value;
+    if (window.qwenClearCacheLangPair) window.qwenClearCacheLangPair(source, target);
+    chrome.runtime.sendMessage({ action: 'clear-cache-pair', source, target }, () => {});
+    chrome.tabs.query({}, tabs => {
+      tabs.forEach(t => chrome.tabs.sendMessage(t.id, { action: 'clear-cache-pair', source, target }, () => {}));
+    });
+    status.textContent = `Cache cleared for ${source}->${target}.`;
+    updateCacheInfo();
+    setTimeout(() => {
+      if (status.textContent === `Cache cleared for ${source}->${target}.`) status.textContent = '';
     }, 2000);
   });
 }
