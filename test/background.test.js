@@ -1,5 +1,5 @@
 describe('background icon plus indicator', () => {
-  let updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate, recordCost, getCostStats;
+  let updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate;
   beforeEach(() => {
     jest.resetModules();
     global.chrome = {
@@ -11,7 +11,13 @@ describe('background icon plus indicator', () => {
       runtime: { onInstalled: { addListener: jest.fn() }, onMessage: { addListener: jest.fn() } },
       contextMenus: { create: jest.fn(), onClicked: { addListener: jest.fn() } },
       tabs: { onUpdated: { addListener: jest.fn() } },
-      storage: { sync: { get: (_, cb) => cb({ requestLimit: 60, tokenLimit: 60 }) } },
+      storage: {
+        sync: { get: (_, cb) => cb({ requestLimit: 60, tokenLimit: 60 }) },
+        local: {
+          get: (_, cb) => cb({ usageHistory: [] }),
+          set: (_obj, cb) => cb && cb(),
+        },
+      },
     };
     global.importScripts = () => {};
     global.setInterval = () => {};
@@ -37,7 +43,7 @@ describe('background icon plus indicator', () => {
       approxTokens: t => t.length,
     };
     global.qwenUsageColor = () => '#00ff00';
-    ({ updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate, recordCost, getCostStats } = require('../src/background.js'));
+    ({ updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate } = require('../src/background.js'));
     chrome.action.setBadgeText.mockClear();
   });
 
@@ -62,24 +68,96 @@ describe('background icon plus indicator', () => {
     const usage = await new Promise(resolve => listener({ action: 'usage' }, null, resolve));
     expect(usage.models['qwen-mt-plus'].requests).toBe(1);
   });
+});
 
-  test('aggregates cost over time windows', () => {
-    const day = 24 * 60 * 60 * 1000;
-    const now = 40 * day;
-    recordCost('qwen-mt-turbo', 1_000_000, 1_000_000, now - day / 2);
-    recordCost('qwen-mt-plus', 1_000_000, 1_000_000, now - 3 * day);
-    recordCost('qwen-mt-plus', 1_000_000, 1_000_000, now - 10 * day);
-    recordCost('qwen-mt-plus', 1_000_000, 1_000_000, now - 40 * day);
-    const stats = getCostStats(now);
-    expect(stats.day.total).toBeCloseTo(0.65);
-    expect(stats.week.total).toBeCloseTo(0.65 + 9.83);
-    expect(stats.month.total).toBeCloseTo(0.65 + 9.83 + 9.83);
-    const today = new Date(now - day / 2).toISOString().slice(0, 10);
-    const threeDays = new Date(now - 3 * day).toISOString().slice(0, 10);
-    const tenDays = new Date(now - 10 * day).toISOString().slice(0, 10);
-    const cal = Object.fromEntries(stats.calendar.map(d => [d.date, d.total]));
-    expect(cal[today]).toBeCloseTo(0.65);
-    expect(cal[threeDays]).toBeCloseTo(9.83);
-    expect(cal[tenDays]).toBeCloseTo(9.83);
+describe('background cost tracking', () => {
+  let handleTranslate, usageListener, store;
+  beforeEach(() => {
+    jest.resetModules();
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2024-01-01T00:00:00Z'));
+    store = { usageHistory: [] };
+    global.chrome = {
+      action: {
+        setBadgeText: jest.fn(),
+        setBadgeBackgroundColor: jest.fn(),
+        setIcon: jest.fn(),
+      },
+      runtime: { onInstalled: { addListener: jest.fn() }, onMessage: { addListener: jest.fn() } },
+      contextMenus: { create: jest.fn(), onClicked: { addListener: jest.fn() } },
+      tabs: { onUpdated: { addListener: jest.fn() } },
+      storage: {
+        sync: { get: (_, cb) => cb({ requestLimit: 60, tokenLimit: 60 }) },
+        local: {
+          get: (key, cb) => {
+            const k = typeof key === 'string' ? key : Object.keys(key)[0];
+            cb({ [k]: store[k] });
+          },
+          set: (obj, cb) => {
+            Object.assign(store, obj);
+            if (cb) cb();
+          },
+        },
+      },
+    };
+    global.importScripts = () => {};
+    global.setInterval = () => {};
+    global.OffscreenCanvas = class {
+      constructor() {
+        this.ctx = {
+          clearRect: jest.fn(),
+          lineWidth: 0,
+          strokeStyle: '',
+          beginPath: jest.fn(),
+          arc: jest.fn(),
+          stroke: jest.fn(),
+          fillStyle: '',
+          fill: jest.fn(),
+          getImageData: () => ({}),
+        };
+      }
+      getContext() { return this.ctx; }
+    };
+    global.qwenThrottle = {
+      configure: jest.fn(),
+      getUsage: () => ({ requests: 0, requestLimit: 60, tokens: 0, tokenLimit: 60 }),
+      approxTokens: jest
+        .fn()
+        .mockReturnValueOnce(1000) // turbo in
+        .mockReturnValueOnce(2000) // turbo out
+        .mockReturnValueOnce(3000) // plus in
+        .mockReturnValueOnce(4000), // plus out
+    };
+    global.qwenUsageColor = () => '#00ff00';
+    global.qwenTranslate = jest
+      .fn()
+      .mockResolvedValueOnce({ text: 'out1' })
+      .mockResolvedValueOnce({ text: 'out2' });
+    ({ handleTranslate } = require('../src/background.js'));
+    usageListener = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+  });
+
+  test('computes cost windows', async () => {
+    await handleTranslate({
+      endpoint: 'https://e/',
+      apiKey: 'k',
+      model: 'qwen-mt-turbo',
+      text: 'in1',
+      source: 'en',
+      target: 'es',
+    });
+    jest.advanceTimersByTime(25 * 60 * 60 * 1000);
+    await handleTranslate({
+      endpoint: 'https://e/',
+      apiKey: 'k',
+      model: 'qwen-mt-plus',
+      text: 'in2',
+      source: 'en',
+      target: 'es',
+    });
+    const res = await new Promise(resolve => usageListener({ action: 'usage' }, null, resolve));
+    expect(res.costs['qwen-mt-turbo']['24h']).toBeCloseTo(0);
+    expect(res.costs['qwen-mt-plus']['24h']).toBeCloseTo(0.03686);
+    expect(res.costs.total['7d']).toBeCloseTo(0.038);
   });
 });

@@ -17,7 +17,7 @@
       --green: #198754;
       --yellow: #ffc107;
       --red: #dc3545;
-      --body-width: 430px;
+      --body-width: 420px;
     }
 
     @media (prefers-color-scheme: dark) {
@@ -88,6 +88,7 @@
     #version { font-size: 0.75rem; text-align: center; opacity: 0.7; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
     summary { cursor: pointer; font-weight: 600; }
+    .cost-section { grid-template-columns: 1fr 1fr 1fr; }
   </style>
 </head>
 <body>
@@ -149,20 +150,19 @@
         <div class="usage-item">Failed Tokens: <span id="failedTok">0</span></div>
       </div>
 
-      <div class="usage-section" id="costSection">
-        <div class="usage-item">24h Turbo: $<span id="costDayTurbo">0</span></div>
-        <div class="usage-item">24h Plus: $<span id="costDayPlus">0</span></div>
-        <div class="usage-item">24h Total: $<span id="costDayTotal">0</span></div>
-        <div class="usage-item">7d Turbo: $<span id="costWeekTurbo">0</span></div>
-        <div class="usage-item">7d Plus: $<span id="costWeekPlus">0</span></div>
-        <div class="usage-item">7d Total: $<span id="costWeekTotal">0</span></div>
-        <div class="usage-item">30d Turbo: $<span id="costMonthTurbo">0</span></div>
-        <div class="usage-item">30d Plus: $<span id="costMonthPlus">0</span></div>
-        <div class="usage-item">30d Total: $<span id="costMonthTotal">0</span></div>
+      <div class="usage-section cost-section">
+        <div class="usage-item">Turbo 24h: <span id="costTurbo24h">$0.00</span></div>
+        <div class="usage-item">Plus 24h: <span id="costPlus24h">$0.00</span></div>
+        <div class="usage-item">Total 24h: <span id="costTotal24h">$0.00</span></div>
+        <div class="usage-item">Turbo 7d: <span id="costTurbo7d">$0.00</span></div>
+        <div class="usage-item">Plus 7d: <span id="costPlus7d">$0.00</span></div>
+        <div class="usage-item">Total 7d: <span id="costTotal7d">$0.00</span></div>
+        <div class="usage-item">Turbo 30d: <span id="costTurbo30d">$0.00</span></div>
+        <div class="usage-item">Plus 30d: <span id="costPlus30d">$0.00</span></div>
+        <div class="usage-item">Total 30d: <span id="costTotal30d">$0.00</span></div>
       </div>
-
-      <button id="toggleCostCal">Show Cost Calendar</button>
-      <div id="costCalendar" style="display:none; font-size:0.75rem"></div>
+      <button id="toggleCalendar">Show daily costs</button>
+      <div id="costCalendar" style="display:none;font-size:0.75rem"></div>
 
       <div class="grid-2">
         <div>
@@ -248,6 +248,8 @@
   <script src="config.js"></script>
   <script src="languages.js"></script>
   <script src="usageColor.js"></script>
+  <script src="findLimit.js"></script>
+  <script src="limitDetector.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

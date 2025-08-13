@@ -31,16 +31,16 @@ const failedTok = document.getElementById('failedTok');
 const translateBtn = document.getElementById('translate');
 const testBtn = document.getElementById('test');
 const progressBar = document.getElementById('progress');
-const costDayTurbo = document.getElementById('costDayTurbo');
-const costDayPlus = document.getElementById('costDayPlus');
-const costDayTotal = document.getElementById('costDayTotal');
-const costWeekTurbo = document.getElementById('costWeekTurbo');
-const costWeekPlus = document.getElementById('costWeekPlus');
-const costWeekTotal = document.getElementById('costWeekTotal');
-const costMonthTurbo = document.getElementById('costMonthTurbo');
-const costMonthPlus = document.getElementById('costMonthPlus');
-const costMonthTotal = document.getElementById('costMonthTotal');
-const toggleCostCal = document.getElementById('toggleCostCal');
+const costTurbo24h = document.getElementById('costTurbo24h');
+const costPlus24h = document.getElementById('costPlus24h');
+const costTotal24h = document.getElementById('costTotal24h');
+const costTurbo7d = document.getElementById('costTurbo7d');
+const costPlus7d = document.getElementById('costPlus7d');
+const costTotal7d = document.getElementById('costTotal7d');
+const costTurbo30d = document.getElementById('costTurbo30d');
+const costPlus30d = document.getElementById('costPlus30d');
+const costTotal30d = document.getElementById('costTotal30d');
+const toggleCalendar = document.getElementById('toggleCalendar');
 const costCalendar = document.getElementById('costCalendar');
 
 // Setup view elements
@@ -287,8 +287,8 @@ function setBar(el, ratio) {
   el.style.backgroundColor = window.qwenUsageColor ? window.qwenUsageColor(r) : 'var(--green)';
 }
 
-function setCost(el, val) {
-  if (el) el.textContent = val.toFixed(2);
+function formatCost(v) {
+  return '$' + v.toFixed(2);
 }
 
 function refreshUsage() {
@@ -312,19 +312,25 @@ function refreshUsage() {
       setBar(plusReqBar, plus.requestLimit ? plus.requests / plus.requestLimit : 0);
     }
     if (res.costs) {
-      setCost(costDayTurbo, res.costs.day.turbo);
-      setCost(costDayPlus, res.costs.day.plus);
-      setCost(costDayTotal, res.costs.day.total);
-      setCost(costWeekTurbo, res.costs.week.turbo);
-      setCost(costWeekPlus, res.costs.week.plus);
-      setCost(costWeekTotal, res.costs.week.total);
-      setCost(costMonthTurbo, res.costs.month.turbo);
-      setCost(costMonthPlus, res.costs.month.plus);
-      setCost(costMonthTotal, res.costs.month.total);
-      if (res.costs.calendar && costCalendar) {
-        costCalendar.innerHTML = res.costs.calendar
-          .map(d => `${d.date}: $${d.total.toFixed(2)}`)
-          .join('<br>');
+      const turbo = res.costs['qwen-mt-turbo'];
+      const plus = res.costs['qwen-mt-plus'];
+      const total = res.costs.total;
+      costTurbo24h.textContent = formatCost(turbo['24h'] || 0);
+      costPlus24h.textContent = formatCost(plus['24h'] || 0);
+      costTotal24h.textContent = formatCost(total['24h'] || 0);
+      costTurbo7d.textContent = formatCost(turbo['7d'] || 0);
+      costPlus7d.textContent = formatCost(plus['7d'] || 0);
+      costTotal7d.textContent = formatCost(total['7d'] || 0);
+      costTurbo30d.textContent = formatCost(turbo['30d'] || 0);
+      costPlus30d.textContent = formatCost(plus['30d'] || 0);
+      costTotal30d.textContent = formatCost(total['30d'] || 0);
+      if (res.costs.daily) {
+        costCalendar.innerHTML = '';
+        res.costs.daily.forEach(d => {
+          const div = document.createElement('div');
+          div.textContent = `${d.date}: ${formatCost(d.cost)}`;
+          costCalendar.appendChild(div);
+        });
       }
     }
     reqLimitInput.dataset.auto = res.requestLimit;
@@ -341,11 +347,10 @@ function refreshUsage() {
 setInterval(refreshUsage, 1000);
 refreshUsage();
 
-if (toggleCostCal) {
-  toggleCostCal.addEventListener('click', () => {
-    const show = costCalendar.style.display === 'none';
-    costCalendar.style.display = show ? 'block' : 'none';
-    toggleCostCal.textContent = show ? 'Hide Cost Calendar' : 'Show Cost Calendar';
+if (toggleCalendar) {
+  toggleCalendar.addEventListener('click', () => {
+    costCalendar.style.display =
+      costCalendar.style.display === 'none' ? 'block' : 'none';
   });
 }
 
@@ -516,6 +521,22 @@ testBtn.addEventListener('click', async () => {
     const result = await new Promise(resolve => chrome.storage.sync.get([key], resolve));
     if (result[key] !== '1') throw new Error('write failed');
     await chrome.storage.sync.remove([key]);
+  })) && allOk;
+
+  allOk = (await run('Determine token limit', async () => {
+    const limit = await window.qwenLimitDetector.detectTokenLimit(text =>
+      window.qwenTranslate({ ...cfg, text, stream: false, noProxy: true })
+    );
+    await chrome.storage.sync.set({ tokenLimit: limit });
+    tokenLimitInput.value = limit;
+  })) && allOk;
+
+  allOk = (await run('Determine request limit', async () => {
+    const limit = await window.qwenLimitDetector.detectRequestLimit(() =>
+      window.qwenTranslate({ ...cfg, text: 'ping', stream: false, noProxy: true })
+    );
+    await chrome.storage.sync.set({ requestLimit: limit });
+    reqLimitInput.value = limit;
   })) && allOk;
 
   if (allOk) {

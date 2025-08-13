@@ -35,58 +35,29 @@ let throttleReady;
 let activeTranslations = 0;
 let translationStatus = { active: false };
 let usingPlus = false;
+const PRICES = {
+  'qwen-mt-turbo': { in: 0.16, out: 0.49 },
+  'qwen-mt-plus': { in: 2.46, out: 7.37 },
+};
 const modelUsage = {
-  'qwen-mt-turbo': { requests: 0, tokens: 0, requestLimit: 60, tokenLimit: 31980 },
-  'qwen-mt-plus': { requests: 0, tokens: 0, requestLimit: 60, tokenLimit: 23797 },
+  'qwen-mt-turbo': {
+    requests: 0,
+    tokens: 0,
+    tokensIn: 0,
+    tokensOut: 0,
+    requestLimit: 60,
+    tokenLimit: 31980,
+  },
+  'qwen-mt-plus': {
+    requests: 0,
+    tokens: 0,
+    tokensIn: 0,
+    tokensOut: 0,
+    requestLimit: 60,
+    tokenLimit: 23797,
+  },
 };
 
-const costRates = {
-  'qwen-mt-turbo': { in: 0.16 / 1e6, out: 0.49 / 1e6 },
-  'qwen-mt-plus': { in: 2.46 / 1e6, out: 7.37 / 1e6 },
-};
-const usageHistory = [];
-
-function recordCost(model, inTok, outTok, ts = Date.now()) {
-  usageHistory.push({ model, inTok, outTok, ts });
-}
-
-function getCostStats(now = Date.now()) {
-  const dayMs = 24 * 60 * 60 * 1000;
-  const periods = {
-    day: { turbo: 0, plus: 0, total: 0 },
-    week: { turbo: 0, plus: 0, total: 0 },
-    month: { turbo: 0, plus: 0, total: 0 },
-  };
-  const calendarMap = new Map();
-  usageHistory.forEach(ev => {
-    if (now - ev.ts > 30 * dayMs) return;
-    const rates = costRates[ev.model];
-    if (!rates) return;
-    const cost = ev.inTok * rates.in + ev.outTok * rates.out;
-    const target = ev.model === 'qwen-mt-plus' ? 'plus' : 'turbo';
-    if (now - ev.ts <= dayMs) {
-      periods.day[target] += cost;
-      periods.day.total += cost;
-    }
-    if (now - ev.ts <= 7 * dayMs) {
-      periods.week[target] += cost;
-      periods.week.total += cost;
-    }
-    periods.month[target] += cost;
-    periods.month.total += cost;
-    const date = new Date(ev.ts).toISOString().slice(0, 10);
-    if (!calendarMap.has(date)) {
-      calendarMap.set(date, { turbo: 0, plus: 0, total: 0 });
-    }
-    const dayStats = calendarMap.get(date);
-    dayStats[target] += cost;
-    dayStats.total += cost;
-  });
-  const calendar = Array.from(calendarMap.entries())
-    .map(([date, vals]) => ({ date, ...vals }))
-    .sort((a, b) => (a.date < b.date ? -1 : 1));
-  return { ...periods, calendar };
-}
 
 async function updateIcon() {
   await ensureThrottle();
@@ -163,6 +134,19 @@ function ensureThrottle() {
   return throttleReady;
 }
 
+function recordUsage(model, tokensIn, tokensOut) {
+  return new Promise(resolve => {
+    const entry = { time: Date.now(), model, tokensIn, tokensOut };
+    chrome.storage.local.get('usageHistory', data => {
+      const history = Array.isArray(data.usageHistory) ? data.usageHistory : [];
+      history.push(entry);
+      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      const filtered = history.filter(e => e.time >= cutoff);
+      chrome.storage.local.set({ usageHistory: filtered }, resolve);
+    });
+  });
+}
+
 async function handleTranslate(opts) {
   const { endpoint, apiKey, model, models, text, source, target, debug } = opts;
   const ep = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
@@ -195,10 +179,12 @@ async function handleTranslate(opts) {
     if (modelUsage[usedModel]) {
       modelUsage[usedModel].requests++;
       try {
-        const inTok = self.qwenThrottle.approxTokens(text);
-        const outTok = self.qwenThrottle.approxTokens(result.text || '');
-        modelUsage[usedModel].tokens += inTok + outTok;
-        recordCost(usedModel, inTok, outTok);
+        const tokensIn = self.qwenThrottle.approxTokens(text);
+        const tokensOut = self.qwenThrottle.approxTokens(result.text || '');
+        modelUsage[usedModel].tokens += tokensIn + tokensOut;
+        modelUsage[usedModel].tokensIn += tokensIn;
+        modelUsage[usedModel].tokensOut += tokensOut;
+        await recordUsage(usedModel, tokensIn, tokensOut);
       } catch {}
     }
     if (debug) console.log('QTDEBUG: background translation completed');
@@ -228,10 +214,50 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.action === 'usage') {
     ensureThrottle().then(() => {
-      const stats = self.qwenThrottle.getUsage();
-      stats.models = modelUsage;
-      stats.costs = getCostStats();
-      sendResponse(stats);
+      chrome.storage.local.get('usageHistory', data => {
+        const stats = self.qwenThrottle.getUsage();
+        stats.models = modelUsage;
+        const history = Array.isArray(data.usageHistory) ? data.usageHistory : [];
+        const now = Date.now();
+        const windows = { '24h': 24 * 60 * 60 * 1000, '7d': 7 * 24 * 60 * 60 * 1000, '30d': 30 * 24 * 60 * 60 * 1000 };
+        const costs = {
+          'qwen-mt-turbo': { '24h': 0, '7d': 0, '30d': 0 },
+          'qwen-mt-plus': { '24h': 0, '7d': 0, '30d': 0 },
+          total: { '24h': 0, '7d': 0, '30d': 0 },
+          daily: [],
+        };
+        history.forEach(h => {
+          const price = PRICES[h.model] || { in: 0, out: 0 };
+          const cost = (h.tokensIn * price.in + h.tokensOut * price.out) / 1e6;
+          if (now - h.time <= windows['24h']) {
+            costs[h.model]['24h'] += cost;
+            costs.total['24h'] += cost;
+          }
+          if (now - h.time <= windows['7d']) {
+            costs[h.model]['7d'] += cost;
+            costs.total['7d'] += cost;
+          }
+          if (now - h.time <= windows['30d']) {
+            costs[h.model]['30d'] += cost;
+            costs.total['30d'] += cost;
+          }
+        });
+        for (let i = 29; i >= 0; i--) {
+          const dayStart = new Date(now - i * 24 * 60 * 60 * 1000);
+          dayStart.setHours(0, 0, 0, 0);
+          const dayEnd = dayStart.getTime() + 24 * 60 * 60 * 1000;
+          const dayCost = history.reduce((sum, h) => {
+            if (h.time >= dayStart.getTime() && h.time < dayEnd) {
+              const price = PRICES[h.model] || { in: 0, out: 0 };
+              return sum + (h.tokensIn * price.in + h.tokensOut * price.out) / 1e6;
+            }
+            return sum;
+          }, 0);
+          costs.daily.push({ date: dayStart.toISOString().slice(0, 10), cost: dayCost });
+        }
+        stats.costs = costs;
+        sendResponse(stats);
+      });
     });
     return true;
   }
@@ -262,7 +288,5 @@ if (typeof module !== 'undefined') {
     _setActiveTranslations: v => {
       activeTranslations = v;
     },
-    recordCost,
-    getCostStats,
   };
 }
