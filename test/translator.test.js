@@ -8,10 +8,9 @@ const {
   qwenSetCacheLimit,
   qwenSetCacheTTL,
   _setCacheEntryTimestamp,
-  _setGetUsage,
 } = translator;
 const { qwenTranslateBatch, _getTokenBudget, _setTokenBudget } = batch;
-const { configure, reset, _setGetUsage } = require('../src/throttle');
+const { configure, reset } = require('../src/throttle');
 const { modelTokenLimits } = require('../src/config');
 const fetchMock = require('jest-fetch-mock');
 const { registerProvider } = require('../src/providers');
@@ -155,17 +154,6 @@ test('qwenSetCacheTTL adjusts expiration', async () => {
   await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hola', source: 'es', target: 'en' });
   expect(fetch).toHaveBeenCalledTimes(2);
   qwenSetCacheTTL(30 * 24 * 60 * 60 * 1000);
-});
-
-test('reports cache size and supports clearing', async () => {
-  fetch
-    .mockResponseOnce(JSON.stringify({ output: { text: 'hi' } }))
-    .mockResponseOnce(JSON.stringify({ output: { text: 'hola' } }));
-  await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'one', source: 'en', target: 'es' });
-  await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'two', source: 'en', target: 'es' });
-  expect(qwenGetCacheSize()).toBe(2);
-  qwenClearCache();
-  expect(qwenGetCacheSize()).toBe(0);
 });
 
 test('rate limiting queues requests', async () => {

@@ -10,7 +10,6 @@
   if (typeof window === 'undefined') {
     ({ approxTokens, getUsage } = require('./throttle'));
     ({ cacheReady, getCache, setCache, removeCache } = require('./cache'));
-    require('./transport');
     ({ qwenTranslate } = require('./translator'));
   } else {
     if (window.qwenThrottle) {
@@ -33,7 +32,6 @@
     } else if (typeof self !== 'undefined' && self.qwenTranslate) {
       qwenTranslate = self.qwenTranslate;
     } else if (typeof require !== 'undefined') {
-      require('./transport');
       ({ qwenTranslate } = require('./translator'));
     }
   }
@@ -203,7 +201,7 @@
           }
           m.result = out;
           const key = `${provider}:${opts.source}:${opts.target}:${m.text}`;
-          setCache(key, { text: out, domain: opts.domain });
+          setCache(key, { text: out });
           stats.requests++;
           stats.tokens += approxTokens(m.text);
           stats.words += m.text.trim().split(/\s+/).filter(Boolean).length;
@@ -213,7 +211,7 @@
       for (let i = 0; i < g.length; i++) {
         g[i].result = translated[i] || g[i].text;
         const key = `${provider}:${opts.source}:${opts.target}:${g[i].text}`;
-        setCache(key, { text: g[i].result, domain: opts.domain });
+        setCache(key, { text: g[i].result });
       }
       const elapsedMs = Date.now() - stats.start;
       const avg = elapsedMs / stats.requests;
@@ -257,7 +255,7 @@
       retryIdx.forEach((idx, i) => {
         results[idx] = retr.texts[i];
         const key = `${provider}:${opts.source}:${opts.target}:${texts[idx]}`;
-        setCache(key, { text: results[idx], domain: opts.domain });
+        setCache(key, { text: results[idx] });
       });
     }
 
@@ -265,7 +263,7 @@
       arr.forEach(i => {
         results[i] = results[orig];
         const key = `${provider}:${opts.source}:${opts.target}:${texts[i]}`;
-        setCache(key, { text: results[orig], domain: opts.domain });
+        setCache(key, { text: results[orig] });
       });
     });
 

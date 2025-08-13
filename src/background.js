@@ -1,4 +1,4 @@
-importScripts('throttle.js', 'lz-string.min.js', 'cache.js', 'providers/index.js', 'providers/qwen.js', 'transport.js', 'translator.js', 'usageColor.js');
+importScripts('throttle.js', 'lz-string.min.js', 'cache.js', 'providers/index.js', 'providers/qwen.js', 'translator.js', 'usageColor.js');
 
 chrome.storage.sync.get(
   { cacheMaxEntries: 1000, cacheTTL: 30 * 24 * 60 * 60 * 1000 },
@@ -156,7 +156,7 @@ function recordUsage(model, tokensIn, tokensOut) {
 }
 
 async function handleTranslate(opts) {
-  const { provider = 'qwen', endpoint, apiKey, model, models, text, source, target, debug } = opts;
+  const { provider = 'qwen', endpoint, apiKey, model, text, source, target, debug } = opts;
   if (debug) console.log('QTDEBUG: background translating via', endpoint);
 
   await ensureThrottle();
@@ -271,16 +271,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.action === 'clear-cache') {
     if (self.qwenClearCache) self.qwenClearCache();
-    sendResponse({ ok: true });
-    return true;
-  }
-  if (msg.action === 'clear-cache-domain') {
-    if (self.qwenClearCacheDomain) self.qwenClearCacheDomain(msg.domain);
-    sendResponse({ ok: true });
-    return true;
-  }
-  if (msg.action === 'clear-cache-pair') {
-    if (self.qwenClearCacheLangPair) self.qwenClearCacheLangPair(msg.source, msg.target);
     sendResponse({ ok: true });
     return true;
   }

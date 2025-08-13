@@ -45,39 +45,31 @@ test('expired entry removed from storage when accessed', async () => {
   _setCacheTTL(30 * 24 * 60 * 60 * 1000);
 });
 
-test('tracks hits and misses', async () => {
-  const {
-    cacheReady,
-    setCache,
-    getCache,
-    qwenGetCacheStats,
-    qwenResetCacheStats,
-  } = require('../src/cache');
+test('stores raw entry if compression fails', async () => {
+  jest.resetModules();
+  jest.doMock('lz-string', () => ({
+    compressToUTF16: () => { throw new Error('boom'); },
+    decompressFromUTF16: () => { throw new Error('boom'); },
+  }));
+  const { cacheReady, setCache, qwenGetCompressionErrors } = require('../src/cache');
   await cacheReady;
-  qwenResetCacheStats();
-  setCache('k1', { text: 'one', domain: 'a.com' });
-  expect(getCache('k1').text).toBe('one');
-  expect(getCache('missing')).toBeUndefined();
-  const stats = qwenGetCacheStats();
-  expect(stats.hits).toBe(1);
-  expect(stats.misses).toBe(1);
+  setCache('k1', { text: 'hello' });
+  const stored = JSON.parse(localStorage.getItem('qwenCache')).k1;
+  const parsed = JSON.parse(stored);
+  expect(parsed.text).toBe('hello');
+  expect(qwenGetCompressionErrors()).toBe(1);
 });
 
-test('clear cache by domain and language pair', async () => {
-  const {
-    cacheReady,
-    setCache,
-    getCache,
-    qwenClearCacheDomain,
-    qwenClearCacheLangPair,
-  } = require('../src/cache');
-  await cacheReady;
-  setCache('qwen:en:fr:hello', { text: 'bonjour', domain: 'example.com' });
-  setCache('qwen:en:fr:hi', { text: 'salut', domain: 'example.com' });
-  setCache('qwen:en:es:hola', { text: 'hola', domain: 'other.com' });
-  qwenClearCacheDomain('example.com');
-  expect(getCache('qwen:en:fr:hello')).toBeUndefined();
-  expect(getCache('qwen:en:es:hola')).toBeTruthy();
-  qwenClearCacheLangPair('en', 'es');
-  expect(getCache('qwen:en:es:hola')).toBeUndefined();
+test('drops corrupted entries and counts failures', async () => {
+  jest.resetModules();
+  localStorage.setItem('qwenCache', JSON.stringify({ bad: 'broken' }));
+  jest.doMock('lz-string', () => ({
+    compressToUTF16: s => s,
+    decompressFromUTF16: () => { throw new Error('bad'); },
+  }));
+  const cache = require('../src/cache');
+  await cache.cacheReady;
+  expect(cache.qwenGetCacheSize()).toBe(0);
+  expect(localStorage.getItem('qwenCache')).toBe('{}');
+  expect(cache.qwenGetCompressionErrors()).toBe(1);
 });

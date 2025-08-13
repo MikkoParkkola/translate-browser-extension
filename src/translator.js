@@ -1,6 +1,7 @@
-var transportTranslate;
+var runWithRateLimit;
+var runWithRetry;
+var approxTokens;
 var getUsage;
-var _setGetUsage = fn => { getUsage = fn; };
 var getProvider;
 var cacheReady;
 var getCache;
@@ -10,6 +11,7 @@ var qwenClearCache;
 var qwenGetCacheSize;
 var qwenSetCacheLimit;
 var qwenSetCacheTTL;
+var qwenGetCompressionErrors;
 var _setMaxCacheEntries;
 var _setCacheTTL;
 var _setCacheEntryTimestamp;
@@ -22,9 +24,17 @@ if (typeof window === 'undefined') {
     ({ translate: transportTranslate } = require('./transport'));
   }
   if (typeof self !== 'undefined' && self.qwenThrottle) {
-    ({ getUsage } = self.qwenThrottle);
+    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = self.qwenThrottle);
+    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenGetCompressionErrors, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
+    LZString = require('lz-string');
+    ({ getProvider } = require('./providers'));
+    require('./providers/qwen');
   } else {
-    ({ getUsage } = require('./throttle'));
+    ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = require('./throttle'));
+    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenGetCompressionErrors, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
+    LZString = require('lz-string');
+    ({ getProvider } = require('./providers'));
+    require('./providers/qwen');
   }
   ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
   LZString = require('lz-string');
@@ -34,40 +44,33 @@ if (typeof window === 'undefined') {
   } else if (typeof require !== 'undefined') {
     ({ translate: transportTranslate } = require('./transport'));
   } else {
-    transportTranslate = async () => { throw new Error('Transport not available'); };
-  }
-  if (window.qwenThrottle) {
-    ({ getUsage } = window.qwenThrottle);
-  } else if (typeof require !== 'undefined') {
-    ({ getUsage } = require('./throttle'));
-  } else {
-    getUsage = () => ({ requestLimit: 1, requests: 0 });
+    runWithRateLimit = fn => fn();
+    runWithRetry = fn => fn();
+    approxTokens = () => 0;
+    getUsage = () => ({ requestLimit: 1, tokenLimit: 1, requests: 0, tokens: 0 });
   }
   LZString = (typeof window !== 'undefined' ? window.LZString : undefined) ||
     (typeof self !== 'undefined' ? self.LZString : undefined) ||
     (typeof require !== 'undefined' ? require('lz-string') : undefined);
   if (typeof window !== 'undefined' && window.qwenCache) {
-    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = window.qwenCache);
+    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenGetCompressionErrors, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = window.qwenCache);
   } else if (typeof self !== 'undefined' && self.qwenCache) {
-    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = self.qwenCache);
+    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenGetCompressionErrors, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = self.qwenCache);
   } else if (typeof require !== 'undefined') {
-    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
+    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenGetCompressionErrors, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
+  }
+  if (typeof window !== 'undefined' && window.qwenProviders) {
+    ({ getProvider } = window.qwenProviders);
+  } else if (typeof self !== 'undefined' && self.qwenProviders) {
+    ({ getProvider } = self.qwenProviders);
+  } else if (typeof require !== 'undefined' && !getProvider) {
+    ({ getProvider } = require('./providers'));
+    require('./providers/qwen');
   }
 }
 
-async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, force = false, domain }) {
+async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, force = false }) {
   await cacheReady;
-  const list = Array.isArray(models) && models.length ? models : model ? [model] : [];
-  let modelList = list.slice();
-  if (modelList.length > 1) {
-    try {
-      const usage = _getUsage();
-      const ratio = (usage.requests || 0) / Math.max(1, usage.requestLimit || 1);
-      model = ratio < 0.5 ? modelList[0] : modelList[1];
-    } catch {}
-  } else {
-    model = modelList[0];
-  }
   if (debug) {
     const modelList = Array.isArray(models) ? models : models ? [models] : [model];
     console.log('QTDEBUG: qwenTranslate called with', {
@@ -100,7 +103,7 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text,
         chrome.runtime.sendMessage(
           {
             action: 'translate',
-            opts: { provider, endpoint: ep, apiKey, model, models, text, source, target, debug },
+            opts: { provider, endpoint: ep, apiKey, model, text, source, target, debug },
           },
           res => {
             if (chrome.runtime.lastError) {
@@ -121,7 +124,7 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text,
       throw new Error(result.error);
     }
     if (debug) console.log('QTDEBUG: background response received');
-    setCache(cacheKey, { ...result, domain });
+    setCache(cacheKey, result);
     return result;
   }
 
@@ -136,7 +139,7 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text,
       approxTokens(text),
       { attempts, debug, onRetry, retryDelay }
     );
-    setCache(cacheKey, { ...data, domain });
+    setCache(cacheKey, data);
     if (debug) {
       console.log('QTDEBUG: translation successful');
       console.log('QTDEBUG: final text', data.text);
@@ -173,24 +176,8 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text,
   }
 }
 
-function collapseSpacing(text) {
-  const joined = text.replace(/\b(?:[A-Za-z](?:\s[A-Za-z]){1,})\b/g, s => s.replace(/\s+/g, ''));
-  return joined.replace(/\s{2,}/g, ' ');
-}
-
 async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay, force = false }, onData) {
   await cacheReady;
-  const list = Array.isArray(models) && models.length ? models : model ? [model] : [];
-  let modelList = list.slice();
-  if (modelList.length > 1) {
-    try {
-      const usage = _getUsage();
-      const ratio = (usage.requests || 0) / Math.max(1, usage.requestLimit || 1);
-      model = ratio < 0.5 ? modelList[0] : modelList[1];
-    } catch {}
-  } else {
-    model = modelList[0];
-  }
   if (debug) {
     const modelList = Array.isArray(models) ? models : models ? [models] : [model];
     console.log('QTDEBUG: qwenTranslateStream called with', {
@@ -216,12 +203,12 @@ async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model,
       () => {
         const prov = getProvider ? getProvider(provider) : undefined;
         if (!prov || !prov.translate) throw new Error(`Unknown provider: ${provider}`);
-        return prov.translate({ endpoint, apiKey, model, models, text, source, target, signal, debug, onData, stream });
+        return prov.translate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream });
       },
       approxTokens(text),
       { attempts, debug, onRetry, retryDelay }
     );
-    setCache(cacheKey, { ...data, domain });
+    setCache(cacheKey, data);
     if (debug) {
       console.log('QTDEBUG: translation successful');
       console.log('QTDEBUG: final text', data.text);
@@ -232,42 +219,23 @@ async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model,
     throw e;
   }
 }
-
-function collapseSpacing(text) {
-  let prev;
-  do {
-    prev = text;
-    text = text.replace(/(\b\w)\s(?=\w\b)/g, '$1');
-  } while (text !== prev);
-  return text.replace(/\s{2,}/g, ' ');
-}
-
-function _setGetUsage(fn) {
-  getUsage = fn;
-}
-
-if (typeof globalThis !== 'undefined') {
-  globalThis._setGetUsage = _setGetUsage;
-}
 if (typeof window !== 'undefined') {
   window.qwenTranslate = qwenTranslate;
   window.qwenTranslateStream = qwenTranslateStream;
   window.qwenClearCache = qwenClearCache;
   window.qwenGetCacheSize = qwenGetCacheSize;
+  window.qwenGetCompressionErrors = qwenGetCompressionErrors;
   window.qwenSetCacheLimit = qwenSetCacheLimit;
   window.qwenSetCacheTTL = qwenSetCacheTTL;
-  window._setGetUsage = _setGetUsage;
-  window.collapseSpacing = collapseSpacing;
 }
 if (typeof self !== 'undefined' && typeof window === 'undefined') {
   self.qwenTranslate = qwenTranslate;
   self.qwenTranslateStream = qwenTranslateStream;
   self.qwenClearCache = qwenClearCache;
   self.qwenGetCacheSize = qwenGetCacheSize;
+  self.qwenGetCompressionErrors = qwenGetCompressionErrors;
   self.qwenSetCacheLimit = qwenSetCacheLimit;
   self.qwenSetCacheTTL = qwenSetCacheTTL;
-  self._setGetUsage = _setGetUsage;
-  self.collapseSpacing = collapseSpacing;
 }
 if (typeof module !== 'undefined') {
   module.exports = {
@@ -275,14 +243,11 @@ if (typeof module !== 'undefined') {
     qwenTranslateStream,
     qwenClearCache,
     qwenGetCacheSize,
+    qwenGetCompressionErrors,
     qwenSetCacheLimit,
     qwenSetCacheTTL,
-    _setGetUsage,
-    collapseSpacing,
     _setMaxCacheEntries,
     _setCacheTTL,
     _setCacheEntryTimestamp,
-    collapseSpacing,
-    _setGetUsage,
   };
 }

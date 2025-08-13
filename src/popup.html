@@ -131,13 +131,10 @@
       </div>
       <div class="main-actions">
         <button id="clearCache" title="Remove saved translations">Clear Cache</button>
-        <button id="clearDomain" title="Remove cached translations for this domain">Clear Domain</button>
-        <button id="clearPair" title="Remove cached translations for this language pair">Clear Pair</button>
         <span id="cacheSize" style="font-size:0.875rem"></span>
-        <span id="hitRate" style="font-size:0.875rem"></span>
+        <span id="compressionErrors" style="font-size:0.875rem"></span>
         <label class="force-toggle"><input type="checkbox" id="force"> Force</label>
       </div>
-      <div id="domainCounts" style="font-size:0.75rem"></div>
 
       <div class="usage-section">
         <div class="usage-item">
@@ -208,9 +205,6 @@
 
           <label for="provider">Provider</label>
           <select id="provider" title="Select translation provider"></select>
-
-          <label for="providerOrder">Provider order</label>
-          <input type="text" id="providerOrder" title="Comma-separated provider names in priority order">
 
           <div class="grid-2">
             <div>
