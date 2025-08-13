@@ -37,6 +37,7 @@ const tokenRemaining = document.getElementById('tokenRemaining');
 const reqRemainingBar = document.getElementById('reqRemainingBar');
 const tokenRemainingBar = document.getElementById('tokenRemainingBar');
 const providerError = document.getElementById('providerError');
+const domainCountsDiv = document.getElementById('domainCounts');
 const costSection = document.getElementById('costSection');
 const costCalendar = document.getElementById('costCalendar');
 const toggleCalendar = document.getElementById('toggleCalendar');
@@ -52,13 +53,6 @@ const hitRateLabel = document.getElementById('hitRate');
 const compressionErrorsLabel = document.getElementById('compressionErrors');
 const cacheLimitInput = document.getElementById('cacheSizeLimit');
 const cacheTTLInput = document.getElementById('cacheTTL');
-const clearDomainBtn = document.getElementById('clearDomain');
-const clearPairBtn = document.getElementById('clearPair');
-const reqRemaining = document.getElementById('reqRemaining');
-const tokenRemaining = document.getElementById('tokenRemaining');
-const reqRemainingBar = document.getElementById('reqRemainingBar');
-const tokenRemainingBar = document.getElementById('tokenRemainingBar');
-const providerError = document.getElementById('providerError');
 
 if (sourceSelect && !sourceSelect.options.length) {
   ['en', 'fr'].forEach(v => {
@@ -383,10 +377,6 @@ function setBar(el, ratio) {
   const r = Math.max(0, Math.min(1, ratio));
   el.style.width = r * 100 + '%';
   el.style.backgroundColor = globalThis.qwenUsageColor ? globalThis.qwenUsageColor(r) : 'var(--green)';
-}
-
-function formatCost(cost) {
-  return `$${cost.toFixed(2)}`;
 }
 
 function formatCost(n) {

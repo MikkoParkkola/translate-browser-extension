@@ -266,7 +266,7 @@ async function handleTranslate(opts) {
           modelUsage[usedModel].charsIn += charsIn;
           modelUsage[usedModel].charsOut += charsOut;
         }
-        await recordUsage(provider, usedModel, tokensIn, tokensOut, charsIn, charsOut);
+        await recordUsage(chosenProvider, usedModel, tokensIn, tokensOut, charsIn, charsOut);
       } catch {}
     }
     if (debug) console.log('QTDEBUG: background translation completed');
