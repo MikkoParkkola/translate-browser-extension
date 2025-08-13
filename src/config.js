@@ -19,6 +19,8 @@ const defaultCfg = {
   debug: false,
   useWasmEngine: true,
   autoOpenAfterSave: true,
+  cacheMaxEntries: 1000,
+  cacheTTL: 30 * 24 * 60 * 60 * 1000,
 };
 
 function qwenLoadConfig() {

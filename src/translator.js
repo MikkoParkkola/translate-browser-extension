@@ -3,14 +3,17 @@ var runWithRateLimit;
 var runWithRetry;
 var approxTokens;
 var getUsage;
+var LZString;
 
 if (typeof window === 'undefined') {
   if (typeof self !== 'undefined' && self.qwenThrottle) {
     ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = self.qwenThrottle);
+    LZString = self.LZString;
   } else {
     // Node 18+ provides a global fetch implementation
     fetchFn = typeof fetch !== 'undefined' ? fetch : require('cross-fetch');
     ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = require('./throttle'));
+    LZString = require('lz-string');
   }
 } else {
   if (window.qwenThrottle) {
@@ -23,9 +26,126 @@ if (typeof window === 'undefined') {
     approxTokens = () => 0;
     getUsage = () => ({ requestLimit: 1, tokenLimit: 1, requests: 0, tokens: 0 });
   }
+  LZString = (typeof window !== 'undefined' ? window.LZString : undefined) ||
+    (typeof self !== 'undefined' ? self.LZString : undefined) ||
+    (typeof require !== 'undefined' ? require('lz-string') : undefined);
 }
 
 const cache = new Map();
+let MAX_CACHE_ENTRIES = 1000;
+let CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+let cacheReady = Promise.resolve();
+
+function encodeCacheValue(val) {
+  try {
+    const json = JSON.stringify(val);
+    return LZString ? LZString.compressToUTF16(json) : json;
+  } catch {
+    return val;
+  }
+}
+
+function decodeCacheValue(val) {
+  if (typeof val !== 'string') return val;
+  if (LZString) {
+    try {
+      const json = LZString.decompressFromUTF16(val);
+      if (json) return JSON.parse(json);
+    } catch {}
+  }
+  try {
+    return JSON.parse(val);
+  } catch {
+    return val;
+  }
+}
+
+if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+  cacheReady = new Promise(resolve => {
+    chrome.storage.local.get(['qwenCache'], res => {
+      const data = res && res.qwenCache ? res.qwenCache : {};
+      const pruned = {};
+      const now = Date.now();
+      Object.entries(data).forEach(([k, v]) => {
+        const val = decodeCacheValue(v);
+        if (val && (!val.ts || now - val.ts <= CACHE_TTL_MS)) {
+          cache.set(k, val);
+          pruned[k] = v;
+        }
+      });
+      chrome.storage.local.set({ qwenCache: pruned });
+      resolve();
+    });
+  });
+} else if (typeof localStorage !== 'undefined') {
+  try {
+    const data = JSON.parse(localStorage.getItem('qwenCache') || '{}');
+    const pruned = {};
+    const now = Date.now();
+    Object.entries(data).forEach(([k, v]) => {
+      const val = decodeCacheValue(v);
+      if (val && (!val.ts || now - val.ts <= CACHE_TTL_MS)) {
+        cache.set(k, val);
+        pruned[k] = v;
+      }
+    });
+    localStorage.setItem('qwenCache', JSON.stringify(pruned));
+  } catch {}
+}
+
+function persistCache(key, value) {
+  const encoded = encodeCacheValue(value);
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(['qwenCache'], res => {
+      const obj = res && res.qwenCache ? res.qwenCache : {};
+      obj[key] = encoded;
+      chrome.storage.local.set({ qwenCache: obj });
+    });
+  } else if (typeof localStorage !== 'undefined') {
+    try {
+      const obj = JSON.parse(localStorage.getItem('qwenCache') || '{}');
+      obj[key] = encoded;
+      localStorage.setItem('qwenCache', JSON.stringify(obj));
+    } catch {}
+  }
+}
+
+function getCache(key) {
+  const entry = cache.get(key);
+  if (!entry) return;
+  if (entry.ts && Date.now() - entry.ts > CACHE_TTL_MS) {
+    removeCache(key);
+    return;
+  }
+  return entry;
+}
+
+function setCache(key, value) {
+  const entry = { ...value, ts: Date.now() };
+  cache.set(key, entry);
+  if (cache.size > MAX_CACHE_ENTRIES) {
+    const first = cache.keys().next().value;
+    removeCache(first);
+  }
+  persistCache(key, entry);
+}
+
+function removeCache(key) {
+  cache.delete(key);
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(['qwenCache'], res => {
+      const obj = res && res.qwenCache ? res.qwenCache : {};
+      delete obj[key];
+      chrome.storage.local.set({ qwenCache: obj });
+    });
+  } else if (typeof localStorage !== 'undefined') {
+    try {
+      const obj = JSON.parse(localStorage.getItem('qwenCache') || '{}');
+      delete obj[key];
+      localStorage.setItem('qwenCache', JSON.stringify(obj));
+    } catch {}
+  }
+}
 
 function fetchViaXHR(url, { method = 'GET', headers = {}, body, signal }, debug) {
   return new Promise((resolve, reject) => {
@@ -174,7 +294,8 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
   return { text: result };
 }
 
-async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay }) {
+async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, force = false }) {
+  await cacheReady;
   if (debug) {
     console.log('QTDEBUG: qwenTranslate called with', {
       endpoint,
@@ -186,8 +307,9 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     });
   }
   const cacheKey = `${source}:${target}:${text}`;
-  if (cache.has(cacheKey)) {
-    return cache.get(cacheKey);
+  if (!force) {
+    const cached = getCache(cacheKey);
+    if (cached) return cached;
   }
 
   if (
@@ -225,7 +347,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
       throw new Error(result.error);
     }
     if (debug) console.log('QTDEBUG: background response received');
-    cache.set(cacheKey, result);
+    setCache(cacheKey, result);
     return result;
   }
 
@@ -235,7 +357,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
       approxTokens(text),
       { attempts: 3, debug, onRetry, retryDelay }
     );
-    cache.set(cacheKey, data);
+    setCache(cacheKey, data);
     if (debug) {
       console.log('QTDEBUG: translation successful');
       console.log('QTDEBUG: final text', data.text);
@@ -247,7 +369,8 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   }
 }
 
-async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay }, onData) {
+async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay, force = false }, onData) {
+  await cacheReady;
   if (debug) {
     console.log('QTDEBUG: qwenTranslateStream called with', {
       endpoint,
@@ -259,10 +382,12 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     });
   }
   const cacheKey = `${source}:${target}:${text}`;
-  if (cache.has(cacheKey)) {
-    const data = cache.get(cacheKey);
-    if (onData) onData(data.text);
-    return data;
+  if (!force) {
+    const data = getCache(cacheKey);
+    if (data) {
+      if (onData) onData(data.text);
+      return data;
+    }
   }
   try {
     const data = await runWithRetry(
@@ -270,7 +395,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
       approxTokens(text),
       { attempts: 3, debug, onRetry, retryDelay }
     );
-    cache.set(cacheKey, data);
+    setCache(cacheKey, data);
     if (debug) {
       console.log('QTDEBUG: translation successful');
       console.log('QTDEBUG: final text', data.text);
@@ -365,16 +490,30 @@ async function batchOnce({
   _stats,
   ...opts
 }) {
+  await cacheReady;
   const stats = _stats || { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
   const SEP = '\uE000';
 
   const mapping = [];
+  const seen = new Map();
+  const dupes = new Map();
   texts.forEach((t, i) => {
     const key = `${opts.source}:${opts.target}:${t}`;
-    if (cache.has(key)) {
-      mapping.push({ index: i, chunk: 0, text: cache.get(key).text, cached: true });
+    if (!opts.force) {
+      const cached = getCache(key);
+      if (cached) {
+        mapping.push({ index: i, chunk: 0, text: cached.text, cached: true });
+        seen.set(key, i);
+        return;
+      }
+    }
+    if (seen.has(key)) {
+      const orig = seen.get(key);
+      if (!dupes.has(orig)) dupes.set(orig, []);
+      dupes.get(orig).push(i);
       return;
     }
+    seen.set(key, i);
     const pieces = splitLongText(t, tokenBudget);
     pieces.forEach((p, idx) => mapping.push({ index: i, chunk: idx, text: p }));
   });
@@ -405,7 +544,7 @@ async function batchOnce({
     const words = joinedText.replaceAll(SEP, ' ').trim().split(/\s+/).filter(Boolean).length;
     let res;
     try {
-      res = await qwenTranslate({ ...opts, text: joinedText, onRetry, retryDelay });
+      res = await qwenTranslate({ ...opts, text: joinedText, onRetry, retryDelay, force: opts.force });
     } catch (e) {
       if (/HTTP\s+400/i.test(e.message || '')) throw e;
       g.forEach(m => {
@@ -425,14 +564,14 @@ async function batchOnce({
       for (const m of g) {
         let out;
         try {
-          const single = await qwenTranslate({ ...opts, text: m.text, onRetry, retryDelay });
+          const single = await qwenTranslate({ ...opts, text: m.text, onRetry, retryDelay, force: opts.force });
           out = single.text;
         } catch {
           out = m.text;
         }
         m.result = out;
         const key = `${opts.source}:${opts.target}:${m.text}`;
-        cache.set(key, { text: out });
+        setCache(key, { text: out });
         stats.requests++;
         stats.tokens += approxTokens(m.text);
         stats.words += m.text.trim().split(/\s+/).filter(Boolean).length;
@@ -442,7 +581,7 @@ async function batchOnce({
     for (let i = 0; i < g.length; i++) {
       g[i].result = translated[i] || g[i].text;
       const key = `${opts.source}:${opts.target}:${g[i].text}`;
-      cache.set(key, { text: g[i].result });
+      setCache(key, { text: g[i].result });
     }
     const elapsedMs = Date.now() - stats.start;
     const avg = elapsedMs / stats.requests;
@@ -459,6 +598,14 @@ async function batchOnce({
     results[idx] = parts.join(' ').trim();
   });
 
+  dupes.forEach((arr, orig) => {
+    arr.forEach(i => {
+      results[i] = results[orig];
+      const key = `${opts.source}:${opts.target}:${texts[i]}`;
+      setCache(key, { text: results[orig] });
+    });
+  });
+
   const retryTexts = [];
   const retryIdx = [];
   for (let i = 0; i < results.length; i++) {
@@ -468,7 +615,7 @@ async function batchOnce({
       retryTexts.push(orig);
       retryIdx.push(i);
       const key = `${opts.source}:${opts.target}:${orig}`;
-      cache.delete(key);
+      removeCache(key);
     }
   }
   if (retryTexts.length && retries > 0) {
@@ -486,7 +633,7 @@ async function batchOnce({
     for (let i = 0; i < retryIdx.length; i++) {
       results[retryIdx[i]] = retr.texts[i];
       const key = `${opts.source}:${opts.target}:${retryTexts[i]}`;
-      cache.set(key, { text: retr.texts[i] });
+      setCache(key, { text: retr.texts[i] });
     }
   }
 
@@ -533,12 +680,48 @@ function splitLongText(text, maxTokens) {
 }
 function qwenClearCache() {
   cache.clear();
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.remove('qwenCache');
+  } else if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem('qwenCache');
+  }
+}
+
+function qwenGetCacheSize() {
+  return cache.size;
+}
+
+function _setMaxCacheEntries(n) {
+  MAX_CACHE_ENTRIES = n;
+}
+
+function _setCacheTTL(ms) {
+  CACHE_TTL_MS = ms;
+}
+
+function qwenSetCacheLimit(n) {
+  _setMaxCacheEntries(n);
+}
+
+function qwenSetCacheTTL(ms) {
+  _setCacheTTL(ms);
+}
+
+function _setCacheEntryTimestamp(key, ts) {
+  const entry = cache.get(key);
+  if (entry) {
+    entry.ts = ts;
+    persistCache(key, entry);
+  }
 }
 if (typeof window !== 'undefined') {
   window.qwenTranslate = qwenTranslate;
   window.qwenTranslateStream = qwenTranslateStream;
   window.qwenTranslateBatch = qwenTranslateBatch;
   window.qwenClearCache = qwenClearCache;
+  window.qwenGetCacheSize = qwenGetCacheSize;
+  window.qwenSetCacheLimit = qwenSetCacheLimit;
+  window.qwenSetCacheTTL = qwenSetCacheTTL;
   window.qwenSetTokenBudget = _setTokenBudget;
 }
 if (typeof self !== 'undefined' && typeof window === 'undefined') {
@@ -546,6 +729,9 @@ if (typeof self !== 'undefined' && typeof window === 'undefined') {
   self.qwenTranslateStream = qwenTranslateStream;
   self.qwenTranslateBatch = qwenTranslateBatch;
   self.qwenClearCache = qwenClearCache;
+  self.qwenGetCacheSize = qwenGetCacheSize;
+  self.qwenSetCacheLimit = qwenSetCacheLimit;
+  self.qwenSetCacheTTL = qwenSetCacheTTL;
   self.qwenSetTokenBudget = _setTokenBudget;
 }
 if (typeof module !== 'undefined') {
@@ -554,7 +740,13 @@ if (typeof module !== 'undefined') {
     qwenTranslateStream,
     qwenTranslateBatch,
     qwenClearCache,
+    qwenGetCacheSize,
+    qwenSetCacheLimit,
+    qwenSetCacheTTL,
     _getTokenBudget,
     _setTokenBudget,
+    _setMaxCacheEntries,
+    _setCacheTTL,
+    _setCacheEntryTimestamp,
   };
 }

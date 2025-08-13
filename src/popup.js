@@ -26,6 +26,11 @@ const failedTok = document.getElementById('failedTok');
 const translateBtn = document.getElementById('translate');
 const testBtn = document.getElementById('test');
 const progressBar = document.getElementById('progress');
+const clearCacheBtn = document.getElementById('clearCache');
+const forceCheckbox = document.getElementById('force');
+const cacheSizeLabel = document.getElementById('cacheSize');
+const cacheLimitInput = document.getElementById('cacheSizeLimit');
+const cacheTTLInput = document.getElementById('cacheTTL');
 
 // Setup view elements
 const setupApiKeyInput = document.getElementById('setup-apiKey');
@@ -64,7 +69,11 @@ function saveConfig() {
       retryDelay: parseInt(retryDelayInput.value, 10) || 0,
       autoTranslate: autoCheckbox.checked,
       debug: debugCheckbox.checked,
+      cacheMaxEntries: parseInt(cacheLimitInput.value, 10) || 1000,
+      cacheTTL: (parseInt(cacheTTLInput.value, 10) || 30) * 24 * 60 * 60 * 1000,
     };
+    if (window.qwenSetCacheLimit) window.qwenSetCacheLimit(cfg.cacheMaxEntries);
+    if (window.qwenSetCacheTTL) window.qwenSetCacheTTL(cfg.cacheTTL);
     window.qwenSaveConfig(cfg).then(() => {
       status.textContent = 'Settings saved.';
       updateView(cfg); // Re-check the view after saving
@@ -228,6 +237,8 @@ window.qwenLoadConfig().then(cfg => {
   smartThrottleInput.checked = cfg.smartThrottle !== false;
   tokensPerReqInput.value = cfg.tokensPerReq || '';
   retryDelayInput.value = cfg.retryDelay || '';
+  cacheLimitInput.value = cfg.cacheMaxEntries || '';
+  cacheTTLInput.value = Math.floor((cfg.cacheTTL || 30 * 24 * 60 * 60 * 1000) / (24 * 60 * 60 * 1000));
 
   // Populate setup view
   setupApiKeyInput.value = cfg.apiKey || '';
@@ -257,8 +268,11 @@ window.qwenLoadConfig().then(cfg => {
   });
 
   updateThrottleInputs();
-  [reqLimitInput, tokenLimitInput, tokenBudgetInput, tokensPerReqInput, retryDelayInput].forEach(el => el.addEventListener('input', saveConfig));
+  [reqLimitInput, tokenLimitInput, tokenBudgetInput, tokensPerReqInput, retryDelayInput, cacheLimitInput, cacheTTLInput].forEach(el => el.addEventListener('input', saveConfig));
   [sourceSelect, targetSelect, autoCheckbox, debugCheckbox, smartThrottleInput].forEach(el => el.addEventListener('change', () => { updateThrottleInputs(); saveConfig(); }));
+  if (window.qwenSetCacheLimit) window.qwenSetCacheLimit(cfg.cacheMaxEntries || 1000);
+  if (window.qwenSetCacheTTL) window.qwenSetCacheTTL(cfg.cacheTTL || 30 * 24 * 60 * 60 * 1000);
+  updateCacheSize();
 });
 
 versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
@@ -267,6 +281,12 @@ function setBar(el, ratio) {
   const r = Math.max(0, Math.min(1, ratio));
   el.style.width = r * 100 + '%';
   el.style.backgroundColor = window.qwenUsageColor ? window.qwenUsageColor(r) : 'var(--green)';
+}
+
+function updateCacheSize() {
+  if (cacheSizeLabel && window.qwenGetCacheSize) {
+    cacheSizeLabel.textContent = `Cache: ${window.qwenGetCacheSize()}`;
+  }
 }
 
 function refreshUsage() {
@@ -297,12 +317,28 @@ refreshUsage();
 
 translateBtn.addEventListener('click', () => {
   const debug = debugCheckbox.checked;
-  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+  const force = forceCheckbox && forceCheckbox.checked;
+  chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
     if (!tabs[0]) return;
     if (debug) console.log('QTDEBUG: sending start message to tab', tabs[0].id);
-    chrome.tabs.sendMessage(tabs[0].id, {action: 'start'});
+    chrome.tabs.sendMessage(tabs[0].id, { action: 'start', force });
   });
 });
+
+if (clearCacheBtn) {
+  clearCacheBtn.addEventListener('click', () => {
+    if (window.qwenClearCache) window.qwenClearCache();
+    chrome.runtime.sendMessage({ action: 'clear-cache' }, () => {});
+    chrome.tabs.query({}, tabs => {
+      tabs.forEach(t => chrome.tabs.sendMessage(t.id, { action: 'clear-cache' }, () => {}));
+    });
+    status.textContent = 'Cache cleared.';
+    updateCacheSize();
+    setTimeout(() => {
+      if (status.textContent === 'Cache cleared.') status.textContent = '';
+    }, 2000);
+  });
+}
 
 testBtn.addEventListener('click', async () => {
   status.textContent = 'Testing...';

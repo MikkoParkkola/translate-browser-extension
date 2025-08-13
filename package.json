@@ -1,6 +1,6 @@
 {
   "name": "qwen-translator-extension",
-  "version": "1.5.0",
+  "version": "1.7.0",
   "description": "Extension to translate web pages using Qwen-MT-Turbo model",
   "main": "index.js",
   "scripts": {
@@ -17,11 +17,12 @@
     "@playwright/test": "^1.45.2",
     "@types/jest": "^30.0.0",
     "cross-fetch": "^4.1.0",
-    "http-server": "^14.1.1",
     "fake-indexeddb": "^5.0.2",
+    "http-server": "^14.1.1",
     "jest": "^30.0.5",
     "jest-environment-jsdom": "^30.0.5",
     "jest-fetch-mock": "^3.0.3",
+    "lz-string": "^1.5.0",
     "pdf-lib": "^1.17.1"
   },
   "dependencies": {
