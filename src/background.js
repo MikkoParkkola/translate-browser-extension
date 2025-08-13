@@ -1,4 +1,4 @@
-importScripts('throttle.js', 'lz-string.min.js', 'translator.js', 'usageColor.js');
+importScripts('throttle.js', 'lz-string.min.js', 'providers/index.js', 'providers/qwen.js', 'translator.js', 'usageColor.js');
 
 chrome.storage.sync.get(
   { cacheMaxEntries: 1000, cacheTTL: 30 * 24 * 60 * 60 * 1000 },
@@ -156,9 +156,8 @@ function recordUsage(model, tokensIn, tokensOut) {
 }
 
 async function handleTranslate(opts) {
-  const { endpoint, apiKey, model, models, text, source, target, debug } = opts;
-  const ep = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
-  if (debug) console.log('QTDEBUG: background translating via', ep);
+  const { provider = 'qwen', endpoint, apiKey, model, text, source, target, debug } = opts;
+  if (debug) console.log('QTDEBUG: background translating via', endpoint);
 
   await ensureThrottle();
 
@@ -172,7 +171,8 @@ async function handleTranslate(opts) {
 
   try {
     const result = await self.qwenTranslate({
-      endpoint: ep,
+      provider,
+      endpoint,
       apiKey,
       model,
       models,

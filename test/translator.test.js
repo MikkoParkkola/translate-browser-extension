@@ -13,6 +13,7 @@ const {
 const { configure, reset, getUsage } = require('../src/throttle');
 const { modelTokenLimits } = require('../src/config');
 const fetchMock = require('jest-fetch-mock');
+const { registerProvider } = require('../src/providers');
 
 beforeAll(() => { fetchMock.enableMocks(); });
 
@@ -69,6 +70,14 @@ test('translate caching', async () => {
   expect(cached.text).toBe('hi');
 });
 
+test('dispatches to selected provider', async () => {
+  const mock = { translate: jest.fn().mockResolvedValue({ text: 'mocked' }) };
+  registerProvider('mock', mock);
+  const res = await translate({ provider: 'mock', endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hola', source: 'es', target: 'en' });
+  expect(res.text).toBe('mocked');
+  expect(mock.translate).toHaveBeenCalled();
+});
+
 test('force bypasses cache', async () => {
   fetch
     .mockResponseOnce(JSON.stringify({ output: { text: 'hi' } }))
@@ -89,14 +98,14 @@ test('evicts oldest cache entry from storage', async () => {
   await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: '2', source: 'es', target: 'en' });
   let stored = JSON.parse(window.localStorage.getItem('qwenCache'));
   expect(Object.keys(stored)).toHaveLength(2);
-  expect(stored['es:en:1']).toBeDefined();
-  expect(stored['es:en:2']).toBeDefined();
+  expect(stored['qwen:es:en:1']).toBeDefined();
+  expect(stored['qwen:es:en:2']).toBeDefined();
   await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: '3', source: 'es', target: 'en' });
   stored = JSON.parse(window.localStorage.getItem('qwenCache'));
   expect(Object.keys(stored)).toHaveLength(2);
-  expect(stored['es:en:1']).toBeUndefined();
-  expect(stored['es:en:2']).toBeDefined();
-  expect(stored['es:en:3']).toBeDefined();
+  expect(stored['qwen:es:en:1']).toBeUndefined();
+  expect(stored['qwen:es:en:2']).toBeDefined();
+  expect(stored['qwen:es:en:3']).toBeDefined();
   qwenSetCacheLimit(1000);
 });
 
@@ -106,7 +115,7 @@ test('expires stale cache entries by ttl', async () => {
     .mockResponseOnce(JSON.stringify({ output: { text: 'hello' } }));
   await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hola', source: 'es', target: 'en' });
   expect(fetch).toHaveBeenCalledTimes(1);
-  const key = 'es:en:hola';
+  const key = 'qwen:es:en:hola';
   _setCacheEntryTimestamp(key, Date.now() - 40 * 24 * 60 * 60 * 1000);
   const res = await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hola', source: 'es', target: 'en' });
   expect(fetch).toHaveBeenCalledTimes(2);
@@ -130,7 +139,7 @@ test('qwenSetCacheTTL adjusts expiration', async () => {
     .mockResponseOnce(JSON.stringify({ output: { text: 'hi' } }))
     .mockResponseOnce(JSON.stringify({ output: { text: 'hello' } }));
   await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hola', source: 'es', target: 'en' });
-  _setCacheEntryTimestamp('es:en:hola', Date.now() - 20);
+  _setCacheEntryTimestamp('qwen:es:en:hola', Date.now() - 20);
   await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hola', source: 'es', target: 'en' });
   expect(fetch).toHaveBeenCalledTimes(2);
   qwenSetCacheTTL(30 * 24 * 60 * 60 * 1000);
@@ -278,7 +287,7 @@ test('stores compressed cache entries', async () => {
   fetch.mockResponseOnce(JSON.stringify({ output: { text: 'hi' } }));
   await tr({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hola', source: 'es', target: 'en' });
   const stored = JSON.parse(window.localStorage.getItem('qwenCache'));
-  const key = 'es:en:hola';
+  const key = 'qwen:es:en:hola';
   expect(stored[key]).toBeDefined();
   expect(stored[key]).not.toContain('hi');
   const decoded = JSON.parse(LZ.decompressFromUTF16(stored[key]));
