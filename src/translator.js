@@ -69,10 +69,10 @@ if (typeof window === 'undefined') {
   }
 }
 
-async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, force = false }) {
+async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, force = false, domain }) {
   await cacheReady;
+  const modelList = Array.isArray(models) ? models : models ? [models] : [model];
   if (debug) {
-    const modelList = Array.isArray(models) ? models : models ? [models] : [model];
     console.log('QTDEBUG: qwenTranslate called with', {
       provider,
       endpoint,
@@ -124,7 +124,7 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text,
       throw new Error(result.error);
     }
     if (debug) console.log('QTDEBUG: background response received');
-    setCache(cacheKey, result);
+    setCache(cacheKey, result, domain);
     return result;
   }
 
@@ -139,7 +139,7 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text,
       approxTokens(text),
       { attempts, debug, onRetry, retryDelay }
     );
-    setCache(cacheKey, data);
+    setCache(cacheKey, data, domain);
     if (debug) {
       console.log('QTDEBUG: translation successful');
       console.log('QTDEBUG: final text', data.text);
@@ -164,7 +164,7 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text,
           retryDelay,
           attempts,
         });
-        setCache(cacheKey, data);
+        setCache(cacheKey, data, domain);
         return data;
       } catch (err) {
         console.error('QTERROR: translation request failed', err);
@@ -176,7 +176,7 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text,
   }
 }
 
-async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay, force = false }, onData) {
+async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay, force = false, domain }, onData) {
   await cacheReady;
   if (debug) {
     const modelList = Array.isArray(models) ? models : models ? [models] : [model];
@@ -208,7 +208,7 @@ async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model,
       approxTokens(text),
       { attempts, debug, onRetry, retryDelay }
     );
-    setCache(cacheKey, data);
+    setCache(cacheKey, data, domain);
     if (debug) {
       console.log('QTDEBUG: translation successful');
       console.log('QTDEBUG: final text', data.text);

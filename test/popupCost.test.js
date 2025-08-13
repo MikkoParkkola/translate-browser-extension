@@ -23,6 +23,12 @@ describe('popup cost display', () => {
       document.body.appendChild(e);
       global[id] = e;
     });
+    const srcOpt = document.createElement('option');
+    srcOpt.value = 'en';
+    source.appendChild(srcOpt);
+    const tgtOpt = document.createElement('option');
+    tgtOpt.value = 'fr';
+    target.appendChild(tgtOpt);
     global.chrome = {
       runtime: {
         sendMessage: jest.fn(),

@@ -4,6 +4,8 @@ let CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 let cacheReady = Promise.resolve();
 let LZString;
 let compressionErrors = 0;
+let hitCount = 0;
+let missCount = 0;
 
 if (typeof window === 'undefined') {
   LZString = require('lz-string');
@@ -95,16 +97,21 @@ function persistCache(key, value) {
 
 function getCache(key) {
   const entry = cache.get(key);
-  if (!entry) return;
-  if (entry.ts && Date.now() - entry.ts > CACHE_TTL_MS) {
-    removeCache(key);
+  if (!entry) {
+    missCount++;
     return;
   }
+  if (entry.ts && Date.now() - entry.ts > CACHE_TTL_MS) {
+    removeCache(key);
+    missCount++;
+    return;
+  }
+  hitCount++;
   return entry;
 }
 
-function setCache(key, value) {
-  const entry = { ...value, ts: Date.now() };
+function setCache(key, value, origin) {
+  const entry = { ...value, origin, ts: Date.now() };
   cache.set(key, entry);
   if (cache.size > MAX_CACHE_ENTRIES) {
     const first = cache.keys().next().value;
@@ -133,6 +140,8 @@ function removeCache(key) {
 function qwenClearCache() {
   cache.clear();
   compressionErrors = 0;
+  hitCount = 0;
+  missCount = 0;
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
     chrome.storage.local.remove('qwenCache');
   } else if (typeof localStorage !== 'undefined') {
@@ -146,6 +155,34 @@ function qwenGetCacheSize() {
 
 function qwenGetCompressionErrors() {
   return compressionErrors;
+}
+
+function qwenGetCacheStats() {
+  const total = hitCount + missCount;
+  const hitRate = total ? hitCount / total : 0;
+  return { hits: hitCount, misses: missCount, hitRate };
+}
+
+function qwenGetDomainCounts() {
+  const counts = {};
+  cache.forEach(v => {
+    const d = v.origin || 'unknown';
+    counts[d] = (counts[d] || 0) + 1;
+  });
+  return counts;
+}
+
+function qwenClearCacheDomain(domain) {
+  Array.from(cache.entries()).forEach(([k, v]) => {
+    if (v.origin === domain) removeCache(k);
+  });
+}
+
+function qwenClearCacheLangPair(source, target) {
+  Array.from(cache.keys()).forEach(k => {
+    const parts = k.split(':');
+    if (parts[1] === source && parts[2] === target) removeCache(k);
+  });
 }
 
 function _setMaxCacheEntries(n) {
@@ -180,6 +217,10 @@ const api = {
   qwenClearCache,
   qwenGetCacheSize,
   qwenGetCompressionErrors,
+   qwenGetCacheStats,
+   qwenGetDomainCounts,
+   qwenClearCacheDomain,
+   qwenClearCacheLangPair,
   qwenSetCacheLimit,
   qwenSetCacheTTL,
   _setMaxCacheEntries,
@@ -189,9 +230,11 @@ const api = {
 
 if (typeof window !== 'undefined') {
   window.qwenCache = api;
+  Object.assign(window, api);
 }
 if (typeof self !== 'undefined' && typeof window === 'undefined') {
   self.qwenCache = api;
+  Object.assign(self, api);
 }
 if (typeof module !== 'undefined') {
   module.exports = api;
