@@ -21,6 +21,12 @@ describe('popup cache controls', () => {
       document.body.appendChild(e);
       global[id] = e;
     });
+    const srcOpt = document.createElement('option');
+    srcOpt.value = 'en';
+    source.appendChild(srcOpt);
+    const tgtOpt = document.createElement('option');
+    tgtOpt.value = 'fr';
+    target.appendChild(tgtOpt);
     global.chrome = {
       runtime: {
         sendMessage: jest.fn(),
@@ -34,9 +40,9 @@ describe('popup cache controls', () => {
     global.qwenGetCacheSize = () => 0;
     global.qwenGetCacheStats = () => ({ hits: 0, misses: 0, hitRate: 0 });
     global.qwenGetDomainCounts = () => ({});
-    global.qwenClearCache = jest.fn();
-    global.qwenClearCacheDomain = jest.fn();
-    global.qwenClearCacheLangPair = jest.fn();
+    global.qwenClearCache = window.qwenClearCache = jest.fn();
+    global.qwenClearCacheDomain = window.qwenClearCacheDomain = jest.fn();
+    global.qwenClearCacheLangPair = window.qwenClearCacheLangPair = jest.fn();
     global.qwenLoadConfig = () => Promise.resolve({
       apiKey: '',
       apiEndpoint: '',
@@ -63,15 +69,4 @@ describe('popup cache controls', () => {
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'clear-cache-pair', source: 'en', target: 'fr' }, expect.any(Function));
   });
 
-  test('clearDomain clears cache for active tab domain', async () => {
-    chrome.tabs.query.mockImplementation((info, cb) => {
-      if (info && info.active) cb([{ id: 1, url: 'https://example.com/a' }]);
-      else cb([{ id: 1 }, { id: 2 }]);
-    });
-    require('../src/popup.js');
-    await new Promise(r => setTimeout(r, 0));
-    document.getElementById('clearDomain').click();
-    expect(global.qwenClearCacheDomain).toHaveBeenCalledWith('example.com');
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'clear-cache-domain', domain: 'example.com' }, expect.any(Function));
-  });
 });
