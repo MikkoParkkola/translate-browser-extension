@@ -42,3 +42,51 @@ test('skips reference superscripts', () => {
   collectNodes(document.body, nodes);
   expect(nodes.map(n => n.textContent)).toEqual(['Hi']);
 });
+
+test('reuses cached translations for repeated text nodes', async () => {
+  const stub = window.qwenTranslateBatch;
+  const network = jest.fn(async texts => texts.map(t => `X${t}X`));
+  const cache = new Map();
+  window.qwenTranslateBatch = async ({ texts }) => {
+    const out = [];
+    const uncached = [];
+    texts.forEach(t => {
+      if (cache.has(t)) {
+        out.push(cache.get(t));
+      } else {
+        uncached.push(t);
+      }
+    });
+    if (uncached.length) {
+      const res = await network(uncached);
+      uncached.forEach((t, i) => cache.set(t, res[i]));
+      out.push(...res);
+    }
+    return { texts: texts.map(t => cache.get(t)) };
+  };
+
+  setCurrentConfig({
+    apiKey: 'k',
+    apiEndpoint: 'https://e/',
+    model: 'm',
+    sourceLanguage: 'en',
+    targetLanguage: 'es',
+    debug: false,
+  });
+
+  document.body.innerHTML = '<p><span>Hello</span><span>World</span><span>Hello</span></p>';
+  let nodes = [];
+  collectNodes(document.body, nodes);
+  await translateBatch(nodes);
+  expect(network).toHaveBeenCalledTimes(1);
+  expect(nodes.map(n => n.textContent)).toEqual(['XHelloX', 'XWorldX', 'XHelloX']);
+
+  document.body.innerHTML = '<p><span>Hello</span><span>Hello</span></p>';
+  nodes = [];
+  collectNodes(document.body, nodes);
+  await translateBatch(nodes);
+  expect(network).toHaveBeenCalledTimes(1);
+  expect(nodes.map(n => n.textContent)).toEqual(['XHelloX', 'XHelloX']);
+
+  window.qwenTranslateBatch = stub;
+});
