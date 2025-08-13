@@ -7,14 +7,14 @@ describe('popup cache controls', () => {
     document.getElementById = id => document.querySelector('#' + id);
     [
       'source','target','auto','debug','smartThrottle','dualMode','translate','test','clearCache','clearDomain','clearPair','toggleCalendar','provider','setup-provider',
-      'cacheSize','hitRate','costTurbo24h','costPlus24h','costTotal24h','costTurbo7d','costPlus7d','costTotal7d','costTurbo30d','costPlus30d','costTotal30d',
+      'cacheSize','hitRate','costSection',
       'status','domainCounts','costCalendar','progress'
     ].forEach(id => {
       let tag = 'div';
       if (['source','target'].includes(id)) tag = 'select';
       if (['auto','debug','smartThrottle','dualMode'].includes(id)) tag = 'input';
       if (['translate','test','clearCache','clearDomain','clearPair','toggleCalendar'].includes(id)) tag = 'button';
-      if (['cacheSize','hitRate','costTurbo24h','costPlus24h','costTotal24h','costTurbo7d','costPlus7d','costTotal7d','costTurbo30d','costPlus30d','costTotal30d'].includes(id)) tag = 'span';
+      if (['cacheSize','hitRate'].includes(id)) tag = 'span';
       if (['status','domainCounts','costCalendar'].includes(id)) tag = 'div';
       if (id === 'progress') tag = 'progress';
       const e = create(tag);

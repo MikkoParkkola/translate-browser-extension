@@ -44,27 +44,26 @@ let activeTranslations = 0;
 let translationStatus = { active: false };
 let usingPlus = false;
 const PRICES = {
-  'qwen-mt-turbo': { in: 0.16, out: 0.49 },
-  'qwen-mt-plus': { in: 2.46, out: 7.37 },
+  'qwen-mt-turbo': { type: 'token', in: 0.16, out: 0.49 },
+  'google-nmt': { type: 'char', char: 20 },
+  'google-llm': { type: 'char', char: 30 },
+  'deepl-free': { type: 'char', char: 0 },
+  'deepl-pro': { type: 'char', char: 25 },
 };
-const modelUsage = {
-  'qwen-mt-turbo': {
+const modelUsage = {};
+Object.keys(PRICES).forEach(m => {
+  modelUsage[m] = {
     requests: 0,
     tokens: 0,
     tokensIn: 0,
     tokensOut: 0,
+    chars: 0,
+    charsIn: 0,
+    charsOut: 0,
     requestLimit: 60,
-    tokenLimit: 31980,
-  },
-  'qwen-mt-plus': {
-    requests: 0,
-    tokens: 0,
-    tokensIn: 0,
-    tokensOut: 0,
-    requestLimit: 60,
-    tokenLimit: 23797,
-  },
-};
+    tokenLimit: m.startsWith('qwen') ? 31980 : 0,
+  };
+});
 
 
 async function updateIcon() {
@@ -142,9 +141,17 @@ function ensureThrottle() {
   return throttleReady;
 }
 
-function recordUsage(model, tokensIn, tokensOut) {
+function recordUsage(provider, model, tokensIn, tokensOut, charsIn, charsOut) {
   return new Promise(resolve => {
-    const entry = { time: Date.now(), model, tokensIn, tokensOut };
+    const entry = {
+      time: Date.now(),
+      provider,
+      model,
+      tokensIn,
+      tokensOut,
+      charsIn,
+      charsOut,
+    };
     chrome.storage.local.get('usageHistory', data => {
       const history = Array.isArray(data.usageHistory) ? data.usageHistory : [];
       history.push(entry);
@@ -197,12 +204,24 @@ async function handleTranslate(opts) {
     if (modelUsage[usedModel]) {
       modelUsage[usedModel].requests++;
       try {
-        const tokensIn = self.qwenThrottle.approxTokens(text);
-        const tokensOut = self.qwenThrottle.approxTokens(result.text || '');
-        modelUsage[usedModel].tokens += tokensIn + tokensOut;
-        modelUsage[usedModel].tokensIn += tokensIn;
-        modelUsage[usedModel].tokensOut += tokensOut;
-        await recordUsage(usedModel, tokensIn, tokensOut);
+        let tokensIn = 0,
+          tokensOut = 0,
+          charsIn = 0,
+          charsOut = 0;
+        if (provider === 'qwen') {
+          tokensIn = self.qwenThrottle.approxTokens(text);
+          tokensOut = self.qwenThrottle.approxTokens(result.text || '');
+          modelUsage[usedModel].tokens += tokensIn + tokensOut;
+          modelUsage[usedModel].tokensIn += tokensIn;
+          modelUsage[usedModel].tokensOut += tokensOut;
+        } else {
+          charsIn = (text || '').length;
+          charsOut = (result.text || '').length;
+          modelUsage[usedModel].chars += charsIn + charsOut;
+          modelUsage[usedModel].charsIn += charsIn;
+          modelUsage[usedModel].charsOut += charsOut;
+        }
+        await recordUsage(provider, usedModel, tokensIn, tokensOut, charsIn, charsOut);
       } catch {}
     }
     if (debug) console.log('QTDEBUG: background translation completed');
@@ -238,27 +257,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const history = Array.isArray(data.usageHistory) ? data.usageHistory : [];
         const now = Date.now();
         const windows = { '24h': 24 * 60 * 60 * 1000, '7d': 7 * 24 * 60 * 60 * 1000, '30d': 30 * 24 * 60 * 60 * 1000 };
-        const costs = {
-          'qwen-mt-turbo': { '24h': 0, '7d': 0, '30d': 0 },
-          'qwen-mt-plus': { '24h': 0, '7d': 0, '30d': 0 },
-          total: { '24h': 0, '7d': 0, '30d': 0 },
-          daily: [],
-        };
+        const costs = { total: { '24h': 0, '7d': 0, '30d': 0 }, daily: [] };
+        Object.keys(PRICES).forEach(m => {
+          costs[m] = { '24h': 0, '7d': 0, '30d': 0 };
+        });
         history.forEach(h => {
-          const price = PRICES[h.model] || { in: 0, out: 0 };
-          const cost = (h.tokensIn * price.in + h.tokensOut * price.out) / 1e6;
-          if (now - h.time <= windows['24h']) {
-            costs[h.model]['24h'] += cost;
-            costs.total['24h'] += cost;
+          const price = PRICES[h.model] || {};
+          let cost = 0;
+          if (price.type === 'char') {
+            cost = ((h.charsIn || 0) * (price.char || 0)) / 1e6;
+          } else {
+            cost =
+              ((h.tokensIn || 0) * (price.in || 0) + (h.tokensOut || 0) * (price.out || 0)) /
+              1e6;
           }
-          if (now - h.time <= windows['7d']) {
-            costs[h.model]['7d'] += cost;
-            costs.total['7d'] += cost;
-          }
-          if (now - h.time <= windows['30d']) {
-            costs[h.model]['30d'] += cost;
-            costs.total['30d'] += cost;
-          }
+          ['24h', '7d', '30d'].forEach(w => {
+            if (now - h.time <= windows[w]) {
+              if (costs[h.model]) costs[h.model][w] += cost;
+              costs.total[w] += cost;
+            }
+          });
         });
         for (let i = 29; i >= 0; i--) {
           const dayStart = new Date(now - i * 24 * 60 * 60 * 1000);
@@ -266,8 +284,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           const dayEnd = dayStart.getTime() + 24 * 60 * 60 * 1000;
           const dayCost = history.reduce((sum, h) => {
             if (h.time >= dayStart.getTime() && h.time < dayEnd) {
-              const price = PRICES[h.model] || { in: 0, out: 0 };
-              return sum + (h.tokensIn * price.in + h.tokensOut * price.out) / 1e6;
+              const price = PRICES[h.model] || {};
+              let c = 0;
+              if (price.type === 'char') {
+                c = ((h.charsIn || 0) * (price.char || 0)) / 1e6;
+              } else {
+                c =
+                  ((h.tokensIn || 0) * (price.in || 0) +
+                    (h.tokensOut || 0) * (price.out || 0)) /
+                  1e6;
+              }
+              return sum + c;
             }
             return sum;
           }, 0);

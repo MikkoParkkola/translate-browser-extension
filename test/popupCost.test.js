@@ -7,7 +7,7 @@ describe('popup cost display', () => {
     [
       'apiKey','apiEndpoint','model','requestLimit','tokenLimit','tokenBudget','tokensPerReq','retryDelay','setup-apiKey','setup-apiEndpoint','setup-model','provider','setup-provider',
       'source','target','auto','debug','smartThrottle','dualMode','translate','test','clearCache','clearDomain','clearPair','toggleCalendar',
-      'cacheSize','hitRate','costTurbo24h','costPlus24h','costTotal24h','costTurbo7d','costPlus7d','costTotal7d','costTurbo30d','costPlus30d','costTotal30d',
+      'cacheSize','hitRate','costSection',
       'domainCounts','status','costCalendar','progress'
     ].forEach(id => {
       let tag = 'div';
@@ -15,7 +15,7 @@ describe('popup cost display', () => {
       if (['source','target'].includes(id)) tag = 'select';
       if (['auto','debug','smartThrottle','dualMode'].includes(id)) tag = 'input';
       if (['translate','test','clearCache','clearDomain','clearPair','toggleCalendar'].includes(id)) tag = 'button';
-      if (['cacheSize','hitRate','costTurbo24h','costPlus24h','costTotal24h','costTurbo7d','costPlus7d','costTotal7d','costTurbo30d','costPlus30d','costTotal30d'].includes(id)) tag = 'span';
+      if (['cacheSize','hitRate'].includes(id)) tag = 'span';
       if (['domainCounts','status','costCalendar'].includes(id)) tag = 'div';
       if (id === 'progress') tag = 'progress';
       const e = create(tag);
@@ -68,7 +68,7 @@ describe('popup cost display', () => {
       models: {},
       costs: {
         'qwen-mt-turbo': { '24h': 0.01, '7d': 0.02, '30d': 0.03 },
-        'qwen-mt-plus': { '24h': 0.04, '7d': 0.05, '30d': 0.06 },
+        'google-nmt': { '24h': 0.04, '7d': 0.05, '30d': 0.06 },
         total: { '24h': 0.05, '7d': 0.07, '30d': 0.09 },
         daily: [],
       },
@@ -79,6 +79,6 @@ describe('popup cost display', () => {
     });
     require('../src/popup.js');
     await new Promise(r => setTimeout(r, 0));
-    expect(document.getElementById('costTotal7d').textContent).toBe('$0.07');
+    expect(document.getElementById('costSection').textContent).toContain('Total 7d: $0.07');
   });
 });
