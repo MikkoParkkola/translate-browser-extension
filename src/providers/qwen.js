@@ -162,12 +162,17 @@ async function getQuota({ endpoint, apiKey, model, debug }) {
   }
 }
 
-const { registerProvider } = require('./index');
-registerProvider('qwen', {
+const provider = {
   translate,
   getQuota,
   label: 'Qwen',
   configFields: ['apiKey', 'apiEndpoint', 'model'],
-});
+};
 
-module.exports = { translate, getQuota };
+if (typeof window !== 'undefined' && window.qwenProviders) {
+  window.qwenProviders.registerProvider('qwen', provider);
+} else if (typeof self !== 'undefined' && self.qwenProviders) {
+  self.qwenProviders.registerProvider('qwen', provider);
+}
+
+module.exports = provider;
