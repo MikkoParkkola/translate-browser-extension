@@ -1,16 +1,15 @@
 const translator = require('../src/translator.js');
+const batch = require('../src/batch.js');
 const {
   qwenTranslate: translate,
   qwenClearCache,
-  qwenTranslateBatch,
   qwenGetCacheSize,
   qwenSetCacheLimit,
   qwenSetCacheTTL,
-  _getTokenBudget,
-  _setTokenBudget,
   _setCacheEntryTimestamp,
 } = translator;
-const { configure, reset, getUsage } = require('../src/throttle');
+const { qwenTranslateBatch, _getTokenBudget, _setTokenBudget } = batch;
+const { configure, reset } = require('../src/throttle');
 const { modelTokenLimits } = require('../src/config');
 const fetchMock = require('jest-fetch-mock');
 const { registerProvider } = require('../src/providers');
@@ -290,11 +289,15 @@ test('batch retranslates unchanged lines', async () => {
 });
 
 test('stores compressed cache entries', async () => {
-  jest.resetModules();
   window.localStorage.clear();
   const LZ = require('lz-string');
-  const t = require('../src/translator.js');
-  const tr = t.qwenTranslate;
+  let tr;
+  let clear;
+  jest.isolateModules(() => {
+    const t = require('../src/translator.js');
+    tr = t.qwenTranslate;
+    clear = t.qwenClearCache;
+  });
   fetch.mockResponseOnce(JSON.stringify({ output: { text: 'hi' } }));
   await tr({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hola', source: 'es', target: 'en' });
   const stored = JSON.parse(window.localStorage.getItem('qwenCache'));
@@ -304,7 +307,7 @@ test('stores compressed cache entries', async () => {
   const decoded = JSON.parse(LZ.decompressFromUTF16(stored[key]));
   expect(decoded.text).toBe('hi');
   window.localStorage.clear();
-  t.qwenClearCache();
+  clear();
 });
 
 test('token budget grows after successful batch', async () => {
