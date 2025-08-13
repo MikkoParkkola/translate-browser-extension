@@ -156,7 +156,17 @@ function recordUsage(model, tokensIn, tokensOut) {
 }
 
 async function handleTranslate(opts) {
-  const { provider = 'qwen', endpoint, apiKey, model, text, source, target, debug } = opts;
+  const {
+    provider = 'qwen',
+    endpoint,
+    apiKey,
+    model,
+    models,
+    text,
+    source,
+    target,
+    debug,
+  } = opts;
   if (debug) console.log('QTDEBUG: background translating via', endpoint);
 
   await ensureThrottle();
