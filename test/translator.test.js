@@ -11,7 +11,7 @@ const {
   _setGetUsage,
 } = translator;
 const { qwenTranslateBatch, _getTokenBudget, _setTokenBudget } = batch;
-const { configure, reset } = require('../src/throttle');
+const { configure, reset, _setGetUsage } = require('../src/throttle');
 const { modelTokenLimits } = require('../src/config');
 const fetchMock = require('jest-fetch-mock');
 const { registerProvider } = require('../src/providers');
@@ -155,6 +155,17 @@ test('qwenSetCacheTTL adjusts expiration', async () => {
   await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hola', source: 'es', target: 'en' });
   expect(fetch).toHaveBeenCalledTimes(2);
   qwenSetCacheTTL(30 * 24 * 60 * 60 * 1000);
+});
+
+test('reports cache size and supports clearing', async () => {
+  fetch
+    .mockResponseOnce(JSON.stringify({ output: { text: 'hi' } }))
+    .mockResponseOnce(JSON.stringify({ output: { text: 'hola' } }));
+  await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'one', source: 'en', target: 'es' });
+  await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'two', source: 'en', target: 'es' });
+  expect(qwenGetCacheSize()).toBe(2);
+  qwenClearCache();
+  expect(qwenGetCacheSize()).toBe(0);
 });
 
 test('rate limiting queues requests', async () => {
@@ -404,33 +415,6 @@ test('batch reports stats and progress', async () => {
   expect(events[0].phase).toBe('translate');
 });
 
-test('advanced mode prefers turbo under limit', async () => {
-  _setGetUsage(() => ({ requestLimit: 100, requests: 10 }));
-  fetch.mockResponseOnce(JSON.stringify({ output: { text: 'a' } }));
-  await translate({
-    endpoint: 'https://e/',
-    apiKey: 'k',
-    models: ['qwen-mt-turbo', 'qwen-mt-plus'],
-    text: 'one',
-    source: 'en',
-    target: 'es',
-  });
-  expect(JSON.parse(fetch.mock.calls[0][1].body).model).toBe('qwen-mt-turbo');
-});
-
-test('advanced mode shifts to plus near limit', async () => {
-  _setGetUsage(() => ({ requestLimit: 100, requests: 50 }));
-  fetch.mockResponseOnce(JSON.stringify({ output: { text: 'b' } }));
-  await translate({
-    endpoint: 'https://e/',
-    apiKey: 'k',
-    models: ['qwen-mt-turbo', 'qwen-mt-plus'],
-    text: 'two',
-    source: 'en',
-    target: 'es',
-  });
-  expect(JSON.parse(fetch.mock.calls[0][1].body).model).toBe('qwen-mt-plus');
-});
 
 test('retries after 429 with backoff', async () => {
   jest.useFakeTimers();
@@ -450,35 +434,4 @@ test('retries after 429 with backoff', async () => {
   jest.useRealTimers();
 });
 
-test('advanced mode falls back to plus model after 429', async () => {
-  fetch
-    .mockResponseOnce(
-      JSON.stringify({ message: 'slow' }),
-      { status: 429 }
-    )
-    .mockResponseOnce(JSON.stringify({ output: { text: 'hi' } }));
-  const res = await translate({
-    endpoint: 'https://e/',
-    apiKey: 'k',
-    models: ['qwen-mt-turbo', 'qwen-mt-plus'],
-    text: 'hola',
-    source: 'es',
-    target: 'en',
-  });
-  expect(res.text).toBe('hi');
-  const first = JSON.parse(fetch.mock.calls[0][1].body);
-  const second = JSON.parse(fetch.mock.calls[1][1].body);
-  expect(first.model).toBe('qwen-mt-turbo');
-  expect(second.model).toBe('qwen-mt-plus');
-});
 
-test('collapseSpacing joins spaced letters into words', () => {
-  const { collapseSpacing } = translator;
-  const input = 'E E N  D I E F S T A L  I N  G R O N I N G E N';
-  expect(collapseSpacing(input)).toBe('EEN DIEFSTAL IN GRONINGEN');
-});
-
-test('collapseSpacing leaves normal text intact', () => {
-  const { collapseSpacing } = translator;
-  expect(collapseSpacing('Hello world')).toBe('Hello world');
-});

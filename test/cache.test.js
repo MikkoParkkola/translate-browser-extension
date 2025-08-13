@@ -44,3 +44,27 @@ test('expired entry removed from storage when accessed', async () => {
   expect(stored.k1).toBeUndefined();
   _setCacheTTL(30 * 24 * 60 * 60 * 1000);
 });
+
+test('qwenClearCache wipes memory and storage', async () => {
+  const { cacheReady, setCache, qwenClearCache, qwenGetCacheSize } = require('../src/cache');
+  await cacheReady;
+  setCache('a', { text: 'one' });
+  setCache('b', { text: 'two' });
+  expect(qwenGetCacheSize()).toBe(2);
+  expect(JSON.parse(localStorage.getItem('qwenCache')).a).toBeTruthy();
+  qwenClearCache();
+  expect(qwenGetCacheSize()).toBe(0);
+  expect(localStorage.getItem('qwenCache')).toBeNull();
+});
+
+test('qwenGetCacheSize reflects TTL expiry', async () => {
+  const { cacheReady, setCache, getCache, qwenGetCacheSize, _setCacheTTL, _setCacheEntryTimestamp } = require('../src/cache');
+  await cacheReady;
+  _setCacheTTL(1000);
+  setCache('x', { text: 'old' });
+  expect(qwenGetCacheSize()).toBe(1);
+  _setCacheEntryTimestamp('x', Date.now() - 2000);
+  expect(getCache('x')).toBeUndefined();
+  expect(qwenGetCacheSize()).toBe(0);
+  _setCacheTTL(30 * 24 * 60 * 60 * 1000);
+});
