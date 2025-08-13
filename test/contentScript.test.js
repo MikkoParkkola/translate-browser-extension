@@ -42,3 +42,24 @@ test('skips reference superscripts', () => {
   collectNodes(document.body, nodes);
   expect(nodes.map(n => n.textContent)).toEqual(['Hi']);
 });
+
+test('uses dual models when enabled', async () => {
+  const spy = jest.fn().mockResolvedValue({ texts: ['XaX'] });
+  window.qwenTranslateBatch = spy;
+  document.body.innerHTML = '<p>a</p>';
+  setCurrentConfig({
+    apiKey: 'k',
+    apiEndpoint: 'https://e/',
+    model: 'qwen-mt-turbo',
+    dualMode: true,
+    sourceLanguage: 'en',
+    targetLanguage: 'es',
+    debug: false,
+  });
+  const nodes = [];
+  collectNodes(document.body, nodes);
+  await translateBatch(nodes);
+  expect(spy).toHaveBeenCalledWith(
+    expect.objectContaining({ models: ['qwen-mt-turbo', 'qwen-mt-plus'] })
+  );
+});
