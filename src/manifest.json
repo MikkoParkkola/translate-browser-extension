@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Qwen Translator",
   "description": "Translate pages using Qwen-MT-Turbo",
-  "version": "1.5.0",
+  "version": "1.8.0",
   "permissions": [
     "storage",
     "activeTab",
@@ -29,7 +29,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "translator.js", "config.js", "languages.js", "throttle.js",
+        "translator.js", "config.js", "languages.js", "throttle.js", "lz-string.min.js", "providers/index.js", "providers/qwen.js",
         "pdfViewer.html", "pdfViewer.js", "sessionPdf.js", "pdf.min.js", "pdf.worker.min.js",
         "wasm/pipeline.js", "wasm/pdfgen.js", "wasm/engine.js",
         "wasm/vendor/hb.wasm", "wasm/vendor/icu4x_segmenter.wasm",
@@ -44,7 +44,7 @@
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*", "file:///*"],
-      "js": ["config.js", "throttle.js", "translator.js", "contentScript.js"],
+      "js": ["config.js", "throttle.js", "lz-string.min.js", "providers/index.js", "providers/qwen.js", "translator.js", "contentScript.js"],
       "run_at": "document_idle",
       "all_frames": true
     }

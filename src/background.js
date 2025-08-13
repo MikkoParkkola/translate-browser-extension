@@ -1,4 +1,12 @@
-importScripts('throttle.js', 'translator.js', 'usageColor.js');
+importScripts('throttle.js', 'lz-string.min.js', 'providers/index.js', 'providers/qwen.js', 'translator.js', 'usageColor.js');
+
+chrome.storage.sync.get(
+  { cacheMaxEntries: 1000, cacheTTL: 30 * 24 * 60 * 60 * 1000 },
+  cfg => {
+    if (self.qwenSetCacheLimit) self.qwenSetCacheLimit(cfg.cacheMaxEntries);
+    if (self.qwenSetCacheTTL) self.qwenSetCacheTTL(cfg.cacheTTL);
+  }
+);
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log('Qwen Translator installed');
@@ -100,9 +108,8 @@ function ensureThrottle() {
 }
 
 async function handleTranslate(opts) {
-  const { endpoint, apiKey, model, text, source, target, debug } = opts;
-  const ep = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
-  if (debug) console.log('QTDEBUG: background translating via', ep);
+  const { provider = 'qwen', endpoint, apiKey, model, text, source, target, debug } = opts;
+  if (debug) console.log('QTDEBUG: background translating via', endpoint);
 
   await ensureThrottle();
 
@@ -113,7 +120,8 @@ async function handleTranslate(opts) {
 
   try {
     const result = await self.qwenTranslate({
-      endpoint: ep,
+      provider,
+      endpoint,
       apiKey,
       model,
       text,
@@ -154,9 +162,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
+  if (msg.action === 'clear-cache') {
+    if (self.qwenClearCache) self.qwenClearCache();
+    sendResponse({ ok: true });
+    return true;
+  }
   if (msg.action === 'config-changed') {
     throttleReady = null;
-    ensureThrottle().then(() => sendResponse({ ok: true }));
+    chrome.storage.sync.get(
+      { cacheMaxEntries: 1000, cacheTTL: 30 * 24 * 60 * 60 * 1000 },
+      cfg => {
+        if (self.qwenSetCacheLimit) self.qwenSetCacheLimit(cfg.cacheMaxEntries);
+        if (self.qwenSetCacheTTL) self.qwenSetCacheTTL(cfg.cacheTTL);
+        ensureThrottle().then(() => sendResponse({ ok: true }));
+      }
+    );
     return true;
   }
   if (msg.action === 'translation-status') {
