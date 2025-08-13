@@ -1,5 +1,5 @@
 describe('background icon plus indicator', () => {
-  let updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate;
+  let updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate, _setConfig;
   beforeEach(() => {
     jest.resetModules();
     global.models = null;
@@ -44,7 +44,7 @@ describe('background icon plus indicator', () => {
       approxTokens: t => t.length,
     };
     global.qwenUsageColor = () => '#00ff00';
-    ({ updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate } = require('../src/background.js'));
+    ({ updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate, _setConfig } = require('../src/background.js'));
     chrome.action.setBadgeText.mockClear();
   });
 
@@ -69,6 +69,28 @@ describe('background icon plus indicator', () => {
     const listener = chrome.runtime.onMessage.addListener.mock.calls[0][0];
     const usage = await new Promise(resolve => listener({ action: 'usage' }, null, resolve));
     expect(usage.models['google-nmt'].requests).toBe(1);
+  });
+
+  test('switches provider when quota low', async () => {
+    const translateSpy = jest.fn().mockResolvedValue({ text: 'ok' });
+    global.qwenTranslate = translateSpy;
+    global.qwenProviders = {
+      getProvider: name =>
+        name === 'qwen'
+          ? { getQuota: jest.fn().mockResolvedValue({ remaining: { requests: 0, tokens: 0 } }) }
+          : {},
+    };
+    _setConfig({ providerOrder: ['qwen', 'alt'], requestThreshold: 1 });
+    await handleTranslate({
+      provider: 'qwen',
+      endpoint: 'https://e/',
+      apiKey: 'k',
+      model: 'qwen-mt-turbo',
+      text: 'hi',
+      source: 'en',
+      target: 'es',
+    });
+    expect(translateSpy).toHaveBeenCalledWith(expect.objectContaining({ provider: 'alt' }));
   });
 });
 
@@ -154,6 +176,8 @@ describe('background cost tracking', () => {
       source: 'en',
       target: 'es',
     });
+    expect(store.usageHistory[0].provider).toBe('qwen');
+    expect(store.usageHistory[1].provider).toBe('qwen');
     const res = await new Promise(resolve => usageListener({ action: 'usage' }, null, resolve));
     expect(res.costs['qwen-mt-turbo']['24h']).toBeCloseTo(0);
     expect(res.costs['google-nmt']['24h']).toBeCloseTo(0.2);

@@ -11,7 +11,7 @@ describe('popup cost display', () => {
       'domainCounts','status','costCalendar','progress'
     ].forEach(id => {
       let tag = 'div';
-      if (['apiKey','apiEndpoint','model','requestLimit','tokenLimit','tokenBudget','tokensPerReq','retryDelay','setup-apiKey','setup-apiEndpoint','setup-model'].includes(id)) tag = 'input';
+      if (['apiKey','apiEndpoint','model','requestLimit','tokenLimit','tokenBudget','tokensPerReq','retryDelay','cacheSizeLimit','cacheTTL','setup-apiKey','setup-apiEndpoint','setup-model','force'].includes(id)) tag = 'input';
       if (['source','target'].includes(id)) tag = 'select';
       if (['auto','debug','smartThrottle','dualMode'].includes(id)) tag = 'input';
       if (['translate','test','clearCache','clearDomain','clearPair','toggleCalendar'].includes(id)) tag = 'button';
@@ -22,7 +22,17 @@ describe('popup cost display', () => {
       e.id = id;
       document.body.appendChild(e);
       global[id] = e;
+      if (tag === 'select') {
+        e.appendChild(new Option('en','en'));
+        e.appendChild(new Option('fr','fr'));
+      }
     });
+    const srcOpt = document.createElement('option');
+    srcOpt.value = 'en';
+    source.appendChild(srcOpt);
+    const tgtOpt = document.createElement('option');
+    tgtOpt.value = 'fr';
+    target.appendChild(tgtOpt);
     global.chrome = {
       runtime: {
         sendMessage: jest.fn(),
@@ -33,12 +43,12 @@ describe('popup cost display', () => {
     };
     global.qwenLanguages = [];
     global.qwenUsageColor = () => '#00ff00';
-    global.qwenGetCacheSize = () => 0;
-    global.qwenGetCacheStats = () => ({ hits: 0, misses: 0, hitRate: 0 });
-    global.qwenGetDomainCounts = () => ({});
-    global.qwenClearCacheDomain = jest.fn();
-    global.qwenClearCacheLangPair = jest.fn();
-    global.qwenClearCache = jest.fn();
+    global.qwenGetCacheSize = window.qwenGetCacheSize = () => 0;
+    global.qwenGetCacheStats = window.qwenGetCacheStats = () => ({ hits: 0, misses: 0, hitRate: 0 });
+    global.qwenGetDomainCounts = window.qwenGetDomainCounts = () => ({});
+    global.qwenClearCacheDomain = window.qwenClearCacheDomain = jest.fn();
+    global.qwenClearCacheLangPair = window.qwenClearCacheLangPair = jest.fn();
+    global.qwenClearCache = window.qwenClearCache = jest.fn();
     global.qwenLoadConfig = () => Promise.resolve({
       apiKey: '',
       apiEndpoint: '',
