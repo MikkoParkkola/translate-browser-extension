@@ -34,7 +34,12 @@ const failedReq = document.getElementById('failedReq');
 const failedTok = document.getElementById('failedTok');
 const reqRemaining = document.getElementById('reqRemaining');
 const tokenRemaining = document.getElementById('tokenRemaining');
+const reqRemainingBar = document.getElementById('reqRemainingBar');
+const tokenRemainingBar = document.getElementById('tokenRemainingBar');
 const providerError = document.getElementById('providerError');
+const costSection = document.getElementById('costSection');
+const costCalendar = document.getElementById('costCalendar');
+const toggleCalendar = document.getElementById('toggleCalendar');
 const translateBtn = document.getElementById('translate');
 const testBtn = document.getElementById('test');
 const progressBar = document.getElementById('progress');
@@ -429,19 +434,20 @@ function refreshUsage() {
       if (turboReqBar) setBar(turboReqBar, turbo.requestLimit ? turbo.requests / turbo.requestLimit : 0);
       if (plusReqBar) setBar(plusReqBar, plus.requestLimit ? plus.requests / plus.requestLimit : 0);
     }
-    if (res.costs && costTurbo24h) {
-      const turbo = res.costs['qwen-mt-turbo'];
-      const plus = res.costs['qwen-mt-plus'];
-      const total = res.costs.total;
-      if (costTurbo24h) costTurbo24h.textContent = formatCost(turbo['24h'] || 0);
-      if (costPlus24h) costPlus24h.textContent = formatCost(plus['24h'] || 0);
-      if (costTotal24h) costTotal24h.textContent = formatCost(total['24h'] || 0);
-      if (costTurbo7d) costTurbo7d.textContent = formatCost(turbo['7d'] || 0);
-      if (costPlus7d) costPlus7d.textContent = formatCost(plus['7d'] || 0);
-      if (costTotal7d) costTotal7d.textContent = formatCost(total['7d'] || 0);
-      if (costTurbo30d) costTurbo30d.textContent = formatCost(turbo['30d'] || 0);
-      if (costPlus30d) costPlus30d.textContent = formatCost(plus['30d'] || 0);
-      if (costTotal30d) costTotal30d.textContent = formatCost(total['30d'] || 0);
+    if (res.costs) {
+      if (costSection) {
+        costSection.innerHTML = '';
+        Object.entries(res.costs).forEach(([model, data]) => {
+          if (model === 'daily') return;
+          const label = model === 'total' ? 'Total' : model;
+          ['24h', '7d', '30d'].forEach(period => {
+            const div = document.createElement('div');
+            div.className = 'usage-item';
+            div.textContent = `${label} ${period}: ${formatCost(data[period] || 0)}`;
+            costSection.appendChild(div);
+          });
+        });
+      }
       if (res.costs.daily && costCalendar) {
         costCalendar.innerHTML = '';
         res.costs.daily.forEach(d => {

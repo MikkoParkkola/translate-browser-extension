@@ -1,8 +1,7 @@
-const fetchMock = require('jest-fetch-mock');
-fetchMock.enableMocks();
 const throttle = require('../src/throttle');
+const { configure, reset, runWithRateLimit, approxTokens, getUsage } = throttle;
 const { runWithRetry } = require('../src/retry');
-global.qwenThrottle = { ...throttle, runWithRetry };
+window.qwenThrottle = { runWithRateLimit, runWithRetry, approxTokens, getUsage };
 const transport = require('../src/transport.js');
 const translator = require('../src/translator.js');
 const batch = require('../src/batch.js');
@@ -16,7 +15,6 @@ const {
   _setGetUsage,
 } = translator;
 const { qwenTranslateBatch, _getTokenBudget, _setTokenBudget } = batch;
-const { configure, reset } = throttle;
 const { modelTokenLimits } = require('../src/config');
 const { registerProvider } = require('../src/providers');
 

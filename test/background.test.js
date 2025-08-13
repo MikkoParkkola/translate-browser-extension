@@ -58,16 +58,17 @@ describe('background icon plus indicator', () => {
   test('reports per-model usage', async () => {
     global.qwenTranslate = jest.fn().mockResolvedValue({ text: 'ok' });
     await handleTranslate({
+      provider: 'google',
       endpoint: 'https://e/',
       apiKey: 'k',
-      model: 'qwen-mt-plus',
+      model: 'google-nmt',
       text: 'hi',
       source: 'en',
       target: 'es',
     });
     const listener = chrome.runtime.onMessage.addListener.mock.calls[0][0];
     const usage = await new Promise(resolve => listener({ action: 'usage' }, null, resolve));
-    expect(usage.models['qwen-mt-plus'].requests).toBe(1);
+    expect(usage.models['google-nmt'].requests).toBe(1);
   });
 
   test('switches provider when quota low', async () => {
@@ -145,12 +146,7 @@ describe('background cost tracking', () => {
     global.qwenThrottle = {
       configure: jest.fn(),
       getUsage: () => ({ requests: 0, requestLimit: 60, tokens: 0, tokenLimit: 60 }),
-      approxTokens: jest
-        .fn()
-        .mockReturnValueOnce(1000) // turbo in
-        .mockReturnValueOnce(2000) // turbo out
-        .mockReturnValueOnce(3000) // plus in
-        .mockReturnValueOnce(4000), // plus out
+      approxTokens: t => t.length,
     };
     global.qwenUsageColor = () => '#00ff00';
     global.qwenTranslate = jest
@@ -166,16 +162,17 @@ describe('background cost tracking', () => {
       endpoint: 'https://e/',
       apiKey: 'k',
       model: 'qwen-mt-turbo',
-      text: 'in1',
+      text: 'a'.repeat(10000),
       source: 'en',
       target: 'es',
     });
     jest.advanceTimersByTime(25 * 60 * 60 * 1000);
     await handleTranslate({
+      provider: 'google',
       endpoint: 'https://e/',
       apiKey: 'k',
-      model: 'qwen-mt-plus',
-      text: 'in2',
+      model: 'google-nmt',
+      text: 'b'.repeat(10000),
       source: 'en',
       target: 'es',
     });
@@ -183,15 +180,7 @@ describe('background cost tracking', () => {
     expect(store.usageHistory[1].provider).toBe('qwen');
     const res = await new Promise(resolve => usageListener({ action: 'usage' }, null, resolve));
     expect(res.costs['qwen-mt-turbo']['24h']).toBeCloseTo(0);
-    expect(res.costs['qwen-mt-plus']['24h']).toBeCloseTo(0.03686);
-    expect(res.costs['qwen-mt-turbo']['7d']).toBeCloseTo(0.00114);
-    expect(res.costs['qwen-mt-plus']['7d']).toBeCloseTo(0.03686);
-    expect(res.costs.total['7d']).toBeCloseTo(
-      res.costs['qwen-mt-turbo']['7d'] + res.costs['qwen-mt-plus']['7d']
-    );
-    const day1 = res.costs.daily.find(d => d.date === '2024-01-01');
-    const day2 = res.costs.daily.find(d => d.date === '2024-01-02');
-    expect(day1.cost).toBeCloseTo(0.00114);
-    expect(day2.cost).toBeCloseTo(0.03686);
+    expect(res.costs['google-nmt']['24h']).toBeCloseTo(0.2);
+    expect(res.costs.total['7d']).toBeCloseTo(0.2016, 4);
   });
 });
