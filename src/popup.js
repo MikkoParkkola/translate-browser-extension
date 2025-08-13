@@ -51,6 +51,11 @@ const cacheLimitInput = document.getElementById('cacheSizeLimit');
 const cacheTTLInput = document.getElementById('cacheTTL');
 const clearDomainBtn = document.getElementById('clearDomain');
 const clearPairBtn = document.getElementById('clearPair');
+const reqRemaining = document.getElementById('reqRemaining');
+const tokenRemaining = document.getElementById('tokenRemaining');
+const reqRemainingBar = document.getElementById('reqRemainingBar');
+const tokenRemainingBar = document.getElementById('tokenRemainingBar');
+const providerError = document.getElementById('providerError');
 
 if (sourceSelect && !sourceSelect.options.length) {
   ['en', 'fr'].forEach(v => {
