@@ -27,6 +27,25 @@ if (typeof window === 'undefined') {
 
 const cache = new Map();
 
+const LOAD_BALANCE_THRESHOLD = 0.5;
+
+function chooseModels(list) {
+  if (!getUsage || list.length < 2) return list;
+  try {
+    const usage = getUsage() || {};
+    if (
+      usage.requestLimit &&
+      usage.requestLimit > 0 &&
+      usage.requests / usage.requestLimit >= LOAD_BALANCE_THRESHOLD
+    ) {
+      const copy = list.slice();
+      [copy[0], copy[1]] = [copy[1], copy[0]];
+      return copy;
+    }
+  } catch {}
+  return list;
+}
+
 function fetchViaXHR(url, { method = 'GET', headers = {}, body, signal }, debug) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -175,7 +194,9 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
 }
 
 async function qwenTranslate({ endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay }) {
-  const modelList = Array.isArray(models) && models.length ? models : [model];
+  const modelList = chooseModels(
+    Array.isArray(models) && models.length ? models : [model]
+  );
   if (debug) {
     console.log('QTDEBUG: qwenTranslate called with', {
       endpoint,
@@ -265,7 +286,9 @@ async function qwenTranslate({ endpoint, apiKey, model, models, text, source, ta
 }
 
 async function qwenTranslateStream({ endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay }, onData) {
-  const modelList = Array.isArray(models) && models.length ? models : [model];
+  const modelList = chooseModels(
+    Array.isArray(models) && models.length ? models : [model]
+  );
   if (debug) {
     console.log('QTDEBUG: qwenTranslateStream called with', {
       endpoint,
@@ -589,5 +612,6 @@ if (typeof module !== 'undefined') {
     qwenClearCache,
     _getTokenBudget,
     _setTokenBudget,
+    _setGetUsage: fn => (getUsage = fn),
   };
 }

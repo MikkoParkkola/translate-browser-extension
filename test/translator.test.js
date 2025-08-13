@@ -5,8 +5,9 @@ const {
   qwenTranslateBatch,
   _getTokenBudget,
   _setTokenBudget,
+  _setGetUsage,
 } = translator;
-const { configure, reset } = require('../src/throttle');
+const { configure, reset, getUsage } = require('../src/throttle');
 const { modelTokenLimits } = require('../src/config');
 const fetchMock = require('jest-fetch-mock');
 
@@ -18,6 +19,7 @@ beforeEach(() => {
   reset();
   configure({ requestLimit: 6000, tokenLimit: modelTokenLimits['qwen-mt-turbo'], windowMs: 60000 });
   _setTokenBudget(0);
+  _setGetUsage(getUsage);
 });
 
 test('translate success', async () => {
@@ -259,6 +261,34 @@ test('batch reports stats and progress', async () => {
   expect(events[0].request).toBe(1);
   expect(events[0].requests).toBe(1);
   expect(events[0].phase).toBe('translate');
+});
+
+test('advanced mode prefers turbo under limit', async () => {
+  _setGetUsage(() => ({ requestLimit: 100, requests: 10 }));
+  fetch.mockResponseOnce(JSON.stringify({ output: { text: 'a' } }));
+  await translate({
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    models: ['qwen-mt-turbo', 'qwen-mt-plus'],
+    text: 'one',
+    source: 'en',
+    target: 'es',
+  });
+  expect(JSON.parse(fetch.mock.calls[0][1].body).model).toBe('qwen-mt-turbo');
+});
+
+test('advanced mode shifts to plus near limit', async () => {
+  _setGetUsage(() => ({ requestLimit: 100, requests: 50 }));
+  fetch.mockResponseOnce(JSON.stringify({ output: { text: 'b' } }));
+  await translate({
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    models: ['qwen-mt-turbo', 'qwen-mt-plus'],
+    text: 'two',
+    source: 'en',
+    target: 'es',
+  });
+  expect(JSON.parse(fetch.mock.calls[0][1].body).model).toBe('qwen-mt-plus');
 });
 
 test('retries after 429 with backoff', async () => {
