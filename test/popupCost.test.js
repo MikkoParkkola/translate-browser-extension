@@ -3,20 +3,25 @@ const create = tag => document.createElement(tag);
 describe('popup cost display', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
+    const ids = [
+      'costTurbo24h','costPlus24h','costTotal24h','costTurbo7d','costPlus7d','costTotal7d','costTurbo30d','costPlus30d','costTotal30d','costCalendar','toggleCalendar'
+    ];
+    ids.forEach(id => {
+      const el = create('div');
+      el.id = id;
+      document.body.appendChild(el);
+      global[id] = el;
+    });
     document.getElementById = id => {
       let el = document.querySelector('#' + id);
       if (el) return el;
-      let tag = 'div';
-      if (['apiKey','apiEndpoint','model','requestLimit','tokenLimit','tokenBudget','tokensPerReq','retryDelay','setup-apiKey','setup-apiEndpoint','setup-model'].includes(id)) tag = 'input';
-      if (['source','target'].includes(id)) tag = 'select';
-      if (['auto','debug','smartThrottle','dualMode'].includes(id)) tag = 'input';
-      if (['translate','test'].includes(id)) tag = 'button';
-      if (id === 'progress') tag = 'progress';
-      const e = create(tag);
+      const e = create('div');
       e.id = id;
       document.body.appendChild(e);
+      global[id] = e;
       return e;
     };
+    global.formatCost = n => `$${n.toFixed(2)}`;
     global.chrome = {
       runtime: {
         sendMessage: jest.fn(),
