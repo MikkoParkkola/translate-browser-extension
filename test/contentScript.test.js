@@ -1,5 +1,12 @@
 const sendMessage = jest.fn();
-global.chrome = { runtime: { getURL: () => 'chrome-extension://abc/', onMessage: { addListener: () => {} }, sendMessage } };
+let messageListener;
+global.chrome = {
+  runtime: {
+    getURL: () => 'chrome-extension://abc/',
+    onMessage: { addListener: cb => { messageListener = cb; } },
+    sendMessage,
+  },
+};
 
 window.qwenTranslateBatch = async ({ texts, onProgress }) => {
   if (onProgress) onProgress({ phase: 'translate', request: 1, requests: 2, sample: texts[0] });

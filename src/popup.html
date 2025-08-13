@@ -17,7 +17,7 @@
       --green: #198754;
       --yellow: #ffc107;
       --red: #dc3545;
-      --body-width: 380px;
+      --body-width: 420px;
     }
 
     @media (prefers-color-scheme: dark) {
@@ -89,6 +89,7 @@
     #version { font-size: 0.75rem; text-align: center; opacity: 0.7; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
     summary { cursor: pointer; font-weight: 600; }
+    .cost-section { grid-template-columns: 1fr 1fr 1fr; }
   </style>
 </head>
 <body>
@@ -144,12 +145,37 @@
           <span>Tokens: <span id="tokenCount">0/0</span></span>
           <div class="bar"><div id="tokenBar"></div></div>
         </div>
+        <div class="usage-item">
+          <span>Turbo: <span id="turboReq">0/0</span></span>
+          <div class="bar"><div id="turboReqBar"></div></div>
+        </div>
+        <div class="usage-item">
+          <span>Plus: <span id="plusReq">0/0</span></span>
+          <div class="bar"><div id="plusReqBar"></div></div>
+        </div>
         <div class="usage-item">Total Requests: <span id="totalReq">0</span></div>
         <div class="usage-item">Total Tokens: <span id="totalTok">0</span></div>
         <div class="usage-item">Queue: <span id="queueLen">0</span></div>
         <div class="usage-item">Failed Requests: <span id="failedReq">0</span></div>
         <div class="usage-item">Failed Tokens: <span id="failedTok">0</span></div>
+        <div class="usage-item">Remaining Requests: <span id="reqRemaining">0</span></div>
+        <div class="usage-item">Remaining Tokens: <span id="tokenRemaining">0</span></div>
+        <div class="usage-item">Provider Error: <span id="providerError"></span></div>
       </div>
+
+      <div class="usage-section cost-section">
+        <div class="usage-item">Turbo 24h: <span id="costTurbo24h">$0.00</span></div>
+        <div class="usage-item">Plus 24h: <span id="costPlus24h">$0.00</span></div>
+        <div class="usage-item">Total 24h: <span id="costTotal24h">$0.00</span></div>
+        <div class="usage-item">Turbo 7d: <span id="costTurbo7d">$0.00</span></div>
+        <div class="usage-item">Plus 7d: <span id="costPlus7d">$0.00</span></div>
+        <div class="usage-item">Total 7d: <span id="costTotal7d">$0.00</span></div>
+        <div class="usage-item">Turbo 30d: <span id="costTurbo30d">$0.00</span></div>
+        <div class="usage-item">Plus 30d: <span id="costPlus30d">$0.00</span></div>
+        <div class="usage-item">Total 30d: <span id="costTotal30d">$0.00</span></div>
+      </div>
+      <button id="toggleCalendar">Show daily costs</button>
+      <div id="costCalendar" style="display:none;font-size:0.75rem"></div>
 
       <div class="grid-2">
         <div>

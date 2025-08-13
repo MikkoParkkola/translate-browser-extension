@@ -1,3 +1,4 @@
+const transport = require('../src/transport.js');
 const translator = require('../src/translator.js');
 const batch = require('../src/batch.js');
 const {
@@ -402,6 +403,7 @@ test('batch reports stats and progress', async () => {
   expect(events[0].phase).toBe('translate');
 });
 
+
 test('retries after 429 with backoff', async () => {
   jest.useFakeTimers();
   fetch
@@ -419,3 +421,5 @@ test('retries after 429 with backoff', async () => {
   expect(Date.now() - start).toBeGreaterThanOrEqual(1000);
   jest.useRealTimers();
 });
+
+
