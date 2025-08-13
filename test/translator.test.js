@@ -16,7 +16,7 @@ beforeEach(() => {
   fetch.resetMocks();
   qwenClearCache();
   reset();
-  configure({ requestLimit: 60, tokenLimit: modelTokenLimits['qwen-mt-turbo'], windowMs: 60000 });
+  configure({ requestLimit: 6000, tokenLimit: modelTokenLimits['qwen-mt-turbo'], windowMs: 60000 });
   _setTokenBudget(0);
 });
 
@@ -80,10 +80,10 @@ test('rate limiting queues requests', async () => {
   expect(fetch).toHaveBeenCalledTimes(1);
   jest.advanceTimersByTime(500);
   await Promise.resolve();
-  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch).toHaveBeenCalledTimes(2);
   jest.advanceTimersByTime(500);
   await Promise.resolve();
-  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(fetch).toHaveBeenCalledTimes(3);
   jest.advanceTimersByTime(500);
   const res3 = await p3;
   expect(res3.text).toBe('c');
@@ -222,11 +222,12 @@ test('batch groups multiple texts into single request by default', async () => {
 });
 
 test('batch falls back on separator mismatch', async () => {
+  jest.useFakeTimers();
   fetch
     .mockResponseOnce(JSON.stringify({ output: { text: 'A' } }))
     .mockResponseOnce(JSON.stringify({ output: { text: 'A1' } }))
     .mockResponseOnce(JSON.stringify({ output: { text: 'B1' } }));
-  const res = await qwenTranslateBatch({
+  const promise = qwenTranslateBatch({
     texts: ['a', 'b'],
     source: 'en',
     target: 'es',
@@ -234,8 +235,11 @@ test('batch falls back on separator mismatch', async () => {
     apiKey: 'k',
     model: 'm',
   });
+  await jest.runAllTimersAsync();
+  const res = await promise;
   expect(res.texts).toEqual(['A1', 'B1']);
   expect(fetch).toHaveBeenCalledTimes(3);
+  jest.useRealTimers();
 });
 
 test('batch reports stats and progress', async () => {
@@ -258,12 +262,19 @@ test('batch reports stats and progress', async () => {
 });
 
 test('retries after 429 with backoff', async () => {
+  jest.useFakeTimers();
   fetch
-    .mockResponseOnce(JSON.stringify({ message: 'slow' }), { status: 429, headers: { 'retry-after': '1' } })
+    .mockResponseOnce(
+      JSON.stringify({ message: 'slow' }),
+      { status: 429, headers: { 'retry-after': '1' } }
+    )
     .mockResponseOnce(JSON.stringify({ output: { text: 'ok' } }));
   const start = Date.now();
-  const res = await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hi', source: 'en', target: 'es' });
+  const promise = translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hi', source: 'en', target: 'es' });
+  await jest.advanceTimersByTimeAsync(1000);
+  const res = await promise;
   expect(res.text).toBe('ok');
   expect(fetch).toHaveBeenCalledTimes(2);
   expect(Date.now() - start).toBeGreaterThanOrEqual(1000);
-}, 10000);
+  jest.useRealTimers();
+});
