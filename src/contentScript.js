@@ -1,3 +1,6 @@
+if (typeof window === 'undefined' && typeof require !== 'undefined') {
+  require('./transport');
+}
 if (!location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'))) {
 let observers = [];
 let currentConfig;
@@ -7,6 +10,7 @@ let statusTimer;
 const pending = new Set();
 let flushTimer;
 let progress = { total: 0, done: 0 };
+let forceTranslate = false;
 
 function replacePdfEmbeds() {
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
@@ -116,15 +120,24 @@ async function translateNode(node) {
     if (currentConfig.debug) console.log('QTDEBUG: translating node', text.slice(0, 20));
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
+    const models = currentConfig.dualMode
+      ? [
+          currentConfig.model,
+          currentConfig.model === 'qwen-mt-plus' ? 'qwen-mt-turbo' : 'qwen-mt-plus',
+        ]
+      : undefined;
     const { text: translated } = await window.qwenTranslate({
+      provider: currentConfig.provider,
       endpoint: currentConfig.apiEndpoint,
       apiKey: currentConfig.apiKey,
       model: currentConfig.model,
+      models,
       text,
       source: currentConfig.sourceLanguage,
       target: currentConfig.targetLanguage,
       signal: controller.signal,
       debug: currentConfig.debug,
+      domain: location.hostname,
     });
     clearTimeout(timeout);
     if (currentConfig.debug) {
@@ -149,6 +162,7 @@ async function translateBatch(elements, stats) {
   let res;
   try {
     const opts = {
+      provider: currentConfig.provider,
       endpoint: currentConfig.apiEndpoint,
       apiKey: currentConfig.apiKey,
       model: currentConfig.model,
@@ -157,7 +171,14 @@ async function translateBatch(elements, stats) {
       target: currentConfig.targetLanguage,
       signal: controller.signal,
       debug: currentConfig.debug,
+      force: forceTranslate,
     };
+    if (currentConfig.dualMode) {
+      opts.models = [
+        currentConfig.model,
+        currentConfig.model === 'qwen-mt-plus' ? 'qwen-mt-turbo' : 'qwen-mt-plus',
+      ];
+    }
     if (stats) {
       opts.onProgress = p => {
         chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p, progress } });
@@ -336,7 +357,8 @@ function observe(root = document.body) {
   }
 }
 
-async function start() {
+async function start(force = false) {
+  forceTranslate = force;
   currentConfig = await window.qwenLoadConfig();
   progress = { total: 0, done: 0 };
   if (window.qwenSetTokenBudget) {
@@ -359,7 +381,10 @@ async function start() {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'start') {
     if (currentConfig && currentConfig.debug) console.log('QTDEBUG: start message received');
-    start();
+    start(msg.force);
+  }
+  if (msg.action === 'clear-cache') {
+    if (window.qwenClearCache) window.qwenClearCache();
   }
   if (msg.action === 'test-read') {
     sendResponse({ title: document.title });
@@ -376,6 +401,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const timer = setTimeout(() => controller.abort(), 10000);
     window
       .qwenTranslate({
+        provider: cfg.provider || 'qwen',
         endpoint: cfg.endpoint,
         apiKey: cfg.apiKey,
         model: cfg.model,
@@ -413,6 +439,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const cfg = currentConfig || (await window.qwenLoadConfig());
       try {
         const { text: translated } = await window.qwenTranslate({
+          provider: cfg.provider,
           endpoint: cfg.apiEndpoint,
           apiKey: cfg.apiKey,
           model: cfg.model,
@@ -420,6 +447,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           source: cfg.sourceLanguage,
           target: cfg.targetLanguage,
           debug: cfg.debug,
+          force: true,
         });
         const range = sel.getRangeAt(0);
         range.deleteContents();

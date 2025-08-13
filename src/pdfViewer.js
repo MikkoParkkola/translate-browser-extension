@@ -128,6 +128,12 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   if (window.qwenSetTokenBudget) {
     window.qwenSetTokenBudget(cfg.tokenBudget || 0);
   }
+  if (window.qwenSetCacheLimit) {
+    window.qwenSetCacheLimit(cfg.cacheMaxEntries || 1000);
+  }
+  if (window.qwenSetCacheTTL) {
+    window.qwenSetCacheTTL(cfg.cacheTTL || 30 * 24 * 60 * 60 * 1000);
+  }
 
   chrome.runtime.onMessage.addListener(msg => {
     if (msg.action === 'translate-selection') {
@@ -136,10 +142,18 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
         const text = sel && sel.toString().trim();
         if (!text) return;
         try {
+          const models = cfg.dualMode
+            ? [
+                cfg.model,
+                cfg.model === 'qwen-mt-plus' ? 'qwen-mt-turbo' : 'qwen-mt-plus',
+              ]
+            : undefined;
           const { text: translated } = await window.qwenTranslate({
+            provider: cfg.provider,
             endpoint: cfg.apiEndpoint,
             apiKey: cfg.apiKey,
             model: cfg.model,
+            models,
             text,
             source: cfg.sourceLanguage,
             target: cfg.targetLanguage,
@@ -253,6 +267,12 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     let cfgNow = await window.qwenLoadConfig();
     if (window.qwenSetTokenBudget) {
       window.qwenSetTokenBudget(cfgNow.tokenBudget || 0);
+    }
+    if (window.qwenSetCacheLimit) {
+      window.qwenSetCacheLimit(cfgNow.cacheMaxEntries || 1000);
+    }
+    if (window.qwenSetCacheTTL) {
+      window.qwenSetCacheTTL(cfgNow.cacheTTL || 30 * 24 * 60 * 60 * 1000);
     }
     const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine','wasmStrict'], r));
     cfgNow = { ...cfgNow, ...flags, useWasmEngine: true };

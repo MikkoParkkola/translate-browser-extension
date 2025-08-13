@@ -5,6 +5,11 @@ var approxTokens;
 var getUsage;
 
 if (typeof window === 'undefined') {
+  if (typeof self !== 'undefined' && self.qwenTransport) {
+    ({ translate: transportTranslate } = self.qwenTransport);
+  } else {
+    ({ translate: transportTranslate } = require('./transport'));
+  }
   if (typeof self !== 'undefined' && self.qwenThrottle) {
     ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = self.qwenThrottle);
   } else {
@@ -12,6 +17,8 @@ if (typeof window === 'undefined') {
     fetchFn = typeof fetch !== 'undefined' ? fetch : require('cross-fetch');
     ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = require('./throttle'));
   }
+  ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
+  LZString = require('lz-string');
 } else {
   if (window.qwenThrottle) {
     ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = window.qwenThrottle);
@@ -110,84 +117,38 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       throw e;
     }
   }
-    if (!resp.ok) {
-      const err = await resp
-        .json()
-        .catch(() => ({ message: resp.statusText }));
-      const error = new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
-      if (debug) console.log('QTDEBUG: HTTP error response', error.message);
-      if (resp.status >= 500 || resp.status === 429) {
-        error.retryable = true;
-        const ra = resp.headers.get('retry-after');
-        if (ra) {
-          const ms = parseInt(ra, 10) * 1000;
-          if (ms > 0) error.retryAfter = ms;
-        }
-        if (resp.status === 429 && !error.retryAfter) error.retryAfter = 60000;
-      }
-      throw error;
-    }
-  if (!stream || !resp.body || typeof resp.body.getReader !== 'function') {
-    if (debug) console.log('QTDEBUG: received non-streaming response');
-    const data = await resp.json();
-    const text =
-      data.output?.text ||
-      data.output?.choices?.[0]?.message?.content;
-    if (!text) {
-      throw new Error('Invalid API response');
-    }
-    return { text };
+  if (window.qwenThrottle) {
+    ({ getUsage } = window.qwenThrottle);
+  } else if (typeof require !== 'undefined') {
+    ({ getUsage } = require('./throttle'));
+  } else {
+    getUsage = () => ({ requestLimit: 1, requests: 0 });
   }
-
-  if (debug) console.log('QTDEBUG: reading streaming response');
-
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let result = '';
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop();
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith('data:')) continue;
-      const data = trimmed.slice(5).trim();
-      if (debug) console.log('QTDEBUG: raw line', data);
-      if (data === '[DONE]') {
-        reader.cancel();
-        break;
-      }
-      try {
-        const obj = JSON.parse(data);
-        const chunk =
-          obj.output?.text ||
-          obj.output?.choices?.[0]?.message?.content || '';
-        result += chunk;
-        if (onData && chunk) onData(chunk);
-        if (debug && chunk) console.log('QTDEBUG: chunk received', chunk);
-      } catch {}
-    }
+  if (window.qwenCache) {
+    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenGetCompressionErrors, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = window.qwenCache);
+  } else if (typeof self !== 'undefined' && self.qwenCache) {
+    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenGetCompressionErrors, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = self.qwenCache);
+  } else if (typeof require !== 'undefined') {
+    ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenGetCompressionErrors, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
   }
-  return { text: result };
 }
 
 async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay }) {
   if (debug) {
     console.log('QTDEBUG: qwenTranslate called with', {
+      provider,
       endpoint,
       apiKeySet: Boolean(apiKey),
-      model,
+      models: modelList,
       source,
       target,
       text: text && text.slice ? text.slice(0, 20) + (text.length > 20 ? '...' : '') : text,
     });
   }
-  const cacheKey = `${source}:${target}:${text}`;
-  if (cache.has(cacheKey)) {
-    return cache.get(cacheKey);
+  const cacheKey = `${provider}:${source}:${target}:${text}`;
+  if (!force) {
+    const cached = getCache(cacheKey);
+    if (cached) return cached;
   }
 
   if (
@@ -197,14 +158,14 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     chrome.runtime &&
     chrome.runtime.sendMessage
   ) {
-    const ep = withSlash(endpoint);
+    const ep = endpoint;
     if (debug) console.log('QTDEBUG: requesting translation via background script');
     const result = await new Promise((resolve, reject) => {
       try {
         chrome.runtime.sendMessage(
           {
             action: 'translate',
-            opts: { endpoint: ep, apiKey, model, text, source, target, debug },
+            opts: { provider, endpoint: ep, apiKey, model, models: modelList, text, source, target, debug },
           },
           res => {
             if (chrome.runtime.lastError) {
@@ -225,7 +186,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
       throw new Error(result.error);
     }
     if (debug) console.log('QTDEBUG: background response received');
-    cache.set(cacheKey, result);
+    setCache(cacheKey, result);
     return result;
   }
 
@@ -242,6 +203,31 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     }
     return data;
   } catch (e) {
+    if (modelList && modelList.length > 1 && model === modelList[0]) {
+      try {
+        model = modelList[1];
+        const data = await transportTranslate({
+          provider,
+          endpoint,
+          apiKey,
+          model,
+          text,
+          source,
+          target,
+          signal,
+          debug,
+          stream,
+          onRetry,
+          retryDelay,
+          attempts,
+        });
+        setCache(cacheKey, data);
+        return data;
+      } catch (err) {
+        console.error('QTERROR: translation request failed', err);
+        throw err;
+      }
+    }
     console.error('QTERROR: translation request failed', e);
     throw e;
   }
@@ -252,17 +238,19 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     console.log('QTDEBUG: qwenTranslateStream called with', {
       endpoint,
       apiKeySet: Boolean(apiKey),
-      model,
+      models: modelList,
       source,
       target,
       text: text && text.slice ? text.slice(0, 20) + (text.length > 20 ? '...' : '') : text,
     });
   }
-  const cacheKey = `${source}:${target}:${text}`;
-  if (cache.has(cacheKey)) {
-    const data = cache.get(cacheKey);
-    if (onData) onData(data.text);
-    return data;
+  const cacheKey = `${provider}:${source}:${target}:${text}`;
+  if (!force) {
+    const data = getCache(cacheKey);
+    if (data) {
+      if (onData) onData(data.text);
+      return data;
+    }
   }
   try {
     const data = await runWithRetry(
@@ -537,24 +525,33 @@ function qwenClearCache() {
 if (typeof window !== 'undefined') {
   window.qwenTranslate = qwenTranslate;
   window.qwenTranslateStream = qwenTranslateStream;
-  window.qwenTranslateBatch = qwenTranslateBatch;
   window.qwenClearCache = qwenClearCache;
-  window.qwenSetTokenBudget = _setTokenBudget;
+  window.qwenGetCacheSize = qwenGetCacheSize;
+  window.qwenGetCompressionErrors = qwenGetCompressionErrors;
+  window.qwenSetCacheLimit = qwenSetCacheLimit;
+  window.qwenSetCacheTTL = qwenSetCacheTTL;
 }
 if (typeof self !== 'undefined' && typeof window === 'undefined') {
   self.qwenTranslate = qwenTranslate;
   self.qwenTranslateStream = qwenTranslateStream;
-  self.qwenTranslateBatch = qwenTranslateBatch;
   self.qwenClearCache = qwenClearCache;
-  self.qwenSetTokenBudget = _setTokenBudget;
+  self.qwenGetCacheSize = qwenGetCacheSize;
+  self.qwenGetCompressionErrors = qwenGetCompressionErrors;
+  self.qwenSetCacheLimit = qwenSetCacheLimit;
+  self.qwenSetCacheTTL = qwenSetCacheTTL;
 }
-if (typeof module !== 'undefined') {
-  module.exports = {
-    qwenTranslate,
-    qwenTranslateStream,
-    qwenTranslateBatch,
-    qwenClearCache,
-    _getTokenBudget,
-    _setTokenBudget,
-  };
-}
+  if (typeof module !== 'undefined') {
+    module.exports = {
+      qwenTranslate,
+      qwenTranslateStream,
+      qwenClearCache,
+      qwenGetCacheSize,
+      qwenSetCacheLimit,
+      qwenSetCacheTTL,
+      _setMaxCacheEntries,
+      _setCacheTTL,
+      _setCacheEntryTimestamp,
+      _setGetUsage,
+      collapseSpacing,
+    };
+  }

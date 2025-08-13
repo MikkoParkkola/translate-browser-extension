@@ -191,7 +191,6 @@ function getUsage() {
   if (typeof window !== 'undefined') {
     root.qwenThrottle = {
       runWithRateLimit,
-      runWithRetry,
       configure: throttleConfigure,
       approxTokens,
       getUsage,
@@ -200,7 +199,6 @@ function getUsage() {
   } else if (typeof self !== 'undefined') {
     root.qwenThrottle = {
       runWithRateLimit,
-      runWithRetry,
       configure: throttleConfigure,
       approxTokens,
       getUsage,

@@ -10,6 +10,7 @@ const defaultCfg = {
   sourceLanguage: 'en',
   targetLanguage: 'en',
   autoTranslate: false,
+  provider: 'qwen',
   requestLimit: 60,
   tokenLimit: modelTokenLimits['qwen-mt-turbo'],
   tokenBudget: 0,
@@ -17,8 +18,11 @@ const defaultCfg = {
   tokensPerReq: 0,
   retryDelay: 0,
   debug: false,
+  dualMode: false,
   useWasmEngine: true,
   autoOpenAfterSave: true,
+  cacheMaxEntries: 1000,
+  cacheTTL: 30 * 24 * 60 * 60 * 1000,
 };
 
 function qwenLoadConfig() {
