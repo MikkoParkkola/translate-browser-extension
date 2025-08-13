@@ -1,3 +1,4 @@
+const transport = require('../src/transport.js');
 const translator = require('../src/translator.js');
 const batch = require('../src/batch.js');
 const {
@@ -7,9 +8,10 @@ const {
   qwenSetCacheLimit,
   qwenSetCacheTTL,
   _setCacheEntryTimestamp,
+  _setGetUsage,
 } = translator;
 const { qwenTranslateBatch, _getTokenBudget, _setTokenBudget } = batch;
-const { configure, reset } = require('../src/throttle');
+const { configure, reset, getUsage } = require('../src/throttle');
 const { modelTokenLimits } = require('../src/config');
 const fetchMock = require('jest-fetch-mock');
 const { registerProvider } = require('../src/providers');
@@ -24,6 +26,7 @@ beforeEach(() => {
   _setTokenBudget(0);
   qwenSetCacheLimit(1000);
   qwenSetCacheTTL(30 * 24 * 60 * 60 * 1000);
+  _setGetUsage(() => getUsage());
 });
 
 test('translate success', async () => {
