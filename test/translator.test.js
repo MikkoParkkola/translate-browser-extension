@@ -63,6 +63,16 @@ test('translate caching', async () => {
   expect(cached.text).toBe('hi');
 });
 
+test('force bypasses cache', async () => {
+  fetch
+    .mockResponseOnce(JSON.stringify({ output: { text: 'hi' } }))
+    .mockResponseOnce(JSON.stringify({ output: { text: 'hello' } }));
+  await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hola', source: 'es', target: 'en' });
+  const res = await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hola', source: 'es', target: 'en', force: true });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(res.text).toBe('hello');
+});
+
 test('rate limiting queues requests', async () => {
   jest.useFakeTimers();
   configure({ requestLimit: 2, tokenLimit: modelTokenLimits['qwen-mt-turbo'] * 100, windowMs: 1000 });
@@ -77,11 +87,14 @@ test('rate limiting queues requests', async () => {
 
   jest.advanceTimersByTime(0);
   await Promise.resolve();
+  await Promise.resolve();
   expect(fetch).toHaveBeenCalledTimes(1);
   jest.advanceTimersByTime(500);
   await Promise.resolve();
+  await Promise.resolve();
   expect(fetch).toHaveBeenCalledTimes(2);
   jest.advanceTimersByTime(500);
+  await Promise.resolve();
   await Promise.resolve();
   expect(fetch).toHaveBeenCalledTimes(3);
   jest.advanceTimersByTime(500);
@@ -193,6 +206,24 @@ test('batch retranslates unchanged lines', async () => {
   expect(fetch).toHaveBeenCalledTimes(2);
 });
 
+test('stores compressed cache entries', async () => {
+  jest.resetModules();
+  window.localStorage.clear();
+  const LZ = require('lz-string');
+  const t = require('../src/translator.js');
+  const tr = t.qwenTranslate;
+  fetch.mockResponseOnce(JSON.stringify({ output: { text: 'hi' } }));
+  await tr({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hola', source: 'es', target: 'en' });
+  const stored = JSON.parse(window.localStorage.getItem('qwenCache'));
+  const key = 'es:en:hola';
+  expect(stored[key]).toBeDefined();
+  expect(stored[key]).not.toContain('hi');
+  const decoded = JSON.parse(LZ.decompressFromUTF16(stored[key]));
+  expect(decoded.text).toBe('hi');
+  window.localStorage.clear();
+  t.qwenClearCache();
+});
+
 test('token budget grows after successful batch', async () => {
   fetch.mockResponseOnce(JSON.stringify({ output: { text: 'A\uE000B' } }));
   _setTokenBudget(1000, false);
@@ -219,6 +250,30 @@ test('batch groups multiple texts into single request by default', async () => {
   });
   expect(res.texts).toEqual(['A', 'B', 'C']);
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+test('batch deduplicates repeated texts', async () => {
+  fetch.mockResponseOnce(JSON.stringify({ output: { text: 'HOLA\uE000MUNDO' } }));
+  const res = await qwenTranslateBatch({
+    texts: ['hello', 'world', 'hello'],
+    source: 'en',
+    target: 'es',
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    model: 'm',
+  });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(res.texts).toEqual(['HOLA', 'MUNDO', 'HOLA']);
+  const res2 = await qwenTranslateBatch({
+    texts: ['hello', 'world', 'hello'],
+    source: 'en',
+    target: 'es',
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    model: 'm',
+  });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(res2.texts).toEqual(['HOLA', 'MUNDO', 'HOLA']);
 });
 
 test('batch falls back on separator mismatch', async () => {

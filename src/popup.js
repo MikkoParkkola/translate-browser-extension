@@ -26,6 +26,8 @@ const failedTok = document.getElementById('failedTok');
 const translateBtn = document.getElementById('translate');
 const testBtn = document.getElementById('test');
 const progressBar = document.getElementById('progress');
+const clearCacheBtn = document.getElementById('clearCache');
+const forceCheckbox = document.getElementById('force');
 
 // Setup view elements
 const setupApiKeyInput = document.getElementById('setup-apiKey');
@@ -297,12 +299,27 @@ refreshUsage();
 
 translateBtn.addEventListener('click', () => {
   const debug = debugCheckbox.checked;
-  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+  const force = forceCheckbox && forceCheckbox.checked;
+  chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
     if (!tabs[0]) return;
     if (debug) console.log('QTDEBUG: sending start message to tab', tabs[0].id);
-    chrome.tabs.sendMessage(tabs[0].id, {action: 'start'});
+    chrome.tabs.sendMessage(tabs[0].id, { action: 'start', force });
   });
 });
+
+if (clearCacheBtn) {
+  clearCacheBtn.addEventListener('click', () => {
+    if (window.qwenClearCache) window.qwenClearCache();
+    chrome.runtime.sendMessage({ action: 'clear-cache' }, () => {});
+    chrome.tabs.query({}, tabs => {
+      tabs.forEach(t => chrome.tabs.sendMessage(t.id, { action: 'clear-cache' }, () => {}));
+    });
+    status.textContent = 'Cache cleared.';
+    setTimeout(() => {
+      if (status.textContent === 'Cache cleared.') status.textContent = '';
+    }, 2000);
+  });
+}
 
 testBtn.addEventListener('click', async () => {
   status.textContent = 'Testing...';
