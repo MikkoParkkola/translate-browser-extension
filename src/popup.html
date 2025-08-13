@@ -66,6 +66,7 @@
     .main-actions { display: flex; gap: 0.5rem; align-items: center; }
     #translate { flex-grow: 1; }
     .auto-translate-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
+    .force-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
     .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
     .switch input { opacity: 0; width: 0; height: 0; }
     .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--secondary-bg); transition: .4s; border-radius: 20px; }
@@ -97,14 +98,17 @@
       <h3>Initial Setup</h3>
       <p>Please configure the essential settings to start using the extension.</p>
       <div class="form-group">
-        <label for="setup-apiKey">API Key</label>
-        <input type="text" id="setup-apiKey" placeholder="Enter your API key" title="DashScope API key (required)">
+        <label for="setup-provider">Provider</label>
+        <select id="setup-provider" title="Select translation provider"></select>
 
-        <label for="setup-apiEndpoint">API Endpoint</label>
-        <input type="text" id="setup-apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1" title="DashScope API endpoint">
+        <label for="setup-apiKey" data-field="apiKey">API Key</label>
+        <input type="text" id="setup-apiKey" data-field="apiKey" placeholder="Enter your API key" title="DashScope API key (required)">
 
-        <label for="setup-model">Model</label>
-        <select id="setup-model" title="Select translation model. Turbo is cheaper; Plus is higher quality.">
+        <label for="setup-apiEndpoint" data-field="apiEndpoint">API Endpoint</label>
+        <input type="text" id="setup-apiEndpoint" data-field="apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1" title="DashScope API endpoint">
+
+        <label for="setup-model" data-field="model">Model</label>
+        <select id="setup-model" data-field="model" title="Select translation model. Turbo is cheaper; Plus is higher quality.">
           <option value="qwen-mt-turbo">qwen-mt-turbo</option>
           <option value="qwen-mt-plus">qwen-mt-plus</option>
         </select>
@@ -123,6 +127,12 @@
           </label>
           <span>Auto</span>
         </div>
+      </div>
+      <div class="main-actions">
+        <button id="clearCache" title="Remove saved translations">Clear Cache</button>
+        <span id="cacheSize" style="font-size:0.875rem"></span>
+        <span id="compressionErrors" style="font-size:0.875rem"></span>
+        <label class="force-toggle"><input type="checkbox" id="force"> Force</label>
       </div>
 
       <div class="usage-section">
@@ -155,17 +165,20 @@
       <details>
         <summary>Advanced Settings</summary>
         <div class="form-group" style="padding-top: 0.75rem">
-          <label for="apiKey">API Key</label>
-          <input type="text" id="apiKey" placeholder="Enter your API key" title="DashScope API key (required)">
+          <label for="apiKey" data-field="apiKey">API Key</label>
+          <input type="text" id="apiKey" data-field="apiKey" placeholder="Enter your API key" title="DashScope API key (required)">
 
-          <label for="apiEndpoint">API Endpoint</label>
-          <input type="text" id="apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1" title="DashScope API endpoint">
+          <label for="apiEndpoint" data-field="apiEndpoint">API Endpoint</label>
+          <input type="text" id="apiEndpoint" data-field="apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1" title="DashScope API endpoint">
 
-          <label for="model">Model</label>
-          <select id="model" title="Translation model. Turbo is default; Plus offers higher quality at higher cost.">
+          <label for="model" data-field="model">Model</label>
+          <select id="model" data-field="model" title="Translation model. Turbo is default; Plus offers higher quality at higher cost.">
             <option value="qwen-mt-turbo">qwen-mt-turbo</option>
             <option value="qwen-mt-plus">qwen-mt-plus</option>
           </select>
+
+          <label for="provider">Provider</label>
+          <select id="provider" title="Select translation provider"></select>
 
           <div class="grid-2">
             <div>
@@ -181,6 +194,12 @@
           <label for="tokenBudget">Token budget</label>
           <input type="number" id="tokenBudget" placeholder="auto" title="Optional hard cap for total tokens used in this session.">
 
+          <label for="cacheSizeLimit">Cache entries</label>
+          <input type="number" id="cacheSizeLimit" title="Maximum number of cached translations">
+
+          <label for="cacheTTL">Cache TTL (days)</label>
+          <input type="number" id="cacheTTL" title="Days before cached translations expire">
+
           <label><input type="checkbox" id="smartThrottle" checked title="Enable intelligent adaptive throttling"> Intelligent throttling</label>
 
           <div class="grid-2">
@@ -191,19 +210,6 @@
             <div>
               <label for="retryDelay" title="Base retry delay in seconds when a rate limit is hit">Retry delay (s)</label>
               <input type="number" id="retryDelay" disabled title="Seconds to wait before first retry after a rate limit error">
-            </div>
-          </div>
-
-          <label><input type="checkbox" id="smartThrottle" checked title="Enable intelligent adaptive throttling"> Intelligent throttling</label>
-
-          <div class="grid-2">
-            <div>
-              <label for="tokensPerReq" title="Target tokens per request when intelligent throttling is off">Tokens/request</label>
-              <input type="number" id="tokensPerReq" disabled>
-            </div>
-            <div>
-              <label for="retryDelay" title="Base retry delay in seconds when a rate limit is hit">Retry delay (s)</label>
-              <input type="number" id="retryDelay" disabled>
             </div>
           </div>
 
@@ -219,10 +225,15 @@
   </div>
 
   <script src="throttle.js"></script>
+  <script src="lz-string.min.js"></script>
+  <script src="cache.js"></script>
+  <script src="providers/index.js"></script>
+  <script src="providers/qwen.js"></script>
   <script src="translator.js"></script>
   <script src="config.js"></script>
   <script src="languages.js"></script>
   <script src="usageColor.js"></script>
+  <script src="providerConfig.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

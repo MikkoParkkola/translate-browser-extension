@@ -7,6 +7,7 @@ let statusTimer;
 const pending = new Set();
 let flushTimer;
 let progress = { total: 0, done: 0 };
+let forceTranslate = false;
 
 function replacePdfEmbeds() {
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
@@ -117,6 +118,7 @@ async function translateNode(node) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     const { text: translated } = await window.qwenTranslate({
+      provider: currentConfig.provider,
       endpoint: currentConfig.apiEndpoint,
       apiKey: currentConfig.apiKey,
       model: currentConfig.model,
@@ -149,6 +151,7 @@ async function translateBatch(elements, stats) {
   let res;
   try {
     const opts = {
+      provider: currentConfig.provider,
       endpoint: currentConfig.apiEndpoint,
       apiKey: currentConfig.apiKey,
       model: currentConfig.model,
@@ -157,6 +160,7 @@ async function translateBatch(elements, stats) {
       target: currentConfig.targetLanguage,
       signal: controller.signal,
       debug: currentConfig.debug,
+      force: forceTranslate,
     };
     if (stats) {
       opts.onProgress = p => {
@@ -336,12 +340,19 @@ function observe(root = document.body) {
   }
 }
 
-async function start() {
+async function start(force = false) {
+  forceTranslate = force;
   currentConfig = await window.qwenLoadConfig();
   progress = { total: 0, done: 0 };
   if (window.qwenSetTokenBudget) {
     const tb = currentConfig.tokensPerReq || currentConfig.tokenBudget || 0;
     window.qwenSetTokenBudget(tb);
+  }
+  if (window.qwenSetCacheLimit) {
+    window.qwenSetCacheLimit(currentConfig.cacheMaxEntries || 1000);
+  }
+  if (window.qwenSetCacheTTL) {
+    window.qwenSetCacheTTL(currentConfig.cacheTTL || 30 * 24 * 60 * 60 * 1000);
   }
   if (!currentConfig.apiKey) {
     console.warn('QTWARN: API key not configured.');
@@ -359,7 +370,10 @@ async function start() {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'start') {
     if (currentConfig && currentConfig.debug) console.log('QTDEBUG: start message received');
-    start();
+    start(msg.force);
+  }
+  if (msg.action === 'clear-cache') {
+    if (window.qwenClearCache) window.qwenClearCache();
   }
   if (msg.action === 'test-read') {
     sendResponse({ title: document.title });
@@ -376,6 +390,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const timer = setTimeout(() => controller.abort(), 10000);
     window
       .qwenTranslate({
+        provider: cfg.provider || 'qwen',
         endpoint: cfg.endpoint,
         apiKey: cfg.apiKey,
         model: cfg.model,
@@ -413,6 +428,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const cfg = currentConfig || (await window.qwenLoadConfig());
       try {
         const { text: translated } = await window.qwenTranslate({
+          provider: cfg.provider,
           endpoint: cfg.apiEndpoint,
           apiKey: cfg.apiKey,
           model: cfg.model,
@@ -420,6 +436,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           source: cfg.sourceLanguage,
           target: cfg.targetLanguage,
           debug: cfg.debug,
+          force: true,
         });
         const range = sel.getRangeAt(0);
         range.deleteContents();
