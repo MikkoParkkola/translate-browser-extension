@@ -26,12 +26,6 @@ if (typeof window === 'undefined') {
 const cache = new Map();
 
 function makeDelimiter() {
-  // Default to U+E000 for compatibility (tests and existing behavior).
-  // Opt-in unique delimiter via env var or global flag when desired.
-  const useUnique =
-    (typeof window !== 'undefined' && window.qwenUseUniqueDelimiter) ||
-    (typeof process !== 'undefined' && process.env && process.env.QWEN_UNIQUE_DELIM === '1');
-  if (!useUnique) return '\uE000';
   return `<<<QWEN_SPLIT_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}>>>`;
 }
 
@@ -514,27 +508,33 @@ async function batchOnce({
     stats.tokens += tk;
     stats.words += words;
     stats.requests++;
-    const translated = res && typeof res.text === 'string' ? res.text.split(SEP) : [];
+    let translated = res && typeof res.text === 'string' ? res.text.split(SEP) : [];
     if (translated.length !== g.length) {
-      if (tokenBudget > MIN_TOKEN_BUDGET) {
-        dynamicTokenBudget = Math.max(MIN_TOKEN_BUDGET, Math.floor(tokenBudget / 2));
-      }
-      for (const m of g) {
-        let out;
-        try {
-          const single = await qwenTranslate({ ...opts, text: m.text });
-          out = single.text;
-        } catch {
-          out = m.text;
+      // Try legacy delimiter U+E000 for compatibility with older stubs/backends
+      const alt = res && typeof res.text === 'string' ? res.text.split('\uE000') : [];
+      if (alt.length === g.length) {
+        translated = alt;
+      } else {
+        if (tokenBudget > MIN_TOKEN_BUDGET) {
+          dynamicTokenBudget = Math.max(MIN_TOKEN_BUDGET, Math.floor(tokenBudget / 2));
         }
-        m.result = out;
-        const key = `${opts.source}:${opts.target}:${m.text}`;
-        cache.set(key, { text: out });
-        stats.requests++;
-        stats.tokens += approxTokens(m.text);
-        stats.words += m.text.trim().split(/\s+/).filter(Boolean).length;
+        for (const m of g) {
+          let out;
+          try {
+            const single = await qwenTranslate({ ...opts, text: m.text });
+            out = single.text;
+          } catch {
+            out = m.text;
+          }
+          m.result = out;
+          const key = `${opts.source}:${opts.target}:${m.text}`;
+          cache.set(key, { text: out });
+          stats.requests++;
+          stats.tokens += approxTokens(m.text);
+          stats.words += m.text.trim().split(/\s+/).filter(Boolean).length;
+        }
+        continue;
       }
-      continue;
     }
     for (let i = 0; i < g.length; i++) {
       g[i].result = translated[i] || g[i].text;
