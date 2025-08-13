@@ -97,3 +97,51 @@ test('reuses cached translations for repeated text nodes', async () => {
 
   window.qwenTranslateBatch = stub;
 });
+
+test('batches DOM nodes when exceeding token limit', async () => {
+  const original = window.qwenTranslateBatch;
+  window.qwenThrottle = { approxTokens: () => 4000, getUsage: () => null };
+  const calls = jest.fn(async ({ texts }) => ({ texts }));
+  window.qwenTranslateBatch = calls;
+  document.body.innerHTML = '<p>A</p><p>B</p><p>C</p>';
+  messageListener({ action: 'start' });
+  await new Promise(r => setTimeout(r, 50));
+  expect(calls).toHaveBeenCalledTimes(4);
+  window.qwenTranslateBatch = original;
+  delete window.qwenThrottle;
+});
+
+test('force translation bypasses cache', async () => {
+  const original = window.qwenTranslateBatch;
+  const network = jest.fn(async texts => texts.map(t => `X${t}X`));
+  const cache = new Map();
+  window.qwenTranslateBatch = jest.fn(async ({ texts, force }) => {
+    const out = [];
+    for (const t of texts) {
+      if (!force && cache.has(t)) {
+        out.push(cache.get(t));
+      } else {
+        const res = await network([t]);
+        cache.set(t, res[0]);
+        out.push(res[0]);
+      }
+    }
+    return { texts: out };
+  });
+  setCurrentConfig({ apiKey: 'k', apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'en', targetLanguage: 'es', debug: false });
+  document.body.innerHTML = '<p><span>Hello</span></p>';
+  let nodes = [];
+  collectNodes(document.body, nodes);
+  await translateBatch(nodes);
+  expect(network).toHaveBeenCalledTimes(1);
+  document.body.innerHTML = '<p><span>Hello</span></p>';
+  nodes = [];
+  collectNodes(document.body, nodes);
+  await translateBatch(nodes);
+  expect(network).toHaveBeenCalledTimes(1);
+  document.body.innerHTML = '<p><span>Hello</span></p>';
+  messageListener({ action: 'start', force: true });
+  await new Promise(r => setTimeout(r, 20));
+  expect(network.mock.calls.length).toBeGreaterThan(1);
+  window.qwenTranslateBatch = original;
+});
