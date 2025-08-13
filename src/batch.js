@@ -9,6 +9,7 @@
 
   if (typeof window === 'undefined') {
     ({ approxTokens, getUsage } = require('./throttle'));
+    require('./retry');
     ({ cacheReady, getCache, setCache, removeCache } = require('./cache'));
     ({ qwenTranslate } = require('./translator'));
   } else {
@@ -33,6 +34,9 @@
       qwenTranslate = self.qwenTranslate;
     } else if (typeof require !== 'undefined') {
       ({ qwenTranslate } = require('./translator'));
+    }
+    if (!window.qwenRetry && typeof require !== 'undefined') {
+      require('./retry');
     }
   }
 

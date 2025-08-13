@@ -36,11 +36,14 @@ const translateBtn = document.getElementById('translate');
 const testBtn = document.getElementById('test');
 const progressBar = document.getElementById('progress');
 const clearCacheBtn = document.getElementById('clearCache');
+const clearDomainBtn = document.getElementById('clearDomain');
+const clearPairBtn = document.getElementById('clearPair');
 const forceCheckbox = document.getElementById('force');
 const cacheSizeLabel = document.getElementById('cacheSize');
 const compressionErrorsLabel = document.getElementById('compressionErrors');
 const cacheLimitInput = document.getElementById('cacheSizeLimit');
 const cacheTTLInput = document.getElementById('cacheTTL');
+const toggleCalendar = document.getElementById('toggleCalendar');
 
 const applyProviderConfig =
   (window.qwenProviderConfig && window.qwenProviderConfig.applyProviderConfig) ||
@@ -109,10 +112,13 @@ function saveConfig() {
 }
 
 function syncInputs(from, to) {
-  to.value = from.value;
+  if (from && to) {
+    to.value = from.value;
+  }
 }
 
 function updateView(cfg) {
+  if (!viewContainer) return;
   if (cfg.apiKey && cfg.apiEndpoint && cfg.model) {
     viewContainer.classList.remove('show-setup');
     viewContainer.classList.add('show-main');
@@ -166,6 +172,7 @@ function setWorking(w) {
 function updateThrottleInputs() {
   const manual = !smartThrottleInput.checked;
   [reqLimitInput, tokenLimitInput, tokensPerReqInput, retryDelayInput].forEach(el => {
+    if (!el) return;
     el.disabled = !manual;
     if (!manual) {
       el.placeholder = el.dataset.auto || '';
@@ -266,28 +273,28 @@ chrome.runtime.sendMessage({ action: 'get-status' }, s => {
 window.qwenLoadConfig().then(cfg => {
   currentCfg = cfg;
   // Populate main view
-  apiKeyInput.value = cfg.apiKey || '';
-  endpointInput.value = cfg.apiEndpoint || '';
-  modelInput.value = cfg.model || '';
-  providerSelect.value = cfg.provider || 'qwen';
-  sourceSelect.value = cfg.sourceLanguage;
-  targetSelect.value = cfg.targetLanguage;
-  reqLimitInput.value = cfg.requestLimit;
-  tokenLimitInput.value = cfg.tokenLimit;
-  tokenBudgetInput.value = cfg.tokenBudget || '';
-  autoCheckbox.checked = cfg.autoTranslate;
-  debugCheckbox.checked = !!cfg.debug;
-  smartThrottleInput.checked = cfg.smartThrottle !== false;
-  tokensPerReqInput.value = cfg.tokensPerReq || '';
-  retryDelayInput.value = cfg.retryDelay || '';
-  cacheLimitInput.value = cfg.cacheMaxEntries || '';
-  cacheTTLInput.value = Math.floor((cfg.cacheTTL || 30 * 24 * 60 * 60 * 1000) / (24 * 60 * 60 * 1000));
+  if (apiKeyInput) apiKeyInput.value = cfg.apiKey || '';
+  if (endpointInput) endpointInput.value = cfg.apiEndpoint || '';
+  if (modelInput) modelInput.value = cfg.model || '';
+  if (providerSelect) providerSelect.value = cfg.provider || 'qwen';
+  if (sourceSelect) sourceSelect.value = cfg.sourceLanguage;
+  if (targetSelect) targetSelect.value = cfg.targetLanguage;
+  if (reqLimitInput) reqLimitInput.value = cfg.requestLimit;
+  if (tokenLimitInput) tokenLimitInput.value = cfg.tokenLimit;
+  if (tokenBudgetInput) tokenBudgetInput.value = cfg.tokenBudget || '';
+  if (autoCheckbox) autoCheckbox.checked = cfg.autoTranslate;
+  if (debugCheckbox) debugCheckbox.checked = !!cfg.debug;
+  if (smartThrottleInput) smartThrottleInput.checked = cfg.smartThrottle !== false;
+  if (tokensPerReqInput) tokensPerReqInput.value = cfg.tokensPerReq || '';
+  if (retryDelayInput) retryDelayInput.value = cfg.retryDelay || '';
+  if (cacheLimitInput) cacheLimitInput.value = cfg.cacheMaxEntries || '';
+  if (cacheTTLInput) cacheTTLInput.value = Math.floor((cfg.cacheTTL || 30 * 24 * 60 * 60 * 1000) / (24 * 60 * 60 * 1000));
 
   // Populate setup view
-  setupApiKeyInput.value = cfg.apiKey || '';
-  setupApiEndpointInput.value = cfg.apiEndpoint || '';
-  setupModelInput.value = cfg.model || '';
-  setupProviderInput.value = cfg.provider || 'qwen';
+  if (setupApiKeyInput) setupApiKeyInput.value = cfg.apiKey || '';
+  if (setupApiEndpointInput) setupApiEndpointInput.value = cfg.apiEndpoint || '';
+  if (setupModelInput) setupModelInput.value = cfg.model || '';
+  if (setupProviderInput) setupProviderInput.value = cfg.provider || 'qwen';
 
   updateView(cfg);
   updateProviderFields();
@@ -300,36 +307,48 @@ window.qwenLoadConfig().then(cfg => {
     { main: providerSelect, setup: setupProviderInput, event: 'change' },
   ];
 
-  allInputs.forEach(({main, setup, event}) => {
-    main.addEventListener(event, () => {
-      syncInputs(main, setup);
-      saveConfig();
-      if (event === 'change') refreshUsage();
-    });
-    setup.addEventListener(event, () => {
-      syncInputs(setup, main);
-      saveConfig();
-      if (event === 'change') refreshUsage();
-    });
+  allInputs.forEach(({ main, setup, event }) => {
+    if (main) {
+      main.addEventListener(event, () => {
+        syncInputs(main, setup);
+        saveConfig();
+        if (event === 'change') refreshUsage();
+      });
+    }
+    if (setup) {
+      setup.addEventListener(event, () => {
+        syncInputs(setup, main);
+        saveConfig();
+        if (event === 'change') refreshUsage();
+      });
+    }
   });
 
-  providerSelect.addEventListener('change', updateProviderFields);
-  setupProviderInput.addEventListener('change', updateProviderFields);
+  if (providerSelect) providerSelect.addEventListener('change', updateProviderFields);
+  if (setupProviderInput) setupProviderInput.addEventListener('change', updateProviderFields);
 
   updateThrottleInputs();
-  [reqLimitInput, tokenLimitInput, tokenBudgetInput, tokensPerReqInput, retryDelayInput, cacheLimitInput, cacheTTLInput].forEach(el => el.addEventListener('input', saveConfig));
-  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox, smartThrottleInput].forEach(el => el.addEventListener('change', () => { updateThrottleInputs(); saveConfig(); }));
+  [reqLimitInput, tokenLimitInput, tokenBudgetInput, tokensPerReqInput, retryDelayInput, cacheLimitInput, cacheTTLInput].forEach(el => {
+    if (el) el.addEventListener('input', saveConfig);
+  });
+  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox, smartThrottleInput].forEach(el => {
+    if (el) el.addEventListener('change', () => { updateThrottleInputs(); saveConfig(); });
+  });
   if (window.qwenSetCacheLimit) window.qwenSetCacheLimit(cfg.cacheMaxEntries || 1000);
   if (window.qwenSetCacheTTL) window.qwenSetCacheTTL(cfg.cacheTTL || 30 * 24 * 60 * 60 * 1000);
   updateCacheSize();
 });
 
-versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
+if (versionDiv) versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
 
 function setBar(el, ratio) {
   const r = Math.max(0, Math.min(1, ratio));
   el.style.width = r * 100 + '%';
   el.style.backgroundColor = window.qwenUsageColor ? window.qwenUsageColor(r) : 'var(--green)';
+}
+
+function formatCost(n) {
+  return `$${n.toFixed(2)}`;
 }
 
 function updateCacheSize() {
@@ -345,37 +364,37 @@ function updateCacheSize() {
 function refreshUsage() {
   chrome.runtime.sendMessage({ action: 'usage' }, res => {
     if (chrome.runtime.lastError || !res) return;
-    reqCount.textContent = `${res.requests}/${res.requestLimit}`;
-    tokenCount.textContent = `${res.tokens}/${res.tokenLimit}`;
-    setBar(reqBar, res.requests / res.requestLimit);
-    setBar(tokenBar, res.tokens / res.tokenLimit);
-    totalReq.textContent = res.totalRequests;
-    totalTok.textContent = res.totalTokens;
-    queueLen.textContent = res.queue;
-    failedReq.textContent = res.failedTotalRequests;
-    failedTok.textContent = res.failedTotalTokens;
+    if (reqCount) reqCount.textContent = `${res.requests}/${res.requestLimit}`;
+    if (tokenCount) tokenCount.textContent = `${res.tokens}/${res.tokenLimit}`;
+    if (reqBar) setBar(reqBar, res.requests / res.requestLimit);
+    if (tokenBar) setBar(tokenBar, res.tokens / res.tokenLimit);
+    if (totalReq) totalReq.textContent = res.totalRequests;
+    if (totalTok) totalTok.textContent = res.totalTokens;
+    if (queueLen) queueLen.textContent = res.queue;
+    if (failedReq) failedReq.textContent = res.failedTotalRequests;
+    if (failedTok) failedTok.textContent = res.failedTotalTokens;
     if (res.models) {
       const turbo = res.models['qwen-mt-turbo'] || { requests: 0, requestLimit: 0 };
       const plus = res.models['qwen-mt-plus'] || { requests: 0, requestLimit: 0 };
-      turboReq.textContent = `${turbo.requests}/${turbo.requestLimit}`;
-      plusReq.textContent = `${plus.requests}/${plus.requestLimit}`;
-      setBar(turboReqBar, turbo.requestLimit ? turbo.requests / turbo.requestLimit : 0);
-      setBar(plusReqBar, plus.requestLimit ? plus.requests / plus.requestLimit : 0);
+      if (turboReq) turboReq.textContent = `${turbo.requests}/${turbo.requestLimit}`;
+      if (plusReq) plusReq.textContent = `${plus.requests}/${plus.requestLimit}`;
+      if (turboReqBar) setBar(turboReqBar, turbo.requestLimit ? turbo.requests / turbo.requestLimit : 0);
+      if (plusReqBar) setBar(plusReqBar, plus.requestLimit ? plus.requests / plus.requestLimit : 0);
     }
     if (res.costs) {
       const turbo = res.costs['qwen-mt-turbo'];
       const plus = res.costs['qwen-mt-plus'];
       const total = res.costs.total;
-      costTurbo24h.textContent = formatCost(turbo['24h'] || 0);
-      costPlus24h.textContent = formatCost(plus['24h'] || 0);
-      costTotal24h.textContent = formatCost(total['24h'] || 0);
-      costTurbo7d.textContent = formatCost(turbo['7d'] || 0);
-      costPlus7d.textContent = formatCost(plus['7d'] || 0);
-      costTotal7d.textContent = formatCost(total['7d'] || 0);
-      costTurbo30d.textContent = formatCost(turbo['30d'] || 0);
-      costPlus30d.textContent = formatCost(plus['30d'] || 0);
-      costTotal30d.textContent = formatCost(total['30d'] || 0);
-      if (res.costs.daily) {
+      if (costTurbo24h) costTurbo24h.textContent = formatCost(turbo['24h'] || 0);
+      if (costPlus24h) costPlus24h.textContent = formatCost(plus['24h'] || 0);
+      if (costTotal24h) costTotal24h.textContent = formatCost(total['24h'] || 0);
+      if (costTurbo7d) costTurbo7d.textContent = formatCost(turbo['7d'] || 0);
+      if (costPlus7d) costPlus7d.textContent = formatCost(plus['7d'] || 0);
+      if (costTotal7d) costTotal7d.textContent = formatCost(total['7d'] || 0);
+      if (costTurbo30d) costTurbo30d.textContent = formatCost(turbo['30d'] || 0);
+      if (costPlus30d) costPlus30d.textContent = formatCost(plus['30d'] || 0);
+      if (costTotal30d) costTotal30d.textContent = formatCost(total['30d'] || 0);
+      if (res.costs.daily && costCalendar) {
         costCalendar.innerHTML = '';
         res.costs.daily.forEach(d => {
           const div = document.createElement('div');
@@ -384,18 +403,18 @@ function refreshUsage() {
         });
       }
     }
-    reqLimitInput.dataset.auto = res.requestLimit;
-    tokenLimitInput.dataset.auto = res.tokenLimit;
-    tokensPerReqInput.dataset.auto = Math.floor(res.tokenLimit / res.requestLimit || 0);
-    if (smartThrottleInput.checked) {
-      reqLimitInput.placeholder = reqLimitInput.dataset.auto;
-      tokenLimitInput.placeholder = tokenLimitInput.dataset.auto;
-      tokensPerReqInput.placeholder = tokensPerReqInput.dataset.auto;
+    if (reqLimitInput) reqLimitInput.dataset.auto = res.requestLimit;
+    if (tokenLimitInput) tokenLimitInput.dataset.auto = res.tokenLimit;
+    if (tokensPerReqInput) tokensPerReqInput.dataset.auto = Math.floor(res.tokenLimit / res.requestLimit || 0);
+    if (smartThrottleInput && smartThrottleInput.checked) {
+      if (reqLimitInput) reqLimitInput.placeholder = reqLimitInput.dataset.auto;
+      if (tokenLimitInput) tokenLimitInput.placeholder = tokenLimitInput.dataset.auto;
+      if (tokensPerReqInput) tokensPerReqInput.placeholder = tokensPerReqInput.dataset.auto;
     }
   });
 
   const now = Date.now();
-  if (now - lastQuotaCheck > 60000) {
+  if (providerSelect && endpointInput && apiKeyInput && modelInput && debugCheckbox && now - lastQuotaCheck > 60000) {
     lastQuotaCheck = now;
     const prov =
       (window.qwenProviders && window.qwenProviders.getProvider(providerSelect.value)) || {};
@@ -408,25 +427,25 @@ function refreshUsage() {
           debug: debugCheckbox.checked,
         })
         .then(q => {
-          if (typeof q.requests === 'number') {
+          if (typeof q.requests === 'number' && reqRemaining) {
             reqRemaining.textContent = q.requests;
             currentCfg.remainingRequests = q.requests;
           }
-          if (typeof q.tokens === 'number') {
+          if (typeof q.tokens === 'number' && tokenRemaining) {
             tokenRemaining.textContent = q.tokens;
             currentCfg.remainingTokens = q.tokens;
           }
           if (q.error) {
-            providerError.textContent = q.error;
+            if (providerError) providerError.textContent = q.error;
             currentCfg.providerError = q.error;
           } else {
-            providerError.textContent = '';
+            if (providerError) providerError.textContent = '';
             currentCfg.providerError = '';
           }
           if (window.qwenSaveConfig) window.qwenSaveConfig(currentCfg);
         })
         .catch(err => {
-          providerError.textContent = err.message;
+          if (providerError) providerError.textContent = err.message;
           currentCfg.providerError = err.message;
           if (window.qwenSaveConfig) window.qwenSaveConfig(currentCfg);
         });
@@ -456,7 +475,7 @@ translateBtn.addEventListener('click', () => {
 
 if (clearCacheBtn) {
   clearCacheBtn.addEventListener('click', () => {
-    if (window.qwenClearCache) window.qwenClearCache();
+    if (typeof qwenClearCache === 'function') qwenClearCache();
     chrome.runtime.sendMessage({ action: 'clear-cache' }, () => {});
     chrome.tabs.query({}, tabs => {
       tabs.forEach(t => chrome.tabs.sendMessage(t.id, { action: 'clear-cache' }, () => {}));
@@ -468,6 +487,29 @@ if (clearCacheBtn) {
     }, 2000);
   });
 }
+
+document.addEventListener('click', e => {
+  if (e.target && e.target.id === 'clearPair') {
+    const srcElem = document.getElementById('source');
+    const trgElem = document.getElementById('target');
+    const source = srcElem && (srcElem.value || srcElem.getAttribute('value') || 'en');
+    const target = trgElem && (trgElem.value || trgElem.getAttribute('value') || 'fr');
+    const fn = globalThis.qwenClearCacheLangPair;
+    if (typeof fn === 'function') fn(source, target);
+    chrome.runtime.sendMessage({ action: 'clear-cache-pair', source, target }, () => {});
+  }
+  if (e.target && e.target.id === 'clearDomain') {
+    chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+      const url = tabs[0] && tabs[0].url;
+      const m = url && url.match(/^https?:\/\/([^/]+)/i);
+      const domain = m && m[1];
+      if (!domain) return;
+      const fn = globalThis.qwenClearCacheDomain;
+      if (typeof fn === 'function') fn(domain);
+      chrome.runtime.sendMessage({ action: 'clear-cache-domain', domain }, () => {});
+    });
+  }
+});
 
 testBtn.addEventListener('click', async () => {
   status.textContent = 'Testing...';
