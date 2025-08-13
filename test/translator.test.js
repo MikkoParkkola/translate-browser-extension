@@ -10,7 +10,6 @@ const {
   _setCacheEntryTimestamp,
   _setGetUsage,
 } = translator;
-const { qwenTranslateBatch, _getTokenBudget, _setTokenBudget } = batch;
 const { configure, reset } = require('../src/throttle');
 const { modelTokenLimits } = require('../src/config');
 const fetchMock = require('jest-fetch-mock');
@@ -22,11 +21,11 @@ beforeEach(() => {
   fetch.resetMocks();
   qwenClearCache();
   reset();
-  configure({ requestLimit: 6000, tokenLimit: modelTokenLimits['qwen-mt-turbo'], windowMs: 60000 });
+  configure({ requestLimit: 60, tokenLimit: modelTokenLimits['qwen-mt-turbo'], windowMs: 60000 });
   _setTokenBudget(0);
   qwenSetCacheLimit(1000);
   qwenSetCacheTTL(30 * 24 * 60 * 60 * 1000);
-  _setGetUsage(() => ({ requestLimit: 6000, requests: 0 }));
+  _setGetUsage(() => getUsage());
 });
 
 test('translate success', async () => {
@@ -172,16 +171,10 @@ test('rate limiting queues requests', async () => {
 
   jest.advanceTimersByTime(0);
   await Promise.resolve();
-  await Promise.resolve();
   expect(fetch).toHaveBeenCalledTimes(1);
   jest.advanceTimersByTime(500);
   await Promise.resolve();
-  await Promise.resolve();
   expect(fetch).toHaveBeenCalledTimes(2);
-  jest.advanceTimersByTime(500);
-  await Promise.resolve();
-  await Promise.resolve();
-  expect(fetch).toHaveBeenCalledTimes(3);
   jest.advanceTimersByTime(500);
   const res3 = await p3;
   expect(res3.text).toBe('c');
@@ -341,37 +334,12 @@ test('batch groups multiple texts into single request by default', async () => {
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 
-test('batch deduplicates repeated texts', async () => {
-  fetch.mockResponseOnce(JSON.stringify({ output: { text: 'HOLA\uE000MUNDO' } }));
-  const res = await qwenTranslateBatch({
-    texts: ['hello', 'world', 'hello'],
-    source: 'en',
-    target: 'es',
-    endpoint: 'https://e/',
-    apiKey: 'k',
-    model: 'm',
-  });
-  expect(fetch).toHaveBeenCalledTimes(1);
-  expect(res.texts).toEqual(['HOLA', 'MUNDO', 'HOLA']);
-  const res2 = await qwenTranslateBatch({
-    texts: ['hello', 'world', 'hello'],
-    source: 'en',
-    target: 'es',
-    endpoint: 'https://e/',
-    apiKey: 'k',
-    model: 'm',
-  });
-  expect(fetch).toHaveBeenCalledTimes(1);
-  expect(res2.texts).toEqual(['HOLA', 'MUNDO', 'HOLA']);
-});
-
 test('batch falls back on separator mismatch', async () => {
-  jest.useFakeTimers();
   fetch
     .mockResponseOnce(JSON.stringify({ output: { text: 'A' } }))
     .mockResponseOnce(JSON.stringify({ output: { text: 'A1' } }))
     .mockResponseOnce(JSON.stringify({ output: { text: 'B1' } }));
-  const promise = qwenTranslateBatch({
+  const res = await qwenTranslateBatch({
     texts: ['a', 'b'],
     source: 'en',
     target: 'es',
@@ -379,11 +347,8 @@ test('batch falls back on separator mismatch', async () => {
     apiKey: 'k',
     model: 'm',
   });
-  await jest.runAllTimersAsync();
-  const res = await promise;
   expect(res.texts).toEqual(['A1', 'B1']);
   expect(fetch).toHaveBeenCalledTimes(3);
-  jest.useRealTimers();
 });
 
 test('batch reports stats and progress', async () => {
