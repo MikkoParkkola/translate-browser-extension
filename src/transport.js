@@ -1,12 +1,13 @@
 ;(function (root) {
   if (root.qwenTransport) return;
   var runWithRetry;
+  var approxTokens;
   var getProvider;
   if (typeof window === 'undefined') {
-    if (typeof self !== 'undefined' && self.qwenRetry) {
-      ({ runWithRetry } = self.qwenRetry);
+    if (typeof self !== 'undefined' && self.qwenThrottle) {
+      ({ runWithRetry, approxTokens } = self.qwenThrottle);
     } else {
-      ({ runWithRetry } = require('./retry'));
+      ({ runWithRetry, approxTokens } = require('./throttle'));
     }
     if (typeof self !== 'undefined' && self.qwenProviders) {
       ({ getProvider } = self.qwenProviders);
@@ -15,15 +16,16 @@
       require('./providers/qwen');
     }
   } else {
-    if (root.qwenRetry) {
-      ({ runWithRetry } = root.qwenRetry);
+    if (window.qwenThrottle) {
+      ({ runWithRetry, approxTokens } = window.qwenThrottle);
     } else if (typeof require !== 'undefined') {
-      ({ runWithRetry } = require('./retry'));
+      ({ runWithRetry, approxTokens } = require('./throttle'));
     } else {
       runWithRetry = fn => fn();
+      approxTokens = () => 0;
     }
-    if (root.qwenProviders) {
-      ({ getProvider } = root.qwenProviders);
+    if (window.qwenProviders) {
+      ({ getProvider } = window.qwenProviders);
     } else if (typeof self !== 'undefined' && self.qwenProviders) {
       ({ getProvider } = self.qwenProviders);
     } else if (typeof require !== 'undefined') {
@@ -39,7 +41,7 @@
         if (!prov || !prov.translate) throw new Error(`Unknown provider: ${provider}`);
         return prov.translate({ ...opts, onData });
       },
-      text,
+      approxTokens(text),
       { attempts: opts.attempts, debug, onRetry, retryDelay }
     );
   }

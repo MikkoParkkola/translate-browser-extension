@@ -61,6 +61,10 @@ if (sourceSelect && !sourceSelect.options.length) {
   });
 }
 
+function formatCost(n) {
+  return '$' + n.toFixed(2);
+}
+
 const applyProviderConfig =
   (window.qwenProviderConfig && window.qwenProviderConfig.applyProviderConfig) ||
   (typeof require !== 'undefined'
