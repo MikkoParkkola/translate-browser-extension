@@ -140,29 +140,6 @@ function runWithRateLimit(fn, text) {
   });
 }
 
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function runWithRetry(fn, text, opts = {}) {
-  const tokens = typeof text === 'number' ? text : approxTokens(text || '');
-  const { attempts = 6, debug = false, onRetry, retryDelay = 500 } = opts;
-  let wait = retryDelay;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      if (debug) console.log('QTDEBUG: attempt', i + 1);
-      return await runWithRateLimit(fn, tokens);
-    } catch (err) {
-      if (!err.retryable || i === attempts - 1) throw err;
-      const delayMs = err.retryAfter || wait;
-      if (onRetry) onRetry({ attempt: i + 1, delayMs, error: err });
-      if (debug) console.log('QTDEBUG: retrying after error', err.message);
-      await delay(delayMs);
-      wait = delayMs * 2;
-    }
-  }
-}
-
 function sumTokens(arr) {
   return arr.reduce((s, t) => s + t.tokens, 0);
 }
@@ -185,7 +162,7 @@ function getUsage() {
 }
 
   if (typeof module !== 'undefined') {
-    module.exports = { runWithRateLimit, runWithRetry, configure: throttleConfigure, approxTokens, getUsage, reset }
+    module.exports = { runWithRateLimit, configure: throttleConfigure, approxTokens, getUsage, reset }
   }
 
   if (typeof window !== 'undefined') {
