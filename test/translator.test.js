@@ -402,6 +402,34 @@ test('batch reports stats and progress', async () => {
   expect(events[0].phase).toBe('translate');
 });
 
+test('advanced mode prefers turbo under limit', async () => {
+  _setGetUsage(() => ({ requestLimit: 100, requests: 10 }));
+  fetch.mockResponseOnce(JSON.stringify({ output: { text: 'a' } }));
+  await translate({
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    models: ['qwen-mt-turbo', 'qwen-mt-plus'],
+    text: 'one',
+    source: 'en',
+    target: 'es',
+  });
+  expect(JSON.parse(fetch.mock.calls[0][1].body).model).toBe('qwen-mt-turbo');
+});
+
+test('advanced mode shifts to plus near limit', async () => {
+  _setGetUsage(() => ({ requestLimit: 100, requests: 50 }));
+  fetch.mockResponseOnce(JSON.stringify({ output: { text: 'b' } }));
+  await translate({
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    models: ['qwen-mt-turbo', 'qwen-mt-plus'],
+    text: 'two',
+    source: 'en',
+    target: 'es',
+  });
+  expect(JSON.parse(fetch.mock.calls[0][1].body).model).toBe('qwen-mt-plus');
+});
+
 test('retries after 429 with backoff', async () => {
   jest.useFakeTimers();
   fetch
@@ -418,4 +446,37 @@ test('retries after 429 with backoff', async () => {
   expect(fetch).toHaveBeenCalledTimes(2);
   expect(Date.now() - start).toBeGreaterThanOrEqual(1000);
   jest.useRealTimers();
+});
+
+test('advanced mode falls back to plus model after 429', async () => {
+  fetch
+    .mockResponseOnce(
+      JSON.stringify({ message: 'slow' }),
+      { status: 429 }
+    )
+    .mockResponseOnce(JSON.stringify({ output: { text: 'hi' } }));
+  const res = await translate({
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    models: ['qwen-mt-turbo', 'qwen-mt-plus'],
+    text: 'hola',
+    source: 'es',
+    target: 'en',
+  });
+  expect(res.text).toBe('hi');
+  const first = JSON.parse(fetch.mock.calls[0][1].body);
+  const second = JSON.parse(fetch.mock.calls[1][1].body);
+  expect(first.model).toBe('qwen-mt-turbo');
+  expect(second.model).toBe('qwen-mt-plus');
+});
+
+test('collapseSpacing joins spaced letters into words', () => {
+  const { collapseSpacing } = translator;
+  const input = 'E E N  D I E F S T A L  I N  G R O N I N G E N';
+  expect(collapseSpacing(input)).toBe('EEN DIEFSTAL IN GRONINGEN');
+});
+
+test('collapseSpacing leaves normal text intact', () => {
+  const { collapseSpacing } = translator;
+  expect(collapseSpacing('Hello world')).toBe('Hello world');
 });

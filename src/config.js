@@ -18,6 +18,7 @@ const defaultCfg = {
   tokensPerReq: 0,
   retryDelay: 0,
   debug: false,
+  dualMode: false,
   useWasmEngine: true,
   autoOpenAfterSave: true,
   cacheMaxEntries: 1000,
