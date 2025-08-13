@@ -132,6 +132,7 @@
       <div class="main-actions">
         <button id="clearCache" title="Remove saved translations">Clear Cache</button>
         <span id="cacheSize" style="font-size:0.875rem"></span>
+        <span id="compressionErrors" style="font-size:0.875rem"></span>
         <label class="force-toggle"><input type="checkbox" id="force"> Force</label>
       </div>
 
@@ -157,6 +158,15 @@
         <div class="usage-item">Queue: <span id="queueLen">0</span></div>
         <div class="usage-item">Failed Requests: <span id="failedReq">0</span></div>
         <div class="usage-item">Failed Tokens: <span id="failedTok">0</span></div>
+        <div class="usage-item">
+          Remaining Requests: <span id="reqRemaining">0</span>
+          <div class="bar"><div id="reqRemainingBar"></div></div>
+        </div>
+        <div class="usage-item">
+          Remaining Tokens: <span id="tokenRemaining">0</span>
+          <div class="bar"><div id="tokenRemainingBar"></div></div>
+        </div>
+        <div class="usage-item">Provider Error: <span id="providerError"></span></div>
       </div>
 
       <div class="usage-section cost-section">

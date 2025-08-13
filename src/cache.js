@@ -3,6 +3,7 @@ let MAX_CACHE_ENTRIES = 1000;
 let CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 let cacheReady = Promise.resolve();
 let LZString;
+let compressionErrors = 0;
 
 if (typeof window === 'undefined') {
   LZString = require('lz-string');
@@ -17,7 +18,8 @@ function encodeCacheValue(val) {
     const json = JSON.stringify(val);
     return LZString ? LZString.compressToUTF16(json) : json;
   } catch {
-    return val;
+    compressionErrors++;
+    try { return JSON.stringify(val); } catch { return val; }
   }
 }
 
@@ -27,12 +29,17 @@ function decodeCacheValue(val) {
     try {
       const json = LZString.decompressFromUTF16(val);
       if (json) return JSON.parse(json);
-    } catch {}
+      compressionErrors++;
+    } catch {
+      compressionErrors++;
+      return null;
+    }
   }
   try {
     return JSON.parse(val);
   } catch {
-    return val;
+    compressionErrors++;
+    return null;
   }
 }
 
@@ -125,6 +132,7 @@ function removeCache(key) {
 
 function qwenClearCache() {
   cache.clear();
+  compressionErrors = 0;
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
     chrome.storage.local.remove('qwenCache');
   } else if (typeof localStorage !== 'undefined') {
@@ -134,6 +142,10 @@ function qwenClearCache() {
 
 function qwenGetCacheSize() {
   return cache.size;
+}
+
+function qwenGetCompressionErrors() {
+  return compressionErrors;
 }
 
 function _setMaxCacheEntries(n) {
@@ -167,6 +179,7 @@ const api = {
   removeCache,
   qwenClearCache,
   qwenGetCacheSize,
+  qwenGetCompressionErrors,
   qwenSetCacheLimit,
   qwenSetCacheTTL,
   _setMaxCacheEntries,

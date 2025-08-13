@@ -2,6 +2,7 @@ describe('background icon plus indicator', () => {
   let updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate;
   beforeEach(() => {
     jest.resetModules();
+    global.models = null;
     global.chrome = {
       action: {
         setBadgeText: jest.fn(),
@@ -77,6 +78,7 @@ describe('background cost tracking', () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2024-01-01T00:00:00Z'));
     store = { usageHistory: [] };
+    global.models = null;
     global.chrome = {
       action: {
         setBadgeText: jest.fn(),
