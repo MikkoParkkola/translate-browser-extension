@@ -58,7 +58,7 @@ if (typeof window === 'undefined') {
   }
 }
 
-async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, force = false }) {
+async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, attempts = 6, force = false }) {
   await cacheReady;
   const list = Array.isArray(models) && models.length ? models : model ? [model] : [];
   let modelList = list.slice();
@@ -72,6 +72,7 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, model
     model = modelList[0];
   }
   if (debug) {
+    const modelList = Array.isArray(models) ? models : models ? [models] : [model];
     console.log('QTDEBUG: qwenTranslate called with', {
       provider,
       endpoint,
@@ -102,7 +103,7 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, model
         chrome.runtime.sendMessage(
           {
             action: 'translate',
-            opts: { provider, endpoint: ep, apiKey, model, models: modelList, text, source, target, debug },
+            opts: { provider, endpoint: ep, apiKey, model, models, text, source, target, debug },
           },
           res => {
             if (chrome.runtime.lastError) {
@@ -128,27 +129,43 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, model
   }
 
   try {
-    const data = await transportTranslate({
-      provider,
-      endpoint,
-      apiKey,
-      model,
-      text,
-      source,
-      target,
-      signal,
-      debug,
-      stream,
-      onRetry,
-      retryDelay,
-      attempts: modelList.length > 1 ? 1 : attempts,
-    });
-    setCache(cacheKey, data);
-    if (debug) {
-      console.log('QTDEBUG: translation successful');
-      console.log('QTDEBUG: final text', data.text);
+    const prov = getProvider ? getProvider(provider) : undefined;
+    if (!prov || !prov.translate) throw new Error(`Unknown provider: ${provider}`);
+    const list = Array.isArray(models) && models.length ? models : [model];
+    const usage = getUsage ? getUsage() : {};
+    let chosen = list[0];
+    if (list.length > 1 && usage.requestLimit && usage.requests >= usage.requestLimit / 2) {
+      chosen = list[1];
     }
-    return data;
+    try {
+      const data = await runWithRetry(
+        () => prov.translate({ endpoint, apiKey, model: chosen, models, text, source, target, signal, debug, stream }),
+        approxTokens(text),
+        { attempts, debug, onRetry, retryDelay }
+      );
+      setCache(cacheKey, data);
+      if (debug) {
+        console.log('QTDEBUG: translation successful');
+        console.log('QTDEBUG: final text', data.text);
+      }
+      return data;
+    } catch (e) {
+      if (list.length > 1 && chosen === list[0] && e.retryable) {
+        const data = await runWithRetry(
+          () => prov.translate({ endpoint, apiKey, model: list[1], models, text, source, target, signal, debug, stream }),
+          approxTokens(text),
+          { attempts, debug, onRetry, retryDelay }
+        );
+        setCache(cacheKey, data);
+        if (debug) {
+          console.log('QTDEBUG: translation successful');
+          console.log('QTDEBUG: final text', data.text);
+        }
+        return data;
+      }
+      console.error('QTERROR: translation request failed', e);
+      throw e;
+    }
   } catch (e) {
     if (modelList && modelList.length > 1 && model === modelList[0]) {
       try {
@@ -180,7 +197,7 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, model
   }
 }
 
-async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay, force = false }, onData) {
+async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay, attempts = 6, force = false }, onData) {
   await cacheReady;
   const list = Array.isArray(models) && models.length ? models : model ? [model] : [];
   let modelList = list.slice();
@@ -194,6 +211,7 @@ async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model,
     model = modelList[0];
   }
   if (debug) {
+    const modelList = Array.isArray(models) ? models : models ? [models] : [model];
     console.log('QTDEBUG: qwenTranslateStream called with', {
       endpoint,
       apiKeySet: Boolean(apiKey),
@@ -212,22 +230,15 @@ async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model,
     }
   }
   try {
-    const data = await transportTranslate({
-      provider,
-      endpoint,
-      apiKey,
-      model,
-      text,
-      source,
-      target,
-      signal,
-      debug,
-      onData,
-      stream,
-      onRetry,
-      retryDelay,
-      attempts,
-    });
+    const data = await runWithRetry(
+      () => {
+        const prov = getProvider ? getProvider(provider) : undefined;
+        if (!prov || !prov.translate) throw new Error(`Unknown provider: ${provider}`);
+        return prov.translate({ endpoint, apiKey, model, models, text, source, target, signal, debug, onData, stream });
+      },
+      approxTokens(text),
+      { attempts, debug, onRetry, retryDelay }
+    );
     setCache(cacheKey, data);
     if (debug) {
       console.log('QTDEBUG: translation successful');
@@ -240,10 +251,21 @@ async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model,
   }
 }
 
-function collapseSpacing(str) {
-  return (str || '')
-    .replace(/\b(?:[A-Za-z]\s)+[A-Za-z]\b/g, m => m.replace(/\s+/g, ''))
-    .replace(/ {2,}/g, ' ');
+function collapseSpacing(text) {
+  let prev;
+  do {
+    prev = text;
+    text = text.replace(/(\b\w)\s(?=\w\b)/g, '$1');
+  } while (text !== prev);
+  return text.replace(/\s{2,}/g, ' ');
+}
+
+function _setGetUsage(fn) {
+  getUsage = fn;
+}
+
+if (typeof globalThis !== 'undefined') {
+  globalThis._setGetUsage = _setGetUsage;
 }
 if (typeof window !== 'undefined') {
   window.qwenTranslate = qwenTranslate;
@@ -261,18 +283,18 @@ if (typeof self !== 'undefined' && typeof window === 'undefined') {
   self.qwenSetCacheLimit = qwenSetCacheLimit;
   self.qwenSetCacheTTL = qwenSetCacheTTL;
 }
-  if (typeof module !== 'undefined') {
-    module.exports = {
-      qwenTranslate,
-      qwenTranslateStream,
-      qwenClearCache,
-      qwenGetCacheSize,
-      qwenSetCacheLimit,
-      qwenSetCacheTTL,
-      _setMaxCacheEntries,
-      _setCacheTTL,
-      _setCacheEntryTimestamp,
-      _setGetUsage,
-      collapseSpacing,
-    };
-  }
+if (typeof module !== 'undefined') {
+  module.exports = {
+    qwenTranslate,
+    qwenTranslateStream,
+    qwenClearCache,
+    qwenGetCacheSize,
+    qwenSetCacheLimit,
+    qwenSetCacheTTL,
+    _setMaxCacheEntries,
+    _setCacheTTL,
+    _setCacheEntryTimestamp,
+    collapseSpacing,
+    _setGetUsage,
+  };
+}

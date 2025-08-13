@@ -134,11 +134,33 @@ async function translate({ endpoint, apiKey, model, text, source, target, signal
   return { text: result };
 }
 
+async function quota({ endpoint, apiKey, model, debug }) {
+  const url = `${withSlash(endpoint)}quota`;
+  if (debug) console.log('QTDEBUG: fetching quota from', url);
+  const key = (apiKey || '').trim();
+  const headers = {};
+  if (key) headers.Authorization = /^bearer\s/i.test(key) ? key : `Bearer ${key}`;
+  try {
+    const resp = await fetchFn(url, { method: 'GET', headers });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    if (debug) console.log('QTDEBUG: quota response', data);
+    return {
+      requests: data.requestsRemaining ?? data.requests ?? 0,
+      tokens: data.tokensRemaining ?? data.tokens ?? 0,
+    };
+  } catch (e) {
+    if (debug) console.log('QTDEBUG: quota fetch failed', e.message);
+    return { error: e.message };
+  }
+}
+
 const { registerProvider } = require('./index');
 registerProvider('qwen', {
   translate,
+  quota,
   label: 'Qwen',
   configFields: ['apiKey', 'apiEndpoint', 'model'],
 });
 
-module.exports = { translate };
+module.exports = { translate, quota };
