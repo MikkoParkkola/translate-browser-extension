@@ -1,5 +1,6 @@
 if (typeof window === 'undefined' && typeof require !== 'undefined') {
   require('./transport');
+  require('./retry');
 }
 if (!location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'))) {
 let observers = [];
@@ -365,12 +366,6 @@ async function start(force = false) {
   if (window.qwenSetTokenBudget) {
     const tb = currentConfig.tokensPerReq || currentConfig.tokenBudget || 0;
     window.qwenSetTokenBudget(tb);
-  }
-  if (window.qwenSetCacheLimit) {
-    window.qwenSetCacheLimit(currentConfig.cacheMaxEntries || 1000);
-  }
-  if (window.qwenSetCacheTTL) {
-    window.qwenSetCacheTTL(currentConfig.cacheTTL || 30 * 24 * 60 * 60 * 1000);
   }
   if (!currentConfig.apiKey) {
     console.warn('QTWARN: API key not configured.');

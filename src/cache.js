@@ -62,9 +62,9 @@ if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       resolve();
     });
   });
-} else if (typeof localStorage !== 'undefined') {
+} else if (typeof globalThis !== 'undefined' && globalThis.localStorage) {
   try {
-    const data = JSON.parse(localStorage.getItem('qwenCache') || '{}');
+    const data = JSON.parse(globalThis.localStorage.getItem('qwenCache') || '{}');
     const pruned = {};
     const now = Date.now();
     Object.entries(data).forEach(([k, v]) => {
@@ -74,8 +74,12 @@ if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
         pruned[k] = v;
       }
     });
-    localStorage.setItem('qwenCache', JSON.stringify(pruned));
-  } catch {}
+    globalThis.localStorage.setItem('qwenCache', JSON.stringify(pruned));
+  } catch {
+    try {
+      globalThis.localStorage.removeItem('qwenCache');
+    } catch {}
+  }
 }
 
 function persistCache(key, value) {
@@ -209,6 +213,38 @@ function _setCacheEntryTimestamp(key, ts) {
   }
 }
 
+function qwenGetCacheStats() {
+  const total = hits + misses;
+  return { hits, misses, hitRate: total ? hits / total : 0 };
+}
+
+function qwenResetCacheStats() {
+  hits = 0;
+  misses = 0;
+}
+
+function qwenGetDomainCounts() {
+  const counts = {};
+  cache.forEach(v => {
+    const d = v.domain || 'unknown';
+    counts[d] = (counts[d] || 0) + 1;
+  });
+  return counts;
+}
+
+function qwenClearCacheDomain(domain) {
+  cache.forEach((v, k) => {
+    if (v.domain === domain) removeCache(k);
+  });
+}
+
+function qwenClearCacheLangPair(source, target) {
+  cache.forEach((v, k) => {
+    const parts = k.split(':');
+    if (parts[1] === source && parts[2] === target) removeCache(k);
+  });
+}
+
 const api = {
   cacheReady,
   getCache,
@@ -223,6 +259,11 @@ const api = {
    qwenClearCacheLangPair,
   qwenSetCacheLimit,
   qwenSetCacheTTL,
+  qwenGetCacheStats,
+  qwenResetCacheStats,
+  qwenGetDomainCounts,
+  qwenClearCacheDomain,
+  qwenClearCacheLangPair,
   _setMaxCacheEntries,
   _setCacheTTL,
   _setCacheEntryTimestamp,

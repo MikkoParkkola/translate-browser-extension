@@ -134,11 +134,45 @@ async function translate({ endpoint, apiKey, model, text, source, target, signal
   return { text: result };
 }
 
-const { registerProvider } = require('./index');
-registerProvider('qwen', {
+async function getQuota({ endpoint, apiKey, model, debug }) {
+  const url = `${withSlash(endpoint)}monitor/quota`;
+  const key = (apiKey || '').trim();
+  const headers = {};
+  if (key) headers.Authorization = /^bearer\s/i.test(key) ? key : `Bearer ${key}`;
+  try {
+    const resp = await fetchFn(`${url}?model=${encodeURIComponent(model || '')}`, { headers });
+    if (debug) console.log('QTDEBUG: quota status', resp.status);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ message: resp.statusText }));
+      return { error: err.message || `HTTP ${resp.status}` };
+    }
+    const data = await resp.json();
+    const used = {
+      requests: data.usage?.requests ?? data.used?.requests ?? 0,
+      tokens: data.usage?.tokens ?? data.used?.tokens ?? 0,
+    };
+    const remaining = {
+      requests: data.remaining?.requests ?? data.quota?.remaining?.requests ?? 0,
+      tokens: data.remaining?.tokens ?? data.quota?.remaining?.tokens ?? 0,
+    };
+    return { used, remaining };
+  } catch (e) {
+    if (debug) console.log('QTDEBUG: quota fetch failed', e);
+    return { error: e.message };
+  }
+}
+
+const provider = {
   translate,
+  getQuota,
   label: 'Qwen',
   configFields: ['apiKey', 'apiEndpoint', 'model'],
-});
+};
 
-module.exports = { translate };
+if (typeof window !== 'undefined' && window.qwenProviders) {
+  window.qwenProviders.registerProvider('qwen', provider);
+} else if (typeof self !== 'undefined' && self.qwenProviders) {
+  self.qwenProviders.registerProvider('qwen', provider);
+}
+
+module.exports = provider;

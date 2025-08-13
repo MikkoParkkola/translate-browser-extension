@@ -99,17 +99,14 @@
       <h3>Initial Setup</h3>
       <p>Please configure the essential settings to start using the extension.</p>
       <div class="form-group">
-        <label for="setup-provider">Provider</label>
-        <select id="setup-provider" title="Select translation provider"></select>
+        <label for="setup-apiKey">API Key</label>
+        <input type="text" id="setup-apiKey" placeholder="Enter your API key" title="DashScope API key (required)">
 
-        <label for="setup-apiKey" data-field="apiKey">API Key</label>
-        <input type="text" id="setup-apiKey" data-field="apiKey" placeholder="Enter your API key" title="DashScope API key (required)">
+        <label for="setup-apiEndpoint">API Endpoint</label>
+        <input type="text" id="setup-apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1" title="DashScope API endpoint">
 
-        <label for="setup-apiEndpoint" data-field="apiEndpoint">API Endpoint</label>
-        <input type="text" id="setup-apiEndpoint" data-field="apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1" title="DashScope API endpoint">
-
-        <label for="setup-model" data-field="model">Model</label>
-        <select id="setup-model" data-field="model" title="Select translation model. Turbo is cheaper; Plus is higher quality.">
+        <label for="setup-model">Model</label>
+        <select id="setup-model" title="Select translation model. Turbo is cheaper; Plus is higher quality.">
           <option value="qwen-mt-turbo">qwen-mt-turbo</option>
           <option value="qwen-mt-plus">qwen-mt-plus</option>
         </select>
@@ -162,21 +159,6 @@
         <div class="usage-item">Queue: <span id="queueLen">0</span></div>
         <div class="usage-item">Failed Requests: <span id="failedReq">0</span></div>
         <div class="usage-item">Failed Tokens: <span id="failedTok">0</span></div>
-        <div class="usage-item">Remaining Requests: <span id="reqRemaining">0</span></div>
-        <div class="usage-item">Remaining Tokens: <span id="tokenRemaining">0</span></div>
-        <div class="usage-item">Provider Error: <span id="providerError"></span></div>
-      </div>
-
-      <div class="usage-section cost-section">
-        <div class="usage-item">Turbo 24h: <span id="costTurbo24h">$0.00</span></div>
-        <div class="usage-item">Plus 24h: <span id="costPlus24h">$0.00</span></div>
-        <div class="usage-item">Total 24h: <span id="costTotal24h">$0.00</span></div>
-        <div class="usage-item">Turbo 7d: <span id="costTurbo7d">$0.00</span></div>
-        <div class="usage-item">Plus 7d: <span id="costPlus7d">$0.00</span></div>
-        <div class="usage-item">Total 7d: <span id="costTotal7d">$0.00</span></div>
-        <div class="usage-item">Turbo 30d: <span id="costTurbo30d">$0.00</span></div>
-        <div class="usage-item">Plus 30d: <span id="costPlus30d">$0.00</span></div>
-        <div class="usage-item">Total 30d: <span id="costTotal30d">$0.00</span></div>
       </div>
       <button id="toggleCalendar">Show daily costs</button>
       <div id="costCalendar" style="display:none;font-size:0.75rem"></div>
@@ -195,20 +177,17 @@
       <details>
         <summary>Advanced Settings</summary>
         <div class="form-group" style="padding-top: 0.75rem">
-          <label for="apiKey" data-field="apiKey">API Key</label>
-          <input type="text" id="apiKey" data-field="apiKey" placeholder="Enter your API key" title="DashScope API key (required)">
+          <label for="apiKey">API Key</label>
+          <input type="text" id="apiKey" placeholder="Enter your API key" title="DashScope API key (required)">
 
-          <label for="apiEndpoint" data-field="apiEndpoint">API Endpoint</label>
-          <input type="text" id="apiEndpoint" data-field="apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1" title="DashScope API endpoint">
+          <label for="apiEndpoint">API Endpoint</label>
+          <input type="text" id="apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1" title="DashScope API endpoint">
 
-          <label for="model" data-field="model">Model</label>
-          <select id="model" data-field="model" title="Translation model. Turbo is default; Plus offers higher quality at higher cost.">
+          <label for="model">Model</label>
+          <select id="model" title="Translation model. Turbo is default; Plus offers higher quality at higher cost.">
             <option value="qwen-mt-turbo">qwen-mt-turbo</option>
             <option value="qwen-mt-plus">qwen-mt-plus</option>
           </select>
-
-          <label for="provider">Provider</label>
-          <select id="provider" title="Select translation provider"></select>
 
           <div class="grid-2">
             <div>
@@ -223,12 +202,6 @@
 
           <label for="tokenBudget">Token budget</label>
           <input type="number" id="tokenBudget" placeholder="auto" title="Optional hard cap for total tokens used in this session.">
-
-          <label for="cacheSizeLimit">Cache entries</label>
-          <input type="number" id="cacheSizeLimit" title="Maximum number of cached translations">
-
-          <label for="cacheTTL">Cache TTL (days)</label>
-          <input type="number" id="cacheTTL" title="Days before cached translations expire">
 
           <label><input type="checkbox" id="smartThrottle" checked title="Enable intelligent adaptive throttling"> Intelligent throttling</label>
 
@@ -259,11 +232,14 @@
   <script src="cache.js"></script>
   <script src="providers/index.js"></script>
   <script src="providers/qwen.js"></script>
+  <script src="providers/google.js"></script>
+  <script src="providers/deepl.js"></script>
   <script src="translator.js"></script>
   <script src="config.js"></script>
   <script src="languages.js"></script>
   <script src="usageColor.js"></script>
   <script src="providerConfig.js"></script>
+  <script src="popup/dom.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

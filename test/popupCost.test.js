@@ -6,22 +6,26 @@ describe('popup cost display', () => {
     document.getElementById = id => document.querySelector('#' + id);
     [
       'apiKey','apiEndpoint','model','requestLimit','tokenLimit','tokenBudget','tokensPerReq','retryDelay','setup-apiKey','setup-apiEndpoint','setup-model','provider','setup-provider',
-      'source','target','auto','debug','smartThrottle','dualMode','translate','test','clearCache','clearDomain','clearPair','toggleCalendar',
+      'source','target','auto','debug','smartThrottle','dualMode','translate','test','clearCache','clearDomain','clearPair','toggleCalendar','reqRemaining','tokenRemaining','providerError','reqRemainingBar','tokenRemainingBar',
       'cacheSize','hitRate','costTurbo24h','costPlus24h','costTotal24h','costTurbo7d','costPlus7d','costTotal7d','costTurbo30d','costPlus30d','costTotal30d',
-      'domainCounts','status','costCalendar','progress'
+      'version','reqCount','tokenCount','reqBar','tokenBar','turboReq','plusReq','turboReqBar','plusReqBar','totalReq','totalTok','queueLen','failedReq','failedTok','force','domainCounts','status','costCalendar','progress','viewContainer'
     ].forEach(id => {
       let tag = 'div';
-      if (['apiKey','apiEndpoint','model','requestLimit','tokenLimit','tokenBudget','tokensPerReq','retryDelay','setup-apiKey','setup-apiEndpoint','setup-model'].includes(id)) tag = 'input';
+      if (['apiKey','apiEndpoint','model','requestLimit','tokenLimit','tokenBudget','tokensPerReq','retryDelay','cacheSizeLimit','cacheTTL','setup-apiKey','setup-apiEndpoint','setup-model','force'].includes(id)) tag = 'input';
       if (['source','target'].includes(id)) tag = 'select';
       if (['auto','debug','smartThrottle','dualMode'].includes(id)) tag = 'input';
       if (['translate','test','clearCache','clearDomain','clearPair','toggleCalendar'].includes(id)) tag = 'button';
-      if (['cacheSize','hitRate','costTurbo24h','costPlus24h','costTotal24h','costTurbo7d','costPlus7d','costTotal7d','costTurbo30d','costPlus30d','costTotal30d'].includes(id)) tag = 'span';
-      if (['domainCounts','status','costCalendar'].includes(id)) tag = 'div';
+      if (['cacheSize','hitRate','costTurbo24h','costPlus24h','costTotal24h','costTurbo7d','costPlus7d','costTotal7d','costTurbo30d','costPlus30d','costTotal30d','version','reqCount','tokenCount','reqBar','tokenBar','turboReq','plusReq','turboReqBar','plusReqBar','totalReq','totalTok','queueLen','failedReq','failedTok'].includes(id)) tag = 'span';
+      if (['domainCounts','status','costCalendar','viewContainer'].includes(id)) tag = 'div';
       if (id === 'progress') tag = 'progress';
       const e = create(tag);
       e.id = id;
       document.body.appendChild(e);
       global[id] = e;
+      if (tag === 'select') {
+        e.appendChild(new Option('en','en'));
+        e.appendChild(new Option('fr','fr'));
+      }
     });
     const srcOpt = document.createElement('option');
     srcOpt.value = 'en';

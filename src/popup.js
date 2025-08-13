@@ -78,13 +78,11 @@ function saveConfig() {
       return;
     }
     const model = modelInput.value.trim() || 'qwen-mt-turbo';
-    const provider = providerSelect.value;
     const cfg = {
       ...currentCfg,
       apiKey: apiKeyInput.value.trim(),
       apiEndpoint: endpointInput.value.trim(),
       model,
-      provider,
       sourceLanguage: sourceSelect.value,
       targetLanguage: targetSelect.value,
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
@@ -113,7 +111,9 @@ function saveConfig() {
 }
 
 function syncInputs(from, to) {
-  to.value = from.value;
+  if (from && to) {
+    to.value = from.value;
+  }
 }
 
 function updateView(cfg) {
@@ -304,7 +304,6 @@ globalThis.qwenLoadConfig().then(cfg => {
     { main: apiKeyInput, setup: setupApiKeyInput, event: 'input' },
     { main: endpointInput, setup: setupApiEndpointInput, event: 'input' },
     { main: modelInput, setup: setupModelInput, event: 'change' },
-    { main: providerSelect, setup: setupProviderInput, event: 'change' },
   ];
 
   allInputs.forEach(({ main, setup, event }) => {
@@ -349,6 +348,10 @@ function setBar(el, ratio) {
 
 function formatCost(cost) {
   return `$${cost.toFixed(2)}`;
+}
+
+function formatCost(n) {
+  return `$${n.toFixed(2)}`;
 }
 
 function updateCacheSize() {
@@ -396,16 +399,16 @@ function refreshUsage() {
       const turbo = res.costs['qwen-mt-turbo'];
       const plus = res.costs['qwen-mt-plus'];
       const total = res.costs.total;
-      costTurbo24h.textContent = formatCost(turbo['24h'] || 0);
-      costPlus24h.textContent = formatCost(plus['24h'] || 0);
-      costTotal24h.textContent = formatCost(total['24h'] || 0);
-      costTurbo7d.textContent = formatCost(turbo['7d'] || 0);
-      costPlus7d.textContent = formatCost(plus['7d'] || 0);
-      costTotal7d.textContent = formatCost(total['7d'] || 0);
-      costTurbo30d.textContent = formatCost(turbo['30d'] || 0);
-      costPlus30d.textContent = formatCost(plus['30d'] || 0);
-      costTotal30d.textContent = formatCost(total['30d'] || 0);
-      if (res.costs.daily) {
+      if (costTurbo24h) costTurbo24h.textContent = formatCost(turbo['24h'] || 0);
+      if (costPlus24h) costPlus24h.textContent = formatCost(plus['24h'] || 0);
+      if (costTotal24h) costTotal24h.textContent = formatCost(total['24h'] || 0);
+      if (costTurbo7d) costTurbo7d.textContent = formatCost(turbo['7d'] || 0);
+      if (costPlus7d) costPlus7d.textContent = formatCost(plus['7d'] || 0);
+      if (costTotal7d) costTotal7d.textContent = formatCost(total['7d'] || 0);
+      if (costTurbo30d) costTurbo30d.textContent = formatCost(turbo['30d'] || 0);
+      if (costPlus30d) costPlus30d.textContent = formatCost(plus['30d'] || 0);
+      if (costTotal30d) costTotal30d.textContent = formatCost(total['30d'] || 0);
+      if (res.costs.daily && costCalendar) {
         costCalendar.innerHTML = '';
         res.costs.daily.forEach(d => {
           const div = document.createElement('div');
@@ -425,38 +428,38 @@ function refreshUsage() {
   });
 
   const now = Date.now();
-  if (now - lastQuotaCheck > 60000) {
+  if (providerSelect && endpointInput && apiKeyInput && modelInput && debugCheckbox && now - lastQuotaCheck > 60000) {
     lastQuotaCheck = now;
     const prov =
       (globalThis.qwenProviders && globalThis.qwenProviders.getProvider(providerSelect.value)) || {};
     if (prov.quota) {
       prov
-        .quota({
+        .getQuota({
           endpoint: endpointInput.value.trim(),
           apiKey: apiKeyInput.value.trim(),
           model: modelInput.value.trim(),
           debug: debugCheckbox.checked,
         })
         .then(q => {
-          if (typeof q.requests === 'number') {
+          if (typeof q.requests === 'number' && reqRemaining) {
             reqRemaining.textContent = q.requests;
             currentCfg.remainingRequests = q.requests;
           }
-          if (typeof q.tokens === 'number') {
+          if (typeof q.tokens === 'number' && tokenRemaining) {
             tokenRemaining.textContent = q.tokens;
             currentCfg.remainingTokens = q.tokens;
           }
           if (q.error) {
-            providerError.textContent = q.error;
+            if (providerError) providerError.textContent = q.error;
             currentCfg.providerError = q.error;
           } else {
-            providerError.textContent = '';
+            if (providerError) providerError.textContent = '';
             currentCfg.providerError = '';
           }
           if (globalThis.qwenSaveConfig) globalThis.qwenSaveConfig(currentCfg);
         })
         .catch(err => {
-          providerError.textContent = err.message;
+          if (providerError) providerError.textContent = err.message;
           currentCfg.providerError = err.message;
           if (globalThis.qwenSaveConfig) globalThis.qwenSaveConfig(currentCfg);
         });
