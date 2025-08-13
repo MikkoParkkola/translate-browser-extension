@@ -5,8 +5,8 @@ describe('popup cost display', () => {
     document.body.innerHTML = '';
     document.getElementById = id => document.querySelector('#' + id);
     [
-      'apiKey','apiEndpoint','model','requestLimit','tokenLimit','tokenBudget','tokensPerReq','retryDelay','cacheSizeLimit','cacheTTL','setup-apiKey','setup-apiEndpoint','setup-model','provider','setup-provider',
-      'source','target','auto','debug','smartThrottle','dualMode','translate','test','clearCache','clearDomain','clearPair','toggleCalendar',
+      'apiKey','apiEndpoint','model','requestLimit','tokenLimit','tokenBudget','tokensPerReq','retryDelay','setup-apiKey','setup-apiEndpoint','setup-model','provider','setup-provider',
+      'source','target','auto','debug','smartThrottle','dualMode','translate','test','clearCache','clearDomain','clearPair','toggleCalendar','reqRemaining','tokenRemaining','providerError','reqRemainingBar','tokenRemainingBar',
       'cacheSize','hitRate','costTurbo24h','costPlus24h','costTotal24h','costTurbo7d','costPlus7d','costTotal7d','costTurbo30d','costPlus30d','costTotal30d',
       'version','reqCount','tokenCount','reqBar','tokenBar','turboReq','plusReq','turboReqBar','plusReqBar','totalReq','totalTok','queueLen','failedReq','failedTok','force','domainCounts','status','costCalendar','progress','viewContainer'
     ].forEach(id => {

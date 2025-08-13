@@ -160,6 +160,14 @@ describe('background cost tracking', () => {
     const res = await new Promise(resolve => usageListener({ action: 'usage' }, null, resolve));
     expect(res.costs['qwen-mt-turbo']['24h']).toBeCloseTo(0);
     expect(res.costs['qwen-mt-plus']['24h']).toBeCloseTo(0.03686);
-    expect(res.costs.total['7d']).toBeCloseTo(0.038);
+    expect(res.costs['qwen-mt-turbo']['7d']).toBeCloseTo(0.00114);
+    expect(res.costs['qwen-mt-plus']['7d']).toBeCloseTo(0.03686);
+    expect(res.costs.total['7d']).toBeCloseTo(
+      res.costs['qwen-mt-turbo']['7d'] + res.costs['qwen-mt-plus']['7d']
+    );
+    const day1 = res.costs.daily.find(d => d.date === '2024-01-01');
+    const day2 = res.costs.daily.find(d => d.date === '2024-01-02');
+    expect(day1.cost).toBeCloseTo(0.00114);
+    expect(day2.cost).toBeCloseTo(0.03686);
   });
 });
