@@ -34,6 +34,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 let throttleReady;
 let activeTranslations = 0;
 let translationStatus = { active: false };
+let usingPlus = false;
 
 async function updateIcon() {
   await ensureThrottle();
@@ -59,7 +60,11 @@ async function updateIcon() {
   const minR = 10;
   const maxR = size / 2 - ringWidth - 4;
   const radius = minR + pct * (maxR - minR);
-  const color = self.qwenUsageColor ? self.qwenUsageColor(pct) : '#d0d4da';
+  const color = usingPlus
+    ? '#e74c3c'
+    : self.qwenUsageColor
+    ? self.qwenUsageColor(pct)
+    : '#d0d4da';
 
   ctx.fillStyle = color;
   ctx.beginPath();
@@ -72,9 +77,12 @@ async function updateIcon() {
 
 function updateBadge() {
   const busy = activeTranslations > 0;
-  chrome.action.setBadgeText({ text: busy ? '…' : '' });
+  const text = usingPlus ? 'P' : busy ? '…' : '';
+  chrome.action.setBadgeText({ text });
   if (chrome.action.setBadgeBackgroundColor) {
-    chrome.action.setBadgeBackgroundColor({ color: busy ? '#ff4500' : '#00000000' });
+    chrome.action.setBadgeBackgroundColor({
+      color: usingPlus ? '#ff4500' : busy ? '#ff4500' : '#00000000',
+    });
   }
   updateIcon();
 }
@@ -100,7 +108,7 @@ function ensureThrottle() {
 }
 
 async function handleTranslate(opts) {
-  const { endpoint, apiKey, model, text, source, target, debug } = opts;
+  const { endpoint, apiKey, model, models, text, source, target, debug } = opts;
   const ep = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
   if (debug) console.log('QTDEBUG: background translating via', ep);
 
@@ -109,6 +117,9 @@ async function handleTranslate(opts) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
   activeTranslations++;
+  usingPlus =
+    model === 'qwen-mt-plus' ||
+    (Array.isArray(models) && models[0] === 'qwen-mt-plus');
   updateBadge();
 
   try {
@@ -116,6 +127,7 @@ async function handleTranslate(opts) {
       endpoint: ep,
       apiKey,
       model,
+      models,
       text,
       source,
       target,
@@ -131,6 +143,7 @@ async function handleTranslate(opts) {
   } finally {
     clearTimeout(timeout);
     activeTranslations--;
+    usingPlus = false;
     updateBadge();
   }
 }
@@ -169,3 +182,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 });
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    updateBadge,
+    updateIcon,
+    handleTranslate,
+    setUsingPlus: v => {
+      usingPlus = v;
+    },
+    _setActiveTranslations: v => {
+      activeTranslations = v;
+    },
+  };
+}

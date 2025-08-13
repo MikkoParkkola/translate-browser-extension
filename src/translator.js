@@ -27,6 +27,25 @@ if (typeof window === 'undefined') {
 
 const cache = new Map();
 
+const LOAD_BALANCE_THRESHOLD = 0.5;
+
+function chooseModels(list) {
+  if (!getUsage || list.length < 2) return list;
+  try {
+    const usage = getUsage() || {};
+    if (
+      usage.requestLimit &&
+      usage.requestLimit > 0 &&
+      usage.requests / usage.requestLimit >= LOAD_BALANCE_THRESHOLD
+    ) {
+      const copy = list.slice();
+      [copy[0], copy[1]] = [copy[1], copy[0]];
+      return copy;
+    }
+  } catch {}
+  return list;
+}
+
 function fetchViaXHR(url, { method = 'GET', headers = {}, body, signal }, debug) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -60,6 +79,14 @@ function fetchViaXHR(url, { method = 'GET', headers = {}, body, signal }, debug)
 
 function withSlash(url) {
   return url.endsWith('/') ? url : `${url}/`;
+}
+
+function collapseSpacing(text) {
+  if (typeof text !== 'string') return text;
+  return text
+    .split(/\s{2,}/)
+    .map(seg => (/^(?:\p{L}\s)+\p{L}$/u.test(seg) ? seg.replace(/\s+/g, '') : seg))
+    .join(' ');
 }
 
 async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true }) {
@@ -174,12 +201,16 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
   return { text: result };
 }
 
-async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay }) {
+async function qwenTranslate({ endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay }) {
+  text = collapseSpacing(text);
+  const modelList = chooseModels(
+    Array.isArray(models) && models.length ? models : [model]
+  );
   if (debug) {
     console.log('QTDEBUG: qwenTranslate called with', {
       endpoint,
       apiKeySet: Boolean(apiKey),
-      model,
+      models: modelList,
       source,
       target,
       text: text && text.slice ? text.slice(0, 20) + (text.length > 20 ? '...' : '') : text,
@@ -204,7 +235,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
         chrome.runtime.sendMessage(
           {
             action: 'translate',
-            opts: { endpoint: ep, apiKey, model, text, source, target, debug },
+            opts: { endpoint: ep, apiKey, model: modelList[0], text, source, target, debug },
           },
           res => {
             if (chrome.runtime.lastError) {
@@ -229,12 +260,28 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     return result;
   }
 
-  try {
-    const data = await runWithRetry(
-      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, stream }),
+  const attempt = (m, attempts = 3) =>
+    runWithRetry(
+      () => doFetch({ endpoint, apiKey, model: m, text, source, target, signal, debug, stream }),
       approxTokens(text),
-      { attempts: 3, debug, onRetry, retryDelay }
+      { attempts, debug, onRetry, retryDelay }
     );
+
+  try {
+    let data;
+    if (modelList.length > 1) {
+      try {
+        data = await attempt(modelList[0], 1);
+      } catch (err) {
+        if (err.retryable) {
+          data = await attempt(modelList[1]);
+        } else {
+          throw err;
+        }
+      }
+    } else {
+      data = await attempt(modelList[0]);
+    }
     cache.set(cacheKey, data);
     if (debug) {
       console.log('QTDEBUG: translation successful');
@@ -247,12 +294,16 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   }
 }
 
-async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay }, onData) {
+async function qwenTranslateStream({ endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay }, onData) {
+  text = collapseSpacing(text);
+  const modelList = chooseModels(
+    Array.isArray(models) && models.length ? models : [model]
+  );
   if (debug) {
     console.log('QTDEBUG: qwenTranslateStream called with', {
       endpoint,
       apiKeySet: Boolean(apiKey),
-      model,
+      models: modelList,
       source,
       target,
       text: text && text.slice ? text.slice(0, 20) + (text.length > 20 ? '...' : '') : text,
@@ -264,12 +315,27 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     if (onData) onData(data.text);
     return data;
   }
-  try {
-    const data = await runWithRetry(
-      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
+  const attempt = (m, attempts = 3) =>
+    runWithRetry(
+      () => doFetch({ endpoint, apiKey, model: m, text, source, target, signal, debug, onData, stream }),
       approxTokens(text),
-      { attempts: 3, debug, onRetry, retryDelay }
+      { attempts, debug, onRetry, retryDelay }
     );
+  try {
+    let data;
+    if (modelList.length > 1) {
+      try {
+        data = await attempt(modelList[0], 1);
+      } catch (err) {
+        if (err.retryable) {
+          data = await attempt(modelList[1]);
+        } else {
+          throw err;
+        }
+      }
+    } else {
+      data = await attempt(modelList[0]);
+    }
     cache.set(cacheKey, data);
     if (debug) {
       console.log('QTDEBUG: translation successful');
@@ -365,6 +431,7 @@ async function batchOnce({
   _stats,
   ...opts
 }) {
+  texts = texts.map(collapseSpacing);
   const stats = _stats || { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
   const SEP = '\uE000';
 
@@ -556,5 +623,7 @@ if (typeof module !== 'undefined') {
     qwenClearCache,
     _getTokenBudget,
     _setTokenBudget,
+    _setGetUsage: fn => (getUsage = fn),
+    collapseSpacing,
   };
 }
