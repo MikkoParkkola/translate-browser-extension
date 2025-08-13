@@ -8,6 +8,7 @@ const {
   qwenSetCacheLimit,
   qwenSetCacheTTL,
   _setCacheEntryTimestamp,
+  _setGetUsage,
 } = translator;
 const { qwenTranslateBatch, _getTokenBudget, _setTokenBudget } = batch;
 const { configure, reset } = require('../src/throttle');
@@ -25,6 +26,7 @@ beforeEach(() => {
   _setTokenBudget(0);
   qwenSetCacheLimit(1000);
   qwenSetCacheTTL(30 * 24 * 60 * 60 * 1000);
+  _setGetUsage(() => ({ requestLimit: 6000, requests: 0 }));
 });
 
 test('translate success', async () => {

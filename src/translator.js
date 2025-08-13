@@ -11,6 +11,8 @@ var qwenGetCompressionErrors;
 var _setMaxCacheEntries;
 var _setCacheTTL;
 var _setCacheEntryTimestamp;
+var LZString;
+var attempts = 6;
 
 if (typeof window === 'undefined') {
   if (typeof self !== 'undefined' && self.qwenTransport) {
@@ -51,7 +53,16 @@ if (typeof window === 'undefined') {
 
 async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, force = false }) {
   await cacheReady;
-  const modelList = Array.isArray(models) ? models : models ? [models] : [model];
+  const modelList = Array.isArray(models) && models.length ? models : model ? [model] : [];
+  let chosenModel = modelList[0] || model;
+  if (modelList.length > 1 && getUsage) {
+    try {
+      const usage = await getUsage();
+      if (usage.requestLimit && usage.requests >= usage.requestLimit / 2) {
+        chosenModel = modelList[1];
+      }
+    } catch {}
+  }
   if (debug) {
     console.log('QTDEBUG: qwenTranslate called with', {
       provider,
@@ -108,23 +119,18 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, model
     return result;
   }
 
+  const translateOnce = m =>
+    runWithRetry(
+      () => {
+        const prov = getProvider ? getProvider(provider) : undefined;
+        if (!prov || !prov.translate) throw new Error(`Unknown provider: ${provider}`);
+        return prov.translate({ endpoint, apiKey, model: m, text, source, target, signal, debug, stream });
+      },
+      approxTokens(text),
+      { attempts: modelList.length > 1 ? 1 : attempts, debug, onRetry, retryDelay }
+    );
   try {
-    const attempts = 3;
-    const data = await transportTranslate({
-      provider,
-      endpoint,
-      apiKey,
-      model,
-      text,
-      source,
-      target,
-      signal,
-      debug,
-      stream,
-      onRetry,
-      retryDelay,
-      attempts,
-    });
+    const data = await translateOnce(chosenModel);
     setCache(cacheKey, data);
     if (debug) {
       console.log('QTDEBUG: translation successful');
@@ -132,30 +138,14 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, model
     }
     return data;
   } catch (e) {
-    if (modelList && modelList.length > 1 && model === modelList[0]) {
-      try {
-        model = modelList[1];
-        const data = await transportTranslate({
-          provider,
-          endpoint,
-          apiKey,
-          model,
-          text,
-          source,
-          target,
-          signal,
-          debug,
-          stream,
-          onRetry,
-          retryDelay,
-          attempts: 3,
-        });
-        setCache(cacheKey, data);
-        return data;
-      } catch (err) {
-        console.error('QTERROR: translation request failed', err);
-        throw err;
+    if (modelList.length > 1 && /429/.test(e.message) && chosenModel !== modelList[1]) {
+      const data = await translateOnce(modelList[1]);
+      setCache(cacheKey, data);
+      if (debug) {
+        console.log('QTDEBUG: translation successful');
+        console.log('QTDEBUG: final text', data.text);
       }
+      return data;
     }
     console.error('QTERROR: translation request failed', e);
     throw e;
@@ -212,6 +202,19 @@ async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model,
     throw e;
   }
 }
+
+function collapseSpacing(text) {
+  return text
+    .split(/\s{2,}/)
+    .map(seg =>
+      /^(?:[A-Za-z]\s+)+[A-Za-z]$/.test(seg) ? seg.replace(/\s+/g, '') : seg
+    )
+    .join(' ');
+}
+
+function _setGetUsage(fn) {
+  getUsage = fn;
+}
 if (typeof window !== 'undefined') {
   window.qwenTranslate = qwenTranslate;
   window.qwenTranslateStream = qwenTranslateStream;
@@ -230,6 +233,9 @@ if (typeof self !== 'undefined' && typeof window === 'undefined') {
   self.qwenSetCacheLimit = qwenSetCacheLimit;
   self.qwenSetCacheTTL = qwenSetCacheTTL;
 }
+if (typeof global !== 'undefined') {
+  global._setGetUsage = _setGetUsage;
+}
 if (typeof module !== 'undefined') {
   module.exports = {
     qwenTranslate,
@@ -242,5 +248,7 @@ if (typeof module !== 'undefined') {
     _setMaxCacheEntries,
     _setCacheTTL,
     _setCacheEntryTimestamp,
+    _setGetUsage,
+    collapseSpacing,
   };
 }
