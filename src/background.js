@@ -58,6 +58,7 @@ const modelUsage = {
   },
 };
 
+
 async function updateIcon() {
   await ensureThrottle();
   const { requests, requestLimit, tokens, tokenLimit } = self.qwenThrottle.getUsage();
