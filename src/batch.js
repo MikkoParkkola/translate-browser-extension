@@ -180,7 +180,7 @@
       const words = joinedText.replaceAll(SEP, ' ').trim().split(/\s+/).filter(Boolean).length;
       let res;
       try {
-        res = await qwenTranslate({ ...opts, text: joinedText, onRetry, retryDelay, force: opts.force });
+        res = await qwenTranslate({ ...opts, text: joinedText, onRetry, retryDelay, force: opts.force, domain: opts.domain });
       } catch (e) {
         if (/HTTP\s+400/i.test(e.message || '')) throw e;
         g.forEach(m => {
@@ -200,14 +200,14 @@
         for (const m of g) {
           let out;
           try {
-            const single = await qwenTranslate({ ...opts, text: m.text, onRetry, retryDelay, force: opts.force });
+            const single = await qwenTranslate({ ...opts, text: m.text, onRetry, retryDelay, force: opts.force, domain: opts.domain });
             out = single.text;
           } catch {
             out = m.text;
           }
           m.result = out;
           const key = `${provider}:${opts.source}:${opts.target}:${m.text}`;
-          setCache(key, { text: out, domain: opts.domain });
+          setCache(key, { text: out }, opts.domain);
           stats.requests++;
           stats.tokens += approxTokens(m.text);
           stats.words += m.text.trim().split(/\s+/).filter(Boolean).length;
@@ -217,7 +217,7 @@
       for (let i = 0; i < g.length; i++) {
         g[i].result = translated[i] || g[i].text;
         const key = `${provider}:${opts.source}:${opts.target}:${g[i].text}`;
-        setCache(key, { text: g[i].result, domain: opts.domain });
+        setCache(key, { text: g[i].result }, opts.domain);
       }
       const elapsedMs = Date.now() - stats.start;
       const avg = elapsedMs / stats.requests;
@@ -261,7 +261,7 @@
       retryIdx.forEach((idx, i) => {
         results[idx] = retr.texts[i];
         const key = `${provider}:${opts.source}:${opts.target}:${texts[idx]}`;
-        setCache(key, { text: results[idx], domain: opts.domain });
+        setCache(key, { text: results[idx] }, opts.domain);
       });
     }
 

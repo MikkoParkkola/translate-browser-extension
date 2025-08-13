@@ -419,6 +419,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         debug: cfg.debug,
         stream: false,
         signal: controller.signal,
+        domain: location.hostname,
       })
       .then(res => {
         clearTimeout(timer);
@@ -456,6 +457,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           target: cfg.targetLanguage,
           debug: cfg.debug,
           domain: location.hostname,
+          force: true,
         });
         const range = sel.getRangeAt(0);
         range.deleteContents();

@@ -27,6 +27,12 @@ describe('popup cost display', () => {
         e.appendChild(new Option('fr','fr'));
       }
     });
+    const srcOpt = document.createElement('option');
+    srcOpt.value = 'en';
+    source.appendChild(srcOpt);
+    const tgtOpt = document.createElement('option');
+    tgtOpt.value = 'fr';
+    target.appendChild(tgtOpt);
     global.chrome = {
       runtime: {
         sendMessage: jest.fn(),
@@ -37,17 +43,12 @@ describe('popup cost display', () => {
     };
     global.qwenLanguages = [];
     global.qwenUsageColor = () => '#00ff00';
-    global.qwenGetCacheSize = () => 0;
-    global.qwenGetCacheStats = () => ({ hits: 0, misses: 0, hitRate: 0 });
-    global.qwenGetDomainCounts = () => ({});
-    global.qwenClearCacheDomain = jest.fn();
-    global.qwenClearCacheLangPair = jest.fn();
-    global.qwenClearCache = jest.fn();
-    global.formatCost = v => `$${v.toFixed(2)}`;
-    window.qwenClearCacheDomain = global.qwenClearCacheDomain;
-    window.qwenClearCacheLangPair = global.qwenClearCacheLangPair;
-    window.qwenClearCache = global.qwenClearCache;
-    window.formatCost = global.formatCost;
+    global.qwenGetCacheSize = window.qwenGetCacheSize = () => 0;
+    global.qwenGetCacheStats = window.qwenGetCacheStats = () => ({ hits: 0, misses: 0, hitRate: 0 });
+    global.qwenGetDomainCounts = window.qwenGetDomainCounts = () => ({});
+    global.qwenClearCacheDomain = window.qwenClearCacheDomain = jest.fn();
+    global.qwenClearCacheLangPair = window.qwenClearCacheLangPair = jest.fn();
+    global.qwenClearCache = window.qwenClearCache = jest.fn();
     global.qwenLoadConfig = () => Promise.resolve({
       apiKey: '',
       apiEndpoint: '',

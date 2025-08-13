@@ -26,6 +26,12 @@ describe('popup cache controls', () => {
         e.appendChild(new Option('fr','fr'));
       }
     });
+    const srcOpt = document.createElement('option');
+    srcOpt.value = 'en';
+    source.appendChild(srcOpt);
+    const tgtOpt = document.createElement('option');
+    tgtOpt.value = 'fr';
+    target.appendChild(tgtOpt);
     global.chrome = {
       runtime: {
         sendMessage: jest.fn(),
@@ -39,12 +45,9 @@ describe('popup cache controls', () => {
     global.qwenGetCacheSize = () => 0;
     global.qwenGetCacheStats = () => ({ hits: 0, misses: 0, hitRate: 0 });
     global.qwenGetDomainCounts = () => ({});
-    global.qwenClearCache = jest.fn();
-    global.qwenClearCacheDomain = jest.fn();
-    global.qwenClearCacheLangPair = jest.fn();
-    window.qwenClearCache = global.qwenClearCache;
-    window.qwenClearCacheDomain = global.qwenClearCacheDomain;
-    window.qwenClearCacheLangPair = global.qwenClearCacheLangPair;
+    global.qwenClearCache = window.qwenClearCache = jest.fn();
+    global.qwenClearCacheDomain = window.qwenClearCacheDomain = jest.fn();
+    global.qwenClearCacheLangPair = window.qwenClearCacheLangPair = jest.fn();
     global.qwenLoadConfig = () => Promise.resolve({
       apiKey: '',
       apiEndpoint: '',
