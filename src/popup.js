@@ -30,6 +30,9 @@ const totalTok = document.getElementById('totalTok');
 const queueLen = document.getElementById('queueLen');
 const failedReq = document.getElementById('failedReq');
 const failedTok = document.getElementById('failedTok');
+const reqRemaining = document.getElementById('reqRemaining');
+const tokenRemaining = document.getElementById('tokenRemaining');
+const providerError = document.getElementById('providerError');
 const translateBtn = document.getElementById('translate');
 const testBtn = document.getElementById('test');
 const progressBar = document.getElementById('progress');
@@ -38,6 +41,21 @@ const forceCheckbox = document.getElementById('force');
 const cacheSizeLabel = document.getElementById('cacheSize');
 const cacheLimitInput = document.getElementById('cacheSizeLimit');
 const cacheTTLInput = document.getElementById('cacheTTL');
+const costTurbo24h = document.getElementById('costTurbo24h');
+const costPlus24h = document.getElementById('costPlus24h');
+const costTotal24h = document.getElementById('costTotal24h');
+const costTurbo7d = document.getElementById('costTurbo7d');
+const costPlus7d = document.getElementById('costPlus7d');
+const costTotal7d = document.getElementById('costTotal7d');
+const costTurbo30d = document.getElementById('costTurbo30d');
+const costPlus30d = document.getElementById('costPlus30d');
+const costTotal30d = document.getElementById('costTotal30d');
+const costCalendar = document.getElementById('costCalendar');
+const toggleCalendar = document.getElementById('toggleCalendar');
+
+function formatCost(n) {
+  return '$' + n.toFixed(2);
+}
 
 const applyProviderConfig =
   (window.qwenProviderConfig && window.qwenProviderConfig.applyProviderConfig) ||
@@ -60,6 +78,8 @@ function getDefaultTokenLimit(model) {
 }
 
 let saveTimeout;
+let currentCfg = {};
+let lastQuotaCheck = 0;
 
 function saveConfig() {
   clearTimeout(saveTimeout);
@@ -75,6 +95,7 @@ function saveConfig() {
       .map(s => s.trim())
       .filter(Boolean);
     const cfg = {
+      ...currentCfg,
       apiKey: apiKeyInput.value.trim(),
       apiEndpoint: endpointInput.value.trim(),
       model,
@@ -93,6 +114,7 @@ function saveConfig() {
       cacheMaxEntries: parseInt(cacheLimitInput.value, 10) || 1000,
       cacheTTL: (parseInt(cacheTTLInput.value, 10) || 30) * 24 * 60 * 60 * 1000,
     };
+    currentCfg = cfg;
     if (window.qwenSetCacheLimit) window.qwenSetCacheLimit(cfg.cacheMaxEntries);
     if (window.qwenSetCacheTTL) window.qwenSetCacheTTL(cfg.cacheTTL);
     if (window.qwenProviders && window.qwenProviders.setProviderOrder) {
@@ -266,6 +288,7 @@ chrome.runtime.sendMessage({ action: 'get-status' }, s => {
 });
 
 window.qwenLoadConfig().then(cfg => {
+  currentCfg = cfg;
   // Populate main view
   apiKeyInput.value = cfg.apiKey || '';
   endpointInput.value = cfg.apiEndpoint || '';
@@ -284,6 +307,10 @@ window.qwenLoadConfig().then(cfg => {
   retryDelayInput.value = cfg.retryDelay || '';
   cacheLimitInput.value = cfg.cacheMaxEntries || '';
   cacheTTLInput.value = Math.floor((cfg.cacheTTL || 30 * 24 * 60 * 60 * 1000) / (24 * 60 * 60 * 1000));
+
+  reqRemaining.textContent = cfg.remainingRequests || 0;
+  tokenRemaining.textContent = cfg.remainingTokens || 0;
+  providerError.textContent = cfg.providerError || '';
 
   // Populate setup view
   setupApiKeyInput.value = cfg.apiKey || '';
@@ -344,6 +371,10 @@ function updateCacheSize() {
   }
 }
 
+function formatCost(c) {
+  return '$' + c.toFixed(2);
+}
+
 function refreshUsage() {
   chrome.runtime.sendMessage({ action: 'usage' }, res => {
     if (chrome.runtime.lastError || !res) return;
@@ -395,6 +426,45 @@ function refreshUsage() {
       tokensPerReqInput.placeholder = tokensPerReqInput.dataset.auto;
     }
   });
+
+  const now = Date.now();
+  if (now - lastQuotaCheck > 60000) {
+    lastQuotaCheck = now;
+    const prov =
+      (window.qwenProviders && window.qwenProviders.getProvider(providerSelect.value)) || {};
+    if (prov.quota) {
+      prov
+        .quota({
+          endpoint: endpointInput.value.trim(),
+          apiKey: apiKeyInput.value.trim(),
+          model: modelInput.value.trim(),
+          debug: debugCheckbox.checked,
+        })
+        .then(q => {
+          if (typeof q.requests === 'number') {
+            reqRemaining.textContent = q.requests;
+            currentCfg.remainingRequests = q.requests;
+          }
+          if (typeof q.tokens === 'number') {
+            tokenRemaining.textContent = q.tokens;
+            currentCfg.remainingTokens = q.tokens;
+          }
+          if (q.error) {
+            providerError.textContent = q.error;
+            currentCfg.providerError = q.error;
+          } else {
+            providerError.textContent = '';
+            currentCfg.providerError = '';
+          }
+          if (window.qwenSaveConfig) window.qwenSaveConfig(currentCfg);
+        })
+        .catch(err => {
+          providerError.textContent = err.message;
+          currentCfg.providerError = err.message;
+          if (window.qwenSaveConfig) window.qwenSaveConfig(currentCfg);
+        });
+    }
+  }
 }
 
 setInterval(refreshUsage, 1000);
