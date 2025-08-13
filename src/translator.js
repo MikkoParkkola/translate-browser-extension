@@ -68,7 +68,7 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text,
       provider,
       endpoint,
       apiKeySet: Boolean(apiKey),
-      model,
+      models: modelList,
       source,
       target,
       text: text && text.slice ? text.slice(0, 20) + (text.length > 20 ? '...' : '') : text,
@@ -127,7 +127,7 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text,
         return prov.translate({ endpoint, apiKey, model, text, source, target, signal, debug, stream });
       },
       approxTokens(text),
-      { attempts: 3, debug, onRetry, retryDelay }
+      { attempts, debug, onRetry, retryDelay }
     );
     setCache(cacheKey, data);
     if (debug) {
@@ -147,7 +147,7 @@ async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model,
     console.log('QTDEBUG: qwenTranslateStream called with', {
       endpoint,
       apiKeySet: Boolean(apiKey),
-      model,
+      models: modelList,
       source,
       target,
       text: text && text.slice ? text.slice(0, 20) + (text.length > 20 ? '...' : '') : text,
@@ -169,7 +169,7 @@ async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model,
         return prov.translate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream });
       },
       approxTokens(text),
-      { attempts: 3, debug, onRetry, retryDelay }
+      { attempts, debug, onRetry, retryDelay }
     );
     setCache(cacheKey, data);
     if (debug) {
@@ -373,6 +373,14 @@ async function batchOnce({
       .sort((a, b) => a.chunk - b.chunk)
       .map(m => (m.result !== undefined ? m.result : m.text));
     results[idx] = parts.join(' ').trim();
+  });
+
+  dupes.forEach((arr, orig) => {
+    arr.forEach(i => {
+      results[i] = results[orig];
+      const key = `${opts.source}:${opts.target}:${texts[i]}`;
+      setCache(key, { text: results[orig] });
+    });
   });
 
   const retryTexts = [];
