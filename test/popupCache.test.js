@@ -5,8 +5,7 @@ describe('popup cache controls', () => {
     document.body.innerHTML = '';
     document.getElementById = id => document.querySelector('#' + id);
     [
-      'apiKey','apiEndpoint','model','requestLimit','tokenLimit','tokenBudget','tokensPerReq','retryDelay','cacheSizeLimit','cacheTTL','setup-apiKey','setup-apiEndpoint','setup-model','provider','setup-provider',
-      'source','target','auto','debug','smartThrottle','dualMode','translate','test','clearCache','clearDomain','clearPair','toggleCalendar',
+      'source','target','auto','debug','smartThrottle','dualMode','translate','test','clearCache','clearDomain','clearPair','toggleCalendar','provider','setup-provider','reqRemaining','tokenRemaining','providerError','reqRemainingBar','tokenRemainingBar',
       'cacheSize','hitRate','costTurbo24h','costPlus24h','costTotal24h','costTurbo7d','costPlus7d','costTotal7d','costTurbo30d','costPlus30d','costTotal30d',
       'version','reqCount','tokenCount','reqBar','tokenBar','turboReq','plusReq','turboReqBar','plusReqBar','totalReq','totalTok','queueLen','failedReq','failedTok','force','status','domainCounts','costCalendar','progress','viewContainer'
     ].forEach(id => {

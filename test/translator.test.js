@@ -1,3 +1,7 @@
+const fetchMock = require('jest-fetch-mock');
+const throttle = require('../src/throttle');
+const { runWithRetry } = require('../src/retry');
+global.qwenThrottle = { ...throttle, runWithRetry };
 const transport = require('../src/transport.js');
 const translator = require('../src/translator.js');
 const batch = require('../src/batch.js');
@@ -10,9 +14,9 @@ const {
   _setCacheEntryTimestamp,
   _setGetUsage,
 } = translator;
-const { configure, reset } = require('../src/throttle');
+const { qwenTranslateBatch, _getTokenBudget, _setTokenBudget } = batch;
+const { configure, reset } = throttle;
 const { modelTokenLimits } = require('../src/config');
-const fetchMock = require('jest-fetch-mock');
 const { registerProvider } = require('../src/providers');
 
 beforeAll(() => { fetchMock.enableMocks(); });
@@ -390,3 +394,19 @@ test('retries after 429 with backoff', async () => {
 });
 
 
+
+test('chooses secondary model when usage high', async () => {
+  const mock = { translate: jest.fn().mockResolvedValue({ text: 'x' }) };
+  registerProvider('mocklb', mock);
+  _setGetUsage(() => ({ requestLimit: 100, requests: 60 }));
+  await translate({
+    provider: 'mocklb',
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    models: ['m1', 'm2'],
+    text: 'hi',
+    source: 'en',
+    target: 'es',
+  });
+  expect(mock.translate).toHaveBeenCalledWith(expect.objectContaining({ model: 'm2' }));
+});
