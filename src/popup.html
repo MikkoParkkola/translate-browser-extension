@@ -66,6 +66,7 @@
     .main-actions { display: flex; gap: 0.5rem; align-items: center; }
     #translate { flex-grow: 1; }
     .auto-translate-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
+    .force-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
     .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
     .switch input { opacity: 0; width: 0; height: 0; }
     .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--secondary-bg); transition: .4s; border-radius: 20px; }
@@ -123,6 +124,10 @@
           </label>
           <span>Auto</span>
         </div>
+      </div>
+      <div class="main-actions">
+        <button id="clearCache" title="Remove saved translations">Clear Cache</button>
+        <label class="force-toggle"><input type="checkbox" id="force"> Force</label>
       </div>
 
       <div class="usage-section">
@@ -219,6 +224,7 @@
   </div>
 
   <script src="throttle.js"></script>
+  <script src="lz-string.min.js"></script>
   <script src="translator.js"></script>
   <script src="config.js"></script>
   <script src="languages.js"></script>

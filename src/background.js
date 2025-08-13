@@ -1,4 +1,4 @@
-importScripts('throttle.js', 'translator.js', 'usageColor.js');
+importScripts('throttle.js', 'lz-string.min.js', 'translator.js', 'usageColor.js');
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log('Qwen Translator installed');
@@ -152,6 +152,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const stats = self.qwenThrottle.getUsage();
       sendResponse(stats);
     });
+    return true;
+  }
+  if (msg.action === 'clear-cache') {
+    if (self.qwenClearCache) self.qwenClearCache();
+    sendResponse({ ok: true });
     return true;
   }
   if (msg.action === 'config-changed') {
