@@ -124,6 +124,7 @@ async function translateNode(node) {
         ]
       : undefined;
     const { text: translated } = await window.qwenTranslate({
+      provider: currentConfig.provider,
       endpoint: currentConfig.apiEndpoint,
       apiKey: currentConfig.apiKey,
       model: currentConfig.model,
@@ -157,6 +158,7 @@ async function translateBatch(elements, stats) {
   let res;
   try {
     const opts = {
+      provider: currentConfig.provider,
       endpoint: currentConfig.apiEndpoint,
       apiKey: currentConfig.apiKey,
       model: currentConfig.model,
@@ -401,6 +403,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const timer = setTimeout(() => controller.abort(), 10000);
     window
       .qwenTranslate({
+        provider: cfg.provider || 'qwen',
         endpoint: cfg.endpoint,
         apiKey: cfg.apiKey,
         model: cfg.model,
@@ -438,6 +441,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const cfg = currentConfig || (await window.qwenLoadConfig());
       try {
         const { text: translated } = await window.qwenTranslate({
+          provider: cfg.provider,
           endpoint: cfg.apiEndpoint,
           apiKey: cfg.apiKey,
           model: cfg.model,

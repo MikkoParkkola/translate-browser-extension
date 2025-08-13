@@ -8,10 +8,14 @@ function getProvider(name) {
   return providers[name];
 }
 
-if (typeof window !== 'undefined') {
-  window.qwenProviders = { registerProvider, getProvider };
-} else if (typeof self !== 'undefined') {
-  self.qwenProviders = { registerProvider, getProvider };
+function listProviders() {
+  return Object.entries(providers).map(([name, p]) => ({ name, label: p.label || name }));
 }
 
-module.exports = { registerProvider, getProvider };
+if (typeof window !== 'undefined') {
+  window.qwenProviders = { registerProvider, getProvider, listProviders };
+} else if (typeof self !== 'undefined') {
+  self.qwenProviders = { registerProvider, getProvider, listProviders };
+}
+
+module.exports = { registerProvider, getProvider, listProviders };

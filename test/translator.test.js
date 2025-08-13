@@ -78,6 +78,17 @@ test('dispatches to selected provider', async () => {
   expect(mock.translate).toHaveBeenCalled();
 });
 
+test('namespaces cache by provider', async () => {
+  const mock = { translate: jest.fn().mockResolvedValue({ text: 'hola' }) };
+  registerProvider('mock2', mock);
+  fetch.mockResponseOnce(JSON.stringify({ output: { text: 'hi' } }));
+  await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hello', source: 'es', target: 'en' });
+  const res = await translate({ provider: 'mock2', endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hello', source: 'es', target: 'en' });
+  expect(res.text).toBe('hola');
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(mock.translate).toHaveBeenCalled();
+});
+
 test('force bypasses cache', async () => {
   fetch
     .mockResponseOnce(JSON.stringify({ output: { text: 'hi' } }))

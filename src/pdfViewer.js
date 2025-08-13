@@ -149,6 +149,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
               ]
             : undefined;
           const { text: translated } = await window.qwenTranslate({
+            provider: cfg.provider,
             endpoint: cfg.apiEndpoint,
             apiKey: cfg.apiKey,
             model: cfg.model,

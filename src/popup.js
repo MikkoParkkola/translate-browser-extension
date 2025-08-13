@@ -2,6 +2,7 @@
 const apiKeyInput = document.getElementById('apiKey');
 const endpointInput = document.getElementById('apiEndpoint');
 const modelInput = document.getElementById('model');
+const providerSelect = document.getElementById('provider');
 const sourceSelect = document.getElementById('source');
 const targetSelect = document.getElementById('target');
 const reqLimitInput = document.getElementById('requestLimit');
@@ -41,6 +42,7 @@ const cacheTTLInput = document.getElementById('cacheTTL');
 const setupApiKeyInput = document.getElementById('setup-apiKey');
 const setupApiEndpointInput = document.getElementById('setup-apiEndpoint');
 const setupModelInput = document.getElementById('setup-model');
+const setupProviderInput = document.getElementById('setup-provider');
 
 const viewContainer = document.getElementById('viewContainer');
 
@@ -60,10 +62,12 @@ function saveConfig() {
       return;
     }
     const model = modelInput.value.trim() || 'qwen-mt-turbo';
+    const provider = providerSelect.value;
     const cfg = {
       apiKey: apiKeyInput.value.trim(),
       apiEndpoint: endpointInput.value.trim(),
       model,
+      provider,
       sourceLanguage: sourceSelect.value,
       targetLanguage: targetSelect.value,
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
@@ -122,6 +126,19 @@ function populateLanguages() {
 }
 
 populateLanguages();
+function populateProviders() {
+  const list = (window.qwenProviders && window.qwenProviders.listProviders()) || [];
+  const opts = list.length ? list : [{ name: 'qwen', label: 'Qwen' }];
+  opts.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.name;
+    opt.textContent = p.label || p.name;
+    providerSelect.appendChild(opt.cloneNode(true));
+    setupProviderInput.appendChild(opt);
+  });
+}
+
+populateProviders();
 
 function setWorking(w) {
   [translateBtn, testBtn].forEach(b => { if (b) b.disabled = w; });
@@ -232,7 +249,7 @@ window.qwenLoadConfig().then(cfg => {
   apiKeyInput.value = cfg.apiKey || '';
   endpointInput.value = cfg.apiEndpoint || '';
   modelInput.value = cfg.model || '';
-  dualModeInput.checked = !!cfg.dualMode;
+  providerSelect.value = cfg.provider || 'qwen';
   sourceSelect.value = cfg.sourceLanguage;
   targetSelect.value = cfg.targetLanguage;
   reqLimitInput.value = cfg.requestLimit;
@@ -250,6 +267,7 @@ window.qwenLoadConfig().then(cfg => {
   setupApiKeyInput.value = cfg.apiKey || '';
   setupApiEndpointInput.value = cfg.apiEndpoint || '';
   setupModelInput.value = cfg.model || '';
+  setupProviderInput.value = cfg.provider || 'qwen';
 
   updateView(cfg);
 
@@ -258,6 +276,7 @@ window.qwenLoadConfig().then(cfg => {
     { main: apiKeyInput, setup: setupApiKeyInput, event: 'input' },
     { main: endpointInput, setup: setupApiEndpointInput, event: 'input' },
     { main: modelInput, setup: setupModelInput, event: 'change' },
+    { main: providerSelect, setup: setupProviderInput, event: 'change' },
   ];
 
   allInputs.forEach(({main, setup, event}) => {
