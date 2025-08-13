@@ -133,6 +133,7 @@ async function translateNode(node) {
       apiKey: currentConfig.apiKey,
       model: currentConfig.model,
       models,
+      failover: currentConfig.failoverStrategy,
       text,
       source: currentConfig.sourceLanguage,
       target: currentConfig.targetLanguage,
@@ -194,7 +195,7 @@ async function translateBatch(elements, stats) {
     if (currentConfig.retryDelay) {
       opts.retryDelay = currentConfig.retryDelay * 1000;
     }
-    res = await window.qwenTranslateBatch(opts);
+    res = await window.qwenTranslateBatch({ ...opts, failover: currentConfig.failoverStrategy });
   } finally {
     clearTimeout(timeout);
   }
@@ -413,6 +414,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         endpoint: cfg.endpoint,
         apiKey: cfg.apiKey,
         model: cfg.model,
+        failover: cfg.failoverStrategy,
         text: original,
         source: cfg.source,
         target: cfg.target,
@@ -452,6 +454,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           endpoint: cfg.apiEndpoint,
           apiKey: cfg.apiKey,
           model: cfg.model,
+          failover: cfg.failoverStrategy,
           text,
           source: cfg.sourceLanguage,
           target: cfg.targetLanguage,

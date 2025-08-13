@@ -217,7 +217,7 @@ async function chooseProvider(opts) {
 }
 
 async function handleTranslate(opts) {
-  const { provider = 'qwen', endpoint, apiKey, model, models, text, source, target, debug } = opts;
+  const { provider = 'qwen', endpoint, apiKey, model, models, failover, text, source, target, debug } = opts;
   if (debug) console.log('QTDEBUG: background translating via', endpoint);
 
   await ensureThrottle();
@@ -238,6 +238,7 @@ async function handleTranslate(opts) {
       apiKey,
       model,
       models,
+      failover,
       text,
       source,
       target,

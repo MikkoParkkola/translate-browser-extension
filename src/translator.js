@@ -16,6 +16,7 @@ var attempts = 6;
 var runWithRateLimit;
 var approxTokens;
 var getUsage;
+var qwenTranslateStream;
 
 function _setGetUsage(fn) {
   getUsage = fn;
@@ -63,9 +64,39 @@ if (typeof translateRequest !== 'function') {
   streamRequest = mod.streamRequest || mod.translate;
 }
 
-async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, force = false, domain }) {
+const MODEL_PRICES = { 'qwen-mt-turbo': 1, 'qwen-mt-plus': 2 };
+let modelRR = 0;
+
+function orderModels(list, strategy) {
+  const models = list.slice();
+  const usage = getUsage ? getUsage() : {};
+  switch (strategy) {
+    case 'max-speed': {
+      if (!models.length) return models;
+      const idx = modelRR % models.length;
+      modelRR++;
+      return models.slice(idx).concat(models.slice(0, idx));
+    }
+    case 'balanced': {
+      if (models.length > 1) {
+        const ratio = usage.requestLimit ? usage.requests / usage.requestLimit : 0;
+        if (ratio > 0.5) {
+          const [first, ...rest] = models;
+          return rest.concat(first);
+        }
+      }
+      return models;
+    }
+    case 'max-saving':
+    default:
+      return models.sort((a, b) => (MODEL_PRICES[a] || 99) - (MODEL_PRICES[b] || 99));
+  }
+}
+
+async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, models, failover = 'balanced', text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, force = false, domain }) {
   await cacheReady;
-  const modelList = Array.isArray(model) ? model : [model];
+  const baseList = Array.isArray(models) ? models : Array.isArray(model) ? model : [model];
+  const modelList = orderModels(baseList, failover);
   const selectedModel = modelList[0];
   if (debug) {
     console.log('QTDEBUG: qwenTranslate called with', {
@@ -98,7 +129,7 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text,
         chrome.runtime.sendMessage(
           {
             action: 'translate',
-      opts: { provider, endpoint: ep, apiKey, model: selectedModel, models: modelList, text, source, target, debug },
+      opts: { provider, endpoint: ep, apiKey, model: selectedModel, models: modelList, failover, text, source, target, debug },
           },
           res => {
             if (chrome.runtime.lastError) {
@@ -123,68 +154,43 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text,
     return result;
   }
 
-  try {
-    const attempts = 3;
-    const data = await translateRequest({
-      provider,
-      endpoint,
-      apiKey,
-      model,
-      text,
-      source,
-      target,
-      signal,
-      debug,
-      stream,
-      onRetry,
-      retryDelay,
-      attempts,
-    });
-    setCache(cacheKey, data, domain);
-    if (debug) {
-      console.log('QTDEBUG: translation successful');
-      console.log('QTDEBUG: final text', data.text);
-    }
-    return data;
-  } catch (e) {
-    if (modelList && modelList.length > 1 && model === modelList[0]) {
-      try {
-        model = modelList[1];
-        const data = await translateRequest({
-          provider,
-          endpoint,
-          apiKey,
-          model,
-          text,
-          source,
-          target,
-          signal,
-          debug,
-          stream,
-          onRetry,
-          retryDelay,
-          attempts,
-        });
-        setCache(cacheKey, data, domain);
-        return data;
-      } catch (err) {
-        console.error('QTERROR: translation request failed', err);
-        throw err;
+  for (let i = 0; i < modelList.length; i++) {
+    const m = modelList[i];
+    try {
+      const attempts = 3;
+      const data = await translateRequest({
+        provider,
+        endpoint,
+        apiKey,
+        model: m,
+        text,
+        source,
+        target,
+        signal,
+        debug,
+        stream,
+        onRetry,
+        retryDelay,
+        attempts,
+      });
+      setCache(cacheKey, data, domain);
+      if (debug) {
+        console.log('QTDEBUG: translation successful');
+        console.log('QTDEBUG: final text', data.text);
       }
+      return data;
+    } catch (e) {
+      if (i === modelList.length - 1) {
+        console.error('QTERROR: translation request failed', e);
+        throw e;
     }
-    console.error('QTERROR: translation request failed', e);
-    throw e;
   }
 }
 
-async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay, force = false, domain }, onData) {
+qwenTranslateStream = async function ({ provider = 'qwen', endpoint, apiKey, model, models, failover = 'balanced', text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay, force = false, domain }, onData) {
   await cacheReady;
-  const modelList =
-    typeof models === 'undefined'
-      ? [model]
-      : Array.isArray(models)
-      ? models
-      : [models];
+  const baseList = Array.isArray(models) ? models : Array.isArray(model) ? model : [model];
+  const modelList = orderModels(baseList, failover);
   if (debug) {
     const modelList = Array.isArray(model) ? model : [model];
     console.log('QTDEBUG: qwenTranslateStream called with', {
@@ -204,35 +210,41 @@ async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model,
       return data;
     }
   }
-  try {
-    const attempts = 3;
-    const data = await streamRequest(
-      {
-        provider,
-        endpoint,
-        apiKey,
-        model,
-        text,
-        source,
-        target,
-        signal,
-        debug,
-        stream,
-        onRetry,
-        retryDelay,
-        attempts,
-      },
-      onData
-    );
-    setCache(cacheKey, data, domain);
-    if (debug) {
-      console.log('QTDEBUG: translation successful');
-      console.log('QTDEBUG: final text', data.text);
+  for (let i = 0; i < modelList.length; i++) {
+    const m = modelList[i];
+    try {
+        const attempts = 3;
+        const data = await streamRequest(
+          {
+            provider,
+            endpoint,
+            apiKey,
+            model: m,
+            text,
+            source,
+            target,
+            signal,
+            debug,
+            stream,
+            onRetry,
+            retryDelay,
+            attempts,
+          },
+          onData
+        );
+        setCache(cacheKey, data, domain);
+        if (debug) {
+          console.log('QTDEBUG: translation successful');
+          console.log('QTDEBUG: final text', data.text);
+        }
+        return data;
+      } catch (e) {
+        if (i === modelList.length - 1) {
+          console.error('QTERROR: translation request failed', e);
+          throw e;
+        }
+      }
     }
-    return data;
-  } catch (e) {
-    console.error('QTERROR: translation request failed', e);
-    throw e;
   }
 }
 

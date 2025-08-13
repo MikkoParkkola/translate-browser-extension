@@ -200,6 +200,13 @@
             <option value="qwen-mt-plus">qwen-mt-plus</option>
           </select>
 
+          <label for="failoverStrategy">Failover strategy</label>
+          <select id="failoverStrategy" title="Model failover behaviour when multiple models are available">
+            <option value="balanced">balanced</option>
+            <option value="max-saving">max saving</option>
+            <option value="max-speed">max speed</option>
+          </select>
+
           <label for="provider">Provider</label>
           <select id="provider" title="Select translation provider"></select>
 
