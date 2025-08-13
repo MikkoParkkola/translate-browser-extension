@@ -49,6 +49,16 @@ if (typeof window === 'undefined') {
   } else if (typeof require !== 'undefined') {
     ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = require('./throttle'));
   }
+
+  if (!runWithRetry) {
+    if (typeof window !== 'undefined' && window.qwenRetry) {
+      ({ runWithRetry } = window.qwenRetry);
+    } else if (typeof self !== 'undefined' && self.qwenRetry) {
+      ({ runWithRetry } = self.qwenRetry);
+    } else if (typeof require !== 'undefined') {
+      ({ runWithRetry } = require('./retry'));
+    }
+  }
 }
 
 async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, force = false }) {
