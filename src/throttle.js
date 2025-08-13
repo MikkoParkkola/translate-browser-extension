@@ -100,10 +100,12 @@ async function runWithRetry(fn, text, attempts = 6, debug = false) {
       return await runWithRateLimit(fn, tokens);
     } catch (err) {
       if (!err.retryable || i === attempts - 1) throw err;
-      const delayMs = err.retryAfter || wait;
-      if (debug) console.log('QTDEBUG: retrying after error', err.message);
+      const base = err.retryAfter || wait;
+      const jitter = 0.9 + Math.random() * 0.2; // +/-10%
+      const delayMs = Math.round(base * jitter);
+      if (debug) console.log('QTDEBUG: retrying after error', err.message, 'in', delayMs, 'ms');
       await delay(delayMs);
-      wait = delayMs * 2;
+      wait = Math.min(base * 2, 60000);
     }
   }
 }

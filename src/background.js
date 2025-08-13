@@ -34,6 +34,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 let throttleReady;
 let activeTranslations = 0;
 let translationStatus = { active: false };
+const inflight = new Map(); // requestId -> { controller, timeout, port }
 
 async function updateIcon() {
   await ensureThrottle();
@@ -163,4 +164,58 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse(translationStatus);
     return true;
   }
+});
+
+chrome.runtime.onConnect.addListener(port => {
+  if (port.name !== 'qwen-translate') return;
+  port.onMessage.addListener(async (msg) => {
+    if (!msg || typeof msg !== 'object') return;
+    if (msg.action === 'translate') {
+      const { requestId, opts } = msg;
+      if (!requestId || !opts) return;
+      await ensureThrottle();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), opts && opts.stream ? 60000 : 20000);
+      activeTranslations++;
+      updateBadge();
+      inflight.set(requestId, { controller, timeout, port });
+      const ep = opts.endpoint && opts.endpoint.endsWith('/') ? opts.endpoint : (opts.endpoint ? opts.endpoint + '/' : opts.endpoint);
+      const safeOpts = { ...opts, endpoint: ep, signal: controller.signal };
+      try {
+        if (opts && opts.stream) {
+          const result = await self.qwenTranslateStream(safeOpts, chunk => {
+            try { port.postMessage({ requestId, chunk }); } catch {}
+          });
+          try { port.postMessage({ requestId, result }); } catch {}
+        } else {
+          const result = await self.qwenTranslate(safeOpts);
+          try { port.postMessage({ requestId, result }); } catch {}
+        }
+      } catch (err) {
+        console.error('QTERROR: background port translation error', err);
+        try { port.postMessage({ requestId, error: err.message }); } catch {}
+      } finally {
+        clearTimeout(timeout);
+        inflight.delete(requestId);
+        activeTranslations--;
+        updateBadge();
+      }
+    } else if (msg.action === 'cancel' && msg.requestId) {
+      const rec = inflight.get(msg.requestId);
+      if (rec) {
+        try { rec.controller.abort(); } catch {}
+        clearTimeout(rec.timeout);
+        inflight.delete(msg.requestId);
+      }
+    }
+  });
+  port.onDisconnect.addListener(() => {
+    for (const [id, rec] of inflight.entries()) {
+      if (rec.port === port) {
+        try { rec.controller.abort(); } catch {}
+        clearTimeout(rec.timeout);
+        inflight.delete(id);
+      }
+    }
+  });
 });

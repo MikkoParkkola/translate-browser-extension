@@ -25,6 +25,16 @@ if (typeof window === 'undefined') {
 
 const cache = new Map();
 
+function makeDelimiter() {
+  // Default to U+E000 for compatibility (tests and existing behavior).
+  // Opt-in unique delimiter via env var or global flag when desired.
+  const useUnique =
+    (typeof window !== 'undefined' && window.qwenUseUniqueDelimiter) ||
+    (typeof process !== 'undefined' && process.env && process.env.QWEN_UNIQUE_DELIM === '1');
+  if (!useUnique) return '\uE000';
+  return `<<<QWEN_SPLIT_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}>>>`;
+}
+
 function fetchViaXHR(url, { method = 'GET', headers = {}, body, signal }, debug) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -193,36 +203,61 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     typeof window !== 'undefined' &&
     typeof chrome !== 'undefined' &&
     chrome.runtime &&
-    chrome.runtime.sendMessage
+    (chrome.runtime.connect || chrome.runtime.sendMessage)
   ) {
     const ep = withSlash(endpoint);
-    if (debug) console.log('QTDEBUG: requesting translation via background script');
+    if (chrome.runtime.connect) {
+      if (debug) console.log('QTDEBUG: requesting translation via background (port)');
+      const requestId = Math.random().toString(36).slice(2);
+      const port = chrome.runtime.connect({ name: 'qwen-translate' });
+      const result = await new Promise((resolve, reject) => {
+        let settled = false;
+        const onAbort = () => {
+          try { port.postMessage({ action: 'cancel', requestId }); } catch {}
+          try { port.disconnect(); } catch {}
+          if (!settled) { settled = true; reject(new DOMException('Aborted', 'AbortError')); }
+        };
+        if (signal) signal.addEventListener('abort', onAbort, { once: true });
+        port.onMessage.addListener(msg => {
+          if (!msg || msg.requestId !== requestId) return;
+          if (msg.error) {
+            try { port.disconnect(); } catch {}
+            if (!settled) { settled = true; reject(new Error(msg.error)); }
+            return;
+          }
+          if (msg.result) {
+            try { port.disconnect(); } catch {}
+            if (!settled) { settled = true; resolve(msg.result); }
+          }
+        });
+        port.onDisconnect.addListener(() => {
+          if (!settled) { settled = true; reject(new Error('Background disconnected')); }
+        });
+        port.postMessage({
+          action: 'translate',
+          requestId,
+          opts: { endpoint: ep, apiKey, model, text, source, target, debug, stream: false },
+        });
+      });
+      if (debug) console.log('QTDEBUG: background response received');
+      cache.set(cacheKey, result);
+      return result;
+    }
+    // Legacy fallback via sendMessage (non-cancelable)
+    if (debug) console.log('QTDEBUG: requesting translation via background script (legacy)');
     const result = await new Promise((resolve, reject) => {
       try {
         chrome.runtime.sendMessage(
-          {
-            action: 'translate',
-            opts: { endpoint: ep, apiKey, model, text, source, target, debug },
-          },
+          { action: 'translate', opts: { endpoint: ep, apiKey, model, text, source, target, debug } },
           res => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
-            } else {
-              resolve(res);
-            }
+            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+            else resolve(res);
           }
         );
-      } catch (err) {
-        reject(err);
-      }
+      } catch (err) { reject(err); }
     });
-    if (!result) {
-      throw new Error('No response from background');
-    }
-    if (result.error) {
-      throw new Error(result.error);
-    }
-    if (debug) console.log('QTDEBUG: background response received');
+    if (!result) throw new Error('No response from background');
+    if (result.error) throw new Error(result.error);
     cache.set(cacheKey, result);
     return result;
   }
@@ -263,6 +298,77 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     if (onData) onData(data.text);
     return data;
   }
+
+  if (
+    !noProxy &&
+    typeof window !== 'undefined' &&
+    typeof chrome !== 'undefined' &&
+    chrome.runtime &&
+    (chrome.runtime.connect || chrome.runtime.sendMessage)
+  ) {
+    const ep = withSlash(endpoint);
+    if (chrome.runtime.connect) {
+      const requestId = Math.random().toString(36).slice(2);
+      const port = chrome.runtime.connect({ name: 'qwen-translate' });
+      const data = await new Promise((resolve, reject) => {
+        let settled = false;
+        const onAbort = () => {
+          try { port.postMessage({ action: 'cancel', requestId }); } catch {}
+          try { port.disconnect(); } catch {}
+          if (!settled) { settled = true; reject(new DOMException('Aborted', 'AbortError')); }
+        };
+        if (signal) signal.addEventListener('abort', onAbort, { once: true });
+        port.onMessage.addListener(msg => {
+          if (!msg || msg.requestId !== requestId) return;
+          if (msg.error) {
+            try { port.disconnect(); } catch {}
+            if (!settled) { settled = true; reject(new Error(msg.error)); }
+            return;
+          }
+          if (typeof msg.chunk === 'string' && onData) {
+            onData(msg.chunk);
+          }
+          if (msg.result) {
+            try { port.disconnect(); } catch {}
+            if (!settled) { settled = true; resolve(msg.result); }
+          }
+        });
+        port.onDisconnect.addListener(() => {
+          if (!settled) { settled = true; reject(new Error('Background disconnected')); }
+        });
+        port.postMessage({
+          action: 'translate',
+          requestId,
+          opts: { endpoint: ep, apiKey, model, text, source, target, debug, stream: true },
+        });
+      });
+      cache.set(cacheKey, data);
+      if (debug) {
+        console.log('QTDEBUG: translation successful');
+        console.log('QTDEBUG: final text', data.text);
+      }
+      return data;
+    } else {
+      // Legacy fallback via sendMessage: no streaming available; deliver once
+      const result = await new Promise((resolve, reject) => {
+        try {
+          chrome.runtime.sendMessage(
+            { action: 'translate', opts: { endpoint: ep, apiKey, model, text, source, target, debug } },
+            res => {
+              if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+              else resolve(res);
+            }
+          );
+        } catch (err) { reject(err); }
+      });
+      if (!result) throw new Error('No response from background');
+      if (result.error) throw new Error(result.error);
+      if (onData && typeof result.text === 'string') onData(result.text);
+      cache.set(cacheKey, result);
+      return result;
+    }
+  }
+
   try {
     const data = await runWithRetry(
       () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
@@ -357,7 +463,7 @@ async function batchOnce({
   ...opts
 }) {
   const stats = _stats || { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
-  const SEP = '\uE000';
+  const SEP = makeDelimiter();
 
   const mapping = [];
   texts.forEach((t, i) => {
