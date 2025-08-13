@@ -7,6 +7,7 @@ let statusTimer;
 const pending = new Set();
 let flushTimer;
 let progress = { total: 0, done: 0 };
+let forceTranslate = false;
 
 function replacePdfEmbeds() {
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
@@ -164,6 +165,7 @@ async function translateBatch(elements, stats) {
       target: currentConfig.targetLanguage,
       signal: controller.signal,
       debug: currentConfig.debug,
+      force: forceTranslate,
     };
     if (currentConfig.dualMode) {
       opts.models = [
@@ -349,7 +351,8 @@ function observe(root = document.body) {
   }
 }
 
-async function start() {
+async function start(force = false) {
+  forceTranslate = force;
   currentConfig = await window.qwenLoadConfig();
   progress = { total: 0, done: 0 };
   if (window.qwenSetTokenBudget) {
@@ -372,7 +375,10 @@ async function start() {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'start') {
     if (currentConfig && currentConfig.debug) console.log('QTDEBUG: start message received');
-    start();
+    start(msg.force);
+  }
+  if (msg.action === 'clear-cache') {
+    if (window.qwenClearCache) window.qwenClearCache();
   }
   if (msg.action === 'test-read') {
     sendResponse({ title: document.title });
