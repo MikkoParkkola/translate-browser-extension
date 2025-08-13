@@ -10,6 +10,12 @@ var qwenSetCacheTTL;
 var _setMaxCacheEntries;
 var _setCacheTTL;
 var _setCacheEntryTimestamp;
+var LZString;
+var attempts = 6;
+var runWithRateLimit;
+var approxTokens;
+var getUsage;
+var runWithRetry;
 
 if (typeof window === 'undefined') {
   if (typeof self !== 'undefined' && self.qwenTransport) {
@@ -18,6 +24,10 @@ if (typeof window === 'undefined') {
     ({ translate: transportTranslate } = require('./transport'));
   }
   ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenGetCompressionErrors, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
+  ({ runWithRateLimit, approxTokens, getUsage } = require('./throttle'));
+  ({ runWithRetry } = require('./retry'));
+  ({ getProvider } = require('./providers'));
+  require('./providers/qwen');
 } else {
   if (window.qwenThrottle) {
     ({ runWithRateLimit, runWithRetry, approxTokens, getUsage } = window.qwenThrottle);
@@ -30,6 +40,28 @@ if (typeof window === 'undefined') {
     ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenGetCompressionErrors, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = self.qwenCache);
   } else if (typeof require !== 'undefined') {
     ({ cacheReady, getCache, setCache, removeCache, qwenClearCache, qwenGetCacheSize, qwenGetCompressionErrors, qwenSetCacheLimit, qwenSetCacheTTL, _setMaxCacheEntries, _setCacheTTL, _setCacheEntryTimestamp } = require('./cache'));
+  }
+  if (typeof window !== 'undefined' && window.qwenProviders) {
+    ({ getProvider } = window.qwenProviders);
+  } else if (typeof self !== 'undefined' && self.qwenProviders) {
+    ({ getProvider } = self.qwenProviders);
+  } else if (typeof require !== 'undefined' && !getProvider) {
+    ({ getProvider } = require('./providers'));
+    require('./providers/qwen');
+  }
+  if (typeof window !== 'undefined' && window.qwenThrottle) {
+    ({ runWithRateLimit, approxTokens, getUsage } = window.qwenThrottle);
+  } else if (typeof self !== 'undefined' && self.qwenThrottle) {
+    ({ runWithRateLimit, approxTokens, getUsage } = self.qwenThrottle);
+  } else if (typeof require !== 'undefined') {
+    ({ runWithRateLimit, approxTokens, getUsage } = require('./throttle'));
+  }
+  if (typeof window !== 'undefined' && window.qwenRetry) {
+    ({ runWithRetry } = window.qwenRetry);
+  } else if (typeof self !== 'undefined' && self.qwenRetry) {
+    ({ runWithRetry } = self.qwenRetry);
+  } else if (typeof require !== 'undefined') {
+    ({ runWithRetry } = require('./retry'));
   }
 }
 
