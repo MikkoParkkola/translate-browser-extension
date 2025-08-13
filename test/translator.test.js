@@ -330,3 +330,14 @@ test('advanced mode falls back to plus model after 429', async () => {
   expect(first.model).toBe('qwen-mt-turbo');
   expect(second.model).toBe('qwen-mt-plus');
 });
+
+test('collapseSpacing joins spaced letters into words', () => {
+  const { collapseSpacing } = translator;
+  const input = 'E E N  D I E F S T A L  I N  G R O N I N G E N';
+  expect(collapseSpacing(input)).toBe('EEN DIEFSTAL IN GRONINGEN');
+});
+
+test('collapseSpacing leaves normal text intact', () => {
+  const { collapseSpacing } = translator;
+  expect(collapseSpacing('Hello world')).toBe('Hello world');
+});

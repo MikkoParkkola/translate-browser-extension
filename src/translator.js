@@ -81,6 +81,14 @@ function withSlash(url) {
   return url.endsWith('/') ? url : `${url}/`;
 }
 
+function collapseSpacing(text) {
+  if (typeof text !== 'string') return text;
+  return text
+    .split(/\s{2,}/)
+    .map(seg => (/^(?:\p{L}\s)+\p{L}$/u.test(seg) ? seg.replace(/\s+/g, '') : seg))
+    .join(' ');
+}
+
 async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true }) {
   const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
   if (debug) {
@@ -194,6 +202,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
 }
 
 async function qwenTranslate({ endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay }) {
+  text = collapseSpacing(text);
   const modelList = chooseModels(
     Array.isArray(models) && models.length ? models : [model]
   );
@@ -286,6 +295,7 @@ async function qwenTranslate({ endpoint, apiKey, model, models, text, source, ta
 }
 
 async function qwenTranslateStream({ endpoint, apiKey, model, models, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay }, onData) {
+  text = collapseSpacing(text);
   const modelList = chooseModels(
     Array.isArray(models) && models.length ? models : [model]
   );
@@ -421,6 +431,7 @@ async function batchOnce({
   _stats,
   ...opts
 }) {
+  texts = texts.map(collapseSpacing);
   const stats = _stats || { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
   const SEP = '\uE000';
 
@@ -613,5 +624,6 @@ if (typeof module !== 'undefined') {
     _getTokenBudget,
     _setTokenBudget,
     _setGetUsage: fn => (getUsage = fn),
+    collapseSpacing,
   };
 }
