@@ -38,6 +38,12 @@ const cacheSizeLabel = document.getElementById('cacheSize');
 const cacheLimitInput = document.getElementById('cacheSizeLimit');
 const cacheTTLInput = document.getElementById('cacheTTL');
 
+const applyProviderConfig =
+  (window.qwenProviderConfig && window.qwenProviderConfig.applyProviderConfig) ||
+  (typeof require !== 'undefined'
+    ? require('./providerConfig').applyProviderConfig
+    : () => {});
+
 // Setup view elements
 const setupApiKeyInput = document.getElementById('setup-apiKey');
 const setupApiEndpointInput = document.getElementById('setup-apiEndpoint');
@@ -139,6 +145,12 @@ function populateProviders() {
 }
 
 populateProviders();
+
+function updateProviderFields() {
+  const prov =
+    (window.qwenProviders && window.qwenProviders.getProvider(providerSelect.value)) || {};
+  applyProviderConfig(prov, document);
+}
 
 function setWorking(w) {
   [translateBtn, testBtn].forEach(b => { if (b) b.disabled = w; });
@@ -270,6 +282,7 @@ window.qwenLoadConfig().then(cfg => {
   setupProviderInput.value = cfg.provider || 'qwen';
 
   updateView(cfg);
+  updateProviderFields();
 
   // Add event listeners for auto-saving and syncing
   const allInputs = [
@@ -291,6 +304,9 @@ window.qwenLoadConfig().then(cfg => {
       if (event === 'change') refreshUsage();
     });
   });
+
+  providerSelect.addEventListener('change', updateProviderFields);
+  setupProviderInput.addEventListener('change', updateProviderFields);
 
   updateThrottleInputs();
   [reqLimitInput, tokenLimitInput, tokenBudgetInput, tokensPerReqInput, retryDelayInput, cacheLimitInput, cacheTTLInput].forEach(el => el.addEventListener('input', saveConfig));

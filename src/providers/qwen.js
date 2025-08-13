@@ -135,6 +135,10 @@ async function translate({ endpoint, apiKey, model, text, source, target, signal
 }
 
 const { registerProvider } = require('./index');
-registerProvider('qwen', { translate, label: 'Qwen' });
+registerProvider('qwen', {
+  translate,
+  label: 'Qwen',
+  configFields: ['apiKey', 'apiEndpoint', 'model'],
+});
 
 module.exports = { translate };

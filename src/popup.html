@@ -102,14 +102,14 @@
         <label for="setup-provider">Provider</label>
         <select id="setup-provider" title="Select translation provider"></select>
 
-        <label for="setup-apiKey">API Key</label>
-        <input type="text" id="setup-apiKey" placeholder="Enter your API key" title="DashScope API key (required)">
+        <label for="setup-apiKey" data-field="apiKey">API Key</label>
+        <input type="text" id="setup-apiKey" data-field="apiKey" placeholder="Enter your API key" title="DashScope API key (required)">
 
-        <label for="setup-apiEndpoint">API Endpoint</label>
-        <input type="text" id="setup-apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1" title="DashScope API endpoint">
+        <label for="setup-apiEndpoint" data-field="apiEndpoint">API Endpoint</label>
+        <input type="text" id="setup-apiEndpoint" data-field="apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1" title="DashScope API endpoint">
 
-        <label for="setup-model">Model</label>
-        <select id="setup-model" title="Select translation model. Turbo is cheaper; Plus is higher quality.">
+        <label for="setup-model" data-field="model">Model</label>
+        <select id="setup-model" data-field="model" title="Select translation model. Turbo is cheaper; Plus is higher quality.">
           <option value="qwen-mt-turbo">qwen-mt-turbo</option>
           <option value="qwen-mt-plus">qwen-mt-plus</option>
         </select>
@@ -187,14 +187,14 @@
       <details>
         <summary>Advanced Settings</summary>
         <div class="form-group" style="padding-top: 0.75rem">
-          <label for="apiKey">API Key</label>
-          <input type="text" id="apiKey" placeholder="Enter your API key" title="DashScope API key (required)">
+          <label for="apiKey" data-field="apiKey">API Key</label>
+          <input type="text" id="apiKey" data-field="apiKey" placeholder="Enter your API key" title="DashScope API key (required)">
 
-          <label for="apiEndpoint">API Endpoint</label>
-          <input type="text" id="apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1" title="DashScope API endpoint">
+          <label for="apiEndpoint" data-field="apiEndpoint">API Endpoint</label>
+          <input type="text" id="apiEndpoint" data-field="apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1" title="DashScope API endpoint">
 
-          <label for="model">Model</label>
-          <select id="model" title="Translation model. Turbo is default; Plus offers higher quality at higher cost.">
+          <label for="model" data-field="model">Model</label>
+          <select id="model" data-field="model" title="Translation model. Turbo is default; Plus offers higher quality at higher cost.">
             <option value="qwen-mt-turbo">qwen-mt-turbo</option>
             <option value="qwen-mt-plus">qwen-mt-plus</option>
           </select>
@@ -255,8 +255,7 @@
   <script src="config.js"></script>
   <script src="languages.js"></script>
   <script src="usageColor.js"></script>
-  <script src="findLimit.js"></script>
-  <script src="limitDetector.js"></script>
+  <script src="providerConfig.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
