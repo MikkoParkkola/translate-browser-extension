@@ -43,23 +43,50 @@ test('skips reference superscripts', () => {
   expect(nodes.map(n => n.textContent)).toEqual(['Hi']);
 });
 
-test('uses dual models when enabled', async () => {
-  const spy = jest.fn().mockResolvedValue({ texts: ['XaX'] });
-  window.qwenTranslateBatch = spy;
-  document.body.innerHTML = '<p>a</p>';
+test('reuses cached translations for repeated text nodes', async () => {
+  const stub = window.qwenTranslateBatch;
+  const network = jest.fn(async texts => texts.map(t => `X${t}X`));
+  const cache = new Map();
+  window.qwenTranslateBatch = async ({ texts }) => {
+    const out = [];
+    const uncached = [];
+    texts.forEach(t => {
+      if (cache.has(t)) {
+        out.push(cache.get(t));
+      } else {
+        uncached.push(t);
+      }
+    });
+    if (uncached.length) {
+      const res = await network(uncached);
+      uncached.forEach((t, i) => cache.set(t, res[i]));
+      out.push(...res);
+    }
+    return { texts: texts.map(t => cache.get(t)) };
+  };
+
   setCurrentConfig({
     apiKey: 'k',
     apiEndpoint: 'https://e/',
-    model: 'qwen-mt-turbo',
-    dualMode: true,
+    model: 'm',
     sourceLanguage: 'en',
     targetLanguage: 'es',
     debug: false,
   });
-  const nodes = [];
+
+  document.body.innerHTML = '<p><span>Hello</span><span>World</span><span>Hello</span></p>';
+  let nodes = [];
   collectNodes(document.body, nodes);
   await translateBatch(nodes);
-  expect(spy).toHaveBeenCalledWith(
-    expect.objectContaining({ models: ['qwen-mt-turbo', 'qwen-mt-plus'] })
-  );
+  expect(network).toHaveBeenCalledTimes(1);
+  expect(nodes.map(n => n.textContent)).toEqual(['XHelloX', 'XWorldX', 'XHelloX']);
+
+  document.body.innerHTML = '<p><span>Hello</span><span>Hello</span></p>';
+  nodes = [];
+  collectNodes(document.body, nodes);
+  await translateBatch(nodes);
+  expect(network).toHaveBeenCalledTimes(1);
+  expect(nodes.map(n => n.textContent)).toEqual(['XHelloX', 'XHelloX']);
+
+  window.qwenTranslateBatch = stub;
 });
