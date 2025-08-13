@@ -4,10 +4,10 @@ const {
   qwenClearCache,
   qwenTranslateBatch,
   qwenGetCacheSize,
+  qwenSetCacheLimit,
+  qwenSetCacheTTL,
   _getTokenBudget,
   _setTokenBudget,
-  _setMaxCacheEntries,
-  _setCacheTTL,
   _setCacheEntryTimestamp,
 } = translator;
 const { configure, reset, getUsage } = require('../src/throttle');
@@ -22,8 +22,8 @@ beforeEach(() => {
   reset();
   configure({ requestLimit: 6000, tokenLimit: modelTokenLimits['qwen-mt-turbo'], windowMs: 60000 });
   _setTokenBudget(0);
-  _setMaxCacheEntries(1000);
-  _setCacheTTL(30 * 24 * 60 * 60 * 1000);
+  qwenSetCacheLimit(1000);
+  qwenSetCacheTTL(30 * 24 * 60 * 60 * 1000);
 });
 
 test('translate success', async () => {
@@ -80,7 +80,7 @@ test('force bypasses cache', async () => {
 });
 
 test('evicts oldest cache entry from storage', async () => {
-  _setMaxCacheEntries(2);
+  qwenSetCacheLimit(2);
   fetch
     .mockResponseOnce(JSON.stringify({ output: { text: 'one' } }))
     .mockResponseOnce(JSON.stringify({ output: { text: 'two' } }))
@@ -97,7 +97,7 @@ test('evicts oldest cache entry from storage', async () => {
   expect(stored['es:en:1']).toBeUndefined();
   expect(stored['es:en:2']).toBeDefined();
   expect(stored['es:en:3']).toBeDefined();
-  _setMaxCacheEntries(1000);
+  qwenSetCacheLimit(1000);
 });
 
 test('expires stale cache entries by ttl', async () => {
@@ -111,6 +111,29 @@ test('expires stale cache entries by ttl', async () => {
   const res = await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hola', source: 'es', target: 'en' });
   expect(fetch).toHaveBeenCalledTimes(2);
   expect(res.text).toBe('hello');
+});
+
+test('qwenSetCacheLimit caps cache size', async () => {
+  qwenSetCacheLimit(1);
+  fetch
+    .mockResponseOnce(JSON.stringify({ output: { text: 'one' } }))
+    .mockResponseOnce(JSON.stringify({ output: { text: 'two' } }));
+  await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: '1', source: 'es', target: 'en' });
+  await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: '2', source: 'es', target: 'en' });
+  expect(qwenGetCacheSize()).toBe(1);
+  qwenSetCacheLimit(1000);
+});
+
+test('qwenSetCacheTTL adjusts expiration', async () => {
+  qwenSetCacheTTL(10);
+  fetch
+    .mockResponseOnce(JSON.stringify({ output: { text: 'hi' } }))
+    .mockResponseOnce(JSON.stringify({ output: { text: 'hello' } }));
+  await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hola', source: 'es', target: 'en' });
+  _setCacheEntryTimestamp('es:en:hola', Date.now() - 20);
+  await translate({ endpoint: 'https://e/', apiKey: 'k', model: 'm', text: 'hola', source: 'es', target: 'en' });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  qwenSetCacheTTL(30 * 24 * 60 * 60 * 1000);
 });
 
 test('rate limiting queues requests', async () => {

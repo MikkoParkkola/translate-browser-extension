@@ -707,6 +707,14 @@ function _setCacheTTL(ms) {
   CACHE_TTL_MS = ms;
 }
 
+function qwenSetCacheLimit(n) {
+  _setMaxCacheEntries(n);
+}
+
+function qwenSetCacheTTL(ms) {
+  _setCacheTTL(ms);
+}
+
 function _setCacheEntryTimestamp(key, ts) {
   const entry = cache.get(key);
   if (entry) {
@@ -720,6 +728,8 @@ if (typeof window !== 'undefined') {
   window.qwenTranslateBatch = qwenTranslateBatch;
   window.qwenClearCache = qwenClearCache;
   window.qwenGetCacheSize = qwenGetCacheSize;
+  window.qwenSetCacheLimit = qwenSetCacheLimit;
+  window.qwenSetCacheTTL = qwenSetCacheTTL;
   window.qwenSetTokenBudget = _setTokenBudget;
 }
 if (typeof self !== 'undefined' && typeof window === 'undefined') {
@@ -728,6 +738,8 @@ if (typeof self !== 'undefined' && typeof window === 'undefined') {
   self.qwenTranslateBatch = qwenTranslateBatch;
   self.qwenClearCache = qwenClearCache;
   self.qwenGetCacheSize = qwenGetCacheSize;
+  self.qwenSetCacheLimit = qwenSetCacheLimit;
+  self.qwenSetCacheTTL = qwenSetCacheTTL;
   self.qwenSetTokenBudget = _setTokenBudget;
 }
 if (typeof module !== 'undefined') {
@@ -737,6 +749,8 @@ if (typeof module !== 'undefined') {
     qwenTranslateBatch,
     qwenClearCache,
     qwenGetCacheSize,
+    qwenSetCacheLimit,
+    qwenSetCacheTTL,
     _getTokenBudget,
     _setTokenBudget,
     _setMaxCacheEntries,

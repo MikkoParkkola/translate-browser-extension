@@ -33,6 +33,9 @@ const testBtn = document.getElementById('test');
 const progressBar = document.getElementById('progress');
 const clearCacheBtn = document.getElementById('clearCache');
 const forceCheckbox = document.getElementById('force');
+const cacheSizeLabel = document.getElementById('cacheSize');
+const cacheLimitInput = document.getElementById('cacheSizeLimit');
+const cacheTTLInput = document.getElementById('cacheTTL');
 
 // Setup view elements
 const setupApiKeyInput = document.getElementById('setup-apiKey');
@@ -71,8 +74,11 @@ function saveConfig() {
       retryDelay: parseInt(retryDelayInput.value, 10) || 0,
       autoTranslate: autoCheckbox.checked,
       debug: debugCheckbox.checked,
-      dualMode: dualModeInput.checked,
+      cacheMaxEntries: parseInt(cacheLimitInput.value, 10) || 1000,
+      cacheTTL: (parseInt(cacheTTLInput.value, 10) || 30) * 24 * 60 * 60 * 1000,
     };
+    if (window.qwenSetCacheLimit) window.qwenSetCacheLimit(cfg.cacheMaxEntries);
+    if (window.qwenSetCacheTTL) window.qwenSetCacheTTL(cfg.cacheTTL);
     window.qwenSaveConfig(cfg).then(() => {
       status.textContent = 'Settings saved.';
       updateView(cfg); // Re-check the view after saving
@@ -237,6 +243,8 @@ window.qwenLoadConfig().then(cfg => {
   smartThrottleInput.checked = cfg.smartThrottle !== false;
   tokensPerReqInput.value = cfg.tokensPerReq || '';
   retryDelayInput.value = cfg.retryDelay || '';
+  cacheLimitInput.value = cfg.cacheMaxEntries || '';
+  cacheTTLInput.value = Math.floor((cfg.cacheTTL || 30 * 24 * 60 * 60 * 1000) / (24 * 60 * 60 * 1000));
 
   // Populate setup view
   setupApiKeyInput.value = cfg.apiKey || '';
@@ -266,8 +274,11 @@ window.qwenLoadConfig().then(cfg => {
   });
 
   updateThrottleInputs();
-  [reqLimitInput, tokenLimitInput, tokenBudgetInput, tokensPerReqInput, retryDelayInput].forEach(el => el.addEventListener('input', saveConfig));
-  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox, smartThrottleInput, dualModeInput].forEach(el => el.addEventListener('change', () => { updateThrottleInputs(); saveConfig(); }));
+  [reqLimitInput, tokenLimitInput, tokenBudgetInput, tokensPerReqInput, retryDelayInput, cacheLimitInput, cacheTTLInput].forEach(el => el.addEventListener('input', saveConfig));
+  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox, smartThrottleInput].forEach(el => el.addEventListener('change', () => { updateThrottleInputs(); saveConfig(); }));
+  if (window.qwenSetCacheLimit) window.qwenSetCacheLimit(cfg.cacheMaxEntries || 1000);
+  if (window.qwenSetCacheTTL) window.qwenSetCacheTTL(cfg.cacheTTL || 30 * 24 * 60 * 60 * 1000);
+  updateCacheSize();
 });
 
 versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
@@ -278,8 +289,10 @@ function setBar(el, ratio) {
   el.style.backgroundColor = window.qwenUsageColor ? window.qwenUsageColor(r) : 'var(--green)';
 }
 
-function formatCost(v) {
-  return '$' + v.toFixed(2);
+function updateCacheSize() {
+  if (cacheSizeLabel && window.qwenGetCacheSize) {
+    cacheSizeLabel.textContent = `Cache: ${window.qwenGetCacheSize()}`;
+  }
 }
 
 function refreshUsage() {
@@ -363,6 +376,7 @@ if (clearCacheBtn) {
       tabs.forEach(t => chrome.tabs.sendMessage(t.id, { action: 'clear-cache' }, () => {}));
     });
     status.textContent = 'Cache cleared.';
+    updateCacheSize();
     setTimeout(() => {
       if (status.textContent === 'Cache cleared.') status.textContent = '';
     }, 2000);

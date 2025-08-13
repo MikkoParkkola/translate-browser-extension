@@ -128,6 +128,7 @@
       </div>
       <div class="main-actions">
         <button id="clearCache" title="Remove saved translations">Clear Cache</button>
+        <span id="cacheSize" style="font-size:0.875rem"></span>
         <label class="force-toggle"><input type="checkbox" id="force"> Force</label>
       </div>
 
@@ -210,6 +211,12 @@
 
           <label for="tokenBudget">Token budget</label>
           <input type="number" id="tokenBudget" placeholder="auto" title="Optional hard cap for total tokens used in this session.">
+
+          <label for="cacheSizeLimit">Cache entries</label>
+          <input type="number" id="cacheSizeLimit" title="Maximum number of cached translations">
+
+          <label for="cacheTTL">Cache TTL (days)</label>
+          <input type="number" id="cacheTTL" title="Days before cached translations expire">
 
           <label><input type="checkbox" id="smartThrottle" checked title="Enable intelligent adaptive throttling"> Intelligent throttling</label>
 
