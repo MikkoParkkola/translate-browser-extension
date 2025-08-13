@@ -10,6 +10,7 @@
   if (typeof window === 'undefined') {
     ({ approxTokens, getUsage } = require('./throttle'));
     ({ cacheReady, getCache, setCache, removeCache } = require('./cache'));
+    require('./transport');
     ({ qwenTranslate } = require('./translator'));
   } else {
     if (window.qwenThrottle) {
@@ -32,6 +33,7 @@
     } else if (typeof self !== 'undefined' && self.qwenTranslate) {
       qwenTranslate = self.qwenTranslate;
     } else if (typeof require !== 'undefined') {
+      require('./transport');
       ({ qwenTranslate } = require('./translator'));
     }
   }
