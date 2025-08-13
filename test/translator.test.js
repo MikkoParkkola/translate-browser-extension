@@ -278,3 +278,25 @@ test('retries after 429 with backoff', async () => {
   expect(Date.now() - start).toBeGreaterThanOrEqual(1000);
   jest.useRealTimers();
 });
+
+test('advanced mode falls back to plus model after 429', async () => {
+  fetch
+    .mockResponseOnce(
+      JSON.stringify({ message: 'slow' }),
+      { status: 429 }
+    )
+    .mockResponseOnce(JSON.stringify({ output: { text: 'hi' } }));
+  const res = await translate({
+    endpoint: 'https://e/',
+    apiKey: 'k',
+    models: ['qwen-mt-turbo', 'qwen-mt-plus'],
+    text: 'hola',
+    source: 'es',
+    target: 'en',
+  });
+  expect(res.text).toBe('hi');
+  const first = JSON.parse(fetch.mock.calls[0][1].body);
+  const second = JSON.parse(fetch.mock.calls[1][1].body);
+  expect(first.model).toBe('qwen-mt-turbo');
+  expect(second.model).toBe('qwen-mt-plus');
+});
