@@ -3,6 +3,7 @@ const apiKeyInput = document.getElementById('apiKey');
 const endpointInput = document.getElementById('apiEndpoint');
 const modelInput = document.getElementById('model');
 const providerSelect = document.getElementById('provider');
+const providerOrderInput = document.getElementById('providerOrder');
 const sourceSelect = document.getElementById('source');
 const targetSelect = document.getElementById('target');
 const reqLimitInput = document.getElementById('requestLimit');
@@ -69,11 +70,16 @@ function saveConfig() {
     }
     const model = modelInput.value.trim() || 'qwen-mt-turbo';
     const provider = providerSelect.value;
+    const providerOrder = providerOrderInput.value
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
     const cfg = {
       apiKey: apiKeyInput.value.trim(),
       apiEndpoint: endpointInput.value.trim(),
       model,
       provider,
+      providerOrder: providerOrder.length ? providerOrder : [provider],
       sourceLanguage: sourceSelect.value,
       targetLanguage: targetSelect.value,
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
@@ -89,6 +95,9 @@ function saveConfig() {
     };
     if (window.qwenSetCacheLimit) window.qwenSetCacheLimit(cfg.cacheMaxEntries);
     if (window.qwenSetCacheTTL) window.qwenSetCacheTTL(cfg.cacheTTL);
+    if (window.qwenProviders && window.qwenProviders.setProviderOrder) {
+      window.qwenProviders.setProviderOrder(cfg.providerOrder);
+    }
     window.qwenSaveConfig(cfg).then(() => {
       status.textContent = 'Settings saved.';
       updateView(cfg); // Re-check the view after saving
@@ -262,6 +271,7 @@ window.qwenLoadConfig().then(cfg => {
   endpointInput.value = cfg.apiEndpoint || '';
   modelInput.value = cfg.model || '';
   providerSelect.value = cfg.provider || 'qwen';
+  providerOrderInput.value = (cfg.providerOrder || []).join(', ');
   sourceSelect.value = cfg.sourceLanguage;
   targetSelect.value = cfg.targetLanguage;
   reqLimitInput.value = cfg.requestLimit;
@@ -283,6 +293,9 @@ window.qwenLoadConfig().then(cfg => {
 
   updateView(cfg);
   updateProviderFields();
+  if (window.qwenProviders && window.qwenProviders.setProviderOrder) {
+    window.qwenProviders.setProviderOrder(cfg.providerOrder || [cfg.provider || 'qwen']);
+  }
 
   // Add event listeners for auto-saving and syncing
   const allInputs = [
@@ -307,6 +320,7 @@ window.qwenLoadConfig().then(cfg => {
 
   providerSelect.addEventListener('change', updateProviderFields);
   setupProviderInput.addEventListener('change', updateProviderFields);
+  providerOrderInput.addEventListener('input', saveConfig);
 
   updateThrottleInputs();
   [reqLimitInput, tokenLimitInput, tokenBudgetInput, tokensPerReqInput, retryDelayInput, cacheLimitInput, cacheTTLInput].forEach(el => el.addEventListener('input', saveConfig));

@@ -11,6 +11,7 @@ const defaultCfg = {
   targetLanguage: 'en',
   autoTranslate: false,
   provider: 'qwen',
+  providerOrder: ['qwen'],
   requestLimit: 60,
   tokenLimit: modelTokenLimits['qwen-mt-turbo'],
   tokenBudget: 0,
