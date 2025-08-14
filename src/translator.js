@@ -23,6 +23,16 @@ if (typeof window === 'undefined') {
   }
 }
 
+let logger = console;
+try {
+  if (typeof self !== 'undefined' && typeof window === 'undefined' && self.qwenLogger) {
+    logger = self.qwenLogger.create('translator');
+  } else if (typeof window !== 'undefined' && window.qwenLogger) {
+    logger = window.qwenLogger.create('translator');
+  } else if (typeof require !== 'undefined') {
+    try { logger = require('./lib/logger').create('translator'); } catch {}
+  }
+} catch {}
 const cache = new Map();
 
 function makeDelimiter() {
@@ -270,7 +280,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     }
     return data;
   } catch (e) {
-    console.error('QTERROR: translation request failed', e);
+    logger.error('translation request failed', e);
     throw e;
   }
 }
@@ -377,7 +387,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     }
     return data;
   } catch (e) {
-    console.error('QTERROR: translation request failed', e);
+    logger.error('translation request failed', e);
     throw e;
   }
 }

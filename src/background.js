@@ -1,7 +1,7 @@
-importScripts('throttle.js', 'translator.js', 'usageColor.js');
+importScripts('lib/logger.js', 'throttle.js', 'translator.js', 'usageColor.js');
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('Qwen Translator installed');
+  logger.info('Qwen Translator installed');
   chrome.contextMenus.create({
     id: 'qwen-translate-selection',
     title: 'Translate selection',
@@ -35,6 +35,7 @@ let throttleReady;
 let activeTranslations = 0;
 let translationStatus = { active: false };
 const inflight = new Map(); // requestId -> { controller, timeout, port }
+const logger = (self.qwenLogger && self.qwenLogger.create) ? self.qwenLogger.create('background') : console;
 
 async function updateIcon() {
   await ensureThrottle();
@@ -127,7 +128,7 @@ async function handleTranslate(opts) {
     if (debug) console.log('QTDEBUG: background translation completed');
     return result;
   } catch (err) {
-    console.error('QTERROR: background translation error', err);
+    logger.error('background translation error', err);
     return { error: err.message };
   } finally {
     clearTimeout(timeout);
@@ -192,7 +193,7 @@ chrome.runtime.onConnect.addListener(port => {
           try { port.postMessage({ requestId, result }); } catch {}
         }
       } catch (err) {
-        console.error('QTERROR: background port translation error', err);
+        logger.error('background port translation error', err);
         try { port.postMessage({ requestId, error: err.message }); } catch {}
       } finally {
         clearTimeout(timeout);
