@@ -87,7 +87,7 @@ function fetchViaXHR(url, { method = 'GET', headers = {}, body, signal }, debug)
         text: async () => xhr.responseText,
         headers: new Headers(),
       };
-      if (debug) console.log('QTDEBUG: XHR status', xhr.status);
+      if (debug) logger.debug('XHR status', xhr.status);
       resolve(resp);
     };
     xhr.onerror = () => reject(new Error('Network error'));
@@ -102,8 +102,8 @@ function withSlash(url) {
 async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true }) {
   const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
   if (debug) {
-    console.log('QTDEBUG: sending translation request to', url);
-    console.log('QTDEBUG: request params', { model, source, target, text });
+    logger.debug('sending translation request to', url);
+    logger.debug('request params', { model, source, target, text });
   }
   const body = {
     model,
@@ -112,7 +112,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       translation_options: { source_lang: source, target_lang: target },
     },
   };
-  if (debug) console.log('QTDEBUG: request body', body);
+  if (debug) logger.debug('request body', body);
   const key = (apiKey || '').trim();
   const headers = { 'Content-Type': 'application/json' };
   if (key) headers.Authorization = /^bearer\s/i.test(key) ? key : `Bearer ${key}`;
@@ -126,12 +126,12 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       signal,
     });
     if (debug) {
-      console.log('QTDEBUG: response status', resp.status);
-      console.log('QTDEBUG: response headers', Object.fromEntries(resp.headers.entries()));
+      logger.debug('response status', resp.status);
+      logger.debug('response headers', Object.fromEntries(resp.headers.entries()));
     }
   } catch (e) {
     if (!stream && typeof XMLHttpRequest !== 'undefined') {
-      if (debug) console.log('QTDEBUG: fetch failed, falling back to XHR');
+      if (debug) logger.debug('fetch failed, falling back to XHR');
       resp = await fetchViaXHR(
         url,
         {
@@ -152,7 +152,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
         .json()
         .catch(() => ({ message: resp.statusText }));
       const error = new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
-      if (debug) console.log('QTDEBUG: HTTP error response', error.message);
+      if (debug) logger.debug('HTTP error response', error.message);
       if (resp.status >= 500 || resp.status === 429) {
         error.retryable = true;
         const ra = resp.headers.get('retry-after');
@@ -165,7 +165,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       throw error;
     }
   if (!stream || !resp.body || typeof resp.body.getReader !== 'function') {
-    if (debug) console.log('QTDEBUG: received non-streaming response');
+    if (debug) logger.debug('received non-streaming response');
     const data = await resp.json();
     const text =
       data.output?.text ||
@@ -176,7 +176,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
     return { text };
   }
 
-  if (debug) console.log('QTDEBUG: reading streaming response');
+  if (debug) logger.debug('reading streaming response');
 
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
@@ -192,7 +192,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       const trimmed = line.trim();
       if (!trimmed.startsWith('data:')) continue;
       const data = trimmed.slice(5).trim();
-      if (debug) console.log('QTDEBUG: raw line', data);
+      if (debug) logger.debug('raw line', data);
       if (data === '[DONE]') {
         reader.cancel();
         break;
@@ -204,7 +204,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
           obj.output?.choices?.[0]?.message?.content || '';
         result += chunk;
         if (onData && chunk) onData(chunk);
-        if (debug && chunk) console.log('QTDEBUG: chunk received', chunk);
+        if (debug && chunk) logger.debug('chunk received', chunk);
       } catch {}
     }
   }
@@ -213,7 +213,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
 
 async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false }) {
   if (debug) {
-    console.log('QTDEBUG: qwenTranslate called with', {
+    logger.debug('qwenTranslate called with', {
       endpoint,
       apiKeySet: Boolean(apiKey),
       model,
@@ -259,8 +259,8 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     cache.set(cacheKey, data);
     if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
-      console.log('QTDEBUG: translation successful');
-      console.log('QTDEBUG: final text', data.text);
+      logger.debug('translation successful');
+      logger.debug('final text', data.text);
     }
     return data;
   } catch (e) {
@@ -271,7 +271,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
 
 async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false }, onData) {
   if (debug) {
-    console.log('QTDEBUG: qwenTranslateStream called with', {
+    logger.debug('qwenTranslateStream called with', {
       endpoint,
       apiKeySet: Boolean(apiKey),
       model,
@@ -307,8 +307,8 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     cache.set(cacheKey, data);
     if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
-      console.log('QTDEBUG: translation successful');
-      console.log('QTDEBUG: final text', data.text);
+      logger.debug('translation successful');
+      logger.debug('final text', data.text);
     }
     return data;
   } catch (e) {

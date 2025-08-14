@@ -22,6 +22,69 @@
     });
     return dbPromise;
   }
+  const DEFAULT_MAX = 5000;
+  const DEFAULT_TTL_MS = 0; // 0 = no TTL expiry
+  function getMax() {
+    try { return (root.qwenConfig && root.qwenConfig.tmMaxEntries) || DEFAULT_MAX; } catch {}
+    try { return parseInt(process.env.QWEN_TM_MAX, 10) || DEFAULT_MAX; } catch {}
+    return DEFAULT_MAX;
+  }
+  function getTTL() {
+    try { return (root.qwenConfig && root.qwenConfig.tmTTLms) || DEFAULT_TTL_MS; } catch {}
+    try { return parseInt(process.env.QWEN_TM_TTL, 10) || DEFAULT_TTL_MS; } catch {}
+    return DEFAULT_TTL_MS;
+  }
+  async function count(db) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('entries', 'readonly');
+      const store = tx.objectStore('entries');
+      const req = store.count();
+      req.onsuccess = () => resolve(req.result || 0);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function pruneDb(db) {
+    if (!db) return;
+    const ttl = getTTL();
+    const now = Date.now();
+    if (ttl > 0) {
+      await new Promise((resolve) => {
+        const tx = db.transaction('entries', 'readwrite');
+        const idx = tx.objectStore('entries').index('ts');
+        const until = now - ttl;
+        const req = idx.openCursor();
+        req.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (!cursor) { resolve(); return; }
+          if (cursor.value.ts <= until) {
+            cursor.delete();
+            cursor.continue();
+          } else {
+            resolve();
+          }
+        };
+        req.onerror = () => resolve();
+      });
+    }
+    const max = getMax();
+    let total = await count(db).catch(() => 0);
+    if (total <= max) return;
+    const toDelete = total - max;
+    await new Promise((resolve) => {
+      let removed = 0;
+      const tx = db.transaction('entries', 'readwrite');
+      const idx = tx.objectStore('entries').index('ts');
+      const req = idx.openCursor();
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (!cursor || removed >= toDelete) { resolve(); return; }
+        cursor.delete();
+        removed++;
+        cursor.continue();
+      };
+      req.onerror = () => resolve();
+    });
+  }
   async function get(k) {
     if (!hasIDB) return null;
     const db = await openDb();
@@ -30,7 +93,16 @@
       const tx = db.transaction('entries', 'readonly');
       const store = tx.objectStore('entries');
       const r = store.get(k);
-      r.onsuccess = () => resolve(r.result || null);
+      r.onsuccess = () => {
+        const val = r.result || null;
+        if (val) {
+          try {
+            const tx2 = db.transaction('entries', 'readwrite');
+            tx2.objectStore('entries').put({ ...val, ts: Date.now() });
+          } catch {}
+        }
+        resolve(val);
+      };
       r.onerror = () => reject(r.error);
     });
   }
@@ -42,7 +114,10 @@
       const tx = db.transaction('entries', 'readwrite');
       const store = tx.objectStore('entries');
       const r = store.put({ k, text, ts: Date.now() });
-      r.onsuccess = () => resolve();
+      r.onsuccess = () => {
+        resolve();
+        try { pruneDb(db); } catch {}
+      };
       r.onerror = () => reject(r.error);
     }).catch(() => {});
   }

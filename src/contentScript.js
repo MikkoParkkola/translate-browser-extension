@@ -13,6 +13,7 @@ let statusTimer;
 const pending = new Set();
 let flushTimer;
 let progress = { total: 0, done: 0 };
+let started = false;
 
 function replacePdfEmbeds() {
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
@@ -332,6 +333,8 @@ function observe(root = document.body) {
 }
 
 async function start() {
+  if (started) return;
+  started = true;
   currentConfig = await window.qwenLoadConfig();
   progress = { total: 0, done: 0 };
   if (window.qwenSetTokenBudget) {

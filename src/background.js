@@ -180,7 +180,7 @@ function ensureThrottle() {
 async function handleTranslate(opts) {
   const { endpoint, apiKey, model, text, source, target, debug } = opts;
   const ep = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
-  if (debug) console.log('QTDEBUG: background translating via', ep);
+  if (debug) logger.debug('background translating via', ep);
 
   await ensureThrottle();
 
@@ -201,7 +201,7 @@ async function handleTranslate(opts) {
       signal: controller.signal,
       stream: false,
     });
-    if (debug) console.log('QTDEBUG: background translation completed');
+    if (debug) logger.debug('background translation completed');
     return result;
   } catch (err) {
     logger.error('background translation error', err);
@@ -221,7 +221,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg.action === 'ping') {
-    if (msg.debug) console.log('QTDEBUG: ping received');
+    if (msg.debug) logger.debug('ping received');
     sendResponse({ ok: true });
     return true;
   }
