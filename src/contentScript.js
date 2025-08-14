@@ -441,4 +441,4 @@ if (typeof module !== 'undefined') {
     },
   };
 }
-}
+} // end init guard
