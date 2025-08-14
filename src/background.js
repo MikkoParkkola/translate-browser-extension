@@ -1,5 +1,54 @@
 importScripts('lib/logger.js', 'throttle.js', 'translator.js', 'usageColor.js');
 
+const logger = (self.qwenLogger && self.qwenLogger.create)
+  ? self.qwenLogger.create('background')
+  : console;
+
+function urlEligible(u) {
+  try { const x = new URL(u); return x.protocol === 'http:' || x.protocol === 'https:' || x.protocol === 'file:'; }
+  catch { return false; }
+}
+function originPattern(u) {
+  try {
+    const x = new URL(u);
+    if (x.protocol === 'file:') return 'file:///*';
+    return `${x.protocol}//${x.host}/*`;
+  } catch { return null; }
+}
+function hasOriginPermission(pattern) {
+  return new Promise(resolve => chrome.permissions.contains({ origins: [pattern] }, g => resolve(!!g)));
+}
+function requestOriginPermission(pattern) {
+  return new Promise(resolve => chrome.permissions.request({ origins: [pattern] }, g => resolve(!!g)));
+}
+async function injectContentScripts(tabId) {
+  await chrome.scripting.executeScript({
+    target: { tabId, allFrames: true },
+    files: ['lib/logger.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
+  });
+}
+async function ensureInjected(tabId) {
+  const present = await new Promise(res => {
+    try { chrome.tabs.sendMessage(tabId, { action: 'test-read' }, r => res(!!(r && r.title))); }
+    catch { res(false); }
+  });
+  if (!present) await injectContentScripts(tabId);
+}
+async function ensureInjectedAndStart(tabId) {
+  await ensureInjected(tabId);
+  try { chrome.tabs.sendMessage(tabId, { action: 'start' }); } catch {}
+}
+async function maybeAutoInject(tabId, url) {
+  if (!urlEligible(url)) return;
+  const pattern = originPattern(url);
+  if (!pattern) return;
+  const cfg = await new Promise(r => chrome.storage.sync.get({ autoTranslate: false }, r));
+  if (!cfg.autoTranslate) return;
+  const has = await hasOriginPermission(pattern);
+  if (!has) return;
+  await ensureInjectedAndStart(tabId);
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   logger.info('Qwen Translator installed');
   chrome.contextMenus.create({
@@ -7,11 +56,39 @@ chrome.runtime.onInstalled.addListener(() => {
     title: 'Translate selection',
     contexts: ['selection'],
   });
+  chrome.contextMenus.create({
+    id: 'qwen-translate-page',
+    title: 'Translate page',
+    contexts: ['page'],
+  });
+  chrome.contextMenus.create({
+    id: 'qwen-enable-site',
+    title: 'Enable auto-translate on this site',
+    contexts: ['page'],
+  });
 });
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === 'qwen-translate-selection' && tab && tab.id) {
-    chrome.tabs.sendMessage(tab.id, { action: 'translate-selection' });
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (!tab || !tab.id) return;
+  const tabId = tab.id;
+  if (info.menuItemId === 'qwen-translate-selection') {
+    await ensureInjected(tabId);
+    try { chrome.tabs.sendMessage(tabId, { action: 'translate-selection' }); } catch {}
+    return;
+  }
+  if (info.menuItemId === 'qwen-translate-page') {
+    await ensureInjectedAndStart(tabId);
+    return;
+  }
+  if (info.menuItemId === 'qwen-enable-site') {
+    if (!tab.url || !urlEligible(tab.url)) return;
+    const pattern = originPattern(tab.url);
+    if (!pattern) return;
+    const granted = await requestOriginPermission(pattern);
+    if (granted) {
+      chrome.storage.sync.set({ autoTranslate: true }, () => {});
+      await ensureInjectedAndStart(tabId);
+    }
   }
 });
 
@@ -35,7 +112,6 @@ let throttleReady;
 let activeTranslations = 0;
 let translationStatus = { active: false };
 const inflight = new Map(); // requestId -> { controller, timeout, port }
-const logger = (self.qwenLogger && self.qwenLogger.create) ? self.qwenLogger.create('background') : console;
 
 async function updateIcon() {
   await ensureThrottle();
@@ -219,4 +295,10 @@ chrome.runtime.onConnect.addListener(port => {
       }
     }
   });
+});
+
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+  if (info.status === 'complete' && tab && tab.url) {
+    maybeAutoInject(tabId, tab.url);
+  }
 });

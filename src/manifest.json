@@ -8,12 +8,13 @@
     "activeTab",
     "tabs",
     "scripting",
-    "webRequest",
     "contextMenus"
   ],
   "host_permissions": [
+    "https://dashscope-intl.aliyuncs.com/*"
+  ],
+  "optional_host_permissions": [
     "<all_urls>",
-    "https://dashscope-intl.aliyuncs.com/*",
     "file:///*"
   ],
   "background": {
@@ -39,14 +40,6 @@
         "wasm/vendor/*", "wasm/vendor/fonts/*", "config.local.js", "qa/compare.html"
       ],
       "matches": ["<all_urls>"]
-    }
-  ],
-  "content_scripts": [
-    {
-      "matches": ["http://*/*", "https://*/*", "file:///*"],
-      "js": ["config.js", "throttle.js", "translator.js", "contentScript.js"],
-      "run_at": "document_idle",
-      "all_frames": true
     }
   ]
 }

@@ -1,4 +1,6 @@
 if (!location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'))) {
+if (window.__qwenCSLoaded) { /* already initialized */ }
+else { window.__qwenCSLoaded = true;
 let observers = [];
 let currentConfig;
 const batchQueue = [];
