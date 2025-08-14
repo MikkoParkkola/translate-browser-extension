@@ -53,6 +53,17 @@ try {
   }
 } catch {}
 
+let Providers = null;
+try {
+  if (typeof window !== 'undefined' && window.qwenProviders) {
+    Providers = window.qwenProviders;
+  } else if (typeof self !== 'undefined' && typeof window === 'undefined' && self.qwenProviders) {
+    Providers = self.qwenProviders;
+  } else if (typeof require !== 'undefined') {
+    try { Providers = require('./lib/providers'); } catch {}
+  }
+} catch {}
+
 let TM = null;
 try {
   if (typeof window !== 'undefined' && window.qwenTM) {
@@ -97,6 +108,23 @@ function fetchViaXHR(url, { method = 'GET', headers = {}, body, signal }, debug)
 
 function withSlash(url) {
   return url.endsWith('/') ? url : `${url}/`;
+}
+
+function chooseProvider(opts) {
+  if (Providers && typeof Providers.choose === 'function') return Providers.choose(opts);
+  const ep = String(opts && opts.endpoint || '').toLowerCase();
+  return ep.includes('dashscope') ? 'dashscope' : 'dashscope';
+}
+async function providerTranslate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true, provider }) {
+  const id = provider || chooseProvider({ endpoint, model });
+  if (id && id !== 'dashscope' && Providers && typeof Providers.get === 'function') {
+    const impl = Providers.get(id);
+    if (impl && typeof impl.translate === 'function') {
+      return impl.translate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream });
+    }
+  }
+  // default: DashScope via internal doFetch
+  return doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream });
 }
 
 async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true }) {
@@ -211,7 +239,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
   return { text: result };
 }
 
-async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false }) {
+async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, provider }) {
   if (debug) {
     logger.debug('qwenTranslate called with', {
       endpoint,
@@ -242,7 +270,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     if (!noProxy && messaging && typeof chrome !== 'undefined' && chrome.runtime) {
       const result = await messaging.requestViaBackground({
         endpoint: withSlash(endpoint),
-        apiKey, model, text, source, target, debug, stream: false, signal
+        apiKey, model, text, source, target, debug, stream: false, signal, provider
       });
       cache.set(cacheKey, result);
       if (TM && TM.set && result && typeof result.text === 'string') { try { TM.set(cacheKey, result.text); } catch {} }
@@ -251,7 +279,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
 
   try {
     const data = await runWithRetry(
-      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, stream }),
+      () => providerTranslate({ endpoint, apiKey, model, text, source, target, signal, debug, stream, provider }),
       approxTokens(text),
       3,
       debug
@@ -269,7 +297,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   }
 }
 
-async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false }, onData) {
+async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, provider }, onData) {
   if (debug) {
     logger.debug('qwenTranslateStream called with', {
       endpoint,
@@ -290,7 +318,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     if (!noProxy && messaging && typeof chrome !== 'undefined' && chrome.runtime) {
       const data = await messaging.requestViaBackground({
         endpoint: withSlash(endpoint),
-        apiKey, model, text, source, target, debug, stream: true, signal, onData
+        apiKey, model, text, source, target, debug, stream: true, signal, onData, provider
       });
       cache.set(cacheKey, data);
       if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
@@ -299,7 +327,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
 
   try {
     const data = await runWithRetry(
-      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
+      () => providerTranslate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream, provider }),
       approxTokens(text),
       3,
       debug

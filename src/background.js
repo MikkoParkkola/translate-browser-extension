@@ -1,4 +1,4 @@
-importScripts('lib/logger.js', 'lib/tm.js', 'throttle.js', 'translator.js', 'usageColor.js');
+importScripts('lib/logger.js', 'lib/providers.js', 'lib/tm.js', 'throttle.js', 'translator.js', 'usageColor.js');
 
 const logger = (self.qwenLogger && self.qwenLogger.create)
   ? self.qwenLogger.create('background')

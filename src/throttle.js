@@ -1,6 +1,8 @@
 ;(function (root) {
   if (root.qwenThrottle) return
 
+  const tLogger = (root.qwenLogger && root.qwenLogger.create) ? root.qwenLogger.create('throttle') : console;
+
   const queue = []
   let config = {
     requestLimit: 60,
@@ -96,14 +98,14 @@ async function runWithRetry(fn, text, attempts = 6, debug = false) {
   let wait = 500;
   for (let i = 0; i < attempts; i++) {
     try {
-      if (debug) console.log('QTDEBUG: attempt', i + 1);
+      if (debug) tLogger.debug('attempt', i + 1);
       return await runWithRateLimit(fn, tokens);
     } catch (err) {
       if (!err.retryable || i === attempts - 1) throw err;
       const base = err.retryAfter || wait;
       const jitter = 0.9 + Math.random() * 0.2; // +/-10%
       const delayMs = Math.round(base * jitter);
-      if (debug) console.log('QTDEBUG: retrying after error', err.message, 'in', delayMs, 'ms');
+      if (debug) tLogger.debug('retrying after error', err.message, 'in', delayMs, 'ms');
       await delay(delayMs);
       wait = Math.min(base * 2, 60000);
     }
