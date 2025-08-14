@@ -4,6 +4,7 @@ if (location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'))) {
 }
 if (window.__qwenCSLoaded) { /* already initialized */ return; }
 window.__qwenCSLoaded = true;
+const logger = (window.qwenLogger && window.qwenLogger.create) ? window.qwenLogger.create('content') : console;
 let observers = [];
 let currentConfig;
 const batchQueue = [];
@@ -118,7 +119,7 @@ async function translateNode(node) {
   const text = original.trim();
   if (!text) return;
   try {
-    if (currentConfig.debug) console.log('QTDEBUG: translating node', text.slice(0, 20));
+    if (currentConfig.debug) logger.debug('QTDEBUG: translating node', text.slice(0, 20));
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     const { text: translated } = await window.qwenTranslate({
@@ -133,16 +134,16 @@ async function translateNode(node) {
     });
     clearTimeout(timeout);
     if (currentConfig.debug) {
-      console.log('QTDEBUG: node translation result', { original: text.slice(0, 50), translated: translated.slice(0, 50) });
+      logger.debug('QTDEBUG: node translation result', { original: text.slice(0, 50), translated: translated.slice(0, 50) });
       if (translated.trim().toLowerCase() === text.trim().toLowerCase()) {
-        console.warn('QTWARN: translated text is identical to source; check language configuration');
+        logger.warn('QTWARN: translated text is identical to source; check language configuration');
       }
     }
     node.textContent = leading + translated + trailing;
     mark(node);
   } catch (e) {
     showError(`${e.message}. See console for details.`);
-    console.error('QTERROR: translation error', e);
+    logger.error('QTERROR: translation error', e);
   }
 }
 
@@ -179,7 +180,7 @@ async function translateBatch(elements, stats) {
     const leading = orig.match(/^\s*/)[0];
     const trailing = orig.match(/\s*$/)[0];
     if (currentConfig.debug) {
-      console.log('QTDEBUG: node translation result', { original: texts[i].slice(0, 50), translated: t.slice(0, 50) });
+      logger.debug('QTDEBUG: node translation result', { original: texts[i].slice(0, 50), translated: t.slice(0, 50) });
     }
     if (t.trim().toLowerCase() === texts[i].trim().toLowerCase()) {
       markUntranslatable(el);
@@ -337,10 +338,10 @@ async function start() {
     window.qwenSetTokenBudget(currentConfig.tokenBudget || 0);
   }
   if (!currentConfig.apiKey) {
-    console.warn('QTWARN: API key not configured.');
+    logger.warn('QTWARN: API key not configured.');
     return;
   }
-  if (currentConfig.debug) console.log('QTDEBUG: starting automatic translation');
+  if (currentConfig.debug) logger.debug('QTDEBUG: starting automatic translation');
   setStatus('Scanning page...');
   const nodes = [];
   collectNodes(document.body, nodes);
@@ -364,7 +365,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     el.id = 'qwen-test-element';
     el.textContent = original;
     document.body.appendChild(el);
-    if (cfg.debug) console.log('QTDEBUG: test-e2e request received');
+    if (cfg.debug) logger.debug('QTDEBUG: test-e2e request received');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
     window
@@ -381,12 +382,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       })
       .then(res => {
         clearTimeout(timer);
-        if (cfg.debug) console.log('QTDEBUG: test-e2e translation result', res);
+        if (cfg.debug) logger.debug('QTDEBUG: test-e2e translation result', res);
         if (!res || typeof res.text !== 'string') {
           throw new Error('invalid response');
         }
         el.textContent = res.text;
-        if (cfg.debug) console.log('QTDEBUG: test-e2e sending response');
+        if (cfg.debug) logger.debug('QTDEBUG: test-e2e sending response');
         sendResponse({ text: res.text });
         setTimeout(() => el.remove(), 1000);
       })
