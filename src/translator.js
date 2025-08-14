@@ -53,6 +53,17 @@ try {
   }
 } catch {}
 
+let TM = null;
+try {
+  if (typeof window !== 'undefined' && window.qwenTM) {
+    TM = window.qwenTM;
+  } else if (typeof self !== 'undefined' && typeof window === 'undefined' && self.qwenTM) {
+    TM = self.qwenTM;
+  } else if (typeof require !== 'undefined') {
+    try { TM = require('./lib/tm'); } catch {}
+  }
+} catch {}
+
 function fetchViaXHR(url, { method = 'GET', headers = {}, body, signal }, debug) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -216,12 +227,25 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     return cache.get(cacheKey);
   }
 
+  // Persistent TM lookup
+  if (TM && TM.get) {
+    try {
+      const hit = await TM.get(cacheKey);
+      if (hit && typeof hit.text === 'string') {
+        const val = { text: hit.text };
+        cache.set(cacheKey, val);
+        return val;
+      }
+    } catch {}
+  }
+
     if (!noProxy && messaging && typeof chrome !== 'undefined' && chrome.runtime) {
       const result = await messaging.requestViaBackground({
         endpoint: withSlash(endpoint),
         apiKey, model, text, source, target, debug, stream: false, signal
       });
       cache.set(cacheKey, result);
+      if (TM && TM.set && result && typeof result.text === 'string') { try { TM.set(cacheKey, result.text); } catch {} }
       return result;
     }
 
@@ -233,6 +257,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
       debug
     );
     cache.set(cacheKey, data);
+    if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
       console.log('QTDEBUG: translation successful');
       console.log('QTDEBUG: final text', data.text);
@@ -268,6 +293,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
         apiKey, model, text, source, target, debug, stream: true, signal, onData
       });
       cache.set(cacheKey, data);
+      if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
       return data;
     }
 
@@ -279,6 +305,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
       debug
     );
     cache.set(cacheKey, data);
+    if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
       console.log('QTDEBUG: translation successful');
       console.log('QTDEBUG: final text', data.text);
@@ -437,6 +464,7 @@ async function batchOnce({
           m.result = out;
           const key = `${opts.source}:${opts.target}:${m.text}`;
           cache.set(key, { text: out });
+          if (TM && TM.set) { try { TM.set(key, out); } catch {} }
           stats.requests++;
           stats.tokens += approxTokens(m.text);
           stats.words += m.text.trim().split(/\s+/).filter(Boolean).length;
@@ -448,6 +476,7 @@ async function batchOnce({
       g[i].result = translated[i] || g[i].text;
       const key = `${opts.source}:${opts.target}:${g[i].text}`;
       cache.set(key, { text: g[i].result });
+      if (TM && TM.set) { try { TM.set(key, g[i].result); } catch {} }
     }
     const elapsedMs = Date.now() - stats.start;
     const avg = elapsedMs / stats.requests;
@@ -490,6 +519,7 @@ async function batchOnce({
       results[retryIdx[i]] = retr.texts[i];
       const key = `${opts.source}:${opts.target}:${retryTexts[i]}`;
       cache.set(key, { text: retr.texts[i] });
+      if (TM && TM.set) { try { TM.set(key, retr.texts[i]); } catch {} }
     }
   }
 

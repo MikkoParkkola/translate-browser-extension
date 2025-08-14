@@ -1,4 +1,4 @@
-importScripts('lib/logger.js', 'throttle.js', 'translator.js', 'usageColor.js');
+importScripts('lib/logger.js', 'lib/tm.js', 'throttle.js', 'translator.js', 'usageColor.js');
 
 const logger = (self.qwenLogger && self.qwenLogger.create)
   ? self.qwenLogger.create('background')
@@ -24,7 +24,7 @@ function requestOriginPermission(pattern) {
 async function injectContentScripts(tabId) {
   await chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
-    files: ['lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
+    files: ['lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/tm.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
   });
 }
 async function ensureInjected(tabId) {

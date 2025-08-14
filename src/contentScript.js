@@ -229,7 +229,7 @@ async function processQueue() {
       await translateBatch(batch, stats);
     } catch (e) {
       showError(`${e.message}. See console for details.`);
-      console.error('QTERROR: batch translation error', e);
+      logger.error('QTERROR: batch translation error', e);
       batchQueue.push(batch);
       await new Promise(r => setTimeout(r, 1000));
     }
@@ -352,7 +352,7 @@ async function start() {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'start') {
-    if (currentConfig && currentConfig.debug) console.log('QTDEBUG: start message received');
+    if (currentConfig && currentConfig.debug) logger.debug('QTDEBUG: start message received');
     start();
   }
   if (msg.action === 'test-read') {
