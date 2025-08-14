@@ -185,7 +185,7 @@ async function translateBatch(elements, stats) {
     if (t.trim().toLowerCase() === texts[i].trim().toLowerCase()) {
       markUntranslatable(el);
       if (currentConfig.debug) {
-        console.warn('QTWARN: translated text is identical to source; marking as untranslatable');
+        logger.warn('QTWARN: translated text is identical to source; marking as untranslatable');
       }
     } else {
       el.textContent = leading + t + trailing;
@@ -393,7 +393,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       })
       .catch(err => {
         clearTimeout(timer);
-        if (cfg.debug) console.log('QTDEBUG: test-e2e sending error', err);
+        if (cfg.debug) logger.debug('QTDEBUG: test-e2e sending error', err);
         el.remove();
         sendResponse({ error: err.message, stack: err.stack });
       });
