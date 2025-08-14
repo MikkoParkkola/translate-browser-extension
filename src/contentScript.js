@@ -1,6 +1,9 @@
-if (!location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'))) {
-if (window.__qwenCSLoaded) { /* already initialized */ }
-else { window.__qwenCSLoaded = true;
+if (location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'))) {
+  // PDF viewer; do not initialize
+  return;
+}
+if (window.__qwenCSLoaded) { /* already initialized */ return; }
+window.__qwenCSLoaded = true;
 let observers = [];
 let currentConfig;
 const batchQueue = [];
@@ -441,4 +444,3 @@ if (typeof module !== 'undefined') {
     },
   };
 }
-} // end init guard
