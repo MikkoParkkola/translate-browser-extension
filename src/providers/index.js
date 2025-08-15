@@ -7,6 +7,8 @@ const deepl = require('./deepl');
 Providers.register('deepl', deepl.basic);
 Providers.register('deepl-free', deepl.free);
 Providers.register('deepl-pro', deepl.pro);
+const openrouter = require('./openrouter');
+Providers.register('openrouter', { ...openrouter, label: 'OpenRouter' });
 
 function registerProvider(name, provider) { Providers.register(name, provider); }
 function getProvider(name) { return Providers.get(name); }

@@ -16,6 +16,7 @@
   let totalRequests = 0
   let totalTokens = 0
   let processing = false
+  let cooldown = false
   let interval = setInterval(() => {
     availableRequests = config.requestLimit
     availableTokens = config.tokenLimit
@@ -53,35 +54,47 @@ function prune(now = Date.now()) {
 }
 
   function processQueue() {
-    if (processing) return;
+    if (processing || cooldown) return;
+    if (!queue.length) return;
+    if (availableRequests <= 0 || availableTokens < queue[0].tokens) return;
     processing = true;
     const interval = Math.ceil(config.windowMs / config.requestLimit);
-    const step = () => {
-      if (!queue.length || availableRequests <= 0 || availableTokens < queue[0].tokens) {
-        processing = false;
-        return;
-      }
-      const item = queue.shift();
-      availableRequests--;
-      availableTokens -= item.tokens;
-      recordUsage(item.tokens);
-      item.fn().then(item.resolve, item.reject);
-      if (queue.length) {
-        setTimeout(step, interval);
-      } else {
-        processing = false;
-      }
-    };
-    step();
+    const item = queue.shift();
+    availableRequests--;
+    availableTokens -= item.tokens;
+    recordUsage(item.tokens);
+    item.fn().then(item.resolve, item.reject);
+    processing = false;
+    cooldown = true;
+    setTimeout(() => {
+      cooldown = false;
+      processQueue();
+    }, interval);
   }
 
-  function runWithRateLimit(fn, text) {
-  const tokens = typeof text === 'number' ? text : approxTokens(text || '');
-  return new Promise((resolve, reject) => {
-    queue.push({ fn, tokens, resolve, reject });
-    processQueue();
-  });
-}
+  function runWithRateLimit(fn, text, opts = {}) {
+    const tokens = typeof text === 'number' ? text : approxTokens(text || '');
+    return new Promise((resolve, reject) => {
+      if (
+        opts.immediate &&
+        !cooldown &&
+        availableRequests > 0 &&
+        availableTokens >= tokens
+      ) {
+        availableRequests--;
+        availableTokens -= tokens;
+        recordUsage(tokens);
+        try {
+          Promise.resolve(fn()).then(resolve, reject);
+        } catch (e) {
+          reject(e);
+        }
+        return;
+      }
+      queue.push({ fn, tokens, resolve, reject });
+      processQueue();
+    });
+  }
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -93,7 +106,7 @@ async function runWithRetry(fn, text, attempts = 6, debug = false) {
   for (let i = 0; i < attempts; i++) {
     try {
       if (debug) tLogger.debug('attempt', i + 1);
-      return await runWithRateLimit(fn, tokens);
+      return await runWithRateLimit(fn, tokens, { immediate: true });
     } catch (err) {
       if (!err.retryable || i === attempts - 1) throw err;
       const base = err.retryAfter || wait;
@@ -132,6 +145,8 @@ function reset() {
   totalTokens = 0;
   availableRequests = config.requestLimit;
   availableTokens = config.tokenLimit;
+  processing = false;
+  cooldown = false;
 }
 
   if (typeof window !== 'undefined') {
