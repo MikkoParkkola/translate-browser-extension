@@ -21,18 +21,21 @@
       --body-width: 380px;
     }
 
+    html {
+      height: 100%;
+      background: var(--bg-color) url('styles/popup-bg.svg') center/cover fixed no-repeat;
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       width: var(--body-width);
       padding: 1rem;
       margin: 0;
-      background: var(--bg-color) url('styles/popup-bg.svg') center/cover no-repeat;
-      background-attachment: local;
+      background: transparent;
       color: var(--text-color);
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
-      max-height: 580px;
       min-height: 100%;
       overflow-y: auto;
       position: relative;
@@ -78,7 +81,7 @@
     .usage-section { font-size: 0.75rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem 1rem; padding: 0.5rem; background: var(--secondary-bg); border-radius: 8px; }
     .usage-item { display: flex; flex-direction: column; }
     .bar { height: 6px; background: var(--bar-bg); border-radius: 3px; overflow: hidden; margin-top: 2px; }
-    .bar > div { height: 100%; width: 0%; transition: width 0.2s ease-in-out, background-color 0.2s ease-in-out; }
+      .bar > div { height: 100%; width: 0%; transition: width 0.2s ease-in-out, background-color 0.2s ease-in-out; }
     .form-group { display: flex; flex-direction: column; gap: 0.5rem; }
     .slider-group { display: flex; align-items: center; gap: 0.5rem; }
     .slider-group span { font-size: 0.75rem; }
@@ -92,9 +95,10 @@
     .grid-2 > * { min-width: 0; }
     summary { cursor: pointer; font-weight: 600; }
     #usageDetails { padding: 0.25rem 0.5rem; background: var(--secondary-bg); border-radius: 8px; }
-    #usageDetails summary { list-style: none; }
-    #usageDetails[open] .usage-section { animation: fadeIn 0.3s ease-in; }
-    @keyframes fadeIn {
+      #usageDetails summary { list-style: none; }
+      #usageDetails[open] .usage-section { animation: fadeIn 0.3s ease-in; }
+      #providerUsage { display: contents; }
+      @keyframes fadeIn {
       from { opacity: 0; transform: translateY(-4px); }
       to { opacity: 1; transform: translateY(0); }
     }
@@ -149,11 +153,12 @@
             <div class="bar"><div id="tokenBar"></div></div>
           </div>
           <div class="usage-item">Total Requests: <span id="totalReq">0</span></div>
-        <div class="usage-item">Total Tokens: <span id="totalTok">0</span></div>
-        <div class="usage-item">Queue: <span id="queueLen">0</span></div>
-      </div>
-      <div id="costSection"></div>
-    </details>
+          <div class="usage-item">Total Tokens: <span id="totalTok">0</span></div>
+          <div class="usage-item">Queue: <span id="queueLen">0</span></div>
+          <div id="providerUsage"></div>
+        </div>
+        <div id="costSection"></div>
+      </details>
 
     <details id="statsDetails" open class="panel-frame">
       <summary>Stats</summary>

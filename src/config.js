@@ -17,6 +17,10 @@ const defaultCfg = {
   autoOpenAfterSave: true,
   compact: false,
   theme: 'dark',
+  charLimit: 0,
+  strategy: 'balanced',
+  secondaryModel: '',
+  models: [],
   providers: {},
   providerOrder: [],
   failover: true,
@@ -37,9 +41,25 @@ function migrate(cfg = {}) {
   if (out.apiKey && !out.providers[provider].apiKey) out.providers[provider].apiKey = out.apiKey;
   if (out.apiEndpoint && !out.providers[provider].apiEndpoint) out.providers[provider].apiEndpoint = out.apiEndpoint;
   if (out.model && !out.providers[provider].model) out.providers[provider].model = out.model;
-  out.apiKey = out.providers[provider].apiKey || out.apiKey || '';
-  out.apiEndpoint = out.providers[provider].apiEndpoint || out.apiEndpoint || '';
-  out.model = out.providers[provider].model || out.model || '';
+  const p = out.providers[provider];
+  if (!p.requestLimit) p.requestLimit = out.requestLimit;
+  if (!p.tokenLimit) p.tokenLimit = out.tokenLimit;
+  if (!p.charLimit) p.charLimit = out.charLimit || 0;
+  if (!p.strategy) p.strategy = out.strategy || 'balanced';
+  if (!p.models) p.models = p.model ? [p.model] : [];
+  if (p.model === 'qwen-mt-turbo' && !p.models.includes('qwen-mt-plus')) p.models.push('qwen-mt-plus');
+  if (!p.secondaryModel) {
+    p.secondaryModel = p.model === 'qwen-mt-plus' ? 'qwen-mt-turbo' : 'qwen-mt-plus';
+  }
+  out.apiKey = p.apiKey || out.apiKey || '';
+  out.apiEndpoint = p.apiEndpoint || out.apiEndpoint || '';
+  out.model = p.model || out.model || '';
+  out.requestLimit = p.requestLimit || out.requestLimit;
+  out.tokenLimit = p.tokenLimit || out.tokenLimit;
+  out.charLimit = p.charLimit || out.charLimit;
+  out.strategy = p.strategy || out.strategy;
+  out.secondaryModel = p.secondaryModel || '';
+  out.models = p.models || [];
   if (!Array.isArray(out.providerOrder)) out.providerOrder = [];
   if (typeof out.failover !== 'boolean') out.failover = true;
   if (typeof out.parallel !== 'boolean') out.parallel = false;
@@ -76,6 +96,12 @@ function qwenSaveConfig(cfg) {
       apiKey: cfg.apiKey,
       apiEndpoint: cfg.apiEndpoint,
       model: cfg.model,
+      secondaryModel: cfg.secondaryModel,
+      models: cfg.models,
+      requestLimit: cfg.requestLimit,
+      tokenLimit: cfg.tokenLimit,
+      charLimit: cfg.charLimit,
+      strategy: cfg.strategy,
     };
     const toSave = { ...cfg, providers };
     return new Promise((resolve) => {
