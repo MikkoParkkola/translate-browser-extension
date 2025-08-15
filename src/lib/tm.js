@@ -142,7 +142,7 @@
     await save();
   }
 
-  function stats() { return { ...metrics }; }
+  function stats() { return { ...metrics, entries: store.size }; }
   function __resetStats() {
     metrics.hits = metrics.misses = metrics.sets = metrics.evictionsTTL = metrics.evictionsLRU = 0;
     store.clear();

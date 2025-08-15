@@ -13,5 +13,7 @@ describe('TM persistence across sessions', () => {
     TM = require('../src/lib/tm.js');
     const res = await TM.get('en:es:hello');
     expect(res && res.text).toBe('hola');
+    const st = TM.stats();
+    expect(st.entries).toBeGreaterThan(0);
   });
 });

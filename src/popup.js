@@ -7,6 +7,7 @@ const targetSelect = document.getElementById('target') || document.createElement
 const reqLimitInput = document.getElementById('requestLimit') || document.createElement('input');
 const tokenLimitInput = document.getElementById('tokenLimit') || document.createElement('input');
 const tokenBudgetInput = document.getElementById('tokenBudget') || document.createElement('input');
+const memCacheMaxInput = document.getElementById('memCacheMax') || document.createElement('input');
 const autoCheckbox = document.getElementById('auto') || document.createElement('input');
 const debugCheckbox = document.getElementById('debug') || document.createElement('input');
 const compactCheckbox = document.getElementById('compactMode') || document.createElement('input');
@@ -24,6 +25,8 @@ const totalReq = document.getElementById('totalReq') || document.createElement('
 const totalTok = document.getElementById('totalTok') || document.createElement('span');
 const queueLen = document.getElementById('queueLen') || document.createElement('span');
 const costSection = document.getElementById('costSection') || document.createElement('div');
+const cacheStatsDiv = document.getElementById('cacheStats') || document.createElement('div');
+const tmStatsDiv = document.getElementById('tmStats') || document.createElement('div');
 const translateBtn = document.getElementById('translate') || document.createElement('button');
 const testBtn = document.getElementById('test') || document.createElement('button');
 const progressBar = document.getElementById('progress') || document.createElement('progress');
@@ -61,12 +64,15 @@ function saveConfig() {
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
       tokenLimit: parseInt(tokenLimitInput.value, 10) || 100000,
       tokenBudget: parseInt(tokenBudgetInput.value, 10) || 0,
+      memCacheMax: parseInt(memCacheMaxInput.value, 10) || 0,
       autoTranslate: autoCheckbox.checked,
       debug: debugCheckbox.checked,
       compact: compactCheckbox.checked,
       theme: lightModeCheckbox.checked ? 'light' : 'dark',
     };
     window.qwenSaveConfig(cfg).then(() => {
+      window.qwenConfig = cfg;
+      chrome.runtime.sendMessage({ action: 'set-config', config: { memCacheMax: cfg.memCacheMax } }, () => {});
       status.textContent = 'Settings saved.';
       updateView(cfg); // Re-check the view after saving
       setTimeout(() => { if (status.textContent === 'Settings saved.') status.textContent = ''; }, 2000);
@@ -200,6 +206,7 @@ clearPairBtn.addEventListener('click', () => {
 });
 
 window.qwenLoadConfig().then(cfg => {
+  window.qwenConfig = cfg;
   // Populate main view
   apiKeyInput.value = cfg.apiKey || '';
   if (detectApiKeyInput) detectApiKeyInput.value = cfg.detectApiKey || '';
@@ -219,6 +226,7 @@ window.qwenLoadConfig().then(cfg => {
   reqLimitInput.value = cfg.requestLimit;
   tokenLimitInput.value = cfg.tokenLimit;
   tokenBudgetInput.value = cfg.tokenBudget || '';
+  memCacheMaxInput.value = cfg.memCacheMax || '';
   autoCheckbox.checked = cfg.autoTranslate;
   debugCheckbox.checked = !!cfg.debug;
   compactCheckbox.checked = !!cfg.compact;
@@ -251,7 +259,7 @@ window.qwenLoadConfig().then(cfg => {
     });
   });
 
-  [reqLimitInput, tokenLimitInput, tokenBudgetInput, sensitivityInput].forEach(el => el.addEventListener('input', saveConfig));
+  [reqLimitInput, tokenLimitInput, tokenBudgetInput, memCacheMaxInput, sensitivityInput].forEach(el => el.addEventListener('input', saveConfig));
   [sourceSelect, targetSelect, autoCheckbox, debugCheckbox].forEach(el => el.addEventListener('change', saveConfig));
   compactCheckbox.addEventListener('change', () => {
     document.body.classList.toggle('qwen-compact', compactCheckbox.checked);
@@ -348,6 +356,23 @@ function refreshUsage() {
 
 setInterval(refreshUsage, 1000);
 refreshUsage();
+
+function refreshMetrics() {
+  chrome.runtime.sendMessage({ action: 'debug' }, res => {
+    if (chrome.runtime.lastError || !res) return;
+    if (cacheStatsDiv) {
+      const c = res.cache || {};
+      cacheStatsDiv.textContent = c.max ? `Mem cache ${c.size}/${c.max}` : `Mem cache ${c.size}`;
+    }
+    if (tmStatsDiv) {
+      const t = res.tm || {};
+      tmStatsDiv.textContent = `TM ${t.entries || 0} entries h:${t.hits || 0} m:${t.misses || 0}`;
+    }
+  });
+}
+
+setInterval(refreshMetrics, 3000);
+refreshMetrics();
 
 translateBtn.addEventListener('click', () => {
   const debug = debugCheckbox.checked;

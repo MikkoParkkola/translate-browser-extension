@@ -20,11 +20,12 @@
      expect(miss1).toBeNull();
      expect(hit1 && hit1.text).toBe('vx');
 
-     const st = TM.stats && TM.stats();
-     expect(st).toBeDefined();
-     expect(st.misses).toBeGreaterThanOrEqual(1);
-     expect(st.hits).toBeGreaterThanOrEqual(1);
-     expect(st.sets).toBeGreaterThanOrEqual(1);
+    const st = TM.stats && TM.stats();
+    expect(st).toBeDefined();
+    expect(st.entries).toBeGreaterThanOrEqual(1);
+    expect(st.misses).toBeGreaterThanOrEqual(1);
+    expect(st.hits).toBeGreaterThanOrEqual(1);
+    expect(st.sets).toBeGreaterThanOrEqual(1);
    });
 
    test('evictionsTTL increments on TTL prune', async () => {
@@ -42,8 +43,9 @@
      await TM.set('k2', 'v2'); // triggers prune
      await new Promise(r => setTimeout(r, 20));
 
-     const st = TM.stats();
-     expect(st.evictionsTTL).toBeGreaterThan(0);
+    const st = TM.stats();
+    expect(st.evictionsTTL).toBeGreaterThan(0);
+    expect(st.entries).toBeLessThanOrEqual(2);
 
      nowSpy.mockRestore();
    });
@@ -59,7 +61,8 @@
      await TM.set('b', 'vb'); // should evict 'a'
      await new Promise(r => setTimeout(r, 20));
 
-     const st = TM.stats();
-     expect(st.evictionsLRU).toBeGreaterThan(0);
+    const st = TM.stats();
+    expect(st.evictionsLRU).toBeGreaterThan(0);
+    expect(st.entries).toBe(1);
    });
  });
