@@ -357,7 +357,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
       const hit = await TM.get(cacheKey);
       if (hit && typeof hit.text === 'string') {
         const val = { text: hit.text };
-        cache.set(cacheKey, val);
+        _setCache(cacheKey, val);
         return val;
       }
     } catch {}
@@ -559,7 +559,7 @@ async function batchOnce({
       for (let i = 0; i < missingKeys.length; i++) {
         const h = hits[i];
         if (h && typeof h.text === 'string') {
-          cache.set(missingKeys[i], { text: h.text });
+          _setCache(missingKeys[i], { text: h.text });
         }
       }
     }
@@ -570,7 +570,8 @@ async function batchOnce({
     const lang = autoMode ? sourceByIndex[i] : source;
     const key = _key(lang, opts.target, t);
     if (cache.has(key)) {
-      mapping.push({ index: i, chunk: 0, text: cache.get(key).text, cached: true, lang });
+      const v = _touchCache(key) || cache.get(key);
+      mapping.push({ index: i, chunk: 0, text: v.text, cached: true, lang });
       return;
     }
     const pieces = splitLongText(t, tokenBudget);
