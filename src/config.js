@@ -9,6 +9,7 @@ const defaultCfg = {
   requestLimit: 60,
   tokenLimit: 31980,
   tokenBudget: 0,
+  calibratedAt: 0,
   memCacheMax: 5000,
   sensitivity: 0.3,
   debug: false,

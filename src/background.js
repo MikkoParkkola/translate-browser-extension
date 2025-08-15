@@ -1,4 +1,4 @@
-importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'throttle.js', 'translator.js', 'usageColor.js');
+importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js');
 
 const logger = (self.qwenLogger && self.qwenLogger.create)
   ? self.qwenLogger.create('background')
@@ -23,6 +23,40 @@ function getDetectApiKeyFromStorage() {
   return new Promise(resolve => {
     chrome.storage.sync.get({ detectApiKey: '' }, cfg => resolve(cfg.detectApiKey || ''));
   });
+}
+
+function calibrateLimits(force) {
+  if (!self.qwenLimitDetector || !chrome?.storage?.sync) return;
+  chrome.storage.sync.get({ apiEndpoint: '', model: '', requestLimit: 60, tokenLimit: 100000, calibratedAt: 0 }, async cfg => {
+    try {
+      const now = Date.now();
+      if (!force && cfg.calibratedAt && now - cfg.calibratedAt < 86400000) return;
+      if (!cfg.apiEndpoint || !cfg.model) return;
+      const apiKey = await getApiKeyFromStorage();
+      if (!apiKey) return;
+      if (self.qwenProviders && self.qwenProviders.ensureProviders) {
+        try { await self.qwenProviders.ensureProviders(); } catch {}
+      }
+      const translate = async txt => {
+        await self.qwenTranslate({ endpoint: cfg.apiEndpoint, apiKey, model: cfg.model, provider: 'qwen', text: txt, source: 'en', target: 'en', stream: false, noProxy: true });
+      };
+      let reqLim = cfg.requestLimit;
+      let tokLim = cfg.tokenLimit;
+      try { reqLim = await self.qwenLimitDetector.detectRequestLimit(translate, { start: 5, max: 20 }); }
+      catch (e) { logger.warn('request limit calibration failed', e.message); }
+      try { tokLim = await self.qwenLimitDetector.detectTokenLimit(translate, { start: 512, max: 8192 }); }
+      catch (e) { logger.warn('token limit calibration failed', e.message); }
+      const update = { requestLimit: reqLim, tokenLimit: tokLim, calibratedAt: now };
+      chrome.storage.sync.set(update, () => {});
+      ensureThrottle().then(() => { self.qwenThrottle.configure({ requestLimit: reqLim, tokenLimit: tokLim }); });
+      try { chrome.runtime.sendMessage({ action: 'calibration-result', result: update }); } catch {}
+    } catch (e) { logger.warn('calibration error', e); }
+  });
+}
+
+if (chrome?.storage?.sync) {
+  calibrateLimits();
+  setInterval(() => calibrateLimits(), 3600000);
 }
 
 function localDetectLanguage(text) {
@@ -440,6 +474,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'get-stats') {
     ensureThrottle().then(() => {
       sendResponse(getAggregatedStats());
+    });
+    return true;
+  }
+  if (msg.action === 'reset-calibration') {
+    chrome.storage.sync.set({ calibratedAt: 0, requestLimit: 60, tokenLimit: 31980 }, () => {
+      ensureThrottle().then(() => {
+        self.qwenThrottle.configure({ requestLimit: 60, tokenLimit: 31980 });
+      });
+      calibrateLimits(true);
+      sendResponse({ ok: true });
     });
     return true;
   }
