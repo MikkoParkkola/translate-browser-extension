@@ -1,35 +1,24 @@
 <!DOCTYPE html>
-<html>
+<html data-qwen-theme="cyberpunk">
 <head>
   <meta charset="utf-8">
+  <link rel="stylesheet" href="styles/cyberpunk.css">
   <style>
     :root {
-      --bg-color: #f8f9fa;
-      --text-color: #212529;
-      --input-bg: #fff;
-      --input-border: #ced4da;
-      --input-focus-border: #86b7fe;
-      --primary-color: #0d6efd;
-      --primary-hover-color: #0b5ed7;
-      --secondary-bg: #e9ecef;
-      --secondary-hover-bg: #dee2e6;
-      --bar-bg: #e9ecef;
-      --green: #198754;
-      --yellow: #ffc107;
-      --red: #dc3545;
+      --bg-color: var(--qwen-bg, #0a0c14);
+      --text-color: var(--qwen-text, #e6f7ff);
+      --input-bg: rgba(0, 0, 0, 0.2);
+      --input-border: var(--qwen-border, #00e5ff);
+      --input-focus-border: var(--qwen-neon-1, #00e5ff);
+      --primary-color: var(--qwen-neon-1, #00e5ff);
+      --primary-hover-color: var(--qwen-neon-2, #ff00e5);
+      --secondary-bg: rgba(0, 0, 0, 0.35);
+      --secondary-hover-bg: rgba(0, 0, 0, 0.55);
+      --bar-bg: rgba(0, 0, 0, 0.3);
+      --green: var(--qwen-neon-1, #00e5ff);
+      --yellow: var(--qwen-neon-2, #ff00e5);
+      --red: var(--qwen-error, #ff3b81);
       --body-width: 380px;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg-color: #212529;
-        --text-color: #f8f9fa;
-        --input-bg: #343a40;
-        --input-border: #495057;
-        --secondary-bg: #343a40;
-        --secondary-hover-bg: #495057;
-        --bar-bg: #495057;
-      }
     }
 
     body {
@@ -133,8 +122,10 @@
         </div>
         <div class="usage-item">Total Requests: <span id="totalReq">0</span></div>
         <div class="usage-item">Total Tokens: <span id="totalTok">0</span></div>
-        <div class="usage-item">Queue: <span id="queueLen">0</span></div>
+      <div class="usage-item">Queue: <span id="queueLen">0</span></div>
       </div>
+
+      <div id="costSection"></div>
 
       <div class="grid-2">
         <div>
@@ -224,6 +215,10 @@
   </div>
 
   <script src="throttle.js"></script>
+  <script src="lib/providers.js"></script>
+  <script src="providers/openai.js"></script>
+  <script src="providers/deepl.js"></script>
+  <script src="providers/dashscope.js"></script>
   <script src="lib/messaging.js"></script>
   <script src="translator.js"></script>
   <script src="config.js"></script>

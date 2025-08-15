@@ -9,7 +9,7 @@ describe('background icon plus indicator', () => {
         setBadgeBackgroundColor: jest.fn(),
         setIcon: jest.fn(),
       },
-      runtime: { onInstalled: { addListener: jest.fn() }, onMessage: { addListener: jest.fn() } },
+      runtime: { onInstalled: { addListener: jest.fn() }, onMessage: { addListener: jest.fn() }, onConnect: { addListener: jest.fn() } },
       contextMenus: { create: jest.fn(), onClicked: { addListener: jest.fn() } },
       tabs: { onUpdated: { addListener: jest.fn() } },
       storage: {
@@ -108,7 +108,7 @@ describe('background cost tracking', () => {
         setBadgeBackgroundColor: jest.fn(),
         setIcon: jest.fn(),
       },
-      runtime: { onInstalled: { addListener: jest.fn() }, onMessage: { addListener: jest.fn() } },
+      runtime: { onInstalled: { addListener: jest.fn() }, onMessage: { addListener: jest.fn() }, onConnect: { addListener: jest.fn() } },
       contextMenus: { create: jest.fn(), onClicked: { addListener: jest.fn() } },
       tabs: { onUpdated: { addListener: jest.fn() } },
       storage: {

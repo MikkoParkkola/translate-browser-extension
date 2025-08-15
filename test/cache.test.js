@@ -10,7 +10,7 @@ test('evicted entries removed from persistent storage', async () => {
   setCache('k1', { text: 'one' });
   setCache('k2', { text: 'two' });
   setCache('k3', { text: 'three' });
-  const stored = JSON.parse(localStorage.getItem('qwenCache'));
+  const stored = JSON.parse(localStorage.getItem('qwenCache') || '{}');
   expect(stored.k1).toBeUndefined();
   expect(stored.k2).toBeTruthy();
   expect(stored.k3).toBeTruthy();

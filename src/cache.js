@@ -8,11 +8,11 @@ let hitCount = 0;
 let missCount = 0;
 
 if (typeof window === 'undefined') {
-  LZString = require('lz-string');
+  try { LZString = require('lz-string'); } catch { LZString = require('./lz-string.min.js'); }
 } else {
   LZString = (typeof window !== 'undefined' && window.LZString) ||
     (typeof self !== 'undefined' && self.LZString) ||
-    (typeof require !== 'undefined' ? require('lz-string') : undefined);
+    (typeof require !== 'undefined' ? (() => { try { return require('lz-string'); } catch { return require('./lz-string.min.js'); } })() : undefined);
 }
 
 function encodeCacheValue(val) {
@@ -58,7 +58,11 @@ if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
           pruned[k] = v;
         }
       });
-      chrome.storage.local.set({ qwenCache: pruned });
+      if (Object.keys(pruned).length) {
+        chrome.storage.local.set({ qwenCache: pruned });
+      } else {
+        chrome.storage.local.remove('qwenCache');
+      }
       resolve();
     });
   });
@@ -134,14 +138,25 @@ function removeCache(key) {
     chrome.storage.local.get(['qwenCache'], res => {
       const obj = res && res.qwenCache ? res.qwenCache : {};
       delete obj[key];
-      chrome.storage.local.set({ qwenCache: obj });
+      if (Object.keys(obj).length) {
+        chrome.storage.local.set({ qwenCache: obj });
+      } else {
+        chrome.storage.local.set({ qwenCache: {} });
+      }
     });
   } else if (typeof localStorage !== 'undefined') {
     try {
-      const obj = JSON.parse(localStorage.getItem('qwenCache') || '{}');
+      const raw = localStorage.getItem('qwenCache');
+      let obj = {};
+      if (raw) {
+        try { obj = JSON.parse(raw); } catch {}
+      }
+      if (!obj || typeof obj !== 'object') obj = {};
       delete obj[key];
       localStorage.setItem('qwenCache', JSON.stringify(obj));
-    } catch {}
+    } catch {
+      try { localStorage.setItem('qwenCache', '{}'); } catch {}
+    }
   }
 }
 

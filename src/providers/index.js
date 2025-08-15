@@ -1,27 +1,23 @@
-const providers = {};
+const Providers = require('../lib/providers');
 
-function registerProvider(name, provider) {
-  providers[name] = provider;
-}
+// Register built-in providers for Node/tests and browser environments
+Providers.register('qwen', require('./qwen'));
+Providers.register('google', require('./google'));
+const deepl = require('./deepl');
+Providers.register('deepl', deepl.basic);
+Providers.register('deepl-free', deepl.free);
+Providers.register('deepl-pro', deepl.pro);
 
-function getProvider(name) {
-  return providers[name];
-}
-
+function registerProvider(name, provider) { Providers.register(name, provider); }
+function getProvider(name) { return Providers.get(name); }
 function listProviders() {
-  return Object.entries(providers).map(([name, p]) => ({ name, label: p.label || name }));
+  return Array.from(Providers.candidates({})).map(name => {
+    const p = Providers.get(name) || {};
+    return { name, label: p.label || name };
+  });
 }
 
-// Register built-in providers when running under CommonJS (tests, Node)
-if (typeof require !== 'undefined') {
-  registerProvider('qwen', require('./qwen'));
-  registerProvider('google', require('./google'));
-  const deepl = require('./deepl');
-  registerProvider('deepl', deepl.basic);
-  registerProvider('deepl-free', deepl.free);
-  registerProvider('deepl-pro', deepl.pro);
-}
-
+// Expose registry to globals for browser use
 if (typeof window !== 'undefined') {
   window.qwenProviders = { registerProvider, getProvider, listProviders };
 } else if (typeof self !== 'undefined') {

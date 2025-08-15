@@ -52,36 +52,30 @@ function prune(now = Date.now()) {
   while (tokenTimes.length && now - tokenTimes[0].time > config.windowMs) tokenTimes.shift();
 }
 
-function processQueue() {
-  if (processing) return;
-  processing = true;
-  const step = () => {
-    while (queue.length && availableRequests > 0 && availableTokens >= queue[0].tokens) {
+  function processQueue() {
+    if (processing) return;
+    processing = true;
+    const interval = Math.ceil(config.windowMs / config.requestLimit);
+    const step = () => {
+      if (!queue.length || availableRequests <= 0 || availableTokens < queue[0].tokens) {
+        processing = false;
+        return;
+      }
       const item = queue.shift();
       availableRequests--;
       availableTokens -= item.tokens;
       recordUsage(item.tokens);
       item.fn().then(item.resolve, item.reject);
-      const usage = getUsage();
-      const ratio = Math.max(
-        usage.requests / config.requestLimit,
-        usage.tokens / config.tokenLimit
-      );
-      if (ratio > 0.5) {
-        setTimeout(step, Math.ceil(config.windowMs / config.requestLimit));
-        return;
+      if (queue.length) {
+        setTimeout(step, interval);
+      } else {
+        processing = false;
       }
-    }
-    processing = false;
-    if (queue.length && availableRequests > 0 && availableTokens >= queue[0].tokens) {
-      processing = true;
-      setTimeout(step, 0);
-    }
-  };
-  step();
-}
+    };
+    step();
+  }
 
-function runWithRateLimit(fn, text) {
+  function runWithRateLimit(fn, text) {
   const tokens = typeof text === 'number' ? text : approxTokens(text || '');
   return new Promise((resolve, reject) => {
     queue.push({ fn, tokens, resolve, reject });
@@ -112,7 +106,7 @@ async function runWithRetry(fn, text, attempts = 6, debug = false) {
   }
 }
 
-function getUsage() {
+  function getUsage() {
   prune();
   const tokensUsed = tokenTimes.reduce((s, t) => s + t.tokens, 0);
   return {
@@ -127,8 +121,18 @@ function getUsage() {
 }
 
   if (typeof module !== 'undefined') {
-    module.exports = { runWithRateLimit, runWithRetry, configure: throttleConfigure, approxTokens, getUsage }
+    module.exports = { runWithRateLimit, runWithRetry, configure: throttleConfigure, approxTokens, getUsage, reset }
   }
+
+function reset() {
+  queue.length = 0;
+  requestTimes.length = 0;
+  tokenTimes.length = 0;
+  totalRequests = 0;
+  totalTokens = 0;
+  availableRequests = config.requestLimit;
+  availableTokens = config.tokenLimit;
+}
 
   if (typeof window !== 'undefined') {
     root.qwenThrottle = {
@@ -137,6 +141,7 @@ function getUsage() {
       configure: throttleConfigure,
       approxTokens,
       getUsage,
+      reset,
     }
   } else if (typeof self !== 'undefined') {
     root.qwenThrottle = {
@@ -145,6 +150,7 @@ function getUsage() {
       configure: throttleConfigure,
       approxTokens,
       getUsage,
+      reset,
     }
   }
 })(typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : globalThis)

@@ -1,9 +1,6 @@
-if (location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'))) {
-  // PDF viewer; do not initialize
-  return;
-}
-if (window.__qwenCSLoaded) { /* already initialized */ return; }
-window.__qwenCSLoaded = true;
+const skipInit = location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'));
+if (window.__qwenCSLoaded) { /* already initialized */ }
+else window.__qwenCSLoaded = true;
 const logger = (window.qwenLogger && window.qwenLogger.create) ? window.qwenLogger.create('content') : console;
 let observers = [];
 let currentConfig;
@@ -155,7 +152,7 @@ async function translateNode(node) {
   }
 }
 
-async function translateBatch(elements, stats) {
+async function translateBatch(elements, stats, force = false) {
   const originals = elements.map(el => el.textContent || '');
   const texts = originals.map(t => t.trim());
   const controller = new AbortController();
@@ -171,6 +168,7 @@ async function translateBatch(elements, stats) {
       signal: controller.signal,
       debug: currentConfig.debug,
     };
+    if (force) opts.force = true;
     if (stats) {
       opts.onProgress = p => {
         chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p, progress } });
@@ -347,7 +345,6 @@ async function start() {
   if (window.qwenSetTokenBudget) {
     window.qwenSetTokenBudget(currentConfig.tokenBudget || 0);
   }
-  // Background stores/uses the API key; do not block auto-translate here.
   if (currentConfig.debug) logger.debug('QTDEBUG: starting automatic translation');
   setStatus('Scanning page...');
   const nodes = [];
@@ -357,10 +354,17 @@ async function start() {
   if (!batchQueue.length) clearStatus();
 }
 
+if (!skipInit) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'start') {
     if (currentConfig && currentConfig.debug) logger.debug('QTDEBUG: start message received');
-    start();
+    if (msg.force) {
+      const nodes = [];
+      collectNodes(document.body, nodes);
+      if (nodes.length) translateBatch(nodes, undefined, true);
+    } else {
+      start();
+    }
   }
   if (msg.action === 'test-read') {
     sendResponse({ title: document.title });
@@ -439,6 +443,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   window.addEventListener('DOMContentLoaded', () => {
     window.qwenLoadConfig().then(cfg => { if (cfg.autoTranslate) start(); });
   });
+}
 }
 
 if (typeof module !== 'undefined') {
