@@ -14,6 +14,7 @@ describe('TM read-through in batch translation', () => {
   beforeEach(() => {
     jest.resetModules();
     TM = require('../src/lib/tm.js');
+    delete global.chrome;
   });
 
   test('skips provider for cached entries and only translates misses', async () => {

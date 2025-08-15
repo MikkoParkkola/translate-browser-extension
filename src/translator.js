@@ -417,7 +417,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   }
 }
 
-async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, provider, detector }, onData) {
+async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, provider, detector, skipTM = false }, onData) {
   if (debug) {
     trLogger.debug('qwenTranslateStream called with', {
       endpoint,
@@ -622,7 +622,7 @@ async function batchOnce({
     const words = joinedText.replaceAll(SEP, ' ').trim().split(/\s+/).filter(Boolean).length;
     let res;
     try {
-      res = await qwenTranslate({ ...opts, source: g.lang, text: joinedText, skipTM: true, noProxy: true });
+      res = await qwenTranslate({ ...opts, source: g.lang, text: joinedText, skipTM: true, noProxy: opts.noProxy });
     } catch (e) {
       if (/HTTP\s+400/i.test(e.message || '')) throw e;
       g.items.forEach(m => { m.result = m.text; });
@@ -644,7 +644,7 @@ async function batchOnce({
         for (const m of g.items) {
           let out;
           try {
-            const single = await qwenTranslate({ ...opts, source: m.lang, text: m.text, skipTM: true, noProxy: true });
+            const single = await qwenTranslate({ ...opts, source: m.lang, text: m.text, skipTM: true, noProxy: opts.noProxy });
             out = single.text;
           } catch {
             out = m.text;

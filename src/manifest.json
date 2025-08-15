@@ -38,6 +38,7 @@
         "config.js",
         "languages.js",
         "throttle.js",
+        "styles/cyberpunk.css",
         "pdfViewer.html",
         "pdfViewer.js",
         "sessionPdf.js",

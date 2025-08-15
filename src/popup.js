@@ -343,6 +343,11 @@ translateBtn.addEventListener('click', () => {
 
 testBtn.addEventListener('click', async () => {
   status.textContent = 'Testing...';
+  const tabs = await new Promise(r => chrome.tabs.query({ active: true, currentWindow: true }, r));
+  const tab = tabs && tabs[0];
+  if (tab) {
+    await new Promise(res => chrome.runtime.sendMessage({ action: 'ensure-start', tabId: tab.id, url: tab.url }, () => res()));
+  }
   if (!window.qwenTranslate || !window.qwenTranslateStream) {
     status.textContent = 'Translation library not loaded. This may happen if the script was blocked.';
     return;
