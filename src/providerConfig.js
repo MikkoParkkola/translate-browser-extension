@@ -7,6 +7,8 @@ function applyProviderConfig(provider, doc = document) {
     'projectId',
     'location',
     'documentModel',
+    'secondaryModel',
+    'secondaryModelWarning',
   ];
   all.forEach(name => {
     const show = fields.includes(name);
