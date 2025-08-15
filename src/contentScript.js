@@ -157,6 +157,43 @@ function addFeedbackUI(el, original, translated, confidence) {
   } catch {}
 }
 
+function speakText(text, lang) {
+  try {
+    if (!('speechSynthesis' in window)) return;
+    const utter = new SpeechSynthesisUtterance(text);
+    const voices = window.speechSynthesis.getVoices();
+    const match = lang || (currentConfig && currentConfig.targetLanguage) || '';
+    let voice = voices.find(v => v.lang.toLowerCase().startsWith(match.toLowerCase()));
+    if (!voice) {
+      const base = match.split('-')[0];
+      voice = voices.find(v => v.lang.toLowerCase().startsWith(base));
+    }
+    if (voice) {
+      utter.voice = voice;
+      utter.lang = voice.lang;
+    } else if (match) {
+      utter.lang = match;
+    }
+    window.speechSynthesis.speak(utter);
+  } catch {}
+}
+
+function addPlayButton(el, text, lang) {
+  try {
+    const container = el.nodeType === Node.TEXT_NODE ? el.parentElement : el;
+    const target = container ? container.closest('p') || container : null;
+    if (!target || target.dataset.qwenPlayAdded) return;
+    target.dataset.qwenPlayAdded = 'true';
+    const btn = document.createElement('button');
+    btn.textContent = 'Play';
+    btn.className = 'qwen-play';
+    btn.style.marginLeft = '4px';
+    btn.setAttribute('data-qwen-theme', 'cyberpunk');
+    btn.addEventListener('click', () => speakText(text, lang));
+    target.insertAdjacentElement('afterend', btn);
+  } catch {}
+}
+
 function isMarked(node) {
   if (node.nodeType === Node.TEXT_NODE) {
     return node.__qwenTranslated || node.__qwenUntranslatable;
@@ -219,6 +256,7 @@ async function translateNode(node) {
     }
     node.textContent = leading + translated + trailing;
     mark(node);
+    addPlayButton(node, translated, currentConfig.targetLanguage);
   } catch (e) {
     showError(`${e.message}. See console for details.`);
     logger.error('QTERROR: translation error', e);
@@ -278,6 +316,7 @@ async function translateBatch(elements, stats, force = false) {
       el.textContent = leading + t + trailing;
       mark(el);
       addFeedbackUI(el, texts[i], t, scoreConfidence(texts[i], t));
+      addPlayButton(el, t, currentConfig.targetLanguage);
     }
   });
   logger.info('finished batch translation', { count: elements.length });
@@ -544,6 +583,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         range.insertNode(node);
         mark(node);
         addFeedbackUI(node, text, translated, res.confidence);
+        addPlayButton(node, translated, cfg.targetLanguage);
         sel.removeAllRanges();
       } catch (e) {
         showError('Translation failed');
