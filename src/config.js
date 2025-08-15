@@ -1,5 +1,6 @@
 const defaultCfg = {
   apiKey: '',
+  detectApiKey: '',
   apiEndpoint: 'https://dashscope-intl.aliyuncs.com/api/v1',
   model: 'qwen-mt-turbo',
   sourceLanguage: 'en',

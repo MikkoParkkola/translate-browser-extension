@@ -656,7 +656,7 @@ async function batchOnce({
     const avg = elapsedMs / stats.requests;
     const etaMs = avg * (stats.totalRequests - stats.requests);
     if (onProgress)
-      onProgress({ phase: 'translate', request: stats.requests, requests: stats.totalRequests, sample: g[0].text.slice(0, 80), elapsedMs, etaMs });
+      onProgress({ phase: 'translate', request: stats.requests, requests: stats.totalRequests, sample: (g.items[0]?.text || '').slice(0, 80), elapsedMs, etaMs });
   }
 
   const results = new Array(texts.length).fill('');

@@ -10,6 +10,12 @@ function getApiKeyFromStorage() {
   });
 }
 
+function getDetectApiKeyFromStorage() {
+  return new Promise(resolve => {
+    chrome.storage.sync.get({ detectApiKey: '' }, cfg => resolve(cfg.detectApiKey || ''));
+  });
+}
+
 function localDetectLanguage(text) {
   const s = String(text || '');
   const total = s.length || 1;
@@ -27,7 +33,7 @@ function localDetectLanguage(text) {
   return { lang: best, confidence };
 }
 async function googleDetectLanguage(text, debug) {
-  const key = await getApiKeyFromStorage();
+  const key = await getDetectApiKeyFromStorage();
   if (!key) throw new Error('No API key configured for Google detection');
   const url = `https://translation.googleapis.com/language/translate/v2/detect?key=${encodeURIComponent(key)}`;
   const body = new URLSearchParams({ q: String(text || '').slice(0, 2000) });
@@ -64,7 +70,7 @@ function requestOriginPermission(pattern) {
 async function injectContentScripts(tabId) {
   await chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
-    files: ['lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
+    files: ['lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'lib/detect.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
   });
 }
 async function ensureInjected(tabId) {
@@ -155,6 +161,7 @@ const inflight = new Map(); // requestId -> { controller, timeout, port }
 
 async function updateIcon() {
   await ensureThrottle();
+  if (typeof OffscreenCanvas === 'undefined') return;
   const { requests, requestLimit, tokens, tokenLimit } = self.qwenThrottle.getUsage();
   const reqPct = requestLimit ? requests / requestLimit : 0;
   const tokPct = tokenLimit ? tokens / tokenLimit : 0;
