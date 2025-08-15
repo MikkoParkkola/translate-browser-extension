@@ -19,9 +19,9 @@
        const out = parts.map(p => `S:${source}:${p}`).join(sep);
        return { text: out };
      });
-     Providers.register('dashscope', { translate: translateMock });
- 
-     const { qwenTranslateBatch } = require('../src/translator.js');
+    Providers.register('dashscope', { translate: translateMock });
+    Providers.init();
+    const { qwenTranslateBatch } = require('../src/translator.js');
  
      const res = await qwenTranslateBatch({
        texts: ['bonjour', 'hello', 'salut tout le monde', 'world'],

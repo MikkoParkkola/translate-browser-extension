@@ -1,4 +1,4 @@
-importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'throttle.js', 'translator.js', 'usageColor.js');
+importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'throttle.js', 'translator.js', 'usageColor.js');
 
 const logger = (self.qwenLogger && self.qwenLogger.create)
   ? self.qwenLogger.create('background')
@@ -78,7 +78,7 @@ async function injectContentScripts(tabId) {
   }
   await chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
-    files: ['lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'lib/detect.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
+    files: ['lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'lib/detect.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
   });
 }
 async function ensureInjected(tabId) {
@@ -303,6 +303,7 @@ async function handleTranslate(opts) {
       debug,
       signal: controller.signal,
       stream: false,
+      noProxy: true,
     });
     const tokens = self.qwenThrottle.approxTokens(text || '');
     usageStats.models[model] = usageStats.models[model] || { requests: 0 };
@@ -419,7 +420,7 @@ chrome.runtime.onConnect.addListener(port => {
       inflight.set(requestId, { controller, timeout, port });
       const ep = opts.endpoint && opts.endpoint.endsWith('/') ? opts.endpoint : (opts.endpoint ? opts.endpoint + '/' : opts.endpoint);
       const storedKey = await getApiKeyFromStorage();
-      const safeOpts = { ...opts, endpoint: ep, apiKey: storedKey, signal: controller.signal };
+      const safeOpts = { ...opts, endpoint: ep, apiKey: storedKey, signal: controller.signal, noProxy: true };
       try {
         if (opts && opts.stream) {
           const result = await self.qwenTranslateStream(safeOpts, chunk => {

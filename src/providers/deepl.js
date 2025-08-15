@@ -45,6 +45,7 @@ function makeProvider(ep) {
     translate: opts => translate({ ...opts, endpoint: ep || opts.endpoint }),
     label: 'DeepL',
     configFields: ['apiKey', 'apiEndpoint', 'model'],
+    throttle: { requestLimit: 15, windowMs: 1000 },
   };
 }
 

@@ -167,12 +167,14 @@ const provider = {
   getQuota,
   label: 'Qwen',
   configFields: ['apiKey', 'apiEndpoint', 'model'],
+  throttle: { requestLimit: 5, windowMs: 1000 },
 };
 
-if (typeof window !== 'undefined' && window.qwenProviders) {
-  window.qwenProviders.registerProvider('qwen', provider);
-} else if (typeof self !== 'undefined' && self.qwenProviders) {
-  self.qwenProviders.registerProvider('qwen', provider);
-}
+try {
+  const reg = (typeof window !== 'undefined' && window.qwenProviders) ||
+              (typeof self !== 'undefined' && self.qwenProviders) ||
+              (typeof require !== 'undefined' ? require('../lib/providers') : null);
+  if (reg && reg.register && !reg.get('qwen')) reg.register('qwen', provider);
+} catch {}
 
 module.exports = provider;

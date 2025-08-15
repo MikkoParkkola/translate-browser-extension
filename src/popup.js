@@ -79,9 +79,10 @@ function updateView(cfg) {
   }
 }
 
+const pLogger = (window.qwenLogger && window.qwenLogger.create) ? window.qwenLogger.create('popup') : console;
 function safeFetch(url, opts) {
   return fetch(url, opts).catch(err => {
-    console.warn('Failed to fetch', url, err.message);
+    pLogger.warn('Failed to fetch', url, err.message);
     throw err;
   });
 }
@@ -256,6 +257,7 @@ window.qwenLoadConfig().then(cfg => {
       const presets = {
         dashscope: { endpoint: 'https://dashscope-intl.aliyuncs.com/api/v1', model: 'qwen-mt-turbo' },
         openai:    { endpoint: 'https://api.openai.com/v1',                   model: 'gpt-4o-mini' },
+        openrouter:{ endpoint: 'https://openrouter.ai/api/v1',               model: 'gpt-4o-mini' },
         deepl:     { endpoint: 'https://api.deepl.com/v2',                    model: 'deepl' }
       };
       const p = presets[v];
@@ -274,6 +276,7 @@ window.qwenLoadConfig().then(cfg => {
       const v = (endpointInput.value || '').toLowerCase();
       let inferred = '';
       if (v.includes('openai')) inferred = 'openai';
+      else if (v.includes('openrouter')) inferred = 'openrouter';
       else if (v.includes('deepl')) inferred = 'deepl';
       else if (v.includes('dashscope')) inferred = 'dashscope';
       if (inferred && providerPreset) {
@@ -329,9 +332,9 @@ translateBtn.addEventListener('click', () => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     const tab = tabs && tabs[0];
     if (!tab) return;
-    if (debug) console.log('QTDEBUG: requesting ensure-start', { id: tab.id, url: tab.url });
+    if (debug) pLogger.debug('requesting ensure-start', { id: tab.id, url: tab.url });
     chrome.runtime.sendMessage({ action: 'ensure-start', tabId: tab.id, url: tab.url }, res => {
-      if (debug) console.log('QTDEBUG: ensure-start result', res);
+      if (debug) pLogger.debug('ensure-start result', res);
       if (!res || res.error) {
         status.textContent = `Start failed: ${(res && res.error) || 'unknown error'}`;
       }
@@ -341,6 +344,11 @@ translateBtn.addEventListener('click', () => {
 
 testBtn.addEventListener('click', async () => {
   status.textContent = 'Testing...';
+  const tabs = await new Promise(r => chrome.tabs.query({ active: true, currentWindow: true }, r));
+  const tab = tabs && tabs[0];
+  if (tab) {
+    await new Promise(res => chrome.runtime.sendMessage({ action: 'ensure-start', tabId: tab.id, url: tab.url }, () => res()));
+  }
   if (!window.qwenTranslate || !window.qwenTranslateStream) {
     status.textContent = 'Translation library not loaded. This may happen if the script was blocked.';
     return;
@@ -360,8 +368,8 @@ testBtn.addEventListener('click', async () => {
     debug: debugCheckbox.checked,
   };
 
-  function log(...args) { if (cfg.debug) console.log(...args); }
-  log('QTDEBUG: starting configuration test', cfg);
+  function log(...args) { if (cfg.debug) pLogger.debug(...args); }
+  log('starting configuration test', cfg);
 
   async function run(name, fn) {
     const item = document.createElement('li');
@@ -374,7 +382,7 @@ testBtn.addEventListener('click', async () => {
     } catch (e) {
       item.textContent = `${name}: ✗ ${e.message}`;
       item.title = e.stack || e.message;
-      log(`QTERROR: ${name} failed`, e);
+      pLogger.error(`${name} failed`, e);
       return false;
     }
   }
@@ -405,7 +413,7 @@ testBtn.addEventListener('click', async () => {
   })) && allOk;
 
   allOk = (await run('Direct translation', async () => {
-    const res = await window.qwenTranslate({ ...cfg, text: 'hello', stream: false });
+    const res = await window.qwenTranslate({ ...cfg, text: 'hello', stream: false, noProxy: true });
     if (!res.text) throw new Error('empty response');
   })) && allOk;
 
@@ -457,24 +465,24 @@ testBtn.addEventListener('click', async () => {
     const tabs = await new Promise(r => chrome.tabs.query({ active: true, currentWindow: true }, r));
     if (!tabs[0]) throw new Error('no tab');
     const tab = tabs[0];
-    log('QTDEBUG: active tab for tab translation test', { id: tab.id, url: tab.url });
+    log('active tab for tab translation test', { id: tab.id, url: tab.url });
     const sample = cfg.source && cfg.source.toLowerCase().startsWith('fi')
       ? 'Hei maailma'
       : 'Hello world';
     const resp = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        log('QTERROR: tab translation timed out', { id: tab.id, url: tab.url });
+        pLogger.error('tab translation timed out', { id: tab.id, url: tab.url });
         reject(new Error('timeout waiting for tab response'));
       }, 15000);
-      log('QTDEBUG: sending test-e2e request to tab', tab.id);
+      log('sending test-e2e request to tab', tab.id);
       const cfgSend = { ...cfg };
       chrome.tabs.sendMessage(tab.id, { action: 'test-e2e', cfg: cfgSend, original: sample }, res => {
         clearTimeout(timer);
         if (chrome.runtime.lastError) {
-          log('QTERROR: tab message failed', chrome.runtime.lastError.message);
+          pLogger.error('tab message failed', chrome.runtime.lastError.message);
           reject(new Error(chrome.runtime.lastError.message));
         } else {
-          log('QTDEBUG: tab responded', res);
+          log('tab responded', res);
           resolve(res);
         }
       });
@@ -482,13 +490,13 @@ testBtn.addEventListener('click', async () => {
     if (!resp || resp.error) {
       const err = new Error(resp ? resp.error : 'no response');
       if (resp && resp.stack) err.stack = resp.stack;
-      log('QTERROR: tab returned error', err.message);
+      pLogger.error('tab returned error', err.message);
       throw err;
     }
     if (!resp.text || resp.text.toLowerCase() === sample.toLowerCase()) {
       throw new Error('translation failed');
     }
-    log('QTDEBUG: tab translation succeeded', resp.text);
+    log('tab translation succeeded', resp.text);
   })) && allOk;
 
   allOk = (await run('Storage access', async () => {
@@ -505,5 +513,5 @@ testBtn.addEventListener('click', async () => {
     status.appendChild(document.createTextNode('Some tests failed. See above.'));
   }
 
-  log('QTDEBUG: configuration test finished');
+  log('configuration test finished');
 });

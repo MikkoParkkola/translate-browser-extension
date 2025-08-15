@@ -9,7 +9,7 @@ describe('provider selection', () => {
     const Providers = require('../src/lib/providers.js');
     const fake = { translate: jest.fn(async ({ text }) => ({ text: `FAKE:${text}` })) };
     Providers.register('fake', fake);
-
+    Providers.init();
     const { qwenTranslate } = require('../src/translator.js');
 
     const res = await qwenTranslate({
@@ -30,7 +30,7 @@ describe('provider selection', () => {
     const Providers = require('../src/lib/providers.js');
     const openai = { translate: jest.fn(async ({ text }) => ({ text: `OA:${text}` })) };
     Providers.register('openai', openai);
-
+    Providers.init();
     const { qwenTranslate } = require('../src/translator.js');
 
     const res = await qwenTranslate({
