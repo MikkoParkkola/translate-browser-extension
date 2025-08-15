@@ -256,6 +256,7 @@ window.qwenLoadConfig().then(cfg => {
       const presets = {
         dashscope: { endpoint: 'https://dashscope-intl.aliyuncs.com/api/v1', model: 'qwen-mt-turbo' },
         openai:    { endpoint: 'https://api.openai.com/v1',                   model: 'gpt-4o-mini' },
+        openrouter:{ endpoint: 'https://openrouter.ai/api/v1',               model: 'gpt-4o-mini' },
         deepl:     { endpoint: 'https://api.deepl.com/v2',                    model: 'deepl' }
       };
       const p = presets[v];
@@ -274,6 +275,7 @@ window.qwenLoadConfig().then(cfg => {
       const v = (endpointInput.value || '').toLowerCase();
       let inferred = '';
       if (v.includes('openai')) inferred = 'openai';
+      else if (v.includes('openrouter')) inferred = 'openrouter';
       else if (v.includes('deepl')) inferred = 'deepl';
       else if (v.includes('dashscope')) inferred = 'dashscope';
       if (inferred && providerPreset) {
