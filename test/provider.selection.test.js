@@ -45,4 +45,39 @@ describe('provider selection', () => {
     expect(res.text).toBe('OA:hey');
     expect(openai.translate).toHaveBeenCalled();
   });
+
+  test('respects providerOrder with endpoints', async () => {
+    const Providers = require('../src/lib/providers.js');
+    const bad = {
+      translate: jest.fn(async () => {
+        const e = new Error('fail');
+        e.retryable = false;
+        throw e;
+      }),
+    };
+    const good = {
+      translate: jest.fn(async ({ text, endpoint }) => {
+        expect(endpoint).toBe('https://good/');
+        return { text: `OK:${text}` };
+      }),
+    };
+    Providers.register('bad', bad);
+    Providers.register('good', good);
+    Providers.init();
+    const { qwenTranslate } = require('../src/translator.js');
+
+    const res = await qwenTranslate({
+      text: 'hi',
+      source: 'en',
+      target: 'fr',
+      endpoint: 'https://bad/',
+      providerOrder: ['bad', 'good'],
+      endpoints: { bad: 'https://bad/', good: 'https://good/' },
+      noProxy: true,
+    });
+
+    expect(res).toEqual({ text: 'OK:hi' });
+    expect(bad.translate).toHaveBeenCalled();
+    expect(good.translate).toHaveBeenCalled();
+  });
 });

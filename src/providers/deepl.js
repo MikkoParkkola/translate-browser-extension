@@ -4,7 +4,7 @@
   else root.qwenProviderDeepL = mod;
 }(typeof self !== 'undefined' ? self : this, function (root) {
   const fetchFn = (typeof fetch !== 'undefined') ? fetch : (root.fetch || null);
-  function withSlash(u) { return /\/$/.test(u) ? u : u + '/'; }
+    function withSlash(u) { return /\/$/.test(u) ? u : u + '/'; }
 
   async function translate({ endpoint = 'https://api.deepl.com/', apiKey, text, source, target, signal, debug }) {
     if (!fetchFn) throw new Error('fetch not available');
@@ -46,23 +46,19 @@
     return { text: out, characters };
   }
 
-  function makeProvider(ep) {
-    return {
-      translate: opts => translate({ ...opts, endpoint: ep || opts.endpoint }),
-      label: 'DeepL',
-      configFields: ['apiKey', 'apiEndpoint', 'model'],
-    };
-  }
+    function makeProvider(ep) {
+      return {
+        translate: opts => translate({ ...opts, endpoint: ep || opts.endpoint }),
+        label: 'DeepL',
+        configFields: ['apiKey', 'apiEndpoint', 'model'],
+        throttle: { requestLimit: 15, windowMs: 1000 },
+      };
+    }
 
-function makeProvider(ep) {
-  return {
-    translate: opts => translate({ ...opts, endpoint: ep || opts.endpoint }),
-    label: 'DeepL',
-    configFields: ['apiKey', 'apiEndpoint', 'model'],
-    throttle: { requestLimit: 15, windowMs: 1000 },
-  };
-}
+    const basic = makeProvider('https://api-free.deepl.com/');
+    const free = makeProvider('https://api-free.deepl.com/');
+    const pro = makeProvider('https://api.deepl.com/');
 
-  return { translate, basic, free, pro };
-}));
+    return { translate, basic, free, pro };
+  }));
 

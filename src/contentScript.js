@@ -135,6 +135,8 @@ async function translateNode(node) {
       text,
       source: currentConfig.sourceLanguage,
       target: currentConfig.targetLanguage,
+      providerOrder: currentConfig.providerOrder,
+      endpoints: currentConfig.endpoints,
       signal: controller.signal,
       debug: currentConfig.debug,
     });
@@ -168,6 +170,8 @@ async function translateBatch(elements, stats, force = false) {
       texts,
       source: currentConfig.sourceLanguage,
       target: currentConfig.targetLanguage,
+      providerOrder: currentConfig.providerOrder,
+      endpoints: currentConfig.endpoints,
       signal: controller.signal,
       debug: currentConfig.debug,
     };
@@ -426,6 +430,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           text,
           source: cfg.sourceLanguage,
           target: cfg.targetLanguage,
+          providerOrder: cfg.providerOrder,
+          endpoints: cfg.endpoints,
           debug: cfg.debug,
         });
         const range = sel.getRangeAt(0);

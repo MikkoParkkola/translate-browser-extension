@@ -145,3 +145,51 @@ test('force translation bypasses cache', async () => {
   expect(network.mock.calls.length).toBeGreaterThan(1);
   window.qwenTranslateBatch = original;
 });
+
+test('passes provider config to batch translation', async () => {
+  const spy = jest.fn(async ({ texts }) => ({ texts }));
+  window.qwenTranslateBatch = spy;
+  setCurrentConfig({
+    apiEndpoint: 'https://e/',
+    model: 'm',
+    sourceLanguage: 'en',
+    targetLanguage: 'fr',
+    providerOrder: ['a', 'b'],
+    endpoints: { a: 'https://a/', b: 'https://b/' },
+    debug: false,
+  });
+  document.body.innerHTML = '<p><span>Hello</span></p>';
+  const nodes = [];
+  collectNodes(document.body, nodes);
+  await translateBatch(nodes);
+  expect(spy).toHaveBeenCalledWith(expect.objectContaining({
+    providerOrder: ['a', 'b'],
+    endpoints: { a: 'https://a/', b: 'https://b/' },
+  }));
+});
+
+test('selection translation threads provider config', async () => {
+  const spy = jest.fn(async ({ text }) => ({ text: `T:${text}` }));
+  window.qwenTranslate = spy;
+  setCurrentConfig({
+    apiEndpoint: 'https://e/',
+    model: 'm',
+    sourceLanguage: 'en',
+    targetLanguage: 'fr',
+    providerOrder: ['x', 'y'],
+    endpoints: { x: 'https://x/', y: 'https://y/' },
+    debug: false,
+  });
+  document.body.innerHTML = '<p id="s">Hi</p>';
+  const range = document.createRange();
+  range.selectNodeContents(document.getElementById('s'));
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  messageListener({ action: 'translate-selection' });
+  await new Promise(r => setTimeout(r, 0));
+  expect(spy).toHaveBeenCalledWith(expect.objectContaining({
+    providerOrder: ['x', 'y'],
+    endpoints: { x: 'https://x/', y: 'https://y/' },
+  }));
+});
