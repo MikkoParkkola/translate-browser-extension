@@ -12,6 +12,8 @@ const defaultCfg = {
   debug: false,
   useWasmEngine: true,
   autoOpenAfterSave: true,
+  compact: false,
+  theme: 'dark',
   providers: {},
 };
 

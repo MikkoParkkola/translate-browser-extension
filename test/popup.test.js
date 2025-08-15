@@ -10,7 +10,10 @@ describe('popup configuration test', () => {
       <select id="target"></select>
       <select id="detector"></select>
       <input id="debug" type="checkbox" />
+      <input id="compactMode" type="checkbox" />
+      <input id="lightMode" type="checkbox" />
       <div id="status"></div>
+      <button id="translate"></button>
       <button id="test"></button>
     `;
     global.qwenLanguages = [
@@ -29,6 +32,8 @@ describe('popup configuration test', () => {
       autoTranslate: false,
       detector: 'local',
       debug: true,
+      compact: false,
+      theme: 'dark',
     });
     global.qwenSaveConfig = jest.fn().mockResolvedValue();
     global.qwenTranslate = jest.fn().mockResolvedValue({ text: 'hola' });
@@ -92,6 +97,21 @@ describe('popup configuration test', () => {
     expect(entries.some(e => e.ns === 'popup' && e.level === 'info' && e.args[0] === 'diagnostic step started')).toBe(true);
     expect(global.qwenTranslate.mock.calls.some(c => c[0].noProxy === true)).toBe(true);
     remove();
+  });
+
+  test('toggles compact and light modes', async () => {
+    require('../src/popup.js');
+    await Promise.resolve();
+    expect(document.body.classList.contains('qwen-bg-animated')).toBe(true);
+    expect(document.getElementById('translate').classList.contains('primary-glow')).toBe(true);
+    const compact = document.getElementById('compactMode');
+    compact.checked = true;
+    compact.dispatchEvent(new Event('change'));
+    expect(document.body.classList.contains('qwen-compact')).toBe(true);
+    const light = document.getElementById('lightMode');
+    light.checked = true;
+    light.dispatchEvent(new Event('change'));
+    expect(document.documentElement.getAttribute('data-qwen-color')).toBe('light');
   });
 });
 

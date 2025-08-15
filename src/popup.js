@@ -9,6 +9,8 @@ const tokenLimitInput = document.getElementById('tokenLimit') || document.create
 const tokenBudgetInput = document.getElementById('tokenBudget') || document.createElement('input');
 const autoCheckbox = document.getElementById('auto') || document.createElement('input');
 const debugCheckbox = document.getElementById('debug') || document.createElement('input');
+const compactCheckbox = document.getElementById('compactMode') || document.createElement('input');
+const lightModeCheckbox = document.getElementById('lightMode') || document.createElement('input');
 const detectorSelect = document.getElementById('detector') || document.createElement('select');
 const detectApiKeyInput = document.getElementById('detectApiKey') || document.createElement('input');
 const status = document.getElementById('status') || document.createElement('div');
@@ -26,6 +28,9 @@ const testBtn = document.getElementById('test') || document.createElement('butto
 const progressBar = document.getElementById('progress') || document.createElement('progress');
 const providerPreset = document.getElementById('providerPreset') || document.createElement('select');
 const clearPairBtn = document.getElementById('clearPair') || document.createElement('button');
+
+document.body.classList.add('qwen-bg-animated');
+if (translateBtn) translateBtn.classList.add('primary-glow');
 
 // Setup view elements
 const setupApiKeyInput = document.getElementById('setup-apiKey') || document.createElement('input');
@@ -56,6 +61,8 @@ function saveConfig() {
       tokenBudget: parseInt(tokenBudgetInput.value, 10) || 0,
       autoTranslate: autoCheckbox.checked,
       debug: debugCheckbox.checked,
+      compact: compactCheckbox.checked,
+      theme: lightModeCheckbox.checked ? 'light' : 'dark',
     };
     window.qwenSaveConfig(cfg).then(() => {
       status.textContent = 'Settings saved.';
@@ -211,6 +218,10 @@ window.qwenLoadConfig().then(cfg => {
   tokenBudgetInput.value = cfg.tokenBudget || '';
   autoCheckbox.checked = cfg.autoTranslate;
   debugCheckbox.checked = !!cfg.debug;
+  compactCheckbox.checked = !!cfg.compact;
+  document.body.classList.toggle('qwen-compact', compactCheckbox.checked);
+  lightModeCheckbox.checked = cfg.theme === 'light';
+  document.documentElement.setAttribute('data-qwen-color', lightModeCheckbox.checked ? 'light' : 'dark');
 
   // Populate setup view
   setupApiKeyInput.value = cfg.apiKey || '';
@@ -239,6 +250,14 @@ window.qwenLoadConfig().then(cfg => {
 
   [reqLimitInput, tokenLimitInput, tokenBudgetInput].forEach(el => el.addEventListener('input', saveConfig));
   [sourceSelect, targetSelect, autoCheckbox, debugCheckbox].forEach(el => el.addEventListener('change', saveConfig));
+  compactCheckbox.addEventListener('change', () => {
+    document.body.classList.toggle('qwen-compact', compactCheckbox.checked);
+    saveConfig();
+  });
+  lightModeCheckbox.addEventListener('change', () => {
+    document.documentElement.setAttribute('data-qwen-color', lightModeCheckbox.checked ? 'light' : 'dark');
+    saveConfig();
+  });
   // If user turns on Auto, request permission and start on current tab immediately
   autoCheckbox.addEventListener('change', () => {
     if (!autoCheckbox.checked) return;
