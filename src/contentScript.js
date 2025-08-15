@@ -125,6 +125,38 @@ function markUntranslatable(node) {
   }
 }
 
+function scoreConfidence(src, translated) {
+  const s = String(src || '');
+  const t = String(translated || '');
+  if (!s || !t) return 0;
+  const ratio = Math.min(s.length, t.length) / Math.max(s.length, t.length);
+  return Math.round(ratio * 100) / 100;
+}
+
+function addFeedbackUI(el, original, translated, confidence) {
+  try {
+    const wrap = document.createElement('span');
+    wrap.className = 'qwen-feedback';
+    wrap.style.marginLeft = '4px';
+    wrap.setAttribute('data-qwen-theme', 'cyberpunk');
+    const good = document.createElement('button');
+    good.textContent = 'Good';
+    const bad = document.createElement('button');
+    bad.textContent = 'Needs Fix';
+    good.addEventListener('click', () => {
+      try { window.qwenFeedback && window.qwenFeedback.save({ original, translated, rating: 'good', confidence }); } catch {}
+      wrap.remove();
+    });
+    bad.addEventListener('click', () => {
+      try { window.qwenFeedback && window.qwenFeedback.save({ original, translated, rating: 'needs-fix', confidence }); } catch {}
+      wrap.remove();
+    });
+    wrap.appendChild(good);
+    wrap.appendChild(bad);
+    el.insertAdjacentElement('afterend', wrap);
+  } catch {}
+}
+
 function isMarked(node) {
   if (node.nodeType === Node.TEXT_NODE) {
     return node.__qwenTranslated || node.__qwenUntranslatable;
@@ -245,6 +277,7 @@ async function translateBatch(elements, stats, force = false) {
     } else {
       el.textContent = leading + t + trailing;
       mark(el);
+      addFeedbackUI(el, texts[i], t, scoreConfidence(texts[i], t));
     }
   });
   logger.info('finished batch translation', { count: elements.length });
@@ -493,7 +526,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const cfg = currentConfig || (await window.qwenLoadConfig());
       await loadGlossary();
       try {
-        const { text: translated } = await window.qwenTranslate({
+        const res = await window.qwenTranslate({
           endpoint: cfg.apiEndpoint,
           model: cfg.model,
           text,
@@ -504,11 +537,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           failover: cfg.failover,
           debug: cfg.debug,
         });
+        const translated = res.text;
         const range = sel.getRangeAt(0);
         range.deleteContents();
         const node = document.createTextNode(translated);
         range.insertNode(node);
         mark(node);
+        addFeedbackUI(node, text, translated, res.confidence);
         sel.removeAllRanges();
       } catch (e) {
         showError('Translation failed');
