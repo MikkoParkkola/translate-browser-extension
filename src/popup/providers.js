@@ -15,6 +15,8 @@
     if (field === 'charLimit') return 'Chars/month';
     if (field === 'requestLimit') return 'Req/min';
     if (field === 'tokenLimit') return 'Tok/min';
+    if (field === 'costPerToken') return '$/tok';
+    if (field === 'weight') return 'Weight';
     return field;
   }
 
@@ -58,7 +60,11 @@
     li.dataset.id = id;
     li.querySelector('.provider-name').textContent = id;
 
-    const numericFields = Object.keys(data).filter(k => /limit$/i.test(k));
+    const numericFields = Array.from(new Set([
+      ...Object.keys(data).filter(k => /limit$/i.test(k)),
+      'costPerToken',
+      'weight',
+    ]));
     const allFields = baseFields.concat(numericFields);
 
     allFields.forEach(f => {
