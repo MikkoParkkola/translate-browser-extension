@@ -259,9 +259,10 @@ function ensureThrottle() {
 
 const COST_RATES = { 'qwen-mt-turbo': 0.00000016, 'google-nmt': 0.00002 };
 
-async function selectProvider(p) {
-  const order = config.providerOrder && config.providerOrder.length
-    ? config.providerOrder.slice(config.providerOrder.indexOf(p))
+async function selectProvider(p, providerOrder) {
+  const base = providerOrder && providerOrder.length ? providerOrder : config.providerOrder;
+  const order = base && base.length
+    ? base.slice(base.indexOf(p))
     : [p];
   for (const name of order) {
     const prov = self.qwenProviders && self.qwenProviders.getProvider && self.qwenProviders.getProvider(name);
@@ -278,9 +279,10 @@ async function selectProvider(p) {
 }
 
 async function handleTranslate(opts) {
-  const { endpoint, apiKey, model, text, source, target, debug } = opts;
-  const ep = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
-  const provider = await selectProvider(opts.provider || 'qwen');
+  const { endpoint, apiKey, model, text, source, target, debug, providerOrder, endpoints } = opts;
+  const provider = await selectProvider(opts.provider || 'qwen', providerOrder);
+  const epBase = (endpoints && endpoints[provider]) || endpoint;
+  const ep = epBase.endsWith('/') ? epBase : `${epBase}/`;
   if (debug) logger.debug('background translating via', ep, 'provider', provider);
 
   await ensureThrottle();
@@ -304,6 +306,8 @@ async function handleTranslate(opts) {
       signal: controller.signal,
       stream: false,
       noProxy: true,
+      providerOrder,
+      endpoints,
     });
     const tokens = self.qwenThrottle.approxTokens(text || '');
     usageStats.models[model] = usageStats.models[model] || { requests: 0 };

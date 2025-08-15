@@ -4,7 +4,7 @@
   else root.qwenMessaging = mod;
 }(typeof self !== 'undefined' ? self : this, function (root) {
   const logger = (root.qwenLogger && root.qwenLogger.create) ? root.qwenLogger.create('messaging') : console;
-  function requestViaBackground({ endpoint, apiKey, model, text, source, target, debug, stream = false, signal, onData, provider }) {
+  function requestViaBackground({ endpoint, apiKey, model, text, source, target, debug, stream = false, signal, onData, provider, providerOrder, endpoints }) {
     if (!(root.chrome && root.chrome.runtime)) return Promise.reject(new Error('No chrome.runtime'));
     const ep = endpoint && /\/$/.test(endpoint) ? endpoint : (endpoint ? endpoint + '/' : endpoint);
     if (root.chrome.runtime.connect) {
@@ -39,14 +39,14 @@
         port.onDisconnect.addListener(() => {
           if (!settled) { settled = true; reject(new Error('Background disconnected')); }
         });
-        port.postMessage({ action: 'translate', requestId, opts: { endpoint: ep, apiKey, model, text, source, target, debug, stream, provider } });
+        port.postMessage({ action: 'translate', requestId, opts: { endpoint: ep, apiKey, model, text, source, target, debug, stream, provider, providerOrder, endpoints } });
       });
     }
     // Legacy sendMessage (non-streaming)
     return new Promise((resolve, reject) => {
       try {
         root.chrome.runtime.sendMessage(
-          { action: 'translate', opts: { endpoint: ep, apiKey, model, text, source, target, debug, provider } },
+          { action: 'translate', opts: { endpoint: ep, apiKey, model, text, source, target, debug, provider, providerOrder, endpoints } },
           res => {
             if (root.chrome.runtime.lastError) reject(new Error(root.chrome.runtime.lastError.message));
             else if (!res) reject(new Error('No response from background'));
