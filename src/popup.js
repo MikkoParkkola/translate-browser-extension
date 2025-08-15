@@ -33,10 +33,33 @@ const progressBar = document.getElementById('progress') || document.createElemen
 const providerPreset = document.getElementById('providerPreset') || document.createElement('select');
 const clearPairBtn = document.getElementById('clearPair') || document.createElement('button');
 
+// Collapsible sections
+const sectionIds = ['providerSection', 'detectionSection', 'rateSection', 'cacheSection'];
+
 document.body.classList.add('qwen-bg-animated');
 if (translateBtn) translateBtn.classList.add('primary-glow');
 
 let translating = false;
+
+function initSectionToggles() {
+  if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.sync) return;
+  chrome.storage.sync.get({ openSections: {} }, ({ openSections }) => {
+    sectionIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (openSections[id]) el.open = true;
+      el.addEventListener('toggle', () => {
+        chrome.storage.sync.get({ openSections: {} }, data => {
+          const store = data.openSections || {};
+          if (el.open) store[id] = true; else delete store[id];
+          chrome.storage.sync.set({ openSections: store });
+        });
+      });
+    });
+  });
+}
+
+initSectionToggles();
 
 // Setup view elements
 const setupApiKeyInput = document.getElementById('setup-apiKey') || document.createElement('input');
