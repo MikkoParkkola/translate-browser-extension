@@ -710,13 +710,48 @@ async function batchOnce({
   stats.totalRequests += groups.length;
 
   const providers = Array.isArray(opts.providerOrder) && opts.providerOrder.length ? opts.providerOrder : [];
+  const providerWeights = providers.map(id => {
+    let w = 1;
+    let t = throttleFor(id);
+    let tokLim = 0;
+    try {
+      const impl = Providers && Providers.get ? Providers.get(id) : null;
+      const usage = t && t.getUsage ? t.getUsage() : {};
+      tokLim = usage.tokenLimit || (impl && impl.throttle && impl.throttle.tokenLimit) || 0;
+      const cost = impl && impl.costPerToken != null ? impl.costPerToken : 1;
+      w = impl && impl.weight != null ? impl.weight : (cost > 0 ? (tokLim || 0) / cost : tokLim || 1);
+    } catch {}
+    if (!Number.isFinite(w) || w <= 0) w = 1;
+    return { id, weight: w, assigned: 0, throttle: t, tokenLimit: tokLim, usedTokens: 0 };
+  });
+  function chooseProvider(tokensNeeded) {
+    const eligible = providerWeights.filter(p => {
+      if (p.tokenLimit > 0 && p.usedTokens + tokensNeeded > p.tokenLimit) return false;
+      try {
+        const u = p.throttle && p.throttle.getUsage ? p.throttle.getUsage() : {};
+        if (u.tokenLimit > 0 && u.tokens + tokensNeeded > u.tokenLimit) return false;
+      } catch {}
+      return true;
+    });
+    const list = eligible.length ? eligible : providerWeights;
+    let best = list[0];
+    let minRatio = best.assigned / best.weight;
+    for (const p of list) {
+      const r = p.assigned / p.weight;
+      if (r < minRatio) { best = p; minRatio = r; }
+    }
+    best.assigned++;
+    best.usedTokens += tokensNeeded;
+    return best.id;
+  }
   const usage = getUsage ? getUsage() : {};
   const reqLimit = usage && usage.requestLimit > 0 ? usage.requestLimit : groups.length;
 
   async function handleGroup(g, idx) {
     const joinedText = g.items.map(m => m.text.replaceAll(SEP, '')).join(SEP);
     const words = joinedText.replaceAll(SEP, ' ').trim().split(/\s+/).filter(Boolean).length;
-    const startProv = parallel && providers.length ? providers[idx % providers.length] : (providers[0] || undefined);
+    const tokensNeeded = approxTokens(joinedText);
+    const startProv = providers.length ? chooseProvider(tokensNeeded) : undefined;
     let res;
     let ms = 0;
     try {
@@ -731,7 +766,7 @@ async function batchOnce({
       return;
     }
     stats.latencyMs += ms;
-    const tk = approxTokens(joinedText);
+    const tk = tokensNeeded;
     stats.tokens += tk;
     stats.words += words;
     stats.requests++;

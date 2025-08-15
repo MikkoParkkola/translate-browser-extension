@@ -44,6 +44,8 @@ function migrate(cfg = {}) {
   const p = out.providers[provider];
   if (!p.requestLimit) p.requestLimit = out.requestLimit;
   if (!p.tokenLimit) p.tokenLimit = out.tokenLimit;
+  if (!p.costPerToken) p.costPerToken = 0;
+  if (!p.weight) p.weight = 0;
   if (!p.charLimit) p.charLimit = out.charLimit || 0;
   if (!p.strategy) p.strategy = out.strategy || 'balanced';
   if (!p.models) p.models = p.model ? [p.model] : [];
@@ -102,6 +104,8 @@ function qwenSaveConfig(cfg) {
       tokenLimit: cfg.tokenLimit,
       charLimit: cfg.charLimit,
       strategy: cfg.strategy,
+      costPerToken: cfg.costPerToken,
+      weight: cfg.weight,
     };
     const toSave = { ...cfg, providers };
     return new Promise((resolve) => {
