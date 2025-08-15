@@ -99,6 +99,21 @@
   box-shadow: 0 0 6px var(--qwen-neon-1), 0 2px 8px rgba(0, 0, 0, 0.6);
 }
 
+[data-qwen-theme="cyberpunk"] .neon-border {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background:
+    linear-gradient(var(--qwen-bg), var(--qwen-bg)) padding-box,
+    linear-gradient(90deg, var(--qwen-neon-1), var(--qwen-neon-2), var(--qwen-neon-1)) border-box;
+  background-size: 100% 100%, 200% 100%;
+  animation: qwen-border-flow 8s linear infinite;
+}
+
+[data-qwen-theme="cyberpunk"] .glow-pulse {
+  box-shadow: 0 0 8px var(--qwen-neon-1), 0 0 16px var(--qwen-neon-1);
+  animation: qwen-glow-pulse 4s ease-in-out infinite;
+}
+
 body.qwen-compact {
   --body-width: 320px;
   gap: 0.5rem;
@@ -129,6 +144,19 @@ body.qwen-bg-animated::before {
   z-index: -1;
 }
 
+body.qwen-bg-animated::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(0, 229, 255, 0.05), transparent 60%),
+    radial-gradient(circle at 80% 70%, rgba(255, 0, 229, 0.05), transparent 60%);
+  transform: translate3d(0, 0, 0);
+  animation: qwen-parallax 60s linear infinite;
+  z-index: -2;
+}
+
 [data-qwen-theme="cyberpunk"] button.primary-glow {
   background: linear-gradient(90deg, var(--qwen-neon-1), var(--qwen-neon-2));
   color: #000;
@@ -145,7 +173,22 @@ body.qwen-bg-animated::before {
   to { background-position: 100px 100px, -100px -100px; }
 }
 
+@keyframes qwen-parallax {
+  from { transform: translate3d(-15px, -15px, 0); }
+  to { transform: translate3d(15px, 15px, 0); }
+}
+
 @keyframes qwen-pulse {
+  0%, 100% { box-shadow: 0 0 8px var(--qwen-neon-1), 0 0 16px var(--qwen-neon-1); }
+  50% { box-shadow: 0 0 12px var(--qwen-neon-2), 0 0 24px var(--qwen-neon-2); }
+}
+
+@keyframes qwen-border-flow {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 0 0, 200% 0; }
+}
+
+@keyframes qwen-glow-pulse {
   0%, 100% { box-shadow: 0 0 8px var(--qwen-neon-1), 0 0 16px var(--qwen-neon-1); }
   50% { box-shadow: 0 0 12px var(--qwen-neon-2), 0 0 24px var(--qwen-neon-2); }
 }
@@ -249,7 +292,10 @@ body.qwen-bg-animated::before {
     transition: none !important;
   }
   body.qwen-bg-animated::before,
-  [data-qwen-theme="cyberpunk"] button.primary-glow {
+  body.qwen-bg-animated::after,
+  [data-qwen-theme="cyberpunk"] button.primary-glow,
+  [data-qwen-theme="cyberpunk"] .glow-pulse,
+  [data-qwen-theme="cyberpunk"] .neon-border {
     animation: none !important;
   }
 }
