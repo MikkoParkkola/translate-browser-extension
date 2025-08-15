@@ -45,6 +45,7 @@ document.body.classList.add('qwen-bg-animated');
 if (translateBtn) translateBtn.classList.add('primary-glow');
 
 let translating = false;
+let progressTimeout;
 
 function initSectionToggles() {
   if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.sync) return;
@@ -167,7 +168,11 @@ chrome.runtime.onMessage.addListener(msg => {
       if (s.progress && typeof s.progress.total === 'number') {
         progressBar.max = s.progress.total || 1;
         progressBar.value = s.progress.done || 0;
-        progressBar.style.display = 'block';
+        if (!progressTimeout) {
+          progressTimeout = setTimeout(() => {
+            progressBar.style.display = 'block';
+          }, 1000);
+        }
       }
       if (s.phase === 'translate') {
         let txt = `Translating ${s.request || 0}/${s.requests || 0}`;
@@ -186,6 +191,7 @@ chrome.runtime.onMessage.addListener(msg => {
     } else {
       translating = false;
       if (translateBtn) translateBtn.textContent = 'Translate Page';
+      if (progressTimeout) { clearTimeout(progressTimeout); progressTimeout = null; }
       progressBar.style.display = 'none';
       progressBar.value = 0;
       progressBar.max = 1;
@@ -221,7 +227,11 @@ chrome.runtime.sendMessage({ action: 'get-status' }, s => {
     if (s.progress && typeof s.progress.total === 'number') {
       progressBar.max = s.progress.total || 1;
       progressBar.value = s.progress.done || 0;
-      progressBar.style.display = 'block';
+      if (!progressTimeout) {
+        progressTimeout = setTimeout(() => {
+          progressBar.style.display = 'block';
+        }, 1000);
+      }
     }
     if (s.phase === 'translate') {
       let txt = `Translating ${s.request || 0}/${s.requests || 0}`;
