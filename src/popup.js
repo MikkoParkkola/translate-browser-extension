@@ -419,7 +419,8 @@ window.qwenLoadConfig().then(cfg => {
         dashscope: { endpoint: 'https://dashscope-intl.aliyuncs.com/api/v1', model: 'qwen-mt-turbo' },
         openai:    { endpoint: 'https://api.openai.com/v1',                   model: 'gpt-4o-mini' },
         openrouter:{ endpoint: 'https://openrouter.ai/api/v1',               model: 'gpt-4o-mini' },
-        deepl:     { endpoint: 'https://api.deepl.com/v2',                    model: 'deepl' }
+        deepl:     { endpoint: 'https://api.deepl.com/v2',                    model: 'deepl' },
+        ollama:    { endpoint: 'http://localhost:11434',                     model: 'qwen2:latest' }
       };
       const p = presets[v];
       if (p) {
@@ -440,6 +441,7 @@ window.qwenLoadConfig().then(cfg => {
       else if (v.includes('openrouter')) inferred = 'openrouter';
       else if (v.includes('deepl')) inferred = 'deepl';
       else if (v.includes('dashscope')) inferred = 'dashscope';
+      else if (v.includes('11434') || v.includes('ollama')) inferred = 'ollama';
       if (inferred && providerPreset) {
         providerPreset.value = inferred;
         providerPreset.dispatchEvent(new Event('change'));
