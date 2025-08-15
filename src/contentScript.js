@@ -15,6 +15,19 @@ let flushTimer;
 let progress = { total: 0, done: 0 };
 let started = false;
 
+function ensureThemeCss() {
+  try {
+    if (!document.querySelector('link[data-qwen-theme="cyberpunk"]')) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = chrome.runtime.getURL('styles/cyberpunk.css');
+      link.dataset.qwenTheme = 'cyberpunk';
+      (document.head || document.documentElement).appendChild(link);
+    }
+    document.documentElement.setAttribute('data-qwen-theme', 'cyberpunk');
+  } catch {}
+}
+
 function replacePdfEmbeds() {
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
   const viewerBase = chrome.runtime.getURL('pdfViewer.html');
@@ -39,20 +52,15 @@ function setStatus(message, isError = false) {
   if (!el) {
     el = document.createElement('div');
     el.id = 'qwen-status';
-    Object.assign(el.style, {
-      position: 'fixed',
-      bottom: '10px',
-      right: '10px',
-      background: 'rgba(0,0,0,0.6)',
-      color: '#fff',
-      padding: '5px 10px',
-      zIndex: 2147483647,
-      fontSize: '12px',
-    });
+    el.className = 'qwen-hud qwen-hud--status';
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    el.innerHTML = '<span class="qwen-hud__dot" aria-hidden="true"></span><span class="qwen-hud__text"></span>';
     document.body.appendChild(el);
   }
-  el.style.background = isError ? 'rgba(255,0,0,0.8)' : 'rgba(0,0,0,0.6)';
-  el.textContent = `Qwen Translator: ${message}`;
+  el.dataset.variant = isError ? 'error' : '';
+  const textNode = el.querySelector('.qwen-hud__text') || el;
+  textNode.textContent = `Qwen Translator: ${message}`;
   try {
     chrome.runtime.sendMessage({ action: 'popup-status', text: message, error: isError });
   } catch {}
@@ -333,6 +341,7 @@ function observe(root = document.body) {
 async function start() {
   if (started) return;
   started = true;
+  ensureThemeCss();
   currentConfig = await window.qwenLoadConfig();
   progress = { total: 0, done: 0 };
   if (window.qwenSetTokenBudget) {

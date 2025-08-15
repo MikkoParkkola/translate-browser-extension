@@ -68,6 +68,14 @@ function requestOriginPermission(pattern) {
   return new Promise(resolve => chrome.permissions.request({ origins: [pattern] }, g => resolve(!!g)));
 }
 async function injectContentScripts(tabId) {
+  try {
+    await chrome.scripting.insertCSS({
+      target: { tabId, allFrames: true },
+      files: ['styles/cyberpunk.css'],
+    });
+  } catch (e) {
+    // best-effort; contentScript will also attempt to add a <link> fallback
+  }
   await chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
     files: ['lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'lib/detect.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],

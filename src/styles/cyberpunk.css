@@ -1,0 +1,100 @@
+:root[data-qwen-theme="cyberpunk"] {
+  --qwen-bg: rgba(8, 10, 20, 0.65);
+  --qwen-text: #e6f7ff;
+  --qwen-neon-1: #00e5ff;
+  --qwen-neon-2: #ff00e5;
+  --qwen-border: rgba(0, 229, 255, 0.4);
+  --qwen-error: #ff3b81;
+}
+
+.qwen-hud {
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+  z-index: 2147483647;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  color: var(--qwen-text);
+  background: linear-gradient(180deg, var(--qwen-bg), rgba(6, 8, 16, 0.85));
+  border: 1px solid var(--qwen-border);
+  border-radius: 6px;
+  box-shadow:
+    0 0 12px rgba(0, 229, 255, 0.35),
+    inset 0 0 24px rgba(255, 0, 229, 0.15);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  font: 500 12px/1.3 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+}
+
+.qwen-hud::before,
+.qwen-hud::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.qwen-hud::before {
+  inset: -1px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  border-image: linear-gradient(90deg, var(--qwen-neon-1), var(--qwen-neon-2)) 1;
+  opacity: 0.5;
+}
+
+.qwen-hud::after {
+  inset: 0;
+  border-radius: 6px;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.04) 0px,
+      rgba(255, 255, 255, 0.04) 1px,
+      transparent 2px,
+      transparent 4px
+    );
+  mix-blend-mode: overlay;
+  animation: qwen-scan 4s linear infinite;
+  opacity: 0.35;
+}
+
+.qwen-hud__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff, var(--qwen-neon-1) 45%, transparent 60%);
+  box-shadow: 0 0 10px var(--qwen-neon-1), 0 0 18px var(--qwen-neon-1);
+  flex: 0 0 auto;
+}
+
+.qwen-hud__text {
+  position: relative;
+  z-index: 1;
+  letter-spacing: 0.3px;
+  text-shadow:
+    0 0 3px rgba(0, 229, 255, 0.6),
+    0 0 6px rgba(255, 0, 229, 0.35);
+}
+
+.qwen-hud[data-variant="error"] {
+  border-color: rgba(255, 59, 129, 0.6);
+  box-shadow:
+    0 0 12px rgba(255, 59, 129, 0.45),
+    inset 0 0 24px rgba(255, 59, 129, 0.18);
+}
+
+.qwen-hud[data-variant="error"] .qwen-hud__dot {
+  background: radial-gradient(circle at 35% 35%, #fff, var(--qwen-error) 45%, transparent 60%);
+  box-shadow: 0 0 10px var(--qwen-error), 0 0 18px var(--qwen-error);
+}
+
+@keyframes qwen-scan {
+  0% { background-position-y: 0px; opacity: 0.25; }
+  50% { opacity: 0.45; }
+  100% { background-position-y: 12px; opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qwen-hud::after { animation: none; opacity: 0.25; }
+}
