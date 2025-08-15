@@ -4,11 +4,14 @@
   <meta charset="utf-8">
   <link rel="stylesheet" href="../styles/cyberpunk.css">
   <style>
+    html {
+      height: 100%;
+      background: var(--qwen-bg, #0a0c14) url('../styles/popup-bg.svg') center/cover fixed no-repeat;
+    }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       padding: 1rem;
       margin: 0;
-      background: var(--qwen-bg, #0a0c14);
       color: var(--qwen-text, #e6f7ff);
     }
     ul { list-style: none; padding: 0; margin: 0; }
@@ -20,6 +23,8 @@
       background: rgba(0,0,0,0.2);
     }
     .flags { margin-top: 1rem; display: flex; gap: 1rem; align-items: center; }
+    .form-group { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem; }
+    .form-group input, .form-group select { width: 100%; }
   </style>
 </head>
 <body class="qwen-bg-animated">
@@ -29,8 +34,33 @@
     <label><input type="checkbox" id="failover"> Failover</label>
     <label><input type="checkbox" id="parallel"> Parallel</label>
   </div>
-  <button id="save">Save</button>
+  <button id="save" class="primary-glow btn-frame">Save</button>
   <div id="status"></div>
+
+  <template id="providerTemplate">
+    <li draggable="true">
+      <details>
+        <summary class="provider-name"></summary>
+        <div class="form-group">
+          <label>API Key<input type="text" data-field="apiKey"></label>
+          <label>Endpoint<input type="text" data-field="apiEndpoint"></label>
+          <label>Models<input type="text" data-field="models" placeholder="comma separated"></label>
+          <label>Requests/min<input type="number" data-field="requestLimit"></label>
+          <label>Tokens/min<input type="number" data-field="tokenLimit"></label>
+          <label>Chars/month<input type="number" data-field="charLimit"></label>
+          <label>Strategy
+            <select data-field="strategy">
+              <option value="balanced">Balanced</option>
+              <option value="cost">Optimize cost</option>
+              <option value="speed">Optimize speed</option>
+              <option value="quality">Optimize quality</option>
+            </select>
+          </label>
+        </div>
+      </details>
+    </li>
+  </template>
+
   <script src="../config.js"></script>
   <script src="providers.js"></script>
 </body>

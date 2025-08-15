@@ -21,10 +21,7 @@ const reqCount = document.getElementById('reqCount') || document.createElement('
 const tokenCount = document.getElementById('tokenCount') || document.createElement('span');
 const reqBar = document.getElementById('reqBar') || document.createElement('div');
 const tokenBar = document.getElementById('tokenBar') || document.createElement('div');
-const turboReq = document.getElementById('turboReq') || document.createElement('span');
-const plusReq = document.getElementById('plusReq') || document.createElement('span');
-const turboReqBar = document.getElementById('turboReqBar') || document.createElement('div');
-const plusReqBar = document.getElementById('plusReqBar') || document.createElement('div');
+const providerUsage = document.getElementById('providerUsage') || document.createElement('div');
 const totalReq = document.getElementById('totalReq') || document.createElement('span');
 const totalTok = document.getElementById('totalTok') || document.createElement('span');
 const queueLen = document.getElementById('queueLen') || document.createElement('span');
@@ -145,6 +142,18 @@ function saveConfig() {
       theme: lightModeCheckbox.checked ? 'light' : 'dark',
       calibratedAt: (window.qwenConfig && window.qwenConfig.calibratedAt) || 0,
     };
+    if (cfg.model === 'qwen-mt-turbo') {
+      cfg.secondaryModel = 'qwen-mt-plus';
+      cfg.models = ['qwen-mt-turbo', 'qwen-mt-plus'];
+    } else if (cfg.model === 'qwen-mt-plus') {
+      cfg.secondaryModel = 'qwen-mt-turbo';
+      cfg.models = ['qwen-mt-plus', 'qwen-mt-turbo'];
+    } else {
+      cfg.secondaryModel = '';
+      cfg.models = cfg.model ? [cfg.model] : [];
+    }
+    cfg.strategy = (window.qwenConfig && window.qwenConfig.strategy) || 'balanced';
+    cfg.charLimit = (window.qwenConfig && window.qwenConfig.charLimit) || 0;
     window.qwenSaveConfig(cfg).then(() => {
       window.qwenConfig = cfg;
       chrome.runtime.sendMessage({ action: 'set-config', config: { memCacheMax: cfg.memCacheMax, requestLimit: cfg.requestLimit, tokenLimit: cfg.tokenLimit } }, () => {});
@@ -457,6 +466,25 @@ function setBar(el, ratio) {
   el.style.backgroundColor = window.qwenUsageColor ? window.qwenUsageColor(r) : 'var(--green)';
 }
 
+function renderProviderUsage(cfg, usage) {
+  if (!providerUsage) return;
+  providerUsage.innerHTML = '';
+  const provs = cfg.providers || {};
+  Object.entries(provs).forEach(([id, p]) => {
+    const models = p.models || (p.model ? [p.model] : []);
+    const limit = p.requestLimit || cfg.requestLimit || 0;
+    models.forEach(m => {
+      const used = usage.models && usage.models[m] ? usage.models[m].requests || 0 : 0;
+      const total = limit || 0;
+      const item = document.createElement('div');
+      item.className = 'usage-item';
+      const ratio = total ? Math.min(1, used / total) : 0;
+      item.innerHTML = `<span>${m}: ${used}${total ? '/' + total : ''}</span><div class="bar"><div style="width:${ratio * 100}%"></div></div>`;
+      providerUsage.appendChild(item);
+    });
+  });
+}
+
 function refreshUsage() {
   chrome.runtime.sendMessage({ action: 'usage' }, res => {
     if (chrome.runtime.lastError || !res) return;
@@ -467,64 +495,21 @@ function refreshUsage() {
       const total7d = res.costs && res.costs.total && res.costs.total['7d'];
       costSection.textContent = total7d != null ? `Total 7d: $${total7d.toFixed(2)}` : '';
     }
+    const cfg = window.qwenConfig || {};
+    const reqTotal = cfg.requestLimit || 0;
+    const tokTotal = cfg.tokenLimit || 0;
+    setBar(reqBar, reqTotal ? res.totalRequests / reqTotal : 0);
+    setBar(tokenBar, tokTotal ? res.totalTokens / tokTotal : 0);
+    reqCount.textContent = reqTotal ? `${res.totalRequests}/${reqTotal}` : `${res.totalRequests}`;
+    tokenCount.textContent = tokTotal ? `${res.totalTokens}/${tokTotal}` : `${res.totalTokens}`;
+    reqBar.title = `Requests: ${reqCount.textContent}`;
+    tokenBar.title = `Tokens: ${tokenCount.textContent}`;
+    renderProviderUsage(cfg, res);
   });
-}
-
-let lastQuotaRefresh = 0;
-async function refreshQuota() {
-  const cfg = window.qwenConfig;
-  if (!cfg || !window.qwenProviders || !window.qwenProviders.getProvider) return;
-  const prov = window.qwenProviders.getProvider('qwen');
-  if (!prov || !prov.getQuota) return;
-
-  // Fetch local usage
-  const usage = await new Promise(resolve => {
-    try {
-      chrome.runtime.sendMessage({ action: 'usage' }, res => resolve(res || {}));
-    } catch { resolve({}); }
-  });
-
-  // Fetch provider quota for both models
-  const [turbo, plus] = await Promise.all([
-    prov.getQuota({ endpoint: cfg.apiEndpoint, apiKey: cfg.apiKey, model: 'qwen-mt-turbo', debug: cfg.debug }).catch(() => null),
-    prov.getQuota({ endpoint: cfg.apiEndpoint, apiKey: cfg.apiKey, model: 'qwen-mt-plus', debug: cfg.debug }).catch(() => null),
-  ]);
-  if (!turbo && !plus) return;
-  lastQuotaRefresh = Date.now();
-  const ts = new Date(lastQuotaRefresh).toLocaleTimeString();
-  const tip = `Provider quota. Last refresh: ${ts}`;
-
-  // Determine primary quota based on selected model
-  const main = cfg.model && cfg.model.toLowerCase().includes('plus') ? plus : turbo;
-  const reqUsed = usage.totalRequests || 0;
-  const tokUsed = usage.totalTokens || 0;
-  const reqTotal = reqUsed + (main?.remaining?.requests || 0);
-  const tokTotal = tokUsed + (main?.remaining?.tokens || 0);
-  setBar(reqBar, reqTotal ? reqUsed / reqTotal : 0);
-  setBar(tokenBar, tokTotal ? tokUsed / tokTotal : 0);
-  reqCount.textContent = reqTotal ? `${reqUsed}/${reqTotal}` : `${reqUsed}`;
-  tokenCount.textContent = tokTotal ? `${tokUsed}/${tokTotal}` : `${tokUsed}`;
-  reqBar.title = `Requests: ${reqCount.textContent}\n${tip}`;
-  tokenBar.title = `Tokens: ${tokenCount.textContent}\n${tip}`;
-
-  // Turbo and Plus request bars
-  const turboLocal = usage.models && usage.models['qwen-mt-turbo'] ? usage.models['qwen-mt-turbo'].requests || 0 : 0;
-  const turboTotal = turboLocal + (turbo?.remaining?.requests || 0);
-  setBar(turboReqBar, turboTotal ? turboLocal / turboTotal : 0);
-  turboReq.textContent = turboTotal ? `${turboLocal}/${turboTotal}` : `${turboLocal}`;
-  turboReqBar.title = `Requests: ${turboReq.textContent}\n${tip}`;
-
-  const plusLocal = usage.models && usage.models['qwen-mt-plus'] ? usage.models['qwen-mt-plus'].requests || 0 : 0;
-  const plusTotal = plusLocal + (plus?.remaining?.requests || 0);
-  setBar(plusReqBar, plusTotal ? plusLocal / plusTotal : 0);
-  plusReq.textContent = plusTotal ? `${plusLocal}/${plusTotal}` : `${plusLocal}`;
-  plusReqBar.title = `Requests: ${plusReq.textContent}\n${tip}`;
 }
 
 setInterval(refreshUsage, 1000);
-setInterval(refreshQuota, 5000);
 refreshUsage();
-refreshQuota();
 
 function refreshMetrics() {
   chrome.runtime.sendMessage({ action: 'debug' }, res => {
