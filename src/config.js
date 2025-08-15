@@ -7,7 +7,7 @@ const defaultCfg = {
   targetLanguage: 'en',
   autoTranslate: false,
   requestLimit: 60,
-  tokenLimit: 100000,
+  tokenLimit: 31980,
   tokenBudget: 0,
   memCacheMax: 5000,
   sensitivity: 0.3,
@@ -20,8 +20,8 @@ const defaultCfg = {
 };
 
 const modelTokenLimits = {
-  'qwen-mt-turbo': 100000,
-  'qwen-mt-plus': 100000,
+  'qwen-mt-turbo': 31980,
+  'qwen-mt-plus': 23797,
   'gpt-4o-mini': 128000,
 };
 

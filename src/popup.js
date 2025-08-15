@@ -350,14 +350,6 @@ function setBar(el, ratio) {
 function refreshUsage() {
   chrome.runtime.sendMessage({ action: 'usage' }, res => {
     if (chrome.runtime.lastError || !res) return;
-    const reqLim = res.requestLimit || 0;
-    const tokLim = res.tokenLimit || 0;
-    reqCount.textContent = reqLim ? `${res.requests}/${reqLim}` : `${res.requests}`;
-    tokenCount.textContent = tokLim ? `${res.tokens}/${tokLim}` : `${res.tokens}`;
-    setBar(reqBar, reqLim ? res.requests / reqLim : 0);
-    setBar(tokenBar, tokLim ? res.tokens / tokLim : 0);
-    reqBar.title = reqLim ? `Requests: ${res.requests}/${reqLim}` : `Requests: ${res.requests}`;
-    tokenBar.title = tokLim ? `Tokens: ${res.tokens}/${tokLim}` : `Tokens: ${res.tokens}`;
     totalReq.textContent = res.totalRequests;
     totalTok.textContent = res.totalTokens;
     queueLen.textContent = res.queue;
@@ -368,8 +360,34 @@ function refreshUsage() {
   });
 }
 
+let lastQuotaRefresh = 0;
+function refreshQuota() {
+  const cfg = window.qwenConfig;
+  if (!cfg || !window.qwenProviders || !window.qwenProviders.getProvider) return;
+  const prov = window.qwenProviders.getProvider(cfg.provider || 'qwen');
+  if (!prov || !prov.getQuota) return;
+  prov.getQuota({ endpoint: cfg.apiEndpoint, apiKey: cfg.apiKey, model: cfg.model, debug: cfg.debug }).then(q => {
+    if (!q || q.error) return;
+    lastQuotaRefresh = Date.now();
+    const reqUsed = q.used?.requests ?? 0;
+    const reqTotal = reqUsed + (q.remaining?.requests ?? 0);
+    const tokUsed = q.used?.tokens ?? 0;
+    const tokTotal = tokUsed + (q.remaining?.tokens ?? 0);
+    setBar(reqBar, reqTotal ? reqUsed / reqTotal : 0);
+    setBar(tokenBar, tokTotal ? tokUsed / tokTotal : 0);
+    reqCount.textContent = reqTotal ? `${reqUsed}/${reqTotal}` : `${reqUsed}`;
+    tokenCount.textContent = tokTotal ? `${tokUsed}/${tokTotal}` : `${tokUsed}`;
+    const ts = new Date(lastQuotaRefresh).toLocaleTimeString();
+    const tip = `Provider quota. Last refresh: ${ts}`;
+    reqBar.title = `Requests: ${reqCount.textContent}\n${tip}`;
+    tokenBar.title = `Tokens: ${tokenCount.textContent}\n${tip}`;
+  }).catch(() => {});
+}
+
 setInterval(refreshUsage, 1000);
+setInterval(refreshQuota, 10000);
 refreshUsage();
+refreshQuota();
 
 function refreshMetrics() {
   chrome.runtime.sendMessage({ action: 'debug' }, res => {
