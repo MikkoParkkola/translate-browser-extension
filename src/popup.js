@@ -256,6 +256,7 @@ window.qwenLoadConfig().then(cfg => {
       const presets = {
         dashscope: { endpoint: 'https://dashscope-intl.aliyuncs.com/api/v1', model: 'qwen-mt-turbo' },
         openai:    { endpoint: 'https://api.openai.com/v1',                   model: 'gpt-4o-mini' },
+        openrouter:{ endpoint: 'https://openrouter.ai/api/v1',               model: 'gpt-4o-mini' },
         deepl:     { endpoint: 'https://api.deepl.com/v2',                    model: 'deepl' }
       };
       const p = presets[v];
@@ -274,6 +275,7 @@ window.qwenLoadConfig().then(cfg => {
       const v = (endpointInput.value || '').toLowerCase();
       let inferred = '';
       if (v.includes('openai')) inferred = 'openai';
+      else if (v.includes('openrouter')) inferred = 'openrouter';
       else if (v.includes('deepl')) inferred = 'deepl';
       else if (v.includes('dashscope')) inferred = 'dashscope';
       if (inferred && providerPreset) {
@@ -341,6 +343,11 @@ translateBtn.addEventListener('click', () => {
 
 testBtn.addEventListener('click', async () => {
   status.textContent = 'Testing...';
+  const tabs = await new Promise(r => chrome.tabs.query({ active: true, currentWindow: true }, r));
+  const tab = tabs && tabs[0];
+  if (tab) {
+    await new Promise(res => chrome.runtime.sendMessage({ action: 'ensure-start', tabId: tab.id, url: tab.url }, () => res()));
+  }
   if (!window.qwenTranslate || !window.qwenTranslateStream) {
     status.textContent = 'Translation library not loaded. This may happen if the script was blocked.';
     return;

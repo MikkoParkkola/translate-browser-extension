@@ -12,13 +12,13 @@
     "contextMenus"
   ],
   "host_permissions": [
+    "<all_urls>",
     "https://dashscope-intl.aliyuncs.com/*",
     "https://api.openai.com/*",
     "https://api.deepl.com/*",
     "https://api-free.deepl.com/*"
   ],
   "optional_host_permissions": [
-    "<all_urls>",
     "file:///*"
   ],
   "background": {
@@ -34,16 +34,36 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "translator.js", "config.js", "languages.js", "throttle.js",
-        "pdfViewer.html", "pdfViewer.js", "sessionPdf.js", "pdf.min.js", "pdf.worker.min.js",
-        "wasm/pipeline.js", "wasm/pdfgen.js", "wasm/engine.js",
-        "wasm/vendor/hb.wasm", "wasm/vendor/icu4x_segmenter.wasm",
-        "wasm/vendor/mupdf.engine.js", "wasm/vendor/mupdf-wasm.js", "wasm/vendor/mupdf-wasm.wasm",
-        "wasm/vendor/pdfium.engine.js", "wasm/vendor/pdfium.js", "wasm/vendor/pdfium.wasm",
+        "translator.js",
+        "config.js",
+        "languages.js",
+        "throttle.js",
+        "styles/cyberpunk.css",
+        "pdfViewer.html",
+        "pdfViewer.js",
+        "sessionPdf.js",
+        "pdf.min.js",
+        "pdf.worker.min.js",
+        "wasm/pipeline.js",
+        "wasm/pdfgen.js",
+        "wasm/engine.js",
+        "wasm/vendor/hb.wasm",
+        "wasm/vendor/icu4x_segmenter.wasm",
+        "wasm/vendor/mupdf.engine.js",
+        "wasm/vendor/mupdf-wasm.js",
+        "wasm/vendor/mupdf-wasm.wasm",
+        "wasm/vendor/pdfium.engine.js",
+        "wasm/vendor/pdfium.js",
+        "wasm/vendor/pdfium.wasm",
         "wasm/vendor/pdf-lib.js",
-        "wasm/vendor/*", "wasm/vendor/fonts/*", "config.local.js", "qa/compare.html"
+        "wasm/vendor/*",
+        "wasm/vendor/fonts/*",
+        "config.local.js",
+        "qa/compare.html"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

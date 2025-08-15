@@ -1,5 +1,5 @@
 describe('background icon plus indicator', () => {
-  let updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate, _setConfig;
+  let updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate, _setConfig, portListener;
   beforeEach(() => {
     jest.resetModules();
     global.models = null;
@@ -45,6 +45,7 @@ describe('background icon plus indicator', () => {
     };
     global.qwenUsageColor = () => '#00ff00';
     ({ updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate, _setConfig } = require('../src/background.js'));
+    portListener = chrome.runtime.onConnect.addListener.mock.calls[0][0];
     chrome.action.setBadgeText.mockClear();
   });
 
@@ -91,6 +92,40 @@ describe('background icon plus indicator', () => {
       target: 'es',
     });
     expect(translateSpy).toHaveBeenCalledWith(expect.objectContaining({ provider: 'alt' }));
+  });
+
+  test('handleTranslate uses noProxy', async () => {
+    const translateSpy = jest.fn().mockResolvedValue({ text: 'ok' });
+    global.qwenTranslate = translateSpy;
+    await handleTranslate({
+      endpoint: 'https://e/',
+      apiKey: 'k',
+      model: 'm',
+      text: 'hi',
+      source: 'en',
+      target: 'es',
+    });
+    expect(translateSpy).toHaveBeenCalledWith(expect.objectContaining({ noProxy: true }));
+  });
+
+  test('port translation passes noProxy', async () => {
+    const posted = [];
+    const port = {
+      name: 'qwen-translate',
+      onMessage: { addListener: fn => (port._onMessage = fn) },
+      onDisconnect: { addListener: jest.fn() },
+      postMessage: jest.fn(msg => posted.push(msg)),
+    };
+    portListener(port);
+    const translateSpy = jest.fn().mockResolvedValue({ text: 'ok' });
+    global.qwenTranslate = translateSpy;
+    await port._onMessage({
+      action: 'translate',
+      requestId: '1',
+      opts: { endpoint: 'https://e/', model: 'm', text: 't', source: 'en', target: 'es' },
+    });
+    expect(translateSpy).toHaveBeenCalledWith(expect.objectContaining({ noProxy: true }));
+    expect(posted.length).toBeGreaterThan(0);
   });
 });
 
