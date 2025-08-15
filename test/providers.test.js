@@ -1,8 +1,10 @@
-const { registerProvider, listProviders } = require('../src/providers');
-require('../src/providers/qwen');
-require('../src/providers/google');
-require('../src/providers/deepl');
-require('../src/providers/openrouter');
+const Providers = require('../src/lib/providers');
+const { registerProvider, listProviders, initProviders } = require('../src/providers');
+
+beforeEach(() => {
+  Providers.reset();
+  initProviders();
+});
 
 test('listProviders returns name and label', () => {
   const mock = { translate: jest.fn(), label: 'Mock Provider' };

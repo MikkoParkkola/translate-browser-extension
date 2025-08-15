@@ -21,10 +21,10 @@
        translate: jest.fn(async ({ text }) => ({ text: `OK:${text}` })),
      };
 
-     Providers.register('openai', openai);
-     Providers.register('dashscope', dashscope);
-
-     const { qwenTranslate } = require('../src/translator.js');
+    Providers.register('openai', openai);
+    Providers.register('dashscope', dashscope);
+    Providers.init();
+    const { qwenTranslate } = require('../src/translator.js');
 
      const res = await qwenTranslate({
        text: 'hello',
@@ -58,10 +58,10 @@
        translate: jest.fn(async ({ text }) => ({ text: `OK:${text}` })),
      };
 
-     Providers.register('openai', openai);
-     Providers.register('dashscope', dashscope);
-
-     const { qwenTranslate } = require('../src/translator.js');
+    Providers.register('openai', openai);
+    Providers.register('dashscope', dashscope);
+    Providers.init();
+    const { qwenTranslate } = require('../src/translator.js');
 
      const res = await qwenTranslate({
        text: 'hola',

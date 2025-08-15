@@ -83,10 +83,11 @@
     return { text: result };
   }
 
+  const provider = { translate, throttle: { requestLimit: 3, windowMs: 1000 } };
   // Register into provider registry if available
   try {
     const reg = root.qwenProviders || (typeof require !== 'undefined' ? require('../lib/providers') : null);
-    if (reg && reg.register) reg.register('openrouter', { translate });
+    if (reg && reg.register && !reg.get('openrouter')) reg.register('openrouter', provider);
   } catch {}
-  return { translate };
+  return provider;
 }));

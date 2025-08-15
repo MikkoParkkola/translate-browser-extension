@@ -81,10 +81,11 @@
     return { text: result };
   }
 
+  const provider = { translate, throttle: { requestLimit: 60, windowMs: 60000 } };
   // Register into provider registry if available
   try {
     const reg = root.qwenProviders || (typeof require !== 'undefined' ? require('../lib/providers') : null);
-    if (reg && reg.register) reg.register('openai', { translate });
+    if (reg && reg.register && !reg.get('openai')) reg.register('openai', provider);
   } catch {}
-  return { translate };
+  return provider;
 }));

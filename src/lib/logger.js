@@ -34,8 +34,19 @@
   function redact(args) {
     return args.map(redactValue);
   }
-  function format(ns, args) {
-    const red = redact(args);
+  const collectors = new Set();
+  function addCollector(fn) {
+    if (typeof fn === 'function') {
+      collectors.add(fn);
+      return () => collectors.delete(fn);
+    }
+    return () => {};
+  }
+  function emit(level, ns, redArgs) {
+    const entry = { level, ns, args: redArgs };
+    collectors.forEach(fn => { try { fn(entry); } catch {} });
+  }
+  function format(ns, red) {
     if (!red.length) return [`[${ns}]`];
     const [first, ...rest] = red;
     if (typeof first === 'string') return [`[${ns}] ${first}`, ...rest];
@@ -59,11 +70,11 @@
       setLevel(l) { lvl = parseLevel(l); },
       level() { return lvl; },
       create(child) { return create(ns ? `${ns}:${child}` : child); },
-      debug(...a) { if (lvl >= 3) base.debug(...format(ns, a)); },
-      info(...a)  { if (lvl >= 2) base.info(...format(ns, a)); },
-      warn(...a)  { if (lvl >= 1) base.warn(...format(ns, a)); },
-      error(...a) { base.error(...format(ns, a)); },
+      debug(...a) { if (lvl >= 3) { const red = redact(a); base.debug(...format(ns, red)); emit('debug', ns, red); } },
+      info(...a)  { if (lvl >= 2) { const red = redact(a); base.info(...format(ns, red)); emit('info', ns, red); } },
+      warn(...a)  { if (lvl >= 1) { const red = redact(a); base.warn(...format(ns, red)); emit('warn', ns, red); } },
+      error(...a) { const red = redact(a); base.error(...format(ns, red)); emit('error', ns, red); },
     };
   }
-  return { create, parseLevel };
+  return { create, parseLevel, addCollector };
 }));

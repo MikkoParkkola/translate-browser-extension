@@ -12,7 +12,7 @@ describe('translator auto-detects source language', () => {
     const Providers = require('../src/lib/providers.js');
     const spy = jest.fn(async ({ source, text }) => ({ text: `SRC:${source}:${text}` }));
     Providers.register('dashscope', { translate: spy });
-
+    Providers.init();
     const { qwenTranslate } = require('../src/translator.js');
     const res = await qwenTranslate({
       text: 'bonjour',
@@ -32,7 +32,7 @@ describe('translator auto-detects source language', () => {
     const Providers = require('../src/lib/providers.js');
     const spy = jest.fn(async ({ text }) => ({ text })); // echos batch text
     Providers.register('dashscope', { translate: spy });
-
+    Providers.init();
     const { qwenTranslateBatch } = require('../src/translator.js');
     const res = await qwenTranslateBatch({
       texts: ['bonjour le monde', 'salut'],

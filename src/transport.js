@@ -9,9 +9,11 @@
       ({ runWithRetry } = require('./retry'));
     }
     if (typeof self !== 'undefined' && self.qwenProviders) {
-      ({ getProvider } = self.qwenProviders);
+      ({ getProvider, initProviders } = self.qwenProviders);
+      if (initProviders) initProviders();
     } else {
-      ({ getProvider } = require('./providers'));
+      ({ getProvider, initProviders } = require('./providers'));
+      initProviders();
     }
   } else {
     if (root.qwenRetry) {
@@ -22,11 +24,14 @@
       runWithRetry = fn => fn();
     }
     if (root.qwenProviders) {
-      ({ getProvider } = root.qwenProviders);
+      ({ getProvider, initProviders } = root.qwenProviders);
+      if (initProviders) initProviders();
     } else if (typeof self !== 'undefined' && self.qwenProviders) {
-      ({ getProvider } = self.qwenProviders);
+      ({ getProvider, initProviders } = self.qwenProviders);
+      if (initProviders) initProviders();
     } else if (typeof require !== 'undefined') {
-      ({ getProvider } = require('./providers'));
+      ({ getProvider, initProviders } = require('./providers'));
+      initProviders();
     }
   }
   async function translateRequest(opts) {

@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 - Source: `src/` (browser extension). Key files: `background.js`, `contentScript.js`, `translator.js`, `throttle.js`, `config.js`, `pdfViewer.html/js`.
-- Providers: `src/providers/{openai,deepl,dashscope}.js` (auto-registered via `src/lib/providers.js`).
+- Providers: `src/providers/{openai,deepl,dashscope,openrouter,google}.js` (registered via `src/lib/providers.js`).
 - Messaging: `src/lib/messaging.js` (Port + legacy sendMessage fallback).
 - Logging: `src/lib/logger.js` (centralized logger with redaction).
 - Translation Memory (TM): `src/lib/tm.js` (IndexedDB TTL/LRU + metrics).
@@ -15,6 +15,7 @@
 - Docs: `README.md`, `docs/PROVIDERS.md`.
 
 ## Build, Test, and Development Commands
+- `npm install` once to fetch dependencies.
 - `npm test`: Runs Jest with jsdom and `jest-fetch-mock`.
 - `npm run build`: Copies `src/` to `dist/` (web-accessible assets included).
 - `npm run build:zip`: Produces a reproducible ZIP in `dist/`.
@@ -49,8 +50,10 @@
 
 ## Current Product State
 - Multi-provider translation
-  - Providers: DashScope (Qwen), OpenAI, DeepL via `lib/providers.js`.
-  - Provider order (`providerOrder`) and per-provider endpoints configurable; failover implemented with per-provider `runWithRetry` + rate-limit.
+  - Providers: DashScope (Qwen), OpenAI, DeepL, OpenRouter via `lib/providers.js`.
+- Providers are no longer auto-registered; call `qwenProviders.initProviders()` before translating when using built-ins. `qwenProviders.isInitialized()` reports whether defaults are loaded and the translator now logs a warning if a translation is attempted before initialization. Custom providers can create isolated registries via `qwenProviders.createRegistry()` and register prior to initialization to override or augment the defaults.
+ - Providers are no longer auto-registered; call `qwenProviders.initProviders()` or `qwenProviders.ensureProviders()` before translating when using built-ins. `qwenProviders.isInitialized()` reports whether defaults are loaded and the translator now logs a one-time warning if a translation is attempted before initialization. Pass `{ autoInit: true }` to translation calls to invoke `initProviders()` on demand. Custom providers can create isolated registries via `qwenProviders.createRegistry()` and register prior to initialization to override or augment the defaults.
+  - Provider order (`providerOrder`) and per-provider endpoints configurable; failover implemented with per-provider `runWithRetry` + rate-limit. Providers may include a `throttle` config to tune request/token limits per backend, with optional per-context queues (e.g., `stream`) for finer control.
   - Background pulls provider-specific keys from storage (`getProviderApiKeyFromStorage`) and injects them on both direct and Port paths.
 - Messaging and streaming
   - Port-based background proxy with chunk relay and cancellation; legacy `sendMessage` fallback.
@@ -63,7 +66,9 @@
   - In-memory LRU with normalized keys (whitespace collapsed + NFC) limits memory and improves hit rate.
 - UX and theming
   - Cyberpunk HUD (`styles/cyberpunk.css`) for in-page status and popup; in-app Getting Started guide; tooltips across fields.
-  - Provider presets (DashScope/OpenAI/DeepL); provider-specific endpoints/keys/models; version/date shown in popup.
+  - Provider presets (DashScope/OpenAI/DeepL/OpenRouter); provider-specific endpoints/keys/models; version/date shown in popup.
+  - Logging via `qwenLogger` with levels and collectors; popup debug output uses the logger.
+  - Fetch strategy is centralized in `lib/fetchStrategy.js`; override with `qwenFetchStrategy.setChooser(fn)` for custom proxy/direct routing.
 - Build/CI
   - Reproducible dist + zip; CI builds/tests and uploads artifacts on push/PR.
 
@@ -83,5 +88,7 @@
   - Advanced control for in-memory LRU size (`QWEN_MEMCACHE_MAX`) with validation.
 - Provider ecosystem
   - Add additional providers (Azure OpenAI, Anthropic/Claude) behind registry; extend error normalization tests accordingly.
+- Typed interfaces
+  - Basic TypeScript declarations live in `types/index.d.ts`; expand coverage to remaining modules.
 - Release ops
   - Store submission assets and a short checklist (icons, screenshots, store text). Consider a canary channel for staged rollouts.

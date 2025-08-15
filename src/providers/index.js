@@ -1,14 +1,25 @@
 const Providers = require('../lib/providers');
 
-// Register built-in providers for Node/tests and browser environments
-Providers.register('qwen', require('./qwen'));
-Providers.register('google', require('./google'));
-const deepl = require('./deepl');
-Providers.register('deepl', deepl.basic);
-Providers.register('deepl-free', deepl.free);
-Providers.register('deepl-pro', deepl.pro);
-const openrouter = require('./openrouter');
-Providers.register('openrouter', { ...openrouter, label: 'OpenRouter' });
+function initProviders() {
+  Providers.init({
+    qwen: require('./qwen'),
+    google: require('./google'),
+    deepl: require('./deepl').basic,
+    'deepl-free': require('./deepl').free,
+    'deepl-pro': require('./deepl').pro,
+    openrouter: { ...require('./openrouter'), label: 'OpenRouter' },
+  });
+}
+
+function isInitialized() { return Providers.isInitialized(); }
+function ensureProviders() {
+  if (!isInitialized()) {
+    initProviders();
+    return true;
+  }
+  return false;
+}
+function resetProviders() { Providers.reset(); }
 
 function registerProvider(name, provider) { Providers.register(name, provider); }
 function getProvider(name) { return Providers.get(name); }
@@ -21,9 +32,9 @@ function listProviders() {
 
 // Expose registry to globals for browser use
 if (typeof window !== 'undefined') {
-  window.qwenProviders = { registerProvider, getProvider, listProviders };
+  window.qwenProviders = { registerProvider, getProvider, listProviders, initProviders, ensureProviders, isInitialized, resetProviders };
 } else if (typeof self !== 'undefined') {
-  self.qwenProviders = { registerProvider, getProvider, listProviders };
+  self.qwenProviders = { registerProvider, getProvider, listProviders, initProviders, ensureProviders, isInitialized, resetProviders };
 }
 
-module.exports = { registerProvider, getProvider, listProviders };
+module.exports = { registerProvider, getProvider, listProviders, initProviders, ensureProviders, isInitialized, resetProviders };

@@ -1,24 +1,39 @@
 let fetchFn = typeof fetch !== 'undefined' ? fetch : undefined;
-var runWithRateLimit;
-var runWithRetry;
 var approxTokens;
+var createThrottle;
+const throttles = new Map();
+function throttleFor(id, context = 'default') {
+  const key = `${id || 'default'}:${context}`;
+  if (!throttles.has(key)) {
+    let cfg;
+    try {
+      const prov = Providers && Providers.get ? Providers.get(id) : null;
+      cfg = prov && prov.throttle;
+    } catch {}
+    let tCfg = cfg || {};
+    if (cfg && cfg.contexts) {
+      tCfg = Object.assign({}, cfg, cfg.contexts[context] || cfg.contexts.default || {});
+      delete tCfg.contexts;
+    }
+    throttles.set(key, createThrottle(tCfg));
+  }
+  return throttles.get(key);
+}
 
 if (typeof window === 'undefined') {
   if (typeof self !== 'undefined' && self.qwenThrottle) {
-    ({ runWithRateLimit, runWithRetry, approxTokens } = self.qwenThrottle);
+    ({ createThrottle, approxTokens } = self.qwenThrottle);
   } else {
-    // Node 18+ provides a global fetch implementation
     fetchFn = typeof fetch !== 'undefined' ? fetch : require('cross-fetch');
-    ({ runWithRateLimit, runWithRetry, approxTokens } = require('./throttle'));
+    ({ createThrottle, approxTokens } = require('./throttle'));
   }
 } else {
   if (window.qwenThrottle) {
-    ({ runWithRateLimit, runWithRetry, approxTokens } = window.qwenThrottle);
+    ({ createThrottle, approxTokens } = window.qwenThrottle);
   } else if (typeof require !== 'undefined') {
-    ({ runWithRateLimit, runWithRetry, approxTokens } = require('./throttle'));
+    ({ createThrottle, approxTokens } = require('./throttle'));
   } else {
-    runWithRateLimit = fn => fn();
-    runWithRetry = fn => fn();
+    createThrottle = () => ({ runWithRateLimit: fn => fn(), runWithRetry: fn => fn() });
     approxTokens = () => 0;
   }
 }
@@ -109,17 +124,25 @@ try {
     Providers = self.qwenProviders;
   } else if (typeof require !== 'undefined') {
     try {
-      Providers = require('./lib/providers');
-      if (
-        Providers &&
-        typeof Providers.candidates === 'function' &&
-        Providers.candidates().length === 0
-      ) {
-        require('./providers');
+        Providers = require('./lib/providers');
+      } catch {}
+  }
+} catch {}
+
+  let _warnedProviders = false;
+  function _ensureProviders(opts = {}) {
+    try {
+      if (Providers && typeof Providers.isInitialized === 'function' && !Providers.isInitialized()) {
+        if (opts.autoInit) {
+          try { require('./providers').ensureProviders(); return; } catch {}
+        }
+        if (!_warnedProviders) {
+          _warnedProviders = true;
+          trLogger.warn('default providers not initialized; call qwenProviders.initProviders()');
+        }
       }
     } catch {}
   }
-} catch {}
 
 let TM = null;
 try {
@@ -181,7 +204,8 @@ function chooseProvider(opts) {
   const ep = String(opts && opts.endpoint || '').toLowerCase();
   return ep.includes('dashscope') ? 'dashscope' : 'dashscope';
 }
-async function providerTranslate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true, provider }) {
+  async function providerTranslate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true, provider, context = 'default', autoInit = false }) {
+    _ensureProviders({ autoInit });
   const tokens = approxTokens(text);
   const chain = [];
   if (provider) {
@@ -198,12 +222,9 @@ async function providerTranslate({ endpoint, apiKey, model, text, source, target
     const impl = Providers.get(id);
     if (!impl || typeof impl.translate !== 'function') continue;
     try {
-      return await runWithRetry(
-        () => runWithRateLimit(
-          () => impl.translate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
-          tokens,
-          { immediate: true }
-        ),
+      const t = throttleFor(id, context);
+      return await t.runWithRetry(
+        () => impl.translate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
         tokens,
         3,
         debug
@@ -216,12 +237,9 @@ async function providerTranslate({ endpoint, apiKey, model, text, source, target
   }
 
   if (lastErr) throw lastErr;
-  return await runWithRetry(
-    () => runWithRateLimit(
-      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
-      tokens,
-      { immediate: true }
-    ),
+  const t = throttleFor(chain[0], context);
+  return await t.runWithRetry(
+    () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
     tokens,
     3,
     debug
@@ -230,7 +248,7 @@ async function providerTranslate({ endpoint, apiKey, model, text, source, target
 
 async function _detectSource(text, { detector, debug, noProxy } = {}) {
   const sample = String(text || '').slice(0, 2000);
-  if (detector === 'google' && messaging && typeof chrome !== 'undefined' && chrome.runtime && !noProxy) {
+  if (detector === 'google' && chooseStrategy({ noProxy }) === 'proxy' && messaging) {
     try {
       const r = await messaging.detectLanguage({ text: sample, detector: 'google', debug });
       if (r && r.lang) return r.lang;
@@ -357,7 +375,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
   return { text: result };
 }
 
-async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, provider, detector, force = false, skipTM = false }) {
+async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, provider, detector, force = false, skipTM = false, autoInit = false }) {
   if (debug) {
     trLogger.debug('qwenTranslate called with', {
       endpoint,
@@ -390,9 +408,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     } catch {}
   }
 
-    if (!noProxy &&
-        messaging && typeof chrome !== 'undefined' &&
-        chrome.runtime) {
+    if (chooseStrategy({ noProxy }) === 'proxy' && messaging) {
       const result = await messaging.requestViaBackground({
         endpoint: withSlash(endpoint),
         apiKey, model, text, source: src, target, debug, stream: false, signal, provider: prov
@@ -403,7 +419,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     }
 
   try {
-    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, stream, provider: provider ? prov : undefined });
+    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, stream, provider: provider ? prov : undefined, context: stream ? 'stream' : 'default', autoInit });
     _setCache(cacheKey, data);
     if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
@@ -417,7 +433,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   }
 }
 
-async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, provider, detector, skipTM = false }, onData) {
+async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, provider, detector, skipTM = false, autoInit = false }, onData) {
   if (debug) {
     trLogger.debug('qwenTranslateStream called with', {
       endpoint,
@@ -440,9 +456,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     return data;
   }
 
-    if (!noProxy &&
-        messaging && typeof chrome !== 'undefined' &&
-        chrome.runtime) {
+    if (chooseStrategy({ noProxy }) === 'proxy' && messaging) {
       const data = await messaging.requestViaBackground({
         endpoint: withSlash(endpoint),
         apiKey, model, text, source: src, target, debug, stream: true, signal, onData, provider: prov
@@ -453,7 +467,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     }
 
   try {
-    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, onData, stream, provider: prov });
+    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, onData, stream, provider: prov, context: 'stream', autoInit });
     _setCache(cacheKey, data);
     if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
@@ -622,7 +636,7 @@ async function batchOnce({
     const words = joinedText.replaceAll(SEP, ' ').trim().split(/\s+/).filter(Boolean).length;
     let res;
     try {
-      res = await qwenTranslate({ ...opts, source: g.lang, text: joinedText, skipTM: true, noProxy: opts.noProxy });
+      res = await qwenTranslate({ ...opts, source: g.lang, text: joinedText, skipTM: true, noProxy: opts.noProxy, autoInit: opts.autoInit });
     } catch (e) {
       if (/HTTP\s+400/i.test(e.message || '')) throw e;
       g.items.forEach(m => { m.result = m.text; });
@@ -644,7 +658,7 @@ async function batchOnce({
         for (const m of g.items) {
           let out;
           try {
-            const single = await qwenTranslate({ ...opts, source: m.lang, text: m.text, skipTM: true, noProxy: opts.noProxy });
+            const single = await qwenTranslate({ ...opts, source: m.lang, text: m.text, skipTM: true, noProxy: opts.noProxy, autoInit: opts.autoInit });
             out = single.text;
           } catch {
             out = m.text;
@@ -787,5 +801,12 @@ if (typeof module !== 'undefined') {
     _setGetUsage,
     _getTokenBudget,
     _setTokenBudget,
+    _throttleKeys: () => Array.from(throttles.keys()),
   };
 }
+let chooseStrategy = () => 'proxy';
+try {
+  if (typeof window !== 'undefined' && window.qwenFetchStrategy) chooseStrategy = window.qwenFetchStrategy.choose;
+  else if (typeof self !== 'undefined' && typeof window === 'undefined' && self.qwenFetchStrategy) chooseStrategy = self.qwenFetchStrategy.choose;
+  else if (typeof require !== 'undefined') chooseStrategy = require('./lib/fetchStrategy').choose;
+} catch {}

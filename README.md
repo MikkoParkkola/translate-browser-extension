@@ -3,16 +3,24 @@
 This Chrome extension translates the content of the active tab using Alibaba Cloud Qwen MT models. Dynamic pages are translated as new elements appear. It supports translation between more than one hundred languages.
 
 ## Installation
-1. Run `npm install` to install development dependencies.
-2. Build the extension by copying the `src` folder contents into a folder of your choice.
-3. In your Chromium based browser open the extensions page and enable "Developer mode".
-4. Choose "Load unpacked" and select the folder containing the extension files.
-   The extension requests the "tabs" permission so the popup can send
-   messages to the active tab for translation.
-   If Chrome reports **Service worker registration failed. Status code: 15**,
-   ensure the selected folder contains `manifest.json`, `background.js` and the
-   other files from the `src` directory. Loading the repository root without the
-   bundled files will cause the worker to fail.
+1. **Install dependencies**
+   ```sh
+   npm install
+   ```
+2. **Build the distributable** – this copies everything in `src/` to `dist/`.
+   ```sh
+   npm run build
+   ```
+3. **Load the extension**
+   - Open `chrome://extensions` (or the equivalent page in your Chromium‑based browser).
+   - Enable **Developer mode**.
+   - Click **Load unpacked** and select the generated `dist/` directory.
+4. The extension requests access to *all websites* so translations can run automatically.
+   Allow the permission prompt when loading the extension.
+
+If Chrome reports **Service worker registration failed. Status code: 15**, ensure
+you selected the `dist/` folder produced by the build step. Loading the repository
+root or a directory missing `manifest.json` will cause the worker to fail.
 
 ## Uninstallation
 Remove the extension from the browser's extension management page.
@@ -62,9 +70,15 @@ The sample phrase is chosen based on the configured source language so the trans
 See also: docs/PROVIDERS.md
 
 ## Usage
-Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content as well as embedded frames or third-party widgets whenever the browser grants access. If translation fails the affected text is kept in a queue and retried until the API succeeds. When the translated text matches the original the node is marked as untranslatable and skipped. Translations are cached for the current session to minimise API calls.
-Identical strings are translated only once and reused across matching nodes, and hidden or off-screen elements are ignored so tokens are spent only on visible text.
-Translated nodes keep their original leading and trailing whitespace. Nodes are batched to minimise API requests and maximise throughput. While translations are running the extension's toolbar icon shows an activity badge and a temporary status box in the bottom-right corner of the page reports current work or errors. The box disappears automatically when the extension is idle.
+1. Click the toolbar icon to open the popup.
+2. Pick a **Provider preset** or enter a custom endpoint.
+3. Paste your API key and choose source/target languages.
+4. Press **Save** and then **Test settings** to verify connectivity.
+5. Click **Translate Page** to translate once, or enable **Automatic translation** to translate pages on load.
+
+Translations apply to dynamically added content as well as embedded frames or third‑party widgets whenever the browser grants access. If translation fails the affected text is kept in a queue and retried until the API succeeds. When the translated text matches the original the node is marked as untranslatable and skipped. Translations are cached for the current session to minimise API calls.
+Identical strings are translated only once and reused across matching nodes, and hidden or off‑screen elements are ignored so tokens are spent only on visible text.
+Translated nodes keep their original leading and trailing whitespace. Nodes are batched to minimise API requests and maximise throughput. While translations are running the extension's toolbar icon shows an activity badge and a temporary status box in the bottom‑right corner of the page reports current work or errors. The box disappears automatically when the extension is idle.
 
 ### Rate Limiting
 The extension and CLI queue translation requests to stay within the provider limits.
@@ -96,6 +110,28 @@ npm run test:e2e
 ```
 These tests launch a headless browser to open `src/qa/compare.html`, render two PDFs via `pdf.js`, and compute a visual diff score. The page also supports automation via query params: `?src1=/path/A.pdf&src2=/path/B.pdf&diff=1&autoload=1`, and exposes `window.diffScore` (0..1, lower is better).
 
+### Provider registry & throttling
+Built-in providers are registered through `qwenProviders.initProviders()`. This initializer is no longer invoked automatically; call it before translating if you rely on the default set. `qwenProviders.isInitialized()` reports whether defaults have been loaded. Tests or host applications may create isolated registries with `qwenProviders.createRegistry()` and pre-register custom providers before calling `initProviders()` to avoid overrides. Each provider may expose a `throttle` config and receives its own rate-limit queue created via `createThrottle`, with optional per-context limits (for example, separate queues for streaming vs. standard requests) to tune burst behavior.
+
+#### Quick start
+```js
+import { initProviders } from './providers';
+import { qwenTranslate } from './translator';
+
+initProviders(); // or qwenProviders.ensureProviders();
+
+const res = await qwenTranslate({ text: 'Hello', target: 'es' });
+```
+
+`qwenTranslate` also accepts `autoInit: true` to invoke `initProviders()` on-demand:
+```js
+await qwenTranslate({ text: 'Hello', target: 'es', autoInit: true });
+```
+
+`qwenFetchStrategy.choose()` decides whether requests go directly or through the background proxy; override the selection via `qwenFetchStrategy.setChooser(fn)` for testing or custom routing.
+
+Structured logging is available through `qwenLogger`. Log levels (`error`, `warn`, `info`, `debug`) respect a global `logLevel` config and logs can be captured in tests via `addCollector`. If translation is attempted before `qwenProviders.initProviders()` is called, the translator emits a warning reminding you to initialize the default providers.
+
 Privacy and test PDFs
 - Do not commit personal or private PDFs to the repository. Root-level `*.pdf` files are ignored by `.gitignore` and CI checks will fail if any are present.
 - E2E tests use synthetic PDFs generated at runtime (via `pdf-lib`) to avoid storing files.
@@ -111,3 +147,6 @@ node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--to
 If no endpoint is specified the tool defaults to `https://dashscope-intl.aliyuncs.com/api/v1`.
 Use `-d` to print detailed request and response logs.
 Press `Ctrl+C` or `Ctrl+D` to exit.
+
+### TypeScript
+Basic type definitions for the translator APIs ship in `types/index.d.ts` and are referenced via the package `types` field.

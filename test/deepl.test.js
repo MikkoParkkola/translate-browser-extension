@@ -1,5 +1,5 @@
-const { getProvider } = require('../src/providers');
-require('../src/providers/deepl');
+const { getProvider, initProviders } = require('../src/providers');
+initProviders();
 
 describe('deepl provider', () => {
   beforeEach(() => {

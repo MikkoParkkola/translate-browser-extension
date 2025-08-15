@@ -77,7 +77,11 @@ describe('popup configuration test', () => {
   });
 
   test('runs configuration tests and logs', async () => {
-    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    const logger = require('../src/lib/logger');
+    window.qwenConfig = { logLevel: 'debug' };
+    window.qwenLogger = logger;
+    const entries = [];
+    const remove = logger.addCollector(e => entries.push(e));
     require('../src/popup.js');
     await Promise.resolve();
     document.getElementById('debug').checked = true;
@@ -85,8 +89,9 @@ describe('popup configuration test', () => {
     await Promise.resolve();
     await new Promise(res => setTimeout(res, 0));
     expect(document.getElementById('status').textContent).toContain('All tests passed');
-    expect(logSpy).toHaveBeenCalledWith('QTDEBUG: starting configuration test', expect.any(Object));
-    logSpy.mockRestore();
+    expect(entries.some(e => e.ns === 'popup' && e.level === 'debug' && /starting configuration test/.test(e.args[0]))).toBe(true);
+    expect(global.qwenTranslate.mock.calls.some(c => c[0].noProxy === true)).toBe(true);
+    remove();
   });
 });
 

@@ -54,18 +54,14 @@
     };
   }
 
-  const basic = makeProvider();
-  const free = makeProvider('https://api-free.deepl.com/');
-  const pro = makeProvider('https://api.deepl.com/');
-
-  try {
-    const reg = root.qwenProviders || (typeof require !== 'undefined' ? require('../lib/providers') : null);
-    if (reg && reg.register) {
-      reg.register('deepl', basic);
-      reg.register('deepl-free', free);
-      reg.register('deepl-pro', pro);
-    }
-  } catch {}
+function makeProvider(ep) {
+  return {
+    translate: opts => translate({ ...opts, endpoint: ep || opts.endpoint }),
+    label: 'DeepL',
+    configFields: ['apiKey', 'apiEndpoint', 'model'],
+    throttle: { requestLimit: 15, windowMs: 1000 },
+  };
+}
 
   return { translate, basic, free, pro };
 }));
