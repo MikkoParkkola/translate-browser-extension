@@ -9,13 +9,30 @@
     const s = String(l || '').toLowerCase();
     return LEVELS[s] ?? 1;
   }
-  function redact(args) {
-    return args.map(a => {
-      if (typeof a !== 'string') return a;
-      return a
+  function redactValue(v) {
+    if (typeof v === 'string') {
+      return v
         .replace(/(api[-_\s]?key)\s*[:=]\s*([A-Za-z0-9._-]+)/ig, '$1=<redacted>')
         .replace(/(authorization)\s*[:=]\s*([A-Za-z0-9._-]+)/ig, '$1=<redacted>');
-    });
+    }
+    if (Array.isArray(v)) {
+      return v.map(redactValue);
+    }
+    if (v && typeof v === 'object') {
+      const out = Array.isArray(v) ? [] : {};
+      for (const k of Object.keys(v)) {
+        if (/^authorization$/i.test(k) || /^api(?:[-_\s]?key)$/i.test(k)) {
+          out[k] = '<redacted>';
+        } else {
+          out[k] = redactValue(v[k]);
+        }
+      }
+      return out;
+    }
+    return v;
+  }
+  function redact(args) {
+    return args.map(redactValue);
   }
   function globalLevel() {
     try {

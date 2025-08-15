@@ -5,6 +5,7 @@
 }(typeof self !== 'undefined' ? self : this, function (root) {
   const hasIDB = typeof indexedDB !== 'undefined';
   let dbPromise = null;
+  const metrics = { hits: 0, misses: 0, sets: 0, evictionsTTL: 0, evictionsLRU: 0 };
   function openDb() {
     if (!hasIDB) return Promise.resolve(null);
     if (dbPromise) return dbPromise;
@@ -79,6 +80,7 @@
         const cursor = e.target.result;
         if (!cursor || removed >= toDelete) { resolve(); return; }
         cursor.delete();
+        try { metrics.evictionsLRU++; } catch {}
         removed++;
         cursor.continue();
       };
@@ -95,6 +97,7 @@
       const r = store.get(k);
       r.onsuccess = () => {
         const val = r.result || null;
+        try { if (val) metrics.hits++; else metrics.misses++; } catch {}
         if (val) {
           try {
             const tx2 = db.transaction('entries', 'readwrite');
@@ -116,6 +119,7 @@
       const r = store.put({ k, text, ts: Date.now() });
       r.onsuccess = () => {
         resolve();
+        try { metrics.sets++; } catch {}
         try { pruneDb(db); } catch {}
       };
       r.onerror = () => reject(r.error);
