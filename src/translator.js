@@ -110,7 +110,13 @@ try {
   } else if (typeof require !== 'undefined') {
     try {
       Providers = require('./lib/providers');
-      require('./providers');
+      if (
+        Providers &&
+        typeof Providers.candidates === 'function' &&
+        Providers.candidates().length === 0
+      ) {
+        require('./providers');
+      }
     } catch {}
   }
 } catch {}
@@ -195,7 +201,8 @@ async function providerTranslate({ endpoint, apiKey, model, text, source, target
       return await runWithRetry(
         () => runWithRateLimit(
           () => impl.translate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
-          tokens
+          tokens,
+          { immediate: true }
         ),
         tokens,
         3,
@@ -212,7 +219,8 @@ async function providerTranslate({ endpoint, apiKey, model, text, source, target
   return await runWithRetry(
     () => runWithRateLimit(
       () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
-      tokens
+      tokens,
+      { immediate: true }
     ),
     tokens,
     3,
@@ -614,7 +622,7 @@ async function batchOnce({
     const words = joinedText.replaceAll(SEP, ' ').trim().split(/\s+/).filter(Boolean).length;
     let res;
     try {
-      res = await qwenTranslate({ ...opts, source: g.lang, text: joinedText, skipTM: true });
+      res = await qwenTranslate({ ...opts, source: g.lang, text: joinedText, skipTM: true, noProxy: true });
     } catch (e) {
       if (/HTTP\s+400/i.test(e.message || '')) throw e;
       g.items.forEach(m => { m.result = m.text; });
@@ -636,7 +644,7 @@ async function batchOnce({
         for (const m of g.items) {
           let out;
           try {
-            const single = await qwenTranslate({ ...opts, source: m.lang, text: m.text, skipTM: true });
+            const single = await qwenTranslate({ ...opts, source: m.lang, text: m.text, skipTM: true, noProxy: true });
             out = single.text;
           } catch {
             out = m.text;
