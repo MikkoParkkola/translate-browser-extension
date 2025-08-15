@@ -27,12 +27,26 @@
       padding: 1rem;
       margin: 0;
       background: var(--bg-color) url('styles/popup-bg.svg') center/cover no-repeat;
+      background-attachment: local;
       color: var(--text-color);
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
       max-height: 580px;
+      min-height: 100%;
       overflow-y: auto;
+      position: relative;
+    }
+
+    body::after {
+      content: "";
+      position: sticky;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2rem;
+      pointer-events: none;
+      background: linear-gradient(to bottom, transparent, var(--bg-color));
     }
 
     /* View switching logic */
