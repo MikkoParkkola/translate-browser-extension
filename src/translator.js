@@ -614,7 +614,8 @@ async function batchOnce({
   failover = true,
   ...opts
 }) {
-  const stats = _stats || { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
+  const stats = _stats || { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0, latencyMs: 0 };
+  if (stats.latencyMs == null) stats.latencyMs = 0;
   let source = opts.source;
   const autoMode = !source || source === 'auto';
   const sourceByIndex = new Array(texts.length);
@@ -691,19 +692,27 @@ async function batchOnce({
   stats.totalRequests += groups.length;
 
   const providers = Array.isArray(opts.providerOrder) && opts.providerOrder.length ? opts.providerOrder : [];
+  const usage = getUsage ? getUsage() : {};
+  const reqLimit = usage && usage.requestLimit > 0 ? usage.requestLimit : groups.length;
 
   async function handleGroup(g, idx) {
     const joinedText = g.items.map(m => m.text.replaceAll(SEP, '')).join(SEP);
     const words = joinedText.replaceAll(SEP, ' ').trim().split(/\s+/).filter(Boolean).length;
     const startProv = parallel && providers.length ? providers[idx % providers.length] : (providers[0] || undefined);
     let res;
+    let ms = 0;
     try {
-      res = await qwenTranslate({ ...opts, source: g.lang, text: joinedText, skipTM: true, noProxy: opts.noProxy, autoInit: opts.autoInit, provider: startProv, providerOrder: failover ? providers : undefined, failover });
+      const timed = await trLogger.time(() => qwenTranslate({ ...opts, source: g.lang, text: joinedText, skipTM: true, noProxy: opts.noProxy, autoInit: opts.autoInit, provider: startProv, providerOrder: failover ? providers : undefined, failover }));
+      res = timed.result;
+      ms = timed.ms;
     } catch (e) {
+      ms = e && e.latencyMs || 0;
       if (/HTTP\s+400/i.test(e.message || '')) throw e;
       g.items.forEach(m => { m.result = m.text; });
+      stats.latencyMs += ms;
       return;
     }
+    stats.latencyMs += ms;
     const tk = approxTokens(joinedText);
     stats.tokens += tk;
     stats.words += words;
@@ -749,8 +758,18 @@ async function batchOnce({
       onProgress({ phase: 'translate', request: stats.requests, requests: stats.totalRequests, sample: (g.items[0]?.text || '').slice(0, 80), elapsedMs, etaMs });
   }
 
-  if (parallel && providers.length > 1) {
-    await Promise.all(groups.map((g, idx) => handleGroup(g, idx)));
+  if (parallel) {
+    const limit = Math.min(reqLimit, groups.length);
+    let next = 0;
+    async function worker() {
+      while (true) {
+        const idx = next++;
+        if (idx >= groups.length) break;
+        await handleGroup(groups[idx], idx);
+      }
+    }
+    const workers = new Array(limit).fill(0).map(() => worker());
+    await Promise.all(workers);
   } else {
     for (let i = 0; i < groups.length; i++) {
       await handleGroup(groups[i], i);
@@ -806,6 +825,8 @@ async function batchOnce({
     stats.wordsPerSecond = stats.words / (stats.elapsedMs / 1000 || 1);
     stats.wordsPerRequest = stats.words / (stats.requests || 1);
     stats.tokensPerRequest = stats.tokens / (stats.requests || 1);
+    stats.avgRequestMs = stats.latencyMs / (stats.requests || 1);
+    stats.requestsPerSecond = 1000 / (stats.avgRequestMs || 1);
     if (onProgress)
       onProgress({ phase: 'translate', request: stats.requests, requests: stats.totalRequests, done: true, stats });
   }

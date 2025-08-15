@@ -74,6 +74,22 @@
       info(...a)  { if (lvl >= 2) { const red = redact(a); base.info(...format(ns, red)); emit('info', ns, red); } },
       warn(...a)  { if (lvl >= 1) { const red = redact(a); base.warn(...format(ns, red)); emit('warn', ns, red); } },
       error(...a) { const red = redact(a); base.error(...format(ns, red)); emit('error', ns, red); },
+      async time(fn) {
+        const start = Date.now();
+        try {
+          const result = await fn();
+          const ms = Date.now() - start;
+          const red = redact([{ latencyMs: ms }]);
+          emit('debug', ns, red);
+          return { result, ms };
+        } catch (err) {
+          const ms = Date.now() - start;
+          const red = redact([{ latencyMs: ms, error: err && err.message }]);
+          emit('debug', ns, red);
+          if (err && typeof err === 'object') err.latencyMs = ms;
+          throw err;
+        }
+      },
     };
   }
   return { create, parseLevel, addCollector };
