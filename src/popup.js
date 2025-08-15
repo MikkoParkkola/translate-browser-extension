@@ -23,6 +23,7 @@ const queueLen = document.getElementById('queueLen');
 const translateBtn = document.getElementById('translate');
 const testBtn = document.getElementById('test');
 const progressBar = document.getElementById('progress');
+const providerPreset = document.getElementById('providerPreset');
 
 // Setup view elements
 const setupApiKeyInput = document.getElementById('setup-apiKey');
@@ -226,6 +227,25 @@ window.qwenLoadConfig().then(cfg => {
   [sourceSelect, targetSelect, autoCheckbox, debugCheckbox].forEach(el => el.addEventListener('change', saveConfig));
   if (detectApiKeyInput) detectApiKeyInput.addEventListener('input', saveConfig);
   if (detectorSelect) detectorSelect.addEventListener('change', saveConfig);
+  if (providerPreset) {
+    providerPreset.addEventListener('change', () => {
+      const v = providerPreset.value;
+      if (!v) return;
+      const presets = {
+        dashscope: { endpoint: 'https://dashscope-intl.aliyuncs.com/api/v1', model: 'qwen-mt-turbo' },
+        openai:    { endpoint: 'https://api.openai.com/v1',                   model: 'gpt-4o-mini' },
+        deepl:     { endpoint: 'https://api.deepl.com/v2',                    model: 'deepl' }
+      };
+      const p = presets[v];
+      if (p) {
+        endpointInput.value = p.endpoint;
+        modelInput.value = p.model;
+        if (apiKeyInput) apiKeyInput.focus();
+        status.textContent = 'Preset applied. Paste your API key and continue.';
+        saveConfig();
+      }
+    });
+  }
   // Infer preset when user pastes endpoint (helps automation)
   if (endpointInput) {
     endpointInput.addEventListener('blur', () => {
@@ -327,7 +347,12 @@ testBtn.addEventListener('click', async () => {
     } finally { clearTimeout(t); }
   })) && allOk;
 
-  const transUrl = cfg.endpoint.replace(/\/?$/, '/') + 'services/aigc/text-generation/generation';
+  const base = cfg.endpoint.replace(/\/?$/, '/');
+  const epLower = base.toLowerCase();
+  let transPath = 'services/aigc/text-generation/generation';
+  if (epLower.includes('openai')) transPath = 'chat/completions';
+  else if (epLower.includes('deepl')) transPath = 'translate';
+  const transUrl = base + transPath;
 
   allOk = (await run('Preflight', async () => {
     const controller = new AbortController();

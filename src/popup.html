@@ -139,50 +139,80 @@
       <div class="grid-2">
         <div>
           <label for="source">Source Language</label>
-          <select id="source"></select>
+          <select id="source" title="Language to translate from. Use 'Auto-detect' for convenience and mixed-language pages."></select>
         </div>
         <div>
           <label for="target">Target Language</label>
-          <select id="target"></select>
+          <select id="target" title="Language to translate into (your reading language)."></select>
         </div>
       </div>
+
+      <details>
+        <summary>Getting Started</summary>
+        <ol>
+          <li>Open Advanced Settings and choose a Provider preset, then paste your API key.</li>
+          <li>Set Target Language (your reading language). Leave Source as Auto‑detect.</li>
+          <li>Optional: set Detector to Google and add a Detection API key for better auto‑detect.</li>
+          <li>Click “Translate Page” or enable Auto to translate pages as they load.</li>
+        </ol>
+        <p>Where to get API keys:</p>
+        <ul>
+          <li>DashScope (Qwen): <a href="https://dashscope.console.aliyun.com/" target="_blank" rel="noopener">Console</a></li>
+          <li>OpenAI: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">API keys</a></li>
+          <li>DeepL: <a href="https://www.deepl.com/pro-api" target="_blank" rel="noopener">Pro API</a></li>
+          <li>Google (Detection): <a href="https://cloud.google.com/translate/docs/setup" target="_blank" rel="noopener">Setup</a></li>
+        </ul>
+      </details>
 
       <details>
         <summary>Advanced Settings</summary>
         <div class="form-group" style="padding-top: 0.75rem">
           <label for="apiKey">API Key</label>
-          <input type="text" id="apiKey" placeholder="Enter your API key">
+          <input type="text" id="apiKey" placeholder="Enter your API key"
+                 title="Your provider API key. Stored only in browser storage and used by the background. Never injected into pages.">
 
           <label for="apiEndpoint">API Endpoint</label>
-          <input type="text" id="apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1">
+          <input type="text" id="apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1"
+                 title="Base URL for your provider API (https://.../). A trailing slash is added automatically if omitted.">
 
           <label for="model">Model</label>
-          <input type="text" id="model">
+          <input type="text" id="model" placeholder="e.g., qwen-mt-turbo"
+                 title="Provider model identifier (e.g., qwen-mt-turbo, gpt-4o-mini).">
+
+          <label for="providerPreset">Provider preset</label>
+          <select id="providerPreset" title="Pick a preset to auto‑fill endpoint and a typical model. Paste your API key separately.">
+            <option value="">— Choose a provider —</option>
+            <option value="dashscope">DashScope (Qwen)</option>
+            <option value="openai">OpenAI</option>
+            <option value="deepl">DeepL</option>
+          </select>
 
           <label for="detector">Detector</label>
-          <select id="detector">
+          <select id="detector" title="How to detect the source language when Source is auto. Local is private and free. Google requires a Detection API key.">
             <option value="local">Local (on-device)</option>
             <option value="google">Google (Cloud)</option>
           </select>
 
           <label for="detectApiKey">Detection API Key (Google)</label>
-          <input type="text" id="detectApiKey" placeholder="Only needed for Google detector">
+          <input type="text" id="detectApiKey" placeholder="Only needed for Google detector"
+                 title="Google Cloud API key used only for language detection. Create a key and enable the Cloud Translation API.">
 
           <div class="grid-2">
             <div>
               <label for="requestLimit">Requests/min</label>
-              <input type="number" id="requestLimit">
+              <input type="number" id="requestLimit" title="Maximum requests per minute. The extension throttles to stay under limits.">
             </div>
             <div>
               <label for="tokenLimit">Tokens/min</label>
-              <input type="number" id="tokenLimit">
+              <input type="number" id="tokenLimit" title="Maximum tokens per minute. Adjust to match your provider quota.">
             </div>
           </div>
 
           <label for="tokenBudget">Token budget</label>
-          <input type="number" id="tokenBudget" placeholder="auto">
+          <input type="number" id="tokenBudget" placeholder="auto"
+                 title="Max tokens per batch request. Leave blank for auto‑calibration.">
 
-          <label><input type="checkbox" id="debug"> Debug logging</label>
+          <label title="Enable detailed logs for troubleshooting in DevTools."><input type="checkbox" id="debug"> Debug logging</label>
         </div>
       </details>
 
