@@ -59,6 +59,7 @@
           if (!cursor) { resolve(); return; }
           if (cursor.value.ts <= until) {
             cursor.delete();
+            try { metrics.evictionsTTL++; } catch {}
             cursor.continue();
           } else {
             resolve();
