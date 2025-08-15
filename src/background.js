@@ -357,6 +357,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       self.qwenConfig = self.qwenConfig || {};
       self.qwenConfig.memCacheMax = c.memCacheMax;
     }
+    if (typeof c.requestLimit === 'number' || typeof c.tokenLimit === 'number') {
+      ensureThrottle().then(() => {
+        const opts = {};
+        if (typeof c.requestLimit === 'number') opts.requestLimit = c.requestLimit;
+        if (typeof c.tokenLimit === 'number') opts.tokenLimit = c.tokenLimit;
+        self.qwenThrottle.configure(opts);
+      });
+    }
     sendResponse({ ok: true });
     return true;
   }

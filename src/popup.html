@@ -26,7 +26,7 @@
       width: var(--body-width);
       padding: 1rem;
       margin: 0;
-      background-color: var(--bg-color);
+      background: var(--bg-color) url('styles/popup-bg.svg') center/cover no-repeat;
       color: var(--text-color);
       display: flex;
       flex-direction: column;
@@ -72,6 +72,7 @@
     #status { font-size: 0.875rem; min-height: 40px; max-height: 150px; overflow-y: auto; border: 1px solid var(--input-border); padding: 0.5rem; background-color: var(--input-bg); border-radius: 6px; white-space: pre-wrap; }
     #version { font-size: 0.75rem; text-align: center; opacity: 0.7; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .grid-2 > * { min-width: 0; }
     summary { cursor: pointer; font-weight: 600; }
     #usageDetails { padding: 0.25rem 0.5rem; background: var(--secondary-bg); border-radius: 8px; }
     #usageDetails summary { list-style: none; }

@@ -9,6 +9,7 @@ let processing = false;
 let statusTimer;
 const pending = new Set();
 let flushTimer;
+const controllers = new Set();
 let progress = { total: 0, done: 0 };
 let started = false;
 
@@ -21,7 +22,8 @@ function ensureThemeCss() {
       link.dataset.qwenTheme = 'cyberpunk';
       (document.head || document.documentElement).appendChild(link);
     }
-    document.documentElement.setAttribute('data-qwen-theme', 'cyberpunk');
+    // Apply theme styling only to extension elements to avoid overriding page styles
+    // The status HUD will carry the data-qwen-theme attribute instead of the document root
   } catch {}
 }
 
@@ -50,6 +52,8 @@ function setStatus(message, isError = false) {
     el = document.createElement('div');
     el.id = 'qwen-status';
     el.className = 'qwen-hud qwen-hud--status';
+    // Scope cyberpunk theme to the HUD so page styles remain untouched
+    el.setAttribute('data-qwen-theme', 'cyberpunk');
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');
     el.innerHTML = '<span class="qwen-hud__dot" aria-hidden="true"></span><span class="qwen-hud__text"></span>';
@@ -128,6 +132,7 @@ async function translateNode(node) {
     logger.info('translating node', text.slice(0, 50));
     if (currentConfig.debug) logger.debug('QTDEBUG: translating node', text.slice(0, 20));
     const controller = new AbortController();
+    controllers.add(controller);
     const timeout = setTimeout(() => controller.abort(), 10000);
     const { text: translated } = await window.qwenTranslate({
       endpoint: currentConfig.apiEndpoint,
@@ -153,6 +158,8 @@ async function translateNode(node) {
   } catch (e) {
     showError(`${e.message}. See console for details.`);
     logger.error('QTERROR: translation error', e);
+  } finally {
+    controllers.delete(controller);
   }
 }
 
@@ -161,6 +168,7 @@ async function translateBatch(elements, stats, force = false) {
   const originals = elements.map(el => el.textContent || '');
   const texts = originals.map(t => t.trim());
   const controller = new AbortController();
+  controllers.add(controller);
   const timeout = setTimeout(() => controller.abort(), 10000);
   let res;
   try {
@@ -185,6 +193,7 @@ async function translateBatch(elements, stats, force = false) {
     res = await window.qwenTranslateBatch(opts);
   } finally {
     clearTimeout(timeout);
+    controllers.delete(controller);
   }
   res.texts.forEach((t, i) => {
     const el = elements[i];
@@ -344,6 +353,21 @@ function observe(root = document.body) {
   }
 }
 
+function stop() {
+  observers.forEach(o => { try { o.disconnect(); } catch {} });
+  observers = [];
+  batchQueue.length = 0;
+  pending.clear();
+  if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+  controllers.forEach(c => { try { c.abort(); } catch {} });
+  controllers.clear();
+  processing = false;
+  started = false;
+  progress = { total: 0, done: 0 };
+  clearStatus();
+  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false } }, () => {});
+}
+
 async function start() {
   if (started) return;
   started = true;
@@ -373,6 +397,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     } else {
       start();
     }
+  }
+  if (msg.action === 'stop') {
+    stop();
   }
   if (msg.action === 'test-read') {
     sendResponse({ title: document.title });
