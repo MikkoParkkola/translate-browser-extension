@@ -142,6 +142,7 @@ async function translateNode(node) {
       target: currentConfig.targetLanguage,
       providerOrder: currentConfig.providerOrder,
       endpoints: currentConfig.endpoints,
+      failover: currentConfig.failover,
       signal: controller.signal,
       debug: currentConfig.debug,
     });
@@ -180,6 +181,8 @@ async function translateBatch(elements, stats, force = false) {
       target: currentConfig.targetLanguage,
       providerOrder: currentConfig.providerOrder,
       endpoints: currentConfig.endpoints,
+      failover: currentConfig.failover,
+      parallel: currentConfig.parallel,
       signal: controller.signal,
       debug: currentConfig.debug,
     };
@@ -424,6 +427,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         debug: cfg.debug,
         stream: false,
         signal: controller.signal,
+        providerOrder: cfg.providerOrder,
+        endpoints: cfg.endpoints,
+        failover: cfg.failover,
       })
       .then(res => {
         clearTimeout(timer);
@@ -459,6 +465,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           target: cfg.targetLanguage,
           providerOrder: cfg.providerOrder,
           endpoints: cfg.endpoints,
+          failover: cfg.failover,
           debug: cfg.debug,
         });
         const range = sel.getRangeAt(0);

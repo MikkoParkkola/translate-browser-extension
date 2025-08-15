@@ -302,7 +302,7 @@ async function selectProvider(p, providerOrder) {
 }
 
 async function handleTranslate(opts) {
-  const { endpoint, apiKey, model, text, source, target, debug, providerOrder, endpoints } = opts;
+  const { endpoint, apiKey, model, text, source, target, debug, providerOrder, endpoints, failover, parallel } = opts;
   const provider = await selectProvider(opts.provider || 'qwen', providerOrder);
   const epBase = (endpoints && endpoints[provider]) || endpoint;
   const ep = epBase.endsWith('/') ? epBase : `${epBase}/`;
@@ -331,6 +331,8 @@ async function handleTranslate(opts) {
       noProxy: true,
       providerOrder,
       endpoints,
+      failover,
+      parallel,
     });
     const tokens = self.qwenThrottle.approxTokens(text || '');
     usageStats.models[model] = usageStats.models[model] || { requests: 0 };

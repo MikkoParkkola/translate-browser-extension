@@ -17,6 +17,9 @@ const defaultCfg = {
   compact: false,
   theme: 'dark',
   providers: {},
+  providerOrder: [],
+  failover: true,
+  parallel: false,
 };
 
 const modelTokenLimits = {
@@ -36,6 +39,9 @@ function migrate(cfg = {}) {
   out.apiKey = out.providers[provider].apiKey || out.apiKey || '';
   out.apiEndpoint = out.providers[provider].apiEndpoint || out.apiEndpoint || '';
   out.model = out.providers[provider].model || out.model || '';
+  if (!Array.isArray(out.providerOrder)) out.providerOrder = [];
+  if (typeof out.failover !== 'boolean') out.failover = true;
+  if (typeof out.parallel !== 'boolean') out.parallel = false;
   return out;
 }
 

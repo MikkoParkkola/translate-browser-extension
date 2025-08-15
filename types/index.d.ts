@@ -15,6 +15,7 @@ export interface TranslateOptions {
   skipTM?: boolean;
   providerOrder?: string[];
   endpoints?: Record<string, string>;
+  failover?: boolean;
 }
 export interface BatchOptions {
   texts: string[];
@@ -36,6 +37,8 @@ export interface BatchOptions {
   }) => void;
   providerOrder?: string[];
   endpoints?: Record<string, string>;
+  failover?: boolean;
+  parallel?: boolean;
 }
 export declare function qwenTranslate(opts: TranslateOptions): Promise<{ text: string }>
 export declare function qwenTranslateStream(opts: TranslateOptions, onData: (chunk: string) => void): Promise<{ text: string }>
