@@ -12,6 +12,7 @@ let flushTimer;
 const controllers = new Set();
 let progress = { total: 0, done: 0 };
 let started = false;
+let progressHud;
 
 function ensureThemeCss() {
   try {
@@ -72,6 +73,25 @@ function setStatus(message, isError = false) {
 function clearStatus() {
   const el = document.getElementById('qwen-status');
   if (el) el.remove();
+}
+
+function updateProgressHud() {
+  if (!progress.total) return;
+  if (!progressHud) {
+    progressHud = document.createElement('div');
+    progressHud.id = 'qwen-progress';
+    progressHud.className = 'qwen-hud qwen-hud--progress';
+    progressHud.setAttribute('data-qwen-theme', 'cyberpunk');
+    progressHud.innerHTML = '<span class="qwen-hud__text"></span>';
+    progressHud.style.bottom = '40px';
+    document.body.appendChild(progressHud);
+  }
+  const textNode = progressHud.querySelector('.qwen-hud__text') || progressHud;
+  textNode.textContent = `${progress.done}/${progress.total}`;
+  if (progress.done >= progress.total) {
+    progressHud.remove();
+    progressHud = null;
+  }
 }
 
 function showError(message) {
@@ -218,6 +238,7 @@ async function translateBatch(elements, stats, force = false) {
   });
   logger.info('finished batch translation', { count: elements.length });
   progress.done += elements.length;
+  updateProgressHud();
   const elapsedMs = stats ? Date.now() - stats.start : 0;
   const avg = progress.done ? elapsedMs / progress.done : 0;
   const etaMs = avg * (progress.total - progress.done);
@@ -239,6 +260,7 @@ async function translateBatch(elements, stats, force = false) {
 function enqueueBatch(batch) {
   batchQueue.push(batch);
   progress.total += batch.length;
+  updateProgressHud();
   if (!processing) processQueue();
 }
 
@@ -367,6 +389,7 @@ function stop() {
   processing = false;
   started = false;
   progress = { total: 0, done: 0 };
+  if (progressHud) { progressHud.remove(); progressHud = null; }
   clearStatus();
   chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false } }, () => {});
 }
