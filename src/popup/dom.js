@@ -10,6 +10,8 @@ const dom = {
   tokenBudgetInput: document.getElementById('tokenBudget'),
   autoCheckbox: document.getElementById('auto'),
   debugCheckbox: document.getElementById('debug'),
+  compactCheckbox: document.getElementById('compactMode'),
+  lightModeCheckbox: document.getElementById('lightMode'),
   smartThrottleInput: document.getElementById('smartThrottle'),
   tokensPerReqInput: document.getElementById('tokensPerReq'),
   retryDelayInput: document.getElementById('retryDelay'),

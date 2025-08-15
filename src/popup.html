@@ -67,12 +67,8 @@
     .bar > div { height: 100%; width: 0%; transition: width 0.2s ease-in-out, background-color 0.2s ease-in-out; }
     .form-group { display: flex; flex-direction: column; gap: 0.5rem; }
     label { font-size: 0.875rem; }
-    input[type=text], input[type=number], select { width: 100%; box-sizing: border-box; padding: 0.5rem 0.75rem; border: 1px solid var(--input-border); border-radius: 6px; background-color: var(--input-bg); color: var(--text-color); font-size: 1rem; }
-    input:focus, select:focus { outline: none; border-color: var(--input-focus-border); box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25); }
-    button { padding: 0.6rem 1rem; border: none; border-radius: 6px; background-color: var(--primary-color); color: #fff; font-weight: 600; cursor: pointer; transition: background-color 0.15s ease-in-out; }
-    button:hover { background-color: var(--primary-hover-color); }
-    button#test { background-color: var(--secondary-bg); color: var(--text-color); }
-    button#test:hover { background-color: var(--secondary-hover-bg); }
+    .view-options { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
+    .view-options label { display: flex; align-items: center; gap: 0.25rem; }
     #status { font-size: 0.875rem; min-height: 40px; max-height: 150px; overflow-y: auto; border: 1px solid var(--input-border); padding: 0.5rem; background-color: var(--input-bg); border-radius: 6px; white-space: pre-wrap; }
     #version { font-size: 0.75rem; text-align: center; opacity: 0.7; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
@@ -86,7 +82,7 @@
     }
   </style>
 </head>
-<body>
+<body class="qwen-bg-animated">
   <div id="viewContainer" class="view-container">
     <!-- ===== SETUP VIEW ===== -->
     <div class="setup-view">
@@ -108,7 +104,7 @@
     <!-- ===== MAIN VIEW ===== -->
     <div class="main-view">
       <div class="main-actions">
-        <button id="translate" title="Translate the current tab">Translate Page</button>
+        <button id="translate" class="primary-glow" title="Translate the current tab">Translate Page</button>
         <div class="auto-translate-toggle">
           <label class="switch">
             <input type="checkbox" id="auto">
@@ -116,6 +112,11 @@
           </label>
           <span title="Automatically translate supported pages as they load. You can still click Translate Page to force refresh.">Auto</span>
         </div>
+      </div>
+
+      <div class="view-options">
+        <label title="Compact layout"><input type="checkbox" id="compactMode"> Compact</label>
+        <label title="Light theme"><input type="checkbox" id="lightMode"> Light</label>
       </div>
 
       <details open id="usageDetails">
@@ -217,7 +218,7 @@
         </div>
       </details>
 
-      <button id="test">Test Settings</button>
+      <button id="test" class="secondary">Test Settings</button>
       <progress id="progress" value="0" max="1" style="width:100%;display:none"></progress>
       <div id="status"></div>
       <div id="version"></div>

@@ -5,6 +5,112 @@
   --qwen-neon-2: #ff00e5;
   --qwen-border: rgba(0, 229, 255, 0.4);
   --qwen-error: #ff3b81;
+  --qwen-input-bg: rgba(0, 0, 0, 0.2);
+  --qwen-input-focus: var(--qwen-neon-1);
+  --qwen-primary-bg: var(--qwen-neon-1);
+  --qwen-primary-hover: var(--qwen-neon-2);
+  --qwen-secondary-bg: rgba(0, 0, 0, 0.35);
+  --qwen-secondary-hover: rgba(0, 0, 0, 0.55);
+}
+
+:root[data-qwen-theme="cyberpunk"][data-qwen-color="light"] {
+  --qwen-bg: rgba(250, 250, 255, 0.9);
+  --qwen-text: #001018;
+  --qwen-input-bg: rgba(255, 255, 255, 0.8);
+  --qwen-secondary-bg: rgba(255, 255, 255, 0.7);
+  --qwen-secondary-hover: rgba(255, 255, 255, 0.9);
+}
+
+[data-qwen-theme="cyberpunk"] input[type="text"],
+[data-qwen-theme="cyberpunk"] input[type="number"],
+[data-qwen-theme="cyberpunk"] select {
+  box-sizing: border-box;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--qwen-border);
+  border-radius: 6px;
+  background: var(--qwen-input-bg);
+  color: var(--qwen-text);
+  font-size: 1rem;
+}
+
+[data-qwen-theme="cyberpunk"] input:focus,
+[data-qwen-theme="cyberpunk"] select:focus {
+  outline: none;
+  border-color: var(--qwen-input-focus);
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+[data-qwen-theme="cyberpunk"] input[type="checkbox"] {
+  accent-color: var(--qwen-neon-1);
+}
+
+[data-qwen-theme="cyberpunk"] button {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--qwen-primary-bg);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease-in-out;
+}
+
+[data-qwen-theme="cyberpunk"] button:hover {
+  background: var(--qwen-primary-hover);
+}
+
+[data-qwen-theme="cyberpunk"] button.secondary {
+  background: var(--qwen-secondary-bg);
+  color: var(--qwen-text);
+}
+
+[data-qwen-theme="cyberpunk"] button.secondary:hover {
+  background: var(--qwen-secondary-hover);
+}
+
+body.qwen-compact {
+  --body-width: 320px;
+  gap: 0.5rem;
+}
+
+body.qwen-bg-animated::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0,
+      transparent 10px,
+      rgba(0, 229, 255, 0.03) 10px,
+      rgba(0, 229, 255, 0.03) 11px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 10px,
+      rgba(255, 0, 229, 0.03) 10px,
+      rgba(255, 0, 229, 0.03) 11px
+    );
+  background-size: 100px 100px;
+  animation: qwen-grid-move 30s linear infinite;
+  z-index: -1;
+}
+
+[data-qwen-theme="cyberpunk"] button.primary-glow {
+  box-shadow: 0 0 8px var(--qwen-neon-1), 0 0 16px var(--qwen-neon-1);
+  animation: qwen-pulse 3s ease-in-out infinite;
+}
+
+@keyframes qwen-grid-move {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 100px 100px, -100px -100px; }
+}
+
+@keyframes qwen-pulse {
+  0%, 100% { box-shadow: 0 0 8px var(--qwen-neon-1), 0 0 16px var(--qwen-neon-1); }
+  50% { box-shadow: 0 0 12px var(--qwen-neon-2), 0 0 24px var(--qwen-neon-2); }
 }
 
 .qwen-hud {
@@ -97,4 +203,15 @@
 
 @media (prefers-reduced-motion: reduce) {
   .qwen-hud::after { animation: none; opacity: 0.25; }
+  [data-qwen-theme="cyberpunk"] button,
+  [data-qwen-theme="cyberpunk"] button:hover,
+  [data-qwen-theme="cyberpunk"] .slider,
+  [data-qwen-theme="cyberpunk"] .slider:before,
+  [data-qwen-theme="cyberpunk"] .bar > div {
+    transition: none !important;
+  }
+  body.qwen-bg-animated::before,
+  [data-qwen-theme="cyberpunk"] button.primary-glow {
+    animation: none !important;
+  }
 }
