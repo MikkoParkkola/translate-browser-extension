@@ -36,6 +36,8 @@ const clearPairBtn = document.getElementById('clearPair') || document.createElem
 document.body.classList.add('qwen-bg-animated');
 if (translateBtn) translateBtn.classList.add('primary-glow');
 
+let translating = false;
+
 // Setup view elements
 const setupApiKeyInput = document.getElementById('setup-apiKey') || document.createElement('input');
 const setupApiEndpointInput = document.getElementById('setup-apiEndpoint') || document.createElement('input');
@@ -72,7 +74,7 @@ function saveConfig() {
     };
     window.qwenSaveConfig(cfg).then(() => {
       window.qwenConfig = cfg;
-      chrome.runtime.sendMessage({ action: 'set-config', config: { memCacheMax: cfg.memCacheMax } }, () => {});
+      chrome.runtime.sendMessage({ action: 'set-config', config: { memCacheMax: cfg.memCacheMax, requestLimit: cfg.requestLimit, tokenLimit: cfg.tokenLimit } }, () => {});
       status.textContent = 'Settings saved.';
       updateView(cfg); // Re-check the view after saving
       setTimeout(() => { if (status.textContent === 'Settings saved.') status.textContent = ''; }, 2000);
@@ -119,7 +121,8 @@ function populateLanguages() {
 populateLanguages();
 
 function setWorking(w) {
-  [translateBtn, testBtn].forEach(b => { if (b) b.disabled = w; });
+  if (testBtn) testBtn.disabled = w;
+  if (translateBtn) translateBtn.disabled = !translating && w;
 }
 
 chrome.runtime.onMessage.addListener(msg => {
@@ -130,6 +133,8 @@ chrome.runtime.onMessage.addListener(msg => {
   if (msg.action === 'translation-status' && msg.status) {
     const s = msg.status;
     if (s.active) {
+      translating = true;
+      if (translateBtn) translateBtn.textContent = 'Stop Translation';
       if (s.progress && typeof s.progress.total === 'number') {
         progressBar.max = s.progress.total || 1;
         progressBar.value = s.progress.done || 0;
@@ -150,6 +155,8 @@ chrome.runtime.onMessage.addListener(msg => {
       }
       setWorking(true);
     } else {
+      translating = false;
+      if (translateBtn) translateBtn.textContent = 'Translate Page';
       progressBar.style.display = 'none';
       progressBar.value = 0;
       progressBar.max = 1;
@@ -174,6 +181,8 @@ chrome.runtime.onMessage.addListener(msg => {
 
 chrome.runtime.sendMessage({ action: 'get-status' }, s => {
   if (s && s.active) {
+    translating = true;
+    if (translateBtn) translateBtn.textContent = 'Stop Translation';
     if (s.progress && typeof s.progress.total === 'number') {
       progressBar.max = s.progress.total || 1;
       progressBar.value = s.progress.done || 0;
@@ -191,7 +200,7 @@ chrome.runtime.sendMessage({ action: 'get-status' }, s => {
       status.textContent = parts.join(' ');
     }
     setWorking(true);
-  }
+  } else if (translateBtn) translateBtn.textContent = 'Translate Page';
 });
 
 clearPairBtn.addEventListener('click', () => {
@@ -269,13 +278,16 @@ window.qwenLoadConfig().then(cfg => {
     document.documentElement.setAttribute('data-qwen-color', lightModeCheckbox.checked ? 'light' : 'dark');
     saveConfig();
   });
-  // If user turns on Auto, request permission and start on current tab immediately
+  // If user toggles Auto, request permission/start or stop current tab
   autoCheckbox.addEventListener('change', () => {
-    if (!autoCheckbox.checked) return;
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const tab = tabs && tabs[0];
       if (!tab) return;
-      chrome.runtime.sendMessage({ action: 'ensure-start', tabId: tab.id, url: tab.url }, () => {});
+      if (autoCheckbox.checked) {
+        chrome.runtime.sendMessage({ action: 'ensure-start', tabId: tab.id, url: tab.url }, () => {});
+      } else {
+        chrome.tabs.sendMessage(tab.id, { action: 'stop' }, () => {});
+      }
     });
   });
   if (detectApiKeyInput) detectApiKeyInput.addEventListener('input', saveConfig);
@@ -338,12 +350,14 @@ function setBar(el, ratio) {
 function refreshUsage() {
   chrome.runtime.sendMessage({ action: 'usage' }, res => {
     if (chrome.runtime.lastError || !res) return;
-    reqCount.textContent = `${res.requests}/${res.requestLimit}`;
-    tokenCount.textContent = `${res.tokens}/${res.tokenLimit}`;
-    setBar(reqBar, res.requests / res.requestLimit);
-    setBar(tokenBar, res.tokens / res.tokenLimit);
-    reqBar.title = `Requests: ${res.requests}/${res.requestLimit}`;
-    tokenBar.title = `Tokens: ${res.tokens}/${res.tokenLimit}`;
+    const reqLim = res.requestLimit || 0;
+    const tokLim = res.tokenLimit || 0;
+    reqCount.textContent = reqLim ? `${res.requests}/${reqLim}` : `${res.requests}`;
+    tokenCount.textContent = tokLim ? `${res.tokens}/${tokLim}` : `${res.tokens}`;
+    setBar(reqBar, reqLim ? res.requests / reqLim : 0);
+    setBar(tokenBar, tokLim ? res.tokens / tokLim : 0);
+    reqBar.title = reqLim ? `Requests: ${res.requests}/${reqLim}` : `Requests: ${res.requests}`;
+    tokenBar.title = tokLim ? `Tokens: ${res.tokens}/${tokLim}` : `Tokens: ${res.tokens}`;
     totalReq.textContent = res.totalRequests;
     totalTok.textContent = res.totalTokens;
     queueLen.textContent = res.queue;
@@ -375,6 +389,14 @@ setInterval(refreshMetrics, 3000);
 refreshMetrics();
 
 translateBtn.addEventListener('click', () => {
+  if (translating) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tab = tabs && tabs[0];
+      if (!tab) return;
+      chrome.tabs.sendMessage(tab.id, { action: 'stop' }, () => {});
+    });
+    return;
+  }
   const debug = debugCheckbox.checked;
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     const tab = tabs && tabs[0];
