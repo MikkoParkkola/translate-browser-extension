@@ -35,7 +35,7 @@ const providerPreset = document.getElementById('providerPreset') || document.cre
 const clearPairBtn = document.getElementById('clearPair') || document.createElement('button');
 const statsReq = document.getElementById('statsRequests') || document.createElement('span');
 const statsTok = document.getElementById('statsTokens') || document.createElement('span');
-const statsEta = document.getElementById('statsEta') || document.createElement('span');
+const statsLatency = document.getElementById('statsLatency') || document.createElement('span');
 const calibrationStatus = document.getElementById('calibrationStatus') || document.createElement('div');
 const resetCalibrationBtn = document.getElementById('resetCalibration') || document.createElement('button');
 const importGlossaryInput = document.getElementById('importGlossary') || document.createElement('input');
@@ -265,10 +265,10 @@ chrome.runtime.onMessage.addListener(msg => {
     }
   }
   if (msg.action === 'stats' && msg.stats) {
-    const { requests, tokens, eta } = msg.stats;
+    const { requests, tokens, avgLatency } = msg.stats;
     statsReq.textContent = requests;
     statsTok.textContent = tokens;
-    statsEta.textContent = typeof eta === 'number' ? eta.toFixed(2) : '0';
+    statsLatency.textContent = typeof avgLatency === 'number' ? avgLatency.toFixed(0) : '0';
   }
 });
 
@@ -304,7 +304,7 @@ chrome.runtime.sendMessage({ action: 'get-stats' }, res => {
   if (res) {
     statsReq.textContent = res.requests || 0;
     statsTok.textContent = res.tokens || 0;
-    statsEta.textContent = typeof res.eta === 'number' ? res.eta.toFixed(2) : '0';
+    statsLatency.textContent = typeof res.avgLatency === 'number' ? res.avgLatency.toFixed(0) : '0';
   }
 });
 

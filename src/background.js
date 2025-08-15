@@ -239,7 +239,10 @@ function getAggregatedStats() {
   const { totalRequests, totalTokens, tokenLimit, tokens } = self.qwenThrottle.getUsage();
   const remaining = Math.max(0, tokenLimit - tokens);
   const eta = tokenLimit ? remaining / tokenLimit : 0;
-  return { requests: totalRequests, tokens: totalTokens, eta };
+  const avgLatency = usageLog.length
+    ? usageLog.reduce((sum, e) => sum + (e.latency || 0), 0) / usageLog.length
+    : 0;
+  return { requests: totalRequests, tokens: totalTokens, eta, avgLatency };
 }
 
 function broadcastStats() {
