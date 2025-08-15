@@ -22,6 +22,26 @@
       cursor: move;
       background: rgba(0,0,0,0.2);
     }
+    .provider-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .provider-row .provider-name {
+      min-width: 6rem;
+    }
+    .provider-row input {
+      flex: 1;
+      min-width: 6rem;
+    }
+    .model-warning {
+      color: #ffae00;
+      font-size: 0.8rem;
+    }
+    .invalid {
+      border-color: #ff4d4f;
+    }
     .flags { margin-top: 1rem; display: flex; gap: 1rem; align-items: center; }
     .form-group { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem; }
     .form-group input, .form-group select { width: 100%; }
@@ -39,15 +59,19 @@
 
   <template id="providerTemplate">
     <li draggable="true">
+      <div class="provider-row">
+        <span class="provider-name"></span>
+        <input type="text" data-field="apiKey" placeholder="API Key">
+        <input type="text" data-field="apiEndpoint" placeholder="Endpoint">
+        <input type="text" data-field="model" placeholder="Model">
+        <input type="number" data-field="requestLimit" placeholder="Req/min" min="0">
+        <input type="number" data-field="tokenLimit" placeholder="Tok/min" min="0">
+      </div>
       <details>
-        <summary class="provider-name"></summary>
+        <summary>Advanced</summary>
         <div class="form-group">
-          <label>API Key<input type="text" data-field="apiKey"></label>
-          <label>Endpoint<input type="text" data-field="apiEndpoint"></label>
           <label>Models<input type="text" data-field="models" placeholder="comma separated"></label>
-          <label>Requests/min<input type="number" data-field="requestLimit"></label>
-          <label>Tokens/min<input type="number" data-field="tokenLimit"></label>
-          <label>Chars/month<input type="number" data-field="charLimit"></label>
+          <label>Chars/month<input type="number" data-field="charLimit" min="0"></label>
           <label>Strategy
             <select data-field="strategy">
               <option value="balanced">Balanced</option>
@@ -56,6 +80,7 @@
               <option value="quality">Optimize quality</option>
             </select>
           </label>
+          <div class="model-warning" style="display:none"></div>
         </div>
       </details>
     </li>
