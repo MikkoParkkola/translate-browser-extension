@@ -9,6 +9,7 @@
   function choose(opts = {}) {
     if (opts.provider) return String(opts.provider);
     const ep = String(opts.endpoint || '').toLowerCase();
+    if (ep.includes('openai')) return 'openai';
     if (ep.includes('dashscope')) return 'dashscope';
     return 'dashscope';
   }
