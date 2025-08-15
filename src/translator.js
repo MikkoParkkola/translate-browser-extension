@@ -35,6 +35,39 @@ try {
 } catch {}
 const cache = new Map();
 
+function _memCacheMax() {
+  try { if (typeof self !== 'undefined' && self.qwenConfig && self.qwenConfig.memCacheMax) return self.qwenConfig.memCacheMax | 0; } catch {}
+  try { if (typeof window !== 'undefined' && window.qwenConfig && window.qwenConfig.memCacheMax) return window.qwenConfig.memCacheMax | 0; } catch {}
+  try { if (typeof process !== 'undefined' && process.env && process.env.QWEN_MEMCACHE_MAX) return parseInt(process.env.QWEN_MEMCACHE_MAX, 10) || 5000; } catch {}
+  return 5000;
+}
+function _setCache(k, v) {
+  if (cache.has(k)) cache.delete(k);
+  cache.set(k, v);
+  const max = _memCacheMax();
+  while (cache.size > max) {
+    const oldest = cache.keys().next().value;
+    cache.delete(oldest);
+  }
+}
+function _touchCache(k) {
+  const v = cache.get(k);
+  if (v !== undefined) {
+    cache.delete(k);
+    cache.set(k, v);
+    return v;
+  }
+  return undefined;
+}
+function _normText(t) {
+  const s = String(t == null ? '' : t);
+  const collapsed = s.replace(/\s+/g, ' ').trim();
+  try { return collapsed.normalize('NFC'); } catch { return collapsed; }
+}
+function _key(source, target, text) {
+  return `${source}:${target}:${_normText(text)}`;
+}
+
 let messaging = null;
 try {
   if (typeof window !== 'undefined' && window.qwenMessaging) {
@@ -313,9 +346,9 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   if (!src || src === 'auto') {
     src = await _detectSource(text, { detector, debug, noProxy });
   }
-  const cacheKey = `${src}:${target}:${text}`;
+  const cacheKey = _key(src, target, text);
   if (cache.has(cacheKey)) {
-    return cache.get(cacheKey);
+    return _touchCache(cacheKey);
   }
 
   // Persistent TM lookup
@@ -335,14 +368,14 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
         endpoint: withSlash(endpoint),
         apiKey, model, text, source: src, target, debug, stream: false, signal, provider
       });
-      cache.set(cacheKey, result);
+      _setCache(cacheKey, result);
       if (TM && TM.set && result && typeof result.text === 'string') { try { TM.set(cacheKey, result.text); } catch {} }
       return result;
     }
 
   try {
     const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, stream, provider });
-    cache.set(cacheKey, data);
+    _setCache(cacheKey, data);
     if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
       logger.debug('translation successful');
@@ -370,9 +403,9 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
   if (!src || src === 'auto') {
     src = await _detectSource(text, { detector, debug, noProxy });
   }
-  const cacheKey = `${src}:${target}:${text}`;
+  const cacheKey = _key(src, target, text);
   if (cache.has(cacheKey)) {
-    const data = cache.get(cacheKey);
+    const data = _touchCache(cacheKey);
     if (onData) onData(data.text);
     return data;
   }
@@ -382,14 +415,14 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
         endpoint: withSlash(endpoint),
         apiKey, model, text, source: src, target, debug, stream: true, signal, onData, provider
       });
-      cache.set(cacheKey, data);
+      _setCache(cacheKey, data);
       if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
       return data;
     }
 
   try {
     const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, onData, stream, provider });
-    cache.set(cacheKey, data);
+    _setCache(cacheKey, data);
     if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
       logger.debug('translation successful');
@@ -506,7 +539,7 @@ async function batchOnce({
 
   const mapping = [];
   texts.forEach((t, i) => {
-    const key = `${source}:${opts.target}:${t}`;
+    const key = _key(source, opts.target, t);
     if (cache.has(key)) {
       mapping.push({ index: i, chunk: 0, text: cache.get(key).text, cached: true });
       return;
@@ -572,8 +605,8 @@ async function batchOnce({
             out = m.text;
           }
           m.result = out;
-          const key = `${source}:${opts.target}:${m.text}`;
-          cache.set(key, { text: out });
+          const key = _key(source, opts.target, m.text);
+          _setCache(key, { text: out });
           if (TM && TM.set) { try { TM.set(key, out); } catch {} }
           stats.requests++;
           stats.tokens += approxTokens(m.text);
@@ -584,8 +617,8 @@ async function batchOnce({
     }
     for (let i = 0; i < g.length; i++) {
       g[i].result = translated[i] || g[i].text;
-      const key = `${source}:${opts.target}:${g[i].text}`;
-      cache.set(key, { text: g[i].result });
+      const key = _key(source, opts.target, g[i].text);
+      _setCache(key, { text: g[i].result });
       if (TM && TM.set) { try { TM.set(key, g[i].result); } catch {} }
     }
     const elapsedMs = Date.now() - stats.start;
@@ -627,8 +660,8 @@ async function batchOnce({
     });
     for (let i = 0; i < retryIdx.length; i++) {
       results[retryIdx[i]] = retr.texts[i];
-      const key = `${source}:${opts.target}:${retryTexts[i]}`;
-      cache.set(key, { text: retr.texts[i] });
+      const key = _key(source, opts.target, retryTexts[i]);
+      _setCache(key, { text: retr.texts[i] });
       if (TM && TM.set) { try { TM.set(key, retr.texts[i]); } catch {} }
     }
   }
