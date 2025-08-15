@@ -57,7 +57,7 @@
       } catch (err) { reject(err); }
     });
   }
-  function detectLanguage({ text, detector = 'local', debug }) {
+  function detectLanguage({ text, detector = 'local', debug, sensitivity = 0 }) {
     if (!(root.chrome && root.chrome.runtime)) return Promise.reject(new Error('No chrome.runtime'));
     if (root.chrome.runtime.connect) {
       const requestId = Math.random().toString(36).slice(2);
@@ -73,7 +73,12 @@
           }
           if (msg.result) {
             try { port.disconnect(); } catch {}
-            if (!settled) { settled = true; resolve(msg.result); }
+            if (!settled) {
+              const r = msg.result || {};
+              const ok = typeof r.confidence === 'number' ? r.confidence >= sensitivity : true;
+              settled = true;
+              resolve(ok ? r : { lang: 'en', confidence: r.confidence || 0 });
+            }
           }
         };
         port.onMessage.addListener(onMsg);
@@ -91,7 +96,10 @@
             if (root.chrome.runtime.lastError) reject(new Error(root.chrome.runtime.lastError.message));
             else if (!res) reject(new Error('No response from background'));
             else if (res.error) reject(new Error(res.error));
-            else resolve(res);
+            else {
+              const ok = typeof res.confidence === 'number' ? res.confidence >= sensitivity : true;
+              resolve(ok ? res : { lang: 'en', confidence: res.confidence || 0 });
+            }
           }
         );
       } catch (err) { reject(err); }

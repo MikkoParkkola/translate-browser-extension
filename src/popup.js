@@ -13,6 +13,7 @@ const compactCheckbox = document.getElementById('compactMode') || document.creat
 const lightModeCheckbox = document.getElementById('lightMode') || document.createElement('input');
 const detectorSelect = document.getElementById('detector') || document.createElement('select');
 const detectApiKeyInput = document.getElementById('detectApiKey') || document.createElement('input');
+const sensitivityInput = document.getElementById('sensitivity') || document.createElement('input');
 const status = document.getElementById('status') || document.createElement('div');
 const versionDiv = document.getElementById('version') || document.createElement('div');
 const reqCount = document.getElementById('reqCount') || document.createElement('span');
@@ -56,6 +57,7 @@ function saveConfig() {
       sourceLanguage: sourceSelect.value,
       targetLanguage: targetSelect.value,
       detector: detectorSelect ? detectorSelect.value : 'local',
+      sensitivity: parseFloat(sensitivityInput.value) || 0,
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
       tokenLimit: parseInt(tokenLimitInput.value, 10) || 100000,
       tokenBudget: parseInt(tokenBudgetInput.value, 10) || 0,
@@ -202,6 +204,7 @@ window.qwenLoadConfig().then(cfg => {
   apiKeyInput.value = cfg.apiKey || '';
   if (detectApiKeyInput) detectApiKeyInput.value = cfg.detectApiKey || '';
   if (detectorSelect) detectorSelect.value = cfg.detector || 'local';
+  if (sensitivityInput) sensitivityInput.value = cfg.sensitivity;
   endpointInput.value = cfg.apiEndpoint || '';
   modelInput.value = cfg.model || '';
   sourceSelect.value = cfg.sourceLanguage;
@@ -248,7 +251,7 @@ window.qwenLoadConfig().then(cfg => {
     });
   });
 
-  [reqLimitInput, tokenLimitInput, tokenBudgetInput].forEach(el => el.addEventListener('input', saveConfig));
+  [reqLimitInput, tokenLimitInput, tokenBudgetInput, sensitivityInput].forEach(el => el.addEventListener('input', saveConfig));
   [sourceSelect, targetSelect, autoCheckbox, debugCheckbox].forEach(el => el.addEventListener('change', saveConfig));
   compactCheckbox.addEventListener('change', () => {
     document.body.classList.toggle('qwen-compact', compactCheckbox.checked);
