@@ -271,7 +271,17 @@ window.qwenLoadConfig().then(cfg => {
   }
 });
 
-versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
+{
+  const manifest = chrome.runtime.getManifest();
+  const ver = manifest.version || '';
+  const vn = manifest.version_name || '';
+  let date = '';
+  if (vn) {
+    const m = String(vn).match(/(\d{4}-\d{2}-\d{2})/);
+    if (m) date = m[1];
+  }
+  versionDiv.textContent = date ? `v${ver} • ${date}` : `v${ver}`;
+}
 
 function setBar(el, ratio) {
   const r = Math.max(0, Math.min(1, ratio));
