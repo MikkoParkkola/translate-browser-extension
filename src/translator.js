@@ -75,6 +75,15 @@ try {
   }
 } catch {}
 
+let Detect = null;
+try {
+  if (typeof window !== 'undefined' && window.qwenDetect) {
+    Detect = window.qwenDetect;
+  } else if (typeof require !== 'undefined') {
+    try { Detect = require('./lib/detect'); } catch {}
+  }
+} catch {}
+
 function fetchViaXHR(url, { method = 'GET', headers = {}, body, signal }, debug) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -158,6 +167,23 @@ async function providerTranslate({ endpoint, apiKey, model, text, source, target
     3,
     debug
   ).catch(e => { throw lastErr || e; });
+}
+
+async function _detectSource(text, { detector, debug, noProxy } = {}) {
+  const sample = String(text || '').slice(0, 2000);
+  if (detector === 'google' && messaging && typeof chrome !== 'undefined' && chrome.runtime && !noProxy) {
+    try {
+      const r = await messaging.detectLanguage({ text: sample, detector: 'google', debug });
+      if (r && r.lang) return r.lang;
+    } catch {}
+  }
+  if (Detect && typeof Detect.detectLocal === 'function') {
+    try {
+      const r = Detect.detectLocal(sample);
+      if (r && r.lang) return r.lang;
+    } catch {}
+  }
+  return 'en';
 }
 
 async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true }) {
@@ -272,7 +298,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
   return { text: result };
 }
 
-async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, provider }) {
+async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, provider, detector }) {
   if (debug) {
     logger.debug('qwenTranslate called with', {
       endpoint,
@@ -283,7 +309,11 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
       text: text && text.slice ? text.slice(0, 20) + (text.length > 20 ? '...' : '') : text,
     });
   }
-  const cacheKey = `${source}:${target}:${text}`;
+  let src = source;
+  if (!src || src === 'auto') {
+    src = await _detectSource(text, { detector, debug, noProxy });
+  }
+  const cacheKey = `${src}:${target}:${text}`;
   if (cache.has(cacheKey)) {
     return cache.get(cacheKey);
   }
@@ -303,7 +333,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     if (!noProxy && messaging && typeof chrome !== 'undefined' && chrome.runtime) {
       const result = await messaging.requestViaBackground({
         endpoint: withSlash(endpoint),
-        apiKey, model, text, source, target, debug, stream: false, signal, provider
+        apiKey, model, text, source: src, target, debug, stream: false, signal, provider
       });
       cache.set(cacheKey, result);
       if (TM && TM.set && result && typeof result.text === 'string') { try { TM.set(cacheKey, result.text); } catch {} }
@@ -325,7 +355,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   }
 }
 
-async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, provider }, onData) {
+async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, provider, detector }, onData) {
   if (debug) {
     logger.debug('qwenTranslateStream called with', {
       endpoint,
@@ -336,7 +366,11 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
       text: text && text.slice ? text.slice(0, 20) + (text.length > 20 ? '...' : '') : text,
     });
   }
-  const cacheKey = `${source}:${target}:${text}`;
+  let src = source;
+  if (!src || src === 'auto') {
+    src = await _detectSource(text, { detector, debug, noProxy });
+  }
+  const cacheKey = `${src}:${target}:${text}`;
   if (cache.has(cacheKey)) {
     const data = cache.get(cacheKey);
     if (onData) onData(data.text);
@@ -346,7 +380,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     if (!noProxy && messaging && typeof chrome !== 'undefined' && chrome.runtime) {
       const data = await messaging.requestViaBackground({
         endpoint: withSlash(endpoint),
-        apiKey, model, text, source, target, debug, stream: true, signal, onData, provider
+        apiKey, model, text, source: src, target, debug, stream: true, signal, onData, provider
       });
       cache.set(cacheKey, data);
       if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
@@ -354,7 +388,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     }
 
   try {
-    const data = await providerTranslate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream, provider });
+    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, onData, stream, provider });
     cache.set(cacheKey, data);
     if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
@@ -443,12 +477,17 @@ async function batchOnce({
   ...opts
 }) {
   const stats = _stats || { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
+  let source = opts.source;
+  if (!source || source === 'auto') {
+    const sample = texts.slice(0, 5).join(' ').slice(0, 2000);
+    source = await _detectSource(sample, { detector: opts.detector, debug: opts.debug, noProxy: opts.noProxy });
+  }
   const SEP = makeDelimiter();
   if (TM && TM.get) {
     const missingKeys = [];
     const seen = new Set();
     for (const t of texts) {
-      const key = `${opts.source}:${opts.target}:${t}`;
+      const key = `${source}:${opts.target}:${t}`;
       if (!cache.has(key) && !seen.has(key)) {
         seen.add(key);
         missingKeys.push(key);
@@ -467,7 +506,7 @@ async function batchOnce({
 
   const mapping = [];
   texts.forEach((t, i) => {
-    const key = `${opts.source}:${opts.target}:${t}`;
+    const key = `${source}:${opts.target}:${t}`;
     if (cache.has(key)) {
       mapping.push({ index: i, chunk: 0, text: cache.get(key).text, cached: true });
       return;
@@ -527,13 +566,13 @@ async function batchOnce({
         for (const m of g) {
           let out;
           try {
-            const single = await qwenTranslate({ ...opts, text: m.text });
+            const single = await qwenTranslate({ ...opts, source, text: m.text });
             out = single.text;
           } catch {
             out = m.text;
           }
           m.result = out;
-          const key = `${opts.source}:${opts.target}:${m.text}`;
+          const key = `${source}:${opts.target}:${m.text}`;
           cache.set(key, { text: out });
           if (TM && TM.set) { try { TM.set(key, out); } catch {} }
           stats.requests++;
@@ -545,7 +584,7 @@ async function batchOnce({
     }
     for (let i = 0; i < g.length; i++) {
       g[i].result = translated[i] || g[i].text;
-      const key = `${opts.source}:${opts.target}:${g[i].text}`;
+      const key = `${source}:${opts.target}:${g[i].text}`;
       cache.set(key, { text: g[i].result });
       if (TM && TM.set) { try { TM.set(key, g[i].result); } catch {} }
     }
@@ -572,7 +611,7 @@ async function batchOnce({
     if (orig && out === orig && opts.source !== opts.target) {
       retryTexts.push(orig);
       retryIdx.push(i);
-      const key = `${opts.source}:${opts.target}:${orig}`;
+      const key = `${source}:${opts.target}:${orig}`;
       cache.delete(key);
     }
   }
@@ -588,7 +627,7 @@ async function batchOnce({
     });
     for (let i = 0; i < retryIdx.length; i++) {
       results[retryIdx[i]] = retr.texts[i];
-      const key = `${opts.source}:${opts.target}:${retryTexts[i]}`;
+      const key = `${source}:${opts.target}:${retryTexts[i]}`;
       cache.set(key, { text: retr.texts[i] });
       if (TM && TM.set) { try { TM.set(key, retr.texts[i]); } catch {} }
     }

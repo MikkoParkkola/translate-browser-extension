@@ -10,6 +10,40 @@ function getApiKeyFromStorage() {
   });
 }
 
+function localDetectLanguage(text) {
+  const s = String(text || '');
+  const total = s.length || 1;
+  const counts = {
+    ja: (s.match(/[\u3040-\u30ff\u4e00-\u9fff]/g) || []).length,
+    ko: (s.match(/[\uac00-\ud7af]/g) || []).length,
+    ru: (s.match(/[\u0400-\u04FF]/g) || []).length,
+    ar: (s.match(/[\u0600-\u06FF]/g) || []).length,
+    hi: (s.match(/[\u0900-\u097F]/g) || []).length,
+    en: (s.match(/[A-Za-z]/g) || []).length,
+  };
+  let best = 'en', max = 0;
+  for (const [k, v] of Object.entries(counts)) { if (v > max) { max = v; best = k; } }
+  const confidence = Math.min(1, max / total);
+  return { lang: best, confidence };
+}
+async function googleDetectLanguage(text, debug) {
+  const key = await getApiKeyFromStorage();
+  if (!key) throw new Error('No API key configured for Google detection');
+  const url = `https://translation.googleapis.com/language/translate/v2/detect?key=${encodeURIComponent(key)}`;
+  const body = new URLSearchParams({ q: String(text || '').slice(0, 2000) });
+  const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '');
+    const err = new Error(`Detect HTTP ${resp.status} ${errText || ''}`.trim());
+    if (resp.status >= 500 || resp.status === 429) err.retryable = true;
+    throw err;
+  }
+  const data = await resp.json();
+  const det = data && data.data && data.data.detections && data.data.detections[0] && data.data.detections[0][0];
+  if (!det || !det.language) throw new Error('Invalid detect response');
+  return { lang: det.language, confidence: det.confidence || 0 };
+}
+
 function urlEligible(u) {
   try { const x = new URL(u); return x.protocol === 'http:' || x.protocol === 'https:' || x.protocol === 'file:'; }
   catch { return false; }
@@ -239,6 +273,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
+  if (msg.action === 'detect') {
+    const opts = msg.opts || {};
+    (async () => {
+      try {
+        const out = opts.detector === 'google'
+          ? await googleDetectLanguage(opts.text, opts.debug)
+          : localDetectLanguage(opts.text);
+        sendResponse(out);
+      } catch (e) {
+        sendResponse({ error: e.message });
+      }
+    })();
+    return true;
+  }
   if (msg.action === 'translation-status') {
     translationStatus = msg.status || { active: false };
     sendResponse({ ok: true });
@@ -285,6 +333,18 @@ chrome.runtime.onConnect.addListener(port => {
         activeTranslations--;
         updateBadge();
       }
+    if (msg.action === 'detect') {
+      const { requestId, opts } = msg;
+      if (!requestId || !opts) return;
+      try {
+        const out = opts.detector === 'google'
+          ? await googleDetectLanguage(opts.text, opts.debug)
+          : localDetectLanguage(opts.text);
+        try { port.postMessage({ requestId, result: out }); } catch {}
+      } catch (err) {
+        try { port.postMessage({ requestId, error: err.message }); } catch {}
+      }
+      return;
     } else if (msg.action === 'cancel' && msg.requestId) {
       const rec = inflight.get(msg.requestId);
       if (rec) {

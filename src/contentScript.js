@@ -338,10 +338,7 @@ async function start() {
   if (window.qwenSetTokenBudget) {
     window.qwenSetTokenBudget(currentConfig.tokenBudget || 0);
   }
-  if (!currentConfig.apiKey) {
-    logger.warn('QTWARN: API key not configured.');
-    return;
-  }
+  // Background stores/uses the API key; do not block auto-translate here.
   if (currentConfig.debug) logger.debug('QTDEBUG: starting automatic translation');
   setStatus('Scanning page...');
   const nodes = [];

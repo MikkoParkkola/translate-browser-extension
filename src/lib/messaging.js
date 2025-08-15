@@ -54,5 +54,46 @@
       } catch (err) { reject(err); }
     });
   }
-  return { requestViaBackground };
+  function detectLanguage({ text, detector = 'local', debug }) {
+    if (!(root.chrome && root.chrome.runtime)) return Promise.reject(new Error('No chrome.runtime'));
+    if (root.chrome.runtime.connect) {
+      const requestId = Math.random().toString(36).slice(2);
+      const port = root.chrome.runtime.connect({ name: 'qwen-translate' });
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        const onMsg = (msg) => {
+          if (!msg || msg.requestId !== requestId) return;
+          if (msg.error) {
+            try { port.disconnect(); } catch {}
+            if (!settled) { settled = true; reject(new Error(msg.error)); }
+            return;
+          }
+          if (msg.result) {
+            try { port.disconnect(); } catch {}
+            if (!settled) { settled = true; resolve(msg.result); }
+          }
+        };
+        port.onMessage.addListener(onMsg);
+        port.onDisconnect.addListener(() => {
+          if (!settled) { settled = true; reject(new Error('Background disconnected')); }
+        });
+        port.postMessage({ action: 'detect', requestId, opts: { text, detector, debug } });
+      });
+    }
+    return new Promise((resolve, reject) => {
+      try {
+        root.chrome.runtime.sendMessage(
+          { action: 'detect', opts: { text, detector, debug } },
+          res => {
+            if (root.chrome.runtime.lastError) reject(new Error(root.chrome.runtime.lastError.message));
+            else if (!res) reject(new Error('No response from background'));
+            else if (res.error) reject(new Error(res.error));
+            else resolve(res);
+          }
+        );
+      } catch (err) { reject(err); }
+    });
+  }
+
+  return { requestViaBackground, detectLanguage };
 }));
