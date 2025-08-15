@@ -145,7 +145,7 @@ function saveConfig() {
       detector: detectorSelect ? detectorSelect.value : 'local',
       sensitivity: sensitivityInput.valueAsNumber || 0,
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
-      tokenLimit: parseInt(tokenLimitInput.value, 10) || 100000,
+      tokenLimit: parseInt(tokenLimitInput.value, 10) || (window.qwenDefaultConfig && window.qwenDefaultConfig.tokenLimit) || 0,
       tokenBudget: parseInt(tokenBudgetInput.value, 10) || 0,
       memCacheMax: parseInt(memCacheMaxInput.value, 10) || 0,
       autoTranslate: autoCheckbox.checked,
@@ -513,10 +513,12 @@ function refreshUsage() {
     const cfg = window.qwenConfig || {};
     const reqTotal = cfg.requestLimit || 0;
     const tokTotal = cfg.tokenLimit || 0;
-    setBar(reqBar, reqTotal ? res.totalRequests / reqTotal : 0);
-    setBar(tokenBar, tokTotal ? res.totalTokens / tokTotal : 0);
-    reqCount.textContent = reqTotal ? `${res.totalRequests}/${reqTotal}` : `${res.totalRequests}`;
-    tokenCount.textContent = tokTotal ? `${res.totalTokens}/${tokTotal}` : `${res.totalTokens}`;
+    const reqUsed = res.requests != null ? res.requests : res.totalRequests;
+    const tokUsed = res.tokens != null ? res.tokens : res.totalTokens;
+    setBar(reqBar, reqTotal ? reqUsed / reqTotal : 0);
+    setBar(tokenBar, tokTotal ? tokUsed / tokTotal : 0);
+    reqCount.textContent = reqTotal ? `${reqUsed}/${reqTotal}` : `${reqUsed}`;
+    tokenCount.textContent = tokTotal ? `${tokUsed}/${tokTotal}` : `${tokUsed}`;
     reqBar.title = `Requests: ${reqCount.textContent}`;
     tokenBar.title = `Tokens: ${tokenCount.textContent}`;
     renderProviderUsage(cfg, res);
