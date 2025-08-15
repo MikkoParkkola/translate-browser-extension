@@ -144,7 +144,7 @@
     module.exports = Object.assign({ createThrottle }, globalThrottle);
   }
 
-  if (typeof window !== 'undefined') {
+ if (typeof window !== 'undefined') {
     root.qwenThrottle = Object.assign({ createThrottle }, globalThrottle);
   } else if (typeof self !== 'undefined') {
     root.qwenThrottle = Object.assign({ createThrottle }, globalThrottle);
