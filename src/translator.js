@@ -515,12 +515,40 @@ async function batchOnce({
     const sample = texts.slice(0, 5).join(' ').slice(0, 2000);
     source = await _detectSource(sample, { detector: opts.detector, debug: opts.debug, noProxy: opts.noProxy });
   }
+  const autoMode = !opts.source || opts.source === 'auto';
+  // Per-text language map used when auto-detecting
+  const textLang = new Map();
+  const sourceByIndex = new Array(texts.length);
+  if (autoMode) {
+    const seenNorm = new Set();
+    for (let i = 0; i < texts.length; i++) {
+      const t = texts[i] || '';
+      const norm = _normText(t);
+      if (!seenNorm.has(norm)) {
+        seenNorm.add(norm);
+        let lang = source;
+        try {
+          if (Detect && typeof Detect.detectLocal === 'function') {
+            const r = Detect.detectLocal(norm);
+            if (r && r.lang) lang = r.lang;
+          }
+        } catch {}
+        textLang.set(norm, lang);
+      }
+      sourceByIndex[i] = textLang.get(norm) || source;
+    }
+  } else {
+    for (let i = 0; i < texts.length; i++) sourceByIndex[i] = source;
+  }
   const SEP = makeDelimiter();
+  // Warm TM using per-text language keys (autoMode) or fixed source
   if (TM && TM.get) {
     const missingKeys = [];
     const seen = new Set();
-    for (const t of texts) {
-      const key = _key(source, opts.target, t);
+    for (let i = 0; i < texts.length; i++) {
+      const t = texts[i];
+      const lang = sourceByIndex[i];
+      const key = _key(lang, opts.target, t);
       if (!cache.has(key) && !seen.has(key)) {
         seen.add(key);
         missingKeys.push(key);
@@ -539,13 +567,14 @@ async function batchOnce({
 
   const mapping = [];
   texts.forEach((t, i) => {
-    const key = _key(source, opts.target, t);
+    const lang = autoMode ? sourceByIndex[i] : source;
+    const key = _key(lang, opts.target, t);
     if (cache.has(key)) {
-      mapping.push({ index: i, chunk: 0, text: cache.get(key).text, cached: true });
+      mapping.push({ index: i, chunk: 0, text: cache.get(key).text, cached: true, lang });
       return;
     }
     const pieces = splitLongText(t, tokenBudget);
-    pieces.forEach((p, idx) => mapping.push({ index: i, chunk: idx, text: p }));
+    pieces.forEach((p, idx) => mapping.push({ index: i, chunk: idx, text: p, lang }));
   });
   const byIndex = new Map();
   mapping.forEach(m => {
@@ -554,32 +583,35 @@ async function batchOnce({
   });
 
   const groups = [];
-  let group = [];
-  let tokens = 0;
+  // state per language: { items, tokens }
+  const state = new Map();
   for (const m of mapping.filter(m => !m.cached)) {
     const tk = approxTokens(m.text) + 1;
-    if (group.length && (tokens + tk > tokenBudget || group.length >= maxBatchSize)) {
-      groups.push(group);
-      group = [];
-      tokens = 0;
+    const lang = m.lang;
+    let st = state.get(lang);
+    if (!st) { st = { items: [], tokens: 0, lang }; state.set(lang, st); }
+    if (st.items.length && (st.tokens + tk > tokenBudget || st.items.length >= maxBatchSize)) {
+      groups.push({ items: st.items, lang: st.lang });
+      st = { items: [], tokens: 0, lang };
+      state.set(lang, st);
     }
-    group.push(m);
-    tokens += tk;
+    st.items.push(m);
+    st.tokens += tk;
   }
-  if (group.length) groups.push(group);
+  for (const st of state.values()) {
+    if (st.items.length) groups.push({ items: st.items, lang: st.lang });
+  }
   stats.totalRequests += groups.length;
 
   for (const g of groups) {
-    const joinedText = g.map(m => m.text.replaceAll(SEP, '')).join(SEP);
+    const joinedText = g.items.map(m => m.text.replaceAll(SEP, '')).join(SEP);
     const words = joinedText.replaceAll(SEP, ' ').trim().split(/\s+/).filter(Boolean).length;
     let res;
     try {
-      res = await qwenTranslate({ ...opts, source, text: joinedText });
+      res = await qwenTranslate({ ...opts, source: g.lang, text: joinedText });
     } catch (e) {
       if (/HTTP\s+400/i.test(e.message || '')) throw e;
-      g.forEach(m => {
-        m.result = m.text;
-      });
+      g.items.forEach(m => { m.result = m.text; });
       continue;
     }
     const tk = approxTokens(joinedText);
@@ -587,25 +619,24 @@ async function batchOnce({
     stats.words += words;
     stats.requests++;
     let translated = res && typeof res.text === 'string' ? res.text.split(SEP) : [];
-    if (translated.length !== g.length) {
-      // Try legacy delimiter U+E000 for compatibility with older stubs/backends
+    if (translated.length !== g.items.length) {
       const alt = res && typeof res.text === 'string' ? res.text.split('\uE000') : [];
-      if (alt.length === g.length) {
+      if (alt.length === g.items.length) {
         translated = alt;
       } else {
         if (tokenBudget > MIN_TOKEN_BUDGET) {
           dynamicTokenBudget = Math.max(MIN_TOKEN_BUDGET, Math.floor(tokenBudget / 2));
         }
-        for (const m of g) {
+        for (const m of g.items) {
           let out;
           try {
-            const single = await qwenTranslate({ ...opts, source, text: m.text });
+            const single = await qwenTranslate({ ...opts, source: m.lang, text: m.text });
             out = single.text;
           } catch {
             out = m.text;
           }
           m.result = out;
-          const key = _key(source, opts.target, m.text);
+          const key = _key(m.lang, opts.target, m.text);
           _setCache(key, { text: out });
           if (TM && TM.set) { try { TM.set(key, out); } catch {} }
           stats.requests++;
@@ -615,11 +646,11 @@ async function batchOnce({
         continue;
       }
     }
-    for (let i = 0; i < g.length; i++) {
-      g[i].result = translated[i] || g[i].text;
-      const key = _key(source, opts.target, g[i].text);
-      _setCache(key, { text: g[i].result });
-      if (TM && TM.set) { try { TM.set(key, g[i].result); } catch {} }
+    for (let i = 0; i < g.items.length; i++) {
+      g.items[i].result = translated[i] || g.items[i].text;
+      const key = _key(g.lang, opts.target, g.items[i].text);
+      _setCache(key, { text: g.items[i].result });
+      if (TM && TM.set) { try { TM.set(key, g.items[i].result); } catch {} }
     }
     const elapsedMs = Date.now() - stats.start;
     const avg = elapsedMs / stats.requests;
@@ -638,13 +669,16 @@ async function batchOnce({
 
   const retryTexts = [];
   const retryIdx = [];
+  const retryLangs = [];
   for (let i = 0; i < results.length; i++) {
     const orig = (texts[i] || '').trim();
     const out = (results[i] || '').trim();
-    if (orig && out === orig && opts.source !== opts.target) {
+    const lang = (autoMode ? sourceByIndex[i] : source);
+    if (orig && out === orig && lang !== opts.target) {
       retryTexts.push(orig);
       retryIdx.push(i);
-      const key = _key(source, opts.target, orig);
+      retryLangs.push(lang);
+      const key = _key(lang, opts.target, orig);
       cache.delete(key);
     }
   }
@@ -657,10 +691,11 @@ async function batchOnce({
       onProgress,
       _stats: stats,
       ...opts,
+      source: 'auto'
     });
     for (let i = 0; i < retryIdx.length; i++) {
       results[retryIdx[i]] = retr.texts[i];
-      const key = _key(source, opts.target, retryTexts[i]);
+      const key = _key(retryLangs[i], opts.target, retryTexts[i]);
       _setCache(key, { text: retr.texts[i] });
       if (TM && TM.set) { try { TM.set(key, retr.texts[i]); } catch {} }
     }
