@@ -23,14 +23,14 @@ if (typeof window === 'undefined') {
   }
 }
 
-let logger = console;
+let trLogger = console;
 try {
   if (typeof self !== 'undefined' && typeof window === 'undefined' && self.qwenLogger) {
-    logger = self.qwenLogger.create('translator');
+    trLogger = self.qwenLogger.create('translator');
   } else if (typeof window !== 'undefined' && window.qwenLogger) {
-    logger = window.qwenLogger.create('translator');
+    trLogger = window.qwenLogger.create('translator');
   } else if (typeof require !== 'undefined') {
-    try { logger = require('./lib/logger').create('translator'); } catch {}
+    try { trLogger = require('./lib/logger').create('translator'); } catch {}
   }
 } catch {}
 const cache = new Map();
@@ -164,7 +164,7 @@ function fetchViaXHR(url, { method = 'GET', headers = {}, body, signal }, debug)
         text: async () => xhr.responseText,
         headers: new Headers(),
       };
-      if (debug) logger.debug('XHR status', xhr.status);
+      if (debug) trLogger.debug('XHR status', xhr.status);
       resolve(resp);
     };
     xhr.onerror = () => reject(new Error('Network error'));
@@ -248,8 +248,8 @@ async function _detectSource(text, { detector, debug, noProxy } = {}) {
 async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true }) {
   const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
   if (debug) {
-    logger.debug('sending translation request to', url);
-    logger.debug('request params', { model, source, target, text });
+    trLogger.debug('sending translation request to', url);
+    trLogger.debug('request params', { model, source, target, text });
   }
   const body = {
     model,
@@ -258,7 +258,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       translation_options: { source_lang: source, target_lang: target },
     },
   };
-  if (debug) logger.debug('request body', body);
+  if (debug) trLogger.debug('request body', body);
   const key = (apiKey || '').trim();
   const headers = { 'Content-Type': 'application/json' };
   if (key) headers.Authorization = /^bearer\s/i.test(key) ? key : `Bearer ${key}`;
@@ -272,12 +272,12 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       signal,
     });
     if (debug) {
-      logger.debug('response status', resp.status);
-      logger.debug('response headers', Object.fromEntries(resp.headers.entries()));
+      trLogger.debug('response status', resp.status);
+      trLogger.debug('response headers', Object.fromEntries(resp.headers.entries()));
     }
   } catch (e) {
     if (!stream && typeof XMLHttpRequest !== 'undefined') {
-      if (debug) logger.debug('fetch failed, falling back to XHR');
+      if (debug) trLogger.debug('fetch failed, falling back to XHR');
       resp = await fetchViaXHR(
         url,
         {
@@ -298,7 +298,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
         .json()
         .catch(() => ({ message: resp.statusText }));
       const error = new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
-      if (debug) logger.debug('HTTP error response', error.message);
+      if (debug) trLogger.debug('HTTP error response', error.message);
       if (resp.status >= 500 || resp.status === 429) {
         error.retryable = true;
         const ra = resp.headers.get('retry-after');
@@ -311,7 +311,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       throw error;
     }
   if (!stream || !resp.body || typeof resp.body.getReader !== 'function') {
-    if (debug) logger.debug('received non-streaming response');
+    if (debug) trLogger.debug('received non-streaming response');
     const data = await resp.json();
     const text =
       data.output?.text ||
@@ -322,7 +322,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
     return { text };
   }
 
-  if (debug) logger.debug('reading streaming response');
+  if (debug) trLogger.debug('reading streaming response');
 
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
@@ -338,7 +338,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       const trimmed = line.trim();
       if (!trimmed.startsWith('data:')) continue;
       const data = trimmed.slice(5).trim();
-      if (debug) logger.debug('raw line', data);
+      if (debug) trLogger.debug('raw line', data);
       if (data === '[DONE]') {
         reader.cancel();
         break;
@@ -350,7 +350,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
           obj.output?.choices?.[0]?.message?.content || '';
         result += chunk;
         if (onData && chunk) onData(chunk);
-        if (debug && chunk) logger.debug('chunk received', chunk);
+        if (debug && chunk) trLogger.debug('chunk received', chunk);
       } catch {}
     }
   }
@@ -359,7 +359,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
 
 async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, provider, detector, force = false, skipTM = false }) {
   if (debug) {
-    logger.debug('qwenTranslate called with', {
+    trLogger.debug('qwenTranslate called with', {
       endpoint,
       apiKeySet: Boolean(apiKey),
       model,
@@ -407,19 +407,19 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     _setCache(cacheKey, data);
     if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
-      logger.debug('translation successful');
-      logger.debug('final text', data.text);
+      trLogger.debug('translation successful');
+      trLogger.debug('final text', data.text);
     }
     return data;
   } catch (e) {
-    logger.error('translation request failed', e);
+    trLogger.error('translation request failed', e);
     throw e;
   }
 }
 
 async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, provider, detector }, onData) {
   if (debug) {
-    logger.debug('qwenTranslateStream called with', {
+    trLogger.debug('qwenTranslateStream called with', {
       endpoint,
       apiKeySet: Boolean(apiKey),
       model,
@@ -457,12 +457,12 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     _setCache(cacheKey, data);
     if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
-      logger.debug('translation successful');
-      logger.debug('final text', data.text);
+      trLogger.debug('translation successful');
+      trLogger.debug('final text', data.text);
     }
     return data;
   } catch (e) {
-    logger.error('translation request failed', e);
+    trLogger.error('translation request failed', e);
     throw e;
   }
 }
