@@ -1,4 +1,4 @@
-importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js');
+importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'lib/feedback.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js');
 
 const logger = (self.qwenLogger && self.qwenLogger.create)
   ? self.qwenLogger.create('background')
@@ -93,6 +93,14 @@ async function googleDetectLanguage(text, debug) {
   return { lang: det.language, confidence: det.confidence || 0 };
 }
 
+function scoreConfidence(src, translated) {
+  const s = String(src || '');
+  const t = String(translated || '');
+  if (!s || !t) return 0;
+  const ratio = Math.min(s.length, t.length) / Math.max(s.length, t.length);
+  return Math.round(ratio * 100) / 100;
+}
+
 function urlEligible(u) {
   try { const x = new URL(u); return x.protocol === 'http:' || x.protocol === 'https:' || x.protocol === 'file:'; }
   catch { return false; }
@@ -121,7 +129,7 @@ async function injectContentScripts(tabId) {
   }
   await chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
-    files: ['lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/glossary.js', 'lib/tm.js', 'lib/detect.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
+    files: ['lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/glossary.js', 'lib/tm.js', 'lib/detect.js', 'lib/feedback.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
   });
 }
 async function ensureInjected(tabId) {
@@ -387,7 +395,8 @@ async function handleTranslate(opts) {
     });
     if (debug) logger.debug('background translation completed');
     logUsage(tokens, Date.now() - start);
-    return result;
+    const confidence = scoreConfidence(text, result && result.text);
+    return { ...result, confidence };
   } catch (err) {
     logger.error('background translation error', err);
     logUsage(tokens, Date.now() - start);
@@ -549,10 +558,12 @@ chrome.runtime.onConnect.addListener(port => {
           const result = await self.qwenTranslateStream(safeOpts, chunk => {
             try { port.postMessage({ requestId, chunk }); } catch {}
           });
-          try { port.postMessage({ requestId, result }); } catch {}
+          const confidence = scoreConfidence(opts.text, result && result.text);
+          try { port.postMessage({ requestId, result: { ...result, confidence } }); } catch {}
         } else {
           const result = await self.qwenTranslate(safeOpts);
-          try { port.postMessage({ requestId, result }); } catch {}
+          const confidence = scoreConfidence(opts.text, result && result.text);
+          try { port.postMessage({ requestId, result: { ...result, confidence } }); } catch {}
         }
         logUsage(tokens, Date.now() - start);
       } catch (err) {
