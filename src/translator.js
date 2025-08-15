@@ -62,14 +62,32 @@ const {
   qwenClearCache: _persistClear = () => {},
   qwenGetCacheSize = () => 0,
 } = cacheApi || {};
-let getUsage = () => ({});
+let getUsage = () => ({ cacheSize: cache.size, cacheMax: _memCacheMax() });
 function _setGetUsage(fn) { if (typeof fn === 'function') getUsage = fn; }
 
 function _memCacheMax() {
-  try { if (typeof self !== 'undefined' && self.qwenConfig && self.qwenConfig.memCacheMax) return self.qwenConfig.memCacheMax | 0; } catch {}
-  try { if (typeof window !== 'undefined' && window.qwenConfig && window.qwenConfig.memCacheMax) return window.qwenConfig.memCacheMax | 0; } catch {}
-  try { if (typeof process !== 'undefined' && process.env && process.env.QWEN_MEMCACHE_MAX) return parseInt(process.env.QWEN_MEMCACHE_MAX, 10) || 5000; } catch {}
-  return 5000;
+  let v;
+  try {
+    if (typeof self !== 'undefined' && self.qwenConfig && self.qwenConfig.memCacheMax != null) {
+      v = parseInt(self.qwenConfig.memCacheMax, 10);
+    }
+  } catch {}
+  if (v == null) {
+    try {
+      if (typeof window !== 'undefined' && window.qwenConfig && window.qwenConfig.memCacheMax != null) {
+        v = parseInt(window.qwenConfig.memCacheMax, 10);
+      }
+    } catch {}
+  }
+  if (v == null) {
+    try {
+      if (typeof process !== 'undefined' && process.env && process.env.QWEN_MEMCACHE_MAX != null) {
+        v = parseInt(process.env.QWEN_MEMCACHE_MAX, 10);
+      }
+    } catch {}
+  }
+  if (!Number.isFinite(v) || v <= 0) return 5000;
+  return v;
 }
 function _setCache(k, v) {
   if (cache.has(k)) cache.delete(k);

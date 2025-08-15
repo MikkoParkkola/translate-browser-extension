@@ -218,6 +218,12 @@
           <input type="number" id="tokenBudget" placeholder="auto"
                  title="Max tokens per batch request. Leave blank for auto‑calibration.">
 
+          <label for="memCacheMax">Memory cache max</label>
+          <input type="number" id="memCacheMax" placeholder="5000"
+                 title="Maximum entries for in‑memory translation cache.">
+          <div id="cacheStats" style="font-size:0.75rem"></div>
+          <div id="tmStats" style="font-size:0.75rem"></div>
+
           <label title="Enable detailed logs for troubleshooting in DevTools."><input type="checkbox" id="debug"> Debug logging</label>
         </div>
       </details>

@@ -4,6 +4,15 @@ const logger = (self.qwenLogger && self.qwenLogger.create)
   ? self.qwenLogger.create('background')
   : console;
 
+// Load basic config (e.g., memCacheMax) so translator cache limits apply in background
+self.qwenConfig = self.qwenConfig || {};
+try {
+  chrome.storage.sync.get({ memCacheMax: 5000 }, cfg => {
+    const n = parseInt(cfg.memCacheMax, 10);
+    if (n > 0) self.qwenConfig.memCacheMax = n;
+  });
+} catch {}
+
 function getApiKeyFromStorage() {
   return new Promise(resolve => {
     chrome.storage.sync.get({ apiKey: '' }, cfg => resolve(cfg.apiKey || ''));
@@ -340,6 +349,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'ping') {
     if (msg.debug) logger.debug('ping received');
     sendResponse({ ok: true });
+    return true;
+  }
+  if (msg.action === 'set-config') {
+    const c = msg.config || {};
+    if (typeof c.memCacheMax === 'number' && c.memCacheMax > 0) {
+      self.qwenConfig = self.qwenConfig || {};
+      self.qwenConfig.memCacheMax = c.memCacheMax;
+    }
+    sendResponse({ ok: true });
+    return true;
+  }
+  if (msg.action === 'debug') {
+    const cache = {
+      size: self.qwenGetCacheSize ? self.qwenGetCacheSize() : 0,
+      max: (self.qwenConfig && self.qwenConfig.memCacheMax) || 0,
+    };
+    const tm = (self.qwenTM && self.qwenTM.stats) ? self.qwenTM.stats() : {};
+    sendResponse({ cache, tm });
     return true;
   }
   if (msg.action === 'usage') {
