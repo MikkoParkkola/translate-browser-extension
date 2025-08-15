@@ -117,13 +117,13 @@ function chooseProvider(opts) {
 }
 async function providerTranslate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true, provider }) {
   const id = provider || chooseProvider({ endpoint, model });
-  if (id && id !== 'dashscope' && Providers && typeof Providers.get === 'function') {
+  if (id && Providers && typeof Providers.get === 'function') {
     const impl = Providers.get(id);
     if (impl && typeof impl.translate === 'function') {
       return impl.translate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream });
     }
   }
-  // default: DashScope via internal doFetch
+  // fallback: internal doFetch
   return doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream });
 }
 
