@@ -214,6 +214,13 @@ const inflight = new Map(); // requestId -> { controller, timeout, port }
 let usingPlus = false;
 let config = { providerOrder: [], requestThreshold: 0 };
 const usageStats = { models: {} };
+const usageLog = [];
+
+function logUsage(tokens, latency) {
+  const entry = { ts: Date.now(), tokens, latency };
+  usageLog.push(entry);
+  try { chrome.runtime.sendMessage({ action: 'usage-metrics', data: entry }); } catch {}
+}
 
 function setUsingPlus(v) { usingPlus = !!v; }
 function _setActiveTranslations(n) { activeTranslations = n; }
@@ -343,12 +350,13 @@ async function handleTranslate(opts) {
   if (debug) logger.debug('background translating via', ep, 'provider', provider);
 
   await ensureThrottle();
-
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
   activeTranslations++;
   updateBadge();
 
+  const start = Date.now();
+  const tokens = self.qwenThrottle.approxTokens(text || '');
   try {
     const storedKey = await getApiKeyFromStorage();
     const result = await self.qwenTranslate({
@@ -369,7 +377,6 @@ async function handleTranslate(opts) {
       failover,
       parallel,
     });
-    const tokens = self.qwenThrottle.approxTokens(text || '');
     usageStats.models[model] = usageStats.models[model] || { requests: 0 };
     usageStats.models[model].requests++;
     const cost = tokens * (COST_RATES[model] || 0);
@@ -379,9 +386,11 @@ async function handleTranslate(opts) {
       chrome.storage.local.set({ usageHistory: hist });
     });
     if (debug) logger.debug('background translation completed');
+    logUsage(tokens, Date.now() - start);
     return result;
   } catch (err) {
     logger.error('background translation error', err);
+    logUsage(tokens, Date.now() - start);
     return { error: err.message };
   } finally {
     clearTimeout(timeout);
@@ -401,6 +410,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'ping') {
     if (msg.debug) logger.debug('ping received');
     sendResponse({ ok: true });
+    return true;
+  }
+  if (msg.action === 'get-usage-log') {
+    sendResponse({ log: usageLog });
     return true;
   }
   if (msg.action === 'set-config') {
@@ -529,6 +542,8 @@ chrome.runtime.onConnect.addListener(port => {
       const ep = opts.endpoint && opts.endpoint.endsWith('/') ? opts.endpoint : (opts.endpoint ? opts.endpoint + '/' : opts.endpoint);
       const storedKey = await getApiKeyFromStorage();
       const safeOpts = { ...opts, endpoint: ep, apiKey: storedKey, signal: controller.signal, noProxy: true };
+      const start = Date.now();
+      const tokens = self.qwenThrottle.approxTokens(safeOpts.text || '');
       try {
         if (opts && opts.stream) {
           const result = await self.qwenTranslateStream(safeOpts, chunk => {
@@ -539,8 +554,10 @@ chrome.runtime.onConnect.addListener(port => {
           const result = await self.qwenTranslate(safeOpts);
           try { port.postMessage({ requestId, result }); } catch {}
         }
+        logUsage(tokens, Date.now() - start);
       } catch (err) {
         logger.error('background port translation error', err);
+        logUsage(tokens, Date.now() - start);
         try { port.postMessage({ requestId, error: err.message }); } catch {}
       } finally {
         clearTimeout(timeout);
