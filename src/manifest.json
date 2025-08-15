@@ -37,6 +37,7 @@
         "translator.js",
         "config.js",
         "languages.js",
+        "lib/glossary.js",
         "throttle.js",
         "styles/cyberpunk.css",
         "pdfViewer.html",

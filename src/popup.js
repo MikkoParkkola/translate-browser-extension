@@ -37,9 +37,11 @@ const statsTok = document.getElementById('statsTokens') || document.createElemen
 const statsEta = document.getElementById('statsEta') || document.createElement('span');
 const calibrationStatus = document.getElementById('calibrationStatus') || document.createElement('div');
 const resetCalibrationBtn = document.getElementById('resetCalibration') || document.createElement('button');
+const importGlossaryInput = document.getElementById('importGlossary') || document.createElement('input');
+const exportGlossaryBtn = document.getElementById('exportGlossary') || document.createElement('button');
 
 // Collapsible sections
-const sectionIds = ['providerSection', 'detectionSection', 'rateSection', 'cacheSection'];
+const sectionIds = ['providerSection', 'detectionSection', 'rateSection', 'cacheSection', 'glossarySection'];
 
 document.body.classList.add('qwen-bg-animated');
 if (translateBtn) translateBtn.classList.add('primary-glow');
@@ -66,6 +68,43 @@ function initSectionToggles() {
 }
 
 initSectionToggles();
+
+if (importGlossaryInput) {
+  importGlossaryInput.addEventListener('change', e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (!chrome.storage || !chrome.storage.sync) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result || '{}');
+        chrome.storage.sync.set({ glossary: data }, () => {
+          status.textContent = 'Glossary imported.';
+          setTimeout(() => { if (status.textContent === 'Glossary imported.') status.textContent = ''; }, 2000);
+        });
+      } catch {
+        status.textContent = 'Invalid glossary file.';
+        setTimeout(() => { if (status.textContent === 'Invalid glossary file.') status.textContent = ''; }, 2000);
+      }
+    };
+    reader.readAsText(file);
+    importGlossaryInput.value = '';
+  });
+}
+if (exportGlossaryBtn) {
+  exportGlossaryBtn.addEventListener('click', () => {
+    if (!chrome.storage || !chrome.storage.sync) return;
+    chrome.storage.sync.get({ glossary: {} }, data => {
+      const blob = new Blob([JSON.stringify(data.glossary || {}, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'glossary.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  });
+}
 
 // Setup view elements
 const setupApiKeyInput = document.getElementById('setup-apiKey') || document.createElement('input');

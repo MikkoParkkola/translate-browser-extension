@@ -47,6 +47,17 @@ function replacePdfEmbeds() {
 }
 replacePdfEmbeds();
 
+async function loadGlossary() {
+  if (!window.qwenGlossary) return;
+  if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.sync) return;
+  await new Promise(res => {
+    chrome.storage.sync.get({ glossary: {} }, data => {
+      try { window.qwenGlossary.parse(document, data.glossary || {}); } catch {}
+      res();
+    });
+  });
+}
+
 function setStatus(message, isError = false) {
   let el = document.getElementById('qwen-status');
   if (!el) {
@@ -399,6 +410,7 @@ async function start() {
   started = true;
   ensureThemeCss();
   currentConfig = await window.qwenLoadConfig();
+  await loadGlossary();
   progress = { total: 0, done: 0 };
   if (window.qwenSetTokenBudget) {
     window.qwenSetTokenBudget(currentConfig.tokenBudget || 0);
@@ -479,6 +491,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const text = sel && sel.toString().trim();
       if (!text) return;
       const cfg = currentConfig || (await window.qwenLoadConfig());
+      await loadGlossary();
       try {
         const { text: translated } = await window.qwenTranslate({
           endpoint: cfg.apiEndpoint,
