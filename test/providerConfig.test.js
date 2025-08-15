@@ -8,6 +8,8 @@ test('hides unused fields based on provider config', () => {
     <label data-field="projectId"></label><input data-field="projectId">
     <label data-field="location"></label><input data-field="location">
     <label data-field="documentModel"></label><input data-field="documentModel">
+    <label data-field="secondaryModel"></label><input data-field="secondaryModel">
+    <div data-field="secondaryModelWarning"></div>
   `;
   const provider = { configFields: ['apiKey'] };
   applyProviderConfig(provider, document);
@@ -20,6 +22,8 @@ test('hides unused fields based on provider config', () => {
         '[data-field="projectId"]',
         '[data-field="location"]',
         '[data-field="documentModel"]',
+        '[data-field="secondaryModel"]',
+        '[data-field="secondaryModelWarning"]',
       ].join(', ')
     )
     .forEach(el => {

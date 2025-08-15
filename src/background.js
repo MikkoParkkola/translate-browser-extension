@@ -302,7 +302,7 @@ async function selectProvider(p, providerOrder) {
 }
 
 async function handleTranslate(opts) {
-  const { endpoint, apiKey, model, text, source, target, debug, providerOrder, endpoints, failover, parallel } = opts;
+  const { endpoint, apiKey, model, secondaryModel, text, source, target, debug, providerOrder, endpoints, failover, parallel } = opts;
   const provider = await selectProvider(opts.provider || 'qwen', providerOrder);
   const epBase = (endpoints && endpoints[provider]) || endpoint;
   const ep = epBase.endsWith('/') ? epBase : `${epBase}/`;
@@ -321,6 +321,7 @@ async function handleTranslate(opts) {
       endpoint: ep,
       apiKey: storedKey,
       model,
+      secondaryModel,
       provider,
       text,
       source,
