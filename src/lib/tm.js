@@ -126,5 +126,7 @@
       r.onerror = () => reject(r.error);
     }).catch(() => {});
   }
-  return { get, set };
+  function stats() { return { ...metrics }; }
+  function __resetStats() { metrics.hits = metrics.misses = metrics.sets = metrics.evictionsTTL = metrics.evictionsLRU = 0; }
+  return { get, set, stats, __resetStats };
 }));
