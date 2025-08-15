@@ -1,27 +1,18 @@
 {
   "name": "qwen-translator-extension",
-<<<<<<< HEAD
   "version": "1.5.1",
-=======
-  "version": "1.10.0",
->>>>>>> d85ab24219afb7ff5c24d5c2a917603994573a7f
   "description": "Extension to translate web pages using Qwen-MT-Turbo model",
   "main": "index.js",
   "scripts": {
     "test": "jest",
     "build:safari": "bash scripts/convert-safari.sh",
     "test:e2e": "playwright test",
-<<<<<<< HEAD
     "postinstall": "bash scripts/fetch-wasm-assets.sh",
     "clean": "rimraf dist",
     "build": "npm run clean && copyfiles -u 1 src/**/* dist",
     "zip": "bestzip dist/qwen-translator-v$npm_package_version.zip dist/*",
     "build:zip": "npm run build && npm run zip",
     "serve": "http-server dist -p 8080"
-=======
-    "e2e": "playwright test",
-    "postinstall": "bash scripts/fetch-wasm-assets.sh"
->>>>>>> d85ab24219afb7ff5c24d5c2a917603994573a7f
   },
   "keywords": [],
   "author": "",
@@ -31,20 +22,15 @@
     "@playwright/test": "^1.45.2",
     "@types/jest": "^30.0.0",
     "cross-fetch": "^4.1.0",
-    "fake-indexeddb": "^5.0.2",
     "http-server": "^14.1.1",
+    "fake-indexeddb": "^5.0.2",
     "jest": "^30.0.5",
     "jest-environment-jsdom": "^30.0.5",
     "jest-fetch-mock": "^3.0.3",
-<<<<<<< HEAD
     "pdf-lib": "^1.17.1",
     "bestzip": "^2.2.1",
     "copyfiles": "^2.4.1",
     "rimraf": "^5.0.5"
-=======
-    "lz-string": "^1.5.0",
-    "pdf-lib": "^1.17.1"
->>>>>>> d85ab24219afb7ff5c24d5c2a917603994573a7f
   },
   "dependencies": {
     "mupdf": "^1.26.4",
