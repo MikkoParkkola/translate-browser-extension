@@ -421,6 +421,26 @@ async function batchOnce({
 }) {
   const stats = _stats || { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
   const SEP = makeDelimiter();
+  if (TM && TM.get) {
+    const missingKeys = [];
+    const seen = new Set();
+    for (const t of texts) {
+      const key = `${opts.source}:${opts.target}:${t}`;
+      if (!cache.has(key) && !seen.has(key)) {
+        seen.add(key);
+        missingKeys.push(key);
+      }
+    }
+    if (missingKeys.length) {
+      const hits = await Promise.all(missingKeys.map(k => TM.get(k).catch(() => null)));
+      for (let i = 0; i < missingKeys.length; i++) {
+        const h = hits[i];
+        if (h && typeof h.text === 'string') {
+          cache.set(missingKeys[i], { text: h.text });
+        }
+      }
+    }
+  }
 
   const mapping = [];
   texts.forEach((t, i) => {

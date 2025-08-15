@@ -125,7 +125,6 @@ async function translateNode(node) {
     const timeout = setTimeout(() => controller.abort(), 10000);
     const { text: translated } = await window.qwenTranslate({
       endpoint: currentConfig.apiEndpoint,
-      apiKey: currentConfig.apiKey,
       model: currentConfig.model,
       text,
       source: currentConfig.sourceLanguage,
@@ -157,7 +156,6 @@ async function translateBatch(elements, stats) {
   try {
     const opts = {
       endpoint: currentConfig.apiEndpoint,
-      apiKey: currentConfig.apiKey,
       model: currentConfig.model,
       texts,
       source: currentConfig.sourceLanguage,
@@ -411,7 +409,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       try {
         const { text: translated } = await window.qwenTranslate({
           endpoint: cfg.apiEndpoint,
-          apiKey: cfg.apiKey,
           model: cfg.model,
           text,
           source: cfg.sourceLanguage,

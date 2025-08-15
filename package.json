@@ -7,7 +7,12 @@
     "test": "jest",
     "build:safari": "bash scripts/convert-safari.sh",
     "test:e2e": "playwright test",
-    "postinstall": "bash scripts/fetch-wasm-assets.sh"
+    "postinstall": "bash scripts/fetch-wasm-assets.sh",
+    "clean": "rimraf dist",
+    "build": "npm run clean && copyfiles -u 1 src/**/* dist",
+    "zip": "bestzip dist/qwen-translator-v$npm_package_version.zip dist/*",
+    "build:zip": "npm run build && npm run zip",
+    "serve": "http-server dist -p 8080"
   },
   "keywords": [],
   "author": "",
@@ -22,7 +27,10 @@
     "jest": "^30.0.5",
     "jest-environment-jsdom": "^30.0.5",
     "jest-fetch-mock": "^3.0.3",
-    "pdf-lib": "^1.17.1"
+    "pdf-lib": "^1.17.1",
+    "bestzip": "^2.2.1",
+    "copyfiles": "^2.4.1",
+    "rimraf": "^5.0.5"
   },
   "dependencies": {
     "mupdf": "^1.26.4",

@@ -4,6 +4,12 @@ const logger = (self.qwenLogger && self.qwenLogger.create)
   ? self.qwenLogger.create('background')
   : console;
 
+function getApiKeyFromStorage() {
+  return new Promise(resolve => {
+    chrome.storage.sync.get({ apiKey: '' }, cfg => resolve(cfg.apiKey || ''));
+  });
+}
+
 function urlEligible(u) {
   try { const x = new URL(u); return x.protocol === 'http:' || x.protocol === 'https:' || x.protocol === 'file:'; }
   catch { return false; }
@@ -190,9 +196,10 @@ async function handleTranslate(opts) {
   updateBadge();
 
   try {
+    const storedKey = await getApiKeyFromStorage();
     const result = await self.qwenTranslate({
       endpoint: ep,
-      apiKey,
+      apiKey: storedKey,
       model,
       text,
       source,
@@ -257,7 +264,8 @@ chrome.runtime.onConnect.addListener(port => {
       updateBadge();
       inflight.set(requestId, { controller, timeout, port });
       const ep = opts.endpoint && opts.endpoint.endsWith('/') ? opts.endpoint : (opts.endpoint ? opts.endpoint + '/' : opts.endpoint);
-      const safeOpts = { ...opts, endpoint: ep, signal: controller.signal };
+      const storedKey = await getApiKeyFromStorage();
+      const safeOpts = { ...opts, endpoint: ep, apiKey: storedKey, signal: controller.signal };
       try {
         if (opts && opts.stream) {
           const result = await self.qwenTranslateStream(safeOpts, chunk => {
