@@ -34,4 +34,23 @@ describe('messaging.detectLanguage via Port and fallback', () => {
     const out = await messaging.detectLanguage({ text: 'hello', detector: 'local' });
     expect(out).toEqual({ lang: 'en', confidence: 0.8 });
   });
+
+  test('falls back when below sensitivity', async () => {
+    let listeners = [];
+    const port = {
+      onMessage: { addListener: fn => listeners.push(fn) },
+      onDisconnect: { addListener: () => {} },
+      postMessage: jest.fn(msg => {
+        if (msg.action === 'detect') {
+          const { requestId } = msg;
+          listeners.forEach(fn => fn({ requestId, result: { lang: 'fr', confidence: 0.2 } }));
+        }
+      }),
+      disconnect: jest.fn(),
+    };
+    window.chrome.runtime.connect = jest.fn(() => port);
+    const messaging = require('../src/lib/messaging.js');
+    const out = await messaging.detectLanguage({ text: 'bonjour', detector: 'local', sensitivity: 0.5 });
+    expect(out).toEqual({ lang: 'en', confidence: 0.2 });
+  });
 });

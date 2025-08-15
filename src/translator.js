@@ -258,17 +258,17 @@ async function providerTranslate({ endpoint, apiKey, model, text, source, target
   );
 }
 
-async function _detectSource(text, { detector, debug, noProxy } = {}) {
+async function _detectSource(text, { detector, debug, noProxy, sensitivity = 0 } = {}) {
   const sample = String(text || '').slice(0, 2000);
   if (detector === 'google' && chooseStrategy({ noProxy }) === 'proxy' && messaging) {
     try {
-      const r = await messaging.detectLanguage({ text: sample, detector: 'google', debug });
+      const r = await messaging.detectLanguage({ text: sample, detector: 'google', debug, sensitivity });
       if (r && r.lang) return r.lang;
     } catch {}
   }
   if (Detect && typeof Detect.detectLocal === 'function') {
     try {
-      const r = Detect.detectLocal(sample);
+      const r = Detect.detectLocal(sample, { sensitivity });
       if (r && r.lang) return r.lang;
     } catch {}
   }
@@ -387,7 +387,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
   return { text: result };
 }
 
-async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, provider, detector, force = false, skipTM = false, autoInit = false, providerOrder, endpoints }) {
+async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, provider, detector, force = false, skipTM = false, autoInit = false, providerOrder, endpoints, sensitivity = 0 }) {
   if (debug) {
     trLogger.debug('qwenTranslate called with', {
       endpoint,
@@ -400,7 +400,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   }
   let src = source;
   if (!src || src === 'auto') {
-    src = await _detectSource(text, { detector, debug, noProxy });
+    src = await _detectSource(text, { detector, debug, noProxy, sensitivity });
   }
   const prov = provider || (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model }));
   const cacheKey = `${prov}:${_key(src, target, text)}`;
@@ -455,7 +455,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   }
 }
 
-async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, provider, detector, skipTM = false, autoInit = false, providerOrder, endpoints }, onData) {
+async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, provider, detector, skipTM = false, autoInit = false, providerOrder, endpoints, sensitivity = 0 }, onData) {
   if (debug) {
     trLogger.debug('qwenTranslateStream called with', {
       endpoint,
@@ -468,7 +468,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
   }
   let src = source;
   if (!src || src === 'auto') {
-    src = await _detectSource(text, { detector, debug, noProxy });
+    src = await _detectSource(text, { detector, debug, noProxy, sensitivity });
   }
   const prov = provider || (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model }));
   const cacheKey = `${prov}:${_key(src, target, text)}`;
@@ -594,7 +594,7 @@ async function batchOnce({
   const sourceByIndex = new Array(texts.length);
   if (autoMode) {
     for (let i = 0; i < texts.length; i++) {
-      sourceByIndex[i] = await _detectSource(texts[i], { detector: opts.detector, debug: opts.debug, noProxy: opts.noProxy });
+      sourceByIndex[i] = await _detectSource(texts[i], { detector: opts.detector, debug: opts.debug, noProxy: opts.noProxy, sensitivity: opts.sensitivity });
     }
     source = sourceByIndex[0];
   } else {
