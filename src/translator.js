@@ -520,7 +520,7 @@ async function batchOnce({
     const missingKeys = [];
     const seen = new Set();
     for (const t of texts) {
-      const key = `${source}:${opts.target}:${t}`;
+      const key = _key(source, opts.target, t);
       if (!cache.has(key) && !seen.has(key)) {
         seen.add(key);
         missingKeys.push(key);
@@ -644,7 +644,7 @@ async function batchOnce({
     if (orig && out === orig && opts.source !== opts.target) {
       retryTexts.push(orig);
       retryIdx.push(i);
-      const key = `${source}:${opts.target}:${orig}`;
+      const key = _key(source, opts.target, orig);
       cache.delete(key);
     }
   }
