@@ -86,6 +86,7 @@
 - Observability
   - Optional background debug endpoint to expose TM/cache metrics; Advanced UI readout in popup.
   - Advanced control for in-memory LRU size (`QWEN_MEMCACHE_MAX`) with validation.
+  - Popup diagnostics log each step at info level and content-script batch translations log start/finish for easier troubleshooting.
 - Provider ecosystem
   - Add additional providers (Azure OpenAI, Anthropic/Claude) behind registry; extend error normalization tests accordingly.
 - Typed interfaces

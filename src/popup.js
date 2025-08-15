@@ -369,15 +369,18 @@ testBtn.addEventListener('click', async () => {
   };
 
   function log(...args) { if (cfg.debug) pLogger.debug(...args); }
+  pLogger.info('configuration test started');
   log('starting configuration test', cfg);
 
   async function run(name, fn) {
     const item = document.createElement('li');
     item.textContent = `${name}: ...`;
     list.appendChild(item);
+    pLogger.info('diagnostic step started', name);
     try {
       await fn();
       item.textContent = `${name}: ✓`;
+      pLogger.info('diagnostic step succeeded', name);
       return true;
     } catch (e) {
       item.textContent = `${name}: ✗ ${e.message}`;
@@ -513,5 +516,6 @@ testBtn.addEventListener('click', async () => {
     status.appendChild(document.createTextNode('Some tests failed. See above.'));
   }
 
+  pLogger.info('configuration test finished', { allOk });
   log('configuration test finished');
 });

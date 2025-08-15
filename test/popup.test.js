@@ -89,7 +89,7 @@ describe('popup configuration test', () => {
     await Promise.resolve();
     await new Promise(res => setTimeout(res, 0));
     expect(document.getElementById('status').textContent).toContain('All tests passed');
-    expect(entries.some(e => e.ns === 'popup' && e.level === 'debug' && /starting configuration test/.test(e.args[0]))).toBe(true);
+    expect(entries.some(e => e.ns === 'popup' && e.level === 'info' && e.args[0] === 'diagnostic step started')).toBe(true);
     expect(global.qwenTranslate.mock.calls.some(c => c[0].noProxy === true)).toBe(true);
     remove();
   });
