@@ -48,6 +48,19 @@ try {
     try { trLogger = require('./lib/logger').create('translator'); } catch {}
   }
 } catch {}
+let glossary = null;
+try {
+  if (typeof window !== 'undefined' && window.qwenGlossary) glossary = window.qwenGlossary;
+  else if (typeof self !== 'undefined' && self.qwenGlossary) glossary = self.qwenGlossary;
+  else if (typeof require !== 'undefined') glossary = require('./lib/glossary');
+} catch {}
+function _applyGlossary(text) {
+  if (!glossary || typeof glossary.apply !== 'function') return text;
+  let map;
+  try { map = glossary.get ? glossary.get() : null; } catch {}
+  if (!map || !Object.keys(map).length) return text;
+  return glossary.apply(text, map);
+}
 const cache = new Map();
 let cacheApi = null;
 try {
@@ -420,6 +433,7 @@ async function qwenTranslate({ endpoint, apiKey, model, secondaryModel, text, so
   if (!src || src === 'auto') {
     src = await _detectSource(text, { detector, debug, noProxy, sensitivity });
   }
+  text = _applyGlossary(text);
   const prov = provider || (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model }));
   const cacheKey = `${prov}:${_key(src, target, text)}`;
   if (!force && cache.has(cacheKey)) {
@@ -491,6 +505,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, secondaryModel, te
   if (!src || src === 'auto') {
     src = await _detectSource(text, { detector, debug, noProxy, sensitivity });
   }
+  text = _applyGlossary(text);
   const prov = provider || (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model }));
   const cacheKey = `${prov}:${_key(src, target, text)}`;
   if (cache.has(cacheKey)) {
@@ -626,6 +641,9 @@ async function batchOnce({
     source = sourceByIndex[0];
   } else {
     for (let i = 0; i < texts.length; i++) sourceByIndex[i] = source;
+  }
+  if (glossary) {
+    texts = texts.map(t => _applyGlossary(t));
   }
   const SEP = makeDelimiter();
   // Warm TM using per-text language keys (autoMode) or fixed source

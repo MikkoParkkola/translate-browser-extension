@@ -290,6 +290,15 @@
         </div>
       </details>
 
+      <details id="glossarySection" class="panel-frame">
+        <summary>Glossary</summary>
+        <div class="form-group" style="padding-top: 0.75rem">
+          <label for="importGlossary">Import glossary (JSON)</label>
+          <input type="file" id="importGlossary" accept="application/json">
+          <button id="exportGlossary" class="secondary btn-frame">Export Glossary</button>
+        </div>
+      </details>
+
       <button id="test" class="secondary btn-frame">Test Settings</button>
       <progress id="progress" value="0" max="1" style="width:100%;display:none"></progress>
       <div id="status"></div>
@@ -304,6 +313,7 @@
   <script src="providers/deepl.js"></script>
   <script src="providers/dashscope.js"></script>
   <script src="lib/messaging.js"></script>
+  <script src="lib/glossary.js"></script>
   <script src="translator.js"></script>
   <script src="config.js"></script>
   <script src="languages.js"></script>
