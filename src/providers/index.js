@@ -7,6 +7,7 @@ function initProviders() {
     deepl: require('./deepl').basic,
     'deepl-free': require('./deepl').free,
     'deepl-pro': require('./deepl').pro,
+    macos: { ...require('./macos'), label: 'macOS' },
     openrouter: { ...require('./openrouter'), label: 'OpenRouter' },
   });
 }
