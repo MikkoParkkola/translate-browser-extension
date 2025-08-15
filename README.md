@@ -32,9 +32,11 @@ See `safari/README.md` for detailed iOS/iPadOS deployment steps.
 
 ## Configuration
 Use the popup to configure:
-- API key and optional endpoint (keep your API key private)
-- Translation model name (defaults to `qwen-mt-turbo`)
-- Source and target languages
+- Provider preset to auto-fill endpoint and a typical model (DashScope/Qwen, OpenAI, DeepL)
+- API key for your chosen provider (keys are stored locally; never injected into pages)
+- Translation model name (e.g., `qwen-mt-turbo`, `gpt-4o-mini`)
+- Source and target languages (Source can be “Auto-detect”)
+- Detector mode: Local (default, private) or Google (needs a Detection API key)
 - Automatic translation toggle
 Click **Test Settings** in the popup to run a short diagnostic. The extension performs several quick checks:
 1. Connect to the configured API endpoint
@@ -46,10 +48,18 @@ Click **Test Settings** in the popup to run a short diagnostic. The extension pe
 7. Read the contents of the active tab
 8. Translate a short string inside the active tab
 9. Verify that extension settings can be saved
-Each step displays a pass or fail result and honours the debug logging preference.
+Each step displays a pass or fail result and honours the debug logging preference. Tooltips in the popup explain every field and acceptable values.
 The active tab check may fail on browser-internal pages (such as the Chrome Web Store or settings). Open a regular web page before running the test.
 The final end-to-end tab translation aborts after about 10 seconds if no response is received.
 The sample phrase is chosen based on the configured source language so the translated text differs from the original.
+
+### Where to get API keys
+- DashScope (Qwen): https://dashscope.console.aliyun.com/
+- OpenAI: https://platform.openai.com/api-keys
+- DeepL: https://www.deepl.com/pro-api
+- Google Cloud (Detection): https://cloud.google.com/translate/docs/setup
+
+See also: docs/PROVIDERS.md
 
 ## Usage
 Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content as well as embedded frames or third-party widgets whenever the browser grants access. If translation fails the affected text is kept in a queue and retried until the API succeeds. When the translated text matches the original the node is marked as untranslatable and skipped. Translations are cached for the current session to minimise API calls.

@@ -84,6 +84,11 @@ function safeFetch(url, opts) {
 }
 
 function populateLanguages() {
+  // Offer auto-detect for Source (recommended)
+  const autoOpt = document.createElement('option');
+  autoOpt.value = 'auto';
+  autoOpt.textContent = 'Auto-detect (recommended)';
+  sourceSelect.appendChild(autoOpt);
   window.qwenLanguages.forEach(l => {
     const opt = document.createElement('option');
     opt.value = l.code; opt.textContent = l.name;
@@ -179,6 +184,13 @@ window.qwenLoadConfig().then(cfg => {
   modelInput.value = cfg.model || '';
   sourceSelect.value = cfg.sourceLanguage;
   targetSelect.value = cfg.targetLanguage;
+  // Sensible defaults if unset: auto source, target from browser UI language
+  if (!sourceSelect.value) sourceSelect.value = 'auto';
+  if (!targetSelect.value) {
+    const nav = (navigator.language || 'en').split('-')[0].toLowerCase();
+    const match = Array.from(targetSelect.options).find(o => String(o.value).toLowerCase() === nav);
+    if (match) targetSelect.value = match.value;
+  }
   reqLimitInput.value = cfg.requestLimit;
   tokenLimitInput.value = cfg.tokenLimit;
   tokenBudgetInput.value = cfg.tokenBudget || '';
@@ -214,6 +226,20 @@ window.qwenLoadConfig().then(cfg => {
   [sourceSelect, targetSelect, autoCheckbox, debugCheckbox].forEach(el => el.addEventListener('change', saveConfig));
   if (detectApiKeyInput) detectApiKeyInput.addEventListener('input', saveConfig);
   if (detectorSelect) detectorSelect.addEventListener('change', saveConfig);
+  // Infer preset when user pastes endpoint (helps automation)
+  if (endpointInput) {
+    endpointInput.addEventListener('blur', () => {
+      const v = (endpointInput.value || '').toLowerCase();
+      let inferred = '';
+      if (v.includes('openai')) inferred = 'openai';
+      else if (v.includes('deepl')) inferred = 'deepl';
+      else if (v.includes('dashscope')) inferred = 'dashscope';
+      if (inferred && providerPreset) {
+        providerPreset.value = inferred;
+        providerPreset.dispatchEvent(new Event('change'));
+      }
+    });
+  }
 });
 
 versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
@@ -231,6 +257,8 @@ function refreshUsage() {
     tokenCount.textContent = `${res.tokens}/${res.tokenLimit}`;
     setBar(reqBar, res.requests / res.requestLimit);
     setBar(tokenBar, res.tokens / res.tokenLimit);
+    reqBar.title = `Requests: ${res.requests}/${res.requestLimit}`;
+    tokenBar.title = `Tokens: ${res.tokens}/${res.tokenLimit}`;
     totalReq.textContent = res.totalRequests;
     totalTok.textContent = res.totalTokens;
     queueLen.textContent = res.queue;
