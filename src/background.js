@@ -333,6 +333,8 @@ chrome.runtime.onConnect.addListener(port => {
         activeTranslations--;
         updateBadge();
       }
+      return;
+    }
     if (msg.action === 'detect') {
       const { requestId, opts } = msg;
       if (!requestId || !opts) return;
