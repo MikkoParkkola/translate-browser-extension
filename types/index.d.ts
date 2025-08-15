@@ -41,14 +41,11 @@ export declare function qwenTranslate(opts: TranslateOptions): Promise<{ text: s
 export declare function qwenTranslateStream(opts: TranslateOptions, onData: (chunk: string) => void): Promise<{ text: string }>
 export declare function qwenTranslateBatch(opts: BatchOptions): Promise<{ texts: string[] }>
 export declare function qwenClearCache(): void;
-export declare const qwenProviders: {
-  registerProvider(id: string, impl: any): void;
-  getProvider(id: string): any;
-  listProviders(): { name: string; label: string }[];
-  initProviders(): void;
-  isInitialized(): boolean;
-};
 export declare const qwenFetchStrategy: {
   choose(opts?: { noProxy?: boolean }): 'proxy' | 'direct';
   setChooser(fn?: (opts?: any) => 'proxy' | 'direct'): void;
 };
+
+export * from './providers';
+export * from './messaging';
+export * from './tm';
