@@ -1,4 +1,4 @@
-importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'throttle.js', 'translator.js', 'usageColor.js');
+importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'throttle.js', 'translator.js', 'usageColor.js');
 
 const logger = (self.qwenLogger && self.qwenLogger.create)
   ? self.qwenLogger.create('background')
@@ -78,7 +78,7 @@ async function injectContentScripts(tabId) {
   }
   await chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
-    files: ['lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'lib/detect.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
+    files: ['lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'lib/detect.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
   });
 }
 async function ensureInjected(tabId) {

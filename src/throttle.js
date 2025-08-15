@@ -145,6 +145,8 @@ function reset() {
   totalTokens = 0;
   availableRequests = config.requestLimit;
   availableTokens = config.tokenLimit;
+  processing = false;
+  cooldown = false;
 }
 
   if (typeof window !== 'undefined') {
