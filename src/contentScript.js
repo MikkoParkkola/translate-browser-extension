@@ -369,7 +369,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     window
       .qwenTranslate({
         endpoint: cfg.endpoint,
-        apiKey: cfg.apiKey,
         model: cfg.model,
         text: original,
         source: cfg.source,
