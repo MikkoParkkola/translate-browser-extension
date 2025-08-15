@@ -1,21 +1,23 @@
 (function (root, factory) {
   const mod = factory(root);
   if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  else root.qwenProviderOpenAI = mod;
+  else root.qwenProviderOpenRouter = mod;
 }(typeof self !== 'undefined' ? self : this, function (root) {
-  const logger = (root.qwenLogger && root.qwenLogger.create) ? root.qwenLogger.create('provider:openai') : console;
+  const logger = (root.qwenLogger && root.qwenLogger.create) ? root.qwenLogger.create('provider:openrouter') : console;
   const fetchFn = (typeof fetch !== 'undefined') ? fetch : (root.fetch || null);
   function withSlash(u) { return /\/$/.test(u) ? u : (u + '/'); }
 
-  async function translate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true }) {
+  async function translate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true, referer, title }) {
     if (!fetchFn) throw new Error('fetch not available');
-    const base = withSlash(endpoint || 'https://api.openai.com/v1');
+    const base = withSlash(endpoint || 'https://openrouter.ai/api/v1');
     const url = base + 'chat/completions';
     const sys = `You are a professional translator. Translate the user message from ${source} to ${target}. Output only the translation, no explanations.`;
     const body = { model, messages: [{ role: 'system', content: sys }, { role: 'user', content: text }], stream: !!stream };
     const headers = { 'Content-Type': 'application/json' };
     const key = (apiKey || '').trim();
     if (key) headers.Authorization = /^bearer\s/i.test(key) ? key : `Bearer ${key}`;
+    if (referer) headers['HTTP-Referer'] = referer;
+    if (title) headers['X-Title'] = title;
 
     if (debug) {
       logger.debug('sending translation request to', url);
@@ -81,11 +83,11 @@
     return { text: result };
   }
 
-  const provider = { translate, throttle: { requestLimit: 60, windowMs: 60000 } };
+  const provider = { translate, throttle: { requestLimit: 3, windowMs: 1000 } };
   // Register into provider registry if available
   try {
     const reg = root.qwenProviders || (typeof require !== 'undefined' ? require('../lib/providers') : null);
-    if (reg && reg.register && !reg.get('openai')) reg.register('openai', provider);
+    if (reg && reg.register && !reg.get('openrouter')) reg.register('openrouter', provider);
   } catch {}
   return provider;
 }));

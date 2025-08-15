@@ -14,6 +14,7 @@ describe('TM read-through in batch translation', () => {
   beforeEach(() => {
     jest.resetModules();
     TM = require('../src/lib/tm.js');
+    delete global.chrome;
   });
 
   test('skips provider for cached entries and only translates misses', async () => {
@@ -24,6 +25,7 @@ describe('TM read-through in batch translation', () => {
     const Providers = require('../src/lib/providers.js');
     const translateMock = jest.fn(async ({ text }) => ({ text: `T:${text}` }));
     Providers.register('dashscope', { translate: translateMock });
+    Providers.init();
     const { qwenTranslateBatch } = require('../src/translator.js');
     const res = await qwenTranslateBatch({
       texts: ['A', 'B', 'C'],
@@ -51,6 +53,7 @@ describe('TM read-through in batch translation', () => {
     const Providers = require('../src/lib/providers.js');
     const translateMock = jest.fn(async ({ text }) => ({ text }));
     Providers.register('dashscope', { translate: translateMock });
+    Providers.init();
     const { qwenTranslateBatch } = require('../src/translator.js');
     const res = await qwenTranslateBatch({
       texts: ['A', 'B', 'C'],

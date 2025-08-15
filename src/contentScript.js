@@ -125,6 +125,7 @@ async function translateNode(node) {
   const text = original.trim();
   if (!text) return;
   try {
+    logger.info('translating node', text.slice(0, 50));
     if (currentConfig.debug) logger.debug('QTDEBUG: translating node', text.slice(0, 20));
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
@@ -138,6 +139,7 @@ async function translateNode(node) {
       debug: currentConfig.debug,
     });
     clearTimeout(timeout);
+    logger.info('translated node', { original: text.slice(0, 50), translated: translated.slice(0, 50) });
     if (currentConfig.debug) {
       logger.debug('QTDEBUG: node translation result', { original: text.slice(0, 50), translated: translated.slice(0, 50) });
       if (translated.trim().toLowerCase() === text.trim().toLowerCase()) {
@@ -153,6 +155,7 @@ async function translateNode(node) {
 }
 
 async function translateBatch(elements, stats, force = false) {
+  logger.info('starting batch translation', { count: elements.length });
   const originals = elements.map(el => el.textContent || '');
   const texts = originals.map(t => t.trim());
   const controller = new AbortController();
@@ -197,6 +200,7 @@ async function translateBatch(elements, stats, force = false) {
       mark(el);
     }
   });
+  logger.info('finished batch translation', { count: elements.length });
   progress.done += elements.length;
   const elapsedMs = stats ? Date.now() - stats.start : 0;
   const avg = progress.done ? elapsedMs / progress.done : 0;

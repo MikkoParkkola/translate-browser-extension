@@ -91,9 +91,10 @@
     return { text: result };
   }
 
+  const provider = { translate, throttle: { requestLimit: 5, windowMs: 1000 } };
   try {
     const reg = root.qwenProviders || (typeof require !== 'undefined' ? require('../lib/providers') : null);
-    if (reg && reg.register) reg.register('dashscope', { translate });
+    if (reg && reg.register && !reg.get('dashscope')) reg.register('dashscope', provider);
   } catch {}
-  return { translate };
+  return provider;
 }));
