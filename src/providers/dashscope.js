@@ -37,6 +37,7 @@
       let msg = resp.statusText;
       try { const err = await resp.json(); msg = err.message || msg; } catch {}
       const error = new Error(`HTTP ${resp.status}: ${msg}`);
+      error.status = resp.status;
       if (resp.status >= 500 || resp.status === 429) {
         error.retryable = true;
         const ra = resp.headers.get('retry-after');

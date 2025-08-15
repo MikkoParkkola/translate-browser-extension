@@ -9,6 +9,8 @@ const tokenLimitInput = document.getElementById('tokenLimit');
 const tokenBudgetInput = document.getElementById('tokenBudget');
 const autoCheckbox = document.getElementById('auto');
 const debugCheckbox = document.getElementById('debug');
+const detectorSelect = document.getElementById('detector');
+const detectApiKeyInput = document.getElementById('detectApiKey');
 const status = document.getElementById('status');
 const versionDiv = document.getElementById('version');
 const reqCount = document.getElementById('reqCount');
@@ -40,10 +42,12 @@ function saveConfig() {
     }
     const cfg = {
       apiKey: apiKeyInput.value.trim(),
+      detectApiKey: detectApiKeyInput ? detectApiKeyInput.value.trim() : '',
       apiEndpoint: endpointInput.value.trim(),
       model: modelInput.value.trim(),
       sourceLanguage: sourceSelect.value,
       targetLanguage: targetSelect.value,
+      detector: detectorSelect ? detectorSelect.value : 'local',
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
       tokenLimit: parseInt(tokenLimitInput.value, 10) || 100000,
       tokenBudget: parseInt(tokenBudgetInput.value, 10) || 0,
@@ -169,6 +173,8 @@ chrome.runtime.sendMessage({ action: 'get-status' }, s => {
 window.qwenLoadConfig().then(cfg => {
   // Populate main view
   apiKeyInput.value = cfg.apiKey || '';
+  if (detectApiKeyInput) detectApiKeyInput.value = cfg.detectApiKey || '';
+  if (detectorSelect) detectorSelect.value = cfg.detector || 'local';
   endpointInput.value = cfg.apiEndpoint || '';
   modelInput.value = cfg.model || '';
   sourceSelect.value = cfg.sourceLanguage;
@@ -206,6 +212,8 @@ window.qwenLoadConfig().then(cfg => {
 
   [reqLimitInput, tokenLimitInput, tokenBudgetInput].forEach(el => el.addEventListener('input', saveConfig));
   [sourceSelect, targetSelect, autoCheckbox, debugCheckbox].forEach(el => el.addEventListener('change', saveConfig));
+  if (detectApiKeyInput) detectApiKeyInput.addEventListener('input', saveConfig);
+  if (detectorSelect) detectorSelect.addEventListener('change', saveConfig);
 });
 
 versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
@@ -255,10 +263,10 @@ testBtn.addEventListener('click', async () => {
 
   const cfg = {
     endpoint: endpointInput.value.trim(),
-    apiKey: apiKeyInput.value.trim(),
     model: modelInput.value.trim(),
     source: sourceSelect.value,
     target: targetSelect.value,
+    detector: detectorSelect ? detectorSelect.value : 'local',
     debug: debugCheckbox.checked,
   };
 
@@ -302,7 +310,7 @@ testBtn.addEventListener('click', async () => {
   })) && allOk;
 
   allOk = (await run('Direct translation', async () => {
-    const res = await window.qwenTranslate({ ...cfg, text: 'hello', stream: false, noProxy: true });
+    const res = await window.qwenTranslate({ ...cfg, text: 'hello', stream: false });
     if (!res.text) throw new Error('empty response');
   })) && allOk;
 
@@ -364,7 +372,8 @@ testBtn.addEventListener('click', async () => {
         reject(new Error('timeout waiting for tab response'));
       }, 15000);
       log('QTDEBUG: sending test-e2e request to tab', tab.id);
-      chrome.tabs.sendMessage(tab.id, { action: 'test-e2e', cfg, original: sample }, res => {
+      const cfgSend = { ...cfg };
+      chrome.tabs.sendMessage(tab.id, { action: 'test-e2e', cfg: cfgSend, original: sample }, res => {
         clearTimeout(timer);
         if (chrome.runtime.lastError) {
           log('QTERROR: tab message failed', chrome.runtime.lastError.message);
