@@ -159,6 +159,15 @@
           <label for="model">Model</label>
           <input type="text" id="model">
 
+          <label for="detector">Detector</label>
+          <select id="detector">
+            <option value="local">Local (on-device)</option>
+            <option value="google">Google (Cloud)</option>
+          </select>
+
+          <label for="detectApiKey">Detection API Key (Google)</label>
+          <input type="text" id="detectApiKey" placeholder="Only needed for Google detector">
+
           <div class="grid-2">
             <div>
               <label for="requestLimit">Requests/min</label>
