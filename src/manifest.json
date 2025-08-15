@@ -12,7 +12,9 @@
   ],
   "host_permissions": [
     "https://dashscope-intl.aliyuncs.com/*",
-    "https://api.openai.com/*"
+    "https://api.openai.com/*",
+    "https://api.deepl.com/*",
+    "https://api-free.deepl.com/*"
   ],
   "optional_host_permissions": [
     "<all_urls>",
