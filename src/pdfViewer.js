@@ -60,6 +60,38 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   const zoomResetBtn = document.getElementById('zoomReset');
   let currentZoom = 1;
 
+  const translateProgress = document.createElement('progress');
+  translateProgress.max = 1;
+  translateProgress.value = 0;
+  translateProgress.style.position = 'fixed';
+  translateProgress.style.top = '0';
+  translateProgress.style.left = '0';
+  translateProgress.style.width = '100%';
+  translateProgress.style.height = '4px';
+  translateProgress.style.zIndex = '10000';
+  translateProgress.style.display = 'none';
+  document.body.appendChild(translateProgress);
+
+  if (window.qwenTranslateBatch) {
+    const origBatch = window.qwenTranslateBatch;
+    window.qwenTranslateBatch = async function(opts = {}) {
+      translateProgress.value = 0;
+      translateProgress.style.display = 'block';
+      const userProgress = opts.onProgress;
+      opts.onProgress = p => {
+        if (p && typeof p.request === 'number' && typeof p.requests === 'number' && p.requests > 0) {
+          translateProgress.value = p.request / p.requests;
+        }
+        if (userProgress) userProgress(p);
+      };
+      try {
+        return await origBatch(opts);
+      } finally {
+        translateProgress.style.display = 'none';
+      }
+    };
+  }
+
   const wasmOverlay = document.getElementById('wasmOverlay');
   const wasmRetry = document.getElementById('wasmRetry');
   const wasmError = document.getElementById('wasmError');
