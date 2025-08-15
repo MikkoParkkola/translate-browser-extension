@@ -477,6 +477,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
+  if (msg.action === 'quota') {
+    const model = msg.model;
+    const cfg = self.qwenConfig || {};
+    const prov = self.qwenProviders && self.qwenProviders.getProvider && self.qwenProviders.getProvider('qwen');
+    if (prov && prov.getQuota) {
+      prov.getQuota({
+        endpoint: (cfg.providers && cfg.providers.qwen && cfg.providers.qwen.apiEndpoint) || cfg.apiEndpoint,
+        apiKey: (cfg.providers && cfg.providers.qwen && cfg.providers.qwen.apiKey) || cfg.apiKey,
+        model: model || cfg.model,
+        debug: cfg.debug,
+      }).then(sendResponse).catch(err => sendResponse({ error: err.message }));
+      return true;
+    }
+    sendResponse({ error: 'provider unavailable' });
+    return true;
+  }
   if (msg.action === 'detect') {
     const opts = msg.opts || {};
     (async () => {
