@@ -405,7 +405,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
   return { text: result };
 }
 
-async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, provider, detector, force = false, skipTM = false, autoInit = false, providerOrder, endpoints, sensitivity = 0 }) {
+async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, provider, detector, force = false, skipTM = false, autoInit = false, providerOrder, endpoints, sensitivity = 0, failover = true }) {
   if (debug) {
     trLogger.debug('qwenTranslate called with', {
       endpoint,
@@ -450,8 +450,10 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
         stream: false,
         signal,
         provider: prov,
-        providerOrder,
+        providerOrder: failover ? providerOrder : undefined,
         endpoints,
+        failover,
+        parallel: false,
       });
       _setCache(cacheKey, result);
       if (TM && TM.set && result && typeof result.text === 'string') { try { TM.set(cacheKey, result.text); } catch {} }
@@ -459,7 +461,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     }
 
   try {
-    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, stream, provider: provider ? prov : undefined, context: stream ? 'stream' : 'default', autoInit, providerOrder, endpoints });
+    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, stream, provider: provider ? prov : undefined, context: stream ? 'stream' : 'default', autoInit, providerOrder: failover ? providerOrder : undefined, endpoints });
     _setCache(cacheKey, data);
     if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
@@ -473,7 +475,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   }
 }
 
-async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, provider, detector, skipTM = false, autoInit = false, providerOrder, endpoints, sensitivity = 0 }, onData) {
+async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, provider, detector, skipTM = false, autoInit = false, providerOrder, endpoints, sensitivity = 0, failover = true }, onData) {
   if (debug) {
     trLogger.debug('qwenTranslateStream called with', {
       endpoint,
@@ -509,8 +511,10 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
         signal,
         onData,
         provider: prov,
-        providerOrder,
+        providerOrder: failover ? providerOrder : undefined,
         endpoints,
+        failover,
+        parallel: false,
       });
       _setCache(cacheKey, data);
       if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
@@ -518,7 +522,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     }
 
   try {
-    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, onData, stream, provider: prov, context: 'stream', autoInit, providerOrder, endpoints });
+    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, onData, stream, provider: prov, context: 'stream', autoInit, providerOrder: failover ? providerOrder : undefined, endpoints });
     _setCache(cacheKey, data);
     if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
@@ -604,6 +608,8 @@ async function batchOnce({
   retries = 1,
   onProgress,
   _stats,
+  parallel = false,
+  failover = true,
   ...opts
 }) {
   const stats = _stats || { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
@@ -682,16 +688,19 @@ async function batchOnce({
   }
   stats.totalRequests += groups.length;
 
-  for (const g of groups) {
+  const providers = Array.isArray(opts.providerOrder) && opts.providerOrder.length ? opts.providerOrder : [];
+
+  async function handleGroup(g, idx) {
     const joinedText = g.items.map(m => m.text.replaceAll(SEP, '')).join(SEP);
     const words = joinedText.replaceAll(SEP, ' ').trim().split(/\s+/).filter(Boolean).length;
+    const startProv = parallel && providers.length ? providers[idx % providers.length] : (providers[0] || undefined);
     let res;
     try {
-      res = await qwenTranslate({ ...opts, source: g.lang, text: joinedText, skipTM: true, noProxy: opts.noProxy, autoInit: opts.autoInit });
+      res = await qwenTranslate({ ...opts, source: g.lang, text: joinedText, skipTM: true, noProxy: opts.noProxy, autoInit: opts.autoInit, provider: startProv, providerOrder: failover ? providers : undefined, failover });
     } catch (e) {
       if (/HTTP\s+400/i.test(e.message || '')) throw e;
       g.items.forEach(m => { m.result = m.text; });
-      continue;
+      return;
     }
     const tk = approxTokens(joinedText);
     stats.tokens += tk;
@@ -709,7 +718,7 @@ async function batchOnce({
         for (const m of g.items) {
           let out;
           try {
-            const single = await qwenTranslate({ ...opts, source: m.lang, text: m.text, skipTM: true, noProxy: opts.noProxy, autoInit: opts.autoInit });
+            const single = await qwenTranslate({ ...opts, source: m.lang, text: m.text, skipTM: true, noProxy: opts.noProxy, autoInit: opts.autoInit, provider: startProv, providerOrder: failover ? providers : undefined, failover });
             out = single.text;
           } catch {
             out = m.text;
@@ -722,7 +731,7 @@ async function batchOnce({
           stats.tokens += approxTokens(m.text);
           stats.words += m.text.trim().split(/\s+/).filter(Boolean).length;
         }
-        continue;
+        return;
       }
     }
     for (let i = 0; i < g.items.length; i++) {
@@ -736,6 +745,14 @@ async function batchOnce({
     const etaMs = avg * (stats.totalRequests - stats.requests);
     if (onProgress)
       onProgress({ phase: 'translate', request: stats.requests, requests: stats.totalRequests, sample: (g.items[0]?.text || '').slice(0, 80), elapsedMs, etaMs });
+  }
+
+  if (parallel && providers.length > 1) {
+    await Promise.all(groups.map((g, idx) => handleGroup(g, idx)));
+  } else {
+    for (let i = 0; i < groups.length; i++) {
+      await handleGroup(groups[i], i);
+    }
   }
 
   const results = new Array(texts.length).fill('');
@@ -769,6 +786,8 @@ async function batchOnce({
       retries: retries - 1,
       onProgress,
       _stats: stats,
+      parallel,
+      failover,
       ...opts,
       source: 'auto'
     });

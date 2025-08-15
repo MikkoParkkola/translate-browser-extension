@@ -12,6 +12,8 @@ export interface BackgroundRequestOptions {
   provider?: string;
   providerOrder?: string[];
   endpoints?: Record<string, string>;
+  failover?: boolean;
+  parallel?: boolean;
 }
 
 export interface DetectOptions {

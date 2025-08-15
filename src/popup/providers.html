@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html data-qwen-theme="cyberpunk">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="../styles/cyberpunk.css">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      padding: 1rem;
+      margin: 0;
+      background: var(--qwen-bg, #0a0c14);
+      color: var(--qwen-text, #e6f7ff);
+    }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li {
+      padding: 0.5rem;
+      border: 1px solid var(--qwen-border, #00e5ff);
+      margin-bottom: 0.5rem;
+      cursor: move;
+      background: rgba(0,0,0,0.2);
+    }
+    .flags { margin-top: 1rem; display: flex; gap: 1rem; align-items: center; }
+  </style>
+</head>
+<body class="qwen-bg-animated">
+  <h3>Providers</h3>
+  <ul id="providerList"></ul>
+  <div class="flags">
+    <label><input type="checkbox" id="failover"> Failover</label>
+    <label><input type="checkbox" id="parallel"> Parallel</label>
+  </div>
+  <button id="save">Save</button>
+  <div id="status"></div>
+  <script src="../config.js"></script>
+  <script src="providers.js"></script>
+</body>
+</html>
