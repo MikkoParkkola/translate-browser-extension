@@ -185,6 +185,19 @@ function setUsingPlus(v) { usingPlus = !!v; }
 function _setActiveTranslations(n) { activeTranslations = n; }
 function _setConfig(c) { config = { ...config, ...c }; }
 
+function getAggregatedStats() {
+  const { totalRequests, totalTokens, tokenLimit, tokens } = self.qwenThrottle.getUsage();
+  const remaining = Math.max(0, tokenLimit - tokens);
+  const eta = tokenLimit ? remaining / tokenLimit : 0;
+  return { requests: totalRequests, tokens: totalTokens, eta };
+}
+
+function broadcastStats() {
+  ensureThrottle().then(() => {
+    try { chrome.runtime.sendMessage({ action: 'stats', stats: getAggregatedStats() }); } catch {}
+  });
+}
+
 async function updateIcon() {
   await ensureThrottle();
   if (typeof OffscreenCanvas === 'undefined') return;
@@ -246,6 +259,7 @@ function updateBadge() {
   updateIcon();
 }
 updateBadge();
+broadcastStats();
 setInterval(updateIcon, 500);
 function ensureThrottle() {
   if (!throttleReady) {
@@ -336,6 +350,7 @@ async function handleTranslate(opts) {
     clearTimeout(timeout);
     activeTranslations--;
     updateBadge();
+    broadcastStats();
   }
 }
 
@@ -411,11 +426,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.action === 'translation-status') {
     translationStatus = msg.status || { active: false };
+    broadcastStats();
     sendResponse({ ok: true });
     return true;
   }
   if (msg.action === 'get-status') {
     sendResponse(translationStatus);
+    return true;
+  }
+  if (msg.action === 'get-stats') {
+    ensureThrottle().then(() => {
+      sendResponse(getAggregatedStats());
+    });
     return true;
   }
   if (msg.action === 'ensure-start') {
@@ -478,6 +500,7 @@ chrome.runtime.onConnect.addListener(port => {
         inflight.delete(requestId);
         activeTranslations--;
         updateBadge();
+        broadcastStats();
       }
       return;
     }
