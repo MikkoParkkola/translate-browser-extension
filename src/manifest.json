@@ -59,7 +59,8 @@
         "wasm/vendor/*",
         "wasm/vendor/fonts/*",
         "config.local.js",
-        "qa/compare.html"
+        "qa/compare.html",
+        "qa/usage.html"
       ],
       "matches": [
         "<all_urls>"
