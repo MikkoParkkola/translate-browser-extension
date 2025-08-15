@@ -311,6 +311,30 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse(translationStatus);
     return true;
   }
+  if (msg.action === 'ensure-start') {
+    (async () => {
+      try {
+        const { tabId, url } = msg;
+        if (!tabId) { sendResponse({ ok: false, error: 'no tabId' }); return; }
+        let ok = true;
+        if (url && urlEligible(url)) {
+          const pattern = originPattern(url);
+          if (pattern && !(await hasOriginPermission(pattern))) {
+            ok = await requestOriginPermission(pattern);
+          }
+        }
+        if (ok) {
+          await ensureInjectedAndStart(tabId);
+          sendResponse({ ok: true });
+        } else {
+          sendResponse({ ok: false, error: 'permission denied' });
+        }
+      } catch (e) {
+        sendResponse({ ok: false, error: (e && e.message) || 'failed' });
+      }
+    })();
+    return true;
+  }
 });
 
 chrome.runtime.onConnect.addListener(port => {

@@ -225,6 +225,15 @@ window.qwenLoadConfig().then(cfg => {
 
   [reqLimitInput, tokenLimitInput, tokenBudgetInput].forEach(el => el.addEventListener('input', saveConfig));
   [sourceSelect, targetSelect, autoCheckbox, debugCheckbox].forEach(el => el.addEventListener('change', saveConfig));
+  // If user turns on Auto, request permission and start on current tab immediately
+  autoCheckbox.addEventListener('change', () => {
+    if (!autoCheckbox.checked) return;
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tab = tabs && tabs[0];
+      if (!tab) return;
+      chrome.runtime.sendMessage({ action: 'ensure-start', tabId: tab.id, url: tab.url }, () => {});
+    });
+  });
   if (detectApiKeyInput) detectApiKeyInput.addEventListener('input', saveConfig);
   if (detectorSelect) detectorSelect.addEventListener('change', saveConfig);
   if (providerPreset) {
@@ -290,10 +299,16 @@ refreshUsage();
 
 translateBtn.addEventListener('click', () => {
   const debug = debugCheckbox.checked;
-  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-    if (!tabs[0]) return;
-    if (debug) console.log('QTDEBUG: sending start message to tab', tabs[0].id);
-    chrome.tabs.sendMessage(tabs[0].id, {action: 'start'});
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const tab = tabs && tabs[0];
+    if (!tab) return;
+    if (debug) console.log('QTDEBUG: requesting ensure-start', { id: tab.id, url: tab.url });
+    chrome.runtime.sendMessage({ action: 'ensure-start', tabId: tab.id, url: tab.url }, res => {
+      if (debug) console.log('QTDEBUG: ensure-start result', res);
+      if (!res || res.error) {
+        status.textContent = `Start failed: ${(res && res.error) || 'unknown error'}`;
+      }
+    });
   });
 });
 
