@@ -1,5 +1,12 @@
 const sendMessage = jest.fn();
-global.chrome = { runtime: { getURL: () => 'chrome-extension://abc/', onMessage: { addListener: () => {} }, sendMessage } };
+let messageListener;
+global.chrome = {
+  runtime: {
+    getURL: () => 'chrome-extension://abc/',
+    onMessage: { addListener: cb => { messageListener = cb; } },
+    sendMessage,
+  },
+};
 
 window.qwenTranslateBatch = async ({ texts, onProgress }) => {
   if (onProgress) onProgress({ phase: 'translate', request: 1, requests: 2, sample: texts[0] });
@@ -41,4 +48,100 @@ test('skips reference superscripts', () => {
   const nodes = [];
   collectNodes(document.body, nodes);
   expect(nodes.map(n => n.textContent)).toEqual(['Hi']);
+});
+
+test('reuses cached translations for repeated text nodes', async () => {
+  const stub = window.qwenTranslateBatch;
+  const network = jest.fn(async texts => texts.map(t => `X${t}X`));
+  const cache = new Map();
+  window.qwenTranslateBatch = async ({ texts }) => {
+    const out = [];
+    const uncached = [];
+    texts.forEach(t => {
+      if (cache.has(t)) {
+        out.push(cache.get(t));
+      } else {
+        uncached.push(t);
+      }
+    });
+    if (uncached.length) {
+      const res = await network(uncached);
+      uncached.forEach((t, i) => cache.set(t, res[i]));
+      out.push(...res);
+    }
+    return { texts: texts.map(t => cache.get(t)) };
+  };
+
+  setCurrentConfig({
+    apiKey: 'k',
+    apiEndpoint: 'https://e/',
+    model: 'm',
+    sourceLanguage: 'en',
+    targetLanguage: 'es',
+    debug: false,
+  });
+
+  document.body.innerHTML = '<p><span>Hello</span><span>World</span><span>Hello</span></p>';
+  let nodes = [];
+  collectNodes(document.body, nodes);
+  await translateBatch(nodes);
+  expect(network).toHaveBeenCalledTimes(1);
+  expect(nodes.map(n => n.textContent)).toEqual(['XHelloX', 'XWorldX', 'XHelloX']);
+
+  document.body.innerHTML = '<p><span>Hello</span><span>Hello</span></p>';
+  nodes = [];
+  collectNodes(document.body, nodes);
+  await translateBatch(nodes);
+  expect(network).toHaveBeenCalledTimes(1);
+  expect(nodes.map(n => n.textContent)).toEqual(['XHelloX', 'XHelloX']);
+
+  window.qwenTranslateBatch = stub;
+});
+
+test('batches DOM nodes when exceeding token limit', async () => {
+  const original = window.qwenTranslateBatch;
+  window.qwenThrottle = { approxTokens: () => 4000, getUsage: () => null };
+  const calls = jest.fn(async ({ texts }) => ({ texts }));
+  window.qwenTranslateBatch = calls;
+  document.body.innerHTML = '<p>A</p><p>B</p><p>C</p>';
+  messageListener({ action: 'start' });
+  await new Promise(r => setTimeout(r, 50));
+  expect(calls).toHaveBeenCalledTimes(4);
+  window.qwenTranslateBatch = original;
+  delete window.qwenThrottle;
+});
+
+test('force translation bypasses cache', async () => {
+  const original = window.qwenTranslateBatch;
+  const network = jest.fn(async texts => texts.map(t => `X${t}X`));
+  const cache = new Map();
+  window.qwenTranslateBatch = jest.fn(async ({ texts, force }) => {
+    const out = [];
+    for (const t of texts) {
+      if (!force && cache.has(t)) {
+        out.push(cache.get(t));
+      } else {
+        const res = await network([t]);
+        cache.set(t, res[0]);
+        out.push(res[0]);
+      }
+    }
+    return { texts: out };
+  });
+  setCurrentConfig({ apiKey: 'k', apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'en', targetLanguage: 'es', debug: false });
+  document.body.innerHTML = '<p><span>Hello</span></p>';
+  let nodes = [];
+  collectNodes(document.body, nodes);
+  await translateBatch(nodes);
+  expect(network).toHaveBeenCalledTimes(1);
+  document.body.innerHTML = '<p><span>Hello</span></p>';
+  nodes = [];
+  collectNodes(document.body, nodes);
+  await translateBatch(nodes);
+  expect(network).toHaveBeenCalledTimes(1);
+  document.body.innerHTML = '<p><span>Hello</span></p>';
+  messageListener({ action: 'start', force: true });
+  await new Promise(r => setTimeout(r, 20));
+  expect(network.mock.calls.length).toBeGreaterThan(1);
+  window.qwenTranslateBatch = original;
 });

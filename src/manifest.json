@@ -2,8 +2,12 @@
   "manifest_version": 3,
   "name": "Qwen Translator",
   "description": "Translate pages using Qwen-MT-Turbo",
+<<<<<<< HEAD
   "version": "1.5.1",
   "version_name": "2025-08-15",
+=======
+  "version": "1.10.0",
+>>>>>>> d85ab24219afb7ff5c24d5c2a917603994573a7f
   "permissions": [
     "storage",
     "activeTab",
@@ -34,7 +38,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "translator.js", "config.js", "languages.js", "throttle.js",
+        "transport.js", "translator.js", "batch.js", "config.js", "languages.js", "throttle.js", "lz-string.min.js", "cache.js", "providers/index.js", "providers/qwen.js",
         "pdfViewer.html", "pdfViewer.js", "sessionPdf.js", "pdf.min.js", "pdf.worker.min.js",
         "wasm/pipeline.js", "wasm/pdfgen.js", "wasm/engine.js",
         "wasm/vendor/hb.wasm", "wasm/vendor/icu4x_segmenter.wasm",
@@ -45,5 +49,16 @@
       ],
       "matches": ["<all_urls>"]
     }
+<<<<<<< HEAD
+=======
+  ],
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*", "file:///*"],
+      "js": ["config.js", "throttle.js", "lz-string.min.js", "cache.js", "providers/index.js", "providers/qwen.js", "transport.js", "translator.js", "batch.js", "contentScript.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+>>>>>>> d85ab24219afb7ff5c24d5c2a917603994573a7f
   ]
 }

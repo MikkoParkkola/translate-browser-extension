@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 if (location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'))) {
   // PDF viewer; do not initialize
   return;
@@ -5,6 +6,13 @@ if (location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'))) {
 if (window.__qwenCSLoaded) { /* already initialized */ return; }
 window.__qwenCSLoaded = true;
 const logger = (window.qwenLogger && window.qwenLogger.create) ? window.qwenLogger.create('content') : console;
+=======
+if (typeof window === 'undefined' && typeof require !== 'undefined') {
+  const { translateRequest, streamRequest } = require('./transport');
+  require('./retry');
+}
+if (!location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'))) {
+>>>>>>> d85ab24219afb7ff5c24d5c2a917603994573a7f
 let observers = [];
 let currentConfig;
 const batchQueue = [];
@@ -13,6 +21,7 @@ let statusTimer;
 const pending = new Set();
 let flushTimer;
 let progress = { total: 0, done: 0 };
+<<<<<<< HEAD
 let started = false;
 
 function ensureThemeCss() {
@@ -27,6 +36,9 @@ function ensureThemeCss() {
     document.documentElement.setAttribute('data-qwen-theme', 'cyberpunk');
   } catch {}
 }
+=======
+let forceTranslate = false;
+>>>>>>> d85ab24219afb7ff5c24d5c2a917603994573a7f
 
 function replacePdfEmbeds() {
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
@@ -131,14 +143,24 @@ async function translateNode(node) {
     if (currentConfig.debug) logger.debug('QTDEBUG: translating node', text.slice(0, 20));
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
+    const models = currentConfig.dualMode
+      ? [
+          currentConfig.model,
+          currentConfig.model === 'qwen-mt-plus' ? 'qwen-mt-turbo' : 'qwen-mt-plus',
+        ]
+      : undefined;
     const { text: translated } = await window.qwenTranslate({
+      provider: currentConfig.provider,
       endpoint: currentConfig.apiEndpoint,
       model: currentConfig.model,
+      models,
+      failover: currentConfig.failoverStrategy,
       text,
       source: currentConfig.sourceLanguage,
       target: currentConfig.targetLanguage,
       signal: controller.signal,
       debug: currentConfig.debug,
+      domain: location.hostname,
     });
     clearTimeout(timeout);
     if (currentConfig.debug) {
@@ -163,6 +185,7 @@ async function translateBatch(elements, stats) {
   let res;
   try {
     const opts = {
+      provider: currentConfig.provider,
       endpoint: currentConfig.apiEndpoint,
       model: currentConfig.model,
       texts,
@@ -170,14 +193,29 @@ async function translateBatch(elements, stats) {
       target: currentConfig.targetLanguage,
       signal: controller.signal,
       debug: currentConfig.debug,
+      force: forceTranslate,
+      domain: location.hostname,
     };
+    if (currentConfig.dualMode) {
+      opts.models = [
+        currentConfig.model,
+        currentConfig.model === 'qwen-mt-plus' ? 'qwen-mt-turbo' : 'qwen-mt-plus',
+      ];
+    }
     if (stats) {
       opts.onProgress = p => {
         chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p, progress } });
       };
       opts._stats = stats;
     }
-    res = await window.qwenTranslateBatch(opts);
+    opts.onRetry = info => {
+      setStatus(`Rate limit reached. Retrying in ${(info.delayMs / 1000).toFixed(1)}s...`);
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'retry', delayMs: info.delayMs, progress } });
+    };
+    if (currentConfig.retryDelay) {
+      opts.retryDelay = currentConfig.retryDelay * 1000;
+    }
+    res = await window.qwenTranslateBatch({ ...opts, failover: currentConfig.failoverStrategy });
   } finally {
     clearTimeout(timeout);
   }
@@ -203,6 +241,7 @@ async function translateBatch(elements, stats) {
   const elapsedMs = stats ? Date.now() - stats.start : 0;
   const avg = progress.done ? elapsedMs / progress.done : 0;
   const etaMs = avg * (progress.total - progress.done);
+  const usage = window.qwenThrottle ? window.qwenThrottle.getUsage() : null;
   chrome.runtime.sendMessage({
     action: 'translation-status',
     status: {
@@ -214,6 +253,7 @@ async function translateBatch(elements, stats) {
       elapsedMs,
       etaMs,
       progress,
+      usage,
     },
   });
 }
@@ -226,11 +266,11 @@ function enqueueBatch(batch) {
 
 async function processQueue() {
   processing = true;
-  setStatus('Translating...');
+  setStatus('Translating paragraph 1 of ' + progress.total + '...');
   const stats = { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
   chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'translate', progress } });
   while (batchQueue.length) {
-    setStatus(`Translating (${batchQueue.length} left)...`);
+    setStatus(`Translating paragraph ${progress.done + 1} of ${progress.total}...`);
     const batch = batchQueue.shift();
     try {
       await translateBatch(batch, stats);
@@ -245,6 +285,8 @@ async function processQueue() {
   stats.wordsPerSecond = stats.words / (stats.elapsedMs / 1000 || 1);
   stats.wordsPerRequest = stats.words / (stats.requests || 1);
   stats.tokensPerRequest = stats.tokens / (stats.requests || 1);
+  setStatus('Finalizing page...');
+  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'finalize', progress } });
   chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary: stats } });
   processing = false;
   clearStatus();
@@ -338,14 +380,20 @@ function observe(root = document.body) {
   }
 }
 
+<<<<<<< HEAD
 async function start() {
   if (started) return;
   started = true;
   ensureThemeCss();
+=======
+async function start(force = false) {
+  forceTranslate = force;
+>>>>>>> d85ab24219afb7ff5c24d5c2a917603994573a7f
   currentConfig = await window.qwenLoadConfig();
   progress = { total: 0, done: 0 };
   if (window.qwenSetTokenBudget) {
-    window.qwenSetTokenBudget(currentConfig.tokenBudget || 0);
+    const tb = currentConfig.tokensPerReq || currentConfig.tokenBudget || 0;
+    window.qwenSetTokenBudget(tb);
   }
   // Background stores/uses the API key; do not block auto-translate here.
   if (currentConfig.debug) logger.debug('QTDEBUG: starting automatic translation');
@@ -359,8 +407,22 @@ async function start() {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'start') {
+<<<<<<< HEAD
     if (currentConfig && currentConfig.debug) logger.debug('QTDEBUG: start message received');
     start();
+=======
+    if (currentConfig && currentConfig.debug) console.log('QTDEBUG: start message received');
+    start(msg.force);
+  }
+  if (msg.action === 'clear-cache') {
+    if (window.qwenClearCache) window.qwenClearCache();
+  }
+  if (msg.action === 'clear-cache-domain') {
+    if (window.qwenClearCacheDomain) window.qwenClearCacheDomain(msg.domain);
+  }
+  if (msg.action === 'clear-cache-pair') {
+    if (window.qwenClearCacheLangPair) window.qwenClearCacheLangPair(msg.source, msg.target);
+>>>>>>> d85ab24219afb7ff5c24d5c2a917603994573a7f
   }
   if (msg.action === 'test-read') {
     sendResponse({ title: document.title });
@@ -377,14 +439,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const timer = setTimeout(() => controller.abort(), 10000);
     window
       .qwenTranslate({
+        provider: cfg.provider || 'qwen',
         endpoint: cfg.endpoint,
         model: cfg.model,
+        failover: cfg.failoverStrategy,
         text: original,
         source: cfg.source,
         target: cfg.target,
         debug: cfg.debug,
         stream: false,
         signal: controller.signal,
+        domain: location.hostname,
       })
       .then(res => {
         clearTimeout(timer);
@@ -413,12 +478,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const cfg = currentConfig || (await window.qwenLoadConfig());
       try {
         const { text: translated } = await window.qwenTranslate({
+          provider: cfg.provider,
           endpoint: cfg.apiEndpoint,
           model: cfg.model,
+          failover: cfg.failoverStrategy,
           text,
           source: cfg.sourceLanguage,
           target: cfg.targetLanguage,
           debug: cfg.debug,
+          domain: location.hostname,
+          force: true,
         });
         const range = sel.getRangeAt(0);
         range.deleteContents();

@@ -12,7 +12,7 @@ const testConfig = {
   targetLanguage: 'en',   // English
   autoTranslate: false,
   requestLimit: 60,
-  tokenLimit: 100000,
+  tokenLimit: 31980,
   debug: true  // Enable debug output
 };
 

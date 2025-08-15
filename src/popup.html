@@ -17,7 +17,7 @@
       --green: #198754;
       --yellow: #ffc107;
       --red: #dc3545;
-      --body-width: 380px;
+      --body-width: 420px;
     }
 
     @media (prefers-color-scheme: dark) {
@@ -66,6 +66,7 @@
     .main-actions { display: flex; gap: 0.5rem; align-items: center; }
     #translate { flex-grow: 1; }
     .auto-translate-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
+    .force-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
     .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
     .switch input { opacity: 0; width: 0; height: 0; }
     .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--secondary-bg); transition: .4s; border-radius: 20px; }
@@ -88,6 +89,7 @@
     #version { font-size: 0.75rem; text-align: center; opacity: 0.7; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
     summary { cursor: pointer; font-weight: 600; }
+    .cost-section { grid-template-columns: 1fr 1fr 1fr; }
   </style>
 </head>
 <body>
@@ -98,13 +100,16 @@
       <p>Please configure the essential settings to start using the extension.</p>
       <div class="form-group">
         <label for="setup-apiKey">API Key</label>
-        <input type="text" id="setup-apiKey" placeholder="Enter your API key">
+        <input type="text" id="setup-apiKey" placeholder="Enter your API key" title="DashScope API key (required)">
 
         <label for="setup-apiEndpoint">API Endpoint</label>
-        <input type="text" id="setup-apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1">
+        <input type="text" id="setup-apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1" title="DashScope API endpoint">
 
         <label for="setup-model">Model</label>
-        <input type="text" id="setup-model" placeholder="e.g., qwen-mt-turbo">
+        <select id="setup-model" title="Select translation model. Turbo is cheaper; Plus is higher quality.">
+          <option value="qwen-mt-turbo">qwen-mt-turbo</option>
+          <option value="qwen-mt-plus">qwen-mt-plus</option>
+        </select>
       </div>
       <p>Your settings are saved automatically.</p>
     </div>
@@ -121,6 +126,16 @@
           <span title="Automatically translate supported pages as they load. You can still click Translate Page to force refresh.">Auto</span>
         </div>
       </div>
+      <div class="main-actions">
+        <button id="clearCache" title="Remove saved translations">Clear Cache</button>
+        <button id="clearDomain" title="Clear cache for current domain">Clear Domain</button>
+        <button id="clearPair" title="Clear cache for selected languages">Clear Pair</button>
+        <span id="cacheSize" style="font-size:0.875rem"></span>
+        <span id="hitRate" style="font-size:0.875rem"></span>
+        <span id="compressionErrors" style="font-size:0.875rem"></span>
+        <label class="force-toggle"><input type="checkbox" id="force"> Force</label>
+      </div>
+      <div id="domainCounts" style="font-size:0.75rem"></div>
 
       <div class="usage-section">
         <div class="usage-item">
@@ -131,10 +146,33 @@
           <span>Tokens: <span id="tokenCount">0/0</span></span>
           <div class="bar"><div id="tokenBar"></div></div>
         </div>
+        <div class="usage-item">
+          <span>Turbo: <span id="turboReq">0/0</span></span>
+          <div class="bar"><div id="turboReqBar"></div></div>
+        </div>
+        <div class="usage-item">
+          <span>Plus: <span id="plusReq">0/0</span></span>
+          <div class="bar"><div id="plusReqBar"></div></div>
+        </div>
         <div class="usage-item">Total Requests: <span id="totalReq">0</span></div>
         <div class="usage-item">Total Tokens: <span id="totalTok">0</span></div>
         <div class="usage-item">Queue: <span id="queueLen">0</span></div>
+        <div class="usage-item">Failed Requests: <span id="failedReq">0</span></div>
+        <div class="usage-item">Failed Tokens: <span id="failedTok">0</span></div>
+        <div class="usage-item">
+          Remaining Requests: <span id="reqRemaining">0</span>
+          <div class="bar"><div id="reqRemainingBar"></div></div>
+        </div>
+        <div class="usage-item">
+          Remaining Tokens: <span id="tokenRemaining">0</span>
+          <div class="bar"><div id="tokenRemainingBar"></div></div>
+        </div>
+        <div class="usage-item">Provider Error: <span id="providerError"></span></div>
       </div>
+
+      <div class="usage-section cost-section" id="costSection"></div>
+      <button id="toggleCalendar">Show daily costs</button>
+      <div id="costCalendar" style="display:none;font-size:0.75rem"></div>
 
       <div class="grid-2">
         <div>
@@ -168,6 +206,7 @@
         <summary>Advanced Settings</summary>
         <div class="form-group" style="padding-top: 0.75rem">
           <label for="apiKey">API Key</label>
+<<<<<<< HEAD
           <input type="text" id="apiKey" placeholder="Enter your API key"
                  title="Your provider API key. Stored only in browser storage and used by the background. Never injected into pages.">
 
@@ -196,21 +235,82 @@
           <label for="detectApiKey">Detection API Key (Google)</label>
           <input type="text" id="detectApiKey" placeholder="Only needed for Google detector"
                  title="Google Cloud API key used only for language detection. Create a key and enable the Cloud Translation API.">
+=======
+          <input type="text" id="apiKey" placeholder="Enter your API key" title="DashScope API key (required)">
+
+          <label for="apiEndpoint">API Endpoint</label>
+          <input type="text" id="apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1" title="DashScope API endpoint">
+
+          <label for="model">Model</label>
+          <select id="model" title="Translation model. Turbo is default; Plus offers higher quality at higher cost.">
+            <option value="qwen-mt-turbo">qwen-mt-turbo</option>
+            <option value="qwen-mt-plus">qwen-mt-plus</option>
+          </select>
+
+          <label for="failoverStrategy">Failover strategy</label>
+          <select id="failoverStrategy" title="Model failover behaviour when multiple models are available">
+            <option value="balanced">balanced</option>
+            <option value="max-saving">max saving</option>
+            <option value="max-speed">max speed</option>
+          </select>
+
+          <label for="provider">Provider</label>
+          <select id="provider" title="Select translation provider"></select>
+
+          <label for="providerOrder">Provider order</label>
+          <input type="text" id="providerOrder" placeholder="qwen" title="Comma-separated provider order for automatic switching">
+
+          <div class="grid-2">
+            <div>
+              <label for="requestThreshold">Request threshold</label>
+              <input type="number" id="requestThreshold" title="Switch provider when remaining requests fall below this number">
+            </div>
+            <div>
+              <label for="tokenThreshold">Token threshold</label>
+              <input type="number" id="tokenThreshold" title="Switch provider when remaining tokens fall below this number">
+            </div>
+          </div>
+>>>>>>> d85ab24219afb7ff5c24d5c2a917603994573a7f
 
           <div class="grid-2">
             <div>
               <label for="requestLimit">Requests/min</label>
+<<<<<<< HEAD
               <input type="number" id="requestLimit" title="Maximum requests per minute. The extension throttles to stay under limits.">
             </div>
             <div>
               <label for="tokenLimit">Tokens/min</label>
               <input type="number" id="tokenLimit" title="Maximum tokens per minute. Adjust to match your provider quota.">
+=======
+              <input type="number" id="requestLimit" title="Maximum requests per minute. Leave empty to use automatic limit.">
+            </div>
+            <div>
+              <label for="tokenLimit">Tokens/min</label>
+              <input type="number" id="tokenLimit" title="Maximum combined input+output tokens per minute. Leave empty for automatic limit.">
+>>>>>>> d85ab24219afb7ff5c24d5c2a917603994573a7f
             </div>
           </div>
 
           <label for="tokenBudget">Token budget</label>
+<<<<<<< HEAD
           <input type="number" id="tokenBudget" placeholder="auto"
                  title="Max tokens per batch request. Leave blank for auto‑calibration.">
+=======
+          <input type="number" id="tokenBudget" placeholder="auto" title="Optional hard cap for total tokens used in this session.">
+
+          <label><input type="checkbox" id="smartThrottle" checked title="Enable intelligent adaptive throttling"> Intelligent throttling</label>
+
+          <div class="grid-2">
+            <div>
+              <label for="tokensPerReq" title="Target tokens per request when intelligent throttling is off">Tokens/request</label>
+              <input type="number" id="tokensPerReq" disabled title="Desired tokens per request when manual throttling is enabled">
+            </div>
+            <div>
+              <label for="retryDelay" title="Base retry delay in seconds when a rate limit is hit">Retry delay (s)</label>
+              <input type="number" id="retryDelay" disabled title="Seconds to wait before first retry after a rate limit error">
+            </div>
+          </div>
+>>>>>>> d85ab24219afb7ff5c24d5c2a917603994573a7f
 
           <label title="Enable detailed logs for troubleshooting in DevTools."><input type="checkbox" id="debug"> Debug logging</label>
         </div>
@@ -224,11 +324,22 @@
   </div>
 
   <script src="throttle.js"></script>
+<<<<<<< HEAD
   <script src="lib/messaging.js"></script>
+=======
+  <script src="lz-string.min.js"></script>
+  <script src="cache.js"></script>
+  <script src="providers/index.js"></script>
+  <script src="providers/qwen.js"></script>
+  <script src="providers/google.js"></script>
+  <script src="providers/deepl.js"></script>
+>>>>>>> d85ab24219afb7ff5c24d5c2a917603994573a7f
   <script src="translator.js"></script>
   <script src="config.js"></script>
   <script src="languages.js"></script>
   <script src="usageColor.js"></script>
+  <script src="providerConfig.js"></script>
+  <script src="popup/dom.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

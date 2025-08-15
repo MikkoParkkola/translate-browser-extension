@@ -128,6 +128,12 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   if (window.qwenSetTokenBudget) {
     window.qwenSetTokenBudget(cfg.tokenBudget || 0);
   }
+  if (window.qwenSetCacheLimit) {
+    window.qwenSetCacheLimit(cfg.cacheMaxEntries || 1000);
+  }
+  if (window.qwenSetCacheTTL) {
+    window.qwenSetCacheTTL(cfg.cacheTTL || 30 * 24 * 60 * 60 * 1000);
+  }
 
   chrome.runtime.onMessage.addListener(msg => {
     if (msg.action === 'translate-selection') {
@@ -136,10 +142,19 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
         const text = sel && sel.toString().trim();
         if (!text) return;
         try {
+          const models = cfg.dualMode
+            ? [
+                cfg.model,
+                cfg.model === 'qwen-mt-plus' ? 'qwen-mt-turbo' : 'qwen-mt-plus',
+              ]
+            : undefined;
           const { text: translated } = await window.qwenTranslate({
+            provider: cfg.provider,
             endpoint: cfg.apiEndpoint,
             apiKey: cfg.apiKey,
             model: cfg.model,
+            models,
+            failover: cfg.failoverStrategy,
             text,
             source: cfg.sourceLanguage,
             target: cfg.targetLanguage,
@@ -217,6 +232,43 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     }
   })();
 
+  // Setup PDF translation engine dropdown
+  (function() {
+    const wasmSel = document.getElementById('engineSelect');
+    if (!wasmSel) return;
+    let sel = document.getElementById('pdfTranslateSelect');
+    if (sel) return;
+    sel = document.createElement('select');
+    sel.id = 'pdfTranslateSelect';
+    sel.className = 'btn';
+    sel.title = 'PDF translation engine';
+    sel.innerHTML = [
+      { v: 'wasm', t: 'PDF: WASM' },
+      { v: 'google', t: 'PDF: Google' },
+      { v: 'deepl-pro', t: 'PDF: DeepL Pro' },
+    ].map(o => `<option value="${o.v}">${o.t}</option>`).join('');
+    wasmSel.parentNode.insertBefore(sel, wasmSel);
+    chrome.storage.sync.get({ pdfTranslateEngine: 'wasm' }, s => {
+      sel.value = s.pdfTranslateEngine || 'wasm';
+    });
+    sel.addEventListener('change', () => {
+      chrome.storage.sync.set({ pdfTranslateEngine: sel.value }, async () => {
+        const isTranslatedView = document.body.classList.contains('translated');
+        const isCompareView = document.body.classList.contains('compare');
+        if (isTranslatedView || isCompareView) {
+          try {
+            const key = await generateTranslatedSessionKey(origFile);
+            if (isCompareView) {
+              gotoCompare(origFile, key);
+            } else {
+              gotoTranslated(origFile, key);
+            }
+          } catch (e) { console.error('PDF engine switch failed', e); }
+        }
+      });
+    });
+  })();
+
   // Wire up view toggles and save menu
   const btnOriginal = document.getElementById('btnOriginal');
   const btnTranslated = document.getElementById('btnTranslated');
@@ -254,22 +306,42 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     if (window.qwenSetTokenBudget) {
       window.qwenSetTokenBudget(cfgNow.tokenBudget || 0);
     }
-    const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine','wasmStrict'], r));
+    if (window.qwenSetCacheLimit) {
+      window.qwenSetCacheLimit(cfgNow.cacheMaxEntries || 1000);
+    }
+    if (window.qwenSetCacheTTL) {
+      window.qwenSetCacheTTL(cfgNow.cacheTTL || 30 * 24 * 60 * 60 * 1000);
+    }
+    const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine','wasmStrict','pdfTranslateEngine'], r));
     cfgNow = { ...cfgNow, ...flags, useWasmEngine: true };
+    const engine = flags.pdfTranslateEngine || 'wasm';
     if (!cfgNow.apiKey) { alert('Configure API key first.'); throw new Error('API key missing'); }
     if (overlay) overlay.style.display = 'flex'; setProgress('Preparing…', 2);
     let summary;
+    const progressCb = (p) => {
+      if (!p) return;
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p } });
+      if (p.stats) summary = p.stats;
+      let pct = 0;
+      if (p.phase === 'collect') { pct = Math.round((p.page / p.total) * 20); setProgress(`Collecting text… (${p.page}/${p.total})`, pct); }
+      if (p.phase === 'translate') { pct = 20 + Math.round((p.request / p.requests) * 40); setProgress(`Translating… (${p.request}/${p.requests})`, pct); }
+      if (p.phase === 'render') { pct = 60 + Math.round((p.page / p.total) * 40); setProgress(`Rendering pages… (${p.page}/${p.total})`, pct); }
+    };
     try {
       chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'prepare' } });
-      const blob = await regeneratePdfFromUrl(originalUrl, cfgNow, (p)=>{
-        if (!p) return;
-        chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p } });
-        if (p.stats) summary = p.stats;
-        let pct = 0;
-        if (p.phase === 'collect') { pct = Math.round((p.page / p.total) * 20); setProgress(`Collecting text… (${p.page}/${p.total})`, pct); }
-        if (p.phase === 'translate') { pct = 20 + Math.round((p.request / p.requests) * 40); setProgress(`Translating… (${p.request}/${p.requests})`, pct); }
-        if (p.phase === 'render') { pct = 60 + Math.round((p.page / p.total) * 40); setProgress(`Rendering pages… (${p.page}/${p.total})`, pct); }
-      });
+      if (engine === 'google' || engine === 'deepl-pro') {
+        try {
+          const provider = window.qwenProviders && window.qwenProviders.getProvider && window.qwenProviders.getProvider(engine);
+          if (!provider || !provider.translateDocument) throw new Error('translateDocument missing');
+          const blob = await provider.translateDocument(originalUrl, cfgNow, progressCb);
+          const key = await storePdfInSession(blob);
+          chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary } });
+          return key;
+        } catch (err) {
+          console.warn('Provider translation failed, falling back to WASM', err);
+        }
+      }
+      const blob = await regeneratePdfFromUrl(originalUrl, cfgNow, progressCb);
       console.log('DEBUG: translation finished, blob size', blob.size);
       const key = await storePdfInSession(blob);
       console.log('DEBUG: stored translated PDF key', key);

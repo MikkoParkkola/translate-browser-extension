@@ -16,3 +16,4 @@ src/wasm/vendor/*.zip
 # Rust build artifacts
 tools/icu4x-segmenter/target/
 tools/icu4x-segmenter/pkg/
+.aider*
