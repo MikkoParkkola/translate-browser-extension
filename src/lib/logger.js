@@ -12,8 +12,8 @@
   function redactValue(v) {
     if (typeof v === 'string') {
       return v
-        .replace(/(api[-_\s]?key)\s*[:=]\s*([A-Za-z0-9._-]+)/ig, '$1=<redacted>')
-        .replace(/(authorization)\s*[:=]\s*([A-Za-z0-9._-]+)/ig, '$1=<redacted>');
+        .replace(/(api[-_\s]?key\s*[:=]\s*).*/ig, '$1<redacted>')
+        .replace(/(authorization\s*[:=]\s*).*/ig, '$1<redacted>');
     }
     if (Array.isArray(v)) {
       return v.map(redactValue);
@@ -34,6 +34,13 @@
   function redact(args) {
     return args.map(redactValue);
   }
+  function format(ns, args) {
+    const red = redact(args);
+    if (!red.length) return [`[${ns}]`];
+    const [first, ...rest] = red;
+    if (typeof first === 'string') return [`[${ns}] ${first}`, ...rest];
+    return [`[${ns}]`, first, ...rest];
+  }
   function globalLevel() {
     try {
       if (root.qwenConfig && root.qwenConfig.logLevel) return parseLevel(root.qwenConfig.logLevel);
@@ -52,10 +59,10 @@
       setLevel(l) { lvl = parseLevel(l); },
       level() { return lvl; },
       create(child) { return create(ns ? `${ns}:${child}` : child); },
-      debug(...a) { if (lvl >= 3) base.debug(`[${ns}]`, ...redact(a)); },
-      info(...a)  { if (lvl >= 2) base.info(`[${ns}]`, ...redact(a)); },
-      warn(...a)  { if (lvl >= 1) base.warn(`[${ns}]`, ...redact(a)); },
-      error(...a) { base.error(`[${ns}]`, ...redact(a)); },
+      debug(...a) { if (lvl >= 3) base.debug(...format(ns, a)); },
+      info(...a)  { if (lvl >= 2) base.info(...format(ns, a)); },
+      warn(...a)  { if (lvl >= 1) base.warn(...format(ns, a)); },
+      error(...a) { base.error(...format(ns, a)); },
     };
   }
   return { create, parseLevel };

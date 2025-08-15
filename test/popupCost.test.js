@@ -5,7 +5,7 @@ describe('popup cost display', () => {
     document.body.innerHTML = '';
     document.getElementById = id => document.querySelector('#' + id);
     [
-      'apiKey','apiEndpoint','model','requestLimit','tokenLimit','tokenBudget','tokensPerReq','retryDelay','setup-apiKey','setup-apiEndpoint','setup-model','provider','setup-provider',
+      'apiKey','apiEndpoint','model','requestLimit','tokenLimit','tokenBudget','tokensPerReq','retryDelay','setup-apiKey','setup-apiEndpoint','setup-model','provider','setup-provider','viewContainer',
       'source','target','auto','debug','smartThrottle','dualMode','translate','test','clearCache','clearDomain','clearPair','toggleCalendar',
       'cacheSize','hitRate','costSection',
       'domainCounts','status','costCalendar','progress'

@@ -1,36 +1,38 @@
 // Main view elements
-const apiKeyInput = document.getElementById('apiKey');
-const endpointInput = document.getElementById('apiEndpoint');
-const modelInput = document.getElementById('model');
-const sourceSelect = document.getElementById('source');
-const targetSelect = document.getElementById('target');
-const reqLimitInput = document.getElementById('requestLimit');
-const tokenLimitInput = document.getElementById('tokenLimit');
-const tokenBudgetInput = document.getElementById('tokenBudget');
-const autoCheckbox = document.getElementById('auto');
-const debugCheckbox = document.getElementById('debug');
-const detectorSelect = document.getElementById('detector');
-const detectApiKeyInput = document.getElementById('detectApiKey');
-const status = document.getElementById('status');
-const versionDiv = document.getElementById('version');
-const reqCount = document.getElementById('reqCount');
-const tokenCount = document.getElementById('tokenCount');
-const reqBar = document.getElementById('reqBar');
-const tokenBar = document.getElementById('tokenBar');
-const totalReq = document.getElementById('totalReq');
-const totalTok = document.getElementById('totalTok');
-const queueLen = document.getElementById('queueLen');
-const translateBtn = document.getElementById('translate');
-const testBtn = document.getElementById('test');
-const progressBar = document.getElementById('progress');
-const providerPreset = document.getElementById('providerPreset');
+const apiKeyInput = document.getElementById('apiKey') || document.createElement('input');
+const endpointInput = document.getElementById('apiEndpoint') || document.createElement('input');
+const modelInput = document.getElementById('model') || document.createElement('input');
+const sourceSelect = document.getElementById('source') || document.createElement('select');
+const targetSelect = document.getElementById('target') || document.createElement('select');
+const reqLimitInput = document.getElementById('requestLimit') || document.createElement('input');
+const tokenLimitInput = document.getElementById('tokenLimit') || document.createElement('input');
+const tokenBudgetInput = document.getElementById('tokenBudget') || document.createElement('input');
+const autoCheckbox = document.getElementById('auto') || document.createElement('input');
+const debugCheckbox = document.getElementById('debug') || document.createElement('input');
+const detectorSelect = document.getElementById('detector') || document.createElement('select');
+const detectApiKeyInput = document.getElementById('detectApiKey') || document.createElement('input');
+const status = document.getElementById('status') || document.createElement('div');
+const versionDiv = document.getElementById('version') || document.createElement('div');
+const reqCount = document.getElementById('reqCount') || document.createElement('span');
+const tokenCount = document.getElementById('tokenCount') || document.createElement('span');
+const reqBar = document.getElementById('reqBar') || document.createElement('div');
+const tokenBar = document.getElementById('tokenBar') || document.createElement('div');
+const totalReq = document.getElementById('totalReq') || document.createElement('span');
+const totalTok = document.getElementById('totalTok') || document.createElement('span');
+const queueLen = document.getElementById('queueLen') || document.createElement('span');
+const costSection = document.getElementById('costSection') || document.createElement('div');
+const translateBtn = document.getElementById('translate') || document.createElement('button');
+const testBtn = document.getElementById('test') || document.createElement('button');
+const progressBar = document.getElementById('progress') || document.createElement('progress');
+const providerPreset = document.getElementById('providerPreset') || document.createElement('select');
+const clearPairBtn = document.getElementById('clearPair') || document.createElement('button');
 
 // Setup view elements
-const setupApiKeyInput = document.getElementById('setup-apiKey');
-const setupApiEndpointInput = document.getElementById('setup-apiEndpoint');
-const setupModelInput = document.getElementById('setup-model');
+const setupApiKeyInput = document.getElementById('setup-apiKey') || document.createElement('input');
+const setupApiEndpointInput = document.getElementById('setup-apiEndpoint') || document.createElement('input');
+const setupModelInput = document.getElementById('setup-model') || document.createElement('input');
 
-const viewContainer = document.getElementById('viewContainer');
+const viewContainer = document.getElementById('viewContainer') || document.body;
 
 let saveTimeout;
 
@@ -176,6 +178,17 @@ chrome.runtime.sendMessage({ action: 'get-status' }, s => {
   }
 });
 
+clearPairBtn.addEventListener('click', () => {
+  const src = sourceSelect.value;
+  const tgt = targetSelect.value;
+  if (typeof window.qwenClearCacheLangPair === 'function') {
+    window.qwenClearCacheLangPair(src, tgt);
+  }
+  if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
+    chrome.runtime.sendMessage({ action: 'clear-cache-pair', source: src, target: tgt }, () => {});
+  }
+});
+
 window.qwenLoadConfig().then(cfg => {
   // Populate main view
   apiKeyInput.value = cfg.apiKey || '';
@@ -301,6 +314,10 @@ function refreshUsage() {
     totalReq.textContent = res.totalRequests;
     totalTok.textContent = res.totalTokens;
     queueLen.textContent = res.queue;
+    if (costSection) {
+      const total7d = res.costs && res.costs.total && res.costs.total['7d'];
+      costSection.textContent = total7d != null ? `Total 7d: $${total7d.toFixed(2)}` : '';
+    }
   });
 }
 

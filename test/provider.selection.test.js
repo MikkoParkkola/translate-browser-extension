@@ -18,6 +18,7 @@ describe('provider selection', () => {
       source: 'en',
       target: 'es',
       endpoint: 'https://example.local/',
+      noProxy: true,
     });
 
     expect(res).toBeDefined();
@@ -37,6 +38,7 @@ describe('provider selection', () => {
       source: 'en',
       target: 'es',
       endpoint: 'https://api.openai.com/v1',
+      noProxy: true,
     });
 
     expect(res).toBeDefined();

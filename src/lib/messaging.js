@@ -13,9 +13,12 @@
       return new Promise((resolve, reject) => {
         let settled = false;
         const onAbort = () => {
+          if (!settled) {
+            settled = true;
+            reject(new DOMException('Aborted', 'AbortError'));
+          }
           try { port.postMessage({ action: 'cancel', requestId }); } catch {}
           try { port.disconnect(); } catch {}
-          if (!settled) { settled = true; reject(new DOMException('Aborted', 'AbortError')); }
         };
         if (signal) signal.addEventListener('abort', onAbort, { once: true });
         port.onMessage.addListener(msg => {
@@ -29,8 +32,8 @@
             try { onData(msg.chunk); } catch (e) { logger.warn('onData error', e); }
           }
           if (msg.result) {
-            try { port.disconnect(); } catch {}
             if (!settled) { settled = true; resolve(msg.result); }
+            try { port.disconnect(); } catch {}
           }
         });
         port.onDisconnect.addListener(() => {

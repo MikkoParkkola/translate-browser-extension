@@ -36,7 +36,7 @@
      log.error('Authorization: Basic foobar');
 
      const flat = outputs.flatMap(([_, args]) => args.join(' ')).join(' ');
-     expect(flat).toMatch(/Authorization:\s*<redacted>/i);
+    expect(flat).toMatch(/Authorization\s*[=:]\s*<redacted>/i);
      expect(flat).toMatch(/api[-_\s]?key\s*[=:]\s*<redacted>/i);
      expect(flat).not.toMatch(/abc\.123|xyz-789|MYKEY|token|secret|foobar/);
    });

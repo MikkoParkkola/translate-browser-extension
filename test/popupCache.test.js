@@ -5,7 +5,7 @@ describe('popup cache controls', () => {
     document.body.innerHTML = '';
     document.getElementById = id => document.querySelector('#' + id);
     [
-      'source','target','auto','debug','smartThrottle','dualMode','translate','test','clearCache','clearDomain','clearPair','toggleCalendar','provider','setup-provider',
+      'source','target','auto','debug','smartThrottle','dualMode','translate','test','clearCache','clearDomain','clearPair','toggleCalendar','provider','setup-provider','viewContainer',
       'cacheSize','hitRate','costSection',
       'status','domainCounts','costCalendar','progress'
     ].forEach(id => {

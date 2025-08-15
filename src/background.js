@@ -167,6 +167,15 @@ let activeTranslations = 0;
 let translationStatus = { active: false };
 const inflight = new Map(); // requestId -> { controller, timeout, port }
 
+// Test-accessible state
+let usingPlus = false;
+let config = { providerOrder: [], requestThreshold: 0 };
+const usageStats = { models: {} };
+
+function setUsingPlus(v) { usingPlus = !!v; }
+function _setActiveTranslations(n) { activeTranslations = n; }
+function _setConfig(c) { config = { ...config, ...c }; }
+
 async function updateIcon() {
   await ensureThrottle();
   if (typeof OffscreenCanvas === 'undefined') return;
@@ -174,6 +183,7 @@ async function updateIcon() {
   const reqPct = requestLimit ? requests / requestLimit : 0;
   const tokPct = tokenLimit ? tokens / tokenLimit : 0;
   const pct = Math.min(Math.max(reqPct, tokPct), 1);
+  const busy = activeTranslations > 0;
 
   const size = 128;
   const c = new OffscreenCanvas(size, size);
@@ -199,13 +209,28 @@ async function updateIcon() {
   ctx.arc(size / 2, size / 2, radius, 0, 2 * Math.PI);
   ctx.fill();
 
+  // central emoji icon
+  if (ctx.fillText) {
+    ctx.font = `${size * 0.6}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🤖', size / 2, size / 2 + 4);
+
+    // activity bolt
+    if (busy) {
+      ctx.font = `${size * 0.35}px serif`;
+      ctx.fillText('⚡', size * 0.8, size * 0.2);
+    }
+  }
+
   const imageData = ctx.getImageData(0, 0, size, size);
   chrome.action.setIcon({ imageData: { 128: imageData } });
 }
 
 function updateBadge() {
   const busy = activeTranslations > 0;
-  chrome.action.setBadgeText({ text: busy ? '…' : '' });
+  const text = busy ? (usingPlus ? 'P' : '…') : '';
+  chrome.action.setBadgeText({ text });
   if (chrome.action.setBadgeBackgroundColor) {
     chrome.action.setBadgeBackgroundColor({ color: busy ? '#ff4500' : '#00000000' });
   }
@@ -232,10 +257,31 @@ function ensureThrottle() {
   return throttleReady;
 }
 
+const COST_RATES = { 'qwen-mt-turbo': 0.00000016, 'google-nmt': 0.00002 };
+
+async function selectProvider(p) {
+  const order = config.providerOrder && config.providerOrder.length
+    ? config.providerOrder.slice(config.providerOrder.indexOf(p))
+    : [p];
+  for (const name of order) {
+    const prov = self.qwenProviders && self.qwenProviders.getProvider && self.qwenProviders.getProvider(name);
+    if (prov && prov.getQuota) {
+      try {
+        const q = await prov.getQuota();
+        if (!q || !q.remaining || q.remaining.requests > (config.requestThreshold || 0)) return name;
+      } catch {}
+    } else {
+      return name;
+    }
+  }
+  return p;
+}
+
 async function handleTranslate(opts) {
   const { endpoint, apiKey, model, text, source, target, debug } = opts;
   const ep = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
-  if (debug) logger.debug('background translating via', ep);
+  const provider = await selectProvider(opts.provider || 'qwen');
+  if (debug) logger.debug('background translating via', ep, 'provider', provider);
 
   await ensureThrottle();
 
@@ -250,12 +296,22 @@ async function handleTranslate(opts) {
       endpoint: ep,
       apiKey: storedKey,
       model,
+      provider,
       text,
       source,
       target,
       debug,
       signal: controller.signal,
       stream: false,
+    });
+    const tokens = self.qwenThrottle.approxTokens(text || '');
+    usageStats.models[model] = usageStats.models[model] || { requests: 0 };
+    usageStats.models[model].requests++;
+    const cost = tokens * (COST_RATES[model] || 0);
+    chrome.storage.local.get({ usageHistory: [] }, data => {
+      const hist = data.usageHistory || [];
+      hist.push({ ts: Date.now(), model, provider: 'qwen', cost });
+      chrome.storage.local.set({ usageHistory: hist });
     });
     if (debug) logger.debug('background translation completed');
     return result;
@@ -284,7 +340,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'usage') {
     ensureThrottle().then(() => {
       const stats = self.qwenThrottle.getUsage();
-      sendResponse(stats);
+      chrome.storage.local.get({ usageHistory: [] }, data => {
+        const now = Date.now();
+        const costs = { total: { '24h': 0, '7d': 0 } };
+        (data.usageHistory || []).forEach(rec => {
+          const age = now - rec.ts;
+          const entry = costs[rec.model] || { '24h': 0, '7d': 0 };
+          if (age <= 86400000) { entry['24h'] += rec.cost; costs.total['24h'] += rec.cost; }
+          if (age <= 86400000 * 7) { entry['7d'] += rec.cost; costs.total['7d'] += rec.cost; }
+          costs[rec.model] = entry;
+        });
+        sendResponse({ ...stats, models: usageStats.models, costs });
+      });
     });
     return true;
   }
@@ -411,3 +478,13 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
     maybeAutoInject(tabId, tab.url);
   }
 });
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    updateBadge,
+    setUsingPlus,
+    _setActiveTranslations,
+    handleTranslate,
+    _setConfig,
+  };
+}

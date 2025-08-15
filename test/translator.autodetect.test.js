@@ -28,7 +28,7 @@ describe('translator auto-detects source language', () => {
     expect(spy.mock.calls[0][0].source).toBe('fr');
   });
 
-  test('qwenTranslateBatch detects once and uses same source for all', async () => {
+  test('qwenTranslateBatch detects per text and groups by language', async () => {
     const Providers = require('../src/lib/providers.js');
     const spy = jest.fn(async ({ text }) => ({ text })); // echos batch text
     Providers.register('dashscope', { translate: spy });
@@ -46,9 +46,9 @@ describe('translator auto-detects source language', () => {
     });
 
     expect(res.texts.length).toBe(2);
-    // ensure provider was called at least once and the detected language was fr
-    expect(spy).toHaveBeenCalled();
+    expect(spy.mock.calls.length).toBeGreaterThanOrEqual(2);
     const srcs = spy.mock.calls.map(c => c[0].source);
-    expect(srcs.every(s => s === 'fr')).toBe(true);
+    expect(srcs).toContain('fr');
+    expect(srcs).toContain('en');
   });
 });

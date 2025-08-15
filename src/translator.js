@@ -34,6 +34,21 @@ try {
   }
 } catch {}
 const cache = new Map();
+let cacheApi = null;
+try {
+  if (typeof window !== 'undefined' && window.qwenCache) cacheApi = window.qwenCache;
+  else if (typeof self !== 'undefined' && self.qwenCache) cacheApi = self.qwenCache;
+  else if (typeof require !== 'undefined') cacheApi = require('./cache');
+} catch {}
+const {
+  qwenSetCacheLimit = () => {},
+  qwenSetCacheTTL = () => {},
+  _setCacheEntryTimestamp = () => {},
+  qwenClearCache: _persistClear = () => {},
+  qwenGetCacheSize = () => 0,
+} = cacheApi || {};
+let getUsage = () => ({});
+function _setGetUsage(fn) { if (typeof fn === 'function') getUsage = fn; }
 
 function _memCacheMax() {
   try { if (typeof self !== 'undefined' && self.qwenConfig && self.qwenConfig.memCacheMax) return self.qwenConfig.memCacheMax | 0; } catch {}
@@ -93,7 +108,10 @@ try {
   } else if (typeof self !== 'undefined' && typeof window === 'undefined' && self.qwenProviders) {
     Providers = self.qwenProviders;
   } else if (typeof require !== 'undefined') {
-    try { Providers = require('./lib/providers'); } catch {}
+    try {
+      Providers = require('./lib/providers');
+      require('./providers');
+    } catch {}
   }
 } catch {}
 
@@ -190,7 +208,7 @@ async function providerTranslate({ endpoint, apiKey, model, text, source, target
     }
   }
 
-  // Fallback: internal fetch with retry and rate limit
+  if (lastErr) throw lastErr;
   return await runWithRetry(
     () => runWithRateLimit(
       () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
@@ -199,7 +217,7 @@ async function providerTranslate({ endpoint, apiKey, model, text, source, target
     tokens,
     3,
     debug
-  ).catch(e => { throw lastErr || e; });
+  );
 }
 
 async function _detectSource(text, { detector, debug, noProxy } = {}) {
@@ -331,7 +349,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
   return { text: result };
 }
 
-async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, provider, detector }) {
+async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, provider, detector, force = false, skipTM = false }) {
   if (debug) {
     logger.debug('qwenTranslate called with', {
       endpoint,
@@ -346,13 +364,14 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
   if (!src || src === 'auto') {
     src = await _detectSource(text, { detector, debug, noProxy });
   }
-  const cacheKey = _key(src, target, text);
-  if (cache.has(cacheKey)) {
+  const prov = provider || (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model }));
+  const cacheKey = `${prov}:${_key(src, target, text)}`;
+  if (!force && cache.has(cacheKey)) {
     return _touchCache(cacheKey);
   }
 
   // Persistent TM lookup
-  if (TM && TM.get) {
+  if (!force && TM && TM.get) {
     try {
       const hit = await TM.get(cacheKey);
       if (hit && typeof hit.text === 'string') {
@@ -363,10 +382,12 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     } catch {}
   }
 
-    if (!noProxy && messaging && typeof chrome !== 'undefined' && chrome.runtime) {
+    if (!noProxy &&
+        messaging && typeof chrome !== 'undefined' &&
+        chrome.runtime) {
       const result = await messaging.requestViaBackground({
         endpoint: withSlash(endpoint),
-        apiKey, model, text, source: src, target, debug, stream: false, signal, provider
+        apiKey, model, text, source: src, target, debug, stream: false, signal, provider: prov
       });
       _setCache(cacheKey, result);
       if (TM && TM.set && result && typeof result.text === 'string') { try { TM.set(cacheKey, result.text); } catch {} }
@@ -374,9 +395,9 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     }
 
   try {
-    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, stream, provider });
+    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, stream, provider: provider ? prov : undefined });
     _setCache(cacheKey, data);
-    if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
+    if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
       logger.debug('translation successful');
       logger.debug('final text', data.text);
@@ -403,17 +424,20 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
   if (!src || src === 'auto') {
     src = await _detectSource(text, { detector, debug, noProxy });
   }
-  const cacheKey = _key(src, target, text);
+  const prov = provider || (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model }));
+  const cacheKey = `${prov}:${_key(src, target, text)}`;
   if (cache.has(cacheKey)) {
     const data = _touchCache(cacheKey);
     if (onData) onData(data.text);
     return data;
   }
 
-    if (!noProxy && messaging && typeof chrome !== 'undefined' && chrome.runtime) {
+    if (!noProxy &&
+        messaging && typeof chrome !== 'undefined' &&
+        chrome.runtime) {
       const data = await messaging.requestViaBackground({
         endpoint: withSlash(endpoint),
-        apiKey, model, text, source: src, target, debug, stream: true, signal, onData, provider
+        apiKey, model, text, source: src, target, debug, stream: true, signal, onData, provider: prov
       });
       _setCache(cacheKey, data);
       if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
@@ -421,9 +445,9 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     }
 
   try {
-    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, onData, stream, provider });
+    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, onData, stream, provider: prov });
     _setCache(cacheKey, data);
-    if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
+    if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
       logger.debug('translation successful');
       logger.debug('final text', data.text);
@@ -511,32 +535,13 @@ async function batchOnce({
 }) {
   const stats = _stats || { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
   let source = opts.source;
-  if (!source || source === 'auto') {
-    const sample = texts.slice(0, 5).join(' ').slice(0, 2000);
-    source = await _detectSource(sample, { detector: opts.detector, debug: opts.debug, noProxy: opts.noProxy });
-  }
-  const autoMode = !opts.source || opts.source === 'auto';
-  // Per-text language map used when auto-detecting
-  const textLang = new Map();
+  const autoMode = !source || source === 'auto';
   const sourceByIndex = new Array(texts.length);
   if (autoMode) {
-    const seenNorm = new Set();
     for (let i = 0; i < texts.length; i++) {
-      const t = texts[i] || '';
-      const norm = _normText(t);
-      if (!seenNorm.has(norm)) {
-        seenNorm.add(norm);
-        let lang = source;
-        try {
-          if (Detect && typeof Detect.detectLocal === 'function') {
-            const r = Detect.detectLocal(norm);
-            if (r && r.lang) lang = r.lang;
-          }
-        } catch {}
-        textLang.set(norm, lang);
-      }
-      sourceByIndex[i] = textLang.get(norm) || source;
+      sourceByIndex[i] = await _detectSource(texts[i], { detector: opts.detector, debug: opts.debug, noProxy: opts.noProxy });
     }
+    source = sourceByIndex[0];
   } else {
     for (let i = 0; i < texts.length; i++) sourceByIndex[i] = source;
   }
@@ -609,7 +614,7 @@ async function batchOnce({
     const words = joinedText.replaceAll(SEP, ' ').trim().split(/\s+/).filter(Boolean).length;
     let res;
     try {
-      res = await qwenTranslate({ ...opts, source: g.lang, text: joinedText });
+      res = await qwenTranslate({ ...opts, source: g.lang, text: joinedText, skipTM: true });
     } catch (e) {
       if (/HTTP\s+400/i.test(e.message || '')) throw e;
       g.items.forEach(m => { m.result = m.text; });
@@ -631,7 +636,7 @@ async function batchOnce({
         for (const m of g.items) {
           let out;
           try {
-            const single = await qwenTranslate({ ...opts, source: m.lang, text: m.text });
+            const single = await qwenTranslate({ ...opts, source: m.lang, text: m.text, skipTM: true });
             out = single.text;
           } catch {
             out = m.text;
@@ -745,6 +750,7 @@ function splitLongText(text, maxTokens) {
 }
 function qwenClearCache() {
   cache.clear();
+  _persistClear();
 }
 if (typeof window !== 'undefined') {
   window.qwenTranslate = qwenTranslate;
@@ -766,6 +772,11 @@ if (typeof module !== 'undefined') {
     qwenTranslateStream,
     qwenTranslateBatch,
     qwenClearCache,
+    qwenSetCacheLimit,
+    qwenSetCacheTTL,
+    _setCacheEntryTimestamp,
+    qwenGetCacheSize,
+    _setGetUsage,
     _getTokenBudget,
     _setTokenBudget,
   };
