@@ -215,6 +215,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 let throttleReady;
 let activeTranslations = 0;
+let iconError = false;
 let translationStatus = { active: false };
 const inflight = new Map(); // requestId -> { controller, timeout, port }
 
@@ -261,38 +262,40 @@ async function updateIcon() {
   const ctx = c.getContext('2d');
   ctx.clearRect(0, 0, size, size);
 
-  // outer ring
+  // background ring
   const ringWidth = 12;
+  const ringR = size / 2 - ringWidth;
   ctx.lineWidth = ringWidth;
   ctx.strokeStyle = '#c0c0c0';
   ctx.beginPath();
-  ctx.arc(size / 2, size / 2, size / 2 - ringWidth, 0, 2 * Math.PI);
+  ctx.arc(size / 2, size / 2, ringR, 0, 2 * Math.PI);
   ctx.stroke();
 
-  // inner circle reflects highest quota usage
-  const minR = 10;
-  const maxR = size / 2 - ringWidth - 4;
-  const radius = minR + pct * (maxR - minR);
-  const color = self.qwenUsageColor ? self.qwenUsageColor(pct) : '#d0d4da';
-
-  ctx.fillStyle = color;
+  // usage progress ring
+  const progressColor = self.qwenUsageColor ? self.qwenUsageColor(pct) : '#00ff00';
+  ctx.strokeStyle = progressColor;
   ctx.beginPath();
-  ctx.arc(size / 2, size / 2, radius, 0, 2 * Math.PI);
-  ctx.fill();
+  ctx.arc(size / 2, size / 2, ringR, -Math.PI / 2, -Math.PI / 2 + pct * 2 * Math.PI);
+  ctx.stroke();
 
-  // central emoji icon
+  // central translation icon
   if (ctx.fillText) {
-    ctx.font = `${size * 0.6}px serif`;
+    ctx.font = `${size * 0.55}px serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('🤖', size / 2, size / 2 + 4);
-
-    // activity bolt
-    if (busy) {
-      ctx.font = `${size * 0.35}px serif`;
-      ctx.fillText('⚡', size * 0.8, size * 0.2);
-    }
+    ctx.fillStyle = '#000';
+    ctx.fillText('🌐', size / 2, size / 2 + 4);
   }
+
+  // status dot overlay
+  const dotR = size * 0.12;
+  let statusColor = '#808080';
+  if (iconError) statusColor = '#ff1744';
+  else if (busy) statusColor = '#00c853';
+  ctx.fillStyle = statusColor;
+  ctx.beginPath();
+  ctx.arc(size * 0.85, size * 0.15, dotR, 0, 2 * Math.PI);
+  ctx.fill();
 
   const imageData = ctx.getImageData(0, 0, size, size);
   chrome.action.setIcon({ imageData: { 128: imageData } });
@@ -396,10 +399,12 @@ async function handleTranslate(opts) {
     if (debug) logger.debug('background translation completed');
     logUsage(tokens, Date.now() - start);
     const confidence = scoreConfidence(text, result && result.text);
+    iconError = false;
     return { ...result, confidence };
   } catch (err) {
     logger.error('background translation error', err);
     logUsage(tokens, Date.now() - start);
+    iconError = true;
     return { error: err.message };
   } finally {
     clearTimeout(timeout);
@@ -566,9 +571,11 @@ chrome.runtime.onConnect.addListener(port => {
           try { port.postMessage({ requestId, result: { ...result, confidence } }); } catch {}
         }
         logUsage(tokens, Date.now() - start);
+        iconError = false;
       } catch (err) {
         logger.error('background port translation error', err);
         logUsage(tokens, Date.now() - start);
+        iconError = true;
         try { port.postMessage({ requestId, error: err.message }); } catch {}
       } finally {
         clearTimeout(timeout);
