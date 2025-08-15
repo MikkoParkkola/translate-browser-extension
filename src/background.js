@@ -24,7 +24,7 @@ function requestOriginPermission(pattern) {
 async function injectContentScripts(tabId) {
   await chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
-    files: ['lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/deepl.js', 'lib/tm.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
+    files: ['lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
   });
 }
 async function ensureInjected(tabId) {
