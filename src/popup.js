@@ -21,6 +21,10 @@ const reqCount = document.getElementById('reqCount') || document.createElement('
 const tokenCount = document.getElementById('tokenCount') || document.createElement('span');
 const reqBar = document.getElementById('reqBar') || document.createElement('div');
 const tokenBar = document.getElementById('tokenBar') || document.createElement('div');
+const turboReq = document.getElementById('turboReq') || document.createElement('span');
+const plusReq = document.getElementById('plusReq') || document.createElement('span');
+const turboReqBar = document.getElementById('turboReqBar') || document.createElement('div');
+const plusReqBar = document.getElementById('plusReqBar') || document.createElement('div');
 const totalReq = document.getElementById('totalReq') || document.createElement('span');
 const totalTok = document.getElementById('totalTok') || document.createElement('span');
 const queueLen = document.getElementById('queueLen') || document.createElement('span');
@@ -467,31 +471,58 @@ function refreshUsage() {
 }
 
 let lastQuotaRefresh = 0;
-function refreshQuota() {
+async function refreshQuota() {
   const cfg = window.qwenConfig;
   if (!cfg || !window.qwenProviders || !window.qwenProviders.getProvider) return;
-  const prov = window.qwenProviders.getProvider(cfg.provider || 'qwen');
+  const prov = window.qwenProviders.getProvider('qwen');
   if (!prov || !prov.getQuota) return;
-  prov.getQuota({ endpoint: cfg.apiEndpoint, apiKey: cfg.apiKey, model: cfg.model, debug: cfg.debug }).then(q => {
-    if (!q || q.error) return;
-    lastQuotaRefresh = Date.now();
-    const reqUsed = q.used?.requests ?? 0;
-    const reqTotal = reqUsed + (q.remaining?.requests ?? 0);
-    const tokUsed = q.used?.tokens ?? 0;
-    const tokTotal = tokUsed + (q.remaining?.tokens ?? 0);
-    setBar(reqBar, reqTotal ? reqUsed / reqTotal : 0);
-    setBar(tokenBar, tokTotal ? tokUsed / tokTotal : 0);
-    reqCount.textContent = reqTotal ? `${reqUsed}/${reqTotal}` : `${reqUsed}`;
-    tokenCount.textContent = tokTotal ? `${tokUsed}/${tokTotal}` : `${tokUsed}`;
-    const ts = new Date(lastQuotaRefresh).toLocaleTimeString();
-    const tip = `Provider quota. Last refresh: ${ts}`;
-    reqBar.title = `Requests: ${reqCount.textContent}\n${tip}`;
-    tokenBar.title = `Tokens: ${tokenCount.textContent}\n${tip}`;
-  }).catch(() => {});
+
+  // Fetch local usage
+  const usage = await new Promise(resolve => {
+    try {
+      chrome.runtime.sendMessage({ action: 'usage' }, res => resolve(res || {}));
+    } catch { resolve({}); }
+  });
+
+  // Fetch provider quota for both models
+  const [turbo, plus] = await Promise.all([
+    prov.getQuota({ endpoint: cfg.apiEndpoint, apiKey: cfg.apiKey, model: 'qwen-mt-turbo', debug: cfg.debug }).catch(() => null),
+    prov.getQuota({ endpoint: cfg.apiEndpoint, apiKey: cfg.apiKey, model: 'qwen-mt-plus', debug: cfg.debug }).catch(() => null),
+  ]);
+  if (!turbo && !plus) return;
+  lastQuotaRefresh = Date.now();
+  const ts = new Date(lastQuotaRefresh).toLocaleTimeString();
+  const tip = `Provider quota. Last refresh: ${ts}`;
+
+  // Determine primary quota based on selected model
+  const main = cfg.model && cfg.model.toLowerCase().includes('plus') ? plus : turbo;
+  const reqUsed = usage.totalRequests || 0;
+  const tokUsed = usage.totalTokens || 0;
+  const reqTotal = reqUsed + (main?.remaining?.requests || 0);
+  const tokTotal = tokUsed + (main?.remaining?.tokens || 0);
+  setBar(reqBar, reqTotal ? reqUsed / reqTotal : 0);
+  setBar(tokenBar, tokTotal ? tokUsed / tokTotal : 0);
+  reqCount.textContent = reqTotal ? `${reqUsed}/${reqTotal}` : `${reqUsed}`;
+  tokenCount.textContent = tokTotal ? `${tokUsed}/${tokTotal}` : `${tokUsed}`;
+  reqBar.title = `Requests: ${reqCount.textContent}\n${tip}`;
+  tokenBar.title = `Tokens: ${tokenCount.textContent}\n${tip}`;
+
+  // Turbo and Plus request bars
+  const turboLocal = usage.models && usage.models['qwen-mt-turbo'] ? usage.models['qwen-mt-turbo'].requests || 0 : 0;
+  const turboTotal = turboLocal + (turbo?.remaining?.requests || 0);
+  setBar(turboReqBar, turboTotal ? turboLocal / turboTotal : 0);
+  turboReq.textContent = turboTotal ? `${turboLocal}/${turboTotal}` : `${turboLocal}`;
+  turboReqBar.title = `Requests: ${turboReq.textContent}\n${tip}`;
+
+  const plusLocal = usage.models && usage.models['qwen-mt-plus'] ? usage.models['qwen-mt-plus'].requests || 0 : 0;
+  const plusTotal = plusLocal + (plus?.remaining?.requests || 0);
+  setBar(plusReqBar, plusTotal ? plusLocal / plusTotal : 0);
+  plusReq.textContent = plusTotal ? `${plusLocal}/${plusTotal}` : `${plusLocal}`;
+  plusReqBar.title = `Requests: ${plusReq.textContent}\n${tip}`;
 }
 
 setInterval(refreshUsage, 1000);
-setInterval(refreshQuota, 10000);
+setInterval(refreshQuota, 5000);
 refreshUsage();
 refreshQuota();
 
