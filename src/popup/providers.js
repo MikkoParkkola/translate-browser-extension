@@ -9,20 +9,103 @@
     ? cfg.providerOrder.slice()
     : Object.keys(cfg.providers || {});
   const providers = cfg.providers || {};
-  const fields = ['apiKey','apiEndpoint','models','requestLimit','tokenLimit','charLimit','strategy'];
+  const baseFields = ['apiKey','apiEndpoint','model','models','strategy'];
+
+  function labelFor(field) {
+    if (field === 'charLimit') return 'Chars/month';
+    if (field === 'requestLimit') return 'Req/min';
+    if (field === 'tokenLimit') return 'Tok/min';
+    return field;
+  }
+
+  function validateNumber(input) {
+    const v = input.value.trim();
+    if (!v) {
+      input.classList.remove('invalid');
+      return true;
+    }
+    const n = Number(v);
+    const ok = Number.isFinite(n) && n >= 0;
+    input.classList.toggle('invalid', !ok);
+    return ok;
+  }
+
+  function updateCostWarning(li) {
+    const model = li.querySelector('[data-field="model"]')?.value.trim();
+    const modelsInput = li.querySelector('[data-field="models"]');
+    const warn = li.querySelector('.model-warning');
+    if (!warn) return;
+    const models = modelsInput?.value
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean) || [];
+    const set = new Set(models);
+    if (model) set.add(model);
+    const hasPlus = set.has('qwen-mt-plus');
+    const hasTurbo = set.has('qwen-mt-turbo');
+    if (hasPlus && hasTurbo) {
+      warn.textContent = 'Models have different costs';
+      warn.style.display = '';
+    } else {
+      warn.textContent = '';
+      warn.style.display = 'none';
+    }
+  }
 
   function createItem(id) {
     const data = providers[id] || {};
     const li = tmpl.content.firstElementChild.cloneNode(true);
     li.dataset.id = id;
     li.querySelector('.provider-name').textContent = id;
-    fields.forEach(f => {
+
+    const numericFields = Object.keys(data).filter(k => /limit$/i.test(k));
+    const allFields = baseFields.concat(numericFields);
+
+    allFields.forEach(f => {
       const input = li.querySelector(`[data-field="${f}"]`);
       if (!input) return;
       let v = data[f];
       if (Array.isArray(v)) v = v.join(', ');
       if (v != null) input.value = v;
     });
+
+    const extra = li.querySelector('.extra-limits');
+    numericFields.forEach(f => {
+      if (f === 'requestLimit' || f === 'tokenLimit') return;
+      let input = li.querySelector(`[data-field="${f}"]`);
+      if (!input && extra) {
+        const label = document.createElement('label');
+        label.textContent = labelFor(f);
+        input = document.createElement('input');
+        input.type = 'number';
+        input.min = '0';
+        input.dataset.field = f;
+        label.appendChild(input);
+        extra.appendChild(label);
+      }
+      if (input && data[f] != null) input.value = data[f];
+    });
+
+    ['requestLimit', 'tokenLimit'].forEach(f => {
+      if (!numericFields.includes(f)) {
+        const input = li.querySelector(`[data-field="${f}"]`);
+        if (input) input.style.display = 'none';
+      }
+    });
+
+    ['model','models'].forEach(f => {
+      const input = li.querySelector(`[data-field="${f}"]`);
+      if (input) input.addEventListener('input', () => updateCostWarning(li));
+    });
+
+    numericFields.forEach(f => {
+      const input = li.querySelector(`[data-field="${f}"]`);
+      if (input) input.addEventListener('input', () => validateNumber(input));
+    });
+
+    updateCostWarning(li);
+    li.dataset.fields = allFields.join(',');
+    li.dataset.numeric = numericFields.join(',');
     li.addEventListener('dragstart', e => {
       e.dataTransfer.setData('text/plain', id);
       e.dataTransfer.effectAllowed = 'move';
@@ -54,9 +137,12 @@
   document.getElementById('save').addEventListener('click', async () => {
     const newOrder = Array.from(list.children).map(li => li.dataset.id);
     const newProviders = {};
+    let valid = true;
     Array.from(list.children).forEach(li => {
       const id = li.dataset.id;
       const data = {};
+      const fields = (li.dataset.fields || '').split(',').filter(Boolean);
+      const numeric = (li.dataset.numeric || '').split(',').filter(Boolean);
       fields.forEach(f => {
         const input = li.querySelector(`[data-field="${f}"]`);
         if (!input) return;
@@ -65,8 +151,9 @@
           let models = v.split(',').map(s => s.trim()).filter(Boolean);
           if (models.includes('qwen-mt-turbo') && !models.includes('qwen-mt-plus')) models.push('qwen-mt-plus');
           data.models = models;
-        } else if (['requestLimit','tokenLimit','charLimit'].includes(f)) {
-          data[f] = parseInt(v, 10) || 0;
+        } else if (numeric.includes(f)) {
+          if (!validateNumber(input)) valid = false;
+          if (v !== '') data[f] = parseInt(v, 10);
         } else {
           data[f] = v;
         }
@@ -81,6 +168,10 @@
       }
       newProviders[id] = data;
     });
+    if (!valid) {
+      status.textContent = 'Please fix invalid numbers';
+      return;
+    }
     cfg.providerOrder = newOrder;
     cfg.providers = newProviders;
     cfg.failover = failoverBox.checked;
