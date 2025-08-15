@@ -88,7 +88,7 @@ function saveConfig() {
       sourceLanguage: sourceSelect.value,
       targetLanguage: targetSelect.value,
       detector: detectorSelect ? detectorSelect.value : 'local',
-      sensitivity: parseFloat(sensitivityInput.value) || 0,
+      sensitivity: sensitivityInput.valueAsNumber || 0,
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
       tokenLimit: parseInt(tokenLimitInput.value, 10) || 100000,
       tokenBudget: parseInt(tokenBudgetInput.value, 10) || 0,
