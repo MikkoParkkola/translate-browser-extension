@@ -6,7 +6,14 @@
   <script src="/src/lz-string.min.js"></script>
   <script src="/src/throttle.js"></script>
   <script src="/src/cache.js"></script>
-  <script src="/src/providers/index.js"></script>
+  <script src="/src/lib/providers.js"></script>
+  <script>
+    window.qwenProviders.registerProvider = window.qwenProviders.register;
+    window.qwenProviders.getProvider = window.qwenProviders.get;
+    window.qwenProviders.initProviders = window.qwenProviders.init;
+    window.qwenProviders.ensureProviders = window.qwenProviders.init;
+    window.qwenProviders.resetProviders = window.qwenProviders.reset;
+  </script>
   <script src="/src/translator.js"></script>
   <script src="/src/batch.js"></script>
   <script>
@@ -16,6 +23,7 @@
         return { text: text + '-fr' };
       }
     });
+    window.qwenProviders.initProviders();
     window.qwenConfig = { provider: 'mock', sourceLanguage: 'en', targetLanguage: 'fr' };
   </script>
 </head>
