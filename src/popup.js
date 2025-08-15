@@ -35,6 +35,8 @@ const clearPairBtn = document.getElementById('clearPair') || document.createElem
 const statsReq = document.getElementById('statsRequests') || document.createElement('span');
 const statsTok = document.getElementById('statsTokens') || document.createElement('span');
 const statsEta = document.getElementById('statsEta') || document.createElement('span');
+const calibrationStatus = document.getElementById('calibrationStatus') || document.createElement('div');
+const resetCalibrationBtn = document.getElementById('resetCalibration') || document.createElement('button');
 
 // Collapsible sections
 const sectionIds = ['providerSection', 'detectionSection', 'rateSection', 'cacheSection'];
@@ -97,6 +99,7 @@ function saveConfig() {
       debug: debugCheckbox.checked,
       compact: compactCheckbox.checked,
       theme: lightModeCheckbox.checked ? 'light' : 'dark',
+      calibratedAt: (window.qwenConfig && window.qwenConfig.calibratedAt) || 0,
     };
     window.qwenSaveConfig(cfg).then(() => {
       window.qwenConfig = cfg;
@@ -254,6 +257,19 @@ clearPairBtn.addEventListener('click', () => {
   }
 });
 
+resetCalibrationBtn.addEventListener('click', () => {
+  chrome.runtime.sendMessage({ action: 'reset-calibration' }, () => {
+    status.textContent = 'Calibration reset.';
+    window.qwenLoadConfig().then(c => {
+      window.qwenConfig = c;
+      reqLimitInput.value = c.requestLimit;
+      tokenLimitInput.value = c.tokenLimit;
+      calibrationStatus.textContent = c.calibratedAt ? `Calibrated ${new Date(c.calibratedAt).toLocaleString()}` : 'Not calibrated';
+      setTimeout(() => { if (status.textContent === 'Calibration reset.') status.textContent = ''; }, 2000);
+    });
+  });
+});
+
 window.qwenLoadConfig().then(cfg => {
   window.qwenConfig = cfg;
   // Populate main view
@@ -282,6 +298,7 @@ window.qwenLoadConfig().then(cfg => {
   document.body.classList.toggle('qwen-compact', compactCheckbox.checked);
   lightModeCheckbox.checked = cfg.theme === 'light';
   document.documentElement.setAttribute('data-qwen-color', lightModeCheckbox.checked ? 'light' : 'dark');
+  calibrationStatus.textContent = cfg.calibratedAt ? `Calibrated ${new Date(cfg.calibratedAt).toLocaleString()}` : 'Not calibrated';
 
   // Populate setup view
   setupApiKeyInput.value = cfg.apiKey || '';
