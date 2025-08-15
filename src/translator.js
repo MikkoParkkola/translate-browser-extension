@@ -116,15 +116,48 @@ function chooseProvider(opts) {
   return ep.includes('dashscope') ? 'dashscope' : 'dashscope';
 }
 async function providerTranslate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true, provider }) {
-  const id = provider || chooseProvider({ endpoint, model });
-  if (id && Providers && typeof Providers.get === 'function') {
+  const tokens = approxTokens(text);
+  const chain = [];
+  if (provider) {
+    chain.push(provider);
+  } else if (Providers && typeof Providers.candidates === 'function') {
+    chain.push(...Providers.candidates({ endpoint, model }));
+  } else {
+    chain.push(chooseProvider({ endpoint, model }));
+  }
+
+  let lastErr = null;
+  for (const id of chain) {
+    if (!(Providers && typeof Providers.get === 'function')) break;
     const impl = Providers.get(id);
-    if (impl && typeof impl.translate === 'function') {
-      return impl.translate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream });
+    if (!impl || typeof impl.translate !== 'function') continue;
+    try {
+      return await runWithRetry(
+        () => runWithRateLimit(
+          () => impl.translate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
+          tokens
+        ),
+        tokens,
+        3,
+        debug
+      );
+    } catch (e) {
+      lastErr = e;
+      // try next candidate
+      continue;
     }
   }
-  // fallback: internal doFetch
-  return doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream });
+
+  // Fallback: internal fetch with retry and rate limit
+  return await runWithRetry(
+    () => runWithRateLimit(
+      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
+      tokens
+    ),
+    tokens,
+    3,
+    debug
+  ).catch(e => { throw lastErr || e; });
 }
 
 async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true }) {
@@ -278,12 +311,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     }
 
   try {
-    const data = await runWithRetry(
-      () => providerTranslate({ endpoint, apiKey, model, text, source, target, signal, debug, stream, provider }),
-      approxTokens(text),
-      3,
-      debug
-    );
+    const data = await providerTranslate({ endpoint, apiKey, model, text, source, target, signal, debug, stream, provider });
     cache.set(cacheKey, data);
     if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
@@ -326,12 +354,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
     }
 
   try {
-    const data = await runWithRetry(
-      () => providerTranslate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream, provider }),
-      approxTokens(text),
-      3,
-      debug
-    );
+    const data = await providerTranslate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream, provider });
     cache.set(cacheKey, data);
     if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {

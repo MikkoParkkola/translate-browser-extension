@@ -1,0 +1,49 @@
+# New file
+name: CI
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test -- --ci --reporters=default
+        env:
+          CI: true
+
+      - name: Build dist
+        run: npm run build
+
+      - name: Build ZIP artifact
+        run: npm run build:zip
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Upload zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen-translator-zip
+          path: dist/*.zip
