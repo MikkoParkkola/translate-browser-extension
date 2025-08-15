@@ -40,15 +40,27 @@ const calibrationStatus = document.getElementById('calibrationStatus') || docume
 const resetCalibrationBtn = document.getElementById('resetCalibration') || document.createElement('button');
 const importGlossaryInput = document.getElementById('importGlossary') || document.createElement('input');
 const exportGlossaryBtn = document.getElementById('exportGlossary') || document.createElement('button');
+const benchmarkRec = document.getElementById('benchmarkRec') || document.createElement('div');
 
 // Collapsible sections
 const sectionIds = ['providerSection', 'detectionSection', 'rateSection', 'cacheSection', 'glossarySection'];
 
-document.body.classList.add('qwen-bg-animated');
-if (translateBtn) translateBtn.classList.add('primary-glow');
+  document.body.classList.add('qwen-bg-animated');
+  if (translateBtn) translateBtn.classList.add('primary-glow');
 
-let translating = false;
-let progressTimeout;
+  let translating = false;
+  let progressTimeout;
+
+function refreshBenchmarkRec() {
+  if (!chrome.storage || !chrome.storage.sync || !benchmarkRec) return;
+  chrome.storage.sync.get({ benchmark: null }, ({ benchmark }) => {
+    if (benchmark && benchmark.recommendation) {
+      benchmarkRec.textContent = `Recommended: ${benchmark.recommendation}`;
+    } else {
+      benchmarkRec.textContent = '';
+    }
+  });
+}
 
 function initSectionToggles() {
   if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.sync) return;
@@ -358,6 +370,7 @@ window.qwenLoadConfig().then(cfg => {
   debugCheckbox.checked = !!cfg.debug;
   compactCheckbox.checked = !!cfg.compact;
   document.body.classList.toggle('qwen-compact', compactCheckbox.checked);
+  refreshBenchmarkRec();
   lightModeCheckbox.checked = cfg.theme === 'light';
   document.documentElement.setAttribute('data-qwen-color', lightModeCheckbox.checked ? 'light' : 'dark');
   calibrationStatus.textContent = cfg.calibratedAt ? `Calibrated ${new Date(cfg.calibratedAt).toLocaleString()}` : 'Not calibrated';
@@ -555,6 +568,7 @@ translateBtn.addEventListener('click', () => {
 
 testBtn.addEventListener('click', async () => {
   status.textContent = 'Testing...';
+  chrome.runtime.sendMessage({ action: 'run-benchmark' }, () => refreshBenchmarkRec());
   const tabs = await new Promise(r => chrome.tabs.query({ active: true, currentWindow: true }, r));
   const tab = tabs && tabs[0];
   if (tab) {
