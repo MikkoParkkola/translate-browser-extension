@@ -87,6 +87,18 @@
   background: var(--qwen-secondary-hover);
 }
 
+[data-qwen-theme="cyberpunk"] .btn-frame {
+  border-color: var(--qwen-neon-1);
+  box-shadow: 0 0 4px var(--qwen-neon-1), 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+[data-qwen-theme="cyberpunk"] .panel-frame {
+  padding: 0.5rem;
+  border: 1px solid var(--qwen-neon-1);
+  border-radius: 8px;
+  box-shadow: 0 0 6px var(--qwen-neon-1), 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
 body.qwen-compact {
   --body-width: 320px;
   gap: 0.5rem;

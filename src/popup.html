@@ -106,7 +106,7 @@
     <!-- ===== MAIN VIEW ===== -->
     <div class="main-view">
       <div class="main-actions">
-        <button id="translate" class="primary-glow" title="Translate the current tab">Translate Page</button>
+        <button id="translate" class="primary-glow btn-frame" title="Translate the current tab">Translate Page</button>
         <div class="auto-translate-toggle">
           <label class="switch">
             <input type="checkbox" id="auto">
@@ -121,7 +121,7 @@
         <label title="Light theme"><input type="checkbox" id="lightMode"> Light</label>
       </div>
 
-      <details open id="usageDetails">
+      <details open id="usageDetails" class="panel-frame">
         <summary>Usage</summary>
         <div class="usage-section">
           <div class="usage-item">
@@ -139,7 +139,7 @@
       <div id="costSection"></div>
     </details>
 
-    <details id="statsDetails" open>
+    <details id="statsDetails" open class="panel-frame">
       <summary>Stats</summary>
       <div class="usage-section">
         <div class="usage-item">Requests: <span id="statsRequests">0</span></div>
@@ -159,7 +159,7 @@
         </div>
       </div>
 
-      <details>
+      <details class="panel-frame">
         <summary>Getting Started</summary>
         <ol>
           <li>Open Advanced Settings and choose a Provider preset, then paste your API key.</li>
@@ -176,7 +176,7 @@
         </ul>
       </details>
 
-      <details id="providerSection">
+      <details id="providerSection" class="panel-frame">
         <summary>Provider</summary>
         <div class="form-group" style="padding-top: 0.75rem">
           <label for="apiKey">API Key</label>
@@ -206,7 +206,7 @@
         </div>
       </details>
 
-      <details id="detectionSection">
+      <details id="detectionSection" class="panel-frame">
         <summary>Detection</summary>
         <div class="form-group" style="padding-top: 0.75rem">
           <label for="detector">Detector</label>
@@ -228,7 +228,7 @@
         </div>
       </details>
 
-      <details id="rateSection">
+      <details id="rateSection" class="panel-frame">
         <summary>Rate Limits</summary>
         <div class="form-group" style="padding-top: 0.75rem">
           <div class="grid-2">
@@ -251,7 +251,7 @@
         </div>
       </details>
 
-      <details id="cacheSection">
+      <details id="cacheSection" class="panel-frame">
       <summary>Cache &amp; Debug</summary>
         <div class="form-group" style="padding-top: 0.75rem">
           <label for="memCacheMax">Memory cache max</label>
@@ -266,7 +266,7 @@
         </div>
       </details>
 
-      <button id="test" class="secondary">Test Settings</button>
+      <button id="test" class="secondary btn-frame">Test Settings</button>
       <progress id="progress" value="0" max="1" style="width:100%;display:none"></progress>
       <div id="status"></div>
       <div id="version"></div>
