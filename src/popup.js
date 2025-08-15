@@ -32,6 +32,9 @@ const testBtn = document.getElementById('test') || document.createElement('butto
 const progressBar = document.getElementById('progress') || document.createElement('progress');
 const providerPreset = document.getElementById('providerPreset') || document.createElement('select');
 const clearPairBtn = document.getElementById('clearPair') || document.createElement('button');
+const statsReq = document.getElementById('statsRequests') || document.createElement('span');
+const statsTok = document.getElementById('statsTokens') || document.createElement('span');
+const statsEta = document.getElementById('statsEta') || document.createElement('span');
 
 // Collapsible sections
 const sectionIds = ['providerSection', 'detectionSection', 'rateSection', 'cacheSection'];
@@ -200,6 +203,12 @@ chrome.runtime.onMessage.addListener(msg => {
       setWorking(false);
     }
   }
+  if (msg.action === 'stats' && msg.stats) {
+    const { requests, tokens, eta } = msg.stats;
+    statsReq.textContent = requests;
+    statsTok.textContent = tokens;
+    statsEta.textContent = typeof eta === 'number' ? eta.toFixed(2) : '0';
+  }
 });
 
 chrome.runtime.sendMessage({ action: 'get-status' }, s => {
@@ -224,6 +233,14 @@ chrome.runtime.sendMessage({ action: 'get-status' }, s => {
     }
     setWorking(true);
   } else if (translateBtn) translateBtn.textContent = 'Translate Page';
+});
+
+chrome.runtime.sendMessage({ action: 'get-stats' }, res => {
+  if (res) {
+    statsReq.textContent = res.requests || 0;
+    statsTok.textContent = res.tokens || 0;
+    statsEta.textContent = typeof res.eta === 'number' ? res.eta.toFixed(2) : '0';
+  }
 });
 
 clearPairBtn.addEventListener('click', () => {

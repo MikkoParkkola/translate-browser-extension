@@ -133,16 +133,25 @@
             <div class="bar"><div id="tokenBar"></div></div>
           </div>
           <div class="usage-item">Total Requests: <span id="totalReq">0</span></div>
-          <div class="usage-item">Total Tokens: <span id="totalTok">0</span></div>
-          <div class="usage-item">Queue: <span id="queueLen">0</span></div>
-        </div>
-        <div id="costSection"></div>
-      </details>
+        <div class="usage-item">Total Tokens: <span id="totalTok">0</span></div>
+        <div class="usage-item">Queue: <span id="queueLen">0</span></div>
+      </div>
+      <div id="costSection"></div>
+    </details>
 
-      <div class="grid-2">
-        <div>
-          <label for="source">Source Language</label>
-          <select id="source" title="Language to translate from. Use 'Auto-detect' for convenience and mixed-language pages."></select>
+    <details id="statsDetails" open>
+      <summary>Stats</summary>
+      <div class="usage-section">
+        <div class="usage-item">Requests: <span id="statsRequests">0</span></div>
+        <div class="usage-item">Tokens: <span id="statsTokens">0</span></div>
+        <div class="usage-item">ETA: <span id="statsEta">0</span></div>
+      </div>
+    </details>
+
+    <div class="grid-2">
+      <div>
+        <label for="source">Source Language</label>
+        <select id="source" title="Language to translate from. Use 'Auto-detect' for convenience and mixed-language pages."></select>
         </div>
         <div>
           <label for="target">Target Language</label>
