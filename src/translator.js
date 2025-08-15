@@ -341,7 +341,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
     }
 
   try {
-    const data = await providerTranslate({ endpoint, apiKey, model, text, source, target, signal, debug, stream, provider });
+    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, stream, provider });
     cache.set(cacheKey, data);
     if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
@@ -541,7 +541,7 @@ async function batchOnce({
     const words = joinedText.replaceAll(SEP, ' ').trim().split(/\s+/).filter(Boolean).length;
     let res;
     try {
-      res = await qwenTranslate({ ...opts, text: joinedText });
+      res = await qwenTranslate({ ...opts, source, text: joinedText });
     } catch (e) {
       if (/HTTP\s+400/i.test(e.message || '')) throw e;
       g.forEach(m => {
