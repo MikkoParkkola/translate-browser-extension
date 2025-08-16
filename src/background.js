@@ -25,6 +25,13 @@ function getDetectApiKeyFromStorage() {
   });
 }
 
+function safeSendMessage(msg) {
+  try {
+    const p = chrome.runtime.sendMessage(msg);
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  } catch {}
+}
+
 function calibrateLimits(force) {
   if (!self.qwenLimitDetector || !chrome?.storage?.sync) return;
   chrome.storage.sync.get({ apiEndpoint: '', model: '', requestLimit: 60, tokenLimit: 100000, calibratedAt: 0 }, async cfg => {
@@ -49,7 +56,7 @@ function calibrateLimits(force) {
       const update = { requestLimit: reqLim, tokenLimit: tokLim, calibratedAt: now };
       chrome.storage.sync.set(update, () => {});
       ensureThrottle().then(() => { self.qwenThrottle.configure({ requestLimit: reqLim, tokenLimit: tokLim }); });
-      try { chrome.runtime.sendMessage({ action: 'calibration-result', result: update }); } catch {}
+      safeSendMessage({ action: 'calibration-result', result: update });
     } catch (e) { logger.warn('calibration error', e); }
   });
 }
@@ -242,7 +249,7 @@ let lastQuality = 0;
 function logUsage(tokens, latency) {
   const entry = { ts: Date.now(), tokens, latency };
   usageLog.push(entry);
-  try { chrome.runtime.sendMessage({ action: 'usage-metrics', data: entry }); } catch {}
+  safeSendMessage({ action: 'usage-metrics', data: entry });
 }
 
 function setUsingPlus(v) { usingPlus = !!v; }
@@ -263,12 +270,12 @@ function getAggregatedStats() {
 function broadcastStats() {
   ensureThrottle().then(() => {
     const stats = getAggregatedStats();
-    try { chrome.runtime.sendMessage({ action: 'stats', stats }); } catch {}
+    safeSendMessage({ action: 'stats', stats });
   });
 }
 
 function broadcastEta() {
-  try { chrome.runtime.sendMessage({ action: 'translation-status', etaMs }); } catch {}
+  safeSendMessage({ action: 'translation-status', etaMs });
 }
 
 async function updateIcon() {
