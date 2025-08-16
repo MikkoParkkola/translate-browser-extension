@@ -1,5 +1,13 @@
+
 (function(root){
-  const COST_RATES = { 'qwen-mt-turbo': 0.00000016, 'google-nmt': 0.00002 };
+  const TARGET_PROVIDERS = ['openai', 'claude', 'gemini', 'mistral'];
+  const COST_RATES = {
+    openai: 0.000002,
+    claude: 0.000003,
+    gemini: 0.0000015,
+    mistral: 0.000001,
+  };
+  const ACCEPTABLE_LATENCY = 2000;
 
   async function runBenchmark() {
     if (!chrome?.storage?.sync) return { error: 'no storage' };
@@ -7,6 +15,7 @@
     const order = providerOrder.length ? providerOrder : Object.keys(providers);
     const results = {};
     for (const name of order) {
+      if (!TARGET_PROVIDERS.includes(name)) continue;
       const cfg = providers[name];
       if (!cfg || !cfg.apiKey || !cfg.apiEndpoint || !cfg.model) continue;
       const start = Date.now();
@@ -24,8 +33,10 @@
         });
         const latency = Date.now() - start;
         const tokens = root.qwenThrottle ? root.qwenThrottle.approxTokens('hello world') : 0;
-        const cost = tokens * (COST_RATES[cfg.model] || 0);
-        results[name] = { latency, cost };
+        const costPerToken = cfg.costPerToken || COST_RATES[name] || 0;
+        const cost = tokens * costPerToken;
+        const throughput = latency > 0 ? (tokens * 1000) / latency : 0;
+        results[name] = { latency, throughput, cost, costPerToken };
       } catch (e) {
         results[name] = { error: e.message };
       }
@@ -33,8 +44,9 @@
     let recommendation = null;
     for (const [name, data] of Object.entries(results)) {
       if (data.error) continue;
-      if (!recommendation || data.cost < recommendation.cost || (data.cost === recommendation.cost && data.latency < recommendation.latency)) {
-        recommendation = { provider: name, cost: data.cost, latency: data.latency };
+      if (data.latency > ACCEPTABLE_LATENCY) continue;
+      if (!recommendation || data.costPerToken < recommendation.costPerToken || (data.costPerToken === recommendation.costPerToken && data.latency < recommendation.latency)) {
+        recommendation = { provider: name, costPerToken: data.costPerToken, latency: data.latency };
       }
     }
     const store = { benchmark: { results, recommendation: recommendation ? recommendation.provider : null, ts: Date.now() } };

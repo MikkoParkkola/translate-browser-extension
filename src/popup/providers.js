@@ -4,7 +4,14 @@
   const failoverBox = document.getElementById('failover');
   const parallelBox = document.getElementById('parallel');
   const status = document.getElementById('status');
+  const recommendationEl = document.getElementById('recommendation');
   const cfg = await window.qwenLoadConfig();
+  const benchmark = chrome?.storage?.sync
+    ? (await new Promise(r => chrome.storage.sync.get({ benchmark: null }, r))).benchmark
+    : null;
+  if (benchmark?.recommendation && recommendationEl) {
+    recommendationEl.textContent = `Recommended provider: ${benchmark.recommendation}`;
+  }
   const order = (cfg.providerOrder && cfg.providerOrder.length)
     ? cfg.providerOrder.slice()
     : Object.keys(cfg.providers || {});
