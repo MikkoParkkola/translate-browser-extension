@@ -382,15 +382,6 @@ chrome.runtime.onMessage.addListener(msg => {
       setWorking(false);
     }
   }
-  if (msg.action === 'translation-status' && 'etaMs' in msg) {
-    if (statsSummary) {
-      if (typeof msg.etaMs === 'number') {
-        statsSummary.textContent = `Stats · ETA ${(msg.etaMs / 1000).toFixed(1)}s`;
-      } else {
-        statsSummary.textContent = 'Stats';
-      }
-    }
-  }
   if (msg.action === 'stats' && msg.stats) {
     const { requests, tokens, eta, avgLatency, quality } = msg.stats;
     statsReq.textContent = requests;
@@ -400,7 +391,7 @@ chrome.runtime.onMessage.addListener(msg => {
     if (statsEta) statsEta.textContent = typeof eta === 'number' ? eta.toFixed(1) : '0';
     if (statsSummary) {
       statsSummary.textContent = typeof eta === 'number' && !isNaN(eta)
-        ? `Stats · ETA ${eta.toFixed(1)}s`
+        ? `Stats · ETA: ${eta.toFixed(1)} s`
         : 'Stats';
     }
     renderSparklines();
@@ -448,13 +439,6 @@ chrome.runtime.sendMessage({ action: 'get-status' }, s => {
     }
     setWorking(true);
   } else if (translateBtn) translateBtn.textContent = 'Translate Page';
-  if (statsSummary) {
-    if (s && typeof s.etaMs === 'number') {
-      statsSummary.textContent = `Stats · ETA ${(s.etaMs / 1000).toFixed(1)}s`;
-    } else {
-      statsSummary.textContent = 'Stats';
-    }
-  }
 });
 
 chrome.runtime.sendMessage({ action: 'get-stats' }, res => {
@@ -466,7 +450,7 @@ chrome.runtime.sendMessage({ action: 'get-stats' }, res => {
     if (statsEta) statsEta.textContent = typeof res.eta === 'number' ? res.eta.toFixed(1) : '0';
     if (statsSummary) {
       statsSummary.textContent = typeof res.eta === 'number' && !isNaN(res.eta)
-        ? `Stats · ETA ${res.eta.toFixed(1)}s`
+        ? `Stats · ETA: ${res.eta.toFixed(1)} s`
         : 'Stats';
     }
     renderSparklines();
