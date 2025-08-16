@@ -198,3 +198,30 @@ test('selection translation threads provider config', async () => {
   }));
 });
 
+test('shows bubble on text selection and translates', async () => {
+  const spy = jest.fn(async ({ text }) => ({ text: `T:${text}` }));
+  window.qwenTranslate = spy;
+  setCurrentConfig({
+    apiEndpoint: 'https://e/',
+    model: 'm',
+    sourceLanguage: 'en',
+    targetLanguage: 'es',
+    providerOrder: ['p'],
+    endpoints: { p: 'https://p/' },
+    failover: true,
+    debug: false,
+  });
+  document.body.innerHTML = '<p id="s">Hello</p>';
+  const range = document.createRange();
+  range.selectNodeContents(document.getElementById('s'));
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  document.dispatchEvent(new MouseEvent('mouseup'));
+  await new Promise(r => setTimeout(r, 0));
+  await new Promise(r => setTimeout(r, 0));
+  const bubble = document.querySelector('.qwen-bubble__result');
+  expect(spy).toHaveBeenCalledWith(expect.objectContaining({ text: 'Hello' }));
+  expect(bubble.textContent).toBe('T:Hello');
+});
+
