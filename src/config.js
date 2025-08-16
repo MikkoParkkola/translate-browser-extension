@@ -35,7 +35,7 @@ const defaultCfg = {
 const modelTokenLimits = {
   'qwen-mt-turbo': 31980,
   'qwen-mt-plus': 23797,
-  'gpt-4o-mini': 128000,
+  'gpt-5-mini': 128000,
 };
 
 function migrate(cfg = {}) {

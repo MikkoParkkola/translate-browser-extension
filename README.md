@@ -42,7 +42,7 @@ See `safari/README.md` for detailed iOS/iPadOS deployment steps.
 Use the popup to configure:
 - Provider preset to auto-fill endpoint and a typical model (DashScope/Qwen, OpenAI, DeepL)
 - API key for your chosen provider (keys are stored locally; never injected into pages)
-- Translation model name (e.g., `qwen-mt-turbo`, `gpt-4o-mini`)
+- Translation model name (e.g., `qwen-mt-turbo`, `gpt-5-mini`)
 - Source and target languages (Source can be “Auto-detect”)
 - Detector mode: Local (default, private) or Google (needs a Detection API key)
 - Automatic translation toggle

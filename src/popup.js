@@ -591,8 +591,8 @@ window.qwenLoadConfig().then(cfg => {
       if (!v) return;
       const presets = {
         dashscope: { endpoint: 'https://dashscope-intl.aliyuncs.com/api/v1', model: 'qwen-mt-turbo' },
-        openai:    { endpoint: 'https://api.openai.com/v1',                   model: 'gpt-4o-mini' },
-        openrouter:{ endpoint: 'https://openrouter.ai/api/v1',               model: 'gpt-4o-mini' },
+        openai:    { endpoint: 'https://api.openai.com/v1',                   model: 'gpt-5-mini' },
+        openrouter:{ endpoint: 'https://openrouter.ai/api/v1',               model: 'gpt-5-mini' },
         deepl:     { endpoint: 'https://api.deepl.com/v2',                    model: 'deepl' },
         ollama:    { endpoint: 'http://localhost:11434',                     model: 'qwen2:latest' }
       };
