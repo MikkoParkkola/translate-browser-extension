@@ -214,7 +214,7 @@
 
           <label for="model">Model</label>
           <input type="text" id="model" placeholder="e.g., qwen-mt-turbo"
-                 title="Provider model identifier (e.g., qwen-mt-turbo, gpt-4o-mini).">
+                 title="Provider model identifier (e.g., qwen-mt-turbo, gpt-5-mini).">
           <small class="help">Translation model name. Higher-tier models cost more.</small>
 
           <label for="providerPreset">Provider preset</label>
@@ -223,6 +223,7 @@
             <option value="dashscope">DashScope (Qwen)</option>
             <option value="openai">OpenAI</option>
             <option value="openrouter">OpenRouter</option>
+            <option value="mistral">Mistral</option>
             <option value="deepl">DeepL</option>
             <option value="macos">macOS</option>
             <option value="ollama">Ollama</option>
@@ -319,6 +320,7 @@
   <script src="lib/providers.js"></script>
   <script src="providers/openai.js"></script>
   <script src="providers/openrouter.js"></script>
+  <script src="providers/mistral.js"></script>
   <script src="providers/deepl.js"></script>
   <script src="providers/dashscope.js"></script>
   <script src="providers/macos.js"></script>
