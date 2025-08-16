@@ -14,24 +14,50 @@
   msg.textContent = 'Support development:';
   banner.appendChild(msg);
   const donations = [
-    { label: 'Coffee €5', url: 'https://paypal.me/micc0z/5' },
-    { label: 'Beer €7', url: 'https://paypal.me/micc0z/7' },
-    { label: 'Dinner €20', url: 'https://paypal.me/micc0z/20' },
+    {
+      label: 'Coffee €5',
+      links: [
+        { label: 'PayPal', url: 'https://paypal.me/micc0z/5' },
+        { label: 'Stripe', url: 'https://buy.stripe.com/test5' },
+      ],
+    },
+    {
+      label: 'Beer €7',
+      links: [
+        { label: 'PayPal', url: 'https://paypal.me/micc0z/7' },
+        { label: 'Stripe', url: 'https://buy.stripe.com/test7' },
+      ],
+    },
+    {
+      label: 'Dinner €20',
+      links: [
+        { label: 'PayPal', url: 'https://paypal.me/micc0z/20' },
+        { label: 'Stripe', url: 'https://buy.stripe.com/test20' },
+      ],
+    },
   ];
   donations.forEach(opt => {
-    const a = document.createElement('a');
-    a.textContent = opt.label;
-    a.href = opt.url;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    a.style.color = 'var(--primary-color)';
-    a.addEventListener('click', async e => {
-      e.preventDefault();
-      if (chrome?.tabs?.create) chrome.tabs.create({ url: opt.url });
-      await chrome.storage.sync.set({ supporter: true });
-      banner.textContent = 'You rock!';
+    const wrap = document.createElement('span');
+    wrap.textContent = opt.label + ': ';
+    opt.links.forEach((lnk, idx) => {
+      const a = document.createElement('a');
+      a.textContent = lnk.label;
+      a.href = lnk.url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.style.color = 'var(--primary-color)';
+      a.addEventListener('click', async e => {
+        e.preventDefault();
+        if (chrome?.tabs?.create) chrome.tabs.create({ url: lnk.url });
+        await chrome.storage.sync.set({ supporter: true });
+        banner.textContent = 'You rock!';
+      });
+      wrap.appendChild(a);
+      if (idx < opt.links.length - 1) {
+        wrap.appendChild(document.createTextNode('/'));
+      }
     });
-    banner.appendChild(a);
+    banner.appendChild(wrap);
   });
   container.prepend(banner);
 })();
