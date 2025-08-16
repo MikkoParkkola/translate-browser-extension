@@ -40,6 +40,22 @@
 - Commits: imperative, present tense (e.g., "Replace PDF text …"). Optional prefixes `feat:`, `fix:`, `chore:` are welcome when meaningful.
 - PRs: clear description, linked issue, test plan, and screenshots/GIFs for UI changes (PDF viewer, content script). Note any config changes.
 
+## Definition of Done
+- Implement features using test-driven development (write failing tests first).
+- Update unit, integration, and end-to-end test automation.
+- Maintain test automation coverage above 80% with a 95% target.
+- Ensure all CI tests pass and local test automation succeeds.
+- Update AGENTS.md with feature descriptions, architecture notes, style guides, and coding conventions.
+- Keep troubleshooting instructions and debug logging current.
+- Document code and remove dead code.
+- Ensure dashboards and statistics are up to date.
+- Complete security review and implement recommendations.
+- Complete architecture review and implement recommendations.
+- Complete performance review and implement recommendations.
+- Complete UX review and implement recommendations.
+- Complete legal review (IPRs/GDPR/License) and implement recommendations.
+- Catch and log errors, handle recovery, and implement failbacks.
+- Obtain explicit user approval for breaking changes or dropped functionality.
 ## Security & Configuration Tips
 - Never commit API keys. `src/config.local.js` is gitignored; use it for local `pdfViewer.html`. Or run `set-config.js` in the extension popup console to seed `chrome.storage.sync`.
 - Store secrets only in `chrome.storage.sync`. Avoid logging secrets; use `debug` flag for verbose logs.
