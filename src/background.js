@@ -262,7 +262,6 @@ function broadcastEta() {
 
 async function updateIcon() {
   await ensureThrottle();
-  if (typeof OffscreenCanvas === 'undefined') return;
   const { requests, requestLimit, tokens, tokenLimit } = self.qwenThrottle.getUsage();
   const reqPct = requestLimit ? requests / requestLimit : 0;
   const tokPct = tokenLimit ? tokens / tokenLimit : 0;
@@ -270,8 +269,15 @@ async function updateIcon() {
   const busy = activeTranslations > 0;
 
   const size = 128;
-  const c = new OffscreenCanvas(size, size);
-  const ctx = c.getContext('2d');
+  let c, ctx;
+  if (typeof OffscreenCanvas !== 'undefined') {
+    c = new OffscreenCanvas(size, size);
+    ctx = c.getContext('2d');
+  } else if (typeof document !== 'undefined') {
+    c = document.createElement('canvas');
+    c.width = c.height = size;
+    ctx = c.getContext('2d');
+  } else return;
   ctx.clearRect(0, 0, size, size);
 
   // background ring

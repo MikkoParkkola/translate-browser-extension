@@ -127,6 +127,35 @@ describe('background icon plus indicator', () => {
     expect(translateSpy).toHaveBeenCalledWith(expect.objectContaining({ noProxy: true }));
     expect(posted.length).toBeGreaterThan(0);
   });
+
+  test('falls back to canvas when OffscreenCanvas missing', async () => {
+    delete global.OffscreenCanvas;
+    const ctx = {
+      clearRect: jest.fn(),
+      lineWidth: 0,
+      strokeStyle: '',
+      beginPath: jest.fn(),
+      arc: jest.fn(),
+      stroke: jest.fn(),
+      fillStyle: '',
+      fill: jest.fn(),
+      getImageData: () => ({}),
+      textAlign: '',
+      textBaseline: '',
+      font: '',
+      fillText: jest.fn(),
+    };
+    const canvas = { width: 0, height: 0, getContext: () => ctx };
+    const createSpy = jest
+      .spyOn(global.document, 'createElement')
+      .mockImplementation(() => canvas);
+    chrome.action.setIcon.mockClear();
+    updateBadge();
+    await Promise.resolve();
+    expect(createSpy).toHaveBeenCalledWith('canvas');
+    expect(chrome.action.setIcon).toHaveBeenCalled();
+    createSpy.mockRestore();
+  });
 });
 
 describe('background cost tracking', () => {
