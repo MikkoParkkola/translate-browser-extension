@@ -75,6 +75,29 @@
       if (v != null) input.value = v;
     });
 
+    const modelsInput = li.querySelector('[data-field="models"]');
+    const plusLabel = document.createElement('label');
+    const plusCheck = document.createElement('input');
+    plusCheck.type = 'checkbox';
+    plusLabel.appendChild(plusCheck);
+    plusLabel.append(' Enable qwen-mt-plus fallback');
+    modelsInput.parentElement.insertAdjacentElement('afterend', plusLabel);
+    plusCheck.checked = Array.isArray(data.models) && data.models.includes('qwen-mt-plus');
+    function syncPlusCheckbox() {
+      const models = modelsInput.value.split(',').map(s => s.trim()).filter(Boolean);
+      plusCheck.checked = models.includes('qwen-mt-plus');
+      updateCostWarning(li);
+    }
+    modelsInput.addEventListener('input', syncPlusCheckbox);
+    plusCheck.addEventListener('change', () => {
+      let models = modelsInput.value.split(',').map(s => s.trim()).filter(Boolean);
+      const hasPlus = models.includes('qwen-mt-plus');
+      if (plusCheck.checked && !hasPlus) models.push('qwen-mt-plus');
+      if (!plusCheck.checked && hasPlus) models = models.filter(m => m !== 'qwen-mt-plus');
+      modelsInput.value = models.join(', ');
+      updateCostWarning(li);
+    });
+
     const extra = li.querySelector('.extra-limits');
     numericFields.forEach(f => {
       if (f === 'requestLimit' || f === 'tokenLimit') return;
@@ -99,7 +122,7 @@
       }
     });
 
-    ['model','models'].forEach(f => {
+    ['model'].forEach(f => {
       const input = li.querySelector(`[data-field="${f}"]`);
       if (input) input.addEventListener('input', () => updateCostWarning(li));
     });
@@ -155,7 +178,6 @@
         let v = input.value.trim();
         if (f === 'models') {
           let models = v.split(',').map(s => s.trim()).filter(Boolean);
-          if (models.includes('qwen-mt-turbo') && !models.includes('qwen-mt-plus')) models.push('qwen-mt-plus');
           data.models = models;
         } else if (numeric.includes(f)) {
           if (!validateNumber(input)) valid = false;

@@ -48,10 +48,12 @@ function migrate(cfg = {}) {
   if (!p.weight) p.weight = 0;
   if (!p.charLimit) p.charLimit = out.charLimit || 0;
   if (!p.strategy) p.strategy = out.strategy || 'balanced';
-  if (!p.models) p.models = p.model ? [p.model] : [];
-  if (p.model === 'qwen-mt-turbo' && !p.models.includes('qwen-mt-plus')) p.models.push('qwen-mt-plus');
+  if (Array.isArray(cfg.models)) p.models = cfg.models.slice();
+  else if (!p.models) p.models = p.model ? [p.model] : [];
   if (!p.secondaryModel) {
-    p.secondaryModel = p.model === 'qwen-mt-plus' ? 'qwen-mt-turbo' : 'qwen-mt-plus';
+    p.secondaryModel = p.models.length > 1
+      ? p.models.find(m => m !== p.model) || ''
+      : '';
   }
   out.apiKey = p.apiKey || out.apiKey || '';
   out.apiEndpoint = p.apiEndpoint || out.apiEndpoint || '';
