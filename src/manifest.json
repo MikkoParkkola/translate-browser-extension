@@ -18,9 +18,6 @@
     "https://api.deepl.com/*",
     "https://api-free.deepl.com/*"
   ],
-  "optional_host_permissions": [
-    "file:///*"
-  ],
   "background": {
     "service_worker": "background.js"
   },

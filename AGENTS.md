@@ -16,6 +16,7 @@
 
 ## Build, Test, and Development Commands
 - `npm install` once to fetch dependencies.
+- `npx playwright install --with-deps chromium` once to install browsers and system libs for e2e tests.
 - `npm test`: Runs Jest with jsdom and `jest-fetch-mock`.
 - `npm run build`: Copies `src/` to `dist/` (web-accessible assets included).
 - `npm run build:zip`: Produces a reproducible ZIP in `dist/`.
@@ -35,6 +36,8 @@
   - Translator streaming integration; batch read-through; TTL/LRU; in-memory LRU with normalization; mixed-language batching (auto-detect per text and language-clustered groups).
   - TM: TTL + LRU pruning; metrics (hits, misses, sets, evictionsTTL/LRU).
   - Logger redaction: Authorization/apiKey redaction in strings and nested objects.
+  - Background icon status and context menu registration (`test/background.test.js`).
+  - Selection/DOM flows (`e2e/context-menu.spec.js`, `e2e/dom-translate.spec.js`) run via `npm run test:e2e:web`; PDF compare (`e2e/pdf-compare.spec.js`) runs via `npm run test:e2e:pdf`. `npm run test:e2e` executes both suites.
 
 ## Commit & Pull Request Guidelines
 - Commits: imperative, present tense (e.g., "Replace PDF text …"). Optional prefixes `feat:`, `fix:`, `chore:` are welcome when meaningful.
@@ -89,6 +92,9 @@
   - Provider presets (DashScope/OpenAI/DeepL/OpenRouter); provider-specific endpoints/keys/models; version/date shown in popup.
   - Logging via `qwenLogger` with levels and collectors; popup debug output uses the logger.
   - Fetch strategy is centralized in `lib/fetchStrategy.js`; override with `qwenFetchStrategy.setChooser(fn)` for custom proxy/direct routing.
+  - Browser action icon shows quota usage ring and status dot (green active, red error, gray idle); badge reflects active translations.
+  - Context menu entries: "Translate selection", "Translate page", and "Enable auto-translate on this site".
+  - Popup "Test settings" button runs connectivity and translation diagnostics and reports results.
 - Build/CI
   - Reproducible dist + zip; CI builds/tests and uploads artifacts on push/PR.
 

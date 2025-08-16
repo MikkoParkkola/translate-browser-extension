@@ -6,7 +6,9 @@
   "scripts": {
     "test": "jest",
     "build:safari": "bash scripts/convert-safari.sh",
-    "test:e2e": "playwright test e2e/pdf-compare.spec.js",
+    "test:e2e:web": "playwright test e2e/context-menu.spec.js e2e/dom-translate.spec.js",
+    "test:e2e:pdf": "playwright test e2e/pdf-compare.spec.js",
+    "test:e2e": "npm run test:e2e:web && npm run test:e2e:pdf",
     "e2e": "npm run test:e2e",
     "postinstall": "bash scripts/fetch-wasm-assets.sh",
     "clean": "rimraf dist",
@@ -22,11 +24,11 @@
   "type": "commonjs",
   "types": "types/index.d.ts",
   "devDependencies": {
-    "@playwright/test": "^1.45.2",
+    "@playwright/test": "^1.54.2",
     "@types/jest": "^30.0.0",
     "cross-fetch": "^4.1.0",
     "http-server": "^14.1.1",
-    "fake-indexeddb": "^5.0.2",
+    "fake-indexeddb": "^6.1.0",
     "jest": "^30.0.5",
     "jest-environment-jsdom": "^30.0.5",
     "jest-fetch-mock": "^3.0.3",
@@ -34,8 +36,8 @@
     "pdf-lib": "^1.17.1",
     "bestzip": "^2.2.1",
     "copyfiles": "^2.4.1",
-    "rimraf": "^5.0.5",
-    "typescript": "^5.4.5"
+    "rimraf": "^6.0.1",
+    "typescript": "^5.9.2"
   },
   "dependencies": {
     "mupdf": "^1.26.4",
