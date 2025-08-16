@@ -552,6 +552,18 @@ window.qwenLoadConfig().then(cfg => {
     });
   });
 
+  const tokenLimits = typeof modelTokenLimits === 'object' ? modelTokenLimits : {};
+  const fixedModels = new Set(['qwen-mt-turbo', 'qwen-mt-plus']);
+  [modelInput, setupModelInput].forEach(input => {
+    input.addEventListener('change', () => {
+      const model = input.value.trim();
+      const limit = tokenLimits[model];
+      if (!limit || fixedModels.has(model)) return;
+      tokenLimitInput.value = limit;
+      saveConfig();
+    });
+  });
+
   [reqLimitInput, tokenLimitInput, tokenBudgetInput, memCacheMaxInput, strategySelect].forEach(el => el.addEventListener('input', saveConfig));
   if (sensitivityInput && sensitivityValueSpan) {
     const updateSensitivityValue = () => {
