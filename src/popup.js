@@ -26,6 +26,8 @@ const totalReq = document.getElementById('totalReq') || document.createElement('
 const totalTok = document.getElementById('totalTok') || document.createElement('span');
 const queueLen = document.getElementById('queueLen') || document.createElement('span');
 const costSection = document.getElementById('costSection') || document.createElement('div');
+const turboReqBar = document.getElementById('turboReqBar') || document.createElement('div');
+const plusReqBar = document.getElementById('plusReqBar') || document.createElement('div');
 const cacheStatsDiv = document.getElementById('cacheStats') || document.createElement('div');
 const tmStatsDiv = document.getElementById('tmStats') || document.createElement('div');
 const translateBtn = document.getElementById('translate') || document.createElement('button');
@@ -500,6 +502,20 @@ function renderProviderUsage(cfg, usage) {
   });
 }
 
+function refreshQuota() {
+  ['qwen-mt-turbo', 'qwen-mt-plus'].forEach(model => {
+    chrome.runtime.sendMessage({ action: 'quota', model }, res => {
+      if (chrome.runtime.lastError || !res || !res.remaining) return;
+      const rem = res.remaining || {};
+      const used = res.used || {};
+      const total = (used.requests || 0) + (rem.requests || 0);
+      const bar = model === 'qwen-mt-turbo' ? turboReqBar : plusReqBar;
+      setBar(bar, total ? (rem.requests || 0) / total : 0);
+      bar.textContent = `${rem.requests || 0}r ${rem.tokens || 0}t`;
+    });
+  });
+}
+
 function refreshUsage() {
   chrome.runtime.sendMessage({ action: 'usage' }, res => {
     if (chrome.runtime.lastError || !res) return;
@@ -525,6 +541,8 @@ function refreshUsage() {
   });
 }
 
+setInterval(refreshQuota, 30000);
+refreshQuota();
 setInterval(refreshUsage, 1000);
 refreshUsage();
 
