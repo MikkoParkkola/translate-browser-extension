@@ -23,8 +23,9 @@ const defaultCfg = {
   secondaryModel: '',
   models: [],
   providers: {
-    google: { charLimit: 500000 },
-    deepl: { charLimit: 500000 },
+    // Approximate default monthly limits for external providers
+    google: { charLimit: 500000 }, // ~500k characters
+    deepl: { charLimit: 500000 }, // ~500k characters
   },
   providerOrder: [],
   failover: true,
