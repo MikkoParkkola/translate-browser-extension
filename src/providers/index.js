@@ -8,6 +8,7 @@ function initProviders() {
     'deepl-free': require('./deepl').free,
     'deepl-pro': require('./deepl').pro,
     macos: { ...require('./macos'), label: 'macOS' },
+    mistral: { ...require('./mistral'), label: 'Mistral' },
     openrouter: { ...require('./openrouter'), label: 'OpenRouter' },
     ollama: { ...require('./ollama'), label: 'Ollama' },
   });

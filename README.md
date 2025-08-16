@@ -40,7 +40,7 @@ See `safari/README.md` for detailed iOS/iPadOS deployment steps.
 
 ## Configuration
 Use the popup to configure:
-- Provider preset to auto-fill endpoint and a typical model (DashScope/Qwen, OpenAI, DeepL)
+- Provider preset to auto-fill endpoint and a typical model (DashScope/Qwen, OpenAI, DeepL, Mistral)
 - API key for your chosen provider (keys are stored locally; never injected into pages)
 - Translation model name (e.g., `qwen-mt-turbo`, `gpt-4o-mini`)
 - Source and target languages (Source can be “Auto-detect”)
@@ -64,6 +64,7 @@ The sample phrase is chosen based on the configured source language so the trans
 ### Where to get API keys
 - DashScope (Qwen): https://dashscope.console.aliyun.com/
 - OpenAI: https://platform.openai.com/api-keys
+- Mistral: https://console.mistral.ai/
 - DeepL: https://www.deepl.com/pro-api
 - Google Cloud (Detection): https://cloud.google.com/translate/docs/setup
 
