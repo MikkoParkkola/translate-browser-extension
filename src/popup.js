@@ -40,6 +40,7 @@ const clearPairBtn = document.getElementById('clearPair') || document.createElem
 const statsReq = document.getElementById('statsRequests') || document.createElement('span');
 const statsTok = document.getElementById('statsTokens') || document.createElement('span');
 const statsLatency = document.getElementById('statsLatency') || document.createElement('span');
+const statsEta = document.getElementById('statsEta') || document.createElement('span');
 const statsQuality = document.getElementById('statsQuality') || document.createElement('span');
 const statsDetails = document.getElementById('statsDetails') || document.createElement('details');
 const statsSummary = statsDetails.querySelector('summary') || document.createElement('summary');
@@ -341,11 +342,17 @@ chrome.runtime.onMessage.addListener(msg => {
     }
   }
   if (msg.action === 'stats' && msg.stats) {
-    const { requests, tokens, avgLatency, quality } = msg.stats;
+    const { requests, tokens, eta, avgLatency, quality } = msg.stats;
     statsReq.textContent = requests;
     statsTok.textContent = tokens;
     statsLatency.textContent = typeof avgLatency === 'number' ? avgLatency.toFixed(0) : '0';
     statsQuality.textContent = typeof quality === 'number' ? quality.toFixed(2) : '0';
+    if (statsEta) statsEta.textContent = typeof eta === 'number' ? eta.toFixed(1) : '0';
+    if (statsSummary) {
+      statsSummary.textContent = typeof eta === 'number' && !isNaN(eta)
+        ? `Stats · ETA ${eta.toFixed(1)}s`
+        : 'Stats';
+    }
     renderSparklines();
   }
 });
@@ -391,6 +398,12 @@ chrome.runtime.sendMessage({ action: 'get-stats' }, res => {
     statsTok.textContent = res.tokens || 0;
     statsLatency.textContent = typeof res.avgLatency === 'number' ? res.avgLatency.toFixed(0) : '0';
     statsQuality.textContent = typeof res.quality === 'number' ? res.quality.toFixed(2) : '0';
+    if (statsEta) statsEta.textContent = typeof res.eta === 'number' ? res.eta.toFixed(1) : '0';
+    if (statsSummary) {
+      statsSummary.textContent = typeof res.eta === 'number' && !isNaN(res.eta)
+        ? `Stats · ETA ${res.eta.toFixed(1)}s`
+        : 'Stats';
+    }
     renderSparklines();
   }
 });
