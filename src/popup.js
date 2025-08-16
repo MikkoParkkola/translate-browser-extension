@@ -35,6 +35,7 @@ const tmStatsDiv = document.getElementById('tmStats') || document.createElement(
 const translateBtn = document.getElementById('translate') || document.createElement('button');
 const testBtn = document.getElementById('test') || document.createElement('button');
 const progressBar = document.getElementById('progress') || document.createElement('progress');
+const providerCountSpan = document.getElementById('providerCount') || document.createElement('span');
 const providerPreset = document.getElementById('providerPreset') || document.createElement('select');
 const clearPairBtn = document.getElementById('clearPair') || document.createElement('button');
 const statsReq = document.getElementById('statsRequests') || document.createElement('span');
@@ -434,6 +435,7 @@ resetCalibrationBtn.addEventListener('click', () => {
 
 window.qwenLoadConfig().then(cfg => {
   window.qwenConfig = cfg;
+  providerCountSpan.textContent = Object.keys(cfg.providers || {}).length;
   // Populate main view
   apiKeyInput.value = cfg.apiKey || '';
   if (detectApiKeyInput) detectApiKeyInput.value = cfg.detectApiKey || '';
