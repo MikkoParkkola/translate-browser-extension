@@ -487,18 +487,22 @@ function renderProviderUsage(cfg, usage) {
   if (!providerUsage) return;
   providerUsage.innerHTML = '';
   const provs = cfg.providers || {};
+  const stats = (usage && usage.providers) || {};
   Object.entries(provs).forEach(([id, p]) => {
-    const models = p.models || (p.model ? [p.model] : []);
-    const limit = p.requestLimit || cfg.requestLimit || 0;
-    models.forEach(m => {
-      const used = usage.models && usage.models[m] ? usage.models[m].requests || 0 : 0;
-      const total = limit || 0;
-      const item = document.createElement('div');
-      item.className = 'usage-item';
-      const ratio = total ? Math.min(1, used / total) : 0;
-      item.innerHTML = `<span>${m}: ${used}${total ? '/' + total : ''}</span><div class="bar"><div style="width:${ratio * 100}%"></div></div>`;
-      providerUsage.appendChild(item);
-    });
+    const limit = p.charLimit || cfg.charLimit || 0;
+    const used = stats[id] ? stats[id].chars || 0 : 0;
+    const item = document.createElement('div');
+    item.className = 'usage-item';
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    const fill = document.createElement('div');
+    bar.appendChild(fill);
+    setBar(fill, limit ? used / limit : 0);
+    const label = document.createElement('span');
+    label.textContent = `${id}: ${used}${limit ? '/' + limit : ''}`;
+    item.appendChild(label);
+    item.appendChild(bar);
+    providerUsage.appendChild(item);
   });
 }
 
