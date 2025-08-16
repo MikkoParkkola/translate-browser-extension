@@ -593,6 +593,7 @@ window.qwenLoadConfig().then(cfg => {
         dashscope: { endpoint: 'https://dashscope-intl.aliyuncs.com/api/v1', model: 'qwen-mt-turbo' },
         openai:    { endpoint: 'https://api.openai.com/v1',                   model: 'gpt-5-mini' },
         openrouter:{ endpoint: 'https://openrouter.ai/api/v1',               model: 'gpt-5-mini' },
+        mistral:   { endpoint: 'https://api.mistral.ai/v1',                  model: 'mistral-small' },
         deepl:     { endpoint: 'https://api.deepl.com/v2',                    model: 'deepl' },
         ollama:    { endpoint: 'http://localhost:11434',                     model: 'qwen2:latest' }
       };
@@ -613,6 +614,7 @@ window.qwenLoadConfig().then(cfg => {
       let inferred = '';
       if (v.includes('openai')) inferred = 'openai';
       else if (v.includes('openrouter')) inferred = 'openrouter';
+      else if (v.includes('mistral')) inferred = 'mistral';
       else if (v.includes('deepl')) inferred = 'deepl';
       else if (v.includes('dashscope')) inferred = 'dashscope';
       else if (v.includes('11434') || v.includes('ollama')) inferred = 'ollama';

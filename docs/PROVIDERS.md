@@ -13,6 +13,12 @@ OpenAI
 - Models: gpt-5, gpt-5-mini, gpt-5-nano (chat/completions)
 - Notes: Use a model available to your account. Background keeps the key.
 
+Mistral
+- Endpoint: https://api.mistral.ai/v1
+- Keys: https://console.mistral.ai/
+- Models: mistral-small, mistral-medium
+- Notes: Streaming supported (SSE). Custom endpoints allow self-hosted deployments.
+
 Anthropic (Claude)
 - Endpoint: https://api.anthropic.com/v1
 - Keys: https://console.anthropic.com/account/api-keys
