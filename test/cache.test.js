@@ -94,3 +94,14 @@ test('clear cache by domain and language pair', async () => {
   qwenClearCacheLangPair('en', 'es');
   expect(getCache('qwen:en:es:hola')).toBeUndefined();
 });
+
+test('removeCache deletes entry from memory and storage', async () => {
+  const { cacheReady, setCache, getCache, removeCache } = require('../src/cache');
+  await cacheReady;
+  setCache('k1', { text: 'x' });
+  expect(getCache('k1').text).toBe('x');
+  removeCache('k1');
+  expect(getCache('k1')).toBeUndefined();
+  const stored = JSON.parse(localStorage.getItem('qwenCache') || '{}');
+  expect(stored.k1).toBeUndefined();
+});

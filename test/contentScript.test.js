@@ -104,9 +104,11 @@ test('batches DOM nodes when exceeding token limit', async () => {
   const calls = jest.fn(async ({ texts }) => ({ texts }));
   window.qwenTranslateBatch = calls;
   document.body.innerHTML = '<p>A</p><p>B</p><p>C</p>';
+  jest.useFakeTimers();
   messageListener({ action: 'start' });
-  await new Promise(r => setTimeout(r, 50));
+  await jest.runOnlyPendingTimersAsync();
   expect(calls).toHaveBeenCalledTimes(4);
+  jest.useRealTimers();
   window.qwenTranslateBatch = original;
   delete window.qwenThrottle;
 });
@@ -140,8 +142,30 @@ test('force translation bypasses cache', async () => {
   await translateBatch(nodes);
   expect(network).toHaveBeenCalledTimes(1);
   document.body.innerHTML = '<p><span>Hello</span></p>';
+  jest.useFakeTimers();
   messageListener({ action: 'start', force: true });
-  await new Promise(r => setTimeout(r, 20));
+  await jest.runOnlyPendingTimersAsync();
   expect(network.mock.calls.length).toBeGreaterThan(1);
+  jest.useRealTimers();
   window.qwenTranslateBatch = original;
+});
+
+test('groups DOM nodes into batches by token budget', async () => {
+  const original = window.qwenTranslateBatch;
+  window.qwenThrottle = { approxTokens: () => 3000, getUsage: () => null };
+  const calls = [];
+  window.qwenTranslateBatch = jest.fn(async ({ texts }) => {
+    calls.push(texts);
+    return { texts };
+  });
+  document.body.innerHTML = '<p>A</p><p>B</p><p>C</p><p>D</p>';
+  jest.useFakeTimers();
+  messageListener({ action: 'start' });
+  await jest.runOnlyPendingTimersAsync();
+  expect(calls.length).toBeGreaterThanOrEqual(2);
+  expect(calls[0]).toEqual(['A', 'B']);
+  expect(calls[1]).toEqual(['C', 'D']);
+  jest.useRealTimers();
+  window.qwenTranslateBatch = original;
+  delete window.qwenThrottle;
 });

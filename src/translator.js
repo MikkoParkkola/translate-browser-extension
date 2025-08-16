@@ -12,7 +12,6 @@ var _setMaxCacheEntries;
 var _setCacheTTL;
 var _setCacheEntryTimestamp;
 var LZString;
-var attempts = 6;
 var runWithRateLimit;
 var approxTokens;
 var getUsage;
@@ -63,10 +62,43 @@ if (typeof translateRequest !== 'function') {
   streamRequest = mod.streamRequest || mod.translate;
 }
 
-async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false, noProxy = false, onRetry, retryDelay, force = false, domain }) {
+async function qwenTranslate({
+  provider = 'qwen',
+  endpoint,
+  apiKey,
+  model,
+  models,
+  text,
+  source,
+  target,
+  signal,
+  debug = false,
+  stream = false,
+  noProxy = false,
+  onRetry,
+  retryDelay,
+  force = false,
+  domain,
+}) {
   await cacheReady;
-  const modelList = Array.isArray(model) ? model : [model];
-  const selectedModel = modelList[0];
+  const modelList =
+    typeof models === 'undefined'
+      ? Array.isArray(model)
+        ? model
+        : [model]
+      : Array.isArray(models)
+      ? models
+      : [models];
+  let selectedModel = modelList[0];
+  if (modelList.length > 1 && typeof getUsage === 'function') {
+    try {
+      const usage = getUsage() || {};
+      if (usage.requestLimit && usage.requests && usage.requests > usage.requestLimit * 0.5) {
+        selectedModel = modelList[1];
+      }
+    } catch {}
+  }
+  model = selectedModel;
   if (debug) {
     console.log('QTDEBUG: qwenTranslate called with', {
       provider,
@@ -98,7 +130,7 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text,
         chrome.runtime.sendMessage(
           {
             action: 'translate',
-      opts: { provider, endpoint: ep, apiKey, model: selectedModel, models: modelList, text, source, target, debug },
+      opts: { provider, endpoint: ep, apiKey, model, models: modelList, text, source, target, debug },
           },
           res => {
             if (chrome.runtime.lastError) {
@@ -177,16 +209,47 @@ async function qwenTranslate({ provider = 'qwen', endpoint, apiKey, model, text,
   }
 }
 
-async function qwenTranslateStream({ provider = 'qwen', endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true, noProxy = false, onRetry, retryDelay, force = false, domain }, onData) {
+async function qwenTranslateStream(
+  {
+    provider = 'qwen',
+    endpoint,
+    apiKey,
+    model,
+    models,
+    text,
+    source,
+    target,
+    signal,
+    debug = false,
+    stream = true,
+    noProxy = false,
+    onRetry,
+    retryDelay,
+    force = false,
+    domain,
+  },
+  onData
+) {
   await cacheReady;
   const modelList =
     typeof models === 'undefined'
-      ? [model]
+      ? Array.isArray(model)
+        ? model
+        : [model]
       : Array.isArray(models)
       ? models
       : [models];
+  let selectedModel = modelList[0];
+  if (modelList.length > 1 && typeof getUsage === 'function') {
+    try {
+      const usage = getUsage() || {};
+      if (usage.requestLimit && usage.requests && usage.requests > usage.requestLimit * 0.5) {
+        selectedModel = modelList[1];
+      }
+    } catch {}
+  }
+  model = selectedModel;
   if (debug) {
-    const modelList = Array.isArray(model) ? model : [model];
     console.log('QTDEBUG: qwenTranslateStream called with', {
       endpoint,
       apiKeySet: Boolean(apiKey),
