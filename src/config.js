@@ -28,7 +28,7 @@ const defaultCfg = {
   },
   providerOrder: [],
   failover: true,
-  parallel: false,
+  parallel: 'auto',
 };
 
 const modelTokenLimits = {
@@ -72,7 +72,7 @@ function migrate(cfg = {}) {
   out.models = p.models || [];
   if (!Array.isArray(out.providerOrder)) out.providerOrder = [];
   if (typeof out.failover !== 'boolean') out.failover = true;
-  if (typeof out.parallel !== 'boolean') out.parallel = false;
+  if (typeof out.parallel !== 'boolean' && out.parallel !== 'auto') out.parallel = 'auto';
   return out;
 }
 
