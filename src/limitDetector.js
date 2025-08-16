@@ -1,14 +1,16 @@
-let findLimit;
-if (typeof require !== 'undefined') {
-  findLimit = require('./findLimit');
+let findLimitFn;
+if (typeof findLimit === 'function') {
+  findLimitFn = findLimit;
+} else if (typeof require !== 'undefined') {
+  findLimitFn = require('./findLimit');
 } else if (typeof window !== 'undefined' && window.qwenFindLimit) {
-  findLimit = window.qwenFindLimit;
+  findLimitFn = window.qwenFindLimit;
 } else {
-  findLimit = async () => 0;
+  findLimitFn = async () => 0;
 }
 
 async function detectTokenLimit(translate, { start = 256, max = 8192 } = {}) {
-  return findLimit(async n => {
+  return findLimitFn(async n => {
     const text = 'x'.repeat(n);
     await translate(text);
     return true;
@@ -16,7 +18,7 @@ async function detectTokenLimit(translate, { start = 256, max = 8192 } = {}) {
 }
 
 async function detectRequestLimit(translate, { start = 1, max = 120 } = {}) {
-  return findLimit(async n => {
+  return findLimitFn(async n => {
     for (let i = 0; i < n; i++) {
       try {
         await translate(i);

@@ -10,7 +10,7 @@ describe('background icon plus indicator', () => {
         setIcon: jest.fn(),
       },
       runtime: { onInstalled: { addListener: jest.fn() }, onMessage: { addListener: jest.fn() }, onConnect: { addListener: jest.fn() } },
-      contextMenus: { create: jest.fn(), removeAll: jest.fn(), onClicked: { addListener: jest.fn() } },
+      contextMenus: { create: jest.fn(), removeAll: jest.fn(cb => cb && cb()), onClicked: { addListener: jest.fn() } },
       tabs: { onUpdated: { addListener: jest.fn() } },
       storage: {
         sync: { get: (_, cb) => cb({ requestLimit: 60, tokenLimit: 60 }) },
@@ -22,6 +22,7 @@ describe('background icon plus indicator', () => {
     };
     global.importScripts = () => {};
     global.setInterval = () => {};
+    global.lastCtx = null;
     global.OffscreenCanvas = class {
       constructor() {
         this.ctx = {
@@ -35,6 +36,7 @@ describe('background icon plus indicator', () => {
           fill: jest.fn(),
           getImageData: () => ({}),
         };
+        global.lastCtx = this.ctx;
       }
       getContext() { return this.ctx; }
     };
@@ -54,6 +56,45 @@ describe('background icon plus indicator', () => {
     _setActiveTranslations(1);
     updateBadge();
     expect(chrome.action.setBadgeText).toHaveBeenCalledWith({ text: 'P' });
+  });
+
+  test('creates context menu entries', () => {
+    const ids = chrome.contextMenus.create.mock.calls.map(c => c[0].id).sort();
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        'qwen-translate-selection',
+        'qwen-translate-page',
+        'qwen-enable-site',
+      ])
+    );
+  });
+
+  test('icon shows gray when idle', async () => {
+    _setActiveTranslations(0);
+    updateBadge();
+    await Promise.resolve();
+    expect(lastCtx.fillStyle).toBe('#808080');
+  });
+
+  test('icon shows green when busy', async () => {
+    _setActiveTranslations(1);
+    updateBadge();
+    await Promise.resolve();
+    expect(lastCtx.fillStyle).toBe('#00c853');
+  });
+
+  test('icon shows red on error', async () => {
+    global.qwenTranslate = jest.fn().mockRejectedValue(new Error('fail'));
+    await handleTranslate({
+      endpoint: 'https://e/',
+      apiKey: 'k',
+      model: 'm',
+      text: 'hi',
+      source: 'en',
+      target: 'es',
+    }).catch(() => {});
+    await Promise.resolve();
+    expect(lastCtx.fillStyle).toBe('#ff1744');
   });
 
   test('reports per-model usage', async () => {
