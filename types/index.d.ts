@@ -38,7 +38,7 @@ export interface BatchOptions {
   providerOrder?: string[];
   endpoints?: Record<string, string>;
   failover?: boolean;
-  parallel?: boolean;
+  parallel?: boolean | 'auto';
 }
 export declare function qwenTranslate(opts: TranslateOptions): Promise<{ text: string }>
 export declare function qwenTranslateStream(opts: TranslateOptions, onData: (chunk: string) => void): Promise<{ text: string }>

@@ -9,8 +9,10 @@ function initProviders() {
     'deepl-pro': require('./deepl').pro,
     macos: { ...require('./macos'), label: 'macOS' },
     mistral: { ...require('./mistral'), label: 'Mistral' },
+    openai: { ...require('./openai'), label: 'OpenAI' },
     openrouter: { ...require('./openrouter'), label: 'OpenRouter' },
     ollama: { ...require('./ollama'), label: 'Ollama' },
+    anthropic: { ...require('./anthropic'), label: 'Anthropic' },
   });
 }
 

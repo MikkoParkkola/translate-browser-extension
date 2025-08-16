@@ -22,8 +22,9 @@
     }
 
     html {
-      height: 100%;
-      background: var(--bg-color) url('styles/popup-bg.svg') center/cover fixed no-repeat;
+      min-height: 100%;
+      background: var(--bg-color) url('styles/popup-bg.svg') top left/400px 600px repeat;
+      background-attachment: local;
     }
 
     body {
@@ -102,6 +103,9 @@
       from { opacity: 0; transform: translateY(-4px); }
       to { opacity: 1; transform: translateY(0); }
     }
+    .benchmark-table { width: 100%; font-size: 0.75rem; border-collapse: collapse; margin-top: 0.5rem; }
+    .benchmark-table th, .benchmark-table td { padding: 2px 4px; text-align: left; }
+    .benchmark-table tr.recommended { color: var(--green); }
   </style>
 </head>
 <body class="qwen-bg-animated">
@@ -136,6 +140,16 @@
           <span title="Automatically translate supported pages as they load. You can still click Translate Page to force refresh.">Auto</span>
         </div>
       </div>
+      <div class="grid-2">
+        <div>
+          <label for="source">Source Language</label>
+          <select id="source" title="Language to translate from. Use 'Auto-detect' for convenience and mixed-language pages."></select>
+        </div>
+        <div>
+          <label for="target">Target Language</label>
+          <select id="target" title="Language to translate into (your reading language)."></select>
+        </div>
+      </div>
 
       <div class="view-options">
         <label title="Compact layout"><input type="checkbox" id="compactMode"> Compact</label>
@@ -161,26 +175,7 @@
         <div id="costSection"></div>
       </details>
 
-    <details id="statsDetails" open class="panel-frame">
-      <summary>Stats</summary>
-      <div class="usage-section">
-        <div class="usage-item">Total Requests: <span id="statsRequests">0</span></div>
-        <div class="usage-item">Total Tokens: <span id="statsTokens">0</span></div>
-        <div class="usage-item">Avg Latency: <span id="statsLatency">0</span> ms</div>
-      </div>
-    </details>
     <a href="qa/usage.html" target="_blank" rel="noopener">Usage</a>
-
-    <div class="grid-2">
-      <div>
-        <label for="source">Source Language</label>
-        <select id="source" title="Language to translate from. Use 'Auto-detect' for convenience and mixed-language pages."></select>
-        </div>
-        <div>
-          <label for="target">Target Language</label>
-          <select id="target" title="Language to translate into (your reading language)."></select>
-        </div>
-      </div>
 
       <details class="panel-frame">
         <summary>Getting Started</summary>
@@ -200,8 +195,10 @@
       </details>
 
       <details id="providerSection" class="panel-frame">
-        <summary>Provider</summary>
+        <summary>Providers</summary>
         <div class="form-group" style="padding-top: 0.75rem">
+          <a id="manageProviders" href="popup/providers.html" target="_blank" rel="noopener" class="secondary btn-frame" style="align-self:flex-start">Manage Providers (<span id="providerCount"></span>)</a>
+
           <label for="apiKey">API Key</label>
           <input type="text" id="apiKey" placeholder="Enter your API key"
                  title="Your provider API key. Stored only in browser storage and used by the background. Never injected into pages.">
@@ -217,6 +214,8 @@
                  title="Provider model identifier (e.g., qwen-mt-turbo, gpt-5-mini).">
           <small class="help">Translation model name. Higher-tier models cost more.</small>
 
+          <label title="Use qwen-mt-plus if qwen-mt-turbo fails"><input type="checkbox" id="plusFallback"> Enable qwen-mt-plus fallback</label>
+
           <label for="providerPreset">Provider preset</label>
           <select id="providerPreset" title="Pick a preset to auto‑fill endpoint and a typical model. Paste your API key separately.">
             <option value="">— Choose a provider —</option>
@@ -229,6 +228,29 @@
             <option value="ollama">Ollama</option>
           </select>
           <small class="help">Auto-fills endpoint and model; still paste your own key.</small>
+
+          <label for="strategy">Optimization</label>
+          <select id="strategy" title="How to prioritize providers when using multiple backends.">
+            <option value="cheap">Cheap</option>
+            <option value="fast">Fast</option>
+            <option value="quality">Quality</option>
+            <option value="balanced">Balanced</option>
+          </select>
+          <small class="help">Optimization goal for multi-provider orchestration.</small>
+        </div>
+      </details>
+
+      <details id="limitSection" class="panel-frame">
+        <summary>Rate Limits</summary>
+        <div class="form-group" style="padding-top: 0.75rem">
+          <div id="calibrationStatus" class="help"></div>
+          <label for="requestLimit">Request limit/min</label>
+          <input type="number" id="requestLimit" placeholder="60" min="0" title="Maximum translation requests per minute">
+          <label for="tokenLimit">Token limit/min</label>
+          <input type="number" id="tokenLimit" placeholder="100000" min="0" title="Maximum tokens per minute">
+          <label for="tokenBudget">Token budget</label>
+          <input type="number" id="tokenBudget" placeholder="Optional" min="0" title="Optional per-page token budget">
+          <button id="recalibrate" class="secondary btn-frame">Recalibrate</button>
         </div>
       </details>
 
@@ -252,41 +274,15 @@
             <span>Low</span>
             <input type="range" id="sensitivity" min="0" max="1" step="0.1"
                    title="Minimum confidence required from language detector.">
+            <span id="sensitivityValue">0.0</span>
             <span>High</span>
           </div>
-          <small class="help">Minimum confidence required from language detector.</small>
-        </div>
-      </details>
-
-      <details id="rateSection" class="panel-frame">
-        <summary>Rate Limits</summary>
-        <div class="form-group" style="padding-top: 0.75rem">
-          <div class="grid-2">
-            <div>
-              <label for="requestLimit">Requests/min</label>
-              <input type="number" id="requestLimit" title="Maximum requests per minute. The extension throttles to stay under limits.">
-              <small class="help">Throttle requests per minute; 60 typical.</small>
-            </div>
-            <div>
-              <label for="tokenLimit">Tokens/min</label>
-              <input type="number" id="tokenLimit" title="Maximum tokens per minute. Adjust to match your provider quota.">
-              <small class="help">Match provider quota, e.g., 100000.</small>
-            </div>
-          </div>
-
-          <label for="tokenBudget">Token budget</label>
-          <input type="number" id="tokenBudget" placeholder="auto"
-                 title="Max tokens per batch request. Leave blank for auto‑calibration.">
-          <small class="help">Max tokens per request. Leave blank for auto; 1000–5000 common.</small>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.5rem">
-            <div id="calibrationStatus" style="font-size:0.75rem"></div>
-            <button id="resetCalibration" class="secondary btn-frame" style="font-size:0.75rem;padding:2px 6px">Reset</button>
-          </div>
+          <small class="help">Minimum confidence required from language detector; higher values require stronger language confidence.</small>
         </div>
       </details>
 
       <details id="cacheSection" class="panel-frame">
-      <summary>Cache &amp; Debug</summary>
+        <summary>Cache &amp; Debug</summary>
         <div class="form-group" style="padding-top: 0.75rem">
           <label for="memCacheMax">Memory cache max</label>
           <input type="number" id="memCacheMax" placeholder="5000"
@@ -297,6 +293,8 @@
 
           <label title="Enable detailed logs for troubleshooting in DevTools."><input type="checkbox" id="debug"> Debug logging</label>
           <small class="help">Logs extra info to DevTools; slight performance hit.</small>
+          <label title="Verify translations with a secondary provider."><input type="checkbox" id="qualityVerify"> Quality verify</label>
+          <small class="help">Re-translate a random sample to estimate confidence.</small>
         </div>
       </details>
 
@@ -308,8 +306,21 @@
           <button id="exportGlossary" class="secondary btn-frame">Export Glossary</button>
         </div>
       </details>
-
       <button id="test" class="secondary btn-frame">Test Settings</button>
+
+      <details id="statsDetails" open class="panel-frame">
+        <summary>Stats</summary>
+        <div class="usage-section">
+          <div class="usage-item">Total Requests: <span id="statsRequests">0</span></div>
+          <div class="usage-item">Total Tokens: <span id="statsTokens">0</span></div>
+          <div class="usage-item">Avg Latency: <span id="statsLatency">0</span> ms</div>
+          <div class="usage-item">ETA: <span id="statsEta">0</span> s</div>
+          <div class="usage-item">Confidence: <span id="statsQuality">0</span></div>
+          <div class="usage-item" style="grid-column: span 2;"><canvas id="reqSpark" height="30" style="width:100%;"></canvas></div>
+          <div class="usage-item" style="grid-column: span 2;"><canvas id="tokSpark" height="30" style="width:100%;"></canvas></div>
+        </div>
+      </details>
+
       <progress id="progress" value="0" max="1" style="width:100%;display:none"></progress>
       <div id="status"></div>
       <div id="version"></div>
@@ -331,6 +342,8 @@
   <script src="config.js"></script>
   <script src="languages.js"></script>
   <script src="usageColor.js"></script>
+  <script src="qa/chart.umd.js"></script>
   <script src="popup.js"></script>
+  <script src="popup/support.js"></script>
 </body>
 </html>

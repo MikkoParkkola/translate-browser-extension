@@ -49,10 +49,17 @@
 </head>
 <body class="qwen-bg-animated">
   <h3>Providers</h3>
+  <div id="recommendation" style="margin-bottom:0.5rem"></div>
   <ul id="providerList"></ul>
   <div class="flags">
     <label><input type="checkbox" id="failover"> Failover</label>
-    <label><input type="checkbox" id="parallel"> Parallel</label>
+    <label>Parallel
+      <select id="parallel">
+        <option value="auto">Auto</option>
+        <option value="on">On</option>
+        <option value="off">Off</option>
+      </select>
+    </label>
   </div>
   <button id="save" class="primary-glow btn-frame">Save</button>
   <div id="status"></div>
@@ -74,10 +81,10 @@
           <div class="extra-limits"></div>
           <label>Strategy
             <select data-field="strategy">
+              <option value="cheap">Cheap</option>
+              <option value="fast">Fast</option>
+              <option value="quality">Quality</option>
               <option value="balanced">Balanced</option>
-              <option value="cost">Optimize cost</option>
-              <option value="speed">Optimize speed</option>
-              <option value="quality">Optimize quality</option>
             </select>
           </label>
           <div class="model-warning" style="display:none"></div>

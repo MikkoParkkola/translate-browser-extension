@@ -13,6 +13,7 @@ const defaultCfg = {
   memCacheMax: 5000,
   sensitivity: 0.3,
   debug: false,
+  qualityVerify: false,
   useWasmEngine: true,
   autoOpenAfterSave: true,
   compact: false,
@@ -21,10 +22,14 @@ const defaultCfg = {
   strategy: 'balanced',
   secondaryModel: '',
   models: [],
-  providers: {},
+  providers: {
+    // Approximate default monthly limits for external providers
+    google: { charLimit: 500000 }, // ~500k characters
+    deepl: { charLimit: 500000 }, // ~500k characters
+  },
   providerOrder: [],
   failover: true,
-  parallel: false,
+  parallel: 'auto',
 };
 
 const modelTokenLimits = {
@@ -35,36 +40,41 @@ const modelTokenLimits = {
 
 function migrate(cfg = {}) {
   const out = { ...defaultCfg, ...cfg };
+  function mapStrategy(s) {
+    if (s === 'cost') return 'cheap';
+    if (s === 'speed') return 'fast';
+    return s;
+  }
   if (!out.providers || typeof out.providers !== 'object') out.providers = {};
   const provider = out.provider || 'qwen';
   if (!out.providers[provider]) out.providers[provider] = {};
+  Object.entries(out.providers).forEach(([id, p]) => {
+    if (p.charLimit == null) p.charLimit = /^google$|^deepl/.test(id) ? 500000 : out.charLimit || 0;
+    if (p.requestLimit == null) p.requestLimit = out.requestLimit;
+    if (p.tokenLimit == null) p.tokenLimit = out.tokenLimit;
+    if (p.costPerToken == null) p.costPerToken = 0;
+    if (p.weight == null) p.weight = 0;
+    if (p.strategy != null) p.strategy = mapStrategy(p.strategy);
+    if (p.strategy == null) p.strategy = mapStrategy(out.strategy || 'balanced');
+    if (!Array.isArray(p.models) || !p.models.length) p.models = p.model ? [p.model] : [];
+  });
   if (out.apiKey && !out.providers[provider].apiKey) out.providers[provider].apiKey = out.apiKey;
   if (out.apiEndpoint && !out.providers[provider].apiEndpoint) out.providers[provider].apiEndpoint = out.apiEndpoint;
   if (out.model && !out.providers[provider].model) out.providers[provider].model = out.model;
   const p = out.providers[provider];
-  if (!p.requestLimit) p.requestLimit = out.requestLimit;
-  if (!p.tokenLimit) p.tokenLimit = out.tokenLimit;
-  if (!p.costPerToken) p.costPerToken = 0;
-  if (!p.weight) p.weight = 0;
-  if (!p.charLimit) p.charLimit = out.charLimit || 0;
-  if (!p.strategy) p.strategy = out.strategy || 'balanced';
-  if (!p.models) p.models = p.model ? [p.model] : [];
-  if (p.model === 'qwen-mt-turbo' && !p.models.includes('qwen-mt-plus')) p.models.push('qwen-mt-plus');
-  if (!p.secondaryModel) {
-    p.secondaryModel = p.model === 'qwen-mt-plus' ? 'qwen-mt-turbo' : 'qwen-mt-plus';
-  }
+  if (!Array.isArray(p.models) || !p.models.length) p.models = p.model ? [p.model] : [];
   out.apiKey = p.apiKey || out.apiKey || '';
   out.apiEndpoint = p.apiEndpoint || out.apiEndpoint || '';
   out.model = p.model || out.model || '';
   out.requestLimit = p.requestLimit || out.requestLimit;
   out.tokenLimit = p.tokenLimit || out.tokenLimit;
   out.charLimit = p.charLimit || out.charLimit;
-  out.strategy = p.strategy || out.strategy;
+  out.strategy = mapStrategy(p.strategy || out.strategy);
   out.secondaryModel = p.secondaryModel || '';
   out.models = p.models || [];
   if (!Array.isArray(out.providerOrder)) out.providerOrder = [];
   if (typeof out.failover !== 'boolean') out.failover = true;
-  if (typeof out.parallel !== 'boolean') out.parallel = false;
+  if (typeof out.parallel !== 'boolean' && out.parallel !== 'auto') out.parallel = 'auto';
   return out;
 }
 

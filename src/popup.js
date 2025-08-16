@@ -2,19 +2,23 @@
 const apiKeyInput = document.getElementById('apiKey') || document.createElement('input');
 const endpointInput = document.getElementById('apiEndpoint') || document.createElement('input');
 const modelInput = document.getElementById('model') || document.createElement('input');
+const plusFallbackCheckbox = document.getElementById('plusFallback') || document.createElement('input');
 const sourceSelect = document.getElementById('source') || document.createElement('select');
 const targetSelect = document.getElementById('target') || document.createElement('select');
 const reqLimitInput = document.getElementById('requestLimit') || document.createElement('input');
 const tokenLimitInput = document.getElementById('tokenLimit') || document.createElement('input');
 const tokenBudgetInput = document.getElementById('tokenBudget') || document.createElement('input');
 const memCacheMaxInput = document.getElementById('memCacheMax') || document.createElement('input');
+const strategySelect = document.getElementById('strategy') || document.createElement('select');
 const autoCheckbox = document.getElementById('auto') || document.createElement('input');
 const debugCheckbox = document.getElementById('debug') || document.createElement('input');
 const compactCheckbox = document.getElementById('compactMode') || document.createElement('input');
 const lightModeCheckbox = document.getElementById('lightMode') || document.createElement('input');
+const qualityCheckbox = document.getElementById('qualityVerify') || document.createElement('input');
 const detectorSelect = document.getElementById('detector') || document.createElement('select');
 const detectApiKeyInput = document.getElementById('detectApiKey') || document.createElement('input');
 const sensitivityInput = document.getElementById('sensitivity') || document.createElement('input');
+const sensitivityValueSpan = document.getElementById('sensitivityValue') || document.createElement('span');
 const status = document.getElementById('status') || document.createElement('div');
 const versionDiv = document.getElementById('version') || document.createElement('div');
 const reqCount = document.getElementById('reqCount') || document.createElement('span');
@@ -26,38 +30,106 @@ const totalReq = document.getElementById('totalReq') || document.createElement('
 const totalTok = document.getElementById('totalTok') || document.createElement('span');
 const queueLen = document.getElementById('queueLen') || document.createElement('span');
 const costSection = document.getElementById('costSection') || document.createElement('div');
+const turboReqBar = document.getElementById('turboReqBar') || document.createElement('div');
+const plusReqBar = document.getElementById('plusReqBar') || document.createElement('div');
 const cacheStatsDiv = document.getElementById('cacheStats') || document.createElement('div');
 const tmStatsDiv = document.getElementById('tmStats') || document.createElement('div');
 const translateBtn = document.getElementById('translate') || document.createElement('button');
 const testBtn = document.getElementById('test') || document.createElement('button');
 const progressBar = document.getElementById('progress') || document.createElement('progress');
+const providerCountSpan = document.getElementById('providerCount') || document.createElement('span');
 const providerPreset = document.getElementById('providerPreset') || document.createElement('select');
 const clearPairBtn = document.getElementById('clearPair') || document.createElement('button');
 const statsReq = document.getElementById('statsRequests') || document.createElement('span');
 const statsTok = document.getElementById('statsTokens') || document.createElement('span');
 const statsLatency = document.getElementById('statsLatency') || document.createElement('span');
+const statsEta = document.getElementById('statsEta') || document.createElement('span');
+const statsQuality = document.getElementById('statsQuality') || document.createElement('span');
+const statsDetails = document.getElementById('statsDetails') || document.createElement('details');
+function setStatsSummary(eta) {
+  if (!statsDetails) return;
+  let summary = statsDetails.querySelector('summary');
+  if (!summary) {
+    summary = document.createElement('summary');
+    statsDetails.prepend(summary);
+  }
+  summary.textContent = typeof eta === 'number' && !isNaN(eta)
+    ? `Stats · ETA: ${eta.toFixed(1)} s`
+    : 'Stats';
+}
+const reqSpark = document.getElementById('reqSpark') || document.createElement('canvas');
+const tokSpark = document.getElementById('tokSpark') || document.createElement('canvas');
 const calibrationStatus = document.getElementById('calibrationStatus') || document.createElement('div');
-const resetCalibrationBtn = document.getElementById('resetCalibration') || document.createElement('button');
+const recalibrateBtn = document.getElementById('recalibrate') || document.createElement('button');
 const importGlossaryInput = document.getElementById('importGlossary') || document.createElement('input');
 const exportGlossaryBtn = document.getElementById('exportGlossary') || document.createElement('button');
 const benchmarkRec = document.getElementById('benchmarkRec') || document.createElement('div');
 
 // Collapsible sections
-const sectionIds = ['providerSection', 'detectionSection', 'rateSection', 'cacheSection', 'glossarySection'];
+const sectionIds = ['providerSection', 'limitSection', 'detectionSection', 'cacheSection', 'glossarySection'];
 
   document.body.classList.add('qwen-bg-animated');
   if (translateBtn) translateBtn.classList.add('primary-glow');
 
-  let translating = false;
-  let progressTimeout;
+let translating = false;
+let progressTimeout;
+let reqSparkChart;
+let tokSparkChart;
+const modelQuotas = {};
 
 function refreshBenchmarkRec() {
   if (!chrome.storage || !chrome.storage.sync || !benchmarkRec) return;
-  chrome.storage.sync.get({ benchmark: null }, ({ benchmark }) => {
-    if (benchmark && benchmark.recommendation) {
-      benchmarkRec.textContent = `Recommended: ${benchmark.recommendation}`;
-    } else {
-      benchmarkRec.textContent = '';
+  chrome.storage.sync.get({ benchmark: null, providerOrder: [] }, ({ benchmark }) => {
+    benchmarkRec.innerHTML = '';
+    if (!benchmark || !benchmark.results) return;
+
+    const entries = Object.entries(benchmark.results);
+    entries.sort((a, b) => {
+      const ar = a[1];
+      const br = b[1];
+      if (ar.error && !br.error) return 1;
+      if (br.error && !ar.error) return -1;
+      if (ar.cost !== br.cost) return ar.cost - br.cost;
+      return ar.latency - br.latency;
+    });
+
+    const table = document.createElement('table');
+    table.className = 'benchmark-table';
+    const header = document.createElement('tr');
+    ['Provider', 'Latency (ms)', 'Cost'].forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      header.appendChild(th);
+    });
+    table.appendChild(header);
+
+    for (const [name, data] of entries) {
+      const tr = document.createElement('tr');
+      if (benchmark.recommendation === name) tr.classList.add('recommended');
+      const tdName = document.createElement('td');
+      tdName.textContent = name;
+      const tdLatency = document.createElement('td');
+      tdLatency.textContent = data.error ? '-' : String(data.latency);
+      const tdCost = document.createElement('td');
+      tdCost.textContent = data.error ? '-' : data.cost.toFixed(6);
+      tr.appendChild(tdName);
+      tr.appendChild(tdLatency);
+      tr.appendChild(tdCost);
+      table.appendChild(tr);
+    }
+
+    benchmarkRec.appendChild(table);
+
+    if (benchmark.recommendation) {
+      const btn = document.createElement('button');
+      btn.textContent = 'Apply Recommendation';
+      btn.addEventListener('click', () => {
+        const sorted = entries.map(([n]) => n);
+        chrome.storage.sync.set({ providerOrder: sorted }, () => {
+          btn.disabled = true;
+        });
+      });
+      benchmarkRec.appendChild(btn);
     }
   });
 }
@@ -81,6 +153,44 @@ function initSectionToggles() {
 }
 
 initSectionToggles();
+
+function renderSparklines() {
+  if (typeof Chart === 'undefined' || !chrome.storage || !chrome.storage.local) return;
+  const now = Date.now();
+  chrome.storage.local.get({ usageHistory: [] }, ({ usageHistory }) => {
+    const hist = (usageHistory || []).filter(r => now - (r.ts || 0) <= 86400000);
+    hist.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    const labels = hist.map(r => new Date(r.ts).toLocaleTimeString());
+    const reqData = hist.map(r => r.requests || r.req || 0);
+    const tokData = hist.map(r => r.tokens || r.tok || 0);
+    if (reqSpark && reqSpark.getContext) {
+      if (!reqSparkChart) {
+        reqSparkChart = new Chart(reqSpark.getContext('2d'), {
+          type: 'line',
+          data: { labels, datasets: [{ data: reqData, borderColor: 'var(--green)', borderWidth: 1, pointRadius: 0, tension: 0.3 }] },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } } }
+        });
+      } else {
+        reqSparkChart.data.labels = labels;
+        reqSparkChart.data.datasets[0].data = reqData;
+        reqSparkChart.update();
+      }
+    }
+    if (tokSpark && tokSpark.getContext) {
+      if (!tokSparkChart) {
+        tokSparkChart = new Chart(tokSpark.getContext('2d'), {
+          type: 'line',
+          data: { labels, datasets: [{ data: tokData, borderColor: 'var(--yellow)', borderWidth: 1, pointRadius: 0, tension: 0.3 }] },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } } }
+        });
+      } else {
+        tokSparkChart.data.labels = labels;
+        tokSparkChart.data.datasets[0].data = tokData;
+        tokSparkChart.update();
+      }
+    }
+  });
+}
 
 if (importGlossaryInput) {
   importGlossaryInput.addEventListener('change', e => {
@@ -145,30 +255,36 @@ function saveConfig() {
       detector: detectorSelect ? detectorSelect.value : 'local',
       sensitivity: sensitivityInput.valueAsNumber || 0,
       requestLimit: parseInt(reqLimitInput.value, 10) || 60,
-      tokenLimit: parseInt(tokenLimitInput.value, 10) || 100000,
+      tokenLimit: parseInt(tokenLimitInput.value, 10) || (window.qwenDefaultConfig && window.qwenDefaultConfig.tokenLimit) || 0,
       tokenBudget: parseInt(tokenBudgetInput.value, 10) || 0,
       memCacheMax: parseInt(memCacheMaxInput.value, 10) || 0,
       autoTranslate: autoCheckbox.checked,
       debug: debugCheckbox.checked,
+      qualityVerify: qualityCheckbox.checked,
       compact: compactCheckbox.checked,
       theme: lightModeCheckbox.checked ? 'light' : 'dark',
       calibratedAt: (window.qwenConfig && window.qwenConfig.calibratedAt) || 0,
+      strategy: strategySelect.value || 'balanced',
     };
-    if (cfg.model === 'qwen-mt-turbo') {
-      cfg.secondaryModel = 'qwen-mt-plus';
-      cfg.models = ['qwen-mt-turbo', 'qwen-mt-plus'];
-    } else if (cfg.model === 'qwen-mt-plus') {
-      cfg.secondaryModel = 'qwen-mt-turbo';
-      cfg.models = ['qwen-mt-plus', 'qwen-mt-turbo'];
+    if (plusFallbackCheckbox.checked) {
+      if (cfg.model === 'qwen-mt-turbo') {
+        cfg.secondaryModel = 'qwen-mt-plus';
+        cfg.models = ['qwen-mt-turbo', 'qwen-mt-plus'];
+      } else if (cfg.model === 'qwen-mt-plus') {
+        cfg.secondaryModel = 'qwen-mt-turbo';
+        cfg.models = ['qwen-mt-plus', 'qwen-mt-turbo'];
+      } else {
+        cfg.secondaryModel = '';
+        cfg.models = cfg.model ? [cfg.model] : [];
+      }
     } else {
       cfg.secondaryModel = '';
       cfg.models = cfg.model ? [cfg.model] : [];
     }
-    cfg.strategy = (window.qwenConfig && window.qwenConfig.strategy) || 'balanced';
     cfg.charLimit = (window.qwenConfig && window.qwenConfig.charLimit) || 0;
     window.qwenSaveConfig(cfg).then(() => {
       window.qwenConfig = cfg;
-      chrome.runtime.sendMessage({ action: 'set-config', config: { memCacheMax: cfg.memCacheMax, requestLimit: cfg.requestLimit, tokenLimit: cfg.tokenLimit } }, () => {});
+      chrome.runtime.sendMessage({ action: 'set-config', config: { memCacheMax: cfg.memCacheMax, requestLimit: cfg.requestLimit, tokenLimit: cfg.tokenLimit, qualityVerify: cfg.qualityVerify } }, () => {});
       status.textContent = 'Settings saved.';
       updateView(cfg); // Re-check the view after saving
       setTimeout(() => { if (status.textContent === 'Settings saved.') status.textContent = ''; }, 2000);
@@ -277,10 +393,29 @@ chrome.runtime.onMessage.addListener(msg => {
     }
   }
   if (msg.action === 'stats' && msg.stats) {
-    const { requests, tokens, avgLatency } = msg.stats;
+    const { requests, tokens, eta, avgLatency, quality } = msg.stats;
     statsReq.textContent = requests;
     statsTok.textContent = tokens;
     statsLatency.textContent = typeof avgLatency === 'number' ? avgLatency.toFixed(0) : '0';
+    statsQuality.textContent = typeof quality === 'number' ? quality.toFixed(2) : '0';
+    if (statsEta) statsEta.textContent = typeof eta === 'number' ? eta.toFixed(1) : '0';
+    setStatsSummary(eta);
+    renderSparklines();
+  }
+  if (msg.action === 'calibration-result' && msg.result) {
+    const { requestLimit, tokenLimit, calibratedAt } = msg.result;
+    reqLimitInput.value = requestLimit;
+    tokenLimitInput.value = tokenLimit;
+    calibrationStatus.textContent = calibratedAt
+      ? `Calibrated ${new Date(calibratedAt).toLocaleString()}`
+      : 'Not calibrated';
+    if (window.qwenConfig) {
+      window.qwenConfig.requestLimit = requestLimit;
+      window.qwenConfig.tokenLimit = tokenLimit;
+      window.qwenConfig.calibratedAt = calibratedAt;
+    }
+    status.textContent = 'Calibration complete.';
+    setTimeout(() => { if (status.textContent === 'Calibration complete.') status.textContent = ''; }, 2000);
   }
 });
 
@@ -317,6 +452,10 @@ chrome.runtime.sendMessage({ action: 'get-stats' }, res => {
     statsReq.textContent = res.requests || 0;
     statsTok.textContent = res.tokens || 0;
     statsLatency.textContent = typeof res.avgLatency === 'number' ? res.avgLatency.toFixed(0) : '0';
+    statsQuality.textContent = typeof res.quality === 'number' ? res.quality.toFixed(2) : '0';
+    if (statsEta) statsEta.textContent = typeof res.eta === 'number' ? res.eta.toFixed(1) : '0';
+    setStatsSummary(res.eta);
+    renderSparklines();
   }
 });
 
@@ -331,28 +470,25 @@ clearPairBtn.addEventListener('click', () => {
   }
 });
 
-resetCalibrationBtn.addEventListener('click', () => {
-  chrome.runtime.sendMessage({ action: 'reset-calibration' }, () => {
-    status.textContent = 'Calibration reset.';
-    window.qwenLoadConfig().then(c => {
-      window.qwenConfig = c;
-      reqLimitInput.value = c.requestLimit;
-      tokenLimitInput.value = c.tokenLimit;
-      calibrationStatus.textContent = c.calibratedAt ? `Calibrated ${new Date(c.calibratedAt).toLocaleString()}` : 'Not calibrated';
-      setTimeout(() => { if (status.textContent === 'Calibration reset.') status.textContent = ''; }, 2000);
-    });
-  });
+recalibrateBtn.addEventListener('click', () => {
+  status.textContent = 'Recalibrating...';
+  chrome.runtime.sendMessage({ action: 'recalibrate' }, () => {});
 });
 
 window.qwenLoadConfig().then(cfg => {
   window.qwenConfig = cfg;
+  providerCountSpan.textContent = Object.keys(cfg.providers || {}).length;
   // Populate main view
   apiKeyInput.value = cfg.apiKey || '';
   if (detectApiKeyInput) detectApiKeyInput.value = cfg.detectApiKey || '';
   if (detectorSelect) detectorSelect.value = cfg.detector || 'local';
-  if (sensitivityInput) sensitivityInput.value = cfg.sensitivity;
+  if (sensitivityInput) {
+    sensitivityInput.value = cfg.sensitivity;
+    if (sensitivityValueSpan) sensitivityValueSpan.textContent = sensitivityInput.valueAsNumber.toFixed(1);
+  }
   endpointInput.value = cfg.apiEndpoint || '';
   modelInput.value = cfg.model || '';
+  plusFallbackCheckbox.checked = Array.isArray(cfg.models) && cfg.models.includes('qwen-mt-plus');
   sourceSelect.value = cfg.sourceLanguage;
   targetSelect.value = cfg.targetLanguage;
   // Sensible defaults if unset: auto source, target from browser UI language
@@ -362,12 +498,14 @@ window.qwenLoadConfig().then(cfg => {
     const match = Array.from(targetSelect.options).find(o => String(o.value).toLowerCase() === nav);
     if (match) targetSelect.value = match.value;
   }
+  strategySelect.value = cfg.strategy || 'balanced';
   reqLimitInput.value = cfg.requestLimit;
   tokenLimitInput.value = cfg.tokenLimit;
   tokenBudgetInput.value = cfg.tokenBudget || '';
   memCacheMaxInput.value = cfg.memCacheMax || '';
   autoCheckbox.checked = cfg.autoTranslate;
   debugCheckbox.checked = !!cfg.debug;
+  qualityCheckbox.checked = !!cfg.qualityVerify;
   compactCheckbox.checked = !!cfg.compact;
   document.body.classList.toggle('qwen-compact', compactCheckbox.checked);
   refreshBenchmarkRec();
@@ -400,8 +538,31 @@ window.qwenLoadConfig().then(cfg => {
     });
   });
 
-  [reqLimitInput, tokenLimitInput, tokenBudgetInput, memCacheMaxInput, sensitivityInput].forEach(el => el.addEventListener('input', saveConfig));
-  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox].forEach(el => el.addEventListener('change', saveConfig));
+  const tokenLimits = typeof modelTokenLimits === 'object' ? modelTokenLimits : {};
+  const fixedModels = new Set(['qwen-mt-turbo', 'qwen-mt-plus']);
+  [modelInput, setupModelInput].forEach(input => {
+    input.addEventListener('change', () => {
+      const model = input.value.trim();
+      const limit = tokenLimits[model];
+      if (!limit || fixedModels.has(model)) return;
+      tokenLimitInput.value = limit;
+      saveConfig();
+    });
+  });
+
+  [reqLimitInput, tokenLimitInput, tokenBudgetInput, memCacheMaxInput, strategySelect].forEach(el => el.addEventListener('input', saveConfig));
+  if (sensitivityInput && sensitivityValueSpan) {
+    const updateSensitivityValue = () => {
+      sensitivityValueSpan.textContent = sensitivityInput.valueAsNumber.toFixed(1);
+    };
+    sensitivityInput.addEventListener('input', () => {
+      updateSensitivityValue();
+      saveConfig();
+    });
+    updateSensitivityValue();
+  }
+  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox, qualityCheckbox, plusFallbackCheckbox]
+    .forEach(el => el.addEventListener('change', saveConfig));
   compactCheckbox.addEventListener('change', () => {
     document.body.classList.toggle('qwen-compact', compactCheckbox.checked);
     saveConfig();
@@ -483,24 +644,59 @@ function setBar(el, ratio) {
   el.style.backgroundColor = window.qwenUsageColor ? window.qwenUsageColor(r) : 'var(--green)';
 }
 
-function renderProviderUsage(cfg, usage) {
+function renderProviderUsage(cfg, stats = {}) {
   if (!providerUsage) return;
   providerUsage.innerHTML = '';
   const provs = cfg.providers || {};
   Object.entries(provs).forEach(([id, p]) => {
-    const models = p.models || (p.model ? [p.model] : []);
-    const limit = p.requestLimit || cfg.requestLimit || 0;
-    models.forEach(m => {
-      const used = usage.models && usage.models[m] ? usage.models[m].requests || 0 : 0;
-      const total = limit || 0;
-      const item = document.createElement('div');
-      item.className = 'usage-item';
-      const ratio = total ? Math.min(1, used / total) : 0;
-      item.innerHTML = `<span>${m}: ${used}${total ? '/' + total : ''}</span><div class="bar"><div style="width:${ratio * 100}%"></div></div>`;
-      providerUsage.appendChild(item);
+    const limit = p.charLimit || cfg.charLimit || 0;
+    const used = stats[id] || 0;
+    const item = document.createElement('div');
+    item.className = 'usage-item';
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    const fill = document.createElement('div');
+    bar.appendChild(fill);
+    const ratio = limit ? used / limit : 0;
+    setBar(fill, ratio);
+    const label = document.createElement('span');
+    label.textContent = `${id}: ${used}${limit ? '/' + limit : ''}`;
+    if (ratio >= 0.8) label.textContent += ' ⚠️';
+    item.appendChild(label);
+    item.appendChild(bar);
+    providerUsage.appendChild(item);
+  });
+}
+
+function refreshQuota() {
+  ['qwen-mt-turbo', 'qwen-mt-plus'].forEach(model => {
+    chrome.runtime.sendMessage({ action: 'quota', model }, res => {
+      if (chrome.runtime.lastError || !res) return;
+      const rem = res.remaining || {};
+      const used = res.used || {};
+      modelQuotas[model] = {
+        requests: (used.requests || 0) + (rem.requests || 0),
+        tokens: (used.tokens || 0) + (rem.tokens || 0),
+      };
     });
   });
 }
+
+let quotaInterval;
+function scheduleQuota() {
+  if (quotaInterval) clearInterval(quotaInterval);
+  refreshQuota();
+  quotaInterval = setInterval(refreshQuota, 30000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    scheduleQuota();
+  } else if (quotaInterval) {
+    clearInterval(quotaInterval);
+    quotaInterval = null;
+  }
+});
 
 function refreshUsage() {
   chrome.runtime.sendMessage({ action: 'usage' }, res => {
@@ -515,16 +711,35 @@ function refreshUsage() {
     const cfg = window.qwenConfig || {};
     const reqTotal = cfg.requestLimit || 0;
     const tokTotal = cfg.tokenLimit || 0;
-    setBar(reqBar, reqTotal ? res.totalRequests / reqTotal : 0);
-    setBar(tokenBar, tokTotal ? res.totalTokens / tokTotal : 0);
-    reqCount.textContent = reqTotal ? `${res.totalRequests}/${reqTotal}` : `${res.totalRequests}`;
-    tokenCount.textContent = tokTotal ? `${res.totalTokens}/${tokTotal}` : `${res.totalTokens}`;
+    const reqUsed = res.requests != null ? res.requests : res.totalRequests;
+    const tokUsed = res.tokens != null ? res.tokens : res.totalTokens;
+    setBar(reqBar, reqTotal ? reqUsed / reqTotal : 0);
+    setBar(tokenBar, tokTotal ? tokUsed / tokTotal : 0);
+    reqCount.textContent = reqTotal ? `${reqUsed}/${reqTotal}` : `${reqUsed}`;
+    tokenCount.textContent = tokTotal ? `${tokUsed}/${tokTotal}` : `${tokUsed}`;
     reqBar.title = `Requests: ${reqCount.textContent}`;
     tokenBar.title = `Tokens: ${tokenCount.textContent}`;
-    renderProviderUsage(cfg, res);
+    ['qwen-mt-turbo', 'qwen-mt-plus'].forEach(model => {
+      const bar = model === 'qwen-mt-turbo' ? turboReqBar : plusReqBar;
+      const m = res.models && res.models[model] || {};
+      const limit = modelQuotas[model] || {};
+      const usedReq = m.requests || 0;
+      setBar(bar, limit.requests ? usedReq / limit.requests : 0);
+      bar.textContent = `${usedReq}r ${m.tokens || 0}t`;
+    });
+    const models = res.models || {};
+    const provChars = {};
+    Object.entries(cfg.providers || {}).forEach(([id, p]) => {
+      const list = Array.isArray(p.models) && p.models.length ? p.models : (p.model ? [p.model] : []);
+      let total = 0;
+      list.forEach(m => { const ms = models[m]; if (ms && typeof ms.chars === 'number') total += ms.chars; });
+      provChars[id] = total;
+    });
+    renderProviderUsage(cfg, provChars);
   });
 }
 
+scheduleQuota();
 setInterval(refreshUsage, 1000);
 refreshUsage();
 
