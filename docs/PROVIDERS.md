@@ -13,6 +13,12 @@ OpenAI
 - Models: gpt-5, gpt-5-mini, gpt-5-nano (chat/completions)
 - Notes: Use a model available to your account. Background keeps the key.
 
+Gemini
+- Endpoint: https://generativelanguage.googleapis.com/v1beta
+- Keys: https://aistudio.google.com/app/apikey
+- Models: gemini-1.5-flash, gemini-pro
+- Notes: Streaming supported (SSE). Background keeps the key.
+
 OpenRouter
 - Preset: openrouter
 - Endpoint: https://openrouter.ai/api/v1

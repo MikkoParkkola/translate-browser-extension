@@ -12,6 +12,7 @@ function initProviders() {
     openai: { ...require('./openai'), label: 'OpenAI' },
     openrouter: { ...require('./openrouter'), label: 'OpenRouter' },
     ollama: { ...require('./ollama'), label: 'Ollama' },
+    gemini: { ...require('./gemini'), label: 'Gemini' },
     anthropic: { ...require('./anthropic'), label: 'Anthropic' },
   });
 }
