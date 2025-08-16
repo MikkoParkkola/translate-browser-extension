@@ -244,15 +244,15 @@ function getAggregatedStats() {
   const totalLatency = usageLog.reduce((sum, e) => sum + (e.latency || 0), 0);
   const totalLoggedTokens = usageLog.reduce((sum, e) => sum + (e.tokens || 0), 0);
   const avgThroughput = totalLatency ? totalLoggedTokens / totalLatency : 0; // tokens per ms
-  const etaMs = avgThroughput ? remaining / avgThroughput : 0;
-  const eta = etaMs / 1000; // seconds
+  const eta = avgThroughput ? (remaining / avgThroughput) / 1000 : 0; // seconds
   const avgLatency = usageLog.length ? totalLatency / usageLog.length : 0;
   return { requests: totalRequests, tokens: totalTokens, eta, avgLatency, quality: lastQuality };
 }
 
 function broadcastStats() {
   ensureThrottle().then(() => {
-    try { chrome.runtime.sendMessage({ action: 'stats', stats: getAggregatedStats() }); } catch {}
+    const stats = getAggregatedStats();
+    try { chrome.runtime.sendMessage({ action: 'stats', stats }); } catch {}
   });
 }
 
