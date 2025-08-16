@@ -200,6 +200,8 @@
       }
       if (data.models && data.models.length > 1) {
         data.secondaryModel = data.models.find(m => m !== data.model) || '';
+      } else {
+        data.secondaryModel = '';
       }
       newProviders[id] = data;
     });
@@ -211,6 +213,10 @@
     cfg.providers = newProviders;
     cfg.failover = failoverBox.checked;
     cfg.parallel = parallelBox.value === 'on' ? true : parallelBox.value === 'off' ? false : 'auto';
+    const primary = newProviders[cfg.provider] || {};
+    cfg.model = primary.model || '';
+    cfg.models = primary.models || [];
+    cfg.secondaryModel = primary.secondaryModel || '';
     await window.qwenSaveConfig(cfg);
     status.textContent = 'Saved';
     setTimeout(() => (status.textContent = ''), 1000);
