@@ -44,23 +44,24 @@ function migrate(cfg = {}) {
   if (!out.providers[provider]) out.providers[provider] = {};
   Object.entries(out.providers).forEach(([id, p]) => {
     if (p.charLimit == null) p.charLimit = /^google$|^deepl/.test(id) ? 500000 : out.charLimit || 0;
+    if (p.requestLimit == null) p.requestLimit = out.requestLimit;
+    if (p.tokenLimit == null) p.tokenLimit = out.tokenLimit;
+    if (p.costPerToken == null) p.costPerToken = 0;
+    if (p.weight == null) p.weight = 0;
+    if (p.strategy == null) p.strategy = out.strategy || 'balanced';
+    if (!Array.isArray(p.models) || !p.models.length) p.models = p.model ? [p.model] : [];
+    if (!p.secondaryModel) {
+      p.secondaryModel = p.models.length > 1
+        ? p.models.find(m => m !== p.model) || ''
+        : '';
+    }
   });
   if (out.apiKey && !out.providers[provider].apiKey) out.providers[provider].apiKey = out.apiKey;
   if (out.apiEndpoint && !out.providers[provider].apiEndpoint) out.providers[provider].apiEndpoint = out.apiEndpoint;
   if (out.model && !out.providers[provider].model) out.providers[provider].model = out.model;
   const p = out.providers[provider];
-  if (!p.requestLimit) p.requestLimit = out.requestLimit;
-  if (!p.tokenLimit) p.tokenLimit = out.tokenLimit;
-  if (!p.costPerToken) p.costPerToken = 0;
-  if (!p.weight) p.weight = 0;
-  if (!p.strategy) p.strategy = out.strategy || 'balanced';
+  if (!Array.isArray(p.models) || !p.models.length) p.models = p.model ? [p.model] : [];
   if (Array.isArray(cfg.models) && cfg.models.length) p.models = cfg.models.slice();
-  else if (!p.models || !p.models.length) p.models = p.model ? [p.model] : [];
-  if (!p.secondaryModel) {
-    p.secondaryModel = p.models.length > 1
-      ? p.models.find(m => m !== p.model) || ''
-      : '';
-  }
   out.apiKey = p.apiKey || out.apiKey || '';
   out.apiEndpoint = p.apiEndpoint || out.apiEndpoint || '';
   out.model = p.model || out.model || '';

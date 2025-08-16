@@ -9,6 +9,7 @@ const reqLimitInput = document.getElementById('requestLimit') || document.create
 const tokenLimitInput = document.getElementById('tokenLimit') || document.createElement('input');
 const tokenBudgetInput = document.getElementById('tokenBudget') || document.createElement('input');
 const memCacheMaxInput = document.getElementById('memCacheMax') || document.createElement('input');
+const strategySelect = document.getElementById('strategy') || document.createElement('select');
 const autoCheckbox = document.getElementById('auto') || document.createElement('input');
 const debugCheckbox = document.getElementById('debug') || document.createElement('input');
 const compactCheckbox = document.getElementById('compactMode') || document.createElement('input');
@@ -253,6 +254,7 @@ function saveConfig() {
       compact: compactCheckbox.checked,
       theme: lightModeCheckbox.checked ? 'light' : 'dark',
       calibratedAt: (window.qwenConfig && window.qwenConfig.calibratedAt) || 0,
+      strategy: strategySelect.value || 'balanced',
     };
     if (plusFallbackCheckbox.checked) {
       if (cfg.model === 'qwen-mt-turbo') {
@@ -269,7 +271,6 @@ function saveConfig() {
       cfg.secondaryModel = '';
       cfg.models = cfg.model ? [cfg.model] : [];
     }
-    cfg.strategy = (window.qwenConfig && window.qwenConfig.strategy) || 'balanced';
     cfg.charLimit = (window.qwenConfig && window.qwenConfig.charLimit) || 0;
     window.qwenSaveConfig(cfg).then(() => {
       window.qwenConfig = cfg;
@@ -511,6 +512,7 @@ window.qwenLoadConfig().then(cfg => {
     const match = Array.from(targetSelect.options).find(o => String(o.value).toLowerCase() === nav);
     if (match) targetSelect.value = match.value;
   }
+  strategySelect.value = cfg.strategy || 'balanced';
   reqLimitInput.value = cfg.requestLimit;
   tokenLimitInput.value = cfg.tokenLimit;
   tokenBudgetInput.value = cfg.tokenBudget || '';
@@ -550,7 +552,7 @@ window.qwenLoadConfig().then(cfg => {
     });
   });
 
-  [reqLimitInput, tokenLimitInput, tokenBudgetInput, memCacheMaxInput].forEach(el => el.addEventListener('input', saveConfig));
+  [reqLimitInput, tokenLimitInput, tokenBudgetInput, memCacheMaxInput, strategySelect].forEach(el => el.addEventListener('input', saveConfig));
   if (sensitivityInput && sensitivityValueSpan) {
     const updateSensitivityValue = () => {
       sensitivityValueSpan.textContent = sensitivityInput.valueAsNumber.toFixed(1);
