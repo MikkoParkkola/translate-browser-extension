@@ -56,7 +56,7 @@ const exportGlossaryBtn = document.getElementById('exportGlossary') || document.
 const benchmarkRec = document.getElementById('benchmarkRec') || document.createElement('div');
 
 // Collapsible sections
-const sectionIds = ['providerSection', 'detectionSection', 'rateSection', 'cacheSection', 'glossarySection'];
+const sectionIds = ['providerSection', 'detectionSection', 'cacheSection', 'glossarySection'];
 
   document.body.classList.add('qwen-bg-animated');
   if (translateBtn) translateBtn.classList.add('primary-glow');
