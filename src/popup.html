@@ -22,12 +22,12 @@
     }
 
     html {
-      height: 100%;
+      min-height: 100%;
       background-color: var(--bg-color);
       background-image: url('styles/popup-bg.svg');
-      background-position: center;
-      background-size: cover;
-      background-repeat: no-repeat;
+      background-position: top left;
+      background-size: 400px 600px;
+      background-repeat: repeat;
       background-attachment: local;
     }
 
@@ -297,6 +297,15 @@
             <div id="calibrationStatus" style="font-size:0.75rem"></div>
             <button id="recalibrate" class="secondary btn-frame" style="font-size:0.75rem;padding:2px 6px">Recalibrate</button>
           </div>
+
+          <label for="strategy">Optimization</label>
+          <select id="strategy" title="How to prioritize providers when using multiple backends.">
+            <option value="balanced">Balanced</option>
+            <option value="cost">Cost</option>
+            <option value="quality">Quality</option>
+            <option value="speed">Speed</option>
+          </select>
+          <small class="help">Optimization goal for multi-provider orchestration.</small>
         </div>
       </details>
 
