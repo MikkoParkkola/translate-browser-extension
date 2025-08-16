@@ -155,24 +155,35 @@ async function maybeAutoInject(tabId, url) {
   await ensureInjectedAndStart(tabId);
 }
 
+function createContextMenus() {
+  try {
+    chrome.contextMenus.removeAll(() => {
+      chrome.contextMenus.create({
+        id: 'qwen-translate-selection',
+        title: 'Translate selection',
+        contexts: ['selection'],
+      });
+      chrome.contextMenus.create({
+        id: 'qwen-translate-page',
+        title: 'Translate page',
+        contexts: ['page'],
+      });
+      chrome.contextMenus.create({
+        id: 'qwen-enable-site',
+        title: 'Enable auto-translate on this site',
+        contexts: ['page'],
+      });
+    });
+  } catch {}
+}
+
+createContextMenus();
+
 chrome.runtime.onInstalled.addListener(() => {
   logger.info('Qwen Translator installed');
-  chrome.contextMenus.create({
-    id: 'qwen-translate-selection',
-    title: 'Translate selection',
-    contexts: ['selection'],
-  });
-  chrome.contextMenus.create({
-    id: 'qwen-translate-page',
-    title: 'Translate page',
-    contexts: ['page'],
-  });
-  chrome.contextMenus.create({
-    id: 'qwen-enable-site',
-    title: 'Enable auto-translate on this site',
-    contexts: ['page'],
-  });
+  createContextMenus();
 });
+if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(createContextMenus);
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!tab || !tab.id) return;
