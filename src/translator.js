@@ -485,7 +485,7 @@ async function qwenTranslate({ endpoint, apiKey, model, secondaryModel, text, so
     }
     return data;
   } catch (e) {
-    trLogger.error('translation request failed', e);
+    trLogger.error('translation request failed', e && e.message, e);
     throw e;
   }
 }
@@ -548,7 +548,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, secondaryModel, te
     }
     return data;
   } catch (e) {
-    trLogger.error('translation request failed', e);
+    trLogger.error('translation request failed', e && e.message, e);
     throw e;
   }
 }

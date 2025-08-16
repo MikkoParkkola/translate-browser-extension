@@ -359,7 +359,7 @@ async function processQueue() {
       await translateBatch(batch, stats);
     } catch (e) {
       showError(`${e.message}. See console for details.`);
-      logger.error('QTERROR: batch translation error', e);
+      logger.error('QTERROR: batch translation error', e && e.message, e);
       batchQueue.push(batch);
       await new Promise(r => setTimeout(r, 1000));
     }

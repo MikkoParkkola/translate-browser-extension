@@ -135,10 +135,14 @@ async function injectContentScripts(tabId) {
   } catch (e) {
     // best-effort; contentScript will also attempt to add a <link> fallback
   }
-  await chrome.scripting.executeScript({
-    target: { tabId, allFrames: true },
-    files: ['lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/glossary.js', 'lib/tm.js', 'lib/detect.js', 'lib/feedback.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
-  });
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      files: ['lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/glossary.js', 'lib/tm.js', 'lib/detect.js', 'lib/feedback.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
+    });
+  } catch (e) {
+    // Tab may have been closed; ignore injection failure
+  }
 }
 async function ensureInjected(tabId) {
   const present = await new Promise(res => {
@@ -153,6 +157,16 @@ async function ensureInjectedAndStart(tabId) {
 }
 async function maybeAutoInject(tabId, url) {
   if (!urlEligible(url)) return;
+  const tabInfo = await new Promise(resolve => {
+    try {
+      chrome.tabs.get(tabId, t => {
+        if (chrome.runtime.lastError) resolve(null); else resolve(t);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+  if (!tabInfo || !tabInfo.active) return;
   const pattern = originPattern(url);
   if (!pattern) return;
   const cfg = await new Promise(r => chrome.storage.sync.get({ autoTranslate: false }, r));
@@ -727,10 +741,26 @@ chrome.runtime.onConnect.addListener(port => {
 });
 
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
-  if (info.status === 'complete' && tab && tab.url) {
+  if (info.status === 'complete' && tab && tab.url && tab.active) {
     maybeAutoInject(tabId, tab.url);
   }
 });
+
+if (chrome.tabs && chrome.tabs.onActivated) {
+  chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+    try {
+      const tab = await new Promise(resolve => {
+        chrome.tabs.get(tabId, t => {
+          if (chrome.runtime.lastError) return resolve(null);
+          resolve(t);
+        });
+      });
+      if (tab && tab.url && tab.status === 'complete') {
+        maybeAutoInject(tabId, tab.url);
+      }
+    } catch {}
+  });
+}
 
 if (typeof module !== 'undefined') {
   module.exports = {
