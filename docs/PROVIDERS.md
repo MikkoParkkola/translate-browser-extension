@@ -7,9 +7,10 @@ DashScope (Qwen)
 - Notes: Streaming supported (SSE). Background keeps the key.
 
 OpenAI
+- Preset: openai
 - Endpoint: https://api.openai.com/v1
 - Keys: https://platform.openai.com/api-keys
-- Models: gpt-4o-mini (chat/completions)
+- Models: gpt-5, gpt-5-mini, gpt-5-nano (chat/completions)
 - Notes: Use a model available to your account. Background keeps the key.
 
 DeepL
