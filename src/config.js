@@ -22,6 +22,7 @@ const defaultCfg = {
   strategy: 'balanced',
   secondaryModel: '',
   models: [],
+  panelEnabled: false,
   providers: {
     // Approximate default monthly limits for external providers
     google: { charLimit: 500000 }, // ~500k characters

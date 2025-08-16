@@ -4,6 +4,21 @@ const logger = (self.qwenLogger && self.qwenLogger.create)
   ? self.qwenLogger.create('background')
   : console;
 
+const panelPorts = new Set();
+let panelEnabled = false;
+if (chrome?.storage?.sync) {
+  chrome.storage.sync.get({ panelEnabled: false }, ({ panelEnabled: enabled }) => {
+    panelEnabled = !!enabled;
+  });
+  if (chrome.storage.onChanged && chrome.storage.onChanged.addListener) {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'sync' && changes.panelEnabled) {
+        panelEnabled = !!changes.panelEnabled.newValue;
+      }
+    });
+  }
+}
+
 // Load basic config (e.g., memCacheMax) so translator cache limits apply in background
 self.qwenConfig = self.qwenConfig || {};
 try {
@@ -631,6 +646,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 chrome.runtime.onConnect.addListener(port => {
+  if (port.name === 'qwen-panel') {
+    panelPorts.add(port);
+    port.onDisconnect.addListener(() => { panelPorts.delete(port); });
+    return;
+  }
   if (port.name !== 'qwen-translate') return;
   port.onMessage.addListener(async (msg) => {
     if (!msg || typeof msg !== 'object') return;
@@ -652,6 +672,11 @@ chrome.runtime.onConnect.addListener(port => {
         if (opts && opts.stream) {
           const result = await self.qwenTranslateStream(safeOpts, chunk => {
             try { port.postMessage({ requestId, chunk }); } catch {}
+            if (panelEnabled && opts.context === 'chat') {
+              for (const p of panelPorts) {
+                try { p.postMessage({ action: 'chat-chunk', requestId, text: opts.text, chunk }); } catch {}
+              }
+            }
           });
           let confidence = scoreConfidence(opts.text, result && result.text);
           if (config.qualityVerify && self.qwenQualityCheck && self.qwenQualityCheck.verify) {
@@ -671,6 +696,11 @@ chrome.runtime.onConnect.addListener(port => {
             lastQuality = 0;
           }
           try { port.postMessage({ requestId, result: { ...result, confidence } }); } catch {}
+          if (panelEnabled && opts.context === 'chat') {
+            for (const p of panelPorts) {
+              try { p.postMessage({ action: 'chat-result', requestId, text: opts.text, result: { ...result, confidence } }); } catch {}
+            }
+          }
         } else {
           const result = await self.qwenTranslate(safeOpts);
           let confidence = scoreConfidence(opts.text, result && result.text);
@@ -691,6 +721,11 @@ chrome.runtime.onConnect.addListener(port => {
             lastQuality = 0;
           }
           try { port.postMessage({ requestId, result: { ...result, confidence } }); } catch {}
+          if (panelEnabled && opts.context === 'chat') {
+            for (const p of panelPorts) {
+              try { p.postMessage({ action: 'chat-result', requestId, text: opts.text, result: { ...result, confidence } }); } catch {}
+            }
+          }
         }
         logUsage(tokens, Date.now() - start);
         iconError = false;
@@ -699,6 +734,11 @@ chrome.runtime.onConnect.addListener(port => {
         logUsage(tokens, Date.now() - start);
         iconError = true;
         try { port.postMessage({ requestId, error: err.message }); } catch {}
+        if (panelEnabled && opts.context === 'chat') {
+          for (const p of panelPorts) {
+            try { p.postMessage({ action: 'chat-error', requestId, text: opts.text, error: err.message }); } catch {}
+          }
+        }
       } finally {
         clearTimeout(timeout);
         inflight.delete(requestId);
