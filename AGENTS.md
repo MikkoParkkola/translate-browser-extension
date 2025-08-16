@@ -8,7 +8,7 @@
 - Translation Memory (TM): `src/lib/tm.js` (IndexedDB TTL/LRU + metrics).
 - Detection: `src/lib/detect.js` (local heuristic; background also supports optional Google detection).
 - Batch delimiter: `src/lib/batchDelim.js` (collision-resistant delimiters).
-- Theme: `src/styles/cyberpunk.css` (cyberpunk HUD + popup styling).
+- Theme: `src/styles/apple.css` (neutral translucent theme with light/dark variants).
 - Tests: `test/` (Jest). Example: `translator.test.js`.
 - Scripts: `scripts/convert-safari.sh` (Safari project generation), `set-config.js` (test config helper).
 - Build artifacts/projects: `safari/` (converter output). PDFs and HTML fixtures for local testing live at repo root (e.g., `test-pdf.html`, `debug-pdf-viewer.html`).
@@ -67,7 +67,7 @@
 - Separate detection key: `detectApiKey` (Google) is used only for language detection; translation uses provider keys.
 - Provider-specific keys supported: `apiKeyDashScope`, `apiKeyOpenAI`, `apiKeyDeepL` (fallback to `apiKey` if unset). Background chooses the correct key per provider.
 - Additional fields: per-provider `charLimit`, `requestLimit`, `tokenLimit`, `costPerToken`, `weight` and `strategy` guide cost tracking and load balancing. Google translation also requires `projectId` and `location`, and `secondaryModel` enables quota fallback.
-- Ensure `styles/cyberpunk.css` is listed in `web_accessible_resources` for content <link> fallback.
+- Ensure `styles/apple.css` is listed in `web_accessible_resources` for content <link> fallback.
 
 ## Current Product State
 - Multi-provider translation
@@ -89,7 +89,7 @@
 - PDF translation
   - Custom viewer (`src/pdfViewer.html/js`) intercepts top-level PDFs and can use provider `translateDocument` (Google, DeepL Pro) or a local WASM pipeline to render translated pages.
 - UX and theming
-  - Cyberpunk HUD (`styles/cyberpunk.css`) for in-page status and popup; in-app Getting Started guide; tooltips across fields.
+- Apple HUD (`styles/apple.css`) for in-page status and popup; in-app Getting Started guide; tooltips across fields.
   - Provider presets (DashScope/OpenAI/DeepL/OpenRouter); provider-specific endpoints/keys/models; version/date shown in popup.
   - Logging via `qwenLogger` with levels and collectors; popup debug output uses the logger.
   - Fetch strategy is centralized in `lib/fetchStrategy.js`; override with `qwenFetchStrategy.setChooser(fn)` for custom proxy/direct routing.

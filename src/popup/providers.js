@@ -6,6 +6,7 @@
   const status = document.getElementById('status');
   const recommendationEl = document.getElementById('recommendation');
   const cfg = await window.qwenLoadConfig();
+  document.documentElement.setAttribute('data-qwen-color', cfg.theme || 'dark');
   const benchmark = chrome?.storage?.sync
     ? (await new Promise(r => chrome.storage.sync.get({ benchmark: null }, r))).benchmark
     : null;

@@ -16,11 +16,11 @@ let progressHud;
 
 function ensureThemeCss() {
   try {
-    if (!document.querySelector('link[data-qwen-theme="cyberpunk"]')) {
+    if (!document.querySelector('link[data-qwen-theme="apple"]')) {
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = chrome.runtime.getURL('styles/cyberpunk.css');
-      link.dataset.qwenTheme = 'cyberpunk';
+      link.href = chrome.runtime.getURL('styles/apple.css');
+      link.dataset.qwenTheme = 'apple';
       (document.head || document.documentElement).appendChild(link);
     }
     // Apply theme styling only to extension elements to avoid overriding page styles
@@ -64,8 +64,9 @@ function setStatus(message, isError = false) {
     el = document.createElement('div');
     el.id = 'qwen-status';
     el.className = 'qwen-hud qwen-hud--status';
-    // Scope cyberpunk theme to the HUD so page styles remain untouched
-    el.setAttribute('data-qwen-theme', 'cyberpunk');
+    // Scope theme to the HUD so page styles remain untouched
+    el.setAttribute('data-qwen-theme', 'apple');
+    el.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');
     el.innerHTML = '<span class="qwen-hud__dot" aria-hidden="true"></span><span class="qwen-hud__text"></span>';
@@ -92,7 +93,8 @@ function updateProgressHud() {
     progressHud = document.createElement('div');
     progressHud.id = 'qwen-progress';
     progressHud.className = 'qwen-hud qwen-hud--progress';
-    progressHud.setAttribute('data-qwen-theme', 'cyberpunk');
+    progressHud.setAttribute('data-qwen-theme', 'apple');
+    progressHud.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
     progressHud.innerHTML = '<span class="qwen-hud__text"></span>';
     progressHud.style.bottom = '40px';
     document.body.appendChild(progressHud);
@@ -138,7 +140,8 @@ function addFeedbackUI(el, original, translated, confidence) {
     const wrap = document.createElement('span');
     wrap.className = 'qwen-feedback';
     wrap.style.marginLeft = '4px';
-    wrap.setAttribute('data-qwen-theme', 'cyberpunk');
+    wrap.setAttribute('data-qwen-theme', 'apple');
+    wrap.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
     const good = document.createElement('button');
     good.textContent = 'Good';
     const bad = document.createElement('button');
