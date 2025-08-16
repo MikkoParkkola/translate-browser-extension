@@ -68,11 +68,57 @@ const providerChars = {};
 
 function refreshBenchmarkRec() {
   if (!chrome.storage || !chrome.storage.sync || !benchmarkRec) return;
-  chrome.storage.sync.get({ benchmark: null }, ({ benchmark }) => {
-    if (benchmark && benchmark.recommendation) {
-      benchmarkRec.textContent = `Recommended: ${benchmark.recommendation}`;
-    } else {
-      benchmarkRec.textContent = '';
+  chrome.storage.sync.get({ benchmark: null, providerOrder: [] }, ({ benchmark }) => {
+    benchmarkRec.innerHTML = '';
+    if (!benchmark || !benchmark.results) return;
+
+    const entries = Object.entries(benchmark.results);
+    entries.sort((a, b) => {
+      const ar = a[1];
+      const br = b[1];
+      if (ar.error && !br.error) return 1;
+      if (br.error && !ar.error) return -1;
+      if (ar.cost !== br.cost) return ar.cost - br.cost;
+      return ar.latency - br.latency;
+    });
+
+    const table = document.createElement('table');
+    table.className = 'benchmark-table';
+    const header = document.createElement('tr');
+    ['Provider', 'Latency (ms)', 'Cost'].forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      header.appendChild(th);
+    });
+    table.appendChild(header);
+
+    for (const [name, data] of entries) {
+      const tr = document.createElement('tr');
+      if (benchmark.recommendation === name) tr.classList.add('recommended');
+      const tdName = document.createElement('td');
+      tdName.textContent = name;
+      const tdLatency = document.createElement('td');
+      tdLatency.textContent = data.error ? '-' : String(data.latency);
+      const tdCost = document.createElement('td');
+      tdCost.textContent = data.error ? '-' : data.cost.toFixed(6);
+      tr.appendChild(tdName);
+      tr.appendChild(tdLatency);
+      tr.appendChild(tdCost);
+      table.appendChild(tr);
+    }
+
+    benchmarkRec.appendChild(table);
+
+    if (benchmark.recommendation) {
+      const btn = document.createElement('button');
+      btn.textContent = 'Apply Recommendation';
+      btn.addEventListener('click', () => {
+        const sorted = entries.map(([n]) => n);
+        chrome.storage.sync.set({ providerOrder: sorted }, () => {
+          btn.disabled = true;
+        });
+      });
+      benchmarkRec.appendChild(btn);
     }
   });
 }
