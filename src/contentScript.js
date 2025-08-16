@@ -489,9 +489,19 @@ async function start() {
   }
   if (currentConfig.debug) logger.debug('QTDEBUG: starting automatic translation');
   setStatus('Scanning page...');
-  const nodes = [];
-  collectNodes(document.body, nodes);
-  if (nodes.length) batchNodes(nodes);
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+  const chunk = [];
+  const chunkSize = 200;
+  let node;
+  while ((node = walker.nextNode())) {
+    if (node.textContent.trim() && shouldTranslate(node)) {
+      chunk.push(node);
+      if (chunk.length >= chunkSize) {
+        batchNodes(chunk.splice(0));
+      }
+    }
+  }
+  if (chunk.length) batchNodes(chunk);
   observe();
   if (!batchQueue.length) clearStatus();
 }
