@@ -13,6 +13,7 @@ const defaultCfg = {
   memCacheMax: 5000,
   sensitivity: 0.3,
   debug: false,
+  qualityVerify: false,
   useWasmEngine: true,
   autoOpenAfterSave: true,
   compact: false,
