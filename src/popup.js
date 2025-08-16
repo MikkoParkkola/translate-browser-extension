@@ -40,6 +40,8 @@ const statsTok = document.getElementById('statsTokens') || document.createElemen
 const statsLatency = document.getElementById('statsLatency') || document.createElement('span');
 const statsDetails = document.getElementById('statsDetails') || document.createElement('details');
 const statsSummary = statsDetails.querySelector('summary') || document.createElement('summary');
+const reqSpark = document.getElementById('reqSpark') || document.createElement('canvas');
+const tokSpark = document.getElementById('tokSpark') || document.createElement('canvas');
 const calibrationStatus = document.getElementById('calibrationStatus') || document.createElement('div');
 const resetCalibrationBtn = document.getElementById('resetCalibration') || document.createElement('button');
 const importGlossaryInput = document.getElementById('importGlossary') || document.createElement('input');
@@ -54,6 +56,8 @@ const sectionIds = ['providerSection', 'detectionSection', 'rateSection', 'cache
 
   let translating = false;
   let progressTimeout;
+  let reqSparkChart;
+  let tokSparkChart;
 
 function refreshBenchmarkRec() {
   if (!chrome.storage || !chrome.storage.sync || !benchmarkRec) return;
@@ -85,6 +89,44 @@ function initSectionToggles() {
 }
 
 initSectionToggles();
+
+function renderSparklines() {
+  if (typeof Chart === 'undefined' || !chrome.storage || !chrome.storage.local) return;
+  const now = Date.now();
+  chrome.storage.local.get({ usageHistory: [] }, ({ usageHistory }) => {
+    const hist = (usageHistory || []).filter(r => now - (r.ts || 0) <= 86400000);
+    hist.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    const labels = hist.map(r => new Date(r.ts).toLocaleTimeString());
+    const reqData = hist.map(r => r.requests || r.req || 0);
+    const tokData = hist.map(r => r.tokens || r.tok || 0);
+    if (reqSpark && reqSpark.getContext) {
+      if (!reqSparkChart) {
+        reqSparkChart = new Chart(reqSpark.getContext('2d'), {
+          type: 'line',
+          data: { labels, datasets: [{ data: reqData, borderColor: 'var(--green)', borderWidth: 1, pointRadius: 0, tension: 0.3 }] },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } } }
+        });
+      } else {
+        reqSparkChart.data.labels = labels;
+        reqSparkChart.data.datasets[0].data = reqData;
+        reqSparkChart.update();
+      }
+    }
+    if (tokSpark && tokSpark.getContext) {
+      if (!tokSparkChart) {
+        tokSparkChart = new Chart(tokSpark.getContext('2d'), {
+          type: 'line',
+          data: { labels, datasets: [{ data: tokData, borderColor: 'var(--yellow)', borderWidth: 1, pointRadius: 0, tension: 0.3 }] },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } } }
+        });
+      } else {
+        tokSparkChart.data.labels = labels;
+        tokSparkChart.data.datasets[0].data = tokData;
+        tokSparkChart.update();
+      }
+    }
+  });
+}
 
 if (importGlossaryInput) {
   importGlossaryInput.addEventListener('change', e => {
@@ -294,6 +336,7 @@ chrome.runtime.onMessage.addListener(msg => {
     statsReq.textContent = requests;
     statsTok.textContent = tokens;
     statsLatency.textContent = typeof avgLatency === 'number' ? avgLatency.toFixed(0) : '0';
+    renderSparklines();
   }
 });
 
@@ -337,6 +380,7 @@ chrome.runtime.sendMessage({ action: 'get-stats' }, res => {
     statsReq.textContent = res.requests || 0;
     statsTok.textContent = res.tokens || 0;
     statsLatency.textContent = typeof res.avgLatency === 'number' ? res.avgLatency.toFixed(0) : '0';
+    renderSparklines();
   }
 });
 
