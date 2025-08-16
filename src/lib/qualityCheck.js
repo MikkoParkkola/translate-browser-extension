@@ -3,6 +3,7 @@
   if (typeof module !== 'undefined' && module.exports) module.exports = mod;
   else root.qwenQualityCheck = mod;
 }(typeof self !== 'undefined' ? self : this, function (root) {
+  const logger = root.qwenLogger ? root.qwenLogger.create('quality') : console;
   function pickSample(text) {
     const s = String(text || '');
     if (!s) return '';
@@ -53,10 +54,15 @@
     if (!secondary) return { score: 0 };
     const epBase = (endpoints && endpoints[secondary]) || endpoint;
     const ep2 = epBase && /\/$/.test(epBase) ? epBase : (epBase ? epBase + '/' : epBase);
-    const primary = await root.qwenTranslate({ endpoint, apiKey, model, text: sample, source, target, provider, stream: false, noProxy: true, providerOrder, endpoints });
-    const second = await root.qwenTranslate({ endpoint: ep2, apiKey, model, text: sample, source, target, provider: secondary, stream: false, noProxy: true, providerOrder, endpoints });
+    const [primary, second] = await Promise.all([
+      root.qwenTranslate({ endpoint, apiKey, model, text: sample, source, target, provider, stream: false, noProxy: true, providerOrder, endpoints }),
+      root.qwenTranslate({ endpoint: ep2, apiKey, model, text: sample, source, target, provider: secondary, stream: false, noProxy: true, providerOrder, endpoints }),
+    ]);
     const score = bleu(primary && primary.text, second && second.text);
-    return { score };
+    if (score < 0.8) {
+      try { logger.warn('quality mismatch', { score, sample, primary: primary && primary.text, secondary: second && second.text, provider, secondary }); } catch {}
+    }
+    return { score, sample, primary: primary && primary.text, secondary: second && second.text };
   }
   return { verify };
 }));
