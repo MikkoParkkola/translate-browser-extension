@@ -97,6 +97,7 @@
   - Context menu entries: "Translate selection", "Translate page", and "Enable auto-translate on this site".
   - Popup "Test settings" button runs connectivity and translation diagnostics and reports results.
   - Auto-translate only starts for the active tab; background tabs remain untouched until activated.
+  - Optional conversation panel streams chat translations in real time; toggle in popup.
 - Build/CI
   - Reproducible dist + zip; CI builds/tests and uploads artifacts on push/PR.
 

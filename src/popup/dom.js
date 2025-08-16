@@ -12,6 +12,7 @@ const dom = {
   debugCheckbox: document.getElementById('debug'),
   compactCheckbox: document.getElementById('compactMode'),
   lightModeCheckbox: document.getElementById('lightMode'),
+  panelCheckbox: document.getElementById('panelEnabled'),
   smartThrottleInput: document.getElementById('smartThrottle'),
   tokensPerReqInput: document.getElementById('tokensPerReq'),
   retryDelayInput: document.getElementById('retryDelay'),

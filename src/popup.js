@@ -47,6 +47,7 @@ const statsLatency = document.getElementById('statsLatency') || document.createE
 const statsEta = document.getElementById('statsEta') || document.createElement('span');
 const statsQuality = document.getElementById('statsQuality') || document.createElement('span');
 const statsDetails = document.getElementById('statsDetails') || document.createElement('details');
+const panelCheckbox = document.getElementById('panelEnabled') || document.createElement('input');
 function setStatsSummary(eta) {
   if (!statsDetails) return;
   let summary = statsDetails.querySelector('summary');
@@ -265,6 +266,7 @@ function saveConfig() {
       qualityVerify: qualityCheckbox.checked,
       compact: compactCheckbox.checked,
       theme: lightModeCheckbox.checked ? 'light' : 'dark',
+      panelEnabled: panelCheckbox.checked,
       calibratedAt: (window.qwenConfig && window.qwenConfig.calibratedAt) || 0,
       strategy: strategySelect.value || 'balanced',
     };
@@ -513,6 +515,10 @@ window.qwenLoadConfig().then(cfg => {
   refreshBenchmarkRec();
   lightModeCheckbox.checked = cfg.theme === 'light';
   document.documentElement.setAttribute('data-qwen-color', lightModeCheckbox.checked ? 'light' : 'dark');
+  panelCheckbox.checked = !!cfg.panelEnabled;
+  if (chrome?.sidePanel?.setOptions) {
+    try { chrome.sidePanel.setOptions({ enabled: panelCheckbox.checked }); } catch {}
+  }
   calibrationStatus.textContent = cfg.calibratedAt ? `Calibrated ${new Date(cfg.calibratedAt).toLocaleString()}` : 'Not calibrated';
 
   // Populate setup view
@@ -597,6 +603,12 @@ window.qwenLoadConfig().then(cfg => {
   });
   lightModeCheckbox.addEventListener('change', () => {
     document.documentElement.setAttribute('data-qwen-color', lightModeCheckbox.checked ? 'light' : 'dark');
+    saveConfig();
+  });
+  panelCheckbox.addEventListener('change', () => {
+    if (chrome?.sidePanel?.setOptions) {
+      try { chrome.sidePanel.setOptions({ enabled: panelCheckbox.checked }); } catch {}
+    }
     saveConfig();
   });
   // If user toggles Auto, request permission/start or stop current tab
