@@ -221,6 +221,8 @@
                  title="Provider model identifier (e.g., qwen-mt-turbo, gpt-4o-mini).">
           <small class="help">Translation model name. Higher-tier models cost more.</small>
 
+          <label title="Use qwen-mt-plus if qwen-mt-turbo fails"><input type="checkbox" id="plusFallback"> Enable qwen-mt-plus fallback</label>
+
           <label for="providerPreset">Provider preset</label>
           <select id="providerPreset" title="Pick a preset to auto‑fill endpoint and a typical model. Paste your API key separately.">
             <option value="">— Choose a provider —</option>

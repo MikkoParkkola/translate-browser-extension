@@ -2,6 +2,7 @@
 const apiKeyInput = document.getElementById('apiKey') || document.createElement('input');
 const endpointInput = document.getElementById('apiEndpoint') || document.createElement('input');
 const modelInput = document.getElementById('model') || document.createElement('input');
+const plusFallbackCheckbox = document.getElementById('plusFallback') || document.createElement('input');
 const sourceSelect = document.getElementById('source') || document.createElement('select');
 const targetSelect = document.getElementById('target') || document.createElement('select');
 const reqLimitInput = document.getElementById('requestLimit') || document.createElement('input');
@@ -203,12 +204,17 @@ function saveConfig() {
       theme: lightModeCheckbox.checked ? 'light' : 'dark',
       calibratedAt: (window.qwenConfig && window.qwenConfig.calibratedAt) || 0,
     };
-    if (cfg.model === 'qwen-mt-turbo') {
-      cfg.secondaryModel = 'qwen-mt-plus';
-      cfg.models = ['qwen-mt-turbo', 'qwen-mt-plus'];
-    } else if (cfg.model === 'qwen-mt-plus') {
-      cfg.secondaryModel = 'qwen-mt-turbo';
-      cfg.models = ['qwen-mt-plus', 'qwen-mt-turbo'];
+    if (plusFallbackCheckbox.checked) {
+      if (cfg.model === 'qwen-mt-turbo') {
+        cfg.secondaryModel = 'qwen-mt-plus';
+        cfg.models = ['qwen-mt-turbo', 'qwen-mt-plus'];
+      } else if (cfg.model === 'qwen-mt-plus') {
+        cfg.secondaryModel = 'qwen-mt-turbo';
+        cfg.models = ['qwen-mt-plus', 'qwen-mt-turbo'];
+      } else {
+        cfg.secondaryModel = '';
+        cfg.models = cfg.model ? [cfg.model] : [];
+      }
     } else {
       cfg.secondaryModel = '';
       cfg.models = cfg.model ? [cfg.model] : [];
@@ -422,6 +428,7 @@ window.qwenLoadConfig().then(cfg => {
   if (sensitivityInput) sensitivityInput.value = cfg.sensitivity;
   endpointInput.value = cfg.apiEndpoint || '';
   modelInput.value = cfg.model || '';
+  plusFallbackCheckbox.checked = Array.isArray(cfg.models) && cfg.models.includes('qwen-mt-plus');
   sourceSelect.value = cfg.sourceLanguage;
   targetSelect.value = cfg.targetLanguage;
   // Sensible defaults if unset: auto source, target from browser UI language
@@ -471,7 +478,8 @@ window.qwenLoadConfig().then(cfg => {
   });
 
   [reqLimitInput, tokenLimitInput, tokenBudgetInput, memCacheMaxInput, sensitivityInput].forEach(el => el.addEventListener('input', saveConfig));
-  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox, qualityCheckbox].forEach(el => el.addEventListener('change', saveConfig));
+  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox, qualityCheckbox, plusFallbackCheckbox]
+    .forEach(el => el.addEventListener('change', saveConfig));
   compactCheckbox.addEventListener('change', () => {
     document.body.classList.toggle('qwen-compact', compactCheckbox.checked);
     saveConfig();
