@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 - Source: `src/` (browser extension). Key files: `background.js`, `contentScript.js`, `translator.js`, `throttle.js`, `config.js`, `pdfViewer.html/js`.
-- Providers: `src/providers/{openai,deepl,dashscope,openrouter,google}.js` (registered via `src/lib/providers.js`).
+- Providers: `src/providers/{qwen,dashscope,openai,deepl,google,openrouter,anthropic,mistral,ollama,macos}.js` (registered via `src/lib/providers.js`).
 - Messaging: `src/lib/messaging.js` (Port + legacy sendMessage fallback).
 - Logging: `src/lib/logger.js` (centralized logger with redaction).
 - Translation Memory (TM): `src/lib/tm.js` (IndexedDB TTL/LRU + metrics).
@@ -46,14 +46,16 @@
 - Background-only keys: content scripts never send/hold API keys; background injects keys for direct and Port flows.
 - Separate detection key: `detectApiKey` (Google) is used only for language detection; translation uses provider keys.
 - Provider-specific keys supported: `apiKeyDashScope`, `apiKeyOpenAI`, `apiKeyDeepL` (fallback to `apiKey` if unset). Background chooses the correct key per provider.
+- Additional fields: per-provider `charLimit`, `requestLimit`, `tokenLimit`, `costPerToken`, `weight` and `strategy` guide cost tracking and load balancing. Google translation also requires `projectId` and `location`, and `secondaryModel` enables quota fallback.
 - Ensure `styles/cyberpunk.css` is listed in `web_accessible_resources` for content <link> fallback.
 
 ## Current Product State
 - Multi-provider translation
-  - Providers: DashScope (Qwen), OpenAI, DeepL, OpenRouter via `lib/providers.js`.
+  - Providers: DashScope (Qwen), OpenAI, DeepL, OpenRouter, Anthropic/Claude, Mistral, Google, Ollama and macOS system translation via `lib/providers.js`.
 - Providers are no longer auto-registered; call `qwenProviders.initProviders()` before translating when using built-ins. `qwenProviders.isInitialized()` reports whether defaults are loaded and the translator now logs a warning if a translation is attempted before initialization. Custom providers can create isolated registries via `qwenProviders.createRegistry()` and register prior to initialization to override or augment the defaults.
  - Providers are no longer auto-registered; call `qwenProviders.initProviders()` or `qwenProviders.ensureProviders()` before translating when using built-ins. `qwenProviders.isInitialized()` reports whether defaults are loaded and the translator now logs a one-time warning if a translation is attempted before initialization. Pass `{ autoInit: true }` to translation calls to invoke `initProviders()` on demand. Custom providers can create isolated registries via `qwenProviders.createRegistry()` and register prior to initialization to override or augment the defaults.
   - Provider order (`providerOrder`) and per-provider endpoints configurable; failover implemented with per-provider `runWithRetry` + rate-limit. Providers may include a `throttle` config to tune request/token limits per backend, with optional per-context queues (e.g., `stream`) for finer control.
+  - Default config assumes roughly 500k free characters for Google/DeepL and tracks spend via `costPerToken`. Background selects providers above `requestThreshold` and uses per-provider weights to balance load across those with available quota.
   - Background pulls provider-specific keys from storage (`getProviderApiKeyFromStorage`) and injects them on both direct and Port paths.
 - Messaging and streaming
   - Port-based background proxy with chunk relay and cancellation; legacy `sendMessage` fallback.
@@ -64,6 +66,8 @@
 - Caching / TM
   - TM (IndexedDB) with TTL/LRU and metrics; warmed before batching; skips re-translation of hits.
   - In-memory LRU with normalized keys (whitespace collapsed + NFC) limits memory and improves hit rate.
+- PDF translation
+  - Custom viewer (`src/pdfViewer.html/js`) intercepts top-level PDFs and can use provider `translateDocument` (Google, DeepL Pro) or a local WASM pipeline to render translated pages.
 - UX and theming
   - Cyberpunk HUD (`styles/cyberpunk.css`) for in-page status and popup; in-app Getting Started guide; tooltips across fields.
   - Provider presets (DashScope/OpenAI/DeepL/OpenRouter); provider-specific endpoints/keys/models; version/date shown in popup.
