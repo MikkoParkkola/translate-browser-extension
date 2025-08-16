@@ -22,7 +22,10 @@ const defaultCfg = {
   strategy: 'balanced',
   secondaryModel: '',
   models: [],
-  providers: {},
+  providers: {
+    google: { charLimit: 500000 },
+    deepl: { charLimit: 500000 },
+  },
   providerOrder: [],
   failover: true,
   parallel: false,

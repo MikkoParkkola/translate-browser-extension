@@ -34,4 +34,13 @@ describe('config migration', () => {
     expect(saved.providers.google.apiKey).toBe('g');
     expect(saved.apiKey).toBe('g');
   });
+
+  test('defaults charLimit for google and deepl', async () => {
+    const set = jest.fn((o, cb) => cb && cb());
+    global.chrome = { storage: { sync: { get: (d, cb) => cb(d), set } } };
+    const { qwenLoadConfig } = require('../src/config.js');
+    const cfg = await qwenLoadConfig();
+    expect(cfg.providers.google.charLimit).toBe(500000);
+    expect(cfg.providers.deepl.charLimit).toBe(500000);
+  });
 });
