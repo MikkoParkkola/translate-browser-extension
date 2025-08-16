@@ -239,6 +239,20 @@
         </div>
       </details>
 
+      <details id="limitSection" class="panel-frame">
+        <summary>Rate Limits</summary>
+        <div class="form-group" style="padding-top: 0.75rem">
+          <div id="calibrationStatus" class="help"></div>
+          <label for="requestLimit">Request limit/min</label>
+          <input type="number" id="requestLimit" placeholder="60" min="0" title="Maximum translation requests per minute">
+          <label for="tokenLimit">Token limit/min</label>
+          <input type="number" id="tokenLimit" placeholder="100000" min="0" title="Maximum tokens per minute">
+          <label for="tokenBudget">Token budget</label>
+          <input type="number" id="tokenBudget" placeholder="Optional" min="0" title="Optional per-page token budget">
+          <button id="recalibrate" class="secondary btn-frame">Recalibrate</button>
+        </div>
+      </details>
+
       <details id="detectionSection" class="panel-frame">
         <summary>Detection</summary>
         <div class="form-group" style="padding-top: 0.75rem">
