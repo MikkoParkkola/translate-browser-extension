@@ -75,7 +75,6 @@ let translating = false;
 let progressTimeout;
 let reqSparkChart;
 let tokSparkChart;
-const providerChars = {};
 const modelQuotas = {};
 
 function refreshBenchmarkRec() {
@@ -656,9 +655,11 @@ function renderProviderUsage(cfg, stats = {}) {
     bar.className = 'bar';
     const fill = document.createElement('div');
     bar.appendChild(fill);
-    setBar(fill, limit ? used / limit : 0);
+    const ratio = limit ? used / limit : 0;
+    setBar(fill, ratio);
     const label = document.createElement('span');
     label.textContent = `${id}: ${used}${limit ? '/' + limit : ''}`;
+    if (ratio >= 0.8) label.textContent += ' ⚠️';
     item.appendChild(label);
     item.appendChild(bar);
     providerUsage.appendChild(item);
@@ -724,14 +725,15 @@ function refreshUsage() {
       setBar(bar, limit.requests ? usedReq / limit.requests : 0);
       bar.textContent = `${usedReq}r ${m.tokens || 0}t`;
     });
-    const prov = res.providers || {};
-    Object.entries(prov).forEach(([id, s]) => {
-      const used = (s && (s.characters && s.characters.used)) ?? s.chars ?? 0;
-      if (typeof used === 'number' && !isNaN(used)) {
-        providerChars[id] = used;
-      }
+    const models = res.models || {};
+    const provChars = {};
+    Object.entries(cfg.providers || {}).forEach(([id, p]) => {
+      const list = Array.isArray(p.models) && p.models.length ? p.models : (p.model ? [p.model] : []);
+      let total = 0;
+      list.forEach(m => { const ms = models[m]; if (ms && typeof ms.chars === 'number') total += ms.chars; });
+      provChars[id] = total;
     });
-    renderProviderUsage(cfg, providerChars);
+    renderProviderUsage(cfg, provChars);
   });
 }
 

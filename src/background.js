@@ -380,6 +380,10 @@ async function handleTranslate(opts) {
 
   const start = Date.now();
   const tokens = self.qwenThrottle.approxTokens(text || '');
+  const chars = Array.isArray(text) ? text.reduce((s, t) => s + (t ? t.length : 0), 0) : (text || '').length;
+  usageStats.models[model] = usageStats.models[model] || { requests: 0, chars: 0 };
+  usageStats.models[model].requests++;
+  usageStats.models[model].chars += chars;
   try {
     const storedKey = await getApiKeyFromStorage();
     const result = await self.qwenTranslate({
@@ -400,8 +404,6 @@ async function handleTranslate(opts) {
       failover,
       parallel,
     });
-    usageStats.models[model] = usageStats.models[model] || { requests: 0 };
-    usageStats.models[model].requests++;
     const cost = tokens * (COST_RATES[model] || 0);
     chrome.storage.local.get({ usageHistory: [] }, data => {
       const hist = data.usageHistory || [];
