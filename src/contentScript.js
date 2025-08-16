@@ -13,6 +13,8 @@ const controllers = new Set();
 let progress = { total: 0, done: 0 };
 let started = false;
 let progressHud;
+let selectionBubble;
+let selectionPinned = false;
 
 function ensureThemeCss() {
   try {
@@ -160,6 +162,87 @@ function addFeedbackUI(el, original, translated, confidence) {
   } catch {}
 }
 
+function removeSelectionBubble() {
+  if (selectionBubble && !selectionPinned) {
+    selectionBubble.remove();
+    selectionBubble = null;
+  }
+}
+
+async function showSelectionBubble(range, text) {
+  removeSelectionBubble();
+  selectionPinned = false;
+  selectionBubble = document.createElement('div');
+  selectionBubble.className = 'qwen-bubble';
+  selectionBubble.setAttribute('data-qwen-theme', 'apple');
+  selectionBubble.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
+  selectionBubble.setAttribute('tabindex', '-1');
+  selectionBubble.setAttribute('role', 'dialog');
+  const result = document.createElement('div');
+  result.className = 'qwen-bubble__result';
+  result.setAttribute('role', 'status');
+  result.setAttribute('aria-live', 'polite');
+  result.textContent = 'Translating...';
+  selectionBubble.appendChild(result);
+  const actions = document.createElement('div');
+  actions.className = 'qwen-bubble__actions';
+  const pinBtn = document.createElement('button');
+  pinBtn.textContent = 'Pin';
+  pinBtn.setAttribute('aria-label', 'Pin translation');
+  const copyBtn = document.createElement('button');
+  copyBtn.textContent = 'Copy';
+  copyBtn.setAttribute('aria-label', 'Copy translation');
+  const panelBtn = document.createElement('button');
+  panelBtn.textContent = 'Panel';
+  panelBtn.setAttribute('aria-label', 'Open full panel');
+  actions.append(pinBtn, copyBtn, panelBtn);
+  selectionBubble.appendChild(actions);
+  pinBtn.addEventListener('click', () => {
+    selectionPinned = !selectionPinned;
+    pinBtn.classList.toggle('active', selectionPinned);
+  });
+  copyBtn.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(result.textContent || ''); } catch {}
+  });
+  panelBtn.addEventListener('click', () => {
+    try { chrome.runtime.sendMessage({ action: 'open-panel', text: result.textContent, original: text }); } catch {}
+  });
+  const rect = range.getBoundingClientRect ? range.getBoundingClientRect() : { top: 0, left: 0, bottom: 0 };
+  selectionBubble.style.top = `${window.scrollY + (rect.bottom || rect.top) + 5}px`;
+  selectionBubble.style.left = `${window.scrollX + rect.left}px`;
+  document.body.appendChild(selectionBubble);
+  selectionBubble.focus();
+  const cfg = currentConfig || (await window.qwenLoadConfig());
+  await loadGlossary();
+  try {
+    const res = await window.qwenTranslate({
+      endpoint: cfg.apiEndpoint,
+      model: cfg.model,
+      text,
+      source: cfg.sourceLanguage,
+      target: cfg.targetLanguage,
+      providerOrder: cfg.providerOrder,
+      endpoints: cfg.endpoints,
+      failover: cfg.failover,
+      debug: cfg.debug,
+    });
+    result.textContent = res.text;
+  } catch {
+    result.textContent = 'Translation failed';
+  }
+}
+
+function handleSelection() {
+  setTimeout(() => {
+    const sel = window.getSelection();
+    const text = sel && sel.toString().trim();
+    if (text) {
+      try { showSelectionBubble(sel.getRangeAt(0), text); } catch {}
+    } else {
+      removeSelectionBubble();
+    }
+  }, 0);
+}
 
 function isMarked(node) {
   if (node.nodeType === Node.TEXT_NODE) {
@@ -472,6 +555,12 @@ async function start() {
 }
 
 if (!skipInit) {
+document.addEventListener('mouseup', handleSelection);
+document.addEventListener('keyup', handleSelection);
+document.addEventListener('mousedown', e => {
+  if (selectionBubble && !selectionBubble.contains(e.target) && !selectionPinned) removeSelectionBubble();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') removeSelectionBubble(); });
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'start') {
     if (currentConfig && currentConfig.debug) logger.debug('QTDEBUG: start message received');
