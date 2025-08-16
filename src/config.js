@@ -51,8 +51,8 @@ function migrate(cfg = {}) {
   if (!p.costPerToken) p.costPerToken = 0;
   if (!p.weight) p.weight = 0;
   if (!p.strategy) p.strategy = out.strategy || 'balanced';
-  if (Array.isArray(cfg.models)) p.models = cfg.models.slice();
-  else if (!p.models) p.models = p.model ? [p.model] : [];
+  if (Array.isArray(cfg.models) && cfg.models.length) p.models = cfg.models.slice();
+  else if (!p.models || !p.models.length) p.models = p.model ? [p.model] : [];
   if (!p.secondaryModel) {
     p.secondaryModel = p.models.length > 1
       ? p.models.find(m => m !== p.model) || ''

@@ -15,6 +15,16 @@ describe('config migration', () => {
     expect(set).toHaveBeenCalled();
   });
 
+  test('does not add qwen-mt-plus fallback by default', async () => {
+    const stored = { model: 'qwen-mt-turbo', provider: 'qwen' };
+    const set = jest.fn((o, cb) => cb && cb());
+    global.chrome = { storage: { sync: { get: (d, cb) => cb({ ...d, ...stored }), set } } };
+    const { qwenLoadConfig } = require('../src/config.js');
+    const cfg = await qwenLoadConfig();
+    expect(cfg.models).toEqual(['qwen-mt-turbo']);
+    expect(cfg.secondaryModel).toBe('');
+  });
+
   test('saves provider specific fields', async () => {
     const set = jest.fn((o, cb) => cb && cb());
     global.chrome = { storage: { sync: { set } } };
