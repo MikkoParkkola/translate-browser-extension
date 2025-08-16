@@ -66,6 +66,7 @@ let progressTimeout;
 let reqSparkChart;
 let tokSparkChart;
 const providerChars = {};
+const modelQuotas = {};
 
 function refreshBenchmarkRec() {
   if (!chrome.storage || !chrome.storage.sync || !benchmarkRec) return;
@@ -665,13 +666,13 @@ function renderProviderUsage(cfg, stats = {}) {
 function refreshQuota() {
   ['qwen-mt-turbo', 'qwen-mt-plus'].forEach(model => {
     chrome.runtime.sendMessage({ action: 'quota', model }, res => {
-      if (chrome.runtime.lastError || !res || !res.remaining) return;
+      if (chrome.runtime.lastError || !res) return;
       const rem = res.remaining || {};
       const used = res.used || {};
-      const total = (used.requests || 0) + (rem.requests || 0);
-      const bar = model === 'qwen-mt-turbo' ? turboReqBar : plusReqBar;
-      setBar(bar, total ? (rem.requests || 0) / total : 0);
-      bar.textContent = `${rem.requests || 0}r ${rem.tokens || 0}t`;
+      modelQuotas[model] = {
+        requests: (used.requests || 0) + (rem.requests || 0),
+        tokens: (used.tokens || 0) + (rem.tokens || 0),
+      };
     });
   });
 }
@@ -713,6 +714,14 @@ function refreshUsage() {
     tokenCount.textContent = tokTotal ? `${tokUsed}/${tokTotal}` : `${tokUsed}`;
     reqBar.title = `Requests: ${reqCount.textContent}`;
     tokenBar.title = `Tokens: ${tokenCount.textContent}`;
+    ['qwen-mt-turbo', 'qwen-mt-plus'].forEach(model => {
+      const bar = model === 'qwen-mt-turbo' ? turboReqBar : plusReqBar;
+      const m = res.models && res.models[model] || {};
+      const limit = modelQuotas[model] || {};
+      const usedReq = m.requests || 0;
+      setBar(bar, limit.requests ? usedReq / limit.requests : 0);
+      bar.textContent = `${usedReq}r ${m.tokens || 0}t`;
+    });
     const prov = res.providers || {};
     Object.entries(prov).forEach(([id, s]) => {
       const used = (s && (s.characters && s.characters.used)) ?? s.chars ?? 0;
