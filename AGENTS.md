@@ -95,6 +95,7 @@
   - Browser action icon shows quota usage ring and status dot (green active, red error, gray idle); badge reflects active translations.
   - Context menu entries: "Translate selection", "Translate page", and "Enable auto-translate on this site".
   - Popup "Test settings" button runs connectivity and translation diagnostics and reports results.
+  - Auto-translate only starts for the active tab; background tabs remain untouched until activated.
 - Build/CI
   - Reproducible dist + zip; CI builds/tests and uploads artifacts on push/PR.
 
