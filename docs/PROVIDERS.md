@@ -12,6 +12,12 @@ OpenAI
 - Models: gpt-4o-mini (chat/completions)
 - Notes: Use a model available to your account. Background keeps the key.
 
+Anthropic (Claude)
+- Endpoint: https://api.anthropic.com/v1
+- Keys: https://console.anthropic.com/account/api-keys
+- Models: claude-4.1-haiku, claude-4.1-sonnet (legacy: claude-3-haiku, claude-3-sonnet)
+- Notes: Streaming supported (/messages SSE). Background keeps the key.
+
 DeepL
 - Endpoint: https://api.deepl.com/v2
 - Keys: https://www.deepl.com/pro-api
