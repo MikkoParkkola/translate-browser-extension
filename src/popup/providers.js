@@ -82,6 +82,16 @@
       if (v != null) input.value = v;
     });
 
+    const modelInput = li.querySelector('[data-field="model"]');
+    if (modelInput) {
+      const dl = document.createElement('datalist');
+      const listId = `models-${id}`;
+      dl.id = listId;
+      modelInput.setAttribute('list', listId);
+      modelInput.addEventListener('focus', () => fetchModelOptions(id, li, dl));
+      li.appendChild(dl);
+    }
+
     const modelsInput = li.querySelector('[data-field="models"]');
     const plusLabel = document.createElement('label');
     const plusCheck = document.createElement('input');
@@ -156,6 +166,24 @@
       }
     });
     return li;
+  }
+
+  async function fetchModelOptions(id, li, dl) {
+    try {
+      const prov = (window.qwenProviders && window.qwenProviders.get)
+        ? window.qwenProviders.get(id)
+        : null;
+      if (!prov || typeof prov.listModels !== 'function') return;
+      const endpoint = li.querySelector('[data-field="apiEndpoint"]')?.value.trim();
+      const apiKey = li.querySelector('[data-field="apiKey"]')?.value.trim();
+      const models = await prov.listModels({ endpoint, apiKey });
+      dl.innerHTML = '';
+      models.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        dl.appendChild(opt);
+      });
+    } catch (e) { console.error('model list failed', id, e); }
   }
 
   order.forEach(id => list.appendChild(createItem(id)));

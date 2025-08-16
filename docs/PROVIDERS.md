@@ -13,6 +13,13 @@ OpenAI
 - Models: gpt-5, gpt-5-mini, gpt-5-nano (chat/completions)
 - Notes: Use a model available to your account. Background keeps the key.
 
+OpenRouter
+- Preset: openrouter
+- Endpoint: https://openrouter.ai/api/v1
+- Keys: https://openrouter.ai/keys
+- Models: fetched dynamically from OpenRouter
+- Notes: Streaming supported. Background keeps the key.
+
 Mistral
 - Endpoint: https://api.mistral.ai/v1
 - Keys: https://console.mistral.ai/
