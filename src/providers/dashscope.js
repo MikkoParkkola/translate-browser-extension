@@ -91,7 +91,21 @@
     return { text: result };
   }
 
-  const provider = { translate, throttle: { requestLimit: 5, windowMs: 1000 } };
+  async function listModels({ endpoint, apiKey, signal } = {}) {
+    if (!fetchFn) throw new Error('fetch not available');
+    const base = withSlash(endpoint || 'https://dashscope-intl.aliyuncs.com/api/v1');
+    const url = base + 'models';
+    const headers = {};
+    const key = (apiKey || '').trim();
+    if (key) headers.Authorization = /^bearer\s/i.test(key) ? key : `Bearer ${key}`;
+    const resp = await fetchFn(url, { headers, signal });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    const data = await resp.json();
+    const list = data.models || data.data || [];
+    return list.map(m => m.model_id || m.modelId || m.id || m).filter(Boolean);
+  }
+
+  const provider = { translate, listModels, throttle: { requestLimit: 5, windowMs: 1000 } };
   try {
     const reg = root.qwenProviders || (typeof require !== 'undefined' ? require('../lib/providers') : null);
     if (reg && reg.register && !reg.get('dashscope')) reg.register('dashscope', provider);

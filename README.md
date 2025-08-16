@@ -40,9 +40,10 @@ See `safari/README.md` for detailed iOS/iPadOS deployment steps.
 
 ## Configuration
 Use the popup to configure:
-- Provider preset to auto-fill endpoint and a typical model (DashScope/Qwen, OpenAI, DeepL)
-- API key for your chosen provider (keys are stored locally; never injected into pages)
-- Translation model name (e.g., `qwen-mt-turbo`, `gpt-4o-mini`)
+- Provider preset to auto-fill endpoint and a typical model (DashScope/Qwen, OpenAI, DeepL, Mistral, Anthropic/Claude, Google, OpenRouter, Ollama, macOS)
+- API key and provider-specific fields (for example, Google Cloud requires a Project ID and Location)
+- Translation model and optional secondary model used when the primary model is rate-limited
+- Per-provider limits, cost per token and weight to guide load balancing
 - Source and target languages (Source can be “Auto-detect”)
 - Detector mode: Local (default, private) or Google (needs a Detection API key)
 - Automatic translation toggle
@@ -64,8 +65,13 @@ The sample phrase is chosen based on the configured source language so the trans
 ### Where to get API keys
 - DashScope (Qwen): https://dashscope.console.aliyun.com/
 - OpenAI: https://platform.openai.com/api-keys
+- Mistral: https://console.mistral.ai/
+- Anthropic (Claude): https://console.anthropic.com/
 - DeepL: https://www.deepl.com/pro-api
-- Google Cloud (Detection): https://cloud.google.com/translate/docs/setup
+- Google Cloud Translation & Detection: https://cloud.google.com/translate/docs/setup
+- OpenRouter: https://openrouter.ai/
+- Ollama (local, no key required)
+- macOS system translator (no key required)
 
 See also: docs/PROVIDERS.md
 
@@ -80,11 +86,21 @@ Translations apply to dynamically added content as well as embedded frames or th
 Identical strings are translated only once and reused across matching nodes, and hidden or off‑screen elements are ignored so tokens are spent only on visible text.
 Translated nodes keep their original leading and trailing whitespace. Nodes are batched to minimise API requests and maximise throughput. While translations are running the extension's toolbar icon shows an activity badge and a temporary status box in the bottom‑right corner of the page reports current work or errors. The box disappears automatically when the extension is idle.
 
+### PDF Translation
+Top‑level PDF navigations are opened in a custom viewer. The viewer can translate PDFs in two ways:
+- **Provider document translation** – if Google Cloud or DeepL Pro credentials are present the entire file is sent to the provider's `translateDocument` API and the returned PDF is displayed.
+- **WASM pipeline** – otherwise the viewer extracts text, translates page segments through the normal text API and renders a new PDF locally.
+Translated PDFs can be saved via the viewer's **Save translated PDF** action.
+
 ### Rate Limiting
 The extension and CLI queue translation requests to stay within the provider limits.
 The background worker maintains a single queue so multiple page nodes are translated sequentially rather than all at once, preventing bursts that would trigger HTTP 429 errors. Nodes are batched into combined translation requests to reduce the overall query count. If the provider still returns a 429 response the request is retried automatically.
 You can adjust the limits under **Requests per minute** and **Tokens per minute** in the extension popup or via `--requests` and `--tokens` on the CLI. Defaults are 60 requests and 100,000 tokens every 60 seconds.
 The popup displays live usage for the last minute and colour-coded bars turn yellow or red as limits are approached. Usage statistics refresh every second and also show total requests, total tokens and the current queue length.
+
+### Pricing & Load Balancing
+Each provider entry stores an approximate monthly character limit and a cost-per-token estimate. Defaults assume roughly 500k free characters for Google and DeepL. The popup reports 24‑hour and 7‑day spend based on these rates.
+Translations can be distributed across multiple providers. `providerOrder` defines the failover chain and per‑provider weights bias how parallel batches are split. The background service checks remaining quotas and skips providers that drop below the `requestThreshold`, effectively load‑balancing work across those with capacity.
 
 ### Troubleshooting
 Both model refreshes and translation requests write trace logs to the browser console. Copy any on-page error and check the console for a matching entry to diagnose problems.

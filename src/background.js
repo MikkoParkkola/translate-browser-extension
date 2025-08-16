@@ -1,4 +1,4 @@
-importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'lib/feedback.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js', 'backgroundBenchmark.js');
+importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'providers/mistral.js', 'lib/tm.js', 'lib/feedback.js', 'lib/qualityCheck.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js', 'backgroundBenchmark.js');
 
 const logger = (self.qwenLogger && self.qwenLogger.create)
   ? self.qwenLogger.create('background')
@@ -55,8 +55,9 @@ function calibrateLimits(force) {
 }
 
 if (chrome?.storage?.sync) {
-  calibrateLimits();
-  setInterval(() => calibrateLimits(), 3600000);
+  chrome.storage.sync.get({ calibratedAt: 0 }, ({ calibratedAt }) => {
+    if (!calibratedAt) calibrateLimits(true);
+  });
 }
 
 function localDetectLanguage(text) {
@@ -154,24 +155,35 @@ async function maybeAutoInject(tabId, url) {
   await ensureInjectedAndStart(tabId);
 }
 
+function createContextMenus() {
+  try {
+    chrome.contextMenus.removeAll(() => {
+      chrome.contextMenus.create({
+        id: 'qwen-translate-selection',
+        title: 'Translate selection',
+        contexts: ['selection'],
+      });
+      chrome.contextMenus.create({
+        id: 'qwen-translate-page',
+        title: 'Translate page',
+        contexts: ['page'],
+      });
+      chrome.contextMenus.create({
+        id: 'qwen-enable-site',
+        title: 'Enable auto-translate on this site',
+        contexts: ['page'],
+      });
+    });
+  } catch {}
+}
+
+createContextMenus();
+
 chrome.runtime.onInstalled.addListener(() => {
   logger.info('Qwen Translator installed');
-  chrome.contextMenus.create({
-    id: 'qwen-translate-selection',
-    title: 'Translate selection',
-    contexts: ['selection'],
-  });
-  chrome.contextMenus.create({
-    id: 'qwen-translate-page',
-    title: 'Translate page',
-    contexts: ['page'],
-  });
-  chrome.contextMenus.create({
-    id: 'qwen-enable-site',
-    title: 'Enable auto-translate on this site',
-    contexts: ['page'],
-  });
+  createContextMenus();
 });
+if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(createContextMenus);
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!tab || !tab.id) return;
@@ -217,13 +229,15 @@ let throttleReady;
 let activeTranslations = 0;
 let iconError = false;
 let translationStatus = { active: false };
+let etaMs = null;
 const inflight = new Map(); // requestId -> { controller, timeout, port }
 
 // Test-accessible state
 let usingPlus = false;
-let config = { providerOrder: [], requestThreshold: 0 };
+let config = { providerOrder: [], requestThreshold: 0, qualityVerify: false };
 const usageStats = { models: {} };
 const usageLog = [];
+let lastQuality = 0;
 
 function logUsage(tokens, latency) {
   const entry = { ts: Date.now(), tokens, latency };
@@ -238,22 +252,27 @@ function _setConfig(c) { config = { ...config, ...c }; }
 function getAggregatedStats() {
   const { totalRequests, totalTokens, tokenLimit, tokens } = self.qwenThrottle.getUsage();
   const remaining = Math.max(0, tokenLimit - tokens);
-  const eta = tokenLimit ? remaining / tokenLimit : 0;
-  const avgLatency = usageLog.length
-    ? usageLog.reduce((sum, e) => sum + (e.latency || 0), 0) / usageLog.length
-    : 0;
-  return { requests: totalRequests, tokens: totalTokens, eta, avgLatency };
+  const totalLatency = usageLog.reduce((sum, e) => sum + (e.latency || 0), 0);
+  const totalLoggedTokens = usageLog.reduce((sum, e) => sum + (e.tokens || 0), 0);
+  const avgThroughput = totalLatency ? totalLoggedTokens / totalLatency : 0; // tokens per ms
+  const eta = avgThroughput ? (remaining / avgThroughput) / 1000 : 0; // seconds
+  const avgLatency = usageLog.length ? totalLatency / usageLog.length : 0;
+  return { requests: totalRequests, tokens: totalTokens, eta, avgLatency, quality: lastQuality };
 }
 
 function broadcastStats() {
   ensureThrottle().then(() => {
-    try { chrome.runtime.sendMessage({ action: 'stats', stats: getAggregatedStats() }); } catch {}
+    const stats = getAggregatedStats();
+    try { chrome.runtime.sendMessage({ action: 'stats', stats }); } catch {}
   });
+}
+
+function broadcastEta() {
+  try { chrome.runtime.sendMessage({ action: 'translation-status', etaMs }); } catch {}
 }
 
 async function updateIcon() {
   await ensureThrottle();
-  if (typeof OffscreenCanvas === 'undefined') return;
   const { requests, requestLimit, tokens, tokenLimit } = self.qwenThrottle.getUsage();
   const reqPct = requestLimit ? requests / requestLimit : 0;
   const tokPct = tokenLimit ? tokens / tokenLimit : 0;
@@ -261,8 +280,15 @@ async function updateIcon() {
   const busy = activeTranslations > 0;
 
   const size = 128;
-  const c = new OffscreenCanvas(size, size);
-  const ctx = c.getContext('2d');
+  let c, ctx;
+  if (typeof OffscreenCanvas !== 'undefined') {
+    c = new OffscreenCanvas(size, size);
+    ctx = c.getContext('2d');
+  } else if (typeof document !== 'undefined') {
+    c = document.createElement('canvas');
+    c.width = c.height = size;
+    ctx = c.getContext('2d');
+  } else return;
   ctx.clearRect(0, 0, size, size);
 
   // background ring
@@ -371,6 +397,10 @@ async function handleTranslate(opts) {
 
   const start = Date.now();
   const tokens = self.qwenThrottle.approxTokens(text || '');
+  const chars = Array.isArray(text) ? text.reduce((s, t) => s + (t ? t.length : 0), 0) : (text || '').length;
+  usageStats.models[model] = usageStats.models[model] || { requests: 0, chars: 0 };
+  usageStats.models[model].requests++;
+  usageStats.models[model].chars += chars;
   try {
     const storedKey = await getApiKeyFromStorage();
     const result = await self.qwenTranslate({
@@ -391,8 +421,6 @@ async function handleTranslate(opts) {
       failover,
       parallel,
     });
-    usageStats.models[model] = usageStats.models[model] || { requests: 0 };
-    usageStats.models[model].requests++;
     const cost = tokens * (COST_RATES[model] || 0);
     chrome.storage.local.get({ usageHistory: [] }, data => {
       const hist = data.usageHistory || [];
@@ -401,7 +429,23 @@ async function handleTranslate(opts) {
     });
     if (debug) logger.debug('background translation completed');
     logUsage(tokens, Date.now() - start);
-    const confidence = scoreConfidence(text, result && result.text);
+    let confidence = scoreConfidence(text, result && result.text);
+    if (config.qualityVerify && self.qwenQualityCheck && self.qwenQualityCheck.verify) {
+      try {
+        const qc = await self.qwenQualityCheck.verify({ text, source, target, provider, endpoint: ep, model, apiKey: storedKey, providerOrder: config.providerOrder, endpoints });
+        if (qc && typeof qc.score === 'number') {
+          confidence = qc.score;
+          lastQuality = confidence;
+        } else {
+          lastQuality = 0;
+        }
+      } catch (e) {
+        logger.warn('quality check failed', e);
+        lastQuality = 0;
+      }
+    } else {
+      lastQuality = 0;
+    }
     iconError = false;
     return { ...result, confidence };
   } catch (err) {
@@ -447,6 +491,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         self.qwenThrottle.configure(opts);
       });
     }
+    if (typeof c.qualityVerify === 'boolean') config.qualityVerify = c.qualityVerify;
     sendResponse({ ok: true });
     return true;
   }
@@ -477,6 +522,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
+  if (msg.action === 'quota') {
+    const model = msg.model;
+    const cfg = self.qwenConfig || {};
+    const prov = self.qwenProviders && self.qwenProviders.getProvider && self.qwenProviders.getProvider('qwen');
+    if (prov && prov.getQuota) {
+      prov.getQuota({
+        endpoint: (cfg.providers && cfg.providers.qwen && cfg.providers.qwen.apiEndpoint) || cfg.apiEndpoint,
+        apiKey: (cfg.providers && cfg.providers.qwen && cfg.providers.qwen.apiKey) || cfg.apiKey,
+        model: model || cfg.model,
+        debug: cfg.debug,
+      }).then(sendResponse).catch(err => sendResponse({ error: err.message }));
+      return true;
+    }
+    sendResponse({ error: 'provider unavailable' });
+    return true;
+  }
   if (msg.action === 'detect') {
     const opts = msg.opts || {};
     (async () => {
@@ -493,6 +554,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.action === 'translation-status') {
     translationStatus = msg.status || { active: false };
+    if (msg.status && typeof msg.status.etaMs === 'number') {
+      etaMs = msg.status.etaMs;
+      broadcastEta();
+    } else if (!translationStatus.active) {
+      etaMs = null;
+      broadcastEta();
+    }
     broadcastStats();
     sendResponse({ ok: true });
     return true;
@@ -507,14 +575,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
-  if (msg.action === 'reset-calibration') {
-    chrome.storage.sync.set({ calibratedAt: 0, requestLimit: 60, tokenLimit: 31980 }, () => {
-      ensureThrottle().then(() => {
-        self.qwenThrottle.configure({ requestLimit: 60, tokenLimit: 31980 });
-      });
-      calibrateLimits(true);
-      sendResponse({ ok: true });
+  if (msg.action === 'recalibrate') {
+    ensureThrottle().then(() => {
+      self.qwenThrottle.configure({ requestLimit: 60, tokenLimit: 31980 });
     });
+    calibrateLimits(true);
+    sendResponse({ ok: true });
     return true;
   }
   if (msg.action === 'ensure-start') {
@@ -566,11 +632,43 @@ chrome.runtime.onConnect.addListener(port => {
           const result = await self.qwenTranslateStream(safeOpts, chunk => {
             try { port.postMessage({ requestId, chunk }); } catch {}
           });
-          const confidence = scoreConfidence(opts.text, result && result.text);
+          let confidence = scoreConfidence(opts.text, result && result.text);
+          if (config.qualityVerify && self.qwenQualityCheck && self.qwenQualityCheck.verify) {
+            try {
+              const qc = await self.qwenQualityCheck.verify({ text: opts.text, source: opts.source, target: opts.target, provider: safeOpts.provider, endpoint: safeOpts.endpoint, model: safeOpts.model, apiKey: storedKey, providerOrder: config.providerOrder, endpoints: opts.endpoints });
+              if (qc && typeof qc.score === 'number') {
+                confidence = qc.score;
+                lastQuality = confidence;
+              } else {
+                lastQuality = 0;
+              }
+            } catch (e) {
+              logger.warn('quality check failed', e);
+              lastQuality = 0;
+            }
+          } else {
+            lastQuality = 0;
+          }
           try { port.postMessage({ requestId, result: { ...result, confidence } }); } catch {}
         } else {
           const result = await self.qwenTranslate(safeOpts);
-          const confidence = scoreConfidence(opts.text, result && result.text);
+          let confidence = scoreConfidence(opts.text, result && result.text);
+          if (config.qualityVerify && self.qwenQualityCheck && self.qwenQualityCheck.verify) {
+            try {
+              const qc = await self.qwenQualityCheck.verify({ text: opts.text, source: opts.source, target: opts.target, provider: safeOpts.provider, endpoint: safeOpts.endpoint, model: safeOpts.model, apiKey: storedKey, providerOrder: config.providerOrder, endpoints: opts.endpoints });
+              if (qc && typeof qc.score === 'number') {
+                confidence = qc.score;
+                lastQuality = confidence;
+              } else {
+                lastQuality = 0;
+              }
+            } catch (e) {
+              logger.warn('quality check failed', e);
+              lastQuality = 0;
+            }
+          } else {
+            lastQuality = 0;
+          }
           try { port.postMessage({ requestId, result: { ...result, confidence } }); } catch {}
         }
         logUsage(tokens, Date.now() - start);

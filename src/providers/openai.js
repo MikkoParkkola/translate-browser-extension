@@ -81,7 +81,20 @@
     return { text: result };
   }
 
-  const provider = { translate, throttle: { requestLimit: 60, windowMs: 60000 } };
+  async function listModels({ endpoint, apiKey, signal } = {}) {
+    if (!fetchFn) throw new Error('fetch not available');
+    const base = withSlash(endpoint || 'https://api.openai.com/v1');
+    const url = base + 'models';
+    const headers = {};
+    const key = (apiKey || '').trim();
+    if (key) headers.Authorization = /^bearer\s/i.test(key) ? key : `Bearer ${key}`;
+    const resp = await fetchFn(url, { headers, signal });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    const data = await resp.json();
+    return (data.data || []).map(m => m.id).filter(Boolean);
+  }
+
+  const provider = { translate, listModels, throttle: { requestLimit: 60, windowMs: 60000 } };
   // Register into provider registry if available
   try {
     const reg = root.qwenProviders || (typeof require !== 'undefined' ? require('../lib/providers') : null);
