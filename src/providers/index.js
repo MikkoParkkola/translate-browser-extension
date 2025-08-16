@@ -10,6 +10,7 @@ function initProviders() {
     macos: { ...require('./macos'), label: 'macOS' },
     openrouter: { ...require('./openrouter'), label: 'OpenRouter' },
     ollama: { ...require('./ollama'), label: 'Ollama' },
+    anthropic: { ...require('./anthropic'), label: 'Anthropic' },
   });
 }
 
