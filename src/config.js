@@ -39,6 +39,11 @@ const modelTokenLimits = {
 
 function migrate(cfg = {}) {
   const out = { ...defaultCfg, ...cfg };
+  function mapStrategy(s) {
+    if (s === 'cost') return 'cheap';
+    if (s === 'speed') return 'fast';
+    return s;
+  }
   if (!out.providers || typeof out.providers !== 'object') out.providers = {};
   const provider = out.provider || 'qwen';
   if (!out.providers[provider]) out.providers[provider] = {};
@@ -48,7 +53,8 @@ function migrate(cfg = {}) {
     if (p.tokenLimit == null) p.tokenLimit = out.tokenLimit;
     if (p.costPerToken == null) p.costPerToken = 0;
     if (p.weight == null) p.weight = 0;
-    if (p.strategy == null) p.strategy = out.strategy || 'balanced';
+    if (p.strategy != null) p.strategy = mapStrategy(p.strategy);
+    if (p.strategy == null) p.strategy = mapStrategy(out.strategy || 'balanced');
     if (!Array.isArray(p.models) || !p.models.length) p.models = p.model ? [p.model] : [];
     if (!p.secondaryModel) {
       p.secondaryModel = p.models.length > 1
@@ -68,7 +74,7 @@ function migrate(cfg = {}) {
   out.requestLimit = p.requestLimit || out.requestLimit;
   out.tokenLimit = p.tokenLimit || out.tokenLimit;
   out.charLimit = p.charLimit || out.charLimit;
-  out.strategy = p.strategy || out.strategy;
+  out.strategy = mapStrategy(p.strategy || out.strategy);
   out.secondaryModel = p.secondaryModel || '';
   out.models = p.models || [];
   if (!Array.isArray(out.providerOrder)) out.providerOrder = [];
