@@ -59,6 +59,7 @@
 - Complete legal review (IPRs/GDPR/License) and implement recommendations.
 - Catch and log errors, handle recovery, and implement failbacks.
 - Obtain explicit user approval for breaking changes or dropped functionality.
+- for each PR that alters the functionality, bump the version number. For smaller changes, at least the minor version number; for really big changes, the major number.
 ## Security & Configuration Tips
 - Never commit API keys. `src/config.local.js` is gitignored; use it for local `pdfViewer.html`. Or run `set-config.js` in the extension popup console to seed `chrome.storage.sync`.
 - Store secrets only in `chrome.storage.sync`. Avoid logging secrets; use `debug` flag for verbose logs.
