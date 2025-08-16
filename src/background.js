@@ -130,7 +130,7 @@ async function injectContentScripts(tabId) {
   try {
     await chrome.scripting.insertCSS({
       target: { tabId, allFrames: true },
-      files: ['styles/cyberpunk.css'],
+      files: ['styles/apple.css'],
     });
   } catch (e) {
     // best-effort; contentScript will also attempt to add a <link> fallback
