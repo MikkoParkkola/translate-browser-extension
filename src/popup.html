@@ -123,7 +123,8 @@
         <input type="text" id="setup-apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1">
 
         <label for="setup-model">Model</label>
-        <input type="text" id="setup-model" placeholder="e.g., qwen-mt-turbo">
+        <input type="text" id="setup-model" list="setupModelList" placeholder="e.g., qwen-mt-turbo">
+        <datalist id="setupModelList"></datalist>
       </div>
       <p>Your settings are saved automatically.</p>
     </div>
@@ -210,8 +211,9 @@
           <small class="help">Base URL for API calls, typically ending with /api/v1.</small>
 
           <label for="model">Model</label>
-          <input type="text" id="model" placeholder="e.g., qwen-mt-turbo"
+          <input type="text" id="model" list="modelList" placeholder="e.g., qwen-mt-turbo"
                  title="Provider model identifier (e.g., qwen-mt-turbo, gpt-5-mini).">
+          <datalist id="modelList"></datalist>
           <small class="help">Translation model name. Higher-tier models cost more.</small>
 
           <label title="Use qwen-mt-plus if qwen-mt-turbo fails"><input type="checkbox" id="plusFallback"> Enable qwen-mt-plus fallback</label>

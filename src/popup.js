@@ -2,6 +2,7 @@
 const apiKeyInput = document.getElementById('apiKey') || document.createElement('input');
 const endpointInput = document.getElementById('apiEndpoint') || document.createElement('input');
 const modelInput = document.getElementById('model') || document.createElement('input');
+const modelList = document.getElementById('modelList') || document.createElement('datalist');
 const plusFallbackCheckbox = document.getElementById('plusFallback') || document.createElement('input');
 const sourceSelect = document.getElementById('source') || document.createElement('select');
 const targetSelect = document.getElementById('target') || document.createElement('select');
@@ -233,6 +234,7 @@ if (exportGlossaryBtn) {
 const setupApiKeyInput = document.getElementById('setup-apiKey') || document.createElement('input');
 const setupApiEndpointInput = document.getElementById('setup-apiEndpoint') || document.createElement('input');
 const setupModelInput = document.getElementById('setup-model') || document.createElement('input');
+const setupModelList = document.getElementById('setupModelList') || document.createElement('datalist');
 
 const viewContainer = document.getElementById('viewContainer') || document.body;
 
@@ -537,6 +539,32 @@ window.qwenLoadConfig().then(cfg => {
       saveConfig();
     });
   });
+
+  function attachModelList(input, datalist) {
+    if (!input || !datalist) return;
+    input.addEventListener('focus', async () => {
+      try {
+        const providerId = cfg.provider || (cfg.providerOrder && cfg.providerOrder[0]) || 'qwen';
+        const prov = (window.qwenProviders && window.qwenProviders.get)
+          ? window.qwenProviders.get(providerId)
+          : null;
+        if (!prov || typeof prov.listModels !== 'function') return;
+        const p = (cfg.providers && cfg.providers[providerId]) || {};
+        const endpoint = p.apiEndpoint || cfg.apiEndpoint;
+        const apiKey = p.apiKey || cfg.apiKey;
+        const models = await prov.listModels({ endpoint, apiKey });
+        datalist.innerHTML = '';
+        models.forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m;
+          datalist.appendChild(opt);
+        });
+      } catch (e) { console.error('model list failed', e); }
+    });
+  }
+
+  attachModelList(modelInput, modelList);
+  attachModelList(setupModelInput, setupModelList);
 
   const tokenLimits = typeof modelTokenLimits === 'object' ? modelTokenLimits : {};
   const fixedModels = new Set(['qwen-mt-turbo', 'qwen-mt-plus']);

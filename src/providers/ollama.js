@@ -80,7 +80,17 @@
     return { text: result };
   }
 
-  const provider = { translate, throttle: { requestLimit: 60, windowMs: 60000 } };
+  async function listModels({ endpoint, signal } = {}) {
+    if (!fetchFn) throw new Error('fetch not available');
+    const base = withSlash(endpoint || 'http://localhost:11434');
+    const url = base + 'api/tags';
+    const resp = await fetchFn(url, { signal });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    const data = await resp.json();
+    return (data.models || []).map(m => m.name).filter(Boolean);
+  }
+
+  const provider = { translate, listModels, throttle: { requestLimit: 60, windowMs: 60000 } };
   try {
     const reg = root.qwenProviders || (typeof require !== 'undefined' ? require('../lib/providers') : null);
     if (reg && reg.register && !reg.get('ollama')) reg.register('ollama', provider);
