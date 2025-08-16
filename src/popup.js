@@ -59,10 +59,11 @@ const sectionIds = ['providerSection', 'detectionSection', 'rateSection', 'cache
   document.body.classList.add('qwen-bg-animated');
   if (translateBtn) translateBtn.classList.add('primary-glow');
 
-  let translating = false;
-  let progressTimeout;
-  let reqSparkChart;
-  let tokSparkChart;
+let translating = false;
+let progressTimeout;
+let reqSparkChart;
+let tokSparkChart;
+const providerChars = {};
 
 function refreshBenchmarkRec() {
   if (!chrome.storage || !chrome.storage.sync || !benchmarkRec) return;
@@ -574,14 +575,13 @@ function setBar(el, ratio) {
   el.style.backgroundColor = window.qwenUsageColor ? window.qwenUsageColor(r) : 'var(--green)';
 }
 
-function renderProviderUsage(cfg, usage) {
+function renderProviderUsage(cfg, stats = {}) {
   if (!providerUsage) return;
   providerUsage.innerHTML = '';
   const provs = cfg.providers || {};
-  const stats = (usage && usage.providers) || {};
   Object.entries(provs).forEach(([id, p]) => {
     const limit = p.charLimit || cfg.charLimit || 0;
-    const used = stats[id] ? stats[id].chars || 0 : 0;
+    const used = stats[id] || 0;
     const item = document.createElement('div');
     item.className = 'usage-item';
     const bar = document.createElement('div');
@@ -642,7 +642,14 @@ function refreshUsage() {
     tokenCount.textContent = tokTotal ? `${tokUsed}/${tokTotal}` : `${tokUsed}`;
     reqBar.title = `Requests: ${reqCount.textContent}`;
     tokenBar.title = `Tokens: ${tokenCount.textContent}`;
-    renderProviderUsage(cfg, res);
+    const prov = res.providers || {};
+    Object.entries(prov).forEach(([id, s]) => {
+      const used = (s && (s.characters && s.characters.used)) ?? s.chars ?? 0;
+      if (typeof used === 'number' && !isNaN(used)) {
+        providerChars[id] = used;
+      }
+    });
+    renderProviderUsage(cfg, providerChars);
   });
 }
 
