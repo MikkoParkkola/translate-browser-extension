@@ -240,10 +240,11 @@ function _setConfig(c) { config = { ...config, ...c }; }
 function getAggregatedStats() {
   const { totalRequests, totalTokens, tokenLimit, tokens } = self.qwenThrottle.getUsage();
   const remaining = Math.max(0, tokenLimit - tokens);
-  const eta = tokenLimit ? remaining / tokenLimit : 0;
-  const avgLatency = usageLog.length
-    ? usageLog.reduce((sum, e) => sum + (e.latency || 0), 0) / usageLog.length
-    : 0;
+  const totalLatency = usageLog.reduce((sum, e) => sum + (e.latency || 0), 0);
+  const totalLoggedTokens = usageLog.reduce((sum, e) => sum + (e.tokens || 0), 0);
+  const avgThroughput = totalLatency ? (totalLoggedTokens / totalLatency) * 1000 : 0; // tokens per second
+  const eta = avgThroughput ? remaining / avgThroughput : 0;
+  const avgLatency = usageLog.length ? totalLatency / usageLog.length : 0;
   return { requests: totalRequests, tokens: totalTokens, eta, avgLatency, quality: lastQuality };
 }
 
