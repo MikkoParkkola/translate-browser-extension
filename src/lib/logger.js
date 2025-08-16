@@ -15,6 +15,17 @@
         .replace(/(api[-_\s]?key\s*[:=]\s*).*/ig, '$1<redacted>')
         .replace(/(authorization\s*[:=]\s*).*/ig, '$1<redacted>');
     }
+    if (v instanceof Error) {
+      const out = {};
+      for (const k of Object.getOwnPropertyNames(v)) {
+        if (/^authorization$/i.test(k) || /^api(?:[-_\s]?key)$/i.test(k)) {
+          out[k] = '<redacted>';
+        } else {
+          out[k] = redactValue(v[k]);
+        }
+      }
+      return out;
+    }
     if (Array.isArray(v)) {
       return v.map(redactValue);
     }
