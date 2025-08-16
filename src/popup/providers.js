@@ -153,7 +153,7 @@
 
   order.forEach(id => list.appendChild(createItem(id)));
   failoverBox.checked = cfg.failover !== false;
-  parallelBox.checked = !!cfg.parallel;
+  parallelBox.value = cfg.parallel === true ? 'on' : cfg.parallel === false ? 'off' : 'auto';
 
   list.addEventListener('dragover', e => e.preventDefault());
   list.addEventListener('drop', e => {
@@ -203,7 +203,7 @@
     cfg.providerOrder = newOrder;
     cfg.providers = newProviders;
     cfg.failover = failoverBox.checked;
-    cfg.parallel = parallelBox.checked;
+    cfg.parallel = parallelBox.value === 'on' ? true : parallelBox.value === 'off' ? false : 'auto';
     await window.qwenSaveConfig(cfg);
     status.textContent = 'Saved';
     setTimeout(() => (status.textContent = ''), 1000);

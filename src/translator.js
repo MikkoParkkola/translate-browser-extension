@@ -625,7 +625,7 @@ async function batchOnce({
   retries = 1,
   onProgress,
   _stats,
-  parallel = false,
+  parallel = 'auto',
   failover = true,
   ...opts
 }) {
@@ -724,6 +724,19 @@ async function batchOnce({
     if (!Number.isFinite(w) || w <= 0) w = 1;
     return { id, weight: w, assigned: 0, throttle: t, tokenLimit: tokLim, usedTokens: 0 };
   });
+  let providerReqLimit = 0;
+  providers.forEach(id => {
+    try {
+      const t = throttleFor(id);
+      const usage = t && t.getUsage ? t.getUsage() : {};
+      let lim = usage.requestLimit;
+      if (!lim && Providers && Providers.get) {
+        const impl = Providers.get(id);
+        lim = impl && impl.throttle && impl.throttle.requestLimit;
+      }
+      if (lim > 0) providerReqLimit += lim;
+    } catch {}
+  });
   function chooseProvider(tokensNeeded) {
     const eligible = providerWeights.filter(p => {
       if (p.tokenLimit > 0 && p.usedTokens + tokensNeeded > p.tokenLimit) return false;
@@ -745,7 +758,9 @@ async function batchOnce({
     return best.id;
   }
   const usage = getUsage ? getUsage() : {};
-  const reqLimit = usage && usage.requestLimit > 0 ? usage.requestLimit : groups.length;
+  let reqLimit = usage && usage.requestLimit > 0 ? usage.requestLimit : providerReqLimit;
+  if (!reqLimit || reqLimit <= 0) reqLimit = groups.length;
+  const runParallel = parallel === true || (parallel === 'auto' && reqLimit > 1);
 
   async function handleGroup(g, idx) {
     const joinedText = g.items.map(m => m.text.replaceAll(SEP, '')).join(SEP);
@@ -811,7 +826,7 @@ async function batchOnce({
       onProgress({ phase: 'translate', request: stats.requests, requests: stats.totalRequests, sample: (g.items[0]?.text || '').slice(0, 80), elapsedMs, etaMs });
   }
 
-  if (parallel) {
+  if (runParallel) {
     const limit = Math.min(reqLimit, groups.length);
     let next = 0;
     async function worker() {

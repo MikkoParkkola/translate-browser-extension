@@ -89,4 +89,68 @@ describe('translator parallel mode', () => {
     expect(res.stats.avgRequestMs).toBeGreaterThan(0);
     expect(res.stats.requestsPerSecond).toBeGreaterThan(0);
   });
+
+  test('auto enables parallel when requestLimit allows', async () => {
+    const Providers = require('../src/lib/providers.js');
+    Providers.reset();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const a = {
+      translate: jest.fn(async ({ text }) => {
+        inFlight++;
+        if (inFlight > maxInFlight) maxInFlight = inFlight;
+        await new Promise(r => setTimeout(r, 5));
+        inFlight--;
+        return { text };
+      })
+    };
+    Providers.register('a', a);
+    Providers.init();
+    const tr = require('../src/translator.js');
+    tr._setGetUsage(() => ({ requestLimit: 2 }));
+    await tr.qwenTranslateBatch({
+      texts: ['1','2','3','4'],
+      source: 'en',
+      target: 'fr',
+      tokenBudget: 100,
+      maxBatchSize: 1,
+      providerOrder: ['a'],
+      failover: false,
+      noProxy: true,
+      parallel: 'auto',
+    });
+    expect(maxInFlight).toBeGreaterThan(1);
+  });
+
+  test('auto stays sequential when requestLimit is 1', async () => {
+    const Providers = require('../src/lib/providers.js');
+    Providers.reset();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const a = {
+      translate: jest.fn(async ({ text }) => {
+        inFlight++;
+        if (inFlight > maxInFlight) maxInFlight = inFlight;
+        await new Promise(r => setTimeout(r, 5));
+        inFlight--;
+        return { text };
+      })
+    };
+    Providers.register('a', a);
+    Providers.init();
+    const tr = require('../src/translator.js');
+    tr._setGetUsage(() => ({ requestLimit: 1 }));
+    await tr.qwenTranslateBatch({
+      texts: ['1','2','3'],
+      source: 'en',
+      target: 'fr',
+      tokenBudget: 100,
+      maxBatchSize: 1,
+      providerOrder: ['a'],
+      failover: false,
+      noProxy: true,
+      parallel: 'auto',
+    });
+    expect(maxInFlight).toBe(1);
+  });
 });

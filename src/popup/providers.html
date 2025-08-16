@@ -52,7 +52,13 @@
   <ul id="providerList"></ul>
   <div class="flags">
     <label><input type="checkbox" id="failover"> Failover</label>
-    <label><input type="checkbox" id="parallel"> Parallel</label>
+    <label>Parallel
+      <select id="parallel">
+        <option value="auto">Auto</option>
+        <option value="on">On</option>
+        <option value="off">Off</option>
+      </select>
+    </label>
   </div>
   <button id="save" class="primary-glow btn-frame">Save</button>
   <div id="status"></div>

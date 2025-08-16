@@ -13,7 +13,7 @@ export interface BackgroundRequestOptions {
   providerOrder?: string[];
   endpoints?: Record<string, string>;
   failover?: boolean;
-  parallel?: boolean;
+  parallel?: boolean | 'auto';
 }
 
 export interface DetectOptions {
