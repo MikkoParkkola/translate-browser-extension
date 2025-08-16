@@ -56,18 +56,12 @@ function migrate(cfg = {}) {
     if (p.strategy != null) p.strategy = mapStrategy(p.strategy);
     if (p.strategy == null) p.strategy = mapStrategy(out.strategy || 'balanced');
     if (!Array.isArray(p.models) || !p.models.length) p.models = p.model ? [p.model] : [];
-    if (!p.secondaryModel) {
-      p.secondaryModel = p.models.length > 1
-        ? p.models.find(m => m !== p.model) || ''
-        : '';
-    }
   });
   if (out.apiKey && !out.providers[provider].apiKey) out.providers[provider].apiKey = out.apiKey;
   if (out.apiEndpoint && !out.providers[provider].apiEndpoint) out.providers[provider].apiEndpoint = out.apiEndpoint;
   if (out.model && !out.providers[provider].model) out.providers[provider].model = out.model;
   const p = out.providers[provider];
   if (!Array.isArray(p.models) || !p.models.length) p.models = p.model ? [p.model] : [];
-  if (Array.isArray(cfg.models) && cfg.models.length) p.models = cfg.models.slice();
   out.apiKey = p.apiKey || out.apiKey || '';
   out.apiEndpoint = p.apiEndpoint || out.apiEndpoint || '';
   out.model = p.model || out.model || '';
