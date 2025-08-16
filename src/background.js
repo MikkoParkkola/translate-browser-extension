@@ -55,8 +55,9 @@ function calibrateLimits(force) {
 }
 
 if (chrome?.storage?.sync) {
-  calibrateLimits();
-  setInterval(() => calibrateLimits(), 3600000);
+  chrome.storage.sync.get({ calibratedAt: 0 }, ({ calibratedAt }) => {
+    if (!calibratedAt) calibrateLimits(true);
+  });
 }
 
 function localDetectLanguage(text) {
@@ -554,14 +555,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
-  if (msg.action === 'reset-calibration') {
-    chrome.storage.sync.set({ calibratedAt: 0, requestLimit: 60, tokenLimit: 31980 }, () => {
-      ensureThrottle().then(() => {
-        self.qwenThrottle.configure({ requestLimit: 60, tokenLimit: 31980 });
-      });
-      calibrateLimits(true);
-      sendResponse({ ok: true });
+  if (msg.action === 'recalibrate') {
+    ensureThrottle().then(() => {
+      self.qwenThrottle.configure({ requestLimit: 60, tokenLimit: 31980 });
     });
+    calibrateLimits(true);
+    sendResponse({ ok: true });
     return true;
   }
   if (msg.action === 'ensure-start') {

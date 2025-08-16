@@ -49,7 +49,7 @@ const statsSummary = statsDetails.querySelector('summary') || document.createEle
 const reqSpark = document.getElementById('reqSpark') || document.createElement('canvas');
 const tokSpark = document.getElementById('tokSpark') || document.createElement('canvas');
 const calibrationStatus = document.getElementById('calibrationStatus') || document.createElement('div');
-const resetCalibrationBtn = document.getElementById('resetCalibration') || document.createElement('button');
+const recalibrateBtn = document.getElementById('recalibrate') || document.createElement('button');
 const importGlossaryInput = document.getElementById('importGlossary') || document.createElement('input');
 const exportGlossaryBtn = document.getElementById('exportGlossary') || document.createElement('button');
 const benchmarkRec = document.getElementById('benchmarkRec') || document.createElement('div');
@@ -358,6 +358,21 @@ chrome.runtime.onMessage.addListener(msg => {
     }
     renderSparklines();
   }
+  if (msg.action === 'calibration-result' && msg.result) {
+    const { requestLimit, tokenLimit, calibratedAt } = msg.result;
+    reqLimitInput.value = requestLimit;
+    tokenLimitInput.value = tokenLimit;
+    calibrationStatus.textContent = calibratedAt
+      ? `Calibrated ${new Date(calibratedAt).toLocaleString()}`
+      : 'Not calibrated';
+    if (window.qwenConfig) {
+      window.qwenConfig.requestLimit = requestLimit;
+      window.qwenConfig.tokenLimit = tokenLimit;
+      window.qwenConfig.calibratedAt = calibratedAt;
+    }
+    status.textContent = 'Calibration complete.';
+    setTimeout(() => { if (status.textContent === 'Calibration complete.') status.textContent = ''; }, 2000);
+  }
 });
 
 chrome.runtime.sendMessage({ action: 'get-status' }, s => {
@@ -422,17 +437,9 @@ clearPairBtn.addEventListener('click', () => {
   }
 });
 
-resetCalibrationBtn.addEventListener('click', () => {
-  chrome.runtime.sendMessage({ action: 'reset-calibration' }, () => {
-    status.textContent = 'Calibration reset.';
-    window.qwenLoadConfig().then(c => {
-      window.qwenConfig = c;
-      reqLimitInput.value = c.requestLimit;
-      tokenLimitInput.value = c.tokenLimit;
-      calibrationStatus.textContent = c.calibratedAt ? `Calibrated ${new Date(c.calibratedAt).toLocaleString()}` : 'Not calibrated';
-      setTimeout(() => { if (status.textContent === 'Calibration reset.') status.textContent = ''; }, 2000);
-    });
-  });
+recalibrateBtn.addEventListener('click', () => {
+  status.textContent = 'Recalibrating...';
+  chrome.runtime.sendMessage({ action: 'recalibrate' }, () => {});
 });
 
 window.qwenLoadConfig().then(cfg => {
