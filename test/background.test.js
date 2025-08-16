@@ -10,7 +10,7 @@ describe('background icon plus indicator', () => {
         setIcon: jest.fn(),
       },
       runtime: { onInstalled: { addListener: jest.fn() }, onMessage: { addListener: jest.fn() }, onConnect: { addListener: jest.fn() } },
-      contextMenus: { create: jest.fn(), onClicked: { addListener: jest.fn() } },
+      contextMenus: { create: jest.fn(), removeAll: jest.fn(), onClicked: { addListener: jest.fn() } },
       tabs: { onUpdated: { addListener: jest.fn() } },
       storage: {
         sync: { get: (_, cb) => cb({ requestLimit: 60, tokenLimit: 60 }) },
@@ -173,7 +173,7 @@ describe('background cost tracking', () => {
         setIcon: jest.fn(),
       },
       runtime: { onInstalled: { addListener: jest.fn() }, onMessage: { addListener: jest.fn() }, onConnect: { addListener: jest.fn() } },
-      contextMenus: { create: jest.fn(), onClicked: { addListener: jest.fn() } },
+      contextMenus: { create: jest.fn(), removeAll: jest.fn(), onClicked: { addListener: jest.fn() } },
       tabs: { onUpdated: { addListener: jest.fn() } },
       storage: {
         sync: { get: (_, cb) => cb({ requestLimit: 60, tokenLimit: 60 }) },

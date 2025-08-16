@@ -1,4 +1,4 @@
-importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'lib/feedback.js', 'lib/qualityCheck.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js', 'backgroundBenchmark.js');
+importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'providers/mistral.js', 'lib/tm.js', 'lib/feedback.js', 'lib/qualityCheck.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js', 'backgroundBenchmark.js');
 
 const logger = (self.qwenLogger && self.qwenLogger.create)
   ? self.qwenLogger.create('background')
@@ -155,24 +155,35 @@ async function maybeAutoInject(tabId, url) {
   await ensureInjectedAndStart(tabId);
 }
 
+function createContextMenus() {
+  try {
+    chrome.contextMenus.removeAll(() => {
+      chrome.contextMenus.create({
+        id: 'qwen-translate-selection',
+        title: 'Translate selection',
+        contexts: ['selection'],
+      });
+      chrome.contextMenus.create({
+        id: 'qwen-translate-page',
+        title: 'Translate page',
+        contexts: ['page'],
+      });
+      chrome.contextMenus.create({
+        id: 'qwen-enable-site',
+        title: 'Enable auto-translate on this site',
+        contexts: ['page'],
+      });
+    });
+  } catch {}
+}
+
+createContextMenus();
+
 chrome.runtime.onInstalled.addListener(() => {
   logger.info('Qwen Translator installed');
-  chrome.contextMenus.create({
-    id: 'qwen-translate-selection',
-    title: 'Translate selection',
-    contexts: ['selection'],
-  });
-  chrome.contextMenus.create({
-    id: 'qwen-translate-page',
-    title: 'Translate page',
-    contexts: ['page'],
-  });
-  chrome.contextMenus.create({
-    id: 'qwen-enable-site',
-    title: 'Enable auto-translate on this site',
-    contexts: ['page'],
-  });
+  createContextMenus();
 });
+if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(createContextMenus);
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!tab || !tab.id) return;
