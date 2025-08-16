@@ -12,6 +12,7 @@ const autoCheckbox = document.getElementById('auto') || document.createElement('
 const debugCheckbox = document.getElementById('debug') || document.createElement('input');
 const compactCheckbox = document.getElementById('compactMode') || document.createElement('input');
 const lightModeCheckbox = document.getElementById('lightMode') || document.createElement('input');
+const qualityCheckbox = document.getElementById('qualityVerify') || document.createElement('input');
 const detectorSelect = document.getElementById('detector') || document.createElement('select');
 const detectApiKeyInput = document.getElementById('detectApiKey') || document.createElement('input');
 const sensitivityInput = document.getElementById('sensitivity') || document.createElement('input');
@@ -38,6 +39,7 @@ const clearPairBtn = document.getElementById('clearPair') || document.createElem
 const statsReq = document.getElementById('statsRequests') || document.createElement('span');
 const statsTok = document.getElementById('statsTokens') || document.createElement('span');
 const statsLatency = document.getElementById('statsLatency') || document.createElement('span');
+const statsQuality = document.getElementById('statsQuality') || document.createElement('span');
 const statsDetails = document.getElementById('statsDetails') || document.createElement('details');
 const statsSummary = statsDetails.querySelector('summary') || document.createElement('summary');
 const reqSpark = document.getElementById('reqSpark') || document.createElement('canvas');
@@ -196,6 +198,7 @@ function saveConfig() {
       memCacheMax: parseInt(memCacheMaxInput.value, 10) || 0,
       autoTranslate: autoCheckbox.checked,
       debug: debugCheckbox.checked,
+      qualityVerify: qualityCheckbox.checked,
       compact: compactCheckbox.checked,
       theme: lightModeCheckbox.checked ? 'light' : 'dark',
       calibratedAt: (window.qwenConfig && window.qwenConfig.calibratedAt) || 0,
@@ -214,7 +217,7 @@ function saveConfig() {
     cfg.charLimit = (window.qwenConfig && window.qwenConfig.charLimit) || 0;
     window.qwenSaveConfig(cfg).then(() => {
       window.qwenConfig = cfg;
-      chrome.runtime.sendMessage({ action: 'set-config', config: { memCacheMax: cfg.memCacheMax, requestLimit: cfg.requestLimit, tokenLimit: cfg.tokenLimit } }, () => {});
+      chrome.runtime.sendMessage({ action: 'set-config', config: { memCacheMax: cfg.memCacheMax, requestLimit: cfg.requestLimit, tokenLimit: cfg.tokenLimit, qualityVerify: cfg.qualityVerify } }, () => {});
       status.textContent = 'Settings saved.';
       updateView(cfg); // Re-check the view after saving
       setTimeout(() => { if (status.textContent === 'Settings saved.') status.textContent = ''; }, 2000);
@@ -332,10 +335,11 @@ chrome.runtime.onMessage.addListener(msg => {
     }
   }
   if (msg.action === 'stats' && msg.stats) {
-    const { requests, tokens, avgLatency } = msg.stats;
+    const { requests, tokens, avgLatency, quality } = msg.stats;
     statsReq.textContent = requests;
     statsTok.textContent = tokens;
     statsLatency.textContent = typeof avgLatency === 'number' ? avgLatency.toFixed(0) : '0';
+    statsQuality.textContent = typeof quality === 'number' ? quality.toFixed(2) : '0';
     renderSparklines();
   }
 });
@@ -380,6 +384,7 @@ chrome.runtime.sendMessage({ action: 'get-stats' }, res => {
     statsReq.textContent = res.requests || 0;
     statsTok.textContent = res.tokens || 0;
     statsLatency.textContent = typeof res.avgLatency === 'number' ? res.avgLatency.toFixed(0) : '0';
+    statsQuality.textContent = typeof res.quality === 'number' ? res.quality.toFixed(2) : '0';
     renderSparklines();
   }
 });
@@ -432,6 +437,7 @@ window.qwenLoadConfig().then(cfg => {
   memCacheMaxInput.value = cfg.memCacheMax || '';
   autoCheckbox.checked = cfg.autoTranslate;
   debugCheckbox.checked = !!cfg.debug;
+  qualityCheckbox.checked = !!cfg.qualityVerify;
   compactCheckbox.checked = !!cfg.compact;
   document.body.classList.toggle('qwen-compact', compactCheckbox.checked);
   refreshBenchmarkRec();
@@ -465,7 +471,7 @@ window.qwenLoadConfig().then(cfg => {
   });
 
   [reqLimitInput, tokenLimitInput, tokenBudgetInput, memCacheMaxInput, sensitivityInput].forEach(el => el.addEventListener('input', saveConfig));
-  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox].forEach(el => el.addEventListener('change', saveConfig));
+  [sourceSelect, targetSelect, autoCheckbox, debugCheckbox, qualityCheckbox].forEach(el => el.addEventListener('change', saveConfig));
   compactCheckbox.addEventListener('change', () => {
     document.body.classList.toggle('qwen-compact', compactCheckbox.checked);
     saveConfig();

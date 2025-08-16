@@ -1,4 +1,4 @@
-importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'lib/feedback.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js', 'backgroundBenchmark.js');
+importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/tm.js', 'lib/feedback.js', 'lib/qualityCheck.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js', 'backgroundBenchmark.js');
 
 const logger = (self.qwenLogger && self.qwenLogger.create)
   ? self.qwenLogger.create('background')
@@ -222,9 +222,10 @@ const inflight = new Map(); // requestId -> { controller, timeout, port }
 
 // Test-accessible state
 let usingPlus = false;
-let config = { providerOrder: [], requestThreshold: 0 };
+let config = { providerOrder: [], requestThreshold: 0, qualityVerify: false };
 const usageStats = { models: {} };
 const usageLog = [];
+let lastQuality = 0;
 
 function logUsage(tokens, latency) {
   const entry = { ts: Date.now(), tokens, latency };
@@ -243,7 +244,7 @@ function getAggregatedStats() {
   const avgLatency = usageLog.length
     ? usageLog.reduce((sum, e) => sum + (e.latency || 0), 0) / usageLog.length
     : 0;
-  return { requests: totalRequests, tokens: totalTokens, eta, avgLatency };
+  return { requests: totalRequests, tokens: totalTokens, eta, avgLatency, quality: lastQuality };
 }
 
 function broadcastStats() {
@@ -406,7 +407,23 @@ async function handleTranslate(opts) {
     });
     if (debug) logger.debug('background translation completed');
     logUsage(tokens, Date.now() - start);
-    const confidence = scoreConfidence(text, result && result.text);
+    let confidence = scoreConfidence(text, result && result.text);
+    if (config.qualityVerify && self.qwenQualityCheck && self.qwenQualityCheck.verify) {
+      try {
+        const qc = await self.qwenQualityCheck.verify({ text, source, target, provider, endpoint: ep, model, apiKey: storedKey, providerOrder: config.providerOrder, endpoints });
+        if (qc && typeof qc.score === 'number') {
+          confidence = qc.score;
+          lastQuality = confidence;
+        } else {
+          lastQuality = 0;
+        }
+      } catch (e) {
+        logger.warn('quality check failed', e);
+        lastQuality = 0;
+      }
+    } else {
+      lastQuality = 0;
+    }
     iconError = false;
     return { ...result, confidence };
   } catch (err) {
@@ -452,6 +469,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         self.qwenThrottle.configure(opts);
       });
     }
+    if (typeof c.qualityVerify === 'boolean') config.qualityVerify = c.qualityVerify;
     sendResponse({ ok: true });
     return true;
   }
@@ -594,11 +612,43 @@ chrome.runtime.onConnect.addListener(port => {
           const result = await self.qwenTranslateStream(safeOpts, chunk => {
             try { port.postMessage({ requestId, chunk }); } catch {}
           });
-          const confidence = scoreConfidence(opts.text, result && result.text);
+          let confidence = scoreConfidence(opts.text, result && result.text);
+          if (config.qualityVerify && self.qwenQualityCheck && self.qwenQualityCheck.verify) {
+            try {
+              const qc = await self.qwenQualityCheck.verify({ text: opts.text, source: opts.source, target: opts.target, provider: safeOpts.provider, endpoint: safeOpts.endpoint, model: safeOpts.model, apiKey: storedKey, providerOrder: config.providerOrder, endpoints: opts.endpoints });
+              if (qc && typeof qc.score === 'number') {
+                confidence = qc.score;
+                lastQuality = confidence;
+              } else {
+                lastQuality = 0;
+              }
+            } catch (e) {
+              logger.warn('quality check failed', e);
+              lastQuality = 0;
+            }
+          } else {
+            lastQuality = 0;
+          }
           try { port.postMessage({ requestId, result: { ...result, confidence } }); } catch {}
         } else {
           const result = await self.qwenTranslate(safeOpts);
-          const confidence = scoreConfidence(opts.text, result && result.text);
+          let confidence = scoreConfidence(opts.text, result && result.text);
+          if (config.qualityVerify && self.qwenQualityCheck && self.qwenQualityCheck.verify) {
+            try {
+              const qc = await self.qwenQualityCheck.verify({ text: opts.text, source: opts.source, target: opts.target, provider: safeOpts.provider, endpoint: safeOpts.endpoint, model: safeOpts.model, apiKey: storedKey, providerOrder: config.providerOrder, endpoints: opts.endpoints });
+              if (qc && typeof qc.score === 'number') {
+                confidence = qc.score;
+                lastQuality = confidence;
+              } else {
+                lastQuality = 0;
+              }
+            } catch (e) {
+              logger.warn('quality check failed', e);
+              lastQuality = 0;
+            }
+          } else {
+            lastQuality = 0;
+          }
           try { port.postMessage({ requestId, result: { ...result, confidence } }); } catch {}
         }
         logUsage(tokens, Date.now() - start);
