@@ -677,6 +677,8 @@ async function batchOnce({
     if (cache.has(key)) {
       const v = _touchCache(key) || cache.get(key);
       mapping.push({ index: i, chunk: 0, text: v.text, cached: true, lang });
+      stats.words += t.trim().split(/\s+/).filter(Boolean).length;
+      stats.tokens += approxTokens(t);
       return;
     }
     const pieces = splitLongText(t, tokenBudget);
