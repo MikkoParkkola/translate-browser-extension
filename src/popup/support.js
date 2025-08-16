@@ -14,9 +14,9 @@
   msg.textContent = 'Support development:';
   banner.appendChild(msg);
   const donations = [
-    { label: 'Coffee €5', url: 'https://www.paypal.com/paypalme/yourname/5' },
-    { label: 'Beer €7', url: 'https://www.paypal.com/paypalme/yourname/7' },
-    { label: 'Dinner €20', url: 'https://www.paypal.com/paypalme/yourname/20' },
+    { label: 'Coffee €5', url: 'https://paypal.me/micc0z/5' },
+    { label: 'Beer €7', url: 'https://paypal.me/micc0z/7' },
+    { label: 'Dinner €20', url: 'https://paypal.me/micc0z/20' },
   ];
   donations.forEach(opt => {
     const a = document.createElement('a');
