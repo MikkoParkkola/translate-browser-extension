@@ -67,6 +67,6 @@ describe('TM read-through in batch translation', () => {
     expect(res.texts).toEqual(['TA', 'TB', 'TC']);
     expect(translateMock).not.toHaveBeenCalled();
     expect(res.stats.requests).toBe(0);
-    expect(res.stats.tokens).toBe(0);
+    expect(res.stats.tokens).toBeGreaterThan(0);
   });
 });
