@@ -38,6 +38,8 @@ const clearPairBtn = document.getElementById('clearPair') || document.createElem
 const statsReq = document.getElementById('statsRequests') || document.createElement('span');
 const statsTok = document.getElementById('statsTokens') || document.createElement('span');
 const statsLatency = document.getElementById('statsLatency') || document.createElement('span');
+const statsDetails = document.getElementById('statsDetails') || document.createElement('details');
+const statsSummary = statsDetails.querySelector('summary') || document.createElement('summary');
 const calibrationStatus = document.getElementById('calibrationStatus') || document.createElement('div');
 const resetCalibrationBtn = document.getElementById('resetCalibration') || document.createElement('button');
 const importGlossaryInput = document.getElementById('importGlossary') || document.createElement('input');
@@ -278,6 +280,15 @@ chrome.runtime.onMessage.addListener(msg => {
       setWorking(false);
     }
   }
+  if (msg.action === 'translation-status' && 'etaMs' in msg) {
+    if (statsSummary) {
+      if (typeof msg.etaMs === 'number') {
+        statsSummary.textContent = `Stats · ETA ${(msg.etaMs / 1000).toFixed(1)}s`;
+      } else {
+        statsSummary.textContent = 'Stats';
+      }
+    }
+  }
   if (msg.action === 'stats' && msg.stats) {
     const { requests, tokens, avgLatency } = msg.stats;
     statsReq.textContent = requests;
@@ -312,6 +323,13 @@ chrome.runtime.sendMessage({ action: 'get-status' }, s => {
     }
     setWorking(true);
   } else if (translateBtn) translateBtn.textContent = 'Translate Page';
+  if (statsSummary) {
+    if (s && typeof s.etaMs === 'number') {
+      statsSummary.textContent = `Stats · ETA ${(s.etaMs / 1000).toFixed(1)}s`;
+    } else {
+      statsSummary.textContent = 'Stats';
+    }
+  }
 });
 
 chrome.runtime.sendMessage({ action: 'get-stats' }, res => {

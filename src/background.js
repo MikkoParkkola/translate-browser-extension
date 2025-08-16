@@ -217,6 +217,7 @@ let throttleReady;
 let activeTranslations = 0;
 let iconError = false;
 let translationStatus = { active: false };
+let etaMs = null;
 const inflight = new Map(); // requestId -> { controller, timeout, port }
 
 // Test-accessible state
@@ -249,6 +250,10 @@ function broadcastStats() {
   ensureThrottle().then(() => {
     try { chrome.runtime.sendMessage({ action: 'stats', stats: getAggregatedStats() }); } catch {}
   });
+}
+
+function broadcastEta() {
+  try { chrome.runtime.sendMessage({ action: 'translation-status', etaMs }); } catch {}
 }
 
 async function updateIcon() {
@@ -509,6 +514,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.action === 'translation-status') {
     translationStatus = msg.status || { active: false };
+    if (msg.status && typeof msg.status.etaMs === 'number') {
+      etaMs = msg.status.etaMs;
+      broadcastEta();
+    } else if (!translationStatus.active) {
+      etaMs = null;
+      broadcastEta();
+    }
     broadcastStats();
     sendResponse({ ok: true });
     return true;
