@@ -46,7 +46,17 @@ const statsLatency = document.getElementById('statsLatency') || document.createE
 const statsEta = document.getElementById('statsEta') || document.createElement('span');
 const statsQuality = document.getElementById('statsQuality') || document.createElement('span');
 const statsDetails = document.getElementById('statsDetails') || document.createElement('details');
-const statsSummary = statsDetails.querySelector('summary') || document.createElement('summary');
+function setStatsSummary(eta) {
+  if (!statsDetails) return;
+  let summary = statsDetails.querySelector('summary');
+  if (!summary) {
+    summary = document.createElement('summary');
+    statsDetails.prepend(summary);
+  }
+  summary.textContent = typeof eta === 'number' && !isNaN(eta)
+    ? `Stats · ETA: ${eta.toFixed(1)} s`
+    : 'Stats';
+}
 const reqSpark = document.getElementById('reqSpark') || document.createElement('canvas');
 const tokSpark = document.getElementById('tokSpark') || document.createElement('canvas');
 const calibrationStatus = document.getElementById('calibrationStatus') || document.createElement('div');
@@ -390,11 +400,7 @@ chrome.runtime.onMessage.addListener(msg => {
     statsLatency.textContent = typeof avgLatency === 'number' ? avgLatency.toFixed(0) : '0';
     statsQuality.textContent = typeof quality === 'number' ? quality.toFixed(2) : '0';
     if (statsEta) statsEta.textContent = typeof eta === 'number' ? eta.toFixed(1) : '0';
-    if (statsSummary) {
-      statsSummary.textContent = typeof eta === 'number' && !isNaN(eta)
-        ? `Stats · ETA: ${eta.toFixed(1)} s`
-        : 'Stats';
-    }
+    setStatsSummary(eta);
     renderSparklines();
   }
   if (msg.action === 'calibration-result' && msg.result) {
@@ -449,11 +455,7 @@ chrome.runtime.sendMessage({ action: 'get-stats' }, res => {
     statsLatency.textContent = typeof res.avgLatency === 'number' ? res.avgLatency.toFixed(0) : '0';
     statsQuality.textContent = typeof res.quality === 'number' ? res.quality.toFixed(2) : '0';
     if (statsEta) statsEta.textContent = typeof res.eta === 'number' ? res.eta.toFixed(1) : '0';
-    if (statsSummary) {
-      statsSummary.textContent = typeof res.eta === 'number' && !isNaN(res.eta)
-        ? `Stats · ETA: ${res.eta.toFixed(1)} s`
-        : 'Stats';
-    }
+    setStatsSummary(res.eta);
     renderSparklines();
   }
 });
