@@ -995,7 +995,9 @@ if (typeof window !== 'undefined') {
     chrome.runtime &&
     chrome.runtime.id
   ) {
-    window.__qwenTranslatorModule = module.exports;
+    if (typeof module !== 'undefined') {
+      window.__qwenTranslatorModule = module.exports;
+    }
   }
 }
 let chooseStrategy = () => 'proxy';
