@@ -34,12 +34,14 @@
       ro.observe(doc.documentElement);
     } catch {}
   }
-
   frame?.addEventListener('load', () => {
     resize();
     observeResize();
   });
-  resize();
+  if (frame?.contentDocument && frame.contentDocument.readyState === 'complete') {
+    resize();
+    observeResize();
+  }
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!msg || !msg.action) return;
