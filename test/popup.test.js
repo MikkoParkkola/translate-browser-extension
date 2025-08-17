@@ -17,9 +17,12 @@ describe('popup shell routing', () => {
       storage: {
         sync: {
           set: jest.fn(),
-          get: jest.fn((defaults, cb) => cb({ autoTranslate: false, providerOrder: ['qwen'] })),
+          get: jest.fn((defaults, cb) => cb(defaults)),
         },
       },
+    };
+    global.window.qwenProviderConfig = {
+      loadProviderConfig: jest.fn(() => Promise.resolve({ providerOrder: ['qwen'], provider: 'qwen', providers: {} })),
     };
   });
 
@@ -30,7 +33,7 @@ describe('popup shell routing', () => {
 
     const frame = document.getElementById('content');
     listener({ action: 'navigate', page: 'settings' });
-    expect(frame.src).toContain('popup/providers.html');
+    expect(frame.src).toContain('popup/settings.html');
 
     listener({ action: 'navigate', page: 'home' });
     expect(frame.src).toContain('popup/home.html');
@@ -49,11 +52,12 @@ describe('popup shell routing', () => {
     });
     require('../src/popup.js');
     await new Promise(resolve => {
-      const ret = listener({ action: 'home:init' }, {}, res => { expect(res).toEqual({ provider: 'qwen', usage: { requests: 1, tokens: 2 }, auto: false }); resolve(); });
+    const ret = listener({ action: 'home:init' }, {}, res => { expect(res).toEqual({ provider: 'qwen', usage: { requests: 1, tokens: 2 }, auto: false }); resolve(); });
       expect(ret).toBe(true);
     });
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'metrics' }, expect.any(Function));
-    expect(chrome.storage.sync.get).toHaveBeenCalledWith({ autoTranslate: false, providerOrder: [] }, expect.any(Function));
+    expect(window.qwenProviderConfig.loadProviderConfig).toHaveBeenCalled();
+    expect(chrome.storage.sync.get).toHaveBeenCalledWith({ autoTranslate: false }, expect.any(Function));
   });
 });
 

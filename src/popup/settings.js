@@ -5,8 +5,10 @@
   const parallelBox = document.getElementById('parallel');
   const status = document.getElementById('status');
   const recommendationEl = document.getElementById('recommendation');
-  const cfg = await window.qwenLoadConfig();
-  document.documentElement.setAttribute('data-qwen-color', cfg.theme || 'dark');
+  const presets = document.getElementById('presets');
+  const cfg = await window.qwenProviderConfig.loadProviderConfig();
+  const theme = (await new Promise(r => chrome.storage?.sync?.get({ theme: 'dark' }, r))).theme;
+  document.documentElement.setAttribute('data-qwen-color', theme || 'dark');
   const benchmark = chrome?.storage?.sync
     ? (await new Promise(r => chrome.storage.sync.get({ benchmark: null }, r))).benchmark
     : null;
@@ -187,6 +189,35 @@
     } catch (e) { console.error('model list failed', id, e); }
   }
 
+  function addPreset(id) {
+    if (providers[id]) return;
+    const defaults = {
+      openai: { apiEndpoint: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+      deepl: { apiEndpoint: 'https://api.deepl.com/v2' },
+      ollama: { apiEndpoint: 'http://localhost:11434' },
+      macos: {},
+    };
+    providers[id] = defaults[id] || {};
+    const li = createItem(id);
+    list.appendChild(li);
+  }
+
+  presets?.addEventListener('click', e => {
+    const btn = e.target.closest('button[data-preset]');
+    if (!btn) return;
+    addPreset(btn.dataset.preset);
+  });
+
+  (async () => {
+    const ollamaBtn = document.querySelector('[data-preset="ollama"]');
+    try {
+      const resp = await fetch('http://localhost:11434/api/version');
+      if (resp.ok && ollamaBtn) ollamaBtn.textContent += ' (detected)';
+    } catch {}
+    const macBtn = document.querySelector('[data-preset="macos"]');
+    if (macBtn && /Mac/i.test(navigator.userAgent)) macBtn.textContent += ' (detected)';
+  })();
+
   order.forEach(id => list.appendChild(createItem(id)));
   failoverBox.checked = cfg.failover !== false;
   parallelBox.value = cfg.parallel === true ? 'on' : cfg.parallel === false ? 'off' : 'auto';
@@ -238,15 +269,14 @@
       status.textContent = 'Please fix invalid numbers';
       return;
     }
-    cfg.providerOrder = newOrder;
-    cfg.providers = newProviders;
-    cfg.failover = failoverBox.checked;
-    cfg.parallel = parallelBox.value === 'on' ? true : parallelBox.value === 'off' ? false : 'auto';
-    const primary = newProviders[cfg.provider] || {};
-    cfg.model = primary.model || '';
-    cfg.models = primary.models || [];
-    cfg.secondaryModel = primary.secondaryModel || '';
-    await window.qwenSaveConfig(cfg);
+    const saveCfg = {
+      provider: cfg.provider || (newOrder[0] || 'qwen'),
+      providerOrder: newOrder,
+      providers: newProviders,
+      failover: failoverBox.checked,
+      parallel: parallelBox.value === 'on' ? true : parallelBox.value === 'off' ? false : 'auto',
+    };
+    await window.qwenProviderConfig.saveProviderConfig(saveCfg);
     status.textContent = 'Saved';
     setTimeout(() => (status.textContent = ''), 1000);
   });
