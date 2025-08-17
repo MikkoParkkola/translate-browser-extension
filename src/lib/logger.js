@@ -85,6 +85,8 @@
       info(...a)  { if (lvl >= 2) { const red = redact(a); base.info(...format(ns, red)); emit('info', ns, red); } },
       warn(...a)  { if (lvl >= 1) { const red = redact(a); base.warn(...format(ns, red)); emit('warn', ns, red); } },
       error(...a) { const red = redact(a); base.error(...format(ns, red)); emit('error', ns, red); },
+      logBatchTime(ms) { if (lvl >= 2) { const red = redact([{ batchTimeMs: ms }]); base.info(...format(ns, red)); emit('info', ns, red); } },
+      logQueueLatency(ms) { if (lvl >= 2) { const red = redact([{ queueLatencyMs: ms }]); base.info(...format(ns, red)); emit('info', ns, red); } },
       async time(fn) {
         const start = Date.now();
         try {

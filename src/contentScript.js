@@ -17,6 +17,8 @@ let selectionBubble;
 let selectionPinned = false;
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let pageRecognizer;
+let prefetchObserver;
+const visibilityMap = new Map();
 
 function ensureThemeCss() {
   try {
@@ -116,6 +118,51 @@ function updateProgressHud() {
 
 function showError(message) {
   setStatus(message, true);
+}
+
+function setupPrefetchObserver() {
+  if (prefetchObserver !== undefined) return;
+  if (typeof IntersectionObserver === 'undefined') {
+    prefetchObserver = null;
+    return;
+  }
+  prefetchObserver = new IntersectionObserver(entries => {
+    const toTranslate = [];
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const nodes = visibilityMap.get(e.target);
+        if (nodes) {
+          visibilityMap.delete(e.target);
+          prefetchObserver.unobserve(e.target);
+          nodes.forEach(n => toTranslate.push(n));
+        }
+      }
+    });
+    if (toTranslate.length) batchNodes(toTranslate);
+  }, { rootMargin: '200px' });
+}
+
+function prefetchNodes(nodes) {
+  setupPrefetchObserver();
+  if (!prefetchObserver) { batchNodes(nodes); return; }
+  const immediate = [];
+  nodes.forEach(n => {
+    const el = n.parentElement;
+    if (!el) { immediate.push(n); return; }
+    const rect = el.getBoundingClientRect();
+    if (rect.bottom < 0 || rect.top > window.innerHeight) {
+      let list = visibilityMap.get(el);
+      if (!list) {
+        list = [];
+        visibilityMap.set(el, list);
+        prefetchObserver.observe(el);
+      }
+      list.push(n);
+    } else {
+      immediate.push(n);
+    }
+  });
+  if (immediate.length) batchNodes(immediate);
 }
 
 
@@ -366,6 +413,7 @@ async function translateNode(node) {
 
 async function translateBatch(elements, stats, force = false) {
   logger.info('starting batch translation', { count: elements.length });
+  const batchStart = Date.now();
   const originals = elements.map(el => el.textContent || '');
   const texts = originals.map(t => t.trim());
   const controller = new AbortController();
@@ -417,7 +465,9 @@ async function translateBatch(elements, stats, force = false) {
       addFeedbackUI(el, texts[i], t, scoreConfidence(texts[i], t));
     }
   });
+  const batchTime = Date.now() - batchStart;
   logger.info('finished batch translation', { count: elements.length });
+  if (logger.logBatchTime) logger.logBatchTime(batchTime);
   progress.done += elements.length;
   updateProgressHud();
   const elapsedMs = stats ? Date.now() - stats.start : 0;
@@ -439,7 +489,7 @@ async function translateBatch(elements, stats, force = false) {
 }
 
 function enqueueBatch(batch) {
-  batchQueue.push(batch);
+  batchQueue.push({ nodes: batch, enqueued: Date.now() });
   progress.total += batch.length;
   updateProgressHud();
   if (!processing) processQueue();
@@ -452,13 +502,15 @@ async function processQueue() {
   chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'translate', progress } });
   while (batchQueue.length) {
     setStatus(`Translating (${batchQueue.length} left)...`);
-    const batch = batchQueue.shift();
+    const item = batchQueue.shift();
+    if (logger.logQueueLatency) logger.logQueueLatency(Date.now() - item.enqueued);
     try {
-      await translateBatch(batch, stats);
+      await translateBatch(item.nodes, stats);
     } catch (e) {
       showError(`${e.message}. See console for details.`);
       logger.error('QTERROR: batch translation error', e && e.message, e);
-      batchQueue.push(batch);
+      item.enqueued = Date.now();
+      batchQueue.push(item);
       await new Promise(r => setTimeout(r, 1000));
     }
   }
@@ -524,7 +576,7 @@ function flushPending() {
   pending.forEach(n => collectNodes(n, nodes));
   pending.clear();
   flushTimer = null;
-  if (nodes.length) batchNodes(nodes);
+  if (nodes.length) prefetchNodes(nodes);
 }
 
 function scheduleScan(node) {
@@ -536,7 +588,7 @@ function scheduleScan(node) {
 function scan(root = document.body) {
   const nodes = [];
   collectNodes(root, nodes);
-  if (nodes.length) batchNodes(nodes);
+  if (nodes.length) prefetchNodes(nodes);
 }
 
 function observe(root = document.body) {
@@ -564,6 +616,8 @@ function stop() {
   observers = [];
   batchQueue.length = 0;
   pending.clear();
+  if (prefetchObserver) { try { prefetchObserver.disconnect(); } catch {} prefetchObserver = null; }
+  visibilityMap.clear();
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
   controllers.forEach(c => { try { c.abort(); } catch {} });
   controllers.clear();
@@ -595,11 +649,11 @@ async function start() {
     if (node.textContent.trim() && shouldTranslate(node)) {
       chunk.push(node);
       if (chunk.length >= chunkSize) {
-        batchNodes(chunk.splice(0));
+        prefetchNodes(chunk.splice(0));
       }
     }
   }
-  if (chunk.length) batchNodes(chunk);
+  if (chunk.length) prefetchNodes(chunk);
   observe();
   if (!batchQueue.length) clearStatus();
 }
