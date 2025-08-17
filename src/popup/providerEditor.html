@@ -1,0 +1,11 @@
+<div id="providerEditorOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:1000;">
+  <div style="background:var(--qwen-bg,rgba(28,28,30,0.9));padding:1rem;border:1px solid var(--qwen-border,rgba(255,255,255,0.2));min-width:260px;">
+    <label data-field="apiKey">API Key <input id="pe_apiKey"></label>
+    <label data-field="apiEndpoint">API Endpoint <input id="pe_apiEndpoint"></label>
+    <label data-field="model">Model <input id="pe_model" list="pe_modelList"><datalist id="pe_modelList"></datalist></label>
+    <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.5rem;">
+      <button id="pe_save">Save</button>
+      <button id="pe_cancel">Cancel</button>
+    </div>
+  </div>
+</div>

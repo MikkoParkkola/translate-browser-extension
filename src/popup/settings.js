@@ -84,6 +84,27 @@
 
   const providerList = document.getElementById('providerList');
   let providerConfig;
+  let editorLoaded = false;
+  async function openEditor(id) {
+    let overlay = document.getElementById('providerEditorOverlay');
+    if (!overlay) {
+      const html = await fetch('providerEditor.html').then(r => r.text());
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      overlay = div.firstElementChild;
+      document.body.appendChild(overlay);
+    }
+    if (!editorLoaded) {
+      await new Promise(res => {
+        const s = document.createElement('script');
+        s.src = 'providerEditor.js';
+        s.onload = () => { editorLoaded = true; res(); };
+        document.body.appendChild(s);
+      });
+    }
+    window.qwenProviderEditor.open(id, providerConfig, refreshProviders);
+  }
+
   async function refreshProviders() {
     providerList.innerHTML = '';
     if (!window.qwenProviderConfig?.loadProviderConfig) return;
@@ -123,6 +144,10 @@
       label.append(` ${meta.label}`);
       card.appendChild(handle);
       card.appendChild(label);
+      const edit = document.createElement('button');
+      edit.textContent = 'Edit';
+      edit.addEventListener('click', () => openEditor(name));
+      card.appendChild(edit);
       card.addEventListener('dragstart', e => {
         dragEl = card;
         e.dataTransfer?.setData('text/plain', name);
@@ -144,6 +169,18 @@
     });
   }
   refreshProviders();
+
+  document.getElementById('addProvider')?.addEventListener('click', async () => {
+    const id = prompt('Provider ID?');
+    if (!id) return;
+    providerConfig.providers[id] = providerConfig.providers[id] || {};
+    if (!providerConfig.providerOrder.includes(id)) {
+      providerConfig.providerOrder.push(id);
+    }
+    await window.qwenProviderConfig.saveProviderConfig(providerConfig);
+    await refreshProviders();
+    openEditor(id);
+  });
 
   const addBtn = document.getElementById('addLocalProvider');
   const wizard = document.getElementById('localProviderWizard');
