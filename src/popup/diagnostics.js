@@ -5,8 +5,19 @@
   const backBtn = document.getElementById('back');
   const summaryEl = document.getElementById('usageSummary');
   const chartEl = document.getElementById('usageChart');
+  let Chart;
+  if (chartEl) {
+    await new Promise((resolve, reject) => {
+      if (window.Chart) { Chart = window.Chart; return resolve(); }
+      const s = document.createElement('script');
+      s.src = '../qa/chart.umd.js';
+      s.onload = () => { Chart = window.Chart; resolve(); };
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
   const ctx = chartEl && chartEl.getContext('2d');
-  const chart = ctx && new Chart(ctx, {
+  const chart = Chart && ctx && new Chart(ctx, {
     type: 'line',
     data: {
       labels: [],

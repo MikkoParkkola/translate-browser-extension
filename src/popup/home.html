@@ -50,8 +50,18 @@
   <div id="limits" class="stats"></div>
   <div id="cacheStatus" class="stats"></div>
   <button id="toDiagnostics" class="secondary">Diagnostics</button>
-  <script src="../languages.js"></script>
   <script src="../usageColor.js"></script>
-  <script src="home.js"></script>
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const load = src => new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      load('../languages.js').then(() => load('home.js'));
+    });
+  </script>
 </body>
 </html>
