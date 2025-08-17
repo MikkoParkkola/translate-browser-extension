@@ -1,6 +1,6 @@
 {
   "name": "qwen-translator-extension",
-  "version": "1.22.0",
+  "version": "1.23.0",
   "description": "Extension to translate web pages using Qwen-MT-Turbo model",
   "main": "index.js",
   "scripts": {
@@ -41,6 +41,6 @@
   },
   "dependencies": {
     "mupdf": "^1.26.4",
-    "pdfjs-dist": "^3.10.111"
+    "pdfjs-dist": "^5.4.54"
   }
 }

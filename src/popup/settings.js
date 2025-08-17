@@ -148,59 +148,26 @@
   }
   refreshProviders();
 
-  document.getElementById('addProvider')?.addEventListener('click', async () => {
-    const id = prompt('Provider ID?');
-    if (!id) return;
-    providerConfig.providers[id] = providerConfig.providers[id] || {};
-    if (!providerConfig.providerOrder.includes(id)) {
-      providerConfig.providerOrder.push(id);
+  document.getElementById('addProvider')?.addEventListener('click', () => {
+    const preset = prompt('Preset? (openai, deepl, ollama, macos, custom)');
+    if (!preset) return;
+    const key = preset.toLowerCase();
+    const templates = {
+      openai: { id: 'openai', defaults: { apiEndpoint: 'https://api.openai.com/v1' } },
+      deepl: { id: 'deepl', defaults: { apiEndpoint: 'https://api.deepl.com/v2' } },
+      ollama: { id: 'ollama', defaults: { apiEndpoint: 'http://localhost:11434', model: 'llama2' } },
+      macos: { id: 'macos', defaults: {} },
+      custom: {},
+    };
+    let tpl = templates[key];
+    if (!tpl) return;
+    if (key === 'custom') {
+      const customId = prompt('Provider ID?');
+      if (!customId) return;
+      tpl = { id: customId, defaults: {} };
     }
-    await window.qwenProviderConfig.saveProviderConfig(providerConfig);
-    await refreshProviders();
-    openEditor(id);
-  });
-
-  const addBtn = document.getElementById('addLocalProvider');
-  const wizard = document.getElementById('localProviderWizard');
-  const typeSel = document.getElementById('localProviderType');
-  const forms = {
-    ollama: document.getElementById('ollamaForm'),
-    macos: document.getElementById('macosForm'),
-  };
-  function updateLocalForm() {
-    Object.entries(forms).forEach(([k, el]) => {
-      if (el) el.style.display = k === typeSel.value ? 'block' : 'none';
-    });
-  }
-  typeSel?.addEventListener('change', updateLocalForm);
-  updateLocalForm();
-
-  addBtn?.addEventListener('click', () => {
-    wizard.hidden = !wizard.hidden;
-  });
-
-  document.getElementById('saveLocalProvider')?.addEventListener('click', () => {
-    const type = typeSel.value;
-    let config;
-    if (type === 'ollama') {
-      const path = document.getElementById('ollamaPath').value || 'http://localhost';
-      const port = document.getElementById('ollamaPort').value || '11434';
-      const model = document.getElementById('ollamaModel').value || '';
-      config = { provider: 'ollama', endpoint: `${path}:${port}`, model };
-    } else {
-      const path = document.getElementById('macosPath').value || '';
-      const port = document.getElementById('macosPort').value || '';
-      const model = document.getElementById('macosModel').value || '';
-      config = { provider: 'macos', path, port, model };
-    }
-    chrome?.storage?.sync?.get({ localProviders: [] }, s => {
-      const list = Array.isArray(s.localProviders) ? s.localProviders : [];
-      list.push(config);
-      chrome?.storage?.sync?.set({ localProviders: list }, () => {
-        wizard.hidden = true;
-        refreshProviders();
-      });
-    });
+    providerConfig.providers[tpl.id] = { ...(tpl.defaults || {}) };
+    openEditor(tpl.id);
   });
 
   const usageEl = document.getElementById('usageStats');

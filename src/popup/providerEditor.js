@@ -70,7 +70,10 @@
       costPerToken: num(costPerTokenEl.value.trim()),
       weight: num(weightEl.value.trim()),
     };
-    window.qwenProviderConfig.saveProviderConfig({...cfg, providers});
+    cfg.providers = providers;
+    if (!Array.isArray(cfg.providerOrder)) cfg.providerOrder = [];
+    if (!cfg.providerOrder.includes(currentId)) cfg.providerOrder.push(currentId);
+    window.qwenProviderConfig.saveProviderConfig(cfg);
     overlay.style.display = 'none';
     refresh?.();
   });
