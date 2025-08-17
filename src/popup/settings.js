@@ -102,10 +102,21 @@
     const available = window.qwenProviders?.listProviders?.() || [];
     const providers = providerConfig.providers || {};
     providerConfig.providers = providers;
+    function isConfigured(name) {
+      const meta = available.find(p => p.name === name);
+      const fields = meta?.configFields || ['apiKey', 'apiEndpoint', 'model'];
+      const cfg = providers[name] || {};
+      for (const f of fields) {
+        if ((f === 'apiKey' || f === 'apiEndpoint') && !cfg[f]) return false;
+      }
+      return true;
+    }
     const order = Array.isArray(providerConfig.providerOrder)
-      ? providerConfig.providerOrder.slice()
+      ? providerConfig.providerOrder.filter(n => providers[n] && isConfigured(n))
       : [];
-    available.forEach(p => { if (!order.includes(p.name)) order.push(p.name); });
+    Object.keys(providers).forEach(n => {
+      if (isConfigured(n) && !order.includes(n)) order.push(n);
+    });
     let dragEl = null;
     function saveOrder() {
       providerConfig.providerOrder = Array.from(providerList.children).map(el => el.dataset.provider);
