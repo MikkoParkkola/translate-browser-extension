@@ -1,0 +1,13 @@
+{
+  "popup.initialSetup": "初始设置",
+  "popup.setupPrompt": "请配置必要设置以开始使用扩展。",
+  "popup.testSettings": "测试设置",
+  "popup.stats": "统计",
+  "popup.ariaMain": "翻译器设置",
+  "panel.ariaLabel": "翻译",
+  "bubble.translating": "翻译中...",
+  "bubble.pin": "固定",
+  "bubble.copy": "复制",
+  "bubble.panel": "面板",
+  "bubble.ariaLabel": "翻译结果"
+}

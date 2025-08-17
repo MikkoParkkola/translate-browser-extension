@@ -19,6 +19,12 @@ if (chrome?.storage?.sync) {
   }
 }
 
+chrome.commands?.onCommand.addListener(async command => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) return;
+  try { chrome.tabs.sendMessage(tab.id, { action: command }); } catch {}
+});
+
 // Load basic config (e.g., memCacheMax) so translator cache limits apply in background
 self.qwenConfig = self.qwenConfig || {};
 try {
@@ -154,7 +160,7 @@ async function injectContentScripts(tabId) {
   try {
     await chrome.scripting.executeScript({
       target: { tabId, allFrames: true },
-      files: ['lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/glossary.js', 'lib/tm.js', 'lib/detect.js', 'lib/feedback.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
+      files: ['i18n/index.js', 'lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/glossary.js', 'lib/tm.js', 'lib/detect.js', 'lib/feedback.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
     });
   } catch (e) {
     // Tab may have been closed; ignore injection failure
@@ -547,6 +553,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     };
     const tm = (self.qwenTM && self.qwenTM.stats) ? self.qwenTM.stats() : {};
     sendResponse({ cache, tm });
+    return true;
+  }
+  if (msg.action === 'open-panel') {
+    try {
+      if (chrome.sidePanel && chrome.sidePanel.open) {
+        chrome.sidePanel.open({ windowId: sender.tab.windowId });
+      }
+    } catch {}
     return true;
   }
   if (msg.action === 'usage') {
