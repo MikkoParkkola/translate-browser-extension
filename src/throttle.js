@@ -19,8 +19,34 @@
     let cooldown = false;
     let interval = setInterval(resetWindow, config.windowMs);
 
+    function splitSentences(text) {
+      const s = String(text || '');
+      const matches = s.match(/[^.!?]+[.!?]+(?:\s+|$)/g);
+      return matches ? matches.map(t => t.trim()) : [s.trim()];
+    }
+
     function approxTokens(text) {
       return Math.max(1, Math.ceil(text.length / 4));
+    }
+
+    function predictiveBatch(texts, maxTokens = config.tokenLimit) {
+      const sentences = [];
+      texts.forEach(t => sentences.push(...splitSentences(t)));
+      const batches = [];
+      let current = [];
+      let tokens = 0;
+      sentences.forEach(s => {
+        const tok = approxTokens(s);
+        if (current.length && tokens + tok > maxTokens) {
+          batches.push(current);
+          current = [];
+          tokens = 0;
+        }
+        current.push(s);
+        tokens += tok;
+      });
+      if (current.length) batches.push(current);
+      return batches;
     }
 
     function configure(newOpts = {}) {
@@ -135,7 +161,7 @@
       cooldown = false;
     }
 
-    return { runWithRateLimit, runWithRetry, configure, approxTokens, getUsage, reset };
+    return { runWithRateLimit, runWithRetry, configure, approxTokens, getUsage, reset, splitSentences, predictiveBatch };
   }
 
   const globalThrottle = createThrottle();
