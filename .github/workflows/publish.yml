@@ -1,0 +1,47 @@
+name: Publish Extension
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      EXTENSION_ID: ${{ secrets.EXTENSION_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run build:zip
+      - name: Prepare release assets
+        id: prep
+        run: |
+          VERSION=$(jq -r .version src/manifest.json)
+          ZIP_NAME="qwen-translator-${VERSION}.zip"
+          mv dist/*.zip "dist/${ZIP_NAME}"
+          cat <<XML > dist/updates.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<gupdate xmlns="http://www.google.com/update2/response" protocol="2.0">
+  <app appid="${EXTENSION_ID}">
+    <updatecheck codebase="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/${ZIP_NAME}" version="${VERSION}" />
+  </app>
+</gupdate>
+XML
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "ZIP_NAME=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.prep.outputs.VERSION }}
+          files: |
+            dist/${{ steps.prep.outputs.ZIP_NAME }}
+            dist/updates.xml
+
