@@ -1,283 +1,89 @@
 (async function () {
-  const list = document.getElementById('providerList');
-  const tmpl = document.getElementById('providerTemplate');
-  const failoverBox = document.getElementById('failover');
-  const parallelBox = document.getElementById('parallel');
-  const status = document.getElementById('status');
-  const recommendationEl = document.getElementById('recommendation');
-  const presets = document.getElementById('presets');
-  const cfg = await window.qwenProviderConfig.loadProviderConfig();
-  const theme = (await new Promise(r => chrome.storage?.sync?.get({ theme: 'dark' }, r))).theme;
-  document.documentElement.setAttribute('data-qwen-color', theme || 'dark');
-  const benchmark = chrome?.storage?.sync
-    ? (await new Promise(r => chrome.storage.sync.get({ benchmark: null }, r))).benchmark
-    : null;
-  if (benchmark?.recommendation && recommendationEl) {
-    recommendationEl.textContent = `Recommended provider: ${benchmark.recommendation}`;
-  }
-  const order = (cfg.providerOrder && cfg.providerOrder.length)
-    ? cfg.providerOrder.slice()
-    : Object.keys(cfg.providers || {});
-  const providers = cfg.providers || {};
-  const baseFields = ['apiKey','apiEndpoint','model','models','strategy'];
+  const defaults = {
+    settingsTab: 'general',
+    requestLimit: '',
+    tokenLimit: '',
+    enableDetection: true,
+    glossary: '',
+    cacheEnabled: false,
+  };
 
-  function labelFor(field) {
-    if (field === 'charLimit') return 'Chars/month';
-    if (field === 'requestLimit') return 'Req/min';
-    if (field === 'tokenLimit') return 'Tok/min';
-    if (field === 'costPerToken') return '$/tok';
-    if (field === 'weight') return 'Weight';
-    return field;
+  const store = await new Promise(res => {
+    if (chrome?.storage?.sync) chrome.storage.sync.get(defaults, res);
+    else res(defaults);
+  });
+
+  const theme = store.theme || (await new Promise(res => {
+    if (chrome?.storage?.sync) chrome.storage.sync.get({ theme: 'dark' }, res);
+    else res({ theme: 'dark' });
+  })).theme;
+  document.documentElement.setAttribute('data-qwen-color', theme || 'dark');
+
+  const tabs = document.querySelectorAll('.tabs button');
+  const sections = {
+    general: document.getElementById('generalTab'),
+    advanced: document.getElementById('advancedTab'),
+    diagnostics: document.getElementById('diagnosticsTab'),
+  };
+
+  function activate(tab) {
+    tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    Object.entries(sections).forEach(([k, el]) => {
+      el.classList.toggle('active', k === tab);
+    });
   }
+
+  activate(store.settingsTab);
+  tabs.forEach(btn => btn.addEventListener('click', () => {
+    activate(btn.dataset.tab);
+    chrome?.storage?.sync?.set({ settingsTab: btn.dataset.tab });
+  }));
+
+  const reqInput = document.getElementById('requestLimit');
+  const tokInput = document.getElementById('tokenLimit');
+  reqInput.value = store.requestLimit;
+  tokInput.value = store.tokenLimit;
 
   function validateNumber(input) {
     const v = input.value.trim();
-    if (!v) {
-      input.classList.remove('invalid');
-      return true;
-    }
+    if (!v) { input.classList.remove('invalid'); return true; }
     const n = Number(v);
     const ok = Number.isFinite(n) && n >= 0;
     input.classList.toggle('invalid', !ok);
     return ok;
   }
 
-  function updateCostWarning(li) {
-    const model = li.querySelector('[data-field="model"]')?.value.trim();
-    const modelsInput = li.querySelector('[data-field="models"]');
-    const warn = li.querySelector('.model-warning');
-    if (!warn) return;
-    const models = modelsInput?.value
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean) || [];
-    const set = new Set(models);
-    if (model) set.add(model);
-    const hasPlus = set.has('qwen-mt-plus');
-    const hasTurbo = set.has('qwen-mt-turbo');
-    if (hasPlus && hasTurbo) {
-      warn.textContent = 'Models have different costs';
-      warn.style.display = '';
-    } else {
-      warn.textContent = '';
-      warn.style.display = 'none';
+  [reqInput, tokInput].forEach(inp => inp.addEventListener('input', () => {
+    if (validateNumber(inp)) {
+      chrome?.storage?.sync?.set({ [inp.id]: inp.value.trim() });
     }
-  }
+  }));
 
-  function createItem(id) {
-    const data = providers[id] || {};
-    const li = tmpl.content.firstElementChild.cloneNode(true);
-    li.dataset.id = id;
-    li.querySelector('.provider-name').textContent = id;
-
-    const numericFields = Array.from(new Set([
-      ...Object.keys(data).filter(k => /limit$/i.test(k)),
-      'costPerToken',
-      'weight',
-    ]));
-    const allFields = baseFields.concat(numericFields);
-
-    allFields.forEach(f => {
-      const input = li.querySelector(`[data-field="${f}"]`);
-      if (!input) return;
-      let v = data[f];
-      if (Array.isArray(v)) v = v.join(', ');
-      if (v != null) input.value = v;
-    });
-
-    const modelInput = li.querySelector('[data-field="model"]');
-    if (modelInput) {
-      const dl = document.createElement('datalist');
-      const listId = `models-${id}`;
-      dl.id = listId;
-      modelInput.setAttribute('list', listId);
-      modelInput.addEventListener('focus', () => fetchModelOptions(id, li, dl));
-      li.appendChild(dl);
-    }
-
-    const modelsInput = li.querySelector('[data-field="models"]');
-    const plusLabel = document.createElement('label');
-    const plusCheck = document.createElement('input');
-    plusCheck.type = 'checkbox';
-    plusLabel.appendChild(plusCheck);
-    plusLabel.append(' Enable qwen-mt-plus fallback');
-    modelsInput.parentElement.insertAdjacentElement('afterend', plusLabel);
-    plusCheck.checked = Array.isArray(data.models) && data.models.includes('qwen-mt-plus');
-    function syncPlusCheckbox() {
-      const models = modelsInput.value.split(',').map(s => s.trim()).filter(Boolean);
-      plusCheck.checked = models.includes('qwen-mt-plus');
-      updateCostWarning(li);
-    }
-    modelsInput.addEventListener('input', syncPlusCheckbox);
-    plusCheck.addEventListener('change', () => {
-      let models = modelsInput.value.split(',').map(s => s.trim()).filter(Boolean);
-      const hasPlus = models.includes('qwen-mt-plus');
-      if (plusCheck.checked && !hasPlus) models.push('qwen-mt-plus');
-      if (!plusCheck.checked && hasPlus) models = models.filter(m => m !== 'qwen-mt-plus');
-      modelsInput.value = models.join(', ');
-      updateCostWarning(li);
-    });
-
-    const extra = li.querySelector('.extra-limits');
-    numericFields.forEach(f => {
-      if (f === 'requestLimit' || f === 'tokenLimit') return;
-      let input = li.querySelector(`[data-field="${f}"]`);
-      if (!input && extra) {
-        const label = document.createElement('label');
-        label.textContent = labelFor(f);
-        input = document.createElement('input');
-        input.type = 'number';
-        input.min = '0';
-        input.dataset.field = f;
-        label.appendChild(input);
-        extra.appendChild(label);
-      }
-      if (input && data[f] != null) input.value = data[f];
-    });
-
-    ['requestLimit', 'tokenLimit'].forEach(f => {
-      if (!numericFields.includes(f)) {
-        const input = li.querySelector(`[data-field="${f}"]`);
-        if (input) input.style.display = 'none';
-      }
-    });
-
-    ['model'].forEach(f => {
-      const input = li.querySelector(`[data-field="${f}"]`);
-      if (input) input.addEventListener('input', () => updateCostWarning(li));
-    });
-
-    numericFields.forEach(f => {
-      const input = li.querySelector(`[data-field="${f}"]`);
-      if (input) input.addEventListener('input', () => validateNumber(input));
-    });
-
-    updateCostWarning(li);
-    li.dataset.fields = allFields.join(',');
-    li.dataset.numeric = numericFields.join(',');
-    li.addEventListener('dragstart', e => {
-      e.dataTransfer.setData('text/plain', id);
-      e.dataTransfer.effectAllowed = 'move';
-    });
-    li.addEventListener('dragover', e => e.preventDefault());
-    li.addEventListener('drop', e => {
-      e.preventDefault();
-      const draggedId = e.dataTransfer.getData('text/plain');
-      const dragEl = list.querySelector(`li[data-id="${draggedId}"]`);
-      if (dragEl && dragEl !== li) {
-        list.insertBefore(dragEl, li);
-      }
-    });
-    return li;
-  }
-
-  async function fetchModelOptions(id, li, dl) {
-    try {
-      const prov = (window.qwenProviders && window.qwenProviders.get)
-        ? window.qwenProviders.get(id)
-        : null;
-      if (!prov || typeof prov.listModels !== 'function') return;
-      const endpoint = li.querySelector('[data-field="apiEndpoint"]')?.value.trim();
-      const apiKey = li.querySelector('[data-field="apiKey"]')?.value.trim();
-      const models = await prov.listModels({ endpoint, apiKey });
-      dl.innerHTML = '';
-      models.forEach(m => {
-        const opt = document.createElement('option');
-        opt.value = m;
-        dl.appendChild(opt);
-      });
-    } catch (e) { console.error('model list failed', id, e); }
-  }
-
-  function addPreset(id) {
-    if (providers[id]) return;
-    const defaults = {
-      openai: { apiEndpoint: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
-      deepl: { apiEndpoint: 'https://api.deepl.com/v2' },
-      ollama: { apiEndpoint: 'http://localhost:11434' },
-      macos: {},
-    };
-    providers[id] = defaults[id] || {};
-    const li = createItem(id);
-    list.appendChild(li);
-  }
-
-  presets?.addEventListener('click', e => {
-    const btn = e.target.closest('button[data-preset]');
-    if (!btn) return;
-    addPreset(btn.dataset.preset);
+  const detectBox = document.getElementById('enableDetection');
+  detectBox.checked = store.enableDetection;
+  detectBox.addEventListener('change', () => {
+    chrome?.storage?.sync?.set({ enableDetection: detectBox.checked });
   });
 
-  (async () => {
-    const ollamaBtn = document.querySelector('[data-preset="ollama"]');
-    try {
-      const resp = await fetch('http://localhost:11434/api/version');
-      if (resp.ok && ollamaBtn) ollamaBtn.textContent += ' (detected)';
-    } catch {}
-    const macBtn = document.querySelector('[data-preset="macos"]');
-    if (macBtn && /Mac/i.test(navigator.userAgent)) macBtn.textContent += ' (detected)';
-  })();
-
-  order.forEach(id => list.appendChild(createItem(id)));
-  failoverBox.checked = cfg.failover !== false;
-  parallelBox.value = cfg.parallel === true ? 'on' : cfg.parallel === false ? 'off' : 'auto';
-
-  list.addEventListener('dragover', e => e.preventDefault());
-  list.addEventListener('drop', e => {
-    e.preventDefault();
-    const draggedId = e.dataTransfer.getData('text/plain');
-    const dragEl = list.querySelector(`li[data-id="${draggedId}"]`);
-    if (dragEl) list.appendChild(dragEl);
+  const glossaryField = document.getElementById('glossary');
+  glossaryField.value = store.glossary;
+  glossaryField.addEventListener('input', () => {
+    chrome?.storage?.sync?.set({ glossary: glossaryField.value });
   });
 
-  document.getElementById('save').addEventListener('click', async () => {
-    const newOrder = Array.from(list.children).map(li => li.dataset.id);
-    const newProviders = {};
-    let valid = true;
-    Array.from(list.children).forEach(li => {
-      const id = li.dataset.id;
-      const data = {};
-      const fields = (li.dataset.fields || '').split(',').filter(Boolean);
-      const numeric = (li.dataset.numeric || '').split(',').filter(Boolean);
-      fields.forEach(f => {
-        const input = li.querySelector(`[data-field="${f}"]`);
-        if (!input) return;
-        let v = input.value.trim();
-        if (f === 'models') {
-          let models = v.split(',').map(s => s.trim()).filter(Boolean);
-          data.models = models;
-        } else if (numeric.includes(f)) {
-          if (!validateNumber(input)) valid = false;
-          if (v !== '') data[f] = parseInt(v, 10);
-        } else {
-          data[f] = v;
-        }
-      });
-      if (data.models && !data.model) {
-        data.model = (data.strategy === 'quality' && data.models.includes('qwen-mt-plus'))
-          ? 'qwen-mt-plus'
-          : data.models[0] || '';
-      }
-      if (data.models && data.models.length > 1) {
-        data.secondaryModel = data.models.find(m => m !== data.model) || '';
-      } else {
-        data.secondaryModel = '';
-      }
-      newProviders[id] = data;
-    });
-    if (!valid) {
-      status.textContent = 'Please fix invalid numbers';
-      return;
-    }
-    const saveCfg = {
-      provider: cfg.provider || (newOrder[0] || 'qwen'),
-      providerOrder: newOrder,
-      providers: newProviders,
-      failover: failoverBox.checked,
-      parallel: parallelBox.value === 'on' ? true : parallelBox.value === 'off' ? false : 'auto',
-    };
-    await window.qwenProviderConfig.saveProviderConfig(saveCfg);
-    status.textContent = 'Saved';
-    setTimeout(() => (status.textContent = ''), 1000);
+  const cacheBox = document.getElementById('cacheEnabled');
+  cacheBox.checked = store.cacheEnabled;
+  cacheBox.addEventListener('change', () => {
+    chrome?.storage?.sync?.set({ cacheEnabled: cacheBox.checked });
+  });
+  document.getElementById('clearCache')?.addEventListener('click', () => {
+    chrome?.runtime?.sendMessage({ action: 'clear-cache' });
+  });
+
+  const usageEl = document.getElementById('usageStats');
+  chrome?.runtime?.sendMessage({ action: 'metrics' }, m => {
+    const usage = m && m.usage ? m.usage : {};
+    usageEl.textContent = JSON.stringify(usage, null, 2);
   });
 })();
+
