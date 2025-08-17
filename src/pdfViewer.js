@@ -678,6 +678,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
       textContent.items.forEach(item => {
         const txt = item.str;
         if (!shouldTranslateLine(txt, cfg)) return;
+        const cacheKey = normText(txt);
         const tr = pdfjsLib.Util.transform(viewport.transform, item.transform);
         const height = Math.sqrt(tr[1] * tr[1] + tr[3] * tr[3]);
         const box = {
@@ -688,18 +689,18 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
           width: item.width,
         };
         boxes.push(box);
-        if (translationCache.has(txt)) {
-          box.translated = translationCache.get(txt);
+        if (translationCache.has(cacheKey)) {
+          box.translated = translationCache.get(cacheKey);
         } else {
-          if (!dedup.has(txt)) dedup.set(txt, []);
-          dedup.get(txt).push(box);
+          if (!dedup.has(cacheKey)) dedup.set(cacheKey, { text: txt, boxes: [] });
+          dedup.get(cacheKey).boxes.push(box);
         }
       });
 
-      const uniqueTexts = Array.from(dedup.keys());
-      if (uniqueTexts.length) {
+      const dedupEntries = Array.from(dedup.entries());
+      if (dedupEntries.length) {
         const { texts: translated } = await window.qwenTranslateBatch({
-          texts: uniqueTexts,
+          texts: dedupEntries.map(([, v]) => v.text),
           provider: cfg.provider,
           endpoint: cfg.apiEndpoint,
           apiKey: cfg.apiKey,
@@ -709,10 +710,10 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
           target: cfg.targetLanguage,
           debug: cfg.debug,
         });
-        uniqueTexts.forEach((t, i) => {
+        dedupEntries.forEach(([k, v], i) => {
           const out = translated[i];
-          translationCache.set(t, out);
-          dedup.get(t).forEach(b => { b.translated = out; });
+          translationCache.set(k, out);
+          v.boxes.forEach(b => { b.translated = out; });
         });
       }
 
@@ -722,7 +723,10 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
         div.style.position = 'absolute';
         div.style.left = `${box.left}px`;
         div.style.top = `${box.top}px`;
+        div.style.width = `${box.width}px`;
+        div.style.height = `${box.height}px`;
         div.style.fontSize = `${box.height}px`;
+        div.style.lineHeight = `${box.height}px`;
         div.style.whiteSpace = 'pre';
         div.style.background = 'rgba(255,255,255,0.6)';
         div.style.color = '#000';
@@ -730,9 +734,10 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
         div.contentEditable = 'true';
         div.addEventListener('blur', () => {
           const edited = div.textContent || '';
-          translationCache.set(box.text, edited);
+          const cacheKey = normText(box.text);
+          translationCache.set(cacheKey, edited);
           if (window.qwenTM && window.qwenTM.set) {
-            const key = `${cfg.sourceLanguage}:${cfg.targetLanguage}:${normText(box.text)}`;
+            const key = `${cfg.sourceLanguage}:${cfg.targetLanguage}:${cacheKey}`;
             try { window.qwenTM.set(key, edited); } catch {}
           }
         });
