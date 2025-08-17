@@ -59,9 +59,13 @@ const provider = {
 };
 
 if (typeof window !== 'undefined' && window.qwenProviders) {
-  window.qwenProviders.registerProvider('google', provider);
+  const reg = window.qwenProviders;
+  const fn = reg.registerProvider || reg.register;
+  if (fn) fn.call(reg, 'google', provider);
 } else if (typeof self !== 'undefined' && self.qwenProviders) {
-  self.qwenProviders.registerProvider('google', provider);
+  const reg = self.qwenProviders;
+  const fn = reg.registerProvider || reg.register;
+  if (fn) fn.call(reg, 'google', provider);
 }
 
 module.exports = provider;
