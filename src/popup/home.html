@@ -54,17 +54,8 @@
   <div id="cacheStatus" class="stats"></div>
   <button id="toDiagnostics" class="secondary">Diagnostics</button>
   <script src="../usageColor.js"></script>
-  <script>
-    window.addEventListener('DOMContentLoaded', () => {
-      const load = src => new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = src;
-        s.onload = resolve;
-        s.onerror = reject;
-        document.head.appendChild(s);
-      });
-      load('../languages.js').then(() => load('home.js'));
-    });
-  </script>
+  <script src="../languages.js" defer></script>
+  <script src="home.js" defer></script>
+  <script src="init.js" defer></script>
 </body>
 </html>
