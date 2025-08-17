@@ -57,15 +57,14 @@ const provider = {
   label: 'Google',
   configFields: ['apiKey', 'apiEndpoint', 'model'],
 };
+if (typeof window !== 'undefined') window.qwenProviderGoogle = provider;
+else if (typeof self !== 'undefined') self.qwenProviderGoogle = provider;
 
-if (typeof window !== 'undefined' && window.qwenProviders) {
-  const reg = window.qwenProviders;
-  const fn = reg.registerProvider || reg.register;
-  if (fn) fn.call(reg, 'google', provider);
-} else if (typeof self !== 'undefined' && self.qwenProviders) {
-  const reg = self.qwenProviders;
-  const fn = reg.registerProvider || reg.register;
-  if (fn) fn.call(reg, 'google', provider);
-}
+try {
+  const reg = (typeof window !== 'undefined' && window.qwenProviders) ||
+              (typeof self !== 'undefined' && self.qwenProviders) ||
+              (typeof require !== 'undefined' ? require('../lib/providers') : null);
+  if (reg && reg.register && !reg.get('google')) reg.register('google', provider);
+} catch {}
 
-module.exports = provider;
+if (typeof module !== 'undefined') module.exports = provider;

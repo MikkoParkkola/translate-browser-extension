@@ -1,7 +1,8 @@
 (function (root, factory) {
-  const mod = factory(root);
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  else root.qwenProviderAnthropic = mod;
+  const provider = factory(root);
+  if (typeof window !== 'undefined') window.qwenProviderAnthropic = provider;
+  else if (typeof self !== 'undefined') self.qwenProviderAnthropic = provider;
+  if (typeof module !== 'undefined') module.exports = provider;
 }(typeof self !== 'undefined' ? self : this, function (root) {
   const logger = (root.qwenLogger && root.qwenLogger.create) ? root.qwenLogger.create('provider:anthropic') : console;
   const fetchFn = (typeof fetch !== 'undefined') ? fetch : (root.fetch || null);

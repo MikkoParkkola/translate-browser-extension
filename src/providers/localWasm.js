@@ -35,6 +35,8 @@ const provider = {
   configFields: [],
   throttle: { requestLimit: 1, windowMs: 1000 },
 };
+if (typeof window !== 'undefined') window.qwenProviderLocalWasm = provider;
+else if (typeof self !== 'undefined') self.qwenProviderLocalWasm = provider;
 
 try {
   const reg = (typeof window !== 'undefined' && window.qwenProviders) ||
@@ -43,4 +45,4 @@ try {
   if (reg && reg.register && !reg.get('local-wasm')) reg.register('local-wasm', provider);
 } catch {}
 
-module.exports = provider;
+if (typeof module !== 'undefined') module.exports = provider;
