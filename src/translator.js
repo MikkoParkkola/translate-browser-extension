@@ -1,3 +1,19 @@
+(function () {
+// Only guard in real browser/extension contexts so tests can reload the module
+if (
+  process.env.NODE_ENV !== 'test' &&
+  typeof window !== 'undefined' &&
+  typeof chrome !== 'undefined' &&
+  chrome.runtime &&
+  chrome.runtime.id
+) {
+  if (window.__qwenTranslatorLoaded) {
+    if (typeof module !== 'undefined') module.exports = window.__qwenTranslatorModule;
+    return;
+  }
+  window.__qwenTranslatorLoaded = true;
+}
+
 let fetchFn = typeof fetch !== 'undefined' ? fetch : undefined;
 var approxTokens;
 var createThrottle;
@@ -944,13 +960,6 @@ function qwenClearCache() {
   cache.clear();
   _persistClear();
 }
-if (typeof window !== 'undefined') {
-  window.qwenTranslate = qwenTranslate;
-  window.qwenTranslateStream = qwenTranslateStream;
-  window.qwenTranslateBatch = qwenTranslateBatch;
-  window.qwenClearCache = qwenClearCache;
-  window.qwenSetTokenBudget = _setTokenBudget;
-}
 if (typeof self !== 'undefined' && typeof window === 'undefined') {
   self.qwenTranslate = qwenTranslate;
   self.qwenTranslateStream = qwenTranslateStream;
@@ -970,9 +979,24 @@ if (typeof module !== 'undefined') {
     qwenGetCacheSize,
     _setGetUsage,
     _getTokenBudget,
-    _setTokenBudget,
-    _throttleKeys: () => Array.from(throttles.keys()),
+  _setTokenBudget,
+  _throttleKeys: () => Array.from(throttles.keys()),
   };
+}
+if (typeof window !== 'undefined') {
+  window.qwenTranslate = qwenTranslate;
+  window.qwenTranslateStream = qwenTranslateStream;
+  window.qwenTranslateBatch = qwenTranslateBatch;
+  window.qwenClearCache = qwenClearCache;
+  window.qwenSetTokenBudget = _setTokenBudget;
+  if (
+    process.env.NODE_ENV !== 'test' &&
+    typeof chrome !== 'undefined' &&
+    chrome.runtime &&
+    chrome.runtime.id
+  ) {
+    window.__qwenTranslatorModule = module.exports;
+  }
 }
 let chooseStrategy = () => 'proxy';
 try {
@@ -980,3 +1004,5 @@ try {
   else if (typeof self !== 'undefined' && typeof window === 'undefined' && self.qwenFetchStrategy) chooseStrategy = self.qwenFetchStrategy.choose;
   else if (typeof require !== 'undefined') chooseStrategy = require('./lib/fetchStrategy').choose;
 } catch {}
+
+})();

@@ -1,3 +1,19 @@
+(function () {
+// Guard only when running in the extension to allow test re-imports
+if (
+  process.env.NODE_ENV !== 'test' &&
+  typeof window !== 'undefined' &&
+  typeof chrome !== 'undefined' &&
+  chrome.runtime &&
+  chrome.runtime.id
+) {
+  if (window.__qwenConfigLoaded) {
+    if (typeof module !== 'undefined') module.exports = window.__qwenConfigModule;
+    return;
+  }
+  window.__qwenConfigLoaded = true;
+}
+
 const defaultCfg = {
   apiKey: '',
   detectApiKey: '',
@@ -89,11 +105,6 @@ function migrate(cfg = {}) {
 }
 
 function qwenLoadConfig() {
-  // For local testing (pdfViewer.html), prioritize window.qwenConfig
-  if (typeof window !== 'undefined' && window.qwenConfig) {
-    return Promise.resolve({ ...defaultCfg, ...window.qwenConfig });
-  }
-
   // For the Chrome extension
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
     return new Promise((resolve) => {
@@ -102,6 +113,11 @@ function qwenLoadConfig() {
         chrome.storage.sync.set(out, () => resolve(out));
       });
     });
+  }
+
+  // For local testing (pdfViewer.html)
+  if (typeof window !== 'undefined' && window.qwenConfig) {
+    return Promise.resolve({ ...defaultCfg, ...window.qwenConfig });
   }
 
   // Fallback for other environments (like Node.js for jest tests)
@@ -137,12 +153,22 @@ function qwenSaveConfig(cfg) {
   return Promise.resolve(); // Otherwise, do nothing
 }
 
+if (typeof module !== 'undefined') {
+  module.exports = { qwenLoadConfig, qwenSaveConfig, defaultCfg, modelTokenLimits };
+}
 if (typeof window !== 'undefined') {
   window.qwenDefaultConfig = defaultCfg;
   window.qwenLoadConfig = qwenLoadConfig;
   window.qwenSaveConfig = qwenSaveConfig;
+  window.qwenModelTokenLimits = modelTokenLimits;
+  if (
+    process.env.NODE_ENV !== 'test' &&
+    typeof chrome !== 'undefined' &&
+    chrome.runtime &&
+    chrome.runtime.id
+  ) {
+    window.__qwenConfigModule = module.exports;
+  }
 }
 
-if (typeof module !== 'undefined') {
-  module.exports = { qwenLoadConfig, qwenSaveConfig, defaultCfg, modelTokenLimits };
-}
+})();
