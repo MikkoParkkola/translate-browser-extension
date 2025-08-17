@@ -725,7 +725,9 @@ async function batchOnce({
       const impl = Providers && Providers.get ? Providers.get(id) : null;
       const usage = t && t.getUsage ? t.getUsage() : {};
       tokLim = usage.tokenLimit || (impl && impl.throttle && impl.throttle.tokenLimit) || 0;
-      const cost = impl && impl.costPerToken != null ? impl.costPerToken : 1;
+      const costIn = impl && impl.costPerInputToken != null ? impl.costPerInputToken : impl && impl.costPerToken != null ? impl.costPerToken : 1;
+      const costOut = impl && impl.costPerOutputToken != null ? impl.costPerOutputToken : impl && impl.costPerToken != null ? impl.costPerToken : 0;
+      const cost = costIn + costOut;
       w = impl && impl.weight != null ? impl.weight : (cost > 0 ? (tokLim || 0) / cost : tokLim || 1);
     } catch {}
     if (!Number.isFinite(w) || w <= 0) w = 1;

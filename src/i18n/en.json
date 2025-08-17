@@ -6,6 +6,7 @@
   "popup.ariaMain": "Translator settings",
   "panel.ariaLabel": "Translations",
   "bubble.translating": "Translating...",
+  "bubble.translate": "Translate",
   "bubble.pin": "Pin",
   "bubble.copy": "Copy",
   "bubble.panel": "Panel",

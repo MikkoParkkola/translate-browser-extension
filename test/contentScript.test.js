@@ -12,7 +12,7 @@ window.qwenTranslateBatch = async ({ texts, onProgress }) => {
   if (onProgress) onProgress({ phase: 'translate', request: 1, requests: 2, sample: texts[0] });
   return { texts: texts.map(t => `X${t}X`) };
 };
-window.qwenLoadConfig = async () => ({ apiKey: 'k', apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'nl', targetLanguage: 'en', debug: false });
+window.qwenLoadConfig = async () => ({ apiKey: 'k', apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'nl', targetLanguage: 'en', debug: false, selectionPopup: true });
 window.getComputedStyle = () => ({ visibility: 'visible', display: 'block' });
 Element.prototype.getClientRects = () => [1];
 
@@ -219,6 +219,8 @@ test('shows bubble on text selection and translates', async () => {
   sel.addRange(range);
   document.dispatchEvent(new MouseEvent('mouseup'));
   await new Promise(r => setTimeout(r, 0));
+  await new Promise(r => setTimeout(r, 0));
+  document.querySelector('.qwen-bubble__actions button').click();
   await new Promise(r => setTimeout(r, 0));
   const bubble = document.querySelector('.qwen-bubble__result');
   expect(spy).toHaveBeenCalledWith(expect.objectContaining({ text: 'Hello' }));
