@@ -1,8 +1,6 @@
 (async function () {
   const defaults = {
     settingsTab: 'general',
-    requestLimit: '',
-    tokenLimit: '',
     enableDetection: true,
     glossary: '',
     cacheEnabled: false,
@@ -39,26 +37,6 @@
   tabs.forEach(btn => btn.addEventListener('click', () => {
     activate(btn.dataset.tab);
     chrome?.storage?.sync?.set({ settingsTab: btn.dataset.tab });
-  }));
-
-  const reqInput = document.getElementById('requestLimit');
-  const tokInput = document.getElementById('tokenLimit');
-  reqInput.value = store.requestLimit;
-  tokInput.value = store.tokenLimit;
-
-  function validateNumber(input) {
-    const v = input.value.trim();
-    if (!v) { input.classList.remove('invalid'); return true; }
-    const n = Number(v);
-    const ok = Number.isFinite(n) && n >= 0;
-    input.classList.toggle('invalid', !ok);
-    return ok;
-  }
-
-  [reqInput, tokInput].forEach(inp => inp.addEventListener('input', () => {
-    if (validateNumber(inp)) {
-      chrome?.storage?.sync?.set({ [inp.id]: inp.value.trim() });
-    }
   }));
 
   const detectBox = document.getElementById('enableDetection');
