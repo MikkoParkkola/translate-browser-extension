@@ -59,6 +59,70 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   const zoomOutBtn = document.getElementById('zoomOut');
   const zoomResetBtn = document.getElementById('zoomReset');
   let currentZoom = 1;
+  const pages = [];
+  let currentPageIndex = 0;
+  const translationCache = new Map();
+
+  const navPrev = document.createElement('button');
+  navPrev.id = 'pagePrev';
+  navPrev.textContent = 'Prev';
+  navPrev.className = 'btn';
+  const navNext = document.createElement('button');
+  navNext.id = 'pageNext';
+  navNext.textContent = 'Next';
+  navNext.className = 'btn';
+  const navLabel = document.createElement('span');
+  navLabel.id = 'pageLabel';
+  navLabel.className = 'muted';
+  const navGroup = document.createElement('div');
+  navGroup.className = 'toggle-group';
+  navGroup.appendChild(navPrev);
+  navGroup.appendChild(navNext);
+  const topbar = document.querySelector('.topbar');
+  const zoomControls = document.getElementById('zoomControls');
+  if (topbar && zoomControls) {
+    topbar.insertBefore(navGroup, zoomControls);
+    topbar.insertBefore(navLabel, zoomControls);
+  }
+
+  function updateNav() {
+    navLabel.textContent = `${currentPageIndex + 1}/${pages.length || 1}`;
+    navPrev.disabled = currentPageIndex <= 0;
+    navNext.disabled = currentPageIndex >= pages.length - 1;
+  }
+
+  navPrev.addEventListener('click', () => {
+    if (currentPageIndex > 0) {
+      currentPageIndex--;
+      pages[currentPageIndex].scrollIntoView({ behavior: 'smooth' });
+      updateNav();
+    }
+  });
+  navNext.addEventListener('click', () => {
+    if (currentPageIndex < pages.length - 1) {
+      currentPageIndex++;
+      pages[currentPageIndex].scrollIntoView({ behavior: 'smooth' });
+      updateNav();
+    }
+  });
+
+  viewer.addEventListener('scroll', () => {
+    const scrollTop = viewer.scrollTop;
+    for (let i = 0; i < pages.length; i++) {
+      const p = pages[i];
+      if (scrollTop >= p.offsetTop - 10 && scrollTop < p.offsetTop + p.offsetHeight - 10) {
+        currentPageIndex = i;
+        updateNav();
+        break;
+      }
+    }
+  }, { passive: true });
+
+  updateNav();
+
+  function normText(t) {
+    return String(t == null ? '' : t).replace(/\s+/g, ' ').trim();
+  }
 
   const translateProgress = document.createElement('progress');
   translateProgress.max = 1;
@@ -599,8 +663,91 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
         enhanceTextSelection: false,
       });
       await textLayerTask.promise;
+      const transLayer = document.createElement('div');
+      transLayer.className = 'translationLayer';
+      transLayer.style.position = 'absolute';
+      transLayer.style.left = '0';
+      transLayer.style.top = '0';
+      transLayer.style.width = `${viewport.width}px`;
+      transLayer.style.height = `${viewport.height}px`;
+      transLayer.style.zIndex = '20';
+      pageDiv.appendChild(transLayer);
 
-      // Selection enabled via textLayer above; no translation until user clicks regenerate
+      const dedup = new Map();
+      const boxes = [];
+      textContent.items.forEach(item => {
+        const txt = item.str;
+        if (!shouldTranslateLine(txt, cfg)) return;
+        const cacheKey = normText(txt);
+        const tr = pdfjsLib.Util.transform(viewport.transform, item.transform);
+        const height = Math.sqrt(tr[1] * tr[1] + tr[3] * tr[3]);
+        const box = {
+          text: txt,
+          left: tr[4],
+          top: tr[5] - height,
+          height,
+          width: item.width,
+        };
+        boxes.push(box);
+        if (translationCache.has(cacheKey)) {
+          box.translated = translationCache.get(cacheKey);
+        } else {
+          if (!dedup.has(cacheKey)) dedup.set(cacheKey, { text: txt, boxes: [] });
+          dedup.get(cacheKey).boxes.push(box);
+        }
+      });
+
+      const dedupEntries = Array.from(dedup.entries());
+      if (dedupEntries.length) {
+        const { texts: translated } = await window.qwenTranslateBatch({
+          texts: dedupEntries.map(([, v]) => v.text),
+          provider: cfg.provider,
+          endpoint: cfg.apiEndpoint,
+          apiKey: cfg.apiKey,
+          model: cfg.model,
+          failover: cfg.failover,
+          source: cfg.sourceLanguage,
+          target: cfg.targetLanguage,
+          debug: cfg.debug,
+        });
+        dedupEntries.forEach(([k, v], i) => {
+          const out = translated[i];
+          translationCache.set(k, out);
+          v.boxes.forEach(b => { b.translated = out; });
+        });
+      }
+
+      boxes.forEach(box => {
+        const div = document.createElement('div');
+        div.textContent = box.translated || '';
+        div.style.position = 'absolute';
+        div.style.left = `${box.left}px`;
+        div.style.top = `${box.top}px`;
+        div.style.width = `${box.width}px`;
+        div.style.height = `${box.height}px`;
+        div.style.fontSize = `${box.height}px`;
+        div.style.lineHeight = `${box.height}px`;
+        div.style.whiteSpace = 'pre';
+        div.style.background = 'rgba(255,255,255,0.6)';
+        div.style.color = '#000';
+        div.style.pointerEvents = 'auto';
+        div.contentEditable = 'true';
+        div.addEventListener('blur', () => {
+          const edited = div.textContent || '';
+          const cacheKey = normText(box.text);
+          translationCache.set(cacheKey, edited);
+          if (window.qwenTM && window.qwenTM.set) {
+            const key = `${cfg.sourceLanguage}:${cfg.targetLanguage}:${cacheKey}`;
+            try { window.qwenTM.set(key, edited); } catch {}
+          }
+        });
+        transLayer.appendChild(div);
+      });
+
+      pages.push(pageDiv);
+      updateNav();
+
+      // Selection enabled via textLayer above; translation overlay rendered
     }
   } catch (e) {
     console.error('Error loading PDF', e);
