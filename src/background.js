@@ -366,6 +366,7 @@ async function updateIcon() {
     c.width = c.height = size;
     ctx = c.getContext('2d');
   } else return;
+  if (!ctx) return;
   ctx.clearRect(0, 0, size, size);
 
   // background ring

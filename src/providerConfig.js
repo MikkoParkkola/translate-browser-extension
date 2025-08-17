@@ -1,3 +1,4 @@
+(function () {
 function applyProviderConfig(provider, doc = document) {
   const advanced = [
     'requestLimit',
@@ -92,3 +93,4 @@ if (typeof window !== 'undefined') {
 if (typeof module !== 'undefined') {
   module.exports = api;
 }
+})();

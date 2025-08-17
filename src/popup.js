@@ -7,7 +7,12 @@
     if (!frame) return;
     try {
       const doc = frame.contentDocument;
-      if (doc) frame.style.height = doc.documentElement.scrollHeight + 'px';
+      if (doc) {
+        const { scrollHeight, scrollWidth } = doc.documentElement;
+        frame.style.height = scrollHeight + 'px';
+        frame.style.width = scrollWidth + 'px';
+        document.body.style.width = scrollWidth + 'px';
+      }
     } catch {}
   }
 
@@ -20,7 +25,20 @@
     load(current === 'settings.html' ? 'home.html' : 'settings.html');
   });
 
-  frame?.addEventListener('load', resize);
+  function observeResize() {
+    if (!frame) return;
+    try {
+      const doc = frame.contentDocument;
+      if (!doc) return;
+      const ro = new ResizeObserver(resize);
+      ro.observe(doc.documentElement);
+    } catch {}
+  }
+
+  frame?.addEventListener('load', () => {
+    resize();
+    observeResize();
+  });
   resize();
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -31,7 +49,12 @@
         else if (msg.page === 'home') load('home.html');
         break;
       case 'home:quick-translate':
-        chrome.runtime.sendMessage({ action: 'translate' });
+        chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
+          const t = tabs && tabs[0];
+          if (t) {
+            chrome.runtime.sendMessage({ action: 'ensure-start', tabId: t.id, url: t.url });
+          }
+        });
         break;
       case 'home:auto-translate':
         chrome.storage?.sync?.set({ autoTranslate: msg.enabled });

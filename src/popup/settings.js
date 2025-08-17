@@ -1,4 +1,5 @@
 (async function () {
+  try { window.qwenProviders?.initProviders?.(); } catch {}
   const defaults = {
     settingsTab: 'general',
     enableDetection: true,
