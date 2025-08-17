@@ -12,14 +12,14 @@
       color: var(--qwen-text, #f5f5f7);
       width: 380px;
       margin: 0;
-      position: relative;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
     }
     #nav {
-      position: absolute;
-      top: 0;
-      right: 0;
+      display: flex;
+      justify-content: flex-end;
       padding: 0.5rem;
-      z-index: 10;
     }
     #nav button {
       background: none;
@@ -31,14 +31,14 @@
     #content {
       width: 100%;
       border: 0;
-      height: 100vh;
+      flex: 1;
     }
   </style>
 </head>
 <body>
-  <div id="nav">
+  <header id="nav">
     <button id="settingsBtn" aria-label="Settings">⚙️</button>
-  </div>
+  </header>
   <iframe id="content" src="popup/home.html"></iframe>
   <script src="providerConfig.js"></script>
   <script src="popup.js"></script>
