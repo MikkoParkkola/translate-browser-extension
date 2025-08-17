@@ -35,7 +35,13 @@ describe('settings provider cards', () => {
       listProviders: jest.fn(() => [{ name: 'p1', label: 'P1' }, { name: 'p2', label: 'P2' }]),
     };
     window.qwenProviderConfig = {
-      loadProviderConfig: jest.fn(() => Promise.resolve({ providers: { p1: { enabled: true }, p2: { enabled: true } }, providerOrder: ['p1', 'p2'] })),
+      loadProviderConfig: jest.fn(() => Promise.resolve({
+        providers: {
+          p1: { enabled: true, apiKey: 'k1', apiEndpoint: 'https://e.com' },
+          p2: { enabled: true, apiKey: 'k2', apiEndpoint: 'https://e.com' },
+        },
+        providerOrder: ['p1', 'p2'],
+      })),
       saveProviderConfig: jest.fn(() => Promise.resolve()),
     };
   });
