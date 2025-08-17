@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html data-qwen-theme="apple">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="../styles/apple.css">
+  <style>
+    body { margin: 0; background: #000; color: #fff; font-family: sans-serif; display:flex; flex-direction:column; align-items:center; }
+    #preview { position: relative; width: 100%; max-width: 480px; }
+    #camera { width: 100%; height: auto; }
+    #captureCanvas { display:none; }
+    #overlay { position:absolute; top:0; left:0; right:0; background:rgba(0,0,0,0.6); color:#fff; padding:4px; font-size:18px; text-align:center; pointer-events:none; }
+    #history { list-style:none; padding:0; margin:1rem 0 0; width:100%; max-width:480px; }
+    #history li { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem; }
+    #history img { width:64px; height:auto; }
+  </style>
+</head>
+<body>
+  <div id="preview">
+    <video id="camera" autoplay playsinline></video>
+    <canvas id="captureCanvas"></canvas>
+    <div id="overlay"></div>
+  </div>
+  <button id="capture">Capture</button>
+  <ul id="history"></ul>
+
+  <script src="../throttle.js"></script>
+  <script src="../lib/providers.js"></script>
+  <script src="../providers/qwen.js"></script>
+  <script src="../providers/openai.js"></script>
+  <script src="../providers/openrouter.js"></script>
+  <script src="../providers/mistral.js"></script>
+  <script src="../providers/deepl.js"></script>
+  <script src="../providers/dashscope.js"></script>
+  <script src="../providers/macos.js"></script>
+  <script src="../providers/ollama.js"></script>
+  <script src="../lib/messaging.js"></script>
+  <script src="../translator.js"></script>
+  <script src="../config.js"></script>
+  <script src="../languages.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+  <script type="module" src="camera.js"></script>
+</body>
+</html>
