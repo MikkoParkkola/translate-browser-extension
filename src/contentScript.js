@@ -1,6 +1,10 @@
+(function () {
+if (typeof window !== 'undefined') {
+  if (window.__qwenCSLoaded) return;
+  window.__qwenCSLoaded = true;
+}
+
 const skipInit = location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'));
-if (window.__qwenCSLoaded) { /* already initialized */ }
-else window.__qwenCSLoaded = true;
 const logger = (window.qwenLogger && window.qwenLogger.create) ? window.qwenLogger.create('content') : console;
 let observers = [];
 let currentConfig;
@@ -798,3 +802,5 @@ if (typeof module !== 'undefined') {
     },
   };
 }
+
+})();

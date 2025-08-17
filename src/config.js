@@ -1,3 +1,12 @@
+(function () {
+if (typeof window !== 'undefined') {
+  if (window.__qwenConfigLoaded) {
+    if (typeof module !== 'undefined') module.exports = window.__qwenConfigModule;
+    return;
+  }
+  window.__qwenConfigLoaded = true;
+}
+
 const defaultCfg = {
   apiKey: '',
   detectApiKey: '',
@@ -137,12 +146,15 @@ function qwenSaveConfig(cfg) {
   return Promise.resolve(); // Otherwise, do nothing
 }
 
+if (typeof module !== 'undefined') {
+  module.exports = { qwenLoadConfig, qwenSaveConfig, defaultCfg, modelTokenLimits };
+}
 if (typeof window !== 'undefined') {
   window.qwenDefaultConfig = defaultCfg;
   window.qwenLoadConfig = qwenLoadConfig;
   window.qwenSaveConfig = qwenSaveConfig;
+  window.qwenModelTokenLimits = modelTokenLimits;
+  window.__qwenConfigModule = module.exports;
 }
 
-if (typeof module !== 'undefined') {
-  module.exports = { qwenLoadConfig, qwenSaveConfig, defaultCfg, modelTokenLimits };
-}
+})();
