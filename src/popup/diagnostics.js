@@ -2,6 +2,7 @@
   const usageEl = document.getElementById('usage');
   const cacheEl = document.getElementById('cache');
   const providersEl = document.getElementById('providers');
+  const backBtn = document.getElementById('back');
   let metrics = {};
 
   function render() {
@@ -25,6 +26,8 @@
   }
 
   await load();
+
+  backBtn?.addEventListener('click', () => { location.href = 'home.html'; });
 
   document.getElementById('copy').addEventListener('click', async () => {
     const report = {

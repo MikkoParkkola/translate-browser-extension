@@ -22,6 +22,14 @@
       gap: 0.5rem;
       font-size: 0.875rem;
     }
+    .lang-select {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .lang-select select {
+      flex: 1;
+    }
     .stats {
       font-size: 0.75rem;
     }
@@ -29,13 +37,20 @@
 </head>
 <body>
   <button id="quickTranslate" class="primary">Quick translate</button>
+  <div class="lang-select">
+    <select id="srcLang"></select>
+    <span>→</span>
+    <select id="destLang"></select>
+  </div>
   <label class="auto-toggle"><input type="checkbox" id="autoTranslate"> Auto-translate</label>
   <div id="provider">Provider: <span id="providerName">-</span></div>
-  <div id="usage" class="stats">Requests: 0 Tokens: 0</div>
+  <div id="usage" class="stats">Requests: 0/0 Tokens: 0/0</div>
+  <div id="limits" class="stats"></div>
   <div id="usageSummary" class="stats"></div>
   <canvas id="usageChart"></canvas>
   <div id="providerStatus" class="stats"></div>
   <button id="toDiagnostics" class="secondary">Diagnostics</button>
+  <script src="../languages.js"></script>
   <script src="../qa/chart.umd.js"></script>
   <script src="monitor.js"></script>
   <script src="home.js"></script>
