@@ -29,6 +29,10 @@
     .note { font-size: 0.8rem; opacity: 0.8; }
     .provider-card { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem; border: 1px solid var(--qwen-border, rgba(255,255,255,0.2)); margin-bottom: 0.25rem; }
     .provider-card .drag-handle { cursor: move; }
+    #addProviderOverlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 1000; }
+    #addProviderOverlay .modal { background: var(--qwen-bg, rgba(28,28,30,0.9)); padding: 1rem; border: 1px solid var(--qwen-border, rgba(255,255,255,0.2)); min-width: 260px; }
+    #addProviderOverlay .actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem; }
+    #addProviderOverlay label { display: block; margin-bottom: 0.5rem; }
   </style>
 </head>
 <body>
@@ -80,6 +84,33 @@
       <h3>Usage</h3>
       <pre id="usageStats">-</pre>
     </section>
+  </div>
+
+  <div id="addProviderOverlay">
+    <div class="modal">
+      <div id="ap_step1">
+        <label>Preset
+          <select id="ap_preset">
+            <option value="openai">OpenAI</option>
+            <option value="deepl">DeepL</option>
+            <option value="ollama">Ollama</option>
+            <option value="macos">macOS</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button id="ap_next">Next</button>
+          <button id="ap_cancel1">Cancel</button>
+        </div>
+      </div>
+      <div id="ap_step2" style="display:none;">
+        <div id="ap_fields"></div>
+        <div class="actions">
+          <button id="ap_back">Back</button>
+          <button id="ap_create">Create</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="../lib/providers.js"></script>
