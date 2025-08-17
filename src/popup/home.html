@@ -33,6 +33,9 @@
     .stats {
       font-size: 0.75rem;
     }
+    #providerKey {
+      margin-left: 0.25rem;
+    }
   </style>
 </head>
 <body>
@@ -43,7 +46,7 @@
     <select id="destLang"></select>
   </div>
   <label class="auto-toggle"><input type="checkbox" id="autoTranslate"> Auto-translate</label>
-  <div id="provider">Provider: <span id="providerName">-</span></div>
+  <div id="provider">Provider: <span id="providerName">-</span> <span id="providerKey"></span></div>
   <div id="usage" class="stats">Requests: 0/0 Tokens: 0/0</div>
   <progress id="reqBar" value="0" max="0"></progress>
   <progress id="tokBar" value="0" max="0"></progress>

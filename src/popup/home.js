@@ -2,6 +2,7 @@
   const quickBtn = document.getElementById('quickTranslate');
   const autoToggle = document.getElementById('autoTranslate');
   const providerName = document.getElementById('providerName');
+  const providerKey = document.getElementById('providerKey');
   const usageEl = document.getElementById('usage');
   const limitsEl = document.getElementById('limits');
   const cacheEl = document.getElementById('cacheStatus');
@@ -57,6 +58,7 @@
   chrome.runtime.sendMessage({ action: 'home:init' }, res => {
     if (!res) return;
     providerName.textContent = res.provider || '-';
+    if (providerKey) providerKey.textContent = res.apiKey ? '✓' : '✗';
     const u = res.usage || {};
     usageEl.textContent = `Requests: ${u.requests || 0}/${u.requestLimit || 0} Tokens: ${u.tokens || 0}/${u.tokenLimit || 0}`;
     if (limitsEl) limitsEl.textContent = `Queue: ${u.queue || 0}`;

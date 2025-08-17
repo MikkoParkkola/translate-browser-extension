@@ -59,15 +59,15 @@ describe('popup shell routing', () => {
   });
 
   test('initializes home view via home:init', async () => {
-    chrome.runtime.sendMessage.mockImplementation((msg, cb) => {
-      if (msg.action === 'metrics') cb({ usage: { requests: 1, tokens: 2 }, cache: {}, tm: {} });
-    });
+      chrome.runtime.sendMessage.mockImplementation((msg, cb) => {
+        if (msg.action === 'metrics') cb({ usage: { requests: 1, tokens: 2 }, cache: {}, tm: {}, providers: { qwen: { apiKey: true } } });
+      });
     require('../src/popup.js');
     await new Promise(resolve => {
-    const ret = listener({ action: 'home:init' }, {}, res => {
-      expect(res).toEqual({ provider: 'qwen', usage: { requests: 1, tokens: 2 }, cache: {}, tm: {}, auto: false });
-      resolve();
-    });
+      const ret = listener({ action: 'home:init' }, {}, res => {
+        expect(res).toEqual({ provider: 'qwen', apiKey: true, usage: { requests: 1, tokens: 2 }, cache: {}, tm: {}, auto: false });
+        resolve();
+      });
       expect(ret).toBe(true);
     });
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'metrics' }, expect.any(Function));
