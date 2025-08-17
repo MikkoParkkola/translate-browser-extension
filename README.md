@@ -61,7 +61,7 @@ See also: docs/PROVIDERS.md
 
 ## Usage
 1. Click the toolbar icon to open the popup.
-2. Use **Quick translate** to translate the current tab or enable **Auto-translate** for pages on load.
+2. Use **Translate page** to translate the current tab or enable **Auto-translate** for pages on load.
 3. Click the ⚙️ button to manage providers or adjust settings.
 
 Translations apply to dynamically added content as well as embedded frames or third‑party widgets whenever the browser grants access. If translation fails the affected text is kept in a queue and retried until the API succeeds. When the translated text matches the original the node is marked as untranslatable and skipped. Translations are cached for the current session to minimise API calls.

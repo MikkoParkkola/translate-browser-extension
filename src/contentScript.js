@@ -650,19 +650,30 @@ async function start() {
   }
   if (currentConfig.debug) logger.debug('QTDEBUG: starting automatic translation');
   setStatus('Scanning page...');
+  scanDocument();
+}
+
+async function scanDocument() {
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
   const chunk = [];
   const chunkSize = 200;
   let node;
-  while ((node = walker.nextNode())) {
+  let processed = 0;
+  while (started && (node = walker.nextNode())) {
     if (node.textContent.trim() && shouldTranslate(node)) {
       chunk.push(node);
       if (chunk.length >= chunkSize) {
         prefetchNodes(chunk.splice(0));
       }
     }
+    processed++;
+    if (processed % 500 === 0) {
+      await new Promise(r => setTimeout(r, 0));
+      if (!started) return;
+    }
   }
-  if (chunk.length) prefetchNodes(chunk);
+  if (started && chunk.length) prefetchNodes(chunk);
+  if (!started) return;
   observe();
   if (!batchQueue.length) clearStatus();
 }
