@@ -25,6 +25,14 @@ let pageRecognizer;
 let prefetchObserver;
 const visibilityMap = new Map();
 
+function handleLastError(cb) {
+  return (...args) => {
+    const err = chrome.runtime.lastError;
+    if (err && !err.message.includes('Receiving end does not exist')) console.debug(err);
+    if (typeof cb === 'function') cb(...args);
+  };
+}
+
 function ensureThemeCss() {
   try {
     if (!document.querySelector('link[data-qwen-theme="apple"]')) {
@@ -90,7 +98,7 @@ function setStatus(message, isError = false) {
   const textNode = el.querySelector('.qwen-hud__text') || el;
   textNode.textContent = `Qwen Translator: ${message}`;
   try {
-    chrome.runtime.sendMessage({ action: 'popup-status', text: message, error: isError });
+    chrome.runtime.sendMessage({ action: 'popup-status', text: message, error: isError }, handleLastError());
   } catch {}
   if (statusTimer) clearTimeout(statusTimer);
   if (isError) statusTimer = setTimeout(clearStatus, 5000);
@@ -198,13 +206,13 @@ chrome.runtime.onMessage.addListener(msg => {
         if (r.isFinal) final += r[0].transcript;
         else interim += r[0].transcript;
       }
-      if (interim) try { chrome.runtime.sendMessage({ action: 'voice-interim', text: interim }); } catch {}
-      if (final) try { chrome.runtime.sendMessage({ action: 'voice-final', text: final }); } catch {}
+      if (interim) try { chrome.runtime.sendMessage({ action: 'voice-interim', text: interim }, handleLastError()); } catch {}
+      if (final) try { chrome.runtime.sendMessage({ action: 'voice-final', text: final }, handleLastError()); } catch {}
     };
     pageRecognizer.onend = () => {
       clearStatus();
       pageRecognizer = null;
-      try { chrome.runtime.sendMessage({ action: 'voice-end' }); } catch {}
+      try { chrome.runtime.sendMessage({ action: 'voice-end' }, handleLastError()); } catch {}
     };
     try { pageRecognizer.start(); } catch {}
   } else if (msg.action === 'stop-recording') {
@@ -444,7 +452,7 @@ async function translateBatch(elements, stats, force = false) {
     if (force) opts.force = true;
     if (stats) {
       opts.onProgress = p => {
-        chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p, progress } });
+        chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p, progress } }, handleLastError());
       };
       opts._stats = stats;
     }
@@ -492,7 +500,7 @@ async function translateBatch(elements, stats, force = false) {
       etaMs,
       progress,
     },
-  });
+  }, handleLastError());
 }
 
 function enqueueBatch(batch) {
@@ -506,7 +514,7 @@ async function processQueue() {
   processing = true;
   setStatus('Translating...');
   const stats = { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
-  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'translate', progress } });
+  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'translate', progress } }, handleLastError());
   while (batchQueue.length) {
     setStatus(`Translating (${batchQueue.length} left)...`);
     const item = batchQueue.shift();
@@ -525,7 +533,7 @@ async function processQueue() {
   stats.wordsPerSecond = stats.words / (stats.elapsedMs / 1000 || 1);
   stats.wordsPerRequest = stats.words / (stats.requests || 1);
   stats.tokensPerRequest = stats.tokens / (stats.requests || 1);
-  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary: stats } });
+  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary: stats } }, handleLastError());
   processing = false;
   clearStatus();
 }
@@ -633,7 +641,7 @@ function stop() {
   progress = { total: 0, done: 0 };
   if (progressHud) { progressHud.remove(); progressHud = null; }
   clearStatus();
-  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false } }, () => {});
+  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false } }, handleLastError());
 }
 
 async function start() {

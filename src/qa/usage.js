@@ -1,5 +1,13 @@
 const metrics = [];
 
+function handleLastError(cb) {
+  return (...args) => {
+    const err = chrome.runtime.lastError;
+    if (err && !err.message.includes('Receiving end does not exist')) console.debug(err);
+    if (typeof cb === 'function') cb(...args);
+  };
+}
+
 const ctx = document.getElementById('usageChart').getContext('2d');
 const chart = new Chart(ctx, {
   type: 'line',
@@ -43,11 +51,11 @@ chrome.runtime.onMessage.addListener(msg => {
   }
 });
 
-chrome.runtime.sendMessage({ action: 'get-usage-log' }, resp => {
+chrome.runtime.sendMessage({ action: 'get-usage-log' }, handleLastError(resp => {
   if (resp && Array.isArray(resp.log)) {
     resp.log.forEach(addMetric);
   }
-});
+}));
 
 document.getElementById('exportBtn').onclick = () => {
   const rows = [['timestamp','tokens','latency']];

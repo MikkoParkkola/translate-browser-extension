@@ -9,6 +9,14 @@
     selectionPopup: false,
   };
 
+  function handleLastError(cb) {
+    return (...args) => {
+      const err = chrome.runtime.lastError;
+      if (err && !err.message.includes('Receiving end does not exist')) console.debug(err);
+      if (typeof cb === 'function') cb(...args);
+    };
+  }
+
   const store = await new Promise(res => {
     if (chrome?.storage?.sync) chrome.storage.sync.get(defaults, res);
     else res(defaults);
@@ -68,7 +76,7 @@
     chrome?.storage?.sync?.set({ cacheEnabled: cacheBox.checked });
   });
   document.getElementById('clearCache')?.addEventListener('click', () => {
-    chrome?.runtime?.sendMessage({ action: 'clear-cache' });
+    chrome?.runtime?.sendMessage({ action: 'clear-cache' }, handleLastError());
   });
 
   const providerList = document.getElementById('providerList');
@@ -247,9 +255,9 @@
   }
 
   const usageEl = document.getElementById('usageStats');
-  chrome?.runtime?.sendMessage({ action: 'metrics' }, m => {
+  chrome?.runtime?.sendMessage({ action: 'metrics' }, handleLastError(m => {
     const usage = m && m.usage ? m.usage : {};
     usageEl.textContent = JSON.stringify(usage, null, 2);
-  });
+  }));
 })();
 

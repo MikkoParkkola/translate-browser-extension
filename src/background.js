@@ -5,6 +5,15 @@ const logger = (self.qwenLogger && self.qwenLogger.create)
   : console;
 
 
+function handleLastError(cb) {
+  return (...args) => {
+    const err = chrome.runtime.lastError;
+    if (err && !err.message.includes('Receiving end does not exist')) logger.debug(err);
+    if (typeof cb === 'function') cb(...args);
+  };
+}
+
+
 const UPDATE_CHECK_INTERVAL = 6 * 60 * 60 * 1000;
 let pendingVersion;
 try { chrome.runtime.requestUpdateCheck?.(() => {}); } catch {}
@@ -21,7 +30,7 @@ if (chrome.runtime?.onUpdateAvailable?.addListener) {
 chrome.commands?.onCommand.addListener(async command => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return;
-  try { chrome.tabs.sendMessage(tab.id, { action: command }); } catch {}
+  try { chrome.tabs.sendMessage(tab.id, { action: command }, handleLastError()); } catch {}
 });
 
 // Load basic config (e.g., memCacheMax) so translator cache limits apply in background
@@ -48,8 +57,7 @@ function getDetectApiKeyFromStorage() {
 
 function safeSendMessage(msg) {
   try {
-    const p = chrome.runtime.sendMessage(msg);
-    if (p && typeof p.catch === 'function') p.catch(() => {});
+    chrome.runtime.sendMessage(msg, handleLastError());
   } catch {}
 }
 
@@ -167,14 +175,14 @@ async function injectContentScripts(tabId) {
 }
 async function ensureInjected(tabId) {
   const present = await new Promise(res => {
-    try { chrome.tabs.sendMessage(tabId, { action: 'test-read' }, r => res(!!(r && r.title))); }
+    try { chrome.tabs.sendMessage(tabId, { action: 'test-read' }, handleLastError(r => res(!!(r && r.title)))); }
     catch { res(false); }
   });
   if (!present) await injectContentScripts(tabId);
 }
 async function ensureInjectedAndStart(tabId) {
   await ensureInjected(tabId);
-  try { chrome.tabs.sendMessage(tabId, { action: 'start' }); } catch {}
+  try { chrome.tabs.sendMessage(tabId, { action: 'start' }, handleLastError()); } catch {}
 }
 async function maybeAutoInject(tabId, url) {
   if (!urlEligible(url)) return;
@@ -258,7 +266,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const tabId = tab.id;
   if (info.menuItemId === 'qwen-translate-selection') {
     await ensureInjected(tabId);
-    try { chrome.tabs.sendMessage(tabId, { action: 'translate-selection' }); } catch {}
+    try { chrome.tabs.sendMessage(tabId, { action: 'translate-selection' }, handleLastError()); } catch {}
     return;
   }
   if (info.menuItemId === 'qwen-translate-page') {
