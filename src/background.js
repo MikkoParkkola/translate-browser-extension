@@ -273,6 +273,15 @@ function logUsage(tokens, latency) {
   const entry = { ts: Date.now(), tokens, latency };
   usageLog.push(entry);
   safeSendMessage({ action: 'usage-metrics', data: entry });
+  try {
+    chrome.storage.local.get({ usageLog: [] }, data => {
+      const log = data.usageLog || [];
+      log.push(entry);
+      // keep the log from growing without bound
+      if (log.length > 1000) log.shift();
+      chrome.storage.local.set({ usageLog: log });
+    });
+  } catch {}
 }
 
 function setUsingPlus(v) { usingPlus = !!v; }
