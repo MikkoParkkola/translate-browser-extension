@@ -1,7 +1,7 @@
 (function () {
 // Only guard in real browser/extension contexts so tests can reload the module
 if (
-  process.env.NODE_ENV !== 'test' &&
+  (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') &&
   typeof window !== 'undefined' &&
   typeof chrome !== 'undefined' &&
   chrome.runtime &&
@@ -990,7 +990,7 @@ if (typeof window !== 'undefined') {
   window.qwenClearCache = qwenClearCache;
   window.qwenSetTokenBudget = _setTokenBudget;
   if (
-    process.env.NODE_ENV !== 'test' &&
+    (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') &&
     typeof chrome !== 'undefined' &&
     chrome.runtime &&
     chrome.runtime.id
