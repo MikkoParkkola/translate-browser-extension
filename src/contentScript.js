@@ -1,29 +1,30 @@
-(function () {
-if (typeof window !== 'undefined') {
-  if (window.__qwenCSLoaded) return;
-  window.__qwenCSLoaded = true;
-}
+if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
+  // Already loaded; avoid redeclaration errors
+} else {
+  if (typeof window !== 'undefined') {
+    window.__qwenCSLoaded = true;
+  }
 
-const skipInit = location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'));
-const logger = (window.qwenLogger && window.qwenLogger.create) ? window.qwenLogger.create('content') : console;
-let observers = [];
-let currentConfig;
-const batchQueue = [];
-let processing = false;
-let statusTimer;
-const pending = new Set();
-let flushTimer;
-const controllers = new Set();
-let progress = { total: 0, done: 0 };
-let started = false;
-let progressHud;
-let selectionBubble;
-let selectionPinned = false;
-const i18nReady = window.qwenI18n && window.qwenI18n.ready ? window.qwenI18n.ready : Promise.resolve();
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-let pageRecognizer;
-let prefetchObserver;
-const visibilityMap = new Map();
+  const skipInit = location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'));
+  const logger = (window.qwenLogger && window.qwenLogger.create) ? window.qwenLogger.create('content') : console;
+  let observers = [];
+  let currentConfig;
+  const batchQueue = [];
+  let processing = false;
+  let statusTimer;
+  const pending = new Set();
+  let flushTimer;
+  const controllers = new Set();
+  let progress = { total: 0, done: 0 };
+  let started = false;
+  let progressHud;
+  let selectionBubble;
+  let selectionPinned = false;
+  const i18nReady = window.qwenI18n && window.qwenI18n.ready ? window.qwenI18n.ready : Promise.resolve();
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let pageRecognizer;
+  let prefetchObserver;
+  const visibilityMap = new Map();
 
 function handleLastError(cb) {
   return (...args) => {
@@ -799,16 +800,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   } else {
     window.addEventListener('DOMContentLoaded', initConfig);
   }
+  if (typeof module !== 'undefined') {
+    module.exports = {
+      translateBatch,
+      collectNodes,
+      setCurrentConfig: cfg => {
+        currentConfig = cfg;
+      },
+    };
+  }
 }
-
-if (typeof module !== 'undefined') {
-  module.exports = {
-    translateBatch,
-    collectNodes,
-    setCurrentConfig: cfg => {
-      currentConfig = cfg;
-    },
-  };
 }
-
-})();
