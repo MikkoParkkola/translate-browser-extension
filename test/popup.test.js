@@ -21,7 +21,7 @@ describe('popup shell routing', () => {
         },
       },
       tabs: {
-        query: jest.fn((opts, cb) => cb([{ id: 1 }])),
+        query: jest.fn((opts, cb) => cb([{ id: 1, url: 'https://example.com' }])),
         sendMessage: jest.fn(),
       },
     };
@@ -45,7 +45,8 @@ describe('popup shell routing', () => {
     expect(frame.src).toContain('popup/home.html');
 
     listener({ action: 'home:quick-translate' });
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'translate' });
+    expect(chrome.tabs.query).toHaveBeenCalledWith({ active: true, currentWindow: true }, expect.any(Function));
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'ensure-start', tabId: 1, url: 'https://example.com' });
 
     listener({ action: 'home:auto-translate', enabled: true });
     expect(chrome.storage.sync.set).toHaveBeenCalledWith({ autoTranslate: true });

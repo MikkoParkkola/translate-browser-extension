@@ -1,3 +1,4 @@
+;(function () {
 let fetchFn = typeof fetch !== 'undefined' ? fetch : undefined;
 
 if (typeof window === 'undefined' && typeof fetchFn === 'undefined' && typeof require !== 'undefined') {
@@ -194,3 +195,4 @@ try {
 } catch {}
 
 if (typeof module !== 'undefined') module.exports = provider;
+})();

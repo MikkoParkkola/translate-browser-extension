@@ -1,3 +1,4 @@
+;(function () {
 let modelPromise;
 
 async function loadModel() {
@@ -46,3 +47,4 @@ try {
 } catch {}
 
 if (typeof module !== 'undefined') module.exports = provider;
+})();

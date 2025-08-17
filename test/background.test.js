@@ -198,6 +198,11 @@ describe('background icon plus indicator', () => {
     createSpy.mockRestore();
   });
 
+  test('updateBadge tolerates missing canvas context', () => {
+    global.OffscreenCanvas = class { getContext() { return null; } };
+    expect(() => updateBadge()).not.toThrow();
+  });
+
   test('notifies on update with version', () => {
     const onInstalled = chrome.runtime.onInstalled.addListener.mock.calls[0][0];
     chrome.runtime.getManifest = () => ({ version: '9.9.9' });

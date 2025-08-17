@@ -1,3 +1,4 @@
+;(function () {
 const root = typeof window !== 'undefined'
   ? window
   : typeof self !== 'undefined'
@@ -140,4 +141,5 @@ if (typeof window !== 'undefined') {
 }
 
 if (typeof module !== 'undefined') module.exports = api;
+})();
 

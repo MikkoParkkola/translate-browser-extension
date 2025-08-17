@@ -1,3 +1,4 @@
+(function () {
 const langs = [
   { code: 'af', name: 'Afrikaans' },
   { code: 'sq', name: 'Albanian' },
@@ -110,3 +111,4 @@ if (typeof window !== 'undefined') {
 if (typeof module !== 'undefined') {
   module.exports = { langs };
 }
+})();
