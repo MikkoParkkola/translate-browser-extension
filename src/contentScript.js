@@ -53,8 +53,11 @@ async function loadGlossary() {
   if (!window.qwenGlossary) return;
   if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.sync) return;
   await new Promise(res => {
-    chrome.storage.sync.get({ glossary: {} }, data => {
-      try { window.qwenGlossary.parse(document, data.glossary || {}); } catch {}
+    chrome.storage.sync.get({ glossary: {}, tone: 'formal' }, data => {
+      try {
+        window.qwenGlossary.parse(document, data.glossary || {});
+        if (window.qwenGlossary.setTone) window.qwenGlossary.setTone(data.tone || 'formal');
+      } catch {}
       res();
     });
   });

@@ -235,7 +235,7 @@ function chooseProvider(opts) {
   const ep = String(opts && opts.endpoint || '').toLowerCase();
   return ep.includes('dashscope') ? 'dashscope' : 'dashscope';
 }
-async function providerTranslate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true, provider, context = 'default', autoInit = false, providerOrder, endpoints, secondaryModel }) {
+async function providerTranslate({ endpoint, apiKey, model, text, source, target, tone, signal, debug, onData, stream = true, provider, context = 'default', autoInit = false, providerOrder, endpoints, secondaryModel }) {
   _ensureProviders({ autoInit });
   const tokens = approxTokens(text);
   let chain;
@@ -265,7 +265,7 @@ async function providerTranslate({ endpoint, apiKey, model, text, source, target
     try {
       const t = throttleFor(id, context);
       return await t.runWithRetry(
-        () => impl.translate({ endpoint: ep, apiKey, model, secondaryModel, text, source, target, signal, debug, onData, stream }),
+        () => impl.translate({ endpoint: ep, apiKey, model, secondaryModel, text, source, target, tone, signal, debug, onData, stream }),
         tokens,
         3,
         debug
@@ -282,7 +282,7 @@ async function providerTranslate({ endpoint, apiKey, model, text, source, target
   const ep = withSlash((endpoints && first && endpoints[first]) || endpoint || '');
   const t = throttleFor(first, context);
   return await t.runWithRetry(
-    () => doFetch({ endpoint: ep, apiKey, model, text, source, target, signal, debug, onData, stream }),
+    () => doFetch({ endpoint: ep, apiKey, model, text, source, target, tone, signal, debug, onData, stream }),
     tokens,
     3,
     debug
@@ -306,7 +306,7 @@ async function _detectSource(text, { detector, debug, noProxy, sensitivity = 0 }
   return 'en';
 }
 
-async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true }) {
+async function doFetch({ endpoint, apiKey, model, text, source, target, tone, signal, debug, onData, stream = true }) {
   const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
   if (debug) {
     trLogger.debug('sending translation request to', url);
@@ -319,6 +319,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal, 
       translation_options: { source_lang: source, target_lang: target },
     },
   };
+  if (tone) body.parameters.tone = tone;
   if (debug) trLogger.debug('request body', body);
   const key = (apiKey || '').trim();
   const headers = { 'Content-Type': 'application/json' };
@@ -434,6 +435,7 @@ async function qwenTranslate({ endpoint, apiKey, model, secondaryModel, text, so
     src = await _detectSource(text, { detector, debug, noProxy, sensitivity });
   }
   text = _applyGlossary(text);
+  const tone = glossary && typeof glossary.getTone === 'function' ? glossary.getTone() : undefined;
   const prov = provider || (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model }));
   const cacheKey = `${prov}:${_key(src, target, text)}`;
   if (!force && cache.has(cacheKey)) {
@@ -469,6 +471,7 @@ async function qwenTranslate({ endpoint, apiKey, model, secondaryModel, text, so
         endpoints,
         failover,
         parallel: false,
+        tone,
       });
       _setCache(cacheKey, result);
       if (TM && TM.set && result && typeof result.text === 'string') { try { TM.set(cacheKey, result.text); } catch {} }
@@ -476,7 +479,7 @@ async function qwenTranslate({ endpoint, apiKey, model, secondaryModel, text, so
     }
 
   try {
-    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, stream, provider: provider ? prov : undefined, context: stream ? 'stream' : 'default', autoInit, providerOrder: failover ? providerOrder : undefined, endpoints, secondaryModel });
+    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, tone, signal, debug, stream, provider: provider ? prov : undefined, context: stream ? 'stream' : 'default', autoInit, providerOrder: failover ? providerOrder : undefined, endpoints, secondaryModel });
     _setCache(cacheKey, data);
     if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
@@ -506,6 +509,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, secondaryModel, te
     src = await _detectSource(text, { detector, debug, noProxy, sensitivity });
   }
   text = _applyGlossary(text);
+  const tone = glossary && typeof glossary.getTone === 'function' ? glossary.getTone() : undefined;
   const prov = provider || (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model }));
   const cacheKey = `${prov}:${_key(src, target, text)}`;
   if (cache.has(cacheKey)) {
@@ -532,6 +536,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, secondaryModel, te
         endpoints,
         failover,
         parallel: false,
+        tone,
       });
       _setCache(cacheKey, data);
       if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
@@ -539,7 +544,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, secondaryModel, te
     }
 
   try {
-    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, signal, debug, onData, stream, provider: prov, context: 'stream', autoInit, providerOrder: failover ? providerOrder : undefined, endpoints, secondaryModel });
+    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, tone, signal, debug, onData, stream, provider: prov, context: 'stream', autoInit, providerOrder: failover ? providerOrder : undefined, endpoints, secondaryModel });
     _setCache(cacheKey, data);
     if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
