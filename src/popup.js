@@ -33,13 +33,21 @@
     load(current === 'settings.html' ? 'home.html' : 'settings.html');
   });
 
+  let resizeObserver;
   function observeResize() {
     if (!frame) return;
     try {
       const doc = frame.contentDocument;
       if (!doc) return;
-      const ro = new ResizeObserver(resize);
-      ro.observe(doc.documentElement);
+      resizeObserver?.disconnect();
+      resizeObserver = new ResizeObserver(() => {
+        resizeObserver.disconnect();
+        requestAnimationFrame(() => {
+          resize();
+          resizeObserver.observe(doc.documentElement);
+        });
+      });
+      resizeObserver.observe(doc.documentElement);
     } catch {}
   }
   frame?.addEventListener('load', () => {
