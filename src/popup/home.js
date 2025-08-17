@@ -4,8 +4,11 @@
   const providerName = document.getElementById('providerName');
   const usageEl = document.getElementById('usage');
   const limitsEl = document.getElementById('limits');
+  const reqBar = document.getElementById('reqBar');
+  const tokBar = document.getElementById('tokBar');
   const srcSel = document.getElementById('srcLang');
   const destSel = document.getElementById('destLang');
+  const diagBtn = document.getElementById('toDiagnostics');
 
   const languages = (window.qwenLanguages || []).slice();
   function fillSelect(sel, allowAuto) {
@@ -48,12 +51,24 @@
     chrome.runtime.sendMessage({ action: 'home:auto-translate', enabled: e.target.checked });
   });
 
+  diagBtn?.addEventListener('click', () => { location.href = 'diagnostics.html'; });
+
   chrome.runtime.sendMessage({ action: 'home:init' }, res => {
     if (!res) return;
     providerName.textContent = res.provider || '-';
     const u = res.usage || {};
     usageEl.textContent = `Requests: ${u.requests || 0}/${u.requestLimit || 0} Tokens: ${u.tokens || 0}/${u.tokenLimit || 0}`;
     if (limitsEl) limitsEl.textContent = `Queue: ${u.queue || 0}`;
+    if (reqBar) {
+      reqBar.max = u.requestLimit || 0;
+      reqBar.value = u.requests || 0;
+      reqBar.style.accentColor = self.qwenUsageColor ? self.qwenUsageColor(reqBar.value / (reqBar.max || 1)) : '';
+    }
+    if (tokBar) {
+      tokBar.max = u.tokenLimit || 0;
+      tokBar.value = u.tokens || 0;
+      tokBar.style.accentColor = self.qwenUsageColor ? self.qwenUsageColor(tokBar.value / (tokBar.max || 1)) : '';
+    }
     autoToggle.checked = !!res.auto;
   });
 
@@ -62,6 +77,16 @@
       const u = msg.usage || {};
       usageEl.textContent = `Requests: ${u.requests || 0}/${u.requestLimit || 0} Tokens: ${u.tokens || 0}/${u.tokenLimit || 0}`;
       if (limitsEl) limitsEl.textContent = `Queue: ${u.queue || 0}`;
+      if (reqBar) {
+        reqBar.max = u.requestLimit || 0;
+        reqBar.value = u.requests || 0;
+        reqBar.style.accentColor = self.qwenUsageColor ? self.qwenUsageColor(reqBar.value / (reqBar.max || 1)) : '';
+      }
+      if (tokBar) {
+        tokBar.max = u.tokenLimit || 0;
+        tokBar.value = u.tokens || 0;
+        tokBar.style.accentColor = self.qwenUsageColor ? self.qwenUsageColor(tokBar.value / (tokBar.max || 1)) : '';
+      }
     }
   });
 })();

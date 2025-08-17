@@ -45,14 +45,12 @@
   <label class="auto-toggle"><input type="checkbox" id="autoTranslate"> Auto-translate</label>
   <div id="provider">Provider: <span id="providerName">-</span></div>
   <div id="usage" class="stats">Requests: 0/0 Tokens: 0/0</div>
+  <progress id="reqBar" value="0" max="0"></progress>
+  <progress id="tokBar" value="0" max="0"></progress>
   <div id="limits" class="stats"></div>
-  <div id="usageSummary" class="stats"></div>
-  <canvas id="usageChart"></canvas>
-  <div id="providerStatus" class="stats"></div>
   <button id="toDiagnostics" class="secondary">Diagnostics</button>
   <script src="../languages.js"></script>
-  <script src="../qa/chart.umd.js"></script>
-  <script src="monitor.js"></script>
+  <script src="../usageColor.js"></script>
   <script src="home.js"></script>
 </body>
 </html>

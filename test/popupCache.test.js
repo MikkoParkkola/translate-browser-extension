@@ -9,7 +9,10 @@ describe('home usage updates', () => {
       <label><input type="checkbox" id="autoTranslate"></label>
       <div id="provider">Provider: <span id="providerName"></span></div>
       <div id="usage">Requests: 0/0 Tokens: 0/0</div>
+      <progress id="reqBar" value="0" max="0"></progress>
+      <progress id="tokBar" value="0" max="0"></progress>
       <div id="limits"></div>
+      <button id="toDiagnostics"></button>
     `;
     listener = undefined;
     global.chrome = {
@@ -26,13 +29,19 @@ describe('home usage updates', () => {
         },
       },
     };
+    global.qwenUsageColor = jest.fn(() => '#000');
+    global.window.qwenUsageColor = global.qwenUsageColor;
     require('../src/popup/home.js');
   });
 
   test('updates usage on runtime message', () => {
     expect(document.getElementById('usage').textContent).toBe('Requests: 1/10 Tokens: 2/20');
+    expect(document.getElementById('reqBar').value).toBe(1);
+    expect(document.getElementById('reqBar').max).toBe(10);
     listener({ action: 'home:update-usage', usage: { requests: 3, tokens: 4, requestLimit: 10, tokenLimit: 20, queue: 1 } });
     expect(document.getElementById('usage').textContent).toBe('Requests: 3/10 Tokens: 4/20');
+    expect(document.getElementById('tokBar').value).toBe(4);
+    expect(document.getElementById('tokBar').max).toBe(20);
   });
 });
 

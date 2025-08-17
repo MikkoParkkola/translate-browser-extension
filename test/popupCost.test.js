@@ -8,7 +8,10 @@ describe('home view display', () => {
       <label><input type="checkbox" id="autoTranslate"></label>
       <div id="provider">Provider: <span id="providerName"></span></div>
       <div id="usage">Requests: 0/0 Tokens: 0/0</div>
+      <progress id="reqBar" value="0" max="0"></progress>
+      <progress id="tokBar" value="0" max="0"></progress>
       <div id="limits"></div>
+      <button id="toDiagnostics"></button>
     `;
     global.chrome = {
       runtime: {
@@ -22,6 +25,8 @@ describe('home view display', () => {
         },
       },
     };
+    global.qwenUsageColor = jest.fn(() => '#000');
+    global.window.qwenUsageColor = global.qwenUsageColor;
   });
 
   test('initializes and handles actions', () => {
@@ -32,6 +37,8 @@ describe('home view display', () => {
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'home:init' }, expect.any(Function));
     expect(document.getElementById('providerName').textContent).toBe('qwen');
     expect(document.getElementById('usage').textContent).toBe('Requests: 5/100 Tokens: 10/200');
+    expect(document.getElementById('reqBar').value).toBe(5);
+    expect(document.getElementById('reqBar').max).toBe(100);
 
     document.getElementById('quickTranslate').click();
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'home:quick-translate' });
