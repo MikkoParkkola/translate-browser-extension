@@ -4,366 +4,39 @@
   <meta charset="utf-8">
   <link rel="stylesheet" href="styles/apple.css">
   <style>
-    :root {
-      --bg-color: var(--qwen-bg, rgba(28,28,30,0.7));
-      --text-color: var(--qwen-text, #f5f5f7);
-      --input-bg: rgba(255, 255, 255, 0.1);
-      --input-border: var(--qwen-border, rgba(255,255,255,0.2));
-      --input-focus-border: var(--qwen-input-focus, #0a84ff);
-      --primary-color: var(--qwen-primary-bg, #0a84ff);
-      --primary-hover-color: var(--qwen-primary-hover, #0060df);
-      --secondary-bg: var(--qwen-secondary-bg, rgba(118,118,128,0.2));
-      --secondary-hover-bg: var(--qwen-secondary-hover, rgba(118,118,128,0.3));
-      --bar-bg: rgba(118,118,128,0.2);
-      --green: var(--qwen-primary-bg, #0a84ff);
-      --yellow: var(--qwen-primary-hover, #0060df);
-      --red: var(--qwen-error, #ff3b30);
-      --body-width: 380px;
-    }
-
     html {
-      min-height: 100%;
-      background: var(--bg-color);
+      background: var(--qwen-bg, rgba(28,28,30,0.7));
     }
-
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      width: var(--body-width);
-      padding: 1rem;
+      color: var(--qwen-text, #f5f5f7);
+      width: 380px;
       margin: 0;
-      background: transparent;
-      color: var(--text-color);
+    }
+    #nav {
       display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-      min-height: 100%;
-      overflow-y: auto;
-      position: relative;
+      justify-content: flex-end;
+      padding: 0.5rem;
     }
-
-    body::after {
-      content: "";
-      position: sticky;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: 2rem;
-      pointer-events: none;
-      background: linear-gradient(to bottom, transparent, var(--bg-color));
+    #nav button {
+      background: none;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      font-size: 1.25rem;
     }
-
-    /* View switching logic */
-    .view-container > .setup-view,
-    .view-container > .main-view {
-      display: none;
+    #content {
+      width: 100%;
+      border: 0;
+      height: calc(100vh - 40px);
     }
-    .view-container.show-setup .setup-view {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-    }
-    .view-container.show-main .main-view {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-    }
-
-    /* ... (rest of the styles from previous version) ... */
-    .main-actions { display: flex; gap: 0.5rem; align-items: center; }
-    #translate { flex-grow: 1; }
-    #micBtn.recording { background-color: var(--red); }
-    #playBtn.playing { background-color: var(--green); }
-    .auto-translate-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
-    .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
-    .switch input { opacity: 0; width: 0; height: 0; }
-    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--secondary-bg); transition: .4s; border-radius: 20px; }
-    .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
-    input:checked + .slider { background-color: var(--primary-color); }
-    input:checked + .slider:before { transform: translateX(14px); }
-    .usage-section { font-size: 0.75rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem 1rem; padding: 0.5rem; background: var(--secondary-bg); border-radius: 8px; }
-    .usage-item { display: flex; flex-direction: column; }
-    .bar { height: 6px; background: var(--bar-bg); border-radius: 3px; overflow: hidden; margin-top: 2px; }
-      .bar > div { height: 100%; width: 0%; transition: width 0.2s ease-in-out, background-color 0.2s ease-in-out; }
-    .form-group { display: flex; flex-direction: column; gap: 0.5rem; }
-    .slider-group { display: flex; align-items: center; gap: 0.5rem; }
-    .slider-group span { font-size: 0.75rem; }
-    label { font-size: 0.875rem; }
-    .help { font-size: 0.75rem; opacity: 0.8; }
-    .view-options { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
-    .view-options label { display: flex; align-items: center; gap: 0.25rem; }
-    #status { font-size: 0.875rem; min-height: 40px; max-height: 150px; overflow-y: auto; border: 1px solid var(--input-border); padding: 0.5rem; background-color: var(--input-bg); border-radius: 6px; white-space: pre-wrap; }
-    #version { font-size: 0.75rem; text-align: center; opacity: 0.7; }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-    .grid-2 > * { min-width: 0; }
-    summary { cursor: pointer; font-weight: 600; }
-    #usageDetails { padding: 0.25rem 0.5rem; background: var(--secondary-bg); border-radius: 8px; }
-      #usageDetails summary { list-style: none; }
-      #usageDetails[open] .usage-section { animation: fadeIn 0.3s ease-in; }
-      #providerUsage { display: contents; }
-      @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(-4px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .benchmark-table { width: 100%; font-size: 0.75rem; border-collapse: collapse; margin-top: 0.5rem; }
-    .benchmark-table th, .benchmark-table td { padding: 2px 4px; text-align: left; }
-    .benchmark-table tr.recommended { color: var(--green); }
   </style>
 </head>
 <body>
-  <div id="viewContainer" class="view-container" role="main" data-i18n-attr="aria-label:popup.ariaMain">
-    <!-- ===== SETUP VIEW ===== -->
-    <div class="setup-view">
-      <h3 data-i18n="popup.initialSetup"></h3>
-      <p data-i18n="popup.setupPrompt"></p>
-      <div id="benchmarkRec" class="help"></div>
-      <div class="form-group">
-        <label for="setup-apiKey">API Key</label>
-        <input type="text" id="setup-apiKey" placeholder="Enter your API key">
-
-        <label for="setup-apiEndpoint">API Endpoint</label>
-        <input type="text" id="setup-apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1">
-
-        <label for="setup-model">Model</label>
-        <input type="text" id="setup-model" list="setupModelList" placeholder="e.g., qwen-mt-turbo">
-        <datalist id="setupModelList"></datalist>
-      </div>
-      <p>Your settings are saved automatically.</p>
-    </div>
-
-    <!-- ===== MAIN VIEW ===== -->
-    <div class="main-view">
-      <div class="main-actions">
-        <button id="translate" class="primary" title="Translate the current tab">Translate Page</button>
-        <button id="micBtn" class="secondary" title="Record">Mic</button>
-        <button id="playBtn" class="secondary" title="Play">Play</button>
-        <div class="auto-translate-toggle">
-          <label class="switch">
-            <input type="checkbox" id="auto">
-            <span class="slider"></span>
-          </label>
-          <span title="Automatically translate supported pages as they load. You can still click Translate Page to force refresh.">Auto</span>
-        </div>
-      </div>
-      <div class="grid-2">
-        <div>
-          <label for="source">Source Language</label>
-          <select id="source" title="Language to translate from. Use 'Auto-detect' for convenience and mixed-language pages."></select>
-        </div>
-        <div>
-          <label for="target">Target Language</label>
-          <select id="target" title="Language to translate into (your reading language)."></select>
-        </div>
-      </div>
-
-      <div class="view-options">
-        <label title="Compact layout"><input type="checkbox" id="compactMode"> Compact</label>
-        <label title="Light theme"><input type="checkbox" id="lightMode"> Light</label>
-        <label title="Conversation panel"><input type="checkbox" id="panelEnabled"> Panel</label>
-      </div>
-
-      <details open id="usageDetails" class="panel-frame">
-        <summary>Usage</summary>
-        <div class="usage-section">
-          <div class="usage-item">
-            <span>Requests: <span id="reqCount">0/0</span></span>
-            <div class="bar"><div id="reqBar"></div></div>
-          </div>
-          <div class="usage-item">
-            <span>Tokens: <span id="tokenCount">0/0</span></span>
-            <div class="bar"><div id="tokenBar"></div></div>
-          </div>
-          <div class="usage-item">Total Requests: <span id="totalReq">0</span></div>
-          <div class="usage-item">Total Tokens: <span id="totalTok">0</span></div>
-          <div class="usage-item">Queue: <span id="queueLen">0</span></div>
-          <div id="providerUsage"></div>
-        </div>
-        <div id="costSection"></div>
-      </details>
-
-    <a href="qa/usage.html" target="_blank" rel="noopener">Usage</a>
-    <a href="popup/diagnostics.html" target="_blank" rel="noopener">Diagnostics</a>
-
-      <details class="panel-frame">
-        <summary>Getting Started</summary>
-        <ol>
-          <li>Open Advanced Settings and choose a Provider preset, then paste your API key.</li>
-          <li>Set Target Language (your reading language). Leave Source as Auto‑detect.</li>
-          <li>Optional: set Detector to Google and add a Detection API key for better auto‑detect.</li>
-          <li>Click “Translate Page” or enable Auto to translate pages as they load.</li>
-        </ol>
-        <p>Where to get API keys:</p>
-        <ul>
-          <li>DashScope (Qwen): <a href="https://dashscope.console.aliyun.com/" target="_blank" rel="noopener">Console</a></li>
-          <li>OpenAI: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">API keys</a></li>
-          <li>DeepL: <a href="https://www.deepl.com/pro-api" target="_blank" rel="noopener">Pro API</a></li>
-          <li>Google (Detection): <a href="https://cloud.google.com/translate/docs/setup" target="_blank" rel="noopener">Setup</a></li>
-        </ul>
-      </details>
-
-      <details id="providerSection" class="panel-frame">
-        <summary>Providers</summary>
-        <div class="form-group" style="padding-top: 0.75rem">
-          <a id="manageProviders" href="popup/providers.html" target="_blank" rel="noopener" class="button" style="align-self:flex-start">Manage Providers (<span id="providerCount"></span>)</a>
-
-          <label for="apiKey">API Key</label>
-          <input type="text" id="apiKey" placeholder="Enter your API key"
-                 title="Your provider API key. Stored only in browser storage and used by the background. Never injected into pages.">
-          <small class="help">Authenticates requests. Required for translation.</small>
-
-          <label for="apiEndpoint">API Endpoint</label>
-          <input type="text" id="apiEndpoint" placeholder="e.g., https://dashscope-intl.aliyuncs.com/api/v1"
-                 title="Base URL for your provider API (https://.../). A trailing slash is added automatically if omitted.">
-          <small class="help">Base URL for API calls, typically ending with /api/v1.</small>
-
-          <label for="model">Model</label>
-          <input type="text" id="model" list="modelList" placeholder="e.g., qwen-mt-turbo"
-                 title="Provider model identifier (e.g., qwen-mt-turbo, gpt-5-mini).">
-          <datalist id="modelList"></datalist>
-          <small class="help">Translation model name. Higher-tier models cost more.</small>
-
-          <label title="Use qwen-mt-plus if qwen-mt-turbo fails"><input type="checkbox" id="plusFallback"> Enable qwen-mt-plus fallback</label>
-
-          <label for="providerPreset">Provider preset</label>
-          <select id="providerPreset" title="Pick a preset to auto‑fill endpoint and a typical model. Paste your API key separately.">
-            <option value="">— Choose a provider —</option>
-            <option value="dashscope">DashScope (Qwen)</option>
-            <option value="openai">OpenAI</option>
-            <option value="openrouter">OpenRouter</option>
-            <option value="mistral">Mistral</option>
-            <option value="deepl">DeepL</option>
-            <option value="macos">macOS</option>
-            <option value="ollama">Ollama</option>
-          </select>
-          <small class="help">Auto-fills endpoint and model; still paste your own key.</small>
-
-          <label for="strategy">Optimization</label>
-          <select id="strategy" title="How to prioritize providers when using multiple backends.">
-            <option value="cheap">Cheap</option>
-            <option value="fast">Fast</option>
-            <option value="quality">Quality</option>
-            <option value="balanced">Balanced</option>
-          </select>
-          <small class="help">Optimization goal for multi-provider orchestration.</small>
-        </div>
-      </details>
-
-      <details id="limitSection" class="panel-frame">
-        <summary>Rate Limits</summary>
-        <div class="form-group" style="padding-top: 0.75rem">
-          <div id="calibrationStatus" class="help"></div>
-          <label for="requestLimit">Request limit/min</label>
-          <input type="number" id="requestLimit" placeholder="60" min="0" title="Maximum translation requests per minute">
-          <label for="tokenLimit">Token limit/min</label>
-          <input type="number" id="tokenLimit" placeholder="100000" min="0" title="Maximum tokens per minute">
-          <label for="tokenBudget">Token budget</label>
-          <input type="number" id="tokenBudget" placeholder="Optional" min="0" title="Optional per-page token budget">
-          <button id="recalibrate">Recalibrate</button>
-        </div>
-      </details>
-
-      <details id="detectionSection" class="panel-frame">
-        <summary>Detection</summary>
-        <div class="form-group" style="padding-top: 0.75rem">
-          <label for="detector">Detector</label>
-          <select id="detector" title="How to detect the source language when Source is auto. Local is private and free. Google requires a Detection API key.">
-            <option value="local">Local (on-device)</option>
-            <option value="google">Google (Cloud)</option>
-          </select>
-          <small class="help">Local is free; Google improves accuracy but needs a key.</small>
-
-          <label for="detectApiKey">Detection API Key (Google)</label>
-          <input type="text" id="detectApiKey" placeholder="Only needed for Google detector"
-                 title="Google Cloud API key used only for language detection. Create a key and enable the Cloud Translation API.">
-          <small class="help">Required only when using Google detector.</small>
-
-          <label for="sensitivity">Detection sensitivity</label>
-          <div class="slider-group">
-            <span>Low</span>
-            <input type="range" id="sensitivity" min="0" max="1" step="0.1"
-                   title="Minimum confidence required from language detector.">
-            <span id="sensitivityValue">0.0</span>
-            <span>High</span>
-          </div>
-          <small class="help">Minimum confidence required from language detector; higher values require stronger language confidence.</small>
-        </div>
-      </details>
-
-      <details id="cacheSection" class="panel-frame">
-        <summary>Cache &amp; Debug</summary>
-        <div class="form-group" style="padding-top: 0.75rem">
-          <label for="memCacheMax">Memory cache max</label>
-          <input type="number" id="memCacheMax" placeholder="5000"
-                 title="Maximum entries for in‑memory translation cache.">
-          <small class="help">Entries kept in RAM; 1000–10000 typical.</small>
-          <div id="cacheStats" style="font-size:0.75rem"></div>
-          <div id="tmStats" style="font-size:0.75rem"></div>
-
-          <label title="Sync translation memory across devices."><input type="checkbox" id="tmSync"> Sync TM</label>
-          <button id="clearRemoteTM">Clear Remote TM</button>
-
-          <label title="Enable detailed logs for troubleshooting in DevTools."><input type="checkbox" id="debug"> Debug logging</label>
-          <small class="help">Logs extra info to DevTools; slight performance hit.</small>
-          <label title="Verify translations with a secondary provider."><input type="checkbox" id="qualityVerify"> Quality verify</label>
-          <small class="help">Re-translate a random sample to estimate confidence.</small>
-        </div>
-      </details>
-
-      <details id="glossarySection" class="panel-frame">
-        <summary>Glossary</summary>
-        <div class="form-group" style="padding-top: 0.75rem">
-          <label for="glossaryTerms">Terms (one per line: source=target)</label>
-          <textarea id="glossaryTerms" rows="4"></textarea>
-          <label for="tone">Tone</label>
-          <select id="tone">
-            <option value="formal">Formal</option>
-            <option value="casual">Casual</option>
-            <option value="technical">Technical</option>
-          </select>
-          <label for="importGlossary">Import glossary (JSON)</label>
-          <input type="file" id="importGlossary" accept="application/json">
-          <button id="exportGlossary">Export Glossary</button>
-        </div>
-      </details>
-      <button id="test" data-i18n="popup.testSettings"></button>
-
-      <details id="statsDetails" open class="panel-frame">
-        <summary data-i18n="popup.stats"></summary>
-        <div class="usage-section">
-          <div class="usage-item">Total Requests: <span id="statsRequests">0</span></div>
-          <div class="usage-item">Total Tokens: <span id="statsTokens">0</span></div>
-          <div class="usage-item">Avg Latency: <span id="statsLatency">0</span> ms</div>
-          <div class="usage-item">ETA: <span id="statsEta">0</span> s</div>
-          <div class="usage-item">Confidence: <span id="statsQuality">0</span></div>
-          <div class="usage-item" style="grid-column: span 2;"><canvas id="reqSpark" height="30" style="width:100%;"></canvas></div>
-          <div class="usage-item" style="grid-column: span 2;"><canvas id="tokSpark" height="30" style="width:100%;"></canvas></div>
-        </div>
-      </details>
-
-      <progress id="progress" value="0" max="1" style="width:100%;display:none"></progress>
-      <div id="status" role="status" aria-live="polite"></div>
-      <div id="version"></div>
-    </div>
+  <div id="nav">
+    <button id="settingsBtn" aria-label="Settings">⚙️</button>
   </div>
-
-  <script src="i18n/index.js"></script>
-  <script>qwenI18n.apply();</script>
-  <script src="throttle.js"></script>
-  <script src="lib/providers.js"></script>
-  <script src="providers/openai.js"></script>
-  <script src="providers/openrouter.js"></script>
-  <script src="providers/mistral.js"></script>
-  <script src="providers/deepl.js"></script>
-  <script src="providers/dashscope.js"></script>
-  <script src="providers/macos.js"></script>
-  <script src="providers/ollama.js"></script>
-  <script src="lib/messaging.js"></script>
-  <script src="lib/glossary.js"></script>
-  <script src="translator.js"></script>
-  <script src="config.js"></script>
-  <script src="languages.js"></script>
-  <script src="usageColor.js"></script>
-  <script src="qa/chart.umd.js"></script>
+  <iframe id="content" src="popup/home.html"></iframe>
   <script src="popup.js"></script>
-  <script src="popup/support.js"></script>
 </body>
 </html>

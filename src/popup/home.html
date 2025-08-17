@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html data-qwen-theme="apple">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="../styles/apple.css">
+  <style>
+    html {
+      background: var(--qwen-bg, rgba(28,28,30,0.7));
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--qwen-text, #f5f5f7);
+      margin: 0;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .auto-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+    }
+    .stats {
+      font-size: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+  <button id="quickTranslate" class="primary">Quick translate</button>
+  <label class="auto-toggle"><input type="checkbox" id="autoTranslate"> Auto-translate</label>
+  <div id="provider">Provider: <span id="providerName">-</span></div>
+  <div id="usage" class="stats">Requests: 0 Tokens: 0</div>
+  <script src="home.js"></script>
+</body>
+</html>
