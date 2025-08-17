@@ -20,28 +20,39 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: npm run build:zip
+      - name: Get version
+        id: vars
+        run: echo "VERSION=$(jq -r .version src/manifest.json)" >> $GITHUB_OUTPUT
+      - name: Pack CRX
+        run: |
+          echo "${{ secrets.EXTENSION_KEY }}" > extension.pem
+          npx --yes crx3 -p extension.pem -o dist/qwen-translator-${{ steps.vars.outputs.VERSION }}.crx dist
+          rm extension.pem
+      - run: npm run zip
       - name: Prepare release assets
         id: prep
         run: |
-          VERSION=$(jq -r .version src/manifest.json)
-          ZIP_NAME="qwen-translator-${VERSION}.zip"
+          VERSION=${{ steps.vars.outputs.VERSION }}
+          CRX_NAME="qwen-translator-${VERSION}.crx"
+          ZIP_NAME="qwen-translator-v${VERSION}.zip"
           mv dist/*.zip "dist/${ZIP_NAME}"
           cat <<XML > dist/updates.xml
 <?xml version="1.0" encoding="UTF-8"?>
 <gupdate xmlns="http://www.google.com/update2/response" protocol="2.0">
   <app appid="${EXTENSION_ID}">
-    <updatecheck codebase="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/${ZIP_NAME}" version="${VERSION}" />
+    <updatecheck codebase="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/${CRX_NAME}" version="${VERSION}" />
   </app>
 </gupdate>
 XML
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "CRX_NAME=$CRX_NAME" >> "$GITHUB_OUTPUT"
           echo "ZIP_NAME=$ZIP_NAME" >> "$GITHUB_OUTPUT"
       - name: Create release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.prep.outputs.VERSION }}
           files: |
+            dist/${{ steps.prep.outputs.CRX_NAME }}
             dist/${{ steps.prep.outputs.ZIP_NAME }}
             dist/updates.xml
 

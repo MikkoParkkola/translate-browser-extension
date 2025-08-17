@@ -2,8 +2,9 @@
   "manifest_version": 3,
   "name": "Qwen Translator",
   "description": "Translate pages using Qwen-MT-Turbo",
-  "version": "1.21.0",
-  "version_name": "2025-08-19",
+  "version": "1.22.1",
+  "version_name": "2025-08-21",
+  "update_url": "https://github.com/MikkoParkkola/Qwen-translator-extension/releases/latest/download/updates.xml",
   "permissions": [
     "storage",
     "activeTab",
@@ -22,7 +23,7 @@
     "service_worker": "background.js"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; connect-src 'self' https: file: blob: data:; img-src 'self' https: file: blob: data:; font-src 'self';"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; connect-src 'self' https: file: blob: data:; img-src 'self' https: file: blob: data:; font-src 'self';"
   },
   "action": {
     "default_popup": "popup.html",
@@ -33,11 +34,15 @@
   },
   "commands": {
     "translate-selection": {
-      "suggested_key": { "default": "Ctrl+Shift+T" },
+      "suggested_key": {
+        "default": "Ctrl+Shift+T"
+      },
       "description": "Translate selected text"
     },
     "open-panel": {
-      "suggested_key": { "default": "Ctrl+Shift+O" },
+      "suggested_key": {
+        "default": "Ctrl+Shift+O"
+      },
       "description": "Open translation panel"
     }
   },
@@ -72,10 +77,10 @@
         "wasm/vendor/*",
         "wasm/vendor/fonts/*",
         "config.local.js",
-          "qa/compare.html",
-          "qa/usage.html",
-          "i18n/*"
-        ],
+        "qa/compare.html",
+        "qa/usage.html",
+        "i18n/*"
+      ],
       "matches": [
         "<all_urls>"
       ]
