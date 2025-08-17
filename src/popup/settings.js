@@ -80,6 +80,12 @@
     chrome?.runtime?.sendMessage({ action: 'clear-cache' });
   });
 
+  document.getElementById('openPanel')?.addEventListener('click', () => {
+    const url = chrome?.runtime?.getURL('panel/panel.html') || '../panel/panel.html';
+    if (chrome?.tabs?.create) chrome.tabs.create({ url });
+    else window.open(url, '_blank');
+  });
+
   const usageEl = document.getElementById('usageStats');
   chrome?.runtime?.sendMessage({ action: 'metrics' }, m => {
     const usage = m && m.usage ? m.usage : {};

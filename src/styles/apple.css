@@ -11,6 +11,7 @@
   --qwen-secondary-hover: rgba(118, 118, 128, 0.3);
 }
 
+/* Light color scheme overrides */
 [data-qwen-theme="apple"][data-qwen-color="light"] {
   --qwen-bg: rgba(255, 255, 255, 0.75);
   --qwen-text: #1c1c1e;

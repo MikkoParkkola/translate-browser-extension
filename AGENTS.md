@@ -102,7 +102,7 @@
   - Context menu entries: "Translate selection", "Translate page", and "Enable auto-translate on this site".
   - Popup "Test settings" button runs connectivity and translation diagnostics and reports results.
   - Auto-translate only starts for the active tab; background tabs remain untouched until activated.
-  - Optional conversation panel streams chat translations in real time; toggle in popup.
+  - Experimental conversation panel streams chat translations in real time; open it from Settings > General.
 - Build/CI
   - Reproducible dist + zip; CI builds/tests and uploads artifacts on push/PR.
 
@@ -112,7 +112,7 @@
   - Ensure `detector` is consistently passed from content config (popup already does).
 - Cyberpunk UI polish
   - Extend popup styling coverage (all inputs/buttons) to guarantee consistent neon theme; keep reduced-motion consideration.
-  - Optional: compact layout mode; light/dark toggle via theme variables.
+  - Light/dark toggle via theme variables.
 - E2E smoke tests (CI)
   - Playwright: enable Auto, translate a sample page, assert text updates without layout shift; streaming/cancel smoke.
 - Detection tuning

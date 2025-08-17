@@ -114,11 +114,6 @@
   animation: qwen-glow-pulse 4s ease-in-out infinite;
 }
 
-body.qwen-compact {
-  --body-width: 320px;
-  gap: 0.5rem;
-}
-
 body.qwen-bg-animated::before {
   content: "";
   position: fixed;
