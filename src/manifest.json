@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Qwen Translator",
   "description": "Translate pages using Qwen-MT-Turbo",
-  "version": "1.13.0",
+  "version": "1.15.0",
   "version_name": "2025-08-18",
   "permissions": [
     "storage",

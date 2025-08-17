@@ -567,6 +567,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
+  if (msg.action === 'metrics') {
+    ensureThrottle().then(() => {
+      const usage = self.qwenThrottle.getUsage();
+      const cache = {
+        size: self.qwenGetCacheSize ? self.qwenGetCacheSize() : 0,
+        max: (self.qwenConfig && self.qwenConfig.memCacheMax) || 0,
+      };
+      const tm = (self.qwenTM && self.qwenTM.stats) ? self.qwenTM.stats() : {};
+      chrome.storage.sync.get({ providers: {} }, cfg => {
+        const providers = {};
+        Object.entries(cfg.providers || {}).forEach(([id, p]) => {
+          providers[id] = {
+            apiKey: !!p.apiKey,
+            model: p.model || '',
+            endpoint: p.apiEndpoint || '',
+          };
+        });
+        sendResponse({ usage, cache, tm, providers });
+      });
+    });
+    return true;
+  }
   if (msg.action === 'quota') {
     const model = msg.model;
     const cfg = self.qwenConfig || {};
