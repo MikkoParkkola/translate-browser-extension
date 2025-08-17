@@ -8,7 +8,8 @@
   const tokLimitEl = overlay.querySelector('#pe_tokenLimit');
   const charLimitEl = overlay.querySelector('#pe_charLimit');
   const strategyEl = overlay.querySelector('#pe_strategy');
-  const costPerTokenEl = overlay.querySelector('#pe_costPerToken');
+  const costPerInputTokenEl = overlay.querySelector('#pe_costPerInputToken');
+  const costPerOutputTokenEl = overlay.querySelector('#pe_costPerOutputToken');
   const weightEl = overlay.querySelector('#pe_weight');
   const saveBtn = overlay.querySelector('#pe_save');
   const cancelBtn = overlay.querySelector('#pe_cancel');
@@ -31,7 +32,10 @@
     tokLimitEl.value = existing.tokenLimit ?? cfg.tokenLimit ?? '';
     charLimitEl.value = existing.charLimit ?? cfg.charLimit ?? '';
     strategyEl.value = existing.strategy || cfg.strategy || '';
-    costPerTokenEl.value = existing.costPerToken ?? cfg.costPerToken ?? '';
+    const cpi = existing.costPerInputToken ?? cfg.costPerInputToken ?? existing.costPerToken ?? cfg.costPerToken;
+    const cpo = existing.costPerOutputToken ?? cfg.costPerOutputToken ?? existing.costPerToken ?? cfg.costPerToken;
+    costPerInputTokenEl.value = cpi != null ? cpi * 1e6 : '';
+    costPerOutputTokenEl.value = cpo != null ? cpo * 1e6 : '';
     weightEl.value = existing.weight ?? cfg.weight ?? '';
     modelList.innerHTML = '';
     const prov = window.qwenProviders?.getProvider?.(id);
@@ -58,6 +62,8 @@
     apiEndpointEl.classList.remove('invalid');
     const providers = cfg.providers || {};
     const num = v => (v === '' ? undefined : Number(v));
+    const costInRaw = num(costPerInputTokenEl.value.trim());
+    const costOutRaw = num(costPerOutputTokenEl.value.trim());
     providers[currentId] = {
       ...(providers[currentId] || {}),
       apiKey: apiKeyEl.value.trim(),
@@ -67,7 +73,8 @@
       tokenLimit: num(tokLimitEl.value.trim()),
       charLimit: num(charLimitEl.value.trim()),
       strategy: strategyEl.value.trim(),
-      costPerToken: num(costPerTokenEl.value.trim()),
+      costPerInputToken: costInRaw == null ? undefined : costInRaw / 1e6,
+      costPerOutputToken: costOutRaw == null ? undefined : costOutRaw / 1e6,
       weight: num(weightEl.value.trim()),
     };
     cfg.providers = providers;

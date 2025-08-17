@@ -20,6 +20,10 @@ describe('popup shell routing', () => {
           get: jest.fn((defaults, cb) => cb(defaults)),
         },
       },
+      tabs: {
+        query: jest.fn((opts, cb) => cb([{ id: 1 }])),
+        sendMessage: jest.fn(),
+      },
     };
     global.window.qwenProviderConfig = {
       loadProviderConfig: jest.fn(() => Promise.resolve({ providerOrder: ['qwen'], provider: 'qwen', providers: {} })),
@@ -46,6 +50,12 @@ describe('popup shell routing', () => {
     listener({ action: 'home:auto-translate', enabled: true });
     expect(chrome.storage.sync.set).toHaveBeenCalledWith({ autoTranslate: true });
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'set-config', config: { autoTranslate: true } });
+
+    listener({ action: 'home:auto-translate', enabled: false });
+    expect(chrome.storage.sync.set).toHaveBeenCalledWith({ autoTranslate: false });
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'set-config', config: { autoTranslate: false } });
+    expect(chrome.tabs.query).toHaveBeenCalledWith({ active: true, currentWindow: true }, expect.any(Function));
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, { action: 'stop' });
   });
 
   test('initializes home view via home:init', async () => {

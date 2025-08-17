@@ -17,6 +17,7 @@ const defaultCfg = {
   qualityVerify: false,
   useWasmEngine: true,
   autoOpenAfterSave: true,
+  selectionPopup: false,
   theme: 'dark',
   charLimit: 0,
   strategy: 'balanced',
@@ -52,7 +53,14 @@ function migrate(cfg = {}) {
     if (p.charLimit == null) p.charLimit = /^google$|^deepl/.test(id) ? 500000 : out.charLimit || 0;
     if (p.requestLimit == null) p.requestLimit = out.requestLimit;
     if (p.tokenLimit == null) p.tokenLimit = out.tokenLimit;
-    if (p.costPerToken == null) p.costPerToken = 0;
+    if (p.costPerInputToken == null) {
+      if (p.costPerToken != null) p.costPerInputToken = p.costPerToken;
+      else p.costPerInputToken = 0;
+    }
+    if (p.costPerOutputToken == null) {
+      if (p.costPerToken != null) p.costPerOutputToken = p.costPerToken;
+      else p.costPerOutputToken = 0;
+    }
     if (p.weight == null) p.weight = 0;
     if (p.strategy != null) p.strategy = mapStrategy(p.strategy);
     if (p.strategy == null) p.strategy = mapStrategy(out.strategy || 'balanced');
@@ -76,6 +84,7 @@ function migrate(cfg = {}) {
   if (typeof out.failover !== 'boolean') out.failover = true;
   if (typeof out.parallel !== 'boolean' && out.parallel !== 'auto') out.parallel = 'auto';
   if (typeof out.tmSync !== 'boolean') out.tmSync = false;
+  if (typeof out.selectionPopup !== 'boolean') out.selectionPopup = false;
   return out;
 }
 
@@ -116,7 +125,8 @@ function qwenSaveConfig(cfg) {
       tokenLimit: num(cfg.tokenLimit),
       charLimit: num(cfg.charLimit),
       strategy: cfg.strategy,
-      costPerToken: num(cfg.costPerToken),
+      costPerInputToken: num(cfg.costPerInputToken),
+      costPerOutputToken: num(cfg.costPerOutputToken),
       weight: num(cfg.weight),
     };
     const toSave = { ...cfg, providers };

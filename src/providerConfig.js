@@ -4,7 +4,8 @@ function applyProviderConfig(provider, doc = document) {
     'tokenLimit',
     'charLimit',
     'strategy',
-    'costPerToken',
+    'costPerInputToken',
+    'costPerOutputToken',
     'weight',
   ];
   const fields = ((provider && provider.configFields) || ['apiKey', 'apiEndpoint', 'model']).concat(advanced);
@@ -41,7 +42,8 @@ function loadProviderConfig() {
     tokenLimit: undefined,
     charLimit: undefined,
     strategy: undefined,
-    costPerToken: undefined,
+    costPerInputToken: undefined,
+    costPerOutputToken: undefined,
     weight: undefined,
   };
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
@@ -73,7 +75,8 @@ function saveProviderConfig(cfg) {
       tokenLimit: primary.tokenLimit,
       charLimit: primary.charLimit,
       strategy: primary.strategy,
-      costPerToken: primary.costPerToken,
+      costPerInputToken: primary.costPerInputToken,
+      costPerOutputToken: primary.costPerOutputToken,
       weight: primary.weight,
     };
     return new Promise(resolve => chrome.storage.sync.set(toSave, resolve));

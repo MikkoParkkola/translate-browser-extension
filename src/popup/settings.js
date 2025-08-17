@@ -5,6 +5,7 @@
     glossary: '',
     cacheEnabled: false,
     localProviders: [],
+    selectionPopup: false,
   };
 
   const store = await new Promise(res => {
@@ -44,6 +45,14 @@
   detectBox.addEventListener('change', () => {
     chrome?.storage?.sync?.set({ enableDetection: detectBox.checked });
   });
+
+  const selectionBox = document.getElementById('selectionPopup');
+  if (selectionBox) {
+    selectionBox.checked = store.selectionPopup;
+    selectionBox.addEventListener('change', () => {
+      chrome?.storage?.sync?.set({ selectionPopup: selectionBox.checked });
+    });
+  }
 
   const glossaryField = document.getElementById('glossary');
   glossaryField.value = store.glossary;
