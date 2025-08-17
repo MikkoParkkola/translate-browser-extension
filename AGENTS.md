@@ -10,6 +10,7 @@
 - Batch delimiter: `src/lib/batchDelim.js` (collision-resistant delimiters).
 - Theme: `src/styles/apple.css` (neutral translucent theme with light/dark variants).
 - Tests: `test/` (Jest). Example: `translator.test.js`.
+- Camera: `src/camera/camera.html/js` (OCR capture with IndexedDB history).
 - Scripts: `scripts/convert-safari.sh` (Safari project generation), `set-config.js` (test config helper).
 - Build artifacts/projects: `safari/` (converter output). PDFs and HTML fixtures for local testing live at repo root (e.g., `test-pdf.html`, `debug-pdf-viewer.html`).
 - Docs: `README.md`, `docs/PROVIDERS.md`.
