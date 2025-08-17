@@ -283,10 +283,12 @@ async function showSelectionBubble(range, text) {
   result.className = 'qwen-bubble__result';
   result.setAttribute('role', 'status');
   result.setAttribute('aria-live', 'polite');
-  result.textContent = t('bubble.translating');
   selectionBubble.appendChild(result);
   const actions = document.createElement('div');
   actions.className = 'qwen-bubble__actions';
+  const translateBtn = document.createElement('button');
+  translateBtn.textContent = t('bubble.translate');
+  translateBtn.setAttribute('aria-label', t('bubble.translate'));
   const pinBtn = document.createElement('button');
   pinBtn.textContent = t('bubble.pin');
   pinBtn.setAttribute('aria-label', t('bubble.pin'));
@@ -296,8 +298,29 @@ async function showSelectionBubble(range, text) {
   const panelBtn = document.createElement('button');
   panelBtn.textContent = t('bubble.panel');
   panelBtn.setAttribute('aria-label', t('bubble.panel'));
-  actions.append(pinBtn, copyBtn, panelBtn);
+  actions.append(translateBtn, pinBtn, copyBtn, panelBtn);
   selectionBubble.appendChild(actions);
+  translateBtn.addEventListener('click', async () => {
+    result.textContent = t('bubble.translating');
+    const cfg = currentConfig || (await window.qwenLoadConfig());
+    await loadGlossary();
+    try {
+      const res = await window.qwenTranslate({
+        endpoint: cfg.apiEndpoint,
+        model: cfg.model,
+        text,
+        source: cfg.sourceLanguage,
+        target: cfg.targetLanguage,
+        providerOrder: cfg.providerOrder,
+        endpoints: cfg.endpoints,
+        failover: cfg.failover,
+        debug: cfg.debug,
+      });
+      result.textContent = res.text;
+    } catch {
+      result.textContent = 'Translation failed';
+    }
+  });
   pinBtn.addEventListener('click', () => {
     selectionPinned = !selectionPinned;
     pinBtn.classList.toggle('active', selectionPinned);
@@ -313,24 +336,6 @@ async function showSelectionBubble(range, text) {
   selectionBubble.style.left = `${window.scrollX + rect.left}px`;
   document.body.appendChild(selectionBubble);
   selectionBubble.focus();
-  const cfg = currentConfig || (await window.qwenLoadConfig());
-  await loadGlossary();
-  try {
-    const res = await window.qwenTranslate({
-      endpoint: cfg.apiEndpoint,
-      model: cfg.model,
-      text,
-      source: cfg.sourceLanguage,
-      target: cfg.targetLanguage,
-      providerOrder: cfg.providerOrder,
-      endpoints: cfg.endpoints,
-      failover: cfg.failover,
-      debug: cfg.debug,
-    });
-    result.textContent = res.text;
-  } catch {
-    result.textContent = 'Translation failed';
-  }
 }
 
 function handleSelection() {
@@ -645,30 +650,35 @@ async function start() {
   }
   if (currentConfig.debug) logger.debug('QTDEBUG: starting automatic translation');
   setStatus('Scanning page...');
+  scanDocument();
+}
+
+async function scanDocument() {
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
   const chunk = [];
   const chunkSize = 200;
   let node;
-  while ((node = walker.nextNode())) {
+  let processed = 0;
+  while (started && (node = walker.nextNode())) {
     if (node.textContent.trim() && shouldTranslate(node)) {
       chunk.push(node);
       if (chunk.length >= chunkSize) {
         prefetchNodes(chunk.splice(0));
       }
     }
+    processed++;
+    if (processed % 500 === 0) {
+      await new Promise(r => setTimeout(r, 0));
+      if (!started) return;
+    }
   }
-  if (chunk.length) prefetchNodes(chunk);
+  if (started && chunk.length) prefetchNodes(chunk);
+  if (!started) return;
   observe();
   if (!batchQueue.length) clearStatus();
 }
 
 if (!skipInit) {
-document.addEventListener('mouseup', handleSelection);
-document.addEventListener('keyup', handleSelection);
-document.addEventListener('mousedown', e => {
-  if (selectionBubble && !selectionBubble.contains(e.target) && !selectionPinned) removeSelectionBubble();
-});
-document.addEventListener('keydown', e => { if (e.key === 'Escape') removeSelectionBubble(); });
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'start') {
     if (currentConfig && currentConfig.debug) logger.debug('QTDEBUG: start message received');
@@ -766,13 +776,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-if (document.readyState === 'complete' || document.readyState === 'interactive') {
-  window.qwenLoadConfig().then(cfg => { if (cfg.autoTranslate) start(); });
-} else {
-  window.addEventListener('DOMContentLoaded', () => {
-    window.qwenLoadConfig().then(cfg => { if (cfg.autoTranslate) start(); });
-  });
-}
+  function initConfig() {
+    window.qwenLoadConfig().then(cfg => {
+      currentConfig = cfg;
+      if (cfg.selectionPopup) {
+        document.addEventListener('mouseup', handleSelection);
+        document.addEventListener('keyup', handleSelection);
+        document.addEventListener('mousedown', e => {
+          if (selectionBubble && !selectionBubble.contains(e.target) && !selectionPinned) removeSelectionBubble();
+        });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') removeSelectionBubble(); });
+      }
+      if (cfg.autoTranslate) start();
+    });
+  }
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    initConfig();
+  } else {
+    window.addEventListener('DOMContentLoaded', initConfig);
+  }
 }
 
 if (typeof module !== 'undefined') {

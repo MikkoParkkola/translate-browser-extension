@@ -25,6 +25,12 @@
       case 'home:auto-translate':
         chrome.storage?.sync?.set({ autoTranslate: msg.enabled });
         chrome.runtime.sendMessage({ action: 'set-config', config: { autoTranslate: msg.enabled } });
+        if (!msg.enabled) {
+          chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
+            const t = tabs && tabs[0];
+            if (t) chrome.tabs.sendMessage(t.id, { action: 'stop' });
+          });
+        }
         break;
       case 'home:init':
         Promise.all([
