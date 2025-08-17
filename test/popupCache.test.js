@@ -12,13 +12,14 @@ describe('home usage updates', () => {
       <progress id="reqBar" value="0" max="0"></progress>
       <progress id="tokBar" value="0" max="0"></progress>
       <div id="limits"></div>
+      <div id="cacheStatus"></div>
       <button id="toDiagnostics"></button>
     `;
     listener = undefined;
     global.chrome = {
       runtime: {
         sendMessage: jest.fn((msg, cb) => {
-          if (msg.action === 'home:init') cb({ provider: 'p', usage: { requests: 1, tokens: 2, requestLimit: 10, tokenLimit: 20, queue: 0 }, auto: false });
+          if (msg.action === 'home:init') cb({ provider: 'p', usage: { requests: 1, tokens: 2, requestLimit: 10, tokenLimit: 20, queue: 0 }, cache: {}, tm: {}, auto: false });
         }),
         onMessage: { addListener: fn => { listener = fn; } },
       },

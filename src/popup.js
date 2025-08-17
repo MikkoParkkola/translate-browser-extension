@@ -42,7 +42,9 @@
         ]).then(([metrics, provCfg, autoCfg]) => {
           const provider = (provCfg.providerOrder && provCfg.providerOrder[0]) || provCfg.provider || 'default';
           const usage = metrics && metrics.usage ? metrics.usage : {};
-          sendResponse({ provider, usage, auto: autoCfg.autoTranslate });
+          const cache = metrics && metrics.cache ? metrics.cache : {};
+          const tm = metrics && metrics.tm ? metrics.tm : {};
+          sendResponse({ provider, usage, cache, tm, auto: autoCfg.autoTranslate });
         });
         return true;
       case 'home:get-usage':

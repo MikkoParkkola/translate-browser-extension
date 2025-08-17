@@ -4,6 +4,7 @@
   const providerName = document.getElementById('providerName');
   const usageEl = document.getElementById('usage');
   const limitsEl = document.getElementById('limits');
+  const cacheEl = document.getElementById('cacheStatus');
   const reqBar = document.getElementById('reqBar');
   const tokBar = document.getElementById('tokBar');
   const srcSel = document.getElementById('srcLang');
@@ -59,6 +60,9 @@
     const u = res.usage || {};
     usageEl.textContent = `Requests: ${u.requests || 0}/${u.requestLimit || 0} Tokens: ${u.tokens || 0}/${u.tokenLimit || 0}`;
     if (limitsEl) limitsEl.textContent = `Queue: ${u.queue || 0}`;
+    const c = res.cache || {};
+    const t = res.tm || {};
+    if (cacheEl) cacheEl.textContent = `Cache: ${c.size || 0}/${c.max || 0} TM: ${t.hits || 0}/${t.misses || 0}`;
     if (reqBar) {
       reqBar.max = u.requestLimit || 0;
       reqBar.value = u.requests || 0;
