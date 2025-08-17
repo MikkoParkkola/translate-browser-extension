@@ -89,6 +89,7 @@
   - In-memory LRU with normalized keys (whitespace collapsed + NFC) limits memory and improves hit rate.
 - PDF translation
   - Custom viewer (`src/pdfViewer.html/js`) intercepts top-level PDFs and can use provider `translateDocument` (Google, DeepL Pro) or a local WASM pipeline to render translated pages.
+  - Viewer parses page layout and overlays editable translated text boxes aligned to original coordinates, with navigation controls.
 - UX and theming
 - Apple HUD (`styles/apple.css`) for in-page status and popup; in-app Getting Started guide; tooltips across fields.
   - Provider presets (DashScope/OpenAI/DeepL/OpenRouter); provider-specific endpoints/keys/models; version/date shown in popup.
