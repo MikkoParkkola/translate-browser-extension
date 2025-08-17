@@ -4,6 +4,13 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
 import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
 
 (async function() {
+  function handleLastError(cb) {
+    return (...args) => {
+      const err = chrome.runtime.lastError;
+      if (err && !err.message.includes('Receiving end does not exist')) console.debug(err);
+      if (typeof cb === 'function') cb(...args);
+    };
+  }
   function isLikelyDutch(text) {
     if (!text) return false;
     const clean = (text || '').toLowerCase();
@@ -416,7 +423,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     let summary;
     const progressCb = (p) => {
       if (!p) return;
-      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p } });
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p } }, handleLastError());
       if (p.stats) summary = p.stats;
       let pct = 0;
       if (p.phase === 'collect') { pct = Math.round((p.page / p.total) * 20); setProgress(`Collecting text… (${p.page}/${p.total})`, pct); }
@@ -424,14 +431,14 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
       if (p.phase === 'render') { pct = 60 + Math.round((p.page / p.total) * 40); setProgress(`Rendering pages… (${p.page}/${p.total})`, pct); }
     };
     try {
-      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'prepare' } });
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'prepare' } }, handleLastError());
       if (engine === 'google' || engine === 'deepl-pro') {
         try {
           const provider = window.qwenProviders && window.qwenProviders.getProvider && window.qwenProviders.getProvider(engine);
           if (!provider || !provider.translateDocument) throw new Error('translateDocument missing');
           const blob = await provider.translateDocument(originalUrl, cfgNow, progressCb);
           const key = await storePdfInSession(blob);
-          chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary } });
+          chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary } }, handleLastError());
           return key;
         } catch (err) {
           console.warn('Provider translation failed, falling back to WASM', err);
@@ -441,13 +448,13 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
       console.log('DEBUG: translation finished, blob size', blob.size);
       const key = await storePdfInSession(blob);
       console.log('DEBUG: stored translated PDF key', key);
-      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary } });
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary } }, handleLastError());
       return key;
     } catch (e) {
-      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary } });
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary } }, handleLastError());
       throw e;
     } finally {
-      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false } });
+      chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false } }, handleLastError());
       if (overlay) setTimeout(()=>{ overlay.style.display = 'none'; const b = document.getElementById('regenBar'); if (b) b.style.width = '0%'; }, 800);
     }
   }

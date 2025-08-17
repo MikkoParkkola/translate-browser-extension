@@ -3,6 +3,14 @@
   const settingsBtn = document.getElementById('settingsBtn');
   let current = 'home.html';
 
+  function handleLastError(cb) {
+    return (...args) => {
+      const err = chrome.runtime.lastError;
+      if (err && !err.message.includes('Receiving end does not exist')) console.debug(err);
+      if (typeof cb === 'function') cb(...args);
+    };
+  }
+
   function resize() {
     if (!frame) return;
     try {
@@ -54,23 +62,23 @@
         chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
           const t = tabs && tabs[0];
           if (t) {
-            chrome.runtime.sendMessage({ action: 'ensure-start', tabId: t.id, url: t.url });
+            chrome.runtime.sendMessage({ action: 'ensure-start', tabId: t.id, url: t.url }, handleLastError());
           }
         });
         break;
       case 'home:auto-translate':
         chrome.storage?.sync?.set({ autoTranslate: msg.enabled });
-        chrome.runtime.sendMessage({ action: 'set-config', config: { autoTranslate: msg.enabled } });
+        chrome.runtime.sendMessage({ action: 'set-config', config: { autoTranslate: msg.enabled } }, handleLastError());
         if (!msg.enabled) {
           chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
             const t = tabs && tabs[0];
-            if (t) chrome.tabs.sendMessage(t.id, { action: 'stop' });
+            if (t) chrome.tabs.sendMessage(t.id, { action: 'stop' }, handleLastError());
           });
         }
         break;
       case 'home:init':
         Promise.all([
-          new Promise(res => chrome.runtime.sendMessage({ action: 'metrics' }, res)),
+          new Promise(res => chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(res))),
           (window.qwenProviderConfig
             ? window.qwenProviderConfig.loadProviderConfig()
             : Promise.resolve({ providerOrder: [], provider: 'default' })),
@@ -85,9 +93,9 @@
         });
         return true;
       case 'home:get-usage':
-        chrome.runtime.sendMessage({ action: 'metrics' }, m => {
+        chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(m => {
           sendResponse({ usage: m && m.usage });
-        });
+        }));
         return true;
     }
   });

@@ -40,7 +40,7 @@ test('emits progress updates during batch translation', async () => {
   expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
     action: 'translation-status',
     status: expect.objectContaining({ active: true, phase: 'translate', request: 1, requests: 2, progress: expect.any(Object) })
-  }));
+  }), expect.any(Function));
 });
 
 test('skips reference superscripts', () => {

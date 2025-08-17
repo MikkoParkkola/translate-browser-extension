@@ -51,12 +51,12 @@ describe('home view display', () => {
     expect(document.getElementById('cacheStatus').textContent).toBe('Cache: 1/2 TM: 3/4');
 
     document.getElementById('quickTranslate').click();
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'home:quick-translate' });
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'home:quick-translate' }, expect.any(Function));
 
     const auto = document.getElementById('autoTranslate');
     auto.checked = true;
     auto.dispatchEvent(new Event('change'));
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'home:auto-translate', enabled: true });
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'home:auto-translate', enabled: true }, expect.any(Function));
   });
 });
 

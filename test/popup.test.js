@@ -46,17 +46,17 @@ describe('popup shell routing', () => {
 
     listener({ action: 'home:quick-translate' });
     expect(chrome.tabs.query).toHaveBeenCalledWith({ active: true, currentWindow: true }, expect.any(Function));
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'ensure-start', tabId: 1, url: 'https://example.com' });
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'ensure-start', tabId: 1, url: 'https://example.com' }, expect.any(Function));
 
     listener({ action: 'home:auto-translate', enabled: true });
     expect(chrome.storage.sync.set).toHaveBeenCalledWith({ autoTranslate: true });
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'set-config', config: { autoTranslate: true } });
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'set-config', config: { autoTranslate: true } }, expect.any(Function));
 
     listener({ action: 'home:auto-translate', enabled: false });
     expect(chrome.storage.sync.set).toHaveBeenCalledWith({ autoTranslate: false });
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'set-config', config: { autoTranslate: false } });
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'set-config', config: { autoTranslate: false } }, expect.any(Function));
     expect(chrome.tabs.query).toHaveBeenCalledWith({ active: true, currentWindow: true }, expect.any(Function));
-    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, { action: 'stop' });
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, { action: 'stop' }, expect.any(Function));
   });
 
   test('initializes home view via home:init', async () => {

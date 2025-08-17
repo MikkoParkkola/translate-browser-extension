@@ -31,6 +31,14 @@
   const log = [];
   let metrics = {};
 
+  function handleLastError(cb) {
+    return (...args) => {
+      const err = chrome.runtime.lastError;
+      if (err && !err.message.includes('Receiving end does not exist')) console.debug(err);
+      if (typeof cb === 'function') cb(...args);
+    };
+  }
+
   function updateSummary() {
     const requests = log.length;
     const tokens = log.reduce((s, e) => s + (e.tokens || 0), 0);
@@ -76,7 +84,7 @@
 
   async function load() {
     if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
-    metrics = await new Promise(resolve => chrome.runtime.sendMessage({ action: 'metrics' }, resolve));
+    metrics = await new Promise(resolve => chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(resolve)));
     render();
   }
 

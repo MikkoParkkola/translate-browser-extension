@@ -13,6 +13,14 @@
   const diagBtn = document.getElementById('toDiagnostics');
 
   const languages = (window.qwenLanguages || []).slice();
+
+  function handleLastError(cb) {
+    return (...args) => {
+      const err = chrome.runtime.lastError;
+      if (err && !err.message.includes('Receiving end does not exist')) console.debug(err);
+      if (typeof cb === 'function') cb(...args);
+    };
+  }
   function fillSelect(sel, allowAuto) {
     if (!sel) return;
     if (allowAuto) {
@@ -38,24 +46,24 @@
 
   srcSel?.addEventListener('change', e => {
     chrome.storage?.sync?.set({ sourceLanguage: e.target.value });
-    chrome.runtime.sendMessage({ action: 'set-config', config: { sourceLanguage: e.target.value } });
+    chrome.runtime.sendMessage({ action: 'set-config', config: { sourceLanguage: e.target.value } }, handleLastError());
   });
   destSel?.addEventListener('change', e => {
     chrome.storage?.sync?.set({ targetLanguage: e.target.value });
-    chrome.runtime.sendMessage({ action: 'set-config', config: { targetLanguage: e.target.value } });
+    chrome.runtime.sendMessage({ action: 'set-config', config: { targetLanguage: e.target.value } }, handleLastError());
   });
 
   quickBtn?.addEventListener('click', () => {
-    chrome.runtime.sendMessage({ action: 'home:quick-translate' });
+    chrome.runtime.sendMessage({ action: 'home:quick-translate' }, handleLastError());
   });
 
   autoToggle?.addEventListener('change', e => {
-    chrome.runtime.sendMessage({ action: 'home:auto-translate', enabled: e.target.checked });
+    chrome.runtime.sendMessage({ action: 'home:auto-translate', enabled: e.target.checked }, handleLastError());
   });
 
   diagBtn?.addEventListener('click', () => { location.href = 'diagnostics.html'; });
 
-  chrome.runtime.sendMessage({ action: 'home:init' }, res => {
+  chrome.runtime.sendMessage({ action: 'home:init' }, handleLastError(res => {
     if (!res) return;
     providerName.textContent = res.provider || '-';
     if (providerKey) providerKey.textContent = res.apiKey ? '✓' : '✗';
@@ -76,7 +84,7 @@
       tokBar.style.accentColor = self.qwenUsageColor ? self.qwenUsageColor(tokBar.value / (tokBar.max || 1)) : '';
     }
     autoToggle.checked = !!res.auto;
-  });
+  }));
 
   chrome.runtime.onMessage.addListener(msg => {
     if (msg && msg.action === 'home:update-usage') {
