@@ -452,7 +452,7 @@ async function qwenTranslate({ endpoint, apiKey, model, secondaryModel, text, so
     } catch {}
   }
 
-    if (chooseStrategy({ noProxy }) === 'proxy' && messaging) {
+    if (chooseStrategy({ noProxy, provider: prov }) === 'proxy' && messaging) {
       const result = await messaging.requestViaBackground({
         endpoint: withSlash(endpoint),
         apiKey,
@@ -514,7 +514,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, secondaryModel, te
     return data;
   }
 
-    if (chooseStrategy({ noProxy }) === 'proxy' && messaging) {
+    if (chooseStrategy({ noProxy, provider: prov }) === 'proxy' && messaging) {
       const data = await messaging.requestViaBackground({
         endpoint: withSlash(endpoint),
         apiKey,

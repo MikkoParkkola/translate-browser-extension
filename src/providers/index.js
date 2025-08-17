@@ -14,6 +14,7 @@ function initProviders() {
     ollama: { ...require('./ollama'), label: 'Ollama' },
     gemini: { ...require('./gemini'), label: 'Gemini' },
     anthropic: { ...require('./anthropic'), label: 'Anthropic' },
+    'local-wasm': { ...require('./localWasm'), label: 'Local WASM' },
   });
 }
 

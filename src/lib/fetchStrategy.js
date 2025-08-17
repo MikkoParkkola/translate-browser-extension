@@ -4,6 +4,10 @@
   else root.qwenFetchStrategy = mod;
 }(typeof self !== 'undefined' ? self : this, function (root) {
   function defaultChooser(opts = {}) {
+    if (opts.provider && /local/i.test(String(opts.provider))) return 'local';
+    try {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'local';
+    } catch {}
     if (opts.noProxy) return 'direct';
     try {
       if (typeof chrome === 'undefined' || !chrome.runtime) return 'direct';

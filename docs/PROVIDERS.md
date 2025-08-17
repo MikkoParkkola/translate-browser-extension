@@ -38,6 +38,13 @@ Anthropic (Claude)
 - Models: claude-4.1-haiku, claude-4.1-sonnet (legacy: claude-3-haiku, claude-3-sonnet)
 - Notes: Streaming supported (/messages SSE). Background keeps the key.
 
+Local WASM
+- Preset: local-wasm
+- Endpoint: runs in-browser
+- Keys: none
+- Models: bundled Qwen translator
+- Notes: Initializes the model on first use and caches it for reuse. Works offline.
+
 DeepL
 - Endpoint: https://api.deepl.com/v2
 - Keys: https://www.deepl.com/pro-api
