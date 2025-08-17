@@ -83,33 +83,64 @@
   });
 
   const providerList = document.getElementById('providerList');
-  function refreshProviders() {
+  let providerConfig;
+  async function refreshProviders() {
     providerList.innerHTML = '';
-    if (!window.qwenProviders?.listProviders) return;
-    try { window.qwenProviders.ensureProviders?.(); } catch {}
-    const list = window.qwenProviders.listProviders();
-    list.forEach(({ name, label }) => {
-      const li = document.createElement('li');
-      li.textContent = `${label} (checking...)`;
-      providerList.appendChild(li);
-      let prov;
-      try { prov = window.qwenProviders.getProvider(name); } catch {}
-      if (!prov) { li.textContent = `${label} (unavailable)`; return; }
-      if (typeof prov.capabilities === 'function') {
-        prov.capabilities().then(meta => {
-          li.textContent = `${label} (${meta.status || 'ok'})`;
-        }).catch(err => {
-          li.textContent = `${label} (error: ${err.message})`;
-        });
-      } else if (typeof prov.listModels === 'function') {
-        prov.listModels().then(models => {
-          li.textContent = `${label} (${models.length} models)`;
-        }).catch(err => {
-          li.textContent = `${label} (error: ${err.message})`;
-        });
-      } else {
-        li.textContent = label;
-      }
+    if (!window.qwenProviderConfig?.loadProviderConfig) return;
+    providerConfig = await window.qwenProviderConfig.loadProviderConfig();
+    try { window.qwenProviders?.ensureProviders?.(); } catch {}
+    const available = window.qwenProviders?.listProviders?.() || [];
+    const providers = providerConfig.providers || {};
+    providerConfig.providers = providers;
+    const order = Array.isArray(providerConfig.providerOrder)
+      ? providerConfig.providerOrder.slice()
+      : [];
+    available.forEach(p => { if (!order.includes(p.name)) order.push(p.name); });
+    let dragEl = null;
+    function saveOrder() {
+      providerConfig.providerOrder = Array.from(providerList.children).map(el => el.dataset.provider);
+      window.qwenProviderConfig.saveProviderConfig(providerConfig);
+    }
+    order.forEach(name => {
+      const meta = available.find(p => p.name === name) || { name, label: name };
+      if (!providers[name]) providers[name] = {};
+      const card = document.createElement('div');
+      card.className = 'provider-card';
+      card.draggable = true;
+      card.dataset.provider = name;
+      const handle = document.createElement('span');
+      handle.className = 'drag-handle';
+      handle.textContent = '☰';
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = providers[name].enabled !== false;
+      checkbox.addEventListener('change', () => {
+        providers[name].enabled = checkbox.checked;
+        window.qwenProviderConfig.saveProviderConfig(providerConfig);
+      });
+      label.appendChild(checkbox);
+      label.append(` ${meta.label}`);
+      card.appendChild(handle);
+      card.appendChild(label);
+      card.addEventListener('dragstart', e => {
+        dragEl = card;
+        e.dataTransfer?.setData('text/plain', name);
+      });
+      card.addEventListener('dragover', e => {
+        e.preventDefault();
+        const target = e.target.closest('.provider-card');
+        if (dragEl && target && dragEl !== target) {
+          const rect = target.getBoundingClientRect();
+          const after = (e.clientY - rect.top) / rect.height > 0.5;
+          providerList.insertBefore(dragEl, after ? target.nextSibling : target);
+        }
+      });
+      card.addEventListener('dragend', () => {
+        dragEl = null;
+        saveOrder();
+      });
+      providerList.appendChild(card);
     });
   }
   refreshProviders();
