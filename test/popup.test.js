@@ -28,10 +28,12 @@ describe('popup shell routing', () => {
 
   test('routes navigation and home actions', () => {
     require('../src/popup.js');
-    document.getElementById('settingsBtn').click();
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'navigate', page: 'settings' });
-
     const frame = document.getElementById('content');
+    document.getElementById('settingsBtn').click();
+    expect(frame.src).toContain('popup/settings.html');
+    document.getElementById('settingsBtn').click();
+    expect(frame.src).toContain('popup/home.html');
+
     listener({ action: 'navigate', page: 'settings' });
     expect(frame.src).toContain('popup/settings.html');
 

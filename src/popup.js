@@ -1,13 +1,15 @@
 (function () {
   const frame = document.getElementById('content');
   const settingsBtn = document.getElementById('settingsBtn');
+  let current = 'home.html';
 
   function load(page) {
     if (frame) frame.src = `popup/${page}`;
+    current = page;
   }
 
   settingsBtn?.addEventListener('click', () => {
-    chrome.runtime.sendMessage({ action: 'navigate', page: 'settings' });
+    load(current === 'settings.html' ? 'home.html' : 'settings.html');
   });
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
