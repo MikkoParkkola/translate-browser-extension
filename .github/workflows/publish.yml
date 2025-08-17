@@ -1,14 +1,16 @@
-name: Publish Extension
+name: Dev Build
 
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   build:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
     env:
       EXTENSION_ID: ${{ secrets.EXTENSION_ID }}
@@ -21,27 +23,23 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run build:zip
-      - name: Prepare release assets
-        id: prep
+      - name: Prepare update files
         run: |
           VERSION=$(jq -r .version src/manifest.json)
-          ZIP_NAME="qwen-translator-${VERSION}.zip"
-          mv dist/*.zip "dist/${ZIP_NAME}"
-          cat <<XML > dist/updates.xml
+          CRX_NAME="qwen-translator-extension.crx"
+          mv dist/*.zip "$CRX_NAME"
+          cat <<XML > updates.xml
 <?xml version="1.0" encoding="UTF-8"?>
 <gupdate xmlns="http://www.google.com/update2/response" protocol="2.0">
   <app appid="${EXTENSION_ID}">
-    <updatecheck codebase="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/${ZIP_NAME}" version="${VERSION}" />
+    <updatecheck codebase="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/${CRX_NAME}" version="${VERSION}" />
   </app>
 </gupdate>
 XML
-          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "ZIP_NAME=$ZIP_NAME" >> "$GITHUB_OUTPUT"
-      - name: Create release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ steps.prep.outputs.VERSION }}
-          files: |
-            dist/${{ steps.prep.outputs.ZIP_NAME }}
-            dist/updates.xml
-
+      - name: Commit update files
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add updates.xml qwen-translator-extension.crx
+          git commit -m "chore: update dev build [skip ci]" || echo "No changes to commit"
+          git push
