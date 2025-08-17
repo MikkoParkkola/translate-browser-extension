@@ -62,26 +62,6 @@
       <h3>Providers</h3>
       <div id="providerList" class="provider-cards"></div>
       <button id="addProvider">Add Provider</button>
-      <button id="addLocalProvider">Add Local Provider</button>
-      <div id="localProviderWizard" hidden>
-        <label>Type
-          <select id="localProviderType">
-            <option value="ollama">Ollama</option>
-            <option value="macos">macOS</option>
-          </select>
-        </label>
-        <div id="ollamaForm" class="localForm">
-          <label>Path <input id="ollamaPath" placeholder="http://localhost"></label>
-          <label>Port <input id="ollamaPort" type="number" placeholder="11434"></label>
-          <label>Model <input id="ollamaModel" placeholder="llama2"></label>
-        </div>
-        <div id="macosForm" class="localForm" style="display:none">
-          <label>Path <input id="macosPath" placeholder="/usr/bin/translate"></label>
-          <label>Port <input id="macosPort" type="number" placeholder="0"></label>
-          <label>Model <input id="macosModel" placeholder="system"></label>
-        </div>
-        <button id="saveLocalProvider">Save</button>
-      </div>
     </section>
   </div>
 
