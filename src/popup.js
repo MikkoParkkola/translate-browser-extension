@@ -35,6 +35,8 @@ const turboReqBar = document.getElementById('turboReqBar') || document.createEle
 const plusReqBar = document.getElementById('plusReqBar') || document.createElement('div');
 const cacheStatsDiv = document.getElementById('cacheStats') || document.createElement('div');
 const tmStatsDiv = document.getElementById('tmStats') || document.createElement('div');
+const tmSyncCheckbox = document.getElementById('tmSync') || document.createElement('input');
+const clearRemoteTmBtn = document.getElementById('clearRemoteTM') || document.createElement('button');
 const translateBtn = document.getElementById('translate') || document.createElement('button');
 const testBtn = document.getElementById('test') || document.createElement('button');
 const progressBar = document.getElementById('progress') || document.createElement('progress');
@@ -304,6 +306,7 @@ function saveConfig() {
       tokenLimit: parseInt(tokenLimitInput.value, 10) || (window.qwenDefaultConfig && window.qwenDefaultConfig.tokenLimit) || 0,
       tokenBudget: parseInt(tokenBudgetInput.value, 10) || 0,
       memCacheMax: parseInt(memCacheMaxInput.value, 10) || 0,
+      tmSync: tmSyncCheckbox.checked,
       autoTranslate: autoCheckbox.checked,
       debug: debugCheckbox.checked,
       qualityVerify: qualityCheckbox.checked,
@@ -331,7 +334,7 @@ function saveConfig() {
     cfg.charLimit = (window.qwenConfig && window.qwenConfig.charLimit) || 0;
     window.qwenSaveConfig(cfg).then(() => {
       window.qwenConfig = cfg;
-      chrome.runtime.sendMessage({ action: 'set-config', config: { memCacheMax: cfg.memCacheMax, requestLimit: cfg.requestLimit, tokenLimit: cfg.tokenLimit, qualityVerify: cfg.qualityVerify } }, () => {});
+      chrome.runtime.sendMessage({ action: 'set-config', config: { memCacheMax: cfg.memCacheMax, requestLimit: cfg.requestLimit, tokenLimit: cfg.tokenLimit, qualityVerify: cfg.qualityVerify, tmSync: cfg.tmSync } }, () => {});
       status.textContent = 'Settings saved.';
       updateView(cfg); // Re-check the view after saving
       setTimeout(() => { if (status.textContent === 'Settings saved.') status.textContent = ''; }, 2000);
@@ -550,6 +553,7 @@ window.qwenLoadConfig().then(cfg => {
   tokenLimitInput.value = cfg.tokenLimit;
   tokenBudgetInput.value = cfg.tokenBudget || '';
   memCacheMaxInput.value = cfg.memCacheMax || '';
+  tmSyncCheckbox.checked = !!cfg.tmSync;
   autoCheckbox.checked = cfg.autoTranslate;
   debugCheckbox.checked = !!cfg.debug;
   qualityCheckbox.checked = !!cfg.qualityVerify;
@@ -628,6 +632,14 @@ window.qwenLoadConfig().then(cfg => {
   });
 
   [reqLimitInput, tokenLimitInput, tokenBudgetInput, memCacheMaxInput, strategySelect].forEach(el => el.addEventListener('input', saveConfig));
+  tmSyncCheckbox.addEventListener('change', saveConfig);
+  clearRemoteTmBtn.addEventListener('click', () => {
+    status.textContent = 'Clearing remote cache...';
+    chrome.runtime.sendMessage({ action: 'clear-remote-tm' }, () => {
+      status.textContent = 'Remote cache cleared.';
+      setTimeout(() => { if (status.textContent === 'Remote cache cleared.') status.textContent = ''; }, 2000);
+    });
+  });
   if (sensitivityInput && sensitivityValueSpan) {
     const updateSensitivityValue = () => {
       sensitivityValueSpan.textContent = sensitivityInput.valueAsNumber.toFixed(1);
@@ -1034,6 +1046,12 @@ testBtn.addEventListener('click', async () => {
     if (result[key] !== '1') throw new Error('write failed');
     await chrome.storage.sync.remove([key]);
   })) && allOk;
+
+  const dbg = await new Promise(r => chrome.runtime.sendMessage({ action: 'debug' }, r));
+  const t = dbg && dbg.tm ? dbg.tm : {};
+  const tmItem = document.createElement('li');
+  tmItem.textContent = `TM stats: ${t.entries || 0} entries h:${t.hits || 0} m:${t.misses || 0}`;
+  list.appendChild(tmItem);
 
   if (allOk) {
     status.appendChild(document.createTextNode('All tests passed.'));

@@ -11,6 +11,7 @@ const defaultCfg = {
   tokenBudget: 0,
   calibratedAt: 0,
   memCacheMax: 5000,
+  tmSync: false,
   sensitivity: 0.3,
   debug: false,
   qualityVerify: false,
@@ -76,6 +77,7 @@ function migrate(cfg = {}) {
   if (!Array.isArray(out.providerOrder)) out.providerOrder = [];
   if (typeof out.failover !== 'boolean') out.failover = true;
   if (typeof out.parallel !== 'boolean' && out.parallel !== 'auto') out.parallel = 'auto';
+  if (typeof out.tmSync !== 'boolean') out.tmSync = false;
   return out;
 }
 

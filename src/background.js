@@ -22,9 +22,10 @@ if (chrome?.storage?.sync) {
 // Load basic config (e.g., memCacheMax) so translator cache limits apply in background
 self.qwenConfig = self.qwenConfig || {};
 try {
-  chrome.storage.sync.get({ memCacheMax: 5000 }, cfg => {
+  chrome.storage.sync.get({ memCacheMax: 5000, tmSync: false }, cfg => {
     const n = parseInt(cfg.memCacheMax, 10);
     if (n > 0) self.qwenConfig.memCacheMax = n;
+    if (self.qwenTM && self.qwenTM.enableSync) { self.qwenTM.enableSync(!!cfg.tmSync); }
   });
 } catch {}
 
@@ -528,6 +529,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       });
     }
     if (typeof c.qualityVerify === 'boolean') config.qualityVerify = c.qualityVerify;
+    if (typeof c.tmSync === 'boolean' && self.qwenTM && self.qwenTM.enableSync) {
+      self.qwenTM.enableSync(c.tmSync);
+    }
+    sendResponse({ ok: true });
+    return true;
+  }
+  if (msg.action === 'clear-remote-tm') {
+    if (self.qwenTM && self.qwenTM.clearRemote) { self.qwenTM.clearRemote(); }
     sendResponse({ ok: true });
     return true;
   }
