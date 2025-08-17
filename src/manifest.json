@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Qwen Translator",
   "description": "Translate pages using Qwen-MT-Turbo",
-  "version": "1.23.3",
+  "version": "1.24.0",
   "version_name": "2025-08-20",
   "update_url": "https://raw.githubusercontent.com/MikkoParkkola/Qwen-translator-extension/main/updates.xml",
   "permissions": [
