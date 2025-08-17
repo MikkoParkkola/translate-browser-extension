@@ -39,28 +39,12 @@ Open the generated project in Xcode to sign and build the extension for the desi
 See `safari/README.md` for detailed iOS/iPadOS deployment steps.
 
 ## Configuration
-Use the popup to configure:
-- Provider preset to auto-fill endpoint and a typical model (DashScope/Qwen, OpenAI, DeepL, Mistral, Anthropic/Claude, Google, OpenRouter, Ollama, macOS)
-- API key and provider-specific fields (for example, Google Cloud requires a Project ID and Location)
-- Translation model and optional secondary model used when the primary model is rate-limited
-- Per-provider limits, cost per token and weight to guide load balancing
-- Source and target languages (Source can be “Auto-detect”)
-- Detector mode: Local (default, private) or Google (needs a Detection API key)
-- Automatic translation toggle
-Click **Test Settings** in the popup to run a short diagnostic. The extension performs several quick checks:
-1. Connect to the configured API endpoint
-2. Send an OPTIONS preflight request to the translation URL
-3. Perform a direct non-stream translation
-4. Verify that the background service worker responds
-5. Perform the same translation via the background service worker
-6. Send a streaming translation request
-7. Read the contents of the active tab
-8. Translate a short string inside the active tab
-9. Verify that extension settings can be saved
-Each step displays a pass or fail result and honours the debug logging preference. Tooltips in the popup explain every field and acceptable values.
-The active tab check may fail on browser-internal pages (such as the Chrome Web Store or settings). Open a regular web page before running the test.
-The final end-to-end tab translation aborts after about 10 seconds if no response is received.
-The sample phrase is chosen based on the configured source language so the translated text differs from the original.
+Open the popup and click the ⚙️ button to access **Settings**. The settings page provides:
+- **General** – toggle automatic language detection, manage the glossary and open the conversation panel.
+- **Providers** – add, remove or reorder providers. Use **Edit** to supply API keys, endpoints, models and per‑provider limits. Local providers such as Ollama or macOS can be added via **Add Local Provider**.
+- **Advanced** – enable or clear the translation cache.
+
+Use the **Diagnostics** button on the home page to view usage metrics and run connectivity checks.
 
 ### Where to get API keys
 - DashScope (Qwen): https://dashscope.console.aliyun.com/
@@ -77,10 +61,8 @@ See also: docs/PROVIDERS.md
 
 ## Usage
 1. Click the toolbar icon to open the popup.
-2. Pick a **Provider preset** or enter a custom endpoint.
-3. Paste your API key and choose source/target languages.
-4. Press **Save** and then **Test settings** to verify connectivity.
-5. Click **Translate Page** to translate once, or enable **Automatic translation** to translate pages on load.
+2. Use **Quick translate** to translate the current tab or enable **Auto-translate** for pages on load.
+3. Click the ⚙️ button to manage providers or adjust settings.
 
 Translations apply to dynamically added content as well as embedded frames or third‑party widgets whenever the browser grants access. If translation fails the affected text is kept in a queue and retried until the API succeeds. When the translated text matches the original the node is marked as untranslatable and skipped. Translations are cached for the current session to minimise API calls.
 Identical strings are translated only once and reused across matching nodes, and hidden or off‑screen elements are ignored so tokens are spent only on visible text.

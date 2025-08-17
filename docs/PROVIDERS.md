@@ -1,5 +1,7 @@
 # Providers and API keys
 
+Manage providers in the extension under **Settings → Providers**. Use **Add Provider** or **Add Local Provider** to supply API keys, endpoints and models.
+
 DashScope (Qwen)
 - Endpoint: https://dashscope-intl.aliyuncs.com/api/v1
 - Keys: https://dashscope.console.aliyun.com/
