@@ -2,8 +2,9 @@
   "manifest_version": 3,
   "name": "Qwen Translator",
   "description": "Translate pages using Qwen-MT-Turbo",
-  "version": "1.21.0",
-  "version_name": "2025-08-19",
+  "version": "1.22.0",
+  "version_name": "2025-08-20",
+  "update_url": "https://raw.githubusercontent.com/MikkoParkkola/Qwen-translator-extension/main/updates.xml",
   "permissions": [
     "storage",
     "activeTab",
@@ -22,7 +23,7 @@
     "service_worker": "background.js"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; connect-src 'self' https: file: blob: data:; img-src 'self' https: file: blob: data:; font-src 'self';"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; connect-src 'self' https: file: blob: data:; img-src 'self' https: file: blob: data:; font-src 'self';"
   },
   "action": {
     "default_popup": "popup.html",
