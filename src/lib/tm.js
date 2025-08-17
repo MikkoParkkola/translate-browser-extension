@@ -9,8 +9,37 @@
   const DB_NAME = 'qwen-tm';
   const STORE_NAME = 'store';
   const KEY = 'data';
+  const SYNC_KEY = 'qwen-tm';
   let loaded = false;
   let dbPromise;
+  let remote;
+  let syncEnabled = false;
+
+  function initRemote() {
+    if (remote !== undefined) return remote;
+    remote = null;
+    try {
+      if (root.qwenRemoteTM) {
+        remote = root.qwenRemoteTM;
+      } else if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+        remote = {
+          load: () => new Promise(r => {
+            try { chrome.storage.sync.get({ [SYNC_KEY]: [] }, v => r(v[SYNC_KEY] || [])); }
+            catch { r([]); }
+          }),
+          save: data => new Promise(r => {
+            try { chrome.storage.sync.set({ [SYNC_KEY]: data }, r); }
+            catch { r(); }
+          }),
+          clear: () => new Promise(r => {
+            try { chrome.storage.sync.remove([SYNC_KEY], r); }
+            catch { r(); }
+          }),
+        };
+      }
+    } catch {}
+    return remote;
+  }
 
   function getDB() {
     if (!hasIDB) return null;
@@ -48,17 +77,26 @@
   }
 
   async function save() {
-    if (!hasIDB) return;
-    const db = await getDB();
-    if (!db) return;
-    try {
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-      tx.objectStore(STORE_NAME).put(Array.from(store.entries()), KEY);
-      await new Promise((resolve) => {
-        tx.oncomplete = resolve;
-        tx.onerror = resolve;
-      });
-    } catch {}
+    const data = Array.from(store.entries());
+    if (hasIDB) {
+      const db = await getDB();
+      if (db) {
+        try {
+          const tx = db.transaction(STORE_NAME, 'readwrite');
+          tx.objectStore(STORE_NAME).put(data, KEY);
+          await new Promise((resolve) => {
+            tx.oncomplete = resolve;
+            tx.onerror = resolve;
+          });
+        } catch {}
+      }
+    }
+    if (syncEnabled) {
+      initRemote();
+      if (remote && remote.save) {
+        try { await remote.save(data); } catch {}
+      }
+    }
   }
 
   async function ensureLoaded() {
@@ -113,6 +151,28 @@
     }
   }
 
+  async function enableSync(enable) {
+    initRemote();
+    syncEnabled = !!enable && !!remote;
+    if (!syncEnabled) return;
+    await ensureLoaded();
+    try {
+      const data = await remote.load();
+      if (Array.isArray(data)) {
+        for (const [k, v] of data) store.set(k, v);
+      }
+    } catch {}
+    prune();
+    await save();
+  }
+
+  async function clearRemote() {
+    initRemote();
+    if (remote && remote.clear) {
+      try { await remote.clear(); } catch {}
+    }
+  }
+
   async function get(k) {
     await ensureLoaded();
     const now = Date.now();
@@ -148,8 +208,12 @@
     store.clear();
     loaded = true;
     save();
+    if (remote && remote.clear) { try { remote.clear(); } catch {} }
+  }
+  if (root.qwenConfig && root.qwenConfig.tmSync) {
+    try { enableSync(true); } catch {}
   }
 
-  return { get, set, stats, __resetStats };
+  return { get, set, stats, enableSync, clearRemote, __resetStats };
 }));
 

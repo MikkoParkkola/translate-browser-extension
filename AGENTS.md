@@ -84,7 +84,7 @@
   - Auto-detect source via local heuristic; optional Google detection in background using `detectApiKey`.
   - Mixed-language batching: per-text detection and language-clustered requests for accuracy.
 - Caching / TM
-  - TM (IndexedDB) with TTL/LRU and metrics; warmed before batching; skips re-translation of hits.
+  - TM (IndexedDB) with TTL/LRU and metrics; optional chrome.storage.sync/WebDAV/iCloud sync with user toggle and remote clear; warmed before batching; skips re-translation of hits and diagnostics panel shows hit/miss counts.
   - In-memory LRU with normalized keys (whitespace collapsed + NFC) limits memory and improves hit rate.
 - PDF translation
   - Custom viewer (`src/pdfViewer.html/js`) intercepts top-level PDFs and can use provider `translateDocument` (Google, DeepL Pro) or a local WASM pipeline to render translated pages.

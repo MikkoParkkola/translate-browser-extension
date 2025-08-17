@@ -54,6 +54,7 @@ describe('popup configuration test', () => {
           if (msg.action === 'ping') cb({ ok: true });
           else if (msg.action === 'usage') cb({ requests: 0, requestLimit: 60, tokens: 0, tokenLimit: 100000, totalRequests: 0, totalTokens: 0, queue: 0, costs: {} });
           else if (msg.action === 'ensure-start') cb({ ok: true });
+          else if (msg.action === 'debug') cb({ cache: {}, tm: {} });
           else cb && cb({});
         }),
         connect: jest.fn(() => ({ postMessage: jest.fn(), onMessage: { addListener: jest.fn() }, onDisconnect: { addListener: jest.fn() }, disconnect: jest.fn() })),
