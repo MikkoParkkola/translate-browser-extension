@@ -1,7 +1,8 @@
 (function (root, factory) {
-  const mod = factory(root);
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  else root.qwenProviderDeepL = mod;
+  const provider = factory(root);
+  if (typeof window !== 'undefined') window.qwenProviderDeepL = provider;
+  else if (typeof self !== 'undefined') self.qwenProviderDeepL = provider;
+  if (typeof module !== 'undefined') module.exports = provider;
 }(typeof self !== 'undefined' ? self : this, function (root) {
   const fetchFn = (typeof fetch !== 'undefined') ? fetch : (root.fetch || null);
     function withSlash(u) { return /\/$/.test(u) ? u : u + '/'; }
@@ -58,7 +59,15 @@
     const basic = makeProvider('https://api-free.deepl.com/');
     const free = makeProvider('https://api-free.deepl.com/');
     const pro = makeProvider('https://api.deepl.com/');
-
-    return { translate, basic, free, pro };
+    const provider = { translate, basic, free, pro };
+    try {
+      const reg = root.qwenProviders || (typeof require !== 'undefined' ? require('../lib/providers') : null);
+      if (reg && reg.register) {
+        if (!reg.get('deepl')) reg.register('deepl', provider.basic);
+        if (!reg.get('deepl-free')) reg.register('deepl-free', provider.free);
+        if (!reg.get('deepl-pro')) reg.register('deepl-pro', provider.pro);
+      }
+    } catch {}
+    return provider;
   }));
 

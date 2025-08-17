@@ -1,7 +1,8 @@
 (function (root, factory) {
-  const mod = factory(root);
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  else root.qwenProviderMacOS = mod;
+  const provider = factory(root);
+  if (typeof window !== 'undefined') window.qwenProviderMacos = provider;
+  else if (typeof self !== 'undefined') self.qwenProviderMacos = provider;
+  if (typeof module !== 'undefined') module.exports = provider;
 }(typeof self !== 'undefined' ? self : this, function (root) {
   async function translate({ text, source, target }) {
     const handler = root && root.webkit && root.webkit.messageHandlers && root.webkit.messageHandlers.translate;

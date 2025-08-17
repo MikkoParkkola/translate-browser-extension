@@ -1,7 +1,8 @@
 (function (root, factory) {
-  const mod = factory(root);
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  else root.qwenProviderOllama = mod;
+  const provider = factory(root);
+  if (typeof window !== 'undefined') window.qwenProviderOllama = provider;
+  else if (typeof self !== 'undefined') self.qwenProviderOllama = provider;
+  if (typeof module !== 'undefined') module.exports = provider;
 }(typeof self !== 'undefined' ? self : this, function (root) {
   const logger = (root.qwenLogger && root.qwenLogger.create) ? root.qwenLogger.create('provider:ollama') : console;
   const fetchFn = (typeof fetch !== 'undefined') ? fetch : (root.fetch || null);

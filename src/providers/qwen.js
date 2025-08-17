@@ -183,6 +183,8 @@ const provider = {
   configFields: ['apiKey', 'apiEndpoint', 'model', 'secondaryModel', 'secondaryModelWarning'],
   throttle: { requestLimit: 5, windowMs: 1000 },
 };
+if (typeof window !== 'undefined') window.qwenProviderQwen = provider;
+else if (typeof self !== 'undefined') self.qwenProviderQwen = provider;
 
 try {
   const reg = (typeof window !== 'undefined' && window.qwenProviders) ||
@@ -191,4 +193,4 @@ try {
   if (reg && reg.register && !reg.get('qwen')) reg.register('qwen', provider);
 } catch {}
 
-module.exports = provider;
+if (typeof module !== 'undefined') module.exports = provider;
