@@ -15,6 +15,7 @@ let started = false;
 let progressHud;
 let selectionBubble;
 let selectionPinned = false;
+const i18nReady = window.qwenI18n && window.qwenI18n.ready ? window.qwenI18n.ready : Promise.resolve();
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let pageRecognizer;
 let prefetchObserver;
@@ -269,29 +270,32 @@ function removeSelectionBubble() {
 async function showSelectionBubble(range, text) {
   removeSelectionBubble();
   selectionPinned = false;
+  await i18nReady;
+  const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
   selectionBubble = document.createElement('div');
   selectionBubble.className = 'qwen-bubble';
   selectionBubble.setAttribute('data-qwen-theme', 'apple');
   selectionBubble.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
   selectionBubble.setAttribute('tabindex', '-1');
   selectionBubble.setAttribute('role', 'dialog');
+  selectionBubble.setAttribute('aria-label', t('bubble.ariaLabel'));
   const result = document.createElement('div');
   result.className = 'qwen-bubble__result';
   result.setAttribute('role', 'status');
   result.setAttribute('aria-live', 'polite');
-  result.textContent = 'Translating...';
+  result.textContent = t('bubble.translating');
   selectionBubble.appendChild(result);
   const actions = document.createElement('div');
   actions.className = 'qwen-bubble__actions';
   const pinBtn = document.createElement('button');
-  pinBtn.textContent = 'Pin';
-  pinBtn.setAttribute('aria-label', 'Pin translation');
+  pinBtn.textContent = t('bubble.pin');
+  pinBtn.setAttribute('aria-label', t('bubble.pin'));
   const copyBtn = document.createElement('button');
-  copyBtn.textContent = 'Copy';
-  copyBtn.setAttribute('aria-label', 'Copy translation');
+  copyBtn.textContent = t('bubble.copy');
+  copyBtn.setAttribute('aria-label', t('bubble.copy'));
   const panelBtn = document.createElement('button');
-  panelBtn.textContent = 'Panel';
-  panelBtn.setAttribute('aria-label', 'Open full panel');
+  panelBtn.textContent = t('bubble.panel');
+  panelBtn.setAttribute('aria-label', t('bubble.panel'));
   actions.append(pinBtn, copyBtn, panelBtn);
   selectionBubble.appendChild(actions);
   pinBtn.addEventListener('click', () => {
@@ -756,6 +760,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         showError('Translation failed');
       }
     })();
+  }
+  if (msg.action === 'open-panel') {
+    try { chrome.runtime.sendMessage({ action: 'open-panel', text: '', original: '' }); } catch {}
   }
 });
 

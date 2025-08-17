@@ -10,8 +10,10 @@
     .translated { font-weight: 600; }
   </style>
 </head>
-<body class="qwen-bg qwen-bg-animated">
+<body class="qwen-bg qwen-bg-animated" role="region" data-i18n-attr="aria-label:panel.ariaLabel">
   <div id="translations"></div>
+  <script src="../i18n/index.js"></script>
+  <script>qwenI18n.apply();</script>
   <script src="panel.js"></script>
 </body>
 </html>

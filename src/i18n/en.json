@@ -1,0 +1,13 @@
+{
+  "popup.initialSetup": "Initial Setup",
+  "popup.setupPrompt": "Please configure the essential settings to start using the extension.",
+  "popup.testSettings": "Test Settings",
+  "popup.stats": "Stats",
+  "popup.ariaMain": "Translator settings",
+  "panel.ariaLabel": "Translations",
+  "bubble.translating": "Translating...",
+  "bubble.pin": "Pin",
+  "bubble.copy": "Copy",
+  "bubble.panel": "Panel",
+  "bubble.ariaLabel": "Translation result"
+}

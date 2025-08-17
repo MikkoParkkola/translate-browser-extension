@@ -110,11 +110,11 @@
   </style>
 </head>
 <body>
-  <div id="viewContainer" class="view-container">
+  <div id="viewContainer" class="view-container" role="main" data-i18n-attr="aria-label:popup.ariaMain">
     <!-- ===== SETUP VIEW ===== -->
     <div class="setup-view">
-      <h3>Initial Setup</h3>
-      <p>Please configure the essential settings to start using the extension.</p>
+      <h3 data-i18n="popup.initialSetup"></h3>
+      <p data-i18n="popup.setupPrompt"></p>
       <div id="benchmarkRec" class="help"></div>
       <div class="form-group">
         <label for="setup-apiKey">API Key</label>
@@ -324,10 +324,10 @@
           <button id="exportGlossary">Export Glossary</button>
         </div>
       </details>
-      <button id="test">Test Settings</button>
+      <button id="test" data-i18n="popup.testSettings"></button>
 
       <details id="statsDetails" open class="panel-frame">
-        <summary>Stats</summary>
+        <summary data-i18n="popup.stats"></summary>
         <div class="usage-section">
           <div class="usage-item">Total Requests: <span id="statsRequests">0</span></div>
           <div class="usage-item">Total Tokens: <span id="statsTokens">0</span></div>
@@ -340,11 +340,13 @@
       </details>
 
       <progress id="progress" value="0" max="1" style="width:100%;display:none"></progress>
-      <div id="status"></div>
+      <div id="status" role="status" aria-live="polite"></div>
       <div id="version"></div>
     </div>
   </div>
 
+  <script src="i18n/index.js"></script>
+  <script>qwenI18n.apply();</script>
   <script src="throttle.js"></script>
   <script src="lib/providers.js"></script>
   <script src="providers/openai.js"></script>

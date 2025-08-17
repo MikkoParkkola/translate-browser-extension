@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Qwen Translator",
   "description": "Translate pages using Qwen-MT-Turbo",
-  "version": "1.15.0",
-  "version_name": "2025-08-18",
+  "version": "1.16.0",
+  "version_name": "2025-08-19",
   "permissions": [
     "storage",
     "activeTab",
@@ -30,6 +30,16 @@
   },
   "side_panel": {
     "default_path": "panel/panel.html"
+  },
+  "commands": {
+    "translate-selection": {
+      "suggested_key": { "default": "Ctrl+Shift+T" },
+      "description": "Translate selected text"
+    },
+    "open-panel": {
+      "suggested_key": { "default": "Ctrl+Shift+O" },
+      "description": "Open translation panel"
+    }
   },
   "web_accessible_resources": [
     {
@@ -62,9 +72,10 @@
         "wasm/vendor/*",
         "wasm/vendor/fonts/*",
         "config.local.js",
-        "qa/compare.html",
-        "qa/usage.html"
-      ],
+          "qa/compare.html",
+          "qa/usage.html",
+          "i18n/*"
+        ],
       "matches": [
         "<all_urls>"
       ]
