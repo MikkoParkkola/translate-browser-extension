@@ -71,6 +71,8 @@
     /* ... (rest of the styles from previous version) ... */
     .main-actions { display: flex; gap: 0.5rem; align-items: center; }
     #translate { flex-grow: 1; }
+    #micBtn.recording { background-color: var(--red); }
+    #playBtn.playing { background-color: var(--green); }
     .auto-translate-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
     .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
     .switch input { opacity: 0; width: 0; height: 0; }
@@ -132,6 +134,8 @@
     <div class="main-view">
       <div class="main-actions">
         <button id="translate" class="primary" title="Translate the current tab">Translate Page</button>
+        <button id="micBtn" class="secondary" title="Record">Mic</button>
+        <button id="playBtn" class="secondary" title="Play">Play</button>
         <div class="auto-translate-toggle">
           <label class="switch">
             <input type="checkbox" id="auto">
