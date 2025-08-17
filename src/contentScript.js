@@ -15,6 +15,8 @@ let started = false;
 let progressHud;
 let selectionBubble;
 let selectionPinned = false;
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let pageRecognizer;
 
 function ensureThemeCss() {
   try {
@@ -116,6 +118,51 @@ function showError(message) {
   setStatus(message, true);
 }
 
+
+chrome.runtime.onMessage.addListener(msg => {
+  if (!msg) return;
+  if (msg.action === 'speak-text') {
+    if (typeof msg.text === 'string') {
+      try {
+        const u = new SpeechSynthesisUtterance(msg.text);
+        setStatus('Speaking...');
+        u.onend = () => clearStatus();
+        speechSynthesis.speak(u);
+      } catch {}
+    }
+  } else if (msg.action === 'start-recording') {
+    if (!SpeechRecognition) return;
+    if (pageRecognizer) {
+      try { pageRecognizer.stop(); } catch {}
+    }
+    pageRecognizer = new SpeechRecognition();
+    pageRecognizer.interimResults = true;
+    setStatus('Recording...');
+    pageRecognizer.onresult = e => {
+      let interim = '';
+      let final = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) final += r[0].transcript;
+        else interim += r[0].transcript;
+      }
+      if (interim) try { chrome.runtime.sendMessage({ action: 'voice-interim', text: interim }); } catch {}
+      if (final) try { chrome.runtime.sendMessage({ action: 'voice-final', text: final }); } catch {}
+    };
+    pageRecognizer.onend = () => {
+      clearStatus();
+      pageRecognizer = null;
+      try { chrome.runtime.sendMessage({ action: 'voice-end' }); } catch {}
+    };
+    try { pageRecognizer.start(); } catch {}
+  } else if (msg.action === 'stop-recording') {
+    if (pageRecognizer) {
+      try { pageRecognizer.stop(); } catch {}
+      pageRecognizer = null;
+      clearStatus();
+    }
+  }
+});
 function mark(node) {
   if (node.nodeType === Node.TEXT_NODE) {
     node.__qwenTranslated = true;

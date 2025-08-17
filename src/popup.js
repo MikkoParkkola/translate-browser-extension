@@ -50,6 +50,8 @@ const statsEta = document.getElementById('statsEta') || document.createElement('
 const statsQuality = document.getElementById('statsQuality') || document.createElement('span');
 const statsDetails = document.getElementById('statsDetails') || document.createElement('details');
 const panelCheckbox = document.getElementById('panelEnabled') || document.createElement('input');
+const micBtn = document.getElementById('micBtn') || document.createElement('button');
+const playBtn = document.getElementById('playBtn') || document.createElement('button');
 function setStatsSummary(eta) {
   if (!statsDetails) return;
   let summary = statsDetails.querySelector('summary');
@@ -1061,4 +1063,73 @@ testBtn.addEventListener('click', async () => {
 
   pLogger.info('configuration test finished', { allOk });
   log('configuration test finished');
+});
+
+// Microphone and TTS controls
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition;
+if (micBtn && micBtn.addEventListener) {
+  micBtn.addEventListener('click', () => {
+    if (!SpeechRecognition) {
+      status.textContent = 'Speech recognition not supported';
+      return;
+    }
+    if (recognition) {
+      try { recognition.stop(); } catch {}
+      recognition = null;
+      micBtn.classList.remove('recording');
+      return;
+    }
+    recognition = new SpeechRecognition();
+    recognition.interimResults = true;
+    micBtn.classList.add('recording');
+    status.textContent = '';
+    recognition.onresult = (e) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) status.textContent += r[0].transcript;
+        else interim += r[0].transcript;
+      }
+      if (interim) status.textContent = interim;
+    };
+    recognition.onend = () => {
+      micBtn.classList.remove('recording');
+      recognition = null;
+      // Forward final text to content script for page TTS
+      chrome.tabs && chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+        const tab = tabs && tabs[0];
+        if (tab && tab.id != null) {
+          try { chrome.tabs.sendMessage(tab.id, { action: 'speak-text', text: status.textContent }); } catch {}
+        }
+      });
+    };
+    try { recognition.start(); } catch {}
+  });
+}
+
+if (playBtn && playBtn.addEventListener) {
+  let utterance;
+  playBtn.addEventListener('click', () => {
+    if (speechSynthesis.speaking) {
+      try { speechSynthesis.cancel(); } catch {}
+      playBtn.classList.remove('playing');
+      return;
+    }
+    const text = status.textContent || '';
+    if (!text) return;
+    utterance = new SpeechSynthesisUtterance(text);
+    playBtn.classList.add('playing');
+    utterance.onend = () => {
+      playBtn.classList.remove('playing');
+    };
+    try { speechSynthesis.speak(utterance); } catch {}
+  });
+}
+
+chrome.runtime.onMessage.addListener(msg => {
+  if (!msg) return;
+  if (msg.action === 'voice-interim' || msg.action === 'voice-final') {
+    status.textContent = msg.text || '';
+  }
 });

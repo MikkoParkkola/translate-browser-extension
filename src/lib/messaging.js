@@ -4,7 +4,7 @@
   else root.qwenMessaging = mod;
 }(typeof self !== 'undefined' ? self : this, function (root) {
   const logger = (root.qwenLogger && root.qwenLogger.create) ? root.qwenLogger.create('messaging') : console;
-  function requestViaBackground({ endpoint, apiKey, model, secondaryModel, text, source, target, debug, stream = false, signal, onData, provider, providerOrder, endpoints, failover, parallel }) {
+  function requestViaBackground({ endpoint, apiKey, model, secondaryModel, text, source, target, debug, stream = false, signal, onData, onStream, provider, providerOrder, endpoints, failover, parallel }) {
     if (!(root.chrome && root.chrome.runtime)) return Promise.reject(new Error('No chrome.runtime'));
     const ep = endpoint && /\/$/.test(endpoint) ? endpoint : (endpoint ? endpoint + '/' : endpoint);
     if (root.chrome.runtime.connect) {
@@ -27,6 +27,9 @@
             try { port.disconnect(); } catch {}
             if (!settled) { settled = true; reject(new Error(msg.error)); }
             return;
+          }
+          if (typeof msg.interim === 'string' && typeof onStream === 'function') {
+            try { onStream(msg.interim); } catch (e) { logger.warn('onStream error', e); }
           }
           if (typeof msg.chunk === 'string' && typeof onData === 'function') {
             try { onData(msg.chunk); } catch (e) { logger.warn('onData error', e); }
