@@ -54,10 +54,6 @@
     });
   }
 
-  const panelBtn = document.getElementById('openPanel');
-  panelBtn?.addEventListener('click', () => {
-    chrome?.windows?.create({ url: 'panel/panel.html', type: 'popup' });
-  });
 
   const glossaryField = document.getElementById('glossary');
   glossaryField.value = store.glossary;

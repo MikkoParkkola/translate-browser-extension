@@ -40,7 +40,7 @@ See `safari/README.md` for detailed iOS/iPadOS deployment steps.
 
 ## Configuration
 Open the popup and click the ⚙️ button to access **Settings**. The settings page provides:
-- **General** – toggle automatic language detection, manage the glossary and open the conversation panel.
+- **General** – toggle automatic language detection and manage the glossary.
 - **Providers** – add, remove or reorder providers. Use **Edit** to supply API keys, endpoints, models and per‑provider limits. Local providers such as Ollama or macOS can be added via **Add Local Provider**.
 - **Advanced** – enable or clear the translation cache.
 

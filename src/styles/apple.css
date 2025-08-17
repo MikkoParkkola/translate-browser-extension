@@ -76,12 +76,6 @@
   background: var(--qwen-primary-hover);
 }
 
-[data-qwen-theme="apple"] .panel-frame {
-  padding: 0.5rem;
-  border: 1px solid var(--qwen-border);
-  border-radius: 8px;
-  background: var(--qwen-secondary-bg);
-}
 
 .qwen-hud {
   position: fixed;

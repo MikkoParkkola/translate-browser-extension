@@ -3,6 +3,14 @@
   const settingsBtn = document.getElementById('settingsBtn');
   let current = 'home.html';
 
+  function resize() {
+    if (!frame) return;
+    try {
+      const doc = frame.contentDocument;
+      if (doc) frame.style.height = doc.documentElement.scrollHeight + 'px';
+    } catch {}
+  }
+
   function load(page) {
     if (frame) frame.src = `popup/${page}`;
     current = page;
@@ -11,6 +19,9 @@
   settingsBtn?.addEventListener('click', () => {
     load(current === 'settings.html' ? 'home.html' : 'settings.html');
   });
+
+  frame?.addEventListener('load', resize);
+  resize();
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!msg || !msg.action) return;

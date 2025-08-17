@@ -295,10 +295,7 @@ async function showSelectionBubble(range, text) {
   const copyBtn = document.createElement('button');
   copyBtn.textContent = t('bubble.copy');
   copyBtn.setAttribute('aria-label', t('bubble.copy'));
-  const panelBtn = document.createElement('button');
-  panelBtn.textContent = t('bubble.panel');
-  panelBtn.setAttribute('aria-label', t('bubble.panel'));
-  actions.append(translateBtn, pinBtn, copyBtn, panelBtn);
+  actions.append(translateBtn, pinBtn, copyBtn);
   selectionBubble.appendChild(actions);
   translateBtn.addEventListener('click', async () => {
     result.textContent = t('bubble.translating');
@@ -327,9 +324,6 @@ async function showSelectionBubble(range, text) {
   });
   copyBtn.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(result.textContent || ''); } catch {}
-  });
-  panelBtn.addEventListener('click', () => {
-    try { chrome.runtime.sendMessage({ action: 'open-panel', text: result.textContent, original: text }); } catch {}
   });
   const rect = range.getBoundingClientRect ? range.getBoundingClientRect() : { top: 0, left: 0, bottom: 0 };
   selectionBubble.style.top = `${window.scrollY + (rect.bottom || rect.top) + 5}px`;
@@ -770,9 +764,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         showError('Translation failed');
       }
     })();
-  }
-  if (msg.action === 'open-panel') {
-    try { chrome.runtime.sendMessage({ action: 'open-panel', text: '', original: '' }); } catch {}
   }
 });
 
