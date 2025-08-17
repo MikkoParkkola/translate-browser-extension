@@ -170,27 +170,81 @@
   }
   refreshProviders();
 
-  document.getElementById('addProvider')?.addEventListener('click', () => {
-    const preset = prompt('Preset? (openai, deepl, ollama, macos, custom)');
-    if (!preset) return;
-    const key = preset.toLowerCase();
-    const templates = {
-      openai: { id: 'openai', defaults: { apiEndpoint: 'https://api.openai.com/v1' } },
-      deepl: { id: 'deepl', defaults: { apiEndpoint: 'https://api.deepl.com/v2' } },
-      ollama: { id: 'ollama', defaults: { apiEndpoint: 'http://localhost:11434', model: 'llama2' } },
-      macos: { id: 'macos', defaults: {} },
-      custom: {},
-    };
-    let tpl = templates[key];
-    if (!tpl) return;
-    if (key === 'custom') {
-      const customId = prompt('Provider ID?');
-      if (!customId) return;
-      tpl = { id: customId, defaults: {} };
+  const templates = {
+    openai: { id: 'openai', defaults: { apiEndpoint: 'https://api.openai.com/v1' }, fields: [{ name: 'apiEndpoint', label: 'API Endpoint', default: 'https://api.openai.com/v1' }] },
+    deepl: { id: 'deepl', defaults: { apiEndpoint: 'https://api.deepl.com/v2' }, fields: [{ name: 'apiEndpoint', label: 'API Endpoint', default: 'https://api.deepl.com/v2' }] },
+    ollama: { id: 'ollama', defaults: { apiEndpoint: 'http://localhost:11434', model: 'llama2' }, fields: [
+      { name: 'apiEndpoint', label: 'API Endpoint', default: 'http://localhost:11434' },
+      { name: 'model', label: 'Model', default: 'llama2' },
+    ] },
+    macos: { id: 'macos', defaults: {}, fields: [] },
+    custom: { id: '', defaults: {}, fields: [{ name: 'id', label: 'Provider ID', default: '' }] },
+  };
+
+  const addOverlay = document.getElementById('addProviderOverlay');
+  if (addOverlay) {
+    const step1 = document.getElementById('ap_step1');
+    const step2 = document.getElementById('ap_step2');
+    const presetSelect = document.getElementById('ap_preset');
+    const fieldsEl = document.getElementById('ap_fields');
+    const nextBtn = document.getElementById('ap_next');
+    const cancelBtn = document.getElementById('ap_cancel1');
+    const backBtn = document.getElementById('ap_back');
+    const createBtn = document.getElementById('ap_create');
+
+    function showAddOverlay() {
+      presetSelect.value = 'openai';
+      step1.style.display = 'block';
+      step2.style.display = 'none';
+      addOverlay.style.display = 'flex';
     }
-    providerConfig.providers[tpl.id] = { ...(tpl.defaults || {}) };
-    openEditor(tpl.id);
-  });
+
+    nextBtn?.addEventListener('click', () => {
+      const key = presetSelect.value;
+      const tpl = templates[key];
+      if (!tpl) return;
+      fieldsEl.innerHTML = '';
+      (tpl.fields || []).forEach(f => {
+        const label = document.createElement('label');
+        label.textContent = `${f.label || f.name} `;
+        const input = document.createElement('input');
+        input.id = `ap_field_${f.name}`;
+        if (f.default) input.value = f.default;
+        label.appendChild(input);
+        fieldsEl.appendChild(label);
+      });
+      step1.style.display = 'none';
+      step2.style.display = 'block';
+    });
+
+    backBtn?.addEventListener('click', () => {
+      step2.style.display = 'none';
+      step1.style.display = 'block';
+    });
+
+    cancelBtn?.addEventListener('click', () => {
+      addOverlay.style.display = 'none';
+    });
+
+    createBtn?.addEventListener('click', () => {
+      const key = presetSelect.value;
+      const tpl = templates[key];
+      if (!tpl) return;
+      let id = tpl.id;
+      const cfg = {};
+      (tpl.fields || []).forEach(f => {
+        const val = document.getElementById(`ap_field_${f.name}`)?.value.trim();
+        if (f.name === 'id') id = val;
+        else if (val) cfg[f.name] = val;
+      });
+      if (!id) return;
+      providerConfig.providers[id] = { ...(tpl.defaults || {}), ...cfg };
+      addOverlay.style.display = 'none';
+      openEditor(id);
+    });
+
+    document.getElementById('addProvider')?.addEventListener('click', showAddOverlay);
+  }
 
   const usageEl = document.getElementById('usageStats');
   chrome?.runtime?.sendMessage({ action: 'metrics' }, m => {
