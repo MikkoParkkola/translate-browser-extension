@@ -27,6 +27,8 @@
     textarea { width: 100%; }
     .invalid { border-color: #ff4d4f; }
     .note { font-size: 0.8rem; opacity: 0.8; }
+    .provider-card { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem; border: 1px solid var(--qwen-border, rgba(255,255,255,0.2)); margin-bottom: 0.25rem; }
+    .provider-card .drag-handle { cursor: move; }
   </style>
 </head>
 <body>
@@ -58,7 +60,7 @@
   <div id="providersTab" class="tab">
     <section id="providerSection">
       <h3>Providers</h3>
-      <ul id="providerList"></ul>
+      <div id="providerList" class="provider-cards"></div>
       <button id="addLocalProvider">Add Local Provider</button>
       <div id="localProviderWizard" hidden>
         <label>Type
@@ -103,6 +105,7 @@
     </section>
   </div>
 
+  <script src="../providerConfig.js"></script>
   <script src="../providers/index.js"></script>
   <script src="settings.js"></script>
 </body>
