@@ -197,6 +197,21 @@ describe('background icon plus indicator', () => {
     expect(chrome.action.setIcon).toHaveBeenCalled();
     createSpy.mockRestore();
   });
+
+  test('notifies on update with version', () => {
+    const onInstalled = chrome.runtime.onInstalled.addListener.mock.calls[0][0];
+    chrome.runtime.getManifest = () => ({ version: '9.9.9' });
+    chrome.notifications = { create: jest.fn(), onClicked: { addListener: jest.fn() } };
+    chrome.tabs.create = jest.fn();
+    onInstalled({ reason: 'update' });
+    expect(chrome.notifications.create).toHaveBeenCalledWith(
+      'qwen-update',
+      expect.objectContaining({ message: expect.stringContaining('9.9.9') })
+    );
+    const click = chrome.notifications.onClicked.addListener.mock.calls[0][0];
+    click('qwen-update');
+    expect(chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://github.com/QwenLM/Qwen-translator-extension/releases/latest' });
+  });
 });
 
 describe('background cost tracking', () => {

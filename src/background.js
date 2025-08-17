@@ -222,9 +222,35 @@ function createContextMenus() {
 
 createContextMenus();
 
-chrome.runtime.onInstalled.addListener(() => {
-  logger.info('Qwen Translator installed');
+chrome.runtime.onInstalled.addListener(details => {
   createContextMenus();
+  if (details?.reason === 'update') {
+    const version = chrome.runtime.getManifest?.().version;
+    logger.info('Qwen Translator updated', version);
+    if (chrome.notifications?.create) {
+      const id = 'qwen-update';
+      try {
+        chrome.notifications.onClicked?.addListener(nid => {
+          if (nid === id) {
+            try { chrome.tabs?.create({ url: 'https://github.com/QwenLM/Qwen-translator-extension/releases/latest' }); } catch {}
+          }
+        });
+        chrome.notifications.create(id, {
+          type: 'basic',
+          iconUrl: 'icon-128.png',
+          title: 'Qwen Translator updated',
+          message: `Updated to version ${version}`,
+        });
+      } catch {}
+    } else if (chrome.action?.setBadgeText) {
+      try {
+        chrome.action.setBadgeText({ text: version });
+        setTimeout(() => { try { chrome.action.setBadgeText({ text: '' }); } catch {} }, 5000);
+      } catch {}
+    }
+  } else {
+    logger.info('Qwen Translator installed');
+  }
 });
 if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(createContextMenus);
 
