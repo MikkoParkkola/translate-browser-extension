@@ -5,19 +5,6 @@ const logger = (self.qwenLogger && self.qwenLogger.create)
   : console;
 
 const panelPorts = new Set();
-let panelEnabled = false;
-if (chrome?.storage?.sync) {
-  chrome.storage.sync.get({ panelEnabled: false }, ({ panelEnabled: enabled }) => {
-    panelEnabled = !!enabled;
-  });
-  if (chrome.storage.onChanged && chrome.storage.onChanged.addListener) {
-    chrome.storage.onChanged.addListener((changes, area) => {
-      if (area === 'sync' && changes.panelEnabled) {
-        panelEnabled = !!changes.panelEnabled.newValue;
-      }
-    });
-  }
-}
 
 chrome.commands?.onCommand.addListener(async command => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -717,7 +704,7 @@ chrome.runtime.onConnect.addListener(port => {
         if (opts && opts.stream) {
           const result = await self.qwenTranslateStream(safeOpts, chunk => {
             try { port.postMessage({ requestId, chunk }); } catch {}
-            if (panelEnabled && opts.context === 'chat') {
+            if (opts.context === 'chat') {
               for (const p of panelPorts) {
                 try { p.postMessage({ action: 'chat-chunk', requestId, text: opts.text, chunk }); } catch {}
               }
@@ -741,7 +728,7 @@ chrome.runtime.onConnect.addListener(port => {
             lastQuality = 0;
           }
           try { port.postMessage({ requestId, result: { ...result, confidence } }); } catch {}
-          if (panelEnabled && opts.context === 'chat') {
+          if (opts.context === 'chat') {
             for (const p of panelPorts) {
               try { p.postMessage({ action: 'chat-result', requestId, text: opts.text, result: { ...result, confidence } }); } catch {}
             }
@@ -766,7 +753,7 @@ chrome.runtime.onConnect.addListener(port => {
             lastQuality = 0;
           }
           try { port.postMessage({ requestId, result: { ...result, confidence } }); } catch {}
-          if (panelEnabled && opts.context === 'chat') {
+          if (opts.context === 'chat') {
             for (const p of panelPorts) {
               try { p.postMessage({ action: 'chat-result', requestId, text: opts.text, result: { ...result, confidence } }); } catch {}
             }
@@ -779,7 +766,7 @@ chrome.runtime.onConnect.addListener(port => {
         logUsage(tokens, Date.now() - start);
         iconError = true;
         try { port.postMessage({ requestId, error: err.message }); } catch {}
-        if (panelEnabled && opts.context === 'chat') {
+        if (opts.context === 'chat') {
           for (const p of panelPorts) {
             try { p.postMessage({ action: 'chat-error', requestId, text: opts.text, error: err.message }); } catch {}
           }
