@@ -1,5 +1,13 @@
 function applyProviderConfig(provider, doc = document) {
-  const fields = (provider && provider.configFields) || ['apiKey', 'apiEndpoint', 'model'];
+  const advanced = [
+    'requestLimit',
+    'tokenLimit',
+    'charLimit',
+    'strategy',
+    'costPerToken',
+    'weight',
+  ];
+  const fields = ((provider && provider.configFields) || ['apiKey', 'apiEndpoint', 'model']).concat(advanced);
   const all = [
     'apiKey',
     'apiEndpoint',
@@ -9,6 +17,7 @@ function applyProviderConfig(provider, doc = document) {
     'documentModel',
     'secondaryModel',
     'secondaryModelWarning',
+    ...advanced,
   ];
   all.forEach(name => {
     const show = fields.includes(name);
@@ -28,6 +37,12 @@ function loadProviderConfig() {
     model: '',
     models: [],
     secondaryModel: '',
+    requestLimit: undefined,
+    tokenLimit: undefined,
+    charLimit: undefined,
+    strategy: undefined,
+    costPerToken: undefined,
+    weight: undefined,
   };
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
     return new Promise(resolve => {

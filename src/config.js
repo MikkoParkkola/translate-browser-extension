@@ -103,6 +103,7 @@ function qwenSaveConfig(cfg) {
   // Only save if in the Chrome extension context
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
     const provider = cfg.provider || 'qwen';
+    const num = v => (v === '' || v == null ? undefined : Number(v));
     const providers = { ...(cfg.providers || {}) };
     providers[provider] = {
       ...(providers[provider] || {}),
@@ -111,12 +112,12 @@ function qwenSaveConfig(cfg) {
       model: cfg.model,
       secondaryModel: cfg.secondaryModel,
       models: cfg.models,
-      requestLimit: cfg.requestLimit,
-      tokenLimit: cfg.tokenLimit,
-      charLimit: cfg.charLimit,
+      requestLimit: num(cfg.requestLimit),
+      tokenLimit: num(cfg.tokenLimit),
+      charLimit: num(cfg.charLimit),
       strategy: cfg.strategy,
-      costPerToken: cfg.costPerToken,
-      weight: cfg.weight,
+      costPerToken: num(cfg.costPerToken),
+      weight: num(cfg.weight),
     };
     const toSave = { ...cfg, providers };
     return new Promise((resolve) => {
