@@ -10,7 +10,14 @@
     }
     return handler.postMessage({ text, source, target });
   }
-  const provider = { translate, configFields: [] };
+  async function capabilities() {
+    const handler = root && root.webkit && root.webkit.messageHandlers && root.webkit.messageHandlers.translate;
+    if (handler && typeof handler.postMessage === 'function') {
+      return { models: [], status: 'ok' };
+    }
+    return { models: [], status: 'handler not available' };
+  }
+  const provider = { translate, capabilities, configFields: [] };
   try {
     const reg = root.qwenProviders || (typeof require !== 'undefined' ? require('../lib/providers') : null);
     if (reg && reg.register && !reg.get('macos')) reg.register('macos', { ...provider, label: 'macOS' });

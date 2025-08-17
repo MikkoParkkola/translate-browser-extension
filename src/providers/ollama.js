@@ -90,7 +90,16 @@
     return (data.models || []).map(m => m.name).filter(Boolean);
   }
 
-  const provider = { translate, listModels, throttle: { requestLimit: 60, windowMs: 60000 } };
+  async function capabilities(opts = {}) {
+    try {
+      const models = await listModels(opts);
+      return { models, status: 'ok' };
+    } catch (e) {
+      return { models: [], status: e.message };
+    }
+  }
+
+  const provider = { translate, listModels, capabilities, throttle: { requestLimit: 60, windowMs: 60000 } };
   try {
     const reg = root.qwenProviders || (typeof require !== 'undefined' ? require('../lib/providers') : null);
     if (reg && reg.register && !reg.get('ollama')) reg.register('ollama', provider);
