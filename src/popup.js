@@ -14,7 +14,7 @@
     if (!msg || !msg.action) return;
     switch (msg.action) {
       case 'navigate':
-        if (msg.page === 'settings') load('providers.html');
+        if (msg.page === 'settings') load('settings.html');
         else if (msg.page === 'home') load('home.html');
         break;
       case 'home:quick-translate':
@@ -27,11 +27,14 @@
       case 'home:init':
         Promise.all([
           new Promise(res => chrome.runtime.sendMessage({ action: 'metrics' }, res)),
-          new Promise(res => chrome.storage?.sync?.get({ autoTranslate: false, providerOrder: [] }, res)),
-        ]).then(([metrics, cfg]) => {
-          const provider = (cfg.providerOrder && cfg.providerOrder[0]) || 'default';
+          (window.qwenProviderConfig
+            ? window.qwenProviderConfig.loadProviderConfig()
+            : Promise.resolve({ providerOrder: [], provider: 'default' })),
+          new Promise(res => chrome.storage?.sync?.get({ autoTranslate: false }, res)),
+        ]).then(([metrics, provCfg, autoCfg]) => {
+          const provider = (provCfg.providerOrder && provCfg.providerOrder[0]) || provCfg.provider || 'default';
           const usage = metrics && metrics.usage ? metrics.usage : {};
-          sendResponse({ provider, usage, auto: cfg.autoTranslate });
+          sendResponse({ provider, usage, auto: autoCfg.autoTranslate });
         });
         return true;
       case 'home:get-usage':
