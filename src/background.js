@@ -6,6 +6,19 @@ const logger = (self.qwenLogger && self.qwenLogger.create)
 
 const panelPorts = new Set();
 
+const UPDATE_CHECK_INTERVAL = 6 * 60 * 60 * 1000;
+let pendingVersion;
+try { chrome.runtime.requestUpdateCheck?.(() => {}); } catch {}
+setInterval(() => {
+  try { chrome.runtime.requestUpdateCheck?.(() => {}); } catch {}
+}, UPDATE_CHECK_INTERVAL);
+if (chrome.runtime?.onUpdateAvailable?.addListener) {
+  chrome.runtime.onUpdateAvailable.addListener(details => {
+    pendingVersion = details.version;
+    try { chrome.runtime.reload(); } catch {}
+  });
+}
+
 chrome.commands?.onCommand.addListener(async command => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return;
