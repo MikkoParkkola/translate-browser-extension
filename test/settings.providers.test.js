@@ -12,7 +12,6 @@ describe('settings provider cards', () => {
       <div id="generalTab">
         <section id="detectionSection"><input type="checkbox" id="enableDetection"></section>
         <section id="glossarySection"><textarea id="glossary"></textarea></section>
-        <section id="panelSection"><button id="openPanel"></button></section>
       </div>
       <div id="providersTab" class="tab">
         <section id="providerSection">

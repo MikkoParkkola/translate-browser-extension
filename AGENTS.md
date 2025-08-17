@@ -103,7 +103,6 @@
   - Selection bubble is disabled by default; enabling it adds a manual translate button when text is selected.
   - Popup "Test settings" button runs connectivity and translation diagnostics and reports results.
   - Auto-translate only starts for the active tab; background tabs remain untouched until activated.
-  - Experimental conversation panel streams chat translations in real time; open it from Settings > General.
 - Build/CI
   - Reproducible dist + zip; CI builds/tests and uploads artifacts on push/PR.
 
