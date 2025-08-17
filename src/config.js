@@ -1,7 +1,7 @@
 (function () {
 // Guard only when running in the extension to allow test re-imports
 if (
-  process.env.NODE_ENV !== 'test' &&
+  (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') &&
   typeof window !== 'undefined' &&
   typeof chrome !== 'undefined' &&
   chrome.runtime &&
@@ -162,7 +162,7 @@ if (typeof window !== 'undefined') {
   window.qwenSaveConfig = qwenSaveConfig;
   window.qwenModelTokenLimits = modelTokenLimits;
   if (
-    process.env.NODE_ENV !== 'test' &&
+    (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') &&
     typeof chrome !== 'undefined' &&
     chrome.runtime &&
     chrome.runtime.id
