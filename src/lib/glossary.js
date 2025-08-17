@@ -4,6 +4,8 @@
   else root.qwenGlossary = mod;
 }(typeof self !== 'undefined' ? self : this, function (root) {
   let current = {};
+  let tone = 'formal';
+  const presets = ['formal', 'casual', 'technical'];
   function extract(doc) {
     const map = {};
     if (!doc) return map;
@@ -32,6 +34,8 @@
   }
   function set(map) { current = map || {}; }
   function get() { return current; }
+  function setTone(t) { if (presets.includes(t)) tone = t; }
+  function getTone() { return tone; }
   function apply(text, map = current) {
     if (!map || !text) return text;
     let out = String(text);
@@ -44,5 +48,5 @@
     }
     return out;
   }
-  return { extract, parse, apply, set, get };
+  return { extract, parse, apply, set, get, setTone, getTone, presets };
 }));

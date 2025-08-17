@@ -66,6 +66,8 @@ const recalibrateBtn = document.getElementById('recalibrate') || document.create
 const importGlossaryInput = document.getElementById('importGlossary') || document.createElement('input');
 const exportGlossaryBtn = document.getElementById('exportGlossary') || document.createElement('button');
 const benchmarkRec = document.getElementById('benchmarkRec') || document.createElement('div');
+const glossaryTextarea = document.getElementById('glossaryTerms') || document.createElement('textarea');
+const toneSelect = document.getElementById('tone') || document.createElement('select');
 
 // Collapsible sections
 const sectionIds = ['providerSection', 'limitSection', 'detectionSection', 'cacheSection', 'glossarySection'];
@@ -204,6 +206,8 @@ if (importGlossaryInput) {
       try {
         const data = JSON.parse(reader.result || '{}');
         chrome.storage.sync.set({ glossary: data }, () => {
+          glossaryTextarea.value = Object.entries(data || {}).map(([k, v]) => `${k}=${v}`).join('\n');
+          if (window.qwenGlossary) { try { window.qwenGlossary.set(data); } catch {} }
           status.textContent = 'Glossary imported.';
           setTimeout(() => { if (status.textContent === 'Glossary imported.') status.textContent = ''; }, 2000);
         });
@@ -230,6 +234,45 @@ if (exportGlossaryBtn) {
     });
   });
 }
+
+function initGlossaryUI() {
+  if (!chrome.storage || !chrome.storage.sync) return;
+  chrome.storage.sync.get({ glossary: {}, tone: 'formal' }, data => {
+    const map = data.glossary || {};
+    glossaryTextarea.value = Object.entries(map).map(([k, v]) => `${k}=${v}`).join('\n');
+    toneSelect.value = data.tone || 'formal';
+    if (window.qwenGlossary) {
+      try {
+        window.qwenGlossary.set(map);
+        if (window.qwenGlossary.setTone) window.qwenGlossary.setTone(data.tone || 'formal');
+      } catch {}
+    }
+  });
+  glossaryTextarea.addEventListener('input', () => {
+    const lines = glossaryTextarea.value.split(/\n+/).filter(Boolean);
+    const map = {};
+    lines.forEach(line => {
+      const idx = line.indexOf('=');
+      if (idx !== -1) {
+        const src = line.slice(0, idx).trim();
+        const dst = line.slice(idx + 1).trim();
+        if (src) map[src] = dst;
+      }
+    });
+    chrome.storage.sync.set({ glossary: map });
+    if (window.qwenGlossary) {
+      try { window.qwenGlossary.set(map); } catch {}
+    }
+  });
+  toneSelect.addEventListener('change', () => {
+    const t = toneSelect.value;
+    chrome.storage.sync.set({ tone: t });
+    if (window.qwenGlossary && window.qwenGlossary.setTone) {
+      try { window.qwenGlossary.setTone(t); } catch {}
+    }
+  });
+}
+initGlossaryUI();
 
 // Setup view elements
 const setupApiKeyInput = document.getElementById('setup-apiKey') || document.createElement('input');

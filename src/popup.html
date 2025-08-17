@@ -303,6 +303,14 @@
       <details id="glossarySection" class="panel-frame">
         <summary>Glossary</summary>
         <div class="form-group" style="padding-top: 0.75rem">
+          <label for="glossaryTerms">Terms (one per line: source=target)</label>
+          <textarea id="glossaryTerms" rows="4"></textarea>
+          <label for="tone">Tone</label>
+          <select id="tone">
+            <option value="formal">Formal</option>
+            <option value="casual">Casual</option>
+            <option value="technical">Technical</option>
+          </select>
           <label for="importGlossary">Import glossary (JSON)</label>
           <input type="file" id="importGlossary" accept="application/json">
           <button id="exportGlossary">Export Glossary</button>

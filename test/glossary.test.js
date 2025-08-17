@@ -25,4 +25,20 @@ describe('glossary library', () => {
     const res = await qwenTranslate({ endpoint: '', model: 'm', text: 'Foo', source: 'en', target: 'zh', noProxy: true, provider: 'mock' });
     expect(res.text).toBe('Bar');
   });
+
+  test('translator passes tone parameter', async () => {
+    jest.resetModules();
+    const spy = jest.fn(async ({ tone }) => ({ text: tone }));
+    global.qwenProviders = {
+      get: () => ({ throttle: {}, translate: spy }),
+      candidates: () => ['mock'],
+      isInitialized: () => true,
+    };
+    const g = require('../src/lib/glossary');
+    g.setTone('technical');
+    const { qwenTranslate } = require('../src/translator.js');
+    const res = await qwenTranslate({ endpoint: '', model: 'm', text: 'Foo', source: 'en', target: 'zh', noProxy: true, provider: 'mock' });
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ tone: 'technical' }));
+    expect(res.text).toBe('technical');
+  });
 });
