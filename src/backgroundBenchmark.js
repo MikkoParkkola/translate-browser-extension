@@ -33,7 +33,9 @@
         });
         const latency = Date.now() - start;
         const tokens = root.qwenThrottle ? root.qwenThrottle.approxTokens('hello world') : 0;
-        const costPerToken = cfg.costPerToken || COST_RATES[name] || 0;
+        const costIn = (cfg.costPerInputToken ?? cfg.costPerToken ?? COST_RATES[name]) || 0;
+        const costOut = (cfg.costPerOutputToken ?? cfg.costPerToken) || 0;
+        const costPerToken = costIn + costOut;
         const cost = tokens * costPerToken;
         const throughput = latency > 0 ? (tokens * 1000) / latency : 0;
         results[name] = { latency, throughput, cost, costPerToken };

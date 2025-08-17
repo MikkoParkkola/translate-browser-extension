@@ -43,4 +43,12 @@ describe('config migration', () => {
     expect(cfg.providers.google.charLimit).toBe(500000);
     expect(cfg.providers.deepl.charLimit).toBe(500000);
   });
+
+  test('selection popup disabled by default', async () => {
+    const set = jest.fn((o, cb) => cb && cb());
+    global.chrome = { storage: { sync: { get: (d, cb) => cb(d), set } } };
+    const { qwenLoadConfig } = require('../src/config.js');
+    const cfg = await qwenLoadConfig();
+    expect(cfg.selectionPopup).toBe(false);
+  });
 });

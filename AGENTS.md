@@ -68,7 +68,7 @@
 - Background-only keys: content scripts never send/hold API keys; background injects keys for direct and Port flows.
 - Separate detection key: `detectApiKey` (Google) is used only for language detection; translation uses provider keys.
 - Provider-specific keys supported: `apiKeyDashScope`, `apiKeyOpenAI`, `apiKeyDeepL` (fallback to `apiKey` if unset). Background chooses the correct key per provider.
-- Additional fields: per-provider `charLimit`, `requestLimit`, `tokenLimit`, `costPerToken`, `weight` and `strategy` guide cost tracking and load balancing. Google translation also requires `projectId` and `location`, and `secondaryModel` enables quota fallback.
+- Additional fields: per-provider `charLimit`, `requestLimit`, `tokenLimit`, `costPerInputToken`, `costPerOutputToken`, `weight` and `strategy` guide cost tracking and load balancing. Google translation also requires `projectId` and `location`, and `secondaryModel` enables quota fallback.
 - Ensure `styles/apple.css` is listed in `web_accessible_resources` for content <link> fallback.
 
 ## Current Product State
@@ -78,7 +78,7 @@
 - Providers are no longer auto-registered; call `qwenProviders.initProviders()` before translating when using built-ins. `qwenProviders.isInitialized()` reports whether defaults are loaded and the translator now logs a warning if a translation is attempted before initialization. Custom providers can create isolated registries via `qwenProviders.createRegistry()` and register prior to initialization to override or augment the defaults.
  - Providers are no longer auto-registered; call `qwenProviders.initProviders()` or `qwenProviders.ensureProviders()` before translating when using built-ins. `qwenProviders.isInitialized()` reports whether defaults are loaded and the translator now logs a one-time warning if a translation is attempted before initialization. Pass `{ autoInit: true }` to translation calls to invoke `initProviders()` on demand. Custom providers can create isolated registries via `qwenProviders.createRegistry()` and register prior to initialization to override or augment the defaults.
   - Provider order (`providerOrder`) and per-provider endpoints configurable; failover implemented with per-provider `runWithRetry` + rate-limit. Providers may include a `throttle` config to tune request/token limits per backend, with optional per-context queues (e.g., `stream`) for finer control.
-  - Default config assumes roughly 500k free characters for Google/DeepL and tracks spend via `costPerToken`. Background selects providers above `requestThreshold` and uses per-provider weights to balance load across those with available quota.
+  - Default config assumes roughly 500k free characters for Google/DeepL and tracks spend via `costPerInputToken`/`costPerOutputToken`. Background selects providers above `requestThreshold` and uses per-provider weights to balance load across those with available quota.
   - Background pulls provider-specific keys from storage (`getProviderApiKeyFromStorage`) and injects them on both direct and Port paths.
 - Messaging and streaming
   - Port-based background proxy with chunk relay and cancellation; legacy `sendMessage` fallback.
@@ -100,6 +100,7 @@
   - Fetch strategy is centralized in `lib/fetchStrategy.js`; override with `qwenFetchStrategy.setChooser(fn)` for custom proxy/direct routing.
   - Browser action icon shows quota usage ring and status dot (green active, red error, gray idle); badge reflects active translations.
   - Context menu entries: "Translate selection", "Translate page", and "Enable auto-translate on this site".
+  - Selection bubble is disabled by default; enabling it adds a manual translate button when text is selected.
   - Popup "Test settings" button runs connectivity and translation diagnostics and reports results.
   - Auto-translate only starts for the active tab; background tabs remain untouched until activated.
   - Experimental conversation panel streams chat translations in real time; open it from Settings > General.

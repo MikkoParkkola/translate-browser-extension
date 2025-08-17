@@ -8,8 +8,8 @@ describe('translator parallel mode', () => {
   test('distributes batches by provider weight', async () => {
     const Providers = require('../src/lib/providers.js');
     Providers.reset();
-    const a = { translate: jest.fn(async ({ text }) => ({ text: `A:${text}` })), throttle: { tokenLimit: 100 }, costPerToken: 1 };
-    const b = { translate: jest.fn(async ({ text }) => ({ text: `B:${text}` })), throttle: { tokenLimit: 100 }, costPerToken: 2 };
+    const a = { translate: jest.fn(async ({ text }) => ({ text: `A:${text}` })), throttle: { tokenLimit: 100 }, costPerInputToken: 1 };
+    const b = { translate: jest.fn(async ({ text }) => ({ text: `B:${text}` })), throttle: { tokenLimit: 100 }, costPerInputToken: 2 };
     Providers.register('a', a);
     Providers.register('b', b);
     Providers.init();
@@ -33,8 +33,8 @@ describe('translator parallel mode', () => {
   test('falls back when provider quota exhausted', async () => {
     const Providers = require('../src/lib/providers.js');
     Providers.reset();
-    const a = { translate: jest.fn(async ({ text }) => ({ text: `A:${text}` })), throttle: { tokenLimit: 4 }, costPerToken: 1 };
-    const b = { translate: jest.fn(async ({ text }) => ({ text: `B:${text}` })), throttle: { tokenLimit: 100 }, costPerToken: 25 };
+    const a = { translate: jest.fn(async ({ text }) => ({ text: `A:${text}` })), throttle: { tokenLimit: 4 }, costPerInputToken: 1 };
+    const b = { translate: jest.fn(async ({ text }) => ({ text: `B:${text}` })), throttle: { tokenLimit: 100 }, costPerInputToken: 25 };
     Providers.register('a', a);
     Providers.register('b', b);
     Providers.init();
