@@ -546,6 +546,11 @@ async function handleTranslate(opts) {
     logger.error('background translation error', err);
     logUsage(tokens, Date.now() - start);
     iconError = true;
+    const offline = !navigator.onLine || (err && /network|fetch/i.test(err.message || ''));
+    if (offline) {
+      try { chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }); } catch {}
+      return { error: 'offline' };
+    }
     return { error: err.message };
   } finally {
     clearTimeout(timeout);
@@ -821,7 +826,11 @@ chrome.runtime.onConnect.addListener(port => {
         logger.error('background port translation error', err);
         logUsage(tokens, Date.now() - start);
         iconError = true;
-        try { port.postMessage({ requestId, error: err.message }); } catch {}
+        const offline = !navigator.onLine || (err && /network|fetch/i.test(err.message || ''));
+        try { port.postMessage({ requestId, error: offline ? 'offline' : err.message }); } catch {}
+        if (offline) {
+          try { chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }); } catch {}
+        }
       } finally {
         clearTimeout(timeout);
         inflight.delete(requestId);

@@ -360,8 +360,16 @@ async function showSelectionBubble(range, text) {
         debug: cfg.debug,
       });
       result.textContent = res.text;
-    } catch {
-      result.textContent = 'Translation failed';
+    } catch (e) {
+      const offline = !navigator.onLine || (e && /network|fetch/i.test(e.message || ''));
+      if (offline) {
+        result.textContent = t('bubble.offline');
+        try {
+          chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError());
+        } catch {}
+      } else {
+        result.textContent = 'Translation failed';
+      }
     }
   });
   pinBtn.addEventListener('click', () => {
@@ -457,7 +465,16 @@ async function translateNode(node) {
     node.textContent = leading + translated + trailing;
     mark(node);
   } catch (e) {
-    showError(`${e.message}. See console for details.`);
+    const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
+    const offline = !navigator.onLine || (e && /network|fetch/i.test(e.message || ''));
+    if (offline) {
+      showError(t('popup.offline'));
+      try {
+        chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError());
+      } catch {}
+    } else {
+      showError(`${e.message}. See console for details.`);
+    }
     logger.error('QTERROR: translation error', e);
   } finally {
     controllers.delete(controller);
@@ -564,7 +581,16 @@ async function processQueue() {
     try {
       await translateBatch(item.nodes, stats);
     } catch (e) {
-      showError(`${e.message}. See console for details.`);
+      const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
+      const offline = !navigator.onLine || (e && /network|fetch/i.test(e.message || ''));
+      if (offline) {
+        showError(t('popup.offline'));
+        try {
+          chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError());
+        } catch {}
+      } else {
+        showError(`${e.message}. See console for details.`);
+      }
       logger.error('QTERROR: batch translation error', e && e.message, e);
       item.enqueued = Date.now();
       batchQueue.push(item);
@@ -792,7 +818,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         clearTimeout(timer);
         if (cfg.debug) logger.debug('QTDEBUG: test-e2e sending error', err);
         el.remove();
-        sendResponse({ error: err.message, stack: err.stack });
+        const offline = !navigator.onLine || (err && /network|fetch/i.test(err.message || ''));
+        if (offline) {
+          try { chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError()); } catch {}
+        }
+        sendResponse({ error: offline ? 'offline' : err.message, stack: err.stack });
       });
     return true;
   }
@@ -825,7 +855,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         addFeedbackUI(node, text, translated, res.confidence);
         sel.removeAllRanges();
       } catch (e) {
-        showError('Translation failed');
+        const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
+        const offline = !navigator.onLine || (e && /network|fetch/i.test(e.message || ''));
+        if (offline) {
+          showError(t('popup.offline'));
+          try {
+            chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError());
+          } catch {}
+        } else {
+          showError('Translation failed');
+        }
       }
     })();
   }
