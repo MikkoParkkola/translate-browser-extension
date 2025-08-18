@@ -2,8 +2,8 @@
   const overlay = document.getElementById('providerEditorOverlay');
   const apiKeyEl = overlay.querySelector('#pe_apiKey');
   const apiEndpointEl = overlay.querySelector('#pe_apiEndpoint');
-  const modelEl = overlay.querySelector('#pe_model');
-  const modelList = overlay.querySelector('#pe_modelList');
+  const modelInputEl = overlay.querySelector('#pe_modelInput');
+  const modelSelectEl = overlay.querySelector('#pe_modelSelect');
   const reqLimitEl = overlay.querySelector('#pe_requestLimit');
   const tokLimitEl = overlay.querySelector('#pe_tokenLimit');
   const charLimitEl = overlay.querySelector('#pe_charLimit');
@@ -13,6 +13,7 @@
   const weightEl = overlay.querySelector('#pe_weight');
   const saveBtn = overlay.querySelector('#pe_save');
   const cancelBtn = overlay.querySelector('#pe_cancel');
+  const advancedEl = overlay.querySelector('#pe_advanced');
   let currentId, cfg, refresh;
 
   function validUrl(u){
@@ -27,31 +28,49 @@
     const existing = (cfg.providers && cfg.providers[id]) || {};
     apiKeyEl.value = existing.apiKey || '';
     apiEndpointEl.value = existing.apiEndpoint || '';
-    modelEl.value = existing.model || '';
+    modelInputEl.value = existing.model || '';
+    modelSelectEl.innerHTML = '';
+    modelSelectEl.style.display = 'none';
+    modelInputEl.style.display = '';
     reqLimitEl.value = existing.requestLimit ?? cfg.requestLimit ?? '';
     tokLimitEl.value = existing.tokenLimit ?? cfg.tokenLimit ?? '';
     charLimitEl.value = existing.charLimit ?? cfg.charLimit ?? '';
-    strategyEl.value = existing.strategy || cfg.strategy || '';
+    strategyEl.value = existing.strategy || cfg.strategy || 'balanced';
     const cpi = existing.costPerInputToken ?? cfg.costPerInputToken ?? existing.costPerToken ?? cfg.costPerToken;
     const cpo = existing.costPerOutputToken ?? cfg.costPerOutputToken ?? existing.costPerToken ?? cfg.costPerToken;
     costPerInputTokenEl.value = cpi != null ? cpi * 1e6 : '';
     costPerOutputTokenEl.value = cpo != null ? cpo * 1e6 : '';
     weightEl.value = existing.weight ?? cfg.weight ?? '';
-    modelList.innerHTML = '';
     const prov = window.qwenProviders?.getProvider?.(id);
     if(prov?.listModels){
       try {
         const models = await prov.listModels();
-        models.forEach(m => {
-          const opt = document.createElement('option');
-          opt.value = m;
-          modelList.appendChild(opt);
-        });
+        if (Array.isArray(models) && models.length) {
+          models.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.textContent = m;
+            modelSelectEl.appendChild(opt);
+          });
+          modelSelectEl.value = existing.model || cfg.model || models[0];
+          modelSelectEl.style.display = '';
+          modelInputEl.style.display = 'none';
+        }
       } catch {}
     }
     window.qwenProviderConfig?.applyProviderConfig?.(prov, overlay);
     overlay.style.display = 'flex';
+    resizePopup();
   }
+
+  function resizePopup(){
+    requestAnimationFrame(() => {
+      const rect = overlay.firstElementChild.getBoundingClientRect();
+      try { window.resizeTo(window.outerWidth, Math.ceil(rect.height + 20)); } catch {}
+    });
+  }
+
+  advancedEl?.addEventListener('toggle', resizePopup);
 
   saveBtn.addEventListener('click', () => {
     const apiEndpoint = apiEndpointEl.value.trim();
@@ -68,11 +87,11 @@
       ...(providers[currentId] || {}),
       apiKey: apiKeyEl.value.trim(),
       apiEndpoint,
-      model: modelEl.value.trim(),
+      model: (modelSelectEl.style.display !== 'none' ? modelSelectEl.value : modelInputEl.value).trim(),
       requestLimit: num(reqLimitEl.value.trim()),
       tokenLimit: num(tokLimitEl.value.trim()),
       charLimit: num(charLimitEl.value.trim()),
-      strategy: strategyEl.value.trim(),
+      strategy: strategyEl.value,
       costPerInputToken: costInRaw == null ? undefined : costInRaw / 1e6,
       costPerOutputToken: costOutRaw == null ? undefined : costOutRaw / 1e6,
       weight: num(weightEl.value.trim()),

@@ -51,7 +51,7 @@
       return {
         translate: opts => translate({ ...opts, endpoint: ep || opts.endpoint }),
         label: 'DeepL',
-        configFields: ['apiKey', 'apiEndpoint', 'model'],
+        configFields: ['apiKey', 'apiEndpoint'],
         throttle: { requestLimit: 15, windowMs: 1000 },
       };
     }
