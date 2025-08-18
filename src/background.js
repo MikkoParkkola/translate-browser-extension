@@ -600,9 +600,14 @@ async function handleTranslate(opts) {
     logger.error('background translation error', err);
     logUsage(tokens, Date.now() - start);
     iconError = true;
+<<<<<<< HEAD
     const offline = isOfflineError(err);
     if (offline) {
       try { chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }); } catch {}
+=======
+    if (isOfflineError(err)) {
+      notifyOffline();
+>>>>>>> 3073a61 (fix: guard offline HUD against stale timers)
       return { error: 'offline' };
     }
     return { error: err.message };
@@ -619,9 +624,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     handleTranslate(msg.opts)
       .then(sendResponse)
       .catch(err => {
+<<<<<<< HEAD
         if (isOfflineError(err)) {
           try { chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }); } catch {}
         }
+=======
+        if (isOfflineError(err)) notifyOffline();
+>>>>>>> 3073a61 (fix: guard offline HUD against stale timers)
         sendResponse({ error: err.message });
       });
     return true;
@@ -923,10 +932,18 @@ chrome.runtime.onConnect.addListener(port => {
         logger.error('background port translation error', err);
         logUsage(tokens, Date.now() - start);
         iconError = true;
+<<<<<<< HEAD
         const offline = isOfflineError(err);
         try { port.postMessage({ requestId, error: offline ? 'offline' : err.message }); } catch {}
         if (offline) {
           try { chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }); } catch {}
+=======
+        if (isOfflineError(err)) {
+          notifyOffline();
+          try { port.postMessage({ requestId, error: 'offline' }); } catch {}
+        } else {
+          try { port.postMessage({ requestId, error: err.message }); } catch {}
+>>>>>>> 3073a61 (fix: guard offline HUD against stale timers)
         }
       } finally {
         clearTimeout(timeout);
