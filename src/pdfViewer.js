@@ -134,6 +134,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   const translateProgress = document.createElement('progress');
   translateProgress.max = 1;
   translateProgress.value = 0;
+  translateProgress.className = 'qwen-progress';
   translateProgress.style.position = 'fixed';
   translateProgress.style.top = '0';
   translateProgress.style.left = '0';
@@ -142,6 +143,23 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   translateProgress.style.zIndex = '10000';
   translateProgress.style.display = 'none';
   document.body.appendChild(translateProgress);
+
+  if (chrome?.runtime?.onMessage?.addListener) {
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (msg?.action === 'translation-status' && msg.status) {
+        const { active, progress, phase } = msg.status;
+        if (typeof phase === 'string') translateProgress.dataset.phase = phase;
+        if (active) {
+          translateProgress.style.display = 'block';
+          if (typeof progress === 'number') translateProgress.value = progress;
+        } else {
+          translateProgress.style.display = 'none';
+          translateProgress.value = 0;
+          delete translateProgress.dataset.phase;
+        }
+      }
+    });
+  }
 
   if (window.qwenTranslateBatch) {
     const origBatch = window.qwenTranslateBatch;
