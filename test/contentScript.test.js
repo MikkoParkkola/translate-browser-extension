@@ -108,6 +108,7 @@ test('batches DOM nodes when exceeding token limit', async () => {
   messageListener({ action: 'start' });
   await jest.runOnlyPendingTimersAsync();
   expect(calls).toHaveBeenCalledTimes(4);
+  messageListener({ action: 'stop' });
   jest.useRealTimers();
   window.qwenTranslateBatch = original;
   delete window.qwenThrottle;
@@ -146,8 +147,9 @@ test('force translation bypasses cache', async () => {
   messageListener({ action: 'start', force: true });
   await jest.runOnlyPendingTimersAsync();
   expect(network.mock.calls.length).toBeGreaterThan(1);
+  messageListener({ action: 'stop' });
   jest.useRealTimers();
-window.qwenTranslateBatch = original;
+  window.qwenTranslateBatch = original;
 });
 
 test('passes provider config to batch translation', async () => {
