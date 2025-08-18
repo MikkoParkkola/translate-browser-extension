@@ -323,6 +323,7 @@ async function showSelectionBubble(range, text) {
         target: cfg.targetLanguage,
         providerOrder: cfg.providerOrder,
         endpoints: cfg.endpoints,
+        detector: cfg.detector,
         failover: cfg.failover,
         debug: cfg.debug,
       });
@@ -405,6 +406,7 @@ async function translateNode(node) {
       target: currentConfig.targetLanguage,
       providerOrder: currentConfig.providerOrder,
       endpoints: currentConfig.endpoints,
+      detector: currentConfig.detector,
       failover: currentConfig.failover,
       signal: controller.signal,
       debug: currentConfig.debug,
@@ -445,6 +447,7 @@ async function translateBatch(elements, stats, force = false) {
       target: currentConfig.targetLanguage,
       providerOrder: currentConfig.providerOrder,
       endpoints: currentConfig.endpoints,
+      detector: currentConfig.detector,
       failover: currentConfig.failover,
       parallel: currentConfig.parallel,
       signal: controller.signal,
@@ -725,6 +728,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         signal: controller.signal,
         providerOrder: cfg.providerOrder,
         endpoints: cfg.endpoints,
+        detector: cfg.detector,
         failover: cfg.failover,
       })
       .then(res => {
@@ -762,6 +766,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           target: cfg.targetLanguage,
           providerOrder: cfg.providerOrder,
           endpoints: cfg.endpoints,
+          detector: cfg.detector,
           failover: cfg.failover,
           debug: cfg.debug,
         });

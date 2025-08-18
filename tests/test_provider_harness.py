@@ -4,6 +4,14 @@ class ProviderError(Exception):
     """Simple provider-level error for test harness"""
     pass
 
+
+class HTTPError(ProviderError):
+    """Error carrying an HTTP status code to simulate provider HTTP failures."""
+
+    def __init__(self, status):
+        super().__init__(f"HTTP {status}")
+        self.status = status
+
 class FakeProvider:
     """A minimal fake provider used by tests.
 
@@ -165,3 +173,43 @@ def test_no_providers_raises():
     dispatcher = Dispatcher(reg)
     with pytest.raises(ProviderError):
         dispatcher.dispatch({"endpoint": "/translate"})
+
+
+def test_failover_on_http_429():
+    reg = ProviderRegistry()
+
+    class Fail429(FakeProvider):
+        def send(self, request):
+            self.last_request = request
+            raise HTTPError(429)
+
+    fail = Fail429("fail", endpoints=["/translate"])
+    ok = FakeProvider("ok", endpoints=["/translate"], response={"text": "ok"})
+    reg.register("fail", fail, ["/translate"])
+    reg.register("ok", ok, ["/translate"])
+
+    dispatcher = Dispatcher(reg)
+    resp = dispatcher.dispatch({"endpoint": "/translate"})
+
+    assert resp["provider"] == "ok"
+    assert ok.last_request is not None
+
+
+def test_failover_on_http_5xx():
+    reg = ProviderRegistry()
+
+    class Fail500(FakeProvider):
+        def send(self, request):
+            self.last_request = request
+            raise HTTPError(500)
+
+    fail = Fail500("fail", endpoints=["/translate"])
+    ok = FakeProvider("ok", endpoints=["/translate"], response={"text": "ok"})
+    reg.register("fail", fail, ["/translate"])
+    reg.register("ok", ok, ["/translate"])
+
+    dispatcher = Dispatcher(reg)
+    resp = dispatcher.dispatch({"endpoint": "/translate"})
+
+    assert resp["provider"] == "ok"
+    assert ok.last_request is not None
