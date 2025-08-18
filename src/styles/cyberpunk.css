@@ -87,6 +87,35 @@
   background: var(--qwen-secondary-hover);
 }
 
+[data-qwen-theme="cyberpunk"] progress {
+  width: 100%;
+  height: 1rem;
+  -webkit-appearance: none;
+  appearance: none;
+}
+[data-qwen-theme="cyberpunk"] progress::-webkit-progress-bar {
+  background: var(--qwen-secondary-bg);
+  border-radius: 6px;
+}
+[data-qwen-theme="cyberpunk"] progress::-webkit-progress-value {
+  background: var(--qwen-neon-1);
+  border-radius: 6px;
+}
+[data-qwen-theme="cyberpunk"] progress::-moz-progress-bar {
+  background: var(--qwen-neon-1);
+  border-radius: 6px;
+}
+
+[data-qwen-theme="cyberpunk"] .qwen-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  z-index: 2147483647;
+  display: none;
+}
+
 [data-qwen-theme="cyberpunk"] .btn-frame {
   border-color: var(--qwen-neon-1);
   box-shadow: 0 0 4px var(--qwen-neon-1), 0 2px 6px rgba(0, 0, 0, 0.5);

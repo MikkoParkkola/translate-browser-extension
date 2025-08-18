@@ -53,4 +53,5 @@ export * from './background';
 export * from './contentScript';
 export * from './providers';
 export * from './messaging';
+export * from './popup';
 export * from './tm';

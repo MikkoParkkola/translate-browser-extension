@@ -8,6 +8,8 @@
     localProviders: [],
     selectionPopup: false,
     sensitivity: 0.3,
+    minDetectLength: 2,
+    translateTimeoutMs: 20000,
   };
 
   function handleLastError(cb) {
@@ -19,12 +21,14 @@
   }
 
   const store = await new Promise(res => {
-    if (chrome?.storage?.sync) chrome.storage.sync.get({ ...defaults, theme: 'dark' }, res);
-    else res({ ...defaults, theme: 'dark' });
+    if (chrome?.storage?.sync) chrome.storage.sync.get({ ...defaults, theme: 'dark', themeStyle: 'apple' }, res);
+    else res({ ...defaults, theme: 'dark', themeStyle: 'apple' });
   });
 
+  document.documentElement.setAttribute('data-qwen-theme', store.themeStyle || 'apple');
   document.documentElement.setAttribute('data-qwen-color', store.theme || 'dark');
   const themeSel = document.getElementById('theme');
+  const themeStyleSel = document.getElementById('themeStyle');
   if (themeSel) {
     themeSel.value = store.theme || 'dark';
     themeSel.addEventListener('change', () => {
@@ -34,7 +38,20 @@
       chrome.runtime.sendMessage({ action: 'set-config', config: { theme } }, handleLastError());
       chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
         const t = tabs && tabs[0];
-        if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme }, handleLastError());
+        if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme, themeStyle: themeStyleSel?.value }, handleLastError());
+      });
+    });
+  }
+  if (themeStyleSel) {
+    themeStyleSel.value = store.themeStyle || 'apple';
+    themeStyleSel.addEventListener('change', () => {
+      const style = themeStyleSel.value;
+      document.documentElement.setAttribute('data-qwen-theme', style);
+      chrome?.storage?.sync?.set({ themeStyle: style });
+      chrome.runtime.sendMessage({ action: 'set-config', config: { themeStyle: style } }, handleLastError());
+      chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
+        const t = tabs && tabs[0];
+        if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme: themeSel?.value, themeStyle: style }, handleLastError());
       });
     });
   }
@@ -75,6 +92,15 @@
     });
   }
 
+  const minDetectField = document.getElementById('minDetectLength');
+  if (minDetectField) {
+    minDetectField.value = typeof store.minDetectLength === 'number' ? store.minDetectLength : 0;
+    minDetectField.addEventListener('input', () => {
+      const val = Number(minDetectField.value);
+      chrome?.storage?.sync?.set({ minDetectLength: val });
+    });
+  }
+
   const selectionBox = document.getElementById('selectionPopup');
   if (selectionBox) {
     selectionBox.checked = store.selectionPopup;
@@ -83,6 +109,15 @@
     });
   }
 
+  const timeoutField = document.getElementById('translateTimeoutMs');
+  if (timeoutField) {
+    timeoutField.value = typeof store.translateTimeoutMs === 'number' ? store.translateTimeoutMs : 20000;
+    timeoutField.addEventListener('input', () => {
+      const val = Number(timeoutField.value);
+      chrome?.storage?.sync?.set({ translateTimeoutMs: val });
+      chrome.runtime.sendMessage({ action: 'set-config', config: { translateTimeoutMs: val } }, handleLastError());
+    });
+  }
 
   const glossaryField = document.getElementById('glossary');
   glossaryField.value = store.glossary;
@@ -313,22 +348,30 @@
   const tmStatsEl = document.getElementById('tmStats');
   const tmImportFile = document.getElementById('tmImportFile');
 
+  function tmMessage(action, payload) {
+    return new Promise(resolve => {
+      chrome?.runtime?.sendMessage({ action, ...payload }, handleLastError(res => resolve(res || {})));
+    });
+  }
+
   async function refreshTM() {
-    if (!window.qwenTM) return;
-    const entries = await window.qwenTM.getAll();
+    if (!tmEntriesEl || !tmStatsEl) return;
+    const res = await tmMessage('tm-get-all');
+    const entries = Array.isArray(res.entries) ? res.entries : [];
+    const stats = res.stats || {};
     tmEntriesEl.textContent = JSON.stringify(entries, null, 2);
-    const stats = window.qwenTM.stats ? window.qwenTM.stats() : {};
     tmStatsEl.textContent = JSON.stringify(stats, null, 2);
   }
 
   document.getElementById('tmClear')?.addEventListener('click', async () => {
-    try { await window.qwenTM.clear(); } catch {}
+    await tmMessage('tm-clear');
     refreshTM();
   });
 
   document.getElementById('tmExport')?.addEventListener('click', async () => {
     try {
-      const entries = await window.qwenTM.getAll();
+      const res = await tmMessage('tm-get-all');
+      const entries = Array.isArray(res.entries) ? res.entries : [];
       const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -352,12 +395,7 @@
       const text = await file.text();
       const data = JSON.parse(text);
       if (Array.isArray(data)) {
-        await window.qwenTM.clear();
-        for (const item of data) {
-          if (item && typeof item.k === 'string' && typeof item.text === 'string') {
-            await window.qwenTM.set(item.k, item.text);
-          }
-        }
+        await tmMessage('tm-import', { entries: data });
       }
     } catch {}
     tmImportFile.value = '';

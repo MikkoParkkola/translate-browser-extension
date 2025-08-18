@@ -1,8 +1,11 @@
-importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'providers/mistral.js', 'lib/tm.js', 'lib/feedback.js', 'lib/qualityCheck.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js', 'backgroundBenchmark.js');
+importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'providers/mistral.js', 'lib/tm.js', 'lib/feedback.js', 'lib/qualityCheck.js', 'config.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js', 'backgroundBenchmark.js');
 
 const logger = (self.qwenLogger && self.qwenLogger.create)
   ? self.qwenLogger.create('background')
   : console;
+
+
+const TRANSLATE_TIMEOUT_MS = (self.qwenDefaultConfig && self.qwenDefaultConfig.translateTimeoutMs) || 20000;
 
 
 function handleLastError(cb) {
@@ -36,10 +39,12 @@ chrome.commands?.onCommand.addListener(async command => {
 // Load basic config (e.g., memCacheMax) so translator cache limits apply in background
 self.qwenConfig = self.qwenConfig || {};
 try {
-  chrome.storage.sync.get({ memCacheMax: 5000, tmSync: false }, cfg => {
+  chrome.storage.sync.get({ memCacheMax: 5000, tmSync: false, translateTimeoutMs: TRANSLATE_TIMEOUT_MS }, cfg => {
     const n = parseInt(cfg.memCacheMax, 10);
     if (n > 0) self.qwenConfig.memCacheMax = n;
     if (self.qwenTM && self.qwenTM.enableSync) { self.qwenTM.enableSync(!!cfg.tmSync); }
+    const t = parseInt(cfg.translateTimeoutMs, 10);
+    if (Number.isFinite(t) && t > 0) config.translateTimeoutMs = t;
   });
 } catch {}
 
@@ -105,9 +110,10 @@ if (chrome?.storage?.sync) {
   });
 }
 
-function localDetectLanguage(text) {
+function localDetectLanguage(text, minLength = 0) {
   const s = String(text || '');
-  const total = s.length || 1;
+  const total = s.replace(/\s+/g, '').length;
+  if (total < minLength) return { lang: undefined, confidence: 0 };
   const counts = {
     ja: (s.match(/[\u3040-\u30ff\u4e00-\u9fff]/g) || []).length,
     ko: (s.match(/[\uac00-\ud7af]/g) || []).length,
@@ -118,6 +124,7 @@ function localDetectLanguage(text) {
   };
   let best = 'en', max = 0;
   for (const [k, v] of Object.entries(counts)) { if (v > max) { max = v; best = k; } }
+  if (max === 0) return { lang: undefined, confidence: 0 };
   const confidence = Math.min(1, max / total);
   return { lang: best, confidence };
 }
@@ -319,7 +326,7 @@ const inflight = new Map(); // requestId -> { controller, timeout, port }
 
 // Test-accessible state
 let usingPlus = false;
-let config = { providerOrder: [], requestThreshold: 0, qualityVerify: false };
+let config = { providerOrder: [], requestThreshold: 0, qualityVerify: false, translateTimeoutMs: TRANSLATE_TIMEOUT_MS };
 const usageStats = { models: {} };
 const usageLog = [];
 let lastQuality = 0;
@@ -359,8 +366,29 @@ function getAggregatedStats() {
 
 function broadcastStats() {
   ensureThrottle().then(() => {
-    const stats = getAggregatedStats();
-    safeSendMessage({ action: 'stats', stats });
+    const usage = self.qwenThrottle.getUsage();
+    const cache = {
+      size: cacheStats.size != null ? cacheStats.size : (self.qwenGetCacheSize ? self.qwenGetCacheSize() : 0),
+      max: cacheStats.max != null ? cacheStats.max : ((self.qwenConfig && self.qwenConfig.memCacheMax) || 0),
+      hits: cacheStats.hits || 0,
+      misses: cacheStats.misses || 0,
+      hitRate: cacheStats.hitRate || 0,
+    };
+    const tm = Object.keys(tmStats).length ? tmStats : ((self.qwenTM && self.qwenTM.stats) ? self.qwenTM.stats() : {});
+    const models = {};
+    const now = Date.now();
+    Object.entries(usageStats.models).forEach(([name, s]) => {
+      s.requestTimes = (s.requestTimes || []).filter(t => now - t < 60000);
+      s.tokenTimes = (s.tokenTimes || []).filter(t => now - t.time < 60000);
+      models[name] = {
+        requests: s.requestTimes.length,
+        requestLimit: s.requestLimit,
+        tokens: s.tokenTimes.reduce((sum, t) => sum + t.tokens, 0),
+        tokenLimit: s.tokenLimit,
+      };
+    });
+    safeSendMessage({ action: 'stats', usage, cache, tm, models });
+    safeSendMessage({ action: 'home:update-usage', usage, active: translationStatus.active, models });
   });
 }
 
@@ -439,6 +467,7 @@ function updateBadge() {
 }
 updateBadge();
 broadcastStats();
+setInterval(broadcastStats, 1000);
 setInterval(updateIcon, 500);
 function ensureThrottle() {
   if (!throttleReady) {
@@ -489,16 +518,31 @@ async function handleTranslate(opts) {
 
   await ensureThrottle();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
+  const timeout = setTimeout(() => controller.abort(), config.translateTimeoutMs || TRANSLATE_TIMEOUT_MS);
   activeTranslations++;
   updateBadge();
 
   const start = Date.now();
   const tokens = self.qwenThrottle.approxTokens(text || '');
-  const chars = Array.isArray(text) ? text.reduce((s, t) => s + (t ? t.length : 0), 0) : (text || '').length;
-  usageStats.models[model] = usageStats.models[model] || { requests: 0, chars: 0 };
-  usageStats.models[model].requests++;
-  usageStats.models[model].chars += chars;
+  const chars = Array.isArray(text)
+    ? text.reduce((s, t) => s + (t ? t.length : 0), 0)
+    : (text || '').length;
+  const globalUsage = self.qwenThrottle.getUsage ? self.qwenThrottle.getUsage() : {};
+  usageStats.models[model] =
+    usageStats.models[model] || {
+      requests: 0,
+      chars: 0,
+      requestTimes: [],
+      tokenTimes: [],
+      requestLimit: globalUsage.requestLimit,
+      tokenLimit: globalUsage.tokenLimit,
+    };
+  const m = usageStats.models[model];
+  m.requests++;
+  m.chars += chars;
+  const now = Date.now();
+  m.requestTimes.push(now);
+  m.tokenTimes.push({ time: now, tokens });
   try {
     const storedKey = await getApiKeyFromStorage();
     const result = await self.qwenTranslate({
@@ -597,6 +641,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       });
     }
     if (typeof c.qualityVerify === 'boolean') config.qualityVerify = c.qualityVerify;
+    if (typeof c.translateTimeoutMs === 'number') config.translateTimeoutMs = c.translateTimeoutMs;
     if (typeof c.tmSync === 'boolean' && self.qwenTM && self.qwenTM.enableSync) {
       self.qwenTM.enableSync(c.tmSync);
     }
@@ -606,6 +651,38 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'clear-remote-tm') {
     if (self.qwenTM && self.qwenTM.clearRemote) { self.qwenTM.clearRemote(); }
     sendResponse({ ok: true });
+    return true;
+  }
+  if (msg.action === 'tm-get-all') {
+    (async () => {
+      const entries = self.qwenTM && self.qwenTM.getAll ? await self.qwenTM.getAll() : [];
+      const stats = self.qwenTM && self.qwenTM.stats ? self.qwenTM.stats() : {};
+      sendResponse({ entries, stats });
+    })();
+    return true;
+  }
+  if (msg.action === 'tm-clear') {
+    (async () => {
+      if (self.qwenTM && self.qwenTM.clear) { await self.qwenTM.clear(); }
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
+  if (msg.action === 'tm-import') {
+    (async () => {
+      const list = (msg && msg.entries && Array.isArray(msg.entries)) ? msg.entries : [];
+      if (self.qwenTM && self.qwenTM.clear && self.qwenTM.set) {
+        try {
+          await self.qwenTM.clear();
+          for (const item of list) {
+            if (item && typeof item.k === 'string' && typeof item.text === 'string') {
+              await self.qwenTM.set(item.k, item.text);
+            }
+          }
+        } catch {}
+      }
+      sendResponse({ ok: true });
+    })();
     return true;
   }
   if (msg.action === 'debug') {
@@ -655,7 +732,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             endpoint: p.apiEndpoint || '',
           };
         });
-        sendResponse({ usage, cache, tm, providers });
+          sendResponse({ usage, cache, tm, providers, status: translationStatus });
       });
     });
     return true;
@@ -686,9 +763,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const opts = msg.opts || {};
     (async () => {
       try {
-        const out = opts.detector === 'google'
-          ? await googleDetectLanguage(opts.text, opts.debug)
-          : localDetectLanguage(opts.text);
+        const sample = String(opts.text || '');
+        let out;
+        if (sample.replace(/\s+/g, '').length < (opts.minLength || 0)) {
+          out = { lang: undefined, confidence: 0 };
+        } else {
+          out = opts.detector === 'google'
+            ? await googleDetectLanguage(opts.text, opts.debug)
+            : localDetectLanguage(opts.text, opts.minLength);
+        }
         sendResponse(out);
       } catch (e) {
         sendResponse({ error: e.message });
@@ -772,7 +855,7 @@ chrome.runtime.onConnect.addListener(port => {
       if (!requestId || !opts) return;
       await ensureThrottle();
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), opts && opts.stream ? 60000 : 20000);
+      const timeout = setTimeout(() => controller.abort(), config.translateTimeoutMs || TRANSLATE_TIMEOUT_MS);
       activeTranslations++;
       updateBadge();
       inflight.set(requestId, { controller, timeout, port });
@@ -850,9 +933,15 @@ chrome.runtime.onConnect.addListener(port => {
       const { requestId, opts } = msg;
       if (!requestId || !opts) return;
       try {
-        const out = opts.detector === 'google'
-          ? await googleDetectLanguage(opts.text, opts.debug)
-          : localDetectLanguage(opts.text);
+        const sample = String(opts.text || '');
+        let out;
+        if (sample.replace(/\s+/g, '').length < (opts.minLength || 0)) {
+          out = { lang: undefined, confidence: 0 };
+        } else {
+          out = opts.detector === 'google'
+            ? await googleDetectLanguage(opts.text, opts.debug)
+            : localDetectLanguage(opts.text, opts.minLength);
+        }
         try { port.postMessage({ requestId, result: out }); } catch {}
       } catch (err) {
         try { port.postMessage({ requestId, error: err.message }); } catch {}

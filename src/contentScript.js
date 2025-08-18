@@ -26,6 +26,19 @@ if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
   let prefetchObserver;
   const visibilityMap = new Map();
 
+  function cleanupControllers() {
+    controllers.forEach(c => {
+      try { c.abort(); } catch {}
+    });
+    controllers.clear();
+  }
+
+  function onBeforeUnload() {
+    cleanupControllers();
+    window.removeEventListener('beforeunload', onBeforeUnload);
+  }
+  window.addEventListener('beforeunload', onBeforeUnload);
+
 function handleLastError(cb) {
   return (...args) => {
     const err = chrome.runtime.lastError;
@@ -34,13 +47,17 @@ function handleLastError(cb) {
   };
 }
 
-function ensureThemeCss() {
+function ensureThemeCss(style) {
+  const theme = style || 'apple';
   try {
-    if (!document.querySelector('link[data-qwen-theme="apple"]')) {
+    document.querySelectorAll('link[data-qwen-theme]').forEach(l => {
+      if (l.dataset.qwenTheme !== theme) l.remove();
+    });
+    if (!document.querySelector(`link[data-qwen-theme="${theme}"]`)) {
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = chrome.runtime.getURL('styles/apple.css');
-      link.dataset.qwenTheme = 'apple';
+      link.href = chrome.runtime.getURL(`styles/${theme}.css`);
+      link.dataset.qwenTheme = theme;
       (document.head || document.documentElement).appendChild(link);
     }
     // Apply theme styling only to extension elements to avoid overriding page styles
@@ -88,7 +105,7 @@ function setStatus(message, isError = false) {
     el.id = 'qwen-status';
     el.className = 'qwen-hud qwen-hud--status';
     // Scope theme to the HUD so page styles remain untouched
-    el.setAttribute('data-qwen-theme', 'apple');
+    el.setAttribute('data-qwen-theme', (currentConfig && currentConfig.themeStyle) || 'apple');
     el.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');
@@ -116,7 +133,7 @@ function updateProgressHud() {
     progressHud = document.createElement('div');
     progressHud.id = 'qwen-progress';
     progressHud.className = 'qwen-hud qwen-hud--progress';
-    progressHud.setAttribute('data-qwen-theme', 'apple');
+    progressHud.setAttribute('data-qwen-theme', (currentConfig && currentConfig.themeStyle) || 'apple');
     progressHud.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
     progressHud.innerHTML = '<span class="qwen-hud__text"></span>';
     progressHud.style.bottom = '40px';
@@ -235,10 +252,19 @@ chrome.runtime.onMessage.addListener(msg => {
     }
   } else if (msg.action === 'update-theme') {
     currentConfig = currentConfig || {};
-    currentConfig.theme = msg.theme;
-    document.querySelectorAll('[data-qwen-theme="apple"]').forEach(el => {
-      el.setAttribute('data-qwen-color', msg.theme);
-    });
+    if (msg.theme) {
+      currentConfig.theme = msg.theme;
+      document.querySelectorAll('[data-qwen-color]').forEach(el => {
+        el.setAttribute('data-qwen-color', msg.theme);
+      });
+    }
+    if (msg.themeStyle) {
+      currentConfig.themeStyle = msg.themeStyle;
+      ensureThemeCss(msg.themeStyle);
+      document.querySelectorAll('[data-qwen-theme]').forEach(el => {
+        el.setAttribute('data-qwen-theme', msg.themeStyle);
+      });
+    }
   }
 });
 function mark(node) {
@@ -270,7 +296,7 @@ function addFeedbackUI(el, original, translated, confidence) {
     const wrap = document.createElement('span');
     wrap.className = 'qwen-feedback';
     wrap.style.marginLeft = '4px';
-    wrap.setAttribute('data-qwen-theme', 'apple');
+    wrap.setAttribute('data-qwen-theme', (currentConfig && currentConfig.themeStyle) || 'apple');
     wrap.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
     const good = document.createElement('button');
     good.textContent = 'Good';
@@ -304,7 +330,7 @@ async function showSelectionBubble(range, text) {
   const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
   selectionBubble = document.createElement('div');
   selectionBubble.className = 'qwen-bubble';
-  selectionBubble.setAttribute('data-qwen-theme', 'apple');
+  selectionBubble.setAttribute('data-qwen-theme', (currentConfig && currentConfig.themeStyle) || 'apple');
   selectionBubble.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
   selectionBubble.setAttribute('tabindex', '-1');
   selectionBubble.setAttribute('role', 'dialog');
@@ -345,8 +371,16 @@ async function showSelectionBubble(range, text) {
         debug: cfg.debug,
       });
       result.textContent = res.text;
-    } catch {
-      result.textContent = 'Translation failed';
+    } catch (e) {
+      const offline = !navigator.onLine || (e && /network|fetch/i.test(e.message || ''));
+      if (offline) {
+        result.textContent = t('bubble.offline');
+        try {
+          chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError());
+        } catch {}
+      } else {
+        result.textContent = `${t('bubble.error')}${e && e.message ? `: ${e.message}` : ''}`;
+      }
     }
   });
   pinBtn.addEventListener('click', () => {
@@ -414,7 +448,10 @@ async function translateNode(node) {
     if (currentConfig.debug) logger.debug('QTDEBUG: translating node', text.slice(0, 20));
     const controller = new AbortController();
     controllers.add(controller);
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeout = setTimeout(
+      () => controller.abort(),
+      (currentConfig && currentConfig.translateTimeoutMs) || window.qwenTranslateTimeoutMs || 20000
+    );
     const { text: translated } = await window.qwenTranslate({
       endpoint: currentConfig.apiEndpoint,
       model: currentConfig.model,
@@ -457,7 +494,10 @@ async function translateBatch(elements, stats, force = false) {
   const texts = originals.map(t => t.trim());
   const controller = new AbortController();
   controllers.add(controller);
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  const timeout = setTimeout(
+    () => controller.abort(),
+    (currentConfig && currentConfig.translateTimeoutMs) || window.qwenTranslateTimeoutMs || 20000
+  );
   let res;
   try {
     const opts = {
@@ -669,8 +709,7 @@ function stop() {
   if (prefetchObserver) { try { prefetchObserver.disconnect(); } catch {} prefetchObserver = null; }
   visibilityMap.clear();
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-  controllers.forEach(c => { try { c.abort(); } catch {} });
-  controllers.clear();
+  cleanupControllers();
   processing = false;
   started = false;
   progress = { total: 0, done: 0 };
@@ -682,8 +721,8 @@ function stop() {
 async function start() {
   if (started) return;
   started = true;
-  ensureThemeCss();
   currentConfig = await window.qwenLoadConfig();
+  ensureThemeCss(currentConfig && currentConfig.themeStyle);
   await loadGlossary();
   progress = { total: 0, done: 0 };
   if (window.qwenSetTokenBudget) {
@@ -746,7 +785,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     document.body.appendChild(el);
     if (cfg.debug) logger.debug('QTDEBUG: test-e2e request received');
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
+    const timer = setTimeout(
+      () => controller.abort(),
+      cfg.translateTimeoutMs || (currentConfig && currentConfig.translateTimeoutMs) || window.qwenTranslateTimeoutMs || 20000
+    );
     window
       .qwenTranslate({
         endpoint: cfg.endpoint,
@@ -825,6 +867,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   function initConfig() {
     window.qwenLoadConfig().then(cfg => {
       currentConfig = cfg;
+      ensureThemeCss(cfg && cfg.themeStyle);
       if (cfg.selectionPopup) {
         document.addEventListener('mouseup', handleSelection);
         document.addEventListener('keyup', handleSelection);
@@ -849,6 +892,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       setCurrentConfig: cfg => {
         currentConfig = cfg;
       },
+      __controllerCount: () => controllers.size,
     };
   }
 }

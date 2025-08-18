@@ -86,4 +86,29 @@ test.describe('PDF visual compare', () => {
       throw e;
     }
   });
+
+  test('viewer progress reacts to translation-status', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__listeners = [];
+      window.chrome = {
+        runtime: {
+          onMessage: { addListener: fn => window.__listeners.push(fn) },
+          sendMessage: () => {}
+        }
+      };
+    });
+    await page.goto('http://127.0.0.1:8080/src/pdfViewer.html?file=/e2e/pdfs/translated.pdf');
+    const progress = page.locator('.qwen-progress');
+    await expect(progress).toBeHidden();
+    await page.evaluate(() => {
+      window.__listeners.forEach(fn => fn({ action: 'translation-status', status: { active: true, phase: 'translate', progress: 0.5 } }));
+    });
+    await expect(progress).toBeVisible();
+    await expect(progress).toHaveAttribute('data-phase', 'translate');
+    await expect(progress).toHaveJSProperty('value', 0.5);
+    await page.evaluate(() => {
+      window.__listeners.forEach(fn => fn({ action: 'translation-status', status: { active: false } }));
+    });
+    await expect(progress).toBeHidden();
+  });
 });

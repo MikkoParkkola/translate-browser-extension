@@ -119,6 +119,7 @@
   - Add minimum-signal threshold for very short tokens to reduce misclassification; optional sensitivity setting.
 - Observability
   - Optional background debug endpoint to expose TM/cache metrics; Advanced UI readout in popup.
+  - Diagnostics popup displays real-time throttle usage, cache stats, TM hits, and translation status via `stats` messages.
   - Advanced control for in-memory LRU size (`QWEN_MEMCACHE_MAX`) with validation.
   - Popup diagnostics log each step at info level and content-script batch translations log start/finish for easier troubleshooting.
 - Provider ecosystem
