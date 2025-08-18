@@ -512,7 +512,7 @@ async function translateNode(node) {
     }
     node.textContent = leading + translated + trailing;
     mark(node);
-  } catch (e) {
+    } catch (e) {
     const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
     const offline = isOfflineError(e);
     if (offline) {
