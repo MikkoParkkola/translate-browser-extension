@@ -28,6 +28,9 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      - name: Type check popup
+        run: npm run typecheck:popup
+
       - name: Run unit tests
         run: npm test -- --ci --reporters=default
         env:
