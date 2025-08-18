@@ -7,6 +7,7 @@
     cacheEnabled: false,
     localProviders: [],
     selectionPopup: false,
+    sensitivity: 0.3,
   };
 
   function handleLastError(cb) {
@@ -64,6 +65,15 @@
   detectBox.addEventListener('change', () => {
     chrome?.storage?.sync?.set({ enableDetection: detectBox.checked });
   });
+
+  const sensitivityField = document.getElementById('sensitivity');
+  if (sensitivityField) {
+    sensitivityField.value = typeof store.sensitivity === 'number' ? store.sensitivity : 0;
+    sensitivityField.addEventListener('input', () => {
+      const val = Number(sensitivityField.value);
+      chrome?.storage?.sync?.set({ sensitivity: val });
+    });
+  }
 
   const selectionBox = document.getElementById('selectionPopup');
   if (selectionBox) {
