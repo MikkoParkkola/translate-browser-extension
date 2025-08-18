@@ -67,6 +67,19 @@ if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
   }
   window.addEventListener('beforeunload', onBeforeUnload);
 
+  function cleanupControllers() {
+    controllers.forEach(c => {
+      try { c.abort(); } catch {}
+    });
+    controllers.clear();
+  }
+
+  function onBeforeUnload() {
+    cleanupControllers();
+    window.removeEventListener('beforeunload', onBeforeUnload);
+  }
+  window.addEventListener('beforeunload', onBeforeUnload);
+
 function handleLastError(cb) {
   return (...args) => {
     const err = chrome.runtime.lastError;
@@ -405,11 +418,7 @@ async function showSelectionBubble(range, text) {
       });
       result.textContent = res.text;
     } catch (e) {
-<<<<<<< HEAD
       const offline = isOfflineError(e);
-=======
-      const offline = !navigator.onLine || (e && /network|fetch/i.test(e.message || ''));
->>>>>>> da06222 (Merge branch 'main' into codex/add-offline-indicators-and-messaging-74rmba)
       if (offline) {
         result.textContent = t('bubble.offline');
         try {
