@@ -49,6 +49,8 @@ export declare const qwenFetchStrategy: {
   setChooser(fn?: (opts?: any) => 'proxy' | 'direct'): void;
 };
 
+export * from './background';
+export * from './contentScript';
 export * from './providers';
 export * from './messaging';
 export * from './tm';
