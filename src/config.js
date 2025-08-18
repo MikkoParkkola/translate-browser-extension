@@ -183,7 +183,7 @@ if (typeof window !== 'undefined') {
     chrome.runtime &&
     chrome.runtime.id
   ) {
-    window.__qwenConfigModule = exportsObj;
+    window.__qwenConfigModule = typeof module !== 'undefined' ? module.exports : exportsObj;
   }
 }
 
