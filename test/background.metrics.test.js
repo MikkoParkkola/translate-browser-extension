@@ -28,6 +28,7 @@ describe('background metrics endpoint', () => {
     expect(res.cache.size).toBe(5);
     expect(res.tm.hits).toBe(1);
     expect(res.providers.qwen.apiKey).toBe(true);
+    expect(res.status.active).toBe(false);
 
     listener(
       { action: 'translation-status', status: { active: false, summary: { tokens: 3, requests: 2, cache: { size: 7, max: 10, hits: 1, misses: 0 }, tm: { hits: 2, misses: 1 } } } },
@@ -38,6 +39,7 @@ describe('background metrics endpoint', () => {
     expect(global.qwenThrottle.recordUsage).toHaveBeenCalledWith(3, 2);
     expect(res2.cache.hits).toBe(1);
     expect(res2.tm.hits).toBe(2);
+    expect(res2.status.active).toBe(false);
   });
 });
 

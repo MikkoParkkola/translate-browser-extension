@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <link rel="stylesheet" href="../styles/apple.css">
+  <link rel="stylesheet" href="../styles/cyberpunk.css">
   <style>
     html { height: 100%; background: var(--qwen-bg, rgba(28,28,30,0.7)); }
     body {
@@ -46,15 +47,24 @@
   <div id="generalTab" class="tab">
     <section id="themeSection">
       <h3>Theme</h3>
-      <select id="theme">
-        <option value="dark">Dark</option>
-        <option value="light">Light</option>
-      </select>
+      <label>Style
+        <select id="themeStyle">
+          <option value="apple">Apple</option>
+          <option value="cyberpunk">Cyberpunk</option>
+        </select>
+      </label>
+      <label>Color
+        <select id="theme">
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select>
+      </label>
     </section>
     <section id="detectionSection">
       <h3>Language Detection</h3>
       <label><input type="checkbox" id="enableDetection"> Enable automatic detection</label>
       <label>Sensitivity <input type="number" id="sensitivity" min="0" max="1" step="0.1"></label>
+      <label>Min length <input type="number" id="minDetectLength" min="0" step="1"></label>
       <p class="note">Automatically detect the source language before translating. Detection is ignored when confidence is below the sensitivity.</p>
     </section>
     <section id="glossarySection">
@@ -80,6 +90,10 @@
   </div>
 
   <div id="advancedTab" class="tab">
+    <section id="timeoutSection">
+      <h3>Timeout</h3>
+      <label>Abort after <input type="number" id="translateTimeoutMs" min="1000" step="1000"> ms</label>
+    </section>
     <section id="cacheSection">
       <h3>Cache</h3>
       <label><input type="checkbox" id="cacheEnabled"> Enable translation memory</label>
@@ -153,7 +167,6 @@
   <script src="../providers/anthropic.js"></script>
   <script src="../providers/localWasm.js"></script>
   <script src="../providers/index.js"></script>
-  <script src="../lib/tm.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>

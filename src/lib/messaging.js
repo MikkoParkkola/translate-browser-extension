@@ -60,7 +60,7 @@
       } catch (err) { reject(err); }
     });
   }
-  function detectLanguage({ text, detector = 'local', debug, sensitivity = 0 }) {
+  function detectLanguage({ text, detector = 'local', debug, sensitivity = 0, minLength = 0 }) {
     if (!(root.chrome && root.chrome.runtime)) return Promise.reject(new Error('No chrome.runtime'));
     if (root.chrome.runtime.connect) {
       const requestId = Math.random().toString(36).slice(2);
@@ -88,13 +88,13 @@
         port.onDisconnect.addListener(() => {
           if (!settled) { settled = true; reject(new Error('Background disconnected')); }
         });
-        port.postMessage({ action: 'detect', requestId, opts: { text, detector, debug } });
+        port.postMessage({ action: 'detect', requestId, opts: { text, detector, debug, minLength } });
       });
     }
     return new Promise((resolve, reject) => {
       try {
         root.chrome.runtime.sendMessage(
-          { action: 'detect', opts: { text, detector, debug } },
+          { action: 'detect', opts: { text, detector, debug, minLength } },
           res => {
             if (root.chrome.runtime.lastError) reject(new Error(root.chrome.runtime.lastError.message));
             else if (!res) reject(new Error('No response from background'));
