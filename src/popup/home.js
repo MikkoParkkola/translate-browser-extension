@@ -6,6 +6,8 @@
   const usageEl = document.getElementById('usage');
   const limitsEl = document.getElementById('limits');
   const cacheEl = document.getElementById('cacheStatus');
+  const statusEl = document.getElementById('status');
+  const modelUsageEl = document.getElementById('modelUsage');
   const reqBar = document.getElementById('reqBar');
   const tokBar = document.getElementById('tokBar');
   const srcSel = document.getElementById('srcLang');
@@ -112,6 +114,8 @@
       tokBar.style.accentColor = self.qwenUsageColor ? self.qwenUsageColor(tokBar.value / (tokBar.max || 1)) : '';
     }
     autoToggle.checked = !!res.auto;
+    if (statusEl) statusEl.textContent = res.active ? 'Translating' : 'Idle';
+    if (modelUsageEl) modelUsageEl.textContent = '';
   }));
 
   chrome.runtime.onMessage.addListener(msg => {
@@ -119,6 +123,13 @@
       const u = msg.usage || {};
       usageEl.textContent = `Requests: ${u.requests || 0}/${u.requestLimit || 0} Tokens: ${u.tokens || 0}/${u.tokenLimit || 0}`;
       if (limitsEl) limitsEl.textContent = `Queue: ${u.queue || 0}`;
+      if (statusEl) statusEl.textContent = msg.active ? 'Translating' : 'Idle';
+      if (modelUsageEl) {
+        const parts = Object.entries(msg.models || {}).map(([name, m]) =>
+          `${name}: ${m.requests || 0}/${m.requestLimit || 0} ${m.tokens || 0}/${m.tokenLimit || 0}`
+        );
+        modelUsageEl.textContent = parts.join(' | ');
+      }
       if (reqBar) {
         reqBar.max = u.requestLimit || 0;
         reqBar.value = u.requests || 0;

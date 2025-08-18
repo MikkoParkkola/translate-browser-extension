@@ -7,11 +7,13 @@ describe('home view display', () => {
       <button id="quickTranslate"></button>
       <label><input type="checkbox" id="autoTranslate"></label>
         <div id="provider">Provider: <span id="providerName"></span> <span id="providerKey"></span></div>
-      <div id="usage">Requests: 0/0 Tokens: 0/0</div>
-      <progress id="reqBar" value="0" max="0"></progress>
-      <progress id="tokBar" value="0" max="0"></progress>
-      <div id="limits"></div>
-      <div id="cacheStatus"></div>
+        <div id="status"></div>
+        <div id="usage">Requests: 0/0 Tokens: 0/0</div>
+        <progress id="reqBar" value="0" max="0"></progress>
+        <progress id="tokBar" value="0" max="0"></progress>
+        <div id="limits"></div>
+        <div id="modelUsage"></div>
+        <div id="cacheStatus"></div>
       <button id="toDiagnostics"></button>
     `;
     global.chrome = {
@@ -31,7 +33,7 @@ describe('home view display', () => {
   });
 
   test('initializes and handles actions', () => {
-    chrome.runtime.sendMessage.mockImplementation((msg, cb) => {
+      chrome.runtime.sendMessage.mockImplementation((msg, cb) => {
         if (msg.action === 'home:init') cb({
           provider: 'qwen',
           apiKey: false,
@@ -39,8 +41,9 @@ describe('home view display', () => {
           cache: { size: 1, max: 2 },
           tm: { hits: 3, misses: 4 },
           auto: false,
+          active: false,
         });
-    });
+      });
     require('../src/popup/home.js');
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'home:init' }, expect.any(Function));
       expect(document.getElementById('providerName').textContent).toBe('qwen');

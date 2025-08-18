@@ -366,7 +366,20 @@ function broadcastStats() {
       hitRate: cacheStats.hitRate || 0,
     };
     const tm = Object.keys(tmStats).length ? tmStats : ((self.qwenTM && self.qwenTM.stats) ? self.qwenTM.stats() : {});
-    safeSendMessage({ action: 'stats', usage, cache, tm });
+    const models = {};
+    const now = Date.now();
+    Object.entries(usageStats.models).forEach(([name, s]) => {
+      s.requestTimes = (s.requestTimes || []).filter(t => now - t < 60000);
+      s.tokenTimes = (s.tokenTimes || []).filter(t => now - t.time < 60000);
+      models[name] = {
+        requests: s.requestTimes.length,
+        requestLimit: s.requestLimit,
+        tokens: s.tokenTimes.reduce((sum, t) => sum + t.tokens, 0),
+        tokenLimit: s.tokenLimit,
+      };
+    });
+    safeSendMessage({ action: 'stats', usage, cache, tm, models });
+    safeSendMessage({ action: 'home:update-usage', usage, active: translationStatus.active, models });
   });
 }
 
@@ -445,6 +458,7 @@ function updateBadge() {
 }
 updateBadge();
 broadcastStats();
+setInterval(broadcastStats, 1000);
 setInterval(updateIcon, 500);
 function ensureThrottle() {
   if (!throttleReady) {
@@ -501,10 +515,25 @@ async function handleTranslate(opts) {
 
   const start = Date.now();
   const tokens = self.qwenThrottle.approxTokens(text || '');
-  const chars = Array.isArray(text) ? text.reduce((s, t) => s + (t ? t.length : 0), 0) : (text || '').length;
-  usageStats.models[model] = usageStats.models[model] || { requests: 0, chars: 0 };
-  usageStats.models[model].requests++;
-  usageStats.models[model].chars += chars;
+  const chars = Array.isArray(text)
+    ? text.reduce((s, t) => s + (t ? t.length : 0), 0)
+    : (text || '').length;
+  const globalUsage = self.qwenThrottle.getUsage ? self.qwenThrottle.getUsage() : {};
+  usageStats.models[model] =
+    usageStats.models[model] || {
+      requests: 0,
+      chars: 0,
+      requestTimes: [],
+      tokenTimes: [],
+      requestLimit: globalUsage.requestLimit,
+      tokenLimit: globalUsage.tokenLimit,
+    };
+  const m = usageStats.models[model];
+  m.requests++;
+  m.chars += chars;
+  const now = Date.now();
+  m.requestTimes.push(now);
+  m.tokenTimes.push({ time: now, tokens });
   try {
     const storedKey = await getApiKeyFromStorage();
     const result = await self.qwenTranslate({
@@ -692,7 +721,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             endpoint: p.apiEndpoint || '',
           };
         });
-        sendResponse({ usage, cache, tm, providers });
+          sendResponse({ usage, cache, tm, providers, status: translationStatus });
       });
     });
     return true;
