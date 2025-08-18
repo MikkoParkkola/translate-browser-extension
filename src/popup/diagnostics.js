@@ -1,4 +1,5 @@
 (async function () {
+  const statusEl = document.getElementById('status');
   const usageEl = document.getElementById('usage');
   const cacheEl = document.getElementById('cache');
   const providersEl = document.getElementById('providers');
@@ -30,6 +31,7 @@
   });
   const log = [];
   let metrics = {};
+  let status = { active: false };
 
   function handleLastError(cb) {
     return (...args) => {
@@ -62,9 +64,23 @@
     (data.usageLog || []).forEach(addEntry);
   });
 
+  function updateStatus() {
+    if (statusEl) statusEl.textContent = status.active ? 'Translating…' : 'Idle';
+  }
+
   chrome.runtime?.onMessage?.addListener(msg => {
     if (msg && msg.action === 'usage-metrics' && msg.data) {
       addEntry(msg.data);
+    } else if (msg && msg.action === 'stats') {
+      if (msg.usage || msg.cache || msg.tm) {
+        metrics.usage = msg.usage || metrics.usage;
+        metrics.cache = msg.cache || metrics.cache;
+        metrics.tm = msg.tm || metrics.tm;
+        render();
+      }
+    } else if (msg && msg.action === 'translation-status') {
+      status = msg.status || { active: false };
+      updateStatus();
     }
   });
 
@@ -85,7 +101,9 @@
   async function load() {
     if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
     metrics = await new Promise(resolve => chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(resolve)));
+    status = await new Promise(resolve => chrome.runtime.sendMessage({ action: 'get-status' }, handleLastError(resolve)));
     render();
+    updateStatus();
   }
 
   await load();

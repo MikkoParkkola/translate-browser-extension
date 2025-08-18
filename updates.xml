@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gupdate xmlns="http://www.google.com/update2/response" protocol="2.0">
   <app appid="YOUR_EXTENSION_ID">
-    <updatecheck codebase="https://raw.githubusercontent.com/MikkoParkkola/Qwen-translator-extension/main/qwen-translator-extension.crx" version="1.32.0" />
+    <updatecheck codebase="https://raw.githubusercontent.com/MikkoParkkola/Qwen-translator-extension/main/qwen-translator-extension.crx" version="1.33.3" />
   </app>
 </gupdate>

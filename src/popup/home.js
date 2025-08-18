@@ -6,12 +6,15 @@
   const usageEl = document.getElementById('usage');
   const limitsEl = document.getElementById('limits');
   const cacheEl = document.getElementById('cacheStatus');
+  const statusEl = document.getElementById('status');
+  const modelUsageEl = document.getElementById('modelUsage');
   const reqBar = document.getElementById('reqBar');
   const tokBar = document.getElementById('tokBar');
   const srcSel = document.getElementById('srcLang');
   const destSel = document.getElementById('destLang');
   const diagBtn = document.getElementById('toDiagnostics');
   const themeSel = document.getElementById('theme');
+  const themeStyleSel = document.getElementById('themeStyle');
 
   const languages = (window.qwenLanguages || []).slice();
 
@@ -40,10 +43,12 @@
   fillSelect(srcSel, true);
   fillSelect(destSel);
 
-  chrome.storage?.sync?.get({ sourceLanguage: 'auto', targetLanguage: 'en', theme: 'dark' }, cfg => {
+  chrome.storage?.sync?.get({ sourceLanguage: 'auto', targetLanguage: 'en', theme: 'dark', themeStyle: 'apple' }, cfg => {
     if (srcSel) srcSel.value = cfg.sourceLanguage;
     if (destSel) destSel.value = cfg.targetLanguage;
     if (themeSel) themeSel.value = cfg.theme;
+    if (themeStyleSel) themeStyleSel.value = cfg.themeStyle;
+    document.documentElement.setAttribute('data-qwen-theme', cfg.themeStyle || 'apple');
     document.documentElement.setAttribute('data-qwen-color', cfg.theme || 'dark');
   });
 
@@ -63,7 +68,18 @@
     chrome.runtime.sendMessage({ action: 'set-config', config: { theme } }, handleLastError());
     chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
       const t = tabs && tabs[0];
-      if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme }, handleLastError());
+      if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme, themeStyle: themeStyleSel?.value }, handleLastError());
+    });
+  });
+
+  themeStyleSel?.addEventListener('change', e => {
+    const style = e.target.value;
+    document.documentElement.setAttribute('data-qwen-theme', style);
+    chrome.storage?.sync?.set({ themeStyle: style });
+    chrome.runtime.sendMessage({ action: 'set-config', config: { themeStyle: style } }, handleLastError());
+    chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
+      const t = tabs && tabs[0];
+      if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme: themeSel?.value, themeStyle: style }, handleLastError());
     });
   });
 
@@ -98,6 +114,8 @@
       tokBar.style.accentColor = self.qwenUsageColor ? self.qwenUsageColor(tokBar.value / (tokBar.max || 1)) : '';
     }
     autoToggle.checked = !!res.auto;
+    if (statusEl) statusEl.textContent = res.active ? 'Translating' : 'Idle';
+    if (modelUsageEl) modelUsageEl.textContent = '';
   }));
 
   chrome.runtime.onMessage.addListener(msg => {
@@ -105,6 +123,13 @@
       const u = msg.usage || {};
       usageEl.textContent = `Requests: ${u.requests || 0}/${u.requestLimit || 0} Tokens: ${u.tokens || 0}/${u.tokenLimit || 0}`;
       if (limitsEl) limitsEl.textContent = `Queue: ${u.queue || 0}`;
+      if (statusEl) statusEl.textContent = msg.active ? 'Translating' : 'Idle';
+      if (modelUsageEl) {
+        const parts = Object.entries(msg.models || {}).map(([name, m]) =>
+          `${name}: ${m.requests || 0}/${m.requestLimit || 0} ${m.tokens || 0}/${m.tokenLimit || 0}`
+        );
+        modelUsageEl.textContent = parts.join(' | ');
+      }
       if (reqBar) {
         reqBar.max = u.requestLimit || 0;
         reqBar.value = u.requests || 0;

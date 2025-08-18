@@ -14,6 +14,8 @@ if (
   window.__qwenConfigLoaded = true;
 }
 
+const TRANSLATE_TIMEOUT_MS = 20000;
+
 const defaultCfg = {
   apiKey: '',
   detectApiKey: '',
@@ -29,12 +31,14 @@ const defaultCfg = {
   memCacheMax: 5000,
   tmSync: false,
   sensitivity: 0.3,
+  minDetectLength: 2,
   debug: false,
   qualityVerify: false,
   useWasmEngine: true,
   autoOpenAfterSave: true,
   selectionPopup: false,
   theme: 'dark',
+  themeStyle: 'apple',
   charLimit: 0,
   strategy: 'balanced',
   secondaryModel: '',
@@ -47,6 +51,7 @@ const defaultCfg = {
   providerOrder: [],
   failover: true,
   parallel: 'auto',
+  translateTimeoutMs: TRANSLATE_TIMEOUT_MS,
 };
 
 const modelTokenLimits = {
@@ -101,6 +106,14 @@ function migrate(cfg = {}) {
   if (typeof out.parallel !== 'boolean' && out.parallel !== 'auto') out.parallel = 'auto';
   if (typeof out.tmSync !== 'boolean') out.tmSync = false;
   if (typeof out.selectionPopup !== 'boolean') out.selectionPopup = false;
+  out.translateTimeoutMs = parseInt(out.translateTimeoutMs, 10);
+  if (!Number.isFinite(out.translateTimeoutMs) || out.translateTimeoutMs <= 0) {
+    out.translateTimeoutMs = TRANSLATE_TIMEOUT_MS;
+  }
+  out.minDetectLength = parseInt(out.minDetectLength, 10);
+  if (!Number.isFinite(out.minDetectLength) || out.minDetectLength < 0) {
+    out.minDetectLength = defaultCfg.minDetectLength;
+  }
   return out;
 }
 
@@ -145,7 +158,7 @@ function qwenSaveConfig(cfg) {
       costPerOutputToken: num(cfg.costPerOutputToken),
       weight: num(cfg.weight),
     };
-    const toSave = { ...cfg, providers };
+    const toSave = { ...cfg, providers, translateTimeoutMs: num(cfg.translateTimeoutMs), minDetectLength: num(cfg.minDetectLength) };
     return new Promise((resolve) => {
       chrome.storage.sync.set(toSave, resolve);
     });
@@ -153,21 +166,24 @@ function qwenSaveConfig(cfg) {
   return Promise.resolve(); // Otherwise, do nothing
 }
 
+const exportsObj = { qwenLoadConfig, qwenSaveConfig, defaultCfg, modelTokenLimits, TRANSLATE_TIMEOUT_MS };
+
 if (typeof module !== 'undefined') {
-  module.exports = { qwenLoadConfig, qwenSaveConfig, defaultCfg, modelTokenLimits };
+  module.exports = exportsObj;
 }
 if (typeof window !== 'undefined') {
   window.qwenDefaultConfig = defaultCfg;
   window.qwenLoadConfig = qwenLoadConfig;
   window.qwenSaveConfig = qwenSaveConfig;
   window.qwenModelTokenLimits = modelTokenLimits;
+  window.qwenTranslateTimeoutMs = TRANSLATE_TIMEOUT_MS;
   if (
     (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') &&
     typeof chrome !== 'undefined' &&
     chrome.runtime &&
     chrome.runtime.id
   ) {
-    window.__qwenConfigModule = module.exports;
+    window.__qwenConfigModule = exportsObj;
   }
 }
 
