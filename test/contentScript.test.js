@@ -114,6 +114,23 @@ test('batches DOM nodes when exceeding token limit', async () => {
   delete window.qwenThrottle;
 });
 
+test('deduplicates repeated texts when batching DOM nodes', async () => {
+  const original = window.qwenTranslateBatch;
+  window.qwenThrottle = { approxTokens: () => 4000, getUsage: () => null };
+  const calls = jest.fn(async ({ texts }) => ({ texts }));
+  window.qwenTranslateBatch = calls;
+  document.body.innerHTML = '<p>A</p><p>A</p><p>A</p>';
+  jest.useFakeTimers();
+  messageListener({ action: 'start' });
+  await jest.runOnlyPendingTimersAsync();
+  messageListener({ action: 'stop' });
+  jest.useRealTimers();
+  const batch = calls.mock.calls.find(c => c[0].texts.length === 3);
+  expect(batch).toBeTruthy();
+  window.qwenTranslateBatch = original;
+  delete window.qwenThrottle;
+});
+
 test('force translation bypasses cache', async () => {
   const original = window.qwenTranslateBatch;
   const network = jest.fn(async texts => texts.map(t => `X${t}X`));
