@@ -17,11 +17,10 @@ test('returns local when provider is local-wasm', () => {
 });
 
 test('returns local when offline', () => {
-  const orig = global.navigator;
-  Object.defineProperty(global, 'navigator', { value: { onLine: false }, configurable: true });
+  const origDesc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(global.navigator), 'onLine');
+  Object.defineProperty(global.navigator, 'onLine', { value: false, configurable: true });
   expect(choose({})).toBe('local');
-  if (orig) Object.defineProperty(global, 'navigator', { value: orig });
-  else delete global.navigator;
+  Object.defineProperty(global.navigator, 'onLine', origDesc);
 });
 
 test('setChooser overrides selection', () => {

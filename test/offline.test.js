@@ -16,17 +16,20 @@ describe('offline handling', () => {
     window.qwenTranslate = jest.fn().mockRejectedValue(new Error('Failed to fetch'));
     window.qwenLoadConfig = async () => ({ apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'en', targetLanguage: 'es', providerOrder: [], endpoints: {}, detector: null, failover: null, debug: false });
     window.getSelection = () => ({ toString: () => 'hi' });
-    Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: false });
+    const origDesc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.navigator), 'onLine');
+    Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true });
     require('../src/contentScript.js');
     messageListener({ action: 'translate-selection' });
     await new Promise(r => setTimeout(r, 0));
     expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'popup-status', text: 'Offline', error: true }), expect.any(Function));
     expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'translation-status', status: { offline: true } }), expect.any(Function));
+    Object.defineProperty(window.navigator, 'onLine', origDesc);
   });
 
   test('background emits offline status', async () => {
     jest.resetModules();
-    Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: false });
+    const origDesc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.navigator), 'onLine');
+    Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true });
     const sendMessage = jest.fn();
     global.chrome = {
       action: { setBadgeText: jest.fn(), setBadgeBackgroundColor: jest.fn(), setIcon: jest.fn() },
@@ -50,6 +53,7 @@ describe('offline handling', () => {
     const res = await handleTranslate({ endpoint: 'https://e/', model: 'm', text: 'hi', source: 'en', target: 'es' });
     expect(res).toEqual({ error: 'offline' });
     expect(sendMessage).toHaveBeenCalledWith({ action: 'translation-status', status: { offline: true } });
+    Object.defineProperty(window.navigator, 'onLine', origDesc);
   });
 });
 
