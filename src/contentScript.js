@@ -1,5 +1,8 @@
 if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
-  // Already loaded; avoid redeclaration errors
+  // Already loaded; reuse previous module exports
+  if (typeof module !== 'undefined') {
+    module.exports = window.__qwenCSModule;
+  }
 } else {
   if (typeof window !== 'undefined') {
     window.__qwenCSLoaded = true;
@@ -899,6 +902,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       },
       __controllerCount: () => controllers.size,
     };
+    if (typeof window !== 'undefined') {
+      window.__qwenCSModule = module.exports;
+    }
   }
 }
 }
