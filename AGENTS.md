@@ -92,6 +92,7 @@
 - PDF translation
   - Custom viewer (`src/pdfViewer.html/js`) intercepts top-level PDFs and can use provider `translateDocument` (Google, DeepL Pro) or a local WASM pipeline to render translated pages.
   - Viewer parses page layout and overlays editable translated text boxes aligned to original coordinates, with navigation controls.
+  - MuPDF/PDFium WASM engines: The viewer prefers MuPDF when available. Engine assets live under `src/wasm/vendor/` and are exposed via `web_accessible_resources` in `manifest.json`. On first load, `ensureWasmAssets()` fetches any missing assets from trusted HTTPS sources and serves them via blob/data URLs when needed. `chooseEngine()` probes availability (MuPDF/PDFium/Overlay/Simple) and selects the best match, honoring `wasmEngine`/`wasmStrict` flags in storage. Debug logs (`DEBUG: engine assets`, `DEBUG: chooseEngine selected`) in the console confirm detection.
 - UX and theming
 - Apple HUD (`styles/apple.css`) for in-page status and popup; in-app Getting Started guide; tooltips across fields.
   - Provider presets (DashScope/OpenAI/DeepL/OpenRouter); provider-specific endpoints/keys/models; version/date shown in popup.
