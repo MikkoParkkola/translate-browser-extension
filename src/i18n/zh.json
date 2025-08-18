@@ -8,5 +8,7 @@
   "bubble.translate": "翻译",
   "bubble.pin": "固定",
   "bubble.copy": "复制",
-  "bubble.ariaLabel": "翻译结果"
+  "bubble.ariaLabel": "翻译结果",
+  "bubble.offline": "离线",
+  "popup.offline": "当前处于离线状态"
 }
