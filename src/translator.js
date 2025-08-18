@@ -251,7 +251,7 @@ function chooseProvider(opts) {
   const ep = String(opts && opts.endpoint || '').toLowerCase();
   return ep.includes('dashscope') ? 'dashscope' : 'dashscope';
 }
-async function providerTranslate({ endpoint, apiKey, model, text, source, target, tone, signal, debug, onData, stream = true, provider, context = 'default', autoInit = false, providerOrder, endpoints, secondaryModel }) {
+async function providerTranslate({ endpoint, apiKey, projectId, location, model, text, source, target, tone, signal, debug, onData, stream = true, provider, context = 'default', autoInit = false, providerOrder, endpoints, secondaryModel }) {
   _ensureProviders({ autoInit });
   const tokens = approxTokens(text);
   let chain;
@@ -281,7 +281,7 @@ async function providerTranslate({ endpoint, apiKey, model, text, source, target
     try {
       const t = throttleFor(id, context);
       return await t.runWithRetry(
-        () => impl.translate({ endpoint: ep, apiKey, model, secondaryModel, text, source, target, tone, signal, debug, onData, stream }),
+        () => impl.translate({ endpoint: ep, apiKey, projectId, location, model, secondaryModel, text, source, target, tone, signal, debug, onData, stream }),
         tokens,
         3,
         debug
@@ -436,7 +436,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, tone, si
   return { text: result };
 }
 
-async function qwenTranslate({ endpoint, apiKey, model, secondaryModel, text, source, target, signal, debug = false, stream = false, noProxy = false, provider, detector, force = false, skipTM = false, autoInit = false, providerOrder, endpoints, sensitivity = 0, failover = true }) {
+async function qwenTranslate({ endpoint, apiKey, projectId, location, model, secondaryModel, text, source, target, signal, debug = false, stream = false, noProxy = false, provider, detector, force = false, skipTM = false, autoInit = false, providerOrder, endpoints, sensitivity = 0, failover = true }) {
   if (debug) {
     trLogger.debug('qwenTranslate called with', {
       endpoint,
@@ -501,7 +501,7 @@ async function qwenTranslate({ endpoint, apiKey, model, secondaryModel, text, so
     }
 
   try {
-    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, tone, signal, debug, stream, provider: provider ? prov : undefined, context: stream ? 'stream' : 'default', autoInit, providerOrder: failover ? providerOrder : undefined, endpoints, secondaryModel });
+    const data = await providerTranslate({ endpoint, apiKey, projectId, location, model, text, source: src, target, tone, signal, debug, stream, provider: provider ? prov : undefined, context: stream ? 'stream' : 'default', autoInit, providerOrder: failover ? providerOrder : undefined, endpoints, secondaryModel });
     _setCache(cacheKey, data);
     if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {
@@ -515,7 +515,7 @@ async function qwenTranslate({ endpoint, apiKey, model, secondaryModel, text, so
   }
 }
 
-async function qwenTranslateStream({ endpoint, apiKey, model, secondaryModel, text, source, target, signal, debug = false, stream = true, noProxy = false, provider, detector, skipTM = false, autoInit = false, providerOrder, endpoints, sensitivity = 0, failover = true }, onData) {
+async function qwenTranslateStream({ endpoint, apiKey, projectId, location, model, secondaryModel, text, source, target, signal, debug = false, stream = true, noProxy = false, provider, detector, skipTM = false, autoInit = false, providerOrder, endpoints, sensitivity = 0, failover = true }, onData) {
   if (debug) {
     trLogger.debug('qwenTranslateStream called with', {
       endpoint,
@@ -572,7 +572,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, secondaryModel, te
     }
 
   try {
-    const data = await providerTranslate({ endpoint, apiKey, model, text, source: src, target, tone, signal, debug, onData, stream, provider: prov, context: 'stream', autoInit, providerOrder: failover ? providerOrder : undefined, endpoints, secondaryModel });
+    const data = await providerTranslate({ endpoint, apiKey, projectId, location, model, text, source: src, target, tone, signal, debug, onData, stream, provider: prov, context: 'stream', autoInit, providerOrder: failover ? providerOrder : undefined, endpoints, secondaryModel });
     _setCache(cacheKey, data);
     if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
     if (debug) {

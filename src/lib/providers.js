@@ -27,6 +27,7 @@
       if (ep.includes('openai')) return 'openai';
       if (ep.includes('deepl')) return 'deepl';
       if (ep.includes('dashscope')) return 'dashscope';
+      if (ep.includes('google')) return 'google';
       return 'dashscope';
     }
     function candidates(opts = {}) {

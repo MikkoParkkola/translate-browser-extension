@@ -46,6 +46,31 @@ describe('provider selection', () => {
     expect(openai.translate).toHaveBeenCalled();
   });
 
+  test('auto-selects by endpoint (google)', async () => {
+    const Providers = require('../src/lib/providers.js');
+    const google = { translate: jest.fn(async ({ text }) => ({ text: `GO:${text}` })) };
+    Providers.register('google', google);
+    Providers.init();
+    const { qwenTranslate } = require('../src/translator.js');
+
+    const res = await qwenTranslate({
+      text: 'hello',
+      source: 'en',
+      target: 'es',
+      endpoint: 'https://translation.googleapis.com',
+      apiKey: 'k',
+      projectId: 'p',
+      location: 'l',
+      noProxy: true,
+    });
+
+    expect(res).toBeDefined();
+    expect(res.text).toBe('GO:hello');
+    expect(google.translate).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: 'k', projectId: 'p', location: 'l' })
+    );
+  });
+
   test('respects providerOrder with endpoints', async () => {
     const Providers = require('../src/lib/providers.js');
     const bad = {
