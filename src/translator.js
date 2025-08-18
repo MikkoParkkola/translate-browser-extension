@@ -145,6 +145,11 @@ function _key(source, target, text) {
   return `${source}:${target}:${_normText(text)}`;
 }
 
+function qwenIsCached({ source, target, text }) {
+  try { return cache.has(_key(source, target, text)); }
+  catch { return false; }
+}
+
 let messaging = null;
 try {
   if (typeof window !== 'undefined' && window.qwenMessaging) {
@@ -984,6 +989,7 @@ if (typeof self !== 'undefined' && typeof window === 'undefined') {
   self.qwenTranslateStream = qwenTranslateStream;
   self.qwenTranslateBatch = qwenTranslateBatch;
   self.qwenClearCache = qwenClearCache;
+  self.qwenIsCached = qwenIsCached;
   self.qwenSetTokenBudget = _setTokenBudget;
 }
 if (typeof module !== 'undefined') {
@@ -992,6 +998,7 @@ if (typeof module !== 'undefined') {
     qwenTranslateStream,
     qwenTranslateBatch,
     qwenClearCache,
+    qwenIsCached,
     qwenSetCacheLimit,
     qwenSetCacheTTL,
     _setCacheEntryTimestamp,
@@ -1007,6 +1014,7 @@ if (typeof window !== 'undefined') {
   window.qwenTranslateStream = qwenTranslateStream;
   window.qwenTranslateBatch = qwenTranslateBatch;
   window.qwenClearCache = qwenClearCache;
+  window.qwenIsCached = qwenIsCached;
   window.qwenSetTokenBudget = _setTokenBudget;
   if (
     (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') &&

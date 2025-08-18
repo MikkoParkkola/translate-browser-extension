@@ -6,7 +6,6 @@
   const usageEl = document.getElementById('usage');
   const limitsEl = document.getElementById('limits');
   const cacheEl = document.getElementById('cacheStatus');
-  const providersWrap = document.getElementById('providers');
   const statusEl = document.getElementById('status');
   const modelUsageEl = document.getElementById('modelUsage');
   const reqBar = document.getElementById('reqBar');
@@ -103,15 +102,7 @@
     if (limitsEl) limitsEl.textContent = `Queue: ${u.queue || 0}`;
     const c = res.cache || {};
     const t = res.tm || {};
-    if (cacheEl) {
-      const hits = (t && t.hits) || 0;
-      const misses = (t && t.misses) || 0;
-      const lookups = hits + misses;
-      const saved = lookups ? Math.round((hits / lookups) * 100) : 0;
-      cacheEl.textContent = `Cache: ${c.size || 0}/${c.max || 0} TM: ${hits}/${misses}`;
-      cacheEl.title = `Approx. API saved by TM: ${saved}%`;
-    }
-    renderProviders(res.providers, usage);
+    if (cacheEl) cacheEl.textContent = `Cache: ${c.size || 0}/${c.max || 0} TM: ${t.hits || 0}/${t.misses || 0}`;
     if (reqBar) {
       reqBar.max = u.requestLimit || 0;
       reqBar.value = u.requests || 0;
@@ -127,44 +118,6 @@
     if (modelUsageEl) modelUsageEl.textContent = '';
   }));
 
-  function renderProviders(providers, usage) {
-    if (!providersWrap) return;
-    providersWrap.innerHTML = '';
-    if (!providers || !Object.keys(providers).length) return;
-    Object.entries(providers).forEach(([name, p]) => {
-      const card = document.createElement('div');
-      card.className = 'provider-card';
-      card.style.display = 'flex';
-      card.style.flexDirection = 'column';
-      card.style.gap = '4px';
-      const title = document.createElement('div');
-      title.style.fontWeight = '600';
-      title.textContent = name;
-      const req = document.createElement('div');
-      req.textContent = `Requests ${p.requests || 0}/${usage.requestLimit || 0}`;
-      const reqBar = document.createElement('progress');
-      reqBar.max = usage.requestLimit || 0;
-      reqBar.value = p.requests || 0;
-      const tok = document.createElement('div');
-      tok.textContent = `Tokens ${p.tokens || 0}/${usage.tokenLimit || 0}`;
-      const tokBar = document.createElement('progress');
-      tokBar.max = usage.tokenLimit || 0;
-      tokBar.value = p.tokens || 0;
-      const small = document.createElement('div');
-      small.className = 'stats';
-      const total = `Total ${p.totalRequests || 0} req • ${p.totalTokens || 0} tok`;
-      const avoid = `Saved ${p.avoidedRequests || 0} req • ${p.avoidedTokens || 0} tok`;
-      small.textContent = `${total} • ${avoid}`;
-      card.appendChild(title);
-      card.appendChild(req);
-      card.appendChild(reqBar);
-      card.appendChild(tok);
-      card.appendChild(tokBar);
-      card.appendChild(small);
-      providersWrap.appendChild(card);
-    });
-  }
-
   chrome.runtime.onMessage.addListener(msg => {
     if (msg && msg.action === 'home:update-usage') {
       const u = msg.usage || {};
@@ -177,7 +130,6 @@
         );
         modelUsageEl.textContent = parts.join(' | ');
       }
-      renderProviders(msg.providers, u);
       if (reqBar) {
         reqBar.max = u.requestLimit || 0;
         reqBar.value = u.requests || 0;

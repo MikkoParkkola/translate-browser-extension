@@ -1,0 +1,26 @@
+<div id="providerEditorOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:1000;">
+  <div style="background:var(--qwen-bg,rgba(28,28,30,0.9));padding:1rem;border:1px solid var(--qwen-border,rgba(255,255,255,0.2));min-width:260px;">
+    <label data-field="apiKey">API Key <input id="pe_apiKey"></label>
+    <label data-field="apiEndpoint">API Endpoint <input id="pe_apiEndpoint"></label>
+    <label data-field="model">Model <select id="pe_modelSelect" style="display:none"></select><input id="pe_modelInput"></label>
+    <details id="pe_advanced">
+      <summary>Advanced</summary>
+      <label data-field="requestLimit">Requests/min <input id="pe_requestLimit" type="number" min="0"></label>
+      <label data-field="tokenLimit">Tokens/min <input id="pe_tokenLimit" type="number" min="0"></label>
+      <label data-field="charLimit">Chars/month <input id="pe_charLimit" type="number" min="0"></label>
+      <label data-field="strategy">Strategy <select id="pe_strategy">
+        <option value="balanced" title="Balance cost and speed">Balanced</option>
+        <option value="fast" title="Prefer fastest provider">Fast</option>
+        <option value="cheap" title="Prefer lowest cost provider">Cheap</option>
+      </select></label>
+      <label data-field="costPerInputToken" title="Cost per million input tokens in USD">Input cost per 1M tokens (USD) <input id="pe_costPerInputToken" type="number" step="0.01" min="0"></label>
+      <label data-field="costPerOutputToken" title="Cost per million output tokens in USD">Output cost per 1M tokens (USD) <input id="pe_costPerOutputToken" type="number" step="0.01" min="0"></label>
+      <label data-field="weight" title="Relative load-balancing preference when multiple providers are available">Weight <input id="pe_weight" type="number" step="0.01" min="0"></label>
+      <p class="note">Higher = used more often when multiple providers have quota. <a href="https://github.com/MikkoParkkola/Qwen-translator-extension#pricing--load-balancing" target="_blank" rel="noopener">Learn more</a></p>
+    </details>
+    <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.5rem;">
+      <button id="pe_save">Save</button>
+      <button id="pe_cancel">Cancel</button>
+    </div>
+  </div>
+</div>

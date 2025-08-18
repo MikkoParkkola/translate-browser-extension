@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>WASM Engine Status</title>
+  <style>
+    body { font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 16px; }
+    table { border-collapse: collapse; }
+    td, th { border: 1px solid #ddd; padding: 6px 10px; }
+    th { background: #f7f7f7; text-align: left; }
+    .ok { color: #2e7d32; }
+    .miss { color: #d32f2f; }
+  </style>
+</head>
+<body>
+  <h1>WASM Engine Status</h1>
+  <p>This page checks whether required vendor assets are present and reachable from the extension.</p>
+  <table>
+    <thead><tr><th>File</th><th>Status</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <p id="summary" style="margin-top:10px"></p>
+  <script type="module" src="engine-status.js"></script>
+</body>
+</html>

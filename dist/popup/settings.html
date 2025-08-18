@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html data-qwen-theme="apple">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="../styles/apple.css">
+  <link rel="stylesheet" href="../styles/cyberpunk.css">
+  <style>
+    html { height: 100%; background: var(--qwen-bg, rgba(28,28,30,0.7)); }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      margin: 0;
+      padding: 1rem;
+      color: var(--qwen-text, #f5f5f7);
+    }
+    .tabs { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .tabs button {
+      background: none;
+      border: 1px solid var(--qwen-border, rgba(255,255,255,0.2));
+      color: inherit;
+      padding: 0.25rem 0.5rem;
+      cursor: pointer;
+    }
+    .tabs button.active { background: var(--qwen-secondary-bg, rgba(118,118,128,0.2)); }
+    .tab { display: none; }
+    .tab.active { display: block; }
+    label { display: block; margin-bottom: 0.5rem; }
+    input[type="number"] { width: 5rem; }
+    textarea { width: 100%; }
+    .invalid { border-color: #ff4d4f; }
+    .note { font-size: 0.8rem; opacity: 0.8; }
+    .provider-card { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem; border: 1px solid var(--qwen-border, rgba(255,255,255,0.2)); margin-bottom: 0.25rem; }
+    .provider-card .drag-handle { cursor: move; }
+    #addProviderOverlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 1000; }
+    #addProviderOverlay .modal { background: var(--qwen-bg, rgba(28,28,30,0.9)); padding: 1rem; border: 1px solid var(--qwen-border, rgba(255,255,255,0.2)); min-width: 260px; }
+    #addProviderOverlay .actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem; }
+    #addProviderOverlay label { display: block; margin-bottom: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="tabs">
+    <button data-tab="general">General</button>
+    <button data-tab="providers">Providers</button>
+    <button data-tab="advanced">Advanced</button>
+    <button data-tab="diagnostics">Diagnostics</button>
+  </div>
+
+  <div id="generalTab" class="tab">
+    <section id="themeSection">
+      <h3>Theme</h3>
+      <label>Style
+        <select id="themeStyle">
+          <option value="apple">Apple</option>
+          <option value="cyberpunk">Cyberpunk</option>
+        </select>
+      </label>
+      <label>Color
+        <select id="theme">
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select>
+      </label>
+    </section>
+    <section id="detectionSection">
+      <h3>Language Detection</h3>
+      <label><input type="checkbox" id="enableDetection"> Enable automatic detection</label>
+      <label>Sensitivity <input type="number" id="sensitivity" min="0" max="1" step="0.1"></label>
+      <label>Min length <input type="number" id="minDetectLength" min="0" step="1"></label>
+      <p class="note">Automatically detect the source language before translating. Detection is ignored when confidence is below the sensitivity.</p>
+    </section>
+    <section id="glossarySection">
+      <h3>Glossary</h3>
+      <textarea id="glossary" rows="4" placeholder="term=translation"></textarea>
+      <p class="note">One entry per line, using "term=translation".</p>
+    </section>
+
+    <section id="selectionSection">
+      <h3>Selection Translation</h3>
+      <label><input type="checkbox" id="selectionPopup"> Show bubble on text selection</label>
+      <p class="note">Bubble waits for you to trigger translation.</p>
+    </section>
+
+  </div>
+
+  <div id="providersTab" class="tab">
+    <section id="providerSection">
+      <h3>Providers</h3>
+      <div id="providerList" class="provider-cards"></div>
+      <button id="addProvider">Add Provider</button>
+    </section>
+  </div>
+
+  <div id="advancedTab" class="tab">
+    <section id="timeoutSection">
+      <h3>Timeout</h3>
+      <label>Abort after <input type="number" id="translateTimeoutMs" min="1000" step="1000"> ms</label>
+    </section>
+    <section id="cacheSection">
+      <h3>Cache</h3>
+      <label><input type="checkbox" id="cacheEnabled"> Enable translation memory</label>
+      <button id="clearCache">Clear cache</button>
+    </section>
+    <section id="tmSection">
+      <h3>Translation Memory</h3>
+      <pre id="tmEntries">-</pre>
+      <pre id="tmStats">-</pre>
+      <button id="tmExport">Export</button>
+      <input type="file" id="tmImportFile" style="display:none">
+      <button id="tmImport">Import</button>
+      <button id="tmClear">Clear</button>
+    </section>
+  </div>
+
+  <div id="diagnosticsTab" class="tab">
+    <section id="statsDetails">
+      <h3>Usage</h3>
+      <pre id="usageStats">-</pre>
+    </section>
+    <section id="tmDetails">
+      <h3>TM Metrics</h3>
+      <pre id="tmMetrics">-</pre>
+    </section>
+    <section id="cacheDetails">
+      <h3>Cache Stats</h3>
+      <pre id="cacheStats">-</pre>
+    </section>
+  </div>
+
+  <div id="addProviderOverlay">
+    <div class="modal">
+      <div id="ap_step1">
+        <label>Preset
+          <select id="ap_preset">
+            <option value="openai">OpenAI</option>
+            <option value="deepl">DeepL</option>
+            <option value="ollama">Ollama</option>
+            <option value="macos">macOS</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button id="ap_next">Next</button>
+          <button id="ap_cancel1">Cancel</button>
+        </div>
+      </div>
+      <div id="ap_step2" style="display:none;">
+        <div id="ap_fields"></div>
+        <div class="actions">
+          <button id="ap_back">Back</button>
+          <button id="ap_create">Create</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../lib/providers.js"></script>
+  <script src="../providerConfig.js"></script>
+  <script src="../providers/qwen.js"></script>
+  <script src="../providers/dashscope.js"></script>
+  <script src="../providers/google.js"></script>
+  <script src="../providers/deepl.js"></script>
+  <script src="../providers/macos.js"></script>
+  <script src="../providers/mistral.js"></script>
+  <script src="../providers/openai.js"></script>
+  <script src="../providers/openrouter.js"></script>
+  <script src="../providers/ollama.js"></script>
+  <script src="../providers/gemini.js"></script>
+  <script src="../providers/anthropic.js"></script>
+  <script src="../providers/localWasm.js"></script>
+  <script src="../providers/index.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>
+
