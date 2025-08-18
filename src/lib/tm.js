@@ -202,6 +202,18 @@
     await save();
   }
 
+  async function getAll() {
+    await ensureLoaded();
+    return Array.from(store.entries()).map(([k, v]) => ({ k, text: v.text, ts: v.ts }));
+  }
+
+  async function clear() {
+    await ensureLoaded();
+    store.clear();
+    await save();
+    await clearRemote();
+  }
+
   function stats() { return { ...metrics, entries: store.size }; }
   function __resetStats() {
     metrics.hits = metrics.misses = metrics.sets = metrics.evictionsTTL = metrics.evictionsLRU = 0;
@@ -214,6 +226,6 @@
     try { enableSync(true); } catch {}
   }
 
-  return { get, set, stats, enableSync, clearRemote, __resetStats };
+  return { get, set, getAll, clear, stats, enableSync, clearRemote, __resetStats };
 }));
 

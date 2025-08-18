@@ -308,5 +308,62 @@
     tmEl.textContent = JSON.stringify(tmMetrics, null, 2);
     cacheEl.textContent = JSON.stringify(cacheStats, null, 2);
   }));
+
+  const tmEntriesEl = document.getElementById('tmEntries');
+  const tmStatsEl = document.getElementById('tmStats');
+  const tmImportFile = document.getElementById('tmImportFile');
+
+  async function refreshTM() {
+    if (!window.qwenTM) return;
+    const entries = await window.qwenTM.getAll();
+    tmEntriesEl.textContent = JSON.stringify(entries, null, 2);
+    const stats = window.qwenTM.stats ? window.qwenTM.stats() : {};
+    tmStatsEl.textContent = JSON.stringify(stats, null, 2);
+  }
+
+  document.getElementById('tmClear')?.addEventListener('click', async () => {
+    try { await window.qwenTM.clear(); } catch {}
+    refreshTM();
+  });
+
+  document.getElementById('tmExport')?.addEventListener('click', async () => {
+    try {
+      const entries = await window.qwenTM.getAll();
+      const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'qwen-tm-backup.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {}
+  });
+
+  document.getElementById('tmImport')?.addEventListener('click', () => {
+    tmImportFile?.click();
+  });
+
+  tmImportFile?.addEventListener('change', async () => {
+    const file = tmImportFile.files && tmImportFile.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (Array.isArray(data)) {
+        await window.qwenTM.clear();
+        for (const item of data) {
+          if (item && typeof item.k === 'string' && typeof item.text === 'string') {
+            await window.qwenTM.set(item.k, item.text);
+          }
+        }
+      }
+    } catch {}
+    tmImportFile.value = '';
+    refreshTM();
+  });
+
+  refreshTM();
 })();
 

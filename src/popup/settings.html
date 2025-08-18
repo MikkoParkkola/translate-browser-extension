@@ -85,6 +85,15 @@
       <label><input type="checkbox" id="cacheEnabled"> Enable translation memory</label>
       <button id="clearCache">Clear cache</button>
     </section>
+    <section id="tmSection">
+      <h3>Translation Memory</h3>
+      <pre id="tmEntries">-</pre>
+      <pre id="tmStats">-</pre>
+      <button id="tmExport">Export</button>
+      <input type="file" id="tmImportFile" style="display:none">
+      <button id="tmImport">Import</button>
+      <button id="tmClear">Clear</button>
+    </section>
   </div>
 
   <div id="diagnosticsTab" class="tab">
@@ -144,6 +153,7 @@
   <script src="../providers/anthropic.js"></script>
   <script src="../providers/localWasm.js"></script>
   <script src="../providers/index.js"></script>
+  <script src="../lib/tm.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>
