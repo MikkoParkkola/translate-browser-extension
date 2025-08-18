@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <link rel="stylesheet" href="../styles/apple.css">
+  <link rel="stylesheet" href="../styles/cyberpunk.css">
   <style>
     html {
       background: var(--qwen-bg, rgba(28,28,30,0.7));
@@ -54,7 +55,11 @@
     <select id="destLang"></select>
   </div>
   <div class="theme-select">
-    <label for="theme">Theme</label>
+    <label for="themeStyle">Theme</label>
+    <select id="themeStyle">
+      <option value="apple">Apple</option>
+      <option value="cyberpunk">Cyberpunk</option>
+    </select>
     <select id="theme">
       <option value="dark">Dark</option>
       <option value="light">Light</option>
