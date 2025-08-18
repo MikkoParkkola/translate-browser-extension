@@ -18,15 +18,25 @@
   }
 
   const store = await new Promise(res => {
-    if (chrome?.storage?.sync) chrome.storage.sync.get(defaults, res);
-    else res(defaults);
+    if (chrome?.storage?.sync) chrome.storage.sync.get({ ...defaults, theme: 'dark' }, res);
+    else res({ ...defaults, theme: 'dark' });
   });
 
-  const theme = store.theme || (await new Promise(res => {
-    if (chrome?.storage?.sync) chrome.storage.sync.get({ theme: 'dark' }, res);
-    else res({ theme: 'dark' });
-  })).theme;
-  document.documentElement.setAttribute('data-qwen-color', theme || 'dark');
+  document.documentElement.setAttribute('data-qwen-color', store.theme || 'dark');
+  const themeSel = document.getElementById('theme');
+  if (themeSel) {
+    themeSel.value = store.theme || 'dark';
+    themeSel.addEventListener('change', () => {
+      const theme = themeSel.value;
+      document.documentElement.setAttribute('data-qwen-color', theme);
+      chrome?.storage?.sync?.set({ theme });
+      chrome.runtime.sendMessage({ action: 'set-config', config: { theme } }, handleLastError());
+      chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
+        const t = tabs && tabs[0];
+        if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme }, handleLastError());
+      });
+    });
+  }
 
   const tabs = document.querySelectorAll('.tabs button');
   const sections = {

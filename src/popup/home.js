@@ -11,6 +11,7 @@
   const srcSel = document.getElementById('srcLang');
   const destSel = document.getElementById('destLang');
   const diagBtn = document.getElementById('toDiagnostics');
+  const themeSel = document.getElementById('theme');
 
   const languages = (window.qwenLanguages || []).slice();
 
@@ -39,9 +40,11 @@
   fillSelect(srcSel, true);
   fillSelect(destSel);
 
-  chrome.storage?.sync?.get({ sourceLanguage: 'auto', targetLanguage: 'en' }, cfg => {
+  chrome.storage?.sync?.get({ sourceLanguage: 'auto', targetLanguage: 'en', theme: 'dark' }, cfg => {
     if (srcSel) srcSel.value = cfg.sourceLanguage;
     if (destSel) destSel.value = cfg.targetLanguage;
+    if (themeSel) themeSel.value = cfg.theme;
+    document.documentElement.setAttribute('data-qwen-color', cfg.theme || 'dark');
   });
 
   srcSel?.addEventListener('change', e => {
@@ -51,6 +54,17 @@
   destSel?.addEventListener('change', e => {
     chrome.storage?.sync?.set({ targetLanguage: e.target.value });
     chrome.runtime.sendMessage({ action: 'set-config', config: { targetLanguage: e.target.value } }, handleLastError());
+  });
+
+  themeSel?.addEventListener('change', e => {
+    const theme = e.target.value;
+    document.documentElement.setAttribute('data-qwen-color', theme);
+    chrome.storage?.sync?.set({ theme });
+    chrome.runtime.sendMessage({ action: 'set-config', config: { theme } }, handleLastError());
+    chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
+      const t = tabs && tabs[0];
+      if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme }, handleLastError());
+    });
   });
 
   quickBtn?.addEventListener('click', () => {

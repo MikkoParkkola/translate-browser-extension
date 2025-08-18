@@ -24,6 +24,15 @@
     } catch {}
   }
 
+  chrome.storage?.sync?.get({ theme: 'dark' }, data => {
+    const theme = data.theme || 'dark';
+    document.documentElement.setAttribute('data-qwen-color', theme);
+    chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
+      const t = tabs && tabs[0];
+      if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme }, handleLastError());
+    });
+  });
+
   function load(page) {
     if (frame) frame.src = `popup/${page}`;
     current = page;
