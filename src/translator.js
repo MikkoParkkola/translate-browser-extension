@@ -305,17 +305,18 @@ async function providerTranslate({ endpoint, apiKey, model, text, source, target
   );
 }
 
-async function _detectSource(text, { detector, debug, noProxy, sensitivity = 0 } = {}) {
+async function _detectSource(text, { detector, debug, noProxy, sensitivity = 0, minLength = 0 } = {}) {
   const sample = String(text || '').slice(0, 2000);
+  if (sample.replace(/\s+/g, '').length < minLength) return 'en';
   if (detector === 'google' && chooseStrategy({ noProxy }) === 'proxy' && messaging) {
     try {
-      const r = await messaging.detectLanguage({ text: sample, detector: 'google', debug, sensitivity });
+      const r = await messaging.detectLanguage({ text: sample, detector: 'google', debug, sensitivity, minLength });
       if (r && r.lang) return r.lang;
     } catch {}
   }
   if (Detect && typeof Detect.detectLocal === 'function') {
     try {
-      const r = Detect.detectLocal(sample, { sensitivity });
+      const r = Detect.detectLocal(sample, { sensitivity, minLength });
       if (r && r.lang) return r.lang;
     } catch {}
   }
@@ -447,8 +448,9 @@ async function qwenTranslate({ endpoint, apiKey, model, secondaryModel, text, so
     });
   }
   let src = source;
+  const cfg = typeof self !== 'undefined' && self.qwenConfig ? self.qwenConfig : typeof window !== 'undefined' && window.qwenConfig ? window.qwenConfig : {};
   if (!src || src === 'auto') {
-    src = await _detectSource(text, { detector, debug, noProxy, sensitivity });
+    src = await _detectSource(text, { detector, debug, noProxy, sensitivity, minLength: cfg.minDetectLength });
   }
   text = _applyGlossary(text);
   const tone = glossary && typeof glossary.getTone === 'function' ? glossary.getTone() : undefined;
@@ -521,8 +523,9 @@ async function qwenTranslateStream({ endpoint, apiKey, model, secondaryModel, te
     });
   }
   let src = source;
+  const cfg = typeof self !== 'undefined' && self.qwenConfig ? self.qwenConfig : typeof window !== 'undefined' && window.qwenConfig ? window.qwenConfig : {};
   if (!src || src === 'auto') {
-    src = await _detectSource(text, { detector, debug, noProxy, sensitivity });
+    src = await _detectSource(text, { detector, debug, noProxy, sensitivity, minLength: cfg.minDetectLength });
   }
   text = _applyGlossary(text);
   const tone = glossary && typeof glossary.getTone === 'function' ? glossary.getTone() : undefined;
@@ -655,9 +658,10 @@ async function batchOnce({
   let source = opts.source;
   const autoMode = !source || source === 'auto';
   const sourceByIndex = new Array(texts.length);
+  const cfg = typeof self !== 'undefined' && self.qwenConfig ? self.qwenConfig : typeof window !== 'undefined' && window.qwenConfig ? window.qwenConfig : {};
   if (autoMode) {
     for (let i = 0; i < texts.length; i++) {
-      sourceByIndex[i] = await _detectSource(texts[i], { detector: opts.detector, debug: opts.debug, noProxy: opts.noProxy, sensitivity: opts.sensitivity });
+      sourceByIndex[i] = await _detectSource(texts[i], { detector: opts.detector, debug: opts.debug, noProxy: opts.noProxy, sensitivity: opts.sensitivity, minLength: cfg.minDetectLength });
     }
     source = sourceByIndex[0];
   } else {
