@@ -10,5 +10,6 @@
   "bubble.copy": "复制",
   "bubble.ariaLabel": "翻译结果",
   "bubble.offline": "离线",
+  "bubble.error": "翻译失败",
   "popup.offline": "当前处于离线状态"
 }

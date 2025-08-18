@@ -368,7 +368,7 @@ async function showSelectionBubble(range, text) {
           chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError());
         } catch {}
       } else {
-        result.textContent = 'Translation failed';
+        result.textContent = `${t('bubble.error')}${e && e.message ? `: ${e.message}` : ''}`;
       }
     }
   });
@@ -863,7 +863,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError());
           } catch {}
         } else {
-          showError('Translation failed');
+          showError(`${t('bubble.error')}${e && e.message ? `: ${e.message}` : ''}`);
         }
       }
     })();
