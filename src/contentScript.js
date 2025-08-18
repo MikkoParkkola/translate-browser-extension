@@ -12,6 +12,7 @@ if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
   const batchQueue = [];
   let processing = false;
   let statusTimer;
+  let statusSeq = 0;
   const pending = new Set();
   let flushTimer;
   const controllers = new Set();
@@ -120,12 +121,16 @@ function setStatus(message, isError = false) {
     chrome.runtime.sendMessage({ action: 'popup-status', text: message, error: isError }, handleLastError());
   } catch {}
   if (statusTimer) clearTimeout(statusTimer);
-  if (isError) statusTimer = setTimeout(clearStatus, 5000);
+  const seq = ++statusSeq;
+  if (isError) statusTimer = setTimeout(() => {
+    if (seq === statusSeq) clearStatus();
+  }, 5000);
 }
 
 function clearStatus() {
   const el = document.getElementById('qwen-status');
   if (el) el.remove();
+  statusTimer = null;
 }
 
 function updateProgressHud() {
@@ -150,6 +155,18 @@ function updateProgressHud() {
 
 function showError(message) {
   setStatus(message, true);
+}
+
+function isOfflineError(err) {
+  return (typeof navigator !== 'undefined' && navigator.onLine === false) ||
+    /network|fetch|offline/i.test((err && err.message) || '') ||
+    (err && err.code === 'ERR_NETWORK');
+}
+
+function showOffline() {
+  const msg = (window.qwenI18n && window.qwenI18n.t) ? window.qwenI18n.t('status.offline') : 'Offline';
+  setStatus(msg, true);
+  try { chrome.runtime.sendMessage({ action: 'offline', text: msg }, handleLastError()); } catch {}
 }
 
 function setupPrefetchObserver() {
@@ -591,8 +608,8 @@ async function processQueue() {
         } catch {}
       } else {
         showError(`${e.message}. See console for details.`);
+        logger.error('QTERROR: batch translation error', e && e.message, e);
       }
-      logger.error('QTERROR: batch translation error', e && e.message, e);
       item.enqueued = Date.now();
       batchQueue.push(item);
       await new Promise(r => setTimeout(r, 1000));

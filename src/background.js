@@ -71,6 +71,16 @@ function safeSendMessage(msg) {
   } catch {}
 }
 
+function isOfflineError(err) {
+  return (typeof navigator !== 'undefined' && navigator.onLine === false) ||
+    /network|fetch|offline/i.test((err && err.message) || '') ||
+    (err && err.code === 'ERR_NETWORK');
+}
+
+function notifyOffline() {
+  safeSendMessage({ action: 'offline' });
+}
+
 function calibrateLimits(force) {
   if (!self.qwenLimitDetector || !chrome?.storage?.sync) return;
   chrome.storage.sync.get({ apiEndpoint: '', model: '', requestLimit: 60, tokenLimit: 100000, calibratedAt: 0 }, async cfg => {
@@ -608,7 +618,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'translate') {
     handleTranslate(msg.opts)
       .then(sendResponse)
-      .catch(err => sendResponse({ error: err.message }));
+      .catch(err => {
+        if (isOfflineError(err)) {
+          try { chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }); } catch {}
+        }
+        sendResponse({ error: err.message });
+      });
     return true;
   }
   if (msg.action === 'ping') {

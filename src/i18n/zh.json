@@ -11,5 +11,6 @@
   "bubble.ariaLabel": "翻译结果",
   "bubble.offline": "离线",
   "bubble.error": "翻译失败",
-  "popup.offline": "当前处于离线状态"
+  "popup.offline": "当前处于离线状态",
+  "status.offline": "离线：请检查网络连接"
 }
