@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Usage Metrics</title>
+  <style>
+    body { font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 20px; }
+    #chartContainer { width: 800px; max-width: 100%; }
+    #controls { margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <button id="exportBtn">Export CSV</button>
+  </div>
+  <div id="chartContainer">
+    <canvas id="usageChart"></canvas>
+  </div>
+  <script src="chart.umd.js"></script>
+  <script src="usage.js"></script>
+</body>
+</html>

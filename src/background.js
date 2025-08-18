@@ -319,6 +319,7 @@ let iconError = false;
 let translationStatus = { active: false };
 let etaMs = null;
 const inflight = new Map(); // requestId -> { controller, timeout, port }
+const providersUsage = new Map(); // provider -> { reqTimes:[], tokTimes:[], totalReq:0, totalTok:0, avoidedReq:0, avoidedTok:0 }
 
 // Test-accessible state
 let usingPlus = false;
@@ -383,8 +384,22 @@ function broadcastStats() {
         tokenLimit: s.tokenLimit,
       };
     });
-    safeSendMessage({ action: 'stats', usage, cache, tm, models });
-    safeSendMessage({ action: 'home:update-usage', usage, active: translationStatus.active, models });
+    const prov = {};
+    const now2 = Date.now();
+    for (const [name, p] of providersUsage.entries()) {
+      p.reqTimes = (p.reqTimes || []).filter(t => now2 - t < 60000);
+      p.tokTimes = (p.tokTimes || []).filter(t => now2 - t.time < 60000);
+      prov[name] = {
+        requests: p.reqTimes.length,
+        tokens: (p.tokTimes || []).reduce((s, t) => s + (t.tokens || 0), 0),
+        totalRequests: p.totalReq || 0,
+        totalTokens: p.totalTok || 0,
+        avoidedRequests: p.avoidedReq || 0,
+        avoidedTokens: p.avoidedTok || 0,
+      };
+    }
+    safeSendMessage({ action: 'stats', usage, cache, tm, models, providers: prov });
+    safeSendMessage({ action: 'home:update-usage', usage, active: translationStatus.active, models, providers: prov });
   });
 }
 
@@ -520,6 +535,11 @@ async function handleTranslate(opts) {
 
   const start = Date.now();
   const tokens = self.qwenThrottle.approxTokens(text || '');
+  // Track per-provider usage including avoided via cache
+  const pu = providersUsage.get(provider) || { reqTimes: [], tokTimes: [], totalReq: 0, totalTok: 0, avoidedReq: 0, avoidedTok: 0 };
+  providersUsage.set(provider, pu);
+  let servedFromCache = false;
+  try { servedFromCache = !!(self.qwenIsCached && self.qwenIsCached({ source, target, text })); } catch {}
   const chars = Array.isArray(text)
     ? text.reduce((s, t) => s + (t ? t.length : 0), 0)
     : (text || '').length;
@@ -566,6 +586,17 @@ async function handleTranslate(opts) {
       chrome.storage.local.set({ usageHistory: hist });
     });
     if (debug) logger.debug('background translation completed');
+    // Update per-provider counters
+    if (servedFromCache) {
+      pu.avoidedReq += 1;
+      pu.avoidedTok += tokens;
+    } else {
+      const now3 = Date.now();
+      pu.reqTimes.push(now3);
+      pu.tokTimes.push({ time: now3, tokens });
+      pu.totalReq += 1;
+      pu.totalTok += tokens;
+    }
     logUsage(tokens, Date.now() - start);
     let confidence = scoreConfidence(text, result && result.text);
     if (config.qualityVerify && self.qwenQualityCheck && self.qwenQualityCheck.verify) {
@@ -726,7 +757,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             endpoint: p.apiEndpoint || '',
           };
         });
-          sendResponse({ usage, cache, tm, providers, status: translationStatus });
+        // Build providers usage snapshot
+        const provUsage = {};
+        const now = Date.now();
+        for (const [name, pu] of providersUsage.entries()) {
+          const rt = (pu.reqTimes || []).filter(t => now - t < 60000);
+          const tt = (pu.tokTimes || []).filter(t => now - t.time < 60000);
+          provUsage[name] = {
+            requests: rt.length,
+            tokens: tt.reduce((s, t) => s + (t.tokens || 0), 0),
+            totalRequests: pu.totalReq || 0,
+            totalTokens: pu.totalTok || 0,
+            avoidedRequests: pu.avoidedReq || 0,
+            avoidedTokens: pu.avoidedTok || 0,
+          };
+        }
+          sendResponse({ usage, cache, tm, providers, providersUsage: provUsage, status: translationStatus });
       });
     });
     return true;

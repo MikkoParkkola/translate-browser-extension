@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Engine Smoke</title>
+  <style>
+    body { font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 10px; }
+    #out { border:1px solid #ddd; display:inline-block; }
+  </style>
+  <script src="../pdf.min.js"></script>
+  <script src="../wasm/vendor/pdf-lib.js"></script>
+</head>
+<body>
+  <div>Engine smoke test: <span id="status">running…</span></div>
+  <div id="out"></div>
+  <script type="module" src="engine-smoke.js"></script>
+</body>
+</html>
