@@ -30,6 +30,17 @@ test('evicts oldest entry from memory when limit exceeded', async () => {
   qwenSetCacheLimit(1000);
 });
 
+test('cache eviction updates domain counts', async () => {
+  const { cacheReady, setCache, qwenSetCacheLimit, qwenGetDomainCounts } = require('../src/cache');
+  await cacheReady;
+  qwenSetCacheLimit(2);
+  setCache('a', { text: '1', domain: 'x.com' });
+  setCache('b', { text: '2', domain: 'x.com' });
+  setCache('c', { text: '3', domain: 'y.com' });
+  expect(qwenGetDomainCounts()).toEqual({ 'x.com': 1, 'y.com': 1 });
+  qwenSetCacheLimit(1000);
+});
+
 test('prunes expired entries from storage on load', async () => {
   const stale = { text: 'old', ts: Date.now() - 40 * 24 * 60 * 60 * 1000 };
   localStorage.setItem('qwenCache', JSON.stringify({ a: JSON.stringify(stale) }));
