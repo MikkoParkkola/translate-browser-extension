@@ -8,5 +8,6 @@
   "bubble.translate": "Translate",
   "bubble.pin": "Pin",
   "bubble.copy": "Copy",
-  "bubble.ariaLabel": "Translation result"
+  "bubble.ariaLabel": "Translation result",
+  "status.offline": "Offline. Please check your connection."
 }
