@@ -23,6 +23,13 @@
   "license": "AGPL-3.0-or-later",
   "type": "commonjs",
   "types": "types/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "background": ["types/background.d.ts"],
+      "contentScript": ["types/contentScript.d.ts"],
+      "providers/*": ["types/providers/*"]
+    }
+  },
   "devDependencies": {
     "@playwright/test": "^1.54.2",
     "@types/jest": "^30.0.0",

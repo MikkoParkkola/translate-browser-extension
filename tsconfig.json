@@ -7,5 +7,10 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["types/**/*.d.ts"]
+  "include": [
+    "types/**/*.d.ts",
+    "types/background.d.ts",
+    "types/contentScript.d.ts",
+    "types/providers/**/*.d.ts"
+  ]
 }
