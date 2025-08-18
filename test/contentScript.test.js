@@ -257,10 +257,14 @@ test('translate-selection error uses localized message', async () => {
   sel.removeAllRanges();
   sel.addRange(range);
   messageListener({ action: 'translate-selection' });
-  await new Promise(r => setTimeout(r, 0));
-  await new Promise(r => setTimeout(r, 0));
-  await new Promise(r => setTimeout(r, 0));
-  const status = document.getElementById('qwen-status');
-  expect(status.textContent).toBe('Qwen Translator: Localized fail: oops');
+  let status;
+  for (let i = 0; i < 5; i++) {
+    status = document.getElementById('qwen-status');
+    if (status) break;
+    // allow queued microtasks and timers to run
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise(r => setTimeout(r, 0));
+  }
+  expect(status && status.textContent).toBe('Qwen Translator: Localized fail: oops');
 });
 
