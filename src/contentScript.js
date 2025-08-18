@@ -25,6 +25,7 @@ if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
   let pageRecognizer;
   let prefetchObserver;
   const visibilityMap = new Map();
+  const { isOfflineError } = (typeof require === 'function' ? require('./lib/offline.js') : window);
 
   function cleanupControllers() {
     controllers.forEach(c => {
@@ -361,7 +362,7 @@ async function showSelectionBubble(range, text) {
       });
       result.textContent = res.text;
     } catch (e) {
-      const offline = !navigator.onLine || (e && /network|fetch/i.test(e.message || ''));
+      const offline = isOfflineError(e);
       if (offline) {
         result.textContent = t('bubble.offline');
         try {
@@ -466,7 +467,7 @@ async function translateNode(node) {
     mark(node);
   } catch (e) {
     const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
-    const offline = !navigator.onLine || (e && /network|fetch/i.test(e.message || ''));
+    const offline = isOfflineError(e);
     if (offline) {
       showError(t('popup.offline'));
       try {
@@ -582,7 +583,7 @@ async function processQueue() {
       await translateBatch(item.nodes, stats);
     } catch (e) {
       const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
-      const offline = !navigator.onLine || (e && /network|fetch/i.test(e.message || ''));
+      const offline = isOfflineError(e);
       if (offline) {
         showError(t('popup.offline'));
         try {
@@ -818,7 +819,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         clearTimeout(timer);
         if (cfg.debug) logger.debug('QTDEBUG: test-e2e sending error', err);
         el.remove();
-        const offline = !navigator.onLine || (err && /network|fetch/i.test(err.message || ''));
+        const offline = isOfflineError(err);
         if (offline) {
           try { chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError()); } catch {}
         }
@@ -856,7 +857,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sel.removeAllRanges();
       } catch (e) {
         const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
-        const offline = !navigator.onLine || (e && /network|fetch/i.test(e.message || ''));
+        const offline = isOfflineError(e);
         if (offline) {
           showError(t('popup.offline'));
           try {
