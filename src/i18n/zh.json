@@ -8,5 +8,6 @@
   "bubble.translate": "翻译",
   "bubble.pin": "固定",
   "bubble.copy": "复制",
-  "bubble.ariaLabel": "翻译结果"
+  "bubble.ariaLabel": "翻译结果",
+  "status.offline": "离线：请检查网络连接"
 }
