@@ -605,6 +605,38 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ ok: true });
     return true;
   }
+  if (msg.action === 'tm-get-all') {
+    (async () => {
+      const entries = self.qwenTM && self.qwenTM.getAll ? await self.qwenTM.getAll() : [];
+      const stats = self.qwenTM && self.qwenTM.stats ? self.qwenTM.stats() : {};
+      sendResponse({ entries, stats });
+    })();
+    return true;
+  }
+  if (msg.action === 'tm-clear') {
+    (async () => {
+      if (self.qwenTM && self.qwenTM.clear) { await self.qwenTM.clear(); }
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
+  if (msg.action === 'tm-import') {
+    (async () => {
+      const list = (msg && msg.entries && Array.isArray(msg.entries)) ? msg.entries : [];
+      if (self.qwenTM && self.qwenTM.clear && self.qwenTM.set) {
+        try {
+          await self.qwenTM.clear();
+          for (const item of list) {
+            if (item && typeof item.k === 'string' && typeof item.text === 'string') {
+              await self.qwenTM.set(item.k, item.text);
+            }
+          }
+        } catch {}
+      }
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
   if (msg.action === 'debug') {
     const cache = {
       size: self.qwenGetCacheSize ? self.qwenGetCacheSize() : 0,

@@ -348,22 +348,30 @@
   const tmStatsEl = document.getElementById('tmStats');
   const tmImportFile = document.getElementById('tmImportFile');
 
+  function tmMessage(action, payload) {
+    return new Promise(resolve => {
+      chrome?.runtime?.sendMessage({ action, ...payload }, handleLastError(res => resolve(res || {})));
+    });
+  }
+
   async function refreshTM() {
-    if (!window.qwenTM) return;
-    const entries = await window.qwenTM.getAll();
+    if (!tmEntriesEl || !tmStatsEl) return;
+    const res = await tmMessage('tm-get-all');
+    const entries = Array.isArray(res.entries) ? res.entries : [];
+    const stats = res.stats || {};
     tmEntriesEl.textContent = JSON.stringify(entries, null, 2);
-    const stats = window.qwenTM.stats ? window.qwenTM.stats() : {};
     tmStatsEl.textContent = JSON.stringify(stats, null, 2);
   }
 
   document.getElementById('tmClear')?.addEventListener('click', async () => {
-    try { await window.qwenTM.clear(); } catch {}
+    await tmMessage('tm-clear');
     refreshTM();
   });
 
   document.getElementById('tmExport')?.addEventListener('click', async () => {
     try {
-      const entries = await window.qwenTM.getAll();
+      const res = await tmMessage('tm-get-all');
+      const entries = Array.isArray(res.entries) ? res.entries : [];
       const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -387,12 +395,7 @@
       const text = await file.text();
       const data = JSON.parse(text);
       if (Array.isArray(data)) {
-        await window.qwenTM.clear();
-        for (const item of data) {
-          if (item && typeof item.k === 'string' && typeof item.text === 'string') {
-            await window.qwenTM.set(item.k, item.text);
-          }
-        }
+        await tmMessage('tm-import', { entries: data });
       }
     } catch {}
     tmImportFile.value = '';
