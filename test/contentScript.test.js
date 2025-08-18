@@ -108,6 +108,7 @@ test('batches DOM nodes when exceeding token limit', async () => {
   messageListener({ action: 'start' });
   await jest.runOnlyPendingTimersAsync();
   expect(calls).toHaveBeenCalledTimes(4);
+  messageListener({ action: 'stop' });
   jest.useRealTimers();
   window.qwenTranslateBatch = original;
   delete window.qwenThrottle;
@@ -146,8 +147,9 @@ test('force translation bypasses cache', async () => {
   messageListener({ action: 'start', force: true });
   await jest.runOnlyPendingTimersAsync();
   expect(network.mock.calls.length).toBeGreaterThan(1);
+  messageListener({ action: 'stop' });
   jest.useRealTimers();
-window.qwenTranslateBatch = original;
+  window.qwenTranslateBatch = original;
 });
 
 test('passes provider config to batch translation', async () => {
@@ -225,5 +227,48 @@ test('shows bubble on text selection and translates', async () => {
   const bubble = document.querySelector('.qwen-bubble__result');
   expect(spy).toHaveBeenCalledWith(expect.objectContaining({ text: 'Hello' }));
   expect(bubble.textContent).toBe('T:Hello');
+});
+
+test('emits offline status when translation fails', async () => {
+  messageListener({ action: 'stop' });
+  sendMessage.mockClear();
+  const origOnline = navigator.onLine;
+  Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+  const originalTranslate = window.qwenTranslate;
+  window.qwenTranslate = jest.fn().mockRejectedValue(new Error('Failed to fetch'));
+  setCurrentConfig({ apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'en', targetLanguage: 'es', debug: false });
+  document.body.innerHTML = '<p id="s">Hello</p>';
+  const range = document.createRange();
+  range.selectNodeContents(document.getElementById('s'));
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  messageListener({ action: 'translate-selection' });
+  await new Promise(r => setTimeout(r, 0));
+  const offlineCall = sendMessage.mock.calls.find(([msg]) => msg.action === 'offline');
+  expect(offlineCall && offlineCall[0].text).toContain('Offline');
+  const status = document.getElementById('qwen-status');
+  expect(status.textContent).toContain('Offline');
+  Object.defineProperty(navigator, 'onLine', { value: origOnline, configurable: true });
+  window.qwenTranslate = originalTranslate;
+});
+
+test('offline error detected by error code', async () => {
+  messageListener({ action: 'stop' });
+  sendMessage.mockClear();
+  const originalTranslate = window.qwenTranslate;
+  window.qwenTranslate = jest.fn().mockRejectedValue({ code: 'ERR_NETWORK', message: 'network down' });
+  setCurrentConfig({ apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'en', targetLanguage: 'es', debug: false });
+  document.body.innerHTML = '<p id="s">Hi</p>';
+  const range = document.createRange();
+  range.selectNodeContents(document.getElementById('s'));
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  messageListener({ action: 'translate-selection' });
+  await new Promise(r => setTimeout(r, 0));
+  const offlineCall = sendMessage.mock.calls.find(([msg]) => msg.action === 'offline');
+  expect(offlineCall).toBeTruthy();
+  window.qwenTranslate = originalTranslate;
 });
 

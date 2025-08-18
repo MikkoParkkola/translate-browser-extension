@@ -61,6 +61,16 @@ function safeSendMessage(msg) {
   } catch {}
 }
 
+function isOfflineError(err) {
+  return (typeof navigator !== 'undefined' && navigator.onLine === false) ||
+    /network|fetch|offline/i.test((err && err.message) || '') ||
+    (err && err.code === 'ERR_NETWORK');
+}
+
+function notifyOffline() {
+  safeSendMessage({ action: 'offline' });
+}
+
 function calibrateLimits(force) {
   if (!self.qwenLimitDetector || !chrome?.storage?.sync) return;
   chrome.storage.sync.get({ apiEndpoint: '', model: '', requestLimit: 60, tokenLimit: 100000, calibratedAt: 0 }, async cfg => {
@@ -541,6 +551,10 @@ async function handleTranslate(opts) {
     logger.error('background translation error', err);
     logUsage(tokens, Date.now() - start);
     iconError = true;
+    if (isOfflineError(err)) {
+      notifyOffline();
+      return { error: 'offline' };
+    }
     return { error: err.message };
   } finally {
     clearTimeout(timeout);
@@ -554,7 +568,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'translate') {
     handleTranslate(msg.opts)
       .then(sendResponse)
-      .catch(err => sendResponse({ error: err.message }));
+      .catch(err => {
+        if (isOfflineError(err)) notifyOffline();
+        sendResponse({ error: err.message });
+      });
     return true;
   }
   if (msg.action === 'ping') {
@@ -815,7 +832,12 @@ chrome.runtime.onConnect.addListener(port => {
         logger.error('background port translation error', err);
         logUsage(tokens, Date.now() - start);
         iconError = true;
-        try { port.postMessage({ requestId, error: err.message }); } catch {}
+        if (isOfflineError(err)) {
+          notifyOffline();
+          try { port.postMessage({ requestId, error: 'offline' }); } catch {}
+        } else {
+          try { port.postMessage({ requestId, error: err.message }); } catch {}
+        }
       } finally {
         clearTimeout(timeout);
         inflight.delete(requestId);
