@@ -8,6 +8,7 @@
     localProviders: [],
     selectionPopup: false,
     sensitivity: 0.3,
+    translateTimeoutMs: 20000,
   };
 
   function handleLastError(cb) {
@@ -83,6 +84,15 @@
     });
   }
 
+  const timeoutField = document.getElementById('translateTimeoutMs');
+  if (timeoutField) {
+    timeoutField.value = typeof store.translateTimeoutMs === 'number' ? store.translateTimeoutMs : 20000;
+    timeoutField.addEventListener('input', () => {
+      const val = Number(timeoutField.value);
+      chrome?.storage?.sync?.set({ translateTimeoutMs: val });
+      chrome.runtime.sendMessage({ action: 'set-config', config: { translateTimeoutMs: val } }, handleLastError());
+    });
+  }
 
   const glossaryField = document.getElementById('glossary');
   glossaryField.value = store.glossary;

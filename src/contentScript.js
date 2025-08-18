@@ -403,7 +403,10 @@ async function translateNode(node) {
     if (currentConfig.debug) logger.debug('QTDEBUG: translating node', text.slice(0, 20));
     const controller = new AbortController();
     controllers.add(controller);
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeout = setTimeout(
+      () => controller.abort(),
+      (currentConfig && currentConfig.translateTimeoutMs) || window.qwenTranslateTimeoutMs || 20000
+    );
     const { text: translated } = await window.qwenTranslate({
       endpoint: currentConfig.apiEndpoint,
       model: currentConfig.model,
@@ -442,7 +445,10 @@ async function translateBatch(elements, stats, force = false) {
   const texts = originals.map(t => t.trim());
   const controller = new AbortController();
   controllers.add(controller);
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  const timeout = setTimeout(
+    () => controller.abort(),
+    (currentConfig && currentConfig.translateTimeoutMs) || window.qwenTranslateTimeoutMs || 20000
+  );
   let res;
   try {
     const opts = {
@@ -727,7 +733,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     document.body.appendChild(el);
     if (cfg.debug) logger.debug('QTDEBUG: test-e2e request received');
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
+    const timer = setTimeout(
+      () => controller.abort(),
+      cfg.translateTimeoutMs || (currentConfig && currentConfig.translateTimeoutMs) || window.qwenTranslateTimeoutMs || 20000
+    );
     window
       .qwenTranslate({
         endpoint: cfg.endpoint,
