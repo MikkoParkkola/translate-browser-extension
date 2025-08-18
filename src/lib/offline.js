@@ -1,5 +1,6 @@
 function isOfflineError(err) {
-  return !navigator.onLine || (err && /network|fetch/i.test(err.message || ''));
+  const online = globalThis.navigator?.onLine ?? true;
+  return !online || (err && /network|fetch/i.test(err.message || ''));
 }
 
 if (typeof module !== 'undefined') module.exports = { isOfflineError };
