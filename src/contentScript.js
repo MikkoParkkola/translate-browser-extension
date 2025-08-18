@@ -48,6 +48,14 @@ function handleLastError(cb) {
   };
 }
 
+function safeSendMessage(msg, cb) {
+  try {
+    chrome.runtime.sendMessage(msg, handleLastError(cb));
+  } catch (err) {
+    if (err && !err.message.includes('Extension context invalidated')) console.debug(err);
+  }
+}
+
 function ensureThemeCss(style) {
   const theme = style || 'apple';
   try {
@@ -116,9 +124,7 @@ function setStatus(message, isError = false) {
   el.dataset.variant = isError ? 'error' : '';
   const textNode = el.querySelector('.qwen-hud__text') || el;
   textNode.textContent = `Qwen Translator: ${message}`;
-  try {
-    chrome.runtime.sendMessage({ action: 'popup-status', text: message, error: isError }, handleLastError());
-  } catch {}
+  safeSendMessage({ action: 'popup-status', text: message, error: isError });
   if (statusTimer) clearTimeout(statusTimer);
   if (isError) statusTimer = setTimeout(clearStatus, 5000);
 }
@@ -225,13 +231,13 @@ chrome.runtime.onMessage.addListener(msg => {
         if (r.isFinal) final += r[0].transcript;
         else interim += r[0].transcript;
       }
-      if (interim) try { chrome.runtime.sendMessage({ action: 'voice-interim', text: interim }, handleLastError()); } catch {}
-      if (final) try { chrome.runtime.sendMessage({ action: 'voice-final', text: final }, handleLastError()); } catch {}
+      if (interim) safeSendMessage({ action: 'voice-interim', text: interim });
+      if (final) safeSendMessage({ action: 'voice-final', text: final });
     };
     pageRecognizer.onend = () => {
       clearStatus();
       pageRecognizer = null;
-      try { chrome.runtime.sendMessage({ action: 'voice-end' }, handleLastError()); } catch {}
+      safeSendMessage({ action: 'voice-end' });
     };
     try { pageRecognizer.start(); } catch {}
   } else if (msg.action === 'stop-recording') {
@@ -365,9 +371,7 @@ async function showSelectionBubble(range, text) {
       const offline = isOfflineError(e);
       if (offline) {
         result.textContent = t('bubble.offline');
-        try {
-          chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError());
-        } catch {}
+        safeSendMessage({ action: 'translation-status', status: { offline: true } });
       } else {
         result.textContent = `${t('bubble.error')}${e && e.message ? `: ${e.message}` : ''}`;
       }
@@ -470,9 +474,7 @@ async function translateNode(node) {
     const offline = isOfflineError(e);
     if (offline) {
       showError(t('popup.offline'));
-      try {
-        chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError());
-      } catch {}
+      safeSendMessage({ action: 'translation-status', status: { offline: true } });
     } else {
       showError(`${e.message}. See console for details.`);
     }
@@ -512,7 +514,7 @@ async function translateBatch(elements, stats, force = false) {
     if (force) opts.force = true;
     if (stats) {
       opts.onProgress = p => {
-        chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, ...p, progress } }, handleLastError());
+        safeSendMessage({ action: 'translation-status', status: { active: true, ...p, progress } });
       };
       opts._stats = stats;
     }
@@ -548,7 +550,7 @@ async function translateBatch(elements, stats, force = false) {
   const elapsedMs = stats ? Date.now() - stats.start : 0;
   const avg = progress.done ? elapsedMs / progress.done : 0;
   const etaMs = avg * (progress.total - progress.done);
-  chrome.runtime.sendMessage({
+  safeSendMessage({
     action: 'translation-status',
     status: {
       active: true,
@@ -560,7 +562,7 @@ async function translateBatch(elements, stats, force = false) {
       etaMs,
       progress,
     },
-  }, handleLastError());
+  });
 }
 
 function enqueueBatch(batch) {
@@ -574,7 +576,7 @@ async function processQueue() {
   processing = true;
   setStatus('Translating...');
   const stats = { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0 };
-  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: true, phase: 'translate', progress } }, handleLastError());
+  safeSendMessage({ action: 'translation-status', status: { active: true, phase: 'translate', progress } });
   while (batchQueue.length) {
     setStatus(`Translating (${batchQueue.length} left)...`);
     const item = batchQueue.shift();
@@ -586,9 +588,7 @@ async function processQueue() {
       const offline = isOfflineError(e);
       if (offline) {
         showError(t('popup.offline'));
-        try {
-          chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError());
-        } catch {}
+        safeSendMessage({ action: 'translation-status', status: { offline: true } });
       } else {
         showError(`${e.message}. See console for details.`);
       }
@@ -608,7 +608,7 @@ async function processQueue() {
     ...(window.qwenGetCacheStats ? window.qwenGetCacheStats() : {}),
   };
   stats.tm = window.qwenTM && window.qwenTM.stats ? window.qwenTM.stats() : {};
-  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary: stats } }, handleLastError());
+  safeSendMessage({ action: 'translation-status', status: { active: false, summary: stats } });
   processing = false;
   clearStatus();
 }
@@ -715,7 +715,7 @@ function stop() {
   progress = { total: 0, done: 0 };
   if (progressHud) { progressHud.remove(); progressHud = null; }
   clearStatus();
-  chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false } }, handleLastError());
+  safeSendMessage({ action: 'translation-status', status: { active: false } });
 }
 
 async function start() {
@@ -821,7 +821,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         el.remove();
         const offline = isOfflineError(err);
         if (offline) {
-          try { chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError()); } catch {}
+          safeSendMessage({ action: 'translation-status', status: { offline: true } });
         }
         sendResponse({ error: offline ? 'offline' : err.message, stack: err.stack });
       });
@@ -860,9 +860,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const offline = isOfflineError(e);
         if (offline) {
           showError(t('popup.offline'));
-          try {
-            chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError());
-          } catch {}
+          safeSendMessage({ action: 'translation-status', status: { offline: true } });
         } else {
           showError(`${t('bubble.error')}${e && e.message ? `: ${e.message}` : ''}`);
         }
