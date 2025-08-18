@@ -1,10 +1,14 @@
 {
   "name": "qwen-translator-extension",
 <<<<<<< HEAD
+<<<<<<< HEAD
   "version": "1.35.1",
 =======
   "version": "1.35.0",
 >>>>>>> bf0b100 (Merge branch 'main' into codex/add-offline-indicators-and-messaging-hvff51)
+=======
+  "version": "1.33.0",
+>>>>>>> 76757db (Handle offline translation errors)
   "description": "Extension to translate web pages using Qwen-MT-Turbo model",
   "main": "index.js",
   "scripts": {
