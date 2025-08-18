@@ -166,8 +166,10 @@ function qwenSaveConfig(cfg) {
   return Promise.resolve(); // Otherwise, do nothing
 }
 
+const exportsObj = { qwenLoadConfig, qwenSaveConfig, defaultCfg, modelTokenLimits, TRANSLATE_TIMEOUT_MS };
+
 if (typeof module !== 'undefined') {
-  module.exports = { qwenLoadConfig, qwenSaveConfig, defaultCfg, modelTokenLimits, TRANSLATE_TIMEOUT_MS };
+  module.exports = exportsObj;
 }
 if (typeof window !== 'undefined') {
   window.qwenDefaultConfig = defaultCfg;
@@ -181,7 +183,7 @@ if (typeof window !== 'undefined') {
     chrome.runtime &&
     chrome.runtime.id
   ) {
-    window.__qwenConfigModule = module.exports;
+    window.__qwenConfigModule = exportsObj;
   }
 }
 
