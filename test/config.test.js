@@ -51,4 +51,14 @@ describe('config migration', () => {
     const cfg = await qwenLoadConfig();
     expect(cfg.selectionPopup).toBe(false);
   });
+
+  test('auto-detects when source equals target', async () => {
+    const stored = { sourceLanguage: 'en', targetLanguage: 'en' };
+    const set = jest.fn((o, cb) => cb && cb());
+    global.chrome = { storage: { sync: { get: (d, cb) => cb({ ...d, ...stored }), set } } };
+    const { qwenLoadConfig } = require('../src/config.js');
+    const cfg = await qwenLoadConfig();
+    expect(cfg.sourceLanguage).toBe('auto');
+    expect(cfg.targetLanguage).toBe('en');
+  });
 });

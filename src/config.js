@@ -114,6 +114,12 @@ function migrate(cfg = {}) {
   if (!Number.isFinite(out.minDetectLength) || out.minDetectLength < 0) {
     out.minDetectLength = defaultCfg.minDetectLength;
   }
+  if (out.sourceLanguage && out.targetLanguage && out.sourceLanguage === out.targetLanguage) {
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('sourceLanguage equals targetLanguage; enabling auto-detect');
+    }
+    out.sourceLanguage = 'auto';
+  }
   return out;
 }
 

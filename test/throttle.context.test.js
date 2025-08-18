@@ -11,8 +11,8 @@ describe('throttle contexts', () => {
     });
     Providers.init();
     const { qwenTranslate, qwenTranslateStream, _throttleKeys } = require('../src/translator');
-    await qwenTranslate({ text: 'a', target: 'en', provider: 'dummy', noProxy: true });
-    await qwenTranslateStream({ text: 'b', target: 'en', provider: 'dummy', noProxy: true });
+    await qwenTranslate({ text: 'a', target: 'fr', provider: 'dummy', noProxy: true });
+    await qwenTranslateStream({ text: 'b', target: 'fr', provider: 'dummy', noProxy: true });
     expect(_throttleKeys().sort()).toEqual(['dummy:default', 'dummy:stream']);
   });
 });

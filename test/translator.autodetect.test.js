@@ -5,6 +5,24 @@ describe('translator auto-detects source language', () => {
     jest.resetModules();
   });
 
+  test('skips translation when source equals target', async () => {
+    const Providers = require('../src/lib/providers.js');
+    const spy = jest.fn(async ({ text }) => ({ text: `TR:${text}` }));
+    Providers.register('dashscope', { translate: spy });
+    Providers.init();
+    const { qwenTranslate } = require('../src/translator.js');
+    const res = await qwenTranslate({
+      text: 'hello',
+      source: 'en',
+      target: 'en',
+      endpoint: 'https://dashscope-intl.aliyuncs.com/api/v1',
+      model: 'm',
+      noProxy: true
+    });
+    expect(res.text).toBe('hello');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   test('qwenTranslate uses detected source', async () => {
     jest.doMock('../src/lib/detect.js', () => ({
       detectLocal: (t) => ({ lang: /bonjour|français/i.test(t) ? 'fr' : 'en', confidence: 0.9 })
@@ -47,12 +65,10 @@ describe('translator auto-detects source language', () => {
       maxBatchSize: 200,
       noProxy: true
     });
-
-    expect(res.texts.length).toBe(2);
-    expect(spy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(res.texts).toEqual(['bonjour le monde', 'salut']);
+    expect(spy.mock.calls.length).toBe(1);
     const srcs = spy.mock.calls.map(c => c[0].source);
-    expect(srcs).toContain('fr');
-    expect(srcs).toContain('en');
+    expect(srcs).toEqual(['fr']);
   });
 
   test('falls back when detection below sensitivity', async () => {
@@ -66,7 +82,7 @@ describe('translator auto-detects source language', () => {
     Providers.register('dashscope', { translate: spy });
     Providers.init();
     const { qwenTranslate } = require('../src/translator.js');
-    await qwenTranslate({
+    const res = await qwenTranslate({
       text: 'bonjour',
       source: 'auto',
       target: 'en',
@@ -75,8 +91,8 @@ describe('translator auto-detects source language', () => {
       noProxy: true,
       sensitivity: 0.5
     });
-    expect(spy).toHaveBeenCalled();
-    expect(spy.mock.calls[0][0].source).toBe('en');
+    expect(spy).not.toHaveBeenCalled();
+    expect(res.text).toBe('bonjour');
   });
 
   test('falls back when text shorter than minDetectLength', async () => {
@@ -89,7 +105,7 @@ describe('translator auto-detects source language', () => {
     Providers.register('dashscope', { translate: spy });
     Providers.init();
     const { qwenTranslate } = require('../src/translator.js');
-    await qwenTranslate({
+    const res = await qwenTranslate({
       text: 'hi',
       source: 'auto',
       target: 'en',
@@ -97,7 +113,7 @@ describe('translator auto-detects source language', () => {
       model: 'm',
       noProxy: true
     });
-    expect(spy).toHaveBeenCalled();
-    expect(spy.mock.calls[0][0].source).toBe('en');
+    expect(spy).not.toHaveBeenCalled();
+    expect(res.text).toBe('hi');
   });
 });
