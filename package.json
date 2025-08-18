@@ -2,6 +2,7 @@
   "name": "qwen-translator-extension",
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
   "version": "1.35.1",
 =======
   "version": "1.35.0",
@@ -9,6 +10,9 @@
 =======
   "version": "1.33.0",
 >>>>>>> 76757db (Handle offline translation errors)
+=======
+  "version": "1.35.0",
+>>>>>>> 2530dd6 (Merge branch 'main' into codex/add-offline-indicators-and-messaging)
   "description": "Extension to translate web pages using Qwen-MT-Turbo model",
   "main": "index.js",
   "scripts": {
@@ -33,6 +37,7 @@
   "type": "commonjs",
   "types": "types/index.d.ts",
 <<<<<<< HEAD
+<<<<<<< HEAD
   "typesVersions": {
     "*": {
       "background": [
@@ -50,6 +55,8 @@
     }
   },
 =======
+=======
+>>>>>>> 2530dd6 (Merge branch 'main' into codex/add-offline-indicators-and-messaging)
     "typesVersions": {
       "*": {
         "background": ["types/background.d.ts"],
@@ -58,7 +65,10 @@
       "popup/*": ["types/popup/*"]
       }
     },
+<<<<<<< HEAD
 >>>>>>> bf0b100 (Merge branch 'main' into codex/add-offline-indicators-and-messaging-hvff51)
+=======
+>>>>>>> 2530dd6 (Merge branch 'main' into codex/add-offline-indicators-and-messaging)
   "devDependencies": {
     "@playwright/test": "^1.54.2",
     "@types/jest": "^30.0.0",
