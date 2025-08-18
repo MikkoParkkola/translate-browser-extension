@@ -30,9 +30,12 @@ describe('settings provider cards', () => {
       storage: { sync: { get: jest.fn((defs, cb) => cb(defs)), set: jest.fn() } },
       runtime: { sendMessage: jest.fn() },
     };
+    const provImpl = {};
     window.qwenProviders = {
       ensureProviders: jest.fn(),
       listProviders: jest.fn(() => [{ name: 'p1', label: 'P1' }, { name: 'p2', label: 'P2' }]),
+      getProvider: jest.fn(() => provImpl),
+      registerProvider: jest.fn(),
     };
     window.qwenProviderConfig = {
       loadProviderConfig: jest.fn(() => Promise.resolve({
@@ -70,6 +73,29 @@ describe('settings provider cards', () => {
     expect(window.qwenProviderConfig.saveProviderConfig).toHaveBeenLastCalledWith(expect.objectContaining({
       providerOrder: ['p2', 'p1'],
     }));
+  });
+
+  test('duplicates provider configuration', async () => {
+    window.fetch = jest.fn(() => Promise.resolve({ text: () => Promise.resolve('<div id="providerEditorOverlay"></div>') }));
+    const origCreateElement = document.createElement.bind(document);
+    document.createElement = jest.fn(tag => {
+      const el = origCreateElement(tag);
+      if (tag === 'script') setTimeout(() => el.onload && el.onload(), 0);
+      return el;
+    });
+    window.qwenProviderEditor = { open: jest.fn() };
+    require('../src/popup/settings.js');
+    await flush();
+    const card = document.querySelectorAll('.provider-card')[0];
+    const dup = card.querySelector('button.duplicate');
+    dup.click();
+    await flush();
+    expect(window.qwenProviders.registerProvider).toHaveBeenCalledWith('p1-copy', expect.any(Object));
+    expect(window.qwenProviderConfig.saveProviderConfig).toHaveBeenLastCalledWith(expect.objectContaining({
+      providers: expect.objectContaining({ 'p1-copy': expect.objectContaining({ apiKey: 'k1', apiEndpoint: 'https://e.com', enabled: true }) }),
+      providerOrder: ['p1', 'p1-copy', 'p2'],
+    }));
+    document.createElement = origCreateElement;
   });
 });
 

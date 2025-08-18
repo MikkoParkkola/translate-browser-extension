@@ -94,6 +94,7 @@
 - UX and theming
 - Apple HUD (`styles/apple.css`) for in-page status and popup; in-app Getting Started guide; tooltips across fields.
   - Provider presets (DashScope/OpenAI/DeepL/OpenRouter); provider-specific endpoints/keys/models; version/date shown in popup.
+  - Provider configs can be duplicated in settings to quickly clone setups for additional models.
   - Glossary and tone presets editable in popup; translator applies substitutions and formal/casual/technical tone options.
   - Logging via `qwenLogger` with levels and collectors; popup debug output uses the logger.
   - Fetch strategy is centralized in `lib/fetchStrategy.js`; override with `qwenFetchStrategy.setChooser(fn)` for custom proxy/direct routing.
