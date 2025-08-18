@@ -543,6 +543,12 @@ async function processQueue() {
   stats.wordsPerSecond = stats.words / (stats.elapsedMs / 1000 || 1);
   stats.wordsPerRequest = stats.words / (stats.requests || 1);
   stats.tokensPerRequest = stats.tokens / (stats.requests || 1);
+  stats.cache = {
+    size: (window.qwenGetCacheSize && window.qwenGetCacheSize()) || 0,
+    max: (window.qwenConfig && window.qwenConfig.memCacheMax) || 0,
+    ...(window.qwenGetCacheStats ? window.qwenGetCacheStats() : {}),
+  };
+  stats.tm = window.qwenTM && window.qwenTM.stats ? window.qwenTM.stats() : {};
   chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary: stats } }, handleLastError());
   processing = false;
   clearStatus();
