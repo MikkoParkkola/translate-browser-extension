@@ -20,7 +20,7 @@ test('uses provider throttle config when creating queue', async () => {
   });
   Providers.init();
   const { qwenTranslate } = require('../src/translator');
-  await qwenTranslate({ text: 'hi', source: 'en', target: 'en', provider: 'mock', noProxy: true });
+  await qwenTranslate({ text: 'hi', source: 'en', target: 'fr', provider: 'mock', noProxy: true });
   const { createThrottle } = require('../src/throttle');
   expect(createThrottle).toHaveBeenCalledWith({ requestLimit: 1, windowMs: 1234 });
 });

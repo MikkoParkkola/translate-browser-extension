@@ -452,6 +452,10 @@ async function qwenTranslate({ endpoint, apiKey, model, secondaryModel, text, so
   if (!src || src === 'auto') {
     src = await _detectSource(text, { detector, debug, noProxy, sensitivity, minLength: cfg.minDetectLength });
   }
+  if (src && src === target) {
+    if (debug) trLogger.warn('source language matches target; skipping translation');
+    return { text };
+  }
   text = _applyGlossary(text);
   const tone = glossary && typeof glossary.getTone === 'function' ? glossary.getTone() : undefined;
   const prov = provider || (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model }));
@@ -526,6 +530,11 @@ async function qwenTranslateStream({ endpoint, apiKey, model, secondaryModel, te
   const cfg = typeof self !== 'undefined' && self.qwenConfig ? self.qwenConfig : typeof window !== 'undefined' && window.qwenConfig ? window.qwenConfig : {};
   if (!src || src === 'auto') {
     src = await _detectSource(text, { detector, debug, noProxy, sensitivity, minLength: cfg.minDetectLength });
+  }
+  if (src && src === target) {
+    if (debug) trLogger.warn('source language matches target; skipping translation');
+    if (onData) onData(text);
+    return { text };
   }
   text = _applyGlossary(text);
   const tone = glossary && typeof glossary.getTone === 'function' ? glossary.getTone() : undefined;
@@ -698,6 +707,12 @@ async function batchOnce({
   const mapping = [];
   texts.forEach((t, i) => {
     const lang = autoMode ? sourceByIndex[i] : source;
+    if (lang === opts.target) {
+      mapping.push({ index: i, chunk: 0, text: t, cached: true, lang });
+      stats.words += t.trim().split(/\s+/).filter(Boolean).length;
+      stats.tokens += approxTokens(t);
+      return;
+    }
     const key = _key(lang, opts.target, t);
     if (cache.has(key)) {
       const v = _touchCache(key) || cache.get(key);

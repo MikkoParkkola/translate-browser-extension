@@ -36,14 +36,14 @@
  
      expect(Array.isArray(res.texts)).toBe(true);
      expect(res.texts.length).toBe(4);
-     expect(res.texts[0].startsWith('S:fr:')).toBe(true);
-     expect(res.texts[2].startsWith('S:fr:')).toBe(true);
-     expect(res.texts[1].startsWith('S:en:')).toBe(true);
-     expect(res.texts[3].startsWith('S:en:')).toBe(true);
- 
-     // Should call provider once per language group (2 calls: fr, en)
-     expect(translateMock).toHaveBeenCalled();
-     const langs = translateMock.mock.calls.map(c => c[0].source);
-     expect(new Set(langs)).toEqual(new Set(['fr', 'en']));
-   });
- });
+    expect(res.texts[0].startsWith('S:fr:')).toBe(true);
+    expect(res.texts[2].startsWith('S:fr:')).toBe(true);
+    expect(res.texts[1]).toBe('hello');
+    expect(res.texts[3]).toBe('world');
+
+    // Should call provider only for non-target language (1 call: fr)
+    expect(translateMock).toHaveBeenCalledTimes(1);
+    const langs = translateMock.mock.calls.map(c => c[0].source);
+    expect(new Set(langs)).toEqual(new Set(['fr']));
+  });
+});

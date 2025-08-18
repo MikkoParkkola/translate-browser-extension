@@ -464,7 +464,7 @@ async function translateNode(node) {
     if (currentConfig.debug) {
       logger.debug('QTDEBUG: node translation result', { original: text.slice(0, 50), translated: translated.slice(0, 50) });
       if (translated.trim().toLowerCase() === text.trim().toLowerCase()) {
-        logger.warn('QTWARN: translated text is identical to source; check language configuration');
+        logger.warn('QTWARN: text already in target language; check source and target settings');
       }
     }
     node.textContent = leading + translated + trailing;
@@ -534,7 +534,7 @@ async function translateBatch(elements, stats, force = false) {
     if (t.trim().toLowerCase() === texts[i].trim().toLowerCase()) {
       markUntranslatable(el);
       if (currentConfig.debug) {
-        logger.warn('QTWARN: translated text is identical to source; marking as untranslatable');
+        logger.warn('QTWARN: text already in target language; marking as untranslatable');
       }
     } else {
       el.textContent = leading + t + trailing;
