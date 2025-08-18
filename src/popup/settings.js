@@ -279,5 +279,13 @@
     const usage = m && m.usage ? m.usage : {};
     usageEl.textContent = JSON.stringify(usage, null, 2);
   }));
+  const tmEl = document.getElementById('tmMetrics');
+  const cacheEl = document.getElementById('cacheStats');
+  chrome?.runtime?.sendMessage({ action: 'tm-cache-metrics' }, handleLastError(m => {
+    const tmMetrics = m && m.tmMetrics ? m.tmMetrics : {};
+    const cacheStats = m && m.cacheStats ? m.cacheStats : {};
+    tmEl.textContent = JSON.stringify(tmMetrics, null, 2);
+    cacheEl.textContent = JSON.stringify(cacheStats, null, 2);
+  }));
 })();
 

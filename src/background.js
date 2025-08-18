@@ -644,6 +644,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
+  if (msg.action === 'tm-cache-metrics') {
+    const tmMetrics = (self.qwenTM && self.qwenTM.stats) ? self.qwenTM.stats() : {};
+    const cacheStats = self.qwenGetCacheStats ? self.qwenGetCacheStats() : {};
+    sendResponse({ tmMetrics, cacheStats });
+    return true;
+  }
   if (msg.action === 'quota') {
     const model = msg.model;
     const cfg = self.qwenConfig || {};
