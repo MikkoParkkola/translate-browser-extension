@@ -14,6 +14,8 @@ if (
   window.__qwenConfigLoaded = true;
 }
 
+const TRANSLATE_TIMEOUT_MS = 20000;
+
 const defaultCfg = {
   apiKey: '',
   detectApiKey: '',
@@ -47,6 +49,7 @@ const defaultCfg = {
   providerOrder: [],
   failover: true,
   parallel: 'auto',
+  translateTimeoutMs: TRANSLATE_TIMEOUT_MS,
 };
 
 const modelTokenLimits = {
@@ -101,6 +104,10 @@ function migrate(cfg = {}) {
   if (typeof out.parallel !== 'boolean' && out.parallel !== 'auto') out.parallel = 'auto';
   if (typeof out.tmSync !== 'boolean') out.tmSync = false;
   if (typeof out.selectionPopup !== 'boolean') out.selectionPopup = false;
+  out.translateTimeoutMs = parseInt(out.translateTimeoutMs, 10);
+  if (!Number.isFinite(out.translateTimeoutMs) || out.translateTimeoutMs <= 0) {
+    out.translateTimeoutMs = TRANSLATE_TIMEOUT_MS;
+  }
   return out;
 }
 
@@ -145,7 +152,7 @@ function qwenSaveConfig(cfg) {
       costPerOutputToken: num(cfg.costPerOutputToken),
       weight: num(cfg.weight),
     };
-    const toSave = { ...cfg, providers };
+    const toSave = { ...cfg, providers, translateTimeoutMs: num(cfg.translateTimeoutMs) };
     return new Promise((resolve) => {
       chrome.storage.sync.set(toSave, resolve);
     });
@@ -154,13 +161,14 @@ function qwenSaveConfig(cfg) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { qwenLoadConfig, qwenSaveConfig, defaultCfg, modelTokenLimits };
+  module.exports = { qwenLoadConfig, qwenSaveConfig, defaultCfg, modelTokenLimits, TRANSLATE_TIMEOUT_MS };
 }
 if (typeof window !== 'undefined') {
   window.qwenDefaultConfig = defaultCfg;
   window.qwenLoadConfig = qwenLoadConfig;
   window.qwenSaveConfig = qwenSaveConfig;
   window.qwenModelTokenLimits = modelTokenLimits;
+  window.qwenTranslateTimeoutMs = TRANSLATE_TIMEOUT_MS;
   if (
     (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') &&
     typeof chrome !== 'undefined' &&

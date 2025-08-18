@@ -1,8 +1,11 @@
-importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'providers/mistral.js', 'lib/tm.js', 'lib/feedback.js', 'lib/qualityCheck.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js', 'backgroundBenchmark.js');
+importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'providers/mistral.js', 'lib/tm.js', 'lib/feedback.js', 'lib/qualityCheck.js', 'config.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js', 'backgroundBenchmark.js');
 
 const logger = (self.qwenLogger && self.qwenLogger.create)
   ? self.qwenLogger.create('background')
   : console;
+
+
+const TRANSLATE_TIMEOUT_MS = (self.qwenDefaultConfig && self.qwenDefaultConfig.translateTimeoutMs) || 20000;
 
 
 function handleLastError(cb) {
@@ -36,10 +39,12 @@ chrome.commands?.onCommand.addListener(async command => {
 // Load basic config (e.g., memCacheMax) so translator cache limits apply in background
 self.qwenConfig = self.qwenConfig || {};
 try {
-  chrome.storage.sync.get({ memCacheMax: 5000, tmSync: false }, cfg => {
+  chrome.storage.sync.get({ memCacheMax: 5000, tmSync: false, translateTimeoutMs: TRANSLATE_TIMEOUT_MS }, cfg => {
     const n = parseInt(cfg.memCacheMax, 10);
     if (n > 0) self.qwenConfig.memCacheMax = n;
     if (self.qwenTM && self.qwenTM.enableSync) { self.qwenTM.enableSync(!!cfg.tmSync); }
+    const t = parseInt(cfg.translateTimeoutMs, 10);
+    if (Number.isFinite(t) && t > 0) config.translateTimeoutMs = t;
   });
 } catch {}
 
@@ -310,7 +315,7 @@ const inflight = new Map(); // requestId -> { controller, timeout, port }
 
 // Test-accessible state
 let usingPlus = false;
-let config = { providerOrder: [], requestThreshold: 0, qualityVerify: false };
+let config = { providerOrder: [], requestThreshold: 0, qualityVerify: false, translateTimeoutMs: TRANSLATE_TIMEOUT_MS };
 const usageStats = { models: {} };
 const usageLog = [];
 let lastQuality = 0;
@@ -480,7 +485,7 @@ async function handleTranslate(opts) {
 
   await ensureThrottle();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
+  const timeout = setTimeout(() => controller.abort(), config.translateTimeoutMs || TRANSLATE_TIMEOUT_MS);
   activeTranslations++;
   updateBadge();
 
@@ -581,6 +586,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       });
     }
     if (typeof c.qualityVerify === 'boolean') config.qualityVerify = c.qualityVerify;
+    if (typeof c.translateTimeoutMs === 'number') config.translateTimeoutMs = c.translateTimeoutMs;
     if (typeof c.tmSync === 'boolean' && self.qwenTM && self.qwenTM.enableSync) {
       self.qwenTM.enableSync(c.tmSync);
     }
@@ -756,7 +762,7 @@ chrome.runtime.onConnect.addListener(port => {
       if (!requestId || !opts) return;
       await ensureThrottle();
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), opts && opts.stream ? 60000 : 20000);
+      const timeout = setTimeout(() => controller.abort(), config.translateTimeoutMs || TRANSLATE_TIMEOUT_MS);
       activeTranslations++;
       updateBadge();
       inflight.set(requestId, { controller, timeout, port });
