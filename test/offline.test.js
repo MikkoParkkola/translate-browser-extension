@@ -3,6 +3,8 @@
 describe('offline handling', () => {
   test('content script emits offline status', async () => {
     jest.resetModules();
+    delete window.__qwenCSLoaded;
+    delete window.__qwenCSModule;
     let messageListener;
     const sendMessage = jest.fn();
     global.chrome = {
@@ -13,6 +15,7 @@ describe('offline handling', () => {
       },
     };
     window.qwenI18n = { t: k => (k === 'popup.offline' ? 'Offline' : k === 'bubble.offline' ? 'Offline' : k), ready: Promise.resolve() };
+    const origTranslate = window.qwenTranslate;
     window.qwenTranslate = jest.fn().mockRejectedValue(new Error('Failed to fetch'));
     window.qwenLoadConfig = async () => ({ apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'en', targetLanguage: 'es', providerOrder: [], endpoints: {}, detector: null, failover: null, debug: false });
     window.getSelection = () => ({ toString: () => 'hi' });
@@ -23,7 +26,42 @@ describe('offline handling', () => {
     await new Promise(r => setTimeout(r, 0));
     expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'popup-status', text: 'Offline', error: true }), expect.any(Function));
     expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'translation-status', status: { offline: true } }), expect.any(Function));
+    const status = document.getElementById('qwen-status');
+    expect(status && status.textContent).toBe('Qwen Translator: Offline');
     Object.defineProperty(window.navigator, 'onLine', origDesc);
+    window.qwenTranslate = origTranslate;
+  });
+
+  test('content script handles ERR_NETWORK as offline', async () => {
+    jest.resetModules();
+    delete window.__qwenCSLoaded;
+    delete window.__qwenCSModule;
+    let messageListener;
+    const sendMessage = jest.fn();
+    global.chrome = {
+      runtime: {
+        getURL: () => 'chrome-extension://abc/',
+        sendMessage,
+        onMessage: { addListener: cb => { messageListener = cb; } },
+      },
+    };
+    window.qwenI18n = { t: k => (k === 'popup.offline' ? 'Offline' : k === 'bubble.offline' ? 'Offline' : k), ready: Promise.resolve() };
+    const origTranslate = window.qwenTranslate;
+    const err = new Error('ERR_NETWORK');
+    err.code = 'ERR_NETWORK';
+    window.qwenTranslate = jest.fn().mockRejectedValue(err);
+    window.qwenLoadConfig = async () => ({ apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'en', targetLanguage: 'es', providerOrder: [], endpoints: {}, detector: null, failover: null, debug: false });
+    window.getSelection = () => ({ toString: () => 'hi' });
+    const origDesc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.navigator), 'onLine');
+    Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true });
+    require('../src/contentScript.js');
+    messageListener({ action: 'translate-selection' });
+    await new Promise(r => setTimeout(r, 0));
+    expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'translation-status', status: { offline: true } }), expect.any(Function));
+    const status = document.getElementById('qwen-status');
+    expect(status && status.textContent).toBe('Qwen Translator: Offline');
+    Object.defineProperty(window.navigator, 'onLine', origDesc);
+    window.qwenTranslate = origTranslate;
   });
 
   test('background emits offline status', async () => {
@@ -46,6 +84,7 @@ describe('offline handling', () => {
     global.OffscreenCanvas = class { constructor() { this.ctx = { clearRect: jest.fn(), lineWidth: 0, strokeStyle: '', beginPath: jest.fn(), arc: jest.fn(), stroke: jest.fn(), fillStyle: '', fill: jest.fn(), getImageData: () => ({}) }; } getContext() { return this.ctx; } };
     global.qwenThrottle = { configure: jest.fn(), getUsage: () => ({ requests: 0, requestLimit: 60, tokens: 0, tokenLimit: 60 }), approxTokens: t => t.length };
     global.qwenUsageColor = () => '#00ff00';
+    const origTranslate = global.qwenTranslate;
     global.qwenTranslate = jest.fn().mockRejectedValue(new Error('Failed to fetch'));
     global.qwenProviders = { getProvider: () => null };
     const { handleTranslate, _setConfig } = require('../src/background.js');
@@ -54,6 +93,7 @@ describe('offline handling', () => {
     expect(res).toEqual({ error: 'offline' });
     expect(sendMessage).toHaveBeenCalledWith({ action: 'translation-status', status: { offline: true } });
     Object.defineProperty(window.navigator, 'onLine', origDesc);
+    global.qwenTranslate = origTranslate;
   });
 });
 
