@@ -101,9 +101,10 @@ if (chrome?.storage?.sync) {
   });
 }
 
-function localDetectLanguage(text) {
+function localDetectLanguage(text, minLength = 0) {
   const s = String(text || '');
-  const total = s.length || 1;
+  const total = s.replace(/\s+/g, '').length;
+  if (total < minLength) return { lang: undefined, confidence: 0 };
   const counts = {
     ja: (s.match(/[\u3040-\u30ff\u4e00-\u9fff]/g) || []).length,
     ko: (s.match(/[\uac00-\ud7af]/g) || []).length,
@@ -114,6 +115,7 @@ function localDetectLanguage(text) {
   };
   let best = 'en', max = 0;
   for (const [k, v] of Object.entries(counts)) { if (v > max) { max = v; best = k; } }
+  if (max === 0) return { lang: undefined, confidence: 0 };
   const confidence = Math.min(1, max / total);
   return { lang: best, confidence };
 }
@@ -681,9 +683,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const opts = msg.opts || {};
     (async () => {
       try {
-        const out = opts.detector === 'google'
-          ? await googleDetectLanguage(opts.text, opts.debug)
-          : localDetectLanguage(opts.text);
+        const sample = String(opts.text || '');
+        let out;
+        if (sample.replace(/\s+/g, '').length < (opts.minLength || 0)) {
+          out = { lang: undefined, confidence: 0 };
+        } else {
+          out = opts.detector === 'google'
+            ? await googleDetectLanguage(opts.text, opts.debug)
+            : localDetectLanguage(opts.text, opts.minLength);
+        }
         sendResponse(out);
       } catch (e) {
         sendResponse({ error: e.message });
@@ -844,9 +852,15 @@ chrome.runtime.onConnect.addListener(port => {
       const { requestId, opts } = msg;
       if (!requestId || !opts) return;
       try {
-        const out = opts.detector === 'google'
-          ? await googleDetectLanguage(opts.text, opts.debug)
-          : localDetectLanguage(opts.text);
+        const sample = String(opts.text || '');
+        let out;
+        if (sample.replace(/\s+/g, '').length < (opts.minLength || 0)) {
+          out = { lang: undefined, confidence: 0 };
+        } else {
+          out = opts.detector === 'google'
+            ? await googleDetectLanguage(opts.text, opts.debug)
+            : localDetectLanguage(opts.text, opts.minLength);
+        }
         try { port.postMessage({ requestId, result: out }); } catch {}
       } catch (err) {
         try { port.postMessage({ requestId, error: err.message }); } catch {}

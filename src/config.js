@@ -31,6 +31,7 @@ const defaultCfg = {
   memCacheMax: 5000,
   tmSync: false,
   sensitivity: 0.3,
+  minDetectLength: 2,
   debug: false,
   qualityVerify: false,
   useWasmEngine: true,
@@ -109,6 +110,10 @@ function migrate(cfg = {}) {
   if (!Number.isFinite(out.translateTimeoutMs) || out.translateTimeoutMs <= 0) {
     out.translateTimeoutMs = TRANSLATE_TIMEOUT_MS;
   }
+  out.minDetectLength = parseInt(out.minDetectLength, 10);
+  if (!Number.isFinite(out.minDetectLength) || out.minDetectLength < 0) {
+    out.minDetectLength = defaultCfg.minDetectLength;
+  }
   return out;
 }
 
@@ -153,7 +158,7 @@ function qwenSaveConfig(cfg) {
       costPerOutputToken: num(cfg.costPerOutputToken),
       weight: num(cfg.weight),
     };
-    const toSave = { ...cfg, providers, translateTimeoutMs: num(cfg.translateTimeoutMs) };
+    const toSave = { ...cfg, providers, translateTimeoutMs: num(cfg.translateTimeoutMs), minDetectLength: num(cfg.minDetectLength) };
     return new Promise((resolve) => {
       chrome.storage.sync.set(toSave, resolve);
     });

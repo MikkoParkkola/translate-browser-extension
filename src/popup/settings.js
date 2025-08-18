@@ -8,6 +8,7 @@
     localProviders: [],
     selectionPopup: false,
     sensitivity: 0.3,
+    minDetectLength: 2,
     translateTimeoutMs: 20000,
   };
 
@@ -88,6 +89,15 @@
     sensitivityField.addEventListener('input', () => {
       const val = Number(sensitivityField.value);
       chrome?.storage?.sync?.set({ sensitivity: val });
+    });
+  }
+
+  const minDetectField = document.getElementById('minDetectLength');
+  if (minDetectField) {
+    minDetectField.value = typeof store.minDetectLength === 'number' ? store.minDetectLength : 0;
+    minDetectField.addEventListener('input', () => {
+      const val = Number(minDetectField.value);
+      chrome?.storage?.sync?.set({ minDetectLength: val });
     });
   }
 
