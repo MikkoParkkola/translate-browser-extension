@@ -32,7 +32,7 @@ describe('settings diagnostics metrics', () => {
       storage: { sync: { get: jest.fn((defs, cb) => cb(defs)), set: jest.fn() } },
       runtime: { sendMessage: jest.fn((msg, cb) => {
         if (msg.action === 'metrics') cb({ usage: {} });
-        else if (msg.action === 'tm-cache-metrics') cb({ tmMetrics: { hits: 1 }, cacheStats: { hits: 2 } });
+        else if (msg.action === 'tm-cache-metrics') cb({ tmMetrics: { hits: 1 }, cacheStats: { hits: 2, misses: 1, hitRate: 0.66 } });
         else cb && cb({});
       }) },
     };
@@ -44,7 +44,9 @@ describe('settings diagnostics metrics', () => {
     require('../src/popup/settings.js');
     await flush();
     expect(document.getElementById('tmMetrics').textContent).toContain('hits');
-    expect(document.getElementById('cacheStats').textContent).toContain('hits');
+    const cacheText = document.getElementById('cacheStats').textContent;
+    expect(cacheText).toContain('hits');
+    expect(cacheText).toContain('hitRate');
   });
 });
 
