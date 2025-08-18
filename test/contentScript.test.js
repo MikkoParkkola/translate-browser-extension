@@ -227,3 +227,26 @@ test('shows bubble on text selection and translates', async () => {
   expect(bubble.textContent).toBe('T:Hello');
 });
 
+test('emits offline status when translation fails', async () => {
+  sendMessage.mockClear();
+  const origOnline = navigator.onLine;
+  Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+  const originalTranslate = window.qwenTranslate;
+  window.qwenTranslate = jest.fn().mockRejectedValue(new Error('Failed to fetch'));
+  setCurrentConfig({ apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'en', targetLanguage: 'es', debug: false });
+  document.body.innerHTML = '<p id="s">Hello</p>';
+  const range = document.createRange();
+  range.selectNodeContents(document.getElementById('s'));
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  messageListener({ action: 'translate-selection' });
+  await new Promise(r => setTimeout(r, 0));
+  const offlineCall = sendMessage.mock.calls.find(([msg]) => msg.action === 'offline');
+  expect(offlineCall && offlineCall[0].text).toContain('Offline');
+  const status = document.getElementById('qwen-status');
+  expect(status.textContent).toContain('Offline');
+  Object.defineProperty(navigator, 'onLine', { value: origOnline, configurable: true });
+  window.qwenTranslate = originalTranslate;
+});
+

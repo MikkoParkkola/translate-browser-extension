@@ -134,6 +134,17 @@ function showError(message) {
   setStatus(message, true);
 }
 
+function isOfflineError(err) {
+  return (typeof navigator !== 'undefined' && navigator.onLine === false) ||
+    /network|fetch|offline/i.test((err && err.message) || '');
+}
+
+function showOffline() {
+  const msg = (window.qwenI18n && window.qwenI18n.t) ? window.qwenI18n.t('status.offline') : 'Offline';
+  setStatus(msg, true);
+  try { chrome.runtime.sendMessage({ action: 'offline', text: msg }, handleLastError()); } catch {}
+}
+
 function setupPrefetchObserver() {
   if (prefetchObserver !== undefined) return;
   if (typeof IntersectionObserver === 'undefined') {
@@ -428,7 +439,11 @@ async function translateNode(node) {
     node.textContent = leading + translated + trailing;
     mark(node);
   } catch (e) {
-    showError(`${e.message}. See console for details.`);
+    if (isOfflineError(e)) {
+      showOffline();
+    } else {
+      showError(`${e.message}. See console for details.`);
+    }
     logger.error('QTERROR: translation error', e);
   } finally {
     controllers.delete(controller);
@@ -532,8 +547,12 @@ async function processQueue() {
     try {
       await translateBatch(item.nodes, stats);
     } catch (e) {
-      showError(`${e.message}. See console for details.`);
-      logger.error('QTERROR: batch translation error', e && e.message, e);
+      if (isOfflineError(e)) {
+        showOffline();
+      } else {
+        showError(`${e.message}. See console for details.`);
+        logger.error('QTERROR: batch translation error', e && e.message, e);
+      }
       item.enqueued = Date.now();
       batchQueue.push(item);
       await new Promise(r => setTimeout(r, 1000));
@@ -758,7 +777,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         clearTimeout(timer);
         if (cfg.debug) logger.debug('QTDEBUG: test-e2e sending error', err);
         el.remove();
-        sendResponse({ error: err.message, stack: err.stack });
+        if (isOfflineError(err)) {
+          showOffline();
+          sendResponse({ error: 'offline' });
+        } else {
+          sendResponse({ error: err.message, stack: err.stack });
+        }
       });
     return true;
   }
@@ -791,7 +815,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         addFeedbackUI(node, text, translated, res.confidence);
         sel.removeAllRanges();
       } catch (e) {
-        showError('Translation failed');
+        if (isOfflineError(e)) showOffline();
+        else showError('Translation failed');
       }
     })();
   }
