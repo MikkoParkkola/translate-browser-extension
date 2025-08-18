@@ -148,3 +148,5 @@ Press `Ctrl+C` or `Ctrl+D` to exit.
 
 ### TypeScript
 Basic type definitions for the translator APIs ship in `types/index.d.ts` and are referenced via the package `types` field.
+
+Trigger CI re-run.
