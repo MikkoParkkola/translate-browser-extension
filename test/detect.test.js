@@ -12,6 +12,11 @@ describe('detectLocal short strings', () => {
     expect(r.confidence).toBe(0);
   });
 
+  test('detects when text meets minLength', () => {
+    const r = detectLocal('hi', { minLength: 2 });
+    expect(r.lang).toBe('en');
+  });
+
   test('returns undefined when confidence below sensitivity', () => {
     const r = detectLocal('h?', { sensitivity: 0.6 });
     expect(r.lang).toBeUndefined();

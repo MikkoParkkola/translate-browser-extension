@@ -78,4 +78,26 @@ describe('translator auto-detects source language', () => {
     expect(spy).toHaveBeenCalled();
     expect(spy.mock.calls[0][0].source).toBe('en');
   });
+
+  test('falls back when text shorter than minDetectLength', async () => {
+    jest.doMock('../src/lib/detect.js', () => ({
+      detectLocal: () => ({ lang: 'fr', confidence: 0.9 })
+    }));
+    global.self = { qwenConfig: { minDetectLength: 5 } };
+    const Providers = require('../src/lib/providers.js');
+    const spy = jest.fn(async ({ source, text }) => ({ text: `SRC:${source}:${text}` }));
+    Providers.register('dashscope', { translate: spy });
+    Providers.init();
+    const { qwenTranslate } = require('../src/translator.js');
+    await qwenTranslate({
+      text: 'hi',
+      source: 'auto',
+      target: 'en',
+      endpoint: 'https://dashscope-intl.aliyuncs.com/api/v1',
+      model: 'm',
+      noProxy: true
+    });
+    expect(spy).toHaveBeenCalled();
+    expect(spy.mock.calls[0][0].source).toBe('en');
+  });
 });

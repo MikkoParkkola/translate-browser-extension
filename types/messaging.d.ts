@@ -21,6 +21,7 @@ export interface DetectOptions {
   detector?: string;
   debug?: boolean;
   sensitivity?: number;
+  minLength?: number;
 }
 
 export declare function requestViaBackground(opts: BackgroundRequestOptions): Promise<{ text: string }>;
