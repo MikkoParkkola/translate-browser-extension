@@ -54,7 +54,8 @@
     <section id="detectionSection">
       <h3>Language Detection</h3>
       <label><input type="checkbox" id="enableDetection"> Enable automatic detection</label>
-      <p class="note">Automatically detect the source language before translating.</p>
+      <label>Sensitivity <input type="number" id="sensitivity" min="0" max="1" step="0.1"></label>
+      <p class="note">Automatically detect the source language before translating. Detection is ignored when confidence is below the sensitivity.</p>
     </section>
     <section id="glossarySection">
       <h3>Glossary</h3>

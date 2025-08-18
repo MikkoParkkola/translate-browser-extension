@@ -6,7 +6,7 @@
   function detectLocal(text, { sensitivity = 0, minLength = 0 } = {}) {
     const s = String(text || '');
     const total = s.replace(/\s+/g, '').length;
-    if (total < minLength) return { lang: 'en', confidence: 0 };
+    if (total < minLength) return { lang: undefined, confidence: 0 };
     const counts = {
       ja: (s.match(/[\u3040-\u30ff\u4e00-\u9fff]/g) || []).length,
       ko: (s.match(/[\uac00-\ud7af]/g) || []).length,
@@ -17,8 +17,9 @@
     };
     let best = 'en', max = 0;
     for (const [k, v] of Object.entries(counts)) { if (v > max) { max = v; best = k; } }
+    if (max === 0) return { lang: undefined, confidence: 0 };
     const confidence = total ? Math.min(1, max / total) : 0;
-    if (confidence < sensitivity) return { lang: 'en', confidence };
+    if (confidence < sensitivity) return { lang: undefined, confidence };
     return { lang: best, confidence };
   }
   return { detectLocal };
