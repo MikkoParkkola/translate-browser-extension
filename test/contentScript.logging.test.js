@@ -66,3 +66,28 @@ test('clears controllers on unload', async () => {
   expect(__controllerCount()).toBe(0);
   await expect(p).rejects.toThrow('aborted');
 });
+
+test('reuses cached exports on subsequent loads', () => {
+  jest.resetModules();
+  const sendMessage = jest.fn();
+  global.chrome = {
+    runtime: {
+      getURL: () => 'chrome-extension://abc/',
+      onMessage: { addListener: jest.fn() },
+      sendMessage,
+    },
+  };
+  window.qwenLogger = {
+    create() {
+      return { info: () => {}, debug: () => {}, warn: () => {}, error: () => {} };
+    },
+  };
+  window.qwenTranslateBatch = async () => ({ texts: [] });
+  window.qwenLoadConfig = async () => ({ apiKey: 'k', apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'en', targetLanguage: 'es', debug: false });
+  window.getComputedStyle = () => ({ visibility: 'visible', display: 'block' });
+  Element.prototype.getClientRects = () => [1];
+  const first = require('../src/contentScript.js');
+  jest.resetModules();
+  const second = require('../src/contentScript.js');
+  expect(second.translateBatch).toBe(first.translateBatch);
+});
