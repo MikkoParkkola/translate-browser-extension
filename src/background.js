@@ -1,4 +1,9 @@
-importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'providers/mistral.js', 'lib/tm.js', 'lib/feedback.js', 'lib/qualityCheck.js', 'config.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js', 'backgroundBenchmark.js');
+importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'providers/mistral.js', 'lib/tm.js', 'lib/feedback.js', 'lib/qualityCheck.js', 'lib/offline.js', 'config.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js', 'backgroundBenchmark.js');
+
+// Ensure helper is available when importScripts is stubbed (tests)
+if (typeof self.isOfflineError === 'undefined' && typeof require === 'function') {
+  self.isOfflineError = require('./lib/offline.js').isOfflineError;
+}
 
 const logger = (self.qwenLogger && self.qwenLogger.create)
   ? self.qwenLogger.create('background')
@@ -174,7 +179,7 @@ async function injectContentScripts(tabId) {
   try {
     await chrome.scripting.executeScript({
       target: { tabId, allFrames: true },
-      files: ['i18n/index.js', 'lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/glossary.js', 'lib/tm.js', 'lib/detect.js', 'lib/feedback.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
+      files: ['i18n/index.js', 'lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/glossary.js', 'lib/tm.js', 'lib/detect.js', 'lib/feedback.js', 'lib/offline.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
     });
   } catch (e) {
     // Tab may have been closed; ignore injection failure
@@ -585,7 +590,7 @@ async function handleTranslate(opts) {
     logger.error('background translation error', err);
     logUsage(tokens, Date.now() - start);
     iconError = true;
-    const offline = !navigator.onLine || (err && /network|fetch/i.test(err.message || ''));
+    const offline = isOfflineError(err);
     if (offline) {
       try { chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }); } catch {}
       return { error: 'offline' };
@@ -903,7 +908,7 @@ chrome.runtime.onConnect.addListener(port => {
         logger.error('background port translation error', err);
         logUsage(tokens, Date.now() - start);
         iconError = true;
-        const offline = !navigator.onLine || (err && /network|fetch/i.test(err.message || ''));
+        const offline = isOfflineError(err);
         try { port.postMessage({ requestId, error: offline ? 'offline' : err.message }); } catch {}
         if (offline) {
           try { chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }); } catch {}
