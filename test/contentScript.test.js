@@ -227,3 +227,38 @@ test('shows bubble on text selection and translates', async () => {
   expect(bubble.textContent).toBe('T:Hello');
 });
 
+test('bubble shows localized error when translation fails', async () => {
+  window.qwenTranslate = jest.fn(async () => { throw new Error('boom'); });
+  window.qwenI18n = { t: k => (k === 'bubble.error' ? 'Localized fail' : k), ready: Promise.resolve() };
+  setCurrentConfig({ apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'en', targetLanguage: 'es', debug: false, providerOrder: ['p'], endpoints: { p: 'https://p/' }, failover: true });
+  document.body.innerHTML = '<p id="s">Hello</p>';
+  const range = document.createRange();
+  range.selectNodeContents(document.getElementById('s'));
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  document.dispatchEvent(new MouseEvent('mouseup'));
+  await new Promise(r => setTimeout(r, 0));
+  await new Promise(r => setTimeout(r, 0));
+  document.querySelector('.qwen-bubble__actions button').click();
+  await new Promise(r => setTimeout(r, 0));
+  const bubble = document.querySelector('.qwen-bubble__result');
+  expect(bubble.textContent).toBe('Localized fail: boom');
+});
+
+test('translate-selection error uses localized message', async () => {
+  window.qwenTranslate = jest.fn(async () => { throw new Error('oops'); });
+  window.qwenI18n = { t: k => (k === 'bubble.error' ? 'Localized fail' : k), ready: Promise.resolve() };
+  setCurrentConfig({ apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'en', targetLanguage: 'es', debug: false });
+  document.body.innerHTML = '<p id="s">Hi</p>';
+  const range = document.createRange();
+  range.selectNodeContents(document.getElementById('s'));
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  messageListener({ action: 'translate-selection' });
+  await new Promise(r => setTimeout(r, 0));
+  const status = document.getElementById('qwen-status');
+  expect(status.textContent).toBe('Qwen Translator: Localized fail: oops');
+});
+
