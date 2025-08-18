@@ -314,10 +314,13 @@ let config = { providerOrder: [], requestThreshold: 0, qualityVerify: false };
 const usageStats = { models: {} };
 const usageLog = [];
 let lastQuality = 0;
+let cacheStats = {};
+let tmStats = {};
 
 function logUsage(tokens, latency) {
   const entry = { ts: Date.now(), tokens, latency };
   usageLog.push(entry);
+  try { self.qwenThrottle.recordUsage(tokens); } catch {}
   safeSendMessage({ action: 'usage-metrics', data: entry });
   try {
     chrome.storage.local.get({ usageLog: [] }, data => {
@@ -620,10 +623,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     ensureThrottle().then(() => {
       const usage = self.qwenThrottle.getUsage();
       const cache = {
-        size: self.qwenGetCacheSize ? self.qwenGetCacheSize() : 0,
-        max: (self.qwenConfig && self.qwenConfig.memCacheMax) || 0,
+        size: cacheStats.size != null ? cacheStats.size : (self.qwenGetCacheSize ? self.qwenGetCacheSize() : 0),
+        max: cacheStats.max != null ? cacheStats.max : ((self.qwenConfig && self.qwenConfig.memCacheMax) || 0),
+        hits: cacheStats.hits || 0,
+        misses: cacheStats.misses || 0,
+        hitRate: cacheStats.hitRate || 0,
       };
-      const tm = (self.qwenTM && self.qwenTM.stats) ? self.qwenTM.stats() : {};
+      const tm = Object.keys(tmStats).length ? tmStats : ((self.qwenTM && self.qwenTM.stats) ? self.qwenTM.stats() : {});
       chrome.storage.sync.get({ providers: {} }, cfg => {
         const providers = {};
         Object.entries(cfg.providers || {}).forEach(([id, p]) => {
@@ -670,6 +676,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.action === 'translation-status') {
     translationStatus = msg.status || { active: false };
+    if (msg.status && msg.status.summary) {
+      const s = msg.status.summary;
+      try {
+        if (typeof s.tokens === 'number') {
+          self.qwenThrottle.recordUsage(s.tokens, s.requests || 1);
+        }
+      } catch {}
+      if (s.cache) cacheStats = s.cache;
+      if (s.tm) tmStats = s.tm;
+    }
     if (msg.status && typeof msg.status.etaMs === 'number') {
       etaMs = msg.status.etaMs;
       broadcastEta();

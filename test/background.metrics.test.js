@@ -17,7 +17,7 @@ describe('background metrics endpoint', () => {
     };
     global.importScripts = () => {};
     global.setInterval = () => {};
-    global.qwenThrottle = { configure: jest.fn(), getUsage: () => ({ requests: 1, requestLimit: 10, tokens: 2, tokenLimit: 100 }) };
+    global.qwenThrottle = { configure: jest.fn(), getUsage: () => ({ requests: 1, requestLimit: 10, tokens: 2, tokenLimit: 100 }), recordUsage: jest.fn() };
     global.qwenGetCacheSize = () => 5;
     global.qwenConfig = { memCacheMax: 10 };
     global.qwenTM = { stats: () => ({ hits: 1, misses: 0 }) };
@@ -28,6 +28,16 @@ describe('background metrics endpoint', () => {
     expect(res.cache.size).toBe(5);
     expect(res.tm.hits).toBe(1);
     expect(res.providers.qwen.apiKey).toBe(true);
+
+    listener(
+      { action: 'translation-status', status: { active: false, summary: { tokens: 3, requests: 2, cache: { size: 7, max: 10, hits: 1, misses: 0 }, tm: { hits: 2, misses: 1 } } } },
+      {},
+      () => {}
+    );
+    const res2 = await new Promise(resolve => listener({ action: 'metrics' }, {}, resolve));
+    expect(global.qwenThrottle.recordUsage).toHaveBeenCalledWith(3, 2);
+    expect(res2.cache.hits).toBe(1);
+    expect(res2.tm.hits).toBe(2);
   });
 });
 

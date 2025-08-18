@@ -63,11 +63,13 @@
       processQueue();
     }
 
-    function recordUsage(tokens) {
+    function recordUsage(tokens, requests = 1) {
       const now = Date.now();
-      requestTimes.push(now);
+      for (let i = 0; i < requests; i++) {
+        requestTimes.push(now);
+      }
       tokenTimes.push({ time: now, tokens });
-      totalRequests++;
+      totalRequests += requests;
       totalTokens += tokens;
       prune(now);
     }
@@ -161,7 +163,7 @@
       cooldown = false;
     }
 
-    return { runWithRateLimit, runWithRetry, configure, approxTokens, getUsage, reset, splitSentences, predictiveBatch };
+    return { runWithRateLimit, runWithRetry, configure, approxTokens, getUsage, reset, splitSentences, predictiveBatch, recordUsage };
   }
 
   const globalThrottle = createThrottle();
