@@ -16,6 +16,7 @@ test('listProviders returns name and label', () => {
       { name: 'google', label: 'Google' },
       { name: 'deepl', label: 'DeepL' },
       { name: 'openrouter', label: 'OpenRouter' },
+      { name: 'openai', label: 'OpenAI' },
       { name: 'mistral', label: 'Mistral' },
       { name: 'mock', label: 'Mock Provider' },
     ])

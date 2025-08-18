@@ -1,5 +1,7 @@
 # Providers and API keys
 
+Call `qwenProviders.initProviders()` (or `qwenProviders.ensureProviders()`) to load the default provider presets: DashScope, OpenAI, Mistral, OpenRouter, Gemini, Anthropic, DeepL, Google, Qwen and Local WASM.
+
 Manage providers in the extension under **Settings → Providers**. Use **Add Provider** or **Add Local Provider** to supply API keys, endpoints and models.
 
 DashScope (Qwen)
