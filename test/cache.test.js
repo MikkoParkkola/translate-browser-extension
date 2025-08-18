@@ -82,9 +82,15 @@ test('tracks hits and misses', async () => {
   setCache('k1', { text: 'one', domain: 'a.com' });
   expect(getCache('k1').text).toBe('one');
   expect(getCache('missing')).toBeUndefined();
-  const stats = qwenGetCacheStats();
+  let stats = qwenGetCacheStats();
   expect(stats.hits).toBe(1);
   expect(stats.misses).toBe(1);
+  expect(stats.hitRate).toBe(0.5);
+  qwenResetCacheStats();
+  stats = qwenGetCacheStats();
+  expect(stats.hits).toBe(0);
+  expect(stats.misses).toBe(0);
+  expect(stats.hitRate).toBe(0);
 });
 
 test('clear cache by domain and language pair', async () => {

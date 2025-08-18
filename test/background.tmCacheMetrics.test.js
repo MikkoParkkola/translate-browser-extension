@@ -12,13 +12,14 @@ describe('background tm/cache metrics endpoint', () => {
     global.importScripts = () => {};
     global.setInterval = () => {};
     global.qwenTM = { stats: () => ({ hits: 1, misses: 0 }), enableSync: jest.fn() };
-    global.qwenGetCacheStats = () => ({ hits: 2, misses: 0 });
+    global.qwenGetCacheStats = () => ({ hits: 2, misses: 0, hitRate: 1 });
     global.qwenThrottle = { configure: jest.fn(), getUsage: () => ({ requests: 0, requestLimit: 1, tokens: 0, tokenLimit: 1, totalRequests:0, totalTokens:0 }) };
     require('../src/background.js');
     const listener = chrome.runtime.onMessage.addListener.mock.calls[0][0];
     const res = await new Promise(resolve => listener({ action: 'tm-cache-metrics' }, {}, resolve));
     expect(res.tmMetrics.hits).toBe(1);
     expect(res.cacheStats.hits).toBe(2);
+    expect(res.cacheStats.hitRate).toBe(1);
   });
 });
 
