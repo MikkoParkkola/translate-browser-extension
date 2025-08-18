@@ -30,6 +30,14 @@
     .lang-select select {
       flex: 1;
     }
+    .theme-select {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .theme-select select {
+      flex: 1;
+    }
     .stats {
       font-size: 0.75rem;
     }
@@ -44,6 +52,13 @@
     <select id="srcLang"></select>
     <span>→</span>
     <select id="destLang"></select>
+  </div>
+  <div class="theme-select">
+    <label for="theme">Theme</label>
+    <select id="theme">
+      <option value="dark">Dark</option>
+      <option value="light">Light</option>
+    </select>
   </div>
   <label class="auto-toggle"><input type="checkbox" id="autoTranslate"> Auto-translate</label>
   <div id="provider">Provider: <span id="providerName">-</span> <span id="providerKey"></span></div>

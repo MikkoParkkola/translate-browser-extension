@@ -222,6 +222,12 @@ chrome.runtime.onMessage.addListener(msg => {
       pageRecognizer = null;
       clearStatus();
     }
+  } else if (msg.action === 'update-theme') {
+    currentConfig = currentConfig || {};
+    currentConfig.theme = msg.theme;
+    document.querySelectorAll('[data-qwen-theme="apple"]').forEach(el => {
+      el.setAttribute('data-qwen-color', msg.theme);
+    });
   }
 });
 function mark(node) {

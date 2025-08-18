@@ -23,6 +23,7 @@
 
 [data-qwen-theme="apple"] input[type="text"],
 [data-qwen-theme="apple"] input[type="number"],
+[data-qwen-theme="apple"] textarea,
 [data-qwen-theme="apple"] select {
   box-sizing: border-box;
   padding: 0.5rem 0.75rem;
@@ -36,6 +37,7 @@
 }
 
 [data-qwen-theme="apple"] input:focus,
+[data-qwen-theme="apple"] textarea:focus,
 [data-qwen-theme="apple"] select:focus {
   outline: none;
   border-color: var(--qwen-input-focus);
@@ -74,6 +76,42 @@
 [data-qwen-theme="apple"] button.primary:hover,
 [data-qwen-theme="apple"] a.button.primary:hover {
   background: var(--qwen-primary-hover);
+}
+
+[data-qwen-theme="apple"] button.secondary,
+[data-qwen-theme="apple"] a.button.secondary {
+  background: var(--qwen-secondary-bg);
+  color: var(--qwen-text);
+}
+
+[data-qwen-theme="apple"] button.secondary:hover,
+[data-qwen-theme="apple"] a.button.secondary:hover {
+  background: var(--qwen-secondary-hover);
+}
+
+[data-qwen-theme="apple"] button:disabled,
+[data-qwen-theme="apple"] a.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+[data-qwen-theme="apple"] progress {
+  width: 100%;
+  height: 1rem;
+  -webkit-appearance: none;
+  appearance: none;
+}
+[data-qwen-theme="apple"] progress::-webkit-progress-bar {
+  background: var(--qwen-secondary-bg);
+  border-radius: 8px;
+}
+[data-qwen-theme="apple"] progress::-webkit-progress-value {
+  background: var(--qwen-primary-bg);
+  border-radius: 8px;
+}
+[data-qwen-theme="apple"] progress::-moz-progress-bar {
+  background: var(--qwen-primary-bg);
+  border-radius: 8px;
 }
 
 
@@ -135,4 +173,14 @@
 @keyframes qwen-bubble-fade {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-qwen-theme="apple"] button,
+  [data-qwen-theme="apple"] a.button {
+    transition: none !important;
+  }
+  .qwen-bubble {
+    animation: none !important;
+  }
 }
