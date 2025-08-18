@@ -357,8 +357,16 @@ function getAggregatedStats() {
 
 function broadcastStats() {
   ensureThrottle().then(() => {
-    const stats = getAggregatedStats();
-    safeSendMessage({ action: 'stats', stats });
+    const usage = self.qwenThrottle.getUsage();
+    const cache = {
+      size: cacheStats.size != null ? cacheStats.size : (self.qwenGetCacheSize ? self.qwenGetCacheSize() : 0),
+      max: cacheStats.max != null ? cacheStats.max : ((self.qwenConfig && self.qwenConfig.memCacheMax) || 0),
+      hits: cacheStats.hits || 0,
+      misses: cacheStats.misses || 0,
+      hitRate: cacheStats.hitRate || 0,
+    };
+    const tm = Object.keys(tmStats).length ? tmStats : ((self.qwenTM && self.qwenTM.stats) ? self.qwenTM.stats() : {});
+    safeSendMessage({ action: 'stats', usage, cache, tm });
   });
 }
 
