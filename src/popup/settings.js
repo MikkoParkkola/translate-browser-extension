@@ -150,6 +150,22 @@
       providerConfig.providerOrder = Array.from(providerList.children).map(el => el.dataset.provider);
       window.qwenProviderConfig.saveProviderConfig(providerConfig);
     }
+    function duplicateProvider(name) {
+      const orig = providers[name];
+      if (!orig) return;
+      let newName = `${name}-copy`;
+      let i = 1;
+      while (providers[newName]) newName = `${name}-copy${i++}`;
+      providers[newName] = { ...orig };
+      const impl = window.qwenProviders?.getProvider?.(name);
+      if (impl) window.qwenProviders?.registerProvider?.(newName, impl);
+      if (!Array.isArray(providerConfig.providerOrder)) providerConfig.providerOrder = [];
+      const idx = providerConfig.providerOrder.indexOf(name);
+      if (idx >= 0) providerConfig.providerOrder.splice(idx + 1, 0, newName);
+      else providerConfig.providerOrder.push(newName);
+      window.qwenProviderConfig.saveProviderConfig(providerConfig);
+      openEditor(newName);
+    }
     order.forEach(name => {
       const meta = available.find(p => p.name === name) || { name, label: name };
       if (!providers[name]) providers[name] = {};
@@ -176,6 +192,11 @@
       edit.textContent = 'Edit';
       edit.addEventListener('click', () => openEditor(name));
       card.appendChild(edit);
+      const dup = document.createElement('button');
+      dup.textContent = 'Duplicate';
+      dup.className = 'duplicate';
+      dup.addEventListener('click', () => duplicateProvider(name));
+      card.appendChild(dup);
       card.addEventListener('dragstart', e => {
         dragEl = card;
         e.dataTransfer?.setData('text/plain', name);
