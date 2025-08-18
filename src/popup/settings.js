@@ -20,12 +20,14 @@
   }
 
   const store = await new Promise(res => {
-    if (chrome?.storage?.sync) chrome.storage.sync.get({ ...defaults, theme: 'dark' }, res);
-    else res({ ...defaults, theme: 'dark' });
+    if (chrome?.storage?.sync) chrome.storage.sync.get({ ...defaults, theme: 'dark', themeStyle: 'apple' }, res);
+    else res({ ...defaults, theme: 'dark', themeStyle: 'apple' });
   });
 
+  document.documentElement.setAttribute('data-qwen-theme', store.themeStyle || 'apple');
   document.documentElement.setAttribute('data-qwen-color', store.theme || 'dark');
   const themeSel = document.getElementById('theme');
+  const themeStyleSel = document.getElementById('themeStyle');
   if (themeSel) {
     themeSel.value = store.theme || 'dark';
     themeSel.addEventListener('change', () => {
@@ -35,7 +37,20 @@
       chrome.runtime.sendMessage({ action: 'set-config', config: { theme } }, handleLastError());
       chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
         const t = tabs && tabs[0];
-        if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme }, handleLastError());
+        if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme, themeStyle: themeStyleSel?.value }, handleLastError());
+      });
+    });
+  }
+  if (themeStyleSel) {
+    themeStyleSel.value = store.themeStyle || 'apple';
+    themeStyleSel.addEventListener('change', () => {
+      const style = themeStyleSel.value;
+      document.documentElement.setAttribute('data-qwen-theme', style);
+      chrome?.storage?.sync?.set({ themeStyle: style });
+      chrome.runtime.sendMessage({ action: 'set-config', config: { themeStyle: style } }, handleLastError());
+      chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
+        const t = tabs && tabs[0];
+        if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme: themeSel?.value, themeStyle: style }, handleLastError());
       });
     });
   }

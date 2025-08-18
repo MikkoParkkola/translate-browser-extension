@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <link rel="stylesheet" href="../styles/apple.css">
+  <link rel="stylesheet" href="../styles/cyberpunk.css">
   <style>
     html { height: 100%; background: var(--qwen-bg, rgba(28,28,30,0.7)); }
     body {
@@ -46,10 +47,18 @@
   <div id="generalTab" class="tab">
     <section id="themeSection">
       <h3>Theme</h3>
-      <select id="theme">
-        <option value="dark">Dark</option>
-        <option value="light">Light</option>
-      </select>
+      <label>Style
+        <select id="themeStyle">
+          <option value="apple">Apple</option>
+          <option value="cyberpunk">Cyberpunk</option>
+        </select>
+      </label>
+      <label>Color
+        <select id="theme">
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select>
+      </label>
     </section>
     <section id="detectionSection">
       <h3>Language Detection</h3>

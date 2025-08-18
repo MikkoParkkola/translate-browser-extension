@@ -12,6 +12,7 @@
   const destSel = document.getElementById('destLang');
   const diagBtn = document.getElementById('toDiagnostics');
   const themeSel = document.getElementById('theme');
+  const themeStyleSel = document.getElementById('themeStyle');
 
   const languages = (window.qwenLanguages || []).slice();
 
@@ -40,10 +41,12 @@
   fillSelect(srcSel, true);
   fillSelect(destSel);
 
-  chrome.storage?.sync?.get({ sourceLanguage: 'auto', targetLanguage: 'en', theme: 'dark' }, cfg => {
+  chrome.storage?.sync?.get({ sourceLanguage: 'auto', targetLanguage: 'en', theme: 'dark', themeStyle: 'apple' }, cfg => {
     if (srcSel) srcSel.value = cfg.sourceLanguage;
     if (destSel) destSel.value = cfg.targetLanguage;
     if (themeSel) themeSel.value = cfg.theme;
+    if (themeStyleSel) themeStyleSel.value = cfg.themeStyle;
+    document.documentElement.setAttribute('data-qwen-theme', cfg.themeStyle || 'apple');
     document.documentElement.setAttribute('data-qwen-color', cfg.theme || 'dark');
   });
 
@@ -63,7 +66,18 @@
     chrome.runtime.sendMessage({ action: 'set-config', config: { theme } }, handleLastError());
     chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
       const t = tabs && tabs[0];
-      if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme }, handleLastError());
+      if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme, themeStyle: themeStyleSel?.value }, handleLastError());
+    });
+  });
+
+  themeStyleSel?.addEventListener('change', e => {
+    const style = e.target.value;
+    document.documentElement.setAttribute('data-qwen-theme', style);
+    chrome.storage?.sync?.set({ themeStyle: style });
+    chrome.runtime.sendMessage({ action: 'set-config', config: { themeStyle: style } }, handleLastError());
+    chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
+      const t = tabs && tabs[0];
+      if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme: themeSel?.value, themeStyle: style }, handleLastError());
     });
   });
 

@@ -37,6 +37,7 @@ const defaultCfg = {
   autoOpenAfterSave: true,
   selectionPopup: false,
   theme: 'dark',
+  themeStyle: 'apple',
   charLimit: 0,
   strategy: 'balanced',
   secondaryModel: '',
