@@ -56,4 +56,3 @@ describe('offline handling', () => {
     Object.defineProperty(window.navigator, 'onLine', origDesc);
   });
 });
-

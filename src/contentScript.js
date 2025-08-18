@@ -41,6 +41,19 @@ if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
   }
   window.addEventListener('beforeunload', onBeforeUnload);
 
+  function cleanupControllers() {
+    controllers.forEach(c => {
+      try { c.abort(); } catch {}
+    });
+    controllers.clear();
+  }
+
+  function onBeforeUnload() {
+    cleanupControllers();
+    window.removeEventListener('beforeunload', onBeforeUnload);
+  }
+  window.addEventListener('beforeunload', onBeforeUnload);
+
 function handleLastError(cb) {
   return (...args) => {
     const err = chrome.runtime.lastError;
