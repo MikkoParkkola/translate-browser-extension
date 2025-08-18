@@ -26,6 +26,19 @@ if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
   let prefetchObserver;
   const visibilityMap = new Map();
 
+  function cleanupControllers() {
+    controllers.forEach(c => {
+      try { c.abort(); } catch {}
+    });
+    controllers.clear();
+  }
+
+  function onBeforeUnload() {
+    cleanupControllers();
+    window.removeEventListener('beforeunload', onBeforeUnload);
+  }
+  window.addEventListener('beforeunload', onBeforeUnload);
+
 function handleLastError(cb) {
   return (...args) => {
     const err = chrome.runtime.lastError;
@@ -656,8 +669,7 @@ function stop() {
   if (prefetchObserver) { try { prefetchObserver.disconnect(); } catch {} prefetchObserver = null; }
   visibilityMap.clear();
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-  controllers.forEach(c => { try { c.abort(); } catch {} });
-  controllers.clear();
+  cleanupControllers();
   processing = false;
   started = false;
   progress = { total: 0, done: 0 };
@@ -833,6 +845,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       setCurrentConfig: cfg => {
         currentConfig = cfg;
       },
+      __controllerCount: () => controllers.size,
     };
   }
 }
