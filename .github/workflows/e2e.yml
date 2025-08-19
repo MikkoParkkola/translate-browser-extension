@@ -25,8 +25,19 @@ jobs:
       - name: Install deps
         run: npm ci --no-audit --no-fund
 
+      - name: Get Playwright version
+        id: playwright-version
+        run: |
+          echo "version=$(node -p \"require('playwright/package.json').version\")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('playwright.config.js') }}
+
       - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
+        run: npx playwright install chromium
 
       - name: Check repo for public PDFs at root (privacy)
         run: |
