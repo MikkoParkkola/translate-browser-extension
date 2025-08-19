@@ -17,7 +17,8 @@
     "build:zip": "npm run build && npm run zip",
     "serve": "http-server dist -p 8080",
     "typecheck": "tsc --noEmit",
-    "typecheck:popup": "tsc --noEmit types/popup/*.d.ts"
+    "typecheck:popup": "tsc --noEmit types/popup/*.d.ts",
+    "size": "size-limit"
   },
   "keywords": [],
   "author": "",
@@ -40,6 +41,12 @@
       ]
     }
   },
+  "size-limit": [
+    {
+      "path": "dist/translator.js",
+      "limit": "60 KB"
+    }
+  ],
   "devDependencies": {
     "@playwright/test": "^1.54.2",
     "@types/jest": "^30.0.0",
@@ -54,7 +61,9 @@
     "bestzip": "^2.2.1",
     "copyfiles": "^2.4.1",
     "rimraf": "^6.0.1",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "@size-limit/file": "^11.1.5",
+    "size-limit": "^11.1.5"
   },
   "dependencies": {
     "mupdf": "^1.26.4",
