@@ -8,6 +8,8 @@ html[data-qwen-theme] {
   color: var(--qwen-text, #f5f5f7);
   margin: 0;
   padding: 1rem;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
 }
 
 [data-qwen-theme] body.home {
@@ -118,6 +120,7 @@ html[data-qwen-theme] {
   padding: 0.5rem;
   border: 1px solid var(--qwen-border, rgba(255,255,255,0.2));
   flex: 1 1 150px;
+  overflow-wrap: anywhere;
 }
 
 [data-qwen-theme] .provider-card:hover {
@@ -133,6 +136,7 @@ html[data-qwen-theme] {
   align-items: center;
   gap: 0.5rem;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 [data-qwen-theme] .provider-avatar {
@@ -189,7 +193,7 @@ html[data-qwen-theme] {
 [data-qwen-theme] #tmStats {
   white-space: pre-wrap;
   word-break: break-word;
-  overflow-x: auto;
+  overflow-x: hidden;
   margin: 0;
   width: 100%;
 }
