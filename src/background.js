@@ -785,6 +785,43 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
     });
     return true;
   }
+  if (msg.action === 'metrics-v1') {
+    ensureThrottle().then(() => {
+      const usage = self.qwenThrottle.getUsage();
+      const cache = {
+        size: cacheStats.size != null ? cacheStats.size : (self.qwenGetCacheSize ? self.qwenGetCacheSize() : 0),
+        max: cacheStats.max != null ? cacheStats.max : ((self.qwenConfig && self.qwenConfig.memCacheMax) || 0),
+        hits: cacheStats.hits || 0,
+        misses: cacheStats.misses || 0,
+        hitRate: cacheStats.hitRate || 0,
+      };
+      const tm = Object.keys(tmStats).length ? tmStats : ((self.qwenTM && self.qwenTM.stats) ? self.qwenTM.stats() : {});
+      const providers = {};
+      const now = Date.now();
+      for (const [name, pu] of providersUsage.entries()) {
+        const rt = (pu.reqTimes || []).filter(t => now - t < 60000);
+        const tt = (pu.tokTimes || []).filter(t => now - t.time < 60000);
+        providers[name] = {
+          window: { requests: rt.length, tokens: tt.reduce((s, t) => s + (t.tokens || 0), 0) },
+          totals: { requests: pu.totalReq || 0, tokens: pu.totalTok || 0 },
+          saved: { requests: pu.avoidedReq || 0, tokens: pu.avoidedTok || 0 },
+        };
+      }
+      const agg = getAggregatedStats();
+      const out = {
+        version: 1,
+        usage,
+        providers,
+        cache,
+        tm,
+        quality: { last: agg.quality, avgLatency: agg.avgLatency, etaSeconds: Math.round(agg.eta || 0) },
+        errors: {},
+        status: translationStatus,
+      };
+      sendResponse(out);
+    });
+    return true;
+  }
   if (msg.action === 'tm-cache-metrics') {
     const tmMetrics = (self.qwenTM && self.qwenTM.stats) ? self.qwenTM.stats() : {};
     const cacheStats = self.qwenGetCacheStats ? self.qwenGetCacheStats() : {};
