@@ -139,28 +139,38 @@
     Object.entries(providers).forEach(([name, p]) => {
       const card = document.createElement('div');
       card.className = 'provider-card';
-      card.style.display = 'flex';
-      card.style.flexDirection = 'column';
-      card.style.gap = '4px';
-      const title = document.createElement('div');
-      title.style.fontWeight = '600';
+
+      const header = document.createElement('div');
+      header.className = 'provider-card-title';
+      const avatar = document.createElement('span');
+      avatar.className = 'provider-avatar';
+      avatar.textContent = name.slice(0, 1).toUpperCase();
+      const title = document.createElement('span');
       title.textContent = name;
+      header.appendChild(avatar);
+      header.appendChild(title);
       const req = document.createElement('div');
       req.textContent = `Requests ${p.requests || 0}/${usage.requestLimit || 0}`;
       const reqBar = document.createElement('progress');
       reqBar.max = usage.requestLimit || 0;
       reqBar.value = p.requests || 0;
+      if (self.qwenUsageColor) {
+        reqBar.style.accentColor = self.qwenUsageColor(reqBar.value / (reqBar.max || 1));
+      }
       const tok = document.createElement('div');
       tok.textContent = `Tokens ${p.tokens || 0}/${usage.tokenLimit || 0}`;
       const tokBar = document.createElement('progress');
       tokBar.max = usage.tokenLimit || 0;
       tokBar.value = p.tokens || 0;
+      if (self.qwenUsageColor) {
+        tokBar.style.accentColor = self.qwenUsageColor(tokBar.value / (tokBar.max || 1));
+      }
       const small = document.createElement('div');
       small.className = 'stats';
       const total = `Total ${p.totalRequests || 0} req • ${p.totalTokens || 0} tok`;
       const avoid = `Saved ${p.avoidedRequests || 0} req • ${p.avoidedTokens || 0} tok`;
       small.textContent = `${total} • ${avoid}`;
-      card.appendChild(title);
+      card.appendChild(header);
       card.appendChild(req);
       card.appendChild(reqBar);
       card.appendChild(tok);

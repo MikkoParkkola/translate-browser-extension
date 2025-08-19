@@ -105,17 +105,47 @@ html[data-qwen-theme] {
   opacity: 0.8;
 }
 
+[data-qwen-theme] #providers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 [data-qwen-theme] .provider-card {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.25rem;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem;
   border: 1px solid var(--qwen-border, rgba(255,255,255,0.2));
-  margin-bottom: 0.25rem;
+  flex: 1 1 150px;
+}
+
+[data-qwen-theme] .provider-card:hover {
+  background: var(--qwen-secondary-bg, rgba(118,118,128,0.2));
 }
 
 [data-qwen-theme] .provider-card .drag-handle {
   cursor: move;
+}
+
+[data-qwen-theme] .provider-card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+[data-qwen-theme] .provider-avatar {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--qwen-secondary-bg, rgba(118,118,128,0.2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-transform: uppercase;
 }
 
 [data-qwen-theme] .modal-overlay {
