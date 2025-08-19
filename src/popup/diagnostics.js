@@ -2,6 +2,7 @@
   const statusEl = document.getElementById('status');
   const usageEl = document.getElementById('usage');
   const cacheEl = document.getElementById('cache');
+  const costsEl = document.getElementById('costs');
   const qualityEl = document.getElementById('quality');
   const providersEl = document.getElementById('providers');
   const backBtn = document.getElementById('back');
@@ -113,6 +114,13 @@
       if (m && m.version === 1) return resolve(m);
       chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(resolve));
     })));
+    // Load cost summary from legacy usage endpoint
+    chrome.runtime.sendMessage({ action: 'usage' }, handleLastError(u => {
+      try {
+        const c = u && u.costs && u.costs.total || {};
+        if (costsEl) costsEl.textContent = `Cost: 24h $${(c['24h']||0).toFixed ? c['24h'].toFixed(4) : c['24h']||0} | 7d $${(c['7d']||0).toFixed ? c['7d'].toFixed(4) : c['7d']||0}`;
+      } catch {}
+    }));
     status = await new Promise(resolve => chrome.runtime.sendMessage({ action: 'get-status' }, handleLastError(resolve)));
     render();
     updateStatus();
