@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'src/**'
-      - 'e2e/**'
+      - 'src/pdf**'
+      - 'e2e/pdfs/**'
+      - 'e2e/pdf-compare.spec.js'
       - '.github/workflows/e2e.yml'
       - 'package.json'
 
