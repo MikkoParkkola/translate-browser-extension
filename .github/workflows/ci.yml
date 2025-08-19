@@ -54,6 +54,19 @@ jobs:
           name: qwen-translator-zip
           path: dist/*.zip
 
+      - name: Upload coverage
+        run: |
+          npx jest --coverage --coverageReporters=text-summary --coverageReporters=lcov || true
+          echo "\nCoverage summary:" && cat coverage/lcov.info | wc -l || true
+        shell: bash
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+
   e2e-smoke:
     needs: build-and-test
     runs-on: ubuntu-latest
