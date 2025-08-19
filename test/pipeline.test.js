@@ -1,5 +1,7 @@
 const fs = require('fs');
 const path = require('path');
+const { performance } = require('perf_hooks');
+const { splitLongText } = require('../src/translator/batching');
 
 function loadPipeline() {
   const code = fs.readFileSync(path.join(__dirname, '../src/wasm/pipeline.js'), 'utf8');
@@ -37,5 +39,17 @@ describe('regeneratePdfFromUrl when engine missing', () => {
       regeneratePdfFromUrl('https://example.com/a.pdf', { useWasmEngine: true })
     ).rejects.toThrow('WASM engine not available');
     expect(global.chrome.downloads.download).not.toHaveBeenCalled();
+  });
+});
+
+describe('translator batching performance', () => {
+  it('splits text under threshold', () => {
+    const text = 'Hello world. '.repeat(1000);
+    const start = performance.now();
+    for (let i = 0; i < 100; i++) {
+      splitLongText(text, 500);
+    }
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(120);
   });
 });
