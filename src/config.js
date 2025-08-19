@@ -51,6 +51,7 @@ const defaultCfg = {
   providerOrder: [],
   failover: true,
   parallel: 'auto',
+  usePredictiveBatch: false,
   translateTimeoutMs: TRANSLATE_TIMEOUT_MS,
 };
 
@@ -104,6 +105,7 @@ function migrate(cfg = {}) {
   if (!Array.isArray(out.providerOrder)) out.providerOrder = [];
   if (typeof out.failover !== 'boolean') out.failover = true;
   if (typeof out.parallel !== 'boolean' && out.parallel !== 'auto') out.parallel = 'auto';
+  if (typeof out.usePredictiveBatch !== 'boolean') out.usePredictiveBatch = false;
   if (typeof out.tmSync !== 'boolean') out.tmSync = false;
   if (typeof out.selectionPopup !== 'boolean') out.selectionPopup = false;
   out.translateTimeoutMs = parseInt(out.translateTimeoutMs, 10);
@@ -163,6 +165,7 @@ function qwenSaveConfig(cfg) {
       costPerInputToken: num(cfg.costPerInputToken),
       costPerOutputToken: num(cfg.costPerOutputToken),
       weight: num(cfg.weight),
+      usePredictiveBatch: cfg.usePredictiveBatch,
     };
     const toSave = { ...cfg, providers, translateTimeoutMs: num(cfg.translateTimeoutMs), minDetectLength: num(cfg.minDetectLength) };
     return new Promise((resolve) => {

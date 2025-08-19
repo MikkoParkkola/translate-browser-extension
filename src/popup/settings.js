@@ -119,6 +119,16 @@
     });
   }
 
+  const predictiveBox = document.getElementById('usePredictiveBatch');
+  if (predictiveBox) {
+    predictiveBox.checked = !!store.usePredictiveBatch;
+    predictiveBox.addEventListener('change', () => {
+      const val = !!predictiveBox.checked;
+      chrome?.storage?.sync?.set({ usePredictiveBatch: val });
+      chrome.runtime.sendMessage({ action: 'set-config', config: { usePredictiveBatch: val } }, handleLastError());
+    });
+  }
+
   const glossaryField = document.getElementById('glossary');
   glossaryField.value = store.glossary;
   glossaryField.addEventListener('input', () => {
@@ -404,4 +414,3 @@
 
   refreshTM();
 })();
-

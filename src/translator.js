@@ -791,7 +791,9 @@ async function batchOnce({
     return out;
   };
   let pieces;
-  if (opts && opts.usePredictiveBatch && typeof predictive === 'function') {
+  const cfgUsePredictive = cfg && typeof cfg.usePredictiveBatch === 'boolean' ? cfg.usePredictiveBatch : false;
+  const wantPredictive = (opts && typeof opts.usePredictiveBatch === 'boolean') ? opts.usePredictiveBatch : cfgUsePredictive;
+  if (wantPredictive && typeof predictive === 'function') {
     try {
       const batches = predictive([t], tokenBudget) || [];
       pieces = batches.map(arr => (Array.isArray(arr) ? arr.join(' ') : String(arr || ''))).filter(Boolean);
