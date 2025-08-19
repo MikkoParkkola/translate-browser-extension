@@ -2,6 +2,7 @@
   const statusEl = document.getElementById('status');
   const usageEl = document.getElementById('usage');
   const cacheEl = document.getElementById('cache');
+  const qualityEl = document.getElementById('quality');
   const providersEl = document.getElementById('providers');
   const backBtn = document.getElementById('back');
   const summaryEl = document.getElementById('usageSummary');
@@ -87,6 +88,14 @@
   function render() {
     const u = metrics.usage || {};
     usageEl.textContent = `Requests ${u.requests || 0}/${u.requestLimit || 0} | Tokens ${u.tokens || 0}/${u.tokenLimit || 0}`;
+    const q = metrics.quality || {};
+    if (qualityEl) {
+      const avg = Math.round(q.avgLatencyMs || 0);
+      const p50 = Math.round(q.p50Ms || 0);
+      const p95 = Math.round(q.p95Ms || 0);
+      const eta = Math.round(q.etaSeconds || 0);
+      qualityEl.textContent = `Latency avg ${avg}ms | P50 ${p50}ms | P95 ${p95}ms | ETA ${eta}s`;
+    }
     const c = metrics.cache || {};
     const tm = metrics.tm || {};
     cacheEl.textContent = `Cache ${c.size || 0}/${c.max || 0} | TM hits ${tm.hits || 0} misses ${tm.misses || 0}`;
@@ -100,7 +109,10 @@
 
   async function load() {
     if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
-    metrics = await new Promise(resolve => chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(resolve)));
+    metrics = await new Promise(resolve => chrome.runtime.sendMessage({ action: 'metrics-v1' }, handleLastError(m => {
+      if (m && m.version === 1) return resolve(m);
+      chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(resolve));
+    })));
     status = await new Promise(resolve => chrome.runtime.sendMessage({ action: 'get-status' }, handleLastError(resolve)));
     render();
     updateStatus();
@@ -122,4 +134,3 @@
     } catch {}
   });
 })();
-

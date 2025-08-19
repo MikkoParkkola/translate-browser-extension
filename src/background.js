@@ -358,7 +358,10 @@ function getAggregatedStats() {
   const avgThroughput = totalLatency ? totalLoggedTokens / totalLatency : 0; // tokens per ms
   const eta = avgThroughput ? (remaining / avgThroughput) / 1000 : 0; // seconds
   const avgLatency = usageLog.length ? totalLatency / usageLog.length : 0;
-  return { requests: totalRequests, tokens: totalTokens, eta, avgLatency, quality: lastQuality };
+  const lat = usageLog.map(e => e.latency || 0).filter(n => Number.isFinite(n) && n >= 0).slice(-200).sort((a,b)=>a-b);
+  function pct(p){ if (!lat.length) return 0; const idx = Math.min(lat.length-1, Math.max(0, Math.floor(p*(lat.length-1)))); return lat[idx]; }
+  const p50 = pct(0.5), p95 = pct(0.95);
+  return { requests: totalRequests, tokens: totalTokens, eta, avgLatency, p50, p95, quality: lastQuality };
 }
 
 function broadcastStats() {
@@ -781,6 +784,42 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
           };
         }
           sendResponse({ usage, cache, tm, providers, providersUsage: provUsage, status: translationStatus });
+      });
+    });
+    return true;
+  }
+  if (msg.action === 'metrics-v1') {
+    ensureThrottle().then(() => {
+      const usage = self.qwenThrottle.getUsage();
+      const cache = {
+        size: cacheStats.size != null ? cacheStats.size : (self.qwenGetCacheSize ? self.qwenGetCacheSize() : 0),
+        max: cacheStats.max != null ? cacheStats.max : ((self.qwenConfig && self.qwenConfig.memCacheMax) || 0),
+        hits: cacheStats.hits || 0,
+        misses: cacheStats.misses || 0,
+        hitRate: cacheStats.hitRate || 0,
+      };
+      const tm = Object.keys(tmStats).length ? tmStats : ((self.qwenTM && self.qwenTM.stats) ? self.qwenTM.stats() : {});
+      const providers = {};
+      const now = Date.now();
+      for (const [name, pu] of providersUsage.entries()) {
+        const rt = (pu.reqTimes || []).filter(t => now - t < 60000);
+        const tt = (pu.tokTimes || []).filter(t => now - t.time < 60000);
+        providers[name] = {
+          window: { requests: rt.length, tokens: tt.reduce((s, t) => s + (t.tokens || 0), 0) },
+          totals: { requests: pu.totalReq || 0, tokens: pu.totalTok || 0 },
+          saved: { requests: pu.avoidedReq || 0, tokens: pu.avoidedTok || 0 },
+        };
+      }
+      const agg = getAggregatedStats();
+      sendResponse({
+        version: 1,
+        usage,
+        providers,
+        cache,
+        tm,
+        quality: { last: agg.quality, avgLatencyMs: agg.avgLatency, p50Ms: agg.p50, p95Ms: agg.p95, etaSeconds: Math.round(agg.eta || 0) },
+        errors: {},
+        status: translationStatus,
       });
     });
     return true;
