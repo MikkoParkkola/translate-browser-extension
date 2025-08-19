@@ -7,6 +7,7 @@
     "test": "jest",
     "build:safari": "bash scripts/convert-safari.sh",
     "test:e2e": "playwright test e2e",
+    "test:e2e:pdf": "playwright test e2e/pdf-compare.spec.js",
     "e2e": "npm run test:e2e",
     "postinstall": "bash scripts/fetch-wasm-assets.sh",
     "clean": "rimraf dist",

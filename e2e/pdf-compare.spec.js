@@ -87,6 +87,65 @@ test.describe('PDF visual compare', () => {
     }
   });
 
+  test('loads PDF, translates, and overlays text', async ({ page }) => {
+    await page.route('**/config.js', route => {
+      route.fulfill({
+        contentType: 'application/javascript',
+        body: `
+          window.qwenLoadConfig = async () => ({
+            provider: 'mock',
+            apiEndpoint: '',
+            apiKey: 'test',
+            model: '',
+            failover: false,
+            sourceLanguage: 'en',
+            targetLanguage: 'fr',
+            debug: false
+          });
+          window.qwenSetTokenBudget = () => {};
+          window.qwenSetCacheLimit = () => {};
+          window.qwenSetCacheTTL = () => {};
+          window.qwenTM = { set: () => {}, get: () => null };
+        `
+      });
+    });
+    await page.route('**/translator.js', route => {
+      route.fulfill({
+        contentType: 'application/javascript',
+        body: 'window.qwenTranslate = async ({ text }) => ({ text: `T:${text}` });'
+      });
+    });
+    await page.addInitScript(() => {
+      window.chrome = {
+        runtime: {
+          getURL: p => `http://127.0.0.1:8080/src/${p}`,
+          onMessage: { addListener: () => {} },
+          sendMessage: () => {}
+        },
+        storage: { sync: { get: (d, cb) => cb(d), set: (_d, cb) => cb && cb() } }
+      };
+      window.qwenCache = {
+        cacheReady: Promise.resolve(),
+        getCache: () => null,
+        setCache: () => {},
+        removeCache: () => {}
+      };
+    });
+    const pdfUrl = 'http://127.0.0.1:8080/e2e/pdfs/hello.pdf';
+    await page.goto(`http://127.0.0.1:8080/src/pdfViewer.html?file=${encodeURIComponent(pdfUrl)}`);
+    await page.waitForSelector('.translationLayer div');
+    const original = await page.evaluate(() => {
+      const spans = Array.from(document.querySelectorAll('.textLayer span'));
+      return spans.map(s => s.textContent).find(t => /[A-Za-z]/.test(t));
+    });
+    const expected = `T:${original}`;
+    await expect(page.locator('.translationLayer div', { hasText: expected }).first()).toHaveText(expected);
+    const pages = await page.locator('.page').count();
+    const overlays = await page.locator('.translationLayer').count();
+    expect(pages).toBe(1);
+    expect(overlays).toBe(pages);
+  });
+
   test('viewer progress reacts to translation-status', async ({ page }) => {
     await page.addInitScript(() => {
       window.__listeners = [];
