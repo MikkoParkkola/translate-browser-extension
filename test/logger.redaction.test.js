@@ -1,5 +1,4 @@
- // New file
- // @jest-environment node
+// @jest-environment node
 
  describe('logger redaction and levels', () => {
    const origConsole = { ...console };
@@ -41,34 +40,69 @@
     expect(flat).not.toMatch(/abc\.123|xyz-789|MYKEY|token|secret|foobar/);
   });
 
-  test('redacts values in object/array payloads (shallow and nested)', () => {
+  test('redacts values in deeply nested structures and arrays', () => {
     const logger = require('../src/lib/logger.js');
     const log = logger.create('test');
     log.setLevel(3);
 
+    const err = new Error('Authorization: Bearer SECRET and apiKey=ERRKEY');
+    err.authorization = 'Bearer TOKEN';
+    err.apiKey = 'ERRKEY2';
+    err.info = { headers: [{ Authorization: 'SECRET2' }, 'apiKey=INNER'] };
+
     log.error('oops', {
       headers: { Authorization: 'Bearer SECRET' },
       apiKey: 'K',
-      nested: { list: [{ Authorization: 'X' }, { a: 1 }] },
+      nested: {
+        list: [
+          { Authorization: 'X' },
+          ['apiKey=Y', { deeper: { Authorization: 'Z' } }],
+          err,
+        ],
+      },
     });
 
-    const payload = outputs.find(([fn]) => fn === 'error')[1][1]; // second arg of error
+    const payload = outputs.find(([fn]) => fn === 'error')[1][1];
     const dumped = JSON.stringify(payload);
-    expect(dumped).toContain('"Authorization":"<redacted>"');
-    expect(dumped).toContain('"apiKey":"<redacted>"');
-    expect(dumped).not.toContain('SECRET');
-    expect(dumped).not.toContain('"X"');
+    expect(dumped).toMatch(/"Authorization":"<redacted>"/g);
+    expect(dumped).toMatch(/"apiKey":"<redacted>"/g);
+    expect(dumped).not.toMatch(/SECRET|ERRKEY|ERRKEY2|TOKEN|INNER|SECRET2|"K"|"X"|"Y"|"Z"/);
   });
 
-  test('preserves Error message and stack with redaction', () => {
+  test('redacts Error object fields and preserves message and stack', () => {
     const logger = require('../src/lib/logger.js');
     const log = logger.create('test');
-    const err = new Error('Authorization: Bearer SECRET');
+    const err = new Error('Authorization: Bearer SECRET and apiKey=ERR');
+    err.apiKey = 'SECRETKEY';
+    err.authorization = 'Bearer TOKEN';
+    err.meta = { apiKey: 'METAKEY' };
     log.error('fail', err);
 
     const payload = outputs.find(([fn]) => fn === 'error')[1][1];
     expect(payload.message).toBe('Authorization: <redacted>');
     expect(payload.stack).toContain('Authorization: <redacted>');
+    const str = JSON.stringify(payload);
+    expect(str).not.toMatch(/SECRET|ERR|SECRETKEY|TOKEN|METAKEY/);
+    expect(str).toMatch(/<redacted>/);
+  });
+
+  test('collectors receive redacted payloads', () => {
+    const logger = require('../src/lib/logger.js');
+    const collected = [];
+    const remove = logger.addCollector(e => collected.push(e));
+    const log = logger.create('test');
+    log.setLevel(3);
+
+    const err = new Error('Authorization: Bearer SECRET');
+    err.apiKey = 'ERRKEY';
+
+    log.info('msg', ['apiKey=ARR', { Authorization: 'HEAD', err }]);
+    remove();
+
+    expect(collected).toHaveLength(1);
+    const dump = JSON.stringify(collected[0].args);
+    expect(dump).toMatch(/<redacted>/);
+    expect(dump).not.toMatch(/SECRET|ERRKEY|ARR|HEAD/);
   });
 
   test('parseLevel handles numbers and strings', () => {

@@ -28,6 +28,7 @@
 - Local PDF viewer: open `src/pdfViewer.html` (uses `config.local.js` when present).
 
 ## Testing Guidelines
+- Run `npm run lint` and `npm run format` before `npm test`.
 - Framework: Jest (`testEnvironment: jsdom`). Mock network via `jest-fetch-mock`.
 - Scope: translator/throttle/provider/messaging/TM; prefer deterministic tests (fake timers for rate-limits).
 - Naming: mirror source name (e.g., `translator.test.js`). Run with `npm test` before PR.

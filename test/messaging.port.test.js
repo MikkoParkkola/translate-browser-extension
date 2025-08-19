@@ -1,5 +1,18 @@
 // New file
 // @jest-environment jsdom
+
+describe('messaging.validateMessage', () => {
+  test('handles circular structures without recursion', () => {
+    jest.resetModules();
+    const messaging = require('../src/lib/messaging.js');
+    const msg = { action: 'ping' };
+    msg.self = msg;
+    const out = messaging.validateMessage(msg);
+    expect(out.ok).toBe(true);
+    expect(out.msg.self).toBe('[Circular]');
+  });
+});
+
 describe('messaging via chrome.runtime Port', () => {
   beforeEach(() => {
     jest.resetModules();
@@ -120,6 +133,50 @@ describe('messaging via chrome.runtime Port', () => {
 
     expect(res).toEqual({ text: 'OK' });
     expect(window.chrome.runtime.sendMessage).toHaveBeenCalled();
+  });
+
+  test('rejects when Port path sends error', async () => {
+    const port = makePort({
+      onTranslate: ({ requestId, emit }) => {
+        emit({ requestId, error: 'bad' });
+      }
+    });
+    window.chrome.runtime.connect = jest.fn(() => port);
+
+    const messaging = require('../src/lib/messaging.js');
+
+    await expect(
+      messaging.requestViaBackground({
+        endpoint: 'https://e/',
+        model: 'm',
+        text: 'oops',
+        source: 'en',
+        target: 'es',
+        debug: false,
+        stream: false
+      })
+    ).rejects.toThrow('bad');
+  });
+
+  test('rejects when sendMessage returns error', async () => {
+    delete window.chrome.runtime.connect;
+    window.chrome.runtime.sendMessage = jest.fn((msg, cb) => {
+      cb({ error: 'nope' });
+    });
+
+    const messaging = require('../src/lib/messaging.js');
+
+    await expect(
+      messaging.requestViaBackground({
+        endpoint: 'https://e/',
+        model: 'm',
+        text: 'oops',
+        source: 'en',
+        target: 'es',
+        debug: false,
+        stream: false
+      })
+    ).rejects.toThrow('nope');
   });
 });
 

@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'src/**'
-      - 'e2e/**'
+      - 'src/pdf**'
+      - 'e2e/pdfs/**'
+      - 'e2e/pdf-compare.spec.js'
       - '.github/workflows/e2e.yml'
       - 'package.json'
 
@@ -22,11 +23,18 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Cache WASM assets
+        id: wasm-cache
+        uses: actions/cache@v4
+        with:
+          path: src/wasm/vendor
+          key: ${{ runner.os }}-wasm-${{ hashFiles('scripts/fetch-wasm-assets.sh') }}
+
       - name: Install deps
-        run: npm install --no-audit --no-fund
+        run: npm ci
 
       - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
+        run: npx playwright install --with-deps chromium
 
       - name: Check repo for public PDFs at root (privacy)
         run: |
@@ -39,6 +47,6 @@ jobs:
           fi
 
       - name: Run E2E tests
-        run: npm run e2e
+        run: npm run test:e2e-pdf
 
       # Privacy: do not upload screenshots or artifacts by default to avoid exposing PDFs/PII
