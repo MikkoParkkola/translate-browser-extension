@@ -382,6 +382,8 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, tone, si
         .json()
         .catch(() => ({ message: resp.statusText }));
       const error = new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
+      error.status = resp.status;
+      error.code = `HTTP_${resp.status}`;
       if (debug) trLogger.debug('HTTP error response', error.message);
       if (resp.status >= 500 || resp.status === 429) {
         error.retryable = true;
