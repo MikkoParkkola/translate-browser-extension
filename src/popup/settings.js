@@ -64,11 +64,15 @@
     diagnostics: document.getElementById('diagnosticsTab'),
   };
 
+  const fixedWidth = document.body.clientWidth;
+  document.body.style.width = `${fixedWidth}px`;
+
   function activate(tab) {
     tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     Object.entries(sections).forEach(([k, el]) => {
       el.classList.toggle('active', k === tab);
     });
+    document.body.style.width = `${fixedWidth}px`;
   }
 
   activate(store.settingsTab);
