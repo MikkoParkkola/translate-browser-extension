@@ -358,7 +358,10 @@ function getAggregatedStats() {
   const avgThroughput = totalLatency ? totalLoggedTokens / totalLatency : 0; // tokens per ms
   const eta = avgThroughput ? (remaining / avgThroughput) / 1000 : 0; // seconds
   const avgLatency = usageLog.length ? totalLatency / usageLog.length : 0;
-  return { requests: totalRequests, tokens: totalTokens, eta, avgLatency, quality: lastQuality };
+  const lat = usageLog.map(e => e.latency || 0).filter(n => Number.isFinite(n) && n >= 0).slice(-200).sort((a,b)=>a-b);
+  const pct = p => lat.length ? lat[Math.min(lat.length-1, Math.max(0, Math.floor(p*(lat.length-1))))] : 0;
+  const p50 = pct(0.5), p95 = pct(0.95);
+  return { requests: totalRequests, tokens: totalTokens, eta, avgLatency, p50, p95, quality: lastQuality };
 }
 
 function broadcastStats() {
@@ -814,7 +817,7 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
         providers,
         cache,
         tm,
-        quality: { last: agg.quality, avgLatency: agg.avgLatency, etaSeconds: Math.round(agg.eta || 0) },
+        quality: { last: agg.quality, avgLatencyMs: agg.avgLatency, p50Ms: agg.p50, p95Ms: agg.p95, etaSeconds: Math.round(agg.eta || 0) },
         errors: {},
         status: translationStatus,
       };
