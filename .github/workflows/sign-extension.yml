@@ -1,0 +1,32 @@
+name: Sign Chrome Extension
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Decode signing key
+        env:
+          CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
+        run: |
+          echo "$CRX_PRIVATE_KEY" | base64 -d > key.pem
+      - name: Pack and sign
+        run: |
+          npx -y crx pack dist -o qwen-translator-extension.crx --zip-output qwen-translator-extension.zip -p key.pem
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-extension
+          path: |
+            qwen-translator-extension.crx
+            qwen-translator-extension.zip
+      - run: rm key.pem
