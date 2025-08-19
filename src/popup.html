@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <link rel="stylesheet" href="styles/apple.css">
+  <link rel="stylesheet" href="popup.css">
   <style>
     html {
       background: var(--qwen-bg, rgba(28,28,30,0.7));
@@ -18,13 +19,6 @@
       justify-content: flex-end;
       padding: 0.5rem;
     }
-    #nav button {
-      background: none;
-      border: none;
-      color: inherit;
-      cursor: pointer;
-      font-size: 1.25rem;
-    }
     #content {
       width: 100%;
       border: 0;
@@ -34,7 +28,11 @@
 </head>
 <body>
   <header id="nav">
-    <button id="settingsBtn" aria-label="Settings">⚙️</button>
+    <button id="settingsBtn" class="icon-button" aria-label="Settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <use href="icons/settings.svg#settings-icon"></use>
+      </svg>
+    </button>
   </header>
   <iframe id="content" src="popup/home.html"></iframe>
   <script src="providerConfig.js"></script>
