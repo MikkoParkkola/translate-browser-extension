@@ -2,4 +2,4 @@
 "translate-by-mikko": patch
 ---
 
-Add automation script for creating pull requests.
+Add automation script for creating pull requests with security scanning.

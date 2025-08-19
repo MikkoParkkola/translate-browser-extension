@@ -24,6 +24,13 @@ git checkout -b "$BRANCH_NAME"
 npm run lint
 npm run format
 npm test
+npm audit
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "gitleaks CLI is required. Install from https://github.com/gitleaks/gitleaks/releases" >&2
+  exit 1
+fi
+gitleaks detect --no-git
 
 # Commit changes
 git add -A

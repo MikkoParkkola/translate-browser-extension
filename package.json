@@ -23,6 +23,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:popup": "tsc --noEmit types/popup/*.d.ts",
     "size": "npm run build && size-limit",
+    "secrets": "gitleaks detect --no-git",
     "changeset": "changeset",
     "release": "changeset publish",
     "pr": "bash scripts/pr.sh"
