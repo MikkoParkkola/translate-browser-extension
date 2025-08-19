@@ -743,7 +743,42 @@ async function batchOnce({
       stats.tokens += approxTokens(t);
       return;
     }
-    const pieces = splitLongText(t, tokenBudget);
+  let splitLong;
+  try {
+    if (typeof window !== 'undefined' && window.qwenBatching) splitLong = window.qwenBatching.splitLongText;
+    else if (typeof self !== 'undefined' && typeof window === 'undefined' && self.qwenBatching) splitLong = self.qwenBatching.splitLongText;
+    else if (typeof require !== 'undefined') splitLong = require('./translator/batching').splitLongText;
+  } catch {}
+  const splitFn = splitLong || function splitLongText(text, maxTokens) {
+    const parts = (text || '').split(/(?<=[\.?!])\s+/);
+    const chunks = [];
+    let cur = '';
+    for (const part of parts) {
+      const next = cur ? cur + ' ' + part : part;
+      if (approxTokens(next) > maxTokens && cur) {
+        chunks.push(cur);
+        cur = part;
+      } else {
+        cur = next;
+      }
+    }
+    if (cur) chunks.push(cur);
+    const out = [];
+    for (const ch of chunks) {
+      if (approxTokens(ch) <= maxTokens) {
+        out.push(ch);
+      } else {
+        let start = 0;
+        const step = Math.max(128, Math.floor(maxTokens * 4));
+        while (start < ch.length) {
+          out.push(ch.slice(start, start + step));
+          start += step;
+        }
+      }
+    }
+    return out;
+  };
+  const pieces = splitFn(t, tokenBudget);
     pieces.forEach((p, idx) => mapping.push({ index: i, chunk: idx, text: p, lang }));
   });
   const byIndex = new Map();
@@ -968,35 +1003,7 @@ async function batchOnce({
   return { texts: results, stats };
 }
 
-function splitLongText(text, maxTokens) {
-  const parts = (text || '').split(/(?<=[\.?!])\s+/);
-  const chunks = [];
-  let cur = '';
-  for (const part of parts) {
-    const next = cur ? cur + ' ' + part : part;
-    if (approxTokens(next) > maxTokens && cur) {
-      chunks.push(cur);
-      cur = part;
-    } else {
-      cur = next;
-    }
-  }
-  if (cur) chunks.push(cur);
-  const out = [];
-  for (const ch of chunks) {
-    if (approxTokens(ch) <= maxTokens) {
-      out.push(ch);
-    } else {
-      let start = 0;
-      const step = Math.max(128, Math.floor(maxTokens * 4));
-      while (start < ch.length) {
-        out.push(ch.slice(start, start + step));
-        start += step;
-      }
-    }
-  }
-  return out;
-}
+// splitLongText extracted to translator/batching.js
 function qwenClearCache() {
   cache.clear();
   _persistClear();
