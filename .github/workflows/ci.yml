@@ -86,8 +86,8 @@ jobs:
           name: dist
           path: .
 
-      - name: Install Playwright (Chromium + deps)
-        run: npx playwright install --with-deps chromium
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox webkit
 
       - name: Start static server
         run: |
@@ -97,7 +97,7 @@ jobs:
           done
 
       - name: Run e2e tests
-        run: npm run test:e2e
+        run: npm run test:e2e -- --browser=chromium,firefox,webkit
 
       - name: Upload Playwright report
         if: always()

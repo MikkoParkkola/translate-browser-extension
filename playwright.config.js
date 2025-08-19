@@ -9,6 +9,11 @@ const config = {
     viewport: { width: 1200, height: 900 },
   },
   testDir: 'e2e',
+  projects: [
+    { name: 'chromium', use: { browserName: 'chromium' } },
+    { name: 'firefox', use: { browserName: 'firefox' } },
+    { name: 'webkit', use: { browserName: 'webkit' } },
+  ],
   webServer: {
     command: "npx http-server -p 8080 -c-1 . -H 'Permissions-Policy: accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=()'",
     url: 'http://127.0.0.1:8080',
