@@ -68,7 +68,12 @@
   document.body.style.width = `${fixedWidth}px`;
 
   function activate(tab) {
-    tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    tabs.forEach(b => {
+      const active = b.dataset.tab === tab;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-selected', active ? 'true' : 'false');
+      b.setAttribute('tabindex', active ? '0' : '-1');
+    });
     Object.entries(sections).forEach(([k, el]) => {
       el.classList.toggle('active', k === tab);
     });
@@ -76,10 +81,22 @@
   }
 
   activate(store.settingsTab);
-  tabs.forEach(btn => btn.addEventListener('click', () => {
-    activate(btn.dataset.tab);
-    chrome?.storage?.sync?.set({ settingsTab: btn.dataset.tab });
-  }));
+  tabs.forEach((btn, idx) => {
+    btn.addEventListener('click', () => {
+      activate(btn.dataset.tab);
+      chrome?.storage?.sync?.set({ settingsTab: btn.dataset.tab });
+    });
+    btn.addEventListener('keydown', e => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const dir = e.key === 'ArrowRight' ? 1 : -1;
+        const newIdx = (idx + dir + tabs.length) % tabs.length;
+        const newTab = tabs[newIdx];
+        newTab.click();
+        newTab.focus();
+      }
+    });
+  });
 
   const detectBox = document.getElementById('enableDetection');
   detectBox.checked = store.enableDetection;
