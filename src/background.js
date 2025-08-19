@@ -245,19 +245,19 @@ chrome.runtime.onInstalled.addListener(details => {
   createContextMenus();
   if (details?.reason === 'update') {
     const version = chrome.runtime.getManifest?.().version;
-    logger.info('Qwen Translator updated', version);
+    logger.info('TRANSLATE! by Mikko updated', version);
     if (chrome.notifications?.create) {
       const id = 'qwen-update';
       try {
         chrome.notifications.onClicked?.addListener(nid => {
           if (nid === id) {
-            try { chrome.tabs?.create({ url: 'https://github.com/QwenLM/Qwen-translator-extension/releases/latest' }); } catch {}
+            try { chrome.tabs?.create({ url: 'https://github.com/QwenLM/translate-by-mikko/releases/latest' }); } catch {}
           }
         });
         chrome.notifications.create(id, {
           type: 'basic',
           iconUrl: 'icon-128.png',
-          title: 'Qwen Translator updated',
+          title: 'TRANSLATE! by Mikko updated',
           message: `Updated to version ${version}`,
         });
       } catch {}
@@ -268,7 +268,7 @@ chrome.runtime.onInstalled.addListener(details => {
       } catch {}
     }
   } else {
-    logger.info('Qwen Translator installed');
+    logger.info('TRANSLATE! by Mikko installed');
   }
 });
 if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(createContextMenus);

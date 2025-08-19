@@ -27,7 +27,7 @@ describe('offline handling', () => {
     expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'popup-status', text: 'Offline', error: true }), expect.any(Function));
     expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'translation-status', status: { offline: true } }), expect.any(Function));
     const status = document.getElementById('qwen-status');
-    expect(status && status.textContent).toBe('Qwen Translator: Offline');
+    expect(status && status.textContent).toBe('TRANSLATE! by Mikko: Offline');
     Object.defineProperty(window.navigator, 'onLine', origDesc);
     window.qwenTranslate = origTranslate;
   });
@@ -59,7 +59,7 @@ describe('offline handling', () => {
     await new Promise(r => setTimeout(r, 0));
     expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'translation-status', status: { offline: true } }), expect.any(Function));
     const status = document.getElementById('qwen-status');
-    expect(status && status.textContent).toBe('Qwen Translator: Offline');
+    expect(status && status.textContent).toBe('TRANSLATE! by Mikko: Offline');
     Object.defineProperty(window.navigator, 'onLine', origDesc);
     window.qwenTranslate = origTranslate;
   });

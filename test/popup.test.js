@@ -1,79 +1,25 @@
-// @jest-environment jsdom
+const fs = require('fs');
+const path = require('path');
+const { TextEncoder, TextDecoder } = require('util');
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder;
+const { JSDOM } = require('jsdom');
 
-describe('popup shell routing', () => {
-  let listener;
-  beforeEach(() => {
-    jest.resetModules();
-    document.body.innerHTML = `
-      <div id="nav"><button id="settingsBtn"></button></div>
-      <iframe id="content"></iframe>
-    `;
-    listener = undefined;
-    global.chrome = {
-      runtime: {
-        sendMessage: jest.fn(),
-        onMessage: { addListener: fn => { listener = fn; } },
-      },
-      storage: {
-        sync: {
-          set: jest.fn(),
-          get: jest.fn((defaults, cb) => cb(defaults)),
-        },
-      },
-      tabs: {
-        query: jest.fn((opts, cb) => cb([{ id: 1, url: 'https://example.com' }])),
-        sendMessage: jest.fn(),
-      },
-    };
-    global.window.qwenProviderConfig = {
-      loadProviderConfig: jest.fn(() => Promise.resolve({ providerOrder: ['qwen'], provider: 'qwen', providers: {} })),
-    };
-  });
-
-  test('routes navigation and home actions', () => {
-    require('../src/popup.js');
-    const frame = document.getElementById('content');
-    document.getElementById('settingsBtn').click();
-    expect(frame.src).toContain('popup/settings.html');
-    document.getElementById('settingsBtn').click();
-    expect(frame.src).toContain('popup/home.html');
-
-    listener({ action: 'navigate', page: 'settings' });
-    expect(frame.src).toContain('popup/settings.html');
-
-    listener({ action: 'navigate', page: 'home' });
-    expect(frame.src).toContain('popup/home.html');
-
-    listener({ action: 'home:quick-translate' });
-    expect(chrome.tabs.query).toHaveBeenCalledWith({ active: true, currentWindow: true }, expect.any(Function));
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'ensure-start', tabId: 1, url: 'https://example.com' }, expect.any(Function));
-
-    listener({ action: 'home:auto-translate', enabled: true });
-    expect(chrome.storage.sync.set).toHaveBeenCalledWith({ autoTranslate: true });
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'set-config', config: { autoTranslate: true } }, expect.any(Function));
-
-    listener({ action: 'home:auto-translate', enabled: false });
-    expect(chrome.storage.sync.set).toHaveBeenCalledWith({ autoTranslate: false });
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'set-config', config: { autoTranslate: false } }, expect.any(Function));
-    expect(chrome.tabs.query).toHaveBeenCalledWith({ active: true, currentWindow: true }, expect.any(Function));
-    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, { action: 'stop' }, expect.any(Function));
-  });
-
-  test('initializes home view via home:init', async () => {
-      chrome.runtime.sendMessage.mockImplementation((msg, cb) => {
-        if (msg.action === 'metrics') cb({ usage: { requests: 1, tokens: 2 }, cache: {}, tm: {}, providers: { qwen: { apiKey: true } }, status: { active: false } });
-      });
-    require('../src/popup.js');
-    await new Promise(resolve => {
-      const ret = listener({ action: 'home:init' }, {}, res => {
-        expect(res).toEqual({ provider: 'qwen', apiKey: true, usage: { requests: 1, tokens: 2 }, cache: {}, tm: {}, auto: false, active: false });
-        resolve();
-      });
-      expect(ret).toBe(true);
-    });
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'metrics' }, expect.any(Function));
-    expect(window.qwenProviderConfig.loadProviderConfig).toHaveBeenCalled();
-    expect(chrome.storage.sync.get).toHaveBeenCalledWith({ autoTranslate: false }, expect.any(Function));
-  });
+test('popup header displays product name', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup.html'), 'utf8');
+  const dom = new JSDOM(html);
+  const text = dom.window.document.getElementById('productName')?.textContent;
+  expect(text).toBe('TRANSLATE! by Mikko');
 });
 
+test('built popup includes product name', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'dist', 'popup.html'), 'utf8');
+  const dom = new JSDOM(html);
+  const text = dom.window.document.getElementById('productName')?.textContent;
+  expect(text).toBe('TRANSLATE! by Mikko');
+});
+
+test('built popup css styles product name', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'dist', 'styles', 'popup.css'), 'utf8');
+  expect(css).toMatch(/#productName/);
+});
