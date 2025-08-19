@@ -85,14 +85,18 @@ Each provider entry stores an approximate monthly character limit and a cost-per
 Translations can be distributed across multiple providers. `providerOrder` defines the failover chain and per‑provider weights bias how parallel batches are split. The background service checks remaining quotas and skips providers that drop below the `requestThreshold`, effectively load‑balancing work across those with capacity.
 
 ### Troubleshooting
-Both model refreshes and translation requests write trace logs to the browser console. Copy any on-page error and check the console for a matching entry to diagnose problems.
-If the **Test Settings** button reports a timeout, the network request may be blocked by Content Security Policy or CORS restrictions. The extension automatically falls back to `XMLHttpRequest` when `fetch` fails, but some environments may still prevent the call entirely.
-If the **Read active tab** check fails, make sure the currently focused tab is a normal web page; the extension cannot access Chrome or extension pages.
-If the tab translation step fails, the page may block script execution or DOM updates.
-Some sites impose strict Content Security Policies that prevent the test element from executing or restrict network requests. Open a simple page such as `https://example.com` before running the tests. Console errors from third-party resources do not affect the translation check.
-Enable **Debug logging** in the popup to see details about the active tab and any error stack returned by the content script.
-If a translated page appears unchanged, verify that the source and target languages are configured correctly. With debug logging enabled the console warns when the translation result matches the original text.
-Shadow DOM content and same-origin iframes are scanned and translated automatically. Cross-origin frames may be translated when host permissions allow access, otherwise they are skipped.
+- Console logs: enable **Debug logging** in the popup. Both provider calls and content-script steps log structured events. Copy any on‑page error and look for matching console entries.
+- Test Settings timeout: often CSP/CORS. The background may fall back to `XMLHttpRequest`, but strict environments can still block. Try a simple page like `https://example.com` and re‑run.
+- Active tab check: the test must run on a normal web page (not `chrome://` or extension pages).
+- Page unchanged: confirm source/target languages. With debug on, the console warns if the translation equals the original (already target language).
+- CSP/DOM restrictions: some sites block script execution/DOM updates. Translation may be limited on such pages.
+- Frames and Shadow DOM: same‑origin iframes and open Shadow DOM are supported. Cross‑origin frames require host permissions; otherwise skipped.
+- Common HTTP errors:
+  - 401/403 unauthorized/forbidden: missing/invalid API key. Check provider config and key format. Example: OpenAI uses `Bearer <key>`, DeepL uses `DeepL-Auth-Key <key>`.
+  - 429 rate limit: requests are retried automatically respecting `Retry-After`. Lower requests/tokens per minute in provider settings or wait.
+  - 5xx provider outage: transient; automatic retries apply. If persistent, switch provider or model.
+- Multi‑provider failover: ensure your `providerOrder`, `endpoints`, and (optional) `detector` are set. Content flows pass these values to translation, enabling fallback beyond the popup.
+- Diagnostics: use the popup **Diagnostics** panel. It shows usage, cache/TM stats, configured providers, cost summary, and a latency histogram. Use **Copy Report** to share details when filing issues.
 
 ## Development
 Run the unit tests with:
