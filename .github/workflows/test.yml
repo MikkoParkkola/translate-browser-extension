@@ -25,8 +25,17 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+      - name: Cache WASM assets
+        id: wasm-cache
+        uses: actions/cache@v4
+        with:
+          path: src/wasm/vendor
+          key: ${{ runner.os }}-wasm-${{ hashFiles('scripts/fetch-wasm-assets.sh') }}
       - name: Install deps
-        run: npm install --no-audit --no-fund
+        run: npm install --no-audit --no-fund --ignore-scripts
+      - name: Fetch WASM assets
+        if: steps.wasm-cache.outputs.cache-hit != 'true'
+        run: bash scripts/fetch-wasm-assets.sh
       - name: Type check
         run: npm run typecheck
       - name: Run unit tests with coverage
