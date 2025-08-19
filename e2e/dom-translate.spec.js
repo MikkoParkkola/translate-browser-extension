@@ -5,7 +5,8 @@ const path = require('path');
 const pageUrl = 'http://127.0.0.1:8080/e2e/mock.html';
 const contentScript = fs.readFileSync(path.join(__dirname, '../src/contentScript.js'), 'utf8');
 
-test('shows selection bubble and translates text', async ({ page }) => {
+test('shows selection bubble and translates text', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'selection bubble test is Chromium-only');
   await page.addInitScript(() => {
     window.__setTranslateStub = () => {
       window.qwenTranslate = async ({ text }) => ({ text: text + '-fr' });
