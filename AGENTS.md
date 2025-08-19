@@ -49,18 +49,23 @@
 - Update unit, integration, and end-to-end test automation.
 - Maintain test automation coverage above 80% with a 95% target.
 - Ensure all CI tests pass and local test automation succeeds.
+- Run lint/format tools and audit dependencies before committing.
 - Update AGENTS.md with feature descriptions, architecture notes, style guides, and coding conventions.
 - Keep troubleshooting instructions and debug logging current.
 - Document code and remove dead code.
 - Ensure dashboards and statistics are up to date.
 - Complete security review and implement recommendations.
 - Complete architecture review and implement recommendations.
+- Include architectural diagrams and document configuration changes for major features.
 - Complete performance review and implement recommendations.
+- For sensitive changes, document in-depth security and performance review reports with risk assessment and mitigation plans.
 - Complete UX review and implement recommendations.
+- Conduct cross-browser compatibility and accessibility checks.
 - Complete legal review (IPRs/GDPR/License) and implement recommendations.
 - Catch and log errors, handle recovery, and implement failbacks.
 - Obtain explicit user approval for breaking changes or dropped functionality.
 - for each PR that alters the functionality, bump the version number. For smaller changes, at least the minor version number; for really big changes, the major number.
+- Verify changelog updates and confirm the version bump for functionality changes.
 ## Security & Configuration Tips
 - Never commit API keys. `src/config.local.js` is gitignored; use it for local `pdfViewer.html`. Or run `set-config.js` in the extension popup console to seed `chrome.storage.sync`.
 - Store secrets only in `chrome.storage.sync`. Avoid logging secrets; use `debug` flag for verbose logs.
