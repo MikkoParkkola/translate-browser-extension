@@ -4,57 +4,9 @@
   <meta charset="utf-8">
   <link rel="stylesheet" href="../styles/apple.css">
   <link rel="stylesheet" href="../styles/cyberpunk.css">
-  <style>
-    html { min-height: 100%; background: var(--qwen-bg, rgba(28,28,30,0.7)); }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      margin: 0;
-      padding: 1rem;
-      color: var(--qwen-text, #f5f5f7);
-      width: 360px;
-    }
-    .tabs { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
-    .tabs button {
-      background: none;
-      border: 1px solid var(--qwen-border, rgba(255,255,255,0.2));
-      color: inherit;
-      padding: 0.25rem 0.5rem;
-      cursor: pointer;
-    }
-    .tabs button.active { background: var(--qwen-secondary-bg, rgba(118,118,128,0.2)); }
-    .tab { display: none; }
-    .tab.active { display: block; }
-    label { display: block; margin-bottom: 0.5rem; }
-    input[type="number"] { width: 5rem; }
-    textarea { width: 100%; }
-    .invalid { border-color: #ff4d4f; }
-    .note { font-size: 0.8rem; opacity: 0.8; }
-    .provider-card { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem; border: 1px solid var(--qwen-border, rgba(255,255,255,0.2)); margin-bottom: 0.25rem; }
-    .provider-card .drag-handle { cursor: move; }
-    #addProviderOverlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 1000; }
-    #addProviderOverlay .modal { background: var(--qwen-bg, rgba(28,28,30,0.9)); padding: 1rem; border: 1px solid var(--qwen-border, rgba(255,255,255,0.2)); min-width: 260px; }
-    #addProviderOverlay .actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem; }
-    #addProviderOverlay label { display: block; margin-bottom: 0.5rem; }
-    .tm-container {
-      max-height: 200px;
-      overflow-y: auto;
-      border: 1px solid var(--qwen-border, rgba(255,255,255,0.2));
-      padding: 0.25rem;
-      margin-bottom: 0.5rem;
-    }
-    #tmEntries, #tmStats {
-      white-space: pre-wrap;
-      word-break: break-word;
-      overflow-x: auto;
-      margin: 0;
-      width: 100%;
-    }
-    #tmStats {
-      margin-top: 0.5rem;
-    }
-  </style>
+  <link rel="stylesheet" href="../styles/popup.css">
 </head>
-<body>
+<body class="settings">
   <div class="tabs" role="tablist">
     <button data-tab="general" role="tab" aria-controls="generalTab">General</button>
     <button data-tab="providers" role="tab" aria-controls="providersTab">Providers</button>
@@ -125,7 +77,7 @@
         <pre id="tmStats">-</pre>
       </div>
       <button id="tmExport">Export</button>
-      <input type="file" id="tmImportFile" style="display:none">
+      <input type="file" id="tmImportFile">
       <button id="tmImport">Import</button>
       <button id="tmClear">Clear</button>
     </section>
@@ -146,7 +98,7 @@
     </section>
   </div>
 
-  <div id="addProviderOverlay">
+  <div id="addProviderOverlay" class="overlay">
     <div class="modal">
       <div id="ap_step1">
         <label>Preset
@@ -163,7 +115,7 @@
           <button id="ap_cancel1">Cancel</button>
         </div>
       </div>
-      <div id="ap_step2" style="display:none;">
+      <div id="ap_step2">
         <div id="ap_fields"></div>
         <div class="actions">
           <button id="ap_back">Back</button>
