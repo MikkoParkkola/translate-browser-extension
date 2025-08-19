@@ -52,7 +52,26 @@ test.describe('Provider switching and cache', () => {
         };
         window.qwenClearCache = window.qwenCache.qwenClearCache;
       };
+      window.__setConfigStub = () => {
+        window.qwenLoadConfig = async () => {
+          const raw = localStorage.getItem('cfg');
+          return raw ? JSON.parse(raw) : { providerOrder: [], debug: false };
+        };
+        window.qwenSaveConfig = async cfg => {
+          localStorage.setItem('cfg', JSON.stringify(cfg));
+        };
+      };
     });
+  });
+
+  test.afterEach(async ({ page }, testInfo) => {
+    if (testInfo.status !== testInfo.expectedStatus) {
+      const shot = await page.screenshot({
+        path: testInfo.outputPath('failure.png'),
+        fullPage: true,
+      });
+      await testInfo.attach('screenshot', { body: shot, contentType: 'image/png' });
+    }
   });
 
   test('batch translations cache results and support provider change', async ({ page }) => {
@@ -122,6 +141,41 @@ test.describe('Provider switching and cache', () => {
     });
     expect(cleared.text).toBe('cacheme-es');
     expect(cleared.calls).toBe(1);
+  });
+
+  test('persists providers and settings across reloads', async ({ page }) => {
+    await page.goto(pageUrl);
+    await page.evaluate(() => {
+      window.__setCacheStub();
+      window.__setTranslateStub();
+      window.__setConfigStub();
+    });
+    await page.evaluate(() => {
+      window.qwenProviders.registerProvider('mock2', {
+        async translate({ text }) {
+          return { text: text + '-es' };
+        },
+      });
+    });
+    await page.evaluate(async () => {
+      await window.qwenSaveConfig({ providerOrder: ['mock', 'mock2'], debug: true });
+    });
+    await page.reload();
+    await page.evaluate(() => {
+      window.__setCacheStub();
+      window.__setTranslateStub();
+      window.__setConfigStub();
+    });
+    await page.evaluate(() => {
+      window.qwenProviders.registerProvider('mock2', {
+        async translate({ text }) {
+          return { text: text + '-es' };
+        },
+      });
+    });
+    const cfg = await page.evaluate(() => window.qwenLoadConfig());
+    expect(cfg.providerOrder).toEqual(['mock', 'mock2']);
+    expect(cfg.debug).toBe(true);
   });
 
   test('quota warning when provider limit exceeded', async ({ page }) => {
