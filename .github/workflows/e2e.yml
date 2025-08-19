@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'src/**'
-      - 'e2e/**'
+      - 'src/pdf**'
+      - 'e2e/pdfs/**'
+      - 'e2e/pdf-compare.spec.js'
       - '.github/workflows/e2e.yml'
       - 'package.json'
 
@@ -23,7 +24,7 @@ jobs:
           cache: 'npm'
 
       - name: Install deps
-        run: npm install --no-audit --no-fund
+        run: npm ci
 
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps
@@ -39,6 +40,6 @@ jobs:
           fi
 
       - name: Run E2E tests
-        run: npm run e2e
+        run: npm run test:e2e-pdf
 
       # Privacy: do not upload screenshots or artifacts by default to avoid exposing PDFs/PII
