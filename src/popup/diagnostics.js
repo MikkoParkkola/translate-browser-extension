@@ -104,6 +104,14 @@
       if (m && m.version === 1) return resolve(m);
       chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(resolve));
     })));
+    // Load cost summary from usage endpoint
+    chrome.runtime.sendMessage({ action: 'usage' }, handleLastError(u => {
+      try {
+        const costsEl = document.getElementById('costs');
+        const c = u && u.costs && u.costs.total || {};
+        if (costsEl) costsEl.textContent = `Cost: 24h $${Number(c['24h']||0).toFixed(4)} | 7d $${Number(c['7d']||0).toFixed(4)}`;
+      } catch {}
+    }));
     status = await new Promise(resolve => chrome.runtime.sendMessage({ action: 'get-status' }, handleLastError(resolve)));
     render();
     updateStatus();
