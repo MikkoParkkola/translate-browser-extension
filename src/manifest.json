@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Qwen Translator",
-  "description": "Translate pages using Qwen-MT-Turbo",
+  "name": "TRANSLATE! by Mikko",
+  "description": "Translate pages using multiple providers",
   "version": "1.43.0",
   "version_name": "2025-08-20",
-  "update_url": "https://raw.githubusercontent.com/MikkoParkkola/Qwen-translator-extension/main/updates.xml",
+  "update_url": "https://raw.githubusercontent.com/MikkoParkkola/translate-by-mikko/main/updates.xml",
   "permissions": [
     "storage",
     "activeTab",
@@ -27,7 +27,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Qwen Translator"
+    "default_title": "TRANSLATE! by Mikko"
   },
   "commands": {
     "translate-selection": {

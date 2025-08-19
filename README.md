@@ -1,6 +1,6 @@
-# Qwen Translator Extension
+# TRANSLATE! by Mikko
 
-This Chrome extension translates the content of the active tab using Alibaba Cloud Qwen MT models. Dynamic pages are translated as new elements appear. It supports translation between more than one hundred languages.
+This Chrome extension translates the content of the active tab using multiple providers. Dynamic pages are translated as new elements appear. It supports translation between more than one hundred languages.
 
 ## Installation
 1. **Install dependencies**

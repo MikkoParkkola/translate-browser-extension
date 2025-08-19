@@ -126,7 +126,7 @@ function setStatus(message, isError = false) {
   }
   el.dataset.variant = isError ? 'error' : '';
   const textNode = el.querySelector('.qwen-hud__text') || el;
-  textNode.textContent = `Qwen Translator: ${message}`;
+  textNode.textContent = `TRANSLATE! by Mikko: ${message}`;
   safeSendMessage({ action: 'popup-status', text: message, error: isError });
   if (statusTimer) clearTimeout(statusTimer);
   if (isError) statusTimer = setTimeout(clearStatus, 5000);

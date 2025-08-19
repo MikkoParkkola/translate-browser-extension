@@ -1,7 +1,7 @@
 {
-  "name": "qwen-translator-extension",
+  "name": "translate-by-mikko",
   "version": "1.43.0",
-  "description": "Extension to translate web pages using Qwen-MT-Turbo model",
+  "description": "Extension to translate web pages using multiple providers",
   "main": "index.js",
   "scripts": {
     "test": "jest",
@@ -15,7 +15,7 @@
     "postinstall": "bash scripts/fetch-wasm-assets.sh",
     "clean": "rimraf dist",
     "build": "rimraf dist && copyfiles -u 1 \"src/**/*\" dist",
-    "zip": "bestzip dist/qwen-translator-v$npm_package_version.zip dist/*",
+    "zip": "bestzip dist/translate-by-mikko-v$npm_package_version.zip dist/*",
     "build:zip": "npm run build && npm run zip",
     "serve": "http-server dist -p 8080",
     "lint": "eslint .",

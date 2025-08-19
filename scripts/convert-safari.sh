@@ -14,15 +14,15 @@ fi
 
 # Convert for macOS
 xcrun safari-web-extension-converter "$SRC_DIR" \
-  --app-name "Qwen Translator" \
-  --bundle-identifier "com.example.qwentranslator.macos" \
+  --app-name "TRANSLATE! by Mikko" \
+  --bundle-identifier "com.example.translatebymikko.macos" \
   --project-location "$OUT_DIR" \
   --macos-only
 
 # Convert for iOS and iPadOS
 xcrun safari-web-extension-converter "$SRC_DIR" \
-  --app-name "Qwen Translator" \
-  --bundle-identifier "com.example.qwentranslator.ios" \
+  --app-name "TRANSLATE! by Mikko" \
+  --bundle-identifier "com.example.translatebymikko.ios" \
   --project-location "$OUT_DIR" \
   --ios-only
 

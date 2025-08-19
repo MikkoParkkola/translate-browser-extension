@@ -1,5 +1,7 @@
 # Repository Guidelines
 
+Project renamed to **TRANSLATE! by Mikko** (formerly Qwen Translator Extension).
+
 ## Project Structure & Module Organization
 - Source: `src/` (browser extension). Key files: `background.js`, `contentScript.js`, `translator.js`, `throttle.js`, `config.js`, `pdfViewer.html/js`.
 - Popup: `popup.html` loads `popup/home.html` and `popup/settings.html` (provider management).

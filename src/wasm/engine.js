@@ -11,26 +11,26 @@ export const WASM_ASSETS = [
   { path: 'pdfium.js', url: 'https://unpkg.com/pdfium-wasm@0.0.2/dist/pdfium.js' },
   {
     path: 'pdfium.engine.js',
-    url: 'https://raw.githubusercontent.com/alibaba/Qwen-translator-extension/main/src/wasm/vendor/pdfium.engine.js',
+    url: 'https://raw.githubusercontent.com/alibaba/translate-by-mikko/main/src/wasm/vendor/pdfium.engine.js',
   },
   { path: 'hb.wasm', url: 'https://unpkg.com/harfbuzzjs@0.4.8/hb.wasm' },
   { path: 'hb.js', url: 'https://unpkg.com/harfbuzzjs@0.4.8/hb.js' },
   {
     path: 'icu4x_segmenter.wasm',
-    url: 'https://raw.githubusercontent.com/alibaba/Qwen-translator-extension/main/src/wasm/vendor/icu4x_segmenter.wasm',
+    url: 'https://raw.githubusercontent.com/alibaba/translate-by-mikko/main/src/wasm/vendor/icu4x_segmenter.wasm',
   },
   {
     path: 'icu4x_segmenter.js',
-    url: 'https://raw.githubusercontent.com/alibaba/Qwen-translator-extension/main/src/wasm/vendor/icu4x_segmenter.js',
+    url: 'https://raw.githubusercontent.com/alibaba/translate-by-mikko/main/src/wasm/vendor/icu4x_segmenter.js',
   },
   { path: 'pdf-lib.js', url: 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js' },
   {
     path: 'overlay.engine.js',
-    url: 'https://raw.githubusercontent.com/alibaba/Qwen-translator-extension/main/src/wasm/vendor/overlay.engine.js',
+    url: 'https://raw.githubusercontent.com/alibaba/translate-by-mikko/main/src/wasm/vendor/overlay.engine.js',
   },
   {
     path: 'simple.engine.js',
-    url: 'https://raw.githubusercontent.com/alibaba/Qwen-translator-extension/main/src/wasm/vendor/simple.engine.js',
+    url: 'https://raw.githubusercontent.com/alibaba/translate-by-mikko/main/src/wasm/vendor/simple.engine.js',
   },
   {
     path: 'fonts/NotoSans-Regular.ttf',
