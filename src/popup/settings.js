@@ -64,8 +64,11 @@
     diagnostics: document.getElementById('diagnosticsTab'),
   };
 
-  const fixedWidth = document.body.clientWidth;
-  document.body.style.width = `${fixedWidth}px`;
+  function updateWidth() {
+    document.body.style.width = 'auto';
+    const width = document.body.scrollWidth;
+    document.body.style.width = `${width}px`;
+  }
 
   function activate(tab) {
     tabs.forEach(b => {
@@ -77,7 +80,7 @@
     Object.entries(sections).forEach(([k, el]) => {
       el.classList.toggle('active', k === tab);
     });
-    document.body.style.width = `${fixedWidth}px`;
+    updateWidth();
   }
 
   activate(store.settingsTab);
@@ -390,6 +393,7 @@
     const stats = res.stats || {};
     tmEntriesEl.textContent = JSON.stringify(entries, null, 2);
     tmStatsEl.textContent = JSON.stringify(stats, null, 2);
+    updateWidth();
   }
 
   document.getElementById('tmClear')?.addEventListener('click', async () => {

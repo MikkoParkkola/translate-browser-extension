@@ -184,6 +184,7 @@ html[data-qwen-theme] {
 [data-qwen-theme] .tm-container {
   max-height: 200px;
   overflow-y: auto;
+  overflow-x: hidden;
   border: 1px solid var(--qwen-border, rgba(255,255,255,0.2));
   padding: 0.25rem;
   margin-bottom: 0.5rem;
@@ -193,6 +194,7 @@ html[data-qwen-theme] {
 [data-qwen-theme] #tmStats {
   white-space: pre-wrap;
   word-break: break-word;
+  overflow-wrap: anywhere;
   overflow-x: hidden;
   margin: 0;
   width: 100%;
