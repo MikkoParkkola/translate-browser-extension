@@ -1,4 +1,3 @@
-# New file
 name: CI
 
 on:
@@ -148,7 +147,7 @@ jobs:
           path: playwright-report
 
   automerge:
-    needs: [build-and-test, e2e-web, e2e-pdf]
+    needs: [build-and-test, e2e-web]
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:

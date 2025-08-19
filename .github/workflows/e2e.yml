@@ -24,7 +24,7 @@ jobs:
           cache: 'npm'
 
       - name: Install deps
-        run: npm install --no-audit --no-fund
+        run: npm ci
 
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps
@@ -40,6 +40,6 @@ jobs:
           fi
 
       - name: Run E2E tests
-        run: npm run e2e
+        run: npm run test:e2e:pdf
 
       # Privacy: do not upload screenshots or artifacts by default to avoid exposing PDFs/PII
