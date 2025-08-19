@@ -24,7 +24,7 @@
 - `npm run serve`: Serves `dist/` on http://localhost:8080.
 - `npm run build:safari`: Generates Safari extension projects via `xcrun safari-web-extension-converter` into `safari/`.
 - Load in Chrome: chrome://extensions → Developer mode → Load unpacked → select `dist/`.
-- CI: `.github/workflows/ci.yml` runs tests, builds dist/zip, and uploads artifacts on push/PR.
+- CI: `.github/workflows/ci.yml` runs tests, builds dist/zip, uploads artifacts, and executes Playwright e2e smoke tests (Chromium) on push/PR.
 - Local PDF viewer: open `src/pdfViewer.html` (uses `config.local.js` when present).
 
 ## Testing Guidelines
@@ -38,7 +38,7 @@
   - TM: TTL + LRU pruning; metrics (hits, misses, sets, evictionsTTL/LRU).
   - Logger redaction: Authorization/apiKey redaction in strings and nested objects.
   - Background icon status and context menu registration (`test/background.test.js`).
-  - Selection/DOM flows (`e2e/context-menu.spec.js`, `e2e/dom-translate.spec.js`) run via `npm run test:e2e:web`; PDF compare (`e2e/pdf-compare.spec.js`) runs via `npm run test:e2e:pdf`. `npm run test:e2e` executes both suites.
+- Selection/DOM flows (`e2e/context-menu.spec.js`, `e2e/dom-translate.spec.js`, `e2e/translate-page.spec.js`, `e2e/streaming-cancel.spec.js`) run via `npm run test:e2e:web`; PDF compare (`e2e/pdf-compare.spec.js`) runs via `npm run test:e2e:pdf`. `npm run test:e2e` executes both suites. CI job `e2e-smoke` installs Chromium (`npx playwright install --with-deps chromium`), serves `dist/`, and runs the suites headless.
 
 ## Commit & Pull Request Guidelines
 - Commits: imperative, present tense (e.g., "Replace PDF text …"). Optional prefixes `feat:`, `fix:`, `chore:` are welcome when meaningful.
@@ -82,6 +82,7 @@
 - Messaging and streaming
   - Port-based background proxy with chunk relay and cancellation; legacy `sendMessage` fallback.
   - Popup loads `lib/messaging.js` to proxy tests/translation through background (prevents 401). `ensure-start` requests host permission, injects scripts, and starts translation.
+  - Content flows propagate `providerOrder`, `endpoints`, and `detector` to translation calls to enable multi‑provider failover beyond the popup.
 - Detection and batching
   - Auto-detect source via local heuristic; optional Google detection in background using `detectApiKey`.
   - Mixed-language batching: per-text detection and language-clustered requests for accuracy.
@@ -116,7 +117,7 @@
   - Extend popup styling coverage (all inputs/buttons) to guarantee consistent neon theme; keep reduced-motion consideration.
   - Light/dark toggle via theme variables.
 - E2E smoke tests (CI)
-  - Playwright: enable Auto, translate a sample page, assert text updates without layout shift; streaming/cancel smoke.
+  - Added Playwright CI job (`e2e-smoke`) covering DOM flows and PDF compare.
 - Detection tuning
   - Add minimum-signal threshold for very short tokens to reduce misclassification; optional sensitivity setting.
 - Observability
