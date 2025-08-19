@@ -24,7 +24,8 @@
     "typecheck:popup": "tsc --noEmit types/popup/*.d.ts",
     "size": "npm run build && size-limit",
     "changeset": "changeset",
-    "release": "changeset publish"
+    "release": "changeset publish",
+    "pr": "bash scripts/pr.sh"
   },
   "keywords": [],
   "author": "",
