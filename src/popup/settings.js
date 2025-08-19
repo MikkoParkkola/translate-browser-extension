@@ -68,6 +68,13 @@
     document.body.style.width = 'auto';
     const width = document.body.scrollWidth;
     document.body.style.width = `${width}px`;
+    try {
+      if (typeof window.resizeTo === 'function') {
+        window.resizeTo(width, window.outerHeight);
+      } else {
+        document.documentElement.style.width = `${width}px`;
+      }
+    } catch {}
   }
 
   function activate(tab) {
