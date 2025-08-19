@@ -1,4 +1,4 @@
-importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'providers/mistral.js', 'lib/tm.js', 'lib/feedback.js', 'lib/qualityCheck.js', 'lib/offline.js', 'config.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js', 'backgroundBenchmark.js');
+importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'providers/mistral.js', 'lib/tm.js', 'lib/feedback.js', 'lib/qualityCheck.js', 'lib/offline.js', 'lib/messaging.js', 'config.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js', 'backgroundBenchmark.js');
 
 // Ensure helper is available when importScripts is stubbed (tests)
 if (typeof self.isOfflineError === 'undefined' && typeof require === 'function') {
@@ -635,7 +635,15 @@ async function handleTranslate(opts) {
   }
 }
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
+  try {
+    const v = (self.qwenMessaging && self.qwenMessaging.validateMessage) ? self.qwenMessaging.validateMessage(raw) : { ok:true, msg: raw };
+    if (!v.ok) { sendResponse({ error: v.error || 'invalid message' }); return true; }
+    var msg = v.msg;
+  } catch {
+    sendResponse({ error: 'invalid message' });
+    return true;
+  }
   if (msg.action === 'translate') {
     handleTranslate(msg.opts)
       .then(sendResponse)
