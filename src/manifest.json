@@ -2,9 +2,9 @@
   "manifest_version": 3,
   "name": "TRANSLATE! by Mikko",
   "description": "Translate pages using multiple providers",
-  "version": "1.43.0",
-  "version_name": "2025-08-20",
-  "update_url": "https://raw.githubusercontent.com/MikkoParkkola/translate-by-mikko/main/updates.xml",
+  "version": "1.44.0",
+  "version_name": "2025-08-21",
+  "update_url": "https://raw.githubusercontent.com/QwenLM/translate-by-mikko/main/updates.xml",
   "permissions": [
     "storage",
     "activeTab",
