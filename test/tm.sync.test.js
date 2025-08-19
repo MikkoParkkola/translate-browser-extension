@@ -4,7 +4,9 @@ require('fake-indexeddb/auto');
 describe('TM remote sync', () => {
   beforeEach(() => {
     jest.resetModules();
-    const data = {};
+    const data = {
+      'qwen-tm': [['remote', { text: 'rv', ts: 1 }]],
+    };
     global.chrome = {
       storage: {
         sync: {
@@ -19,14 +21,26 @@ describe('TM remote sync', () => {
     };
   });
 
-  test('saves entries to chrome.storage.sync when enabled', async () => {
+  test('loads, saves, and clears via chrome.storage.sync', async () => {
     const TM = require('../src/lib/tm.js');
+    TM.__resetStats && TM.__resetStats();
+
     await TM.enableSync(true);
+    expect(chrome.storage.sync.get).toHaveBeenCalled();
+
+    const loaded = await TM.get('remote');
+    expect(loaded && loaded.text).toBe('rv');
+
+    let st = TM.stats();
+    expect(st.hits).toBe(1);
+
     await TM.set('k', 'v');
-    const res = await new Promise(r => chrome.storage.sync.get(['qwen-tm'], r));
-    expect(Array.isArray(res['qwen-tm'])).toBe(true);
+    expect(chrome.storage.sync.set).toHaveBeenCalled();
+
+    st = TM.stats();
+    expect(st.sets).toBeGreaterThan(0);
+
     await TM.clearRemote();
-    const after = await new Promise(r => chrome.storage.sync.get(['qwen-tm'], r));
-    expect(after['qwen-tm']).toBeUndefined();
+    expect(chrome.storage.sync.remove).toHaveBeenCalled();
   });
 });
