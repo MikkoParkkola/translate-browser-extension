@@ -78,7 +78,7 @@ jobs:
 
       - name: Start static server
         run: |
-          nohup npm run serve &
+          nohup npx http-server . -p 8080 &
           for i in {1..60}; do
             curl -sSf http://127.0.0.1:8080 >/dev/null && break || sleep 1;
           done
@@ -97,7 +97,7 @@ jobs:
           path: playwright-report
 
   automerge:
-    needs: build-and-test
+    needs: [build-and-test, e2e-smoke]
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:

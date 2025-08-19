@@ -5,6 +5,27 @@ describe('translator cache stats', () => {
     jest.resetModules();
   });
 
+  test('counts words for uncached translations', async () => {
+    const Providers = require('../src/lib/providers.js');
+    Providers.reset();
+    const provider = { translate: jest.fn(async ({ text }) => ({ text: `T:${text}` })) };
+    Providers.register('mock', provider);
+    Providers.init();
+    const tr = require('../src/translator.js');
+    tr.qwenClearCache();
+    const res = await tr.qwenTranslateBatch({
+      texts: ['hello world'],
+      source: 'en',
+      target: 'fr',
+      providerOrder: ['mock'],
+      noProxy: true,
+    });
+    expect(provider.translate).toHaveBeenCalledTimes(1);
+    expect(res.stats.words).toBeGreaterThan(0);
+    expect(res.stats.tokens).toBeGreaterThan(0);
+    expect(res.stats.requests).toBe(1);
+  });
+
   test('counts words for cached translations', async () => {
     const Providers = require('../src/lib/providers.js');
     Providers.reset();
