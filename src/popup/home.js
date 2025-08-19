@@ -4,6 +4,7 @@
   const providerName = document.getElementById('providerName');
   const providerKey = document.getElementById('providerKey');
   const usageEl = document.getElementById('usage');
+  const offlineBanner = document.getElementById('offlineBanner');
   const limitsEl = document.getElementById('limits');
   const cacheEl = document.getElementById('cacheStatus');
   const providersWrap = document.getElementById('providers');
@@ -112,6 +113,10 @@
       cacheEl.title = `Approx. API saved by TM: ${saved}%`;
     }
     renderProviders(res.providers, usage);
+    // Query current status to set offline banner
+    chrome.runtime.sendMessage({ action: 'get-status' }, handleLastError(st => {
+      try { if (offlineBanner) offlineBanner.style.display = st && st.offline ? '' : 'none'; } catch {}
+    }));
     if (reqBar) {
       reqBar.max = u.requestLimit || 0;
       reqBar.value = u.requests || 0;
@@ -188,6 +193,8 @@
         tokBar.value = u.tokens || 0;
         tokBar.style.accentColor = self.qwenUsageColor ? self.qwenUsageColor(tokBar.value / (tokBar.max || 1)) : '';
       }
+    } else if (msg && msg.action === 'translation-status') {
+      try { if (offlineBanner) offlineBanner.style.display = msg.status && msg.status.offline ? '' : 'none'; } catch {}
     }
   });
 })();
