@@ -22,17 +22,25 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: npm run build:zip
-      - name: Prepare update files
+      - name: Decode signing key
+        env:
+          CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
+        run: |
+          echo "$CRX_PRIVATE_KEY" | base64 -d > key.pem
+      - name: Package and sign extension
         run: |
           VERSION=$(jq -r .version src/manifest.json)
-          CRX_NAME="qwen-translator-extension.crx"
-          mv dist/*.zip "$CRX_NAME"
+          NAME="qwen-translator-extension-${VERSION}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "NAME=$NAME" >> $GITHUB_ENV
+          npx -y crx pack dist -o "$NAME.crx" --zip-output "$NAME.zip" -p key.pem
+      - name: Prepare update files
+        run: |
           cat <<XML > updates.xml
 <?xml version="1.0" encoding="UTF-8"?>
 <gupdate xmlns="http://www.google.com/update2/response" protocol="2.0">
   <app appid="${EXTENSION_ID}">
-    <updatecheck codebase="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/${CRX_NAME}" version="${VERSION}" />
+    <updatecheck codebase="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/${NAME}.crx" version="${VERSION}" />
   </app>
 </gupdate>
 XML
@@ -40,6 +48,7 @@ XML
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add updates.xml qwen-translator-extension.crx
+          git add updates.xml "${NAME}.crx" "${NAME}.zip"
           git commit -m "chore: update dev build [skip ci]" || echo "No changes to commit"
           git push
+      - run: rm key.pem

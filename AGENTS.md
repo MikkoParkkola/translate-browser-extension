@@ -125,6 +125,7 @@ Popup header displays the product name beside the settings button.
   - Auto-translate only starts for the active tab; background tabs remain untouched until activated.
 - Build/CI
   - Reproducible dist + zip; CI builds/tests and uploads artifacts on push/PR.
+  - `publish.yml` signs each main-branch build with `CRX_PRIVATE_KEY`, emitting `qwen-translator-extension-<version>.zip` and a matching signed `.crx`.
 
 ## TODO / Next Steps
 - Content multi-provider propagation
