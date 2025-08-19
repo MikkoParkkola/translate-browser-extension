@@ -27,6 +27,13 @@ jobs:
           cache: 'npm'
       - name: Install deps
         run: npm install --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format
+
       - name: Type check
         run: npm run typecheck
       - name: Run unit tests with coverage
