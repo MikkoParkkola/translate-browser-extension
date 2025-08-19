@@ -76,6 +76,12 @@
 - Additional fields: per-provider `charLimit`, `requestLimit`, `tokenLimit`, `costPerInputToken`, `costPerOutputToken`, `weight` and `strategy` guide cost tracking and load balancing. Google translation also requires `projectId` and `location`, and `secondaryModel` enables quota fallback.
 - Ensure `styles/apple.css` is listed in `web_accessible_resources` for content <link> fallback.
 
+## Security Scans & Remediation
+- CI runs `npm audit` and `gitleaks` to catch vulnerable dependencies and leaked secrets.
+- If `npm audit` reports issues, upgrade or patch affected packages (`npm audit fix` or manual updates`).
+- If `gitleaks` flags a secret, remove it, rotate the credential, and purge it from git history if needed.
+- Merges require passing scans with no unresolved vulnerabilities or secrets.
+
 ## Current Product State
 - Multi-provider translation
   - Providers: DashScope (Qwen), OpenAI, DeepL, OpenRouter, Anthropic/Claude, Mistral, Google, Ollama and macOS system translation via `lib/providers.js`.
