@@ -65,13 +65,14 @@ Environment variables:
 - Selection/DOM flows (`e2e/context-menu.spec.js`, `e2e/dom-translate.spec.js`, `e2e/translate-page.spec.js`, `e2e/streaming-cancel.spec.js`) run via `npm run test:e2e:web`; PDF compare (`e2e/pdf-compare.spec.js`) runs via `npm run test:e2e:pdf`. `npm run test:e2e` executes both suites. CI job `e2e-smoke` installs Chromium (`npx playwright install --with-deps chromium`), serves `dist/`, and runs the suites headless.
 
 ## Commit & Pull Request Guidelines
-- Commits follow [Conventional Commits](https://www.conventionalcommits.org/) in imperative present tense (`feat:`, `fix:`, `chore:`, `docs:`, etc.).
-- PRs: clear description, linked issue, test plan, and screenshots/GIFs for UI changes (PDF viewer, content script). Note any config changes.
+- Commits follow [Conventional Commits](https://www.conventionalcommits.org/) in imperative present tense (`feat:`, `fix:`, `chore:`, `docs:` etc.).
+- Every functional change must include a `changeset` entry created via `npx changeset`.
+- PRs require a clear description, linked issue, test plan, and screenshots/GIFs for UI changes (PDF viewer, content script). Note any config changes.
 
 ## Release Workflow
 - Versioning and changelogs use [Changesets](https://github.com/changesets/changesets).
-- Run `npx changeset` with each change to record release notes.
-- When merges land on `main`, a GitHub Action versions the repo and publishes the release.
+- On merges to `main`, `.github/workflows/release.yml` runs `changesets/action@v1` to publish to npm and create a GitHub release.
+- `release.yml` requires `GITHUB_TOKEN` and `NPM_TOKEN` secrets for publishing.
 
 ## Merge Queue
 - A GitHub merge queue (via Bors) serializes merges to keep `main` green.
