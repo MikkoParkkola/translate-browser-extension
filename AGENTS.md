@@ -112,6 +112,7 @@ Popup header displays the product name beside the settings button.
   - MuPDF/PDFium WASM engines: The viewer prefers MuPDF when available. Engine assets live under `src/wasm/vendor/` and are exposed via `web_accessible_resources` in `manifest.json`. On first load, `ensureWasmAssets()` fetches any missing assets from trusted HTTPS sources and serves them via blob/data URLs when needed. `chooseEngine()` probes availability (MuPDF/PDFium/Overlay/Simple) and selects the best match, honoring `wasmEngine`/`wasmStrict` flags in storage. Debug logs (`DEBUG: engine assets`, `DEBUG: chooseEngine selected`) in the console confirm detection.
 - UX and theming
 - Apple HUD (`styles/apple.css`) for in-page status and popup; in-app Getting Started guide; tooltips across fields.
+  - Popup settings window resizes to fit content; width recalculates on tab switches and TM refresh using `window.resizeTo`.
   - Provider presets (DashScope/OpenAI/DeepL/OpenRouter); provider-specific endpoints/keys/models; version/date shown in popup.
   - Provider configs can be duplicated in settings to quickly clone setups for additional models.
   - Glossary and tone presets editable in popup; translator applies substitutions and formal/casual/technical tone options.
@@ -132,8 +133,9 @@ Popup header displays the product name beside the settings button.
 - Cyberpunk UI polish
   - Extend popup styling coverage (all inputs/buttons) to guarantee consistent neon theme; keep reduced-motion consideration.
   - Light/dark toggle via theme variables.
-- E2E smoke tests (CI)
+  - E2E smoke tests (CI)
   - Added Playwright CI job (`e2e-smoke`) covering DOM flows and PDF compare.
+  - DOM translation cancellation tests introduce a 300 ms delay between chunks so abort signals propagate reliably across browsers.
 - Detection tuning
   - Add minimum-signal threshold for very short tokens to reduce misclassification; optional sensitivity setting.
 - Observability
