@@ -26,7 +26,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - name: Install deps
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Type check
         run: npm run typecheck
       - name: Run unit tests with coverage
