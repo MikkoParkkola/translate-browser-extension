@@ -1,0 +1,30 @@
+name: Nightly PR Rebase
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rebase open PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          gh pr list --state open --json number,author --jq '.[] | [.number, .author.login] | @tsv' | while IFS=$'\t' read -r number author; do
+            echo "Rebasing PR #$number by @$author"
+            if gh pr rebase "$number"; then
+              echo "Rebased PR #$number"
+            else
+              echo "Rebase failed for PR #$number; notifying @$author"
+              gh pr comment "$number" --body "⚠️ Automatic rebase skipped due to conflicts. @$author"
+            fi
+          done
