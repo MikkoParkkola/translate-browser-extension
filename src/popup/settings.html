@@ -55,11 +55,11 @@
   </style>
 </head>
 <body>
-  <div class="tabs">
-    <button data-tab="general">General</button>
-    <button data-tab="providers">Providers</button>
-    <button data-tab="advanced">Advanced</button>
-    <button data-tab="diagnostics">Diagnostics</button>
+  <div class="tabs" role="tablist">
+    <button data-tab="general" role="tab" aria-controls="generalTab">General</button>
+    <button data-tab="providers" role="tab" aria-controls="providersTab">Providers</button>
+    <button data-tab="advanced" role="tab" aria-controls="advancedTab">Advanced</button>
+    <button data-tab="diagnostics" role="tab" aria-controls="diagnosticsTab">Diagnostics</button>
   </div>
 
   <div id="generalTab" class="tab">
