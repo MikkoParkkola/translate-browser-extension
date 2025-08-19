@@ -100,7 +100,10 @@
 
   async function load() {
     if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
-    metrics = await new Promise(resolve => chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(resolve)));
+    metrics = await new Promise(resolve => chrome.runtime.sendMessage({ action: 'metrics-v1' }, handleLastError(m => {
+      if (m && m.version === 1) return resolve(m);
+      chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(resolve));
+    })));
     status = await new Promise(resolve => chrome.runtime.sendMessage({ action: 'get-status' }, handleLastError(resolve)));
     render();
     updateStatus();
@@ -122,4 +125,3 @@
     } catch {}
   });
 })();
-

@@ -331,10 +331,18 @@
   }
 
   const usageEl = document.getElementById('usageStats');
-  chrome?.runtime?.sendMessage({ action: 'metrics' }, handleLastError(m => {
-    const usage = m && m.usage ? m.usage : {};
-    usageEl.textContent = JSON.stringify(usage, null, 2);
-  }));
+  (function loadUsage(){
+    function renderMetrics(m){
+      const usage = m && m.usage ? m.usage : {};
+      usageEl.textContent = JSON.stringify(usage, null, 2);
+    }
+    if (chrome?.runtime?.sendMessage) {
+      chrome.runtime.sendMessage({ action: 'metrics-v1' }, handleLastError(m => {
+        if (m && m.version === 1) return renderMetrics(m);
+        chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(renderMetrics));
+      }));
+    }
+  })();
   const tmEl = document.getElementById('tmMetrics');
   const cacheEl = document.getElementById('cacheStats');
   chrome?.runtime?.sendMessage({ action: 'tm-cache-metrics' }, handleLastError(m => {
@@ -404,4 +412,3 @@
 
   refreshTM();
 })();
-
