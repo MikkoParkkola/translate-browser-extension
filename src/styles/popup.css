@@ -1,0 +1,38 @@
+#providers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.provider-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0.5rem;
+  border: 1px solid var(--qwen-border, rgba(255,255,255,0.2));
+  flex: 1 1 150px;
+}
+
+.provider-card:hover {
+  background: var(--qwen-secondary-bg, rgba(118,118,128,0.2));
+}
+
+.provider-card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.provider-avatar {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--qwen-secondary-bg, rgba(118,118,128,0.2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+}
