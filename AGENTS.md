@@ -30,6 +30,25 @@ Popup header displays the product name beside the settings button.
 - Load in Chrome: chrome://extensions → Developer mode → Load unpacked → select `dist/`.
 - CI: `.github/workflows/ci.yml` runs tests, builds dist/zip, uploads artifacts, and executes Playwright e2e smoke tests (Chromium) on push/PR.
 - Local PDF viewer: open `src/pdfViewer.html` (uses `config.local.js` when present).
+- `npm run pr`: Automates PR creation. Requires `BRANCH_NAME` and `COMMIT_MESSAGE` env vars and an authenticated `gh` CLI. Optionals: `PR_TITLE`, `PR_BODY`, `BASE_BRANCH` (default `main`). Checks for merge conflicts before pushing, runs lint/format/tests, `npm audit`, and `gitleaks detect --no-git` (requires the `gitleaks` CLI), commits, pushes, opens a PR, and enables auto-merge.
+- `npm run secrets`: Runs `gitleaks detect --no-git` to scan the working tree for secrets (requires the `gitleaks` CLI, e.g., `brew install gitleaks` or `apt-get install gitleaks`).
+
+### PR Automation Usage
+
+```bash
+BRANCH_NAME=my-branch \
+COMMIT_MESSAGE="chore: describe change" \
+npm run pr
+```
+
+Environment variables:
+
+- `BRANCH_NAME` (required): new branch name.
+- `COMMIT_MESSAGE` (required): Conventional commit message.
+- `PR_TITLE` (optional): PR title (defaults to `COMMIT_MESSAGE`).
+- `PR_BODY` (optional): PR description.
+- `BASE_BRANCH` (optional): target branch, defaults to `main`.
+- `GITHUB_TOKEN`/`GH_TOKEN`: token for the GitHub CLI.
 
 ## Testing Guidelines
 - Run `npm run lint` and `npm run format` before `npm test`.
