@@ -53,4 +53,14 @@ describe('messaging.detectLanguage via Port and fallback', () => {
     const out = await messaging.detectLanguage({ text: 'bonjour', detector: 'local', sensitivity: 0.5 });
     expect(out).toEqual({ lang: 'en', confidence: 0.2 });
   });
+
+  test('sendMessage respects sensitivity threshold', async () => {
+    delete window.chrome.runtime.connect;
+    window.chrome.runtime.sendMessage = jest.fn((msg, cb) => {
+      cb({ lang: 'fr', confidence: 0.3 });
+    });
+    const messaging = require('../src/lib/messaging.js');
+    const out = await messaging.detectLanguage({ text: 'bonjour', detector: 'local', sensitivity: 0.5 });
+    expect(out).toEqual({ lang: 'en', confidence: 0.3 });
+  });
 });
