@@ -5,10 +5,15 @@
   <link rel="stylesheet" href="styles/apple.css">
   <link rel="stylesheet" href="styles/cyberpunk.css">
   <link rel="stylesheet" href="styles/popup.css">
+  <link rel="stylesheet" href="popup.css">
 </head>
 <body class="popup">
   <header id="nav">
-    <button id="settingsBtn" aria-label="Settings">⚙️</button>
+    <button id="settingsBtn" class="icon-button" aria-label="Settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <use href="icons/settings.svg#settings-icon"></use>
+      </svg>
+    </button>
   </header>
   <iframe id="content" src="popup/home.html"></iframe>
   <script src="providerConfig.js"></script>
