@@ -64,18 +64,42 @@
     diagnostics: document.getElementById('diagnosticsTab'),
   };
 
+  function updateWidth() {
+    document.body.style.width = 'auto';
+    const width = document.body.scrollWidth;
+    document.body.style.width = `${width}px`;
+  }
+
   function activate(tab) {
-    tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    tabs.forEach(b => {
+      const active = b.dataset.tab === tab;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-selected', active ? 'true' : 'false');
+      b.setAttribute('tabindex', active ? '0' : '-1');
+    });
     Object.entries(sections).forEach(([k, el]) => {
       el.classList.toggle('active', k === tab);
     });
+    updateWidth();
   }
 
   activate(store.settingsTab);
-  tabs.forEach(btn => btn.addEventListener('click', () => {
-    activate(btn.dataset.tab);
-    chrome?.storage?.sync?.set({ settingsTab: btn.dataset.tab });
-  }));
+  tabs.forEach((btn, idx) => {
+    btn.addEventListener('click', () => {
+      activate(btn.dataset.tab);
+      chrome?.storage?.sync?.set({ settingsTab: btn.dataset.tab });
+    });
+    btn.addEventListener('keydown', e => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const dir = e.key === 'ArrowRight' ? 1 : -1;
+        const newIdx = (idx + dir + tabs.length) % tabs.length;
+        const newTab = tabs[newIdx];
+        newTab.click();
+        newTab.focus();
+      }
+    });
+  });
 
   const detectBox = document.getElementById('enableDetection');
   detectBox.checked = store.enableDetection;
@@ -331,10 +355,18 @@
   }
 
   const usageEl = document.getElementById('usageStats');
-  chrome?.runtime?.sendMessage({ action: 'metrics' }, handleLastError(m => {
-    const usage = m && m.usage ? m.usage : {};
-    usageEl.textContent = JSON.stringify(usage, null, 2);
-  }));
+  (function loadUsage(){
+    function renderMetrics(m){
+      const usage = m && m.usage ? m.usage : {};
+      usageEl.textContent = JSON.stringify(usage, null, 2);
+    }
+    if (chrome?.runtime?.sendMessage) {
+      chrome.runtime.sendMessage({ action: 'metrics-v1' }, handleLastError(m => {
+        if (m && m.version === 1) return renderMetrics(m);
+        chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(renderMetrics));
+      }));
+    }
+  })();
   const tmEl = document.getElementById('tmMetrics');
   const cacheEl = document.getElementById('cacheStats');
   chrome?.runtime?.sendMessage({ action: 'tm-cache-metrics' }, handleLastError(m => {
@@ -361,6 +393,7 @@
     const stats = res.stats || {};
     tmEntriesEl.textContent = JSON.stringify(entries, null, 2);
     tmStatsEl.textContent = JSON.stringify(stats, null, 2);
+    updateWidth();
   }
 
   document.getElementById('tmClear')?.addEventListener('click', async () => {
@@ -404,4 +437,3 @@
 
   refreshTM();
 })();
-
