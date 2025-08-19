@@ -136,17 +136,32 @@ function _touchCache(k) {
   }
   return undefined;
 }
-function _normText(t) {
-  const s = String(t == null ? '' : t);
-  const collapsed = s.replace(/\s+/g, ' ').trim();
-  try { return collapsed.normalize('NFC'); } catch { return collapsed; }
+let normalizeText;
+let makeCacheKey;
+try {
+  if (typeof window !== 'undefined' && window.qwenCacheKey) {
+    ({ normalizeText, makeCacheKey } = window.qwenCacheKey);
+  } else if (typeof self !== 'undefined' && typeof window === 'undefined' && self.qwenCacheKey) {
+    ({ normalizeText, makeCacheKey } = self.qwenCacheKey);
+  } else if (typeof require !== 'undefined') {
+    ({ normalizeText, makeCacheKey } = require('./translator/cacheKey'));
+  }
+} catch {}
+if (!normalizeText) {
+  normalizeText = function _normText(t) {
+    const s = String(t == null ? '' : t);
+    const collapsed = s.replace(/\s+/g, ' ').trim();
+    try { return collapsed.normalize('NFC'); } catch { return collapsed; }
+  };
 }
-function _key(source, target, text) {
-  return `${source}:${target}:${_normText(text)}`;
+if (!makeCacheKey) {
+  makeCacheKey = function _key(source, target, text) {
+    return `${source}:${target}:${normalizeText(text)}`;
+  };
 }
 
 function qwenIsCached({ source, target, text }) {
-  try { return cache.has(_key(source, target, text)); }
+  try { return cache.has(makeCacheKey(source, target, text)); }
   catch { return false; }
 }
 
@@ -466,7 +481,7 @@ async function qwenTranslate({ endpoint, apiKey, projectId, location, model, sec
   text = _applyGlossary(text);
   const tone = glossary && typeof glossary.getTone === 'function' ? glossary.getTone() : undefined;
   const prov = provider || (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model }));
-  const cacheKey = `${prov}:${_key(src, target, text)}`;
+  const cacheKey = `${prov}:${makeCacheKey(src, target, text)}`;
   if (!force && cache.has(cacheKey)) {
     return _touchCache(cacheKey);
   }
@@ -546,7 +561,7 @@ async function qwenTranslateStream({ endpoint, apiKey, projectId, location, mode
   text = _applyGlossary(text);
   const tone = glossary && typeof glossary.getTone === 'function' ? glossary.getTone() : undefined;
   const prov = provider || (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model }));
-  const cacheKey = `${prov}:${_key(src, target, text)}`;
+  const cacheKey = `${prov}:${makeCacheKey(src, target, text)}`;
   if (cache.has(cacheKey)) {
     const data = _touchCache(cacheKey);
     if (onData) onData(data.text);
@@ -694,7 +709,7 @@ async function batchOnce({
     for (let i = 0; i < texts.length; i++) {
       const t = texts[i];
       const lang = sourceByIndex[i];
-      const key = _key(lang, opts.target, t);
+      const key = makeCacheKey(lang, opts.target, t);
       if (!cache.has(key) && !seen.has(key)) {
         seen.add(key);
         missingKeys.push(key);
@@ -720,7 +735,7 @@ async function batchOnce({
       stats.tokens += approxTokens(t);
       return;
     }
-    const key = _key(lang, opts.target, t);
+    const key = makeCacheKey(lang, opts.target, t);
     if (cache.has(key)) {
       const v = _touchCache(key) || cache.get(key);
       mapping.push({ index: i, chunk: 0, text: v.text, cached: true, lang });
@@ -854,7 +869,7 @@ async function batchOnce({
             out = m.text;
           }
           m.result = out;
-          const key = _key(m.lang, opts.target, m.text);
+      const key = makeCacheKey(m.lang, opts.target, m.text);
           _setCache(key, { text: out });
           if (TM && TM.set) { try { TM.set(key, out); } catch {} }
           stats.requests++;
@@ -866,7 +881,7 @@ async function batchOnce({
     }
     for (let i = 0; i < g.items.length; i++) {
       g.items[i].result = translated[i] || g.items[i].text;
-      const key = _key(g.lang, opts.target, g.items[i].text);
+      const key = makeCacheKey(g.lang, opts.target, g.items[i].text);
       _setCache(key, { text: g.items[i].result });
       if (TM && TM.set) { try { TM.set(key, g.items[i].result); } catch {} }
     }
@@ -914,7 +929,7 @@ async function batchOnce({
       retryTexts.push(orig);
       retryIdx.push(i);
       retryLangs.push(lang);
-      const key = _key(lang, opts.target, orig);
+      const key = makeCacheKey(lang, opts.target, orig);
       cache.delete(key);
     }
   }
@@ -933,7 +948,7 @@ async function batchOnce({
     });
     for (let i = 0; i < retryIdx.length; i++) {
       results[retryIdx[i]] = retr.texts[i];
-      const key = _key(retryLangs[i], opts.target, retryTexts[i]);
+      const key = makeCacheKey(retryLangs[i], opts.target, retryTexts[i]);
       _setCache(key, { text: retr.texts[i] });
       if (TM && TM.set) { try { TM.set(key, retr.texts[i]); } catch {} }
     }
