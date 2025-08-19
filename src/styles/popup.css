@@ -118,7 +118,7 @@ html[data-qwen-theme] {
   cursor: move;
 }
 
-[data-qwen-theme] .overlay {
+[data-qwen-theme] .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -131,14 +131,16 @@ html[data-qwen-theme] {
   z-index: 1000;
 }
 
-[data-qwen-theme] .overlay .modal {
+[data-qwen-theme] .modal {
   background: var(--qwen-bg, rgba(28,28,30,0.9));
   padding: 1rem;
   border: 1px solid var(--qwen-border, rgba(255,255,255,0.2));
   min-width: 260px;
+  max-width: calc(100% - 2rem);
+  box-sizing: border-box;
 }
 
-[data-qwen-theme] .overlay .actions {
+[data-qwen-theme] .modal .actions {
   display: flex;
   gap: 0.5rem;
   justify-content: flex-end;
