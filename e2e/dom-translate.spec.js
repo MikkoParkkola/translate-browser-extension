@@ -61,7 +61,9 @@ test.describe('DOM translation', () => {
           const chunks = ['Bon', 'jour'];
           for (const chunk of chunks) {
             if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-            await new Promise(r => setTimeout(r, 100));
+            // Use a longer delay to ensure the abort signal can be processed
+            // across browsers before the next chunk resolves.
+            await new Promise(r => setTimeout(r, 300));
             if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
             if (onData) onData(chunk);
           }
