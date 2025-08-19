@@ -50,8 +50,10 @@
 <body>
   <button id="quickTranslate" class="primary">Translate page</button>
   <div class="lang-select">
+    <label for="srcLang">From</label>
     <select id="srcLang"></select>
-    <span>→</span>
+    <span aria-hidden="true">→</span>
+    <label for="destLang">To</label>
     <select id="destLang"></select>
   </div>
   <div id="offlineBanner" class="stats" style="display:none;color:#ff6b6b">Offline: background reports no network. Translation may fail.</div>
