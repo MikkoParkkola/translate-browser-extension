@@ -1,0 +1,9 @@
+dist/
+coverage/
+safari/
+**/*.min.js
+src/hb.js
+src/mupdf-wasm.js
+src/mupdf.engine.js
+src/qa/
+src/wasm/

@@ -38,6 +38,12 @@ jobs:
         if: steps.wasm-cache.outputs.cache-hit != 'true'
         run: bash scripts/fetch-wasm-assets.sh
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format
+
       - name: Type check
         run: npm run typecheck
 

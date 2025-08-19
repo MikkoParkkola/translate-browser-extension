@@ -18,6 +18,8 @@
     "zip": "bestzip dist/qwen-translator-v$npm_package_version.zip dist/*",
     "build:zip": "npm run build && npm run zip",
     "serve": "http-server dist -p 8080",
+    "lint": "eslint .",
+    "format": "prettier --check package.json",
     "typecheck": "tsc --noEmit",
     "typecheck:popup": "tsc --noEmit types/popup/*.d.ts"
   },
@@ -55,6 +57,8 @@
     "pdf-lib": "^1.17.1",
     "bestzip": "^2.2.1",
     "copyfiles": "^2.4.1",
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.2",
     "rimraf": "^6.0.1",
     "typescript": "^5.9.2"
   },
