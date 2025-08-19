@@ -284,6 +284,6 @@ test('translate-selection error uses localized message', async () => {
     await new Promise(r => setTimeout(r, 0));
     status = document.getElementById('qwen-status');
   }
-  expect(status && status.textContent).toBe('Qwen Translator: Localized fail: oops');
+  expect(status && status.textContent).toBe('TRANSLATE! by Mikko: Localized fail: oops');
 });
 

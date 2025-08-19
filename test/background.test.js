@@ -215,7 +215,7 @@ describe('background icon plus indicator', () => {
     );
     const click = chrome.notifications.onClicked.addListener.mock.calls[0][0];
     click('qwen-update');
-    expect(chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://github.com/QwenLM/Qwen-translator-extension/releases/latest' });
+    expect(chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://github.com/QwenLM/translate-by-mikko/releases/latest' });
   });
 });
 
