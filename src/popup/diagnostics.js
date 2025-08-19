@@ -6,6 +6,7 @@
   const backBtn = document.getElementById('back');
   const summaryEl = document.getElementById('usageSummary');
   const chartEl = document.getElementById('usageChart');
+  const histEl = document.getElementById('latencyHistogram');
   let Chart;
   if (chartEl) {
     await new Promise((resolve, reject) => {
@@ -30,6 +31,7 @@
     options: { scales: { y1: { type: 'linear', position: 'left' }, y2: { type: 'linear', position: 'right' } } }
   });
   const log = [];
+  const latencies = [];
   let metrics = {};
   let status = { active: false };
 
@@ -50,6 +52,10 @@
 
   function addEntry(e) {
     log.push(e);
+    if (typeof e.latency === 'number' && e.latency >= 0 && Number.isFinite(e.latency)) {
+      latencies.push(e.latency);
+      if (latencies.length > 200) latencies.shift();
+    }
     if (chart) {
       const label = new Date(e.ts).toLocaleTimeString();
       chart.data.labels.push(label);
@@ -57,11 +63,42 @@
       chart.data.datasets[1].data.push(e.latency);
       chart.update();
     }
+    drawHistogram();
     updateSummary();
+  }
+
+  function drawHistogram() {
+    if (!histEl) return;
+    const ctx = histEl.getContext('2d');
+    const w = histEl.width || histEl.clientWidth || 320;
+    const h = histEl.height || histEl.clientHeight || 80;
+    ctx.clearRect(0, 0, w, h);
+    if (!latencies.length) return;
+    const min = Math.min(...latencies);
+    const max = Math.max(...latencies);
+    const bins = Math.min(20, Math.max(5, Math.ceil(Math.sqrt(latencies.length))));
+    const counts = new Array(bins).fill(0);
+    const range = max - min || 1;
+    latencies.forEach(v => {
+      let idx = Math.floor(((v - min) / range) * bins);
+      if (idx >= bins) idx = bins - 1;
+      if (idx < 0) idx = 0;
+      counts[idx]++;
+    });
+    const maxCount = Math.max(...counts, 1);
+    const barW = (w - 2) / bins;
+    ctx.fillStyle = '#0d6efd';
+    counts.forEach((c, i) => {
+      const barH = Math.round((c / maxCount) * (h - 4));
+      const x = Math.round(i * barW) + 1;
+      const y = h - barH - 2;
+      ctx.fillRect(x, y, Math.max(1, Math.floor(barW) - 1), barH);
+    });
   }
 
   chrome.storage?.local?.get({ usageLog: [] }, data => {
     (data.usageLog || []).forEach(addEntry);
+    drawHistogram();
   });
 
   function updateStatus() {
