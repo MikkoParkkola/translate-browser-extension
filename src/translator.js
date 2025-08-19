@@ -750,10 +750,16 @@ async function batchOnce({
       return;
     }
   let splitLong;
+  let predictive;
   try {
     if (typeof window !== 'undefined' && window.qwenBatching) splitLong = window.qwenBatching.splitLongText;
     else if (typeof self !== 'undefined' && typeof window === 'undefined' && self.qwenBatching) splitLong = self.qwenBatching.splitLongText;
     else if (typeof require !== 'undefined') splitLong = require('./translator/batching').splitLongText;
+  } catch {}
+  try {
+    if (typeof window !== 'undefined' && window.qwenThrottle) predictive = window.qwenThrottle.predictiveBatch;
+    else if (typeof self !== 'undefined' && typeof window === 'undefined' && self.qwenThrottle) predictive = self.qwenThrottle.predictiveBatch;
+    else if (typeof require !== 'undefined') predictive = require('./throttle').predictiveBatch;
   } catch {}
   const splitFn = splitLong || function splitLongText(text, maxTokens) {
     const parts = (text || '').split(/(?<=[\.?!])\s+/);
@@ -784,7 +790,18 @@ async function batchOnce({
     }
     return out;
   };
-  const pieces = splitFn(t, tokenBudget);
+  let pieces;
+  if (opts && opts.usePredictiveBatch && typeof predictive === 'function') {
+    try {
+      const batches = predictive([t], tokenBudget) || [];
+      pieces = batches.map(arr => (Array.isArray(arr) ? arr.join(' ') : String(arr || ''))).filter(Boolean);
+      if (!pieces.length) pieces = splitFn(t, tokenBudget);
+    } catch {
+      pieces = splitFn(t, tokenBudget);
+    }
+  } else {
+    pieces = splitFn(t, tokenBudget);
+  }
     pieces.forEach((p, idx) => mapping.push({ index: i, chunk: idx, text: p, lang }));
   });
   const byIndex = new Map();
