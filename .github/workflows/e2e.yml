@@ -33,8 +33,8 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps chromium
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox webkit
 
       - name: Check repo for public PDFs at root (privacy)
         run: |
@@ -47,6 +47,6 @@ jobs:
           fi
 
       - name: Run E2E tests
-        run: npm run test:e2e-pdf
+        run: npm run test:e2e-pdf -- --browser=chromium,firefox,webkit
 
       # Privacy: do not upload screenshots or artifacts by default to avoid exposing PDFs/PII
