@@ -266,7 +266,21 @@ function withSlash(url) {
   return url.endsWith('/') ? url : `${url}/`;
 }
 
+let chooseDefaultProvider;
+let buildCandidatesChain;
+try {
+  if (typeof window !== 'undefined' && window.qwenProviderSelect) {
+    chooseDefaultProvider = window.qwenProviderSelect.chooseDefault;
+    buildCandidatesChain = window.qwenProviderSelect.candidatesChain;
+  } else if (typeof self !== 'undefined' && typeof window === 'undefined' && self.qwenProviderSelect) {
+    chooseDefaultProvider = self.qwenProviderSelect.chooseDefault;
+    buildCandidatesChain = self.qwenProviderSelect.candidatesChain;
+  } else if (typeof require !== 'undefined') {
+    ({ chooseDefault: chooseDefaultProvider, candidatesChain: buildCandidatesChain } = require('./translator/providers'));
+  }
+} catch {}
 function chooseProvider(opts) {
+  if (chooseDefaultProvider) return chooseDefaultProvider({ ...opts, Providers });
   if (Providers && typeof Providers.choose === 'function') return Providers.choose(opts);
   const ep = String(opts && opts.endpoint || '').toLowerCase();
   return ep.includes('dashscope') ? 'dashscope' : 'dashscope';
@@ -274,23 +288,15 @@ function chooseProvider(opts) {
 async function providerTranslate({ endpoint, apiKey, projectId, location, model, text, source, target, tone, signal, debug, onData, stream = true, provider, context = 'default', autoInit = false, providerOrder, endpoints, secondaryModel }) {
   _ensureProviders({ autoInit });
   const tokens = approxTokens(text);
-  let chain;
-  if (Array.isArray(providerOrder) && providerOrder.length) {
-    const order = providerOrder.slice();
-    if (provider && order.includes(provider)) {
-      chain = order.slice(order.indexOf(provider));
-    } else if (provider) {
-      chain = [provider, ...order.filter(p => p !== provider)];
-    } else {
-      chain = order;
-    }
-  } else if (provider) {
-    chain = [provider];
-  } else if (Providers && typeof Providers.candidates === 'function') {
-    chain = Providers.candidates({ endpoint, model });
-  } else {
-    chain = [chooseProvider({ endpoint, model })];
-  }
+  const chain = buildCandidatesChain
+    ? buildCandidatesChain({ providerOrder, provider, endpoint, model, Providers })
+    : (Array.isArray(providerOrder) && providerOrder.length)
+      ? (provider
+          ? (providerOrder.includes(provider)
+              ? providerOrder.slice(providerOrder.indexOf(provider))
+              : [provider, ...providerOrder.filter(p=>p!==provider)])
+          : providerOrder.slice())
+      : (provider ? [provider] : (Providers && Providers.candidates ? Providers.candidates({ endpoint, model }) : [chooseProvider({ endpoint, model })]));
 
   let lastErr = null;
   for (const id of chain) {
@@ -480,7 +486,7 @@ async function qwenTranslate({ endpoint, apiKey, projectId, location, model, sec
   }
   text = _applyGlossary(text);
   const tone = glossary && typeof glossary.getTone === 'function' ? glossary.getTone() : undefined;
-  const prov = provider || (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model }));
+  const prov = provider || (chooseDefaultProvider ? chooseDefaultProvider({ endpoint, model, Providers }) : (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model })));
   const cacheKey = `${prov}:${makeCacheKey(src, target, text)}`;
   if (!force && cache.has(cacheKey)) {
     return _touchCache(cacheKey);
@@ -560,7 +566,7 @@ async function qwenTranslateStream({ endpoint, apiKey, projectId, location, mode
   }
   text = _applyGlossary(text);
   const tone = glossary && typeof glossary.getTone === 'function' ? glossary.getTone() : undefined;
-  const prov = provider || (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model }));
+  const prov = provider || (chooseDefaultProvider ? chooseDefaultProvider({ endpoint, model, Providers }) : (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model })));
   const cacheKey = `${prov}:${makeCacheKey(src, target, text)}`;
   if (cache.has(cacheKey)) {
     const data = _touchCache(cacheKey);
