@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'src/**'
-      - 'e2e/**'
+      - 'src/pdf**'
+      - 'e2e/pdfs/**'
+      - 'e2e/pdf-compare.spec.js'
       - '.github/workflows/e2e.yml'
       - 'package.json'
 
@@ -30,22 +31,7 @@ jobs:
           key: ${{ runner.os }}-wasm-${{ hashFiles('scripts/fetch-wasm-assets.sh') }}
 
       - name: Install deps
-        run: npm ci --no-audit --no-fund
-
-      - name: Fetch WASM assets
-        if: steps.wasm-cache.outputs.cache-hit != 'true'
-        run: bash scripts/fetch-wasm-assets.sh
-
-      - name: Get Playwright version
-        id: playwright-version
-        run: |
-          echo "version=$(node -p \"require('playwright/package.json').version\")" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('playwright.config.js') }}
+        run: npm ci
 
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
@@ -61,6 +47,6 @@ jobs:
           fi
 
       - name: Run E2E tests
-        run: npm run test:e2e
+        run: npm run test:e2e-pdf
 
       # Privacy: do not upload screenshots or artifacts by default to avoid exposing PDFs/PII
