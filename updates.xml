@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gupdate xmlns="http://www.google.com/update2/response" protocol="2.0">
   <app appid="YOUR_EXTENSION_ID">
-    <updatecheck codebase="https://raw.githubusercontent.com/MikkoParkkola/translate-by-mikko/main/translate-by-mikko.crx" version="1.36.0" />
+    <updatecheck codebase="https://raw.githubusercontent.com/QwenLM/translate-by-mikko/main/translate-by-mikko-1.44.0.crx" version="1.44.0" />
   </app>
 </gupdate>

@@ -5,7 +5,7 @@
 
 // Configuration for testing
 const testConfig = {
-  apiKey: 'sk-f734eca57cb64b6b8f4b7b7e14f02e6b',
+  apiKey: 'sk-REPLACE_WITH_YOUR_KEY',
   apiEndpoint: 'https://dashscope-intl.aliyuncs.com/api/v1',
   model: 'qwen-mt-turbo',
   sourceLanguage: 'nl',  // Dutch
