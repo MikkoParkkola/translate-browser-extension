@@ -83,11 +83,8 @@ jobs:
             curl -sSf http://127.0.0.1:8080 >/dev/null && break || sleep 1;
           done
 
-      - name: Run e2e web smoke
-        run: npm run test:e2e:web
-
-      - name: Run e2e PDF compare
-        run: npm run test:e2e:pdf
+      - name: Run e2e tests
+        run: npm run test:e2e
 
       - name: Upload Playwright report
         if: always()

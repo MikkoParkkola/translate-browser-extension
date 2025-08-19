@@ -61,6 +61,6 @@ jobs:
           fi
 
       - name: Run E2E tests
-        run: npm run e2e
+        run: npm run test:e2e
 
       # Privacy: do not upload screenshots or artifacts by default to avoid exposing PDFs/PII
