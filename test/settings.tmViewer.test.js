@@ -91,11 +91,18 @@ describe('settings TM viewer', () => {
         }),
       },
     };
+    window.resizeTo = jest.fn();
+    window.outerHeight = 100;
+    Object.defineProperty(document.body, 'scrollWidth', { configurable: true, value: 120 });
     require('../src/popup/settings.js');
     await flush();
+    expect(window.resizeTo).toHaveBeenCalledWith(120, 100);
     expect(document.getElementById('tmEntries').textContent).toContain('"a"');
+    window.resizeTo.mockClear();
+    Object.defineProperty(document.body, 'scrollWidth', { configurable: true, value: 80 });
     document.getElementById('tmClear').click();
     await flush();
+    expect(window.resizeTo).toHaveBeenCalledWith(80, 100);
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'tm-clear' }, expect.any(Function));
     await flush();
     expect(document.getElementById('tmEntries').textContent).toContain('[]');
