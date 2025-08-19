@@ -1,17 +1,19 @@
-const usageColor = require('../src/usageColor.js');
+const usageColor = require('../src/usageColor');
 
-describe('usageColor', () => {
-  test('green up to 50%', () => {
-    expect(usageColor(0.0)).toMatch(/hsl\(120,/);
-    expect(usageColor(0.5)).toMatch(/hsl\(120,/);
+describe('usageColor thresholds', () => {
+  test.each([
+    [0, 'hsl(120,'],
+    [0.5, 'hsl(120,'],
+    [0.6, 'hsl(60,'],
+    [0.8, 'hsl(60,'],
+    [0.9, 'hsl(0,'],
+    [1, 'hsl(0,']
+  ])('maps %p to %s', (ratio, color) => {
+    expect(usageColor(ratio)).toContain(color);
   });
 
-  test('yellow between 50% and 80%', () => {
-    expect(usageColor(0.6)).toMatch(/hsl\(60,/);
-    expect(usageColor(0.8)).toMatch(/hsl\(60,/);
-  });
-
-  test('red over 80%', () => {
-    expect(usageColor(0.9)).toMatch(/hsl\(0,/);
+  test('clamps ratios outside 0-1', () => {
+    expect(usageColor(-0.2)).toContain('hsl(120,');
+    expect(usageColor(1.2)).toContain('hsl(0,');
   });
 });
