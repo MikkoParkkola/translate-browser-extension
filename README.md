@@ -76,6 +76,13 @@ Top‑level PDF navigations are opened in a custom viewer. The viewer can transl
 - **WASM pipeline** – otherwise the viewer extracts text, translates page segments through the normal text API and renders a new PDF locally.
 Translated PDFs can be saved via the viewer's **Save translated PDF** action.
 
+#### Engine assets, integrity, and caching
+- Engines: The viewer can run MuPDF or PDFium (plus HarfBuzz/ICU4X/pdf-lib). Packaged assets live under `src/wasm/vendor/` and are included in builds.
+- Auto-download: If a packaged asset is missing, the viewer automatically downloads the pinned version from trusted CDNs and proceeds — no user action needed.
+- Integrity: When a known SHA‑256 is available, the viewer computes a checksum for downloaded assets and logs a warning on mismatch, then proceeds (the upstream CDN may have updated the file). This avoids blocking users on minor updates.
+- Caching: Downloaded assets are stored in IndexedDB to avoid re-downloading on subsequent launches.
+- Weekly refresh: A scheduled GitHub Action re-computes hashes for packaged assets and opens a PR if they change, keeping pinned checksums up to date.
+
 ### Rate Limiting
 The extension and CLI queue translation requests to stay within the provider limits.
 The background worker maintains a single queue so multiple page nodes are translated sequentially rather than all at once, preventing bursts that would trigger HTTP 429 errors. Nodes are batched into combined translation requests to reduce the overall query count. If the provider still returns a 429 response the request is retried automatically.

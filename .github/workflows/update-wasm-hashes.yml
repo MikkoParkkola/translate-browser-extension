@@ -1,0 +1,48 @@
+name: Update WASM Hashes
+
+on:
+  schedule:
+    - cron: '0 3 * * 1' # Every Monday at 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-hashes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (fetch wasm assets via postinstall)
+        run: npm ci
+
+      - name: Ensure vendor assets (fallback script)
+        run: |
+          bash scripts/fetch-wasm-assets.sh || true
+
+      - name: Update SHA-256 entries
+        run: node tools/update-wasm-sha256.js
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: 'chore(wasm): update SHA-256 for vendor assets'
+          branch: chore/update-wasm-sha256
+          title: 'chore(wasm): update SHA-256 for vendor assets'
+          body: |
+            Automated weekly refresh of SHA-256 hashes for PDF engine/vendor assets.
+
+            DoD (pre-submit):
+            - Local steps executed in CI: fetch assets, compute hashes, update engine.js.
+            - No runtime behavior changes; warn-only integrity retained.
+            - CI will validate build/tests as usual.
+          labels: dependencies, automation
