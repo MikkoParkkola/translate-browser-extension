@@ -815,6 +815,7 @@ async function batchOnce({
   stats.totalRequests += groups.length;
 
   const providers = Array.isArray(opts.providerOrder) && opts.providerOrder.length ? opts.providerOrder : [];
+  const strategy = (opts && typeof opts.strategy === 'string' ? opts.strategy : (cfg && cfg.strategy)) || 'balanced';
   const providerWeights = providers.map(id => {
     let w = 1;
     let t = throttleFor(id);
@@ -826,7 +827,18 @@ async function batchOnce({
       const costIn = impl && impl.costPerInputToken != null ? impl.costPerInputToken : impl && impl.costPerToken != null ? impl.costPerToken : 1;
       const costOut = impl && impl.costPerOutputToken != null ? impl.costPerOutputToken : impl && impl.costPerToken != null ? impl.costPerToken : 0;
       const cost = costIn + costOut;
-      w = impl && impl.weight != null ? impl.weight : (cost > 0 ? (tokLim || 0) / cost : tokLim || 1);
+      if (impl && impl.weight != null) {
+        w = impl.weight;
+      } else {
+        if (strategy === 'cheap') {
+          w = cost > 0 ? (1 / cost) : 1;
+        } else if (strategy === 'fast') {
+          // Favor providers with higher available token capacity as a proxy for speed
+          w = tokLim || 1;
+        } else { // balanced
+          w = cost > 0 ? ((tokLim || 0) / cost) : (tokLim || 1);
+        }
+      }
     } catch {}
     if (!Number.isFinite(w) || w <= 0) w = 1;
     return { id, weight: w, assigned: 0, throttle: t, tokenLimit: tokLim, usedTokens: 0 };
