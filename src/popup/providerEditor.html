@@ -3,7 +3,7 @@
   <div class="modal">
     <label data-field="apiKey">API Key <input id="pe_apiKey"></label>
     <label data-field="apiEndpoint">API Endpoint <input id="pe_apiEndpoint"></label>
-    <label data-field="model">Model <select id="pe_modelSelect"></select><input id="pe_modelInput"></label>
+    <label id="pe_modelLabel" data-field="model">Model <select id="pe_modelSelect" style="display:none" aria-labelledby="pe_modelLabel"></select><input id="pe_modelInput" aria-labelledby="pe_modelLabel"></label>
     <details id="pe_advanced">
       <summary>Advanced</summary>
       <label data-field="requestLimit">Requests/min <input id="pe_requestLimit" type="number" min="0"></label>
