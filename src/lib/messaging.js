@@ -13,11 +13,13 @@
     if (!msg || typeof msg !== 'object') { out.error='invalid message'; return out; }
     const { action } = msg;
     if (typeof action !== 'string' || !Actions.has(action)) { out.error='invalid action'; return out; }
-    // Shallow sanitize strings
+    const visited = new WeakSet();
     function sanitize(v){
       if (typeof v === 'string') return v.slice(0, 50000);
       if (Array.isArray(v)) return v.slice(0, 1000).map(sanitize);
       if (v && typeof v === 'object') {
+        if (visited.has(v)) return '[Circular]';
+        visited.add(v);
         const o = {}; const keys = Object.keys(v).slice(0, 50);
         for (const k of keys) o[k] = sanitize(v[k]);
         return o;
