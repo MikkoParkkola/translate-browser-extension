@@ -21,7 +21,8 @@
     "lint": "eslint .",
     "format": "prettier --check package.json",
     "typecheck": "tsc --noEmit",
-    "typecheck:popup": "tsc --noEmit types/popup/*.d.ts"
+    "typecheck:popup": "tsc --noEmit types/popup/*.d.ts",
+    "size": "size-limit"
   },
   "keywords": [],
   "author": "",
@@ -44,6 +45,12 @@
       ]
     }
   },
+  "size-limit": [
+    {
+      "path": "dist/translator.js",
+      "limit": "60 KB"
+    }
+  ],
   "devDependencies": {
     "@playwright/test": "^1.54.2",
     "@types/jest": "^30.0.0",
@@ -60,7 +67,9 @@
     "eslint": "^8.57.0",
     "prettier": "^3.3.2",
     "rimraf": "^6.0.1",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "@size-limit/file": "^11.1.5",
+    "size-limit": "^11.1.5"
   },
   "dependencies": {
     "mupdf": "^1.26.4",
