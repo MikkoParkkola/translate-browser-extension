@@ -2,6 +2,7 @@
 /** @type {import('@playwright/test').PlaywrightTestConfig} */
 const config = {
   timeout: 120000,
+  fullyParallel: true,
   reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   use: {
     headless: true,

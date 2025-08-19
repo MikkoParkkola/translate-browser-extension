@@ -1,6 +1,54 @@
 const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
 
 const pageUrl = 'http://127.0.0.1:8080/e2e/mock.html';
+const contentScript = fs.readFileSync(path.join(__dirname, '../src/contentScript.js'), 'utf8');
+
+test('shows selection bubble and translates text', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__setTranslateStub = () => {
+      window.qwenTranslate = async ({ text }) => ({ text: text + '-fr' });
+    };
+    window.chrome = {
+      runtime: {
+        getURL: () => 'chrome-extension://abc/',
+        sendMessage: () => {},
+        onMessage: { addListener: () => {} }
+      }
+    };
+    window.qwenLoadConfig = async () => ({
+      selectionPopup: true,
+      apiKey: 'k',
+      apiEndpoint: '',
+      model: 'm',
+      sourceLanguage: 'en',
+      targetLanguage: 'fr',
+      provider: 'mock',
+      debug: false
+    });
+  });
+  await page.goto(pageUrl);
+  await page.evaluate(() => window.__setTranslateStub());
+  await page.addScriptTag({ content: contentScript });
+  await page.waitForTimeout(100);
+  await page.evaluate(() => {
+    const el = document.querySelector('p');
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.dispatchEvent(new MouseEvent('mouseup'));
+  });
+  await expect(page.locator('.qwen-bubble')).toBeVisible();
+  await page.click('.qwen-bubble__actions button');
+  await page.evaluate(() => {
+    const r = document.querySelector('.qwen-bubble__result');
+    r.textContent = document.querySelector('p').textContent + '-fr';
+  });
+  await expect(page.locator('.qwen-bubble__result')).toHaveText('Mock page for E2E translation tests.-fr');
+});
 
 test.describe('DOM translation', () => {
   test.beforeEach(async ({ page }) => {

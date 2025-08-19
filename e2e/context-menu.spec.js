@@ -21,13 +21,15 @@ test('translates selected text via context menu', async ({ page }) => {
     window.qwenLoadConfig = async () => ({ apiKey: 'k', apiEndpoint: '', model: 'm', sourceLanguage: 'en', targetLanguage: 'fr', provider: 'mock', debug: false });
   });
   await page.goto(pageUrl);
-  await page.evaluate(() => window.__setTranslateStub());
-  await page.setContent('<p id="t">hello</p>');
   await page.addScriptTag({ content: contentScript });
+  await page.waitForFunction(() => window.__qwenMsg);
   await page.evaluate(() => {
-    const el = document.getElementById('t');
+    window.__setTranslateStub();
+    const p = document.querySelector('p');
+    p.id = 't';
+    p.textContent = 'hello';
     const range = document.createRange();
-    range.selectNodeContents(el);
+    range.selectNodeContents(p);
     const sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
