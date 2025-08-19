@@ -1,6 +1,6 @@
 {
   "name": "qwen-translator-extension",
-  "version": "1.42.0",
+  "version": "1.42.1",
   "description": "Extension to translate web pages using Qwen-MT-Turbo model",
   "main": "index.js",
   "scripts": {
