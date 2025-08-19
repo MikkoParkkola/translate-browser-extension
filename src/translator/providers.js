@@ -2,7 +2,17 @@
   function chooseDefault({ endpoint, model, Providers }){
     try { if (Providers && typeof Providers.choose === 'function') return Providers.choose({ endpoint, model }); } catch {}
     const ep = String(endpoint || '').toLowerCase();
-    return ep.includes('dashscope') ? 'dashscope' : 'dashscope';
+    if (ep.includes('openrouter')) return 'openrouter';
+    if (ep.includes('openai')) return 'openai';
+    if (ep.includes('anthropic') || ep.includes('claude')) return 'anthropic';
+    if (ep.includes('mistral')) return 'mistral';
+    if (ep.includes('deepl')) return 'deepl';
+    if (ep.includes('google')) return 'google';
+    if (ep.includes('ollama') || ep.includes('11434')) return 'ollama';
+    if (ep.includes('gemini')) return 'gemini';
+    if (ep.includes('macos')) return 'macos';
+    if (ep.includes('dashscope') || ep.includes('qwen')) return 'dashscope';
+    return 'dashscope';
   }
 
   function candidatesChain({ providerOrder, provider, endpoint, model, Providers }){
