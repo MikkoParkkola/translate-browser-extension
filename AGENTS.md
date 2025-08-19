@@ -83,6 +83,11 @@ Environment variables:
   - Ensure the branch is up to date and all required checks are green.
   - If the queue is stuck, check Bors logs and repository permissions.
 
+### Nightly Rebase
+- A scheduled workflow rebases all open PRs nightly and can be triggered manually.
+- PRs with merge conflicts are skipped and an automatic comment tags the author.
+- Contributors must resolve conflicts promptly so PRs can re-enter the merge queue.
+
 ## Definition of Done
 - Implement features using test-driven development (write failing tests first).
 - Update unit, integration, and end-to-end test automation.
