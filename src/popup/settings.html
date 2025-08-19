@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <link rel="stylesheet" href="../styles/apple.css">
   <link rel="stylesheet" href="../styles/cyberpunk.css">
+  <link rel="stylesheet" href="../styles/popup.css">
   <style>
     html { min-height: 100%; background: var(--qwen-bg, rgba(28,28,30,0.7)); }
     body {
@@ -31,8 +32,6 @@
     .note { font-size: 0.8rem; opacity: 0.8; }
     .provider-card { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem; border: 1px solid var(--qwen-border, rgba(255,255,255,0.2)); margin-bottom: 0.25rem; }
     .provider-card .drag-handle { cursor: move; }
-    #addProviderOverlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 1000; }
-    #addProviderOverlay .modal { background: var(--qwen-bg, rgba(28,28,30,0.9)); padding: 1rem; border: 1px solid var(--qwen-border, rgba(255,255,255,0.2)); min-width: 260px; }
     #addProviderOverlay .actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem; }
     #addProviderOverlay label { display: block; margin-bottom: 0.5rem; }
     .tm-container {
@@ -145,8 +144,8 @@
     </section>
   </div>
 
-  <div id="addProviderOverlay">
-    <div class="modal">
+  <div id="addProviderOverlay" class="modal-overlay">
+    <div class="modal" role="dialog" aria-modal="true">
       <div id="ap_step1">
         <label>Preset
           <select id="ap_preset">

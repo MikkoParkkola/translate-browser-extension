@@ -1,0 +1,21 @@
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.6);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--qwen-bg, rgba(28,28,30,0.9));
+  padding: 1rem;
+  border: 1px solid var(--qwen-border, rgba(255,255,255,0.2));
+  min-width: 260px;
+  max-width: calc(100% - 2rem);
+  box-sizing: border-box;
+}
