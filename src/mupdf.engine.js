@@ -2025,16 +2025,19 @@ export class PDFDocument extends Document {
 	enableJS() {
 		libmupdf._wasm_pdf_enable_js(this.pointer);
 	}
-	disableJS() {
-		libmupdf._wasm_pdf_disable_js(this.pointer);
-	}
-	setJSEventListener(_listener) {
-		throw "TODO";
-	}
-	rearrangePages(pages) {
-		let n = pages.length;
-		let ptr = Malloc(n << 2);
-		for (let i = 0; i < n; ++i)
+        disableJS() {
+                libmupdf._wasm_pdf_disable_js(this.pointer);
+        }
+        setJSEventListener(_listener) {
+                if (_listener && typeof _listener !== "function")
+                        throw new TypeError("listener must be a function");
+                $libmupdf_js_event_listener = _listener || null;
+                libmupdf._wasm_pdf_set_js_event_listener?.(this.pointer, !!_listener);
+        }
+        rearrangePages(pages) {
+                let n = pages.length;
+                let ptr = Malloc(n << 2);
+                for (let i = 0; i < n; ++i)
 			libmupdf.HEAPU32[(ptr >> 2) + i] = pages[i] || 0;
 		try {
 			libmupdf._wasm_pdf_rearrange_pages(this.pointer, n, ptr);
@@ -3008,8 +3011,12 @@ globalThis.$libmupdf_load_font_file = function (name, script, bold, italic) {
 			checkType(font, Font);
 			return font.pointer;
 		}
-	}
-	return 0;
+        }
+        return 0;
+};
+var $libmupdf_js_event_listener = null;
+globalThis.$libmupdf_js_event = function (...args) {
+        $libmupdf_js_event_listener?.(...args);
 };
 var $libmupdf_device_id = 0;
 var $libmupdf_device_table = new Map();
