@@ -1,0 +1,1 @@
+status = ["lint", "test", "coverage"]

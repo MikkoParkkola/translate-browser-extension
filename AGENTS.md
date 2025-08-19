@@ -49,6 +49,15 @@ Popup header displays the product name beside the settings button.
 - Commits: imperative, present tense (e.g., "Replace PDF text …"). Optional prefixes `feat:`, `fix:`, `chore:` are welcome when meaningful.
 - PRs: clear description, linked issue, test plan, and screenshots/GIFs for UI changes (PDF viewer, content script). Note any config changes.
 
+## Merge Queue
+- A GitHub merge queue (via Bors) serializes merges to keep `main` green.
+- Required checks: `lint`, `test`, and `coverage` must succeed before a PR enters the queue.
+- Queue a PR with `bors r+`. Use `bors r-` to remove it or `bors retry` after fixing failures.
+- Troubleshooting:
+  - Verify the Bors GitHub App is installed and `bors.toml` exists on `main`.
+  - Ensure the branch is up to date and all required checks are green.
+  - If the queue is stuck, check Bors logs and repository permissions.
+
 ## Definition of Done
 - Implement features using test-driven development (write failing tests first).
 - Update unit, integration, and end-to-end test automation.
