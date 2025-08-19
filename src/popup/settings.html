@@ -35,10 +35,22 @@
     #addProviderOverlay .modal { background: var(--qwen-bg, rgba(28,28,30,0.9)); padding: 1rem; border: 1px solid var(--qwen-border, rgba(255,255,255,0.2)); min-width: 260px; }
     #addProviderOverlay .actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem; }
     #addProviderOverlay label { display: block; margin-bottom: 0.5rem; }
+    .tm-container {
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid var(--qwen-border, rgba(255,255,255,0.2));
+      padding: 0.25rem;
+      margin-bottom: 0.5rem;
+    }
     #tmEntries, #tmStats {
       white-space: pre-wrap;
       word-break: break-word;
       overflow-x: auto;
+      margin: 0;
+      width: 100%;
+    }
+    #tmStats {
+      margin-top: 0.5rem;
     }
   </style>
 </head>
@@ -107,8 +119,10 @@
     </section>
     <section id="tmSection">
       <h3>Translation Memory</h3>
-      <pre id="tmEntries">-</pre>
-      <pre id="tmStats">-</pre>
+      <div class="tm-container">
+        <pre id="tmEntries">-</pre>
+        <pre id="tmStats">-</pre>
+      </div>
       <button id="tmExport">Export</button>
       <input type="file" id="tmImportFile" style="display:none">
       <button id="tmImport">Import</button>
