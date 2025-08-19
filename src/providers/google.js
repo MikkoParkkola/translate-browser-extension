@@ -22,7 +22,8 @@ async function translate({ endpoint = 'https://translation.googleapis.com/v3/', 
   const resp = await fetchFn(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ message: resp.statusText }));
-    throw new Error(err.error?.message || err.message || `HTTP ${resp.status}`);
+    const e = new Error(err.error?.message || err.message || `HTTP ${resp.status}`);
+    e.status = resp.status; e.code = `HTTP_${resp.status}`; throw e;
   }
   const data = await resp.json();
   const t = data.translations?.[0]?.translatedText;
@@ -43,7 +44,8 @@ async function translateDocument({ endpoint = 'https://translation.googleapis.co
   const resp = await fetchFn(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ message: resp.statusText }));
-    throw new Error(err.error?.message || err.message || `HTTP ${resp.status}`);
+    const e = new Error(err.error?.message || err.message || `HTTP ${resp.status}`);
+    e.status = resp.status; e.code = `HTTP_${resp.status}`; throw e;
   }
   const data = await resp.json();
   const out = data.documentTranslation?.byteStreamOutputs?.[0];

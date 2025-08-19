@@ -29,12 +29,15 @@
       try { const err = await resp.json(); msg = err.error?.message || msg; } catch {}
       const error = new Error(`HTTP ${resp.status}: ${msg}`);
       error.status = resp.status;
-      if (resp.status >= 500 || resp.status === 429) {
+      if (resp.status === 401 || resp.status === 403) {
+        error.retryable = false;
+      } else if (resp.status >= 500 || resp.status === 429) {
         error.retryable = true;
-        const ra = resp.headers.get('retry-after');
+        const ra = resp.headers && resp.headers.get && resp.headers.get('retry-after');
         if (ra) {
-          const ms = parseInt(ra, 10) * 1000;
-          if (ms > 0) error.retryAfter = ms;
+          let ms = Number(ra) * 1000;
+          if (!Number.isFinite(ms)) { const t = Date.parse(ra); if (Number.isFinite(t)) ms = Math.max(0, t - Date.now()); }
+          if (Number.isFinite(ms)) error.retryAfter = Math.max(100, Math.min(ms, 60000));
         }
         if (resp.status === 429 && !error.retryAfter) error.retryAfter = 60000;
       }
