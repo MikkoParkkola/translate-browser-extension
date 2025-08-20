@@ -21,6 +21,7 @@ Popup header displays the product name beside the settings button.
 
 ## Build, Test, and Development Commands
 - `npm install` once to fetch dependencies.
+- ESLint uses `eslint.config.js` (flat config) with ignore patterns managed via its `ignores` field.
 - `npx playwright install --with-deps chromium` once to install browsers and system libs for e2e tests.
 - `npm test`: Runs Jest with jsdom and `jest-fetch-mock`.
 - `npm run build`: Copies `src/` to `dist/` (web-accessible assets included).
@@ -30,8 +31,8 @@ Popup header displays the product name beside the settings button.
 - Load in Chrome: chrome://extensions → Developer mode → Load unpacked → select `dist/`.
 - CI: `.github/workflows/ci.yml` runs tests, builds dist/zip, uploads artifacts, and executes Playwright e2e smoke tests (Chromium) on push/PR.
 - Local PDF viewer: open `src/pdfViewer.html` (uses `config.local.js` when present).
-- `npm run pr`: Automates PR creation. Requires `BRANCH_NAME` and `COMMIT_MESSAGE` env vars and an authenticated `gh` CLI. Optionals: `PR_TITLE`, `PR_BODY`, `BASE_BRANCH` (default `main`). Checks for merge conflicts before pushing, runs lint/format/tests, `npm audit`, and `gitleaks detect --no-git` (requires the `gitleaks` CLI), commits, pushes, opens a PR, and enables auto-merge.
-- `npm run secrets`: Runs `gitleaks detect --no-git` to scan the working tree for secrets (requires the `gitleaks` CLI, e.g., `brew install gitleaks` or `apt-get install gitleaks`).
+- `npm run pr`: Automates PR creation. Requires `BRANCH_NAME` and `COMMIT_MESSAGE` env vars and an authenticated `gh` CLI. Optionals: `PR_TITLE`, `PR_BODY`, `BASE_BRANCH` (default `main`). Checks for merge conflicts before pushing, runs lint/format/tests, `npm audit`, and `gitleaks detect --no-git` (bundled via dev dependency), commits, pushes, opens a PR, and enables auto-merge.
+- `npm run secrets`: Runs `gitleaks detect --no-git` to scan the working tree for secrets using the bundled CLI.
 
 ### PR Automation Usage
 
@@ -84,7 +85,7 @@ Environment variables:
   - If the queue is stuck, check Bors logs and repository permissions.
 
 ### Nightly Rebase
-- A scheduled workflow rebases all open PRs nightly and can be triggered manually.
+- A scheduled workflow rebases all open PRs nightly and can be triggered manually by commenting `/rebase` on the pull request.
 - PRs with merge conflicts are skipped and an automatic comment tags the author.
 - Contributors must resolve conflicts promptly so PRs can re-enter the merge queue.
 - The workflow rebases each branch onto the latest `main`; avoid merge commits and let the job keep your branch fresh.
