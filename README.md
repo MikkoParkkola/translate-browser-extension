@@ -1,5 +1,7 @@
 # TRANSLATE! by Mikko
 
+*Formerly known as Qwen Translator Extension.*
+
 This Chrome extension translates the content of the active tab using multiple providers. Dynamic pages are translated as new elements appear. It supports translation between more than one hundred languages.
 
 ## Installation
