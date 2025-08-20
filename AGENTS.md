@@ -5,6 +5,7 @@ Project renamed to **TRANSLATE! by Mikko** (formerly Qwen Translator Extension).
 Popup header displays the product name beside the settings button.
 
 ## Project Structure & Module Organization
+
 - Source: `src/` (browser extension). Key files: `background.js`, `contentScript.js`, `translator.js`, `throttle.js`, `config.js`, `pdfViewer.html/js`.
 - Popup: `popup.html` loads `popup/home.html` and `popup/settings.html` (provider management).
 - Providers: `src/providers/{qwen,dashscope,openai,deepl,google,openrouter,anthropic,mistral,ollama,macos}.js` (registered via `src/lib/providers.js`).
@@ -20,6 +21,7 @@ Popup header displays the product name beside the settings button.
 - Docs: `README.md`, `docs/PROVIDERS.md`.
 
 ## Build, Test, and Development Commands
+
 - `npm install` once to fetch dependencies.
 - `npx playwright install --with-deps chromium` once to install browsers and system libs for e2e tests.
 - `npm test`: Runs Jest with jsdom and `jest-fetch-mock`.
@@ -51,6 +53,7 @@ Environment variables:
 - `GITHUB_TOKEN`/`GH_TOKEN`: token for the GitHub CLI.
 
 ## Testing Guidelines
+
 - Run `npm run lint` and `npm run format` before `npm test`.
 - Framework: Jest (`testEnvironment: jsdom`). Mock network via `jest-fetch-mock`.
 - Scope: translator/throttle/provider/messaging/TM; prefer deterministic tests (fake timers for rate-limits).
@@ -65,17 +68,20 @@ Environment variables:
 - Selection/DOM flows (`e2e/context-menu.spec.js`, `e2e/dom-translate.spec.js`, `e2e/translate-page.spec.js`, `e2e/streaming-cancel.spec.js`) run via `npm run test:e2e:web`; PDF compare (`e2e/pdf-compare.spec.js`) runs via `npm run test:e2e:pdf`. `npm run test:e2e` executes both suites. CI job `e2e-smoke` installs Chromium (`npx playwright install --with-deps chromium`), serves `dist/`, and runs the suites headless.
 
 ## Commit & Pull Request Guidelines
+
 - Commits follow [Conventional Commits](https://www.conventionalcommits.org/) in imperative present tense (`feat:`, `fix:`, `chore:`, `docs:` etc.).
 - Every functional change must include a `changeset` entry created via `npx changeset`.
 - PRs require a clear description, linked issue, test plan, and screenshots/GIFs for UI changes (PDF viewer, content script). Note any config changes.
 - PRs use `.github/PULL_REQUEST_TEMPLATE.md` for standardized sections.
 
 ## Release Workflow
+
 - Versioning and changelogs use [Changesets](https://github.com/changesets/changesets).
 - On merges to `main`, `.github/workflows/release.yml` runs `changesets/action@v1` to publish to npm and create a GitHub release.
 - `release.yml` requires `GITHUB_TOKEN` and `NPM_TOKEN` secrets for publishing.
 
 ## Merge Queue
+
 - A GitHub merge queue (via Bors) serializes merges to keep `main` green.
 - Required checks: `lint`, `test`, and `coverage` must succeed before a PR enters the queue.
 - Queue a PR with `bors r+`. Use `bors r-` to remove it or `bors retry` after fixing failures.
@@ -85,6 +91,7 @@ Environment variables:
   - If the queue is stuck, check Bors logs and repository permissions.
 
 ### Nightly Rebase
+
 - A scheduled workflow rebases all open PRs nightly and can be triggered manually.
 - PRs with merge conflicts are skipped and an automatic comment tags the author.
 - Contributors must resolve conflicts promptly so PRs can re-enter the merge queue.
@@ -92,6 +99,7 @@ Environment variables:
 - Contributor instructions are also in [README.md#nightly-rebase](README.md#nightly-rebase); both documents describe the same nightly rebase policy.
 
 ## Definition of Done
+
 - Implement features using test-driven development (write failing tests first).
 - Update unit, integration, and end-to-end test automation.
 - Maintain test automation coverage above 80% with a 95% target.
@@ -113,7 +121,9 @@ Environment variables:
 - Obtain explicit user approval for breaking changes or dropped functionality.
 - for each PR that alters the functionality, bump the version number. For smaller changes, at least the minor version number; for really big changes, the major number.
 - Verify changelog updates and confirm the version bump for functionality changes.
+
 ## Security & Configuration Tips
+
 - Never commit API keys. `src/config.local.js` is gitignored; use it for local `pdfViewer.html`. Or run `set-config.js` in the extension popup console to seed `chrome.storage.sync`.
 - Store secrets only in `chrome.storage.sync`. Avoid logging secrets; use `debug` flag for verbose logs.
 - Background-only keys: content scripts never send/hold API keys; background injects keys for direct and Port flows.
@@ -123,20 +133,22 @@ Environment variables:
 - Ensure `styles/apple.css` is listed in `web_accessible_resources` for content <link> fallback.
 
 ## Security Scans & Remediation
+
 - CI runs `npm audit` and `gitleaks` to catch vulnerable dependencies and leaked secrets.
 - If `npm audit` reports issues, upgrade or patch affected packages (`npm audit fix` or manual updates`).
 - If `gitleaks` flags a secret, remove it, rotate the credential, and purge it from git history if needed.
 - Merges require passing scans with no unresolved vulnerabilities or secrets.
 
 ## Current Product State
+
 - Multi-provider translation
   - Providers: DashScope (Qwen), OpenAI, DeepL, OpenRouter, Anthropic/Claude, Mistral, Google, Ollama and macOS system translation via `lib/providers.js`.
   - Popup settings include preset buttons for OpenAI, DeepL, Ollama and macOS providers.
 - Providers are no longer auto-registered; call `qwenProviders.initProviders()` before translating when using built-ins. `qwenProviders.isInitialized()` reports whether defaults are loaded and the translator now logs a warning if a translation is attempted before initialization. Custom providers can create isolated registries via `qwenProviders.createRegistry()` and register prior to initialization to override or augment the defaults.
- - Providers are no longer auto-registered; call `qwenProviders.initProviders()` or `qwenProviders.ensureProviders()` before translating when using built-ins. `qwenProviders.isInitialized()` reports whether defaults are loaded and the translator now logs a one-time warning if a translation is attempted before initialization. Pass `{ autoInit: true }` to translation calls to invoke `initProviders()` on demand. Custom providers can create isolated registries via `qwenProviders.createRegistry()` and register prior to initialization to override or augment the defaults.
-  - Provider order (`providerOrder`) and per-provider endpoints configurable; failover implemented with per-provider `runWithRetry` + rate-limit. Providers may include a `throttle` config to tune request/token limits per backend, with optional per-context queues (e.g., `stream`) for finer control.
-  - Default config assumes roughly 500k free characters for Google/DeepL and tracks spend via `costPerInputToken`/`costPerOutputToken`. Background selects providers above `requestThreshold` and uses per-provider weights to balance load across those with available quota.
-  - Background pulls provider-specific keys from storage (`getProviderApiKeyFromStorage`) and injects them on both direct and Port paths.
+- Providers are no longer auto-registered; call `qwenProviders.initProviders()` or `qwenProviders.ensureProviders()` before translating when using built-ins. `qwenProviders.isInitialized()` reports whether defaults are loaded and the translator now logs a one-time warning if a translation is attempted before initialization. Pass `{ autoInit: true }` to translation calls to invoke `initProviders()` on demand. Custom providers can create isolated registries via `qwenProviders.createRegistry()` and register prior to initialization to override or augment the defaults.
+- Provider order (`providerOrder`) and per-provider endpoints configurable; failover implemented with per-provider `runWithRetry` + rate-limit. Providers may include a `throttle` config to tune request/token limits per backend, with optional per-context queues (e.g., `stream`) for finer control.
+- Default config assumes roughly 500k free characters for Google/DeepL and tracks spend via `costPerInputToken`/`costPerOutputToken`. Background selects providers above `requestThreshold` and uses per-provider weights to balance load across those with available quota.
+- Background pulls provider-specific keys from storage (`getProviderApiKeyFromStorage`) and injects them on both direct and Port paths.
 - Messaging and streaming
   - Port-based background proxy with chunk relay and cancellation; legacy `sendMessage` fallback.
   - Popup loads `lib/messaging.js` to proxy tests/translation through background (prevents 401). `ensure-start` requests host permission, injects scripts, and starts translation.
@@ -171,6 +183,7 @@ Environment variables:
 - Background auto-update: `background.js` calls `chrome.runtime.requestUpdateCheck` every 6 h, reloads on `onUpdateAvailable`, and `onInstalled` shows a notification with the new version.
 
 ## TODO / Next Steps
+
 - Content multi-provider propagation
   - Pass `endpoints` and `providerOrder` from `contentScript.js` translate calls (translateNode/translateBatch/selection) so on-page flows use multi-provider failover (currently wired in popup).
   - Ensure `detector` is consistently passed from content config (popup already does).
