@@ -105,6 +105,22 @@
     expect(dump).not.toMatch(/SECRET|ERRKEY|ARR|HEAD/);
   });
 
+  test('redacts tokens in strings and objects', () => {
+    const logger = require('../src/lib/logger.js');
+    const log = logger.create('test');
+    log.setLevel(3);
+
+    log.debug('token=abc123', 'Bearer token: secret');
+    log.info('accessToken: xyz', { refresh_token: 'foo' });
+
+    const flat = outputs
+      .flatMap(([_, args]) => args)
+      .map(a => (typeof a === 'string' ? a : JSON.stringify(a)))
+      .join(' ');
+    expect(flat).toMatch(/token\s*[=:]\s*<redacted>/i);
+    expect(flat).not.toMatch(/abc123|secret|xyz|foo/);
+  });
+
   test('parseLevel handles numbers and strings', () => {
     const { parseLevel } = require('../src/lib/logger.js');
     expect(parseLevel('debug')).toBe(3);

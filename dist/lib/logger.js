@@ -9,16 +9,20 @@
     const s = String(l || '').toLowerCase();
     return LEVELS[s] ?? 1;
   }
+  function isSecretKey(k) {
+    return /^authorization$/i.test(k) || /^api(?:[-_\s]?key)$/i.test(k) || /token/i.test(k);
+  }
   function redactValue(v) {
     if (typeof v === 'string') {
       return v
         .replace(/(api[-_\s]?key\s*[:=]\s*).*/ig, '$1<redacted>')
-        .replace(/(authorization\s*[:=]\s*).*/ig, '$1<redacted>');
+        .replace(/(authorization\s*[:=]\s*).*/ig, '$1<redacted>')
+        .replace(/(token\s*[:=]\s*).*/ig, '$1<redacted>');
     }
     if (v instanceof Error) {
       const out = {};
       for (const k of Object.getOwnPropertyNames(v)) {
-        if (/^authorization$/i.test(k) || /^api(?:[-_\s]?key)$/i.test(k)) {
+        if (isSecretKey(k)) {
           out[k] = '<redacted>';
         } else {
           out[k] = redactValue(v[k]);
@@ -32,7 +36,7 @@
     if (v && typeof v === 'object') {
       const out = Array.isArray(v) ? [] : {};
       for (const k of Object.keys(v)) {
-        if (/^authorization$/i.test(k) || /^api(?:[-_\s]?key)$/i.test(k)) {
+        if (isSecretKey(k)) {
           out[k] = '<redacted>';
         } else {
           out[k] = redactValue(v[k]);
