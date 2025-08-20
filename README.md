@@ -167,4 +167,8 @@ Press `Ctrl+C` or `Ctrl+D` to exit.
 ### TypeScript
 Basic type definitions for the translator APIs ship in `types/index.d.ts` and are referenced via the package `types` field.
 
+## Nightly Rebase
+
+A scheduled workflow rebases all open pull requests each night to keep branches current with `main`. Pull requests with merge conflicts are skipped and the workflow tags the author. Contributors should resolve conflicts promptly so their branch can re-enter the merge queue. See [AGENTS.md#nightly-rebase](AGENTS.md#nightly-rebase) for full details.
+
 Trigger CI re-run.
