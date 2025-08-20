@@ -1,5 +1,5 @@
 ---
-"qwen-translator-extension": none
+"translate-by-mikko": none
 ---
 
-docs: clarify nightly rebase policy in AGENTS guidelines
+docs: document nightly rebase policy in AGENTS and README
