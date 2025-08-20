@@ -87,6 +87,7 @@ Environment variables:
 - A scheduled workflow rebases all open PRs nightly and can be triggered manually.
 - PRs with merge conflicts are skipped and an automatic comment tags the author.
 - Contributors must resolve conflicts promptly so PRs can re-enter the merge queue.
+- The workflow rebases each branch onto the latest `main`; avoid merge commits and let the job keep your branch fresh.
 
 ## Definition of Done
 - Implement features using test-driven development (write failing tests first).
