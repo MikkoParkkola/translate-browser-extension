@@ -10,7 +10,7 @@ Popup header displays the product name beside the settings button.
 - Popup: `popup.html` loads `popup/home.html` and `popup/settings.html` (provider management).
 - Providers: `src/providers/{qwen,dashscope,openai,deepl,google,openrouter,anthropic,mistral,ollama,macos}.js` (registered via `src/lib/providers.js`).
 - Messaging: `src/lib/messaging.js` (Port + legacy sendMessage fallback).
-- Logging: `src/lib/logger.js` (centralized logger with redaction).
+- Logging: `src/lib/logger.js` (centralized logger with redaction of Authorization, apiKey, and token fields).
 - Translation Memory (TM): `src/lib/tm.js` (IndexedDB TTL/LRU + metrics).
 - Detection: `src/lib/detect.js` (local heuristic; background also supports optional Google detection).
 - Batch delimiter: `src/lib/batchDelim.js` (collision-resistant delimiters).
