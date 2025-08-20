@@ -68,6 +68,7 @@ Environment variables:
 - Commits follow [Conventional Commits](https://www.conventionalcommits.org/) in imperative present tense (`feat:`, `fix:`, `chore:`, `docs:` etc.).
 - Every functional change must include a `changeset` entry created via `npx changeset`.
 - PRs require a clear description, linked issue, test plan, and screenshots/GIFs for UI changes (PDF viewer, content script). Note any config changes.
+- PRs use `.github/PULL_REQUEST_TEMPLATE.md` for standardized sections.
 
 ## Release Workflow
 - Versioning and changelogs use [Changesets](https://github.com/changesets/changesets).
