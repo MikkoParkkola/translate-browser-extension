@@ -3,6 +3,7 @@
 This Chrome extension translates the content of the active tab using multiple providers. Dynamic pages are translated as new elements appear. It supports translation between more than one hundred languages.
 
 ## Installation
+
 1. **Install dependencies**
    ```sh
    npm install
@@ -15,7 +16,7 @@ This Chrome extension translates the content of the active tab using multiple pr
    - Open `chrome://extensions` (or the equivalent page in your Chromium‑based browser).
    - Enable **Developer mode**.
    - Click **Load unpacked** and select the generated `dist/` directory.
-4. The extension requests access to *all websites* so translations can run automatically.
+4. The extension requests access to _all websites_ so translations can run automatically.
    Allow the permission prompt when loading the extension.
 
 If Chrome reports **Service worker registration failed. Status code: 15**, ensure
@@ -23,12 +24,15 @@ you selected the `dist/` folder produced by the build step. Loading the reposito
 root or a directory missing `manifest.json` will cause the worker to fail.
 
 ## Uninstallation
+
 Remove the extension from the browser's extension management page.
 
 ## Upgrade
+
 Reload the unpacked extension after replacing the files with a newer version.
 
 ### Safari (macOS and iOS/iPadOS)
+
 Run the Safari converter on a Mac to produce an Xcode project for both macOS and iOS/iPadOS:
 
 ```sh
@@ -39,6 +43,7 @@ Open the generated project in Xcode to sign and build the extension for the desi
 See `safari/README.md` for detailed iOS/iPadOS deployment steps.
 
 ## Packaging and Signing
+
 The repository includes a workflow that builds and signs a Chrome extension package.
 
 1. Open the **Actions** tab and run **Sign Chrome Extension**.
@@ -53,7 +58,9 @@ npx -y crx pack dist -o qwen-translator-extension.crx --zip-output qwen-translat
 ```
 
 ## Configuration
+
 Open the popup and click the ⚙️ button to access **Settings**. The settings page provides:
+
 - **General** – toggle automatic language detection and manage the glossary.
 - **Providers** – add, remove or reorder providers. Use **Edit** to supply API keys, endpoints, models and per‑provider limits. Local providers such as Ollama or macOS can be added via **Add Local Provider**.
 - **Advanced** – enable or clear the translation cache.
@@ -61,6 +68,7 @@ Open the popup and click the ⚙️ button to access **Settings**. The settings 
 Use the **Diagnostics** button on the home page to view usage metrics and run connectivity checks.
 
 ### Where to get API keys
+
 - DashScope (Qwen): https://dashscope.console.aliyun.com/
 - OpenAI: https://platform.openai.com/api-keys
 - Mistral: https://console.mistral.ai/
@@ -74,6 +82,7 @@ Use the **Diagnostics** button on the home page to view usage metrics and run co
 See also: docs/PROVIDERS.md
 
 ## Usage
+
 1. Click the toolbar icon to open the popup.
 2. Use **Translate page** to translate the current tab or enable **Auto-translate** for pages on load.
 3. Click the ⚙️ button to manage providers or adjust settings.
@@ -83,22 +92,27 @@ Identical strings are translated only once and reused across matching nodes, and
 Translated nodes keep their original leading and trailing whitespace. Nodes are batched to minimise API requests and maximise throughput. While translations are running the extension's toolbar icon shows an activity badge and a temporary status box in the bottom‑right corner of the page reports current work or errors. The box disappears automatically when the extension is idle.
 
 ### PDF Translation
+
 Top‑level PDF navigations are opened in a custom viewer. The viewer can translate PDFs in two ways:
+
 - **Provider document translation** – if Google Cloud or DeepL Pro credentials are present the entire file is sent to the provider's `translateDocument` API and the returned PDF is displayed.
 - **WASM pipeline** – otherwise the viewer extracts text, translates page segments through the normal text API and renders a new PDF locally.
-Translated PDFs can be saved via the viewer's **Save translated PDF** action.
+  Translated PDFs can be saved via the viewer's **Save translated PDF** action.
 
 ### Rate Limiting
+
 The extension and CLI queue translation requests to stay within the provider limits.
 The background worker maintains a single queue so multiple page nodes are translated sequentially rather than all at once, preventing bursts that would trigger HTTP 429 errors. Nodes are batched into combined translation requests to reduce the overall query count. If the provider still returns a 429 response the request is retried automatically.
 You can adjust the limits under **Requests per minute** and **Tokens per minute** in the extension popup or via `--requests` and `--tokens` on the CLI. Defaults are 60 requests and 100,000 tokens every 60 seconds.
 The popup displays live usage for the last minute and colour-coded bars turn yellow or red as limits are approached. Usage statistics refresh every second and also show total requests, total tokens and the current queue length.
 
 ### Pricing & Load Balancing
+
 Each provider entry stores an approximate monthly character limit and a cost-per-token estimate. Defaults assume roughly 500k free characters for Google and DeepL. The popup reports 24‑hour and 7‑day spend based on these rates.
 Translations can be distributed across multiple providers. `providerOrder` defines the failover chain and per‑provider weights bias how parallel batches are split. The background service checks remaining quotas and skips providers that drop below the `requestThreshold`, effectively load‑balancing work across those with capacity.
 
 ### Troubleshooting
+
 - Console logs: enable **Debug logging** in the popup. Both provider calls and content-script steps log structured events. Copy any on‑page error and look for matching console entries.
 - Test Settings timeout: often CSP/CORS. The background may fall back to `XMLHttpRequest`, but strict environments can still block. Try a simple page like `https://example.com` and re‑run.
 - Active tab check: the test must run on a normal web page (not `chrome://` or extension pages).
@@ -113,23 +127,29 @@ Translations can be distributed across multiple providers. `providerOrder` defin
 - Diagnostics: use the popup **Diagnostics** panel. It shows usage, cache/TM stats, configured providers, cost summary, and a latency histogram. Use **Copy Report** to share details when filing issues.
 
 ## Development
+
 Run the unit tests with:
+
 ```sh
 npm install
 npm test
 ```
 
 Run the end-to-end PDF visual comparison tests (headless) with:
+
 ```sh
 npm install
 npm run test:e2e
 ```
+
 These tests launch a headless browser to open `src/qa/compare.html`, render two PDFs via `pdf.js`, and compute a visual diff score. The page also supports automation via query params: `?src1=/path/A.pdf&src2=/path/B.pdf&diff=1&autoload=1`, and exposes `window.diffScore` (0..1, lower is better).
 
 ### Provider registry & throttling
+
 Built-in providers (DashScope, OpenAI, Mistral, OpenRouter, Gemini, Anthropic, DeepL, Google, Qwen and Local WASM) are registered through `qwenProviders.initProviders()`. This initializer is no longer invoked automatically; call it before translating if you rely on the default set. `qwenProviders.isInitialized()` reports whether defaults have been loaded. Tests or host applications may create isolated registries with `qwenProviders.createRegistry()` and pre-register custom providers before calling `initProviders()` to avoid overrides. Each provider may expose a `throttle` config and receives its own rate-limit queue created via `createThrottle`, with optional per-context limits (for example, separate queues for streaming vs. standard requests) to tune burst behavior.
 
 #### Quick start
+
 ```js
 import { initProviders } from './providers';
 import { qwenTranslate } from './translator';
@@ -140,6 +160,7 @@ const res = await qwenTranslate({ text: 'Hello', target: 'es' });
 ```
 
 `qwenTranslate` also accepts `autoInit: true` to invoke `initProviders()` on-demand:
+
 ```js
 await qwenTranslate({ text: 'Hello', target: 'es', autoInit: true });
 ```
@@ -149,26 +170,29 @@ await qwenTranslate({ text: 'Hello', target: 'es', autoInit: true });
 Structured logging is available through `qwenLogger`. Log levels (`error`, `warn`, `info`, `debug`) respect a global `logLevel` config and logs can be captured in tests via `addCollector`. If translation is attempted before `qwenProviders.initProviders()` is called, the translator emits a warning reminding you to initialize the default providers.
 
 Privacy and test PDFs
+
 - Do not commit personal or private PDFs to the repository. Root-level `*.pdf` files are ignored by `.gitignore` and CI checks will fail if any are present.
 - E2E tests use synthetic PDFs generated at runtime (via `pdf-lib`) to avoid storing files.
 - For local testing with private PDFs, open the viewer (`src/pdfViewer.html`) using `file:` or temporary `blob:` URLs; do not upload such files to the repo or CI.
 
 ## Command Line Utility
+
 A simple translator CLI is included in `cli/translate.js`. It streams translations as you type by default. Use `--no-stream` for request/response mode.
 
 ### Usage
+
 ```sh
 node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--tokens M] [-d] [--no-stream] -s <source_lang> -t <target_lang>
 ```
+
 If no endpoint is specified the tool defaults to `https://dashscope-intl.aliyuncs.com/api/v1`.
 Use `-d` to print detailed request and response logs.
 Press `Ctrl+C` or `Ctrl+D` to exit.
 
 ### TypeScript
+
 Basic type definitions for the translator APIs ship in `types/index.d.ts` and are referenced via the package `types` field.
 
 ## Nightly Rebase
 
-A scheduled workflow rebases all open pull requests each night to keep branches current with `main`. Pull requests with merge conflicts are skipped and the workflow tags the author. Contributors should resolve conflicts promptly so their branch can re-enter the merge queue. See [AGENTS.md#nightly-rebase](AGENTS.md#nightly-rebase) for full details.
-
-Trigger CI re-run.
+A scheduled workflow rebases open pull requests nightly to keep branches current with `main`. Pull requests with merge conflicts are skipped and the workflow tags the author, who must resolve conflicts promptly so their branch can re-enter the merge queue. See [AGENTS.md#nightly-rebase](AGENTS.md#nightly-rebase) for full details.
