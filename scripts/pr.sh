@@ -50,4 +50,4 @@ git push -u origin "$BRANCH_NAME"
 gh pr create --base "$BASE_BRANCH" --head "$BRANCH_NAME" \
   --title "${PR_TITLE:-$COMMIT_MESSAGE}" --body "${PR_BODY:-}"
 
-gh pr merge --auto --squash
+gh pr merge --auto --squash || echo "Auto merge not allowed; merge manually or queue with bors"

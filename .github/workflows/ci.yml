@@ -190,8 +190,11 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - name: Enable auto-merge
-        run: gh pr merge --auto --squash "$PR_URL"
+      - name: Enable auto-merge if supported
+        run: |
+          gh pr merge --auto --squash "$PR_URL" \
+            && echo "Auto-merge enabled" \
+            || echo "Auto-merge not allowed; skipping"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
