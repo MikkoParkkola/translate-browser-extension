@@ -31,7 +31,7 @@ Popup header displays the product name beside the settings button.
 - CI: `.github/workflows/ci.yml` runs tests, builds dist/zip, uploads artifacts, and executes Playwright e2e smoke tests (Chromium) on push/PR.
 - Local PDF viewer: open `src/pdfViewer.html` (uses `config.local.js` when present).
 - `npm run pr`: Automates PR creation. Requires `BRANCH_NAME` and `COMMIT_MESSAGE` env vars and an authenticated `gh` CLI. Optionals: `PR_TITLE`, `PR_BODY`, `BASE_BRANCH` (default `main`). Checks for merge conflicts before pushing, runs lint/format/tests, `npm audit`, and `gitleaks detect --no-git` (requires the `gitleaks` CLI), commits, pushes, opens a PR, and enables auto-merge.
-- `npm run secrets`: Runs `gitleaks detect --no-git` to scan the working tree for secrets (requires the `gitleaks` CLI, e.g., `brew install gitleaks` or `apt-get install gitleaks`).
+- `npm run secrets`: Runs `gitleaks detect --no-git` using the bundled CLI to scan the working tree for secrets.
 
 ### PR Automation Usage
 
