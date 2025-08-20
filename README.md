@@ -195,6 +195,10 @@ Press `Ctrl+C` or `Ctrl+D` to exit.
 
 Basic type definitions for the translator APIs ship in `types/index.d.ts` and are referenced via the package `types` field.
 
+## Contributing
+
+Use [Changesets](https://github.com/changesets/changesets) for all substantive updates. Documentation-only changes should set the release type to `none` so the package version remains the same. These entries are skipped in the published changelog.
+
 ## Nightly Rebase
 
 A scheduled workflow rebases open pull requests nightly to keep branches current with `main`. Pull requests with merge conflicts are skipped and the workflow tags the author, who must resolve conflicts promptly so their branch can re-enter the merge queue. See [AGENTS.md#nightly-rebase](AGENTS.md#nightly-rebase) for full details.
