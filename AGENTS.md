@@ -88,6 +88,7 @@ Environment variables:
 - PRs with merge conflicts are skipped and an automatic comment tags the author.
 - Contributors must resolve conflicts promptly so PRs can re-enter the merge queue.
 - The workflow rebases each branch onto the latest `main`; avoid merge commits and let the job keep your branch fresh.
+- Contributor instructions are also in [README.md#nightly-rebase](README.md#nightly-rebase); both documents describe the same nightly rebase policy.
 
 ## Definition of Done
 - Implement features using test-driven development (write failing tests first).
