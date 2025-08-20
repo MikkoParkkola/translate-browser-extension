@@ -2,4 +2,4 @@
 "qwen-translator-extension": none
 ---
 
-docs: document nightly rebase policy
+docs: clarify nightly rebase policy in AGENTS guidelines
