@@ -2,4 +2,5 @@
 "qwen-translator-extension": none
 ---
 
-docs: document nightly rebase policy
+docs: document nightly rebase policy.
+
