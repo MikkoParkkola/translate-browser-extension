@@ -87,9 +87,10 @@
         chrome.storage?.sync?.set({ autoTranslate: msg.enabled });
         chrome.runtime.sendMessage({ action: 'set-config', config: { autoTranslate: msg.enabled } }, handleLastError());
         if (!msg.enabled) {
-          chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
-            const t = tabs && tabs[0];
-            if (t) chrome.tabs.sendMessage(t.id, { action: 'stop' }, handleLastError());
+          chrome.tabs?.query?.({}, tabs => {
+            (tabs || []).forEach(t => {
+              if (t.id) chrome.tabs.sendMessage(t.id, { action: 'stop' }, handleLastError());
+            });
           });
         }
         break;
