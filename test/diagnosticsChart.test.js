@@ -5,12 +5,12 @@ describe('diagnostics chart', () => {
   beforeEach(async () => {
     jest.resetModules();
     document.body.innerHTML = `
-      <div id="status"></div>
-      <div id="usage"></div>
+      <div id="status"><h4>Status</h4><span id="statusText"></span></div>
+      <div id="usage"><h4>Usage</h4><dl id="usageMetrics"></dl></div>
       <div id="usageSummary"></div>
       <canvas id="usageChart"></canvas>
-      <div id="cache"></div>
-      <ul id="providers"></ul>
+      <div id="cache"><h4>Cache</h4><dl id="cacheMetrics"></dl></div>
+      <div id="providers"><h4>Providers</h4><ul id="providerList"></ul></div>
       <button id="back"></button>
       <button id="copy"></button>
     `;
@@ -71,10 +71,14 @@ describe('diagnostics chart', () => {
 
   test('updates on stats and translation-status messages', () => {
     listener({ action: 'stats', usage: { requests: 5, requestLimit: 10, tokens: 20, tokenLimit: 100 }, cache: { size: 1, max: 2 }, tm: { hits: 3, misses: 4 } });
-    expect(document.getElementById('usage').textContent).toContain('Requests 5/10');
-    expect(document.getElementById('cache').textContent).toContain('TM hits 3');
+    const usageText = document.getElementById('usageMetrics').textContent;
+    expect(usageText).toContain('Requests');
+    expect(usageText).toContain('5/10');
+    const cacheText = document.getElementById('cacheMetrics').textContent;
+    expect(cacheText).toContain('TM hits');
+    expect(cacheText).toContain('3');
     listener({ action: 'translation-status', status: { active: true } });
-    expect(document.getElementById('status').textContent).toBe('Translating…');
+    expect(document.getElementById('statusText').textContent).toBe('Translating…');
   });
 
   test('renders chart with sample data', () => {
@@ -89,12 +93,12 @@ describe('diagnostics chart', () => {
     beforeEach(async () => {
       jest.resetModules();
       document.body.innerHTML = `
-        <div id="status"></div>
-        <div id="usage"></div>
+        <div id="status"><h4>Status</h4><span id="statusText"></span></div>
+        <div id="usage"><h4>Usage</h4><dl id="usageMetrics"></dl></div>
         <div id="usageSummary"></div>
         <canvas id="usageChart"></canvas>
-        <div id="cache"></div>
-        <ul id="providers"></ul>
+        <div id="cache"><h4>Cache</h4><dl id="cacheMetrics"></dl></div>
+        <div id="providers"><h4>Providers</h4><ul id="providerList"></ul></div>
         <button id="back"></button>
         <button id="copy"></button>
       `;

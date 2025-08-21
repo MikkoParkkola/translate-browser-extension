@@ -1,8 +1,9 @@
 (async function () {
-  const statusEl = document.getElementById('status');
-  const usageEl = document.getElementById('usage');
+  const statusTextEl = document.getElementById('statusText');
+  const usageMetricsEl = document.getElementById('usageMetrics');
+  const cacheMetricsEl = document.getElementById('cacheMetrics');
+  const providersListEl = document.getElementById('providerList');
   const cacheEl = document.getElementById('cache');
-  const providersEl = document.getElementById('providers');
   const backBtn = document.getElementById('back');
   const summaryEl = document.getElementById('usageSummary');
   const chartEl = document.getElementById('usageChart');
@@ -102,7 +103,7 @@
   });
 
   function updateStatus() {
-    if (statusEl) statusEl.textContent = status.active ? 'Translating…' : 'Idle';
+    if (statusTextEl) statusTextEl.textContent = status.active ? 'Translating…' : 'Idle';
   }
 
   chrome.runtime?.onMessage?.addListener(msg => {
@@ -123,16 +124,27 @@
 
   function render() {
     const u = metrics.usage || {};
-    usageEl.textContent = `Requests ${u.requests || 0}/${u.requestLimit || 0} | Tokens ${u.tokens || 0}/${u.tokenLimit || 0}`;
+    if (usageMetricsEl) {
+      usageMetricsEl.innerHTML = `
+        <dt>Requests</dt><dd>${u.requests || 0}/${u.requestLimit || 0}</dd>
+        <dt>Tokens</dt><dd>${u.tokens || 0}/${u.tokenLimit || 0}</dd>`;
+    }
     const c = metrics.cache || {};
     const tm = metrics.tm || {};
-    cacheEl.textContent = `Cache ${c.size || 0}/${c.max || 0} | TM hits ${tm.hits || 0} misses ${tm.misses || 0}`;
-    providersEl.innerHTML = '';
-    Object.entries(metrics.providers || {}).forEach(([id, p]) => {
-      const li = document.createElement('li');
-      li.textContent = `${id}: ${p.apiKey ? 'configured' : 'missing key'}`;
-      providersEl.appendChild(li);
-    });
+    if (cacheMetricsEl) {
+      cacheMetricsEl.innerHTML = `
+        <dt>Entries</dt><dd>${c.size || 0}/${c.max || 0}</dd>
+        <dt>TM hits</dt><dd>${tm.hits || 0}</dd>
+        <dt>TM misses</dt><dd>${tm.misses || 0}</dd>`;
+    }
+    if (providersListEl) {
+      providersListEl.innerHTML = '';
+      Object.entries(metrics.providers || {}).forEach(([id, p]) => {
+        const li = document.createElement('li');
+        li.textContent = `${id}: ${p.apiKey ? 'configured' : 'missing key'}`;
+        providersListEl.appendChild(li);
+      });
+    }
   }
 
   async function load() {
