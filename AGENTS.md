@@ -62,7 +62,7 @@ Environment variables:
   - Provider selection and failover; error normalization (401/403 non-retryable; 429/5xx retryable; Retry-After parsing).
   - Messaging Port streaming and AbortController cancel; detectLanguage via Port and fallback; background ping/status.
   - Translator streaming integration; batch read-through; TTL/LRU; in-memory LRU with normalization; mixed-language batching (auto-detect per text and language-clustered groups).
-  - TM: TTL + LRU pruning; metrics (hits, misses, sets, evictionsTTL/LRU).
+  - TM: TTL + LRU pruning; metrics (hits, misses, sets, evictionsTTL/LRU). Settings page shows stats and export/import controls instead of listing all TM entries.
   - Logger redaction: Authorization/apiKey redaction in strings and nested objects.
   - Background icon status and context menu registration (`test/background.test.js`).
 - Selection/DOM flows (`e2e/context-menu.spec.js`, `e2e/dom-translate.spec.js`, `e2e/translate-page.spec.js`, `e2e/streaming-cancel.spec.js`) run via `npm run test:e2e:web`; PDF compare (`e2e/pdf-compare.spec.js`) runs via `npm run test:e2e:pdf`. `npm run test:e2e` executes both suites. CI job `e2e-smoke` installs Chromium (`npx playwright install --with-deps chromium`), serves `dist/`, and runs the suites headless.

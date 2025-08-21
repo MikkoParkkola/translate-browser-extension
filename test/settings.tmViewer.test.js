@@ -52,7 +52,6 @@ describe('settings TM viewer', () => {
         <section id="timeoutSection"><input id="translateTimeoutMs"></section>
         <section id="cacheSection"><input type="checkbox" id="cacheEnabled"><button id="clearCache"></button></section>
         <section id="tmSection">
-          <pre id="tmEntries"></pre>
           <pre id="tmStats"></pre>
           <button id="tmExport"></button>
           <input type="file" id="tmImportFile">
@@ -73,7 +72,9 @@ describe('settings TM viewer', () => {
       storage: { sync: { get: jest.fn((defs, cb) => cb(defs)), set: jest.fn() } },
       runtime: {
         sendMessage: jest.fn((msg, cb) => {
-          if (msg.action === 'tm-get-all') {
+          if (msg.action === 'tm-stats') {
+            cb({ stats: { entries: tmEntries.length } });
+          } else if (msg.action === 'tm-get-all') {
             cb({ entries: tmEntries, stats: { entries: tmEntries.length } });
           } else if (msg.action === 'tm-clear') {
             tmEntries = [];
@@ -97,15 +98,17 @@ describe('settings TM viewer', () => {
     require('../src/popup/settings.js');
     await flush();
     expect(window.resizeTo).toHaveBeenCalledWith(120, 100);
-    expect(document.getElementById('tmEntries').textContent).toContain('"a"');
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'tm-stats' }, expect.any(Function));
+    expect(document.getElementById('tmStats').textContent).toContain('"entries": 1');
     window.resizeTo.mockClear();
     Object.defineProperty(document.body, 'scrollWidth', { configurable: true, value: 80 });
     document.getElementById('tmClear').click();
     await flush();
     expect(window.resizeTo).toHaveBeenCalledWith(80, 100);
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'tm-clear' }, expect.any(Function));
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'tm-stats' }, expect.any(Function));
     await flush();
-    expect(document.getElementById('tmEntries').textContent).toContain('[]');
+    expect(document.getElementById('tmStats').textContent).toContain('"entries": 0');
     document.getElementById('tmExport').click();
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'tm-get-all' }, expect.any(Function));
     const fileInput = document.getElementById('tmImportFile');
@@ -115,5 +118,6 @@ describe('settings TM viewer', () => {
     fileInput.dispatchEvent(new Event('change'));
     await flush();
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'tm-import', entries: [{ k: 'b', text: '2' }] }, expect.any(Function));
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'tm-stats' }, expect.any(Function));
   });
 });

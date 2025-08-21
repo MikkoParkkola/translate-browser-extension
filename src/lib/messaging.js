@@ -3,7 +3,7 @@
   const MSG_VERSION = 1;
 
   const Actions = new Set([
-    'translate','ping','get-usage-log','set-config','clear-remote-tm','tm-get-all','tm-clear','tm-import',
+    'translate','ping','get-usage-log','set-config','clear-remote-tm','tm-get-all','tm-clear','tm-import','tm-stats',
     'debug','usage','metrics','tm-cache-metrics','quota','detect','translation-status','get-status','get-stats',
     'recalibrate','ensure-start','home:init','home:get-usage','home:quick-translate','home:auto-translate','navigate',
   ]);

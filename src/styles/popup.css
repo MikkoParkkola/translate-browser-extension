@@ -190,7 +190,6 @@ html[data-qwen-theme] {
   margin-bottom: 0.5rem;
 }
 
-[data-qwen-theme] #tmEntries,
 [data-qwen-theme] #tmStats {
   white-space: pre-wrap;
   word-break: break-word;
