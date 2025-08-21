@@ -1,5 +1,7 @@
 (async function () {
-  try { window.qwenProviders?.initProviders?.(); } catch {}
+  try {
+    window.qwenProviders?.initProviders?.();
+  } catch {}
   const defaults = {
     settingsTab: 'general',
     enableDetection: true,
@@ -15,18 +17,29 @@
   function handleLastError(cb) {
     return (...args) => {
       const err = chrome.runtime.lastError;
-      if (err && !err.message.includes('Receiving end does not exist')) console.debug(err);
+      if (err && !err.message.includes('Receiving end does not exist'))
+        console.debug(err);
       if (typeof cb === 'function') cb(...args);
     };
   }
 
-  const store = await new Promise(res => {
-    if (chrome?.storage?.sync) chrome.storage.sync.get({ ...defaults, theme: 'dark', themeStyle: 'apple' }, res);
+  const store = await new Promise((res) => {
+    if (chrome?.storage?.sync)
+      chrome.storage.sync.get(
+        { ...defaults, theme: 'dark', themeStyle: 'apple' },
+        res,
+      );
     else res({ ...defaults, theme: 'dark', themeStyle: 'apple' });
   });
 
-  document.documentElement.setAttribute('data-qwen-theme', store.themeStyle || 'apple');
-  document.documentElement.setAttribute('data-qwen-color', store.theme || 'dark');
+  document.documentElement.setAttribute(
+    'data-qwen-theme',
+    store.themeStyle || 'apple',
+  );
+  document.documentElement.setAttribute(
+    'data-qwen-color',
+    store.theme || 'dark',
+  );
   const themeSel = document.getElementById('theme');
   const themeStyleSel = document.getElementById('themeStyle');
   if (themeSel) {
@@ -35,10 +48,18 @@
       const theme = themeSel.value;
       document.documentElement.setAttribute('data-qwen-color', theme);
       chrome?.storage?.sync?.set({ theme });
-      chrome.runtime.sendMessage({ action: 'set-config', config: { theme } }, handleLastError());
-      chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
+      chrome.runtime.sendMessage(
+        { action: 'set-config', config: { theme } },
+        handleLastError(),
+      );
+      chrome.tabs?.query?.({ active: true, currentWindow: true }, (tabs) => {
         const t = tabs && tabs[0];
-        if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme, themeStyle: themeStyleSel?.value }, handleLastError());
+        if (t)
+          chrome.tabs.sendMessage(
+            t.id,
+            { action: 'update-theme', theme, themeStyle: themeStyleSel?.value },
+            handleLastError(),
+          );
       });
     });
   }
@@ -48,10 +69,22 @@
       const style = themeStyleSel.value;
       document.documentElement.setAttribute('data-qwen-theme', style);
       chrome?.storage?.sync?.set({ themeStyle: style });
-      chrome.runtime.sendMessage({ action: 'set-config', config: { themeStyle: style } }, handleLastError());
-      chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
+      chrome.runtime.sendMessage(
+        { action: 'set-config', config: { themeStyle: style } },
+        handleLastError(),
+      );
+      chrome.tabs?.query?.({ active: true, currentWindow: true }, (tabs) => {
         const t = tabs && tabs[0];
-        if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme: themeSel?.value, themeStyle: style }, handleLastError());
+        if (t)
+          chrome.tabs.sendMessage(
+            t.id,
+            {
+              action: 'update-theme',
+              theme: themeSel?.value,
+              themeStyle: style,
+            },
+            handleLastError(),
+          );
       });
     });
   }
@@ -68,10 +101,17 @@
     document.body.style.width = 'auto';
     const width = document.body.scrollWidth;
     document.body.style.width = `${width}px`;
+    try {
+      if (typeof window.resizeTo === 'function') {
+        window.resizeTo(width, window.outerHeight);
+      } else {
+        document.documentElement.style.width = `${width}px`;
+      }
+    } catch {}
   }
 
   function activate(tab) {
-    tabs.forEach(b => {
+    tabs.forEach((b) => {
       const active = b.dataset.tab === tab;
       b.classList.toggle('active', active);
       b.setAttribute('aria-selected', active ? 'true' : 'false');
@@ -89,7 +129,7 @@
       activate(btn.dataset.tab);
       chrome?.storage?.sync?.set({ settingsTab: btn.dataset.tab });
     });
-    btn.addEventListener('keydown', e => {
+    btn.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
         e.preventDefault();
         const dir = e.key === 'ArrowRight' ? 1 : -1;
@@ -109,7 +149,8 @@
 
   const sensitivityField = document.getElementById('sensitivity');
   if (sensitivityField) {
-    sensitivityField.value = typeof store.sensitivity === 'number' ? store.sensitivity : 0;
+    sensitivityField.value =
+      typeof store.sensitivity === 'number' ? store.sensitivity : 0;
     sensitivityField.addEventListener('input', () => {
       const val = Number(sensitivityField.value);
       chrome?.storage?.sync?.set({ sensitivity: val });
@@ -118,7 +159,8 @@
 
   const minDetectField = document.getElementById('minDetectLength');
   if (minDetectField) {
-    minDetectField.value = typeof store.minDetectLength === 'number' ? store.minDetectLength : 0;
+    minDetectField.value =
+      typeof store.minDetectLength === 'number' ? store.minDetectLength : 0;
     minDetectField.addEventListener('input', () => {
       const val = Number(minDetectField.value);
       chrome?.storage?.sync?.set({ minDetectLength: val });
@@ -135,11 +177,17 @@
 
   const timeoutField = document.getElementById('translateTimeoutMs');
   if (timeoutField) {
-    timeoutField.value = typeof store.translateTimeoutMs === 'number' ? store.translateTimeoutMs : 20000;
+    timeoutField.value =
+      typeof store.translateTimeoutMs === 'number'
+        ? store.translateTimeoutMs
+        : 20000;
     timeoutField.addEventListener('input', () => {
       const val = Number(timeoutField.value);
       chrome?.storage?.sync?.set({ translateTimeoutMs: val });
-      chrome.runtime.sendMessage({ action: 'set-config', config: { translateTimeoutMs: val } }, handleLastError());
+      chrome.runtime.sendMessage(
+        { action: 'set-config', config: { translateTimeoutMs: val } },
+        handleLastError(),
+      );
     });
   }
 
@@ -164,17 +212,20 @@
   async function openEditor(id) {
     let overlay = document.getElementById('providerEditorOverlay');
     if (!overlay) {
-      const html = await fetch('providerEditor.html').then(r => r.text());
+      const html = await fetch('providerEditor.html').then((r) => r.text());
       const div = document.createElement('div');
       div.innerHTML = html;
       overlay = div.firstElementChild;
       document.body.appendChild(overlay);
     }
     if (!editorLoaded) {
-      await new Promise(res => {
+      await new Promise((res) => {
         const s = document.createElement('script');
         s.src = 'providerEditor.js';
-        s.onload = () => { editorLoaded = true; res(); };
+        s.onload = () => {
+          editorLoaded = true;
+          res();
+        };
         document.body.appendChild(s);
       });
     }
@@ -185,12 +236,14 @@
     providerList.innerHTML = '';
     if (!window.qwenProviderConfig?.loadProviderConfig) return;
     providerConfig = await window.qwenProviderConfig.loadProviderConfig();
-    try { window.qwenProviders?.ensureProviders?.(); } catch {}
+    try {
+      window.qwenProviders?.ensureProviders?.();
+    } catch {}
     const available = window.qwenProviders?.listProviders?.() || [];
     const providers = providerConfig.providers || {};
     providerConfig.providers = providers;
     function isConfigured(name) {
-      const meta = available.find(p => p.name === name);
+      const meta = available.find((p) => p.name === name);
       const fields = meta?.configFields || ['apiKey', 'apiEndpoint', 'model'];
       const cfg = providers[name] || {};
       for (const f of fields) {
@@ -199,14 +252,18 @@
       return true;
     }
     const order = Array.isArray(providerConfig.providerOrder)
-      ? providerConfig.providerOrder.filter(n => providers[n] && isConfigured(n))
+      ? providerConfig.providerOrder.filter(
+          (n) => providers[n] && isConfigured(n),
+        )
       : [];
-    Object.keys(providers).forEach(n => {
+    Object.keys(providers).forEach((n) => {
       if (isConfigured(n) && !order.includes(n)) order.push(n);
     });
     let dragEl = null;
     function saveOrder() {
-      providerConfig.providerOrder = Array.from(providerList.children).map(el => el.dataset.provider);
+      providerConfig.providerOrder = Array.from(providerList.children).map(
+        (el) => el.dataset.provider,
+      );
       window.qwenProviderConfig.saveProviderConfig(providerConfig);
     }
     function duplicateProvider(name) {
@@ -218,15 +275,19 @@
       providers[newName] = { ...orig };
       const impl = window.qwenProviders?.getProvider?.(name);
       if (impl) window.qwenProviders?.registerProvider?.(newName, impl);
-      if (!Array.isArray(providerConfig.providerOrder)) providerConfig.providerOrder = [];
+      if (!Array.isArray(providerConfig.providerOrder))
+        providerConfig.providerOrder = [];
       const idx = providerConfig.providerOrder.indexOf(name);
       if (idx >= 0) providerConfig.providerOrder.splice(idx + 1, 0, newName);
       else providerConfig.providerOrder.push(newName);
       window.qwenProviderConfig.saveProviderConfig(providerConfig);
       openEditor(newName);
     }
-    order.forEach(name => {
-      const meta = available.find(p => p.name === name) || { name, label: name };
+    order.forEach((name) => {
+      const meta = available.find((p) => p.name === name) || {
+        name,
+        label: name,
+      };
       if (!providers[name]) providers[name] = {};
       const card = document.createElement('div');
       card.className = 'provider-card';
@@ -256,17 +317,20 @@
       dup.className = 'duplicate';
       dup.addEventListener('click', () => duplicateProvider(name));
       card.appendChild(dup);
-      card.addEventListener('dragstart', e => {
+      card.addEventListener('dragstart', (e) => {
         dragEl = card;
         e.dataTransfer?.setData('text/plain', name);
       });
-      card.addEventListener('dragover', e => {
+      card.addEventListener('dragover', (e) => {
         e.preventDefault();
         const target = e.target.closest('.provider-card');
         if (dragEl && target && dragEl !== target) {
           const rect = target.getBoundingClientRect();
           const after = (e.clientY - rect.top) / rect.height > 0.5;
-          providerList.insertBefore(dragEl, after ? target.nextSibling : target);
+          providerList.insertBefore(
+            dragEl,
+            after ? target.nextSibling : target,
+          );
         }
       });
       card.addEventListener('dragend', () => {
@@ -279,14 +343,46 @@
   refreshProviders();
 
   const templates = {
-    openai: { id: 'openai', defaults: { apiEndpoint: 'https://api.openai.com/v1' }, fields: [{ name: 'apiEndpoint', label: 'API Endpoint', default: 'https://api.openai.com/v1' }] },
-    deepl: { id: 'deepl', defaults: { apiEndpoint: 'https://api.deepl.com/v2' }, fields: [{ name: 'apiEndpoint', label: 'API Endpoint', default: 'https://api.deepl.com/v2' }] },
-    ollama: { id: 'ollama', defaults: { apiEndpoint: 'http://localhost:11434', model: 'llama2' }, fields: [
-      { name: 'apiEndpoint', label: 'API Endpoint', default: 'http://localhost:11434' },
-      { name: 'model', label: 'Model', default: 'llama2' },
-    ] },
+    openai: {
+      id: 'openai',
+      defaults: { apiEndpoint: 'https://api.openai.com/v1' },
+      fields: [
+        {
+          name: 'apiEndpoint',
+          label: 'API Endpoint',
+          default: 'https://api.openai.com/v1',
+        },
+      ],
+    },
+    deepl: {
+      id: 'deepl',
+      defaults: { apiEndpoint: 'https://api.deepl.com/v2' },
+      fields: [
+        {
+          name: 'apiEndpoint',
+          label: 'API Endpoint',
+          default: 'https://api.deepl.com/v2',
+        },
+      ],
+    },
+    ollama: {
+      id: 'ollama',
+      defaults: { apiEndpoint: 'http://localhost:11434', model: 'llama2' },
+      fields: [
+        {
+          name: 'apiEndpoint',
+          label: 'API Endpoint',
+          default: 'http://localhost:11434',
+        },
+        { name: 'model', label: 'Model', default: 'llama2' },
+      ],
+    },
     macos: { id: 'macos', defaults: {}, fields: [] },
-    custom: { id: '', defaults: {}, fields: [{ name: 'id', label: 'Provider ID', default: '' }] },
+    custom: {
+      id: '',
+      defaults: {},
+      fields: [{ name: 'id', label: 'Provider ID', default: '' }],
+    },
   };
 
   const addOverlay = document.getElementById('addProviderOverlay');
@@ -312,7 +408,7 @@
       const tpl = templates[key];
       if (!tpl) return;
       fieldsEl.innerHTML = '';
-      (tpl.fields || []).forEach(f => {
+      (tpl.fields || []).forEach((f) => {
         const label = document.createElement('label');
         label.textContent = `${f.label || f.name} `;
         const input = document.createElement('input');
@@ -340,7 +436,7 @@
       if (!tpl) return;
       let id = tpl.id;
       const cfg = {};
-      (tpl.fields || []).forEach(f => {
+      (tpl.fields || []).forEach((f) => {
         const val = document.getElementById(`ap_field_${f.name}`)?.value.trim();
         if (f.name === 'id') id = val;
         else if (val) cfg[f.name] = val;
@@ -351,38 +447,54 @@
       openEditor(id);
     });
 
-    document.getElementById('addProvider')?.addEventListener('click', showAddOverlay);
+    document
+      .getElementById('addProvider')
+      ?.addEventListener('click', showAddOverlay);
   }
 
   const usageEl = document.getElementById('usageStats');
-  (function loadUsage(){
-    function renderMetrics(m){
+  (function loadUsage() {
+    function renderMetrics(m) {
       const usage = m && m.usage ? m.usage : {};
       usageEl.textContent = JSON.stringify(usage, null, 2);
     }
     if (chrome?.runtime?.sendMessage) {
-      chrome.runtime.sendMessage({ action: 'metrics-v1' }, handleLastError(m => {
-        if (m && m.version === 1) return renderMetrics(m);
-        chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(renderMetrics));
-      }));
+      chrome.runtime.sendMessage(
+        { action: 'metrics-v1' },
+        handleLastError((m) => {
+          if (m && m.version === 1) return renderMetrics(m);
+          chrome.runtime.sendMessage(
+            { action: 'metrics' },
+            handleLastError(renderMetrics),
+          );
+        }),
+      );
     }
   })();
   const tmEl = document.getElementById('tmMetrics');
   const cacheEl = document.getElementById('cacheStats');
-  chrome?.runtime?.sendMessage({ action: 'tm-cache-metrics' }, handleLastError(m => {
-    const tmMetrics = m && m.tmMetrics ? m.tmMetrics : {};
-    const cacheStats = m && m.cacheStats ? m.cacheStats : {};
-    tmEl.textContent = JSON.stringify(tmMetrics, null, 2);
-    cacheEl.textContent = JSON.stringify(cacheStats, null, 2);
-  }));
+  chrome?.runtime?.sendMessage(
+    { action: 'tm-cache-metrics' },
+    handleLastError((m) => {
+      const tmMetrics = m && m.tmMetrics ? m.tmMetrics : {};
+      const cacheStats = m && m.cacheStats ? m.cacheStats : {};
+      tmEl.textContent = JSON.stringify(tmMetrics, null, 2);
+      cacheEl.textContent = JSON.stringify(cacheStats, null, 2);
+    }),
+  );
 
   const tmEntriesEl = document.getElementById('tmEntries');
   const tmStatsEl = document.getElementById('tmStats');
   const tmImportFile = document.getElementById('tmImportFile');
+  const tmEditor = document.getElementById('tmEditor');
+  const tmApplyBtn = document.getElementById('tmApply');
 
   function tmMessage(action, payload) {
-    return new Promise(resolve => {
-      chrome?.runtime?.sendMessage({ action, ...payload }, handleLastError(res => resolve(res || {})));
+    return new Promise((resolve) => {
+      chrome?.runtime?.sendMessage(
+        { action, ...payload },
+        handleLastError((res) => resolve(res || {})),
+      );
     });
   }
 
@@ -393,6 +505,8 @@
     const stats = res.stats || {};
     tmEntriesEl.textContent = JSON.stringify(entries, null, 2);
     tmStatsEl.textContent = JSON.stringify(stats, null, 2);
+    if (tmEditor)
+      tmEditor.value = entries.map((e) => `${e.k}=${e.text}`).join('\n');
     updateWidth();
   }
 
@@ -405,7 +519,9 @@
     try {
       const res = await tmMessage('tm-get-all');
       const entries = Array.isArray(res.entries) ? res.entries : [];
-      const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify(entries, null, 2)], {
+        type: 'application/json',
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -432,6 +548,21 @@
       }
     } catch {}
     tmImportFile.value = '';
+    refreshTM();
+  });
+
+  tmApplyBtn?.addEventListener('click', async () => {
+    if (!tmEditor) return;
+    const lines = tmEditor.value.split('\n');
+    const entries = [];
+    for (const line of lines) {
+      const idx = line.indexOf('=');
+      if (idx === -1) continue;
+      const k = line.slice(0, idx).trim();
+      const text = line.slice(idx + 1).trim();
+      if (k) entries.push({ k, text });
+    }
+    await tmMessage('tm-import', { entries });
     refreshTM();
   });
 
