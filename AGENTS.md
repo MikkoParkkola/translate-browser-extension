@@ -157,6 +157,7 @@ Environment variables:
   - Auto-detect source via local heuristic; optional Google detection in background using `detectApiKey`.
   - Mixed-language batching: per-text detection and language-clustered requests for accuracy.
   - Skips translation when source language matches target to avoid redundant work.
+  - When a fixed source language is set, each string is still language-detected; strings detected as a different language are returned unchanged.
 - Caching / TM
   - TM (IndexedDB) with TTL/LRU and metrics; optional chrome.storage.sync/WebDAV/iCloud sync with user toggle and remote clear; warmed before batching; skips re-translation of hits and diagnostics panel shows hit/miss counts.
   - In-memory LRU with normalized keys (whitespace collapsed + NFC) limits memory and improves hit rate.

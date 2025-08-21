@@ -1,6 +1,6 @@
 {
   "name": "translate-by-mikko",
-  "version": "1.44.0",
+  "version": "1.44.1",
   "description": "Extension to translate web pages using multiple providers",
   "main": "index.js",
   "scripts": {

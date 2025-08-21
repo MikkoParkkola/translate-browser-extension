@@ -475,10 +475,14 @@ async function qwenTranslate({ endpoint, apiKey, projectId, location, model, sec
       text: text && text.slice ? text.slice(0, 20) + (text.length > 20 ? '...' : '') : text,
     });
   }
-  let src = source;
   const cfg = typeof self !== 'undefined' && self.qwenConfig ? self.qwenConfig : typeof window !== 'undefined' && window.qwenConfig ? window.qwenConfig : {};
+  const detected = await _detectSource(text, { detector, debug, noProxy, sensitivity, minLength: cfg.minDetectLength });
+  let src = source;
   if (!src || src === 'auto') {
-    src = await _detectSource(text, { detector, debug, noProxy, sensitivity, minLength: cfg.minDetectLength });
+    src = detected;
+  } else if (detected && detected !== src) {
+    if (debug) trLogger.warn('detected language differs from requested source; skipping translation', { detected, source: src });
+    return { text };
   }
   if (src && src === target) {
     if (debug) trLogger.warn('source language matches target; skipping translation');
@@ -554,10 +558,15 @@ async function qwenTranslateStream({ endpoint, apiKey, projectId, location, mode
       text: text && text.slice ? text.slice(0, 20) + (text.length > 20 ? '...' : '') : text,
     });
   }
-  let src = source;
   const cfg = typeof self !== 'undefined' && self.qwenConfig ? self.qwenConfig : typeof window !== 'undefined' && window.qwenConfig ? window.qwenConfig : {};
+  const detected = await _detectSource(text, { detector, debug, noProxy, sensitivity, minLength: cfg.minDetectLength });
+  let src = source;
   if (!src || src === 'auto') {
-    src = await _detectSource(text, { detector, debug, noProxy, sensitivity, minLength: cfg.minDetectLength });
+    src = detected;
+  } else if (detected && detected !== src) {
+    if (debug) trLogger.warn('detected language differs from requested source; skipping translation', { detected, source: src });
+    if (onData) onData(text);
+    return { text };
   }
   if (src && src === target) {
     if (debug) trLogger.warn('source language matches target; skipping translation');
@@ -692,29 +701,27 @@ async function batchOnce({
 }) {
   const stats = _stats || { requests: 0, tokens: 0, words: 0, start: Date.now(), totalRequests: 0, latencyMs: 0 };
   if (stats.latencyMs == null) stats.latencyMs = 0;
-  let source = opts.source;
-  const autoMode = !source || source === 'auto';
+  const userSource = opts.source;
+  const autoMode = !userSource || userSource === 'auto';
   const sourceByIndex = new Array(texts.length);
   const cfg = typeof self !== 'undefined' && self.qwenConfig ? self.qwenConfig : typeof window !== 'undefined' && window.qwenConfig ? window.qwenConfig : {};
-  if (autoMode) {
-    for (let i = 0; i < texts.length; i++) {
-      sourceByIndex[i] = await _detectSource(texts[i], { detector: opts.detector, debug: opts.debug, noProxy: opts.noProxy, sensitivity: opts.sensitivity, minLength: cfg.minDetectLength });
-    }
-    source = sourceByIndex[0];
-  } else {
-    for (let i = 0; i < texts.length; i++) sourceByIndex[i] = source;
+  for (let i = 0; i < texts.length; i++) {
+    sourceByIndex[i] = await _detectSource(texts[i], { detector: opts.detector, debug: opts.debug, noProxy: opts.noProxy, sensitivity: opts.sensitivity, minLength: cfg.minDetectLength });
   }
   if (glossary) {
     texts = texts.map(t => _applyGlossary(t));
   }
   const SEP = makeDelimiter();
-  // Warm TM using per-text language keys (autoMode) or fixed source
+  // Warm TM using per-text language keys when we may translate
   if (TM && TM.get) {
     const missingKeys = [];
     const seen = new Set();
     for (let i = 0; i < texts.length; i++) {
       const t = texts[i];
-      const lang = sourceByIndex[i];
+      const det = sourceByIndex[i];
+      const lang = det || userSource;
+      if (!lang) continue;
+      if (!autoMode && det && det !== userSource) continue;
       const key = makeCacheKey(lang, opts.target, t);
       if (!cache.has(key) && !seen.has(key)) {
         seen.add(key);
@@ -734,8 +741,9 @@ async function batchOnce({
 
   const mapping = [];
   texts.forEach((t, i) => {
-    const lang = autoMode ? sourceByIndex[i] : source;
-    if (lang === opts.target) {
+    const det = sourceByIndex[i];
+    const lang = det || userSource;
+    if (lang === opts.target || (!autoMode && det && det !== userSource)) {
       mapping.push({ index: i, chunk: 0, text: t, cached: true, lang });
       stats.words += t.trim().split(/\s+/).filter(Boolean).length;
       stats.tokens += approxTokens(t);
@@ -994,8 +1002,10 @@ async function batchOnce({
   for (let i = 0; i < results.length; i++) {
     const orig = (texts[i] || '').trim();
     const out = (results[i] || '').trim();
-    const lang = (autoMode ? sourceByIndex[i] : source);
-    if (orig && out === orig && lang !== opts.target) {
+    const det = sourceByIndex[i];
+    const lang = det || userSource;
+    const arr = byIndex.get(i);
+    if (orig && out === orig && lang !== opts.target && arr && arr[0] && !arr[0].cached) {
       retryTexts.push(orig);
       retryIdx.push(i);
       retryLangs.push(lang);
