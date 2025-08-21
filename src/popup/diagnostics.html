@@ -8,8 +8,8 @@
 </head>
 <body class="diagnostics">
   <h3>Diagnostics</h3>
-  <div class="section" id="status"></div>
-  <div class="section" id="usage"></div>
+  <div class="section" id="status"><h4>Status</h4><span id="statusText"></span></div>
+  <div class="section" id="usage"><h4>Usage</h4><dl id="usageMetrics"></dl></div>
   <div class="section" id="costs"></div>
   <div class="section" id="costSummary"></div>
   <div class="section" id="quality"></div>
@@ -19,8 +19,8 @@
     <h4>Latency Histogram</h4>
     <canvas id="latencyHistogram" width="320" height="80"></canvas>
   </div>
-  <div class="section" id="cache"></div>
-  <ul id="providers"></ul>
+  <div class="section" id="cache"><h4>Cache</h4><dl id="cacheMetrics"></dl></div>
+  <div class="section" id="providers"><h4>Providers</h4><ul id="providerList"></ul></div>
   <button id="back" class="secondary">Back</button>
   <button id="copy" class="primary">Copy Report</button>
   <script src="diagnostics.js"></script>
