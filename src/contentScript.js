@@ -884,7 +884,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
         document.addEventListener('keydown', e => { if (e.key === 'Escape') removeSelectionBubble(); });
       }
-      if (cfg.autoTranslate) start();
+      if (cfg.autoTranslate) {
+        if (!document.hidden) {
+          start();
+        } else {
+          const onVisible = () => {
+            if (!document.hidden) {
+              document.removeEventListener('visibilitychange', onVisible);
+              start();
+            }
+          };
+          document.addEventListener('visibilitychange', onVisible);
+        }
+      }
     });
   }
 
