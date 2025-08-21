@@ -106,9 +106,10 @@
           const usage = metrics && metrics.usage ? metrics.usage : {};
           const cache = metrics && metrics.cache ? metrics.cache : {};
           const tm = metrics && metrics.tm ? metrics.tm : {};
+          const provUsage = metrics && metrics.providersUsage ? metrics.providersUsage : {};
           const apiKey = !!(metrics && metrics.providers && metrics.providers[provider] && metrics.providers[provider].apiKey);
           const active = metrics && metrics.status ? !!metrics.status.active : false;
-          sendResponse({ provider, apiKey, usage, cache, tm, auto: autoCfg.autoTranslate, active });
+          sendResponse({ provider, apiKey, usage, cache, tm, providers: provUsage, auto: autoCfg.autoTranslate, active });
         });
         return true;
       case 'home:get-usage':
