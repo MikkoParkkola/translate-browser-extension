@@ -383,7 +383,6 @@
     cacheEl.textContent = JSON.stringify(cacheStats, null, 2);
   }));
 
-  const tmEntriesEl = document.getElementById('tmEntries');
   const tmStatsEl = document.getElementById('tmStats');
   const tmImportFile = document.getElementById('tmImportFile');
 
@@ -394,11 +393,9 @@
   }
 
   async function refreshTM() {
-    if (!tmEntriesEl || !tmStatsEl) return;
-    const res = await tmMessage('tm-get-all');
-    const entries = Array.isArray(res.entries) ? res.entries : [];
+    if (!tmStatsEl) return;
+    const res = await tmMessage('tm-stats');
     const stats = res.stats || {};
-    tmEntriesEl.textContent = JSON.stringify(entries, null, 2);
     tmStatsEl.textContent = JSON.stringify(stats, null, 2);
     updateWidth();
   }

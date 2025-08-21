@@ -697,6 +697,13 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
     })();
     return true;
   }
+  if (msg.action === 'tm-stats') {
+    (async () => {
+      const stats = self.qwenTM && self.qwenTM.stats ? self.qwenTM.stats() : {};
+      sendResponse({ stats });
+    })();
+    return true;
+  }
   if (msg.action === 'tm-clear') {
     (async () => {
       if (self.qwenTM && self.qwenTM.clear) { await self.qwenTM.clear(); }
