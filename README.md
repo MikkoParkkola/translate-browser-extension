@@ -65,7 +65,7 @@ Open the popup and click the ⚙️ button to access **Settings**. The settings 
 
 - **General** – toggle automatic language detection and manage the glossary.
 - **Providers** – add, remove or reorder providers. Use **Edit** to supply API keys, endpoints, models and per‑provider limits. Local providers such as Ollama or macOS can be added via **Add Local Provider**.
-- **Advanced** – enable or clear the translation cache.
+- **Advanced** – enable or clear the translation cache and edit translation memory entries.
 
 Use the **Diagnostics** button on the home page to view usage metrics and run connectivity checks.
 

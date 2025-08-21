@@ -160,6 +160,7 @@ Environment variables:
 - Caching / TM
   - TM (IndexedDB) with TTL/LRU and metrics; optional chrome.storage.sync/WebDAV/iCloud sync with user toggle and remote clear; warmed before batching; skips re-translation of hits and diagnostics panel shows hit/miss counts.
   - In-memory LRU with normalized keys (whitespace collapsed + NFC) limits memory and improves hit rate.
+  - Advanced settings allow editing TM entries via "src:dst:text=translation" lines with import/export/clear controls.
 - PDF translation
   - Custom viewer (`src/pdfViewer.html/js`) intercepts top-level PDFs and can use provider `translateDocument` (Google, DeepL Pro) or a local WASM pipeline to render translated pages.
   - Viewer parses page layout and overlays editable translated text boxes aligned to original coordinates, with navigation controls.

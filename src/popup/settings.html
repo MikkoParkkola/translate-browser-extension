@@ -1,146 +1,195 @@
-<!DOCTYPE html>
+<!doctype html>
 <html data-qwen-theme="apple">
-<head>
-  <meta charset="utf-8">
-  <link rel="stylesheet" href="../styles/apple.css">
-  <link rel="stylesheet" href="../styles/cyberpunk.css">
-  <link rel="stylesheet" href="../styles/popup.css">
-</head>
-<body class="settings">
-  <div class="tabs" role="tablist">
-    <button data-tab="general" role="tab" aria-controls="generalTab">General</button>
-    <button data-tab="providers" role="tab" aria-controls="providersTab">Providers</button>
-    <button data-tab="advanced" role="tab" aria-controls="advancedTab">Advanced</button>
-    <button data-tab="diagnostics" role="tab" aria-controls="diagnosticsTab">Diagnostics</button>
-  </div>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../styles/apple.css" />
+    <link rel="stylesheet" href="../styles/cyberpunk.css" />
+    <link rel="stylesheet" href="../styles/popup.css" />
+  </head>
+  <body class="settings">
+    <div class="tabs" role="tablist">
+      <button data-tab="general" role="tab" aria-controls="generalTab">
+        General
+      </button>
+      <button data-tab="providers" role="tab" aria-controls="providersTab">
+        Providers
+      </button>
+      <button data-tab="advanced" role="tab" aria-controls="advancedTab">
+        Advanced
+      </button>
+      <button data-tab="diagnostics" role="tab" aria-controls="diagnosticsTab">
+        Diagnostics
+      </button>
+    </div>
 
-  <div id="generalTab" class="tab">
-    <section id="themeSection">
-      <h3>Theme</h3>
-      <label>Style
-        <select id="themeStyle">
-          <option value="apple">Apple</option>
-          <option value="cyberpunk">Cyberpunk</option>
-        </select>
-      </label>
-      <label>Color
-        <select id="theme">
-          <option value="dark">Dark</option>
-          <option value="light">Light</option>
-        </select>
-      </label>
-    </section>
-    <section id="detectionSection">
-      <h3>Language Detection</h3>
-      <label><input type="checkbox" id="enableDetection"> Enable automatic detection</label>
-      <label>Sensitivity <input type="number" id="sensitivity" min="0" max="1" step="0.1"></label>
-      <label>Min length <input type="number" id="minDetectLength" min="0" step="1"></label>
-      <p class="note">Automatically detect the source language before translating. Detection is ignored when confidence is below the sensitivity.</p>
-    </section>
-    <section id="glossarySection">
-      <h3>Glossary</h3>
-      <label for="glossary">Entries</label>
-      <textarea id="glossary" rows="4" placeholder="term=translation" aria-describedby="glossaryNote"></textarea>
-      <p class="note" id="glossaryNote">One entry per line, using "term=translation".</p>
-    </section>
-
-    <section id="selectionSection">
-      <h3>Selection Translation</h3>
-      <label><input type="checkbox" id="selectionPopup"> Show bubble on text selection</label>
-      <p class="note">Bubble waits for you to trigger translation.</p>
-    </section>
-
-  </div>
-
-  <div id="providersTab" class="tab">
-    <section id="providerSection">
-      <h3>Providers</h3>
-      <div id="providerList" class="provider-cards"></div>
-      <button id="addProvider">Add Provider</button>
-    </section>
-  </div>
-
-  <div id="advancedTab" class="tab">
-    <section id="timeoutSection">
-      <h3>Timeout</h3>
-      <label>Abort after <input type="number" id="translateTimeoutMs" min="1000" step="1000"> ms</label>
-    </section>
-    <section id="cacheSection">
-      <h3>Cache</h3>
-      <label><input type="checkbox" id="cacheEnabled"> Enable translation memory</label>
-      <button id="clearCache">Clear cache</button>
-    </section>
-    <section id="tmSection">
-      <h3>Translation Memory</h3>
-      <div class="tm-container">
-        <pre id="tmEntries">-</pre>
-        <pre id="tmStats">-</pre>
-      </div>
-      <button id="tmExport">Export</button>
-      <input type="file" id="tmImportFile">
-      <button id="tmImport">Import</button>
-      <button id="tmClear">Clear</button>
-    </section>
-  </div>
-
-  <div id="diagnosticsTab" class="tab">
-    <section id="statsDetails">
-      <h3>Usage</h3>
-      <pre id="usageStats">-</pre>
-    </section>
-    <section id="tmDetails">
-      <h3>TM Metrics</h3>
-      <pre id="tmMetrics">-</pre>
-    </section>
-    <section id="cacheDetails">
-      <h3>Cache Stats</h3>
-      <pre id="cacheStats">-</pre>
-    </section>
-  </div>
-
-  <div id="addProviderOverlay" class="modal-overlay">
-    <div class="modal" role="dialog" aria-modal="true">
-      <div id="ap_step1">
-        <label>Preset
-          <select id="ap_preset">
-            <option value="openai">OpenAI</option>
-            <option value="deepl">DeepL</option>
-            <option value="ollama">Ollama</option>
-            <option value="macos">macOS</option>
-            <option value="custom">Custom</option>
+    <div id="generalTab" class="tab">
+      <section id="themeSection">
+        <h3>Theme</h3>
+        <label
+          >Style
+          <select id="themeStyle">
+            <option value="apple">Apple</option>
+            <option value="cyberpunk">Cyberpunk</option>
           </select>
         </label>
-        <div class="actions">
-          <button id="ap_next">Next</button>
-          <button id="ap_cancel1">Cancel</button>
+        <label
+          >Color
+          <select id="theme">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </label>
+      </section>
+      <section id="detectionSection">
+        <h3>Language Detection</h3>
+        <label
+          ><input type="checkbox" id="enableDetection" /> Enable automatic
+          detection</label
+        >
+        <label
+          >Sensitivity
+          <input type="number" id="sensitivity" min="0" max="1" step="0.1"
+        /></label>
+        <label
+          >Min length
+          <input type="number" id="minDetectLength" min="0" step="1"
+        /></label>
+        <p class="note">
+          Automatically detect the source language before translating. Detection
+          is ignored when confidence is below the sensitivity.
+        </p>
+      </section>
+      <section id="glossarySection">
+        <h3>Glossary</h3>
+        <label for="glossary">Entries</label>
+        <textarea
+          id="glossary"
+          rows="4"
+          placeholder="term=translation"
+          aria-describedby="glossaryNote"
+        ></textarea>
+        <p class="note" id="glossaryNote">
+          One entry per line, using "term=translation".
+        </p>
+      </section>
+
+      <section id="selectionSection">
+        <h3>Selection Translation</h3>
+        <label
+          ><input type="checkbox" id="selectionPopup" /> Show bubble on text
+          selection</label
+        >
+        <p class="note">Bubble waits for you to trigger translation.</p>
+      </section>
+    </div>
+
+    <div id="providersTab" class="tab">
+      <section id="providerSection">
+        <h3>Providers</h3>
+        <div id="providerList" class="provider-cards"></div>
+        <button id="addProvider">Add Provider</button>
+      </section>
+    </div>
+
+    <div id="advancedTab" class="tab">
+      <section id="timeoutSection">
+        <h3>Timeout</h3>
+        <label
+          >Abort after
+          <input type="number" id="translateTimeoutMs" min="1000" step="1000" />
+          ms</label
+        >
+      </section>
+      <section id="cacheSection">
+        <h3>Cache</h3>
+        <label
+          ><input type="checkbox" id="cacheEnabled" /> Enable translation
+          memory</label
+        >
+        <button id="clearCache">Clear cache</button>
+      </section>
+      <section id="tmSection">
+        <h3>Translation Memory</h3>
+        <label for="tmEditor">Entries</label>
+        <textarea
+          id="tmEditor"
+          rows="4"
+          placeholder="src:dst:text=translation"
+          aria-describedby="tmEditorNote"
+        ></textarea>
+        <p class="note" id="tmEditorNote">
+          One entry per line, using "src:dst:text=translation".
+        </p>
+        <div class="tm-container">
+          <pre id="tmEntries">-</pre>
+          <pre id="tmStats">-</pre>
         </div>
-      </div>
-      <div id="ap_step2">
-        <div id="ap_fields"></div>
-        <div class="actions">
-          <button id="ap_back">Back</button>
-          <button id="ap_create">Create</button>
+        <button id="tmApply">Apply</button>
+        <button id="tmExport">Export</button>
+        <input type="file" id="tmImportFile" />
+        <button id="tmImport">Import</button>
+        <button id="tmClear">Clear</button>
+      </section>
+    </div>
+
+    <div id="diagnosticsTab" class="tab">
+      <section id="statsDetails">
+        <h3>Usage</h3>
+        <pre id="usageStats">-</pre>
+      </section>
+      <section id="tmDetails">
+        <h3>TM Metrics</h3>
+        <pre id="tmMetrics">-</pre>
+      </section>
+      <section id="cacheDetails">
+        <h3>Cache Stats</h3>
+        <pre id="cacheStats">-</pre>
+      </section>
+    </div>
+
+    <div id="addProviderOverlay" class="modal-overlay">
+      <div class="modal" role="dialog" aria-modal="true">
+        <div id="ap_step1">
+          <label
+            >Preset
+            <select id="ap_preset">
+              <option value="openai">OpenAI</option>
+              <option value="deepl">DeepL</option>
+              <option value="ollama">Ollama</option>
+              <option value="macos">macOS</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <div class="actions">
+            <button id="ap_next">Next</button>
+            <button id="ap_cancel1">Cancel</button>
+          </div>
+        </div>
+        <div id="ap_step2">
+          <div id="ap_fields"></div>
+          <div class="actions">
+            <button id="ap_back">Back</button>
+            <button id="ap_create">Create</button>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <script src="../lib/providers.js"></script>
-  <script src="../providerConfig.js"></script>
-  <script src="../providers/qwen.js"></script>
-  <script src="../providers/dashscope.js"></script>
-  <script src="../providers/google.js"></script>
-  <script src="../providers/deepl.js"></script>
-  <script src="../providers/macos.js"></script>
-  <script src="../providers/mistral.js"></script>
-  <script src="../providers/openai.js"></script>
-  <script src="../providers/openrouter.js"></script>
-  <script src="../providers/ollama.js"></script>
-  <script src="../providers/gemini.js"></script>
-  <script src="../providers/anthropic.js"></script>
-  <script src="../providers/localWasm.js"></script>
-  <script src="../providers/index.js"></script>
-  <script src="settings.js"></script>
-</body>
+    <script src="../lib/providers.js"></script>
+    <script src="../providerConfig.js"></script>
+    <script src="../providers/qwen.js"></script>
+    <script src="../providers/dashscope.js"></script>
+    <script src="../providers/google.js"></script>
+    <script src="../providers/deepl.js"></script>
+    <script src="../providers/macos.js"></script>
+    <script src="../providers/mistral.js"></script>
+    <script src="../providers/openai.js"></script>
+    <script src="../providers/openrouter.js"></script>
+    <script src="../providers/ollama.js"></script>
+    <script src="../providers/gemini.js"></script>
+    <script src="../providers/anthropic.js"></script>
+    <script src="../providers/localWasm.js"></script>
+    <script src="../providers/index.js"></script>
+    <script src="settings.js"></script>
+  </body>
 </html>
-

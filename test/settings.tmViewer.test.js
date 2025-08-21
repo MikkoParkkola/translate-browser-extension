@@ -1,7 +1,7 @@
 // @jest-environment jsdom
 
 function flush() {
-  return new Promise(res => setTimeout(res, 0));
+  return new Promise((res) => setTimeout(res, 0));
 }
 
 describe('settings TM viewer', () => {
@@ -12,16 +12,40 @@ describe('settings TM viewer', () => {
   test('background exposes tm getAll and clear over messaging', async () => {
     const syncGet = jest.fn((defs, cb) => cb(defs));
     global.chrome = {
-      action: { setBadgeText: jest.fn(), setBadgeBackgroundColor: jest.fn(), setIcon: jest.fn() },
-      runtime: { onInstalled: { addListener: jest.fn() }, onMessage: { addListener: jest.fn() }, onConnect: { addListener: jest.fn() } },
-      contextMenus: { create: jest.fn(), removeAll: jest.fn(cb => cb && cb()), onClicked: { addListener: jest.fn() } },
+      action: {
+        setBadgeText: jest.fn(),
+        setBadgeBackgroundColor: jest.fn(),
+        setIcon: jest.fn(),
+      },
+      runtime: {
+        onInstalled: { addListener: jest.fn() },
+        onMessage: { addListener: jest.fn() },
+        onConnect: { addListener: jest.fn() },
+      },
+      contextMenus: {
+        create: jest.fn(),
+        removeAll: jest.fn((cb) => cb && cb()),
+        onClicked: { addListener: jest.fn() },
+      },
       tabs: { onUpdated: { addListener: jest.fn() } },
-      storage: { sync: { get: syncGet }, local: { get: jest.fn(), set: jest.fn() } },
+      storage: {
+        sync: { get: syncGet },
+        local: { get: jest.fn(), set: jest.fn() },
+      },
     };
     global.importScripts = () => {};
     global.setInterval = () => {};
     global.self = global;
-    global.qwenThrottle = { configure: jest.fn(), getUsage: () => ({ requests: 0, requestLimit: 60, tokens: 0, tokenLimit: 100000 }), recordUsage: jest.fn() };
+    global.qwenThrottle = {
+      configure: jest.fn(),
+      getUsage: () => ({
+        requests: 0,
+        requestLimit: 60,
+        tokens: 0,
+        tokenLimit: 100000,
+      }),
+      recordUsage: jest.fn(),
+    };
     global.qwenGetCacheSize = () => 0;
     const tm = {
       getAll: jest.fn(() => Promise.resolve([{ k: 'a', text: '1' }])),
@@ -32,9 +56,13 @@ describe('settings TM viewer', () => {
     global.qwenTM = tm;
     require('../src/background.js');
     const listener = chrome.runtime.onMessage.addListener.mock.calls[0][0];
-    const res = await new Promise(resolve => listener({ action: 'tm-get-all' }, {}, resolve));
+    const res = await new Promise((resolve) =>
+      listener({ action: 'tm-get-all' }, {}, resolve),
+    );
     expect(res.entries[0].k).toBe('a');
-    await new Promise(resolve => listener({ action: 'tm-clear' }, {}, resolve));
+    await new Promise((resolve) =>
+      listener({ action: 'tm-clear' }, {}, resolve),
+    );
     expect(tm.clear).toHaveBeenCalled();
   });
 
@@ -52,8 +80,10 @@ describe('settings TM viewer', () => {
         <section id="timeoutSection"><input id="translateTimeoutMs"></section>
         <section id="cacheSection"><input type="checkbox" id="cacheEnabled"><button id="clearCache"></button></section>
         <section id="tmSection">
+          <textarea id="tmEditor"></textarea>
           <pre id="tmEntries"></pre>
           <pre id="tmStats"></pre>
+          <button id="tmApply"></button>
           <button id="tmExport"></button>
           <input type="file" id="tmImportFile">
           <button id="tmImport"></button>
@@ -70,7 +100,9 @@ describe('settings TM viewer', () => {
     global.URL.createObjectURL = jest.fn(() => 'blob:1');
     global.URL.revokeObjectURL = jest.fn();
     global.chrome = {
-      storage: { sync: { get: jest.fn((defs, cb) => cb(defs)), set: jest.fn() } },
+      storage: {
+        sync: { get: jest.fn((defs, cb) => cb(defs)), set: jest.fn() },
+      },
       runtime: {
         sendMessage: jest.fn((msg, cb) => {
           if (msg.action === 'tm-get-all') {
@@ -93,27 +125,54 @@ describe('settings TM viewer', () => {
     };
     window.resizeTo = jest.fn();
     window.outerHeight = 100;
-    Object.defineProperty(document.body, 'scrollWidth', { configurable: true, value: 120 });
+    Object.defineProperty(document.body, 'scrollWidth', {
+      configurable: true,
+      value: 120,
+    });
     require('../src/popup/settings.js');
     await flush();
     expect(window.resizeTo).toHaveBeenCalledWith(120, 100);
     expect(document.getElementById('tmEntries').textContent).toContain('"a"');
     window.resizeTo.mockClear();
-    Object.defineProperty(document.body, 'scrollWidth', { configurable: true, value: 80 });
+    Object.defineProperty(document.body, 'scrollWidth', {
+      configurable: true,
+      value: 80,
+    });
     document.getElementById('tmClear').click();
     await flush();
     expect(window.resizeTo).toHaveBeenCalledWith(80, 100);
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'tm-clear' }, expect.any(Function));
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+      { action: 'tm-clear' },
+      expect.any(Function),
+    );
     await flush();
     expect(document.getElementById('tmEntries').textContent).toContain('[]');
     document.getElementById('tmExport').click();
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'tm-get-all' }, expect.any(Function));
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+      { action: 'tm-get-all' },
+      expect.any(Function),
+    );
     const fileInput = document.getElementById('tmImportFile');
-    const file = new Blob([JSON.stringify([{ k: 'b', text: '2' }])], { type: 'application/json' });
+    const file = new Blob([JSON.stringify([{ k: 'b', text: '2' }])], {
+      type: 'application/json',
+    });
     file.text = () => Promise.resolve(JSON.stringify([{ k: 'b', text: '2' }]));
     Object.defineProperty(fileInput, 'files', { value: [file] });
     fileInput.dispatchEvent(new Event('change'));
     await flush();
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'tm-import', entries: [{ k: 'b', text: '2' }] }, expect.any(Function));
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+      { action: 'tm-import', entries: [{ k: 'b', text: '2' }] },
+      expect.any(Function),
+    );
+
+    chrome.runtime.sendMessage.mockClear();
+    const tmEditor = document.getElementById('tmEditor');
+    tmEditor.value = 'c=3';
+    document.getElementById('tmApply').click();
+    await flush();
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+      { action: 'tm-import', entries: [{ k: 'c', text: '3' }] },
+      expect.any(Function),
+    );
   });
 });
