@@ -1,5 +1,9 @@
- // New file
- // @jest-environment node
+// New file
+// @jest-environment node
+
+jest.mock('../src/lib/detect.js', () => ({
+  detectLocal: (t) => ({ lang: /hola/i.test(String(t)) ? 'es' : 'en', confidence: 1 })
+}));
 
  describe('provider failover', () => {
    beforeEach(() => {
