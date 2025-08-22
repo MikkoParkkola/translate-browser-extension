@@ -1,0 +1,94 @@
+From 3e4db5394af1fb44ea5b4d60a5d07a72302bb894 Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Mon, 18 Aug 2025 07:29:59 +0200
+Subject: [PATCH 6/9] feat: handle ERR_NETWORK offline code
+
+---
+ package-lock.json    | 10 ++--------
+ package.json         | 15 ---------------
+ src/contentScript.js |  2 +-
+ 3 files changed, 3 insertions(+), 24 deletions(-)
+
+diff --git a/package-lock.json b/package-lock.json
+index 26b9ec7..9b92900 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,20 +1,14 @@
+ {
+   "name": "qwen-translator-extension",
+-<<<<<<< HEAD
+   "version": "1.35.1",
+-=======
+-  "version": "1.34.0",
+->>>>>>> da06222 (Merge branch 'main' into codex/add-offline-indicators-and-messaging-74rmba)
++  "version": "1.35.1",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "qwen-translator-extension",
+-<<<<<<< HEAD
+       "version": "1.35.1",
+-=======
+-      "version": "1.34.0",
+->>>>>>> da06222 (Merge branch 'main' into codex/add-offline-indicators-and-messaging-74rmba)
++      "version": "1.35.1",
+       "hasInstallScript": true,
+       "license": "AGPL-3.0-or-later",
+       "dependencies": {
+diff --git a/package.json b/package.json
+index 47453f9..edb2388 100644
+--- a/package.json
++++ b/package.json
+@@ -1,10 +1,6 @@
+ {
+   "name": "qwen-translator-extension",
+-<<<<<<< HEAD
+   "version": "1.35.1",
+-=======
+-  "version": "1.35.0",
+->>>>>>> da06222 (Merge branch 'main' into codex/add-offline-indicators-and-messaging-74rmba)
+   "description": "Extension to translate web pages using Qwen-MT-Turbo model",
+   "main": "index.js",
+   "scripts": {
+@@ -28,7 +24,6 @@
+   "license": "AGPL-3.0-or-later",
+   "type": "commonjs",
+   "types": "types/index.d.ts",
+-<<<<<<< HEAD
+   "typesVersions": {
+     "*": {
+       "background": [
+@@ -45,16 +40,6 @@
+       ]
+     }
+   },
+-=======
+-    "typesVersions": {
+-      "*": {
+-        "background": ["types/background.d.ts"],
+-        "contentScript": ["types/contentScript.d.ts"],
+-      "providers/*": ["types/providers/*"],
+-      "popup/*": ["types/popup/*"]
+-      }
+-    },
+->>>>>>> da06222 (Merge branch 'main' into codex/add-offline-indicators-and-messaging-74rmba)
+   "devDependencies": {
+     "@playwright/test": "^1.54.2",
+     "@types/jest": "^30.0.0",
+diff --git a/src/contentScript.js b/src/contentScript.js
+index 9573016..7df3600 100644
+--- a/src/contentScript.js
++++ b/src/contentScript.js
+@@ -512,7 +512,7 @@ async function translateNode(node) {
+     }
+     node.textContent = leading + translated + trailing;
+     mark(node);
+-  } catch (e) {
++    } catch (e) {
+     const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
+     const offline = isOfflineError(e);
+     if (offline) {
+-- 
+2.50.0
+

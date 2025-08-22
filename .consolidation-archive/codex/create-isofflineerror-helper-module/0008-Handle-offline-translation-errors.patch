@@ -1,0 +1,151 @@
+From 36141c9a3abfaa77566c58594e1275f0edd09a13 Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Mon, 18 Aug 2025 07:08:41 +0200
+Subject: [PATCH 8/9] Handle offline translation errors
+
+---
+ package-lock.json    |  8 ++++++++
+ package.json         |  4 ++++
+ src/contentScript.js | 25 +++++++++++++++++++++++++
+ 3 files changed, 37 insertions(+)
+
+diff --git a/package-lock.json b/package-lock.json
+index 3ecb206..9ae6f69 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,22 +1,30 @@
+ {
+   "name": "qwen-translator-extension",
++<<<<<<< HEAD
+ <<<<<<< HEAD
+   "version": "1.35.1",
+   "version": "1.35.1",
+ =======
+   "version": "1.34.0",
+ >>>>>>> bf0b100 (Merge branch 'main' into codex/add-offline-indicators-and-messaging-hvff51)
++=======
++  "version": "1.33.0",
++>>>>>>> 76757db (Handle offline translation errors)
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "qwen-translator-extension",
++<<<<<<< HEAD
+ <<<<<<< HEAD
+       "version": "1.35.1",
+       "version": "1.35.1",
+ =======
+       "version": "1.34.0",
+ >>>>>>> bf0b100 (Merge branch 'main' into codex/add-offline-indicators-and-messaging-hvff51)
++=======
++      "version": "1.33.0",
++>>>>>>> 76757db (Handle offline translation errors)
+       "hasInstallScript": true,
+       "license": "AGPL-3.0-or-later",
+       "dependencies": {
+diff --git a/package.json b/package.json
+index 48bf202..d575c8f 100644
+--- a/package.json
++++ b/package.json
+@@ -1,10 +1,14 @@
+ {
+   "name": "qwen-translator-extension",
++<<<<<<< HEAD
+ <<<<<<< HEAD
+   "version": "1.35.1",
+ =======
+   "version": "1.35.0",
+ >>>>>>> bf0b100 (Merge branch 'main' into codex/add-offline-indicators-and-messaging-hvff51)
++=======
++  "version": "1.33.0",
++>>>>>>> 76757db (Handle offline translation errors)
+   "description": "Extension to translate web pages using Qwen-MT-Turbo model",
+   "main": "index.js",
+   "scripts": {
+diff --git a/src/contentScript.js b/src/contentScript.js
+index 9429158..9d4e2ba 100644
+--- a/src/contentScript.js
++++ b/src/contentScript.js
+@@ -521,6 +521,7 @@ async function translateNode(node) {
+     }
+     node.textContent = leading + translated + trailing;
+     mark(node);
++<<<<<<< HEAD
+     } catch (e) {
+     const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
+     const offline = isOfflineError(e);
+@@ -529,6 +530,11 @@ async function translateNode(node) {
+       try {
+         chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError());
+       } catch {}
++=======
++  } catch (e) {
++    if (isOfflineError(e)) {
++      showOffline();
++>>>>>>> 76757db (Handle offline translation errors)
+     } else {
+       showError(`${e.message}. See console for details.`);
+     }
+@@ -638,6 +644,7 @@ async function processQueue() {
+     try {
+       await translateBatch(item.nodes, stats);
+     } catch (e) {
++<<<<<<< HEAD
+       const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
+       const offline = isOfflineError(e);
+       if (offline) {
+@@ -645,6 +652,10 @@ async function processQueue() {
+         try {
+           chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError());
+         } catch {}
++=======
++      if (isOfflineError(e)) {
++        showOffline();
++>>>>>>> 76757db (Handle offline translation errors)
+       } else {
+         showError(`${e.message}. See console for details.`);
+         logger.error('QTERROR: batch translation error', e && e.message, e);
+@@ -875,11 +886,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+         clearTimeout(timer);
+         if (cfg.debug) logger.debug('QTDEBUG: test-e2e sending error', err);
+         el.remove();
++<<<<<<< HEAD
+         const offline = isOfflineError(err);
+         if (offline) {
+           try { chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError()); } catch {}
+         }
+         sendResponse({ error: offline ? 'offline' : err.message, stack: err.stack });
++=======
++        if (isOfflineError(err)) {
++          showOffline();
++          sendResponse({ error: 'offline' });
++        } else {
++          sendResponse({ error: err.message, stack: err.stack });
++        }
++>>>>>>> 76757db (Handle offline translation errors)
+       });
+     return true;
+   }
+@@ -912,6 +932,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+         addFeedbackUI(node, text, translated, res.confidence);
+         sel.removeAllRanges();
+       } catch (e) {
++<<<<<<< HEAD
+         const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
+         const offline = isOfflineError(e);
+         if (offline) {
+@@ -922,6 +943,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+         } else {
+           showError(`${t('bubble.error')}${e && e.message ? `: ${e.message}` : ''}`);
+         }
++=======
++        if (isOfflineError(e)) showOffline();
++        else showError('Translation failed');
++>>>>>>> 76757db (Handle offline translation errors)
+       }
+     })();
+   }
+-- 
+2.50.0
+

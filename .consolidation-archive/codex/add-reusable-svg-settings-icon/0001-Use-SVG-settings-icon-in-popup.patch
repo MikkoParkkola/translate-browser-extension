@@ -1,0 +1,93 @@
+From c93d2f3b4369f60eceb6cd93141d12b0eabe4ce7 Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Tue, 19 Aug 2025 17:31:12 +0200
+Subject: [PATCH] Use SVG settings icon in popup
+
+---
+ src/icons/settings.svg |  3 +++
+ src/popup.css          | 23 +++++++++++++++++++++++
+ src/popup.html         | 14 ++++++--------
+ 3 files changed, 32 insertions(+), 8 deletions(-)
+ create mode 100644 src/icons/settings.svg
+ create mode 100644 src/popup.css
+
+diff --git a/src/icons/settings.svg b/src/icons/settings.svg
+new file mode 100644
+index 0000000..0e00c12
+--- /dev/null
++++ b/src/icons/settings.svg
+@@ -0,0 +1,3 @@
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
++  <path id="settings-icon" fill="currentColor" d="M19.14,12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.11-1.65a.5.5 0 0 0 .12-.65l-2-3.46a.5.5 0 0 0-.6-.22l-2.49 1a7.07 7.07 0 0 0-1.63-.94l-.38-2.65A.5.5 0 0 0 13.7 3h-3.4a.5.5 0 0 0-.5.42l-.38 2.65a7.07 7.07 0 0 0-1.63.94l-2.49-1a.5.5 0 0 0-.6.22l-2 3.46a.5.5 0 0 0 .12.65L4.86 11.06c-.04.31-.06.63-.06.94s.02.63.06.94l-2.11 1.65a.5.5 0 0 0-.12.65l2 3.46a.5.5 0 0 0 .6.22l2.49-1c.5.4 1.05.73 1.63.94l.38 2.65a.5.5 0 0 0 .5.42h3.4a.5.5 0 0 0 .5-.42l.38-2.65c.58-.21 1.13-.54 1.63-.94l2.49 1a.5.5 0 0 0 .6-.22l2-3.46a.5.5 0 0 0-.12-.65l-2.11-1.65ZM12 15.5A3.5 3.5 0 1 1 15.5 12 3.5 3.5 0 0 1 12 15.5Z"/>
++</svg>
+diff --git a/src/popup.css b/src/popup.css
+new file mode 100644
+index 0000000..4bd2eab
+--- /dev/null
++++ b/src/popup.css
+@@ -0,0 +1,23 @@
++.icon-button {
++  background: none;
++  border: none;
++  color: var(--qwen-text);
++  cursor: pointer;
++  padding: 0.25rem;
++  border-radius: 4px;
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++}
++
++.icon-button svg {
++  width: 1.25rem;
++  height: 1.25rem;
++  fill: currentColor;
++}
++
++.icon-button:hover,
++.icon-button:focus-visible {
++  background: var(--qwen-primary-bg);
++  color: var(--qwen-text);
++}
+diff --git a/src/popup.html b/src/popup.html
+index 2bfca63..76a29bb 100644
+--- a/src/popup.html
++++ b/src/popup.html
+@@ -3,6 +3,7 @@
+ <head>
+   <meta charset="utf-8">
+   <link rel="stylesheet" href="styles/apple.css">
++  <link rel="stylesheet" href="popup.css">
+   <style>
+     html {
+       background: var(--qwen-bg, rgba(28,28,30,0.7));
+@@ -18,13 +19,6 @@
+       justify-content: flex-end;
+       padding: 0.5rem;
+     }
+-    #nav button {
+-      background: none;
+-      border: none;
+-      color: inherit;
+-      cursor: pointer;
+-      font-size: 1.25rem;
+-    }
+     #content {
+       width: 100%;
+       border: 0;
+@@ -34,7 +28,11 @@
+ </head>
+ <body>
+   <header id="nav">
+-    <button id="settingsBtn" aria-label="Settings">⚙️</button>
++    <button id="settingsBtn" class="icon-button" aria-label="Settings">
++      <svg viewBox="0 0 24 24" aria-hidden="true">
++        <use href="icons/settings.svg#settings-icon"></use>
++      </svg>
++    </button>
+   </header>
+   <iframe id="content" src="popup/home.html"></iframe>
+   <script src="providerConfig.js"></script>
+-- 
+2.50.0
+

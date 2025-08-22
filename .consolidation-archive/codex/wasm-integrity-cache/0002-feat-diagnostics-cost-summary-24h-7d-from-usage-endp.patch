@@ -1,0 +1,25 @@
+From a70ba203fbfcca1a27f3b866aa736acd1cc348eb Mon Sep 17 00:00:00 2001
+From: Your Name <you@example.com>
+Date: Tue, 19 Aug 2025 04:00:20 +0200
+Subject: [PATCH 2/8] feat(diagnostics): cost summary (24h/7d) from usage
+ endpoint (v2)
+
+---
+ src/popup/diagnostics.html | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/popup/diagnostics.html b/src/popup/diagnostics.html
+index 786b319..b0eb3d6 100644
+--- a/src/popup/diagnostics.html
++++ b/src/popup/diagnostics.html
+@@ -17,6 +17,7 @@
+   <div class="section" id="status"></div>
+   <div class="section" id="usage"></div>
+   <div class="section" id="costs"></div>
++  <div class="section" id="costs"></div>
+   <div class="section" id="quality"></div>
+   <div class="section" id="usageSummary"></div>
+   <canvas id="usageChart"></canvas>
+-- 
+2.50.0
+

@@ -1,0 +1,52 @@
+From 20735d7951cab8c9de77b3bd9a2d7efd67ba814a Mon Sep 17 00:00:00 2001
+From: Your Name <you@example.com>
+Date: Tue, 19 Aug 2025 03:37:08 +0200
+Subject: [PATCH 2/3] feat(diagnostics): add cost summary from usage endpoint
+ (24h/7d)
+
+---
+ src/popup/diagnostics.html | 1 +
+ src/popup/diagnostics.js   | 8 ++++++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/src/popup/diagnostics.html b/src/popup/diagnostics.html
+index a4eec36..f5a7312 100644
+--- a/src/popup/diagnostics.html
++++ b/src/popup/diagnostics.html
+@@ -16,6 +16,7 @@
+   <h3>Diagnostics</h3>
+   <div class="section" id="status"></div>
+   <div class="section" id="usage"></div>
++  <div class="section" id="costs"></div>
+   <div class="section" id="quality"></div>
+   <div class="section" id="usageSummary"></div>
+   <canvas id="usageChart" width="320" height="80" style="background: var(--qwen-secondary-bg, rgba(118,118,128,0.2)); border:1px solid var(--qwen-border, rgba(255,255,255,0.2)); border-radius:4px;"></canvas>
+diff --git a/src/popup/diagnostics.js b/src/popup/diagnostics.js
+index cf16c62..bc8e13f 100644
+--- a/src/popup/diagnostics.js
++++ b/src/popup/diagnostics.js
+@@ -2,6 +2,7 @@
+   const statusEl = document.getElementById('status');
+   const usageEl = document.getElementById('usage');
+   const cacheEl = document.getElementById('cache');
++  const costsEl = document.getElementById('costs');
+   const qualityEl = document.getElementById('quality');
+   const providersEl = document.getElementById('providers');
+   const backBtn = document.getElementById('back');
+@@ -113,6 +114,13 @@
+       if (m && m.version === 1) return resolve(m);
+       chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(resolve));
+     })));
++    // Load cost summary from legacy usage endpoint
++    chrome.runtime.sendMessage({ action: 'usage' }, handleLastError(u => {
++      try {
++        const c = u && u.costs && u.costs.total || {};
++        if (costsEl) costsEl.textContent = `Cost: 24h $${(c['24h']||0).toFixed ? c['24h'].toFixed(4) : c['24h']||0} | 7d $${(c['7d']||0).toFixed ? c['7d'].toFixed(4) : c['7d']||0}`;
++      } catch {}
++    }));
+     status = await new Promise(resolve => chrome.runtime.sendMessage({ action: 'get-status' }, handleLastError(resolve)));
+     render();
+     updateStatus();
+-- 
+2.50.0
+

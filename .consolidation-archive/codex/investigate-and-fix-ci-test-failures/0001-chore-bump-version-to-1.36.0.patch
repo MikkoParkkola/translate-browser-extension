@@ -1,0 +1,83 @@
+From 07fee7bea3a27e4946250f75e20f2258f537dc83 Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Mon, 18 Aug 2025 15:06:25 +0200
+Subject: [PATCH] chore: bump version to 1.36.0
+
+---
+ package-lock.json           |  4 ++--
+ package.json                |  2 +-
+ src/lib/offline.js          |  3 ++-
+ test/isOfflineError.test.js | 17 +++++++++++++++--
+ 4 files changed, 20 insertions(+), 6 deletions(-)
+
+diff --git a/package-lock.json b/package-lock.json
+index 5d2ea4a..d43ace2 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "qwen-translator-extension",
+-  "version": "1.35.2",
++  "version": "1.36.0",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "qwen-translator-extension",
+-      "version": "1.35.2",
++      "version": "1.36.0",
+       "hasInstallScript": true,
+       "license": "AGPL-3.0-or-later",
+       "dependencies": {
+diff --git a/package.json b/package.json
+index a91b700..bfc7872 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "qwen-translator-extension",
+-  "version": "1.35.2",
++  "version": "1.36.0",
+   "description": "Extension to translate web pages using Qwen-MT-Turbo model",
+   "main": "index.js",
+   "scripts": {
+diff --git a/src/lib/offline.js b/src/lib/offline.js
+index 0f9591b..c7de973 100644
+--- a/src/lib/offline.js
++++ b/src/lib/offline.js
+@@ -1,5 +1,6 @@
+ function isOfflineError(err) {
+-  return !navigator.onLine || (err && /network|fetch/i.test(err.message || ''));
++  const online = globalThis.navigator?.onLine ?? true;
++  return !online || (err && /network|fetch/i.test(err.message || ''));
+ }
+ 
+ if (typeof module !== 'undefined') module.exports = { isOfflineError };
+diff --git a/test/isOfflineError.test.js b/test/isOfflineError.test.js
+index fe0e476..f57f31b 100644
+--- a/test/isOfflineError.test.js
++++ b/test/isOfflineError.test.js
+@@ -1,5 +1,18 @@
+ const { isOfflineError } = require('../src/lib/offline.js');
+ 
+-test('detects network errors', () => {
+-  expect(isOfflineError(new Error('Failed to fetch'))).toBe(true);
++describe('isOfflineError', () => {
++  test('detects network errors', () => {
++    expect(isOfflineError(new Error('Failed to fetch'))).toBe(true);
++  });
++
++  test('handles missing navigator', () => {
++    const original = global.navigator;
++    try {
++      delete global.navigator;
++      expect(isOfflineError(new Error('Failed to fetch'))).toBe(true);
++      expect(isOfflineError(new Error('Oops'))).toBe(false);
++    } finally {
++      global.navigator = original;
++    }
++  });
+ });
+-- 
+2.50.0
+

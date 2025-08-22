@@ -1,0 +1,116 @@
+From abe532d6b770ca1d3a16525747a0bbe92d9a38f5 Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Wed, 30 Jul 2025 18:01:37 +0200
+Subject: [PATCH 13/36] Update DashScope endpoints
+
+---
+ src/background.js | 15 +++++++++++----
+ src/translator.js | 27 ++++++++++++++++-----------
+ 2 files changed, 27 insertions(+), 15 deletions(-)
+
+diff --git a/src/background.js b/src/background.js
+index 2ac3283..6477208 100644
+--- a/src/background.js
++++ b/src/background.js
+@@ -8,17 +8,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+     const ep = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
+     const controller = new AbortController();
+     const timer = setTimeout(() => controller.abort(), 10000);
+-    const url = `${ep}services/aigc/mt/text-translator/generation-stream`;
++    const url = `${ep}services/aigc/text-generation/generation`;
+     console.log('Background translating via', url);
+     fetch(url, {
+       method: 'POST',
+       headers: {
+         'Content-Type': 'application/json',
+-        Authorization: `Bearer ${apiKey}`,
++        Authorization: apiKey,
++        'X-DashScope-SSE': 'enable',
+       },
+       body: JSON.stringify({
+         model,
+-        input: { source_language: source, target_language: target, text },
++        input: { messages: [{ role: 'user', content: text }] },
++        parameters: {
++          translation_options: { source_lang: source, target_lang: target },
++        },
+       }),
+       signal: controller.signal,
+     })
+@@ -46,7 +50,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+             if (data === '[DONE]') { reader.cancel(); break; }
+             try {
+               const obj = JSON.parse(data);
+-              if (obj.output && obj.output.text) result += obj.output.text;
++              const chunk =
++                obj.output?.text ||
++                obj.output?.choices?.[0]?.message?.content || '';
++              result += chunk;
+             } catch {}
+           }
+         }
+diff --git a/src/translator.js b/src/translator.js
+index 6485b36..5c40228 100644
+--- a/src/translator.js
++++ b/src/translator.js
+@@ -10,20 +10,21 @@ function withSlash(url) {
+ }
+ 
+ async function doFetch({ endpoint, apiKey, model, text, source, target, signal }) {
+-  const streamPath = `${withSlash(endpoint)}services/aigc/mt/text-translator/generation-stream`;
+-  const url = (typeof window === 'undefined')
+-    ? `${withSlash(endpoint)}services/aigc/mt/text-translator/generation`
+-    : streamPath;
++  const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
+   console.log('Sending translation request to', url);
+   const body = {
+     model,
+-    input: { source_language: source, target_language: target, text },
++    input: { messages: [{ role: 'user', content: text }] },
++    parameters: {
++      translation_options: { source_lang: source, target_lang: target },
++    },
+   };
+   const resp = await fetchFn(url, {
+     method: 'POST',
+     headers: {
+       'Content-Type': 'application/json',
+-      Authorization: `Bearer ${apiKey}`,
++      Authorization: apiKey,
++      ...(typeof window !== 'undefined' ? { 'X-DashScope-SSE': 'enable' } : {}),
+     },
+     body: JSON.stringify(body),
+     signal,
+@@ -36,10 +37,13 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal }
+   }
+   if (!resp.body || typeof resp.body.getReader !== 'function') {
+     const data = await resp.json();
+-    if (!data.output || !data.output.text) {
++    const text =
++      data.output?.text ||
++      data.output?.choices?.[0]?.message?.content;
++    if (!text) {
+       throw new Error('Invalid API response');
+     }
+-    return data.output;
++    return { text };
+   }
+ 
+   const reader = resp.body.getReader();
+@@ -62,9 +66,10 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal }
+       }
+       try {
+         const obj = JSON.parse(data);
+-        if (obj.output && obj.output.text) {
+-          result += obj.output.text;
+-        }
++        const chunk =
++          obj.output?.text ||
++          obj.output?.choices?.[0]?.message?.content || '';
++        result += chunk;
+       } catch {}
+     }
+   }
+-- 
+2.50.0
+

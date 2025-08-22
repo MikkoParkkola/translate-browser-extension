@@ -1,0 +1,64 @@
+From 7d6a524c062e56fe97429f7193f2f48be74757c2 Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Wed, 30 Jul 2025 16:49:55 +0200
+Subject: [PATCH 09/36] Fix model fetch endpoint
+
+---
+ README.md      |  6 +++---
+ src/options.js | 16 ++++++++++------
+ 2 files changed, 13 insertions(+), 9 deletions(-)
+
+diff --git a/README.md b/README.md
+index 82155a0..f1e0b00 100644
+--- a/README.md
++++ b/README.md
+@@ -16,9 +16,9 @@ Reload the unpacked extension after replacing the files with a newer version.
+ 
+ ## Configuration
+ Use the extension options page to set:
+-- API key and optional endpoint
+-  (keep your API key private)
+-- Translation model (click Refresh to fetch available models)
++- API key and optional endpoint (keep your API key private)
++- Translation model (`qwen-mt-plus` or `qwen-mt-turbo`)
++  - Click **Refresh** to retrieve the model list from the `/models` API
+ - Target language and ignored languages
+ - Automatic translation toggle
+ The language and model lists include search boxes to make selection easier.
+diff --git a/src/options.js b/src/options.js
+index a9da649..1b23ed1 100644
+--- a/src/options.js
++++ b/src/options.js
+@@ -35,7 +35,7 @@ async function fetchModels() {
+   const endpoint = withSlash(endpointInput.value.trim());
+   const key = apiKeyInput.value.trim();
+   try {
+-    const url = `${endpoint}services/aigc/mt/text-translator/models`;
++    const url = `${endpoint}models`;
+     console.log('Fetching models from', url);
+     const res = await fetch(url, {
+       headers: { 'Authorization': `Bearer ${key}` }
+@@ -46,11 +46,15 @@ async function fetchModels() {
+     }
+     const data = await res.json();
+     modelSelect.innerHTML = '';
+-    data.models.forEach(m => {
+-      const opt = document.createElement('option');
+-      opt.value = m.model; opt.textContent = m.model;
+-      modelSelect.appendChild(opt);
+-    });
++    const list = Array.isArray(data.models) ? data.models : data;
++    list
++      .filter(m => m.model && m.model.includes('qwen-mt'))
++      .forEach(m => {
++        const opt = document.createElement('option');
++        opt.value = m.model;
++        opt.textContent = m.model;
++        modelSelect.appendChild(opt);
++      });
+     attachSearch(modelSelect, modelSearch);
+   } catch (e) {
+     console.error('Model fetch error:', e);
+-- 
+2.50.0
+

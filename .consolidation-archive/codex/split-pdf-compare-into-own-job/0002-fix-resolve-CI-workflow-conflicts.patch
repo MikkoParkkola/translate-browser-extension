@@ -1,0 +1,52 @@
+From 94c0d0478de398d2c54d890dc300c972dcc63ff6 Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Tue, 19 Aug 2025 16:38:02 +0200
+Subject: [PATCH 2/2] fix: resolve CI workflow conflicts
+
+---
+ .github/workflows/ci.yml  | 3 +--
+ .github/workflows/e2e.yml | 4 ++--
+ 2 files changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 7404d71..42ac205 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -1,4 +1,3 @@
+-# New file
+ name: CI
+ 
+ on:
+@@ -148,7 +147,7 @@ jobs:
+           path: playwright-report
+ 
+   automerge:
+-    needs: [build-and-test, e2e-web, e2e-pdf]
++    needs: [build-and-test, e2e-web]
+     if: github.event_name == 'pull_request'
+     runs-on: ubuntu-latest
+     permissions:
+diff --git a/.github/workflows/e2e.yml b/.github/workflows/e2e.yml
+index 753d5e6..c9d8a81 100644
+--- a/.github/workflows/e2e.yml
++++ b/.github/workflows/e2e.yml
+@@ -24,7 +24,7 @@ jobs:
+           cache: 'npm'
+ 
+       - name: Install deps
+-        run: npm install --no-audit --no-fund
++        run: npm ci
+ 
+       - name: Install Playwright Browsers
+         run: npx playwright install --with-deps
+@@ -40,6 +40,6 @@ jobs:
+           fi
+ 
+       - name: Run E2E tests
+-        run: npm run e2e
++        run: npm run test:e2e:pdf
+ 
+       # Privacy: do not upload screenshots or artifacts by default to avoid exposing PDFs/PII
+-- 
+2.50.0
+

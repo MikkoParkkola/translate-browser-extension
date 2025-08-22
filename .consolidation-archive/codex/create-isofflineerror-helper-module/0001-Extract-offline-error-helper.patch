@@ -1,0 +1,152 @@
+From c76798eca76cfa7de2c4c8483424bbabdfbb399a Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Mon, 18 Aug 2025 10:42:11 +0200
+Subject: [PATCH 1/9] Extract offline error helper
+
+---
+ src/background.js           | 13 +++++++++----
+ src/contentScript.js        | 11 ++++++-----
+ src/lib/offline.js          |  6 ++++++
+ test/contentScript.test.js  |  1 +
+ test/isOfflineError.test.js |  5 +++++
+ 5 files changed, 27 insertions(+), 9 deletions(-)
+ create mode 100644 src/lib/offline.js
+ create mode 100644 test/isOfflineError.test.js
+
+diff --git a/src/background.js b/src/background.js
+index 2f1ca94..6712a8b 100644
+--- a/src/background.js
++++ b/src/background.js
+@@ -1,4 +1,9 @@
+-importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'providers/mistral.js', 'lib/tm.js', 'lib/feedback.js', 'lib/qualityCheck.js', 'config.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js', 'backgroundBenchmark.js');
++importScripts('lib/logger.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'providers/mistral.js', 'lib/tm.js', 'lib/feedback.js', 'lib/qualityCheck.js', 'lib/offline.js', 'config.js', 'throttle.js', 'translator.js', 'usageColor.js', 'findLimit.js', 'limitDetector.js', 'backgroundBenchmark.js');
++
++// Ensure helper is available when importScripts is stubbed (tests)
++if (typeof self.isOfflineError === 'undefined' && typeof require === 'function') {
++  self.isOfflineError = require('./lib/offline.js').isOfflineError;
++}
+ 
+ const logger = (self.qwenLogger && self.qwenLogger.create)
+   ? self.qwenLogger.create('background')
+@@ -174,7 +179,7 @@ async function injectContentScripts(tabId) {
+   try {
+     await chrome.scripting.executeScript({
+       target: { tabId, allFrames: true },
+-      files: ['i18n/index.js', 'lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/glossary.js', 'lib/tm.js', 'lib/detect.js', 'lib/feedback.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
++      files: ['i18n/index.js', 'lib/logger.js', 'lib/messaging.js', 'lib/batchDelim.js', 'lib/providers.js', 'providers/openai.js', 'providers/openrouter.js', 'providers/deepl.js', 'providers/dashscope.js', 'lib/glossary.js', 'lib/tm.js', 'lib/detect.js', 'lib/feedback.js', 'lib/offline.js', 'config.js', 'throttle.js', 'translator.js', 'contentScript.js'],
+     });
+   } catch (e) {
+     // Tab may have been closed; ignore injection failure
+@@ -585,7 +590,7 @@ async function handleTranslate(opts) {
+     logger.error('background translation error', err);
+     logUsage(tokens, Date.now() - start);
+     iconError = true;
+-    const offline = !navigator.onLine || (err && /network|fetch/i.test(err.message || ''));
++    const offline = isOfflineError(err);
+     if (offline) {
+       try { chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }); } catch {}
+       return { error: 'offline' };
+@@ -903,7 +908,7 @@ chrome.runtime.onConnect.addListener(port => {
+         logger.error('background port translation error', err);
+         logUsage(tokens, Date.now() - start);
+         iconError = true;
+-        const offline = !navigator.onLine || (err && /network|fetch/i.test(err.message || ''));
++        const offline = isOfflineError(err);
+         try { port.postMessage({ requestId, error: offline ? 'offline' : err.message }); } catch {}
+         if (offline) {
+           try { chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }); } catch {}
+diff --git a/src/contentScript.js b/src/contentScript.js
+index 1833ab6..88b1b13 100644
+--- a/src/contentScript.js
++++ b/src/contentScript.js
+@@ -25,6 +25,7 @@ if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
+   let pageRecognizer;
+   let prefetchObserver;
+   const visibilityMap = new Map();
++  const { isOfflineError } = (typeof require === 'function' ? require('./lib/offline.js') : window);
+ 
+   function cleanupControllers() {
+     controllers.forEach(c => {
+@@ -361,7 +362,7 @@ async function showSelectionBubble(range, text) {
+       });
+       result.textContent = res.text;
+     } catch (e) {
+-      const offline = !navigator.onLine || (e && /network|fetch/i.test(e.message || ''));
++      const offline = isOfflineError(e);
+       if (offline) {
+         result.textContent = t('bubble.offline');
+         try {
+@@ -466,7 +467,7 @@ async function translateNode(node) {
+     mark(node);
+   } catch (e) {
+     const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
+-    const offline = !navigator.onLine || (e && /network|fetch/i.test(e.message || ''));
++    const offline = isOfflineError(e);
+     if (offline) {
+       showError(t('popup.offline'));
+       try {
+@@ -582,7 +583,7 @@ async function processQueue() {
+       await translateBatch(item.nodes, stats);
+     } catch (e) {
+       const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
+-      const offline = !navigator.onLine || (e && /network|fetch/i.test(e.message || ''));
++      const offline = isOfflineError(e);
+       if (offline) {
+         showError(t('popup.offline'));
+         try {
+@@ -818,7 +819,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+         clearTimeout(timer);
+         if (cfg.debug) logger.debug('QTDEBUG: test-e2e sending error', err);
+         el.remove();
+-        const offline = !navigator.onLine || (err && /network|fetch/i.test(err.message || ''));
++        const offline = isOfflineError(err);
+         if (offline) {
+           try { chrome.runtime.sendMessage({ action: 'translation-status', status: { offline: true } }, handleLastError()); } catch {}
+         }
+@@ -856,7 +857,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+         sel.removeAllRanges();
+       } catch (e) {
+         const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
+-        const offline = !navigator.onLine || (e && /network|fetch/i.test(e.message || ''));
++        const offline = isOfflineError(e);
+         if (offline) {
+           showError(t('popup.offline'));
+           try {
+diff --git a/src/lib/offline.js b/src/lib/offline.js
+new file mode 100644
+index 0000000..0f9591b
+--- /dev/null
++++ b/src/lib/offline.js
+@@ -0,0 +1,6 @@
++function isOfflineError(err) {
++  return !navigator.onLine || (err && /network|fetch/i.test(err.message || ''));
++}
++
++if (typeof module !== 'undefined') module.exports = { isOfflineError };
++if (typeof self !== 'undefined') self.isOfflineError = isOfflineError;
+diff --git a/test/contentScript.test.js b/test/contentScript.test.js
+index 02a847a..f30c93e 100644
+--- a/test/contentScript.test.js
++++ b/test/contentScript.test.js
+@@ -258,6 +258,7 @@ test('translate-selection error uses localized message', async () => {
+   sel.addRange(range);
+   messageListener({ action: 'translate-selection' });
+   await new Promise(r => setTimeout(r, 0));
++  await new Promise(r => setTimeout(r, 0));
+   const status = document.getElementById('qwen-status');
+   expect(status.textContent).toBe('Qwen Translator: Localized fail: oops');
+ });
+diff --git a/test/isOfflineError.test.js b/test/isOfflineError.test.js
+new file mode 100644
+index 0000000..fe0e476
+--- /dev/null
++++ b/test/isOfflineError.test.js
+@@ -0,0 +1,5 @@
++const { isOfflineError } = require('../src/lib/offline.js');
++
++test('detects network errors', () => {
++  expect(isOfflineError(new Error('Failed to fetch'))).toBe(true);
++});
+-- 
+2.50.0
+

@@ -1,0 +1,323 @@
+From dccbd7ee37fedec8a44a6b63373678322b73c7e1 Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Sat, 2 Aug 2025 14:54:50 +0200
+Subject: [PATCH 35/44] Fix background messaging for content scripts
+
+---
+ README.md            | 17 +++++++++----
+ src/background.js    | 22 ++++++++++++-----
+ src/contentScript.js |  8 +++++-
+ src/popup.js         | 33 ++++++++++++++++++++++---
+ src/throttle.js      | 58 +++++++++++++++++++++++++++-----------------
+ src/translator.js    | 35 ++++++++++++++++++++++----
+ 6 files changed, 130 insertions(+), 43 deletions(-)
+
+diff --git a/README.md b/README.md
+index 4a0f05a..f038ed6 100644
+--- a/README.md
++++ b/README.md
+@@ -9,6 +9,10 @@ This Chrome extension translates the content of the active tab using Alibaba Clo
+ 4. Choose "Load unpacked" and select the folder containing the extension files.
+    The extension requests the "tabs" permission so the popup can send
+    messages to the active tab for translation.
++   If Chrome reports **Service worker registration failed. Status code: 15**,
++   ensure the selected folder contains `manifest.json`, `background.js` and the
++   other files from the `src` directory. Loading the repository root without the
++   bundled files will cause the worker to fail.
+ 
+ ## Uninstallation
+ Remove the extension from the browser's extension management page.
+@@ -26,11 +30,12 @@ Click **Test Settings** in the popup to run a short diagnostic. The extension pe
+ 1. Connect to the configured API endpoint
+ 2. Send an OPTIONS preflight request to the translation URL
+ 3. Perform a direct non-stream translation
+-4. Perform the same translation via the background service worker
+-5. Send a streaming translation request
+-6. Read the contents of the active tab
+-7. Translate a short string inside the active tab
+-8. Verify that extension settings can be saved
++4. Verify that the background service worker responds
++5. Perform the same translation via the background service worker
++6. Send a streaming translation request
++7. Read the contents of the active tab
++8. Translate a short string inside the active tab
++9. Verify that extension settings can be saved
+ Each step displays a pass or fail result and honours the debug logging preference.
+ The active tab check may fail on browser-internal pages (such as the Chrome Web Store or settings). Open a regular web page before running the test.
+ The final end-to-end tab translation aborts after about 10 seconds if no response is received.
+@@ -48,6 +53,8 @@ Both model refreshes and translation requests write trace logs to the browser co
+ If the **Test Settings** button reports a timeout, the network request may be blocked by Content Security Policy or CORS restrictions. The extension automatically falls back to `XMLHttpRequest` when `fetch` fails, but some environments may still prevent the call entirely.
+ If the **Read active tab** check fails, make sure the currently focused tab is a normal web page; the extension cannot access Chrome or extension pages.
+ If the tab translation step fails, the page may block script execution or DOM updates.
++Some sites impose strict Content Security Policies that prevent the test element from executing or restrict network requests. Open a simple page such as `https://example.com` before running the tests. Console errors from third-party resources do not affect the translation check.
++Enable **Debug logging** in the popup to see details about the active tab and any error stack returned by the content script.
+ 
+ ## Development
+ Run the unit tests with:
+diff --git a/src/background.js b/src/background.js
+index 137db07..e1f3e95 100644
+--- a/src/background.js
++++ b/src/background.js
+@@ -1,6 +1,4 @@
+ importScripts('throttle.js', 'translator.js');
+-const { configure } = self.qwenThrottle;
+-const { qwenTranslate } = self;
+ 
+ chrome.runtime.onInstalled.addListener(() => {
+   console.log('Qwen Translator installed');
+@@ -14,13 +12,17 @@ async function handleTranslate(opts) {
+   const cfg = await new Promise(resolve =>
+     chrome.storage.sync.get({ requestLimit: 60, tokenLimit: 100000 }, resolve)
+   );
+-  configure({ requestLimit: cfg.requestLimit, tokenLimit: cfg.tokenLimit, windowMs: 60000 });
++  self.qwenThrottle.configure({
++    requestLimit: cfg.requestLimit,
++    tokenLimit: cfg.tokenLimit,
++    windowMs: 60000,
++  });
+ 
+   const controller = new AbortController();
+   const timeout = setTimeout(() => controller.abort(), 20000);
+ 
+   try {
+-    const result = await qwenTranslate({
++    const result = await self.qwenTranslate({
+       endpoint: ep,
+       apiKey,
+       model,
+@@ -41,8 +43,16 @@ async function handleTranslate(opts) {
+   }
+ }
+ 
+-chrome.runtime.onMessage.addListener((msg, sender) => {
++chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+   if (msg.action === 'translate') {
+-    return handleTranslate(msg.opts);
++    handleTranslate(msg.opts)
++      .then(sendResponse)
++      .catch(err => sendResponse({ error: err.message }));
++    return true;
++  }
++  if (msg.action === 'ping') {
++    if (msg.debug) console.log('QTDEBUG: ping received');
++    sendResponse({ ok: true });
++    return true;
+   }
+ });
+diff --git a/src/contentScript.js b/src/contentScript.js
+index 97d3159..1d27bf9 100644
+--- a/src/contentScript.js
++++ b/src/contentScript.js
+@@ -128,14 +128,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+       })
+       .then(res => {
+         clearTimeout(timer);
++        if (cfg.debug) console.log('QTDEBUG: test-e2e translation result', res);
++        if (!res || typeof res.text !== 'string') {
++          throw new Error('invalid response');
++        }
+         el.textContent = res.text;
++        if (cfg.debug) console.log('QTDEBUG: test-e2e sending response');
+         sendResponse({ text: res.text });
+         setTimeout(() => el.remove(), 1000);
+       })
+       .catch(err => {
+         clearTimeout(timer);
++        if (cfg.debug) console.log('QTDEBUG: test-e2e sending error', err);
+         el.remove();
+-        sendResponse({ error: err.message });
++        sendResponse({ error: err.message, stack: err.stack });
+       });
+     return true;
+   }
+diff --git a/src/popup.js b/src/popup.js
+index 34a5a4c..dad9112 100644
+--- a/src/popup.js
++++ b/src/popup.js
+@@ -124,6 +124,19 @@ document.getElementById('test').addEventListener('click', async () => {
+     if (!res.text) throw new Error('empty response');
+   })) && allOk;
+ 
++  allOk = (await run('Background ping', async () => {
++    const resp = await new Promise((resolve, reject) => {
++      chrome.runtime.sendMessage({ action: 'ping', debug: cfg.debug }, res => {
++        if (chrome.runtime.lastError) {
++          reject(new Error(chrome.runtime.lastError.message));
++        } else {
++          resolve(res);
++        }
++      });
++    });
++    if (!resp || !resp.ok) throw new Error('no response');
++  })) && allOk;
++
+   allOk = (await run('Background translation', async () => {
+     const res = await window.qwenTranslate({ ...cfg, text: 'hello', stream: false });
+     if (!res.text) throw new Error('empty response');
+@@ -158,12 +171,18 @@ document.getElementById('test').addEventListener('click', async () => {
+   allOk = (await run('Tab translation', async () => {
+     const tabs = await new Promise(r => chrome.tabs.query({ active: true, currentWindow: true }, r));
+     if (!tabs[0]) throw new Error('no tab');
++    const tab = tabs[0];
++    log('QTDEBUG: active tab for tab translation test', { id: tab.id, url: tab.url });
+     const resp = await new Promise((resolve, reject) => {
+-      const timer = setTimeout(() => reject(new Error('timeout waiting for tab response')), 15000);
+-      log('QTDEBUG: sending test-e2e request to tab', tabs[0].id);
+-      chrome.tabs.sendMessage(tabs[0].id, { action: 'test-e2e', cfg }, res => {
++      const timer = setTimeout(() => {
++        log('QTERROR: tab translation timed out', { id: tab.id, url: tab.url });
++        reject(new Error('timeout waiting for tab response'));
++      }, 15000);
++      log('QTDEBUG: sending test-e2e request to tab', tab.id);
++      chrome.tabs.sendMessage(tab.id, { action: 'test-e2e', cfg }, res => {
+         clearTimeout(timer);
+         if (chrome.runtime.lastError) {
++          log('QTERROR: tab message failed', chrome.runtime.lastError.message);
+           reject(new Error(chrome.runtime.lastError.message));
+         } else {
+           log('QTDEBUG: tab responded', res);
+@@ -171,10 +190,16 @@ document.getElementById('test').addEventListener('click', async () => {
+         }
+       });
+     });
+-    if (!resp || resp.error) throw new Error(resp ? resp.error : 'no response');
++    if (!resp || resp.error) {
++      const err = new Error(resp ? resp.error : 'no response');
++      if (resp && resp.stack) err.stack = resp.stack;
++      log('QTERROR: tab returned error', err.message);
++      throw err;
++    }
+     if (!resp.text || resp.text.toLowerCase() === 'hello world') {
+       throw new Error('translation failed');
+     }
++    log('QTDEBUG: tab translation succeeded', resp.text);
+   })) && allOk;
+ 
+   allOk = (await run('Storage access', async () => {
+diff --git a/src/throttle.js b/src/throttle.js
+index a1fbdbe..ba3a9ab 100644
+--- a/src/throttle.js
++++ b/src/throttle.js
+@@ -1,22 +1,25 @@
+-const queue = [];
+-let config = {
+-  requestLimit: 60,
+-  tokenLimit: 100000,
+-  windowMs: 60000,
+-};
+-let availableRequests = config.requestLimit;
+-let availableTokens = config.tokenLimit;
+-let interval = setInterval(() => {
+-  availableRequests = config.requestLimit;
+-  availableTokens = config.tokenLimit;
+-  processQueue();
+-}, config.windowMs);
++;(function (root) {
++  if (root.qwenThrottle) return
++
++  const queue = []
++  let config = {
++    requestLimit: 60,
++    tokenLimit: 100000,
++    windowMs: 60000,
++  }
++  let availableRequests = config.requestLimit
++  let availableTokens = config.tokenLimit
++  let interval = setInterval(() => {
++    availableRequests = config.requestLimit
++    availableTokens = config.tokenLimit
++    processQueue()
++  }, config.windowMs)
+ 
+ function approxTokens(text) {
+   return Math.max(1, Math.ceil(text.length / 4));
+ }
+ 
+-function configure(opts = {}) {
++function throttleConfigure(opts = {}) {
+   Object.assign(config, opts);
+   availableRequests = config.requestLimit;
+   availableTokens = config.tokenLimit;
+@@ -65,12 +68,23 @@ async function runWithRetry(fn, text, attempts = 3, debug = false) {
+   }
+ }
+ 
+-if (typeof module !== 'undefined') {
+-  module.exports = { runWithRateLimit, runWithRetry, configure, approxTokens };
+-}
++  if (typeof module !== 'undefined') {
++    module.exports = { runWithRateLimit, runWithRetry, configure: throttleConfigure, approxTokens }
++  }
+ 
+-if (typeof window !== 'undefined') {
+-  window.qwenThrottle = { runWithRateLimit, runWithRetry, configure, approxTokens };
+-} else if (typeof self !== 'undefined') {
+-  self.qwenThrottle = { runWithRateLimit, runWithRetry, configure, approxTokens };
+-}
++  if (typeof window !== 'undefined') {
++    root.qwenThrottle = {
++      runWithRateLimit,
++      runWithRetry,
++      configure: throttleConfigure,
++      approxTokens,
++    }
++  } else if (typeof self !== 'undefined') {
++    root.qwenThrottle = {
++      runWithRateLimit,
++      runWithRetry,
++      configure: throttleConfigure,
++      approxTokens,
++    }
++  }
++})(typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : globalThis)
+diff --git a/src/translator.js b/src/translator.js
+index f460e1d..201e91c 100644
+--- a/src/translator.js
++++ b/src/translator.js
+@@ -184,13 +184,38 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
+     return cache.get(cacheKey);
+   }
+ 
+-  if (!noProxy && typeof window !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
++  if (
++    !noProxy &&
++    typeof window !== 'undefined' &&
++    typeof chrome !== 'undefined' &&
++    chrome.runtime &&
++    chrome.runtime.sendMessage
++  ) {
+     const ep = withSlash(endpoint);
+     if (debug) console.log('QTDEBUG: requesting translation via background script');
+-    const result = await chrome.runtime
+-      .sendMessage({ action: 'translate', opts: { endpoint: ep, apiKey, model, text, source, target, debug } })
+-      .catch(err => { throw new Error(err.message || err); });
+-    if (result && result.error) {
++    const result = await new Promise((resolve, reject) => {
++      try {
++        chrome.runtime.sendMessage(
++          {
++            action: 'translate',
++            opts: { endpoint: ep, apiKey, model, text, source, target, debug },
++          },
++          res => {
++            if (chrome.runtime.lastError) {
++              reject(new Error(chrome.runtime.lastError.message));
++            } else {
++              resolve(res);
++            }
++          }
++        );
++      } catch (err) {
++        reject(err);
++      }
++    });
++    if (!result) {
++      throw new Error('No response from background');
++    }
++    if (result.error) {
+       throw new Error(result.error);
+     }
+     if (debug) console.log('QTDEBUG: background response received');
+-- 
+2.50.0
+

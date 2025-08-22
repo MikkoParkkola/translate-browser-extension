@@ -1,0 +1,414 @@
+From fb5e1407a55aa33a50a6b184248a495b52cb9820 Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Thu, 31 Jul 2025 03:12:22 +0200
+Subject: [PATCH 23/50] Use common translator implementation and add streaming
+ function
+
+---
+ README.md         |  3 +-
+ cli/translate.js  | 80 ++++++++++-------------------------------------
+ package-lock.json |  4 +--
+ package.json      |  2 +-
+ src/manifest.json |  2 +-
+ src/popup.js      | 20 ++++++------
+ src/throttle.js   |  1 +
+ src/translator.js | 78 +++++++++++++++++++++++++++++++++++++++++----
+ 8 files changed, 106 insertions(+), 84 deletions(-)
+
+diff --git a/README.md b/README.md
+index 7043ff3..3ab2649 100644
+--- a/README.md
++++ b/README.md
+@@ -47,8 +47,9 @@ A simple translator CLI is included in `cli/translate.js`. It streams translatio
+ 
+ ### Usage
+ ```sh
+-node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--tokens M] -s <source_lang> -t <target_lang>
++node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--tokens M] [-d] -s <source_lang> -t <target_lang>
+ ```
+ If no endpoint is specified the tool defaults to `https://dashscope-intl.aliyuncs.com/api/v1`.
++Use `-d` to print detailed request and response logs.
+ Press `Ctrl+C` or `Ctrl+D` to exit.
+ 
+diff --git a/cli/translate.js b/cli/translate.js
+index 76dbcbe..8bf743f 100755
+--- a/cli/translate.js
++++ b/cli/translate.js
+@@ -1,67 +1,8 @@
+ #!/usr/bin/env node
+ 
+ const readline = require('readline');
+-const fetch = require('cross-fetch');
+-const { runWithRateLimit, approxTokens, configure } = require('../src/throttle');
+-
+-function withSlash(url) {
+-  return url.endsWith('/') ? url : `${url}/`;
+-}
+-
+-async function translateStream({ endpoint, apiKey, model, text, source, target }, onData) {
+-  const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
+-  const body = {
+-    model,
+-    input: { messages: [{ role: 'user', content: text }] },
+-    parameters: { translation_options: { source_lang: source, target_lang: target } },
+-  };
+-  const resp = await runWithRateLimit(
+-    () => fetch(url, {
+-      method: 'POST',
+-      headers: {
+-        'Content-Type': 'application/json',
+-        Authorization: apiKey,
+-      },
+-      body: JSON.stringify(body),
+-    }),
+-    approxTokens(text)
+-  );
+-
+-  if (!resp.ok) {
+-    const err = await resp.json().catch(() => ({ message: resp.statusText }));
+-    throw new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
+-  }
+-
+-  if (!resp.body || typeof resp.body.getReader !== 'function') {
+-    const data = await resp.json();
+-    if (data.output && data.output.text) onData(data.output.text);
+-    return;
+-  }
+-
+-  const reader = resp.body.getReader();
+-  const decoder = new TextDecoder();
+-  let buffer = '';
+-  while (true) {
+-    const { value, done } = await reader.read();
+-    if (done) break;
+-    buffer += decoder.decode(value, { stream: true });
+-    const lines = buffer.split('\n');
+-    buffer = lines.pop();
+-    for (const line of lines) {
+-      const trimmed = line.trim();
+-      if (!trimmed.startsWith('data:')) continue;
+-      const data = trimmed.slice(5).trim();
+-      if (data === '[DONE]') {
+-        reader.cancel();
+-        return;
+-      }
+-      try {
+-        const obj = JSON.parse(data);
+-        if (obj.output && obj.output.text) onData(obj.output.text);
+-      } catch {}
+-    }
+-  }
+-}
++const { configure } = require('../src/throttle');
++const { qwenTranslateStream } = require('../src/translator');
+ 
+ function parseArgs() {
+   const args = process.argv.slice(2);
+@@ -75,6 +16,7 @@ function parseArgs() {
+     else if (a === '-t' || a === '--target') opts.target = args[++i];
+     else if (a === '--requests') opts.requestLimit = parseInt(args[++i], 10);
+     else if (a === '--tokens') opts.tokenLimit = parseInt(args[++i], 10);
++    else if (a === '-d' || a === '--debug') opts.debug = true;
+     else if (a === '-h' || a === '--help') opts.help = true;
+   }
+   return opts;
+@@ -86,13 +28,22 @@ async function main() {
+   const opts = parseArgs();
+ 
+   if (opts.help || !opts.apiKey || !opts.source || !opts.target) {
+-    console.log('Usage: node translate.js -k <apiKey> [-e endpoint] [-m model] [-\-requests N] [-\-tokens M] -s <source> -t <target>');
++    console.log('Usage: node translate.js -k <apiKey> [-e endpoint] [-m model] [-\-requests N] [-\-tokens M] [-d] -s <source> -t <target>');
+     process.exit(opts.help ? 0 : 1);
+   }
+ 
+   opts.endpoint = opts.endpoint || DEFAULT_ENDPOINT;
+   opts.model = opts.model || DEFAULT_MODEL;
+ 
++  if (opts.debug) {
++    console.log('QTDEBUG: starting CLI with options', {
++      endpoint: opts.endpoint,
++      model: opts.model,
++      source: opts.source,
++      target: opts.target,
++    });
++  }
++
+   configure({
+     requestLimit: opts.requestLimit || 60,
+     tokenLimit: opts.tokenLimit || 100000,
+@@ -105,7 +56,10 @@ async function main() {
+     line = line.trim();
+     if (!line) { rl.prompt(); return; }
+     try {
+-      await translateStream({ ...opts, text: line }, chunk => process.stdout.write(chunk));
++      await qwenTranslateStream({ ...opts, text: line, debug: opts.debug }, chunk => {
++        if (opts.debug) console.log('QTDEBUG: chunk received', chunk);
++        process.stdout.write(chunk);
++      });
+       process.stdout.write('\n');
+     } catch (err) {
+       console.error(err.stack || err.toString());
+diff --git a/package-lock.json b/package-lock.json
+index ce34faa..7db39b7 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "qwen-translator-extension",
+-  "version": "1.3.0",
++  "version": "1.3.1",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "qwen-translator-extension",
+-      "version": "1.3.0",
++      "version": "1.3.1",
+       "license": "ISC",
+       "devDependencies": {
+         "@types/jest": "^30.0.0",
+diff --git a/package.json b/package.json
+index a41d317..12e0a95 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "qwen-translator-extension",
+-  "version": "1.3.0",
++  "version": "1.3.1",
+   "description": "Extension to translate web pages using Qwen-MT-Turbo model",
+   "main": "index.js",
+   "scripts": {
+diff --git a/src/manifest.json b/src/manifest.json
+index ab35e05..032103b 100644
+--- a/src/manifest.json
++++ b/src/manifest.json
+@@ -2,7 +2,7 @@
+   "manifest_version": 3,
+   "name": "Qwen Translator",
+   "description": "Translate pages using Qwen-MT-Turbo",
+-  "version": "1.3",
++  "version": "1.3.1",
+   "permissions": ["storage", "activeTab", "tabs", "scripting"],
+   "host_permissions": [
+     "https://dashscope-intl.aliyuncs.com/*"
+diff --git a/src/popup.js b/src/popup.js
+index 90586fc..a38b20c 100644
+--- a/src/popup.js
++++ b/src/popup.js
+@@ -62,21 +62,21 @@ document.getElementById('save').addEventListener('click', () => {
+ 
+ document.getElementById('test').addEventListener('click', async () => {
+   status.textContent = 'Testing...';
+-  console.log('QTDEBUG: starting configuration test');
++  const cfg = {
++    endpoint: endpointInput.value.trim(),
++    apiKey: apiKeyInput.value.trim(),
++    model: modelInput.value.trim(),
++    source: sourceSelect.value,
++    target: targetSelect.value,
++    debug: true,
++  };
++  console.log('QTDEBUG: starting configuration test', cfg);
+   const timer = setTimeout(() => {
+     console.error('QTERROR: configuration test timed out');
+     status.textContent = 'Error: timeout';
+   }, 15000);
+   try {
+-    await window.qwenTranslate({
+-      endpoint: endpointInput.value.trim(),
+-      apiKey: apiKeyInput.value.trim(),
+-      model: modelInput.value.trim(),
+-      source: sourceSelect.value,
+-      text: 'hello',
+-      target: targetSelect.value,
+-      debug: debugCheckbox.checked,
+-    });
++    await window.qwenTranslate({ ...cfg, text: 'hello' });
+     status.textContent = 'Configuration OK';
+     console.log('QTDEBUG: configuration test successful');
+   } catch (e) {
+diff --git a/src/throttle.js b/src/throttle.js
+index b0bd393..a1fbdbe 100644
+--- a/src/throttle.js
++++ b/src/throttle.js
+@@ -54,6 +54,7 @@ async function runWithRetry(fn, text, attempts = 3, debug = false) {
+   let wait = 500;
+   for (let i = 0; i < attempts; i++) {
+     try {
++      if (debug) console.log('QTDEBUG: attempt', i + 1);
+       return await runWithRateLimit(fn, tokens);
+     } catch (err) {
+       if (!err.retryable || i === attempts - 1) throw err;
+diff --git a/src/translator.js b/src/translator.js
+index 4627e54..929e789 100644
+--- a/src/translator.js
++++ b/src/translator.js
+@@ -4,7 +4,8 @@ var runWithRetry;
+ var approxTokens;
+ 
+ if (typeof window === 'undefined') {
+-  fetchFn = require('cross-fetch');
++  // Node 18+ provides a global fetch implementation
++  fetchFn = typeof fetch !== 'undefined' ? fetch : require('cross-fetch');
+   ({ runWithRateLimit, runWithRetry, approxTokens } = require('./throttle'));
+ } else {
+   if (window.qwenThrottle) {
+@@ -24,9 +25,12 @@ function withSlash(url) {
+   return url.endsWith('/') ? url : `${url}/`;
+ }
+ 
+-async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug }) {
++async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData }) {
+   const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
+-  if (debug) console.log('QTDEBUG: sending translation request to', url);
++  if (debug) {
++    console.log('QTDEBUG: sending translation request to', url);
++    console.log('QTDEBUG: request params', { model, source, target, text });
++  }
+   const body = {
+     model,
+     input: { messages: [{ role: 'user', content: text }] },
+@@ -34,6 +38,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal,
+       translation_options: { source_lang: source, target_lang: target },
+     },
+   };
++  if (debug) console.log('QTDEBUG: request body', body);
+   let resp;
+   try {
+     resp = await fetchFn(url, {
+@@ -41,11 +46,15 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal,
+       headers: {
+         'Content-Type': 'application/json',
+         Authorization: apiKey,
+-        ...(typeof window !== 'undefined' ? { 'X-DashScope-SSE': 'enable' } : {}),
++        'X-DashScope-SSE': 'enable',
+       },
+       body: JSON.stringify(body),
+       signal,
+     });
++    if (debug) {
++      console.log('QTDEBUG: response status', resp.status);
++      console.log('QTDEBUG: response headers', Object.fromEntries(resp.headers.entries()));
++    }
+   } catch (e) {
+     e.retryable = true;
+     throw e;
+@@ -55,10 +64,12 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal,
+       .json()
+       .catch(() => ({ message: resp.statusText }));
+     const error = new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
++    if (debug) console.log('QTDEBUG: HTTP error response', error.message);
+     if (resp.status >= 500) error.retryable = true;
+     throw error;
+   }
+   if (!resp.body || typeof resp.body.getReader !== 'function') {
++    if (debug) console.log('QTDEBUG: received non-streaming response');
+     const data = await resp.json();
+     const text =
+       data.output?.text ||
+@@ -69,6 +80,8 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal,
+     return { text };
+   }
+ 
++  if (debug) console.log('QTDEBUG: reading streaming response');
++
+   const reader = resp.body.getReader();
+   const decoder = new TextDecoder();
+   let buffer = '';
+@@ -83,6 +96,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal,
+       const trimmed = line.trim();
+       if (!trimmed.startsWith('data:')) continue;
+       const data = trimmed.slice(5).trim();
++      if (debug) console.log('QTDEBUG: raw line', data);
+       if (data === '[DONE]') {
+         reader.cancel();
+         break;
+@@ -93,6 +107,8 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal,
+           obj.output?.text ||
+           obj.output?.choices?.[0]?.message?.content || '';
+         result += chunk;
++        if (onData && chunk) onData(chunk);
++        if (debug && chunk) console.log('QTDEBUG: chunk received', chunk);
+       } catch {}
+     }
+   }
+@@ -100,6 +116,16 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal,
+ }
+ 
+ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false }) {
++  if (debug) {
++    console.log('QTDEBUG: qwenTranslate called with', {
++      endpoint,
++      apiKeySet: Boolean(apiKey),
++      model,
++      source,
++      target,
++      text: text && text.slice ? text.slice(0, 20) + (text.length > 20 ? '...' : '') : text,
++    });
++  }
+   const cacheKey = `${source}:${target}:${text}`;
+   if (cache.has(cacheKey)) {
+     return cache.get(cacheKey);
+@@ -127,7 +153,46 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
+       debug
+     );
+     cache.set(cacheKey, data);
+-    if (debug) console.log('QTDEBUG: translation successful');
++    if (debug) {
++      console.log('QTDEBUG: translation successful');
++      console.log('QTDEBUG: final text', data.text);
++    }
++    return data;
++  } catch (e) {
++    console.error('QTERROR: translation request failed', e);
++    throw e;
++  }
++}
++
++async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false }, onData) {
++  if (debug) {
++    console.log('QTDEBUG: qwenTranslateStream called with', {
++      endpoint,
++      apiKeySet: Boolean(apiKey),
++      model,
++      source,
++      target,
++      text: text && text.slice ? text.slice(0, 20) + (text.length > 20 ? '...' : '') : text,
++    });
++  }
++  const cacheKey = `${source}:${target}:${text}`;
++  if (cache.has(cacheKey)) {
++    const data = cache.get(cacheKey);
++    if (onData) onData(data.text);
++    return data;
++  }
++  try {
++    const data = await runWithRetry(
++      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData }),
++      approxTokens(text),
++      3,
++      debug
++    );
++    cache.set(cacheKey, data);
++    if (debug) {
++      console.log('QTDEBUG: translation successful');
++      console.log('QTDEBUG: final text', data.text);
++    }
+     return data;
+   } catch (e) {
+     console.error('QTERROR: translation request failed', e);
+@@ -139,8 +204,9 @@ function qwenClearCache() {
+ }
+ if (typeof window !== 'undefined') {
+   window.qwenTranslate = qwenTranslate;
++  window.qwenTranslateStream = qwenTranslateStream;
+   window.qwenClearCache = qwenClearCache;
+ }
+ if (typeof module !== 'undefined') {
+-  module.exports = { qwenTranslate, qwenClearCache };
++  module.exports = { qwenTranslate, qwenTranslateStream, qwenClearCache };
+ }
+-- 
+2.50.0
+
