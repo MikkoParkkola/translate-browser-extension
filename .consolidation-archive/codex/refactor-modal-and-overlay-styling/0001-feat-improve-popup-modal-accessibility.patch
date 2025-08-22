@@ -1,0 +1,124 @@
+From d9b10234d5033016441ab13be5b4626d8196c09a Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Tue, 19 Aug 2025 18:19:20 +0200
+Subject: [PATCH] feat: improve popup modal accessibility
+
+---
+ src/popup/providerEditor.html |  4 ++--
+ src/popup/providerEditor.js   | 16 +++++++++++++---
+ src/popup/settings.html       |  7 +++----
+ src/styles/popup.css          | 21 +++++++++++++++++++++
+ 4 files changed, 39 insertions(+), 9 deletions(-)
+ create mode 100644 src/styles/popup.css
+
+diff --git a/src/popup/providerEditor.html b/src/popup/providerEditor.html
+index 29327e9..a19e4b1 100644
+--- a/src/popup/providerEditor.html
++++ b/src/popup/providerEditor.html
+@@ -1,5 +1,5 @@
+-<div id="providerEditorOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:1000;">
+-  <div style="background:var(--qwen-bg,rgba(28,28,30,0.9));padding:1rem;border:1px solid var(--qwen-border,rgba(255,255,255,0.2));min-width:260px;">
++<div id="providerEditorOverlay" class="modal-overlay">
++  <div class="modal" role="dialog" aria-modal="true">
+     <label data-field="apiKey">API Key <input id="pe_apiKey"></label>
+     <label data-field="apiEndpoint">API Endpoint <input id="pe_apiEndpoint"></label>
+     <label data-field="model">Model <select id="pe_modelSelect" style="display:none"></select><input id="pe_modelInput"></label>
+diff --git a/src/popup/providerEditor.js b/src/popup/providerEditor.js
+index a9600c5..59b7480 100644
+--- a/src/popup/providerEditor.js
++++ b/src/popup/providerEditor.js
+@@ -16,6 +16,10 @@
+   const advancedEl = overlay.querySelector('#pe_advanced');
+   let currentId, cfg, refresh;
+ 
++  function close(){
++    overlay.style.display = 'none';
++  }
++
+   function validUrl(u){
+     if(!u) return true;
+     try{ new URL(u); return true;}catch{return false;}
+@@ -100,12 +104,18 @@
+     if (!Array.isArray(cfg.providerOrder)) cfg.providerOrder = [];
+     if (!cfg.providerOrder.includes(currentId)) cfg.providerOrder.push(currentId);
+     window.qwenProviderConfig.saveProviderConfig(cfg);
+-    overlay.style.display = 'none';
++    close();
+     refresh?.();
+   });
+ 
+-  cancelBtn.addEventListener('click', () => {
+-    overlay.style.display = 'none';
++  cancelBtn.addEventListener('click', close);
++
++  overlay.addEventListener('click', e => {
++    if (e.target === overlay) close();
++  });
++
++  document.addEventListener('keydown', e => {
++    if (e.key === 'Escape') close();
+   });
+ 
+   window.qwenProviderEditor = { open };
+diff --git a/src/popup/settings.html b/src/popup/settings.html
+index aaef45c..d06c26a 100644
+--- a/src/popup/settings.html
++++ b/src/popup/settings.html
+@@ -4,6 +4,7 @@
+   <meta charset="utf-8">
+   <link rel="stylesheet" href="../styles/apple.css">
+   <link rel="stylesheet" href="../styles/cyberpunk.css">
++  <link rel="stylesheet" href="../styles/popup.css">
+   <style>
+     html { min-height: 100%; background: var(--qwen-bg, rgba(28,28,30,0.7)); }
+     body {
+@@ -31,8 +32,6 @@
+     .note { font-size: 0.8rem; opacity: 0.8; }
+     .provider-card { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem; border: 1px solid var(--qwen-border, rgba(255,255,255,0.2)); margin-bottom: 0.25rem; }
+     .provider-card .drag-handle { cursor: move; }
+-    #addProviderOverlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 1000; }
+-    #addProviderOverlay .modal { background: var(--qwen-bg, rgba(28,28,30,0.9)); padding: 1rem; border: 1px solid var(--qwen-border, rgba(255,255,255,0.2)); min-width: 260px; }
+     #addProviderOverlay .actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem; }
+     #addProviderOverlay label { display: block; margin-bottom: 0.5rem; }
+     .tm-container {
+@@ -145,8 +144,8 @@
+     </section>
+   </div>
+ 
+-  <div id="addProviderOverlay">
+-    <div class="modal">
++  <div id="addProviderOverlay" class="modal-overlay">
++    <div class="modal" role="dialog" aria-modal="true">
+       <div id="ap_step1">
+         <label>Preset
+           <select id="ap_preset">
+diff --git a/src/styles/popup.css b/src/styles/popup.css
+new file mode 100644
+index 0000000..3d65764
+--- /dev/null
++++ b/src/styles/popup.css
+@@ -0,0 +1,21 @@
++.modal-overlay {
++  position: fixed;
++  top: 0;
++  left: 0;
++  right: 0;
++  bottom: 0;
++  background: rgba(0,0,0,0.6);
++  display: none;
++  align-items: center;
++  justify-content: center;
++  z-index: 1000;
++}
++
++.modal {
++  background: var(--qwen-bg, rgba(28,28,30,0.9));
++  padding: 1rem;
++  border: 1px solid var(--qwen-border, rgba(255,255,255,0.2));
++  min-width: 260px;
++  max-width: calc(100% - 2rem);
++  box-sizing: border-box;
++}
+-- 
+2.50.0
+

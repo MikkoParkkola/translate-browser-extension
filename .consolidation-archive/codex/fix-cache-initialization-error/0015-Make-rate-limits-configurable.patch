@@ -1,0 +1,371 @@
+From 5d3cbb145be5df9f0471f19426fd4fcc14961aca Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Wed, 30 Jul 2025 18:39:19 +0200
+Subject: [PATCH 15/16] Make rate limits configurable
+
+---
+ README.md               |  7 +++++-
+ cli/translate.js        | 40 +++++++++++++++++++++---------
+ src/background.js       | 38 +++++++++++++++++------------
+ src/config.js           |  2 ++
+ src/popup.html          |  2 ++
+ src/popup.js            |  6 +++++
+ src/throttle.js         | 54 +++++++++++++++++++++++++++++++++++++++++
+ src/translator.js       |  6 ++++-
+ test/translator.test.js | 23 ++++++++++++++++++
+ 9 files changed, 149 insertions(+), 29 deletions(-)
+ create mode 100644 src/throttle.js
+
+diff --git a/README.md b/README.md
+index 7a2b62e..7043ff3 100644
+--- a/README.md
++++ b/README.md
+@@ -28,6 +28,10 @@ Click **Test Settings** in the popup to verify the configuration. The extension
+ Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content.
+ If translation fails, an error message appears at the bottom-right of the page. Translations are cached for the current session to minimise API calls.
+ 
++### Rate Limiting
++The extension and CLI queue translation requests to stay within the provider limits.
++You can adjust the limits under **Requests per minute** and **Tokens per minute** in the extension popup or via `--requests` and `--tokens` on the CLI. Defaults are 60 requests and 100,000 tokens every 60 seconds.
++
+ ### Troubleshooting
+ Both model refreshes and translation requests write trace logs to the browser console. Copy any on-page error and check the console for a matching entry to diagnose problems.
+ 
+@@ -43,7 +47,8 @@ A simple translator CLI is included in `cli/translate.js`. It streams translatio
+ 
+ ### Usage
+ ```sh
+-node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] -s <source_lang> -t <target_lang>
++node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--tokens M] -s <source_lang> -t <target_lang>
+ ```
++If no endpoint is specified the tool defaults to `https://dashscope-intl.aliyuncs.com/api/v1`.
+ Press `Ctrl+C` or `Ctrl+D` to exit.
+ 
+diff --git a/cli/translate.js b/cli/translate.js
+index 5e9d6bd..76dbcbe 100755
+--- a/cli/translate.js
++++ b/cli/translate.js
+@@ -2,22 +2,30 @@
+ 
+ const readline = require('readline');
+ const fetch = require('cross-fetch');
++const { runWithRateLimit, approxTokens, configure } = require('../src/throttle');
+ 
+ function withSlash(url) {
+   return url.endsWith('/') ? url : `${url}/`;
+ }
+ 
+ async function translateStream({ endpoint, apiKey, model, text, source, target }, onData) {
+-  const url = `${withSlash(endpoint)}services/aigc/mt/text-translator/generation-stream`;
+-  const body = { model, input: { source_language: source, target_language: target, text } };
+-  const resp = await fetch(url, {
+-    method: 'POST',
+-    headers: {
+-      'Content-Type': 'application/json',
+-      Authorization: `Bearer ${apiKey}`,
+-    },
+-    body: JSON.stringify(body),
+-  });
++  const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
++  const body = {
++    model,
++    input: { messages: [{ role: 'user', content: text }] },
++    parameters: { translation_options: { source_lang: source, target_lang: target } },
++  };
++  const resp = await runWithRateLimit(
++    () => fetch(url, {
++      method: 'POST',
++      headers: {
++        'Content-Type': 'application/json',
++        Authorization: apiKey,
++      },
++      body: JSON.stringify(body),
++    }),
++    approxTokens(text)
++  );
+ 
+   if (!resp.ok) {
+     const err = await resp.json().catch(() => ({ message: resp.statusText }));
+@@ -65,24 +73,32 @@ function parseArgs() {
+     else if (a === '-m' || a === '--model') opts.model = args[++i];
+     else if (a === '-s' || a === '--source') opts.source = args[++i];
+     else if (a === '-t' || a === '--target') opts.target = args[++i];
++    else if (a === '--requests') opts.requestLimit = parseInt(args[++i], 10);
++    else if (a === '--tokens') opts.tokenLimit = parseInt(args[++i], 10);
+     else if (a === '-h' || a === '--help') opts.help = true;
+   }
+   return opts;
+ }
+ 
+ async function main() {
+-  const DEFAULT_ENDPOINT = 'https://dashscope.aliyuncs.com';
++  const DEFAULT_ENDPOINT = 'https://dashscope-intl.aliyuncs.com/api/v1';
+   const DEFAULT_MODEL = 'qwen-mt-turbo';
+   const opts = parseArgs();
+ 
+   if (opts.help || !opts.apiKey || !opts.source || !opts.target) {
+-    console.log('Usage: node translate.js -k <apiKey> [-e endpoint] [-m model] -s <source> -t <target>');
++    console.log('Usage: node translate.js -k <apiKey> [-e endpoint] [-m model] [-\-requests N] [-\-tokens M] -s <source> -t <target>');
+     process.exit(opts.help ? 0 : 1);
+   }
+ 
+   opts.endpoint = opts.endpoint || DEFAULT_ENDPOINT;
+   opts.model = opts.model || DEFAULT_MODEL;
+ 
++  configure({
++    requestLimit: opts.requestLimit || 60,
++    tokenLimit: opts.tokenLimit || 100000,
++    windowMs: 60000,
++  });
++
+   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: '> ' });
+   rl.prompt();
+   rl.on('line', async line => {
+diff --git a/src/background.js b/src/background.js
+index 6477208..91c4d1a 100644
+--- a/src/background.js
++++ b/src/background.js
+@@ -1,3 +1,6 @@
++importScripts('throttle.js');
++const { runWithRateLimit, approxTokens, configure } = self.qwenThrottle;
++
+ chrome.runtime.onInstalled.addListener(() => {
+   console.log('Qwen Translator installed');
+ });
+@@ -10,22 +13,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+     const timer = setTimeout(() => controller.abort(), 10000);
+     const url = `${ep}services/aigc/text-generation/generation`;
+     console.log('Background translating via', url);
+-    fetch(url, {
+-      method: 'POST',
+-      headers: {
+-        'Content-Type': 'application/json',
+-        Authorization: apiKey,
+-        'X-DashScope-SSE': 'enable',
+-      },
+-      body: JSON.stringify({
+-        model,
+-        input: { messages: [{ role: 'user', content: text }] },
+-        parameters: {
+-          translation_options: { source_lang: source, target_lang: target },
++
++    chrome.storage.sync.get({ requestLimit: 60, tokenLimit: 100000 }, cfg => {
++      configure({ requestLimit: cfg.requestLimit, tokenLimit: cfg.tokenLimit, windowMs: 60000 });
++
++      runWithRateLimit(() => fetch(url, {
++        method: 'POST',
++        headers: {
++          'Content-Type': 'application/json',
++          Authorization: apiKey,
++          'X-DashScope-SSE': 'enable',
+         },
+-      }),
+-      signal: controller.signal,
+-    })
++        body: JSON.stringify({
++          model,
++          input: { messages: [{ role: 'user', content: text }] },
++          parameters: {
++            translation_options: { source_lang: source, target_lang: target },
++          },
++        }),
++        signal: controller.signal,
++      }), approxTokens(text))
+       .then(async resp => {
+         clearTimeout(timer);
+         if (!resp.ok) {
+@@ -64,6 +71,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+         console.error('Background translation error:', err);
+         sendResponse({ error: err.message });
+       });
++    });
+     return true;
+   }
+ });
+diff --git a/src/config.js b/src/config.js
+index 31ddb49..14ace38 100644
+--- a/src/config.js
++++ b/src/config.js
+@@ -5,6 +5,8 @@ const defaultCfg = {
+   sourceLanguage: 'en',
+   targetLanguage: 'en',
+   autoTranslate: false,
++  requestLimit: 60,
++  tokenLimit: 100000,
+ };
+ 
+ function qwenLoadConfig() {
+diff --git a/src/popup.html b/src/popup.html
+index 9c7ab64..50deca2 100644
+--- a/src/popup.html
++++ b/src/popup.html
+@@ -17,6 +17,8 @@
+   <label>Model <input type="text" id="model"></label>
+   <label>Source <select id="source"></select></label>
+   <label>Target <select id="target"></select></label>
++  <label>Requests per minute <input type="number" id="requestLimit"></label>
++  <label>Tokens per minute <input type="number" id="tokenLimit"></label>
+   <label><input type="checkbox" id="auto"> Translate automatically</label>
+   <button id="save">Save</button>
+   <button id="test">Test Settings</button>
+diff --git a/src/popup.js b/src/popup.js
+index 17225a6..c691f95 100644
+--- a/src/popup.js
++++ b/src/popup.js
+@@ -3,6 +3,8 @@ const endpointInput = document.getElementById('apiEndpoint');
+ const modelInput = document.getElementById('model');
+ const sourceSelect = document.getElementById('source');
+ const targetSelect = document.getElementById('target');
++const reqLimitInput = document.getElementById('requestLimit');
++const tokenLimitInput = document.getElementById('tokenLimit');
+ const autoCheckbox = document.getElementById('auto');
+ const status = document.getElementById('status');
+ 
+@@ -23,6 +25,8 @@ window.qwenLoadConfig().then(cfg => {
+   modelInput.value = cfg.model;
+   sourceSelect.value = cfg.sourceLanguage;
+   targetSelect.value = cfg.targetLanguage;
++  reqLimitInput.value = cfg.requestLimit;
++  tokenLimitInput.value = cfg.tokenLimit;
+   autoCheckbox.checked = cfg.autoTranslate;
+   if (!cfg.apiKey) status.textContent = 'Set API key';
+ });
+@@ -40,6 +44,8 @@ document.getElementById('save').addEventListener('click', () => {
+     model: modelInput.value.trim(),
+     sourceLanguage: sourceSelect.value,
+     targetLanguage: targetSelect.value,
++    requestLimit: parseInt(reqLimitInput.value, 10) || 60,
++    tokenLimit: parseInt(tokenLimitInput.value, 10) || 100000,
+     autoTranslate: autoCheckbox.checked,
+   };
+   window.qwenSaveConfig(cfg).then(() => {
+diff --git a/src/throttle.js b/src/throttle.js
+new file mode 100644
+index 0000000..a0e2692
+--- /dev/null
++++ b/src/throttle.js
+@@ -0,0 +1,54 @@
++const queue = [];
++let config = {
++  requestLimit: 60,
++  tokenLimit: 100000,
++  windowMs: 60000,
++};
++let availableRequests = config.requestLimit;
++let availableTokens = config.tokenLimit;
++let interval = setInterval(() => {
++  availableRequests = config.requestLimit;
++  availableTokens = config.tokenLimit;
++  processQueue();
++}, config.windowMs);
++
++function approxTokens(text) {
++  return Math.max(1, Math.ceil(text.length / 4));
++}
++
++function configure(opts = {}) {
++  Object.assign(config, opts);
++  availableRequests = config.requestLimit;
++  availableTokens = config.tokenLimit;
++  if (interval) clearInterval(interval);
++  interval = setInterval(() => {
++    availableRequests = config.requestLimit;
++    availableTokens = config.tokenLimit;
++    processQueue();
++  }, config.windowMs);
++}
++
++function processQueue() {
++  while (queue.length && availableRequests > 0 && availableTokens >= queue[0].tokens) {
++    const item = queue.shift();
++    availableRequests--;
++    availableTokens -= item.tokens;
++    item.fn().then(item.resolve, item.reject);
++  }
++}
++
++function runWithRateLimit(fn, text) {
++  const tokens = typeof text === 'number' ? text : approxTokens(text || '');
++  return new Promise((resolve, reject) => {
++    queue.push({ fn, tokens, resolve, reject });
++    processQueue();
++  });
++}
++
++module.exports = { runWithRateLimit, configure, approxTokens };
++
++if (typeof window !== 'undefined') {
++  window.qwenThrottle = { runWithRateLimit, configure, approxTokens };
++} else if (typeof self !== 'undefined') {
++  self.qwenThrottle = { runWithRateLimit, configure, approxTokens };
++}
+diff --git a/src/translator.js b/src/translator.js
+index 5c40228..d30e913 100644
+--- a/src/translator.js
++++ b/src/translator.js
+@@ -2,6 +2,7 @@ let fetchFn = typeof fetch !== 'undefined' ? fetch : undefined;
+ if (typeof window === 'undefined') {
+   fetchFn = require('cross-fetch');
+ }
++const { runWithRateLimit, approxTokens } = require('./throttle');
+ 
+ const cache = new Map();
+ 
+@@ -101,7 +102,10 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
+   }
+ 
+   try {
+-    const data = await doFetch({ endpoint, apiKey, model, text, source, target, signal });
++    const data = await runWithRateLimit(
++      () => doFetch({ endpoint, apiKey, model, text, source, target, signal }),
++      approxTokens(text)
++    );
+     cache.set(cacheKey, data);
+     return data;
+   } catch (e) {
+diff --git a/test/translator.test.js b/test/translator.test.js
+index be9854f..f5ff068 100644
+--- a/test/translator.test.js
++++ b/test/translator.test.js
+@@ -1,4 +1,5 @@
+ const { qwenTranslate: translate, qwenClearCache } = require('../src/translator.js');
++const { configure } = require('../src/throttle');
+ const fetchMock = require('jest-fetch-mock');
+ 
+ beforeAll(() => { fetchMock.enableMocks(); });
+@@ -6,6 +7,7 @@ beforeAll(() => { fetchMock.enableMocks(); });
+ beforeEach(() => {
+   fetch.resetMocks();
+   qwenClearCache();
++  configure({ requestLimit: 60, tokenLimit: 100000, windowMs: 60000 });
+ });
+ 
+ test('translate success', async () => {
+@@ -27,3 +29,24 @@ test('translate caching', async () => {
+   expect(fetch).toHaveBeenCalledTimes(1);
+   expect(cached.text).toBe('hi');
+ });
++
++test('rate limiting queues requests', async () => {
++  jest.useFakeTimers();
++  configure({ requestLimit: 2, tokenLimit: 100000, windowMs: 1000 });
++  fetch
++    .mockResponseOnce(JSON.stringify({output:{text:'a'}}))
++    .mockResponseOnce(JSON.stringify({output:{text:'b'}}))
++    .mockResponseOnce(JSON.stringify({output:{text:'c'}}));
++
++  const p1 = translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'1', source:'es', target:'en'});
++  const p2 = translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'2', source:'es', target:'en'});
++  const p3 = translate({endpoint:'https://e/', apiKey:'k', model:'m', text:'3', source:'es', target:'en'});
++
++  await Promise.resolve();
++  expect(fetch).toHaveBeenCalledTimes(2);
++  jest.advanceTimersByTime(1000);
++  const res3 = await p3;
++  expect(res3.text).toBe('c');
++  expect(fetch).toHaveBeenCalledTimes(3);
++  jest.useRealTimers();
++});
+-- 
+2.50.0
+

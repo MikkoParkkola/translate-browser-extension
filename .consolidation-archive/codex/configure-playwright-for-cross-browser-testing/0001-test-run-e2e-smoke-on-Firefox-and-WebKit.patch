@@ -1,0 +1,77 @@
+From 4142095bd8dddda861a0d07329237cacf209d73e Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Tue, 19 Aug 2025 16:52:28 +0200
+Subject: [PATCH] test: run e2e smoke on Firefox and WebKit
+
+---
+ .github/workflows/ci.yml  | 6 +++---
+ .github/workflows/e2e.yml | 6 +++---
+ playwright.config.js      | 5 +++++
+ 3 files changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 04d0925..5215227 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -86,8 +86,8 @@ jobs:
+           name: dist
+           path: .
+ 
+-      - name: Install Playwright (Chromium + deps)
+-        run: npx playwright install --with-deps chromium
++      - name: Install Playwright browsers
++        run: npx playwright install --with-deps chromium firefox webkit
+ 
+       - name: Start static server
+         run: |
+@@ -97,7 +97,7 @@ jobs:
+           done
+ 
+       - name: Run e2e tests
+-        run: npm run test:e2e
++        run: npm run test:e2e -- --browser=chromium,firefox,webkit
+ 
+       - name: Upload Playwright report
+         if: always()
+diff --git a/.github/workflows/e2e.yml b/.github/workflows/e2e.yml
+index fc74f26..e3dc53a 100644
+--- a/.github/workflows/e2e.yml
++++ b/.github/workflows/e2e.yml
+@@ -47,8 +47,8 @@ jobs:
+           path: ~/.cache/ms-playwright
+           key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('playwright.config.js') }}
+ 
+-      - name: Install Playwright Browsers
+-        run: npx playwright install --with-deps chromium
++      - name: Install Playwright browsers
++        run: npx playwright install --with-deps chromium firefox webkit
+ 
+       - name: Check repo for public PDFs at root (privacy)
+         run: |
+@@ -61,6 +61,6 @@ jobs:
+           fi
+ 
+       - name: Run E2E tests
+-        run: npm run test:e2e
++        run: npm run test:e2e -- --browser=chromium,firefox,webkit
+ 
+       # Privacy: do not upload screenshots or artifacts by default to avoid exposing PDFs/PII
+diff --git a/playwright.config.js b/playwright.config.js
+index 9a89495..2defea0 100644
+--- a/playwright.config.js
++++ b/playwright.config.js
+@@ -9,6 +9,11 @@ const config = {
+     viewport: { width: 1200, height: 900 },
+   },
+   testDir: 'e2e',
++  projects: [
++    { name: 'chromium', use: { browserName: 'chromium' } },
++    { name: 'firefox', use: { browserName: 'firefox' } },
++    { name: 'webkit', use: { browserName: 'webkit' } },
++  ],
+   webServer: {
+     command: "npx http-server -p 8080 -c-1 . -H 'Permissions-Policy: accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=()'",
+     url: 'http://127.0.0.1:8080',
+-- 
+2.50.0
+

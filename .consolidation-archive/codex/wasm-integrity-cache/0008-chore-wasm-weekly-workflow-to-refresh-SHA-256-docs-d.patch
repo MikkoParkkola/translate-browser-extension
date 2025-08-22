@@ -1,0 +1,87 @@
+From 551ffc254155fd959bf9df53832fa4eb18152e13 Mon Sep 17 00:00:00 2001
+From: Your Name <you@example.com>
+Date: Tue, 19 Aug 2025 14:29:54 +0200
+Subject: [PATCH 8/8] chore(wasm): weekly workflow to refresh SHA-256; docs:
+ document integrity + IDB caching + weekly refresh
+
+---
+ .github/workflows/update-wasm-hashes.yml | 48 ++++++++++++++++++++++++
+ README.md                                |  7 ++++
+ 2 files changed, 55 insertions(+)
+ create mode 100644 .github/workflows/update-wasm-hashes.yml
+
+diff --git a/.github/workflows/update-wasm-hashes.yml b/.github/workflows/update-wasm-hashes.yml
+new file mode 100644
+index 0000000..ccb89b0
+--- /dev/null
++++ b/.github/workflows/update-wasm-hashes.yml
+@@ -0,0 +1,48 @@
++name: Update WASM Hashes
++
++on:
++  schedule:
++    - cron: '0 3 * * 1' # Every Monday at 03:00 UTC
++  workflow_dispatch:
++
++permissions:
++  contents: write
++  pull-requests: write
++
++jobs:
++  update-hashes:
++    runs-on: ubuntu-latest
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v4
++
++      - name: Setup Node
++        uses: actions/setup-node@v4
++        with:
++          node-version: '20'
++          cache: 'npm'
++
++      - name: Install dependencies (fetch wasm assets via postinstall)
++        run: npm ci
++
++      - name: Ensure vendor assets (fallback script)
++        run: |
++          bash scripts/fetch-wasm-assets.sh || true
++
++      - name: Update SHA-256 entries
++        run: node tools/update-wasm-sha256.js
++
++      - name: Create Pull Request
++        uses: peter-evans/create-pull-request@v6
++        with:
++          commit-message: 'chore(wasm): update SHA-256 for vendor assets'
++          branch: chore/update-wasm-sha256
++          title: 'chore(wasm): update SHA-256 for vendor assets'
++          body: |
++            Automated weekly refresh of SHA-256 hashes for PDF engine/vendor assets.
++
++            DoD (pre-submit):
++            - Local steps executed in CI: fetch assets, compute hashes, update engine.js.
++            - No runtime behavior changes; warn-only integrity retained.
++            - CI will validate build/tests as usual.
++          labels: dependencies, automation
+diff --git a/README.md b/README.md
+index 8c3a2ef..f4e7cd4 100644
+--- a/README.md
++++ b/README.md
+@@ -76,6 +76,13 @@ Top‑level PDF navigations are opened in a custom viewer. The viewer can transl
+ - **WASM pipeline** – otherwise the viewer extracts text, translates page segments through the normal text API and renders a new PDF locally.
+ Translated PDFs can be saved via the viewer's **Save translated PDF** action.
+ 
++#### Engine assets, integrity, and caching
++- Engines: The viewer can run MuPDF or PDFium (plus HarfBuzz/ICU4X/pdf-lib). Packaged assets live under `src/wasm/vendor/` and are included in builds.
++- Auto-download: If a packaged asset is missing, the viewer automatically downloads the pinned version from trusted CDNs and proceeds — no user action needed.
++- Integrity: When a known SHA‑256 is available, the viewer computes a checksum for downloaded assets and logs a warning on mismatch, then proceeds (the upstream CDN may have updated the file). This avoids blocking users on minor updates.
++- Caching: Downloaded assets are stored in IndexedDB to avoid re-downloading on subsequent launches.
++- Weekly refresh: A scheduled GitHub Action re-computes hashes for packaged assets and opens a PR if they change, keeping pinned checksums up to date.
++
+ ### Rate Limiting
+ The extension and CLI queue translation requests to stay within the provider limits.
+ The background worker maintains a single queue so multiple page nodes are translated sequentially rather than all at once, preventing bursts that would trigger HTTP 429 errors. Nodes are batched into combined translation requests to reduce the overall query count. If the provider still returns a 429 response the request is retried automatically.
+-- 
+2.50.0
+

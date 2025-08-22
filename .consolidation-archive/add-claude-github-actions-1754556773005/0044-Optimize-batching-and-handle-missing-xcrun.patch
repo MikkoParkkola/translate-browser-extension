@@ -1,0 +1,142 @@
+From d39bb52f0876c3720839632c9164eda302509c99 Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Sun, 3 Aug 2025 15:24:52 +0200
+Subject: [PATCH 44/54] Optimize batching and handle missing xcrun
+
+---
+ README.md                 |  2 +-
+ scripts/convert-safari.sh |  5 +++++
+ src/contentScript.js      | 44 +++++++++++++++++++++++++++------------
+ 3 files changed, 37 insertions(+), 14 deletions(-)
+
+diff --git a/README.md b/README.md
+index 9fa21b0..a18c24f 100644
+--- a/README.md
++++ b/README.md
+@@ -53,7 +53,7 @@ The sample phrase is chosen based on the configured source language so the trans
+ ## Usage
+ Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content as well as embedded frames or third-party widgets whenever the browser grants access. If translation fails the affected text is kept in a queue and retried until the API succeeds. When the translated text matches the original the node is marked as untranslatable and skipped. Translations are cached for the current session to minimise API calls.
+ Identical strings are translated only once and reused across matching nodes, and hidden or off-screen elements are ignored so tokens are spent only on visible text.
+-Translated nodes keep their original leading and trailing whitespace and the navigation menu is processed before the rest of the page so key controls appear quickly. While translations are running the extension's toolbar icon shows an activity badge and a temporary status box in the bottom-right corner of the page reports current work or errors. The box disappears automatically when the extension is idle.
++Translated nodes keep their original leading and trailing whitespace. Nodes are batched to minimise API requests and maximise throughput. While translations are running the extension's toolbar icon shows an activity badge and a temporary status box in the bottom-right corner of the page reports current work or errors. The box disappears automatically when the extension is idle.
+ 
+ ### Rate Limiting
+ The extension and CLI queue translation requests to stay within the provider limits.
+diff --git a/scripts/convert-safari.sh b/scripts/convert-safari.sh
+index 8817635..7e3e3bd 100755
+--- a/scripts/convert-safari.sh
++++ b/scripts/convert-safari.sh
+@@ -7,6 +7,11 @@ OUT_DIR="$SCRIPT_DIR/../safari"
+ 
+ mkdir -p "$OUT_DIR"
+ 
++if ! command -v xcrun >/dev/null 2>&1; then
++  echo "xcrun is required to build Safari extensions." >&2
++  exit 1
++fi
++
+ # Convert for macOS
+ xcrun safari-web-extension-converter "$SRC_DIR" \
+   --app-name "Qwen Translator" \
+diff --git a/src/contentScript.js b/src/contentScript.js
+index 82495c5..d5e24b3 100644
+--- a/src/contentScript.js
++++ b/src/contentScript.js
+@@ -3,6 +3,8 @@ let currentConfig;
+ const batchQueue = [];
+ let processing = false;
+ let statusTimer;
++const pending = new Set();
++let flushTimer;
+ 
+ function setStatus(message, isError = false) {
+   let el = document.getElementById('qwen-status');
+@@ -166,7 +168,7 @@ async function processQueue() {
+ }
+ 
+ function batchNodes(nodes) {
+-  const maxTokens = 1000;
++  const maxTokens = 6000;
+   const batches = [];
+   let current = [];
+   let tokens = 0;
+@@ -192,36 +194,54 @@ function batchNodes(nodes) {
+   batches.forEach(b => enqueueBatch(b));
+ }
+ 
+-function scan(root = document.body) {
++function collectNodes(root, out) {
+   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+-  const nodes = [];
+   let node;
+   while ((node = walker.nextNode())) {
+     const parent = node.parentElement;
+     if (parent && node.textContent.trim() && shouldTranslate(parent)) {
+-      nodes.push(parent);
++      out.push(parent);
+     }
+   }
+-  if (nodes.length) batchNodes(nodes);
+   if (root.querySelectorAll) {
+     root.querySelectorAll('iframe,object,embed').forEach(el => {
+       try {
+         const doc = el.contentDocument || el.getSVGDocument?.();
+-        if (doc) scan(doc);
++        if (doc) collectNodes(doc, out);
+       } catch {}
+     });
+     root.querySelectorAll('*').forEach(el => {
+-      if (el.shadowRoot) scan(el.shadowRoot);
++      if (el.shadowRoot) collectNodes(el.shadowRoot, out);
+     });
+   }
+ }
+ 
++function flushPending() {
++  const nodes = [];
++  pending.forEach(n => collectNodes(n, nodes));
++  pending.clear();
++  flushTimer = null;
++  if (nodes.length) batchNodes(nodes);
++}
++
++function scheduleScan(node) {
++  if (!node) return;
++  pending.add(node);
++  if (!flushTimer) flushTimer = setTimeout(flushPending, 50);
++}
++
++function scan(root = document.body) {
++  const nodes = [];
++  collectNodes(root, nodes);
++  if (nodes.length) batchNodes(nodes);
++}
++
+ function observe(root = document.body) {
+   const obs = new MutationObserver((mutations) => {
+     for (const m of mutations) {
+       m.addedNodes.forEach(n => {
+         if (n.nodeType === Node.ELEMENT_NODE) {
+-          scan(n);
++          scheduleScan(n);
+         }
+         if (n.shadowRoot) observe(n.shadowRoot);
+       });
+@@ -244,11 +264,9 @@ async function start() {
+   }
+   if (currentConfig.debug) console.log('QTDEBUG: starting automatic translation');
+   setStatus('Scanning page...');
+-  const nav = document.querySelector('nav');
+-  if (nav) scan(nav);
+-  const main = document.querySelector('main');
+-  if (main && main !== nav) scan(main);
+-  scan(document.body);
++  const nodes = [];
++  collectNodes(document.body, nodes);
++  if (nodes.length) batchNodes(nodes);
+   observe();
+   if (!batchQueue.length) clearStatus();
+ }
+-- 
+2.50.0
+

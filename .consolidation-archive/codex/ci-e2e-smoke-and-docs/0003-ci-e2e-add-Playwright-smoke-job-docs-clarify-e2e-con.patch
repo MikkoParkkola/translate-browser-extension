@@ -1,0 +1,288 @@
+From 471f92950382fea4500d306c50eff7c2a98e2e61 Mon Sep 17 00:00:00 2001
+From: Your Name <you@example.com>
+Date: Tue, 19 Aug 2025 12:55:49 +0200
+Subject: [PATCH 3/6] ci(e2e): add Playwright smoke job; docs: clarify e2e +
+ content propagation + troubleshooting; chore: version 1.39.0; chore(scripts):
+ add consolidation tool
+
+---
+ .github/workflows/ci.yml        |  42 +++++++++++
+ AGENTS.md                       |   7 +-
+ README.md                       |  20 +++--
+ package.json                    |   2 +-
+ scripts/consolidate-branches.sh | 128 ++++++++++++++++++++++++++++++++
+ 5 files changed, 187 insertions(+), 12 deletions(-)
+ create mode 100755 scripts/consolidate-branches.sh
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 86f61e7..cf7d102 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -54,6 +54,48 @@ jobs:
+           name: qwen-translator-zip
+           path: dist/*.zip
+ 
++  e2e-smoke:
++    needs: build-and-test
++    runs-on: ubuntu-latest
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v4
++
++      - name: Setup Node
++        uses: actions/setup-node@v4
++        with:
++          node-version: '20'
++          cache: 'npm'
++
++      - name: Install dependencies
++        run: npm ci
++
++      - name: Build dist
++        run: npm run build
++
++      - name: Install Playwright (Chromium + deps)
++        run: npx playwright install --with-deps chromium
++
++      - name: Start static server
++        run: |
++          nohup npm run serve &
++          for i in {1..60}; do
++            curl -sSf http://127.0.0.1:8080 >/dev/null && break || sleep 1;
++          done
++
++      - name: Run e2e web smoke
++        run: npm run test:e2e:web
++
++      - name: Run e2e PDF compare
++        run: npm run test:e2e:pdf
++
++      - name: Upload Playwright report
++        if: always()
++        uses: actions/upload-artifact@v4
++        with:
++          name: playwright-report
++          path: playwright-report
++
+   automerge:
+     needs: build-and-test
+     if: github.event_name == 'pull_request'
+diff --git a/AGENTS.md b/AGENTS.md
+index 0461919..037f742 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -24,7 +24,7 @@
+ - `npm run serve`: Serves `dist/` on http://localhost:8080.
+ - `npm run build:safari`: Generates Safari extension projects via `xcrun safari-web-extension-converter` into `safari/`.
+ - Load in Chrome: chrome://extensions → Developer mode → Load unpacked → select `dist/`.
+-- CI: `.github/workflows/ci.yml` runs tests, builds dist/zip, and uploads artifacts on push/PR.
++- CI: `.github/workflows/ci.yml` runs tests, builds dist/zip, uploads artifacts, and executes Playwright e2e smoke tests (Chromium) on push/PR.
+ - Local PDF viewer: open `src/pdfViewer.html` (uses `config.local.js` when present).
+ 
+ ## Testing Guidelines
+@@ -38,7 +38,7 @@
+   - TM: TTL + LRU pruning; metrics (hits, misses, sets, evictionsTTL/LRU).
+   - Logger redaction: Authorization/apiKey redaction in strings and nested objects.
+   - Background icon status and context menu registration (`test/background.test.js`).
+-  - Selection/DOM flows (`e2e/context-menu.spec.js`, `e2e/dom-translate.spec.js`) run via `npm run test:e2e:web`; PDF compare (`e2e/pdf-compare.spec.js`) runs via `npm run test:e2e:pdf`. `npm run test:e2e` executes both suites.
++- Selection/DOM flows (`e2e/context-menu.spec.js`, `e2e/dom-translate.spec.js`, `e2e/translate-page.spec.js`, `e2e/streaming-cancel.spec.js`) run via `npm run test:e2e:web`; PDF compare (`e2e/pdf-compare.spec.js`) runs via `npm run test:e2e:pdf`. `npm run test:e2e` executes both suites. CI job `e2e-smoke` installs Chromium (`npx playwright install --with-deps chromium`), serves `dist/`, and runs the suites headless.
+ 
+ ## Commit & Pull Request Guidelines
+ - Commits: imperative, present tense (e.g., "Replace PDF text …"). Optional prefixes `feat:`, `fix:`, `chore:` are welcome when meaningful.
+@@ -82,6 +82,7 @@
+ - Messaging and streaming
+   - Port-based background proxy with chunk relay and cancellation; legacy `sendMessage` fallback.
+   - Popup loads `lib/messaging.js` to proxy tests/translation through background (prevents 401). `ensure-start` requests host permission, injects scripts, and starts translation.
++  - Content flows propagate `providerOrder`, `endpoints`, and `detector` to translation calls to enable multi‑provider failover beyond the popup.
+ - Detection and batching
+   - Auto-detect source via local heuristic; optional Google detection in background using `detectApiKey`.
+   - Mixed-language batching: per-text detection and language-clustered requests for accuracy.
+@@ -116,7 +117,7 @@
+   - Extend popup styling coverage (all inputs/buttons) to guarantee consistent neon theme; keep reduced-motion consideration.
+   - Light/dark toggle via theme variables.
+ - E2E smoke tests (CI)
+-  - Playwright: enable Auto, translate a sample page, assert text updates without layout shift; streaming/cancel smoke.
++  - Added Playwright CI job (`e2e-smoke`) covering DOM flows and PDF compare.
+ - Detection tuning
+   - Add minimum-signal threshold for very short tokens to reduce misclassification; optional sensitivity setting.
+ - Observability
+diff --git a/README.md b/README.md
+index 873e9ea..76ec37b 100644
+--- a/README.md
++++ b/README.md
+@@ -85,14 +85,18 @@ Each provider entry stores an approximate monthly character limit and a cost-per
+ Translations can be distributed across multiple providers. `providerOrder` defines the failover chain and per‑provider weights bias how parallel batches are split. The background service checks remaining quotas and skips providers that drop below the `requestThreshold`, effectively load‑balancing work across those with capacity.
+ 
+ ### Troubleshooting
+-Both model refreshes and translation requests write trace logs to the browser console. Copy any on-page error and check the console for a matching entry to diagnose problems.
+-If the **Test Settings** button reports a timeout, the network request may be blocked by Content Security Policy or CORS restrictions. The extension automatically falls back to `XMLHttpRequest` when `fetch` fails, but some environments may still prevent the call entirely.
+-If the **Read active tab** check fails, make sure the currently focused tab is a normal web page; the extension cannot access Chrome or extension pages.
+-If the tab translation step fails, the page may block script execution or DOM updates.
+-Some sites impose strict Content Security Policies that prevent the test element from executing or restrict network requests. Open a simple page such as `https://example.com` before running the tests. Console errors from third-party resources do not affect the translation check.
+-Enable **Debug logging** in the popup to see details about the active tab and any error stack returned by the content script.
+-If a translated page appears unchanged, verify that the source and target languages are configured correctly. With debug logging enabled the console warns when the translation result matches the original text.
+-Shadow DOM content and same-origin iframes are scanned and translated automatically. Cross-origin frames may be translated when host permissions allow access, otherwise they are skipped.
++- Console logs: enable **Debug logging** in the popup. Both provider calls and content-script steps log structured events. Copy any on‑page error and look for matching console entries.
++- Test Settings timeout: often CSP/CORS. The background may fall back to `XMLHttpRequest`, but strict environments can still block. Try a simple page like `https://example.com` and re‑run.
++- Active tab check: the test must run on a normal web page (not `chrome://` or extension pages).
++- Page unchanged: confirm source/target languages. With debug on, the console warns if the translation equals the original (already target language).
++- CSP/DOM restrictions: some sites block script execution/DOM updates. Translation may be limited on such pages.
++- Frames and Shadow DOM: same‑origin iframes and open Shadow DOM are supported. Cross‑origin frames require host permissions; otherwise skipped.
++- Common HTTP errors:
++  - 401/403 unauthorized/forbidden: missing/invalid API key. Check provider config and key format. Example: OpenAI uses `Bearer <key>`, DeepL uses `DeepL-Auth-Key <key>`.
++  - 429 rate limit: requests are retried automatically respecting `Retry-After`. Lower requests/tokens per minute in provider settings or wait.
++  - 5xx provider outage: transient; automatic retries apply. If persistent, switch provider or model.
++- Multi‑provider failover: ensure your `providerOrder`, `endpoints`, and (optional) `detector` are set. Content flows pass these values to translation, enabling fallback beyond the popup.
++- Diagnostics: use the popup **Diagnostics** panel. It shows usage, cache/TM stats, configured providers, cost summary, and a latency histogram. Use **Copy Report** to share details when filing issues.
+ 
+ ## Development
+ Run the unit tests with:
+diff --git a/package.json b/package.json
+index 83fb8fc..6c3fa16 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "qwen-translator-extension",
+-  "version": "1.38.0",
++  "version": "1.39.0",
+   "description": "Extension to translate web pages using Qwen-MT-Turbo model",
+   "main": "index.js",
+   "scripts": {
+diff --git a/scripts/consolidate-branches.sh b/scripts/consolidate-branches.sh
+new file mode 100755
+index 0000000..17dfa1a
+--- /dev/null
++++ b/scripts/consolidate-branches.sh
+@@ -0,0 +1,128 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++# Consolidate all unmerged remote branches into a single PR.
++# - Attempts a clean merge of each branch into a new consolidation branch
++# - Runs tests after each merge; reverts merge if tests fail
++# - Archives conflicted/failing branches as patches under .consolidation-archive/
++# - Opens a PR with automerge and closes superseded PRs
++#
++# Requirements: gh, git, npm (tests), network access
++
++DATE="$(date +%Y%m%d-%H%M)"
++CONS="codex/consolidate-relevant-${DATE}"
++MERGED_LIST=".consolidation-merged.txt"
++SKIPPED_LIST=".consolidation-skipped.txt"
++ARCHIVE_DIR=".consolidation-archive"
++
++echo "[Consolidate] Preparing consolidation branch: ${CONS}"
++git fetch --all --prune
++git checkout main
++git pull --ff-only
++git checkout -b "${CONS}"
++
++: > "${MERGED_LIST}"
++: > "${SKIPPED_LIST}"
++mkdir -p "${ARCHIVE_DIR}"
++
++echo "[Consolidate] Collecting unmerged remote branches…"
++mapfile -t CANDIDATES < <(
++  git for-each-ref refs/remotes/origin --sort=-committerdate --format='%(refname:short)' \
++    | grep -v -E 'origin/(HEAD|main)$' \
++    | while read -r ref; do
++        if ! git merge-base --is-ancestor "$ref" origin/main; then
++          printf '%s\n' "${ref#origin/}"
++        fi
++      done
++)
++
++# Exclude branches that already have their own PRs open and are current
++EXCLUDES=(
++  "codex/diagnostics-latency-histogram"
++  "codex/provider-tests-mocks"
++)
++is_excluded() {
++  local b="$1"
++  for e in "${EXCLUDES[@]}"; do
++    [[ "$b" == "$e" ]] && return 0
++  done
++  return 1
++}
++
++echo "[Consolidate] Found ${#CANDIDATES[@]} candidate branches"
++
++for b in "${CANDIDATES[@]}"; do
++  [[ -z "$b" ]] && continue
++  if is_excluded "$b"; then
++    echo "[Consolidate] Skipping excluded: $b"
++    continue
++  fi
++
++echo "[Consolidate] === Merging origin/${b} ==="
++  if ! git merge --no-ff --no-edit "origin/$b"; then
++    echo "[Consolidate] Conflict on $b — aborting merge and archiving patches"
++    git merge --abort || true
++    mkdir -p "${ARCHIVE_DIR}/$b"
++    git format-patch --quiet -o "${ARCHIVE_DIR}/$b" "origin/main..origin/$b" || true
++    echo "$b" | tee -a "${SKIPPED_LIST}"
++    continue
++  fi
++
++echo "[Consolidate] Running tests after merging ${b}..."
++  if npm test --silent; then
++    echo "$b" | tee -a "${MERGED_LIST}"
++  else
++    echo "[Consolidate] Tests failed for ${b} -- reverting merge and archiving patches"
++    git reset --hard HEAD~1
++    mkdir -p "${ARCHIVE_DIR}/$b"
++    git format-patch --quiet -o "${ARCHIVE_DIR}/$b" "origin/main..origin/$b" || true
++    echo "$b" | tee -a "${SKIPPED_LIST}"
++  fi
++done
++
++echo "[Consolidate] Merged branches:"
++cat "${MERGED_LIST}" || true
++echo
++echo "[Consolidate] Skipped (conflicts/failing tests):"
++cat "${SKIPPED_LIST}" || true
++echo
++
++echo "[Consolidate] Pushing consolidation branch and opening PR…"
++git push -u origin "${CONS}"
++
++PR_URL=$(gh pr create \
++  --base main \
++  --head "${CONS}" \
++  --title "chore: consolidate unmerged improvements (${DATE})" \
++  --body "$(printf 'Merged branches:\n\n%s\n\nSkipped (conflicts/failing tests):\n\n%s\n\nArchived patches: %s\n' "$(sed 's/^/- /' "${MERGED_LIST}")" "$(sed 's/^/- /' "${SKIPPED_LIST}")" "${ARCHIVE_DIR}")")
++
++echo "[Consolidate] PR: ${PR_URL}"
++gh pr merge --auto --squash "${PR_URL}" || true
++
++echo "[Consolidate] Closing superseded PRs for merged branches…"
++while read -r b; do
++  [[ -z "$b" ]] && continue
++  PRN=$(gh pr list --search "head:$b is:open" --json number -q '.[0].number' || true)
++  if [[ -n "${PRN:-}" ]]; then
++    gh pr close "$PRN" --comment "Superseded by ${PR_URL} (consolidation)."
++  fi
++done < "${MERGED_LIST}"
++
++echo "[Consolidate] Optionally closing PRs for skipped branches as outdated (patches archived)..."
++while read -r b; do
++  [[ -z "$b" ]] && continue
++  PRN=$(gh pr list --search "head:$b is:open" --json number -q '.[0].number' || true)
++  if [[ -n "${PRN:-}" ]]; then
++    gh pr close "$PRN" --comment "Closing as outdated; not merged into consolidation. Patches archived under ${ARCHIVE_DIR}/$b."
++  fi
++done < "${SKIPPED_LIST}"
++
++echo
++echo "[Consolidate] Done. Consolidation PR created: ${PR_URL}"
++echo "[Consolidate] CI will auto-merge when green."
++echo
++echo "[Consolidate] After the PR merges, to delete all remote branches except main, run:"
++echo "  git fetch --prune && \\
++  git for-each-ref refs/remotes/origin --format='%(refname:short)' | \\
++    grep -v -E 'origin/(HEAD|main)$' | \\
++    while read ref; do b=\"\${ref#origin/}\"; echo Deleting \"$b\"; gh api -X DELETE \"repos/:owner/:repo/git/refs/heads/$b\" || true; done"
+-- 
+2.50.0
+

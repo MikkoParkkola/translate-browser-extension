@@ -1,0 +1,47 @@
+From ca6fb8292c38c40673a86ec7d3ccba7a447f0f15 Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Mon, 18 Aug 2025 09:04:33 +0200
+Subject: [PATCH 3/9] Merge branch 'main' into
+ codex/add-offline-indicators-and-messaging-ut2y3f
+
+---
+ src/contentScript.js | 13 +++++++++++++
+ test/offline.test.js |  1 -
+ 2 files changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/src/contentScript.js b/src/contentScript.js
+index 9f72995..0a59bc5 100644
+--- a/src/contentScript.js
++++ b/src/contentScript.js
+@@ -41,6 +41,19 @@ if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
+   }
+   window.addEventListener('beforeunload', onBeforeUnload);
+ 
++  function cleanupControllers() {
++    controllers.forEach(c => {
++      try { c.abort(); } catch {}
++    });
++    controllers.clear();
++  }
++
++  function onBeforeUnload() {
++    cleanupControllers();
++    window.removeEventListener('beforeunload', onBeforeUnload);
++  }
++  window.addEventListener('beforeunload', onBeforeUnload);
++
+ function handleLastError(cb) {
+   return (...args) => {
+     const err = chrome.runtime.lastError;
+diff --git a/test/offline.test.js b/test/offline.test.js
+index 671ad10..55665b4 100644
+--- a/test/offline.test.js
++++ b/test/offline.test.js
+@@ -56,4 +56,3 @@ describe('offline handling', () => {
+     Object.defineProperty(window.navigator, 'onLine', origDesc);
+   });
+ });
+-
+-- 
+2.50.0
+

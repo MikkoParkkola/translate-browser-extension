@@ -1,0 +1,739 @@
+From 90870660945ddd86059cbb0ffd81a2f5dc0031e7 Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Sat, 2 Aug 2025 17:33:21 +0200
+Subject: [PATCH 41/54] Retry failed batches and translate frames
+
+---
+ README.md            |  25 +++++---
+ src/background.js    |  48 +++++++++++---
+ src/contentScript.js | 145 ++++++++++++++++++++++++++++++++++++++-----
+ src/manifest.json    |   4 +-
+ src/popup.html       |   9 +++
+ src/popup.js         |  60 ++++++++++++++++--
+ src/throttle.js      |  84 ++++++++++++++++++-------
+ src/translator.js    |  63 ++++++++++++++-----
+ 8 files changed, 364 insertions(+), 74 deletions(-)
+
+diff --git a/README.md b/README.md
+index 4a0f05a..5aa4b8d 100644
+--- a/README.md
++++ b/README.md
+@@ -9,6 +9,10 @@ This Chrome extension translates the content of the active tab using Alibaba Clo
+ 4. Choose "Load unpacked" and select the folder containing the extension files.
+    The extension requests the "tabs" permission so the popup can send
+    messages to the active tab for translation.
++   If Chrome reports **Service worker registration failed. Status code: 15**,
++   ensure the selected folder contains `manifest.json`, `background.js` and the
++   other files from the `src` directory. Loading the repository root without the
++   bundled files will cause the worker to fail.
+ 
+ ## Uninstallation
+ Remove the extension from the browser's extension management page.
+@@ -26,28 +30,35 @@ Click **Test Settings** in the popup to run a short diagnostic. The extension pe
+ 1. Connect to the configured API endpoint
+ 2. Send an OPTIONS preflight request to the translation URL
+ 3. Perform a direct non-stream translation
+-4. Perform the same translation via the background service worker
+-5. Send a streaming translation request
+-6. Read the contents of the active tab
+-7. Translate a short string inside the active tab
+-8. Verify that extension settings can be saved
++4. Verify that the background service worker responds
++5. Perform the same translation via the background service worker
++6. Send a streaming translation request
++7. Read the contents of the active tab
++8. Translate a short string inside the active tab
++9. Verify that extension settings can be saved
+ Each step displays a pass or fail result and honours the debug logging preference.
+ The active tab check may fail on browser-internal pages (such as the Chrome Web Store or settings). Open a regular web page before running the test.
+ The final end-to-end tab translation aborts after about 10 seconds if no response is received.
++The sample phrase is chosen based on the configured source language so the translated text differs from the original.
+ 
+ ## Usage
+-Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content.
+-If translation fails, an error message appears at the bottom-right of the page. Translations are cached for the current session to minimise API calls.
++Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content as well as embedded frames or third-party widgets whenever the browser grants access. If translation fails the affected text is kept in a queue and retried until the API succeeds. When the translated text matches the original the node is marked as untranslatable and skipped. Translations are cached for the current session to minimise API calls.
+ 
+ ### Rate Limiting
+ The extension and CLI queue translation requests to stay within the provider limits.
++The background worker maintains a single queue so multiple page nodes are translated sequentially rather than all at once, preventing bursts that would trigger HTTP 429 errors. Nodes are batched into combined translation requests to reduce the overall query count. If the provider still returns a 429 response the request is retried automatically.
+ You can adjust the limits under **Requests per minute** and **Tokens per minute** in the extension popup or via `--requests` and `--tokens` on the CLI. Defaults are 60 requests and 100,000 tokens every 60 seconds.
++The popup displays live usage for the last minute and colour-coded bars turn yellow or red as limits are approached. Usage statistics refresh every second.
+ 
+ ### Troubleshooting
+ Both model refreshes and translation requests write trace logs to the browser console. Copy any on-page error and check the console for a matching entry to diagnose problems.
+ If the **Test Settings** button reports a timeout, the network request may be blocked by Content Security Policy or CORS restrictions. The extension automatically falls back to `XMLHttpRequest` when `fetch` fails, but some environments may still prevent the call entirely.
+ If the **Read active tab** check fails, make sure the currently focused tab is a normal web page; the extension cannot access Chrome or extension pages.
+ If the tab translation step fails, the page may block script execution or DOM updates.
++Some sites impose strict Content Security Policies that prevent the test element from executing or restrict network requests. Open a simple page such as `https://example.com` before running the tests. Console errors from third-party resources do not affect the translation check.
++Enable **Debug logging** in the popup to see details about the active tab and any error stack returned by the content script.
++If a translated page appears unchanged, verify that the source and target languages are configured correctly. With debug logging enabled the console warns when the translation result matches the original text.
++Shadow DOM content and same-origin iframes are scanned and translated automatically. Cross-origin frames may be translated when host permissions allow access, otherwise they are skipped.
+ 
+ ## Development
+ Run the unit tests with:
+diff --git a/src/background.js b/src/background.js
+index 137db07..98597a2 100644
+--- a/src/background.js
++++ b/src/background.js
+@@ -1,26 +1,41 @@
+ importScripts('throttle.js', 'translator.js');
+-const { configure } = self.qwenThrottle;
+-const { qwenTranslate } = self;
+ 
+ chrome.runtime.onInstalled.addListener(() => {
+   console.log('Qwen Translator installed');
+ });
+ 
++let throttleReady;
++function ensureThrottle() {
++  if (!throttleReady) {
++    throttleReady = new Promise(resolve => {
++      chrome.storage.sync.get(
++        { requestLimit: 60, tokenLimit: 100000 },
++        cfg => {
++          self.qwenThrottle.configure({
++            requestLimit: cfg.requestLimit,
++            tokenLimit: cfg.tokenLimit,
++            windowMs: 60000,
++          });
++          resolve();
++        }
++      );
++    });
++  }
++  return throttleReady;
++}
++
+ async function handleTranslate(opts) {
+   const { endpoint, apiKey, model, text, source, target, debug } = opts;
+   const ep = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
+   if (debug) console.log('QTDEBUG: background translating via', ep);
+ 
+-  const cfg = await new Promise(resolve =>
+-    chrome.storage.sync.get({ requestLimit: 60, tokenLimit: 100000 }, resolve)
+-  );
+-  configure({ requestLimit: cfg.requestLimit, tokenLimit: cfg.tokenLimit, windowMs: 60000 });
++  await ensureThrottle();
+ 
+   const controller = new AbortController();
+   const timeout = setTimeout(() => controller.abort(), 20000);
+ 
+   try {
+-    const result = await qwenTranslate({
++    const result = await self.qwenTranslate({
+       endpoint: ep,
+       apiKey,
+       model,
+@@ -41,8 +56,23 @@ async function handleTranslate(opts) {
+   }
+ }
+ 
+-chrome.runtime.onMessage.addListener((msg, sender) => {
++chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+   if (msg.action === 'translate') {
+-    return handleTranslate(msg.opts);
++    handleTranslate(msg.opts)
++      .then(sendResponse)
++      .catch(err => sendResponse({ error: err.message }));
++    return true;
++  }
++  if (msg.action === 'ping') {
++    if (msg.debug) console.log('QTDEBUG: ping received');
++    sendResponse({ ok: true });
++    return true;
++  }
++  if (msg.action === 'usage') {
++    ensureThrottle().then(() => {
++      const stats = self.qwenThrottle.getUsage();
++      sendResponse(stats);
++    });
++    return true;
+   }
+ });
+diff --git a/src/contentScript.js b/src/contentScript.js
+index 97d3159..b8baf53 100644
+--- a/src/contentScript.js
++++ b/src/contentScript.js
+@@ -1,5 +1,7 @@
+-let observer;
++let observers = [];
+ let currentConfig;
++const batchQueue = [];
++let processing = false;
+ 
+ function showError(message) {
+   let el = document.getElementById('qwen-error');
+@@ -25,8 +27,15 @@ function mark(node) {
+   node.dataset.qwenTranslated = 'true';
+ }
+ 
++function markUntranslatable(node) {
++  node.dataset.qwenUntranslatable = 'true';
++}
++
+ function isMarked(node) {
+-  return node.dataset && node.dataset.qwenTranslated === 'true';
++  return (
++    node.dataset &&
++    (node.dataset.qwenTranslated === 'true' || node.dataset.qwenUntranslatable === 'true')
++  );
+ }
+ 
+ async function translateNode(node) {
+@@ -47,6 +56,12 @@ async function translateNode(node) {
+       debug: currentConfig.debug,
+     });
+     clearTimeout(timeout);
++    if (currentConfig.debug) {
++      console.log('QTDEBUG: node translation result', { original: text.slice(0, 50), translated: translated.slice(0, 50) });
++      if (translated.trim().toLowerCase() === text.trim().toLowerCase()) {
++        console.warn('QTWARN: translated text is identical to source; check language configuration');
++      }
++    }
+     node.textContent = translated;
+     mark(node);
+   } catch (e) {
+@@ -55,34 +70,126 @@ async function translateNode(node) {
+   }
+ }
+ 
+-function scan() {
+-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
++async function translateBatch(elements) {
++  const texts = elements.map(el => el.textContent.trim());
++  const controller = new AbortController();
++  const timeout = setTimeout(() => controller.abort(), 10000);
++  let res;
++  try {
++    res = await window.qwenTranslateBatch({
++      endpoint: currentConfig.apiEndpoint,
++      apiKey: currentConfig.apiKey,
++      model: currentConfig.model,
++      texts,
++      source: currentConfig.sourceLanguage,
++      target: currentConfig.targetLanguage,
++      signal: controller.signal,
++      debug: currentConfig.debug,
++    });
++  } finally {
++    clearTimeout(timeout);
++  }
++  res.texts.forEach((t, i) => {
++    const el = elements[i];
++    if (currentConfig.debug) {
++      console.log('QTDEBUG: node translation result', { original: texts[i].slice(0, 50), translated: t.slice(0, 50) });
++    }
++    if (t.trim().toLowerCase() === texts[i].trim().toLowerCase()) {
++      markUntranslatable(el);
++      if (currentConfig.debug) {
++        console.warn('QTWARN: translated text is identical to source; marking as untranslatable');
++      }
++    } else {
++      el.textContent = t;
++      mark(el);
++    }
++  });
++}
++
++function enqueueBatch(batch) {
++  batchQueue.push(batch);
++  if (!processing) processQueue();
++}
++
++async function processQueue() {
++  processing = true;
++  while (batchQueue.length) {
++    const batch = batchQueue.shift();
++    try {
++      await translateBatch(batch);
++    } catch (e) {
++      showError(`${e.message}. See console for details.`);
++      console.error('QTERROR: batch translation error', e);
++      batchQueue.push(batch);
++      await new Promise(r => setTimeout(r, 1000));
++    }
++  }
++  processing = false;
++}
++
++function batchNodes(nodes) {
++  const maxTokens = 1000;
++  const batches = [];
++  let current = [];
++  let tokens = 0;
++  const approx = window.qwenThrottle ? window.qwenThrottle.approxTokens : t => Math.ceil(t.length / 4);
++  nodes.forEach(el => {
++    const text = el.textContent.trim();
++    const tok = approx(text);
++    if (current.length && tokens + tok > maxTokens) {
++      batches.push(current);
++      current = [];
++      tokens = 0;
++    }
++    current.push(el);
++    tokens += tok;
++  });
++  if (current.length) batches.push(current);
++  batches.forEach(b => enqueueBatch(b));
++}
++
++function scan(root = document.body) {
++  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+   const nodes = [];
+   let node;
+   while ((node = walker.nextNode())) {
+     const parent = node.parentElement;
+     if (parent && !isMarked(parent) && node.textContent.trim()) {
+-      nodes.push(node);
++      nodes.push(parent);
+     }
+   }
+-  nodes.forEach(n => translateNode(n.parentElement));
++  if (nodes.length) batchNodes(nodes);
++  if (root.querySelectorAll) {
++    root.querySelectorAll('iframe,object,embed').forEach(el => {
++      try {
++        const doc = el.contentDocument || el.getSVGDocument?.();
++        if (doc) scan(doc);
++      } catch {}
++    });
++    root.querySelectorAll('*').forEach(el => {
++      if (el.shadowRoot) scan(el.shadowRoot);
++    });
++  }
+ }
+ 
+-function observe() {
+-  observer = new MutationObserver((mutations) => {
++function observe(root = document.body) {
++  const obs = new MutationObserver((mutations) => {
+     for (const m of mutations) {
+       m.addedNodes.forEach(n => {
+         if (n.nodeType === Node.ELEMENT_NODE) {
+-          const walker = document.createTreeWalker(n, NodeFilter.SHOW_TEXT, null);
+-          let node;
+-          while ((node = walker.nextNode())) {
+-            translateNode(node.parentElement);
+-          }
++          scan(n);
+         }
++        if (n.shadowRoot) observe(n.shadowRoot);
+       });
+     }
+   });
+-  observer.observe(document.body, {childList: true, subtree: true});
++  obs.observe(root, { childList: true, subtree: true });
++  observers.push(obs);
++  if (root.querySelectorAll) {
++    root.querySelectorAll('*').forEach(el => {
++      if (el.shadowRoot) observe(el.shadowRoot);
++    });
++  }
+ }
+ 
+ async function start() {
+@@ -106,7 +213,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+   }
+   if (msg.action === 'test-e2e') {
+     const cfg = msg.cfg || {};
+-    const original = 'Hello world';
++    const original = msg.original || 'Hello world';
+     const el = document.createElement('span');
+     el.id = 'qwen-test-element';
+     el.textContent = original;
+@@ -128,14 +235,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+       })
+       .then(res => {
+         clearTimeout(timer);
++        if (cfg.debug) console.log('QTDEBUG: test-e2e translation result', res);
++        if (!res || typeof res.text !== 'string') {
++          throw new Error('invalid response');
++        }
+         el.textContent = res.text;
++        if (cfg.debug) console.log('QTDEBUG: test-e2e sending response');
+         sendResponse({ text: res.text });
+         setTimeout(() => el.remove(), 1000);
+       })
+       .catch(err => {
+         clearTimeout(timer);
++        if (cfg.debug) console.log('QTDEBUG: test-e2e sending error', err);
+         el.remove();
+-        sendResponse({ error: err.message });
++        sendResponse({ error: err.message, stack: err.stack });
+       });
+     return true;
+   }
+diff --git a/src/manifest.json b/src/manifest.json
+index 032103b..8bbf583 100644
+--- a/src/manifest.json
++++ b/src/manifest.json
+@@ -5,6 +5,7 @@
+   "version": "1.3.1",
+   "permissions": ["storage", "activeTab", "tabs", "scripting"],
+   "host_permissions": [
++    "<all_urls>",
+     "https://dashscope-intl.aliyuncs.com/*"
+   ],
+   "background": {
+@@ -24,7 +25,8 @@
+     {
+       "matches": ["<all_urls>"],
+       "js": ["config.js", "throttle.js", "translator.js", "contentScript.js"],
+-      "run_at": "document_idle"
++      "run_at": "document_idle",
++      "all_frames": true
+     }
+   ]
+ }
+diff --git a/src/popup.html b/src/popup.html
+index 07edd4a..dc2cbe7 100644
+--- a/src/popup.html
++++ b/src/popup.html
+@@ -8,6 +8,9 @@
+     input[type=text], select { width:100%; box-sizing:border-box; margin-top:2px; }
+     button { width: 100%; margin-top:6px; padding:6px; }
+     #status { margin-top:5px; font-size:12px; color:#555; min-height:16px; }
++    #usage { margin-top:6px; font-size:11px; }
++    .bar { height:6px; background:#ddd; margin-top:2px; }
++    .bar > div { height:100%; width:0%; background:green; }
+   </style>
+ </head>
+ <body>
+@@ -21,6 +24,12 @@
+   <label>Tokens per minute <input type="number" id="tokenLimit"></label>
+   <label><input type="checkbox" id="auto"> Translate automatically</label>
+   <label><input type="checkbox" id="debug"> Debug logging</label>
++  <div id="usage">
++    <div>Requests <span id="reqCount">0/0</span></div>
++    <div class="bar"><div id="reqBar"></div></div>
++    <div>Tokens <span id="tokenCount">0/0</span></div>
++    <div class="bar"><div id="tokenBar"></div></div>
++  </div>
+   <button id="save">Save</button>
+   <button id="test">Test Settings</button>
+   <div id="status"></div>
+diff --git a/src/popup.js b/src/popup.js
+index 34a5a4c..fb6b41e 100644
+--- a/src/popup.js
++++ b/src/popup.js
+@@ -9,6 +9,10 @@ const autoCheckbox = document.getElementById('auto');
+ const debugCheckbox = document.getElementById('debug');
+ const status = document.getElementById('status');
+ const versionDiv = document.getElementById('version');
++const reqCount = document.getElementById('reqCount');
++const tokenCount = document.getElementById('tokenCount');
++const reqBar = document.getElementById('reqBar');
++const tokenBar = document.getElementById('tokenBar');
+ 
+ function populateLanguages() {
+   window.qwenLanguages.forEach(l => {
+@@ -36,6 +40,24 @@ window.qwenLoadConfig().then(cfg => {
+ 
+ versionDiv.textContent = `v${chrome.runtime.getManifest().version}`;
+ 
++function setBar(el, ratio) {
++  el.style.width = Math.min(100, ratio * 100) + '%';
++  el.style.background = ratio < 0.5 ? 'green' : ratio < 0.8 ? 'gold' : 'red';
++}
++
++function refreshUsage() {
++  chrome.runtime.sendMessage({ action: 'usage' }, res => {
++    if (chrome.runtime.lastError || !res) return;
++    reqCount.textContent = `${res.requests}/${res.requestLimit}`;
++    tokenCount.textContent = `${res.tokens}/${res.tokenLimit}`;
++    setBar(reqBar, res.requests / res.requestLimit);
++    setBar(tokenBar, res.tokens / res.tokenLimit);
++  });
++}
++
++setInterval(refreshUsage, 1000);
++refreshUsage();
++
+ document.getElementById('translate').addEventListener('click', () => {
+   const debug = debugCheckbox.checked;
+   chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+@@ -124,6 +146,19 @@ document.getElementById('test').addEventListener('click', async () => {
+     if (!res.text) throw new Error('empty response');
+   })) && allOk;
+ 
++  allOk = (await run('Background ping', async () => {
++    const resp = await new Promise((resolve, reject) => {
++      chrome.runtime.sendMessage({ action: 'ping', debug: cfg.debug }, res => {
++        if (chrome.runtime.lastError) {
++          reject(new Error(chrome.runtime.lastError.message));
++        } else {
++          resolve(res);
++        }
++      });
++    });
++    if (!resp || !resp.ok) throw new Error('no response');
++  })) && allOk;
++
+   allOk = (await run('Background translation', async () => {
+     const res = await window.qwenTranslate({ ...cfg, text: 'hello', stream: false });
+     if (!res.text) throw new Error('empty response');
+@@ -158,12 +193,21 @@ document.getElementById('test').addEventListener('click', async () => {
+   allOk = (await run('Tab translation', async () => {
+     const tabs = await new Promise(r => chrome.tabs.query({ active: true, currentWindow: true }, r));
+     if (!tabs[0]) throw new Error('no tab');
++    const tab = tabs[0];
++    log('QTDEBUG: active tab for tab translation test', { id: tab.id, url: tab.url });
++    const sample = cfg.source && cfg.source.toLowerCase().startsWith('fi')
++      ? 'Hei maailma'
++      : 'Hello world';
+     const resp = await new Promise((resolve, reject) => {
+-      const timer = setTimeout(() => reject(new Error('timeout waiting for tab response')), 15000);
+-      log('QTDEBUG: sending test-e2e request to tab', tabs[0].id);
+-      chrome.tabs.sendMessage(tabs[0].id, { action: 'test-e2e', cfg }, res => {
++      const timer = setTimeout(() => {
++        log('QTERROR: tab translation timed out', { id: tab.id, url: tab.url });
++        reject(new Error('timeout waiting for tab response'));
++      }, 15000);
++      log('QTDEBUG: sending test-e2e request to tab', tab.id);
++      chrome.tabs.sendMessage(tab.id, { action: 'test-e2e', cfg, original: sample }, res => {
+         clearTimeout(timer);
+         if (chrome.runtime.lastError) {
++          log('QTERROR: tab message failed', chrome.runtime.lastError.message);
+           reject(new Error(chrome.runtime.lastError.message));
+         } else {
+           log('QTDEBUG: tab responded', res);
+@@ -171,10 +215,16 @@ document.getElementById('test').addEventListener('click', async () => {
+         }
+       });
+     });
+-    if (!resp || resp.error) throw new Error(resp ? resp.error : 'no response');
+-    if (!resp.text || resp.text.toLowerCase() === 'hello world') {
++    if (!resp || resp.error) {
++      const err = new Error(resp ? resp.error : 'no response');
++      if (resp && resp.stack) err.stack = resp.stack;
++      log('QTERROR: tab returned error', err.message);
++      throw err;
++    }
++    if (!resp.text || resp.text.toLowerCase() === sample.toLowerCase()) {
+       throw new Error('translation failed');
+     }
++    log('QTDEBUG: tab translation succeeded', resp.text);
+   })) && allOk;
+ 
+   allOk = (await run('Storage access', async () => {
+diff --git a/src/throttle.js b/src/throttle.js
+index a1fbdbe..7f98805 100644
+--- a/src/throttle.js
++++ b/src/throttle.js
+@@ -1,22 +1,27 @@
+-const queue = [];
+-let config = {
+-  requestLimit: 60,
+-  tokenLimit: 100000,
+-  windowMs: 60000,
+-};
+-let availableRequests = config.requestLimit;
+-let availableTokens = config.tokenLimit;
+-let interval = setInterval(() => {
+-  availableRequests = config.requestLimit;
+-  availableTokens = config.tokenLimit;
+-  processQueue();
+-}, config.windowMs);
++;(function (root) {
++  if (root.qwenThrottle) return
++
++  const queue = []
++  let config = {
++    requestLimit: 60,
++    tokenLimit: 100000,
++    windowMs: 60000,
++  }
++  let availableRequests = config.requestLimit
++  let availableTokens = config.tokenLimit
++  const requestTimes = []
++  const tokenTimes = []
++  let interval = setInterval(() => {
++    availableRequests = config.requestLimit
++    availableTokens = config.tokenLimit
++    processQueue()
++  }, config.windowMs)
+ 
+ function approxTokens(text) {
+   return Math.max(1, Math.ceil(text.length / 4));
+ }
+ 
+-function configure(opts = {}) {
++function throttleConfigure(opts = {}) {
+   Object.assign(config, opts);
+   availableRequests = config.requestLimit;
+   availableTokens = config.tokenLimit;
+@@ -28,11 +33,24 @@ function configure(opts = {}) {
+   }, config.windowMs);
+ }
+ 
++function recordUsage(tokens) {
++  const now = Date.now();
++  requestTimes.push(now);
++  tokenTimes.push({ time: now, tokens });
++  prune(now);
++}
++
++function prune(now = Date.now()) {
++  while (requestTimes.length && now - requestTimes[0] > config.windowMs) requestTimes.shift();
++  while (tokenTimes.length && now - tokenTimes[0].time > config.windowMs) tokenTimes.shift();
++}
++
+ function processQueue() {
+   while (queue.length && availableRequests > 0 && availableTokens >= queue[0].tokens) {
+     const item = queue.shift();
+     availableRequests--;
+     availableTokens -= item.tokens;
++    recordUsage(item.tokens);
+     item.fn().then(item.resolve, item.reject);
+   }
+ }
+@@ -65,12 +83,36 @@ async function runWithRetry(fn, text, attempts = 3, debug = false) {
+   }
+ }
+ 
+-if (typeof module !== 'undefined') {
+-  module.exports = { runWithRateLimit, runWithRetry, configure, approxTokens };
++function getUsage() {
++  prune();
++  const tokensUsed = tokenTimes.reduce((s, t) => s + t.tokens, 0);
++  return {
++    requests: requestTimes.length,
++    tokens: tokensUsed,
++    requestLimit: config.requestLimit,
++    tokenLimit: config.tokenLimit,
++  };
+ }
+ 
+-if (typeof window !== 'undefined') {
+-  window.qwenThrottle = { runWithRateLimit, runWithRetry, configure, approxTokens };
+-} else if (typeof self !== 'undefined') {
+-  self.qwenThrottle = { runWithRateLimit, runWithRetry, configure, approxTokens };
+-}
++  if (typeof module !== 'undefined') {
++    module.exports = { runWithRateLimit, runWithRetry, configure: throttleConfigure, approxTokens, getUsage }
++  }
++
++  if (typeof window !== 'undefined') {
++    root.qwenThrottle = {
++      runWithRateLimit,
++      runWithRetry,
++      configure: throttleConfigure,
++      approxTokens,
++      getUsage,
++    }
++  } else if (typeof self !== 'undefined') {
++    root.qwenThrottle = {
++      runWithRateLimit,
++      runWithRetry,
++      configure: throttleConfigure,
++      approxTokens,
++      getUsage,
++    }
++  }
++})(typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : globalThis)
+diff --git a/src/translator.js b/src/translator.js
+index f460e1d..e8fe2b9 100644
+--- a/src/translator.js
++++ b/src/translator.js
+@@ -112,15 +112,15 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal,
+       throw e;
+     }
+   }
+-  if (!resp.ok) {
+-    const err = await resp
+-      .json()
+-      .catch(() => ({ message: resp.statusText }));
+-    const error = new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
+-    if (debug) console.log('QTDEBUG: HTTP error response', error.message);
+-    if (resp.status >= 500) error.retryable = true;
+-    throw error;
+-  }
++    if (!resp.ok) {
++      const err = await resp
++        .json()
++        .catch(() => ({ message: resp.statusText }));
++      const error = new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
++      if (debug) console.log('QTDEBUG: HTTP error response', error.message);
++      if (resp.status >= 500 || resp.status === 429) error.retryable = true;
++      throw error;
++    }
+   if (!stream || !resp.body || typeof resp.body.getReader !== 'function') {
+     if (debug) console.log('QTDEBUG: received non-streaming response');
+     const data = await resp.json();
+@@ -184,13 +184,38 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
+     return cache.get(cacheKey);
+   }
+ 
+-  if (!noProxy && typeof window !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
++  if (
++    !noProxy &&
++    typeof window !== 'undefined' &&
++    typeof chrome !== 'undefined' &&
++    chrome.runtime &&
++    chrome.runtime.sendMessage
++  ) {
+     const ep = withSlash(endpoint);
+     if (debug) console.log('QTDEBUG: requesting translation via background script');
+-    const result = await chrome.runtime
+-      .sendMessage({ action: 'translate', opts: { endpoint: ep, apiKey, model, text, source, target, debug } })
+-      .catch(err => { throw new Error(err.message || err); });
+-    if (result && result.error) {
++    const result = await new Promise((resolve, reject) => {
++      try {
++        chrome.runtime.sendMessage(
++          {
++            action: 'translate',
++            opts: { endpoint: ep, apiKey, model, text, source, target, debug },
++          },
++          res => {
++            if (chrome.runtime.lastError) {
++              reject(new Error(chrome.runtime.lastError.message));
++            } else {
++              resolve(res);
++            }
++          }
++        );
++      } catch (err) {
++        reject(err);
++      }
++    });
++    if (!result) {
++      throw new Error('No response from background');
++    }
++    if (result.error) {
+       throw new Error(result.error);
+     }
+     if (debug) console.log('QTDEBUG: background response received');
+@@ -252,19 +277,27 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
+     throw e;
+   }
+ }
++
++async function qwenTranslateBatch({ texts = [], ...opts }) {
++  const joined = texts.join('\n');
++  const res = await qwenTranslate({ ...opts, text: joined });
++  return { texts: res.text.split('\n') };
++}
+ function qwenClearCache() {
+   cache.clear();
+ }
+ if (typeof window !== 'undefined') {
+   window.qwenTranslate = qwenTranslate;
+   window.qwenTranslateStream = qwenTranslateStream;
++  window.qwenTranslateBatch = qwenTranslateBatch;
+   window.qwenClearCache = qwenClearCache;
+ }
+ if (typeof self !== 'undefined' && typeof window === 'undefined') {
+   self.qwenTranslate = qwenTranslate;
+   self.qwenTranslateStream = qwenTranslateStream;
++  self.qwenTranslateBatch = qwenTranslateBatch;
+   self.qwenClearCache = qwenClearCache;
+ }
+ if (typeof module !== 'undefined') {
+-  module.exports = { qwenTranslate, qwenTranslateStream, qwenClearCache };
++  module.exports = { qwenTranslate, qwenTranslateStream, qwenTranslateBatch, qwenClearCache };
+ }
+-- 
+2.50.0
+

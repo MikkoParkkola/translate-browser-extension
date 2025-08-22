@@ -1,0 +1,542 @@
+From 0f261661686c0293e73058a3f7078fa3528c5337 Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Thu, 31 Jul 2025 14:21:34 +0200
+Subject: [PATCH 27/48] Refine Test Settings diagnostics
+
+---
+ README.md            | 13 +++++--
+ cli/translate.js     | 26 ++++++++-----
+ src/background.js    | 90 ++++++++++---------------------------------
+ src/contentScript.js |  5 ++-
+ src/popup.js         | 83 ++++++++++++++++++++++++++++++++-------
+ src/translator.js    | 92 ++++++++++++++++++++++++++++++++++++--------
+ 6 files changed, 196 insertions(+), 113 deletions(-)
+
+diff --git a/README.md b/README.md
+index 3ab2649..f6e33d5 100644
+--- a/README.md
++++ b/README.md
+@@ -22,7 +22,13 @@ Use the popup to configure:
+ - Translation model name (defaults to `qwen-mt-turbo`)
+ - Source and target languages
+ - Automatic translation toggle
+-Click **Test Settings** in the popup to verify the configuration. The extension uses the streaming API for responsive translations.
++Click **Test Settings** in the popup to run a short diagnostic. The extension performs several quick checks:
++1. Connect to the configured API endpoint
++2. Validate the API key with a simple translation request
++3. Send a streaming translation request
++4. Read the contents of the active tab
++5. Verify that extension settings can be saved
++Each step displays a pass or fail result and honours the debug logging preference.
+ 
+ ## Usage
+ Click the extension icon and choose **Translate Page**. If automatic translation is enabled the page will be translated on load. Translations apply to dynamically added content.
+@@ -34,6 +40,7 @@ You can adjust the limits under **Requests per minute** and **Tokens per minute*
+ 
+ ### Troubleshooting
+ Both model refreshes and translation requests write trace logs to the browser console. Copy any on-page error and check the console for a matching entry to diagnose problems.
++If the **Test Settings** button reports a timeout, the network request may be blocked by Content Security Policy or CORS restrictions. The extension automatically falls back to `XMLHttpRequest` when `fetch` fails, but some environments may still prevent the call entirely.
+ 
+ ## Development
+ Run the unit tests with:
+@@ -43,11 +50,11 @@ npm test
+ ```
+ 
+ ## Command Line Utility
+-A simple translator CLI is included in `cli/translate.js`. It streams translations as you type.
++A simple translator CLI is included in `cli/translate.js`. It streams translations as you type by default. Use `--no-stream` for request/response mode.
+ 
+ ### Usage
+ ```sh
+-node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--tokens M] [-d] -s <source_lang> -t <target_lang>
++node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--tokens M] [-d] [--no-stream] -s <source_lang> -t <target_lang>
+ ```
+ If no endpoint is specified the tool defaults to `https://dashscope-intl.aliyuncs.com/api/v1`.
+ Use `-d` to print detailed request and response logs.
+diff --git a/cli/translate.js b/cli/translate.js
+index 8bf743f..756709a 100755
+--- a/cli/translate.js
++++ b/cli/translate.js
+@@ -2,7 +2,7 @@
+ 
+ const readline = require('readline');
+ const { configure } = require('../src/throttle');
+-const { qwenTranslateStream } = require('../src/translator');
++const { qwenTranslateStream, qwenTranslate } = require('../src/translator');
+ 
+ function parseArgs() {
+   const args = process.argv.slice(2);
+@@ -17,6 +17,7 @@ function parseArgs() {
+     else if (a === '--requests') opts.requestLimit = parseInt(args[++i], 10);
+     else if (a === '--tokens') opts.tokenLimit = parseInt(args[++i], 10);
+     else if (a === '-d' || a === '--debug') opts.debug = true;
++    else if (a === '--no-stream') opts.stream = false;
+     else if (a === '-h' || a === '--help') opts.help = true;
+   }
+   return opts;
+@@ -27,8 +28,10 @@ async function main() {
+   const DEFAULT_MODEL = 'qwen-mt-turbo';
+   const opts = parseArgs();
+ 
++  if (opts.stream !== false) opts.stream = true;
++
+   if (opts.help || !opts.apiKey || !opts.source || !opts.target) {
+-    console.log('Usage: node translate.js -k <apiKey> [-e endpoint] [-m model] [-\-requests N] [-\-tokens M] [-d] -s <source> -t <target>');
++    console.log('Usage: node translate.js -k <apiKey> [-e endpoint] [-m model] [--requests N] [--tokens M] [-d] [--no-stream] -s <source> -t <target>');
+     process.exit(opts.help ? 0 : 1);
+   }
+ 
+@@ -36,12 +39,12 @@ async function main() {
+   opts.model = opts.model || DEFAULT_MODEL;
+ 
+   if (opts.debug) {
+-    console.log('QTDEBUG: starting CLI with options', {
++    console.error('\x1b[36mQTDEBUG: starting CLI with options', {
+       endpoint: opts.endpoint,
+       model: opts.model,
+       source: opts.source,
+       target: opts.target,
+-    });
++    }, '\x1b[0m');
+   }
+ 
+   configure({
+@@ -56,11 +59,16 @@ async function main() {
+     line = line.trim();
+     if (!line) { rl.prompt(); return; }
+     try {
+-      await qwenTranslateStream({ ...opts, text: line, debug: opts.debug }, chunk => {
+-        if (opts.debug) console.log('QTDEBUG: chunk received', chunk);
+-        process.stdout.write(chunk);
+-      });
+-      process.stdout.write('\n');
++      if (opts.stream) {
++        await qwenTranslateStream({ ...opts, text: line, debug: opts.debug, stream: true }, chunk => {
++          if (opts.debug) console.error('\x1b[36mQTDEBUG: chunk received', chunk, '\x1b[0m');
++          process.stdout.write(chunk);
++        });
++        process.stdout.write('\n');
++      } else {
++        const res = await qwenTranslate({ ...opts, text: line, debug: opts.debug, stream: false });
++        process.stdout.write(res.text + '\n');
++      }
+     } catch (err) {
+       console.error(err.stack || err.toString());
+       process.exit(1);
+diff --git a/src/background.js b/src/background.js
+index 766b223..137db07 100644
+--- a/src/background.js
++++ b/src/background.js
+@@ -1,5 +1,6 @@
+-importScripts('throttle.js');
+-const { runWithRetry, approxTokens, configure } = self.qwenThrottle;
++importScripts('throttle.js', 'translator.js');
++const { configure } = self.qwenThrottle;
++const { qwenTranslate } = self;
+ 
+ chrome.runtime.onInstalled.addListener(() => {
+   console.log('Qwen Translator installed');
+@@ -8,84 +9,35 @@ chrome.runtime.onInstalled.addListener(() => {
+ async function handleTranslate(opts) {
+   const { endpoint, apiKey, model, text, source, target, debug } = opts;
+   const ep = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
+-  const url = `${ep}services/aigc/text-generation/generation`;
+-  if (debug) console.log('QTDEBUG: background translating via', url);
++  if (debug) console.log('QTDEBUG: background translating via', ep);
+ 
+   const cfg = await new Promise(resolve =>
+     chrome.storage.sync.get({ requestLimit: 60, tokenLimit: 100000 }, resolve)
+   );
+   configure({ requestLimit: cfg.requestLimit, tokenLimit: cfg.tokenLimit, windowMs: 60000 });
+ 
+-  try {
+-    const attempt = async () => {
+-      const controller = new AbortController();
+-      const t = setTimeout(() => controller.abort(), 10000);
+-      try {
+-        const r = await fetch(url, {
+-        method: 'POST',
+-        headers: {
+-          'Content-Type': 'application/json',
+-          Authorization: apiKey,
+-          'X-DashScope-SSE': 'enable',
+-        },
+-        body: JSON.stringify({
+-          model,
+-          input: { messages: [{ role: 'user', content: text }] },
+-          parameters: { translation_options: { source_lang: source, target_lang: target } },
+-        }),
+-        signal: controller.signal,
+-      });
+-        if (!r.ok && r.status >= 500) {
+-          const err = new Error(`HTTP ${r.status}`);
+-          err.retryable = true;
+-          throw err;
+-        }
+-        return r;
+-      } catch (e) {
+-        e.retryable = true;
+-        throw e;
+-      } finally {
+-        clearTimeout(t);
+-      }
+-    };
+-
+-    const resp = await runWithRetry(attempt, approxTokens(text), 3, debug);
++  const controller = new AbortController();
++  const timeout = setTimeout(() => controller.abort(), 20000);
+ 
+-    if (!resp.ok) {
+-      const err = await resp.json().catch(() => ({ message: resp.statusText }));
+-      if (debug) console.log('QTDEBUG: background HTTP error', err);
+-      return { error: `HTTP ${resp.status}: ${err.message}` };
+-    }
+-
+-    const reader = resp.body.getReader();
+-    const decoder = new TextDecoder();
+-    let buffer = '';
+-    let result = '';
+-    while (true) {
+-      const { value, done } = await reader.read();
+-      if (done) break;
+-      buffer += decoder.decode(value, { stream: true });
+-      const lines = buffer.split('\n');
+-      buffer = lines.pop();
+-      for (const line of lines) {
+-        const trimmed = line.trim();
+-        if (!trimmed.startsWith('data:')) continue;
+-        const data = trimmed.slice(5).trim();
+-        if (data === '[DONE]') { reader.cancel(); break; }
+-        try {
+-          const obj = JSON.parse(data);
+-          const chunk =
+-            obj.output?.text ||
+-            obj.output?.choices?.[0]?.message?.content || '';
+-          result += chunk;
+-        } catch {}
+-      }
+-    }
++  try {
++    const result = await qwenTranslate({
++      endpoint: ep,
++      apiKey,
++      model,
++      text,
++      source,
++      target,
++      debug,
++      signal: controller.signal,
++      stream: false,
++    });
+     if (debug) console.log('QTDEBUG: background translation completed');
+-    return { text: result };
++    return result;
+   } catch (err) {
+     console.error('QTERROR: background translation error', err);
+     return { error: err.message };
++  } finally {
++    clearTimeout(timeout);
+   }
+ }
+ 
+diff --git a/src/contentScript.js b/src/contentScript.js
+index f3351ab..25789b3 100644
+--- a/src/contentScript.js
++++ b/src/contentScript.js
+@@ -96,10 +96,13 @@ async function start() {
+   observe();
+ }
+ 
+-chrome.runtime.onMessage.addListener((msg) => {
++chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+   if (msg.action === 'start') {
+     start();
+   }
++  if (msg.action === 'test-read') {
++    sendResponse({ title: document.title });
++  }
+ });
+ 
+ if (document.readyState === 'complete' || document.readyState === 'interactive') {
+diff --git a/src/popup.js b/src/popup.js
+index a38b20c..ee8b074 100644
+--- a/src/popup.js
++++ b/src/popup.js
+@@ -62,26 +62,81 @@ document.getElementById('save').addEventListener('click', () => {
+ 
+ document.getElementById('test').addEventListener('click', async () => {
+   status.textContent = 'Testing...';
++  const list = document.createElement('ul');
++  list.style.margin = '0';
++  list.style.paddingLeft = '20px';
++  status.innerHTML = '';
++  status.appendChild(list);
++
+   const cfg = {
+     endpoint: endpointInput.value.trim(),
+     apiKey: apiKeyInput.value.trim(),
+     model: modelInput.value.trim(),
+     source: sourceSelect.value,
+     target: targetSelect.value,
+-    debug: true,
++    debug: debugCheckbox.checked,
+   };
+-  console.log('QTDEBUG: starting configuration test', cfg);
+-  const timer = setTimeout(() => {
+-    console.error('QTERROR: configuration test timed out');
+-    status.textContent = 'Error: timeout';
+-  }, 15000);
+-  try {
+-    await window.qwenTranslate({ ...cfg, text: 'hello' });
+-    status.textContent = 'Configuration OK';
+-    console.log('QTDEBUG: configuration test successful');
+-  } catch (e) {
+-    status.textContent = `Error: ${e.message}`;
+-    console.error('QTERROR: configuration test failed', e);
++
++  function log(...args) { if (cfg.debug) console.log(...args); }
++  log('QTDEBUG: starting configuration test', cfg);
++
++  async function run(name, fn) {
++    const item = document.createElement('li');
++    item.textContent = `${name}: ...`;
++    list.appendChild(item);
++    try {
++      await fn();
++      item.textContent = `${name}: \u2713`;
++      return true;
++    } catch (e) {
++      item.textContent = `${name}: \u2717 ${e.message}`;
++      item.title = e.stack || e.message;
++      log(`QTERROR: ${name} failed`, e);
++      return false;
++    }
+   }
+-  clearTimeout(timer);
++
++  let allOk = true;
++
++  allOk = (await run('Connect to API', async () => {
++    const controller = new AbortController();
++    const t = setTimeout(() => controller.abort(), 5000);
++    try {
++      await fetch(cfg.endpoint, { method: 'GET', signal: controller.signal });
++    } finally { clearTimeout(t); }
++  })) && allOk;
++
++  allOk = (await run('Non-stream translation', async () => {
++    const res = await window.qwenTranslate({ ...cfg, text: 'hello', stream: false });
++    if (!res.text) throw new Error('empty response');
++  })) && allOk;
++
++  allOk = (await run('Streaming translation', async () => {
++    let out = '';
++    await window.qwenTranslateStream({ ...cfg, text: 'world', stream: true }, c => { out += c; });
++    if (!out) throw new Error('no data');
++  })) && allOk;
++
++  allOk = (await run('Read active tab', async () => {
++    const tabs = await new Promise(r => chrome.tabs.query({ active: true, currentWindow: true }, r));
++    if (!tabs[0]) throw new Error('no tab');
++    const resp = await chrome.tabs.sendMessage(tabs[0].id, { action: 'test-read' }).catch(() => null);
++    if (!resp || typeof resp.title !== 'string') throw new Error('no response');
++  })) && allOk;
++
++  allOk = (await run('Storage access', async () => {
++    const key = 'qwen-test-' + Date.now();
++    await chrome.storage.sync.set({ [key]: '1' });
++    const result = await new Promise(resolve => chrome.storage.sync.get([key], resolve));
++    if (result[key] !== '1') throw new Error('write failed');
++    await chrome.storage.sync.remove([key]);
++  })) && allOk;
++
++  if (allOk) {
++    status.appendChild(document.createTextNode('All tests passed.'));
++  } else {
++    status.appendChild(document.createTextNode('Some tests failed. See above.'));
++  }
++
++  log('QTDEBUG: configuration test finished');
+ });
+diff --git a/src/translator.js b/src/translator.js
+index 929e789..dba63d6 100644
+--- a/src/translator.js
++++ b/src/translator.js
+@@ -4,9 +4,13 @@ var runWithRetry;
+ var approxTokens;
+ 
+ if (typeof window === 'undefined') {
+-  // Node 18+ provides a global fetch implementation
+-  fetchFn = typeof fetch !== 'undefined' ? fetch : require('cross-fetch');
+-  ({ runWithRateLimit, runWithRetry, approxTokens } = require('./throttle'));
++  if (typeof self !== 'undefined' && self.qwenThrottle) {
++    ({ runWithRateLimit, runWithRetry, approxTokens } = self.qwenThrottle);
++  } else {
++    // Node 18+ provides a global fetch implementation
++    fetchFn = typeof fetch !== 'undefined' ? fetch : require('cross-fetch');
++    ({ runWithRateLimit, runWithRetry, approxTokens } = require('./throttle'));
++  }
+ } else {
+   if (window.qwenThrottle) {
+     ({ runWithRateLimit, runWithRetry, approxTokens } = window.qwenThrottle);
+@@ -21,11 +25,42 @@ if (typeof window === 'undefined') {
+ 
+ const cache = new Map();
+ 
++function fetchViaXHR(url, { method = 'GET', headers = {}, body, signal }, debug) {
++  return new Promise((resolve, reject) => {
++    const xhr = new XMLHttpRequest();
++    xhr.open(method, url, true);
++    Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
++    xhr.responseType = 'text';
++    if (signal) {
++      if (signal.aborted) return reject(new DOMException('Aborted', 'AbortError'));
++      const onAbort = () => {
++        xhr.abort();
++        reject(new DOMException('Aborted', 'AbortError'));
++      };
++      signal.addEventListener('abort', onAbort, { once: true });
++      xhr.addEventListener('loadend', () => signal.removeEventListener('abort', onAbort));
++    }
++    xhr.onload = () => {
++      const resp = {
++        ok: xhr.status >= 200 && xhr.status < 300,
++        status: xhr.status,
++        json: async () => JSON.parse(xhr.responseText || 'null'),
++        text: async () => xhr.responseText,
++        headers: new Headers(),
++      };
++      if (debug) console.log('QTDEBUG: XHR status', xhr.status);
++      resolve(resp);
++    };
++    xhr.onerror = () => reject(new Error('Network error'));
++    xhr.send(body);
++  });
++}
++
+ function withSlash(url) {
+   return url.endsWith('/') ? url : `${url}/`;
+ }
+ 
+-async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData }) {
++async function doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true }) {
+   const url = `${withSlash(endpoint)}services/aigc/text-generation/generation`;
+   if (debug) {
+     console.log('QTDEBUG: sending translation request to', url);
+@@ -41,13 +76,14 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal,
+   if (debug) console.log('QTDEBUG: request body', body);
+   let resp;
+   try {
++    const headers = {
++      'Content-Type': 'application/json',
++      Authorization: apiKey,
++    };
++    if (stream) headers['X-DashScope-SSE'] = 'enable';
+     resp = await fetchFn(url, {
+       method: 'POST',
+-      headers: {
+-        'Content-Type': 'application/json',
+-        Authorization: apiKey,
+-        'X-DashScope-SSE': 'enable',
+-      },
++      headers,
+       body: JSON.stringify(body),
+       signal,
+     });
+@@ -56,8 +92,25 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal,
+       console.log('QTDEBUG: response headers', Object.fromEntries(resp.headers.entries()));
+     }
+   } catch (e) {
+-    e.retryable = true;
+-    throw e;
++    if (!stream && typeof XMLHttpRequest !== 'undefined') {
++      if (debug) console.log('QTDEBUG: fetch failed, falling back to XHR');
++      resp = await fetchViaXHR(
++        url,
++        {
++          method: 'POST',
++          headers: {
++            'Content-Type': 'application/json',
++            Authorization: apiKey,
++          },
++          body: JSON.stringify(body),
++          signal,
++        },
++        debug
++      );
++    } else {
++      e.retryable = true;
++      throw e;
++    }
+   }
+   if (!resp.ok) {
+     const err = await resp
+@@ -68,7 +121,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal,
+     if (resp.status >= 500) error.retryable = true;
+     throw error;
+   }
+-  if (!resp.body || typeof resp.body.getReader !== 'function') {
++  if (!stream || !resp.body || typeof resp.body.getReader !== 'function') {
+     if (debug) console.log('QTDEBUG: received non-streaming response');
+     const data = await resp.json();
+     const text =
+@@ -115,7 +168,7 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, signal,
+   return { text: result };
+ }
+ 
+-async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false }) {
++async function qwenTranslate({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = false }) {
+   if (debug) {
+     console.log('QTDEBUG: qwenTranslate called with', {
+       endpoint,
+@@ -131,7 +184,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
+     return cache.get(cacheKey);
+   }
+ 
+-  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
++  if (typeof window !== 'undefined' && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+     const ep = withSlash(endpoint);
+     if (debug) console.log('QTDEBUG: requesting translation via background script');
+     const result = await chrome.runtime
+@@ -147,7 +200,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
+ 
+   try {
+     const data = await runWithRetry(
+-      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug }),
++      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, stream }),
+       approxTokens(text),
+       3,
+       debug
+@@ -164,7 +217,7 @@ async function qwenTranslate({ endpoint, apiKey, model, text, source, target, si
+   }
+ }
+ 
+-async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false }, onData) {
++async function qwenTranslateStream({ endpoint, apiKey, model, text, source, target, signal, debug = false, stream = true }, onData) {
+   if (debug) {
+     console.log('QTDEBUG: qwenTranslateStream called with', {
+       endpoint,
+@@ -183,7 +236,7 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
+   }
+   try {
+     const data = await runWithRetry(
+-      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData }),
++      () => doFetch({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream }),
+       approxTokens(text),
+       3,
+       debug
+@@ -207,6 +260,11 @@ if (typeof window !== 'undefined') {
+   window.qwenTranslateStream = qwenTranslateStream;
+   window.qwenClearCache = qwenClearCache;
+ }
++if (typeof self !== 'undefined' && typeof window === 'undefined') {
++  self.qwenTranslate = qwenTranslate;
++  self.qwenTranslateStream = qwenTranslateStream;
++  self.qwenClearCache = qwenClearCache;
++}
+ if (typeof module !== 'undefined') {
+   module.exports = { qwenTranslate, qwenTranslateStream, qwenClearCache };
+ }
+-- 
+2.50.0
+

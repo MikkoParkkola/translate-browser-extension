@@ -1,0 +1,3908 @@
+From 87b267a3e78aeba80a8ef9dc60c42f428d79c64e Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Sun, 10 Aug 2025 10:58:24 +0200
+Subject: [PATCH] Copy WASM assets into Safari bundles
+
+---
+ BUILDING_WASM.md                              |    2 +-
+ README.md                                     |    1 +
+ WASM_INTEGRATION.md                           |    1 -
+ safari/README.md                              |   22 +-
+ scripts/build-mupdf.sh                        |    6 +-
+ scripts/convert-safari.sh                     |    5 +
+ src/background.js                             |   58 +
+ src/manifest.json                             |   18 +-
+ src/pdfViewer.html                            |    2 +-
+ src/pdfViewer.js                              |    4 +-
+ src/popup.html                                |   72 +-
+ src/qa/engine-status.html                     |    1 -
+ src/translator.js                             |  105 +-
+ src/wasm/engine.js                            |   15 +-
+ src/wasm/vendor/README.md                     |    2 +-
+ src/wasm/vendor/mupdf-wasm.js                 |    1 -
+ src/wasm/vendor/mupdf-wasm.zip                |    1 -
+ src/wasm/vendor/mupdf.engine.js               |   10 +-
+ src/wasm/vendor/mupdf.js                      | 3165 +----------------
+ .../vendor/{mupdf-wasm.wasm => mupdf.wasm}    |  Bin
+ src/wasm/vendor/overlay.engine.js             |   20 +-
+ src/wasm/vendor/pdfium.engine.js              |   21 +-
+ test/translator.test.js                       |   42 +-
+ 23 files changed, 334 insertions(+), 3240 deletions(-)
+ delete mode 100644 src/wasm/vendor/mupdf-wasm.js
+ delete mode 100644 src/wasm/vendor/mupdf-wasm.zip
+ rename src/wasm/vendor/{mupdf-wasm.wasm => mupdf.wasm} (100%)
+
+diff --git a/BUILDING_WASM.md b/BUILDING_WASM.md
+index a6d72c3..5aa595b 100644
+--- a/BUILDING_WASM.md
++++ b/BUILDING_WASM.md
+@@ -18,7 +18,7 @@ Quick Local Build (Docker)
+    - Enter the repo and build the wasm target (consult MuPDF docs; target names vary by version):
+      docker run --rm -v "$PWD":/src -w /src emscripten/emsdk:latest bash -lc "make generate && make wasm"
+    - Copy resulting wasm/js artifacts to:
+-     src/wasm/vendor/mupdf.wasm
++    src/wasm/vendor/mupdf.wasm
+      src/wasm/vendor/mupdf.js
+ 
+ 2) ICU4X Segmenter (Unicode License)
+diff --git a/README.md b/README.md
+index 5100a06..0bb03ba 100644
+--- a/README.md
++++ b/README.md
+@@ -28,6 +28,7 @@ npm run build:safari
+ ```
+ 
+ Open the generated project in Xcode to sign and build the extension for the desired platform.
++See `safari/README.md` for detailed iOS/iPadOS deployment steps.
+ 
+ ## Configuration
+ Use the popup to configure:
+diff --git a/WASM_INTEGRATION.md b/WASM_INTEGRATION.md
+index 784eab9..9b426e4 100644
+--- a/WASM_INTEGRATION.md
++++ b/WASM_INTEGRATION.md
+@@ -3,7 +3,6 @@ WASM Text-Rewrite Integration Plan
+ Goal
+ - Replace text objects in PDFs inside the extension using a WASM engine (MuPDF/PDFium) with HarfBuzz + ICU4X and embedded Noto fonts. Fully language‑agnostic, vector‑accurate, selectable text.
+ 
+-Artifacts to vendor under src/wasm/vendor/
+ - Engine: mupdf.js + mupdf.wasm (or pdfium.js + pdfium.wasm)
+ - Shaping: harfbuzz.js + harfbuzz.wasm
+ - Line breaking/BiDi: icu4x_segmenter.js + icu4x_segmenter.wasm
+diff --git a/safari/README.md b/safari/README.md
+index fec4833..6db3240 100644
+--- a/safari/README.md
++++ b/safari/README.md
+@@ -1,6 +1,24 @@
+ # Safari WebExtension
+ 
+ This directory is the default output location for the Safari web-extension converter.
+-Run `npm run build:safari` on macOS to generate an Xcode project for macOS and iOS/iPadOS.
++Run `npm run build:safari` on macOS to generate Xcode projects for both macOS and iOS/iPadOS.
+ 
+-Open the generated project in Xcode to build and sign the extension for each platform.
++## Build & Install on iOS / iPadOS
++
++1. Ensure Xcode 15+ is installed and a developer account is configured.
++2. Fetch dependencies and vendor WASM assets:
++   ```bash
++   npm install
++   ```
++3. Convert the Chrome extension into Safari projects:
++   ```bash
++   npm run build:safari
++   ```
++4. Open the generated project in Xcode (found under `safari/`).
++5. Select the `Qwen Translator iOS` scheme and connect an iOS or iPadOS device.
++6. Enable *Developer Mode* on the device (`Settings → Privacy & Security → Developer Mode`).
++7. In Xcode, build and run the app on the device. The build step copies the `wasm/` assets into the extension bundle.
++8. On the device, enable the extension under `Settings → Safari → Extensions`.
++9. Launch Safari and start translating pages and PDFs.
++
++Repeat the same steps with the `Qwen Translator macOS` scheme to run on macOS.
+diff --git a/scripts/build-mupdf.sh b/scripts/build-mupdf.sh
+index 4b863c1..6ed363c 100755
+--- a/scripts/build-mupdf.sh
++++ b/scripts/build-mupdf.sh
+@@ -14,13 +14,13 @@ docker run --rm -v "$PWD":/src -w /src emscripten/emsdk:latest bash -lc "set -e;
+ # Copy artifacts from platform/wasm/dist
+ echo "Copying MuPDF wasm/js artifacts..."
+ mupd=platform/wasm/dist
+-if [[ ! -f "$mupd/mupdf-wasm.wasm" || ! -f "$mupd/mupdf-wasm.js" ]]; then
++if [[ ! -f "$mupd/mupdf.wasm" || ! -f "$mupd/mupdf.js" ]]; then
+   echo "MuPDF wasm artifacts not found in platform/wasm/dist" >&2
+   exit 1
+ fi
+ mkdir -p "$ROOT_DIR/src/wasm/vendor"
+-cp "$mupd/mupdf-wasm.wasm" "$ROOT_DIR/src/wasm/vendor/mupdf.wasm"
+-cp "$mupd/mupdf-wasm.js" "$ROOT_DIR/src/wasm/vendor/mupdf.js"
++cp "$mupd/mupdf.wasm" "$ROOT_DIR/src/wasm/vendor/mupdf.wasm"
++cp "$mupd/mupdf.js" "$ROOT_DIR/src/wasm/vendor/mupdf.js"
+ popd >/dev/null
+ rm -rf "$WORKDIR"
+ echo "MuPDF artifacts copied to src/wasm/vendor/."
+diff --git a/scripts/convert-safari.sh b/scripts/convert-safari.sh
+index 7e3e3bd..4f05a3b 100755
+--- a/scripts/convert-safari.sh
++++ b/scripts/convert-safari.sh
+@@ -25,3 +25,8 @@ xcrun safari-web-extension-converter "$SRC_DIR" \
+   --bundle-identifier "com.example.qwentranslator.ios" \
+   --project-location "$OUT_DIR" \
+   --ios-only
++
++# Ensure vendor WASM assets are copied into each generated extension bundle
++find "$OUT_DIR" -type d -name "*Extension" | while read -r extDir; do
++  rsync -a "$SRC_DIR/wasm" "$extDir/"
++done
+diff --git a/src/background.js b/src/background.js
+index e272ca8..595172e 100644
+--- a/src/background.js
++++ b/src/background.js
+@@ -4,6 +4,26 @@ chrome.runtime.onInstalled.addListener(() => {
+   console.log('Qwen Translator installed');
+ });
+ 
++// Redirect PDF navigations before the browser's viewer loads
++chrome.webRequest.onBeforeRequest.addListener(
++  details => {
++    if (details.url.startsWith(chrome.runtime.getURL('pdfViewer.html'))) return;
++    try {
++      const u = new URL(details.url);
++      if (
++        (u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'file:') &&
++        u.pathname.toLowerCase().endsWith('.pdf')
++      ) {
++        const viewer =
++          chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(details.url);
++        return { redirectUrl: viewer };
++      }
++    } catch {}
++  },
++  { urls: ['<all_urls>'], types: ['main_frame'] },
++  ['blocking']
++);
++
+ // Redirect top-level PDF navigations to our custom viewer
+ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+   const url = changeInfo.url || tab.url;
+@@ -23,6 +43,42 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+ let throttleReady;
+ let activeTranslations = 0;
+ 
++async function updateIcon() {
++  await ensureThrottle();
++  const { requests, tokens, requestLimit, tokenLimit } = self.qwenThrottle.getUsage();
++  function color(rem, limit) {
++    if (rem <= 0) return '#d9534f';
++    if (rem / limit < 0.2) return '#f0ad4e';
++    return '#5cb85c';
++  }
++  const reqColor = color(requestLimit - requests, requestLimit);
++  const tokColor = color(tokenLimit - tokens, tokenLimit);
++  const canvas = new OffscreenCanvas(19, 19);
++  const ctx = canvas.getContext('2d');
++  ctx.clearRect(0, 0, 19, 19);
++  ctx.fillStyle = '#fff';
++  ctx.fillRect(0, 0, 19, 19);
++  if (activeTranslations > 0) {
++    ctx.strokeStyle = '#0d6efd';
++    ctx.lineWidth = 2;
++    ctx.strokeRect(1, 1, 17, 17);
++  } else {
++    ctx.strokeStyle = '#999';
++    ctx.lineWidth = 1;
++    ctx.strokeRect(0, 0, 19, 19);
++  }
++  ctx.fillStyle = reqColor;
++  ctx.beginPath();
++  ctx.arc(6, 9.5, 4, 0, Math.PI * 2);
++  ctx.fill();
++  ctx.fillStyle = tokColor;
++  ctx.beginPath();
++  ctx.arc(13, 9.5, 4, 0, Math.PI * 2);
++  ctx.fill();
++  const imageData = ctx.getImageData(0, 0, 19, 19);
++  chrome.action.setIcon({ imageData: { 19: imageData } });
++}
++
+ function updateBadge() {
+   if (activeTranslations > 0) {
+     chrome.action.setBadgeText({ text: '...' });
+@@ -30,8 +86,10 @@ function updateBadge() {
+   } else {
+     chrome.action.setBadgeText({ text: '' });
+   }
++  updateIcon();
+ }
+ updateBadge();
++setInterval(updateIcon, 5000);
+ function ensureThrottle() {
+   if (!throttleReady) {
+     throttleReady = new Promise(resolve => {
+diff --git a/src/manifest.json b/src/manifest.json
+index 5b1f626..22db733 100644
+--- a/src/manifest.json
++++ b/src/manifest.json
+@@ -2,8 +2,16 @@
+   "manifest_version": 3,
+   "name": "Qwen Translator",
+   "description": "Translate pages using Qwen-MT-Turbo",
+-  "version": "1.3.1",
+-  "permissions": ["storage", "activeTab", "tabs", "scripting", "downloads"],
++  "version": "1.4.1",
++  "permissions": [
++    "storage",
++    "activeTab",
++    "tabs",
++    "scripting",
++    "downloads",
++    "webRequest",
++    "webRequestBlocking"
++  ],
+   "host_permissions": [
+     "<all_urls>",
+     "https://dashscope-intl.aliyuncs.com/*",
+@@ -24,7 +32,11 @@
+       "resources": [
+         "translator.js", "config.js", "languages.js", "throttle.js",
+         "pdfViewer.html", "pdfViewer.js", "pdf.min.js", "pdf.worker.min.js",
+-        "wasm/pipeline.js", "wasm/pdfgen.js", "wasm/engine.js", "wasm/vendor/*", "config.local.js", "qa/compare.html"
++        "wasm/pipeline.js", "wasm/pdfgen.js", "wasm/engine.js",
++        "wasm/vendor/hb.wasm", "wasm/vendor/icu4x_segmenter.wasm",
++        "wasm/vendor/mupdf.js", "wasm/vendor/mupdf.wasm",
++        "wasm/vendor/pdfium.js", "wasm/vendor/pdfium.wasm",
++        "wasm/vendor/*", "config.local.js", "qa/compare.html"
+       ],
+       "matches": ["<all_urls>"]
+     }
+diff --git a/src/pdfViewer.html b/src/pdfViewer.html
+index f47fad3..a762d39 100644
+--- a/src/pdfViewer.html
++++ b/src/pdfViewer.html
+@@ -35,8 +35,8 @@
+   <script src="pdf.min.js"></script>
+   <script src="config.local.js"></script>
+   <script src="config.js"></script>
+-  <script src="translator.js"></script>
+   <script src="throttle.js"></script>
++  <script src="translator.js"></script>
+   <script type="module" src="pdfViewer.js"></script>
+   <style>
+     .topbar { padding:10px 12px; border-bottom:1px solid #eee; display:flex; gap:12px; align-items:center; position:sticky; top:0; background:#fff; z-index:5 }
+diff --git a/src/pdfViewer.js b/src/pdfViewer.js
+index 9839548..bca8d3b 100644
+--- a/src/pdfViewer.js
++++ b/src/pdfViewer.js
+@@ -77,7 +77,7 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
+       const vendorBase = chrome.runtime.getURL('wasm/vendor/');
+       async function head(u){ try{ const r=await fetch(u,{method:'HEAD'}); return r.ok; }catch{return false;} }
+       const avail = {
+-        mupdf: (await head(vendorBase+'mupdf.wasm') || await head(vendorBase+'mupdf-wasm.wasm')) && await head(vendorBase+'mupdf.js') && await head(vendorBase+'mupdf-wasm.js'),
++        mupdf: await head(vendorBase+'mupdf.js') && (await head(vendorBase+'mupdf.wasm') || await head(vendorBase+'mupdf-wasm.wasm')),
+         pdfium: await head(vendorBase+'pdfium.wasm') && await head(vendorBase+'pdfium.js'),
+         overlay: await head(vendorBase+'pdf-lib.js'),
+         simple: true,
+@@ -228,7 +228,7 @@ import { safeFetchPdf } from './wasm/pdfFetch.js';
+         statEl.textContent = 'Engine: Ready';
+         statEl.style.color = '#2e7d32';
+       } else {
+-        statEl.textContent = 'Engine: Missing components (requires: hb.wasm, pdfium.wasm, mupdf.wasm or mupdf-wasm.wasm, icu4x_segmenter.wasm)';
++          statEl.textContent = 'Engine: Missing components (requires: hb.wasm, pdfium.wasm, mupdf.wasm, icu4x_segmenter.wasm, pdf-lib.js)';
+         statEl.style.color = '#d32f2f';
+       }
+     } catch (e) {
+diff --git a/src/popup.html b/src/popup.html
+index c6f502d..7b89f35 100644
+--- a/src/popup.html
++++ b/src/popup.html
+@@ -3,14 +3,68 @@
+ <head>
+   <meta charset="utf-8">
+   <style>
+-    body { font-family: Arial, sans-serif; width: 240px; padding: 10px; }
+-    label { display:block; margin-top:4px; font-size:12px; }
+-    input[type=text], select { width:100%; box-sizing:border-box; margin-top:2px; }
+-    button { width: 100%; margin-top:6px; padding:6px; }
+-    #status { margin-top:5px; font-size:12px; color:#555; min-height:16px; }
+-    #usage { margin-top:6px; font-size:11px; }
+-    .bar { height:6px; background:#ddd; margin-top:2px; }
+-    .bar > div { height:100%; width:0%; background:green; }
++    body {
++      font-family: system-ui, sans-serif;
++      width: 260px;
++      padding: 12px;
++      margin: 0;
++      background: #fff;
++    }
++    label {
++      display: block;
++      margin-top: 8px;
++      font-size: 12px;
++      color: #333;
++    }
++    input[type=text], input[type=number], select {
++      width: 100%;
++      box-sizing: border-box;
++      margin-top: 4px;
++      padding: 6px 8px;
++      border: 1px solid #ccc;
++      border-radius: 4px;
++      background: #fafafa;
++    }
++    button {
++      width: 100%;
++      margin-top: 10px;
++      padding: 8px;
++      border: none;
++      border-radius: 4px;
++      background: #1976d2;
++      color: #fff;
++      font-weight: 600;
++      cursor: pointer;
++    }
++    button:hover { background: #1565c0; }
++    #status {
++      margin-top: 8px;
++      font-size: 12px;
++      color: #555;
++      min-height: 16px;
++    }
++    #usage {
++      margin-top: 12px;
++      font-size: 11px;
++    }
++    .bar {
++      height: 6px;
++      background: #eee;
++      margin-top: 2px;
++      border-radius: 3px;
++      overflow: hidden;
++    }
++    .bar > div {
++      height: 100%;
++      width: 0%;
++      background: #1976d2;
++    }
++    #version {
++      font-size: 11px;
++      color: #777;
++      margin-top: 6px;
++      text-align: center;
++    }
+   </style>
+ </head>
+ <body>
+@@ -36,7 +90,7 @@
+   <button id="save">Save</button>
+   <button id="test">Test Settings</button>
+   <div id="status"></div>
+-  <div id="version" style="font-size:11px;color:#777;margin-top:4px"></div>
++  <div id="version"></div>
+   <script src="throttle.js"></script>
+   <script src="translator.js"></script>
+   <script src="config.js"></script>
+diff --git a/src/qa/engine-status.html b/src/qa/engine-status.html
+index 4778b93..89bb8eb 100644
+--- a/src/qa/engine-status.html
++++ b/src/qa/engine-status.html
+@@ -27,7 +27,6 @@
+       'wasm/vendor/pdfium.wasm',
+       'wasm/vendor/pdfium.js',
+       'wasm/vendor/mupdf.wasm',
+-      'wasm/vendor/mupdf-wasm.wasm',
+       'wasm/vendor/mupdf.js',
+       // ICU4X segmenter: support both original wasm-pack names and compatibility copies
+       'wasm/vendor/icu4x_segmenter_wasm_bg.wasm',
+diff --git a/src/translator.js b/src/translator.js
+index 50a23f7..7e77e6a 100644
+--- a/src/translator.js
++++ b/src/translator.js
+@@ -278,41 +278,96 @@ async function qwenTranslateStream({ endpoint, apiKey, model, text, source, targ
+   }
+ }
+ 
+-async function qwenTranslateBatch({ texts = [], ...opts }) {
+-  const results = new Array(texts.length);
+-  const indexMap = new Map();
++async function qwenTranslateBatch({
++  texts = [],
++  tokenBudget = 1000,
++  maxBatchSize = 40,
++  ...opts
++}) {
++  const mapping = [];
+   texts.forEach((t, i) => {
+     const key = `${opts.source}:${opts.target}:${t}`;
+     if (cache.has(key)) {
+-      results[i] = cache.get(key).text;
+-    } else {
+-      if (!indexMap.has(t)) indexMap.set(t, []);
+-      indexMap.get(t).push(i);
++      mapping.push({ index: i, chunk: 0, text: cache.get(key).text, cached: true });
++      return;
+     }
++    const pieces = splitLongText(t, tokenBudget);
++    pieces.forEach((p, idx) => mapping.push({ index: i, chunk: idx, text: p }));
++  });
++  const byIndex = new Map();
++  mapping.forEach(m => {
++    if (!byIndex.has(m.index)) byIndex.set(m.index, []);
++    byIndex.get(m.index).push(m);
+   });
+-  const unique = Array.from(indexMap.keys());
+-  if (unique.length) {
+-    const joined = unique.join('\n');
+-    const res = await qwenTranslate({ ...opts, text: joined });
+-    const translated = (res && typeof res.text === 'string') ? res.text.split('\n') : [];
+-    const n = Math.min(unique.length, translated.length);
+-    for (let idx = 0; idx < n; idx++) {
+-      const orig = unique[idx];
+-      const tr = translated[idx] || '';
+-      const key = `${opts.source}:${opts.target}:${orig}`;
+-      cache.set(key, { text: tr });
+-      const arr = indexMap.get(orig);
+-      if (arr && arr.forEach) arr.forEach(i => { results[i] = tr; });
++  const groups = [];
++  let group = [];
++  let tokens = 0;
++  for (const m of mapping.filter(m => !m.cached)) {
++    const tk = approxTokens(m.text) + 1;
++    if (group.length && (tokens + tk > tokenBudget || group.length >= maxBatchSize)) {
++      groups.push(group);
++      group = [];
++      tokens = 0;
++    }
++    group.push(m);
++    tokens += tk;
++  }
++  if (group.length) groups.push(group);
++  for (const g of groups) {
++    const joined = g.map(m => m.text).join('\n');
++    let res;
++    try {
++      res = await qwenTranslate({ ...opts, text: joined });
++    } catch (e) {
++      g.forEach(m => { m.result = m.text; });
++      continue;
+     }
+-    // If fewer translations returned than inputs, fill remaining with originals
+-    for (let idx = n; idx < unique.length; idx++) {
+-      const orig = unique[idx];
+-      const arr = indexMap.get(orig);
+-      if (arr && arr.forEach) arr.forEach(i => { results[i] = orig; });
++    const translated = res && typeof res.text === 'string' ? res.text.split('\n') : [];
++    for (let i = 0; i < g.length; i++) {
++      g[i].result = translated[i] || g[i].text;
++      const key = `${opts.source}:${opts.target}:${g[i].text}`;
++      cache.set(key, { text: g[i].result });
+     }
+   }
++  const results = new Array(texts.length).fill('');
++  byIndex.forEach((arr, idx) => {
++    const parts = arr
++      .sort((a, b) => a.chunk - b.chunk)
++      .map(m => (m.result !== undefined ? m.result : m.text));
++    results[idx] = parts.join(' ').trim();
++  });
+   return { texts: results };
+ }
++
++function splitLongText(text, maxTokens) {
++  const parts = (text || '').split(/(?<=[\.?!])\s+/);
++  const chunks = [];
++  let cur = '';
++  for (const part of parts) {
++    const next = cur ? cur + ' ' + part : part;
++    if (approxTokens(next) > maxTokens && cur) {
++      chunks.push(cur);
++      cur = part;
++    } else {
++      cur = next;
++    }
++  }
++  if (cur) chunks.push(cur);
++  const out = [];
++  for (const ch of chunks) {
++    if (approxTokens(ch) <= maxTokens) {
++      out.push(ch);
++    } else {
++      let start = 0;
++      const step = Math.max(128, Math.floor(maxTokens * 4));
++      while (start < ch.length) {
++        out.push(ch.slice(start, start + step));
++        start += step;
++      }
++    }
++  }
++  return out;
++}
+ function qwenClearCache() {
+   cache.clear();
+ }
+diff --git a/src/wasm/engine.js b/src/wasm/engine.js
+index fcdcf1f..420d82e 100644
+--- a/src/wasm/engine.js
++++ b/src/wasm/engine.js
+@@ -6,7 +6,20 @@ let _impl = null;
+ let _lastChoice = 'auto';
+ 
+ async function check(base, path) {
+-  try { const r = await fetch(base + path, { method: 'HEAD' }); return r.ok; } catch { return false; }
++  const attempts = [
++    { method: 'GET', headers: { Range: 'bytes=0-0' } },
++    { method: 'HEAD' },
++    { method: 'GET' },
++  ];
++  for (const init of attempts) {
++    try {
++      const r = await fetch(base + path, init);
++      if (r.ok) return true;
++    } catch {
++      /* ignore and try next */
++    }
++  }
++  return false;
+ }
+ 
+ export async function chooseEngine(base, requested) {
+diff --git a/src/wasm/vendor/README.md b/src/wasm/vendor/README.md
+index 2544a5b..80126db 100644
+--- a/src/wasm/vendor/README.md
++++ b/src/wasm/vendor/README.md
+@@ -4,7 +4,7 @@ Place the following prebuilt assets in this folder to enable true PDF text rewri
+ 
+ Required
+ - MuPDF or PDFium (WASM build)
+-  - mupdf.js, mupdf.wasm (or pdfium.js, pdfium.wasm)
++- mupdf.js, mupdf-wasm.wasm (or pdfium.js, pdfium.wasm)
+ - HarfBuzz (WASM) for text shaping
+   - hb.js, hb.wasm (from harfbuzzjs releases)
+ - ICU4X Segmenter (WASM) for line breaking and BiDi
+diff --git a/src/wasm/vendor/mupdf-wasm.js b/src/wasm/vendor/mupdf-wasm.js
+deleted file mode 100644
+index c138a0d..0000000
+--- a/src/wasm/vendor/mupdf-wasm.js
++++ /dev/null
+@@ -1 +0,0 @@
+-var _=async function(_={}){var a,e,t=_,s=new Promise((_,t)=>{a=_,e=t}),n="object"==typeof window,i="undefined"!=typeof WorkerGlobalScope,m="object"==typeof process&&"object"==typeof process.versions&&"string"==typeof process.versions.node&&"renderer"!=process.type;if(m){const{createRequire:_}=await import("module");var r=_(import.meta.url)}var o,p,d="./this.program",w=(_,a)=>{throw a},f=import.meta.url,l="";if(m){var c=r("fs"),g=r("path");f.startsWith("file:")&&(l=g.dirname(r("url").fileURLToPath(f))+"/"),p=_=>(_=U(_)?new URL(_):_,c.readFileSync(_)),o=async(_,a=!0)=>(_=U(_)?new URL(_):_,c.readFileSync(_,a?void 0:"utf8")),process.argv.length>1&&(d=process.argv[1].replace(/\\/g,"/")),process.argv.slice(2),w=(_,a)=>{throw process.exitCode=_,a}}else if(n||i){try{l=new URL(".",f).href}catch{}i&&(p=_=>{var a=new XMLHttpRequest;return a.open("GET",_,!1),a.responseType="arraybuffer",a.send(null),new Uint8Array(a.response)}),o=async _=>{if(U(_))return new Promise((a,e)=>{var t=new XMLHttpRequest;t.open("GET",_,!0),t.responseType="arraybuffer",t.onload=()=>{200==t.status||0==t.status&&t.response?a(t.response):e(t.status)},t.onerror=e,t.send(null)});var a=await fetch(_,{credentials:"same-origin"});if(a.ok)return a.arrayBuffer();throw new Error(a.status+" : "+a.url)}}var u,h,b,v,y,x,k,T=console.log.bind(console),j=console.error.bind(console),$=!1,A=!1,U=_=>_.startsWith("file://");function R(){var _=h.buffer;new Int8Array(_),new Int16Array(_),t.HEAPU8=b=new Uint8Array(_),new Uint16Array(_),t.HEAP32=v=new Int32Array(_),t.HEAPU32=y=new Uint32Array(_),t.HEAPF32=new Float32Array(_),k=new Float64Array(_),x=new BigInt64Array(_),new BigUint64Array(_)}var E,C=0,S=null;function M(){return t.locateFile?(_="mupdf-wasm.wasm",t.locateFile?t.locateFile(_,l):l+_):new URL("mupdf-wasm.wasm",import.meta.url).href;var _}async function D(_){if(!u)try{var a=await o(_);return new Uint8Array(a)}catch{}return function(_){if(_==E&&u)return new Uint8Array(u);if(p)return p(_);throw"both async and sync fetching of the wasm failed"}(_)}async function F(_,a){try{var s=await D(_);return await WebAssembly.instantiate(s,a)}catch(_){j(`failed to asynchronously prepare wasm: ${_}`),function(_){t.onAbort?.(_),j(_="Aborted("+_+")"),$=!0,_+=". Build with -sASSERTIONS for more info.",A&&o_();var a=new WebAssembly.RuntimeError(_);throw e(a),a}(_)}}class P{name="ExitStatus";constructor(_){this.message=`Program terminated with exit(${_})`,this.status=_}}var I=_=>{for(;_.length>0;)_.shift()(t)},B=[],q=_=>B.push(_),L=[],W=_=>L.push(_),z=!0,H=new TextDecoder,N=(_,a)=>{if(!_)return"";for(var e=_+a,t=_;!(t>=e)&&b[t];)++t;return H.decode(b.subarray(_,t))},O={varargs:void 0,getStr:_=>N(_)},G=_=>_<-9007199254740992||_>9007199254740992?NaN:Number(_),Y=(_,a,e)=>((_,a,e,t)=>{if(!(t>0))return 0;for(var s=e,n=e+t-1,i=0;i<_.length;++i){var m=_.charCodeAt(i);if(m>=55296&&m<=57343&&(m=65536+((1023&m)<<10)|1023&_.charCodeAt(++i)),m<=127){if(e>=n)break;a[e++]=m}else if(m<=2047){if(e+1>=n)break;a[e++]=192|m>>6,a[e++]=128|63&m}else if(m<=65535){if(e+2>=n)break;a[e++]=224|m>>12,a[e++]=128|m>>6&63,a[e++]=128|63&m}else{if(e+3>=n)break;a[e++]=240|m>>18,a[e++]=128|m>>12&63,a[e++]=128|m>>6&63,a[e++]=128|63&m}}return a[e]=0,e-s})(_,b,a,e),X=()=>Date.now(),J=[],K=(_,a,e)=>{var t=((_,a)=>{var e;for(J.length=0;e=b[_++];){var t=105!=e;a+=(t&=112!=e)&&a%8?4:0,J.push(112==e?y[a>>2]:106==e?x[a>>3]:105==e?v[a>>2]:k[a>>3]),a+=t?8:4}return J})(a,e);return i_[_](...t)},Q=(_,a)=>Math.ceil(_/a)*a,V=_=>{var a=(_-h.buffer.byteLength+65535)/65536|0;try{return h.grow(a),R(),1}catch(_){}},Z={},__=()=>{if(!__.strings){var _={USER:"web_user",LOGNAME:"web_user",PATH:"/",PWD:"/",HOME:"/home/web_user",LANG:("object"==typeof navigator&&navigator.languages&&navigator.languages[0]||"C").replace("-","_")+".UTF-8",_:d||"./this.program"};for(var a in Z)void 0===Z[a]?delete _[a]:_[a]=Z[a];var e=[];for(var a in _)e.push(`${a}=${_[a]}`);__.strings=e}return __.strings},a_=_=>{for(var a=0,e=0;e<_.length;++e){var t=_.charCodeAt(e);t<=127?a++:t<=2047?a+=2:t>=55296&&t<=57343?(a+=4,++e):a+=3}return a},e_=_=>{z||(t.onExit?.(_),$=!0),w(_,new P(_))},t_=(_,a)=>{e_(_)},s_=[null,[],[]],n_=(_,a)=>{var e=s_[_];0===a||10===a?((1===_?T:j)(((_,a=0,e=NaN)=>{for(var t=a+e,s=a;_[s]&&!(s>=t);)++s;return H.decode(_.buffer?_.subarray(a,s):new Uint8Array(_.slice(a,s)))})(e)),e.length=0):e.push(a)};t.noExitRuntime&&(z=t.noExitRuntime),t.print&&(T=t.print),t.printErr&&(j=t.printErr),t.wasmBinary&&(u=t.wasmBinary),t.arguments&&t.arguments,t.thisProgram&&(d=t.thisProgram),t.UTF8ToString=N,t.stringToUTF8=Y,t.lengthBytesUTF8=a_;var i_={6016e3:()=>{throw"TRYLATER"},6016022:()=>{throw"ABORT"},6016041:_=>{throw new Error(N(_))},6016080:()=>{throw new Error("Cannot create MuPDF context!")},6016133:(_,a,e,t,s,n,i)=>{globalThis.$libmupdf_text_walk.begin_span(_,a,e,t,s,n,i)},6016207:(_,a,e,t,s,n,i,m)=>{globalThis.$libmupdf_text_walk.show_glyph(_,a,e,t,s,n,i,m)},6016285:_=>{globalThis.$libmupdf_text_walk.end_span(_)},6016333:(_,a,e,t)=>globalThis.$libmupdf_load_font_file(_,a,e,t),6016396:(_,a,e,t)=>globalThis.$libmupdf_stm_read(_,a,e,t),6016454:_=>{globalThis.$libmupdf_stm_close(_)},6016494:(_,a,e,t)=>globalThis.$libmupdf_stm_seek(_,a,e,t),6016552:(_,a,e)=>{globalThis.$libmupdf_path_walk.moveto(_,a,e)},6016606:(_,a,e)=>{globalThis.$libmupdf_path_walk.lineto(_,a,e)},6016660:(_,a,e,t,s,n,i)=>{globalThis.$libmupdf_path_walk.curveto(_,a,e,t,s,n,i)},6016731:_=>{globalThis.$libmupdf_path_walk.closepath(_)},6016780:_=>{globalThis.$libmupdf_device.close_device(_)},6016829:_=>{globalThis.$libmupdf_device.drop_device(_)},6016877:(_,a,e,t,s,n,i,m)=>{globalThis.$libmupdf_device.fill_path(_,a,e,t,s,n,i,m)},6016951:(_,a,e,t,s,n,i,m)=>{globalThis.$libmupdf_device.stroke_path(_,a,e,t,s,n,i,m)},6017027:(_,a,e,t)=>{globalThis.$libmupdf_device.clip_path(_,a,e,t)},6017085:(_,a,e,t)=>{globalThis.$libmupdf_device.clip_stroke_path(_,a,e,t)},6017150:(_,a,e,t,s,n,i)=>{globalThis.$libmupdf_device.fill_text(_,a,e,t,s,n,i)},6017220:(_,a,e,t,s,n,i,m)=>{globalThis.$libmupdf_device.stroke_text(_,a,e,t,s,n,i,m)},6017296:(_,a,e)=>{globalThis.$libmupdf_device.clip_text(_,a,e)},6017350:(_,a,e,t)=>{globalThis.$libmupdf_device.clip_stroke_text(_,a,e,t)},6017415:(_,a,e)=>{globalThis.$libmupdf_device.ignore_text(_,a,e)},6017471:(_,a,e,t)=>{globalThis.$libmupdf_device.fill_shade(_,a,e,t)},6017530:(_,a,e,t)=>{globalThis.$libmupdf_device.fill_image(_,a,e,t)},6017589:(_,a,e,t,s,n,i)=>{globalThis.$libmupdf_device.fill_image_mask(_,a,e,t,s,n,i)},6017665:(_,a,e)=>{globalThis.$libmupdf_device.clip_image_mask(_,a,e)},6017725:_=>{globalThis.$libmupdf_device.pop_clip(_)},6017770:(_,a,e,t,s,n)=>{globalThis.$libmupdf_device.begin_mask(_,a,e,t,s,n)},6017837:(_,a)=>{globalThis.$libmupdf_device.end_mask(_,a)},6017886:(_,a,e,t,s,n,i)=>{globalThis.$libmupdf_device.begin_group(_,a,e,t,s,n,i)},6017958:_=>{globalThis.$libmupdf_device.end_group(_)},6018004:(_,a,e,t,s,n,i)=>globalThis.$libmupdf_device.begin_tile(_,a,e,t,s,n,i),6018082:_=>{globalThis.$libmupdf_device.end_tile(_)},6018127:(_,a)=>{globalThis.$libmupdf_device.begin_layer(_,a)},6018179:_=>{globalThis.$libmupdf_device.end_layer(_)}},m_={g:function(_,a,e){return O.varargs=e,0},u:function(_,a){a=G(a)},t:function(_,a,e){return O.varargs=e,0},f:function(_,a,e,t){O.varargs=t},s:_=>{},e:(_,a,e)=>{},m:function(_,a){_=G(_);var e=new Date(1e3*_);v[a>>2]=e.getUTCSeconds(),v[a+4>>2]=e.getUTCMinutes(),v[a+8>>2]=e.getUTCHours(),v[a+12>>2]=e.getUTCDate(),v[a+16>>2]=e.getUTCMonth(),v[a+20>>2]=e.getUTCFullYear()-1900,v[a+24>>2]=e.getUTCDay();var t=Date.UTC(e.getUTCFullYear(),0,1,0,0,0,0),s=(e.getTime()-t)/864e5|0;v[a+28>>2]=s},l:function(_){var a=(()=>{var a=Date.UTC(v[_+20>>2]+1900,v[_+16>>2],v[_+12>>2],v[_+8>>2],v[_+4>>2],v[_>>2],0),e=new Date(a);v[_+24>>2]=e.getUTCDay();var t=Date.UTC(e.getUTCFullYear(),0,1,0,0,0,0),s=(e.getTime()-t)/864e5|0;return v[_+28>>2]=s,e.getTime()/1e3})();return BigInt(a)},k:(_,a,e,t)=>{var s=(new Date).getFullYear(),n=new Date(s,0,1),i=new Date(s,6,1),m=n.getTimezoneOffset(),r=i.getTimezoneOffset(),o=Math.max(m,r);y[_>>2]=60*o,v[a>>2]=Number(m!=r);var p=_=>{var a=_>=0?"-":"+",e=Math.abs(_);return`UTC${a}${String(Math.floor(e/60)).padStart(2,"0")}${String(e%60).padStart(2,"0")}`},d=p(m),w=p(r);r<m?(Y(d,e,17),Y(w,t,17)):(Y(d,t,17),Y(w,e,17))},r:function(_,a,e){if(a=G(a),!((t=_)>=0&&t<=3))return 28;var t,s;s=0===_?X():performance.now();var n=Math.round(1e3*s*1e3);return x[e>>3]=BigInt(n),0},a:(_,a,e)=>K(_,a,e),j:(_,a,e)=>K(_,a,e),i:X,h:_=>{var a=b.length,e=2147483648;if((_>>>=0)>e)return!1;for(var t=1;t<=4;t*=2){var s=a*(1+.2/t);s=Math.min(s,_+100663296);var n=Math.min(e,Q(Math.max(_,s),65536));if(V(n))return!0}return!1},q:(_,a)=>{var e=0,t=0;for(var s of __()){var n=a+e;y[_+t>>2]=n,e+=Y(s,n,1/0)+1,t+=4}return 0},p:(_,a)=>{var e=__();y[_>>2]=e.length;var t=0;for(var s of e)t+=a_(s)+1;return y[a>>2]=t,0},b:t_,d:_=>52,o:(_,a,e,t)=>52,n:function(_,a,e,t){return a=G(a),70},c:(_,a,e,t)=>{for(var s=0,n=0;n<e;n++){var i=y[a>>2],m=y[a+4>>2];a+=8;for(var r=0;r<m;r++)n_(_,b[i+r]);s+=m}return y[t>>2]=s,0}},r_=await async function(){function _(_,a){return r_=_.exports,h=r_.v,R(),function(){if(C--,t.monitorRunDependencies?.(C),0==C&&S){var _=S;S=null,_()}}(),r_}C++,t.monitorRunDependencies?.(C);var a={a:m_};if(t.instantiateWasm)return new Promise((e,s)=>{t.instantiateWasm(a,(a,t)=>{e(_(a))})});E??=M();try{var s=function(a){return _(a.instance)}(await async function(_,a,e){if(!_&&"function"==typeof WebAssembly.instantiateStreaming&&!U(a)&&!m)try{var t=fetch(a,{credentials:"same-origin"});return await WebAssembly.instantiateStreaming(t,e)}catch(_){j(`wasm streaming compile failed: ${_}`),j("falling back to ArrayBuffer instantiation")}return F(a,e)}(u,E,a));return s}catch(_){return e(_),Promise.reject(_)}}(),o_=(r_.w,t._wasm_init_context=r_.x,t._wasm_malloc=r_.y,t._wasm_free=r_.z,t._wasm_enable_icc=r_.A,t._wasm_disable_icc=r_.B,t._wasm_set_user_css=r_.C,t._wasm_Memento_checkAllMemory=r_.D,t._wasm_Memento_listBlocks=r_.E,t._wasm_keep_buffer=r_.F,t._wasm_drop_buffer=r_.G,t._wasm_keep_stream=r_.H,t._wasm_drop_stream=r_.I,t._wasm_keep_colorspace=r_.J,t._wasm_drop_colorspace=r_.K,t._wasm_keep_pixmap=r_.L,t._wasm_drop_pixmap=r_.M,t._wasm_keep_font=r_.N,t._wasm_drop_font=r_.O,t._wasm_keep_stroke_state=r_.P,t._wasm_drop_stroke_state=r_.Q,t._wasm_keep_image=r_.R,t._wasm_drop_image=r_.S,t._wasm_keep_shade=r_.T,t._wasm_drop_shade=r_.U,t._wasm_keep_path=r_.V,t._wasm_drop_path=r_.W,t._wasm_keep_text=r_.X,t._wasm_drop_text=r_.Y,t._wasm_keep_device=r_.Z,t._wasm_drop_device=r_._,t._wasm_keep_display_list=r_.$,t._wasm_drop_display_list=r_.aa,t._wasm_drop_stext_page=r_.ba,t._wasm_drop_document_writer=r_.ca,t._wasm_drop_outline_iterator=r_.da,t._wasm_keep_document=r_.ea,t._wasm_drop_document=r_.fa,t._wasm_keep_page=r_.ga,t._wasm_drop_page=r_.ha,t._wasm_keep_link=r_.ia,t._wasm_drop_link=r_.ja,t._wasm_keep_outline=r_.ka,t._wasm_drop_outline=r_.la,t._wasm_pdf_keep_annot=r_.ma,t._wasm_pdf_drop_annot=r_.na,t._wasm_pdf_keep_obj=r_.oa,t._wasm_pdf_drop_obj=r_.pa,t._wasm_pdf_keep_graft_map=r_.qa,t._wasm_pdf_drop_graft_map=r_.ra,t._wasm_buffer_get_data=r_.sa,t._wasm_buffer_get_len=r_.ta,t._wasm_colorspace_get_type=r_.ua,t._wasm_colorspace_get_n=r_.va,t._wasm_colorspace_get_name=r_.wa,t._wasm_pixmap_get_w=r_.xa,t._wasm_pixmap_get_h=r_.ya,t._wasm_pixmap_get_x=r_.za,t._wasm_pixmap_get_y=r_.Aa,t._wasm_pixmap_get_n=r_.Ba,t._wasm_pixmap_get_stride=r_.Ca,t._wasm_pixmap_get_alpha=r_.Da,t._wasm_pixmap_get_xres=r_.Ea,t._wasm_pixmap_get_yres=r_.Fa,t._wasm_pixmap_get_colorspace=r_.Ga,t._wasm_pixmap_get_samples=r_.Ha,t._wasm_pixmap_set_xres=r_.Ia,t._wasm_pixmap_set_yres=r_.Ja,t._wasm_font_get_name=r_.Ka,t._wasm_stroke_state_get_start_cap=r_.La,t._wasm_stroke_state_set_start_cap=r_.Ma,t._wasm_stroke_state_get_dash_cap=r_.Na,t._wasm_stroke_state_set_dash_cap=r_.Oa,t._wasm_stroke_state_get_end_cap=r_.Pa,t._wasm_stroke_state_set_end_cap=r_.Qa,t._wasm_stroke_state_get_linejoin=r_.Ra,t._wasm_stroke_state_set_linejoin=r_.Sa,t._wasm_stroke_state_get_linewidth=r_.Ta,t._wasm_stroke_state_set_linewidth=r_.Ua,t._wasm_stroke_state_get_miterlimit=r_.Va,t._wasm_stroke_state_set_miterlimit=r_.Wa,t._wasm_stroke_state_get_dash_phase=r_.Xa,t._wasm_stroke_state_set_dash_phase=r_.Ya,t._wasm_stroke_state_get_dash_len=r_.Za,t._wasm_image_get_w=r_._a,t._wasm_image_get_h=r_.$a,t._wasm_image_get_n=r_.ab,t._wasm_image_get_bpc=r_.bb,t._wasm_image_get_xres=r_.cb,t._wasm_image_get_yres=r_.db,t._wasm_image_get_imagemask=r_.eb,t._wasm_image_get_colorspace=r_.fb,t._wasm_image_get_mask=r_.gb,t._wasm_outline_get_title=r_.hb,t._wasm_outline_get_uri=r_.ib,t._wasm_outline_get_next=r_.jb,t._wasm_outline_get_down=r_.kb,t._wasm_outline_get_is_open=r_.lb,t._wasm_outline_item_get_title=r_.mb,t._wasm_outline_item_get_uri=r_.nb,t._wasm_outline_item_get_is_open=r_.ob,t._wasm_link_get_rect=r_.pb,t._wasm_link_get_uri=r_.qb,t._wasm_link_get_next=r_.rb,t._wasm_stext_page_get_mediabox=r_.sb,t._wasm_stext_page_get_first_block=r_.tb,t._wasm_stext_block_get_next=r_.ub,t._wasm_stext_block_get_type=r_.vb,t._wasm_stext_block_get_bbox=r_.wb,t._wasm_stext_block_get_first_line=r_.xb,t._wasm_stext_block_get_transform=r_.yb,t._wasm_stext_block_get_image=r_.zb,t._wasm_stext_line_get_next=r_.Ab,t._wasm_stext_line_get_wmode=r_.Bb,t._wasm_stext_line_get_dir=r_.Cb,t._wasm_stext_line_get_bbox=r_.Db,t._wasm_stext_line_get_first_char=r_.Eb,t._wasm_stext_char_get_next=r_.Fb,t._wasm_stext_char_get_c=r_.Gb,t._wasm_stext_char_get_origin=r_.Hb,t._wasm_stext_char_get_quad=r_.Ib,t._wasm_stext_char_get_size=r_.Jb,t._wasm_stext_char_get_font=r_.Kb,t._wasm_stext_char_get_argb=r_.Lb,t._wasm_link_dest_get_chapter=r_.Mb,t._wasm_link_dest_get_page=r_.Nb,t._wasm_link_dest_get_type=r_.Ob,t._wasm_link_dest_get_x=r_.Pb,t._wasm_link_dest_get_y=r_.Qb,t._wasm_link_dest_get_w=r_.Rb,t._wasm_link_dest_get_h=r_.Sb,t._wasm_link_dest_get_zoom=r_.Tb,t._wasm_pdf_filespec_params_get_filename=r_.Ub,t._wasm_pdf_filespec_params_get_mimetype=r_.Vb,t._wasm_pdf_filespec_params_get_size=r_.Wb,t._wasm_pdf_filespec_params_get_created=r_.Xb,t._wasm_pdf_filespec_params_get_modified=r_.Yb,t._wasm_pdf_page_get_obj=r_.Zb,t._wasm_new_buffer=r_._b,t._wasm_new_buffer_from_data=r_.$b,t._wasm_append_string=r_.ac,t._wasm_append_byte=r_.bc,t._wasm_append_buffer=r_.cc,t._wasm_slice_buffer=r_.dc,t._wasm_string_from_buffer=r_.ec,t._wasm_device_gray=r_.fc,t._wasm_device_rgb=r_.gc,t._wasm_device_bgr=r_.hc,t._wasm_device_cmyk=r_.ic,t._wasm_device_lab=r_.jc,t._wasm_new_icc_colorspace=r_.kc,t._wasm_new_stroke_state=r_.lc,t._wasm_stroke_state_get_dash_item=r_.mc,t._wasm_stroke_state_set_dash_item=r_.nc,t._wasm_new_base14_font=r_.oc,t._wasm_new_cjk_font=r_.pc,t._wasm_new_font_from_buffer=r_.qc,t._wasm_encode_character=r_.rc,t._wasm_advance_glyph=r_.sc,t._wasm_font_is_monospaced=r_.tc,t._wasm_font_is_serif=r_.uc,t._wasm_font_is_bold=r_.vc,t._wasm_font_is_italic=r_.wc,t._wasm_new_image_from_pixmap=r_.xc,t._wasm_new_image_from_buffer=r_.yc,t._wasm_get_pixmap_from_image=r_.zc,t._wasm_new_pixmap_from_page=r_.Ac,t._wasm_new_pixmap_from_page_contents=r_.Bc,t._wasm_pdf_new_pixmap_from_page_with_usage=r_.Cc,t._wasm_pdf_new_pixmap_from_page_contents_with_usage=r_.Dc,t._wasm_new_pixmap_with_bbox=r_.Ec,t._wasm_clear_pixmap=r_.Fc,t._wasm_clear_pixmap_with_value=r_.Gc,t._wasm_invert_pixmap=r_.Hc,t._wasm_invert_pixmap_luminance=r_.Ic,t._wasm_gamma_pixmap=r_.Jc,t._wasm_tint_pixmap=r_.Kc,t._wasm_new_buffer_from_pixmap_as_png=r_.Lc,t._wasm_new_buffer_from_pixmap_as_pam=r_.Mc,t._wasm_new_buffer_from_pixmap_as_psd=r_.Nc,t._wasm_new_buffer_from_pixmap_as_jpeg=r_.Oc,t._wasm_convert_pixmap=r_.Pc,t._wasm_warp_pixmap=r_.Qc,t._wasm_bound_shade=r_.Rc,t._wasm_new_display_list=r_.Sc,t._wasm_bound_display_list=r_.Tc,t._wasm_run_display_list=r_.Uc,t._wasm_new_pixmap_from_display_list=r_.Vc,t._wasm_new_stext_page_from_display_list=r_.Wc,t._wasm_search_display_list=r_.Xc,t._wasm_new_path=r_.Yc,t._wasm_moveto=r_.Zc,t._wasm_lineto=r_._c,t._wasm_curveto=r_.$c,t._wasm_curvetov=r_.ad,t._wasm_curvetoy=r_.bd,t._wasm_closepath=r_.cd,t._wasm_rectto=r_.dd,t._wasm_transform_path=r_.ed,t._wasm_bound_path=r_.fd,t._wasm_new_text=r_.gd,t._wasm_bound_text=r_.hd,t._wasm_show_glyph=r_.id,t._wasm_show_string=r_.jd,t._wasm_new_draw_device=r_.kd,t._wasm_new_display_list_device=r_.ld,t._wasm_close_device=r_.md,t._wasm_fill_path=r_.nd,t._wasm_stroke_path=r_.od,t._wasm_clip_path=r_.pd,t._wasm_clip_stroke_path=r_.qd,t._wasm_fill_text=r_.rd,t._wasm_stroke_text=r_.sd,t._wasm_clip_text=r_.td,t._wasm_clip_stroke_text=r_.ud,t._wasm_ignore_text=r_.vd,t._wasm_fill_shade=r_.wd,t._wasm_fill_image=r_.xd,t._wasm_fill_image_mask=r_.yd,t._wasm_clip_image_mask=r_.zd,t._wasm_pop_clip=r_.Ad,t._wasm_begin_mask=r_.Bd,t._wasm_end_mask=r_.Cd,t._wasm_begin_group=r_.Dd,t._wasm_end_group=r_.Ed,t._wasm_begin_tile=r_.Fd,t._wasm_end_tile=r_.Gd,t._wasm_begin_layer=r_.Hd,t._wasm_end_layer=r_.Id,t._wasm_new_document_writer_with_buffer=r_.Jd,t._wasm_begin_page=r_.Kd,t._wasm_end_page=r_.Ld,t._wasm_close_document_writer=r_.Md,t._wasm_print_stext_page_as_json=r_.Nd,t._wasm_search_stext_page=r_.Od,t._wasm_snap_selection=r_.Pd,t._wasm_copy_selection=r_.Qd,t._wasm_highlight_selection=r_.Rd,t._wasm_print_stext_page_as_html=r_.Sd,t._wasm_print_stext_page_as_text=r_.Td,t._wasm_open_document_with_buffer=r_.Ud,t._wasm_open_document_with_stream=r_.Vd,t._wasm_format_link_uri=r_.Wd,t._wasm_needs_password=r_.Xd,t._wasm_authenticate_password=r_.Yd,t._wasm_has_permission=r_.Zd,t._wasm_count_pages=r_._d,t._wasm_load_page=r_.$d,t._wasm_lookup_metadata=r_.ae,t._wasm_set_metadata=r_.be,t._wasm_resolve_link=r_.ce,t._wasm_resolve_link_dest=r_.de,t._wasm_load_outline=r_.ee,t._wasm_outline_get_page=r_.fe,t._wasm_layout_document=r_.ge,t._wasm_is_document_reflowable=r_.he,t._wasm_link_set_rect=r_.ie,t._wasm_link_set_uri=r_.je,t._wasm_bound_page=r_.ke,t._wasm_load_links=r_.le,t._wasm_create_link=r_.me,t._wasm_delete_link=r_.ne,t._wasm_run_page=r_.oe,t._wasm_run_page_contents=r_.pe,t._wasm_run_page_annots=r_.qe,t._wasm_run_page_widgets=r_.re,t._wasm_new_stext_page_from_page=r_.se,t._wasm_new_display_list_from_page=r_.te,t._wasm_new_display_list_from_page_contents=r_.ue,t._wasm_page_label=r_.ve,t._wasm_search_page=r_.we,t._wasm_new_outline_iterator=r_.xe,t._wasm_outline_iterator_next=r_.ye,t._wasm_outline_iterator_prev=r_.ze,t._wasm_outline_iterator_up=r_.Ae,t._wasm_outline_iterator_down=r_.Be,t._wasm_outline_iterator_delete=r_.Ce,t._wasm_outline_iterator_item=r_.De,t._wasm_outline_iterator_insert=r_.Ee,t._wasm_outline_iterator_update=r_.Fe,t._wasm_pdf_document_from_fz_document=r_.Ge,t._wasm_pdf_page_from_fz_page=r_.He,t._wasm_pdf_create_document=r_.Ie,t._wasm_pdf_version=r_.Je,t._wasm_pdf_was_repaired=r_.Ke,t._wasm_pdf_has_unsaved_changes=r_.Le,t._wasm_pdf_can_be_saved_incrementally=r_.Me,t._wasm_pdf_count_versions=r_.Ne,t._wasm_pdf_count_unsaved_versions=r_.Oe,t._wasm_pdf_validate_change_history=r_.Pe,t._wasm_pdf_enable_journal=r_.Qe,t._wasm_pdf_undoredo_state_position=r_.Re,t._wasm_pdf_undoredo_state_count=r_.Se,t._wasm_pdf_undoredo_step=r_.Te,t._wasm_pdf_begin_operation=r_.Ue,t._wasm_pdf_begin_implicit_operation=r_.Ve,t._wasm_pdf_end_operation=r_.We,t._wasm_pdf_abandon_operation=r_.Xe,t._wasm_pdf_undo=r_.Ye,t._wasm_pdf_redo=r_.Ze,t._wasm_pdf_can_undo=r_._e,t._wasm_pdf_can_redo=r_.$e,t._wasm_pdf_document_language=r_.af,t._wasm_pdf_set_document_language=r_.bf,t._wasm_pdf_trailer=r_.cf,t._wasm_pdf_xref_len=r_.df,t._wasm_pdf_lookup_page_obj=r_.ef,t._wasm_pdf_add_object=r_.ff,t._wasm_pdf_create_object=r_.gf,t._wasm_pdf_delete_object=r_.hf,t._wasm_pdf_add_stream=r_.jf,t._wasm_pdf_add_simple_font=r_.kf,t._wasm_pdf_add_cjk_font=r_.lf,t._wasm_pdf_add_cid_font=r_.mf,t._wasm_pdf_add_image=r_.nf,t._wasm_pdf_load_image=r_.of,t._wasm_pdf_add_page=r_.pf,t._wasm_pdf_insert_page=r_.qf,t._wasm_pdf_delete_page=r_.rf,t._wasm_pdf_set_page_labels=r_.sf,t._wasm_pdf_delete_page_labels=r_.tf,t._wasm_pdf_is_embedded_file=r_.uf,t._wasm_pdf_get_filespec_params=r_.vf,t._wasm_pdf_add_embedded_file=r_.wf,t._wasm_pdf_load_embedded_file_contents=r_.xf,t._wasm_pdf_write_document_buffer=r_.yf,t._wasm_pdf_js_supported=r_.zf,t._wasm_pdf_enable_js=r_.Af,t._wasm_pdf_disable_js=r_.Bf,t._wasm_pdf_rearrange_pages=r_.Cf,t._wasm_pdf_subset_fonts=r_.Df,t._wasm_pdf_bake_document=r_.Ef,t._wasm_pdf_count_layers=r_.Ff,t._wasm_pdf_layer_name=r_.Gf,t._wasm_pdf_layer_is_enabled=r_.Hf,t._wasm_pdf_enable_layer=r_.If,t._wasm_pdf_page_transform=r_.Jf,t._wasm_pdf_set_page_box=r_.Kf,t._wasm_pdf_first_annot=r_.Lf,t._wasm_pdf_next_annot=r_.Mf,t._wasm_pdf_first_widget=r_.Nf,t._wasm_pdf_next_widget=r_.Of,t._wasm_pdf_create_annot=r_.Pf,t._wasm_pdf_delete_annot=r_.Qf,t._wasm_pdf_update_page=r_.Rf,t._wasm_pdf_redact_page=r_.Sf,t._wasm_pdf_new_graft_map=r_.Tf,t._wasm_pdf_graft_mapped_object=r_.Uf,t._wasm_pdf_graft_object=r_.Vf,t._wasm_pdf_graft_mapped_page=r_.Wf,t._wasm_pdf_graft_page=r_.Xf,t._wasm_pdf_bound_annot=r_.Yf,t._wasm_pdf_run_annot=r_.Zf,t._wasm_pdf_new_pixmap_from_annot=r_._f,t._wasm_pdf_new_display_list_from_annot=r_.$f,t._wasm_pdf_update_annot=r_.ag,t._wasm_pdf_annot_obj=r_.bg,t._wasm_pdf_annot_type=r_.cg,t._wasm_pdf_annot_flags=r_.dg,t._wasm_pdf_set_annot_flags=r_.eg,t._wasm_pdf_annot_contents=r_.fg,t._wasm_pdf_set_annot_contents=r_.gg,t._wasm_pdf_annot_author=r_.hg,t._wasm_pdf_set_annot_author=r_.ig,t._wasm_pdf_annot_creation_date=r_.jg,t._wasm_pdf_set_annot_creation_date=r_.kg,t._wasm_pdf_annot_modification_date=r_.lg,t._wasm_pdf_set_annot_modification_date=r_.mg,t._wasm_pdf_annot_border_width=r_.ng,t._wasm_pdf_set_annot_border_width=r_.og,t._wasm_pdf_annot_border_style=r_.pg,t._wasm_pdf_set_annot_border_style=r_.qg,t._wasm_pdf_annot_border_effect=r_.rg,t._wasm_pdf_set_annot_border_effect=r_.sg,t._wasm_pdf_annot_border_effect_intensity=r_.tg,t._wasm_pdf_set_annot_border_effect_intensity=r_.ug,t._wasm_pdf_annot_opacity=r_.vg,t._wasm_pdf_set_annot_opacity=r_.wg,t._wasm_pdf_annot_filespec=r_.xg,t._wasm_pdf_set_annot_filespec=r_.yg,t._wasm_pdf_annot_quadding=r_.zg,t._wasm_pdf_set_annot_quadding=r_.Ag,t._wasm_pdf_annot_is_open=r_.Bg,t._wasm_pdf_set_annot_is_open=r_.Cg,t._wasm_pdf_annot_hidden_for_editing=r_.Dg,t._wasm_pdf_set_annot_hidden_for_editing=r_.Eg,t._wasm_pdf_annot_icon_name=r_.Fg,t._wasm_pdf_set_annot_icon_name=r_.Gg,t._wasm_pdf_annot_intent=r_.Hg,t._wasm_pdf_set_annot_intent=r_.Ig,t._wasm_pdf_annot_callout_style=r_.Jg,t._wasm_pdf_set_annot_callout_style=r_.Kg,t._wasm_pdf_annot_line_leader=r_.Lg,t._wasm_pdf_set_annot_line_leader=r_.Mg,t._wasm_pdf_annot_line_leader_extension=r_.Ng,t._wasm_pdf_set_annot_line_leader_extension=r_.Og,t._wasm_pdf_annot_line_leader_offset=r_.Pg,t._wasm_pdf_set_annot_line_leader_offset=r_.Qg,t._wasm_pdf_annot_line_caption=r_.Rg,t._wasm_pdf_set_annot_line_caption=r_.Sg,t._wasm_pdf_annot_rich_defaults=r_.Tg,t._wasm_pdf_set_annot_rich_defaults=r_.Ug,t._wasm_pdf_annot_callout_point=r_.Vg,t._wasm_pdf_annot_line_caption_offset=r_.Wg,t._wasm_pdf_annot_rect=r_.Xg,t._wasm_pdf_annot_popup=r_.Yg,t._wasm_pdf_annot_quad_point_count=r_.Zg,t._wasm_pdf_annot_quad_point=r_._g,t._wasm_pdf_annot_vertex_count=r_.$g,t._wasm_pdf_annot_vertex=r_.ah,t._wasm_pdf_annot_ink_list_count=r_.bh,t._wasm_pdf_annot_ink_list_stroke_count=r_.ch,t._wasm_pdf_annot_ink_list_stroke_vertex=r_.dh,t._wasm_pdf_annot_rich_contents=r_.eh,t._wasm_pdf_annot_border_dash_count=r_.fh,t._wasm_pdf_annot_border_dash_item=r_.gh,t._wasm_pdf_annot_has_rect=r_.hh,t._wasm_pdf_annot_has_ink_list=r_.ih,t._wasm_pdf_annot_has_quad_points=r_.jh,t._wasm_pdf_annot_has_vertices=r_.kh,t._wasm_pdf_annot_has_line=r_.lh,t._wasm_pdf_annot_has_interior_color=r_.mh,t._wasm_pdf_annot_has_line_ending_styles=r_.nh,t._wasm_pdf_annot_has_border=r_.oh,t._wasm_pdf_annot_has_border_effect=r_.ph,t._wasm_pdf_annot_has_icon_name=r_.qh,t._wasm_pdf_annot_has_open=r_.rh,t._wasm_pdf_annot_has_author=r_.sh,t._wasm_pdf_annot_has_filespec=r_.th,t._wasm_pdf_annot_has_callout=r_.uh,t._wasm_pdf_annot_has_rich_contents=r_.vh,t._wasm_pdf_annot_language=r_.wh,t._wasm_pdf_set_annot_language=r_.xh,t._wasm_pdf_set_annot_popup=r_.yh,t._wasm_pdf_set_annot_rect=r_.zh,t._wasm_pdf_clear_annot_quad_points=r_.Ah,t._wasm_pdf_clear_annot_vertices=r_.Bh,t._wasm_pdf_clear_annot_ink_list=r_.Ch,t._wasm_pdf_clear_annot_border_dash=r_.Dh,t._wasm_pdf_add_annot_quad_point=r_.Eh,t._wasm_pdf_add_annot_vertex=r_.Fh,t._wasm_pdf_add_annot_ink_list_stroke=r_.Gh,t._wasm_pdf_add_annot_ink_list_stroke_vertex=r_.Hh,t._wasm_pdf_add_annot_border_dash_item=r_.Ih,t._wasm_pdf_annot_line_ending_styles_start=r_.Jh,t._wasm_pdf_annot_line_1=r_.Kh,t._wasm_pdf_annot_line_2=r_.Lh,t._wasm_pdf_set_annot_line=r_.Mh,t._wasm_pdf_set_annot_callout_point=r_.Nh,t._wasm_pdf_annot_callout_line=r_.Oh,t._wasm_pdf_set_annot_callout_line=r_.Ph,t._wasm_pdf_set_annot_line_caption_offset=r_.Qh,t._wasm_pdf_annot_line_ending_styles_end=r_.Rh,t._wasm_pdf_set_annot_line_ending_styles=r_.Sh,t._wasm_pdf_annot_color=r_.Th,t._wasm_pdf_annot_interior_color=r_.Uh,t._wasm_pdf_set_annot_color=r_.Vh,t._wasm_pdf_set_annot_interior_color=r_.Wh,t._wasm_pdf_set_annot_default_appearance=r_.Xh,t._wasm_pdf_annot_default_appearance_font=r_.Yh,t._wasm_pdf_annot_default_appearance_size=r_.Zh,t._wasm_pdf_annot_default_appearance_color=r_._h,t._wasm_pdf_set_annot_rich_contents=r_.$h,t._wasm_pdf_set_annot_stamp_image=r_.ai,t._wasm_pdf_set_annot_appearance_from_display_list=r_.bi,t._wasm_pdf_set_annot_appearance=r_.ci,t._wasm_pdf_apply_redaction=r_.di,t._wasm_pdf_reset_form=r_.ei,t._wasm_pdf_annot_field_type=r_.fi,t._wasm_pdf_annot_field_flags=r_.gi,t._wasm_pdf_annot_field_label=r_.hi,t._wasm_pdf_annot_field_value=r_.ii,t._wasm_pdf_load_field_name=r_.ji,t._wasm_pdf_annot_text_widget_max_len=r_.ki,t._wasm_pdf_set_annot_text_field_value=r_.li,t._wasm_pdf_set_annot_choice_field_value=r_.mi,t._wasm_pdf_annot_choice_field_option_count=r_.ni,t._wasm_pdf_annot_choice_field_option=r_.oi,t._wasm_pdf_toggle_widget=r_.pi,t._wasm_pdf_is_indirect=r_.qi,t._wasm_pdf_is_bool=r_.ri,t._wasm_pdf_is_int=r_.si,t._wasm_pdf_is_real=r_.ti,t._wasm_pdf_is_number=r_.ui,t._wasm_pdf_is_name=r_.vi,t._wasm_pdf_is_string=r_.wi,t._wasm_pdf_is_array=r_.xi,t._wasm_pdf_is_dict=r_.yi,t._wasm_pdf_is_stream=r_.zi,t._wasm_pdf_to_num=r_.Ai,t._wasm_pdf_to_bool=r_.Bi,t._wasm_pdf_to_real=r_.Ci,t._wasm_pdf_to_name=r_.Di,t._wasm_pdf_to_text_string=r_.Ei,t._wasm_pdf_new_indirect=r_.Fi,t._wasm_pdf_new_array=r_.Gi,t._wasm_pdf_new_dict=r_.Hi,t._wasm_pdf_new_bool=r_.Ii,t._wasm_pdf_new_int=r_.Ji,t._wasm_pdf_new_real=r_.Ki,t._wasm_pdf_new_name=r_.Li,t._wasm_pdf_new_text_string=r_.Mi,t._wasm_pdf_new_string=r_.Ni,t._wasm_pdf_resolve_indirect=r_.Oi,t._wasm_pdf_array_len=r_.Pi,t._wasm_pdf_array_get=r_.Qi,t._wasm_pdf_dict_get=r_.Ri,t._wasm_pdf_dict_len=r_.Si,t._wasm_pdf_dict_get_key=r_.Ti,t._wasm_pdf_dict_get_val=r_.Ui,t._wasm_pdf_dict_get_inheritable=r_.Vi,t._wasm_pdf_dict_gets=r_.Wi,t._wasm_pdf_dict_gets_inheritable=r_.Xi,t._wasm_pdf_dict_put=r_.Yi,t._wasm_pdf_dict_puts=r_.Zi,t._wasm_pdf_dict_del=r_._i,t._wasm_pdf_dict_dels=r_.$i,t._wasm_pdf_array_put=r_.aj,t._wasm_pdf_array_push=r_.bj,t._wasm_pdf_array_delete=r_.cj,t._wasm_pdf_sprint_obj=r_.dj,t._wasm_pdf_load_stream=r_.ej,t._wasm_pdf_load_raw_stream=r_.fj,t._wasm_pdf_update_object=r_.gj,t._wasm_pdf_update_stream=r_.hj,t._wasm_pdf_to_string=r_.ij,t._wasm_new_stream=r_.jj,t._wasm_walk_path=r_.kj,t._wasm_walk_text=r_.lj,t._wasm_new_js_device=r_.mj,r_.nj);return function(){if(t.preInit)for("function"==typeof t.preInit&&(t.preInit=[t.preInit]);t.preInit.length>0;)t.preInit.shift()()}(),function _(){function e(){t.calledRun=!0,$||(A=!0,r_.w(),a(t),t.onRuntimeInitialized?.(),function(){if(t.postRun)for("function"==typeof t.postRun&&(t.postRun=[t.postRun]);t.postRun.length;)q(t.postRun.shift());I(B)}())}C>0?S=_:(function(){if(t.preRun)for("function"==typeof t.preRun&&(t.preRun=[t.preRun]);t.preRun.length;)W(t.preRun.shift());I(L)}(),C>0?S=_:t.setStatus?(t.setStatus("Running..."),setTimeout(()=>{setTimeout(()=>t.setStatus(""),1),e()},1)):e())}(),s};export default _;
+\ No newline at end of file
+diff --git a/src/wasm/vendor/mupdf-wasm.zip b/src/wasm/vendor/mupdf-wasm.zip
+deleted file mode 100644
+index 8537307..0000000
+--- a/src/wasm/vendor/mupdf-wasm.zip
++++ /dev/null
+@@ -1 +0,0 @@
+-Not Found
+\ No newline at end of file
+diff --git a/src/wasm/vendor/mupdf.engine.js b/src/wasm/vendor/mupdf.engine.js
+index 7a771cc..bf7ea12 100644
+--- a/src/wasm/vendor/mupdf.engine.js
++++ b/src/wasm/vendor/mupdf.engine.js
+@@ -2,7 +2,9 @@
+ export async function init({ baseURL }) {
+   let mupdf;
+   try {
+-    mupdf = await import(/* @vite-ignore */ baseURL + 'mupdf.js');
++    // Load the MuPDF WASM bundle under the standard `mupdf.js` naming
++    // and instantiate it to expose `PDFDocument` etc.
++    mupdf = await (await import(/* @vite-ignore */ baseURL + 'mupdf.js')).default();
+   } catch (e) {
+     throw new Error('MuPDF vendor not found');
+   }
+@@ -16,7 +18,7 @@ export async function init({ baseURL }) {
+     const out=[]; for(const c of chunks){ if(approxTokens(c)<=maxTokens){ out.push(c); continue;} let start=0; const step=Math.max(128, Math.floor(maxTokens*4)); while(start<c.length){ out.push(c.slice(start,start+step)); start+=step; } }
+     return out;
+   }
+-  async function translatePages(pageTexts, cfg, onProgress, budget=1200){
++  async function translatePages(pageTexts, cfg, onProgress, budget=800){
+     const endpoint = cfg.apiEndpoint || cfg.endpoint;
+     const model = cfg.model || cfg.modelName;
+     const source = cfg.sourceLanguage || cfg.source;
+@@ -27,8 +29,8 @@ export async function init({ baseURL }) {
+       const texts=group.map(g=>g.text);
+       try{
+         if(onProgress) onProgress({ phase:'translate', page: Math.min(group[group.length-1].page+1, pageTexts.length), total: pageTexts.length });
+-        const tr= await window.qwenTranslateBatch({ texts, endpoint, apiKey: cfg.apiKey, model, source, target });
+-        const outs = (tr && Array.isArray(tr.texts))? tr.texts: texts; for(let k=0;k<group.length;k++) results[mapping.indexOf(group[k])]=outs[k]||group[k].text;
++        const tr= await window.qwenTranslateBatch({ texts, endpoint, apiKey: cfg.apiKey, model, source, target, tokenBudget: budget });
++      const outs = (tr && Array.isArray(tr.texts))? tr.texts: texts; for(let k=0;k<group.length;k++) results[mapping.indexOf(group[k])]=outs[k]||group[k].text;
+       } catch(e){ if(/HTTP 400/i.test(e?.message||'')){ return translatePages(pageTexts,cfg,onProgress, Math.max(400,Math.floor(budget*0.6))); } else { throw e; } }
+     }
+     const perPage=pageTexts.map(()=>[]); mapping.forEach((m,idx)=> perPage[m.page][m.idx]=results[idx]);
+diff --git a/src/wasm/vendor/mupdf.js b/src/wasm/vendor/mupdf.js
+index bdbf487..c138a0d 100644
+--- a/src/wasm/vendor/mupdf.js
++++ b/src/wasm/vendor/mupdf.js
+@@ -1,3164 +1 @@
+-// Copyright (C) 2004-2025 Artifex Software, Inc.
+-//
+-// This file is part of MuPDF WASM Library.
+-//
+-// MuPDF is free software: you can redistribute it and/or modify it under the
+-// terms of the GNU Affero General Public License as published by the Free
+-// Software Foundation, either version 3 of the License, or (at your option)
+-// any later version.
+-//
+-// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+-// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+-// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+-// details.
+-//
+-// You should have received a copy of the GNU Affero General Public License
+-// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+-//
+-// Alternative licensing terms are available from the licensor.
+-// For commercial licensing, see <https://www.artifex.com/> or contact
+-// Artifex Software, Inc., 39 Mesa Street, Suite 108A, San Francisco,
+-// CA 94129, USA, for further information.
+-"use strict";
+-import libmupdf_wasm from "./mupdf-wasm.js";
+-var node_fs = null;
+-if (typeof process !== "undefined" && process.versions && process.versions.node)
+-	node_fs = await import("node:fs");
+-const libmupdf = await libmupdf_wasm(globalThis["$libmupdf_wasm_Module"]);
+-libmupdf._wasm_init_context();
+-function Malloc(size) {
+-	return libmupdf._wasm_malloc(size);
+-}
+-function Free(ptr) {
+-	libmupdf._wasm_free(ptr);
+-}
+-export const memento = {
+-	listBlocks() {
+-		libmupdf._wasm_Memento_listBlocks();
+-	},
+-	checkAllMemory() {
+-		libmupdf._wasm_Memento_checkAllMemory();
+-	},
+-};
+-export const Matrix = {
+-	identity: [1, 0, 0, 1, 0, 0],
+-	scale(sx, sy) {
+-		return [sx, 0, 0, sy, 0, 0];
+-	},
+-	translate(tx, ty) {
+-		return [1, 0, 0, 1, tx, ty];
+-	},
+-	rotate(d) {
+-		while (d < 0)
+-			d += 360;
+-		while (d >= 360)
+-			d -= 360;
+-		let s = Math.sin((d * Math.PI) / 180);
+-		let c = Math.cos((d * Math.PI) / 180);
+-		return [c, s, -s, c, 0, 0];
+-	},
+-	invert(m) {
+-		checkMatrix(m);
+-		let det = m[0] * m[3] - m[1] * m[2];
+-		if (det > -1e-23 && det < 1e-23)
+-			return m;
+-		let rdet = 1 / det;
+-		let inva = m[3] * rdet;
+-		let invb = -m[1] * rdet;
+-		let invc = -m[2] * rdet;
+-		let invd = m[0] * rdet;
+-		let inve = -m[4] * inva - m[5] * invc;
+-		let invf = -m[4] * invb - m[5] * invd;
+-		return [inva, invb, invc, invd, inve, invf];
+-	},
+-	concat(one, two) {
+-		checkMatrix(one);
+-		checkMatrix(two);
+-		return [
+-			one[0] * two[0] + one[1] * two[2],
+-			one[0] * two[1] + one[1] * two[3],
+-			one[2] * two[0] + one[3] * two[2],
+-			one[2] * two[1] + one[3] * two[3],
+-			one[4] * two[0] + one[5] * two[2] + two[4],
+-			one[4] * two[1] + one[5] * two[3] + two[5],
+-		];
+-	},
+-};
+-export const Rect = {
+-	MIN_INF_RECT: 0x80000000,
+-	MAX_INF_RECT: 0x7fffff80,
+-	empty: [0x80000000, 0x80000000, 0x7fffff80, 0x7fffff80],
+-	invalid: [0, 0, -1, -1],
+-	infinite: [0x7fffff80, 0x7fffff80, 0x80000000, 0x80000000],
+-	isEmpty: function (rect) {
+-		checkRect(rect);
+-		return rect[0] >= rect[2] || rect[1] >= rect[3];
+-	},
+-	isValid: function (rect) {
+-		checkRect(rect);
+-		return rect[0] <= rect[2] && rect[1] <= rect[3];
+-	},
+-	isInfinite: function (rect) {
+-		checkRect(rect);
+-		return (rect[0] === Rect.MAX_INF_RECT &&
+-			rect[1] === Rect.MAX_INF_RECT &&
+-			rect[2] === Rect.MIN_INF_RECT &&
+-			rect[3] === Rect.MIN_INF_RECT);
+-	},
+-	transform: function (rect, matrix) {
+-		checkRect(rect);
+-		checkMatrix(matrix);
+-		var t;
+-		if (Rect.isInfinite(rect))
+-			return rect;
+-		if (!Rect.isValid(rect))
+-			return rect;
+-		var ax0 = rect[0] * matrix[0];
+-		var ax1 = rect[2] * matrix[0];
+-		if (ax0 > ax1)
+-			t = ax0, ax0 = ax1, ax1 = t;
+-		var cy0 = rect[1] * matrix[2];
+-		var cy1 = rect[3] * matrix[2];
+-		if (cy0 > cy1)
+-			t = cy0, cy0 = cy1, cy1 = t;
+-		ax0 += cy0 + matrix[4];
+-		ax1 += cy1 + matrix[4];
+-		var bx0 = rect[0] * matrix[1];
+-		var bx1 = rect[2] * matrix[1];
+-		if (bx0 > bx1)
+-			t = bx0, bx0 = bx1, bx1 = t;
+-		var dy0 = rect[1] * matrix[3];
+-		var dy1 = rect[3] * matrix[3];
+-		if (dy0 > dy1)
+-			t = dy0, dy0 = dy1, dy1 = t;
+-		bx0 += dy0 + matrix[5];
+-		bx1 += dy1 + matrix[5];
+-		return [ax0, bx0, ax1, bx1];
+-	},
+-};
+-export function enableICC() {
+-	libmupdf._wasm_enable_icc();
+-}
+-export function disableICC() {
+-	libmupdf._wasm_disable_icc();
+-}
+-export function setUserCSS(text) {
+-	libmupdf._wasm_set_user_css(STRING(text));
+-}
+-export function installLoadFontFunction(f) {
+-	$libmupdf_load_font_file_js = f;
+-}
+-/* -------------------------------------------------------------------------- */
+-// To pass Rect and Matrix as pointer arguments
+-const _wasm_int = Malloc(4);
+-const _wasm_point = Malloc(4 * 6) >> 2;
+-const _wasm_rect = Malloc(4 * 8) >> 2;
+-const _wasm_matrix = Malloc(4 * 6) >> 2;
+-const _wasm_color = Malloc(4 * 4) >> 2;
+-const _wasm_quad = Malloc(4 * 8) >> 2;
+-const _wasm_string = [0, 0];
+-function checkType(value, type) {
+-	if (typeof type === "string" && typeof value !== type)
+-		throw new TypeError("expected " + type);
+-	if (typeof type === "function" && !(value instanceof type))
+-		throw new TypeError("expected " + type.name);
+-}
+-function checkPoint(value) {
+-	if (!Array.isArray(value) || value.length !== 2)
+-		throw new TypeError("expected point");
+-}
+-function checkRect(value) {
+-	if (!Array.isArray(value) || value.length !== 4)
+-		throw new TypeError("expected rectangle");
+-}
+-function checkMatrix(value) {
+-	if (!Array.isArray(value) || value.length !== 6)
+-		throw new TypeError("expected matrix");
+-}
+-function checkQuad(value) {
+-	if (!Array.isArray(value) || value.length !== 8)
+-		throw new TypeError("expected quad");
+-}
+-function checkColor(value) {
+-	if (!Array.isArray(value) || (value.length !== 1 && value.length !== 3 && value.length !== 4))
+-		throw new TypeError("expected color array");
+-}
+-function checkAnnotColor(value) {
+-	if (!Array.isArray(value) || (value.length !== 0 && value.length !== 1 && value.length !== 3 && value.length !== 4))
+-		throw new TypeError("expected color array");
+-}
+-function BUFFER(input) {
+-	if (input instanceof Buffer)
+-		return input.pointer;
+-	if (input instanceof ArrayBuffer || input instanceof Uint8Array)
+-		return new Buffer(input).pointer;
+-	if (typeof input === "string")
+-		return new Buffer(input).pointer;
+-	throw new TypeError("expected buffer");
+-}
+-function ENUM(value, list) {
+-	if (typeof value === "number") {
+-		if (value >= 0 && value < list.length)
+-			return value;
+-	}
+-	if (typeof value === "string") {
+-		let idx = list.indexOf(value);
+-		if (idx >= 0)
+-			return idx;
+-	}
+-	throw new TypeError(`invalid enum value ("${value}"; expected ${list.join(", ")})`);
+-}
+-function allocateUTF8(str) {
+-	var size = libmupdf.lengthBytesUTF8(str) + 1;
+-	var pointer = Malloc(size);
+-	libmupdf.stringToUTF8(str, pointer, size);
+-	return pointer;
+-}
+-function STRING_N(s, i) {
+-	if (_wasm_string[i]) {
+-		Free(_wasm_string[i]);
+-		_wasm_string[i] = 0;
+-	}
+-	return _wasm_string[i] = allocateUTF8(s);
+-}
+-function STRING(s) {
+-	return STRING_N(s, 0);
+-}
+-function STRING2(s) {
+-	return STRING_N(s, 1);
+-}
+-function STRING_OPT(s) {
+-	return typeof s === "string" ? STRING_N(s, 0) : 0;
+-}
+-function STRING2_OPT(s) {
+-	return typeof s === "string" ? STRING_N(s, 1) : 0;
+-}
+-function POINT(p) {
+-	libmupdf.HEAPF32[_wasm_point + 0] = p[0];
+-	libmupdf.HEAPF32[_wasm_point + 1] = p[1];
+-	return _wasm_point << 2;
+-}
+-function POINT2(p) {
+-	libmupdf.HEAPF32[_wasm_point + 2] = p[0];
+-	libmupdf.HEAPF32[_wasm_point + 3] = p[1];
+-	return (_wasm_point + 2) << 2;
+-}
+-function POINT3(p) {
+-	libmupdf.HEAPF32[_wasm_point + 4] = p[0];
+-	libmupdf.HEAPF32[_wasm_point + 5] = p[1];
+-	return (_wasm_point + 4) << 2;
+-}
+-function RECT(r) {
+-	libmupdf.HEAPF32[_wasm_rect + 0] = r[0];
+-	libmupdf.HEAPF32[_wasm_rect + 1] = r[1];
+-	libmupdf.HEAPF32[_wasm_rect + 2] = r[2];
+-	libmupdf.HEAPF32[_wasm_rect + 3] = r[3];
+-	return _wasm_rect << 2;
+-}
+-function RECT2(r) {
+-	libmupdf.HEAPF32[_wasm_rect + 4] = r[0];
+-	libmupdf.HEAPF32[_wasm_rect + 5] = r[1];
+-	libmupdf.HEAPF32[_wasm_rect + 6] = r[2];
+-	libmupdf.HEAPF32[_wasm_rect + 7] = r[3];
+-	return (_wasm_rect + 4) << 2;
+-}
+-function MATRIX(m) {
+-	libmupdf.HEAPF32[_wasm_matrix + 0] = m[0];
+-	libmupdf.HEAPF32[_wasm_matrix + 1] = m[1];
+-	libmupdf.HEAPF32[_wasm_matrix + 2] = m[2];
+-	libmupdf.HEAPF32[_wasm_matrix + 3] = m[3];
+-	libmupdf.HEAPF32[_wasm_matrix + 4] = m[4];
+-	libmupdf.HEAPF32[_wasm_matrix + 5] = m[5];
+-	return _wasm_matrix << 2;
+-}
+-function QUAD(q) {
+-	libmupdf.HEAPF32[_wasm_quad + 0] = q[0];
+-	libmupdf.HEAPF32[_wasm_quad + 1] = q[1];
+-	libmupdf.HEAPF32[_wasm_quad + 2] = q[2];
+-	libmupdf.HEAPF32[_wasm_quad + 3] = q[3];
+-	libmupdf.HEAPF32[_wasm_quad + 4] = q[4];
+-	libmupdf.HEAPF32[_wasm_quad + 5] = q[5];
+-	libmupdf.HEAPF32[_wasm_quad + 6] = q[6];
+-	libmupdf.HEAPF32[_wasm_quad + 7] = q[7];
+-	return _wasm_quad << 2;
+-}
+-function COLOR(c) {
+-	if (typeof c !== "undefined") {
+-		switch (c.length) {
+-			case 0:
+-				break;
+-			case 1:
+-				libmupdf.HEAPF32[_wasm_color + 0] = c[0];
+-				break;
+-			case 3:
+-				libmupdf.HEAPF32[_wasm_color + 0] = c[0];
+-				libmupdf.HEAPF32[_wasm_color + 1] = c[1];
+-				libmupdf.HEAPF32[_wasm_color + 2] = c[2];
+-				break;
+-			case 4:
+-				libmupdf.HEAPF32[_wasm_color + 0] = c[0];
+-				libmupdf.HEAPF32[_wasm_color + 1] = c[1];
+-				libmupdf.HEAPF32[_wasm_color + 2] = c[2];
+-				libmupdf.HEAPF32[_wasm_color + 3] = c[3];
+-				break;
+-		}
+-	}
+-	return _wasm_color << 2;
+-}
+-/* -------------------------------------------------------------------------- */
+-function fromColor(n) {
+-	if (n === 1)
+-		return [
+-			libmupdf.HEAPF32[_wasm_color]
+-		];
+-	if (n === 3)
+-		return [
+-			libmupdf.HEAPF32[_wasm_color + 0],
+-			libmupdf.HEAPF32[_wasm_color + 1],
+-			libmupdf.HEAPF32[_wasm_color + 2],
+-		];
+-	if (n === 4)
+-		return [
+-			libmupdf.HEAPF32[_wasm_color + 0],
+-			libmupdf.HEAPF32[_wasm_color + 1],
+-			libmupdf.HEAPF32[_wasm_color + 2],
+-			libmupdf.HEAPF32[_wasm_color + 3],
+-		];
+-	throw new TypeError("invalid number of components for Color: " + n);
+-}
+-function fromAnnotColor(n) {
+-	if (n === 0)
+-		return [];
+-	return fromColor(n);
+-}
+-function fromColorArray(n, ptr) {
+-	let addr = ptr >> 2;
+-	let color = [];
+-	for (let i = 0; i < n; ++i)
+-		color.push(libmupdf.HEAPF32[addr + i]);
+-	return color;
+-}
+-function fromStringOrNull(ptr) {
+-	if (ptr === 0)
+-		return null;
+-	return libmupdf.UTF8ToString(ptr);
+-}
+-function fromString(ptr) {
+-	return libmupdf.UTF8ToString(ptr);
+-}
+-function fromStringFree(ptr) {
+-	let str = libmupdf.UTF8ToString(ptr);
+-	Free(ptr);
+-	return str;
+-}
+-function fromPoint(ptr) {
+-	let addr = ptr >> 2;
+-	return [
+-		libmupdf.HEAPF32[addr + 0],
+-		libmupdf.HEAPF32[addr + 1],
+-	];
+-}
+-function fromRect(ptr) {
+-	let addr = ptr >> 2;
+-	return [
+-		libmupdf.HEAPF32[addr + 0],
+-		libmupdf.HEAPF32[addr + 1],
+-		libmupdf.HEAPF32[addr + 2],
+-		libmupdf.HEAPF32[addr + 3],
+-	];
+-}
+-function fromMatrix(ptr) {
+-	let addr = ptr >> 2;
+-	return [
+-		libmupdf.HEAPF32[addr + 0],
+-		libmupdf.HEAPF32[addr + 1],
+-		libmupdf.HEAPF32[addr + 2],
+-		libmupdf.HEAPF32[addr + 3],
+-		libmupdf.HEAPF32[addr + 4],
+-		libmupdf.HEAPF32[addr + 5],
+-	];
+-}
+-function fromQuad(ptr) {
+-	let addr = ptr >> 2;
+-	return [
+-		libmupdf.HEAPF32[addr + 0],
+-		libmupdf.HEAPF32[addr + 1],
+-		libmupdf.HEAPF32[addr + 2],
+-		libmupdf.HEAPF32[addr + 3],
+-		libmupdf.HEAPF32[addr + 4],
+-		libmupdf.HEAPF32[addr + 5],
+-		libmupdf.HEAPF32[addr + 6],
+-		libmupdf.HEAPF32[addr + 7],
+-	];
+-}
+-function fromBuffer(ptr) {
+-	let data = libmupdf._wasm_buffer_get_data(ptr);
+-	let size = libmupdf._wasm_buffer_get_len(ptr);
+-	return libmupdf.HEAPU8.slice(data, data + size);
+-}
+-/* unused for now
+-function rgbFromColor(c?: Color): [number, number, number] {
+-	var r = 0, g = 0, b = 0
+-	if (typeof c !== "undefined") {
+-		switch (c.length) {
+-		case 1:
+-			r = g = b = c[0]
+-			break
+-		case 3:
+-			r = c[0]
+-			g = c[1]
+-			b = c[2]
+-			break
+-		case 4:
+-			r = 1 - Math.min(1, c[0] + c[3])
+-			g = 1 - Math.min(1, c[1] + c[3])
+-			b = 1 - Math.min(1, c[2] + c[3])
+-			break
+-		}
+-	}
+-	return [ r, g, b ]
+-}
+-
+-function numberFromColor(c?: Color): number {
+-	var [ r, g, b ] = rgbFromColor(c)
+-	return (255 << 24) | (r << 16) | (g << 8) | b
+-}
+-*/
+-function colorFromNumber(argb) {
+-	var r = (argb >> 16) & 255;
+-	var g = (argb >> 8) & 255;
+-	var b = (argb) & 255;
+-	return [r / 255, g / 255, b / 255];
+-}
+-function runSearch(searchFun, searchThis, needle, max_hits = 500) {
+-	checkType(needle, "string");
+-	let hits = 0;
+-	let marks = 0;
+-	try {
+-		hits = Malloc(32 * max_hits);
+-		marks = Malloc(4 * max_hits);
+-		let n = searchFun(searchThis, STRING(needle), marks, hits, max_hits);
+-		let outer = [];
+-		if (n > 0) {
+-			let inner = [];
+-			for (let i = 0; i < n; ++i) {
+-				let mark = libmupdf.HEAP32[(marks >> 2) + i];
+-				let quad = fromQuad(hits + i * 32);
+-				if (i > 0 && mark) {
+-					outer.push(inner);
+-					inner = [];
+-				}
+-				inner.push(quad);
+-			}
+-			outer.push(inner);
+-		}
+-		return outer;
+-	}
+-	finally {
+-		Free(marks);
+-		Free(hits);
+-	}
+-}
+-/* -------------------------------------------------------------------------- */
+-class Userdata {
+-	constructor(pointer) {
+-		if (typeof pointer !== "number")
+-			throw new Error("invalid pointer: " + typeof pointer);
+-		if (pointer !== 0) {
+-			let ctor = this.constructor;
+-			if (!ctor._finalizer)
+-				ctor._finalizer = new FinalizationRegistry(ctor._drop);
+-			ctor._finalizer.register(this, pointer, this);
+-		}
+-		this.pointer = pointer;
+-	}
+-	destroy() {
+-		if (this.pointer !== 0) {
+-			let ctor = this.constructor;
+-			ctor._finalizer.unregister(this);
+-			ctor._drop(this.pointer);
+-		}
+-		this.pointer = 0;
+-	}
+-	// Custom "console.log" formatting for Node
+-	[Symbol.for("nodejs.util.inspect.custom")]() {
+-		return this.toString();
+-	}
+-	toString() {
+-		return `[${this.constructor.name} ${this.pointer}]`;
+-	}
+-	valueOf() {
+-		throw new Error("cannot convert Userdata to Javascript value");
+-	}
+-}
+-export class Buffer extends Userdata {
+-	constructor(arg) {
+-		if (typeof arg === "undefined")
+-			super(libmupdf._wasm_new_buffer(1024));
+-		else if (typeof arg === "number")
+-			super(arg);
+-		else if (typeof arg === "string") {
+-			let data_len = libmupdf.lengthBytesUTF8(arg);
+-			let data_ptr = Malloc(data_len + 1);
+-			libmupdf.stringToUTF8(arg, data_ptr, data_len + 1);
+-			super(libmupdf._wasm_new_buffer_from_data(data_ptr, data_len));
+-		}
+-		else if (arg instanceof ArrayBuffer || arg instanceof Uint8Array) {
+-			let data_len = arg.byteLength;
+-			let data_ptr = Malloc(data_len);
+-			libmupdf.HEAPU8.set(new Uint8Array(arg), data_ptr);
+-			super(libmupdf._wasm_new_buffer_from_data(data_ptr, data_len));
+-		}
+-	}
+-	get length() {
+-		return this.getLength();
+-	}
+-	set length(_) {
+-		throw new TypeError("buffer length is read-only");
+-	}
+-	getLength() {
+-		return libmupdf._wasm_buffer_get_len(this.pointer);
+-	}
+-	readByte(at) {
+-		let data = libmupdf._wasm_buffer_get_data(this.pointer);
+-		return libmupdf.HEAPU8[data + at];
+-	}
+-	write(s) {
+-		libmupdf._wasm_append_string(this.pointer, STRING(s));
+-	}
+-	writeByte(b) {
+-		libmupdf._wasm_append_byte(this.pointer, b);
+-	}
+-	writeLine(s) {
+-		this.write(s);
+-		this.writeByte(10);
+-	}
+-	writeBuffer(other) {
+-		libmupdf._wasm_append_buffer(this.pointer, BUFFER(other));
+-	}
+-	asUint8Array() {
+-		let data = libmupdf._wasm_buffer_get_data(this.pointer);
+-		let size = libmupdf._wasm_buffer_get_len(this.pointer);
+-		return libmupdf.HEAPU8.subarray(data, data + size);
+-	}
+-	slice(start, end) {
+-		if (typeof end === "undefined")
+-			end = this.getLength();
+-		return new Buffer(libmupdf._wasm_slice_buffer(this.pointer, start, end));
+-	}
+-	asString() {
+-		return fromString(libmupdf._wasm_string_from_buffer(this.pointer));
+-	}
+-	save(filename) {
+-		if (node_fs)
+-			node_fs.writeFileSync(filename, this.asUint8Array());
+-		else
+-			throw new Error("missing 'fs' module");
+-	}
+-}
+-Buffer._drop = libmupdf._wasm_drop_buffer;
+-export class ColorSpace extends Userdata {
+-	constructor(from, name) {
+-		if (typeof from === "number") {
+-			super(from);
+-		}
+-		else {
+-			if (typeof from === "string") {
+-				if (node_fs)
+-					from = node_fs.readFileSync(from);
+-				else
+-					throw new Error("missing 'fs' module");
+-			}
+-			super(libmupdf._wasm_new_icc_colorspace(STRING_OPT(name), BUFFER(from)));
+-		}
+-	}
+-	getName() {
+-		return fromString(libmupdf._wasm_colorspace_get_name(this.pointer));
+-	}
+-	getType() {
+-		return ColorSpace.COLORSPACE_TYPES[libmupdf._wasm_colorspace_get_type(this.pointer)] || "None";
+-	}
+-	getNumberOfComponents() {
+-		return libmupdf._wasm_colorspace_get_n(this.pointer);
+-	}
+-	isGray() { return this.getType() === "Gray"; }
+-	isRGB() { return this.getType() === "RGB"; }
+-	isCMYK() { return this.getType() === "CMYK"; }
+-	isIndexed() { return this.getType() === "Indexed"; }
+-	isLab() { return this.getType() === "Lab"; }
+-	isDeviceN() { return this.getType() === "Separation"; }
+-	isSubtractive() { return this.getType() === "CMYK" || this.getType() === "Separation"; }
+-	toString() {
+-		return "[ColorSpace " + this.getName() + "]";
+-	}
+-}
+-ColorSpace._drop = libmupdf._wasm_drop_colorspace;
+-ColorSpace.COLORSPACE_TYPES = [
+-	"None",
+-	"Gray",
+-	"RGB",
+-	"BGR",
+-	"CMYK",
+-	"Lab",
+-	"Indexed",
+-	"Separation"
+-];
+-ColorSpace.DeviceGray = new ColorSpace(libmupdf._wasm_device_gray());
+-ColorSpace.DeviceRGB = new ColorSpace(libmupdf._wasm_device_rgb());
+-ColorSpace.DeviceBGR = new ColorSpace(libmupdf._wasm_device_bgr());
+-ColorSpace.DeviceCMYK = new ColorSpace(libmupdf._wasm_device_cmyk());
+-ColorSpace.Lab = new ColorSpace(libmupdf._wasm_device_lab());
+-export class Font extends Userdata {
+-	constructor(name_or_pointer, data, subfont = 0) {
+-		let pointer = 0;
+-		if (typeof name_or_pointer === "number") {
+-			pointer = libmupdf._wasm_keep_font(name_or_pointer);
+-		}
+-		else {
+-			if (typeof data === "string") {
+-				if (node_fs)
+-					data = node_fs.readFileSync(data);
+-				else
+-					throw new Error("missing 'fs' module");
+-			}
+-			if (data)
+-				pointer = libmupdf._wasm_new_font_from_buffer(STRING(name_or_pointer), BUFFER(data), subfont);
+-			else if (name_or_pointer === "zh-Hant")
+-				pointer = libmupdf._wasm_new_cjk_font(Font.ADOBE_CNS);
+-			else if (name_or_pointer === "zh-Hans")
+-				pointer = libmupdf._wasm_new_cjk_font(Font.ADOBE_GB);
+-			else if (name_or_pointer === "ja")
+-				pointer = libmupdf._wasm_new_cjk_font(Font.ADOBE_JAPAN);
+-			else if (name_or_pointer === "ko")
+-				pointer = libmupdf._wasm_new_cjk_font(Font.ADOBE_KOREA);
+-			else
+-				pointer = libmupdf._wasm_new_base14_font(STRING(name_or_pointer));
+-		}
+-		super(pointer);
+-	}
+-	getName() {
+-		return fromString(libmupdf._wasm_font_get_name(this.pointer));
+-	}
+-	encodeCharacter(uni) {
+-		if (typeof uni === "string")
+-			uni = uni.charCodeAt(0);
+-		return libmupdf._wasm_encode_character(this.pointer, uni);
+-	}
+-	advanceGlyph(gid, wmode = 0) {
+-		return libmupdf._wasm_advance_glyph(this.pointer, gid, wmode);
+-	}
+-	isMono() {
+-		return !!libmupdf._wasm_font_is_monospaced(this.pointer);
+-	}
+-	isSerif() {
+-		return !!libmupdf._wasm_font_is_serif(this.pointer);
+-	}
+-	isBold() {
+-		return !!libmupdf._wasm_font_is_bold(this.pointer);
+-	}
+-	isItalic() {
+-		return !!libmupdf._wasm_font_is_italic(this.pointer);
+-	}
+-}
+-Font._drop = libmupdf._wasm_drop_font;
+-Font.SIMPLE_ENCODING = [
+-	"Latin",
+-	"Greek",
+-	"Cyrillic"
+-];
+-Font.ADOBE_CNS = 0;
+-Font.ADOBE_GB = 1;
+-Font.ADOBE_JAPAN = 2;
+-Font.ADOBE_KOREA = 3;
+-Font.CJK_ORDERING_BY_LANG = {
+-	"Adobe-CNS1": 0,
+-	"Adobe-GB1": 1,
+-	"Adobe-Japan1": 2,
+-	"Adobe-Korea1": 3,
+-	"zh-Hant": 0,
+-	"zh-TW": 0,
+-	"zh-HK": 0,
+-	"zh-Hans": 1,
+-	"zh-CN": 1,
+-	"ja": 2,
+-	"ko": 3,
+-};
+-export class Image extends Userdata {
+-	constructor(data, mask) {
+-		let pointer = 0;
+-		if (typeof data === "number") {
+-			pointer = libmupdf._wasm_keep_image(data);
+-		}
+-		else if (data instanceof Pixmap) {
+-			pointer = libmupdf._wasm_new_image_from_pixmap(data.pointer, mask ? mask.pointer : 0);
+-		}
+-		else {
+-			if (typeof data === "string") {
+-				if (node_fs)
+-					data = node_fs.readFileSync(data);
+-				else
+-					throw new Error("missing 'fs' module");
+-			}
+-			pointer = libmupdf._wasm_new_image_from_buffer(BUFFER(data));
+-		}
+-		super(pointer);
+-	}
+-	getWidth() {
+-		return libmupdf._wasm_image_get_w(this.pointer);
+-	}
+-	getHeight() {
+-		return libmupdf._wasm_image_get_h(this.pointer);
+-	}
+-	getNumberOfComponents() {
+-		return libmupdf._wasm_image_get_n(this.pointer);
+-	}
+-	getBitsPerComponent() {
+-		return libmupdf._wasm_image_get_bpc(this.pointer);
+-	}
+-	getXResolution() {
+-		return libmupdf._wasm_image_get_xres(this.pointer);
+-	}
+-	getYResolution() {
+-		return libmupdf._wasm_image_get_yres(this.pointer);
+-	}
+-	getImageMask() {
+-		return !!libmupdf._wasm_image_get_imagemask(this.pointer);
+-	}
+-	getColorSpace() {
+-		let cs = libmupdf._wasm_image_get_colorspace(this.pointer);
+-		if (cs)
+-			return new ColorSpace(libmupdf._wasm_keep_colorspace(cs));
+-		return null;
+-	}
+-	getMask() {
+-		let mask = libmupdf._wasm_image_get_mask(this.pointer);
+-		if (mask)
+-			return new Image(libmupdf._wasm_keep_image(mask));
+-		return null;
+-	}
+-	toPixmap() {
+-		return new Pixmap(libmupdf._wasm_get_pixmap_from_image(this.pointer));
+-	}
+-}
+-Image._drop = libmupdf._wasm_drop_image;
+-export class StrokeState extends Userdata {
+-	constructor(data) {
+-		if (typeof data === "number") {
+-			super(data);
+-			return this;
+-		}
+-		super(libmupdf._wasm_new_stroke_state(data?.dashes?.length ?? 0));
+-		let lineCap = ENUM(data.lineCap, StrokeState.LINE_CAP);
+-		let lineJoin = ENUM(data.lineJoin, StrokeState.LINE_JOIN);
+-		libmupdf._wasm_stroke_state_set_start_cap(this.pointer, lineCap);
+-		libmupdf._wasm_stroke_state_set_dash_cap(this.pointer, lineCap);
+-		libmupdf._wasm_stroke_state_set_end_cap(this.pointer, lineCap);
+-		libmupdf._wasm_stroke_state_set_linejoin(this.pointer, lineJoin);
+-		libmupdf._wasm_stroke_state_set_linewidth(this.pointer, data.lineWidth);
+-		libmupdf._wasm_stroke_state_set_miterlimit(this.pointer, data.miterLimit);
+-		libmupdf._wasm_stroke_state_set_dash_phase(this.pointer, data.dashPhase ?? 0);
+-		if (data.dashes) {
+-			for (let i = 0; i < data.dashes.length; ++i)
+-				libmupdf._wasm_stroke_state_set_dash_item(this.pointer, i, data.dashes[i] ?? 0);
+-		}
+-	}
+-	getLineCap() {
+-		return libmupdf._wasm_stroke_state_get_start_cap(this.pointer);
+-	}
+-	getLineJoin() {
+-		return libmupdf._wasm_stroke_state_get_linejoin(this.pointer);
+-	}
+-	getLineWidth() {
+-		return libmupdf._wasm_stroke_state_get_linewidth(this.pointer);
+-	}
+-	getMiterLimit() {
+-		return libmupdf._wasm_stroke_state_get_miterlimit(this.pointer);
+-	}
+-	getDashPhase() {
+-		return libmupdf._wasm_stroke_state_get_dash_phase(this.pointer);
+-	}
+-	getDashes() {
+-		var n = libmupdf._wasm_stroke_state_get_dash_len(this.pointer);
+-		if (n > 0) {
+-			var out = [];
+-			for (let i = 0; i < n; ++i)
+-				out[i] = libmupdf._wasm_stroke_state_get_dash_item(this.pointer, i);
+-			return out;
+-		}
+-		return null;
+-	}
+-}
+-StrokeState._drop = libmupdf._wasm_drop_stroke_state;
+-StrokeState.LINE_CAP = [
+-	"Butt",
+-	"Round",
+-	"Square",
+-	"Triangle"
+-];
+-StrokeState.LINE_JOIN = [
+-	"Miter",
+-	"Round",
+-	"Bevel",
+-	"MiterXPS"
+-];
+-export class Path extends Userdata {
+-	constructor(pointer) {
+-		if (typeof pointer === "number")
+-			super(pointer);
+-		else
+-			super(libmupdf._wasm_new_path());
+-	}
+-	getBounds(strokeState, transform) {
+-		if (strokeState !== null)
+-			checkType(strokeState, StrokeState);
+-		checkMatrix(transform);
+-		return fromRect(libmupdf._wasm_bound_path(this.pointer, strokeState?.pointer, MATRIX(transform)));
+-	}
+-	moveTo(x, y) {
+-		checkType(x, "number");
+-		checkType(y, "number");
+-		libmupdf._wasm_moveto(this.pointer, x, y);
+-	}
+-	lineTo(x, y) {
+-		checkType(x, "number");
+-		checkType(y, "number");
+-		libmupdf._wasm_lineto(this.pointer, x, y);
+-	}
+-	curveTo(x1, y1, x2, y2, x3, y3) {
+-		checkType(x1, "number");
+-		checkType(y1, "number");
+-		checkType(x2, "number");
+-		checkType(y2, "number");
+-		checkType(x3, "number");
+-		checkType(y3, "number");
+-		libmupdf._wasm_curveto(this.pointer, x1, y1, x2, y2, x3, y3);
+-	}
+-	curveToV(cx, cy, ex, ey) {
+-		checkType(cx, "number");
+-		checkType(cy, "number");
+-		checkType(ex, "number");
+-		checkType(ey, "number");
+-		libmupdf._wasm_curvetov(this.pointer, cx, cy, ex, ey);
+-	}
+-	curveToY(cx, cy, ex, ey) {
+-		checkType(cx, "number");
+-		checkType(cy, "number");
+-		checkType(ex, "number");
+-		checkType(ey, "number");
+-		libmupdf._wasm_curvetoy(this.pointer, cx, cy, ex, ey);
+-	}
+-	closePath() {
+-		libmupdf._wasm_closepath(this.pointer);
+-	}
+-	rect(x1, y1, x2, y2) {
+-		checkType(x1, "number");
+-		checkType(y1, "number");
+-		checkType(x2, "number");
+-		checkType(y2, "number");
+-		libmupdf._wasm_rectto(this.pointer, x1, y1, x2, y2);
+-	}
+-	transform(matrix) {
+-		checkMatrix(matrix);
+-		libmupdf._wasm_transform_path(this.pointer, MATRIX(matrix));
+-	}
+-	walk(walker) {
+-		let id = $libmupdf_path_id++;
+-		$libmupdf_path_table.set(id, walker);
+-		libmupdf._wasm_walk_path(this.pointer, id);
+-		$libmupdf_path_table.delete(id);
+-	}
+-}
+-Path._drop = libmupdf._wasm_drop_path;
+-export class Text extends Userdata {
+-	constructor(pointer) {
+-		if (typeof pointer === "number")
+-			super(pointer);
+-		else
+-			super(libmupdf._wasm_new_text());
+-	}
+-	getBounds(strokeState, transform) {
+-		if (strokeState !== null)
+-			checkType(strokeState, StrokeState);
+-		checkMatrix(transform);
+-		return fromRect(libmupdf._wasm_bound_text(this.pointer, strokeState?.pointer, MATRIX(transform)));
+-	}
+-	showGlyph(font, trm, gid, uni, wmode = 0) {
+-		checkType(font, Font);
+-		checkMatrix(trm);
+-		checkType(gid, "number");
+-		checkType(uni, "number");
+-		libmupdf._wasm_show_glyph(this.pointer, font.pointer, MATRIX(trm), gid, uni, wmode);
+-	}
+-	showString(font, trm, str, wmode = 0) {
+-		checkType(font, Font);
+-		checkMatrix(trm);
+-		checkType(str, "string");
+-		return fromMatrix(libmupdf._wasm_show_string(this.pointer, font.pointer, MATRIX(trm), STRING(str), wmode));
+-	}
+-	walk(walker) {
+-		let id = $libmupdf_text_id++;
+-		$libmupdf_text_table.set(id, walker);
+-		libmupdf._wasm_walk_text(this.pointer, id);
+-		$libmupdf_text_table.delete(id);
+-	}
+-}
+-Text._drop = libmupdf._wasm_drop_text;
+-export class DisplayList extends Userdata {
+-	constructor(arg1) {
+-		let pointer = 0;
+-		if (typeof arg1 === "number") {
+-			pointer = arg1;
+-		}
+-		else {
+-			checkRect(arg1);
+-			pointer = libmupdf._wasm_new_display_list(RECT(arg1));
+-		}
+-		super(pointer);
+-	}
+-	getBounds() {
+-		return fromRect(libmupdf._wasm_bound_display_list(this.pointer));
+-	}
+-	toPixmap(matrix, colorspace, alpha = false) {
+-		checkMatrix(matrix);
+-		checkType(colorspace, ColorSpace);
+-		return new Pixmap(libmupdf._wasm_new_pixmap_from_display_list(this.pointer, MATRIX(matrix), colorspace.pointer, alpha));
+-	}
+-	toStructuredText(options = "") {
+-		checkType(options, "string");
+-		return new StructuredText(libmupdf._wasm_new_stext_page_from_display_list(this.pointer, STRING(options)));
+-	}
+-	run(device, matrix) {
+-		checkType(device, Device);
+-		checkMatrix(matrix);
+-		libmupdf._wasm_run_display_list(this.pointer, device.pointer, MATRIX(matrix));
+-	}
+-	search(needle, max_hits = 500) {
+-		return runSearch(libmupdf._wasm_search_display_list, this.pointer, needle, max_hits);
+-	}
+-}
+-DisplayList._drop = libmupdf._wasm_drop_display_list;
+-export class Pixmap extends Userdata {
+-	constructor(arg1, bbox, alpha = false) {
+-		if (typeof arg1 === "number") {
+-			super(arg1);
+-		}
+-		if (arg1 instanceof ColorSpace) {
+-			checkRect(bbox);
+-			super(libmupdf._wasm_new_pixmap_with_bbox(arg1.pointer, RECT(bbox), alpha));
+-		}
+-		if (arg1 === null) {
+-			checkRect(bbox);
+-			super(libmupdf._wasm_new_pixmap_with_bbox(0, RECT(bbox), alpha));
+-		}
+-	}
+-	getBounds() {
+-		let x = libmupdf._wasm_pixmap_get_x(this.pointer);
+-		let y = libmupdf._wasm_pixmap_get_y(this.pointer);
+-		let w = libmupdf._wasm_pixmap_get_w(this.pointer);
+-		let h = libmupdf._wasm_pixmap_get_h(this.pointer);
+-		return [x, y, x + w, y + h];
+-	}
+-	clear(value) {
+-		if (typeof value === "undefined")
+-			libmupdf._wasm_clear_pixmap(this.pointer);
+-		else
+-			libmupdf._wasm_clear_pixmap_with_value(this.pointer, value);
+-	}
+-	getWidth() {
+-		return libmupdf._wasm_pixmap_get_w(this.pointer);
+-	}
+-	getHeight() {
+-		return libmupdf._wasm_pixmap_get_h(this.pointer);
+-	}
+-	getX() {
+-		return libmupdf._wasm_pixmap_get_x(this.pointer);
+-	}
+-	getY() {
+-		return libmupdf._wasm_pixmap_get_y(this.pointer);
+-	}
+-	getStride() {
+-		return libmupdf._wasm_pixmap_get_stride(this.pointer);
+-	}
+-	getNumberOfComponents() {
+-		return libmupdf._wasm_pixmap_get_n(this.pointer);
+-	}
+-	getAlpha() {
+-		return libmupdf._wasm_pixmap_get_alpha(this.pointer);
+-	}
+-	getXResolution() {
+-		return libmupdf._wasm_pixmap_get_xres(this.pointer);
+-	}
+-	getYResolution() {
+-		return libmupdf._wasm_pixmap_get_yres(this.pointer);
+-	}
+-	setResolution(x, y) {
+-		libmupdf._wasm_pixmap_set_xres(this.pointer, x);
+-		libmupdf._wasm_pixmap_set_yres(this.pointer, y);
+-	}
+-	getColorSpace() {
+-		let cs = libmupdf._wasm_pixmap_get_colorspace(this.pointer);
+-		if (cs)
+-			return new ColorSpace(libmupdf._wasm_keep_colorspace(cs));
+-		return null;
+-	}
+-	getPixels() {
+-		let s = libmupdf._wasm_pixmap_get_stride(this.pointer);
+-		let h = libmupdf._wasm_pixmap_get_h(this.pointer);
+-		let p = libmupdf._wasm_pixmap_get_samples(this.pointer);
+-		return new Uint8ClampedArray(libmupdf.HEAPU8.buffer, p, s * h);
+-	}
+-	asPNG() {
+-		let buf = libmupdf._wasm_new_buffer_from_pixmap_as_png(this.pointer);
+-		try {
+-			return fromBuffer(buf);
+-		}
+-		finally {
+-			libmupdf._wasm_drop_buffer(buf);
+-		}
+-	}
+-	asPSD() {
+-		let buf = libmupdf._wasm_new_buffer_from_pixmap_as_psd(this.pointer);
+-		try {
+-			return fromBuffer(buf);
+-		}
+-		finally {
+-			libmupdf._wasm_drop_buffer(buf);
+-		}
+-	}
+-	asPAM() {
+-		let buf = libmupdf._wasm_new_buffer_from_pixmap_as_pam(this.pointer);
+-		try {
+-			return fromBuffer(buf);
+-		}
+-		finally {
+-			libmupdf._wasm_drop_buffer(buf);
+-		}
+-	}
+-	asJPEG(quality, invert_cmyk = false) {
+-		let buf = libmupdf._wasm_new_buffer_from_pixmap_as_jpeg(this.pointer, quality, invert_cmyk);
+-		try {
+-			return fromBuffer(buf);
+-		}
+-		finally {
+-			libmupdf._wasm_drop_buffer(buf);
+-		}
+-	}
+-	invert() {
+-		libmupdf._wasm_invert_pixmap(this.pointer);
+-	}
+-	invertLuminance() {
+-		libmupdf._wasm_invert_pixmap_luminance(this.pointer);
+-	}
+-	gamma(p) {
+-		libmupdf._wasm_gamma_pixmap(this.pointer, p);
+-	}
+-	tint(black, white) {
+-		let black_hex = 0x000000;
+-		let white_hex = 0xffffff;
+-		if (typeof black === "number")
+-			black_hex = black;
+-		else if (black instanceof Array && black.length === 3)
+-			black_hex = (((black[0] * 255) << 16) | ((black[1] * 255) << 8) | ((black[2] * 255)));
+-		if (typeof white === "number")
+-			white_hex = white;
+-		else if (white instanceof Array && white.length === 3)
+-			white = (((white[0] * 255) << 16) | ((white[1] * 255) << 8) | ((white[2] * 255)));
+-		libmupdf._wasm_tint_pixmap(this.pointer, black_hex, white_hex);
+-	}
+-	convertToColorSpace(colorspace, keepAlpha = false) {
+-		checkType(colorspace, ColorSpace);
+-		checkType(keepAlpha, "boolean");
+-		return new Pixmap(libmupdf._wasm_convert_pixmap(this.pointer, colorspace.pointer, keepAlpha));
+-	}
+-	warp(points, width, height) {
+-		let quad = points.flat();
+-		checkQuad(quad);
+-		checkType(width, "number");
+-		checkType(height, "number");
+-		return new Pixmap(libmupdf._wasm_warp_pixmap(this.pointer, QUAD(quad), width, height));
+-	}
+-}
+-Pixmap._drop = libmupdf._wasm_drop_pixmap;
+-export class Shade extends Userdata {
+-	getBounds() {
+-		return fromRect(libmupdf._wasm_bound_shade(this.pointer));
+-	}
+-}
+-Shade._drop = libmupdf._wasm_drop_shade;
+-export class StructuredText extends Userdata {
+-	walk(walker) {
+-		let block = libmupdf._wasm_stext_page_get_first_block(this.pointer);
+-		while (block) {
+-			let block_type = libmupdf._wasm_stext_block_get_type(block);
+-			let block_bbox = fromRect(libmupdf._wasm_stext_block_get_bbox(block));
+-			if (block_type === 1) {
+-				if (walker.onImageBlock) {
+-					let matrix = fromMatrix(libmupdf._wasm_stext_block_get_transform(block));
+-					let image = new Image(libmupdf._wasm_stext_block_get_image(block));
+-					walker.onImageBlock(block_bbox, matrix, image);
+-				}
+-			}
+-			else {
+-				if (walker.beginTextBlock)
+-					walker.beginTextBlock(block_bbox);
+-				let line = libmupdf._wasm_stext_block_get_first_line(block);
+-				while (line) {
+-					let line_bbox = fromRect(libmupdf._wasm_stext_line_get_bbox(line));
+-					let line_wmode = libmupdf._wasm_stext_line_get_wmode(line);
+-					let line_dir = fromPoint(libmupdf._wasm_stext_line_get_dir(line));
+-					if (walker.beginLine)
+-						walker.beginLine(line_bbox, line_wmode, line_dir);
+-					if (walker.onChar) {
+-						let ch = libmupdf._wasm_stext_line_get_first_char(line);
+-						while (ch) {
+-							let ch_rune = String.fromCharCode(libmupdf._wasm_stext_char_get_c(ch));
+-							let ch_origin = fromPoint(libmupdf._wasm_stext_char_get_origin(ch));
+-							let ch_font = new Font(libmupdf._wasm_stext_char_get_font(ch));
+-							let ch_size = libmupdf._wasm_stext_char_get_size(ch);
+-							let ch_quad = fromQuad(libmupdf._wasm_stext_char_get_quad(ch));
+-							let ch_color = colorFromNumber(libmupdf._wasm_stext_char_get_argb(ch));
+-							walker.onChar(ch_rune, ch_origin, ch_font, ch_size, ch_quad, ch_color);
+-							ch = libmupdf._wasm_stext_char_get_next(ch);
+-						}
+-					}
+-					if (walker.endLine)
+-						walker.endLine();
+-					line = libmupdf._wasm_stext_line_get_next(line);
+-				}
+-				if (walker.endTextBlock)
+-					walker.endTextBlock();
+-			}
+-			block = libmupdf._wasm_stext_block_get_next(block);
+-		}
+-	}
+-	asJSON(scale = 1) {
+-		return fromStringFree(libmupdf._wasm_print_stext_page_as_json(this.pointer, scale));
+-	}
+-	asHTML(id) {
+-		return fromStringFree(libmupdf._wasm_print_stext_page_as_html(this.pointer, id));
+-	}
+-	asText() {
+-		return fromStringFree(libmupdf._wasm_print_stext_page_as_text(this.pointer));
+-	}
+-	snap(p, q, mode) {
+-		let mm = ENUM(mode, StructuredText.SELECT_MODE);
+-		return fromQuad(libmupdf._wasm_snap_selection(this.pointer, POINT(p), POINT2(q), mm));
+-	}
+-	copy(p, q) {
+-		return fromStringFree(libmupdf._wasm_copy_selection(this.pointer, POINT(p), POINT2(q)));
+-	}
+-	highlight(p, q, max_hits = 100) {
+-		let hits = 0;
+-		let result = [];
+-		try {
+-			hits = Malloc(32 * max_hits);
+-			let n = libmupdf._wasm_highlight_selection(this.pointer, POINT(p), POINT2(q), hits, max_hits);
+-			for (let i = 0; i < n; ++i)
+-				result.push(fromQuad(hits + i * 32));
+-		}
+-		finally {
+-			Free(hits);
+-		}
+-		return result;
+-	}
+-	search(needle, max_hits = 500) {
+-		return runSearch(libmupdf._wasm_search_stext_page, this.pointer, needle, max_hits);
+-	}
+-}
+-StructuredText._drop = libmupdf._wasm_drop_stext_page;
+-StructuredText.SELECT_MODE = [
+-	"chars",
+-	"words",
+-	"lines"
+-];
+-StructuredText.SELECT_CHARS = "chars";
+-StructuredText.SELECT_WORDS = "words";
+-StructuredText.SELECT_LINES = "lines";
+-export class Device extends Userdata {
+-	constructor(pointer_or_callbacks) {
+-		if (typeof pointer_or_callbacks === "number")
+-			super(pointer_or_callbacks);
+-		else {
+-			let id = $libmupdf_device_id++;
+-			$libmupdf_device_table.set(id, pointer_or_callbacks);
+-			super(libmupdf._wasm_new_js_device(id));
+-		}
+-	}
+-	fillPath(path, evenOdd, ctm, colorspace, color, alpha) {
+-		checkType(path, Path);
+-		checkMatrix(ctm);
+-		checkType(colorspace, ColorSpace);
+-		checkColor(color);
+-		libmupdf._wasm_fill_path(this.pointer, path.pointer, evenOdd, MATRIX(ctm), colorspace.pointer, COLOR(color), alpha);
+-	}
+-	strokePath(path, stroke, ctm, colorspace, color, alpha) {
+-		checkType(path, Path);
+-		checkType(stroke, StrokeState);
+-		checkMatrix(ctm);
+-		checkType(colorspace, ColorSpace);
+-		checkColor(color);
+-		libmupdf._wasm_stroke_path(this.pointer, path.pointer, stroke.pointer, MATRIX(ctm), colorspace.pointer, COLOR(color), alpha);
+-	}
+-	clipPath(path, evenOdd, ctm) {
+-		checkType(path, Path);
+-		checkMatrix(ctm);
+-		libmupdf._wasm_clip_path(this.pointer, path.pointer, evenOdd, MATRIX(ctm));
+-	}
+-	clipStrokePath(path, stroke, ctm) {
+-		checkType(path, Path);
+-		checkType(stroke, StrokeState);
+-		checkMatrix(ctm);
+-		libmupdf._wasm_clip_stroke_path(this.pointer, path.pointer, stroke.pointer, MATRIX(ctm));
+-	}
+-	fillText(text, ctm, colorspace, color, alpha) {
+-		checkType(text, Text);
+-		checkMatrix(ctm);
+-		checkType(colorspace, ColorSpace);
+-		checkColor(color);
+-		libmupdf._wasm_fill_text(this.pointer, text.pointer, MATRIX(ctm), colorspace.pointer, COLOR(color), alpha);
+-	}
+-	strokeText(text, stroke, ctm, colorspace, color, alpha) {
+-		checkType(text, Text);
+-		checkType(stroke, StrokeState);
+-		checkMatrix(ctm);
+-		checkType(colorspace, ColorSpace);
+-		checkColor(color);
+-		libmupdf._wasm_stroke_text(this.pointer, text.pointer, stroke.pointer, MATRIX(ctm), colorspace.pointer, COLOR(color), alpha);
+-	}
+-	clipText(text, ctm) {
+-		checkType(text, Text);
+-		checkMatrix(ctm);
+-		libmupdf._wasm_clip_text(this.pointer, text.pointer, MATRIX(ctm));
+-	}
+-	clipStrokeText(text, stroke, ctm) {
+-		checkType(text, Text);
+-		checkType(stroke, StrokeState);
+-		checkMatrix(ctm);
+-		libmupdf._wasm_clip_stroke_text(this.pointer, text.pointer, stroke.pointer, MATRIX(ctm));
+-	}
+-	ignoreText(text, ctm) {
+-		checkType(text, Text);
+-		checkMatrix(ctm);
+-		libmupdf._wasm_ignore_text(this.pointer, text.pointer, MATRIX(ctm));
+-	}
+-	fillShade(shade, ctm, alpha) {
+-		checkType(shade, Shade);
+-		checkMatrix(ctm);
+-		libmupdf._wasm_fill_shade(this.pointer, shade.pointer, MATRIX(ctm), alpha);
+-	}
+-	fillImage(image, ctm, alpha) {
+-		checkType(image, Image);
+-		checkMatrix(ctm);
+-		libmupdf._wasm_fill_image(this.pointer, image.pointer, MATRIX(ctm), alpha);
+-	}
+-	fillImageMask(image, ctm, colorspace, color, alpha) {
+-		checkType(image, Image);
+-		checkMatrix(ctm);
+-		checkType(colorspace, ColorSpace);
+-		checkColor(color);
+-		libmupdf._wasm_fill_image_mask(this.pointer, image.pointer, MATRIX(ctm), colorspace.pointer, COLOR(color), alpha);
+-	}
+-	clipImageMask(image, ctm) {
+-		checkType(image, Image);
+-		checkMatrix(ctm);
+-		libmupdf._wasm_clip_image_mask(this.pointer, image.pointer, MATRIX(ctm));
+-	}
+-	popClip() {
+-		libmupdf._wasm_pop_clip(this.pointer);
+-	}
+-	beginMask(area, luminosity, colorspace, color) {
+-		checkRect(area);
+-		checkType(colorspace, ColorSpace);
+-		checkColor(color);
+-		libmupdf._wasm_begin_mask(this.pointer, RECT(area), luminosity, colorspace.pointer, COLOR(color));
+-	}
+-	endMask() {
+-		libmupdf._wasm_end_mask(this.pointer);
+-	}
+-	beginGroup(area, colorspace, isolated, knockout, blendmode, alpha) {
+-		checkRect(area);
+-		checkType(colorspace, ColorSpace);
+-		let blendmode_ix = ENUM(blendmode, Device.BLEND_MODES);
+-		libmupdf._wasm_begin_group(this.pointer, RECT(area), colorspace.pointer, isolated, knockout, blendmode_ix, alpha);
+-	}
+-	endGroup() {
+-		libmupdf._wasm_end_group(this.pointer);
+-	}
+-	beginTile(area, view, xstep, ystep, ctm, id) {
+-		checkRect(area);
+-		checkRect(view);
+-		checkMatrix(ctm);
+-		return libmupdf._wasm_begin_tile(this.pointer, RECT(area), RECT2(view), xstep, ystep, MATRIX(ctm), id);
+-	}
+-	endTile() {
+-		libmupdf._wasm_end_tile(this.pointer);
+-	}
+-	beginLayer(name) {
+-		libmupdf._wasm_begin_layer(this.pointer, STRING(name));
+-	}
+-	endLayer() {
+-		libmupdf._wasm_end_layer(this.pointer);
+-	}
+-	close() {
+-		libmupdf._wasm_close_device(this.pointer);
+-	}
+-}
+-Device._drop = libmupdf._wasm_drop_device;
+-Device.BLEND_MODES = [
+-	"Normal",
+-	"Multiply",
+-	"Screen",
+-	"Overlay",
+-	"Darken",
+-	"Lighten",
+-	"ColorDodge",
+-	"ColorBurn",
+-	"HardLight",
+-	"SoftLight",
+-	"Difference",
+-	"Exclusion",
+-	"Hue",
+-	"Saturation",
+-	"Color",
+-	"Luminosity",
+-];
+-export class DrawDevice extends Device {
+-	constructor(matrix, pixmap) {
+-		checkMatrix(matrix);
+-		checkType(pixmap, Pixmap);
+-		super(libmupdf._wasm_new_draw_device(MATRIX(matrix), pixmap.pointer));
+-	}
+-}
+-export class DisplayListDevice extends Device {
+-	constructor(displayList) {
+-		checkType(displayList, DisplayList);
+-		super(libmupdf._wasm_new_display_list_device(displayList.pointer));
+-	}
+-}
+-export class DocumentWriter extends Userdata {
+-	constructor(buffer, format, options) {
+-		super(libmupdf._wasm_new_document_writer_with_buffer(BUFFER(buffer), STRING(format), STRING2(options)));
+-	}
+-	beginPage(mediabox) {
+-		checkRect(mediabox);
+-		return new Device(libmupdf._wasm_keep_device(libmupdf._wasm_begin_page(this.pointer, RECT(mediabox))));
+-	}
+-	endPage() {
+-		libmupdf._wasm_end_page(this.pointer);
+-	}
+-	close() {
+-		libmupdf._wasm_close_document_writer(this.pointer);
+-	}
+-}
+-DocumentWriter._drop = libmupdf._wasm_drop_document_writer;
+-export class Document extends Userdata {
+-	static openDocument(from, magic) {
+-		let pointer = 0;
+-		let free_from = false;
+-		if (typeof from === "string") {
+-			magic = from;
+-			if (node_fs)
+-				from = node_fs.readFileSync(from);
+-			else
+-				throw new Error("missing 'fs' module");
+-		}
+-		else {
+-			if (typeof magic === "undefined")
+-				magic = "application/pdf";
+-		}
+-		checkType(magic, "string");
+-		if (from instanceof ArrayBuffer || from instanceof Uint8Array) {
+-			from = new Buffer(from);
+-			free_from = true;
+-		}
+-		if (from instanceof Buffer)
+-			pointer = libmupdf._wasm_open_document_with_buffer(STRING(magic), from.pointer);
+-		else if (from instanceof Stream)
+-			pointer = libmupdf._wasm_open_document_with_stream(STRING(magic), from.pointer);
+-		else
+-			throw new Error("not a Buffer or Stream");
+-		if (free_from) {
+-			// Destroy any implicit Buffer instances immediately!
+-			// This may help the GC and FinalizationRegistry out when
+-			// processing many documents without a pause.
+-			from.destroy();
+-		}
+-		let pdf = libmupdf._wasm_pdf_document_from_fz_document(pointer);
+-		if (pdf)
+-			return new PDFDocument(pdf);
+-		return new Document(pointer);
+-	}
+-	formatLinkURI(dest) {
+-		return fromStringFree(libmupdf._wasm_format_link_uri(this.pointer, dest.chapter | 0, dest.page | 0, ENUM(dest.type, Document.LINK_DEST), +dest.x, +dest.y, +dest.width, +dest.height, +dest.zoom));
+-	}
+-	asPDF() {
+-		if (this instanceof PDFDocument)
+-			return this;
+-		return null;
+-	}
+-	isPDF() {
+-		return this instanceof PDFDocument;
+-	}
+-	needsPassword() {
+-		return !!libmupdf._wasm_needs_password(this.pointer);
+-	}
+-	authenticatePassword(password) {
+-		return libmupdf._wasm_authenticate_password(this.pointer, STRING(password));
+-	}
+-	hasPermission(perm) {
+-		let perm_ix = Document.PERMISSION[perm];
+-		return !!libmupdf._wasm_has_permission(this.pointer, perm_ix);
+-	}
+-	getMetaData(key) {
+-		let value = libmupdf._wasm_lookup_metadata(this.pointer, STRING(key));
+-		if (value)
+-			return fromString(value);
+-		return undefined;
+-	}
+-	setMetaData(key, value) {
+-		libmupdf._wasm_set_metadata(this.pointer, STRING(key), STRING2(value));
+-	}
+-	countPages() {
+-		return libmupdf._wasm_count_pages(this.pointer);
+-	}
+-	isReflowable() {
+-		libmupdf._wasm_is_document_reflowable(this.pointer);
+-	}
+-	layout(w, h, em) {
+-		libmupdf._wasm_layout_document(this.pointer, w, h, em);
+-	}
+-	loadPage(index) {
+-		let fz_ptr = libmupdf._wasm_load_page(this.pointer, index);
+-		if (this instanceof PDFDocument) {
+-			let pdf_ptr = libmupdf._wasm_pdf_page_from_fz_page(fz_ptr);
+-			if (pdf_ptr)
+-				return new PDFPage(this, pdf_ptr);
+-		}
+-		return new Page(fz_ptr);
+-	}
+-	loadOutline() {
+-		let doc = this.pointer;
+-		function to_outline(outline) {
+-			let result = [];
+-			while (outline) {
+-				let title = libmupdf._wasm_outline_get_title(outline);
+-				let uri = libmupdf._wasm_outline_get_uri(outline);
+-				let open = libmupdf._wasm_outline_get_is_open(outline);
+-				let item = {
+-					title: title ? fromString(title) : undefined,
+-					uri: uri ? fromString(uri) : undefined,
+-					open: !!open,
+-				};
+-				let page = libmupdf._wasm_outline_get_page(doc, outline);
+-				if (page >= 0)
+-					item.page = page;
+-				let down = libmupdf._wasm_outline_get_down(outline);
+-				if (down)
+-					item.down = to_outline(down);
+-				result.push(item);
+-				outline = libmupdf._wasm_outline_get_next(outline);
+-			}
+-			return result;
+-		}
+-		let root = libmupdf._wasm_load_outline(doc);
+-		if (root)
+-			return to_outline(root);
+-		return null;
+-	}
+-	resolveLink(link) {
+-		if (link instanceof Link)
+-			return libmupdf._wasm_resolve_link(this.pointer, libmupdf._wasm_link_get_uri(link.pointer));
+-		return libmupdf._wasm_resolve_link(this.pointer, STRING(link));
+-	}
+-	resolveLinkDestination(link) {
+-		let dest;
+-		if (link instanceof Link)
+-			dest = libmupdf._wasm_resolve_link_dest(this.pointer, libmupdf._wasm_link_get_uri(link.pointer));
+-		else
+-			dest = libmupdf._wasm_resolve_link_dest(this.pointer, STRING(link));
+-		return {
+-			type: Document.LINK_DEST[libmupdf._wasm_link_dest_get_type(dest)],
+-			chapter: libmupdf._wasm_link_dest_get_chapter(dest),
+-			page: libmupdf._wasm_link_dest_get_page(dest),
+-			x: libmupdf._wasm_link_dest_get_x(dest),
+-			y: libmupdf._wasm_link_dest_get_y(dest),
+-			width: libmupdf._wasm_link_dest_get_w(dest),
+-			height: libmupdf._wasm_link_dest_get_h(dest),
+-			zoom: libmupdf._wasm_link_dest_get_zoom(dest),
+-		};
+-	}
+-	outlineIterator() {
+-		return new OutlineIterator(libmupdf._wasm_new_outline_iterator(this.pointer));
+-	}
+-}
+-Document._drop = libmupdf._wasm_drop_document;
+-Document.META_FORMAT = "format";
+-Document.META_ENCRYPTION = "encryption";
+-Document.META_INFO_AUTHOR = "info:Author";
+-Document.META_INFO_TITLE = "info:Title";
+-Document.META_INFO_SUBJECT = "info:Subject";
+-Document.META_INFO_KEYWORDS = "info:Keywords";
+-Document.META_INFO_CREATOR = "info:Creator";
+-Document.META_INFO_PRODUCER = "info:Producer";
+-Document.META_INFO_CREATIONDATE = "info:CreationDate";
+-Document.META_INFO_MODIFICATIONDATE = "info:ModDate";
+-Document.PERMISSION = {
+-	"print": "p".charCodeAt(0),
+-	"copy": "c".charCodeAt(0),
+-	"edit": "e".charCodeAt(0),
+-	"annotate": "n".charCodeAt(0),
+-	"form": "f".charCodeAt(0),
+-	"accessibility": "y".charCodeAt(0),
+-	"assemble": "a".charCodeAt(0),
+-	"print-hq": "h".charCodeAt(0),
+-};
+-Document.LINK_DEST = [
+-	"Fit",
+-	"FitB",
+-	"FitH",
+-	"FitBH",
+-	"FitV",
+-	"FitBV",
+-	"FitR",
+-	"XYZ",
+-];
+-export class OutlineIterator extends Userdata {
+-	item() {
+-		let item = libmupdf._wasm_outline_iterator_item(this.pointer);
+-		if (item) {
+-			let title_ptr = libmupdf._wasm_outline_item_get_title(item);
+-			let uri_ptr = libmupdf._wasm_outline_item_get_uri(item);
+-			let is_open = libmupdf._wasm_outline_item_get_is_open(item);
+-			return {
+-				title: title_ptr ? fromString(title_ptr) : undefined,
+-				uri: uri_ptr ? fromString(uri_ptr) : undefined,
+-				open: !!is_open,
+-			};
+-		}
+-		return null;
+-	}
+-	next() {
+-		return libmupdf._wasm_outline_iterator_next(this.pointer);
+-	}
+-	prev() {
+-		return libmupdf._wasm_outline_iterator_prev(this.pointer);
+-	}
+-	up() {
+-		return libmupdf._wasm_outline_iterator_up(this.pointer);
+-	}
+-	down() {
+-		return libmupdf._wasm_outline_iterator_down(this.pointer);
+-	}
+-	delete() {
+-		return libmupdf._wasm_outline_iterator_delete(this.pointer);
+-	}
+-	insert(item) {
+-		return libmupdf._wasm_outline_iterator_insert(this.pointer, STRING_OPT(item.title), STRING2_OPT(item.uri), item.open);
+-	}
+-	update(item) {
+-		libmupdf._wasm_outline_iterator_update(this.pointer, STRING_OPT(item.title), STRING2_OPT(item.uri), item.open);
+-	}
+-}
+-OutlineIterator._drop = libmupdf._wasm_drop_outline_iterator;
+-OutlineIterator.RESULT_DID_NOT_MOVE = -1;
+-OutlineIterator.RESULT_AT_ITEM = 0;
+-OutlineIterator.RESULT_AT_EMPTY = 1;
+-export class Link extends Userdata {
+-	getBounds() {
+-		return fromRect(libmupdf._wasm_link_get_rect(this.pointer));
+-	}
+-	setBounds(rect) {
+-		checkRect(rect);
+-		libmupdf._wasm_link_set_rect(this.pointer, RECT(rect));
+-	}
+-	getURI() {
+-		return fromString(libmupdf._wasm_link_get_uri(this.pointer));
+-	}
+-	setURI(uri) {
+-		checkType(uri, "string");
+-		libmupdf._wasm_link_set_uri(this.pointer, STRING(uri));
+-	}
+-	isExternal() {
+-		return /^\w[\w+-.]*:/.test(this.getURI());
+-	}
+-}
+-Link._drop = libmupdf._wasm_drop_link;
+-export class Page extends Userdata {
+-	isPDF() {
+-		return this instanceof PDFPage;
+-	}
+-	getBounds(box = "CropBox") {
+-		let box_ix = ENUM(box, Page.BOXES);
+-		return fromRect(libmupdf._wasm_bound_page(this.pointer, box_ix));
+-	}
+-	getLabel() {
+-		return fromString(libmupdf._wasm_page_label(this.pointer));
+-	}
+-	run(device, matrix) {
+-		checkType(device, Device);
+-		checkMatrix(matrix);
+-		libmupdf._wasm_run_page(this.pointer, device.pointer, MATRIX(matrix));
+-	}
+-	runPageContents(device, matrix) {
+-		checkType(device, Device);
+-		checkMatrix(matrix);
+-		libmupdf._wasm_run_page_contents(this.pointer, device.pointer, MATRIX(matrix));
+-	}
+-	runPageAnnots(device, matrix) {
+-		checkType(device, Device);
+-		checkMatrix(matrix);
+-		libmupdf._wasm_run_page_annots(this.pointer, device.pointer, MATRIX(matrix));
+-	}
+-	runPageWidgets(device, matrix) {
+-		checkType(device, Device);
+-		checkMatrix(matrix);
+-		libmupdf._wasm_run_page_widgets(this.pointer, device.pointer, MATRIX(matrix));
+-	}
+-	toPixmap(matrix, colorspace, alpha = false, showExtras = true) {
+-		checkType(colorspace, ColorSpace);
+-		checkMatrix(matrix);
+-		let result;
+-		if (showExtras)
+-			result = libmupdf._wasm_new_pixmap_from_page(this.pointer, MATRIX(matrix), colorspace.pointer, alpha);
+-		else
+-			result = libmupdf._wasm_new_pixmap_from_page_contents(this.pointer, MATRIX(matrix), colorspace.pointer, alpha);
+-		return new Pixmap(result);
+-	}
+-	toDisplayList(showExtras = true) {
+-		let result;
+-		if (showExtras)
+-			result = libmupdf._wasm_new_display_list_from_page(this.pointer);
+-		else
+-			result = libmupdf._wasm_new_display_list_from_page_contents(this.pointer);
+-		return new DisplayList(result);
+-	}
+-	toStructuredText(options = "") {
+-		checkType(options, "string");
+-		return new StructuredText(libmupdf._wasm_new_stext_page_from_page(this.pointer, STRING(options)));
+-	}
+-	getLinks() {
+-		let links = [];
+-		let link = libmupdf._wasm_load_links(this.pointer);
+-		while (link) {
+-			links.push(new Link(libmupdf._wasm_keep_link(link)));
+-			link = libmupdf._wasm_link_get_next(link);
+-		}
+-		return links;
+-	}
+-	createLink(bbox, uri) {
+-		checkRect(bbox);
+-		return new Link(libmupdf._wasm_create_link(this.pointer, RECT(bbox), STRING(uri)));
+-	}
+-	deleteLink(link) {
+-		checkType(link, Link);
+-		libmupdf._wasm_delete_link(this.pointer, link.pointer);
+-	}
+-	search(needle, max_hits = 500) {
+-		return runSearch(libmupdf._wasm_search_page, this.pointer, needle, max_hits);
+-	}
+-}
+-Page._drop = libmupdf._wasm_drop_page;
+-Page.BOXES = [
+-	"MediaBox",
+-	"CropBox",
+-	"BleedBox",
+-	"TrimBox",
+-	"ArtBox"
+-];
+-/* -------------------------------------------------------------------------- */
+-export class PDFDocument extends Document {
+-	constructor(arg1) {
+-		if (typeof arg1 === "undefined")
+-			super(libmupdf._wasm_pdf_create_document());
+-		else if (typeof arg1 === "number")
+-			super(arg1);
+-		else if (arg1 instanceof PDFDocument) {
+-			super(arg1.pointer);
+-			libmupdf._wasm_keep_document(this.pointer);
+-		}
+-		else {
+-			let doc = Document.openDocument(arg1, "application/pdf");
+-			if (doc instanceof PDFDocument)
+-				return doc;
+-			throw new Error("not a PDF document");
+-		}
+-	}
+-	loadPage(index) {
+-		return super.loadPage(index);
+-	}
+-	// PDFObject instances are always bound to a document, so the WASM/JS value interface lives here.
+-	// Wrap a pdf_obj in a Userdata object. The pointer must be newly created or we already own it.
+-	_fromPDFObjectNew(ptr) {
+-		if (ptr === 0)
+-			return PDFObject.Null;
+-		return new PDFObject(this, ptr);
+-	}
+-	// Wrap a pdf_obj in a Userdata object. The pointer must be a borrowed pointer, so we have to take ownership.
+-	_fromPDFObjectKeep(ptr) {
+-		if (ptr === 0)
+-			return PDFObject.Null;
+-		return new PDFObject(this, libmupdf._wasm_pdf_keep_obj(ptr));
+-	}
+-	_toPDFObject(obj) {
+-		if (obj instanceof PDFObject)
+-			return obj;
+-		if (obj === null || obj === undefined)
+-			return this.newNull();
+-		if (typeof obj === "string") {
+-			// if a JS string is surrounded by parens, convert it to a PDF string
+-			if (obj.startsWith("(") && obj.endsWith(")"))
+-				return this.newString(obj.slice(1, -1));
+-			// otherwise treat it as a name
+-			return this.newName(obj);
+-		}
+-		if (typeof obj === "number") {
+-			if (obj === (obj | 0))
+-				return this.newInteger(obj);
+-			return this.newReal(obj);
+-		}
+-		if (typeof obj === "boolean")
+-			return this.newBoolean(obj);
+-		if (obj instanceof Array) {
+-			let result = this.newArray();
+-			for (let item of obj)
+-				result.push(item);
+-			return result;
+-		}
+-		if (obj instanceof Object) {
+-			let result = this.newDictionary();
+-			for (let key in obj)
+-				result.put(key, obj[key]);
+-			return result;
+-		}
+-		throw new TypeError("cannot convert value to PDFObject");
+-	}
+-	_PDFOBJ(obj) {
+-		// Note: We have to create a PDFObject instance for garbage collection.
+-		return this._toPDFObject(obj).pointer;
+-	}
+-	getVersion() {
+-		return libmupdf._wasm_pdf_version(this.pointer);
+-	}
+-	getLanguage() {
+-		return fromStringOrNull(libmupdf._wasm_pdf_document_language(this.pointer));
+-	}
+-	setLanguage(lang) {
+-		libmupdf._wasm_pdf_set_document_language(this.pointer, STRING(lang));
+-	}
+-	countObjects() {
+-		return libmupdf._wasm_pdf_xref_len(this.pointer);
+-	}
+-	getTrailer() {
+-		return new PDFObject(this, libmupdf._wasm_pdf_trailer(this.pointer));
+-	}
+-	createObject() {
+-		let num = libmupdf._wasm_pdf_create_object(this.pointer);
+-		return this._fromPDFObjectNew(libmupdf._wasm_pdf_new_indirect(this.pointer, num));
+-	}
+-	newNull() { return PDFObject.Null; }
+-	newBoolean(v) { return this._fromPDFObjectNew(libmupdf._wasm_pdf_new_bool(v)); }
+-	newInteger(v) { return this._fromPDFObjectNew(libmupdf._wasm_pdf_new_int(v)); }
+-	newReal(v) { return this._fromPDFObjectNew(libmupdf._wasm_pdf_new_real(v)); }
+-	newName(v) { return this._fromPDFObjectNew(libmupdf._wasm_pdf_new_name(STRING(v))); }
+-	newString(v) { return this._fromPDFObjectNew(libmupdf._wasm_pdf_new_text_string(STRING(v))); }
+-	newByteString(v) {
+-		if (v instanceof Array)
+-			v = Uint8Array.from(v);
+-		checkType(v, Uint8Array);
+-		let len = v.byteLength;
+-		let ptr = Malloc(len);
+-		libmupdf.HEAPU8.set(v, ptr);
+-		try {
+-			return this._fromPDFObjectNew(libmupdf._wasm_pdf_new_string(ptr, len));
+-		}
+-		finally {
+-			Free(ptr);
+-		}
+-	}
+-	newIndirect(v) { return this._fromPDFObjectNew(libmupdf._wasm_pdf_new_indirect(this.pointer, v)); }
+-	newArray() { return this._fromPDFObjectNew(libmupdf._wasm_pdf_new_array(this.pointer)); }
+-	newDictionary() { return this._fromPDFObjectNew(libmupdf._wasm_pdf_new_dict(this.pointer)); }
+-	deleteObject(num) {
+-		if (num instanceof PDFObject)
+-			num = num.asIndirect();
+-		else
+-			checkType(num, "number");
+-		libmupdf._wasm_pdf_delete_object(this.pointer, num);
+-	}
+-	addObject(obj) {
+-		return this._fromPDFObjectNew(libmupdf._wasm_pdf_add_object(this.pointer, this._PDFOBJ(obj)));
+-	}
+-	addStream(buf, obj) {
+-		return this._fromPDFObjectNew(libmupdf._wasm_pdf_add_stream(this.pointer, BUFFER(buf), this._PDFOBJ(obj), 0));
+-	}
+-	addRawStream(buf, obj) {
+-		return this._fromPDFObjectNew(libmupdf._wasm_pdf_add_stream(this.pointer, BUFFER(buf), this._PDFOBJ(obj), 1));
+-	}
+-	newGraftMap() {
+-		return new PDFGraftMap(this, libmupdf._wasm_pdf_new_graft_map(this.pointer));
+-	}
+-	graftObject(obj) {
+-		checkType(obj, PDFObject);
+-		return this._fromPDFObjectNew(libmupdf._wasm_pdf_graft_object(this.pointer, obj.pointer));
+-	}
+-	graftPage(to, srcDoc, srcPage) {
+-		checkType(to, "number");
+-		checkType(srcDoc, PDFDocument);
+-		checkType(srcPage, "number");
+-		libmupdf._wasm_pdf_graft_page(this.pointer, to, srcDoc.pointer, srcPage);
+-	}
+-	addSimpleFont(font, encoding = "Latin") {
+-		checkType(font, Font);
+-		var encoding_ix = ENUM(encoding, Font.SIMPLE_ENCODING);
+-		return this._fromPDFObjectNew(libmupdf._wasm_pdf_add_simple_font(this.pointer, font.pointer, encoding_ix));
+-	}
+-	addCJKFont(font, lang, wmode = 0, serif = true) {
+-		checkType(font, Font);
+-		if (typeof lang === "string")
+-			lang = Font.CJK_ORDERING_BY_LANG[lang];
+-		return this._fromPDFObjectNew(libmupdf._wasm_pdf_add_cjk_font(this.pointer, font.pointer, lang, wmode, serif));
+-	}
+-	addFont(font) {
+-		checkType(font, Font);
+-		return this._fromPDFObjectNew(libmupdf._wasm_pdf_add_cid_font(this.pointer, font.pointer));
+-	}
+-	addImage(image) {
+-		checkType(image, Image);
+-		return this._fromPDFObjectNew(libmupdf._wasm_pdf_add_image(this.pointer, image.pointer));
+-	}
+-	loadImage(ref) {
+-		checkType(ref, PDFObject);
+-		return new Image(libmupdf._wasm_pdf_load_image(this.pointer, ref.pointer));
+-	}
+-	findPage(index) {
+-		checkType(index, "number");
+-		return this._fromPDFObjectKeep(libmupdf._wasm_pdf_lookup_page_obj(this.pointer, index));
+-	}
+-	addPage(mediabox, rotate, resources, contents) {
+-		checkRect(mediabox);
+-		checkType(rotate, "number");
+-		return this._fromPDFObjectNew(libmupdf._wasm_pdf_add_page(this.pointer, RECT(mediabox), rotate, this._PDFOBJ(resources), BUFFER(contents)));
+-	}
+-	insertPage(at, obj) {
+-		checkType(at, "number");
+-		libmupdf._wasm_pdf_insert_page(this.pointer, at, this._PDFOBJ(obj));
+-	}
+-	deletePage(at) {
+-		checkType(at, "number");
+-		libmupdf._wasm_pdf_delete_page(this.pointer, at);
+-	}
+-	isEmbeddedFile(ref) {
+-		checkType(ref, PDFObject);
+-		return !!libmupdf._wasm_pdf_is_embedded_file(ref.pointer);
+-	}
+-	addEmbeddedFile(filename, mimetype, contents, created, modified, checksum = false) {
+-		checkType(filename, "string");
+-		checkType(mimetype, "string");
+-		checkType(created, Date);
+-		checkType(modified, Date);
+-		checkType(checksum, "boolean");
+-		return this._fromPDFObjectNew(libmupdf._wasm_pdf_add_embedded_file(this.pointer, STRING(filename), STRING2(mimetype), BUFFER(contents), created.getTime() / 1000 | 0, modified.getTime() / 1000 | 0, checksum));
+-	}
+-	getFilespecParams(ref) {
+-		checkType(ref, PDFObject);
+-		let ptr = libmupdf._wasm_pdf_get_filespec_params(ref.pointer);
+-		return {
+-			filename: fromString(libmupdf._wasm_pdf_filespec_params_get_filename(ptr)),
+-			mimetype: fromString(libmupdf._wasm_pdf_filespec_params_get_mimetype(ptr)),
+-			size: libmupdf._wasm_pdf_filespec_params_get_filename(ptr),
+-			creationDate: new Date(libmupdf._wasm_pdf_filespec_params_get_created(ptr) * 1000),
+-			modificationDate: new Date(libmupdf._wasm_pdf_filespec_params_get_modified(ptr) * 1000),
+-		};
+-	}
+-	getEmbeddedFileContents(ref) {
+-		checkType(ref, PDFObject);
+-		let contents = libmupdf._wasm_pdf_load_embedded_file_contents(ref.pointer);
+-		if (contents)
+-			return new Buffer(contents);
+-		return null;
+-	}
+-	getEmbeddedFiles() {
+-		function _getEmbeddedFilesRec(result, N) {
+-			var i, n;
+-			if (N.isDictionary()) {
+-				var NN = N.get("Names");
+-				if (NN)
+-					for (i = 0, n = NN.length; i < n; i += 2)
+-						result[NN.get(i + 0).asString()] = NN.get(i + 1);
+-				var NK = N.get("Kids");
+-				if (NK)
+-					for (i = 0, n = NK.length; i < n; i += 1)
+-						_getEmbeddedFilesRec(result, NK.get(i));
+-			}
+-			return result;
+-		}
+-		return _getEmbeddedFilesRec({}, this.getTrailer().get("Root", "Names", "EmbeddedFiles"));
+-	}
+-	loadNameTree(treeName) {
+-		function _loadNameTreeRec(dict, node) {
+-			var kids = node.get("Kids");
+-			if (kids && kids.isArray())
+-				for (var i = 0; i < kids.length; i += 1)
+-					_loadNameTreeRec(dict, kids.get(i));
+-			var names = node.get("Names");
+-			if (names && names.isArray())
+-				for (var i = 0; i < names.length; i += 2)
+-					dict[names.get(i).asString()] = names.get(i + 1);
+-		}
+-		var node = this.getTrailer().get("Root").get("Names").get(treeName);
+-		var dict = {};
+-		if (node.isDictionary())
+-			_loadNameTreeRec(dict, node);
+-		return dict;
+-	}
+-	insertEmbeddedFile(filename, filespec) {
+-		var efs = this.getEmbeddedFiles();
+-		efs[filename] = filespec;
+-		this._rewriteEmbeddedFiles(efs);
+-	}
+-	deleteEmbeddedFile(filename) {
+-		var efs = this.getEmbeddedFiles();
+-		delete efs[filename];
+-		this._rewriteEmbeddedFiles(efs);
+-	}
+-	_rewriteEmbeddedFiles(efs) {
+-		var efs_keys = Object.keys(efs);
+-		efs_keys.sort();
+-		var root = this.getTrailer().get("Root");
+-		var root_names = root.get("Names");
+-		if (!root_names.isDictionary())
+-			root_names = root.put("Names", this.newDictionary());
+-		var root_names_efs = root_names.put("EmbeddedFiles", this.newDictionary());
+-		var root_names_efs_names = root_names_efs.put("Names", this.newArray());
+-		for (var key of efs_keys) {
+-			root_names_efs_names.push(this.newString(key));
+-			root_names_efs_names.push(efs[key]);
+-		}
+-	}
+-	saveToBuffer(options = "") {
+-		var options_string;
+-		if (typeof options === "object") {
+-			options_string = Object.entries(options).map(kv => {
+-				var k = kv[0];
+-				var v = kv[1];
+-				if (v === true)
+-					return k + "=" + "yes";
+-				else if (v === false)
+-					return k + "=" + "no";
+-				else
+-					return k + "=" + String(v).replaceAll(",", ":");
+-			}).join(",");
+-		}
+-		else {
+-			options_string = options;
+-		}
+-		return new Buffer(libmupdf._wasm_pdf_write_document_buffer(this.pointer, STRING(options_string)));
+-	}
+-	save(filename, options = "") {
+-		if (node_fs)
+-			node_fs.writeFileSync(filename, this.saveToBuffer(options).asUint8Array());
+-		else
+-			throw new Error("missing 'fs' module");
+-	}
+-	setPageLabels(index, style = "D", prefix = "", start = 1) {
+-		libmupdf._wasm_pdf_set_page_labels(this.pointer, index, style.charCodeAt(0), STRING(prefix), start);
+-	}
+-	deletePageLabels(index) {
+-		libmupdf._wasm_pdf_delete_page_labels(this.pointer, index);
+-	}
+-	wasRepaired() {
+-		return !!libmupdf._wasm_pdf_was_repaired(this.pointer);
+-	}
+-	hasUnsavedChanges() {
+-		return !!libmupdf._wasm_pdf_has_unsaved_changes(this.pointer);
+-	}
+-	countVersions() {
+-		return libmupdf._wasm_pdf_count_versions(this.pointer);
+-	}
+-	countUnsavedVersions() {
+-		return libmupdf._wasm_pdf_count_unsaved_versions(this.pointer);
+-	}
+-	validateChangeHistory() {
+-		return libmupdf._wasm_pdf_validate_change_history(this.pointer);
+-	}
+-	canBeSavedIncrementally() {
+-		return !!libmupdf._wasm_pdf_can_be_saved_incrementally(this.pointer);
+-	}
+-	enableJournal() {
+-		libmupdf._wasm_pdf_enable_journal(this.pointer);
+-	}
+-	getJournal() {
+-		let position = libmupdf._wasm_pdf_undoredo_state_position(this.pointer);
+-		let n = libmupdf._wasm_pdf_undoredo_state_count(this.pointer);
+-		let steps = [];
+-		for (let i = 0; i < n; ++i)
+-			steps.push(fromString(libmupdf._wasm_pdf_undoredo_step(this.pointer, i)));
+-		return { position, steps };
+-	}
+-	beginOperation(op) {
+-		libmupdf._wasm_pdf_begin_operation(this.pointer, STRING(op));
+-	}
+-	beginImplicitOperation() {
+-		libmupdf._wasm_pdf_begin_implicit_operation(this.pointer);
+-	}
+-	endOperation() {
+-		libmupdf._wasm_pdf_end_operation(this.pointer);
+-	}
+-	abandonOperation() {
+-		libmupdf._wasm_pdf_abandon_operation(this.pointer);
+-	}
+-	canUndo() {
+-		return !!libmupdf._wasm_pdf_can_undo(this.pointer);
+-	}
+-	canRedo() {
+-		return !!libmupdf._wasm_pdf_can_redo(this.pointer);
+-	}
+-	undo() {
+-		libmupdf._wasm_pdf_undo(this.pointer);
+-	}
+-	redo() {
+-		libmupdf._wasm_pdf_redo(this.pointer);
+-	}
+-	isJSSupported() {
+-		return !!libmupdf._wasm_pdf_js_supported(this.pointer);
+-	}
+-	enableJS() {
+-		libmupdf._wasm_pdf_enable_js(this.pointer);
+-	}
+-	disableJS() {
+-		libmupdf._wasm_pdf_disable_js(this.pointer);
+-	}
+-	setJSEventListener(_listener) {
+-		throw "TODO";
+-	}
+-	rearrangePages(pages) {
+-		let n = pages.length;
+-		let ptr = Malloc(n << 2);
+-		for (let i = 0; i < n; ++i)
+-			libmupdf.HEAPU32[(ptr >> 2) + i] = pages[i] || 0;
+-		try {
+-			libmupdf._wasm_pdf_rearrange_pages(this.pointer, n, ptr);
+-		}
+-		finally {
+-			Free(ptr);
+-		}
+-	}
+-	subsetFonts() {
+-		libmupdf._wasm_pdf_subset_fonts(this.pointer);
+-	}
+-	bake(bakeAnnots = true, bakeWidgets = true) {
+-		libmupdf._wasm_pdf_bake_document(this.pointer, bakeAnnots, bakeWidgets);
+-	}
+-	countLayers() {
+-		return libmupdf._wasm_pdf_count_layers(this.pointer);
+-	}
+-	isLayerVisible(layer) {
+-		return !!libmupdf._wasm_pdf_layer_is_enabled(this.pointer, layer);
+-	}
+-	setLayerVisible(layer, visible) {
+-		libmupdf._wasm_pdf_enable_layer(this.pointer, layer, Number(visible));
+-	}
+-	getLayerName(layer) {
+-		return fromString(libmupdf._wasm_pdf_layer_name(this.pointer, layer));
+-	}
+-	resetForm(fields, exclude) {
+-		libmupdf._wasm_pdf_reset_form(this.pointer, this._PDFOBJ(fields), Number(exclude));
+-	}
+-}
+-PDFDocument.PAGE_LABEL_NONE = "\0";
+-PDFDocument.PAGE_LABEL_DECIMAL = "D";
+-PDFDocument.PAGE_LABEL_ROMAN_UC = "R";
+-PDFDocument.PAGE_LABEL_ROMAN_LC = "r";
+-PDFDocument.PAGE_LABEL_ALPHA_UC = "A";
+-PDFDocument.PAGE_LABEL_ALPHA_LC = "a";
+-export class PDFPage extends Page {
+-	// PRIVATE
+-	constructor(doc, pointer) {
+-		super(pointer);
+-		this._doc = doc;
+-		this._annots = null;
+-		this._widgets = null;
+-	}
+-	getObject() {
+-		return this._doc._fromPDFObjectKeep(libmupdf._wasm_pdf_page_get_obj(this.pointer));
+-	}
+-	getTransform() {
+-		return fromMatrix(libmupdf._wasm_pdf_page_transform(this.pointer));
+-	}
+-	setPageBox(box, rect) {
+-		let box_ix = ENUM(box, Page.BOXES);
+-		checkRect(rect);
+-		libmupdf._wasm_pdf_set_page_box(this.pointer, box_ix, RECT(rect));
+-	}
+-	toPixmap(matrix, colorspace, alpha = false, showExtras = true, usage = "View", box = "CropBox") {
+-		checkMatrix(matrix);
+-		checkType(colorspace, ColorSpace);
+-		let box_ix = ENUM(box, Page.BOXES);
+-		let result;
+-		if (showExtras)
+-			result = libmupdf._wasm_pdf_new_pixmap_from_page_with_usage(this.pointer, MATRIX(matrix), colorspace.pointer, alpha, STRING(usage), box_ix);
+-		else
+-			result = libmupdf._wasm_pdf_new_pixmap_from_page_contents_with_usage(this.pointer, MATRIX(matrix), colorspace.pointer, alpha, STRING(usage), box_ix);
+-		return new Pixmap(result);
+-	}
+-	getWidgets() {
+-		if (!this._widgets) {
+-			this._widgets = [];
+-			let widget = libmupdf._wasm_pdf_first_widget(this.pointer);
+-			while (widget) {
+-				this._widgets.push(new PDFWidget(this._doc, libmupdf._wasm_pdf_keep_annot(widget)));
+-				widget = libmupdf._wasm_pdf_next_widget(widget);
+-			}
+-		}
+-		return this._widgets;
+-	}
+-	getAnnotations() {
+-		if (!this._annots) {
+-			this._annots = [];
+-			let annot = libmupdf._wasm_pdf_first_annot(this.pointer);
+-			while (annot) {
+-				this._annots.push(new PDFAnnotation(this._doc, libmupdf._wasm_pdf_keep_annot(annot)));
+-				annot = libmupdf._wasm_pdf_next_annot(annot);
+-			}
+-		}
+-		return this._annots;
+-	}
+-	createAnnotation(type) {
+-		let type_ix = ENUM(type, PDFAnnotation.ANNOT_TYPES);
+-		let annot = new PDFAnnotation(this._doc, libmupdf._wasm_pdf_create_annot(this.pointer, type_ix));
+-		if (this._annots)
+-			this._annots.push(annot);
+-		return annot;
+-	}
+-	deleteAnnotation(annot) {
+-		checkType(annot, PDFAnnotation);
+-		libmupdf._wasm_pdf_delete_annot(this.pointer, annot.pointer);
+-		if (this._annots) {
+-			let ix = this._annots.indexOf(annot);
+-			if (ix >= 0)
+-				this._annots.splice(ix, 1);
+-		}
+-	}
+-	applyRedactions(black_boxes = true, image_method = 2, line_art_method = 1, text_method = 0) {
+-		libmupdf._wasm_pdf_redact_page(this.pointer, Number(black_boxes), image_method, line_art_method, text_method);
+-	}
+-	update() {
+-		return !!libmupdf._wasm_pdf_update_page(this.pointer);
+-	}
+-}
+-PDFPage.REDACT_IMAGE_NONE = 0;
+-PDFPage.REDACT_IMAGE_REMOVE = 1;
+-PDFPage.REDACT_IMAGE_PIXELS = 2;
+-PDFPage.REDACT_IMAGE_UNLESS_INVISIBLE = 3;
+-PDFPage.REDACT_LINE_ART_NONE = 0;
+-PDFPage.REDACT_LINE_ART_REMOVE_IF_COVERED = 1;
+-PDFPage.REDACT_LINE_ART_REMOVE_IF_TOUCHED = 2;
+-PDFPage.REDACT_TEXT_REMOVE = 0;
+-PDFPage.REDACT_TEXT_NONE = 1;
+-export class PDFObject extends Userdata {
+-	// PRIVATE
+-	constructor(doc, pointer) {
+-		super(libmupdf._wasm_pdf_keep_obj(pointer));
+-		this._doc = doc;
+-	}
+-	isNull() { return this === PDFObject.Null; }
+-	isIndirect() { return !!libmupdf._wasm_pdf_is_indirect(this.pointer); }
+-	isBoolean() { return !!libmupdf._wasm_pdf_is_bool(this.pointer); }
+-	isInteger() { return !!libmupdf._wasm_pdf_is_int(this.pointer); }
+-	isReal() { return !!libmupdf._wasm_pdf_is_real(this.pointer); }
+-	isNumber() { return !!libmupdf._wasm_pdf_is_number(this.pointer); }
+-	isName() { return !!libmupdf._wasm_pdf_is_name(this.pointer); }
+-	isString() { return !!libmupdf._wasm_pdf_is_string(this.pointer); }
+-	isArray() { return !!libmupdf._wasm_pdf_is_array(this.pointer); }
+-	isDictionary() { return !!libmupdf._wasm_pdf_is_dict(this.pointer); }
+-	isStream() { return !!libmupdf._wasm_pdf_is_stream(this.pointer); }
+-	asIndirect() { return libmupdf._wasm_pdf_to_num(this.pointer); }
+-	asBoolean() { return !!libmupdf._wasm_pdf_to_bool(this.pointer); }
+-	asNumber() { return libmupdf._wasm_pdf_to_real(this.pointer); }
+-	asName() { return fromString(libmupdf._wasm_pdf_to_name(this.pointer)); }
+-	asString() { return fromString(libmupdf._wasm_pdf_to_text_string(this.pointer)); }
+-	asByteString() {
+-		let ptr = libmupdf._wasm_pdf_to_string(this.pointer, _wasm_int);
+-		let len = libmupdf.HEAPU32[_wasm_int >> 2];
+-		return libmupdf.HEAPU8.slice(ptr, ptr + len);
+-	}
+-	readStream() { return new Buffer(libmupdf._wasm_pdf_load_stream(this.pointer)); }
+-	readRawStream() { return new Buffer(libmupdf._wasm_pdf_load_raw_stream(this.pointer)); }
+-	writeObject(obj) {
+-		if (!this.isIndirect())
+-			throw new TypeError("can only call PDFObject.writeObject on an indirect reference");
+-		libmupdf._wasm_pdf_update_object(this._doc.pointer, this.asIndirect(), this._doc._PDFOBJ(obj));
+-	}
+-	writeStream(buf) {
+-		if (!this.isIndirect())
+-			throw new TypeError("can only call PDFObject.writeStream on an indirect reference");
+-		libmupdf._wasm_pdf_update_stream(this._doc.pointer, this.pointer, BUFFER(buf), 0);
+-	}
+-	writeRawStream(buf) {
+-		if (!this.isIndirect())
+-			throw new TypeError("can only call PDFObject.writeRawStream on an indirect reference");
+-		libmupdf._wasm_pdf_update_stream(this._doc.pointer, this.pointer, BUFFER(buf), 1);
+-	}
+-	resolve() {
+-		return this._doc._fromPDFObjectKeep(libmupdf._wasm_pdf_resolve_indirect(this.pointer));
+-	}
+-	get length() {
+-		return libmupdf._wasm_pdf_array_len(this.pointer);
+-	}
+-	set length(_) {
+-		throw new TypeError("object length is read-only");
+-	}
+-	_get(path) {
+-		let obj = this.pointer;
+-		for (let key of path) {
+-			if (typeof key === "number")
+-				obj = libmupdf._wasm_pdf_array_get(obj, key);
+-			else if (key instanceof PDFObject)
+-				obj = libmupdf._wasm_pdf_dict_get(obj, key.pointer);
+-			else
+-				obj = libmupdf._wasm_pdf_dict_gets(obj, STRING(key));
+-			if (obj === 0)
+-				break;
+-		}
+-		return obj;
+-	}
+-	get(...path) {
+-		return this._doc._fromPDFObjectKeep(this._get(path));
+-	}
+-	getInheritable(key) {
+-		if (key instanceof PDFObject)
+-			return this._doc._fromPDFObjectKeep(libmupdf._wasm_pdf_dict_get_inheritable(this.pointer, key.pointer));
+-		return this._doc._fromPDFObjectKeep(libmupdf._wasm_pdf_dict_gets_inheritable(this.pointer, STRING(key)));
+-	}
+-	put(key, value) {
+-		value = this._doc._toPDFObject(value);
+-		if (typeof key === "number")
+-			libmupdf._wasm_pdf_array_put(this.pointer, key, value.pointer);
+-		else if (key instanceof PDFObject)
+-			libmupdf._wasm_pdf_dict_put(this.pointer, key.pointer, value.pointer);
+-		else
+-			libmupdf._wasm_pdf_dict_puts(this.pointer, STRING(key), value.pointer);
+-		return value;
+-	}
+-	push(value) {
+-		value = this._doc._toPDFObject(value);
+-		libmupdf._wasm_pdf_array_push(this.pointer, value.pointer);
+-		return value;
+-	}
+-	delete(key) {
+-		if (typeof key === "number")
+-			libmupdf._wasm_pdf_array_delete(this.pointer, key);
+-		else if (key instanceof PDFObject)
+-			libmupdf._wasm_pdf_dict_del(this.pointer, key.pointer);
+-		else
+-			libmupdf._wasm_pdf_dict_dels(this.pointer, STRING(key));
+-	}
+-	valueOf() {
+-		if (this.isNull())
+-			return null;
+-		if (this.isBoolean())
+-			return this.asBoolean();
+-		if (this.isNumber())
+-			return this.asNumber();
+-		if (this.isName())
+-			return this.asName();
+-		if (this.isString())
+-			return this.asString();
+-		if (this.isIndirect())
+-			return `${this.asIndirect()} 0 R`;
+-		return this;
+-	}
+-	toString(tight = true, ascii = true) {
+-		return fromStringFree(libmupdf._wasm_pdf_sprint_obj(this.pointer, tight, ascii));
+-	}
+-	forEach(fn) {
+-		if (this.isArray()) {
+-			let n = this.length;
+-			for (let i = 0; i < n; ++i)
+-				fn(this.get(i), i, this);
+-		}
+-		else if (this.isDictionary()) {
+-			let n = libmupdf._wasm_pdf_dict_len(this.pointer);
+-			for (let i = 0; i < n; ++i) {
+-				let key = this._doc._fromPDFObjectKeep(libmupdf._wasm_pdf_dict_get_key(this.pointer, i));
+-				let val = this._doc._fromPDFObjectKeep(libmupdf._wasm_pdf_dict_get_val(this.pointer, i));
+-				fn(val, key.asName(), this);
+-			}
+-		}
+-	}
+-	// Convert to plain Javascript values, objects, and arrays.
+-	// If you want to resolve indirect references, pass an empty object or array as the first argument.
+-	// On exit, this object will contain all indirect objects encountered indexed by object number.
+-	// Note: This function will omit cyclic references.
+-	asJS(seen) {
+-		if (this.isIndirect()) {
+-			let ref = this.asIndirect();
+-			if (!seen)
+-				return `${ref} 0 R`;
+-			if (ref in seen)
+-				return seen[ref];
+-			seen[ref] = PDFObject.Null; // stop recursion!
+-			return seen[ref] = this.resolve().asJS(seen);
+-		}
+-		if (this.isArray()) {
+-			let result = [];
+-			this.forEach(val => {
+-				result.push(val.asJS(seen));
+-			});
+-			return result;
+-		}
+-		if (this.isDictionary()) {
+-			let result = {};
+-			this.forEach((val, key) => {
+-				result[key] = val.asJS(seen);
+-			});
+-			return result;
+-		}
+-		return this.valueOf();
+-	}
+-}
+-PDFObject._drop = libmupdf._wasm_pdf_drop_obj;
+-PDFObject.Null = new PDFObject(null, 0);
+-export class PDFGraftMap extends Userdata {
+-	// PRIVATE
+-	constructor(doc, pointer) {
+-		super(pointer);
+-		this._doc = doc;
+-	}
+-	graftObject(obj) {
+-		checkType(obj, PDFObject);
+-		return this._doc._fromPDFObjectNew(libmupdf._wasm_pdf_graft_mapped_object(this.pointer, obj.pointer));
+-	}
+-	graftPage(to, srcDoc, srcPage) {
+-		checkType(to, "number");
+-		checkType(srcDoc, PDFDocument);
+-		checkType(srcPage, "number");
+-		libmupdf._wasm_pdf_graft_mapped_page(this.pointer, to, srcDoc.pointer, srcPage);
+-	}
+-}
+-PDFGraftMap._drop = libmupdf._wasm_pdf_drop_graft_map;
+-export class PDFAnnotation extends Userdata {
+-	// PRIVATE
+-	constructor(doc, pointer) {
+-		super(pointer);
+-		this._doc = doc;
+-	}
+-	getObject() {
+-		return this._doc._fromPDFObjectKeep(libmupdf._wasm_pdf_annot_obj(this.pointer));
+-	}
+-	getBounds() {
+-		return fromRect(libmupdf._wasm_pdf_bound_annot(this.pointer));
+-	}
+-	run(device, matrix) {
+-		checkType(device, Device);
+-		checkMatrix(matrix);
+-		libmupdf._wasm_pdf_run_annot(this.pointer, device.pointer, MATRIX(matrix));
+-	}
+-	toPixmap(matrix, colorspace, alpha = false) {
+-		checkMatrix(matrix);
+-		checkType(colorspace, ColorSpace);
+-		return new Pixmap(libmupdf._wasm_pdf_new_pixmap_from_annot(this.pointer, MATRIX(matrix), colorspace.pointer, alpha));
+-	}
+-	toDisplayList() {
+-		return new DisplayList(libmupdf._wasm_pdf_new_display_list_from_annot(this.pointer));
+-	}
+-	update() {
+-		return !!libmupdf._wasm_pdf_update_annot(this.pointer);
+-	}
+-	getType() {
+-		let type = libmupdf._wasm_pdf_annot_type(this.pointer);
+-		return PDFAnnotation.ANNOT_TYPES[type] || "Text";
+-	}
+-	getLanguage() {
+-		return fromStringOrNull(libmupdf._wasm_pdf_annot_language(this.pointer));
+-	}
+-	setLanguage(lang) {
+-		libmupdf._wasm_pdf_set_annot_language(this.pointer, STRING(lang));
+-	}
+-	getFlags() {
+-		return libmupdf._wasm_pdf_annot_flags(this.pointer);
+-	}
+-	setFlags(flags) {
+-		return libmupdf._wasm_pdf_set_annot_flags(this.pointer, flags);
+-	}
+-	getContents() {
+-		return fromString(libmupdf._wasm_pdf_annot_contents(this.pointer));
+-	}
+-	setContents(text) {
+-		libmupdf._wasm_pdf_set_annot_contents(this.pointer, STRING(text));
+-	}
+-	getAuthor() {
+-		return fromString(libmupdf._wasm_pdf_annot_author(this.pointer));
+-	}
+-	setAuthor(text) {
+-		libmupdf._wasm_pdf_set_annot_author(this.pointer, STRING(text));
+-	}
+-	getCreationDate() {
+-		return new Date(libmupdf._wasm_pdf_annot_creation_date(this.pointer) * 1000);
+-	}
+-	setCreationDate(date) {
+-		checkType(date, Date);
+-		libmupdf._wasm_pdf_set_annot_creation_date(this.pointer, date.getTime() / 1000);
+-	}
+-	getModificationDate() {
+-		return new Date(libmupdf._wasm_pdf_annot_modification_date(this.pointer) * 1000);
+-	}
+-	setModificationDate(date) {
+-		checkType(date, Date);
+-		libmupdf._wasm_pdf_set_annot_modification_date(this.pointer, date.getTime() / 1000);
+-	}
+-	hasRect() {
+-		return !!libmupdf._wasm_pdf_annot_has_rect(this.pointer);
+-	}
+-	hasInkList() {
+-		return !!libmupdf._wasm_pdf_annot_has_ink_list(this.pointer);
+-	}
+-	hasQuadPoints() {
+-		return !!libmupdf._wasm_pdf_annot_has_quad_points(this.pointer);
+-	}
+-	hasVertices() {
+-		return !!libmupdf._wasm_pdf_annot_has_vertices(this.pointer);
+-	}
+-	hasLine() {
+-		return !!libmupdf._wasm_pdf_annot_has_line(this.pointer);
+-	}
+-	hasInteriorColor() {
+-		return !!libmupdf._wasm_pdf_annot_has_interior_color(this.pointer);
+-	}
+-	hasLineEndingStyles() {
+-		return !!libmupdf._wasm_pdf_annot_has_line_ending_styles(this.pointer);
+-	}
+-	hasBorder() {
+-		return !!libmupdf._wasm_pdf_annot_has_border(this.pointer);
+-	}
+-	hasBorderEffect() {
+-		return !!libmupdf._wasm_pdf_annot_has_border_effect(this.pointer);
+-	}
+-	hasIcon() {
+-		return !!libmupdf._wasm_pdf_annot_has_icon_name(this.pointer);
+-	}
+-	hasOpen() {
+-		return !!libmupdf._wasm_pdf_annot_has_open(this.pointer);
+-	}
+-	hasAuthor() {
+-		return !!libmupdf._wasm_pdf_annot_has_author(this.pointer);
+-	}
+-	hasFilespec() {
+-		return !!libmupdf._wasm_pdf_annot_has_filespec(this.pointer);
+-	}
+-	hasCallout() {
+-		return !!libmupdf._wasm_pdf_annot_has_callout(this.pointer);
+-	}
+-	hasRichContents() {
+-		return !!libmupdf._wasm_pdf_annot_has_rich_contents(this.pointer);
+-	}
+-	getRect() {
+-		return fromRect(libmupdf._wasm_pdf_annot_rect(this.pointer));
+-	}
+-	setRect(rect) {
+-		checkRect(rect);
+-		libmupdf._wasm_pdf_set_annot_rect(this.pointer, RECT(rect));
+-	}
+-	getPopup() {
+-		return fromRect(libmupdf._wasm_pdf_annot_popup(this.pointer));
+-	}
+-	setPopup(rect) {
+-		checkRect(rect);
+-		libmupdf._wasm_pdf_set_annot_popup(this.pointer, RECT(rect));
+-	}
+-	getIsOpen() {
+-		return !!libmupdf._wasm_pdf_annot_is_open(this.pointer);
+-	}
+-	setIsOpen(isOpen) {
+-		checkType(isOpen, "boolean");
+-		libmupdf._wasm_pdf_set_annot_is_open(this.pointer, isOpen);
+-	}
+-	getHiddenForEditing() {
+-		return !!libmupdf._wasm_pdf_annot_hidden_for_editing(this.pointer);
+-	}
+-	setHiddenForEditing(isHidden) {
+-		checkType(isHidden, "boolean");
+-		libmupdf._wasm_pdf_set_annot_hidden_for_editing(this.pointer, isHidden);
+-	}
+-	getIcon() {
+-		return fromString(libmupdf._wasm_pdf_annot_icon_name(this.pointer));
+-	}
+-	setIcon(text) {
+-		checkType(text, "string");
+-		libmupdf._wasm_pdf_set_annot_icon_name(this.pointer, STRING(text));
+-	}
+-	getOpacity() {
+-		return libmupdf._wasm_pdf_annot_opacity(this.pointer);
+-	}
+-	setOpacity(opacity) {
+-		checkType(opacity, "number");
+-		libmupdf._wasm_pdf_set_annot_opacity(this.pointer, opacity);
+-	}
+-	getQuadding() {
+-		return libmupdf._wasm_pdf_annot_quadding(this.pointer);
+-	}
+-	setQuadding(quadding) {
+-		checkType(quadding, "number");
+-		libmupdf._wasm_pdf_set_annot_quadding(this.pointer, quadding);
+-	}
+-	getLine() {
+-		let a = fromPoint(libmupdf._wasm_pdf_annot_line_1(this.pointer));
+-		let b = fromPoint(libmupdf._wasm_pdf_annot_line_2(this.pointer));
+-		return [a, b];
+-	}
+-	setLine(a, b) {
+-		checkPoint(a);
+-		checkPoint(b);
+-		libmupdf._wasm_pdf_set_annot_line(this.pointer, POINT(a), POINT2(b));
+-	}
+-	getLineEndingStyles() {
+-		let a = libmupdf._wasm_pdf_annot_line_ending_styles_start(this.pointer);
+-		let b = libmupdf._wasm_pdf_annot_line_ending_styles_end(this.pointer);
+-		return {
+-			start: PDFAnnotation.LINE_ENDING[a] || "None",
+-			end: PDFAnnotation.LINE_ENDING[b] || "None",
+-		};
+-	}
+-	setLineEndingStyles(start, end) {
+-		let start_ix = ENUM(start, PDFAnnotation.LINE_ENDING);
+-		let end_ix = ENUM(end, PDFAnnotation.LINE_ENDING);
+-		libmupdf._wasm_pdf_set_annot_line_ending_styles(this.pointer, start_ix, end_ix);
+-	}
+-	getLineCaption() {
+-		return libmupdf._wasm_pdf_annot_line_caption(this.pointer);
+-	}
+-	setLineCaption(on) {
+-		return libmupdf._wasm_pdf_set_annot_line_caption(this.pointer, on);
+-	}
+-	getLineCaptionOffset() {
+-		return fromPoint(libmupdf._wasm_pdf_annot_line_caption_offset(this.pointer));
+-	}
+-	setLineCaptionOffset(p) {
+-		return libmupdf._wasm_pdf_set_annot_line_caption_offset(this.pointer, POINT(p));
+-	}
+-	getLineLeader() {
+-		return libmupdf._wasm_pdf_annot_line_leader(this.pointer);
+-	}
+-	getLineLeaderExtension() {
+-		return libmupdf._wasm_pdf_annot_line_leader_extension(this.pointer);
+-	}
+-	getLineLeaderOffset() {
+-		return libmupdf._wasm_pdf_annot_line_leader_offset(this.pointer);
+-	}
+-	setLineLeader(v) {
+-		return libmupdf._wasm_pdf_set_annot_line_leader(this.pointer, v);
+-	}
+-	setLineLeaderExtension(v) {
+-		return libmupdf._wasm_pdf_set_annot_line_leader_extension(this.pointer, v);
+-	}
+-	setLineLeaderOffset(v) {
+-		return libmupdf._wasm_pdf_set_annot_line_leader_offset(this.pointer, v);
+-	}
+-	getCalloutStyle() {
+-		let style = libmupdf._wasm_pdf_annot_callout_style(this.pointer);
+-		return PDFAnnotation.LINE_ENDING[style] || "None";
+-	}
+-	setCalloutStyle(style) {
+-		let style_ix = ENUM(style, PDFAnnotation.LINE_ENDING);
+-		libmupdf._wasm_pdf_set_annot_callout_style(this.pointer, style_ix);
+-	}
+-	getCalloutLine() {
+-		let n = libmupdf._wasm_pdf_annot_callout_line(this.pointer, (_wasm_point << 2));
+-		if (n == 3)
+-			return [
+-				fromPoint((_wasm_point + 0) << 2),
+-				fromPoint((_wasm_point + 1) << 2),
+-				fromPoint((_wasm_point + 2) << 2)
+-			];
+-		if (n == 2)
+-			return [
+-				fromPoint((_wasm_point + 0) << 2),
+-				fromPoint((_wasm_point + 1) << 2)
+-			];
+-		return null;
+-	}
+-	setCalloutLine(line) {
+-		let a = line[0] || [0, 0];
+-		let b = line[1] || [0, 0];
+-		let c = line[2] || [0, 0];
+-		libmupdf._wasm_pdf_set_annot_callout_line(this.pointer, line.length, POINT(a), POINT2(b), POINT3(c));
+-	}
+-	getCalloutPoint() {
+-		let line = this.getCalloutLine();
+-		if (line)
+-			return line[0];
+-		return undefined;
+-	}
+-	setCalloutPoint(p) {
+-		libmupdf._wasm_pdf_set_annot_callout_point(this.pointer, POINT(p));
+-	}
+-	getColor() {
+-		return fromAnnotColor(libmupdf._wasm_pdf_annot_color(this.pointer, COLOR()));
+-	}
+-	getInteriorColor() {
+-		return fromAnnotColor(libmupdf._wasm_pdf_annot_interior_color(this.pointer, COLOR()));
+-	}
+-	setColor(color) {
+-		checkAnnotColor(color);
+-		libmupdf._wasm_pdf_set_annot_color(this.pointer, color.length, COLOR(color));
+-	}
+-	setInteriorColor(color) {
+-		checkAnnotColor(color);
+-		libmupdf._wasm_pdf_set_annot_interior_color(this.pointer, color.length, COLOR(color));
+-	}
+-	getBorderWidth() {
+-		return libmupdf._wasm_pdf_annot_border_width(this.pointer);
+-	}
+-	setBorderWidth(value) {
+-		checkType(value, "number");
+-		return libmupdf._wasm_pdf_set_annot_border_width(this.pointer, value);
+-	}
+-	getBorderStyle() {
+-		return PDFAnnotation.BORDER_STYLE[libmupdf._wasm_pdf_annot_border_style(this.pointer)] || "Solid";
+-	}
+-	setBorderStyle(value) {
+-		let value_ix = ENUM(value, PDFAnnotation.BORDER_STYLE);
+-		return libmupdf._wasm_pdf_set_annot_border_style(this.pointer, value_ix);
+-	}
+-	getBorderEffect() {
+-		return PDFAnnotation.BORDER_EFFECT[libmupdf._wasm_pdf_annot_border_effect(this.pointer)] || "None";
+-	}
+-	setBorderEffect(value) {
+-		let value_ix = ENUM(value, PDFAnnotation.BORDER_EFFECT);
+-		return libmupdf._wasm_pdf_set_annot_border_effect(this.pointer, value_ix);
+-	}
+-	getBorderEffectIntensity() {
+-		return libmupdf._wasm_pdf_annot_border_effect_intensity(this.pointer);
+-	}
+-	setBorderEffectIntensity(value) {
+-		checkType(value, "number");
+-		return libmupdf._wasm_pdf_set_annot_border_effect_intensity(this.pointer, value);
+-	}
+-	getBorderDashCount() {
+-		return libmupdf._wasm_pdf_annot_border_dash_count(this.pointer);
+-	}
+-	getBorderDashItem(idx) {
+-		return libmupdf._wasm_pdf_annot_border_dash_item(this.pointer, idx);
+-	}
+-	clearBorderDash() {
+-		libmupdf._wasm_pdf_clear_annot_border_dash(this.pointer);
+-	}
+-	addBorderDashItem(v) {
+-		checkType(v, "number");
+-		return libmupdf._wasm_pdf_add_annot_border_dash_item(this.pointer, v);
+-	}
+-	getBorderDashPattern() {
+-		let n = this.getBorderDashCount();
+-		let result = new Array(n);
+-		for (let i = 0; i < n; ++i)
+-			result[i] = this.getBorderDashItem(i);
+-		return result;
+-	}
+-	setBorderDashPattern(list) {
+-		this.clearBorderDash();
+-		for (let v of list)
+-			this.addBorderDashItem(v);
+-	}
+-	getIntent() {
+-		return PDFAnnotation.INTENT[libmupdf._wasm_pdf_annot_intent(this.pointer)] || null;
+-	}
+-	setIntent(value) {
+-		let value_ix = ENUM(value, PDFAnnotation.INTENT);
+-		return libmupdf._wasm_pdf_set_annot_intent(this.pointer, value_ix);
+-	}
+-	setDefaultAppearance(fontName, size, color) {
+-		checkType(fontName, "string");
+-		checkType(size, "number");
+-		checkAnnotColor(color);
+-		libmupdf._wasm_pdf_set_annot_default_appearance(this.pointer, STRING(fontName), size, color.length, COLOR(color));
+-	}
+-	getDefaultAppearance() {
+-		let font = fromString(libmupdf._wasm_pdf_annot_default_appearance_font(this.pointer));
+-		let size = libmupdf._wasm_pdf_annot_default_appearance_size(this.pointer);
+-		let color = fromAnnotColor(libmupdf._wasm_pdf_annot_default_appearance_color(this.pointer, COLOR()));
+-		return { font, size, color };
+-	}
+-	getFileSpec() {
+-		return this._doc._fromPDFObjectKeep(libmupdf._wasm_pdf_annot_filespec(this.pointer));
+-	}
+-	setFileSpec(fs) {
+-		return libmupdf._wasm_pdf_set_annot_filespec(this.pointer, this._doc._PDFOBJ(fs));
+-	}
+-	getQuadPoints() {
+-		let n = libmupdf._wasm_pdf_annot_quad_point_count(this.pointer);
+-		let result = [];
+-		for (let i = 0; i < n; ++i)
+-			result.push(fromQuad(libmupdf._wasm_pdf_annot_quad_point(this.pointer, i)));
+-		return result;
+-	}
+-	clearQuadPoints() {
+-		libmupdf._wasm_pdf_clear_annot_quad_points(this.pointer);
+-	}
+-	addQuadPoint(quad) {
+-		checkQuad(quad);
+-		libmupdf._wasm_pdf_add_annot_quad_point(this.pointer, QUAD(quad));
+-	}
+-	setQuadPoints(quadlist) {
+-		this.clearQuadPoints();
+-		for (let quad of quadlist)
+-			this.addQuadPoint(quad);
+-	}
+-	getVertices() {
+-		let n = libmupdf._wasm_pdf_annot_vertex_count(this.pointer);
+-		let result = new Array(n);
+-		for (let i = 0; i < n; ++i)
+-			result[i] = fromPoint(libmupdf._wasm_pdf_annot_vertex(this.pointer, i));
+-		return result;
+-	}
+-	clearVertices() {
+-		libmupdf._wasm_pdf_clear_annot_vertices(this.pointer);
+-	}
+-	addVertex(vertex) {
+-		checkPoint(vertex);
+-		libmupdf._wasm_pdf_add_annot_vertex(this.pointer, POINT(vertex));
+-	}
+-	setVertices(vertexlist) {
+-		this.clearVertices();
+-		for (let vertex of vertexlist)
+-			this.addVertex(vertex);
+-	}
+-	getInkList() {
+-		let n = libmupdf._wasm_pdf_annot_ink_list_count(this.pointer);
+-		let outer = [];
+-		for (let i = 0; i < n; ++i) {
+-			let m = libmupdf._wasm_pdf_annot_ink_list_stroke_count(this.pointer, i);
+-			let inner = new Array(m);
+-			for (let k = 0; k < m; ++k)
+-				inner[k] = fromPoint(libmupdf._wasm_pdf_annot_ink_list_stroke_vertex(this.pointer, i, k));
+-			outer.push(inner);
+-		}
+-		return outer;
+-	}
+-	clearInkList() {
+-		libmupdf._wasm_pdf_clear_annot_ink_list(this.pointer);
+-	}
+-	addInkListStroke() {
+-		libmupdf._wasm_pdf_add_annot_ink_list_stroke(this.pointer);
+-	}
+-	addInkListStrokeVertex(v) {
+-		checkPoint(v);
+-		libmupdf._wasm_pdf_add_annot_ink_list_stroke_vertex(this.pointer, POINT(v));
+-	}
+-	setInkList(inklist) {
+-		this.clearInkList();
+-		for (let stroke of inklist) {
+-			this.addInkListStroke();
+-			for (let vertex of stroke)
+-				this.addInkListStrokeVertex(vertex);
+-		}
+-	}
+-	getRichContents() {
+-		return fromString(libmupdf._wasm_pdf_annot_rich_contents(this.pointer));
+-	}
+-	setRichContents(plain, html) {
+-		checkType(plain, "string");
+-		checkType(html, "string");
+-		libmupdf._wasm_pdf_set_annot_rich_contents(this.pointer, STRING(plain), STRING2(html));
+-	}
+-	getRichDefaults() {
+-		return fromString(libmupdf._wasm_pdf_annot_rich_defaults(this.pointer));
+-	}
+-	setRichDefaults(style) {
+-		checkType(style, "string");
+-		libmupdf._wasm_pdf_set_annot_rich_defaults(this.pointer, STRING(style));
+-	}
+-	setStampImage(image) {
+-		libmupdf._wasm_pdf_set_annot_stamp_image(this.pointer, image.pointer);
+-	}
+-	setAppearanceFromDisplayList(appearance, state, transform, list) {
+-		checkMatrix(transform);
+-		checkType(list, DisplayList);
+-		libmupdf._wasm_pdf_set_annot_appearance_from_display_list(this.pointer, STRING_OPT(appearance), STRING2_OPT(state), MATRIX(transform), list.pointer);
+-	}
+-	setAppearance(appearance, state, transform, bbox, resources, contents) {
+-		checkMatrix(transform);
+-		checkRect(bbox);
+-		libmupdf._wasm_pdf_set_annot_appearance(this.pointer, STRING_OPT(appearance), STRING2_OPT(state), MATRIX(transform), RECT(bbox), this._doc._PDFOBJ(resources), BUFFER(contents));
+-	}
+-	applyRedaction(black_boxes = 1, image_method = 2, line_art_method = 1, text_method = 0) {
+-		libmupdf._wasm_pdf_apply_redaction(this.pointer, black_boxes, image_method, line_art_method, text_method);
+-	}
+-}
+-PDFAnnotation._drop = libmupdf._wasm_pdf_drop_annot;
+-/* IMPORTANT: Keep in sync with mupdf/pdf/annot.h and PDFAnnotation.java */
+-PDFAnnotation.ANNOT_TYPES = [
+-	"Text",
+-	"Link",
+-	"FreeText",
+-	"Line",
+-	"Square",
+-	"Circle",
+-	"Polygon",
+-	"PolyLine",
+-	"Highlight",
+-	"Underline",
+-	"Squiggly",
+-	"StrikeOut",
+-	"Redact",
+-	"Stamp",
+-	"Caret",
+-	"Ink",
+-	"Popup",
+-	"FileAttachment",
+-	"Sound",
+-	"Movie",
+-	"RichMedia",
+-	"Widget",
+-	"Screen",
+-	"PrinterMark",
+-	"TrapNet",
+-	"Watermark",
+-	"3D",
+-	"Projection",
+-];
+-PDFAnnotation.LINE_ENDING = [
+-	"None",
+-	"Square",
+-	"Circle",
+-	"Diamond",
+-	"OpenArrow",
+-	"ClosedArrow",
+-	"Butt",
+-	"ROpenArrow",
+-	"RClosedArrow",
+-	"Slash",
+-];
+-PDFAnnotation.BORDER_STYLE = ["Solid", "Dashed", "Beveled", "Inset", "Underline"];
+-PDFAnnotation.BORDER_EFFECT = ["None", "Cloudy"];
+-PDFAnnotation.INTENT = [
+-	null,
+-	"FreeTextCallout",
+-	"FreeTextTypeWriter",
+-	"LineArrow",
+-	"LineDimension",
+-	"PloyLine",
+-	"PolygonCloud",
+-	"PolygonDimension",
+-	"StampImage",
+-	"StampSnapshot"
+-];
+-// Bit masks for getFlags and setFlags
+-PDFAnnotation.IS_INVISIBLE = 1 << (1 - 1);
+-PDFAnnotation.IS_HIDDEN = 1 << (2 - 1);
+-PDFAnnotation.IS_PRINT = 1 << (3 - 1);
+-PDFAnnotation.IS_NO_ZOOM = 1 << (4 - 1);
+-PDFAnnotation.IS_NO_ROTATE = 1 << (5 - 1);
+-PDFAnnotation.IS_NO_VIEW = 1 << (6 - 1);
+-PDFAnnotation.IS_READ_ONLY = 1 << (7 - 1);
+-PDFAnnotation.IS_LOCKED = 1 << (8 - 1);
+-PDFAnnotation.IS_TOGGLE_NO_VIEW = 1 << (9 - 1);
+-PDFAnnotation.IS_LOCKED_CONTENTS = 1 << (10 - 1);
+-export class PDFWidget extends PDFAnnotation {
+-	getFieldType() {
+-		return PDFWidget.WIDGET_TYPES[libmupdf._wasm_pdf_annot_field_type(this.pointer)] || "button";
+-	}
+-	isButton() {
+-		let type = this.getFieldType();
+-		return type === "button" || type === "checkbox" || type === "radiobutton";
+-	}
+-	isPushButton() {
+-		return this.getFieldType() === "button";
+-	}
+-	isCheckbox() {
+-		return this.getFieldType() === "checkbox";
+-	}
+-	isRadioButton() {
+-		return this.getFieldType() === "radiobutton";
+-	}
+-	isText() {
+-		return this.getFieldType() === "text";
+-	}
+-	isChoice() {
+-		let type = this.getFieldType();
+-		return type === "combobox" || type === "listbox";
+-	}
+-	isListBox() {
+-		return this.getFieldType() === "listbox";
+-	}
+-	isComboBox() {
+-		return this.getFieldType() === "combobox";
+-	}
+-	getFieldFlags() {
+-		return libmupdf._wasm_pdf_annot_field_flags(this.pointer);
+-	}
+-	isMultiline() {
+-		return (this.getFieldFlags() & PDFWidget.TX_FIELD_IS_MULTILINE) !== 0;
+-	}
+-	isPassword() {
+-		return (this.getFieldFlags() & PDFWidget.TX_FIELD_IS_PASSWORD) !== 0;
+-	}
+-	isComb() {
+-		return (this.getFieldFlags() & PDFWidget.TX_FIELD_IS_COMB) !== 0;
+-	}
+-	isReadOnly() {
+-		return (this.getFieldFlags() & PDFWidget.FIELD_IS_READ_ONLY) !== 0;
+-	}
+-	getLabel() {
+-		return fromString(libmupdf._wasm_pdf_annot_field_label(this.pointer));
+-	}
+-	getName() {
+-		return fromStringFree(libmupdf._wasm_pdf_load_field_name(this.pointer));
+-	}
+-	getValue() {
+-		return fromString(libmupdf._wasm_pdf_annot_field_value(this.pointer));
+-	}
+-	setTextValue(value) {
+-		return libmupdf._wasm_pdf_set_annot_text_field_value(this.pointer, STRING(value));
+-	}
+-	getMaxLen() {
+-		return libmupdf._wasm_pdf_annot_text_widget_max_len(this.pointer);
+-	}
+-	setChoiceValue(value) {
+-		return libmupdf._wasm_pdf_set_annot_choice_field_value(this.pointer, STRING(value));
+-	}
+-	getOptions(isExport = false) {
+-		let result = [];
+-		let n = libmupdf._wasm_pdf_annot_choice_field_option_count(this.pointer);
+-		for (let i = 0; i < n; ++i) {
+-			result.push(fromString(libmupdf._wasm_pdf_annot_choice_field_option(this.pointer, isExport, i)));
+-		}
+-		return result;
+-	}
+-	toggle() {
+-		return libmupdf._wasm_pdf_toggle_widget(this.pointer);
+-	}
+-}
+-/* IMPORTANT: Keep in sync with mupdf/pdf/widget.h and PDFWidget.java */
+-PDFWidget.WIDGET_TYPES = [
+-	"widget", // unknown
+-	"button",
+-	"checkbox",
+-	"combobox",
+-	"listbox",
+-	"radiobutton",
+-	"signature",
+-	"text",
+-];
+-/* Field flags */
+-PDFWidget.FIELD_IS_READ_ONLY = 1;
+-PDFWidget.FIELD_IS_REQUIRED = 1 << 1;
+-PDFWidget.FIELD_IS_NO_EXPORT = 1 << 2;
+-/* Text fields */
+-PDFWidget.TX_FIELD_IS_MULTILINE = 1 << 12;
+-PDFWidget.TX_FIELD_IS_PASSWORD = 1 << 13;
+-PDFWidget.TX_FIELD_IS_COMB = 1 << 24;
+-/* Button fields */
+-PDFWidget.BTN_FIELD_IS_NO_TOGGLE_TO_OFF = 1 << 14;
+-PDFWidget.BTN_FIELD_IS_RADIO = 1 << 15;
+-PDFWidget.BTN_FIELD_IS_PUSHBUTTON = 1 << 16;
+-/* Choice fields */
+-PDFWidget.CH_FIELD_IS_COMBO = 1 << 17;
+-PDFWidget.CH_FIELD_IS_EDIT = 1 << 18;
+-PDFWidget.CH_FIELD_IS_SORT = 1 << 19;
+-PDFWidget.CH_FIELD_IS_MULTI_SELECT = 1 << 21;
+-var $libmupdf_stm_id = 0;
+-var $libmupdf_stm_table = new Map();
+-globalThis.$libmupdf_stm_close = function (id) {
+-	let handle = $libmupdf_stm_table.get(id);
+-	if (handle) {
+-		handle.close();
+-		$libmupdf_stm_table.delete(id);
+-		return;
+-	}
+-	throw new Error("invalid file handle");
+-};
+-globalThis.$libmupdf_stm_seek = function (id, pos, offset, whence) {
+-	let handle = $libmupdf_stm_table.get(id);
+-	if (handle) {
+-		if (whence === 0)
+-			return offset;
+-		if (whence === 1)
+-			return pos + offset;
+-		if (whence === 2) {
+-			let size = handle.fileSize();
+-			if (size < 0)
+-				return -1;
+-			return size + offset;
+-		}
+-		throw new Error("invalid whence argument");
+-	}
+-	throw new Error("invalid file handle");
+-};
+-globalThis.$libmupdf_stm_read = function (id, pos, addr, size) {
+-	let handle = $libmupdf_stm_table.get(id);
+-	if (handle) {
+-		return handle.read(libmupdf.HEAPU8, addr, size, pos);
+-	}
+-	throw new Error("invalid file handle");
+-};
+-export class Stream extends Userdata {
+-	constructor(handle) {
+-		let id = $libmupdf_stm_id++;
+-		$libmupdf_stm_table.set(id, handle);
+-		super(libmupdf._wasm_new_stream(id));
+-	}
+-}
+-Stream._drop = libmupdf._wasm_drop_stream;
+-/* -------------------------------------------------------------------------- */
+-var $libmupdf_load_font_file_js;
+-globalThis.$libmupdf_load_font_file = function (name, script, bold, italic) {
+-	if ($libmupdf_load_font_file_js) {
+-		var font = $libmupdf_load_font_file_js(fromString(name), fromString(script), bold, italic);
+-		if (font) {
+-			checkType(font, Font);
+-			return font.pointer;
+-		}
+-	}
+-	return 0;
+-};
+-var $libmupdf_device_id = 0;
+-var $libmupdf_device_table = new Map();
+-var $libmupdf_path_id = 0;
+-var $libmupdf_path_table = new Map();
+-var $libmupdf_text_id = 0;
+-var $libmupdf_text_table = new Map();
+-globalThis.$libmupdf_path_walk = {
+-	moveto(id, x, y) {
+-		$libmupdf_path_table.get(id)?.moveTo?.(x, y);
+-	},
+-	lineto(id, x, y) {
+-		$libmupdf_path_table.get(id)?.lineTo?.(x, y);
+-	},
+-	curveto(id, x1, y1, x2, y2, x3, y3) {
+-		$libmupdf_path_table.get(id)?.curveTo?.(x1, y1, x2, y2, x3, y3);
+-	},
+-	closepath(id) {
+-		$libmupdf_path_table.get(id)?.closePath?.();
+-	},
+-};
+-var $libmupdf_text_font = null;
+-globalThis.$libmupdf_text_walk = {
+-	begin_span(id, font, trm, wmode, bidi, dir, lang) {
+-		if (font !== $libmupdf_text_font?.pointer)
+-			$libmupdf_text_font = new Font(font);
+-		$libmupdf_text_table.get(id)?.beginSpan?.($libmupdf_text_font, fromMatrix(trm), wmode, bidi, dir, fromString(lang));
+-	},
+-	end_span(id) {
+-		$libmupdf_text_table.get(id)?.endSpan?.();
+-	},
+-	show_glyph(id, font, trm, glyph, unicode, wmode, bidi) {
+-		if (font !== $libmupdf_text_font?.pointer)
+-			$libmupdf_text_font = new Font(font);
+-		$libmupdf_text_table.get(id)?.showGlyph?.($libmupdf_text_font, fromMatrix(trm), glyph, unicode, wmode, bidi);
+-	},
+-};
+-globalThis.$libmupdf_device = {
+-	drop_device(id) {
+-		$libmupdf_device_table.get(id)?.drop?.();
+-		$libmupdf_device_table.delete(id);
+-	},
+-	close_device(id) {
+-		$libmupdf_device_table.get(id)?.close?.();
+-	},
+-	fill_path(id, path, even_odd, ctm, colorspace, color_n, color_arr, alpha) {
+-		$libmupdf_device_table.get(id)?.fillPath?.(new Path(libmupdf._wasm_keep_path(path)), !!even_odd, fromMatrix(ctm), new ColorSpace(libmupdf._wasm_keep_colorspace(colorspace)), fromColorArray(color_n, color_arr), alpha);
+-	},
+-	clip_path(id, path, even_odd, ctm) {
+-		$libmupdf_device_table.get(id)?.clipPath?.(new Path(libmupdf._wasm_keep_path(path)), !!even_odd, fromMatrix(ctm));
+-	},
+-	stroke_path(id, path, stroke, ctm, colorspace, color_n, color_arr, alpha) {
+-		$libmupdf_device_table.get(id)?.strokePath?.(new Path(libmupdf._wasm_keep_path(path)), new StrokeState(libmupdf._wasm_keep_stroke_state(stroke)), fromMatrix(ctm), new ColorSpace(libmupdf._wasm_keep_colorspace(colorspace)), fromColorArray(color_n, color_arr), alpha);
+-	},
+-	clip_stroke_path(id, path, stroke, ctm) {
+-		$libmupdf_device_table.get(id)?.clipStrokePath?.(new Path(libmupdf._wasm_keep_path(path)), new StrokeState(libmupdf._wasm_keep_stroke_state(stroke)), fromMatrix(ctm));
+-	},
+-	fill_text(id, text, ctm, colorspace, color_n, color_arr, alpha) {
+-		$libmupdf_device_table.get(id)?.fillText?.(new Text(libmupdf._wasm_keep_text(text)), fromMatrix(ctm), new ColorSpace(libmupdf._wasm_keep_colorspace(colorspace)), fromColorArray(color_n, color_arr), alpha);
+-	},
+-	stroke_text(id, text, stroke, ctm, colorspace, color_n, color_arr, alpha) {
+-		$libmupdf_device_table.get(id)?.strokeText?.(new Text(libmupdf._wasm_keep_text(text)), new StrokeState(libmupdf._wasm_keep_stroke_state(stroke)), fromMatrix(ctm), new ColorSpace(libmupdf._wasm_keep_colorspace(colorspace)), fromColorArray(color_n, color_arr), alpha);
+-	},
+-	clip_text(id, text, ctm) {
+-		$libmupdf_device_table.get(id)?.clipText?.(new Text(libmupdf._wasm_keep_text(text)), fromMatrix(ctm));
+-	},
+-	clip_stroke_text(id, text, stroke, ctm) {
+-		$libmupdf_device_table.get(id)?.clipStrokeText?.(new Text(libmupdf._wasm_keep_text(text)), new StrokeState(libmupdf._wasm_keep_stroke_state(stroke)), fromMatrix(ctm));
+-	},
+-	ignore_text(id, text, ctm) {
+-		$libmupdf_device_table.get(id)?.ignoreText?.(new Text(libmupdf._wasm_keep_text(text)), fromMatrix(ctm));
+-	},
+-	fill_shade(id, shade, ctm, alpha) {
+-		$libmupdf_device_table.get(id)?.fillShade?.(new Shade(shade), fromMatrix(ctm), alpha);
+-	},
+-	fill_image(id, image, ctm, alpha) {
+-		$libmupdf_device_table.get(id)?.fillImage?.(new Image(image), fromMatrix(ctm), alpha);
+-	},
+-	fill_image_mask(id, image, ctm, colorspace, color_n, color_arr, alpha) {
+-		$libmupdf_device_table.get(id)?.fillImageMask?.(new Image(image), fromMatrix(ctm), new ColorSpace(libmupdf._wasm_keep_colorspace(colorspace)), fromColorArray(color_n, color_arr), alpha);
+-	},
+-	clip_image_mask(id, image, ctm) {
+-		$libmupdf_device_table.get(id)?.clipImageMask?.(new Image(image), fromMatrix(ctm));
+-	},
+-	pop_clip(id) {
+-		$libmupdf_device_table.get(id)?.popClip?.();
+-	},
+-	begin_mask(id, bbox, luminosity, colorspace, color_n, color_arr) {
+-		$libmupdf_device_table.get(id)?.beginMask?.(fromRect(bbox), !!luminosity, new ColorSpace(libmupdf._wasm_keep_colorspace(colorspace)), fromColorArray(color_n, color_arr));
+-	},
+-	begin_group(id, bbox, colorspace, isolated, knockout, blendmode, alpha) {
+-		$libmupdf_device_table.get(id)?.beginGroup?.(fromRect(bbox), new ColorSpace(libmupdf._wasm_keep_colorspace(colorspace)), !!isolated, !!knockout, Device.BLEND_MODES[blendmode], alpha);
+-	},
+-	begin_tile(id, area, view, xstep, ystep, ctm, tile_id) {
+-		return $libmupdf_device_table.get(id)?.beginTile?.(fromRect(area), fromRect(view), xstep, ystep, fromMatrix(ctm), tile_id) || 0;
+-	},
+-	begin_layer(id, name) {
+-		$libmupdf_device_table.get(id)?.beginLayer?.(fromString(name));
+-	},
+-	end_mask(id) {
+-		$libmupdf_device_table.get(id)?.endMask?.();
+-	},
+-	end_group(id) {
+-		$libmupdf_device_table.get(id)?.endGroup?.();
+-	},
+-	end_tile(id) {
+-		$libmupdf_device_table.get(id)?.endTile?.();
+-	},
+-	end_layer(id) {
+-		$libmupdf_device_table.get(id)?.endLayer?.();
+-	},
+-};
+-/* default exports */
+-export default {
+-	// const
+-	Matrix,
+-	Rect,
+-	// function
+-	enableICC,
+-	disableICC,
+-	setUserCSS,
+-	installLoadFontFunction,
+-	// class
+-	Buffer,
+-	ColorSpace,
+-	Font,
+-	Image,
+-	StrokeState,
+-	Path,
+-	Text,
+-	DisplayList,
+-	Pixmap,
+-	Shade,
+-	StructuredText,
+-	Device,
+-	DrawDevice,
+-	DisplayListDevice,
+-	DocumentWriter,
+-	Document,
+-	OutlineIterator,
+-	Link,
+-	Page,
+-	PDFDocument,
+-	PDFPage,
+-	PDFObject,
+-	PDFGraftMap,
+-	PDFAnnotation,
+-	PDFWidget,
+-	Stream,
+-	// debugging
+-	memento
+-};
++var _=async function(_={}){var a,e,t=_,s=new Promise((_,t)=>{a=_,e=t}),n="object"==typeof window,i="undefined"!=typeof WorkerGlobalScope,m="object"==typeof process&&"object"==typeof process.versions&&"string"==typeof process.versions.node&&"renderer"!=process.type;if(m){const{createRequire:_}=await import("module");var r=_(import.meta.url)}var o,p,d="./this.program",w=(_,a)=>{throw a},f=import.meta.url,l="";if(m){var c=r("fs"),g=r("path");f.startsWith("file:")&&(l=g.dirname(r("url").fileURLToPath(f))+"/"),p=_=>(_=U(_)?new URL(_):_,c.readFileSync(_)),o=async(_,a=!0)=>(_=U(_)?new URL(_):_,c.readFileSync(_,a?void 0:"utf8")),process.argv.length>1&&(d=process.argv[1].replace(/\\/g,"/")),process.argv.slice(2),w=(_,a)=>{throw process.exitCode=_,a}}else if(n||i){try{l=new URL(".",f).href}catch{}i&&(p=_=>{var a=new XMLHttpRequest;return a.open("GET",_,!1),a.responseType="arraybuffer",a.send(null),new Uint8Array(a.response)}),o=async _=>{if(U(_))return new Promise((a,e)=>{var t=new XMLHttpRequest;t.open("GET",_,!0),t.responseType="arraybuffer",t.onload=()=>{200==t.status||0==t.status&&t.response?a(t.response):e(t.status)},t.onerror=e,t.send(null)});var a=await fetch(_,{credentials:"same-origin"});if(a.ok)return a.arrayBuffer();throw new Error(a.status+" : "+a.url)}}var u,h,b,v,y,x,k,T=console.log.bind(console),j=console.error.bind(console),$=!1,A=!1,U=_=>_.startsWith("file://");function R(){var _=h.buffer;new Int8Array(_),new Int16Array(_),t.HEAPU8=b=new Uint8Array(_),new Uint16Array(_),t.HEAP32=v=new Int32Array(_),t.HEAPU32=y=new Uint32Array(_),t.HEAPF32=new Float32Array(_),k=new Float64Array(_),x=new BigInt64Array(_),new BigUint64Array(_)}var E,C=0,S=null;function M(){return t.locateFile?(_="mupdf-wasm.wasm",t.locateFile?t.locateFile(_,l):l+_):new URL("mupdf-wasm.wasm",import.meta.url).href;var _}async function D(_){if(!u)try{var a=await o(_);return new Uint8Array(a)}catch{}return function(_){if(_==E&&u)return new Uint8Array(u);if(p)return p(_);throw"both async and sync fetching of the wasm failed"}(_)}async function F(_,a){try{var s=await D(_);return await WebAssembly.instantiate(s,a)}catch(_){j(`failed to asynchronously prepare wasm: ${_}`),function(_){t.onAbort?.(_),j(_="Aborted("+_+")"),$=!0,_+=". Build with -sASSERTIONS for more info.",A&&o_();var a=new WebAssembly.RuntimeError(_);throw e(a),a}(_)}}class P{name="ExitStatus";constructor(_){this.message=`Program terminated with exit(${_})`,this.status=_}}var I=_=>{for(;_.length>0;)_.shift()(t)},B=[],q=_=>B.push(_),L=[],W=_=>L.push(_),z=!0,H=new TextDecoder,N=(_,a)=>{if(!_)return"";for(var e=_+a,t=_;!(t>=e)&&b[t];)++t;return H.decode(b.subarray(_,t))},O={varargs:void 0,getStr:_=>N(_)},G=_=>_<-9007199254740992||_>9007199254740992?NaN:Number(_),Y=(_,a,e)=>((_,a,e,t)=>{if(!(t>0))return 0;for(var s=e,n=e+t-1,i=0;i<_.length;++i){var m=_.charCodeAt(i);if(m>=55296&&m<=57343&&(m=65536+((1023&m)<<10)|1023&_.charCodeAt(++i)),m<=127){if(e>=n)break;a[e++]=m}else if(m<=2047){if(e+1>=n)break;a[e++]=192|m>>6,a[e++]=128|63&m}else if(m<=65535){if(e+2>=n)break;a[e++]=224|m>>12,a[e++]=128|m>>6&63,a[e++]=128|63&m}else{if(e+3>=n)break;a[e++]=240|m>>18,a[e++]=128|m>>12&63,a[e++]=128|m>>6&63,a[e++]=128|63&m}}return a[e]=0,e-s})(_,b,a,e),X=()=>Date.now(),J=[],K=(_,a,e)=>{var t=((_,a)=>{var e;for(J.length=0;e=b[_++];){var t=105!=e;a+=(t&=112!=e)&&a%8?4:0,J.push(112==e?y[a>>2]:106==e?x[a>>3]:105==e?v[a>>2]:k[a>>3]),a+=t?8:4}return J})(a,e);return i_[_](...t)},Q=(_,a)=>Math.ceil(_/a)*a,V=_=>{var a=(_-h.buffer.byteLength+65535)/65536|0;try{return h.grow(a),R(),1}catch(_){}},Z={},__=()=>{if(!__.strings){var _={USER:"web_user",LOGNAME:"web_user",PATH:"/",PWD:"/",HOME:"/home/web_user",LANG:("object"==typeof navigator&&navigator.languages&&navigator.languages[0]||"C").replace("-","_")+".UTF-8",_:d||"./this.program"};for(var a in Z)void 0===Z[a]?delete _[a]:_[a]=Z[a];var e=[];for(var a in _)e.push(`${a}=${_[a]}`);__.strings=e}return __.strings},a_=_=>{for(var a=0,e=0;e<_.length;++e){var t=_.charCodeAt(e);t<=127?a++:t<=2047?a+=2:t>=55296&&t<=57343?(a+=4,++e):a+=3}return a},e_=_=>{z||(t.onExit?.(_),$=!0),w(_,new P(_))},t_=(_,a)=>{e_(_)},s_=[null,[],[]],n_=(_,a)=>{var e=s_[_];0===a||10===a?((1===_?T:j)(((_,a=0,e=NaN)=>{for(var t=a+e,s=a;_[s]&&!(s>=t);)++s;return H.decode(_.buffer?_.subarray(a,s):new Uint8Array(_.slice(a,s)))})(e)),e.length=0):e.push(a)};t.noExitRuntime&&(z=t.noExitRuntime),t.print&&(T=t.print),t.printErr&&(j=t.printErr),t.wasmBinary&&(u=t.wasmBinary),t.arguments&&t.arguments,t.thisProgram&&(d=t.thisProgram),t.UTF8ToString=N,t.stringToUTF8=Y,t.lengthBytesUTF8=a_;var i_={6016e3:()=>{throw"TRYLATER"},6016022:()=>{throw"ABORT"},6016041:_=>{throw new Error(N(_))},6016080:()=>{throw new Error("Cannot create MuPDF context!")},6016133:(_,a,e,t,s,n,i)=>{globalThis.$libmupdf_text_walk.begin_span(_,a,e,t,s,n,i)},6016207:(_,a,e,t,s,n,i,m)=>{globalThis.$libmupdf_text_walk.show_glyph(_,a,e,t,s,n,i,m)},6016285:_=>{globalThis.$libmupdf_text_walk.end_span(_)},6016333:(_,a,e,t)=>globalThis.$libmupdf_load_font_file(_,a,e,t),6016396:(_,a,e,t)=>globalThis.$libmupdf_stm_read(_,a,e,t),6016454:_=>{globalThis.$libmupdf_stm_close(_)},6016494:(_,a,e,t)=>globalThis.$libmupdf_stm_seek(_,a,e,t),6016552:(_,a,e)=>{globalThis.$libmupdf_path_walk.moveto(_,a,e)},6016606:(_,a,e)=>{globalThis.$libmupdf_path_walk.lineto(_,a,e)},6016660:(_,a,e,t,s,n,i)=>{globalThis.$libmupdf_path_walk.curveto(_,a,e,t,s,n,i)},6016731:_=>{globalThis.$libmupdf_path_walk.closepath(_)},6016780:_=>{globalThis.$libmupdf_device.close_device(_)},6016829:_=>{globalThis.$libmupdf_device.drop_device(_)},6016877:(_,a,e,t,s,n,i,m)=>{globalThis.$libmupdf_device.fill_path(_,a,e,t,s,n,i,m)},6016951:(_,a,e,t,s,n,i,m)=>{globalThis.$libmupdf_device.stroke_path(_,a,e,t,s,n,i,m)},6017027:(_,a,e,t)=>{globalThis.$libmupdf_device.clip_path(_,a,e,t)},6017085:(_,a,e,t)=>{globalThis.$libmupdf_device.clip_stroke_path(_,a,e,t)},6017150:(_,a,e,t,s,n,i)=>{globalThis.$libmupdf_device.fill_text(_,a,e,t,s,n,i)},6017220:(_,a,e,t,s,n,i,m)=>{globalThis.$libmupdf_device.stroke_text(_,a,e,t,s,n,i,m)},6017296:(_,a,e)=>{globalThis.$libmupdf_device.clip_text(_,a,e)},6017350:(_,a,e,t)=>{globalThis.$libmupdf_device.clip_stroke_text(_,a,e,t)},6017415:(_,a,e)=>{globalThis.$libmupdf_device.ignore_text(_,a,e)},6017471:(_,a,e,t)=>{globalThis.$libmupdf_device.fill_shade(_,a,e,t)},6017530:(_,a,e,t)=>{globalThis.$libmupdf_device.fill_image(_,a,e,t)},6017589:(_,a,e,t,s,n,i)=>{globalThis.$libmupdf_device.fill_image_mask(_,a,e,t,s,n,i)},6017665:(_,a,e)=>{globalThis.$libmupdf_device.clip_image_mask(_,a,e)},6017725:_=>{globalThis.$libmupdf_device.pop_clip(_)},6017770:(_,a,e,t,s,n)=>{globalThis.$libmupdf_device.begin_mask(_,a,e,t,s,n)},6017837:(_,a)=>{globalThis.$libmupdf_device.end_mask(_,a)},6017886:(_,a,e,t,s,n,i)=>{globalThis.$libmupdf_device.begin_group(_,a,e,t,s,n,i)},6017958:_=>{globalThis.$libmupdf_device.end_group(_)},6018004:(_,a,e,t,s,n,i)=>globalThis.$libmupdf_device.begin_tile(_,a,e,t,s,n,i),6018082:_=>{globalThis.$libmupdf_device.end_tile(_)},6018127:(_,a)=>{globalThis.$libmupdf_device.begin_layer(_,a)},6018179:_=>{globalThis.$libmupdf_device.end_layer(_)}},m_={g:function(_,a,e){return O.varargs=e,0},u:function(_,a){a=G(a)},t:function(_,a,e){return O.varargs=e,0},f:function(_,a,e,t){O.varargs=t},s:_=>{},e:(_,a,e)=>{},m:function(_,a){_=G(_);var e=new Date(1e3*_);v[a>>2]=e.getUTCSeconds(),v[a+4>>2]=e.getUTCMinutes(),v[a+8>>2]=e.getUTCHours(),v[a+12>>2]=e.getUTCDate(),v[a+16>>2]=e.getUTCMonth(),v[a+20>>2]=e.getUTCFullYear()-1900,v[a+24>>2]=e.getUTCDay();var t=Date.UTC(e.getUTCFullYear(),0,1,0,0,0,0),s=(e.getTime()-t)/864e5|0;v[a+28>>2]=s},l:function(_){var a=(()=>{var a=Date.UTC(v[_+20>>2]+1900,v[_+16>>2],v[_+12>>2],v[_+8>>2],v[_+4>>2],v[_>>2],0),e=new Date(a);v[_+24>>2]=e.getUTCDay();var t=Date.UTC(e.getUTCFullYear(),0,1,0,0,0,0),s=(e.getTime()-t)/864e5|0;return v[_+28>>2]=s,e.getTime()/1e3})();return BigInt(a)},k:(_,a,e,t)=>{var s=(new Date).getFullYear(),n=new Date(s,0,1),i=new Date(s,6,1),m=n.getTimezoneOffset(),r=i.getTimezoneOffset(),o=Math.max(m,r);y[_>>2]=60*o,v[a>>2]=Number(m!=r);var p=_=>{var a=_>=0?"-":"+",e=Math.abs(_);return`UTC${a}${String(Math.floor(e/60)).padStart(2,"0")}${String(e%60).padStart(2,"0")}`},d=p(m),w=p(r);r<m?(Y(d,e,17),Y(w,t,17)):(Y(d,t,17),Y(w,e,17))},r:function(_,a,e){if(a=G(a),!((t=_)>=0&&t<=3))return 28;var t,s;s=0===_?X():performance.now();var n=Math.round(1e3*s*1e3);return x[e>>3]=BigInt(n),0},a:(_,a,e)=>K(_,a,e),j:(_,a,e)=>K(_,a,e),i:X,h:_=>{var a=b.length,e=2147483648;if((_>>>=0)>e)return!1;for(var t=1;t<=4;t*=2){var s=a*(1+.2/t);s=Math.min(s,_+100663296);var n=Math.min(e,Q(Math.max(_,s),65536));if(V(n))return!0}return!1},q:(_,a)=>{var e=0,t=0;for(var s of __()){var n=a+e;y[_+t>>2]=n,e+=Y(s,n,1/0)+1,t+=4}return 0},p:(_,a)=>{var e=__();y[_>>2]=e.length;var t=0;for(var s of e)t+=a_(s)+1;return y[a>>2]=t,0},b:t_,d:_=>52,o:(_,a,e,t)=>52,n:function(_,a,e,t){return a=G(a),70},c:(_,a,e,t)=>{for(var s=0,n=0;n<e;n++){var i=y[a>>2],m=y[a+4>>2];a+=8;for(var r=0;r<m;r++)n_(_,b[i+r]);s+=m}return y[t>>2]=s,0}},r_=await async function(){function _(_,a){return r_=_.exports,h=r_.v,R(),function(){if(C--,t.monitorRunDependencies?.(C),0==C&&S){var _=S;S=null,_()}}(),r_}C++,t.monitorRunDependencies?.(C);var a={a:m_};if(t.instantiateWasm)return new Promise((e,s)=>{t.instantiateWasm(a,(a,t)=>{e(_(a))})});E??=M();try{var s=function(a){return _(a.instance)}(await async function(_,a,e){if(!_&&"function"==typeof WebAssembly.instantiateStreaming&&!U(a)&&!m)try{var t=fetch(a,{credentials:"same-origin"});return await WebAssembly.instantiateStreaming(t,e)}catch(_){j(`wasm streaming compile failed: ${_}`),j("falling back to ArrayBuffer instantiation")}return F(a,e)}(u,E,a));return s}catch(_){return e(_),Promise.reject(_)}}(),o_=(r_.w,t._wasm_init_context=r_.x,t._wasm_malloc=r_.y,t._wasm_free=r_.z,t._wasm_enable_icc=r_.A,t._wasm_disable_icc=r_.B,t._wasm_set_user_css=r_.C,t._wasm_Memento_checkAllMemory=r_.D,t._wasm_Memento_listBlocks=r_.E,t._wasm_keep_buffer=r_.F,t._wasm_drop_buffer=r_.G,t._wasm_keep_stream=r_.H,t._wasm_drop_stream=r_.I,t._wasm_keep_colorspace=r_.J,t._wasm_drop_colorspace=r_.K,t._wasm_keep_pixmap=r_.L,t._wasm_drop_pixmap=r_.M,t._wasm_keep_font=r_.N,t._wasm_drop_font=r_.O,t._wasm_keep_stroke_state=r_.P,t._wasm_drop_stroke_state=r_.Q,t._wasm_keep_image=r_.R,t._wasm_drop_image=r_.S,t._wasm_keep_shade=r_.T,t._wasm_drop_shade=r_.U,t._wasm_keep_path=r_.V,t._wasm_drop_path=r_.W,t._wasm_keep_text=r_.X,t._wasm_drop_text=r_.Y,t._wasm_keep_device=r_.Z,t._wasm_drop_device=r_._,t._wasm_keep_display_list=r_.$,t._wasm_drop_display_list=r_.aa,t._wasm_drop_stext_page=r_.ba,t._wasm_drop_document_writer=r_.ca,t._wasm_drop_outline_iterator=r_.da,t._wasm_keep_document=r_.ea,t._wasm_drop_document=r_.fa,t._wasm_keep_page=r_.ga,t._wasm_drop_page=r_.ha,t._wasm_keep_link=r_.ia,t._wasm_drop_link=r_.ja,t._wasm_keep_outline=r_.ka,t._wasm_drop_outline=r_.la,t._wasm_pdf_keep_annot=r_.ma,t._wasm_pdf_drop_annot=r_.na,t._wasm_pdf_keep_obj=r_.oa,t._wasm_pdf_drop_obj=r_.pa,t._wasm_pdf_keep_graft_map=r_.qa,t._wasm_pdf_drop_graft_map=r_.ra,t._wasm_buffer_get_data=r_.sa,t._wasm_buffer_get_len=r_.ta,t._wasm_colorspace_get_type=r_.ua,t._wasm_colorspace_get_n=r_.va,t._wasm_colorspace_get_name=r_.wa,t._wasm_pixmap_get_w=r_.xa,t._wasm_pixmap_get_h=r_.ya,t._wasm_pixmap_get_x=r_.za,t._wasm_pixmap_get_y=r_.Aa,t._wasm_pixmap_get_n=r_.Ba,t._wasm_pixmap_get_stride=r_.Ca,t._wasm_pixmap_get_alpha=r_.Da,t._wasm_pixmap_get_xres=r_.Ea,t._wasm_pixmap_get_yres=r_.Fa,t._wasm_pixmap_get_colorspace=r_.Ga,t._wasm_pixmap_get_samples=r_.Ha,t._wasm_pixmap_set_xres=r_.Ia,t._wasm_pixmap_set_yres=r_.Ja,t._wasm_font_get_name=r_.Ka,t._wasm_stroke_state_get_start_cap=r_.La,t._wasm_stroke_state_set_start_cap=r_.Ma,t._wasm_stroke_state_get_dash_cap=r_.Na,t._wasm_stroke_state_set_dash_cap=r_.Oa,t._wasm_stroke_state_get_end_cap=r_.Pa,t._wasm_stroke_state_set_end_cap=r_.Qa,t._wasm_stroke_state_get_linejoin=r_.Ra,t._wasm_stroke_state_set_linejoin=r_.Sa,t._wasm_stroke_state_get_linewidth=r_.Ta,t._wasm_stroke_state_set_linewidth=r_.Ua,t._wasm_stroke_state_get_miterlimit=r_.Va,t._wasm_stroke_state_set_miterlimit=r_.Wa,t._wasm_stroke_state_get_dash_phase=r_.Xa,t._wasm_stroke_state_set_dash_phase=r_.Ya,t._wasm_stroke_state_get_dash_len=r_.Za,t._wasm_image_get_w=r_._a,t._wasm_image_get_h=r_.$a,t._wasm_image_get_n=r_.ab,t._wasm_image_get_bpc=r_.bb,t._wasm_image_get_xres=r_.cb,t._wasm_image_get_yres=r_.db,t._wasm_image_get_imagemask=r_.eb,t._wasm_image_get_colorspace=r_.fb,t._wasm_image_get_mask=r_.gb,t._wasm_outline_get_title=r_.hb,t._wasm_outline_get_uri=r_.ib,t._wasm_outline_get_next=r_.jb,t._wasm_outline_get_down=r_.kb,t._wasm_outline_get_is_open=r_.lb,t._wasm_outline_item_get_title=r_.mb,t._wasm_outline_item_get_uri=r_.nb,t._wasm_outline_item_get_is_open=r_.ob,t._wasm_link_get_rect=r_.pb,t._wasm_link_get_uri=r_.qb,t._wasm_link_get_next=r_.rb,t._wasm_stext_page_get_mediabox=r_.sb,t._wasm_stext_page_get_first_block=r_.tb,t._wasm_stext_block_get_next=r_.ub,t._wasm_stext_block_get_type=r_.vb,t._wasm_stext_block_get_bbox=r_.wb,t._wasm_stext_block_get_first_line=r_.xb,t._wasm_stext_block_get_transform=r_.yb,t._wasm_stext_block_get_image=r_.zb,t._wasm_stext_line_get_next=r_.Ab,t._wasm_stext_line_get_wmode=r_.Bb,t._wasm_stext_line_get_dir=r_.Cb,t._wasm_stext_line_get_bbox=r_.Db,t._wasm_stext_line_get_first_char=r_.Eb,t._wasm_stext_char_get_next=r_.Fb,t._wasm_stext_char_get_c=r_.Gb,t._wasm_stext_char_get_origin=r_.Hb,t._wasm_stext_char_get_quad=r_.Ib,t._wasm_stext_char_get_size=r_.Jb,t._wasm_stext_char_get_font=r_.Kb,t._wasm_stext_char_get_argb=r_.Lb,t._wasm_link_dest_get_chapter=r_.Mb,t._wasm_link_dest_get_page=r_.Nb,t._wasm_link_dest_get_type=r_.Ob,t._wasm_link_dest_get_x=r_.Pb,t._wasm_link_dest_get_y=r_.Qb,t._wasm_link_dest_get_w=r_.Rb,t._wasm_link_dest_get_h=r_.Sb,t._wasm_link_dest_get_zoom=r_.Tb,t._wasm_pdf_filespec_params_get_filename=r_.Ub,t._wasm_pdf_filespec_params_get_mimetype=r_.Vb,t._wasm_pdf_filespec_params_get_size=r_.Wb,t._wasm_pdf_filespec_params_get_created=r_.Xb,t._wasm_pdf_filespec_params_get_modified=r_.Yb,t._wasm_pdf_page_get_obj=r_.Zb,t._wasm_new_buffer=r_._b,t._wasm_new_buffer_from_data=r_.$b,t._wasm_append_string=r_.ac,t._wasm_append_byte=r_.bc,t._wasm_append_buffer=r_.cc,t._wasm_slice_buffer=r_.dc,t._wasm_string_from_buffer=r_.ec,t._wasm_device_gray=r_.fc,t._wasm_device_rgb=r_.gc,t._wasm_device_bgr=r_.hc,t._wasm_device_cmyk=r_.ic,t._wasm_device_lab=r_.jc,t._wasm_new_icc_colorspace=r_.kc,t._wasm_new_stroke_state=r_.lc,t._wasm_stroke_state_get_dash_item=r_.mc,t._wasm_stroke_state_set_dash_item=r_.nc,t._wasm_new_base14_font=r_.oc,t._wasm_new_cjk_font=r_.pc,t._wasm_new_font_from_buffer=r_.qc,t._wasm_encode_character=r_.rc,t._wasm_advance_glyph=r_.sc,t._wasm_font_is_monospaced=r_.tc,t._wasm_font_is_serif=r_.uc,t._wasm_font_is_bold=r_.vc,t._wasm_font_is_italic=r_.wc,t._wasm_new_image_from_pixmap=r_.xc,t._wasm_new_image_from_buffer=r_.yc,t._wasm_get_pixmap_from_image=r_.zc,t._wasm_new_pixmap_from_page=r_.Ac,t._wasm_new_pixmap_from_page_contents=r_.Bc,t._wasm_pdf_new_pixmap_from_page_with_usage=r_.Cc,t._wasm_pdf_new_pixmap_from_page_contents_with_usage=r_.Dc,t._wasm_new_pixmap_with_bbox=r_.Ec,t._wasm_clear_pixmap=r_.Fc,t._wasm_clear_pixmap_with_value=r_.Gc,t._wasm_invert_pixmap=r_.Hc,t._wasm_invert_pixmap_luminance=r_.Ic,t._wasm_gamma_pixmap=r_.Jc,t._wasm_tint_pixmap=r_.Kc,t._wasm_new_buffer_from_pixmap_as_png=r_.Lc,t._wasm_new_buffer_from_pixmap_as_pam=r_.Mc,t._wasm_new_buffer_from_pixmap_as_psd=r_.Nc,t._wasm_new_buffer_from_pixmap_as_jpeg=r_.Oc,t._wasm_convert_pixmap=r_.Pc,t._wasm_warp_pixmap=r_.Qc,t._wasm_bound_shade=r_.Rc,t._wasm_new_display_list=r_.Sc,t._wasm_bound_display_list=r_.Tc,t._wasm_run_display_list=r_.Uc,t._wasm_new_pixmap_from_display_list=r_.Vc,t._wasm_new_stext_page_from_display_list=r_.Wc,t._wasm_search_display_list=r_.Xc,t._wasm_new_path=r_.Yc,t._wasm_moveto=r_.Zc,t._wasm_lineto=r_._c,t._wasm_curveto=r_.$c,t._wasm_curvetov=r_.ad,t._wasm_curvetoy=r_.bd,t._wasm_closepath=r_.cd,t._wasm_rectto=r_.dd,t._wasm_transform_path=r_.ed,t._wasm_bound_path=r_.fd,t._wasm_new_text=r_.gd,t._wasm_bound_text=r_.hd,t._wasm_show_glyph=r_.id,t._wasm_show_string=r_.jd,t._wasm_new_draw_device=r_.kd,t._wasm_new_display_list_device=r_.ld,t._wasm_close_device=r_.md,t._wasm_fill_path=r_.nd,t._wasm_stroke_path=r_.od,t._wasm_clip_path=r_.pd,t._wasm_clip_stroke_path=r_.qd,t._wasm_fill_text=r_.rd,t._wasm_stroke_text=r_.sd,t._wasm_clip_text=r_.td,t._wasm_clip_stroke_text=r_.ud,t._wasm_ignore_text=r_.vd,t._wasm_fill_shade=r_.wd,t._wasm_fill_image=r_.xd,t._wasm_fill_image_mask=r_.yd,t._wasm_clip_image_mask=r_.zd,t._wasm_pop_clip=r_.Ad,t._wasm_begin_mask=r_.Bd,t._wasm_end_mask=r_.Cd,t._wasm_begin_group=r_.Dd,t._wasm_end_group=r_.Ed,t._wasm_begin_tile=r_.Fd,t._wasm_end_tile=r_.Gd,t._wasm_begin_layer=r_.Hd,t._wasm_end_layer=r_.Id,t._wasm_new_document_writer_with_buffer=r_.Jd,t._wasm_begin_page=r_.Kd,t._wasm_end_page=r_.Ld,t._wasm_close_document_writer=r_.Md,t._wasm_print_stext_page_as_json=r_.Nd,t._wasm_search_stext_page=r_.Od,t._wasm_snap_selection=r_.Pd,t._wasm_copy_selection=r_.Qd,t._wasm_highlight_selection=r_.Rd,t._wasm_print_stext_page_as_html=r_.Sd,t._wasm_print_stext_page_as_text=r_.Td,t._wasm_open_document_with_buffer=r_.Ud,t._wasm_open_document_with_stream=r_.Vd,t._wasm_format_link_uri=r_.Wd,t._wasm_needs_password=r_.Xd,t._wasm_authenticate_password=r_.Yd,t._wasm_has_permission=r_.Zd,t._wasm_count_pages=r_._d,t._wasm_load_page=r_.$d,t._wasm_lookup_metadata=r_.ae,t._wasm_set_metadata=r_.be,t._wasm_resolve_link=r_.ce,t._wasm_resolve_link_dest=r_.de,t._wasm_load_outline=r_.ee,t._wasm_outline_get_page=r_.fe,t._wasm_layout_document=r_.ge,t._wasm_is_document_reflowable=r_.he,t._wasm_link_set_rect=r_.ie,t._wasm_link_set_uri=r_.je,t._wasm_bound_page=r_.ke,t._wasm_load_links=r_.le,t._wasm_create_link=r_.me,t._wasm_delete_link=r_.ne,t._wasm_run_page=r_.oe,t._wasm_run_page_contents=r_.pe,t._wasm_run_page_annots=r_.qe,t._wasm_run_page_widgets=r_.re,t._wasm_new_stext_page_from_page=r_.se,t._wasm_new_display_list_from_page=r_.te,t._wasm_new_display_list_from_page_contents=r_.ue,t._wasm_page_label=r_.ve,t._wasm_search_page=r_.we,t._wasm_new_outline_iterator=r_.xe,t._wasm_outline_iterator_next=r_.ye,t._wasm_outline_iterator_prev=r_.ze,t._wasm_outline_iterator_up=r_.Ae,t._wasm_outline_iterator_down=r_.Be,t._wasm_outline_iterator_delete=r_.Ce,t._wasm_outline_iterator_item=r_.De,t._wasm_outline_iterator_insert=r_.Ee,t._wasm_outline_iterator_update=r_.Fe,t._wasm_pdf_document_from_fz_document=r_.Ge,t._wasm_pdf_page_from_fz_page=r_.He,t._wasm_pdf_create_document=r_.Ie,t._wasm_pdf_version=r_.Je,t._wasm_pdf_was_repaired=r_.Ke,t._wasm_pdf_has_unsaved_changes=r_.Le,t._wasm_pdf_can_be_saved_incrementally=r_.Me,t._wasm_pdf_count_versions=r_.Ne,t._wasm_pdf_count_unsaved_versions=r_.Oe,t._wasm_pdf_validate_change_history=r_.Pe,t._wasm_pdf_enable_journal=r_.Qe,t._wasm_pdf_undoredo_state_position=r_.Re,t._wasm_pdf_undoredo_state_count=r_.Se,t._wasm_pdf_undoredo_step=r_.Te,t._wasm_pdf_begin_operation=r_.Ue,t._wasm_pdf_begin_implicit_operation=r_.Ve,t._wasm_pdf_end_operation=r_.We,t._wasm_pdf_abandon_operation=r_.Xe,t._wasm_pdf_undo=r_.Ye,t._wasm_pdf_redo=r_.Ze,t._wasm_pdf_can_undo=r_._e,t._wasm_pdf_can_redo=r_.$e,t._wasm_pdf_document_language=r_.af,t._wasm_pdf_set_document_language=r_.bf,t._wasm_pdf_trailer=r_.cf,t._wasm_pdf_xref_len=r_.df,t._wasm_pdf_lookup_page_obj=r_.ef,t._wasm_pdf_add_object=r_.ff,t._wasm_pdf_create_object=r_.gf,t._wasm_pdf_delete_object=r_.hf,t._wasm_pdf_add_stream=r_.jf,t._wasm_pdf_add_simple_font=r_.kf,t._wasm_pdf_add_cjk_font=r_.lf,t._wasm_pdf_add_cid_font=r_.mf,t._wasm_pdf_add_image=r_.nf,t._wasm_pdf_load_image=r_.of,t._wasm_pdf_add_page=r_.pf,t._wasm_pdf_insert_page=r_.qf,t._wasm_pdf_delete_page=r_.rf,t._wasm_pdf_set_page_labels=r_.sf,t._wasm_pdf_delete_page_labels=r_.tf,t._wasm_pdf_is_embedded_file=r_.uf,t._wasm_pdf_get_filespec_params=r_.vf,t._wasm_pdf_add_embedded_file=r_.wf,t._wasm_pdf_load_embedded_file_contents=r_.xf,t._wasm_pdf_write_document_buffer=r_.yf,t._wasm_pdf_js_supported=r_.zf,t._wasm_pdf_enable_js=r_.Af,t._wasm_pdf_disable_js=r_.Bf,t._wasm_pdf_rearrange_pages=r_.Cf,t._wasm_pdf_subset_fonts=r_.Df,t._wasm_pdf_bake_document=r_.Ef,t._wasm_pdf_count_layers=r_.Ff,t._wasm_pdf_layer_name=r_.Gf,t._wasm_pdf_layer_is_enabled=r_.Hf,t._wasm_pdf_enable_layer=r_.If,t._wasm_pdf_page_transform=r_.Jf,t._wasm_pdf_set_page_box=r_.Kf,t._wasm_pdf_first_annot=r_.Lf,t._wasm_pdf_next_annot=r_.Mf,t._wasm_pdf_first_widget=r_.Nf,t._wasm_pdf_next_widget=r_.Of,t._wasm_pdf_create_annot=r_.Pf,t._wasm_pdf_delete_annot=r_.Qf,t._wasm_pdf_update_page=r_.Rf,t._wasm_pdf_redact_page=r_.Sf,t._wasm_pdf_new_graft_map=r_.Tf,t._wasm_pdf_graft_mapped_object=r_.Uf,t._wasm_pdf_graft_object=r_.Vf,t._wasm_pdf_graft_mapped_page=r_.Wf,t._wasm_pdf_graft_page=r_.Xf,t._wasm_pdf_bound_annot=r_.Yf,t._wasm_pdf_run_annot=r_.Zf,t._wasm_pdf_new_pixmap_from_annot=r_._f,t._wasm_pdf_new_display_list_from_annot=r_.$f,t._wasm_pdf_update_annot=r_.ag,t._wasm_pdf_annot_obj=r_.bg,t._wasm_pdf_annot_type=r_.cg,t._wasm_pdf_annot_flags=r_.dg,t._wasm_pdf_set_annot_flags=r_.eg,t._wasm_pdf_annot_contents=r_.fg,t._wasm_pdf_set_annot_contents=r_.gg,t._wasm_pdf_annot_author=r_.hg,t._wasm_pdf_set_annot_author=r_.ig,t._wasm_pdf_annot_creation_date=r_.jg,t._wasm_pdf_set_annot_creation_date=r_.kg,t._wasm_pdf_annot_modification_date=r_.lg,t._wasm_pdf_set_annot_modification_date=r_.mg,t._wasm_pdf_annot_border_width=r_.ng,t._wasm_pdf_set_annot_border_width=r_.og,t._wasm_pdf_annot_border_style=r_.pg,t._wasm_pdf_set_annot_border_style=r_.qg,t._wasm_pdf_annot_border_effect=r_.rg,t._wasm_pdf_set_annot_border_effect=r_.sg,t._wasm_pdf_annot_border_effect_intensity=r_.tg,t._wasm_pdf_set_annot_border_effect_intensity=r_.ug,t._wasm_pdf_annot_opacity=r_.vg,t._wasm_pdf_set_annot_opacity=r_.wg,t._wasm_pdf_annot_filespec=r_.xg,t._wasm_pdf_set_annot_filespec=r_.yg,t._wasm_pdf_annot_quadding=r_.zg,t._wasm_pdf_set_annot_quadding=r_.Ag,t._wasm_pdf_annot_is_open=r_.Bg,t._wasm_pdf_set_annot_is_open=r_.Cg,t._wasm_pdf_annot_hidden_for_editing=r_.Dg,t._wasm_pdf_set_annot_hidden_for_editing=r_.Eg,t._wasm_pdf_annot_icon_name=r_.Fg,t._wasm_pdf_set_annot_icon_name=r_.Gg,t._wasm_pdf_annot_intent=r_.Hg,t._wasm_pdf_set_annot_intent=r_.Ig,t._wasm_pdf_annot_callout_style=r_.Jg,t._wasm_pdf_set_annot_callout_style=r_.Kg,t._wasm_pdf_annot_line_leader=r_.Lg,t._wasm_pdf_set_annot_line_leader=r_.Mg,t._wasm_pdf_annot_line_leader_extension=r_.Ng,t._wasm_pdf_set_annot_line_leader_extension=r_.Og,t._wasm_pdf_annot_line_leader_offset=r_.Pg,t._wasm_pdf_set_annot_line_leader_offset=r_.Qg,t._wasm_pdf_annot_line_caption=r_.Rg,t._wasm_pdf_set_annot_line_caption=r_.Sg,t._wasm_pdf_annot_rich_defaults=r_.Tg,t._wasm_pdf_set_annot_rich_defaults=r_.Ug,t._wasm_pdf_annot_callout_point=r_.Vg,t._wasm_pdf_annot_line_caption_offset=r_.Wg,t._wasm_pdf_annot_rect=r_.Xg,t._wasm_pdf_annot_popup=r_.Yg,t._wasm_pdf_annot_quad_point_count=r_.Zg,t._wasm_pdf_annot_quad_point=r_._g,t._wasm_pdf_annot_vertex_count=r_.$g,t._wasm_pdf_annot_vertex=r_.ah,t._wasm_pdf_annot_ink_list_count=r_.bh,t._wasm_pdf_annot_ink_list_stroke_count=r_.ch,t._wasm_pdf_annot_ink_list_stroke_vertex=r_.dh,t._wasm_pdf_annot_rich_contents=r_.eh,t._wasm_pdf_annot_border_dash_count=r_.fh,t._wasm_pdf_annot_border_dash_item=r_.gh,t._wasm_pdf_annot_has_rect=r_.hh,t._wasm_pdf_annot_has_ink_list=r_.ih,t._wasm_pdf_annot_has_quad_points=r_.jh,t._wasm_pdf_annot_has_vertices=r_.kh,t._wasm_pdf_annot_has_line=r_.lh,t._wasm_pdf_annot_has_interior_color=r_.mh,t._wasm_pdf_annot_has_line_ending_styles=r_.nh,t._wasm_pdf_annot_has_border=r_.oh,t._wasm_pdf_annot_has_border_effect=r_.ph,t._wasm_pdf_annot_has_icon_name=r_.qh,t._wasm_pdf_annot_has_open=r_.rh,t._wasm_pdf_annot_has_author=r_.sh,t._wasm_pdf_annot_has_filespec=r_.th,t._wasm_pdf_annot_has_callout=r_.uh,t._wasm_pdf_annot_has_rich_contents=r_.vh,t._wasm_pdf_annot_language=r_.wh,t._wasm_pdf_set_annot_language=r_.xh,t._wasm_pdf_set_annot_popup=r_.yh,t._wasm_pdf_set_annot_rect=r_.zh,t._wasm_pdf_clear_annot_quad_points=r_.Ah,t._wasm_pdf_clear_annot_vertices=r_.Bh,t._wasm_pdf_clear_annot_ink_list=r_.Ch,t._wasm_pdf_clear_annot_border_dash=r_.Dh,t._wasm_pdf_add_annot_quad_point=r_.Eh,t._wasm_pdf_add_annot_vertex=r_.Fh,t._wasm_pdf_add_annot_ink_list_stroke=r_.Gh,t._wasm_pdf_add_annot_ink_list_stroke_vertex=r_.Hh,t._wasm_pdf_add_annot_border_dash_item=r_.Ih,t._wasm_pdf_annot_line_ending_styles_start=r_.Jh,t._wasm_pdf_annot_line_1=r_.Kh,t._wasm_pdf_annot_line_2=r_.Lh,t._wasm_pdf_set_annot_line=r_.Mh,t._wasm_pdf_set_annot_callout_point=r_.Nh,t._wasm_pdf_annot_callout_line=r_.Oh,t._wasm_pdf_set_annot_callout_line=r_.Ph,t._wasm_pdf_set_annot_line_caption_offset=r_.Qh,t._wasm_pdf_annot_line_ending_styles_end=r_.Rh,t._wasm_pdf_set_annot_line_ending_styles=r_.Sh,t._wasm_pdf_annot_color=r_.Th,t._wasm_pdf_annot_interior_color=r_.Uh,t._wasm_pdf_set_annot_color=r_.Vh,t._wasm_pdf_set_annot_interior_color=r_.Wh,t._wasm_pdf_set_annot_default_appearance=r_.Xh,t._wasm_pdf_annot_default_appearance_font=r_.Yh,t._wasm_pdf_annot_default_appearance_size=r_.Zh,t._wasm_pdf_annot_default_appearance_color=r_._h,t._wasm_pdf_set_annot_rich_contents=r_.$h,t._wasm_pdf_set_annot_stamp_image=r_.ai,t._wasm_pdf_set_annot_appearance_from_display_list=r_.bi,t._wasm_pdf_set_annot_appearance=r_.ci,t._wasm_pdf_apply_redaction=r_.di,t._wasm_pdf_reset_form=r_.ei,t._wasm_pdf_annot_field_type=r_.fi,t._wasm_pdf_annot_field_flags=r_.gi,t._wasm_pdf_annot_field_label=r_.hi,t._wasm_pdf_annot_field_value=r_.ii,t._wasm_pdf_load_field_name=r_.ji,t._wasm_pdf_annot_text_widget_max_len=r_.ki,t._wasm_pdf_set_annot_text_field_value=r_.li,t._wasm_pdf_set_annot_choice_field_value=r_.mi,t._wasm_pdf_annot_choice_field_option_count=r_.ni,t._wasm_pdf_annot_choice_field_option=r_.oi,t._wasm_pdf_toggle_widget=r_.pi,t._wasm_pdf_is_indirect=r_.qi,t._wasm_pdf_is_bool=r_.ri,t._wasm_pdf_is_int=r_.si,t._wasm_pdf_is_real=r_.ti,t._wasm_pdf_is_number=r_.ui,t._wasm_pdf_is_name=r_.vi,t._wasm_pdf_is_string=r_.wi,t._wasm_pdf_is_array=r_.xi,t._wasm_pdf_is_dict=r_.yi,t._wasm_pdf_is_stream=r_.zi,t._wasm_pdf_to_num=r_.Ai,t._wasm_pdf_to_bool=r_.Bi,t._wasm_pdf_to_real=r_.Ci,t._wasm_pdf_to_name=r_.Di,t._wasm_pdf_to_text_string=r_.Ei,t._wasm_pdf_new_indirect=r_.Fi,t._wasm_pdf_new_array=r_.Gi,t._wasm_pdf_new_dict=r_.Hi,t._wasm_pdf_new_bool=r_.Ii,t._wasm_pdf_new_int=r_.Ji,t._wasm_pdf_new_real=r_.Ki,t._wasm_pdf_new_name=r_.Li,t._wasm_pdf_new_text_string=r_.Mi,t._wasm_pdf_new_string=r_.Ni,t._wasm_pdf_resolve_indirect=r_.Oi,t._wasm_pdf_array_len=r_.Pi,t._wasm_pdf_array_get=r_.Qi,t._wasm_pdf_dict_get=r_.Ri,t._wasm_pdf_dict_len=r_.Si,t._wasm_pdf_dict_get_key=r_.Ti,t._wasm_pdf_dict_get_val=r_.Ui,t._wasm_pdf_dict_get_inheritable=r_.Vi,t._wasm_pdf_dict_gets=r_.Wi,t._wasm_pdf_dict_gets_inheritable=r_.Xi,t._wasm_pdf_dict_put=r_.Yi,t._wasm_pdf_dict_puts=r_.Zi,t._wasm_pdf_dict_del=r_._i,t._wasm_pdf_dict_dels=r_.$i,t._wasm_pdf_array_put=r_.aj,t._wasm_pdf_array_push=r_.bj,t._wasm_pdf_array_delete=r_.cj,t._wasm_pdf_sprint_obj=r_.dj,t._wasm_pdf_load_stream=r_.ej,t._wasm_pdf_load_raw_stream=r_.fj,t._wasm_pdf_update_object=r_.gj,t._wasm_pdf_update_stream=r_.hj,t._wasm_pdf_to_string=r_.ij,t._wasm_new_stream=r_.jj,t._wasm_walk_path=r_.kj,t._wasm_walk_text=r_.lj,t._wasm_new_js_device=r_.mj,r_.nj);return function(){if(t.preInit)for("function"==typeof t.preInit&&(t.preInit=[t.preInit]);t.preInit.length>0;)t.preInit.shift()()}(),function _(){function e(){t.calledRun=!0,$||(A=!0,r_.w(),a(t),t.onRuntimeInitialized?.(),function(){if(t.postRun)for("function"==typeof t.postRun&&(t.postRun=[t.postRun]);t.postRun.length;)q(t.postRun.shift());I(B)}())}C>0?S=_:(function(){if(t.preRun)for("function"==typeof t.preRun&&(t.preRun=[t.preRun]);t.preRun.length;)W(t.preRun.shift());I(L)}(),C>0?S=_:t.setStatus?(t.setStatus("Running..."),setTimeout(()=>{setTimeout(()=>t.setStatus(""),1),e()},1)):e())}(),s};export default _;
+\ No newline at end of file
+diff --git a/src/wasm/vendor/mupdf-wasm.wasm b/src/wasm/vendor/mupdf.wasm
+similarity index 100%
+rename from src/wasm/vendor/mupdf-wasm.wasm
+rename to src/wasm/vendor/mupdf.wasm
+diff --git a/src/wasm/vendor/overlay.engine.js b/src/wasm/vendor/overlay.engine.js
+index 7a5e992..ae90a9a 100644
+--- a/src/wasm/vendor/overlay.engine.js
++++ b/src/wasm/vendor/overlay.engine.js
+@@ -32,14 +32,24 @@ export async function init({ baseURL }) {
+     const tr = await window.qwenTranslateBatch({ texts, endpoint, apiKey: cfg.apiKey, model, source, target });
+     const outTexts = (tr && Array.isArray(tr.texts)) ? tr.texts : texts;
+ 
+-    // Use pdf-lib if present; otherwise fall back to Simple engine
+-    let pdfLib;
+-    try { pdfLib = window.PDFLib || (await import(baseURL + 'pdf-lib.js')).PDFLib || (await import(baseURL + 'pdf-lib.js')); } catch {}
++    // Use pdf-lib via global script; dynamically inject if needed
++    let pdfLib = window.PDFLib;
++    if (!pdfLib) {
++      try {
++        await new Promise((resolve, reject) => {
++          const s = document.createElement('script');
++          s.src = baseURL + 'pdf-lib.js';
++          s.onload = resolve;
++          s.onerror = reject;
++          document.head.appendChild(s);
++        });
++        pdfLib = window.PDFLib;
++      } catch {}
++    }
+     if (!pdfLib || !(pdfLib.PDFDocument)) {
+       throw new Error('pdf-lib not available for Overlay engine');
+     }
+-    const lib = pdfLib.PDFDocument ? pdfLib : (pdfLib.default ? pdfLib.default : pdfLib);
+-    const { PDFDocument, StandardFonts, rgb } = lib;
++    const { PDFDocument, StandardFonts, rgb } = pdfLib;
+     const doc = await PDFDocument.create();
+     const font = await doc.embedFont(StandardFonts.Helvetica);
+     for (let i=0;i<pageData.length;i++) {
+diff --git a/src/wasm/vendor/pdfium.engine.js b/src/wasm/vendor/pdfium.engine.js
+index d5dff00..de6d4d4 100644
+--- a/src/wasm/vendor/pdfium.engine.js
++++ b/src/wasm/vendor/pdfium.engine.js
+@@ -1,19 +1,12 @@
+ // PDFium engine wrapper scaffold. Replace with real integration.
+ export async function init({ baseURL }) {
+-  // Try to load PDFium vendor JS if present; otherwise fall back.
+-  let mod = null;
++  // Use PDFium if a real integration exists; otherwise fall back to overlay engine
+   try {
+-    mod = await import(/* @vite-ignore */ baseURL + 'pdfium.js');
+-  } catch {}
+-  // PoC: return the original PDF as-is. Replace with real PDFium glue.
+-  async function rewrite(buffer, cfg, onProgress) {
+-    try {
+-      if (onProgress) onProgress({ phase: 'rewrite', page: 1, total: 1 });
+-      const blob = new Blob([buffer], { type: 'application/pdf' });
+-      return blob;
+-    } catch (e) {
+-      throw new Error('PDFium PoC rewrite failed: ' + e.message);
++    const mod = await import(/* @vite-ignore */ baseURL + 'pdfium.js');
++    if (mod && typeof mod.rewrite === 'function') {
++      return { rewrite: mod.rewrite };
+     }
+-  }
+-  return { rewrite };
++  } catch {}
++  const { init: overlayInit } = await import(/* @vite-ignore */ baseURL + 'overlay.engine.js');
++  return overlayInit({ baseURL });
+ }
+diff --git a/test/translator.test.js b/test/translator.test.js
+index 5ec36dd..8fc599e 100644
+--- a/test/translator.test.js
++++ b/test/translator.test.js
+@@ -1,4 +1,5 @@
+-const { qwenTranslate: translate, qwenClearCache } = require('../src/translator.js');
++const translator = require('../src/translator.js');
++const { qwenTranslate: translate, qwenClearCache, qwenTranslateBatch } = translator;
+ const { configure } = require('../src/throttle');
+ const fetchMock = require('jest-fetch-mock');
+ 
+@@ -52,3 +53,42 @@ test('rate limiting queues requests', async () => {
+   expect(fetch).toHaveBeenCalledTimes(3);
+   jest.useRealTimers();
+ });
++
++test('batch splits requests by token budget', async () => {
++  fetch.mockResponses(
++    JSON.stringify({ output: { text: 'A' } }),
++    JSON.stringify({ output: { text: 'B' } }),
++    JSON.stringify({ output: { text: 'C' } })
++  );
++  const inputs = ['a'.repeat(80), 'b'.repeat(80), 'c'.repeat(80)];
++  const res = await qwenTranslateBatch({
++    texts: inputs,
++    source: 'en',
++    target: 'es',
++    tokenBudget: 30,
++    endpoint: 'https://e/',
++    apiKey: 'k',
++    model: 'm',
++  });
++  expect(res.texts).toEqual(['A', 'B', 'C']);
++  expect(fetch).toHaveBeenCalledTimes(3);
++});
++
++test('batch splits oversized single text', async () => {
++  fetch.mockResponses(
++    JSON.stringify({ output: { text: 'A1' } }),
++    JSON.stringify({ output: { text: 'A2' } })
++  );
++  const long = 'a'.repeat(220);
++  const res = await qwenTranslateBatch({
++    texts: [long],
++    source: 'en',
++    target: 'es',
++    tokenBudget: 30,
++    endpoint: 'https://e/',
++    apiKey: 'k',
++    model: 'm',
++  });
++  expect(fetch).toHaveBeenCalledTimes(2);
++  expect(res.texts[0]).toBe('A1 A2');
++});
+-- 
+2.50.0
+

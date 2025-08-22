@@ -1,0 +1,118 @@
+From b88ce7cb8f728bd8882dd18be204249d12181ff5 Mon Sep 17 00:00:00 2001
+From: MikkoParkkola <78788115+MikkoParkkola@users.noreply.github.com>
+Date: Mon, 18 Aug 2025 07:34:50 +0200
+Subject: [PATCH 7/9] Merge branch 'main' into
+ codex/add-offline-indicators-and-messaging-hvff51
+
+---
+ package-lock.json    |  8 ++++++++
+ package.json         | 15 +++++++++++++++
+ src/contentScript.js | 17 +++++++++++++----
+ 3 files changed, 36 insertions(+), 4 deletions(-)
+
+diff --git a/package-lock.json b/package-lock.json
+index 9b92900..3ecb206 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,14 +1,22 @@
+ {
+   "name": "qwen-translator-extension",
++<<<<<<< HEAD
+   "version": "1.35.1",
+   "version": "1.35.1",
++=======
++  "version": "1.34.0",
++>>>>>>> bf0b100 (Merge branch 'main' into codex/add-offline-indicators-and-messaging-hvff51)
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "qwen-translator-extension",
++<<<<<<< HEAD
+       "version": "1.35.1",
+       "version": "1.35.1",
++=======
++      "version": "1.34.0",
++>>>>>>> bf0b100 (Merge branch 'main' into codex/add-offline-indicators-and-messaging-hvff51)
+       "hasInstallScript": true,
+       "license": "AGPL-3.0-or-later",
+       "dependencies": {
+diff --git a/package.json b/package.json
+index edb2388..48bf202 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,10 @@
+ {
+   "name": "qwen-translator-extension",
++<<<<<<< HEAD
+   "version": "1.35.1",
++=======
++  "version": "1.35.0",
++>>>>>>> bf0b100 (Merge branch 'main' into codex/add-offline-indicators-and-messaging-hvff51)
+   "description": "Extension to translate web pages using Qwen-MT-Turbo model",
+   "main": "index.js",
+   "scripts": {
+@@ -24,6 +28,7 @@
+   "license": "AGPL-3.0-or-later",
+   "type": "commonjs",
+   "types": "types/index.d.ts",
++<<<<<<< HEAD
+   "typesVersions": {
+     "*": {
+       "background": [
+@@ -40,6 +45,16 @@
+       ]
+     }
+   },
++=======
++    "typesVersions": {
++      "*": {
++        "background": ["types/background.d.ts"],
++        "contentScript": ["types/contentScript.d.ts"],
++      "providers/*": ["types/providers/*"],
++      "popup/*": ["types/popup/*"]
++      }
++    },
++>>>>>>> bf0b100 (Merge branch 'main' into codex/add-offline-indicators-and-messaging-hvff51)
+   "devDependencies": {
+     "@playwright/test": "^1.54.2",
+     "@types/jest": "^30.0.0",
+diff --git a/src/contentScript.js b/src/contentScript.js
+index 7df3600..9429158 100644
+--- a/src/contentScript.js
++++ b/src/contentScript.js
+@@ -67,6 +67,19 @@ if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
+   }
+   window.addEventListener('beforeunload', onBeforeUnload);
+ 
++  function cleanupControllers() {
++    controllers.forEach(c => {
++      try { c.abort(); } catch {}
++    });
++    controllers.clear();
++  }
++
++  function onBeforeUnload() {
++    cleanupControllers();
++    window.removeEventListener('beforeunload', onBeforeUnload);
++  }
++  window.addEventListener('beforeunload', onBeforeUnload);
++
+ function handleLastError(cb) {
+   return (...args) => {
+     const err = chrome.runtime.lastError;
+@@ -405,11 +418,7 @@ async function showSelectionBubble(range, text) {
+       });
+       result.textContent = res.text;
+     } catch (e) {
+-<<<<<<< HEAD
+       const offline = isOfflineError(e);
+-=======
+-      const offline = !navigator.onLine || (e && /network|fetch/i.test(e.message || ''));
+->>>>>>> da06222 (Merge branch 'main' into codex/add-offline-indicators-and-messaging-74rmba)
+       if (offline) {
+         result.textContent = t('bubble.offline');
+         try {
+-- 
+2.50.0
+
