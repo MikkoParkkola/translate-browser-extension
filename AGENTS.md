@@ -1,3 +1,9 @@
+inherit: true
+override:
+  - "Workflow"
+  - "Definition of Done"
+  - "Automation"
+
 # Repository Guidelines
 
 Project renamed to **TRANSLATE! by Mikko** (formerly Qwen Translator Extension).
@@ -76,7 +82,7 @@ Environment variables:
 
 ## Release Workflow
 
-- Versioning and changelogs use [Changesets](https://github.com/changesets/changesets).
+- Versioning and changelogs follow org policy: semantic-release or Changesets. This repository currently uses [Changesets](https://github.com/changesets/changesets).
 - On merges to `main`, `.github/workflows/release.yml` runs `changesets/action@v1` to publish to npm and create a GitHub release.
 - `release.yml` requires `GITHUB_TOKEN` and `NPM_TOKEN` secrets for publishing.
 
@@ -144,7 +150,7 @@ Environment variables:
 - Multi-provider translation
   - Providers: DashScope (Qwen), OpenAI, DeepL, OpenRouter, Anthropic/Claude, Mistral, Google, Ollama and macOS system translation via `lib/providers.js`.
   - Popup settings include preset buttons for OpenAI, DeepL, Ollama and macOS providers.
-- Providers are no longer auto-registered; call `qwenProviders.initProviders()` before translating when using built-ins. `qwenProviders.isInitialized()` reports whether defaults are loaded and the translator now logs a warning if a translation is attempted before initialization. Custom providers can create isolated registries via `qwenProviders.createRegistry()` and register prior to initialization to override or augment the defaults.
+ 
 - Providers are no longer auto-registered; call `qwenProviders.initProviders()` or `qwenProviders.ensureProviders()` before translating when using built-ins. `qwenProviders.isInitialized()` reports whether defaults are loaded and the translator now logs a one-time warning if a translation is attempted before initialization. Pass `{ autoInit: true }` to translation calls to invoke `initProviders()` on demand. Custom providers can create isolated registries via `qwenProviders.createRegistry()` and register prior to initialization to override or augment the defaults.
 - Provider order (`providerOrder`) and per-provider endpoints configurable; failover implemented with per-provider `runWithRetry` + rate-limit. Providers may include a `throttle` config to tune request/token limits per backend, with optional per-context queues (e.g., `stream`) for finer control.
 - Default config assumes roughly 500k free characters for Google/DeepL and tracks spend via `costPerInputToken`/`costPerOutputToken`. Background selects providers above `requestThreshold` and uses per-provider weights to balance load across those with available quota.
