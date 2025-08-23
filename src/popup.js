@@ -57,7 +57,11 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadLanguages() {
     try {
       const response = await fetch('i18n/languages.json');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const languages = await response.json();
+      targetLanguageSelect.innerHTML = ''; // Clear existing options
       for (const [code, name] of Object.entries(languages)) {
         const option = document.createElement('option');
         option.value = code;
@@ -66,6 +70,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (error) {
       console.error('Failed to load languages:', error);
+      // Add a fallback option
+      const option = document.createElement('option');
+      option.value = 'en';
+      option.textContent = 'English';
+      targetLanguageSelect.appendChild(option);
     }
   }
 
