@@ -4,58 +4,22 @@
   <meta charset="utf-8">
   <link rel="stylesheet" href="../styles/apple.css">
   <link rel="stylesheet" href="../styles/cyberpunk.css">
-  <style>
-    html {
-      background: var(--qwen-bg, rgba(28,28,30,0.7));
-    }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      color: var(--qwen-text, #f5f5f7);
-      margin: 0;
-      padding: 1rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-      overflow-x: hidden;
-      overflow-wrap: anywhere;
-    }
-    .auto-toggle {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.875rem;
-    }
-    .lang-select {
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-    }
-    .lang-select select {
-      flex: 1;
-    }
-    .theme-select {
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-    }
-    .theme-select select {
-      flex: 1;
-    }
-    .stats {
-      font-size: 0.75rem;
-    }
-    #providerKey {
-      margin-left: 0.25rem;
-    }
-  </style>
+  <link rel="stylesheet" href="../styles/popup.css">
 </head>
-<body>
+<body class="home">
   <button id="quickTranslate" class="primary">Translate page</button>
   <div class="lang-select">
+    <label for="srcLang">From</label>
     <select id="srcLang"></select>
-    <span>→</span>
+    <span aria-hidden="true">→</span>
+    <label for="destLang">To</label>
     <select id="destLang"></select>
   </div>
+  <div id="offlineBanner" class="stats">Offline: background reports no network. Translation may fail.</div>
+  <section id="perProvider">
+    <h3>Per-provider usage</h3>
+    <div id="providers"></div>
+  </section>
   <div class="theme-select">
     <label for="themeStyle">Theme</label>
     <select id="themeStyle">

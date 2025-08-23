@@ -16,6 +16,10 @@
   const advancedEl = overlay.querySelector('#pe_advanced');
   let currentId, cfg, refresh;
 
+  function close(){
+    overlay.style.display = 'none';
+  }
+
   function validUrl(u){
     if(!u) return true;
     try{ new URL(u); return true;}catch{return false;}
@@ -100,12 +104,18 @@
     if (!Array.isArray(cfg.providerOrder)) cfg.providerOrder = [];
     if (!cfg.providerOrder.includes(currentId)) cfg.providerOrder.push(currentId);
     window.qwenProviderConfig.saveProviderConfig(cfg);
-    overlay.style.display = 'none';
+    close();
     refresh?.();
   });
 
-  cancelBtn.addEventListener('click', () => {
-    overlay.style.display = 'none';
+  cancelBtn.addEventListener('click', close);
+
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) close();
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') close();
   });
 
   window.qwenProviderEditor = { open };

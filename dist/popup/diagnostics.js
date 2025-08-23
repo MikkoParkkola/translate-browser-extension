@@ -1,11 +1,13 @@
 (async function () {
-  const statusEl = document.getElementById('status');
-  const usageEl = document.getElementById('usage');
+  const statusTextEl = document.getElementById('statusText');
+  const usageMetricsEl = document.getElementById('usageMetrics');
+  const cacheMetricsEl = document.getElementById('cacheMetrics');
+  const providersListEl = document.getElementById('providerList');
   const cacheEl = document.getElementById('cache');
-  const providersEl = document.getElementById('providers');
   const backBtn = document.getElementById('back');
   const summaryEl = document.getElementById('usageSummary');
   const chartEl = document.getElementById('usageChart');
+  const histEl = document.getElementById('latencyHistogram');
   let Chart;
   if (chartEl) {
     await new Promise((resolve, reject) => {
@@ -30,6 +32,7 @@
     options: { scales: { y1: { type: 'linear', position: 'left' }, y2: { type: 'linear', position: 'right' } } }
   });
   const log = [];
+  const latencies = [];
   let metrics = {};
   let status = { active: false };
 
@@ -50,6 +53,10 @@
 
   function addEntry(e) {
     log.push(e);
+    if (typeof e.latency === 'number' && e.latency >= 0 && Number.isFinite(e.latency)) {
+      latencies.push(e.latency);
+      if (latencies.length > 200) latencies.shift();
+    }
     if (chart) {
       const label = new Date(e.ts).toLocaleTimeString();
       chart.data.labels.push(label);
@@ -57,15 +64,46 @@
       chart.data.datasets[1].data.push(e.latency);
       chart.update();
     }
+    drawHistogram();
     updateSummary();
+  }
+
+  function drawHistogram() {
+    if (!histEl) return;
+    const ctx = histEl.getContext('2d');
+    const w = histEl.width || histEl.clientWidth || 320;
+    const h = histEl.height || histEl.clientHeight || 80;
+    ctx.clearRect(0, 0, w, h);
+    if (!latencies.length) return;
+    const min = Math.min(...latencies);
+    const max = Math.max(...latencies);
+    const bins = Math.min(20, Math.max(5, Math.ceil(Math.sqrt(latencies.length))));
+    const counts = new Array(bins).fill(0);
+    const range = max - min || 1;
+    latencies.forEach(v => {
+      let idx = Math.floor(((v - min) / range) * bins);
+      if (idx >= bins) idx = bins - 1;
+      if (idx < 0) idx = 0;
+      counts[idx]++;
+    });
+    const maxCount = Math.max(...counts, 1);
+    const barW = (w - 2) / bins;
+    ctx.fillStyle = '#0d6efd';
+    counts.forEach((c, i) => {
+      const barH = Math.round((c / maxCount) * (h - 4));
+      const x = Math.round(i * barW) + 1;
+      const y = h - barH - 2;
+      ctx.fillRect(x, y, Math.max(1, Math.floor(barW) - 1), barH);
+    });
   }
 
   chrome.storage?.local?.get({ usageLog: [] }, data => {
     (data.usageLog || []).forEach(addEntry);
+    drawHistogram();
   });
 
   function updateStatus() {
-    if (statusEl) statusEl.textContent = status.active ? 'Translating…' : 'Idle';
+    if (statusTextEl) statusTextEl.textContent = status.active ? 'Translating…' : 'Idle';
   }
 
   chrome.runtime?.onMessage?.addListener(msg => {
@@ -86,21 +124,43 @@
 
   function render() {
     const u = metrics.usage || {};
-    usageEl.textContent = `Requests ${u.requests || 0}/${u.requestLimit || 0} | Tokens ${u.tokens || 0}/${u.tokenLimit || 0}`;
+    if (usageMetricsEl) {
+      usageMetricsEl.innerHTML = `
+        <dt>Requests</dt><dd>${u.requests || 0}/${u.requestLimit || 0}</dd>
+        <dt>Tokens</dt><dd>${u.tokens || 0}/${u.tokenLimit || 0}</dd>`;
+    }
     const c = metrics.cache || {};
     const tm = metrics.tm || {};
-    cacheEl.textContent = `Cache ${c.size || 0}/${c.max || 0} | TM hits ${tm.hits || 0} misses ${tm.misses || 0}`;
-    providersEl.innerHTML = '';
-    Object.entries(metrics.providers || {}).forEach(([id, p]) => {
-      const li = document.createElement('li');
-      li.textContent = `${id}: ${p.apiKey ? 'configured' : 'missing key'}`;
-      providersEl.appendChild(li);
-    });
+    if (cacheMetricsEl) {
+      cacheMetricsEl.innerHTML = `
+        <dt>Entries</dt><dd>${c.size || 0}/${c.max || 0}</dd>
+        <dt>TM hits</dt><dd>${tm.hits || 0}</dd>
+        <dt>TM misses</dt><dd>${tm.misses || 0}</dd>`;
+    }
+    if (providersListEl) {
+      providersListEl.innerHTML = '';
+      Object.entries(metrics.providers || {}).forEach(([id, p]) => {
+        const li = document.createElement('li');
+        li.textContent = `${id}: ${p.apiKey ? 'configured' : 'missing key'}`;
+        providersListEl.appendChild(li);
+      });
+    }
   }
 
   async function load() {
     if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
-    metrics = await new Promise(resolve => chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(resolve)));
+    metrics = await new Promise(resolve => chrome.runtime.sendMessage({ action: 'metrics-v1' }, handleLastError(m => {
+      if (m && m.version === 1) return resolve(m);
+      chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(resolve));
+    })));
+    // Load cost summary from usage endpoint
+    chrome.runtime.sendMessage({ action: 'usage' }, handleLastError(u => {
+      try {
+        const costsEl = document.getElementById('costs');
+        const c = u && u.costs && u.costs.total || {};
+        if (costsEl) costsEl.textContent = `Cost: 24h $${Number(c['24h']||0).toFixed(4)} | 7d $${Number(c['7d']||0).toFixed(4)}`;
+      } catch {}
+    }));
     status = await new Promise(resolve => chrome.runtime.sendMessage({ action: 'get-status' }, handleLastError(resolve)));
     render();
     updateStatus();
@@ -122,4 +182,3 @@
     } catch {}
   });
 })();
-

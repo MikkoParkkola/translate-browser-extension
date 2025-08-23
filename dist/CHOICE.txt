@@ -1,0 +1,12 @@
+Recommendation: do (1) first — make the collision‑resistant delimiter the default.
+
+Why: it's lower risk and tightly scoped (mostly translator.js). It reduces rare batch-collision bugs immediately without touching permissions/manifest behavior.
+
+If you confirm with "1", I'll provide precise SEARCH/REPLACE patches to:
+- Make makeDelimiter() produce a unique delimiter by default (enable the unique branch).
+- Ensure other code consuming the delimiter continues to work.
+- Update any tests or comments that relied on the previous default.
+
+If you prefer option 2 (reduce permissions and switch to optional_host_permissions + on-demand injection) reply with "2". If you want both in one change, reply "both".
+
+Please reply with exactly: 1, 2, or both.

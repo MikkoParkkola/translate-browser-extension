@@ -23,16 +23,16 @@
       let msg = resp.statusText;
       try { const err = await resp.json(); msg = err.message || err.message_detail || msg; } catch {}
       const error = new Error(`HTTP ${resp.status}: ${msg}`);
-      error.status = resp.status;
-      if (resp.status >= 500 || resp.status === 429) {
-        error.retryable = true;
-        const ra = resp.headers.get('retry-after');
-        if (ra) {
-          const ms = parseInt(ra, 10) * 1000;
-          if (ms > 0) error.retryAfter = ms;
-        }
-        if (resp.status === 429 && !error.retryAfter) error.retryAfter = 60000;
+      error.status = resp.status; error.code = `HTTP_${resp.status}`;
+      const ra = resp.headers && resp.headers.get && resp.headers.get('retry-after');
+      if (ra) {
+        let ms = Number(ra) * 1000; if (!Number.isFinite(ms)) { const t = Date.parse(ra); if (Number.isFinite(t)) ms = Math.max(0, t - Date.now()); }
+        if (Number.isFinite(ms)) error.retryAfter = Math.max(100, Math.min(ms, 60000));
       }
+      if (resp.status === 401 || resp.status === 403) error.retryable = false;
+      else if (resp.status === 429 || resp.status >= 500) error.retryable = true;
+      else error.retryable = false;
+      if (resp.status === 429 && !error.retryAfter) error.retryAfter = 60000;
       throw error;
     }
     const data = await resp.json();
@@ -70,4 +70,3 @@
     } catch {}
     return provider;
   }));
-

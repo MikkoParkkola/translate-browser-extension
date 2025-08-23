@@ -1,0 +1,281 @@
+/* styles/modern.css */
+
+/* ==========================================================================
+   Modern Theme - Design System
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Root Variables & Color Palette
+   -------------------------------------------------------------------------- */
+:root {
+  --font-family-sans: 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+  --font-family-monospace: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+
+  /* Light Theme */
+  --background-color-light: #f5f7fa;
+  --text-color-light: #2d3748;
+  --card-background-light: #ffffff;
+  --border-color-light: #e2e8f0;
+  --primary-color-light: #3490dc;
+  --primary-hover-light: #2779bd;
+  --secondary-text-light: #718096;
+  --shadow-color-light: rgba(0, 0, 0, 0.05);
+
+  /* Dark Theme */
+  --background-color-dark: #1a202c;
+  --text-color-dark: #e2e8f0;
+  --card-background-dark: #2d3748;
+  --border-color-dark: #4a5568;
+  --primary-color-dark: #63b3ed;
+  --primary-hover-dark: #4299e1;
+  --secondary-text-dark: #a0aec0;
+  --shadow-color-dark: rgba(0, 0, 0, 0.2);
+}
+
+/* --------------------------------------------------------------------------
+   Base Styles
+   -------------------------------------------------------------------------- */
+body {
+  font-family: var(--font-family-sans);
+  background-color: var(--background-color-light);
+  color: var(--text-color-light);
+  margin: 0;
+  padding: 1rem;
+  min-width: 350px;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+/* --------------------------------------------------------------------------
+   Dark Mode Styles
+   -------------------------------------------------------------------------- */
+body.dark {
+  background-color: var(--background-color-dark);
+  color: var(--text-color-dark);
+}
+
+/* --------------------------------------------------------------------------
+   Header & Navigation
+   -------------------------------------------------------------------------- */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.header h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.nav-icons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.nav-icons button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+.nav-icons button:hover {
+  background-color: var(--border-color-light);
+}
+
+body.dark .nav-icons button:hover {
+  background-color: var(--border-color-dark);
+}
+
+.nav-icons svg {
+  width: 18px;
+  height: 18px;
+  stroke: var(--secondary-text-light);
+}
+
+body.dark .nav-icons svg {
+  stroke: var(--secondary-text-dark);
+}
+
+/* --------------------------------------------------------------------------
+   Provider Cards
+   -------------------------------------------------------------------------- */
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1rem;
+}
+
+.provider-card {
+  background-color: var(--card-background-light);
+  border: 1px solid var(--border-color-light);
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 6px var(--shadow-color-light);
+}
+
+body.dark .provider-card {
+  background-color: var(--card-background-dark);
+  border-color: var(--border-color-dark);
+  box-shadow: 0 4px 6px var(--shadow-color-dark);
+}
+
+.provider-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 15px var(--shadow-color-light);
+}
+
+body.dark .provider-card:hover {
+  box-shadow: 0 10px 15px var(--shadow-color-dark);
+}
+
+.provider-card.active {
+  border-color: var(--primary-color-light);
+  box-shadow: 0 0 0 3px var(--primary-color-light);
+}
+
+body.dark .provider-card.active {
+  border-color: var(--primary-color-dark);
+  box-shadow: 0 0 0 3px var(--primary-color-dark);
+}
+
+.provider-card h2 {
+  font-size: 1rem;
+  font-weight: 500;
+  margin: 0.5rem 0 0;
+}
+
+/* --------------------------------------------------------------------------
+   Form Elements
+   -------------------------------------------------------------------------- */
+.form-group {
+  margin-top: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  color: var(--secondary-text-light);
+}
+
+body.dark .form-group label {
+  color: var(--secondary-text-dark);
+}
+
+.form-group select,
+.form-group input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color-light);
+  border-radius: 6px;
+  background-color: var(--card-background-light);
+  color: var(--text-color-light);
+  font-size: 1rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+body.dark .form-group select,
+body.dark .form-group input {
+  background-color: var(--card-background-dark);
+  border-color: var(--border-color-dark);
+  color: var(--text-color-dark);
+}
+
+.form-group select:focus,
+.form-group input:focus {
+  outline: none;
+  border-color: var(--primary-color-light);
+  box-shadow: 0 0 0 3px var(--primary-color-light);
+}
+
+body.dark .form-group select:focus,
+body.dark .form-group input:focus {
+  border-color: var(--primary-color-dark);
+  box-shadow: 0 0 0 3px var(--primary-color-dark);
+}
+
+/* --------------------------------------------------------------------------
+   Buttons
+   -------------------------------------------------------------------------- */
+.button-primary {
+  background-color: var(--primary-color-light);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  width: 100%;
+  margin-top: 1.5rem;
+}
+
+.button-primary:hover {
+  background-color: var(--primary-hover-light);
+}
+
+body.dark .button-primary {
+  background-color: var(--primary-color-dark);
+}
+
+body.dark .button-primary:hover {
+  background-color: var(--primary-hover-dark);
+}
+
+/* --------------------------------------------------------------------------
+   Animations & States
+   -------------------------------------------------------------------------- */
+.fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+body.dark .loading-overlay {
+  background-color: rgba(0, 0, 0, 0.8);
+}
+
+.spinner {
+  border: 4px solid var(--border-color-light);
+  border-top: 4px solid var(--primary-color-light);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+}
+
+body.dark .spinner {
+  border-color: var(--border-color-dark);
+  border-top-color: var(--primary-color-dark);
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

@@ -832,6 +832,32 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
     });
     return true;
   }
+  if (msg.action === 'getProviders') {
+    // Ensure providers are initialized
+    if (self.qwenProviders && self.qwenProviders.ensureProviders) {
+      self.qwenProviders.ensureProviders();
+    }
+    
+    // Get list of available providers
+    let providers = [];
+    if (self.qwenProviders && self.qwenProviders.listProviders) {
+      providers = self.qwenProviders.listProviders().map(p => ({
+        id: p.name,
+        name: p.label || p.name
+      }));
+    } else {
+      // Fallback to default providers
+      providers = [
+        { id: 'qwen', name: 'Qwen' },
+        { id: 'google', name: 'Google' },
+        { id: 'deepl', name: 'DeepL' },
+        { id: 'openai', name: 'OpenAI' }
+      ];
+    }
+    
+    sendResponse({ providers });
+    return true;
+  }
   if (msg.action === 'tm-cache-metrics') {
     const tmMetrics = (self.qwenTM && self.qwenTM.stats) ? self.qwenTM.stats() : {};
     const cacheStats = self.qwenGetCacheStats ? self.qwenGetCacheStats() : {};

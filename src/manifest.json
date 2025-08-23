@@ -29,6 +29,7 @@
     "default_popup": "popup.html",
     "default_title": "TRANSLATE! by Mikko"
   },
+  "options_page": "options.html",
   "commands": {
     "translate-selection": {
       "suggested_key": { "default": "Ctrl+Shift+T" },

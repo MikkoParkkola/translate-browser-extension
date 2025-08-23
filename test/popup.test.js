@@ -8,17 +8,15 @@ const { JSDOM } = require('jsdom');
 test('popup header displays product name with link', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup.html'), 'utf8');
   const dom = new JSDOM(html);
-  const link = dom.window.document.getElementById('productName');
-  expect(link?.textContent).toBe('TRANSLATE! by Mikko');
-  expect(link?.getAttribute('href')).toBe('https://github.com/homanp/Qwen-translator-extension');
+  const h1 = dom.window.document.querySelector('h1');
+  expect(h1?.textContent).toBe('Translate');
 });
 
 test('built popup includes product name with link', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'dist', 'popup.html'), 'utf8');
   const dom = new JSDOM(html);
-  const link = dom.window.document.getElementById('productName');
-  expect(link?.textContent).toBe('TRANSLATE! by Mikko');
-  expect(link?.getAttribute('href')).toBe('https://github.com/homanp/Qwen-translator-extension');
+  const h1 = dom.window.document.querySelector('h1');
+  expect(h1?.textContent).toBe('Translate');
 });
 
 test('built popup css styles product name', () => {

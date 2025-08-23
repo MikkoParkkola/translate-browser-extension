@@ -3,12 +3,11 @@
 document.addEventListener('DOMContentLoaded', () => {
   const themeSelector = document.getElementById('theme-selector');
   const settingsButton = document.getElementById('settings-button');
-  const providerGrid = document.getElementById('provider-grid');
   const targetLanguageSelect = document.getElementById('target-language');
   const translateButton = document.getElementById('translate-button');
   const loadingOverlay = document.getElementById('loading-overlay');
-
-  let activeProvider = null;
+  const autoTranslateToggle = document.getElementById('auto-translate-toggle');
+  const statsDisplay = document.getElementById('stats-display');
 
   // --------------------------------------------------------------------------
   // Initialization
@@ -16,8 +15,9 @@ document.addEventListener('DOMContentLoaded', () => {
   async function initialize() {
     await loadTheme();
     await loadLanguages();
-    await loadProviders();
+    await loadSettings();
     setupEventListeners();
+    updateStats();
   }
 
   // --------------------------------------------------------------------------
@@ -78,21 +78,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function loadProviders() {
-    try {
-      const response = await fetch('providers.json');
-      const providers = await response.json();
-      providerGrid.innerHTML = '';
-      providers.forEach(provider => {
-        const card = document.createElement('div');
-        card.className = 'provider-card';
-        card.dataset.provider = provider.id;
-        card.innerHTML = `<h2>${provider.name}</h2>`;
-        providerGrid.appendChild(card);
-      });
-    } catch (error) {
-      console.error('Failed to load providers:', error);
-    }
+  async function loadSettings() {
+    const { autoTranslate, targetLanguage } = await chrome.storage.local.get({ autoTranslate: false, targetLanguage: 'en' });
+    autoTranslateToggle.checked = autoTranslate;
+    targetLanguageSelect.value = targetLanguage;
   }
 
   // --------------------------------------------------------------------------
@@ -101,15 +90,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function setupEventListeners() {
     themeSelector.addEventListener('change', handleThemeChange);
     settingsButton.addEventListener('click', () => chrome.runtime.openOptionsPage());
-
-    providerGrid.addEventListener('click', (e) => {
-      const card = e.target.closest('.provider-card');
-      if (card) {
-        setActiveProvider(card.dataset.provider);
-      }
-    });
-
     translateButton.addEventListener('click', handleTranslate);
+    autoTranslateToggle.addEventListener('change', handleAutoTranslateToggle);
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
@@ -121,27 +103,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // --------------------------------------------------------------------------
   // Core Logic
   // --------------------------------------------------------------------------
-  function setActiveProvider(providerId) {
-    activeProvider = providerId;
-    const cards = providerGrid.querySelectorAll('.provider-card');
-    cards.forEach(card => {
-      card.classList.toggle('active', card.dataset.provider === providerId);
-    });
-  }
-
   async function handleTranslate() {
-    if (!activeProvider) {
-      alert('Please select a translation provider.');
-      return;
-    }
-
     loadingOverlay.style.display = 'flex';
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       await chrome.tabs.sendMessage(tab.id, {
         action: 'translatePage',
-        provider: activeProvider,
         targetLanguage: targetLanguageSelect.value,
       });
       window.close();
@@ -151,6 +119,26 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       loadingOverlay.style.display = 'none';
     }
+  }
+
+  function handleAutoTranslateToggle() {
+    chrome.storage.local.set({ autoTranslate: autoTranslateToggle.checked });
+  }
+
+  async function updateStats() {
+    chrome.runtime.sendMessage({ action: 'metrics' }, response => {
+      if (chrome.runtime.lastError) {
+        console.error('Failed to get metrics:', chrome.runtime.lastError);
+        statsDisplay.textContent = 'Error loading stats.';
+        return;
+      }
+      
+      if (response && response.usage) {
+        statsDisplay.textContent = JSON.stringify(response.usage, null, 2);
+      } else {
+        statsDisplay.textContent = 'No usage data available.';
+      }
+    });
   }
 
   initialize();
