@@ -20,6 +20,8 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - name: Inject Extension ID
+        run: sed -i "s/YOUR_EXTENSION_ID/${{ secrets.EXTENSION_ID }}/g" updates.xml
       - uses: changesets/action@v1
         with:
           publish: npm publish
