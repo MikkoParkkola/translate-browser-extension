@@ -1,33 +1,35 @@
 // src/popup.js
 
-document.addEventListener('DOMContentLoaded', () => {
-  const themeSelector = document.getElementById('theme-selector');
-  const settingsButton = document.getElementById('settings-button');
-  const targetLanguageSelect = document.getElementById('target-language');
-  const translateButton = document.getElementById('translate-button');
-  const loadingOverlay = document.getElementById('loading-overlay');
-  const autoTranslateToggle = document.getElementById('auto-translate-toggle');
-  const statsDisplay = document.getElementById('stats-display');
+(function () {
+  const frame = document.getElementById('content');
+  const settingsBtn = document.getElementById('settingsBtn');
+  let current = 'home.html';
 
-  // --------------------------------------------------------------------------
-  // Initialization
-  // --------------------------------------------------------------------------
-  async function initialize() {
-    await loadTheme();
-    await loadLanguages();
-    await loadSettings();
-    setupEventListeners();
-    updateStats();
+  function handleLastError(cb) {
+    return (...args) => {
+      const err = chrome.runtime.lastError;
+      if (err && !err.message.includes('Receiving end does not exist')) console.debug(err);
+      if (typeof cb === 'function') cb(...args);
+    };
   }
 
-  // --------------------------------------------------------------------------
-  // Theme Management
-  // --------------------------------------------------------------------------
-  async function loadTheme() {
-    const { theme } = await chrome.storage.local.get({ theme: 'modern' });
-    themeSelector.value = theme;
+  function resize() {
+    if (!frame) return;
+    try {
+      const doc = frame.contentDocument;
+      if (doc) {
+        const { scrollHeight, scrollWidth } = doc.documentElement;
+        frame.style.height = scrollHeight + 'px';
+        frame.style.width = scrollWidth + 'px';
+        document.body.style.width = scrollWidth + 'px';
+      }
+    } catch {}
+  }
+
+  chrome.storage?.local?.get({ theme: 'modern' }, data => {
+    const theme = data.theme || 'modern';
     applyTheme(theme);
-  }
+  });
 
   function applyTheme(theme) {
     document.querySelectorAll('link[data-theme]').forEach(link => link.remove());
@@ -45,101 +47,81 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function handleThemeChange() {
-    const newTheme = themeSelector.value;
-    applyTheme(newTheme);
-    chrome.storage.local.set({ theme: newTheme });
+  function load(page) {
+    if (frame) frame.src = `popup/${page}`;
+    current = page;
   }
 
-  // --------------------------------------------------------------------------
-  // Data Loading
-  // --------------------------------------------------------------------------
-  async function loadLanguages() {
+  settingsBtn?.addEventListener('click', () => {
+    load(current === 'settings.html' ? 'home.html' : 'settings.html');
+  });
+
+  let resizeObserver;
+  function observeResize() {
+    if (!frame) return;
     try {
-      const response = await fetch('i18n/languages.json');
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const languages = await response.json();
-      targetLanguageSelect.innerHTML = ''; // Clear existing options
-      for (const [code, name] of Object.entries(languages)) {
-        const option = document.createElement('option');
-        option.value = code;
-        option.textContent = name;
-        targetLanguageSelect.appendChild(option);
-      }
-    } catch (error) {
-      console.error('Failed to load languages:', error);
-      // Add a fallback option
-      const option = document.createElement('option');
-      option.value = 'en';
-      option.textContent = 'English';
-      targetLanguageSelect.appendChild(option);
-    }
-  }
-
-  async function loadSettings() {
-    const { autoTranslate, targetLanguage } = await chrome.storage.local.get({ autoTranslate: false, targetLanguage: 'en' });
-    autoTranslateToggle.checked = autoTranslate;
-    targetLanguageSelect.value = targetLanguage;
-  }
-
-  // --------------------------------------------------------------------------
-  // Event Listeners
-  // --------------------------------------------------------------------------
-  function setupEventListeners() {
-    themeSelector.addEventListener('change', handleThemeChange);
-    settingsButton.addEventListener('click', () => chrome.runtime.openOptionsPage());
-    translateButton.addEventListener('click', handleTranslate);
-    autoTranslateToggle.addEventListener('change', handleAutoTranslateToggle);
-
-    // Keyboard shortcuts
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') window.close();
-      if (e.ctrlKey && e.key === ',') chrome.runtime.openOptionsPage();
-    });
-  }
-
-  // --------------------------------------------------------------------------
-  // Core Logic
-  // --------------------------------------------------------------------------
-  async function handleTranslate() {
-    loadingOverlay.style.display = 'flex';
-
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      await chrome.tabs.sendMessage(tab.id, {
-        action: 'translatePage',
-        targetLanguage: targetLanguageSelect.value,
+      const doc = frame.contentDocument;
+      if (!doc) return;
+      resizeObserver?.disconnect();
+      resizeObserver = new ResizeObserver(() => {
+        resizeObserver.disconnect();
+        requestAnimationFrame(() => {
+          resize();
+          resizeObserver.observe(doc.documentElement);
+        });
       });
-      window.close();
-    } catch (error) {
-      console.error('Translation failed:', error);
-      alert('Failed to send translation request. Please check the console for details.');
-    } finally {
-      loadingOverlay.style.display = 'none';
+      resizeObserver.observe(doc.documentElement);
+    } catch {}
+  }
+  frame?.addEventListener('load', () => {
+    resize();
+    observeResize();
+  });
+  if (frame?.contentDocument && frame.contentDocument.readyState === 'complete') {
+    resize();
+    observeResize();
+  }
+
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (!msg || !msg.action) return;
+    switch (msg.action) {
+      case 'navigate':
+        if (msg.page === 'settings') load('settings.html');
+        else if (msg.page === 'home') load('home.html');
+        break;
+      case 'home:quick-translate':
+        chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
+          const t = tabs && tabs[0];
+          if (t) {
+            chrome.runtime.sendMessage({ action: 'ensure-start', tabId: t.id, url: t.url, targetLanguage: msg.targetLanguage }, handleLastError());
+          }
+        });
+        break;
+      case 'home:auto-translate':
+        chrome.storage?.local?.set({ autoTranslate: msg.enabled });
+        chrome.runtime.sendMessage({ action: 'set-config', config: { autoTranslate: msg.enabled } }, handleLastError());
+        if (!msg.enabled) {
+          chrome.tabs?.query?.({}, tabs => {
+            (tabs || []).forEach(t => {
+              if (t.id) chrome.tabs.sendMessage(t.id, { action: 'stop' }, handleLastError());
+            });
+          });
+        }
+        break;
+      case 'home:get-usage':
+        chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(m => {
+          sendResponse({ usage: m && m.usage });
+        }));
+        return true;
+      case 'settings:theme-change':
+        applyTheme(msg.theme);
+        chrome.storage.local.set({ theme: msg.theme });
+        break;
+      case 'settings:get-metrics':
+        chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(m => {
+          sendResponse(m);
+        }));
+        return true;
     }
-  }
-
-  function handleAutoTranslateToggle() {
-    chrome.storage.local.set({ autoTranslate: autoTranslateToggle.checked });
-  }
-
-  async function updateStats() {
-    chrome.runtime.sendMessage({ action: 'metrics' }, response => {
-      if (chrome.runtime.lastError) {
-        console.error('Failed to get metrics:', chrome.runtime.lastError);
-        statsDisplay.textContent = 'Error loading stats.';
-        return;
-      }
-      
-      if (response && response.usage) {
-        statsDisplay.textContent = JSON.stringify(response.usage, null, 2);
-      } else {
-        statsDisplay.textContent = 'No usage data available.';
-      }
-    });
-  }
-
-  initialize();
-});
+  });
+})();
