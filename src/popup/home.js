@@ -83,11 +83,33 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       
       if (response && response.usage) {
-        statsDisplay.textContent = JSON.stringify(response.usage, null, 2);
+        renderStatsChart(response.usage);
       } else {
         statsDisplay.textContent = 'No usage data available.';
       }
     });
+  }
+
+  function renderStatsChart(usage) {
+    const statsChart = document.getElementById('stats-chart');
+    statsChart.innerHTML = '';
+    for (const [key, value] of Object.entries(usage)) {
+      const barContainer = document.createElement('div');
+      barContainer.className = 'bar-container';
+      const barLabel = document.createElement('div');
+      barLabel.className = 'bar-label';
+      barLabel.textContent = key;
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      const barValue = document.createElement('div');
+      barValue.className = 'bar-value';
+      barValue.textContent = value;
+      bar.style.width = `${value}%`;
+      barContainer.appendChild(barLabel);
+      barContainer.appendChild(bar);
+      barContainer.appendChild(barValue);
+      statsChart.appendChild(barContainer);
+    }
   }
 
   initialize();
