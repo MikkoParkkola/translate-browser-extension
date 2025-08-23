@@ -1,127 +1,102 @@
 // src/popup.js
 
-(function () {
-  const frame = document.getElementById('content');
-  const settingsBtn = document.getElementById('settingsBtn');
-  let current = 'home.html';
+document.addEventListener('DOMContentLoaded', () => {
+  const settingsButton = document.getElementById('settings-button');
+  const sourceLanguageSelect = document.getElementById('source-language');
+  const targetLanguageSelect = document.getElementById('target-language');
+  const translateButton = document.getElementById('translate-button');
+  const autoTranslateToggle = document.getElementById('auto-translate-toggle');
+  const statsChart = document.getElementById('stats-chart');
 
-  function handleLastError(cb) {
-    return (...args) => {
-      const err = chrome.runtime.lastError;
-      if (err && !err.message.includes('Receiving end does not exist')) console.debug(err);
-      if (typeof cb === 'function') cb(...args);
-    };
+  async function initialize() {
+    await loadLanguages();
+    await loadSettings();
+    setupEventListeners();
+    updateStats();
   }
 
-  function resize() {
-    if (!frame) return;
+  async function loadLanguages() {
     try {
-      const doc = frame.contentDocument;
-      if (doc) {
-        const { scrollHeight, scrollWidth } = doc.documentElement;
-        frame.style.height = scrollHeight + 'px';
-        frame.style.width = scrollWidth + 'px';
-        document.body.style.width = scrollWidth + 'px';
+      const response = await fetch('i18n/languages.json');
+      if (!response.ok) throw new Error('Failed to load languages');
+      const languages = await response.json();
+      
+      for (const [code, name] of Object.entries(languages)) {
+        const option = new Option(name, code);
+        sourceLanguageSelect.add(option.cloneNode(true));
+        targetLanguageSelect.add(option);
       }
-    } catch {}
-  }
-
-  chrome.storage?.local?.get({ theme: 'modern' }, data => {
-    const theme = data.theme || 'modern';
-    applyTheme(theme);
-  });
-
-  function applyTheme(theme) {
-    document.querySelectorAll('link[data-theme]').forEach(link => link.remove());
-    if (theme !== 'modern') {
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = `styles/${theme}.css`;
-      link.dataset.theme = theme;
-      document.head.appendChild(link);
-    }
-    if (theme === 'cyberpunk') {
-      document.body.classList.add('dark');
-    } else {
-      document.body.classList.remove('dark');
+    } catch (error) {
+      console.error(error);
+      targetLanguageSelect.add(new Option('English', 'en'));
     }
   }
 
-  function load(page) {
-    if (frame) frame.src = `popup/${page}`;
-    current = page;
+  async function loadSettings() {
+    const { autoTranslate, sourceLanguage, targetLanguage } = await chrome.storage.local.get({
+      autoTranslate: false,
+      sourceLanguage: 'auto',
+      targetLanguage: 'en'
+    });
+    autoTranslateToggle.checked = autoTranslate;
+    sourceLanguageSelect.value = sourceLanguage;
+    targetLanguageSelect.value = targetLanguage;
   }
 
-  settingsBtn?.addEventListener('click', () => {
-    load(current === 'settings.html' ? 'home.html' : 'settings.html');
-  });
-
-  let resizeObserver;
-  function observeResize() {
-    if (!frame) return;
-    try {
-      const doc = frame.contentDocument;
-      if (!doc) return;
-      resizeObserver?.disconnect();
-      resizeObserver = new ResizeObserver(() => {
-        resizeObserver.disconnect();
-        requestAnimationFrame(() => {
-          resize();
-          resizeObserver.observe(doc.documentElement);
-        });
-      });
-      resizeObserver.observe(doc.documentElement);
-    } catch {}
-  }
-  frame?.addEventListener('load', () => {
-    resize();
-    observeResize();
-  });
-  if (frame?.contentDocument && frame.contentDocument.readyState === 'complete') {
-    resize();
-    observeResize();
+  function setupEventListeners() {
+    settingsButton.addEventListener('click', () => chrome.runtime.openOptionsPage());
+    translateButton.addEventListener('click', handleTranslate);
+    autoTranslateToggle.addEventListener('change', handleAutoTranslateToggle);
+    sourceLanguageSelect.addEventListener('change', () => chrome.storage.local.set({ sourceLanguage: sourceLanguageSelect.value }));
+    targetLanguageSelect.addEventListener('change', () => chrome.storage.local.set({ targetLanguage: targetLanguageSelect.value }));
   }
 
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (!msg || !msg.action) return;
-    switch (msg.action) {
-      case 'navigate':
-        if (msg.page === 'settings') load('settings.html');
-        else if (msg.page === 'home') load('home.html');
-        break;
-      case 'home:quick-translate':
-        chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
-          const t = tabs && tabs[0];
-          if (t) {
-            chrome.runtime.sendMessage({ action: 'ensure-start', tabId: t.id, url: t.url, targetLanguage: msg.targetLanguage }, handleLastError());
-          }
-        });
-        break;
-      case 'home:auto-translate':
-        chrome.storage?.local?.set({ autoTranslate: msg.enabled });
-        chrome.runtime.sendMessage({ action: 'set-config', config: { autoTranslate: msg.enabled } }, handleLastError());
-        if (!msg.enabled) {
-          chrome.tabs?.query?.({}, tabs => {
-            (tabs || []).forEach(t => {
-              if (t.id) chrome.tabs.sendMessage(t.id, { action: 'stop' }, handleLastError());
-            });
-          });
-        }
-        break;
-      case 'home:get-usage':
-        chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(m => {
-          sendResponse({ usage: m && m.usage });
-        }));
-        return true;
-      case 'settings:theme-change':
-        applyTheme(msg.theme);
-        chrome.storage.local.set({ theme: msg.theme });
-        break;
-      case 'settings:get-metrics':
-        chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(m => {
-          sendResponse(m);
-        }));
-        return true;
+  async function handleTranslate() {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    chrome.tabs.sendMessage(tab.id, {
+      action: 'translatePage',
+      sourceLanguage: sourceLanguageSelect.value,
+      targetLanguage: targetLanguageSelect.value,
+    });
+    window.close();
+  }
+
+  function handleAutoTranslateToggle() {
+    chrome.storage.local.set({ autoTranslate: autoTranslateToggle.checked });
+  }
+
+  function updateStats() {
+    chrome.runtime.sendMessage({ action: 'metrics' }, response => {
+      if (chrome.runtime.lastError) {
+        console.error(chrome.runtime.lastError);
+        return;
+      }
+      renderStatsChart(response.usage || {});
+    });
+  }
+
+  function renderStatsChart(usage) {
+    statsChart.innerHTML = '';
+    for (const [key, value] of Object.entries(usage)) {
+      const barContainer = document.createElement('div');
+      barContainer.className = 'bar-container';
+      
+      const barLabel = document.createElement('div');
+      barLabel.className = 'bar-label';
+      barLabel.textContent = key;
+
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      bar.style.width = `${value}%`;
+
+      const barValue = document.createElement('div');
+      barValue.className = 'bar-value';
+      barValue.textContent = value;
+
+      barContainer.append(barLabel, bar, barValue);
+      statsChart.appendChild(barContainer);
     }
-  });
-})();
+  }
+
+  initialize();
+});
