@@ -1,122 +1,148 @@
-(function () {
-  const frame = document.getElementById('content');
-  const settingsBtn = document.getElementById('settingsBtn');
-  let current = 'home.html';
+// src/popup.js
 
-  function handleLastError(cb) {
-    return (...args) => {
-      const err = chrome.runtime.lastError;
-      if (err && !err.message.includes('Receiving end does not exist')) console.debug(err);
-      if (typeof cb === 'function') cb(...args);
-    };
+document.addEventListener('DOMContentLoaded', () => {
+  const themeSelector = document.getElementById('theme-selector');
+  const settingsButton = document.getElementById('settings-button');
+  const providerGrid = document.getElementById('provider-grid');
+  const targetLanguageSelect = document.getElementById('target-language');
+  const translateButton = document.getElementById('translate-button');
+  const loadingOverlay = document.getElementById('loading-overlay');
+
+  let activeProvider = null;
+
+  // --------------------------------------------------------------------------
+  // Initialization
+  // --------------------------------------------------------------------------
+  async function initialize() {
+    await loadTheme();
+    await loadLanguages();
+    await loadProviders();
+    setupEventListeners();
   }
 
-  function resize() {
-    if (!frame) return;
-    try {
-      const doc = frame.contentDocument;
-      if (doc) {
-        const { scrollHeight, scrollWidth } = doc.documentElement;
-        frame.style.height = scrollHeight + 'px';
-        frame.style.width = scrollWidth + 'px';
-        document.body.style.width = scrollWidth + 'px';
-      }
-    } catch {}
+  // --------------------------------------------------------------------------
+  // Theme Management
+  // --------------------------------------------------------------------------
+  async function loadTheme() {
+    const { theme } = await chrome.storage.local.get({ theme: 'modern' });
+    themeSelector.value = theme;
+    applyTheme(theme);
   }
 
-  chrome.storage?.sync?.get({ theme: 'dark' }, data => {
-    const theme = data.theme || 'dark';
-    document.documentElement.setAttribute('data-qwen-color', theme);
-    chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
-      const t = tabs && tabs[0];
-      if (t) chrome.tabs.sendMessage(t.id, { action: 'update-theme', theme }, handleLastError());
-    });
-  });
-
-  function load(page) {
-    if (frame) frame.src = `popup/${page}`;
-    current = page;
-  }
-
-  settingsBtn?.addEventListener('click', () => {
-    load(current === 'settings.html' ? 'home.html' : 'settings.html');
-  });
-
-  let resizeObserver;
-  function observeResize() {
-    if (!frame) return;
-    try {
-      const doc = frame.contentDocument;
-      if (!doc) return;
-      resizeObserver?.disconnect();
-      resizeObserver = new ResizeObserver(() => {
-        resizeObserver.disconnect();
-        requestAnimationFrame(() => {
-          resize();
-          resizeObserver.observe(doc.documentElement);
-        });
-      });
-      resizeObserver.observe(doc.documentElement);
-    } catch {}
-  }
-  frame?.addEventListener('load', () => {
-    resize();
-    observeResize();
-  });
-  if (frame?.contentDocument && frame.contentDocument.readyState === 'complete') {
-    resize();
-    observeResize();
-  }
-
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (!msg || !msg.action) return;
-    switch (msg.action) {
-      case 'navigate':
-        if (msg.page === 'settings') load('settings.html');
-        else if (msg.page === 'home') load('home.html');
-        break;
-      case 'home:quick-translate':
-        chrome.tabs?.query?.({ active: true, currentWindow: true }, tabs => {
-          const t = tabs && tabs[0];
-          if (t) {
-            chrome.runtime.sendMessage({ action: 'ensure-start', tabId: t.id, url: t.url }, handleLastError());
-          }
-        });
-        break;
-      case 'home:auto-translate':
-        chrome.storage?.sync?.set({ autoTranslate: msg.enabled });
-        chrome.runtime.sendMessage({ action: 'set-config', config: { autoTranslate: msg.enabled } }, handleLastError());
-        if (!msg.enabled) {
-          chrome.tabs?.query?.({}, tabs => {
-            (tabs || []).forEach(t => {
-              if (t.id) chrome.tabs.sendMessage(t.id, { action: 'stop' }, handleLastError());
-            });
-          });
-        }
-        break;
-      case 'home:init':
-        Promise.all([
-          new Promise(res => chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(res))),
-          (window.qwenProviderConfig
-            ? window.qwenProviderConfig.loadProviderConfig()
-            : Promise.resolve({ providerOrder: [], provider: 'default' })),
-          new Promise(res => chrome.storage?.sync?.get({ autoTranslate: false }, res)),
-        ]).then(([metrics, provCfg, autoCfg]) => {
-          const provider = (provCfg.providerOrder && provCfg.providerOrder[0]) || provCfg.provider || 'default';
-          const usage = metrics && metrics.usage ? metrics.usage : {};
-          const cache = metrics && metrics.cache ? metrics.cache : {};
-          const tm = metrics && metrics.tm ? metrics.tm : {};
-          const provUsage = metrics && metrics.providersUsage ? metrics.providersUsage : {};
-          const apiKey = !!(metrics && metrics.providers && metrics.providers[provider] && metrics.providers[provider].apiKey);
-          const active = metrics && metrics.status ? !!metrics.status.active : false;
-          sendResponse({ provider, apiKey, usage, cache, tm, providers: provUsage, auto: autoCfg.autoTranslate, active });
-        });
-        return true;
-      case 'home:get-usage':
-        chrome.runtime.sendMessage({ action: 'metrics' }, handleLastError(m => {
-          sendResponse({ usage: m && m.usage });
-        }));
-        return true;
+  function applyTheme(theme) {
+    document.querySelectorAll('link[data-theme]').forEach(link => link.remove());
+    if (theme !== 'modern') {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = `styles/${theme}.css`;
+      link.dataset.theme = theme;
+      document.head.appendChild(link);
     }
-  });
-})();
+    if (theme === 'cyberpunk') {
+      document.body.classList.add('dark');
+    } else {
+      document.body.classList.remove('dark');
+    }
+  }
+
+  function handleThemeChange() {
+    const newTheme = themeSelector.value;
+    applyTheme(newTheme);
+    chrome.storage.local.set({ theme: newTheme });
+  }
+
+  // --------------------------------------------------------------------------
+  // Data Loading
+  // --------------------------------------------------------------------------
+  async function loadLanguages() {
+    try {
+      const response = await fetch('i18n/languages.json');
+      const languages = await response.json();
+      for (const [code, name] of Object.entries(languages)) {
+        const option = document.createElement('option');
+        option.value = code;
+        option.textContent = name;
+        targetLanguageSelect.appendChild(option);
+      }
+    } catch (error) {
+      console.error('Failed to load languages:', error);
+    }
+  }
+
+  async function loadProviders() {
+    try {
+      const response = await fetch('providers.json');
+      const providers = await response.json();
+      providerGrid.innerHTML = '';
+      providers.forEach(provider => {
+        const card = document.createElement('div');
+        card.className = 'provider-card';
+        card.dataset.provider = provider.id;
+        card.innerHTML = `<h2>${provider.name}</h2>`;
+        providerGrid.appendChild(card);
+      });
+    } catch (error) {
+      console.error('Failed to load providers:', error);
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Event Listeners
+  // --------------------------------------------------------------------------
+  function setupEventListeners() {
+    themeSelector.addEventListener('change', handleThemeChange);
+    settingsButton.addEventListener('click', () => chrome.runtime.openOptionsPage());
+
+    providerGrid.addEventListener('click', (e) => {
+      const card = e.target.closest('.provider-card');
+      if (card) {
+        setActiveProvider(card.dataset.provider);
+      }
+    });
+
+    translateButton.addEventListener('click', handleTranslate);
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') window.close();
+      if (e.ctrlKey && e.key === ',') chrome.runtime.openOptionsPage();
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // Core Logic
+  // --------------------------------------------------------------------------
+  function setActiveProvider(providerId) {
+    activeProvider = providerId;
+    const cards = providerGrid.querySelectorAll('.provider-card');
+    cards.forEach(card => {
+      card.classList.toggle('active', card.dataset.provider === providerId);
+    });
+  }
+
+  async function handleTranslate() {
+    if (!activeProvider) {
+      alert('Please select a translation provider.');
+      return;
+    }
+
+    loadingOverlay.style.display = 'flex';
+
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      await chrome.tabs.sendMessage(tab.id, {
+        action: 'translatePage',
+        provider: activeProvider,
+        targetLanguage: targetLanguageSelect.value,
+      });
+      window.close();
+    } catch (error) {
+      console.error('Translation failed:', error);
+      alert('Failed to send translation request. Please check the console for details.');
+    } finally {
+      loadingOverlay.style.display = 'none';
+    }
+  }
+
+  initialize();
+});

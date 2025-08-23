@@ -1,23 +1,47 @@
 <!DOCTYPE html>
-<html data-qwen-theme="apple">
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <link rel="stylesheet" href="styles/apple.css">
-  <link rel="stylesheet" href="styles/cyberpunk.css">
-  <link rel="stylesheet" href="styles/popup.css">
-  <link rel="stylesheet" href="popup.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Qwen Translator</title>
+  <link rel="stylesheet" href="styles/modern.css">
 </head>
-<body class="popup">
-  <header id="nav">
-    <a id="productName" href="https://github.com/homanp/Qwen-translator-extension" target="_blank" rel="noopener noreferrer">TRANSLATE! by Mikko</a>
-    <button id="settingsBtn" class="icon-button" aria-label="Settings">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <use href="icons/settings.svg#settings-icon"></use>
-      </svg>
-    </button>
-  </header>
-  <iframe id="content" src="popup/home.html"></iframe>
-  <script src="providerConfig.js"></script>
+<body>
+  <div class="container fade-in">
+    <header class="header">
+      <h1>Translate</h1>
+      <div class="nav-icons">
+        <select id="theme-selector">
+          <option value="modern">Modern</option>
+          <option value="apple">Apple</option>
+          <option value="cyberpunk">Cyberpunk</option>
+        </select>
+        <button id="settings-button" aria-label="Settings">
+          <!-- SVG for settings icon -->
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <div id="provider-grid" class="provider-grid">
+        <!-- Provider cards will be injected here -->
+      </div>
+
+      <div class="form-group">
+        <label for="target-language">Target Language</label>
+        <select id="target-language">
+          <!-- Language options will be injected here -->
+        </select>
+      </div>
+
+      <button id="translate-button" class="button-primary">Translate Page</button>
+    </main>
+  </div>
+
+  <div id="loading-overlay" class="loading-overlay" style="display: none;">
+    <div class="spinner"></div>
+  </div>
+
   <script src="popup.js"></script>
 </body>
 </html>

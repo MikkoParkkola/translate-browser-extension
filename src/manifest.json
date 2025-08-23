@@ -45,6 +45,7 @@
         "throttle.js",
         "styles/apple.css",
         "styles/cyberpunk.css",
+        "styles/modern.css",
         "pdfViewer.html",
         "pdfViewer.js",
         "sessionPdf.js",
