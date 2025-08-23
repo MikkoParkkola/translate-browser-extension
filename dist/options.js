@@ -234,11 +234,17 @@
         // Format quota and rate limit usage information
         let quotaText = '';
         for (const [provider, usage] of Object.entries(response.providersUsage)) {
-          quotaText += `${provider}:\n`;
-          quotaText += `  Requests (last minute): ${usage.requests}\n`;
-          quotaText += `  Tokens (last minute): ${usage.tokens}\n`;
-          quotaText += `  Total requests: ${usage.totalRequests}\n`;
-          quotaText += `  Total tokens: ${usage.totalTokens}\n\n`;
+          quotaText += `${provider}:
+`;
+          quotaText += `  Requests (last minute): ${usage.requests}
+`;
+          quotaText += `  Tokens (last minute): ${usage.tokens}
+`;
+          quotaText += `  Total requests: ${usage.totalRequests}
+`;
+          quotaText += `  Total tokens: ${usage.totalTokens}
+
+`;
         }
         quotaStats.textContent = quotaText || 'No quota data available';
       }
@@ -318,4 +324,347 @@
       reader.readAsText(file);
     });
   }
+
+  // Provider management functionality
+  const providerList = document.getElementById('providerList');
+  const addProvider = document.getElementById('addProvider');
+  const addProviderOverlay = document.getElementById('addProviderOverlay');
+  const ap_step1 = document.getElementById('ap_step1');
+  const ap_step2 = document.getElementById('ap_step2');
+  const ap_preset = document.getElementById('ap_preset');
+  const ap_next = document.getElementById('ap_next');
+  const ap_back = document.getElementById('ap_back');
+  const ap_create = document.getElementById('ap_create');
+  const ap_cancel1 = document.getElementById('ap_cancel1');
+  const ap_fields = document.getElementById('ap_fields');
+  
+  // Provider editor elements
+  const providerEditorOverlay = document.getElementById('providerEditorOverlay');
+  const pe_apiKey = document.getElementById('pe_apiKey');
+  const pe_apiEndpoint = document.getElementById('pe_apiEndpoint');
+  const pe_modelSelect = document.getElementById('pe_modelSelect');
+  const pe_modelInput = document.getElementById('pe_modelInput');
+  const pe_modelLabel = document.getElementById('pe_modelLabel');
+  const pe_requestLimit = document.getElementById('pe_requestLimit');
+  const pe_tokenLimit = document.getElementById('pe_tokenLimit');
+  const pe_charLimit = document.getElementById('pe_charLimit');
+  const pe_strategy = document.getElementById('pe_strategy');
+  const pe_costPerInputToken = document.getElementById('pe_costPerInputToken');
+  const pe_costPerOutputToken = document.getElementById('pe_costPerOutputToken');
+  const pe_weight = document.getElementById('pe_weight');
+  const pe_save = document.getElementById('pe_save');
+  const pe_cancel = document.getElementById('pe_cancel');
+  const pe_advanced = document.getElementById('pe_advanced');
+  
+  // Current provider being edited
+  let currentProvider = null;
+  
+  // Provider configuration templates
+  const providerTemplates = {
+    openai: {
+      name: 'OpenAI',
+      fields: ['apiKey', 'apiEndpoint', 'model'],
+      defaults: {
+        apiEndpoint: 'https://api.openai.com/v1',
+        model: 'gpt-3.5-turbo'
+      }
+    },
+    deepl: {
+      name: 'DeepL',
+      fields: ['apiKey', 'apiEndpoint'],
+      defaults: {
+        apiEndpoint: 'https://api.deepl.com/v2'
+      }
+    },
+    ollama: {
+      name: 'Ollama',
+      fields: ['apiEndpoint', 'model'],
+      defaults: {
+        apiEndpoint: 'http://localhost:11434/api',
+        model: 'llama2'
+      }
+    },
+    macos: {
+      name: 'macOS',
+      fields: [],
+      defaults: {}
+    },
+    custom: {
+      name: 'Custom',
+      fields: ['apiKey', 'apiEndpoint', 'model'],
+      defaults: {
+        apiEndpoint: '',
+        model: ''
+      }
+    }
+  };
+  
+  // Initialize provider list
+  function renderProviders() {
+    if (!providerList) return;
+    
+    providerList.innerHTML = '';
+    
+    // Render built-in providers
+    if (window.qwenProviders && window.qwenProviders.listProviders) {
+      const builtinProviders = window.qwenProviders.listProviders();
+      builtinProviders.forEach(provider => {
+        const card = document.createElement('div');
+        card.className = 'provider-card';
+        card.innerHTML = `
+          <h4>${provider.label || provider.name}</h4>
+          <p>Built-in provider</p>
+          <button class="configure-btn" data-provider="${provider.name}">Configure</button>
+        `;
+        providerList.appendChild(card);
+      });
+    }
+    
+    // Render local providers
+    if (store.localProviders && Array.isArray(store.localProviders)) {
+      store.localProviders.forEach((provider, index) => {
+        const card = document.createElement('div');
+        card.className = 'provider-card local';
+        card.innerHTML = `
+          <h4>${provider.name || 'Custom Provider'}</h4>
+          <p>Local provider</p>
+          <button class="configure-btn" data-local-index="${index}">Configure</button>
+          <button class="delete-btn" data-local-index="${index}">Delete</button>
+        `;
+        providerList.appendChild(card);
+      });
+    }
+    
+    // Add event listeners to configure buttons
+    providerList.querySelectorAll('.configure-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const providerName = btn.dataset.provider;
+        const localIndex = btn.dataset.localIndex;
+        
+        if (providerName) {
+          // Configure built-in provider
+          configureBuiltinProvider(providerName);
+        } else if (localIndex !== undefined) {
+          // Configure local provider
+          configureLocalProvider(parseInt(localIndex));
+        }
+      });
+    });
+    
+    // Add event listeners to delete buttons
+    providerList.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const localIndex = parseInt(btn.dataset.localIndex);
+        deleteLocalProvider(localIndex);
+      });
+    });
+  }
+  
+  // Configure built-in provider
+  function configureBuiltinProvider(providerName) {
+    // For now, just show an alert - built-in providers are configured differently
+    alert(`Built-in provider ${providerName} configuration would go here.`);
+  }
+  
+  // Configure local provider
+  function configureLocalProvider(index) {
+    currentProvider = {
+      index: index,
+      ...store.localProviders[index]
+    };
+    
+    // Populate the editor fields
+    pe_apiKey.value = currentProvider.apiKey || '';
+    pe_apiEndpoint.value = currentProvider.apiEndpoint || '';
+    pe_modelInput.value = currentProvider.model || '';
+    pe_requestLimit.value = currentProvider.requestLimit || '';
+    pe_tokenLimit.value = currentProvider.tokenLimit || '';
+    pe_charLimit.value = currentProvider.charLimit || '';
+    pe_strategy.value = currentProvider.strategy || 'balanced';
+    pe_costPerInputToken.value = currentProvider.costPerInputToken || '';
+    pe_costPerOutputToken.value = currentProvider.costPerOutputToken || '';
+    pe_weight.value = currentProvider.weight || '';
+    
+    // Show the editor
+    providerEditorOverlay.style.display = 'flex';
+  }
+  
+  // Delete local provider
+  function deleteLocalProvider(index) {
+    if (!confirm('Are you sure you want to delete this provider?')) return;
+    
+    const localProviders = [...(store.localProviders || [])];
+    localProviders.splice(index, 1);
+    
+    chrome.storage.sync.set({ localProviders }, () => {
+      store.localProviders = localProviders;
+      renderProviders();
+    });
+  }
+  
+  // Add provider button click handler
+  if (addProvider) {
+    addProvider.addEventListener('click', () => {
+      if (addProviderOverlay) {
+        addProviderOverlay.style.display = 'flex';
+        ap_step1.style.display = 'block';
+        ap_step2.style.display = 'none';
+      }
+    });
+  }
+  
+  // Add provider step 1 next button
+  if (ap_next) {
+    ap_next.addEventListener('click', () => {
+      const preset = ap_preset.value;
+      const template = providerTemplates[preset];
+      
+      if (!template) {
+        alert('Invalid provider preset');
+        return;
+      }
+      
+      // Generate fields for step 2
+      ap_fields.innerHTML = '';
+      
+      template.fields.forEach(field => {
+        const label = document.createElement('label');
+        label.setAttribute('data-field', field);
+        
+        let fieldLabel = '';
+        let inputHTML = '';
+        
+        switch (field) {
+          case 'apiKey':
+            fieldLabel = 'API Key';
+            inputHTML = `<input id="ap_${field}" value="${template.defaults[field] || ''}">`;
+            break;
+          case 'apiEndpoint':
+            fieldLabel = 'API Endpoint';
+            inputHTML = `<input id="ap_${field}" value="${template.defaults[field] || ''}">`;
+            break;
+          case 'model':
+            fieldLabel = 'Model';
+            inputHTML = `<input id="ap_${field}" value="${template.defaults[field] || ''}">`;
+            break;
+        }
+        
+        label.innerHTML = `${fieldLabel} ${inputHTML}`;
+        ap_fields.appendChild(label);
+      });
+      
+      // Show step 2
+      ap_step1.style.display = 'none';
+      ap_step2.style.display = 'block';
+    });
+  }
+  
+  // Add provider step 2 back button
+  if (ap_back) {
+    ap_back.addEventListener('click', () => {
+      ap_step2.style.display = 'none';
+      ap_step1.style.display = 'block';
+    });
+  }
+  
+  // Add provider step 2 create button
+  if (ap_create) {
+    ap_create.addEventListener('click', () => {
+      const preset = ap_preset.value;
+      const template = providerTemplates[preset];
+      
+      if (!template) {
+        alert('Invalid provider preset');
+        return;
+      }
+      
+      // Collect field values
+      const providerData = {
+        id: `local-${Date.now()}`,
+        name: template.name,
+        type: preset,
+        ...template.defaults
+      };
+      
+      template.fields.forEach(field => {
+        const input = document.getElementById(`ap_${field}`);
+        if (input) {
+          providerData[field] = input.value;
+        }
+      });
+      
+      // Add to local providers
+      const localProviders = [...(store.localProviders || []), providerData];
+      
+      chrome.storage.sync.set({ localProviders }, () => {
+        store.localProviders = localProviders;
+        renderProviders();
+        
+        // Hide overlay
+        if (addProviderOverlay) {
+          addProviderOverlay.style.display = 'none';
+        }
+      });
+    });
+  }
+  
+  // Cancel buttons
+  if (ap_cancel1) {
+    ap_cancel1.addEventListener('click', () => {
+      if (addProviderOverlay) {
+        addProviderOverlay.style.display = 'none';
+      }
+    });
+  }
+  
+  // Provider editor save button
+  if (pe_save) {
+    pe_save.addEventListener('click', () => {
+      if (!currentProvider) return;
+      
+      // Update provider data
+      const updatedProvider = {
+        ...currentProvider,
+        apiKey: pe_apiKey.value,
+        apiEndpoint: pe_apiEndpoint.value,
+        model: pe_modelInput.value,
+        requestLimit: pe_requestLimit.value ? parseInt(pe_requestLimit.value) : undefined,
+        tokenLimit: pe_tokenLimit.value ? parseInt(pe_tokenLimit.value) : undefined,
+        charLimit: pe_charLimit.value ? parseInt(pe_charLimit.value) : undefined,
+        strategy: pe_strategy.value,
+        costPerInputToken: pe_costPerInputToken.value ? parseFloat(pe_costPerInputToken.value) : undefined,
+        costPerOutputToken: pe_costPerOutputToken.value ? parseFloat(pe_costPerOutputToken.value) : undefined,
+        weight: pe_weight.value ? parseFloat(pe_weight.value) : undefined
+      };
+      
+      // Update in storage
+      const localProviders = [...(store.localProviders || [])];
+      localProviders[currentProvider.index] = updatedProvider;
+      
+      chrome.storage.sync.set({ localProviders }, () => {
+        store.localProviders = localProviders;
+        renderProviders();
+        
+        // Hide editor
+        if (providerEditorOverlay) {
+          providerEditorOverlay.style.display = 'none';
+        }
+        
+        currentProvider = null;
+      });
+    });
+  }
+  
+  // Provider editor cancel button
+  if (pe_cancel) {
+    pe_cancel.addEventListener('click', () => {
+      if (providerEditorOverlay) {
+        providerEditorOverlay.style.display = 'none';
+      }
+      currentProvider = null;
+    });
+  }
+  
+  // Initialize the provider list
+  renderProviders();
 })();

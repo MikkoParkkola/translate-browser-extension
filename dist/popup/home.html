@@ -1,49 +1,35 @@
 <!DOCTYPE html>
-<html data-qwen-theme="apple">
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <link rel="stylesheet" href="../styles/apple.css">
-  <link rel="stylesheet" href="../styles/cyberpunk.css">
-  <link rel="stylesheet" href="../styles/popup.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Home</title>
+  <link rel="stylesheet" href="../styles/modern.css">
 </head>
-<body class="home">
-  <button id="quickTranslate" class="primary">Translate page</button>
-  <div class="lang-select">
-    <label for="srcLang">From</label>
-    <select id="srcLang"></select>
-    <span aria-hidden="true">→</span>
-    <label for="destLang">To</label>
-    <select id="destLang"></select>
-  </div>
-  <div id="offlineBanner" class="stats">Offline: background reports no network. Translation may fail.</div>
-  <section id="perProvider">
-    <h3>Per-provider usage</h3>
-    <div id="providers"></div>
-  </section>
-  <div class="theme-select">
-    <label for="themeStyle">Theme</label>
-    <select id="themeStyle">
-      <option value="apple">Apple</option>
-      <option value="cyberpunk">Cyberpunk</option>
-    </select>
-    <select id="theme">
-      <option value="dark">Dark</option>
-      <option value="light">Light</option>
-    </select>
-  </div>
-  <label class="auto-toggle"><input type="checkbox" id="autoTranslate"> Auto-translate</label>
-    <div id="provider">Provider: <span id="providerName">-</span> <span id="providerKey"></span></div>
-    <div id="status" class="stats"></div>
-    <div id="usage" class="stats">Requests: 0/0 Tokens: 0/0</div>
-    <progress id="reqBar" value="0" max="0"></progress>
-    <progress id="tokBar" value="0" max="0"></progress>
-    <div id="limits" class="stats"></div>
-    <div id="modelUsage" class="stats"></div>
-    <div id="cacheStatus" class="stats"></div>
-  <button id="toDiagnostics" class="secondary">Diagnostics</button>
-  <script src="../usageColor.js"></script>
-  <script src="../languages.js" defer></script>
-  <script src="home.js" defer></script>
-  <script src="init.js" defer></script>
+<body>
+  <main>
+      <div class="form-group">
+        <label for="target-language">Translate to:</label>
+        <select id="target-language">
+          <!-- Language options will be injected here -->
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="toggle-switch">
+          <input type="checkbox" id="auto-translate-toggle">
+          <span class="slider"></span>
+          Auto-Translate
+        </label>
+      </div>
+
+      <button id="translate-button" class="button-primary">Quick Translate</button>
+
+      <div class="stats-container">
+        <h3>Real-time Statistics</h3>
+        <div id="stats-chart"></div>
+      </div>
+    </main>
+    <script src="../popup/home.js"></script>
 </body>
 </html>

@@ -1,30 +1,15 @@
 // src/options.js
 
-(async function () {
-  try { window.qwenProviders?.initProviders?.(); } catch {}
-  
-  const defaults = {
-    localProviders: [],
-  };
+document.addEventListener('DOMContentLoaded', () => {
+  const addProviderButton = document.getElementById('addProvider');
+  const addProviderOverlay = document.getElementById('addProviderOverlay');
+  const cancelButton = document.getElementById('ap_cancel1');
 
-  function handleLastError(cb) {
-    return (...args) => {
-      const err = chrome.runtime.lastError;
-      if (err && !err.message.includes('Receiving end does not exist')) console.debug(err);
-      if (typeof cb === 'function') cb(...args);
-    };
-  }
-
-  // Load settings
-  const store = await new Promise(res => {
-    if (chrome?.storage?.sync) chrome.storage.sync.get(defaults, res);
-    else res(defaults);
+  addProviderButton.addEventListener('click', () => {
+    addProviderOverlay.style.display = 'flex';
   });
 
-  // Initialize provider settings
-  const providerList = document.getElementById('providerList');
-  const addProvider = document.getElementById('addProvider');
-  
-  // ... (provider management logic from the original options.js would go here) ...
-
-})();
+  cancelButton.addEventListener('click', () => {
+    addProviderOverlay.style.display = 'none';
+  });
+});
