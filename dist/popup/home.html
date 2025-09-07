@@ -9,7 +9,15 @@
 <body>
   <main>
       <div class="form-group">
-        <label for="target-language">Translate to:</label>
+        <label for="source-language">From:</label>
+        <select id="source-language">
+          <option value="auto">Auto Detect</option>
+          <!-- Language options will be injected here -->
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="target-language">To:</label>
         <select id="target-language">
           <!-- Language options will be injected here -->
         </select>

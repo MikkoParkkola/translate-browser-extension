@@ -47,10 +47,8 @@
         "styles/apple.css",
         "styles/cyberpunk.css",
         "styles/modern.css",
-        "popup/home.html",
-        "popup/home.js",
-        "popup/settings.html",
-        "popup/settings.js",
+        "styles/popup.css",
+        "styles/popup-bg.svg",
         "options.html",
         "options.js",
         "pdfViewer.html",
@@ -73,10 +71,10 @@
         "wasm/vendor/*",
         "wasm/vendor/fonts/*",
         "config.local.js",
-          "qa/compare.html",
-          "qa/usage.html",
-          "i18n/*"
-        ],
+        "qa/compare.html",
+        "qa/usage.html",
+        "i18n/*"
+      ],
       "matches": [
         "<all_urls>"
       ]

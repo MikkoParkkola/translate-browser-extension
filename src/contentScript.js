@@ -72,6 +72,14 @@ function ensureThemeCss(style) {
       link.dataset.qwenTheme = theme;
       (document.head || document.documentElement).appendChild(link);
     }
+    // Ensure content script CSS is loaded for modern UI components
+    if (!document.querySelector('link[data-qwen-content-css]')) {
+      const contentLink = document.createElement('link');
+      contentLink.rel = 'stylesheet';
+      contentLink.href = chrome.runtime.getURL('styles/contentScript.css');
+      contentLink.dataset.qwenContentCss = 'true';
+      (document.head || document.documentElement).appendChild(contentLink);
+    }
     // Apply theme styling only to extension elements to avoid overriding page styles
     // The status HUD will carry the data-qwen-theme attribute instead of the document root
   } catch {}
@@ -151,9 +159,49 @@ function updateProgressHud() {
   }
   const textNode = progressHud.querySelector('.qwen-hud__text') || progressHud;
   textNode.textContent = `${progress.done}/${progress.total}`;
+  
+  // Update top progress bar
+  updateTopProgressBar();
+  
   if (progress.done >= progress.total) {
-    progressHud.remove();
-    progressHud = null;
+    setTimeout(() => {
+      if (progressHud) {
+        progressHud.style.opacity = '0';
+        setTimeout(() => {
+          if (progressHud) {
+            progressHud.remove();
+            progressHud = null;
+          }
+        }, 300);
+      }
+      hideTopProgressBar();
+    }, 1000);
+  }
+}
+
+function updateTopProgressBar() {
+  let topProgressBar = document.getElementById('qwen-top-progress');
+  if (!topProgressBar) {
+    topProgressBar = document.createElement('div');
+    topProgressBar.id = 'qwen-top-progress';
+    topProgressBar.className = 'qwen-progress-bar';
+    topProgressBar.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
+    topProgressBar.innerHTML = '<div class="qwen-progress-bar__fill"></div>';
+    document.body.appendChild(topProgressBar);
+  }
+  
+  const fill = topProgressBar.querySelector('.qwen-progress-bar__fill');
+  const percentage = progress.total ? (progress.done / progress.total) * 100 : 0;
+  fill.style.width = `${Math.min(percentage, 100)}%`;
+}
+
+function hideTopProgressBar() {
+  const topProgressBar = document.getElementById('qwen-top-progress');
+  if (topProgressBar) {
+    topProgressBar.style.opacity = '0';
+    setTimeout(() => {
+      if (topProgressBar) topProgressBar.remove();
+    }, 300);
   }
 }
 
@@ -269,8 +317,24 @@ chrome.runtime.onMessage.addListener(msg => {
 function mark(node) {
   if (node.nodeType === Node.TEXT_NODE) {
     node.__qwenTranslated = true;
+    // Add fade-in animation to parent element
+    if (node.parentElement) {
+      node.parentElement.dataset.qwenTranslated = 'true';
+      // Remove highlight class after animation
+      setTimeout(() => {
+        if (node.parentElement) {
+          node.parentElement.dataset.qwenHighlighted = 'true';
+        }
+      }, 2000);
+    }
   } else if (node.dataset) {
     node.dataset.qwenTranslated = 'true';
+    // Remove highlight class after animation
+    setTimeout(() => {
+      if (node.dataset) {
+        node.dataset.qwenHighlighted = 'true';
+      }
+    }, 2000);
   }
 }
 
@@ -291,27 +355,52 @@ function scoreConfidence(src, translated) {
 }
 
 function addFeedbackUI(el, original, translated, confidence) {
+  if (!currentConfig || !currentConfig.showFeedback) return;
+  
   try {
     const wrap = document.createElement('span');
     wrap.className = 'qwen-feedback';
-    wrap.style.marginLeft = '4px';
     wrap.setAttribute('data-qwen-theme', (currentConfig && currentConfig.themeStyle) || 'apple');
     wrap.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
+    
     const good = document.createElement('button');
-    good.textContent = 'Good';
+    good.textContent = '👍';
+    good.title = `Good translation (${Math.round((confidence || 0) * 100)}% confidence)`;
+    
     const bad = document.createElement('button');
-    bad.textContent = 'Needs Fix';
+    bad.textContent = '👎';
+    bad.title = 'Translation needs improvement';
+    
     good.addEventListener('click', () => {
-      try { window.qwenFeedback && window.qwenFeedback.save({ original, translated, rating: 'good', confidence }); } catch {}
-      wrap.remove();
+      try { 
+        window.qwenFeedback && window.qwenFeedback.save({ original, translated, rating: 'good', confidence });
+        good.textContent = '✓';
+        good.style.color = 'var(--color-success-600)';
+        setTimeout(() => wrap.remove(), 1500);
+      } catch {}
     });
+    
     bad.addEventListener('click', () => {
-      try { window.qwenFeedback && window.qwenFeedback.save({ original, translated, rating: 'needs-fix', confidence }); } catch {}
-      wrap.remove();
+      try { 
+        window.qwenFeedback && window.qwenFeedback.save({ original, translated, rating: 'needs-fix', confidence });
+        bad.textContent = '✗';
+        bad.style.color = 'var(--color-error-600)';
+        setTimeout(() => wrap.remove(), 1500);
+      } catch {}
     });
+    
     wrap.appendChild(good);
     wrap.appendChild(bad);
-    el.insertAdjacentElement('afterend', wrap);
+    
+    // Add with a slight delay for better UX
+    setTimeout(() => {
+      el.insertAdjacentElement('afterend', wrap);
+    }, 500);
+    
+    // Auto-remove after 10 seconds if no interaction
+    setTimeout(() => {
+      if (wrap.parentNode) wrap.remove();
+    }, 10000);
   } catch {}
 }
 
@@ -333,29 +422,44 @@ async function showSelectionBubble(range, text) {
   selectionBubble.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
   selectionBubble.setAttribute('tabindex', '-1');
   selectionBubble.setAttribute('role', 'dialog');
-  selectionBubble.setAttribute('aria-label', t('bubble.ariaLabel'));
+  selectionBubble.setAttribute('aria-label', t('bubble.ariaLabel') || 'Translation bubble');
+  
   const result = document.createElement('div');
   result.className = 'qwen-bubble__result';
   result.setAttribute('role', 'status');
   result.setAttribute('aria-live', 'polite');
+  result.textContent = 'Select an action below';
   selectionBubble.appendChild(result);
+  
   const actions = document.createElement('div');
   actions.className = 'qwen-bubble__actions';
+  
   const translateBtn = document.createElement('button');
-  translateBtn.textContent = t('bubble.translate');
-  translateBtn.setAttribute('aria-label', t('bubble.translate'));
+  translateBtn.textContent = '🌐 Translate';
+  translateBtn.setAttribute('aria-label', t('bubble.translate') || 'Translate text');
+  
   const pinBtn = document.createElement('button');
-  pinBtn.textContent = t('bubble.pin');
-  pinBtn.setAttribute('aria-label', t('bubble.pin'));
+  pinBtn.textContent = '📌 Pin';
+  pinBtn.setAttribute('aria-label', t('bubble.pin') || 'Pin bubble');
+  
   const copyBtn = document.createElement('button');
-  copyBtn.textContent = t('bubble.copy');
-  copyBtn.setAttribute('aria-label', t('bubble.copy'));
+  copyBtn.textContent = '📋 Copy';
+  copyBtn.setAttribute('aria-label', t('bubble.copy') || 'Copy translation');
+  copyBtn.style.display = 'none'; // Hide until translation is available
+  
   actions.append(translateBtn, pinBtn, copyBtn);
   selectionBubble.appendChild(actions);
+  
+  let currentTranslation = '';
+  
   translateBtn.addEventListener('click', async () => {
-    result.textContent = t('bubble.translating');
+    result.innerHTML = '<span class="qwen-loading-skeleton"></span> Translating...';
+    translateBtn.disabled = true;
+    selectionBubble.classList.remove('qwen-bubble--error');
+    
     const cfg = currentConfig || (await window.qwenLoadConfig());
     await loadGlossary();
+    
     try {
       const res = await window.qwenTranslate({
         endpoint: cfg.apiEndpoint,
@@ -369,27 +473,78 @@ async function showSelectionBubble(range, text) {
         failover: cfg.failover,
         debug: cfg.debug,
       });
-      result.textContent = res.text;
+      
+      currentTranslation = res.text;
+      result.textContent = currentTranslation;
+      copyBtn.style.display = 'block';
+      
+      // Add confidence indicator if available
+      if (res.confidence) {
+        const confidence = document.createElement('span');
+        confidence.className = 'qwen-confidence-indicator';
+        confidence.textContent = ` (${Math.round(res.confidence * 100)}%)`;
+        confidence.style.opacity = '0.7';
+        confidence.style.fontSize = '0.85em';
+        result.appendChild(confidence);
+      }
+      
     } catch (e) {
       const offline = isOfflineError(e);
+      selectionBubble.classList.add('qwen-bubble--error');
+      
       if (offline) {
-        result.textContent = t('bubble.offline');
+        result.textContent = t('bubble.offline') || 'Offline - check connection';
         safeSendMessage({ action: 'translation-status', status: { offline: true } });
       } else {
-        result.textContent = `${t('bubble.error')}${e && e.message ? `: ${e.message}` : ''}`;
+        result.textContent = `${t('bubble.error') || 'Error'}${e && e.message ? `: ${e.message}` : ''}`;
       }
+    } finally {
+      translateBtn.disabled = false;
     }
   });
+  
   pinBtn.addEventListener('click', () => {
     selectionPinned = !selectionPinned;
     pinBtn.classList.toggle('active', selectionPinned);
+    pinBtn.textContent = selectionPinned ? '📍 Pinned' : '📌 Pin';
   });
+  
   copyBtn.addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(result.textContent || ''); } catch {}
+    try {
+      await navigator.clipboard.writeText(currentTranslation || result.textContent || '');
+      const originalText = copyBtn.textContent;
+      copyBtn.textContent = '✓ Copied';
+      setTimeout(() => {
+        copyBtn.textContent = originalText;
+      }, 1500);
+    } catch (err) {
+      console.warn('Failed to copy to clipboard:', err);
+    }
   });
-  const rect = range.getBoundingClientRect ? range.getBoundingClientRect() : { top: 0, left: 0, bottom: 0 };
-  selectionBubble.style.top = `${window.scrollY + (rect.bottom || rect.top) + 5}px`;
-  selectionBubble.style.left = `${window.scrollX + rect.left}px`;
+  
+  // Position bubble with smart placement
+  const rect = range.getBoundingClientRect ? range.getBoundingClientRect() : { top: 0, left: 0, bottom: 0, right: 0 };
+  const bubbleHeight = 120; // Approximate bubble height
+  const bubbleWidth = 280; // Approximate bubble width
+  
+  let top = window.scrollY + rect.bottom + 10;
+  let left = window.scrollX + rect.left;
+  
+  // Adjust if bubble would go off-screen
+  if (left + bubbleWidth > window.innerWidth) {
+    left = window.innerWidth - bubbleWidth - 20;
+  }
+  if (left < 10) {
+    left = 10;
+  }
+  
+  // Place above selection if no room below
+  if (top + bubbleHeight > window.innerHeight + window.scrollY) {
+    top = window.scrollY + rect.top - bubbleHeight - 10;
+  }
+  
+  selectionBubble.style.top = `${top}px`;
+  selectionBubble.style.left = `${left}px`;
   document.body.appendChild(selectionBubble);
   selectionBubble.focus();
 }

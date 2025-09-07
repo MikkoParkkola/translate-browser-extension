@@ -1,20 +1,64 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "commonjs",
-    "lib": ["ES2020", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "lib": ["ES2020", "DOM", "WebWorker"],
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "allowJs": true,
+    "checkJs": true,
+    "incremental": true,
+    "tsBuildInfoFile": ".tsbuildinfo",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "removeComments": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
     "baseUrl": "./",
     "paths": {
-      "popup/*": ["src/popup/*"]
-    }
+      "@core/*": ["src/core/*"],
+      "@popup/*": ["src/popup/*"],
+      "@types/*": ["types/*"],
+      "@wasm/*": ["src/wasm/*"],
+      "@lib/*": ["src/lib/*"]
+    },
+    "types": ["chrome", "node", "jest"]
   },
   "include": [
+    "src/**/*.ts",
+    "src/**/*.js",
     "types/**/*.d.ts",
-    "types/background.d.ts",
-    "types/contentScript.d.ts",
-    "types/providers/**/*.d.ts"
-  ]
+    "src/core/**/*",
+    "src/popup/**/*",
+    "src/wasm/**/*",
+    "src/lib/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.min.js",
+    "**/vendor/**/*",
+    "src/wasm/vendor/**/*",
+    "scripts",
+    "e2e"
+  ],
+  "ts-node": {
+    "esm": true
+  },
+  "compileOnSave": false
 }

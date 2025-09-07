@@ -5,197 +5,79 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Qwen Translator Settings</title>
   <link rel="stylesheet" href="styles/modern.css">
-  <link rel="stylesheet" href="styles/apple.css">
-  <link rel="stylesheet" href="styles/cyberpunk.css">
-  <link rel="stylesheet" href="styles/popup.css">
 </head>
-<body class="settings">
-  <div class="container fade-in">
+<body>
+  <div class="container">
     <header class="header">
       <h1>Settings</h1>
     </header>
 
-    <div class="tabs" role="tablist">
-      <button data-tab="general" role="tab" aria-controls="generalTab" class="active">General</button>
-      <button data-tab="providers" role="tab" aria-controls="providersTab">Providers</button>
-      <button data-tab="advanced" role="tab" aria-controls="advancedTab">Advanced</button>
-      <button data-tab="diagnostics" role="tab" aria-controls="diagnosticsTab">Diagnostics</button>
-    </div>
-
-    <div id="generalTab" class="tab active">
-      <section id="themeSection">
-        <h3>Theme</h3>
-        <label>Style
-          <select id="themeStyle">
-            <option value="apple">Apple</option>
-            <option value="cyberpunk">Cyberpunk</option>
-          </select>
-        </label>
-        <label>Color
-          <select id="theme">
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-          </select>
-        </label>
-      </section>
-      <section id="detectionSection">
-        <h3>Language Detection</h3>
-        <label><input type="checkbox" id="enableDetection"> Enable automatic detection</label>
-        <label>Sensitivity <input type="number" id="sensitivity" min="0" max="1" step="0.1"></label>
-        <label>Min length <input type="number" id="minDetectLength" min="0" step="1"></label>
-        <p class="note">Automatically detect the source language before translating. Detection is ignored when confidence is below the sensitivity.</p>
-      </section>
-      <section id="glossarySection">
-        <h3>Glossary</h3>
-        <label for="glossary">Entries</label>
-        <textarea id="glossary" rows="4" placeholder="term=translation" aria-describedby="glossaryNote"></textarea>
-        <p class="note" id="glossaryNote">One entry per line, using "term=translation".</p>
-      </section>
-
-      <section id="selectionSection">
-        <h3>Selection Translation</h3>
-        <label><input type="checkbox" id="selectionPopup"> Show bubble on text selection</label>
-        <p class="note">Bubble waits for you to trigger translation.</p>
-      </section>
-
-      <section id="languageSection">
-        <h3>Languages</h3>
-        <label for="source-language">Source Language</label>
-        <select id="source-language">
-          <option value="auto">Auto Detect</option>
-          <!-- Language options will be injected here -->
-        </select>
-      </section>
-    </div>
-
-    <div id="providersTab" class="tab">
+    <main>
       <section id="providerSection">
-        <h3>Providers</h3>
+        <h3>Translation Providers</h3>
         <div id="providerList" class="provider-cards"></div>
-        <button id="addProvider">Add Provider</button>
+        <button id="addProvider" class="button-primary">Add Provider</button>
       </section>
-    </div>
+    </main>
+  </div>
 
-    <div id="advancedTab" class="tab">
-      <section id="timeoutSection">
-        <h3>Timeout</h3>
-        <label>Abort after <input type="number" id="translateTimeoutMs" min="1000" step="1000"> ms</label>
-      </section>
-      <section id="cacheSection">
-        <h3>Cache</h3>
-        <label><input type="checkbox" id="cacheEnabled"> Enable translation memory</label>
-        <button id="clearCache">Clear cache</button>
-      </section>
-      <section id="tmSection">
-        <h3>Translation Memory</h3>
-        <div class="tm-container">
-          <pre id="tmStats">-</pre>
-        </div>
-        <button id="tmExport">Export</button>
-        <input type="file" id="tmImportFile">
-        <button id="tmImport">Import</button>
-        <button id="tmClear">Clear</button>
-      </section>
-      <section id="loadBalancingSection">
-        <h3>Load Balancing</h3>
-        <label><input type="checkbox" id="failoverEnabled"> Enable provider failover</label>
-        <label>Parallel processing <select id="parallelProcessing">
-          <option value="auto">Auto</option>
-          <option value="on">On</option>
-          <option value="off">Off</option>
-        </select></label>
-      </section>
-    </div>
-
-    <div id="diagnosticsTab" class="tab">
-      <section id="statsDetails">
-        <h3>Usage</h3>
-        <pre id="usageStats">-</pre>
-      </section>
-      <section id="tmDetails">
-        <h3>TM Metrics</h3>
-        <pre id="tmMetrics">-</pre>
-      </section>
-      <section id="cacheDetails">
-        <h3>Cache Stats</h3>
-        <pre id="cacheStats">-</pre>
-      </section>
-      <section id="quotaDetails">
-        <h3>Quota & Rate Limit Usage</h3>
-        <div id="quotaStats">Loading...</div>
-      </section>
-    </div>
-
-    <div id="addProviderOverlay" class="modal-overlay">
-      <div class="modal" role="dialog" aria-modal="true">
-        <div id="ap_step1">
-          <label>Preset
-            <select id="ap_preset">
-              <option value="openai">OpenAI</option>
-              <option value="deepl">DeepL</option>
-              <option value="ollama">Ollama</option>
-              <option value="macos">macOS</option>
-              <option value="custom">Custom</option>
-            </select>
-          </label>
-          <div class="actions">
-            <button id="ap_next">Next</button>
-            <button id="ap_cancel1">Cancel</button>
-          </div>
-        </div>
-        <div id="ap_step2">
-          <div id="ap_fields"></div>
-          <div class="actions">
-            <button id="ap_back">Back</button>
-            <button id="ap_create">Create</button>
-          </div>
+  <div id="addProviderOverlay" class="modal-overlay">
+    <div class="modal">
+      <div id="ap_step1">
+        <h3>Add Provider</h3>
+        <label>Preset
+          <select id="ap_preset">
+            <option value="openai">OpenAI</option>
+            <option value="deepl">DeepL</option>
+            <option value="ollama">Ollama</option>
+            <option value="macos">macOS</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button id="ap_next">Next</button>
+          <button id="ap_cancel1">Cancel</button>
         </div>
       </div>
-    </div>
-
-    <div id="providerEditorOverlay" class="modal-overlay">
-      <div class="modal" role="dialog" aria-modal="true">
-        <label data-field="apiKey">API Key <input id="pe_apiKey"></label>
-        <label data-field="apiEndpoint">API Endpoint <input id="pe_apiEndpoint"></label>
-        <label id="pe_modelLabel" data-field="model">Model <select id="pe_modelSelect" style="display:none" aria-labelledby="pe_modelLabel"></select><input id="pe_modelInput" aria-labelledby="pe_modelLabel"></label>
-        <details id="pe_advanced">
-          <summary>Advanced</summary>
-          <label data-field="requestLimit">Requests/min <input id="pe_requestLimit" type="number" min="0"></label>
-          <label data-field="tokenLimit">Tokens/min <input id="pe_tokenLimit" type="number" min="0"></label>
-          <label data-field="charLimit">Chars/month <input id="pe_charLimit" type="number" min="0"></label>
-          <label data-field="strategy">Strategy <select id="pe_strategy">
-            <option value="balanced" title="Balance cost and speed">Balanced</option>
-            <option value="fast" title="Prefer fastest provider">Fast</option>
-            <option value="cheap" title="Prefer lowest cost provider">Cheap</option>
-          </select></label>
-          <label data-field="costPerInputToken" title="Cost per million input tokens in USD">Input cost per 1M tokens (USD) <input id="pe_costPerInputToken" type="number" step="0.01" min="0"></label>
-          <label data-field="costPerOutputToken" title="Cost per million output tokens in USD">Output cost per 1M tokens (USD) <input id="pe_costPerOutputToken" type="number" step="0.01" min="0"></label>
-          <label data-field="weight" title="Relative load-balancing preference when multiple providers are available">Weight <input id="pe_weight" type="number" step="0.01" min="0"></label>
-          <p class="note">Higher = used more often when multiple providers have quota. <a href="https://github.com/MikkoParkkola/translate-by-mikko#pricing--load-balancing" target="_blank" rel="noopener">Learn more</a></p>
-        </details>
+      <div id="ap_step2" style="display: none;">
+        <h3>Configure Provider</h3>
+        <div id="ap_fields"></div>
         <div class="actions">
-          <button id="pe_save">Save</button>
-          <button id="pe_cancel">Cancel</button>
+          <button id="ap_back">Back</button>
+          <button id="ap_create">Create</button>
         </div>
       </div>
     </div>
   </div>
 
-  <script src="lib/providers.js"></script>
-  <script src="providerConfig.js"></script>
-  <script src="providers/qwen.js"></script>
-  <script src="providers/dashscope.js"></script>
-  <script src="providers/google.js"></script>
-  <script src="providers/deepl.js"></script>
-  <script src="providers/macos.js"></script>
-  <script src="providers/mistral.js"></script>
-  <script src="providers/openai.js"></script>
-  <script src="providers/openrouter.js"></script>
-  <script src="providers/ollama.js"></script>
-  <script src="providers/gemini.js"></script>
-  <script src="providers/anthropic.js"></script>
-  <script src="providers/localWasm.js"></script>
-  <script src="providers/index.js"></script>
+  <div id="providerEditorOverlay" class="modal-overlay">
+    <div class="modal">
+      <h3>Edit Provider</h3>
+      <label data-field="apiKey">API Key <input id="pe_apiKey"></label>
+      <label data-field="apiEndpoint">API Endpoint <input id="pe_apiEndpoint"></label>
+      <label id="pe_modelLabel" data-field="model">Model <select id="pe_modelSelect" style="display:none" aria-labelledby="pe_modelLabel"></select><input id="pe_modelInput" aria-labelledby="pe_modelLabel"></label>
+      <details id="pe_advanced">
+        <summary>Advanced</summary>
+        <label data-field="requestLimit">Requests/min <input id="pe_requestLimit" type="number" min="0"></label>
+        <label data-field="tokenLimit">Tokens/min <input id="pe_tokenLimit" type="number" min="0"></label>
+        <label data-field="charLimit">Chars/month <input id="pe_charLimit" type="number" min="0"></label>
+        <label data-field="strategy">Strategy <select id="pe_strategy">
+          <option value="balanced" title="Balance cost and speed">Balanced</option>
+          <option value="fast" title="Prefer fastest provider">Fast</option>
+          <option value="cheap" title="Prefer lowest cost provider">Cheap</option>
+        </select></label>
+        <label data-field="costPerInputToken" title="Cost per million input tokens in USD">Input cost per 1M tokens (USD) <input id="pe_costPerInputToken" type="number" step="0.01" min="0"></label>
+        <label data-field="costPerOutputToken" title="Cost per million output tokens in USD">Output cost per 1M tokens (USD) <input id="pe_costPerOutputToken" type="number" step="0.01" min="0"></label>
+        <label data-field="weight" title="Relative load-balancing preference when multiple providers are available">Weight <input id="pe_weight" type="number" step="0.01" min="0"></label>
+        <p class="note">Higher = used more often when multiple providers have quota. <a href="https://github.com/MikkoParkkola/translate-by-mikko#pricing--load-balancing" target="_blank" rel="noopener">Learn more</a></p>
+      </details>
+      <div class="actions">
+        <button id="pe_save">Save</button>
+        <button id="pe_cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <script src="options.js"></script>
 </body>
 </html>
