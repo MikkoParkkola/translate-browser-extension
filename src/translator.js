@@ -23,6 +23,7 @@ function throttleFor(id, context = 'default') {
   if (!throttles.has(key)) {
     let cfg;
     try {
+      // Try to get existing provider (for throttle config)
       const prov = Providers && Providers.get ? Providers.get(id) : null;
       cfg = prov && prov.throttle;
     } catch {}
@@ -64,6 +65,121 @@ try {
     try { trLogger = require('./lib/logger').create('translator'); } catch {}
   }
 } catch {}
+
+// Security utilities
+let security = null;
+try {
+  if (typeof window !== 'undefined' && window.qwenSecurity) {
+    security = window.qwenSecurity;
+  } else if (typeof self !== 'undefined' && self.qwenSecurity) {
+    security = self.qwenSecurity;
+  } else if (typeof require !== 'undefined') {
+    security = require('./core/security');
+  }
+} catch {
+  // Fallback security functions if module not available
+  security = {
+    sanitizeTranslationText: (text) => typeof text === 'string' ? text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') : '',
+    validateInput: (text) => ({ valid: true, sanitized: text }),
+    logSecurityEvent: (event, details) => console.warn('[Security]', event, details)
+  };
+}
+
+// Error handler utilities
+let errorHandler = null;
+try {
+  if (typeof window !== 'undefined' && window.qwenErrorHandler) {
+    errorHandler = window.qwenErrorHandler;
+  } else if (typeof self !== 'undefined' && self.qwenErrorHandler) {
+    errorHandler = self.qwenErrorHandler;
+  } else if (typeof require !== 'undefined') {
+    errorHandler = require('./core/error-handler');
+  }
+} catch {
+  // Fallback error handling functions if module not available
+  errorHandler = {
+    handle: (error, context = {}, customFallback) => {
+      trLogger.error('Error:', error?.message || error);
+      return customFallback || null;
+    },
+    safe: (fn, context = {}, customFallback) => {
+      return function(...args) {
+        try {
+          const result = fn.apply(this, args);
+          if (result && typeof result.catch === 'function') {
+            return result.catch(error => {
+              trLogger.error('Async error:', error?.message || error);
+              return customFallback || null;
+            });
+          }
+          return result;
+        } catch (error) {
+          trLogger.error('Sync error:', error?.message || error);
+          return customFallback || null;
+        }
+      };
+    },
+    isNetworkError: (error) => {
+      const message = error?.message || '';
+      return /fetch|network|connection|timeout|cors|offline/i.test(message);
+    },
+    ERROR_TYPES: { NETWORK: 'network', TRANSLATION: 'translation', SECURITY: 'security', VALIDATION: 'validation', CACHE: 'cache', UNKNOWN: 'unknown' },
+    SEVERITY: { LOW: 'low', MEDIUM: 'medium', HIGH: 'high', CRITICAL: 'critical' }
+  };
+}
+
+// Module Adapter - Bridge between old and new module systems
+let moduleAdapter = null;
+let legacyAdapter = null;
+try {
+  if (typeof window !== 'undefined' && window.qwenModuleAdapter) {
+    moduleAdapter = window.qwenModuleAdapter.moduleAdapter;
+  } else if (typeof self !== 'undefined' && self.qwenModuleAdapter) {
+    moduleAdapter = self.qwenModuleAdapter.moduleAdapter;
+  } else if (typeof require !== 'undefined') {
+    const { moduleAdapter: adapter } = require('./core/module-adapter');
+    moduleAdapter = adapter;
+  }
+  
+  // Initialize module adapter and get legacy-compatible interface
+  if (moduleAdapter) {
+    moduleAdapter.init().then(() => {
+      legacyAdapter = moduleAdapter.createLegacyAdapter();
+      trLogger?.debug?.('Module adapter initialized with legacy interface');
+    }).catch(err => {
+      trLogger?.warn?.('Module adapter initialization failed:', err);
+    });
+  }
+} catch (e) {
+  trLogger?.warn?.('Module adapter not available:', e);
+}
+
+/**
+ * Sanitize translation result before returning to user
+ * @param {Object} result - Translation result object
+ * @returns {Object} Sanitized result
+ */
+function _sanitizeResult(result) {
+  if (!result) return result;
+  
+  if (typeof result.text === 'string') {
+    // Try module adapter security first, fallback to legacy security
+    if (legacyAdapter) {
+      try {
+        result.text = legacyAdapter.sanitizeOutput(result.text, { preserveFormatting: true });
+      } catch {
+        // Fallback to legacy security if module adapter fails
+        if (security) {
+          result.text = security.sanitizeTranslationText(result.text, { preserveFormatting: true });
+        }
+      }
+    } else if (security) {
+      result.text = security.sanitizeTranslationText(result.text, { preserveFormatting: true });
+    }
+  }
+  
+  return result;
+}
 let glossary = null;
 try {
   if (typeof window !== 'undefined' && window.qwenGlossary) glossary = window.qwenGlossary;
@@ -77,21 +193,61 @@ function _applyGlossary(text) {
   if (!map || !Object.keys(map).length) return text;
   return glossary.apply(text, map);
 }
-const cache = new Map();
-let cacheApi = null;
+// Enhanced cache system with TTL and LRU eviction
+let cacheManager = null;
+let fallbackCache = new Map(); // Fallback if core cache manager not available
+
 try {
-  if (typeof window !== 'undefined' && window.qwenCache) cacheApi = window.qwenCache;
-  else if (typeof self !== 'undefined' && self.qwenCache) cacheApi = self.qwenCache;
-  else if (typeof require !== 'undefined') cacheApi = require('./cache');
+  if (typeof window !== 'undefined' && window.qwenCoreCache) {
+    cacheManager = window.qwenCoreCache;
+  } else if (typeof self !== 'undefined' && self.qwenCoreCache) {
+    cacheManager = self.qwenCoreCache;
+  } else if (typeof require !== 'undefined') {
+    cacheManager = require('./core/cache-manager');
+  }
+} catch (e) {
+  trLogger.warn('Core cache manager not available, using fallback', e);
+}
+
+// Initialize cache manager if available
+if (cacheManager) {
+  try {
+    // Configure cache with reasonable defaults for translation use
+    if (typeof cacheManager.configure === 'function') {
+      cacheManager.configure({
+        maxMemoryEntries: 5000,
+        maxMemorySize: 10 * 1024 * 1024, // 10MB for translations
+        defaultTTL: 7 * 24 * 60 * 60 * 1000, // 1 week for translations
+        evictionBatchSize: 250
+      });
+    }
+  } catch (e) {
+    trLogger.warn('Failed to configure cache manager', e);
+    cacheManager = null;
+  }
+}
+
+const cache = cacheManager || fallbackCache;
+
+// Legacy cache API compatibility
+let legacyCacheApi = null;
+try {
+  if (typeof window !== 'undefined' && window.qwenCache) legacyCacheApi = window.qwenCache;
+  else if (typeof self !== 'undefined' && self.qwenCache) legacyCacheApi = self.qwenCache;
+  else if (typeof require !== 'undefined') legacyCacheApi = require('./cache');
 } catch {}
+
 const {
   qwenSetCacheLimit = () => {},
   qwenSetCacheTTL = () => {},
   _setCacheEntryTimestamp = () => {},
   qwenClearCache: _persistClear = () => {},
-  qwenGetCacheSize = () => 0,
-} = cacheApi || {};
-let getUsage = () => ({ cacheSize: cache.size, cacheMax: _memCacheMax() });
+  qwenGetCacheSize = () => cacheManager && typeof cacheManager.getStats === 'function' ? cacheManager.getStats().memoryEntries : fallbackCache.size,
+} = legacyCacheApi || {};
+let getUsage = () => ({ 
+  cacheSize: cacheManager && typeof cacheManager.getStats === 'function' ? cacheManager.getStats().memoryEntries : fallbackCache.size, 
+  cacheMax: _memCacheMax() 
+});
 function _setGetUsage(fn) { if (typeof fn === 'function') getUsage = fn; }
 
 function _memCacheMax() {
@@ -118,23 +274,89 @@ function _memCacheMax() {
   if (!Number.isFinite(v) || v <= 0) return 5000;
   return v;
 }
+// Cache adapter selection - determined once for performance
+let _primaryCacheAdapter = null;
+let _cacheAdapterChecked = false;
+
+function _getCacheAdapter() {
+  if (!_cacheAdapterChecked) {
+    // Check cache availability once and cache the result
+    if (cacheManager && typeof cacheManager.set === 'function') {
+      _primaryCacheAdapter = 'manager';
+    } else {
+      // Note: legacy adapter cache methods have bugs - use fallback cache for reliability
+      _primaryCacheAdapter = 'fallback';
+    }
+    _cacheAdapterChecked = true;
+  }
+  return _primaryCacheAdapter;
+}
+
 function _setCache(k, v) {
-  if (cache.has(k)) cache.delete(k);
-  cache.set(k, v);
-  const max = _memCacheMax();
-  while (cache.size > max) {
-    const oldest = cache.keys().next().value;
-    cache.delete(oldest);
+  const adapter = _getCacheAdapter();
+  const ttl = 7 * 24 * 60 * 60 * 1000; // 1 week TTL
+  
+  try {
+    switch (adapter) {
+      case 'manager':
+        cacheManager.set(k, v, { ttl });
+        return;
+      case 'legacy':
+        legacyAdapter.setCacheValue(k, v, { ttl });
+        return;
+      case 'fallback':
+      default:
+        // Optimized fallback cache with LRU
+        if (fallbackCache.has(k)) fallbackCache.delete(k); // Move to end
+        fallbackCache.set(k, v);
+        const max = _memCacheMax();
+        while (fallbackCache.size > max) {
+          const oldest = fallbackCache.keys().next().value;
+          fallbackCache.delete(oldest);
+        }
+        return;
+    }
+  } catch (error) {
+    // If primary adapter fails, fallback to Map cache
+    if (adapter !== 'fallback') {
+      _primaryCacheAdapter = 'fallback'; // Switch to fallback for future calls
+      return _setCache(k, v); // Retry with fallback
+    }
+    throw error;
   }
 }
 function _touchCache(k) {
-  const v = cache.get(k);
-  if (v !== undefined) {
-    cache.delete(k);
-    cache.set(k, v);
-    return v;
+  const adapter = _getCacheAdapter();
+  
+  try {
+    switch (adapter) {
+      case 'manager':
+        return cacheManager.get(k) || undefined;
+      case 'legacy':
+        return legacyAdapter.getCacheValue(k);
+      case 'fallback':
+      default:
+        // Fallback: manual LRU touch in Map
+        const v = fallbackCache.get(k);
+        if (v !== undefined) {
+          fallbackCache.delete(k); // Remove from current position
+          fallbackCache.set(k, v); // Add to end (most recent)
+          return v;
+        }
+        return undefined;
+    }
+  } catch (error) {
+    // If primary adapter fails, try fallback
+    if (adapter !== 'fallback') {
+      const v = fallbackCache.get(k);
+      if (v !== undefined) {
+        fallbackCache.delete(k);
+        fallbackCache.set(k, v);
+        return v;
+      }
+    }
+    return undefined;
   }
-  return undefined;
 }
 let normalizeText;
 let makeCacheKey;
@@ -161,7 +383,14 @@ if (!makeCacheKey) {
 }
 
 function qwenIsCached({ source, target, text }) {
-  try { return cache.has(makeCacheKey(source, target, text)); }
+  try { 
+    const key = makeCacheKey(source, target, text);
+    if (cacheManager) {
+      return cacheManager && typeof cacheManager.has === 'function' ? cacheManager.has(key) : false;
+    } else {
+      return fallbackCache.has(key);
+    }
+  }
   catch { return false; }
 }
 
@@ -301,7 +530,17 @@ async function providerTranslate({ endpoint, apiKey, projectId, location, model,
   let lastErr = null;
   for (const id of chain) {
     if (!(Providers && typeof Providers.get === 'function')) break;
-    const impl = Providers.get(id);
+    
+    // Try to get existing provider or load on-demand
+    let impl = Providers.get(id);
+    if (!impl && typeof Providers.getProviderAsync === 'function') {
+      try {
+        impl = await Providers.getProviderAsync(id);
+      } catch (e) {
+        console.warn(`Failed to load provider ${id} on-demand:`, e);
+        continue;
+      }
+    }
     if (!impl || typeof impl.translate !== 'function') continue;
     const ep = withSlash((endpoints && endpoints[id]) || endpoint || '');
     try {
@@ -340,12 +579,15 @@ async function _detectSource(text, { detector, debug, noProxy, sensitivity = 0, 
       if (r && r.lang) return r.lang;
     } catch {}
   }
+  // Use legacy local detection (keeping sync compatibility)
   if (Detect && typeof Detect.detectLocal === 'function') {
     try {
       const r = Detect.detectLocal(sample, { sensitivity, minLength });
       if (r && r.lang) return r.lang;
     } catch {}
   }
+  
+  // TODO: Integrate module adapter language detection in async contexts
   return 'en';
 }
 
@@ -370,12 +612,22 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, tone, si
   if (stream) headers['X-DashScope-SSE'] = 'enable';
   let resp;
   try {
-    resp = await fetchFn(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal,
-    });
+    // Use module adapter HTTP client if available, fallback to native fetch
+    if (legacyAdapter) {
+      resp = await legacyAdapter.fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal,
+      });
+    } else {
+      resp = await fetchFn(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal,
+      });
+    }
     if (debug) {
       trLogger.debug('response status', resp.status);
       trLogger.debug('response headers', Object.fromEntries(resp.headers.entries()));
@@ -383,25 +635,42 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, tone, si
   } catch (e) {
     if (!stream && typeof XMLHttpRequest !== 'undefined') {
       if (debug) trLogger.debug('fetch failed, falling back to XHR');
-      resp = await fetchViaXHR(
-        url,
-        {
+      // Use module adapter XHR fallback if available, otherwise use legacy XHR
+      if (legacyAdapter) {
+        resp = await legacyAdapter._fallbackFetch(url, {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
-          signal,
-        },
-        debug
-      );
+          signal
+        });
+      } else {
+        resp = await fetchViaXHR(
+          url,
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+            signal,
+          },
+          debug
+        );
+      }
     } else {
-      e.retryable = true;
-      throw e;
+      e.retryable = errorHandler.isNetworkError(e);
+      return errorHandler.handle(e, { 
+        operation: 'network_request',
+        url: url,
+        method: 'POST',
+        retryable: e.retryable
+      }, null);
     }
   }
     if (!resp.ok) {
-      const err = await resp
-        .json()
-        .catch(() => ({ message: resp.statusText }));
+      const err = await errorHandler.safe(
+        () => resp.json(),
+        { operation: 'json_parse' },
+        { message: resp.statusText }
+      )();
       const error = new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
       error.status = resp.status;
       error.code = `HTTP_${resp.status}`;
@@ -415,7 +684,12 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, tone, si
         }
         if (resp.status === 429 && !error.retryAfter) error.retryAfter = 60000;
       }
-      throw error;
+      return errorHandler.handle(error, {
+        operation: 'http_response',
+        status: resp.status,
+        retryable: error.retryable,
+        retryAfter: error.retryAfter
+      }, null);
     }
   if (!stream || !resp.body || typeof resp.body.getReader !== 'function') {
     if (debug) trLogger.debug('received non-streaming response');
@@ -465,6 +739,36 @@ async function doFetch({ endpoint, apiKey, model, text, source, target, tone, si
 }
 
 async function qwenTranslate({ endpoint, apiKey, projectId, location, model, secondaryModel, text, source, target, signal, debug = false, stream = false, noProxy = false, provider, detector, force = false, skipTM = false, autoInit = false, providerOrder, endpoints, sensitivity = 0, failover = true }) {
+  // Security: Validate and sanitize input text
+  if (legacyAdapter) {
+    try {
+      text = legacyAdapter.sanitizeInput(text);
+    } catch {
+      // Fallback to legacy security if module adapter fails
+      if (security) {
+        const validation = security.validateInput(text);
+        if (!validation.valid) {
+          security.logSecurityEvent('input_validation_failed', {
+            issues: validation.issues,
+            textLength: text ? text.length : 0
+          });
+          text = validation.sanitized;
+        }
+        text = security.sanitizeTranslationText(text);
+      }
+    }
+  } else if (security) {
+    const validation = security.validateInput(text);
+    if (!validation.valid) {
+      security.logSecurityEvent('input_validation_failed', {
+        issues: validation.issues,
+        textLength: text ? text.length : 0
+      });
+      text = validation.sanitized;
+    }
+    text = security.sanitizeTranslationText(text);
+  }
+
   if (debug) {
     trLogger.debug('qwenTranslate called with', {
       endpoint,
@@ -492,7 +796,7 @@ async function qwenTranslate({ endpoint, apiKey, projectId, location, model, sec
   const tone = glossary && typeof glossary.getTone === 'function' ? glossary.getTone() : undefined;
   const prov = provider || (chooseDefaultProvider ? chooseDefaultProvider({ endpoint, model, Providers }) : (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model })));
   const cacheKey = `${prov}:${makeCacheKey(src, target, text)}`;
-  if (!force && cache.has(cacheKey)) {
+  if (!force && (cacheManager && typeof cacheManager.has === 'function' ? cacheManager.has(cacheKey) : fallbackCache.has(cacheKey))) {
     return _touchCache(cacheKey);
   }
 
@@ -527,6 +831,7 @@ async function qwenTranslate({ endpoint, apiKey, projectId, location, model, sec
         parallel: false,
         tone,
       });
+      result = _sanitizeResult(result);
       _setCache(cacheKey, result);
       if (TM && TM.set && result && typeof result.text === 'string') { try { TM.set(cacheKey, result.text); } catch {} }
       return result;
@@ -535,15 +840,22 @@ async function qwenTranslate({ endpoint, apiKey, projectId, location, model, sec
   try {
     const data = await providerTranslate({ endpoint, apiKey, projectId, location, model, text, source: src, target, tone, signal, debug, stream, provider: provider ? prov : undefined, context: stream ? 'stream' : 'default', autoInit, providerOrder: failover ? providerOrder : undefined, endpoints, secondaryModel });
     _setCache(cacheKey, data);
-    if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
+    if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { 
+      errorHandler.safe(() => TM.set(cacheKey, data.text), { operation: 'tm_cache' })();
+    }
     if (debug) {
       trLogger.debug('translation successful');
       trLogger.debug('final text', data.text);
     }
     return data;
   } catch (e) {
-    trLogger.error('translation request failed', e && e.message, e);
-    throw e;
+    return errorHandler.handle(e, { 
+      operation: 'translate',
+      provider: provider || 'default',
+      textLength: text?.length || 0,
+      source: src,
+      target: target
+    }, { text: '', confidence: 0, error: 'Translation failed' });
   }
 }
 
@@ -577,7 +889,7 @@ async function qwenTranslateStream({ endpoint, apiKey, projectId, location, mode
   const tone = glossary && typeof glossary.getTone === 'function' ? glossary.getTone() : undefined;
   const prov = provider || (chooseDefaultProvider ? chooseDefaultProvider({ endpoint, model, Providers }) : (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model })));
   const cacheKey = `${prov}:${makeCacheKey(src, target, text)}`;
-  if (cache.has(cacheKey)) {
+  if (cacheManager && typeof cacheManager.has === 'function' ? cacheManager.has(cacheKey) : fallbackCache.has(cacheKey)) {
     const data = _touchCache(cacheKey);
     if (onData) onData(data.text);
     return data;
@@ -604,22 +916,32 @@ async function qwenTranslateStream({ endpoint, apiKey, projectId, location, mode
         tone,
       });
       _setCache(cacheKey, data);
-      if (TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
+      if (TM && TM.set && data && typeof data.text === 'string') { 
+        errorHandler.safe(() => TM.set(cacheKey, data.text), { operation: 'tm_cache' })();
+      }
       return data;
     }
 
   try {
     const data = await providerTranslate({ endpoint, apiKey, projectId, location, model, text, source: src, target, tone, signal, debug, onData, stream, provider: prov, context: 'stream', autoInit, providerOrder: failover ? providerOrder : undefined, endpoints, secondaryModel });
     _setCache(cacheKey, data);
-    if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { try { TM.set(cacheKey, data.text); } catch {} }
+    if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { 
+      errorHandler.safe(() => TM.set(cacheKey, data.text), { operation: 'tm_cache' })();
+    }
     if (debug) {
       trLogger.debug('translation successful');
       trLogger.debug('final text', data.text);
     }
     return data;
   } catch (e) {
-    trLogger.error('translation request failed', e && e.message, e);
-    throw e;
+    return errorHandler.handle(e, { 
+      operation: 'translate_stream',
+      provider: prov || 'default',
+      textLength: text?.length || 0,
+      source: src,
+      target: target,
+      stream: true
+    }, { text: '', confidence: 0, error: 'Translation failed' });
   }
 }
 
@@ -723,7 +1045,7 @@ async function batchOnce({
       if (!lang) continue;
       if (!autoMode && det && det !== userSource) continue;
       const key = makeCacheKey(lang, opts.target, t);
-      if (!cache.has(key) && !seen.has(key)) {
+      if (!(cacheManager && typeof cacheManager.has === 'function' ? cacheManager.has(key) : fallbackCache.has(key)) && !seen.has(key)) {
         seen.add(key);
         missingKeys.push(key);
       }
@@ -739,24 +1061,7 @@ async function batchOnce({
     }
   }
 
-  const mapping = [];
-  texts.forEach((t, i) => {
-    const det = sourceByIndex[i];
-    const lang = det || userSource;
-    if (lang === opts.target || (!autoMode && det && det !== userSource)) {
-      mapping.push({ index: i, chunk: 0, text: t, cached: true, lang });
-      stats.words += t.trim().split(/\s+/).filter(Boolean).length;
-      stats.tokens += approxTokens(t);
-      return;
-    }
-    const key = makeCacheKey(lang, opts.target, t);
-    if (cache.has(key)) {
-      const v = _touchCache(key) || cache.get(key);
-      mapping.push({ index: i, chunk: 0, text: v.text, cached: true, lang });
-      stats.words += t.trim().split(/\s+/).filter(Boolean).length;
-      stats.tokens += approxTokens(t);
-      return;
-    }
+  // Load splitting and batching functions once, outside the loop
   let splitLong;
   let predictive;
   try {
@@ -798,18 +1103,63 @@ async function batchOnce({
     }
     return out;
   };
-  let pieces;
-  if (opts && opts.usePredictiveBatch && typeof predictive === 'function') {
-    try {
-      const batches = predictive([t], tokenBudget) || [];
-      pieces = batches.map(arr => (Array.isArray(arr) ? arr.join(' ') : String(arr || ''))).filter(Boolean);
-      if (!pieces.length) pieces = splitFn(t, tokenBudget);
-    } catch {
+
+  const mapping = [];
+  texts.forEach((t, i) => {
+    const det = sourceByIndex[i];
+    const lang = det || userSource;
+    if (lang === opts.target || (!autoMode && det && det !== userSource)) {
+      mapping.push({ index: i, chunk: 0, text: t, cached: true, lang });
+      stats.words += t.trim().split(/\s+/).filter(Boolean).length;
+      stats.tokens += approxTokens(t);
+      return;
+    }
+    const key = makeCacheKey(lang, opts.target, t);
+    
+    // Check cache using same priority order as setting
+    let hasInCache = false;
+    let v = null;
+    
+    if (cacheManager && typeof cacheManager.has === 'function' && typeof cacheManager.get === 'function') {
+      // Try cache manager first
+      hasInCache = cacheManager.has(key);
+      if (hasInCache) {
+        v = cacheManager.get(key);
+      }
+    }
+    
+    // Note: Skip legacy adapter cache lookup due to getCacheValue implementation bug
+    // The legacy adapter is available for other functions (fetch, sanitize, etc.) but
+    // cache methods are unreliable. Using fallback cache ensures proper functionality.
+    
+    if (!hasInCache) {
+      // Try fallback cache last
+      hasInCache = fallbackCache.has(key);
+      if (hasInCache) {
+        v = fallbackCache.get(key);
+      }
+    }
+    
+    if (hasInCache && v) {
+      mapping.push({ index: i, chunk: 0, text: v.text, cached: true, lang });
+      stats.words += t.trim().split(/\s+/).filter(Boolean).length;
+      stats.tokens += approxTokens(t);
+      return;
+    }
+    
+    // If not cached, add to mapping for translation (with text splitting if needed)
+    let pieces;
+    if (opts && opts.usePredictiveBatch && typeof predictive === 'function') {
+      try {
+        const batches = predictive([t], tokenBudget) || [];
+        pieces = batches.map(arr => (Array.isArray(arr) ? arr.join(' ') : String(arr || ''))).filter(Boolean);
+        if (!pieces.length) pieces = splitFn(t, tokenBudget);
+      } catch {
+        pieces = splitFn(t, tokenBudget);
+      }
+    } else {
       pieces = splitFn(t, tokenBudget);
     }
-  } else {
-    pieces = splitFn(t, tokenBudget);
-  }
     pieces.forEach((p, idx) => mapping.push({ index: i, chunk: idx, text: p, lang }));
   });
   const byIndex = new Map();
@@ -846,6 +1196,7 @@ async function batchOnce({
     let t = throttleFor(id);
     let tokLim = 0;
     try {
+      // Use existing provider if loaded, don't load on-demand for weight calculation
       const impl = Providers && Providers.get ? Providers.get(id) : null;
       const usage = t && t.getUsage ? t.getUsage() : {};
       tokLim = usage.tokenLimit || (impl && impl.throttle && impl.throttle.tokenLimit) || 0;
@@ -1010,7 +1361,13 @@ async function batchOnce({
       retryIdx.push(i);
       retryLangs.push(lang);
       const key = makeCacheKey(lang, opts.target, orig);
-      cache.delete(key);
+      if (cacheManager) {
+        if (typeof cacheManager.delete === 'function') {
+          cacheManager.delete(key);
+        }
+      } else {
+        fallbackCache.delete(key);
+      }
     }
   }
   if (retryTexts.length && retries > 0) {
@@ -1050,7 +1407,11 @@ async function batchOnce({
 
 // splitLongText extracted to translator/batching.js
 function qwenClearCache() {
-  cache.clear();
+  if (cacheManager && typeof cacheManager.clear === 'function') {
+    cacheManager.clear();
+  } else {
+    fallbackCache.clear();
+  }
   _persistClear();
 }
 if (typeof self !== 'undefined' && typeof window === 'undefined') {

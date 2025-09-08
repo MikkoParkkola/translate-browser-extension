@@ -1,9 +1,9 @@
 const Providers = require('../src/lib/providers');
-const { registerProvider, listProviders, initProviders } = require('../src/providers');
+const { registerProvider, listProviders, ensureProviders } = require('../src/providers');
 
 beforeEach(() => {
   Providers.reset();
-  initProviders();
+  ensureProviders(true); // Load all providers for testing
 });
 
 test('listProviders returns name and label', () => {

@@ -5,6 +5,7 @@ const { configure } = require('../src/throttle');
 const { modelTokenLimits } = require('../src/config');
 const { qwenTranslateStream, qwenTranslate } = require('../src/translator');
 
+// eslint-disable-next-line complexity
 function parseArgs() {
   const args = process.argv.slice(2);
   const opts = {};
@@ -68,7 +69,7 @@ async function main() {
         process.stdout.write('\n');
       } else {
         const res = await qwenTranslate({ ...opts, text: line, debug: opts.debug, stream: false });
-        process.stdout.write(res.text + '\n');
+        process.stdout.write(`${res.text}\n`);
       }
     } catch (err) {
       console.error(err.stack || err.toString());

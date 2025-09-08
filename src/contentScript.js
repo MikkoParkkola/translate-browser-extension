@@ -10,6 +10,69 @@ if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
 
   const skipInit = location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'));
   const logger = (window.qwenLogger && window.qwenLogger.create) ? window.qwenLogger.create('content') : console;
+  
+  // Load security module
+  let security = null;
+  try {
+    if (window.qwenSecurity) {
+      security = window.qwenSecurity;
+    } else {
+      // Import security module
+      const securityScript = document.createElement('script');
+      securityScript.src = chrome.runtime.getURL('core/security.js');
+      document.head.appendChild(securityScript);
+    }
+  } catch (e) {
+    logger.warn('Failed to load security module:', e);
+    // Fallback minimal security
+    security = {
+      sanitizeTranslationText: (text) => typeof text === 'string' ? text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') : text,
+      logSecurityEvent: (event, details) => console.warn('[Security]', event, details)
+    };
+  }
+
+  // Load error handler module
+  let errorHandler = null;
+  try {
+    if (window.qwenErrorHandler) {
+      errorHandler = window.qwenErrorHandler;
+    } else {
+      // Import error handler module
+      const errorHandlerScript = document.createElement('script');
+      errorHandlerScript.src = chrome.runtime.getURL('core/error-handler.js');
+      document.head.appendChild(errorHandlerScript);
+    }
+  } catch (e) {
+    logger.warn('Failed to load error handler module:', e);
+    // Fallback minimal error handler
+    errorHandler = {
+      handle: (error, context = {}, customFallback) => {
+        logger.error('Error:', error?.message || error);
+        return customFallback || null;
+      },
+      safe: (fn, context = {}, customFallback) => {
+        return function(...args) {
+          try {
+            const result = fn.apply(this, args);
+            if (result && typeof result.catch === 'function') {
+              return result.catch(error => {
+                logger.error('Async error:', error?.message || error);
+                return customFallback || null;
+              });
+            }
+            return result;
+          } catch (error) {
+            logger.error('Sync error:', error?.message || error);
+            return customFallback || null;
+          }
+        };
+      },
+      isNetworkError: (error) => {
+        const message = error?.message || '';
+        return /fetch|network|connection|timeout|cors|offline/i.test(message);
+      }
+    };
+  }
   let observers = [];
   let currentConfig;
   const batchQueue = [];
@@ -625,11 +688,30 @@ async function translateNode(node) {
         logger.warn('QTWARN: text already in target language; check source and target settings');
       }
     }
-    node.textContent = leading + translated + trailing;
+    
+    // Sanitize translated text before DOM insertion
+    let safeTranslated = translated;
+    if (security && security.sanitizeTranslationText) {
+      safeTranslated = security.sanitizeTranslationText(translated);
+      if (safeTranslated !== translated) {
+        security.logSecurityEvent('Translation text sanitized', { 
+          node: node.tagName || 'TEXT',
+          issues: 'dangerous content removed'
+        });
+      }
+    }
+    
+    node.textContent = leading + safeTranslated + trailing;
     mark(node);
   } catch (e) {
+    const fallbackError = errorHandler ? errorHandler.handle(e, {
+      operation: 'node_translation',
+      nodeType: node.tagName || 'TEXT',
+      textLength: text?.length || 0
+    }, null) : null;
+    
     const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
-    const offline = isOfflineError(e);
+    const offline = errorHandler ? errorHandler.isNetworkError(e) : isOfflineError(e);
     if (offline) {
       showError(t('popup.offline'));
       safeSendMessage({ action: 'translation-status', status: { offline: true } });
@@ -897,6 +979,7 @@ async function scanDocument() {
   const chunkSize = 200;
   let node;
   let processed = 0;
+  
   while (started && (node = walker.nextNode())) {
     if (node.textContent.trim() && shouldTranslate(node)) {
       chunk.push(node);
@@ -905,11 +988,20 @@ async function scanDocument() {
       }
     }
     processed++;
-    if (processed % 500 === 0) {
-      await new Promise(r => setTimeout(r, 0));
+    
+    // Use requestIdleCallback for better performance when available
+    if (processed % 200 === 0) { // Reduced from 500 to 200 for more responsive yielding
+      await new Promise(resolve => {
+        if (window.requestIdleCallback) {
+          requestIdleCallback(resolve, { timeout: 16 }); // 16ms timeout for 60fps
+        } else {
+          setTimeout(resolve, 0);
+        }
+      });
       if (!started) return;
     }
   }
+  
   if (started && chunk.length) prefetchNodes(chunk);
   if (!started) return;
   observe();
@@ -1054,6 +1146,40 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
     });
   }
+
+  // Global error handler to prevent crashes
+  window.addEventListener('error', (event) => {
+    if (event.filename && event.filename.includes('chrome-extension://')) {
+      const error = new Error(event.message);
+      error.filename = event.filename;
+      error.lineno = event.lineno;
+      error.colno = event.colno;
+      
+      if (errorHandler) {
+        errorHandler.handle(error, {
+          operation: 'content_script',
+          filename: event.filename,
+          location: `${event.lineno}:${event.colno}`
+        });
+      } else {
+        logger.error('Content script error:', {
+          message: event.message,
+          filename: event.filename,
+          lineno: event.lineno,
+          colno: event.colno
+        });
+      }
+      
+      // Log security event if available
+      if (security && security.logSecurityEvent) {
+        security.logSecurityEvent('Content script error', {
+          message: event.message,
+          location: `${event.filename}:${event.lineno}:${event.colno}`
+        });
+      }
+      event.preventDefault(); // Prevent error from bubbling
+    }
+  });
 
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
     initConfig();

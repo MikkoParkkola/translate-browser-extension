@@ -457,198 +457,198 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">(function () {
 // Guard only when running in the extension to allow test re-imports
-<span class="missing-if-branch" title="if path not taken" >I</span>if (
-  (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') &amp;&amp;
+  <span class="missing-if-branch" title="if path not taken" >I</span>if (
+    (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') &amp;&amp;
 <span class="branch-2 cbranch-no" title="branch not covered" >  typeof window !== 'undefined' </span>&amp;&amp;
 <span class="branch-3 cbranch-no" title="branch not covered" >  typeof chrome !== 'undefined' </span>&amp;&amp;
 <span class="branch-4 cbranch-no" title="branch not covered" >  chrome.runtime </span>&amp;&amp;
 <span class="branch-5 cbranch-no" title="branch not covered" >  chrome.runtime.id</span>
-) {
-<span class="cstat-no" title="statement not covered" >  if (window.__qwenConfigLoaded) {</span>
-<span class="cstat-no" title="statement not covered" >    if (typeof module !== 'undefined') <span class="cstat-no" title="statement not covered" >module.exports = window.__qwenConfigModule;</span></span>
-<span class="cstat-no" title="statement not covered" >    return;</span>
+  ) {
+<span class="cstat-no" title="statement not covered" >    if (window.__qwenConfigLoaded) {</span>
+<span class="cstat-no" title="statement not covered" >      if (typeof module !== 'undefined') <span class="cstat-no" title="statement not covered" >module.exports = window.__qwenConfigModule;</span></span>
+<span class="cstat-no" title="statement not covered" >      return;</span>
+    }
+<span class="cstat-no" title="statement not covered" >    window.__qwenConfigLoaded = true;</span>
   }
-<span class="cstat-no" title="statement not covered" >  window.__qwenConfigLoaded = true;</span>
-}
 &nbsp;
-const TRANSLATE_TIMEOUT_MS = 20000;
+  const TRANSLATE_TIMEOUT_MS = 20000;
 &nbsp;
-const defaultCfg = {
-  apiKey: '',
-  detectApiKey: '',
-  apiEndpoint: 'https://dashscope-intl.aliyuncs.com/api/v1',
-  model: 'qwen-mt-turbo',
-  sourceLanguage: 'en',
-  targetLanguage: 'en',
-  autoTranslate: false,
-  requestLimit: 60,
-  tokenLimit: 31980,
-  tokenBudget: 0,
-  calibratedAt: 0,
-  memCacheMax: 5000,
-  tmSync: false,
-  sensitivity: 0.3,
-  minDetectLength: 2,
-  debug: false,
-  qualityVerify: false,
-  useWasmEngine: true,
-  autoOpenAfterSave: true,
-  selectionPopup: false,
-  theme: 'dark',
-  themeStyle: 'apple',
-  charLimit: 0,
-  strategy: 'balanced',
-  secondaryModel: '',
-  models: [],
-  providers: {
+  const defaultCfg = {
+    apiKey: '',
+    detectApiKey: '',
+    apiEndpoint: 'https://dashscope-intl.aliyuncs.com/api/v1',
+    model: 'qwen-mt-turbo',
+    sourceLanguage: 'en',
+    targetLanguage: 'en',
+    autoTranslate: false,
+    requestLimit: 60,
+    tokenLimit: 31980,
+    tokenBudget: 0,
+    calibratedAt: 0,
+    memCacheMax: 5000,
+    tmSync: false,
+    sensitivity: 0.3,
+    minDetectLength: 2,
+    debug: false,
+    qualityVerify: false,
+    useWasmEngine: true,
+    autoOpenAfterSave: true,
+    selectionPopup: false,
+    theme: 'dark',
+    themeStyle: 'apple',
+    charLimit: 0,
+    strategy: 'balanced',
+    secondaryModel: '',
+    models: [],
+    providers: {
     // Approximate default monthly limits for external providers
-    google: { charLimit: 500000 }, // ~500k characters
-    deepl: { charLimit: 500000 }, // ~500k characters
-  },
-  providerOrder: [],
-  failover: true,
-  parallel: 'auto',
-  translateTimeoutMs: TRANSLATE_TIMEOUT_MS,
-};
+      google: { charLimit: 500000 }, // ~500k characters
+      deepl: { charLimit: 500000 }, // ~500k characters
+    },
+    providerOrder: [],
+    failover: true,
+    parallel: 'auto',
+    translateTimeoutMs: TRANSLATE_TIMEOUT_MS,
+  };
 &nbsp;
-const modelTokenLimits = {
-  'qwen-mt-turbo': 31980,
-  'qwen-mt-plus': 23797,
-  'gpt-5-mini': 128000,
-};
+  const modelTokenLimits = {
+    'qwen-mt-turbo': 31980,
+    'qwen-mt-plus': 23797,
+    'gpt-5-mini': 128000,
+  };
 &nbsp;
-function migrate(cfg = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
-  const out = { ...defaultCfg, ...cfg };
-  function mapStrategy(s) {
-    <span class="missing-if-branch" title="if path not taken" >I</span>if (s === 'cost') <span class="cstat-no" title="statement not covered" >return 'cheap';</span>
-    <span class="missing-if-branch" title="if path not taken" >I</span>if (s === 'speed') <span class="cstat-no" title="statement not covered" >return 'fast';</span>
-    return s;
-  }
-  <span class="missing-if-branch" title="if path not taken" >I</span>if (!out.providers || typeof out.providers !== 'object') <span class="cstat-no" title="statement not covered" >out.providers = {};</span>
-  const provider = out.provider || 'qwen';
-  <span class="missing-if-branch" title="else path not taken" >E</span>if (!out.providers[provider]) out.providers[provider] = {};
-  Object.entries(out.providers).forEach(([id, p]) =&gt; {
-    if (p.charLimit == null) p.charLimit = /^google$|^deepl/.test(id) ? <span class="branch-0 cbranch-no" title="branch not covered" >500000 </span>: out.charLimit || 0;
-    <span class="missing-if-branch" title="else path not taken" >E</span>if (p.requestLimit == null) p.requestLimit = out.requestLimit;
-    <span class="missing-if-branch" title="else path not taken" >E</span>if (p.tokenLimit == null) p.tokenLimit = out.tokenLimit;
-    <span class="missing-if-branch" title="else path not taken" >E</span>if (p.costPerInputToken == null) {
-      <span class="missing-if-branch" title="if path not taken" >I</span>if (p.costPerToken != null) <span class="cstat-no" title="statement not covered" >p.costPerInputToken = p.costPerToken;</span>
-      else p.costPerInputToken = 0;
+  function migrate(cfg = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
+    const out = { ...defaultCfg, ...cfg };
+    function mapStrategy(s) {
+      <span class="missing-if-branch" title="if path not taken" >I</span>if (s === 'cost') <span class="cstat-no" title="statement not covered" >return 'cheap';</span>
+      <span class="missing-if-branch" title="if path not taken" >I</span>if (s === 'speed') <span class="cstat-no" title="statement not covered" >return 'fast';</span>
+      return s;
     }
-    <span class="missing-if-branch" title="else path not taken" >E</span>if (p.costPerOutputToken == null) {
-      <span class="missing-if-branch" title="if path not taken" >I</span>if (p.costPerToken != null) <span class="cstat-no" title="statement not covered" >p.costPerOutputToken = p.costPerToken;</span>
-      else p.costPerOutputToken = 0;
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (!out.providers || typeof out.providers !== 'object') <span class="cstat-no" title="statement not covered" >out.providers = {};</span>
+    const provider = out.provider || 'qwen';
+    <span class="missing-if-branch" title="else path not taken" >E</span>if (!out.providers[provider]) out.providers[provider] = {};
+    Object.entries(out.providers).forEach(([id, p]) =&gt; {
+      if (p.charLimit == null) p.charLimit = /^google$|^deepl/.test(id) ? <span class="branch-0 cbranch-no" title="branch not covered" >500000 </span>: out.charLimit || 0;
+      <span class="missing-if-branch" title="else path not taken" >E</span>if (p.requestLimit == null) p.requestLimit = out.requestLimit;
+      <span class="missing-if-branch" title="else path not taken" >E</span>if (p.tokenLimit == null) p.tokenLimit = out.tokenLimit;
+      <span class="missing-if-branch" title="else path not taken" >E</span>if (p.costPerInputToken == null) {
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (p.costPerToken != null) <span class="cstat-no" title="statement not covered" >p.costPerInputToken = p.costPerToken;</span>
+        else p.costPerInputToken = 0;
+      }
+      <span class="missing-if-branch" title="else path not taken" >E</span>if (p.costPerOutputToken == null) {
+        <span class="missing-if-branch" title="if path not taken" >I</span>if (p.costPerToken != null) <span class="cstat-no" title="statement not covered" >p.costPerOutputToken = p.costPerToken;</span>
+        else p.costPerOutputToken = 0;
+      }
+      <span class="missing-if-branch" title="else path not taken" >E</span>if (p.weight == null) p.weight = 0;
+      <span class="missing-if-branch" title="if path not taken" >I</span>if (p.strategy != null) <span class="cstat-no" title="statement not covered" >p.strategy = mapStrategy(p.strategy);</span>
+      <span class="missing-if-branch" title="else path not taken" >E</span>if (p.strategy == null) p.strategy = mapStrategy(out.strategy || <span class="branch-1 cbranch-no" title="branch not covered" >'balanced')</span>;
+      <span class="missing-if-branch" title="else path not taken" >E</span>if (!Array.isArray(p.models) || <span class="branch-1 cbranch-no" title="branch not covered" >!p.models.length)</span> p.models = p.model ? <span class="branch-0 cbranch-no" title="branch not covered" >[p.model] </span>: [];
+    });
+    if (out.apiKey &amp;&amp; !out.providers[provider].apiKey) out.providers[provider].apiKey = out.apiKey;
+    <span class="missing-if-branch" title="else path not taken" >E</span>if (out.apiEndpoint &amp;&amp; !out.providers[provider].apiEndpoint) out.providers[provider].apiEndpoint = out.apiEndpoint;
+    <span class="missing-if-branch" title="else path not taken" >E</span>if (out.model &amp;&amp; !out.providers[provider].model) out.providers[provider].model = out.model;
+    const p = out.providers[provider];
+    <span class="missing-if-branch" title="else path not taken" >E</span>if (!Array.isArray(p.models) || !p.models.length) p.models = p.model ? [p.model] : <span class="branch-1 cbranch-no" title="branch not covered" >[];</span>
+    out.apiKey = p.apiKey || out.apiKey || '';
+    out.apiEndpoint = p.apiEndpoint || <span class="branch-1 cbranch-no" title="branch not covered" >out.apiEndpoint </span>|| <span class="branch-2 cbranch-no" title="branch not covered" >'';</span>
+    out.model = p.model || <span class="branch-1 cbranch-no" title="branch not covered" >out.model </span>|| <span class="branch-2 cbranch-no" title="branch not covered" >'';</span>
+    out.requestLimit = p.requestLimit || <span class="branch-1 cbranch-no" title="branch not covered" >out.requestLimit;</span>
+    out.tokenLimit = p.tokenLimit || <span class="branch-1 cbranch-no" title="branch not covered" >out.tokenLimit;</span>
+    out.charLimit = p.charLimit || out.charLimit;
+    out.strategy = mapStrategy(p.strategy || <span class="branch-1 cbranch-no" title="branch not covered" >out.strategy)</span>;
+    out.secondaryModel = p.secondaryModel || '';
+    out.models = p.models || <span class="branch-1 cbranch-no" title="branch not covered" >[];</span>
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (!Array.isArray(out.providerOrder)) <span class="cstat-no" title="statement not covered" >out.providerOrder = [];</span>
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (typeof out.failover !== 'boolean') <span class="cstat-no" title="statement not covered" >out.failover = true;</span>
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (typeof out.parallel !== 'boolean' &amp;&amp; out.parallel !== 'auto') <span class="cstat-no" title="statement not covered" >out.parallel = 'auto';</span>
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (typeof out.tmSync !== 'boolean') <span class="cstat-no" title="statement not covered" >out.tmSync = false;</span>
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (typeof out.selectionPopup !== 'boolean') <span class="cstat-no" title="statement not covered" >out.selectionPopup = false;</span>
+    out.translateTimeoutMs = parseInt(out.translateTimeoutMs, 10);
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (!Number.isFinite(out.translateTimeoutMs) || out.translateTimeoutMs &lt;= 0) {
+<span class="cstat-no" title="statement not covered" >      out.translateTimeoutMs = TRANSLATE_TIMEOUT_MS;</span>
     }
-    <span class="missing-if-branch" title="else path not taken" >E</span>if (p.weight == null) p.weight = 0;
-    <span class="missing-if-branch" title="if path not taken" >I</span>if (p.strategy != null) <span class="cstat-no" title="statement not covered" >p.strategy = mapStrategy(p.strategy);</span>
-    <span class="missing-if-branch" title="else path not taken" >E</span>if (p.strategy == null) p.strategy = mapStrategy(out.strategy || <span class="branch-1 cbranch-no" title="branch not covered" >'balanced')</span>;
-    <span class="missing-if-branch" title="else path not taken" >E</span>if (!Array.isArray(p.models) || <span class="branch-1 cbranch-no" title="branch not covered" >!p.models.length)</span> p.models = p.model ? <span class="branch-0 cbranch-no" title="branch not covered" >[p.model] </span>: [];
-  });
-  if (out.apiKey &amp;&amp; !out.providers[provider].apiKey) out.providers[provider].apiKey = out.apiKey;
-  <span class="missing-if-branch" title="else path not taken" >E</span>if (out.apiEndpoint &amp;&amp; !out.providers[provider].apiEndpoint) out.providers[provider].apiEndpoint = out.apiEndpoint;
-  <span class="missing-if-branch" title="else path not taken" >E</span>if (out.model &amp;&amp; !out.providers[provider].model) out.providers[provider].model = out.model;
-  const p = out.providers[provider];
-  <span class="missing-if-branch" title="else path not taken" >E</span>if (!Array.isArray(p.models) || !p.models.length) p.models = p.model ? [p.model] : <span class="branch-1 cbranch-no" title="branch not covered" >[];</span>
-  out.apiKey = p.apiKey || out.apiKey || '';
-  out.apiEndpoint = p.apiEndpoint || <span class="branch-1 cbranch-no" title="branch not covered" >out.apiEndpoint </span>|| <span class="branch-2 cbranch-no" title="branch not covered" >'';</span>
-  out.model = p.model || <span class="branch-1 cbranch-no" title="branch not covered" >out.model </span>|| <span class="branch-2 cbranch-no" title="branch not covered" >'';</span>
-  out.requestLimit = p.requestLimit || <span class="branch-1 cbranch-no" title="branch not covered" >out.requestLimit;</span>
-  out.tokenLimit = p.tokenLimit || <span class="branch-1 cbranch-no" title="branch not covered" >out.tokenLimit;</span>
-  out.charLimit = p.charLimit || out.charLimit;
-  out.strategy = mapStrategy(p.strategy || <span class="branch-1 cbranch-no" title="branch not covered" >out.strategy)</span>;
-  out.secondaryModel = p.secondaryModel || '';
-  out.models = p.models || <span class="branch-1 cbranch-no" title="branch not covered" >[];</span>
-  <span class="missing-if-branch" title="if path not taken" >I</span>if (!Array.isArray(out.providerOrder)) <span class="cstat-no" title="statement not covered" >out.providerOrder = [];</span>
-  <span class="missing-if-branch" title="if path not taken" >I</span>if (typeof out.failover !== 'boolean') <span class="cstat-no" title="statement not covered" >out.failover = true;</span>
-  <span class="missing-if-branch" title="if path not taken" >I</span>if (typeof out.parallel !== 'boolean' &amp;&amp; out.parallel !== 'auto') <span class="cstat-no" title="statement not covered" >out.parallel = 'auto';</span>
-  <span class="missing-if-branch" title="if path not taken" >I</span>if (typeof out.tmSync !== 'boolean') <span class="cstat-no" title="statement not covered" >out.tmSync = false;</span>
-  <span class="missing-if-branch" title="if path not taken" >I</span>if (typeof out.selectionPopup !== 'boolean') <span class="cstat-no" title="statement not covered" >out.selectionPopup = false;</span>
-  out.translateTimeoutMs = parseInt(out.translateTimeoutMs, 10);
-  <span class="missing-if-branch" title="if path not taken" >I</span>if (!Number.isFinite(out.translateTimeoutMs) || out.translateTimeoutMs &lt;= 0) {
-<span class="cstat-no" title="statement not covered" >    out.translateTimeoutMs = TRANSLATE_TIMEOUT_MS;</span>
-  }
-  out.minDetectLength = parseInt(out.minDetectLength, 10);
-  <span class="missing-if-branch" title="if path not taken" >I</span>if (!Number.isFinite(out.minDetectLength) || out.minDetectLength &lt; 0) {
-<span class="cstat-no" title="statement not covered" >    out.minDetectLength = defaultCfg.minDetectLength;</span>
-  }
-  <span class="missing-if-branch" title="else path not taken" >E</span>if (out.sourceLanguage &amp;&amp; out.targetLanguage &amp;&amp; out.sourceLanguage === out.targetLanguage) {
-    <span class="missing-if-branch" title="else path not taken" >E</span>if (typeof console !== 'undefined' &amp;&amp; console.warn) {
-      console.warn('sourceLanguage equals targetLanguage; enabling auto-detect');
+    out.minDetectLength = parseInt(out.minDetectLength, 10);
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (!Number.isFinite(out.minDetectLength) || out.minDetectLength &lt; 0) {
+<span class="cstat-no" title="statement not covered" >      out.minDetectLength = defaultCfg.minDetectLength;</span>
     }
-    out.sourceLanguage = 'auto';
+    <span class="missing-if-branch" title="else path not taken" >E</span>if (out.sourceLanguage &amp;&amp; out.targetLanguage &amp;&amp; out.sourceLanguage === out.targetLanguage) {
+      <span class="missing-if-branch" title="else path not taken" >E</span>if (typeof console !== 'undefined' &amp;&amp; console.warn) {
+        console.warn('sourceLanguage equals targetLanguage; enabling auto-detect');
+      }
+      out.sourceLanguage = 'auto';
+    }
+    return out;
   }
-  return out;
-}
 &nbsp;
-function qwenLoadConfig() {
+  function qwenLoadConfig() {
   // For the Chrome extension
-  <span class="missing-if-branch" title="else path not taken" >E</span>if (typeof chrome !== 'undefined' &amp;&amp; chrome.storage &amp;&amp; chrome.storage.sync) {
-    return new Promise((resolve) =&gt; {
-      chrome.storage.sync.get(defaultCfg, (cfg) =&gt; {
-        const out = migrate(cfg);
-        chrome.storage.sync.set(out, () =&gt; resolve(out));
+    <span class="missing-if-branch" title="else path not taken" >E</span>if (typeof chrome !== 'undefined' &amp;&amp; chrome.storage &amp;&amp; chrome.storage.sync) {
+      return new Promise((resolve) =&gt; {
+        chrome.storage.sync.get(defaultCfg, (cfg) =&gt; {
+          const out = migrate(cfg);
+          chrome.storage.sync.set(out, () =&gt; resolve(out));
+        });
       });
-    });
+    }
+&nbsp;
+    // For local testing (pdfViewer.html)
+<span class="cstat-no" title="statement not covered" >    if (typeof window !== 'undefined' &amp;&amp; window.qwenConfig) {</span>
+<span class="cstat-no" title="statement not covered" >      return Promise.resolve({ ...defaultCfg, ...window.qwenConfig });</span>
+    }
+&nbsp;
+    // Fallback for other environments (like Node.js for jest tests)
+<span class="cstat-no" title="statement not covered" >    return Promise.resolve(migrate());</span>
   }
 &nbsp;
-  // For local testing (pdfViewer.html)
-<span class="cstat-no" title="statement not covered" >  if (typeof window !== 'undefined' &amp;&amp; window.qwenConfig) {</span>
-<span class="cstat-no" title="statement not covered" >    return Promise.resolve({ ...defaultCfg, ...window.qwenConfig });</span>
-  }
-&nbsp;
-  // Fallback for other environments (like Node.js for jest tests)
-<span class="cstat-no" title="statement not covered" >  return Promise.resolve(migrate());</span>
-}
-&nbsp;
-function qwenSaveConfig(cfg) {
+  function qwenSaveConfig(cfg) {
   // Only save if in the Chrome extension context
-  <span class="missing-if-branch" title="else path not taken" >E</span>if (typeof chrome !== 'undefined' &amp;&amp; chrome.storage &amp;&amp; chrome.storage.sync) {
-    const provider = cfg.provider || <span class="branch-1 cbranch-no" title="branch not covered" >'qwen';</span>
-    const num = v =&gt; (v === '' || v == null ? undefined : <span class="branch-1 cbranch-no" title="branch not covered" >Number(v))</span>;
-    const providers = { ...(cfg.providers || <span class="branch-1 cbranch-no" title="branch not covered" >{})</span> };
-    providers[provider] = {
-      ...(providers[provider] || {}),
-      apiKey: cfg.apiKey,
-      apiEndpoint: cfg.apiEndpoint,
-      model: cfg.model,
-      secondaryModel: cfg.secondaryModel,
-      models: cfg.models,
-      requestLimit: num(cfg.requestLimit),
-      tokenLimit: num(cfg.tokenLimit),
-      charLimit: num(cfg.charLimit),
-      strategy: cfg.strategy,
-      costPerInputToken: num(cfg.costPerInputToken),
-      costPerOutputToken: num(cfg.costPerOutputToken),
-      weight: num(cfg.weight),
-    };
-    const toSave = { ...cfg, providers, translateTimeoutMs: num(cfg.translateTimeoutMs), minDetectLength: num(cfg.minDetectLength) };
-    return new Promise((resolve) =&gt; {
-      chrome.storage.sync.set(toSave, resolve);
-    });
+    <span class="missing-if-branch" title="else path not taken" >E</span>if (typeof chrome !== 'undefined' &amp;&amp; chrome.storage &amp;&amp; chrome.storage.sync) {
+      const provider = cfg.provider || <span class="branch-1 cbranch-no" title="branch not covered" >'qwen';</span>
+      const num = v =&gt; (v === '' || v == null ? undefined : <span class="branch-1 cbranch-no" title="branch not covered" >Number(v))</span>;
+      const providers = { ...(cfg.providers || <span class="branch-1 cbranch-no" title="branch not covered" >{})</span> };
+      providers[provider] = {
+        ...(providers[provider] || {}),
+        apiKey: cfg.apiKey,
+        apiEndpoint: cfg.apiEndpoint,
+        model: cfg.model,
+        secondaryModel: cfg.secondaryModel,
+        models: cfg.models,
+        requestLimit: num(cfg.requestLimit),
+        tokenLimit: num(cfg.tokenLimit),
+        charLimit: num(cfg.charLimit),
+        strategy: cfg.strategy,
+        costPerInputToken: num(cfg.costPerInputToken),
+        costPerOutputToken: num(cfg.costPerOutputToken),
+        weight: num(cfg.weight),
+      };
+      const toSave = { ...cfg, providers, translateTimeoutMs: num(cfg.translateTimeoutMs), minDetectLength: num(cfg.minDetectLength) };
+      return new Promise((resolve) =&gt; {
+        chrome.storage.sync.set(toSave, resolve);
+      });
+    }
+<span class="cstat-no" title="statement not covered" >    return Promise.resolve(); </span>// Otherwise, do nothing
   }
-<span class="cstat-no" title="statement not covered" >  return Promise.resolve(); </span>// Otherwise, do nothing
-}
 &nbsp;
-const exportsObj = { qwenLoadConfig, qwenSaveConfig, defaultCfg, modelTokenLimits, TRANSLATE_TIMEOUT_MS };
+  const exportsObj = { qwenLoadConfig, qwenSaveConfig, defaultCfg, modelTokenLimits, TRANSLATE_TIMEOUT_MS };
 &nbsp;
-<span class="missing-if-branch" title="else path not taken" >E</span>if (typeof module !== 'undefined') {
-  module.exports = exportsObj;
-}
-<span class="missing-if-branch" title="else path not taken" >E</span>if (typeof window !== 'undefined') {
-  window.qwenDefaultConfig = defaultCfg;
-  window.qwenLoadConfig = qwenLoadConfig;
-  window.qwenSaveConfig = qwenSaveConfig;
-  window.qwenModelTokenLimits = modelTokenLimits;
-  window.qwenTranslateTimeoutMs = TRANSLATE_TIMEOUT_MS;
-  <span class="missing-if-branch" title="if path not taken" >I</span>if (
-    (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') &amp;&amp;
+  <span class="missing-if-branch" title="else path not taken" >E</span>if (typeof module !== 'undefined') {
+    module.exports = exportsObj;
+  }
+  <span class="missing-if-branch" title="else path not taken" >E</span>if (typeof window !== 'undefined') {
+    window.qwenDefaultConfig = defaultCfg;
+    window.qwenLoadConfig = qwenLoadConfig;
+    window.qwenSaveConfig = qwenSaveConfig;
+    window.qwenModelTokenLimits = modelTokenLimits;
+    window.qwenTranslateTimeoutMs = TRANSLATE_TIMEOUT_MS;
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (
+      (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') &amp;&amp;
 <span class="branch-2 cbranch-no" title="branch not covered" >    typeof chrome !== 'undefined' </span>&amp;&amp;
 <span class="branch-3 cbranch-no" title="branch not covered" >    chrome.runtime </span>&amp;&amp;
 <span class="branch-4 cbranch-no" title="branch not covered" >    chrome.runtime.id</span>
-  ) {
-<span class="cstat-no" title="statement not covered" >    window.__qwenConfigModule = typeof module !== 'undefined' ? module.exports : exportsObj;</span>
+    ) {
+<span class="cstat-no" title="statement not covered" >      window.__qwenConfigModule = typeof module !== 'undefined' ? module.exports : exportsObj;</span>
+    }
   }
-}
 &nbsp;
 })();
 &nbsp;</pre></td></tr></table></pre>
@@ -658,7 +658,7 @@ const exportsObj = { qwenLoadConfig, qwenSaveConfig, defaultCfg, modelTokenLimit
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-08-19T11:01:38.619Z
+                at 2025-09-08T11:27:38.631Z
             </div>
         <script src="../prettify.js"></script>
         <script>

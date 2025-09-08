@@ -13,17 +13,22 @@
     "contextMenus"
   ],
   "host_permissions": [
-    "<all_urls>",
     "https://dashscope-intl.aliyuncs.com/*",
     "https://api.openai.com/*",
     "https://api.deepl.com/*",
-    "https://api-free.deepl.com/*"
+    "https://api-free.deepl.com/*",
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.mistral.ai/*"
+  ],
+  "optional_host_permissions": [
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; connect-src 'self' https: file: blob: data:; img-src 'self' https: file: blob: data:; font-src 'self';"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'none'; connect-src 'self' https://dashscope-intl.aliyuncs.com https://api.openai.com https://api.deepl.com https://api-free.deepl.com https://api.anthropic.com https://generativelanguage.googleapis.com https://api.mistral.ai; img-src 'self' data:; font-src 'self'; media-src 'none';"
   },
   "action": {
     "default_popup": "popup.html",
@@ -41,45 +46,26 @@
       "resources": [
         "translator.js",
         "config.js",
-        "languages.js",
-        "lib/glossary.js",
         "throttle.js",
-        "styles/apple.css",
-        "styles/cyberpunk.css",
-        "styles/modern.css",
-        "styles/design-system.css",
-        "styles/popup.css",
-        "styles/options.css",
+        "core/security.js",
         "styles/contentScript.css",
-        "styles/popup-bg.svg",
-        "options.html",
-        "options.js",
         "pdfViewer.html",
         "pdfViewer.js",
-        "sessionPdf.js",
         "pdf.min.js",
-        "pdf.worker.min.js",
-        "wasm/pipeline.js",
-        "wasm/pdfgen.js",
-        "wasm/engine.js",
-        "wasm/vendor/hb.wasm",
-        "wasm/vendor/icu4x_segmenter.wasm",
-        "wasm/vendor/mupdf.engine.js",
-        "wasm/vendor/mupdf-wasm.js",
-        "wasm/vendor/mupdf-wasm.wasm",
-        "wasm/vendor/pdfium.engine.js",
-        "wasm/vendor/pdfium.js",
-        "wasm/vendor/pdfium.wasm",
-        "wasm/vendor/pdf-lib.js",
-        "wasm/vendor/*",
-        "wasm/vendor/fonts/*",
-        "config.local.js",
-        "qa/compare.html",
-        "qa/usage.html",
-        "i18n/*"
+        "pdf.worker.min.js"
       ],
       "matches": [
         "<all_urls>"
+      ]
+    },
+    {
+      "resources": [
+        "wasm/vendor/mupdf.wasm",
+        "wasm/vendor/pdfium.wasm",
+        "wasm/vendor/hb.wasm"
+      ],
+      "matches": [
+        "file://*/*"
       ]
     }
   ]

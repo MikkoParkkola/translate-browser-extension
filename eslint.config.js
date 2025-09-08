@@ -17,7 +17,7 @@ module.exports = [
       'webpack.config.js',
       'scripts/',
       'e2e/',
-      '**/*.d.ts' // Skip type definition files
+      '**/*.d.ts', // Skip type definition files
     ],
   },
   // JavaScript configuration
@@ -49,7 +49,7 @@ module.exports = [
         argsIgnorePattern: '^_',
         varsIgnorePattern: '^_',
         caughtErrorsIgnorePattern: '^_',
-        destructuredArrayIgnorePattern: '^_'
+        destructuredArrayIgnorePattern: '^_',
       }],
       'no-console': 'off', // Extension uses console logging extensively
       'no-debugger': 'warn',
@@ -118,12 +118,12 @@ module.exports = [
       'no-useless-rename': 'warn',
       'no-lone-blocks': 'warn',
       'no-empty': ['warn', { allowEmptyCatch: true }], // Allow empty catch blocks (common pattern)
-      
+
       // === Function & Variable Naming ===
-      'camelcase': ['warn', { 
-        properties: 'never', 
+      'camelcase': ['warn', {
+        properties: 'never',
         ignoreDestructuring: true,
-        allow: ['^[A-Z_]+$', '^chrome_', '^qwen_', '^_.*'] // Allow constants, chrome APIs, qwen prefix, private vars
+        allow: ['^[A-Z_]+$', '^chrome_', '^qwen_', '^_.*'], // Allow constants, chrome APIs, qwen prefix, private vars
       }],
       'new-cap': ['warn', { capIsNew: false }], // Allow factory functions
       'no-underscore-dangle': 'off', // Allow _ prefix for private members
@@ -163,13 +163,13 @@ module.exports = [
       'eol-last': 'warn',
 
       // === Specific to Large Codebase ===
-      'max-len': ['warn', { 
-        code: 120, 
-        ignoreUrls: true, 
-        ignoreStrings: true, 
+      'max-len': ['warn', {
+        code: 120,
+        ignoreUrls: true,
+        ignoreStrings: true,
         ignoreTemplateLiterals: true,
         ignoreRegExpLiterals: true,
-        ignoreComments: true
+        ignoreComments: true,
       }],
       'complexity': ['warn', 15], // Allow moderate complexity for extension logic
       'max-depth': ['warn', 4],
@@ -178,12 +178,12 @@ module.exports = [
 
       // === Testing Environment Specific ===
       // Note: Jest-specific rules would require @eslint/plugin-jest
-      
+
       // === Allow Extension Patterns ===
-      'no-unused-expressions': ['warn', { 
-        allowShortCircuit: true, 
+      'no-unused-expressions': ['warn', {
+        allowShortCircuit: true,
         allowTernary: true,
-        allowTaggedTemplates: true 
+        allowTaggedTemplates: true,
       }],
       'no-sequences': 'warn',
       'no-void': ['warn', { allowAsStatement: true }], // Common in extension cleanup
@@ -236,7 +236,7 @@ module.exports = [
         argsIgnorePattern: '^_',
         varsIgnorePattern: '^_',
         caughtErrorsIgnorePattern: '^_',
-        destructuredArrayIgnorePattern: '^_'
+        destructuredArrayIgnorePattern: '^_',
       }],
       '@typescript-eslint/no-explicit-any': 'warn', // Allow any but warn
       '@typescript-eslint/no-non-null-assertion': 'warn',
@@ -244,12 +244,12 @@ module.exports = [
       '@typescript-eslint/prefer-optional-chain': 'error',
       '@typescript-eslint/no-unnecessary-type-assertion': 'error',
       '@typescript-eslint/no-inferrable-types': 'warn',
-      
+
       // === Disable JavaScript rules that conflict with TypeScript ===
       'no-unused-vars': 'off', // Use @typescript-eslint/no-unused-vars instead
       'no-undef': 'off', // TypeScript handles this
       'no-redeclare': 'off', // TypeScript handles this
-      
+
       // === Extension-specific TypeScript rules ===
       '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
       '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
@@ -258,7 +258,7 @@ module.exports = [
         allowTypedFunctionExpressions: true,
         allowHigherOrderFunctions: true,
       }],
-      
+
       // === Relaxed for extension compatibility ===
       '@typescript-eslint/no-misused-promises': 'off', // Chrome API patterns
       '@typescript-eslint/require-await': 'off', // Common in extension async patterns

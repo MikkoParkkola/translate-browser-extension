@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">78.57% </span>
+                <span class="strong">83.33% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>22/28</span>
+                <span class='fraction'>40/48</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">65.78% </span>
+                <span class="strong">77.41% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>25/38</span>
+                <span class='fraction'>48/62</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">83.33% </span>
+                <span class="strong">92.85% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>15/18</span>
+                <span class='fraction'>26/28</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line medium'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -92,32 +92,52 @@
 <a name='L27'></a><a href='#L27'>27</a>
 <a name='L28'></a><a href='#L28'>28</a>
 <a name='L29'></a><a href='#L29'>29</a>
-<a name='L30'></a><a href='#L30'>30</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">14x</span>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">16x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">39x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">18x</span>
+<span class="cline-any cline-yes">16x</span>
 <span class="cline-any cline-yes">14x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">45x</span>
-<span class="cline-any cline-yes">45x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">43x</span>
+<span class="cline-any cline-yes">12x</span>
 <span class="cline-any cline-yes">10x</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">71x</span>
+<span class="cline-any cline-yes">71x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">66x</span>
+<span class="cline-any cline-yes">26x</span>
+<span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">14x</span>
-<span class="cline-any cline-yes">14x</span>
-<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-yes">16x</span>
+<span class="cline-any cline-yes">16x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -125,7 +145,17 @@
   function chooseDefault({ endpoint, model, Providers }){
     try { if (Providers &amp;&amp; typeof Providers.choose === 'function') return Providers.choose({ endpoint, model }); } catch {}
     const ep = String(endpoint || <span class="branch-1 cbranch-no" title="branch not covered" >'')</span>.toLowerCase();
-    return ep.includes('dashscope') ? <span class="branch-0 cbranch-no" title="branch not covered" >'dashscope' </span>: 'dashscope';
+    if (ep.includes('openrouter')) return 'openrouter';
+    if (ep.includes('openai')) return 'openai';
+    if (ep.includes('anthropic') || ep.includes('claude')) return 'anthropic';
+    if (ep.includes('mistral')) return 'mistral';
+    if (ep.includes('deepl')) return 'deepl';
+    if (ep.includes('google')) return 'google';
+    if (ep.includes('ollama') || ep.includes('11434')) return 'ollama';
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (ep.includes('gemini')) <span class="cstat-no" title="statement not covered" >return 'gemini';</span>
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (ep.includes('macos')) <span class="cstat-no" title="statement not covered" >return 'macos';</span>
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (ep.includes('dashscope') || ep.includes('qwen')) <span class="cstat-no" title="statement not covered" >return 'dashscope';</span>
+    return 'dashscope';
   }
 &nbsp;
   function candidatesChain({ providerOrder, provider, endpoint, model, Providers }){
@@ -137,8 +167,8 @@
         return order;
       }
       if (provider) return [provider];
-      <span class="missing-if-branch" title="else path not taken" >E</span>if (Providers &amp;&amp; typeof Providers.candidates === 'function') return Providers.candidates({ endpoint, model });
-<span class="cstat-no" title="statement not covered" >      return [chooseDefault({ endpoint, model, Providers })];</span>
+      if (Providers &amp;&amp; typeof Providers.candidates === 'function') return Providers.candidates({ endpoint, model });
+      return [chooseDefault({ endpoint, model, Providers })];
     } catch {
 <span class="cstat-no" title="statement not covered" >      return [chooseDefault({ endpoint, model, Providers })];</span>
     }
@@ -157,7 +187,7 @@
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-08-19T11:01:38.619Z
+                at 2025-09-08T11:27:38.631Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

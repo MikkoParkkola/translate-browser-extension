@@ -3,7 +3,7 @@
 <html lang="en">
 
 <head>
-    <title>Code coverage report for src/providers/index.js</title>
+    <title>Code coverage report for src/core/language-detector.js</title>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="../../prettify.css" />
     <link rel="stylesheet" href="../../base.css" />
@@ -19,34 +19,34 @@
 <body>
 <div class='wrapper'>
     <div class='pad1'>
-        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/providers</a> index.js</h1>
+        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/core</a> language-detector.js</h1>
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">55.93% </span>
+                <span class="strong">33.33% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>66/118</span>
+                <span class='fraction'>21/63</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">52.3% </span>
+                <span class="strong">35.48% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>68/130</span>
+                <span class='fraction'>22/62</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">50% </span>
+                <span class="strong">27.27% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>10/20</span>
+                <span class='fraction'>3/11</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">59.22% </span>
+                <span class="strong">33.33% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>61/103</span>
+                <span class='fraction'>20/60</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line medium'></div>
+    <div class='status-line low'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -305,256 +305,48 @@
 <a name='L240'></a><a href='#L240'>240</a>
 <a name='L241'></a><a href='#L241'>241</a>
 <a name='L242'></a><a href='#L242'>242</a>
-<a name='L243'></a><a href='#L243'>243</a>
-<a name='L244'></a><a href='#L244'>244</a>
-<a name='L245'></a><a href='#L245'>245</a>
-<a name='L246'></a><a href='#L246'>246</a>
-<a name='L247'></a><a href='#L247'>247</a>
-<a name='L248'></a><a href='#L248'>248</a>
-<a name='L249'></a><a href='#L249'>249</a>
-<a name='L250'></a><a href='#L250'>250</a>
-<a name='L251'></a><a href='#L251'>251</a>
-<a name='L252'></a><a href='#L252'>252</a>
-<a name='L253'></a><a href='#L253'>253</a>
-<a name='L254'></a><a href='#L254'>254</a>
-<a name='L255'></a><a href='#L255'>255</a>
-<a name='L256'></a><a href='#L256'>256</a>
-<a name='L257'></a><a href='#L257'>257</a>
-<a name='L258'></a><a href='#L258'>258</a>
-<a name='L259'></a><a href='#L259'>259</a>
-<a name='L260'></a><a href='#L260'>260</a>
-<a name='L261'></a><a href='#L261'>261</a>
-<a name='L262'></a><a href='#L262'>262</a>
-<a name='L263'></a><a href='#L263'>263</a>
-<a name='L264'></a><a href='#L264'>264</a>
-<a name='L265'></a><a href='#L265'>265</a>
-<a name='L266'></a><a href='#L266'>266</a>
-<a name='L267'></a><a href='#L267'>267</a>
-<a name='L268'></a><a href='#L268'>268</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
+<a name='L243'></a><a href='#L243'>243</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">27x</span>
-<span class="cline-any cline-yes">25x</span>
-<span class="cline-any cline-yes">25x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">28x</span>
-<span class="cline-any cline-yes">22x</span>
-<span class="cline-any cline-yes">22x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">22x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">20x</span>
-<span class="cline-any cline-yes">20x</span>
-<span class="cline-any cline-yes">20x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">20x</span>
-<span class="cline-any cline-yes">20x</span>
-<span class="cline-any cline-yes">20x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">23x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">29x</span>
-<span class="cline-any cline-yes">29x</span>
+<span class="cline-any cline-yes">15x</span>
 <span class="cline-any cline-yes">15x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">14x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -562,20 +354,22 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">14x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -588,283 +382,414 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">;(function () {
-const root = typeof window !== 'undefined'
-  ? window
-  : <span class="branch-1 cbranch-no" title="branch not covered" >typeof self !== 'undefined'</span>
-    ? self
-    : globalThis;
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
+ * Language Detector Module - Implements DetectorInterface
+ * Provides language detection with multiple strategies and fallbacks
+ */
 &nbsp;
-const Providers = (typeof window !== 'undefined' &amp;&amp; window.qwenProviders)
-  || (typeof self !== 'undefined' &amp;&amp; self.qwenProviders)
-  || (typeof require !== 'undefined' ? require('../lib/providers') : <span class="branch-1 cbranch-no" title="branch not covered" >null)</span>;
-&nbsp;
-const baseInit = Providers &amp;&amp; Providers.init ? Providers.init.bind(Providers) : <span class="fstat-no" title="function not covered" ><span class="branch-1 cbranch-no" title="branch not covered" >()</span> =&gt; {};</span>
-const baseIsInitialized = Providers &amp;&amp; Providers.isInitialized ? Providers.isInitialized.bind(Providers) : <span class="fstat-no" title="function not covered" ><span class="branch-1 cbranch-no" title="branch not covered" >()</span> =&gt; <span class="cstat-no" title="statement not covered" >false;</span></span>
-const baseReset = Providers &amp;&amp; Providers.reset ? Providers.reset.bind(Providers) : <span class="fstat-no" title="function not covered" ><span class="branch-1 cbranch-no" title="branch not covered" >()</span> =&gt; {};</span>
-const baseRegister = Providers &amp;&amp; Providers.register ? Providers.register.bind(Providers) : <span class="fstat-no" title="function not covered" ><span class="branch-1 cbranch-no" title="branch not covered" >()</span> =&gt; {};</span>
-const baseGet = Providers &amp;&amp; Providers.get ? Providers.get.bind(Providers) : <span class="fstat-no" title="function not covered" ><span class="branch-1 cbranch-no" title="branch not covered" >()</span> =&gt; <span class="cstat-no" title="statement not covered" >undefined;</span></span>
-const baseCandidates = Providers &amp;&amp; Providers.candidates ? Providers.candidates.bind(Providers) : <span class="fstat-no" title="function not covered" ><span class="branch-1 cbranch-no" title="branch not covered" >()</span> =&gt; <span class="cstat-no" title="statement not covered" >[];</span></span>
-&nbsp;
-// Lazy loading cache to avoid loading the same provider multiple times
-const loadingCache = new Map();
-const loadedProviders = new Set();
-&nbsp;
-// Provider path mapping for on-demand loading
-const providerPaths = {
-  'deepl': './deepl',
-  'deepl-free': './deepl',
-  'deepl-pro': './deepl',
-  'macos': './macos',
-  'mistral': './mistral',
-  'openai': './openai',
-  'openrouter': './openrouter',
-  'ollama': './ollama',
-  'gemini': './gemini',
-  'anthropic': './anthropic',
-  'dashscope': './dashscope',
-  'google': './google',
-  'qwen': './qwen',
-  'local-wasm': './localWasm'
-};
-&nbsp;
-function load(name, path) {
-  if (root[name]) return root[name];
-  <span class="missing-if-branch" title="else path not taken" >E</span>if (typeof require !== 'undefined') {
-    try { return require(path); } catch {}
+/**
+ * Language Detector implementation
+ */
+class LanguageDetector {
+  constructor(options = {}) {
+    this.defaultMinLength = options.minLength || 10;
+    this.defaultSensitivity = options.sensitivity || 0.5;
+    this.fallbackLanguage = options.fallbackLanguage || 'en';
+    
+    // Try to load existing detector modules
+    this.detectors = [];
+    this._initDetectors();
   }
-<span class="cstat-no" title="statement not covered" >  return undefined;</span>
-}
 &nbsp;
-// Lazy load a specific provider on-demand
-async function <span class="fstat-no" title="function not covered" >loadProvider(</span>name) {
-  // Check if already loaded
-<span class="cstat-no" title="statement not covered" >  if (baseGet(name)) <span class="cstat-no" title="statement not covered" >return baseGet(name);</span></span>
-  
-  // Check if already loading (avoid concurrent loads)
-<span class="cstat-no" title="statement not covered" >  if (loadingCache.has(name)) {</span>
-<span class="cstat-no" title="statement not covered" >    return loadingCache.get(name);</span>
-  }
-&nbsp;
-  const path = <span class="cstat-no" title="statement not covered" >providerPaths[name];</span>
-<span class="cstat-no" title="statement not covered" >  if (!path) <span class="cstat-no" title="statement not covered" >return null;</span></span>
-&nbsp;
-  const loadPromise = <span class="cstat-no" title="statement not covered" >(<span class="fstat-no" title="function not covered" >as</span>ync () =&gt; {</span>
-<span class="cstat-no" title="statement not covered" >    try {</span>
-      // Handle provider variants that share the same module
-<span class="cstat-no" title="statement not covered" >      if (name.startsWith('deepl')) {</span>
-        const deepl = <span class="cstat-no" title="statement not covered" >load('qwenProviderDeepL', path);</span>
-<span class="cstat-no" title="statement not covered" >        if (deepl) {</span>
-<span class="cstat-no" title="statement not covered" >          if (name === 'deepl' &amp;&amp; !baseGet('deepl')) {</span>
-<span class="cstat-no" title="statement not covered" >            registerProvider('deepl', deepl.basic);</span>
-<span class="cstat-no" title="statement not covered" >            loadedProviders.add('deepl');</span>
-          }
-<span class="cstat-no" title="statement not covered" >          if (name === 'deepl-free' &amp;&amp; !baseGet('deepl-free')) {</span>
-<span class="cstat-no" title="statement not covered" >            registerProvider('deepl-free', deepl.free);</span>
-<span class="cstat-no" title="statement not covered" >            loadedProviders.add('deepl-free');</span>
-          }
-<span class="cstat-no" title="statement not covered" >          if (name === 'deepl-pro' &amp;&amp; !baseGet('deepl-pro')) {</span>
-<span class="cstat-no" title="statement not covered" >            registerProvider('deepl-pro', deepl.pro);</span>
-<span class="cstat-no" title="statement not covered" >            loadedProviders.add('deepl-pro');</span>
-          }
-<span class="cstat-no" title="statement not covered" >          return baseGet(name);</span>
-        }
-      } else {
-        // Single provider modules
-        const provider = <span class="cstat-no" title="statement not covered" >load(`qwenProvider${name.charAt(0).toUpperCase() + name.slice(1)}`, path);</span>
-<span class="cstat-no" title="statement not covered" >        if (provider &amp;&amp; !baseGet(name)) {</span>
-          const label = <span class="cstat-no" title="statement not covered" >{</span>
-            'macos': 'macOS',
-            'mistral': 'Mistral',
-            'openai': 'OpenAI',
-            'openrouter': 'OpenRouter',
-            'ollama': 'Ollama',
-            'gemini': 'Gemini',
-            'anthropic': 'Anthropic',
-            'dashscope': 'DashScope',
-            'google': 'Google',
-            'local-wasm': 'Local WASM'
-          }[name] || name;
-          
-<span class="cstat-no" title="statement not covered" >          registerProvider(name, provider.label ? provider : { ...provider, label });</span>
-<span class="cstat-no" title="statement not covered" >          loadedProviders.add(name);</span>
-<span class="cstat-no" title="statement not covered" >          return baseGet(name);</span>
+  /**
+   * Initialize available detector modules
+   * @private
+   */
+  _initDetectors() {
+    // Try to load local detector
+    try {
+      <span class="missing-if-branch" title="if path not taken" >I</span>if (typeof window !== 'undefined' &amp;&amp; window.qwenDetect) {
+<span class="cstat-no" title="statement not covered" >        this.detectors.push({</span>
+          name: 'local',
+          detect: window.qwenDetect.detectLocal,
+          priority: 3
+        });
+      } else <span class="missing-if-branch" title="if path not taken" >I</span>if (typeof self !== 'undefined' &amp;&amp; self.qwenDetect) {
+<span class="cstat-no" title="statement not covered" >        this.detectors.push({</span>
+          name: 'local',
+          detect: self.qwenDetect.detectLocal,
+          priority: 3
+        });
+      } else <span class="missing-if-branch" title="else path not taken" >E</span>if (typeof require !== 'undefined') {
+        const localDetector = require('../lib/detect');
+        <span class="missing-if-branch" title="else path not taken" >E</span>if (localDetector &amp;&amp; localDetector.detectLocal) {
+          this.detectors.push({
+            name: 'local',
+            detect: localDetector.detectLocal,
+            priority: 3
+          });
         }
       }
     } catch (e) {
-<span class="cstat-no" title="statement not covered" >      console.warn(`Failed to load provider ${name}:`, e);</span>
+<span class="cstat-no" title="statement not covered" >      console.warn('Local language detector not available:', e);</span>
     }
-<span class="cstat-no" title="statement not covered" >    return null;</span>
-  })();
 &nbsp;
-<span class="cstat-no" title="statement not covered" >  loadingCache.set(name, loadPromise);</span>
-  
-<span class="cstat-no" title="statement not covered" >  try {</span>
-    const result = <span class="cstat-no" title="statement not covered" >await loadPromise;</span>
-<span class="cstat-no" title="statement not covered" >    return result;</span>
-  } finally {
-<span class="cstat-no" title="statement not covered" >    loadingCache.delete(name);</span>
+    // Add simple pattern-based detector as fallback
+    this.detectors.push({
+      name: 'pattern',
+      detect: this._patternBasedDetection.bind(this),
+      priority: 1
+    });
+&nbsp;
+    // Sort by priority (higher first)
+    this.detectors.sort((a, b) =&gt; b.priority - a.priority);
   }
-}
 &nbsp;
-// Initialize core providers registry without loading all providers
-function initProviders() {
-  <span class="missing-if-branch" title="if path not taken" >I</span>if (!Providers) <span class="cstat-no" title="statement not covered" >return;</span>
-  baseInit();
-  
-  // Only load the default DashScope provider initially
-  const dashscope = load('qwenProviderDashScope', './dashscope');
-  if (dashscope &amp;&amp; !baseGet('dashscope')) {
-    registerProvider('dashscope', { ...dashscope, label: 'DashScope' });
-    loadedProviders.add('dashscope');
-  }
-}
+  /**
+   * Detect language of text
+   * @param {string} text - Text to analyze
+   * @param {Object} options - Detection options
+   * @returns {Promise&lt;Object&gt;} Detection result with lang and confidence
+   */
+<span class="fstat-no" title="function not covered" >  as</span>ync detect(text, options = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
+    const {
+      minLength = <span class="branch-0 cbranch-no" title="branch not covered" >this.defaultMinLength,</span>
+      sensitivity = <span class="branch-0 cbranch-no" title="branch not covered" >this.defaultSensitivity,</span>
+      strategy = <span class="branch-0 cbranch-no" title="branch not covered" >'best'</span>
+    } = <span class="cstat-no" title="statement not covered" >options;</span>
 &nbsp;
-function isInitialized() {
-  return baseIsInitialized();
-}
+    // Preprocess text
+    const cleanText = <span class="cstat-no" title="statement not covered" >this._preprocessText(text);</span>
+    
+<span class="cstat-no" title="statement not covered" >    if (cleanText.length &lt; minLength) {</span>
+<span class="cstat-no" title="statement not covered" >      return {</span>
+        lang: this.fallbackLanguage,
+        confidence: 0.1,
+        reason: 'text_too_short'
+      };
+    }
 &nbsp;
-function ensureProviders(loadAll = false) {
-  <span class="missing-if-branch" title="else path not taken" >E</span>if (!isInitialized()) {
-    initProviders();
-  }
-  
-  // If loadAll is requested (like in tests), load all providers
-  if (loadAll &amp;&amp; typeof require !== 'undefined') {
-    const allProviderNames = Object.keys(providerPaths);
-    for (const name of allProviderNames) {
-      if (!baseGet(name)) {
-        try {
-          const path = providerPaths[name];
-          // Synchronous loading for test compatibility
-          if (name.startsWith('deepl')) {
-            const deepl = load('qwenProviderDeepL', path);
-            <span class="missing-if-branch" title="else path not taken" >E</span>if (deepl) {
-              <span class="missing-if-branch" title="if path not taken" >I</span>if (name === 'deepl' &amp;&amp; !baseGet('deepl')) <span class="cstat-no" title="statement not covered" >registerProvider('deepl', deepl.basic);</span>
-              <span class="missing-if-branch" title="if path not taken" >I</span>if (name === 'deepl-free' &amp;&amp; <span class="branch-1 cbranch-no" title="branch not covered" >!baseGet('deepl-free'))</span> <span class="cstat-no" title="statement not covered" >registerProvider('deepl-free', deepl.free);</span>
-              <span class="missing-if-branch" title="if path not taken" >I</span>if (name === 'deepl-pro' &amp;&amp; <span class="branch-1 cbranch-no" title="branch not covered" >!baseGet('deepl-pro'))</span> <span class="cstat-no" title="statement not covered" >registerProvider('deepl-pro', deepl.pro);</span>
-            }
-          } else {
-            const provider = load(`qwenProvider${name.charAt(0).toUpperCase() + name.slice(1)}`, path);
-            <span class="missing-if-branch" title="else path not taken" >E</span>if (provider) {
-              const labels = {
-                'macos': 'macOS',
-                'mistral': 'Mistral',
-                'openai': 'OpenAI',
-                'openrouter': 'OpenRouter',
-                'ollama': 'Ollama',
-                'gemini': 'Gemini',
-                'anthropic': 'Anthropic',
-                'dashscope': 'DashScope',
-                'google': 'Google',
-                'local-wasm': 'Local WASM'
-              };
-              const label = labels[name] || name;
-              registerProvider(name, provider.label ? provider : { ...provider, label });
-              loadedProviders.add(name);
-            }
+    let bestResult = <span class="cstat-no" title="statement not covered" >{</span>
+      lang: this.fallbackLanguage,
+      confidence: 0,
+      reason: 'no_detection'
+    };
+&nbsp;
+    // Try each detector in priority order
+<span class="cstat-no" title="statement not covered" >    for (const detector of this.detectors) {</span>
+<span class="cstat-no" title="statement not covered" >      try {</span>
+        const result = <span class="cstat-no" title="statement not covered" >await this._runDetector(detector, cleanText, options);</span>
+        
+<span class="cstat-no" title="statement not covered" >        if (result &amp;&amp; result.confidence &gt; sensitivity) {</span>
+<span class="cstat-no" title="statement not covered" >          if (strategy === 'first' || result.confidence &gt; bestResult.confidence) {</span>
+<span class="cstat-no" title="statement not covered" >            bestResult = {</span>
+              ...result,
+              detector: detector.name
+            };
+            
+<span class="cstat-no" title="statement not covered" >            if (strategy === 'first') <span class="cstat-no" title="statement not covered" >break;</span></span>
           }
-        } catch (e) {
-<span class="cstat-no" title="statement not covered" >          console.warn(`Failed to load provider ${name}:`, e);</span>
+        }
+      } catch (e) {
+<span class="cstat-no" title="statement not covered" >        console.warn(`Detector ${detector.name} failed:`, e);</span>
+<span class="cstat-no" title="statement not covered" >        continue;</span>
+      }
+    }
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    return bestResult;</span>
+  }
+&nbsp;
+  /**
+   * Run a specific detector
+   * @private
+   */
+<span class="fstat-no" title="function not covered" >  as</span>ync _runDetector(detector, text, options) {
+<span class="cstat-no" title="statement not covered" >    if (typeof detector.detect !== 'function') {</span>
+<span class="cstat-no" title="statement not covered" >      return null;</span>
+    }
+&nbsp;
+    const result = <span class="cstat-no" title="statement not covered" >await detector.detect(text, options);</span>
+    
+<span class="cstat-no" title="statement not covered" >    if (!result || typeof result !== 'object') {</span>
+<span class="cstat-no" title="statement not covered" >      return null;</span>
+    }
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    return {</span>
+      lang: result.lang || result.language || this.fallbackLanguage,
+      confidence: typeof result.confidence === 'number' ? result.confidence : 0.5
+    };
+  }
+&nbsp;
+  /**
+   * Simple pattern-based language detection fallback
+   * @private
+   */
+<span class="fstat-no" title="function not covered" >  _p</span>atternBasedDetection(text) {
+    const patterns = <span class="cstat-no" title="statement not covered" >{</span>
+      'zh': /[\u4e00-\u9fff]/,  // Chinese characters
+      'ja': /[\u3040-\u309f\u30a0-\u30ff]/,  // Hiragana/Katakana
+      'ko': /[\uac00-\ud7af]/,  // Korean
+      'ar': /[\u0600-\u06ff]/,  // Arabic
+      'ru': /[\u0400-\u04ff]/,  // Cyrillic
+      'th': /[\u0e00-\u0e7f]/,  // Thai
+      'hi': /[\u0900-\u097f]/,  // Devanagari
+      'es': /[ñáéíóúü]/i,      // Spanish chars
+      'fr': /[àâäéèêëïîôöùûüÿç]/i, // French chars
+      'de': /[äöüß]/i,         // German chars
+      'pt': /[ãáâàéêíóôõúç]/i  // Portuguese chars
+    };
+&nbsp;
+    let bestMatch = <span class="cstat-no" title="statement not covered" >{ lang: 'en', confidence: 0.1 };</span>
+    
+<span class="cstat-no" title="statement not covered" >    for (const [lang, pattern] of Object.entries(patterns)) {</span>
+      const matches = <span class="cstat-no" title="statement not covered" >text.match(pattern);</span>
+<span class="cstat-no" title="statement not covered" >      if (matches) {</span>
+        const confidence = <span class="cstat-no" title="statement not covered" >Math.min(0.9, matches.length / text.length + 0.3);</span>
+<span class="cstat-no" title="statement not covered" >        if (confidence &gt; bestMatch.confidence) {</span>
+<span class="cstat-no" title="statement not covered" >          bestMatch = { lang, confidence };</span>
         }
       }
     }
-    return true;
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    return bestMatch;</span>
   }
-  return false;
-}
 &nbsp;
-function resetProviders() {
-  baseReset();
-}
-&nbsp;
-function registerProvider(name, provider) {
-  <span class="missing-if-branch" title="else path not taken" >E</span>if (name &amp;&amp; provider) baseRegister(name, provider);
-}
-&nbsp;
-function getProvider(name) {
-  const existing = baseGet(name);
-  <span class="missing-if-branch" title="else path not taken" >E</span>if (existing) return existing;
-  
-  // For synchronous calls, return undefined if not loaded
-<span class="cstat-no" title="statement not covered" >  return undefined;</span>
-}
-&nbsp;
-// Async version that loads on-demand
-async function <span class="fstat-no" title="function not covered" >getProviderAsync(</span>name) {
-  const existing = <span class="cstat-no" title="statement not covered" >baseGet(name);</span>
-<span class="cstat-no" title="statement not covered" >  if (existing) <span class="cstat-no" title="statement not covered" >return existing;</span></span>
-  
-  // Load provider on-demand
-<span class="cstat-no" title="statement not covered" >  return await loadProvider(name);</span>
-}
-&nbsp;
-function listProviders() {
-  // Show both loaded providers and available providers from path map
-  const loaded = Array.from(baseCandidates({}));
-  const available = Object.keys(providerPaths);
-  const allProviders = new Set([...loaded, ...available]);
-  
-  return Array.from(allProviders).map(name =&gt; {
-    const p = baseGet(name);
-    if (p &amp;&amp; p.label) {
-      return { name, label: p.label };
-    }
+  /**
+   * Preprocess text for detection
+   * @private
+   */
+<span class="fstat-no" title="function not covered" >  _p</span>reprocessText(text) {
+<span class="cstat-no" title="statement not covered" >    if (typeof text !== 'string') <span class="cstat-no" title="statement not covered" >return '';</span></span>
     
-    // Return default labels for unloaded providers
-    const defaultLabels = {
-      'deepl': 'DeepL',
-      'deepl-free': 'DeepL Free',
-      'deepl-pro': 'DeepL Pro',
-      'macos': 'macOS',
-      'mistral': 'Mistral',
-      'openai': 'OpenAI',
-      'openrouter': 'OpenRouter',
-      'ollama': 'Ollama',
-      'gemini': 'Gemini',
-      'anthropic': 'Anthropic',
-      'dashscope': 'DashScope',
-      'google': 'Google',
-      'qwen': 'Qwen',
-      'local-wasm': 'Local WASM'
+    // Remove excessive whitespace and limit length
+<span class="cstat-no" title="statement not covered" >    return text.replace(/\s+/g, ' ').trim().slice(0, 2000);</span>
+  }
+&nbsp;
+  /**
+   * Get supported languages for detection
+   * @returns {Array&lt;string&gt;} Array of supported language codes
+   */
+<span class="fstat-no" title="function not covered" >  ge</span>tSupportedLanguages() {
+    // Return common languages that the detector can identify
+<span class="cstat-no" title="statement not covered" >    return [</span>
+      'en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'ru', 'pl', 'tr',
+      'zh', 'ja', 'ko', 'ar', 'hi', 'th', 'vi', 'id', 'ms', 'tl',
+      'sv', 'no', 'da', 'fi', 'hu', 'cs', 'sk', 'hr', 'sr', 'bg',
+      'ro', 'el', 'he', 'fa', 'ur', 'bn', 'ta', 'te', 'kn', 'ml'
+    ];
+  }
+&nbsp;
+  /**
+   * Check if a language is supported
+   * @param {string} lang - Language code
+   * @returns {boolean} True if supported
+   */
+<span class="fstat-no" title="function not covered" >  su</span>pportsLanguage(lang) {
+<span class="cstat-no" title="statement not covered" >    return this.getSupportedLanguages().includes(lang);</span>
+  }
+&nbsp;
+  /**
+   * Get detector statistics
+   * @returns {Object} Detector statistics
+   */
+<span class="fstat-no" title="function not covered" >  ge</span>tStats() {
+<span class="cstat-no" title="statement not covered" >    return {</span>
+      detectorsAvailable: this.detectors.length,
+      detectors: this.detectors.map(<span class="fstat-no" title="function not covered" >d </span>=&gt; (<span class="cstat-no" title="statement not covered" >{ name: d.name, priority: d.priority })</span>),
+      supportedLanguages: this.getSupportedLanguages().length
     };
-    
-    return { name, label: defaultLabels[name] || <span class="branch-1 cbranch-no" title="branch not covered" >name </span>};
-  });
+  }
 }
 &nbsp;
-const api = {
-  registerProvider,
-  getProvider,
-  getProviderAsync,
-  loadProvider,
-  listProviders,
-  initProviders,
-  ensureProviders,
-  isInitialized,
-  resetProviders,
-  getLoadedProviders: <span class="fstat-no" title="function not covered" >()</span> =&gt; <span class="cstat-no" title="statement not covered" >Array.from(loadedProviders),</span>
-};
+// Create default instance
+const defaultDetector = new LanguageDetector();
 &nbsp;
-if (typeof window !== 'undefined') {
-  window.qwenProviders = Object.assign(Providers || <span class="branch-1 cbranch-no" title="branch not covered" >{},</span> api);
-} else <span class="cstat-no" title="statement not covered" ><span class="missing-if-branch" title="else path not taken" >E</span>if (typeof self !== 'undefined') {</span>
-<span class="cstat-no" title="statement not covered" >  self.qwenProviders = Object.assign(Providers || {}, api);</span>
+// Export for different environments
+<span class="missing-if-branch" title="else path not taken" >E</span>if (typeof module !== 'undefined') {
+  module.exports = {
+    LanguageDetector,
+    defaultDetector
+  };
 }
 &nbsp;
-<span class="missing-if-branch" title="else path not taken" >E</span>if (typeof module !== 'undefined') module.exports = api;
-})();
+<span class="missing-if-branch" title="else path not taken" >E</span>if (typeof window !== 'undefined') {
+  window.qwenLanguageDetector = {
+    LanguageDetector,
+    defaultDetector
+  };
+}
 &nbsp;
-&nbsp;</pre></td></tr></table></pre>
+<span class="missing-if-branch" title="if path not taken" >I</span>if (typeof self !== 'undefined' &amp;&amp; typeof window === 'undefined') {
+<span class="cstat-no" title="statement not covered" >  self.qwenLanguageDetector = {</span>
+    LanguageDetector,
+    defaultDetector
+  };
+}</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
             </div><!-- /wrapper -->

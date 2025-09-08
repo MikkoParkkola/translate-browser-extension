@@ -1,5 +1,5 @@
-const { getProvider, initProviders } = require('../src/providers');
-initProviders();
+const { getProvider, ensureProviders } = require('../src/providers');
+ensureProviders(true); // Load all providers for testing
 
 describe('deepl provider', () => {
   beforeEach(() => {
