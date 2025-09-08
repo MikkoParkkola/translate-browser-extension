@@ -94,6 +94,13 @@
   color: var(--text-primary);
 }
 
+.by-author {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  opacity: 0.8;
+}
+
 .popup-actions {
   display: flex;
   align-items: center;

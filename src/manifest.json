@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "TRANSLATE! by Mikko",
-  "description": "Translate pages using multiple providers",
+  "description": "Translate web pages with multiple AI providers - provider agnostic translation extension",
   "version": "1.44.1",
   "version_name": "2025-08-21",
-  "update_url": "https://raw.githubusercontent.com/QwenLM/translate-by-mikko/main/updates.xml",
+  "update_url": "https://raw.githubusercontent.com/MikkoParkkola/translate-browser-extension/main/updates.xml",
   "permissions": [
     "storage",
     "activeTab",

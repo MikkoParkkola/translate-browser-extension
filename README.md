@@ -49,14 +49,14 @@ See `safari/README.md` for detailed iOS/iPadOS deployment steps.
 The repository includes a workflow that builds and signs a Chrome extension package.
 
 1. Open the **Actions** tab and run **Sign Chrome Extension**.
-2. The job builds the project, signs it using the `CRX_PRIVATE_KEY` secret, and uploads `qwen-translator-extension.crx` and `qwen-translator-extension.zip` as artifacts.
+2. The job builds the project, signs it using the `CRX_PRIVATE_KEY` secret, and uploads `translate-extension.crx` and `translate-extension.zip` as artifacts.
 
 To sign locally:
 
 ```sh
 npm run build
 echo "$CRX_PRIVATE_KEY" | base64 -d > key.pem
-npx -y crx pack dist -o qwen-translator-extension.crx --zip-output qwen-translator-extension.zip -p key.pem
+npx -y crx pack dist -o translate-extension.crx --zip-output translate-extension.zip -p key.pem
 ```
 
 ## Configuration
