@@ -192,7 +192,14 @@ function setStatus(message, isError = false) {
     el.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');
-    el.innerHTML = '<span class="qwen-hud__dot" aria-hidden="true"></span><span class="qwen-hud__text"></span>';
+    // Create DOM elements securely instead of using innerHTML
+    const dot = document.createElement('span');
+    dot.className = 'qwen-hud__dot';
+    dot.setAttribute('aria-hidden', 'true');
+    const text = document.createElement('span');
+    text.className = 'qwen-hud__text';
+    el.appendChild(dot);
+    el.appendChild(text);
     document.body.appendChild(el);
   }
   el.dataset.variant = isError ? 'error' : '';
@@ -216,7 +223,10 @@ function updateProgressHud() {
     progressHud.className = 'qwen-hud qwen-hud--progress';
     progressHud.setAttribute('data-qwen-theme', (currentConfig && currentConfig.themeStyle) || 'apple');
     progressHud.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
-    progressHud.innerHTML = '<span class="qwen-hud__text"></span>';
+    // Create DOM elements securely instead of using innerHTML
+    const text = document.createElement('span');
+    text.className = 'qwen-hud__text';
+    progressHud.appendChild(text);
     progressHud.style.bottom = '40px';
     document.body.appendChild(progressHud);
   }
@@ -249,7 +259,10 @@ function updateTopProgressBar() {
     topProgressBar.id = 'qwen-top-progress';
     topProgressBar.className = 'qwen-progress-bar';
     topProgressBar.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
-    topProgressBar.innerHTML = '<div class="qwen-progress-bar__fill"></div>';
+    // Create DOM elements securely instead of using innerHTML
+    const fill = document.createElement('div');
+    fill.className = 'qwen-progress-bar__fill';
+    topProgressBar.appendChild(fill);
     document.body.appendChild(topProgressBar);
   }
   
@@ -516,7 +529,13 @@ async function showSelectionBubble(range, text) {
   let currentTranslation = '';
   
   translateBtn.addEventListener('click', async () => {
-    result.innerHTML = '<span class="qwen-loading-skeleton"></span> Translating...';
+    // Create DOM elements securely instead of using innerHTML
+    result.textContent = ''; // Clear existing content
+    const skeleton = document.createElement('span');
+    skeleton.className = 'qwen-loading-skeleton';
+    const loadingText = document.createTextNode(' Translating...');
+    result.appendChild(skeleton);
+    result.appendChild(loadingText);
     translateBtn.disabled = true;
     selectionBubble.classList.remove('qwen-bubble--error');
     

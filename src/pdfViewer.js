@@ -308,7 +308,16 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
         if (avail.pdfium) opts.push({ v: 'pdfium', t: 'Engine: PDFium' });
         if (avail.overlay) opts.push({ v: 'overlay', t: 'Engine: Overlay' });
         opts.push({ v: 'simple', t: 'Engine: Simple' });
-        sel.innerHTML = opts.map(o => `<option value="${o.v}">${o.t}</option>`).join('');
+        // Clear existing options and add new ones securely
+        while (sel.firstChild) {
+          sel.removeChild(sel.firstChild);
+        }
+        opts.forEach(o => {
+          const option = document.createElement('option');
+          option.value = o.v;
+          option.textContent = o.t;
+          sel.appendChild(option);
+        });
         chrome.storage.sync.get({ wasmEngine: cfg.wasmEngine || '' }, s => {
           const choice = s.wasmEngine || best || 'auto';
           sel.value = choice;
@@ -363,11 +372,18 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     sel.id = 'pdfTranslateSelect';
     sel.className = 'btn';
     sel.title = 'PDF translation engine';
-    sel.innerHTML = [
+    // Add options securely using DOM creation
+    const pdfEngineOptions = [
       { v: 'wasm', t: 'PDF: WASM' },
       { v: 'google', t: 'PDF: Google' },
       { v: 'deepl-pro', t: 'PDF: DeepL Pro' },
-    ].map(o => `<option value="${o.v}">${o.t}</option>`).join('');
+    ];
+    pdfEngineOptions.forEach(o => {
+      const option = document.createElement('option');
+      option.value = o.v;
+      option.textContent = o.t;
+      sel.appendChild(option);
+    });
     wasmSel.parentNode.insertBefore(sel, wasmSel);
     chrome.storage.sync.get({ pdfTranslateEngine: 'wasm' }, s => {
       sel.value = s.pdfTranslateEngine || 'wasm';
@@ -573,7 +589,10 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
       viewer.textContent = 'No translated PDF for comparison';
       return;
     }
-    viewer.innerHTML = '';
+    // Clear viewer content securely
+    while (viewer.firstChild) {
+      viewer.removeChild(viewer.firstChild);
+    }
     const left = document.createElement('iframe');
     left.className = 'pdfPane';
     left.src = chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(origFile) + '&orig=' + encodeURIComponent(origFile);

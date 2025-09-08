@@ -193,41 +193,57 @@ function _applyGlossary(text) {
   if (!map || !Object.keys(map).length) return text;
   return glossary.apply(text, map);
 }
-// Enhanced cache system with TTL and LRU eviction
+// Unified cache system using modern cache-manager
 let cacheManager = null;
-let fallbackCache = new Map(); // Fallback if core cache manager not available
+let cacheInstance = null;
 
-try {
-  if (typeof window !== 'undefined' && window.qwenCoreCache) {
-    cacheManager = window.qwenCoreCache;
-  } else if (typeof self !== 'undefined' && self.qwenCoreCache) {
-    cacheManager = self.qwenCoreCache;
-  } else if (typeof require !== 'undefined') {
-    cacheManager = require('./core/cache-manager');
-  }
-} catch (e) {
-  trLogger.warn('Core cache manager not available, using fallback', e);
-}
-
-// Initialize cache manager if available
-if (cacheManager) {
+async function initializeCacheManager() {
+  if (cacheInstance) return cacheInstance;
+  
   try {
-    // Configure cache with reasonable defaults for translation use
-    if (typeof cacheManager.configure === 'function') {
-      cacheManager.configure({
+    // Load cache manager factory
+    if (typeof window !== 'undefined' && window.qwenCoreCache) {
+      cacheManager = window.qwenCoreCache;
+    } else if (typeof self !== 'undefined' && self.qwenCoreCache) {
+      cacheManager = self.qwenCoreCache;
+    } else if (typeof require !== 'undefined') {
+      cacheManager = require('./core/cache-manager');
+    }
+
+    if (cacheManager && typeof cacheManager.createCacheManager === 'function') {
+      // Create cache instance with translation-optimized configuration
+      cacheInstance = await cacheManager.createCacheManager({
         maxMemoryEntries: 5000,
         maxMemorySize: 10 * 1024 * 1024, // 10MB for translations
         defaultTTL: 7 * 24 * 60 * 60 * 1000, // 1 week for translations
-        evictionBatchSize: 250
+        evictionBatchSize: 250,
+        persistentStorage: true,
+        compressionEnabled: true
       });
+      trLogger.debug('Cache manager initialized successfully');
     }
   } catch (e) {
-    trLogger.warn('Failed to configure cache manager', e);
-    cacheManager = null;
+    trLogger.warn('Failed to initialize cache manager, using fallback', e);
   }
+  
+  // Fallback to simple Map if cache manager initialization fails
+  if (!cacheInstance) {
+    cacheInstance = {
+      async get(key) { return fallbackCache.get(key); },
+      async set(key, value, ttl) { fallbackCache.set(key, value); return true; },
+      async delete(key) { return fallbackCache.delete(key); },
+      async clear() { fallbackCache.clear(); },
+      getStats() { return { memoryEntries: fallbackCache.size, hitRate: 0 }; }
+    };
+    trLogger.warn('Using fallback cache implementation');
+  }
+  
+  return cacheInstance;
 }
 
-const cache = cacheManager || fallbackCache;
+// Initialize cache - this will be awaited by functions that need cache
+const cacheReady = initializeCacheManager();
+let fallbackCache = new Map(); // Only used if cache manager fails to load
 
 // Legacy cache API compatibility
 let legacyCacheApi = null;
@@ -274,88 +290,31 @@ function _memCacheMax() {
   if (!Number.isFinite(v) || v <= 0) return 5000;
   return v;
 }
-// Cache adapter selection - determined once for performance
-let _primaryCacheAdapter = null;
-let _cacheAdapterChecked = false;
-
-function _getCacheAdapter() {
-  if (!_cacheAdapterChecked) {
-    // Check cache availability once and cache the result
-    if (cacheManager && typeof cacheManager.set === 'function') {
-      _primaryCacheAdapter = 'manager';
-    } else {
-      // Note: legacy adapter cache methods have bugs - use fallback cache for reliability
-      _primaryCacheAdapter = 'fallback';
-    }
-    _cacheAdapterChecked = true;
-  }
-  return _primaryCacheAdapter;
+// Unified cache interface - no adapter selection needed
+async function getCache() {
+  return await cacheReady;
 }
 
-function _setCache(k, v) {
-  const adapter = _getCacheAdapter();
+async function _setCache(k, v) {
   const ttl = 7 * 24 * 60 * 60 * 1000; // 1 week TTL
   
   try {
-    switch (adapter) {
-      case 'manager':
-        cacheManager.set(k, v, { ttl });
-        return;
-      case 'legacy':
-        legacyAdapter.setCacheValue(k, v, { ttl });
-        return;
-      case 'fallback':
-      default:
-        // Optimized fallback cache with LRU
-        if (fallbackCache.has(k)) fallbackCache.delete(k); // Move to end
-        fallbackCache.set(k, v);
-        const max = _memCacheMax();
-        while (fallbackCache.size > max) {
-          const oldest = fallbackCache.keys().next().value;
-          fallbackCache.delete(oldest);
-        }
-        return;
-    }
+    const cache = await getCache();
+    await cache.set(k, v, ttl);
   } catch (error) {
-    // If primary adapter fails, fallback to Map cache
-    if (adapter !== 'fallback') {
-      _primaryCacheAdapter = 'fallback'; // Switch to fallback for future calls
-      return _setCache(k, v); // Retry with fallback
-    }
-    throw error;
+    trLogger.warn('Cache set operation failed:', error);
+    // Fallback to Map cache on error
+    fallbackCache.set(k, v);
   }
 }
-function _touchCache(k) {
-  const adapter = _getCacheAdapter();
-  
+async function _touchCache(k) {
   try {
-    switch (adapter) {
-      case 'manager':
-        return cacheManager.get(k) || undefined;
-      case 'legacy':
-        return legacyAdapter.getCacheValue(k);
-      case 'fallback':
-      default:
-        // Fallback: manual LRU touch in Map
-        const v = fallbackCache.get(k);
-        if (v !== undefined) {
-          fallbackCache.delete(k); // Remove from current position
-          fallbackCache.set(k, v); // Add to end (most recent)
-          return v;
-        }
-        return undefined;
-    }
+    const cache = await getCache();
+    return await cache.get(k);
   } catch (error) {
-    // If primary adapter fails, try fallback
-    if (adapter !== 'fallback') {
-      const v = fallbackCache.get(k);
-      if (v !== undefined) {
-        fallbackCache.delete(k);
-        fallbackCache.set(k, v);
-        return v;
-      }
-    }
-    return undefined;
+    trLogger.warn('Cache get operation failed:', error);
+    // Fallback to Map cache on error
+    return fallbackCache.get(k);
   }
 }
 let normalizeText;
@@ -796,8 +755,10 @@ async function qwenTranslate({ endpoint, apiKey, projectId, location, model, sec
   const tone = glossary && typeof glossary.getTone === 'function' ? glossary.getTone() : undefined;
   const prov = provider || (chooseDefaultProvider ? chooseDefaultProvider({ endpoint, model, Providers }) : (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model })));
   const cacheKey = `${prov}:${makeCacheKey(src, target, text)}`;
-  if (!force && (cacheManager && typeof cacheManager.has === 'function' ? cacheManager.has(cacheKey) : fallbackCache.has(cacheKey))) {
-    return _touchCache(cacheKey);
+  // Check cache first
+  const cached = await _touchCache(cacheKey);
+  if (!force && cached) {
+    return cached;
   }
 
   // Persistent TM lookup
@@ -806,7 +767,7 @@ async function qwenTranslate({ endpoint, apiKey, projectId, location, model, sec
       const hit = await TM.get(cacheKey);
       if (hit && typeof hit.text === 'string') {
         const val = { text: hit.text };
-        _setCache(cacheKey, val);
+        await _setCache(cacheKey, val);
         return val;
       }
     } catch {}
@@ -832,14 +793,14 @@ async function qwenTranslate({ endpoint, apiKey, projectId, location, model, sec
         tone,
       });
       result = _sanitizeResult(result);
-      _setCache(cacheKey, result);
+      await _setCache(cacheKey, result);
       if (TM && TM.set && result && typeof result.text === 'string') { try { TM.set(cacheKey, result.text); } catch {} }
       return result;
     }
 
   try {
     const data = await providerTranslate({ endpoint, apiKey, projectId, location, model, text, source: src, target, tone, signal, debug, stream, provider: provider ? prov : undefined, context: stream ? 'stream' : 'default', autoInit, providerOrder: failover ? providerOrder : undefined, endpoints, secondaryModel });
-    _setCache(cacheKey, data);
+    await _setCache(cacheKey, data);
     if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { 
       errorHandler.safe(() => TM.set(cacheKey, data.text), { operation: 'tm_cache' })();
     }
@@ -889,10 +850,11 @@ async function qwenTranslateStream({ endpoint, apiKey, projectId, location, mode
   const tone = glossary && typeof glossary.getTone === 'function' ? glossary.getTone() : undefined;
   const prov = provider || (chooseDefaultProvider ? chooseDefaultProvider({ endpoint, model, Providers }) : (Providers && Providers.choose ? Providers.choose({ endpoint, model }) : chooseProvider({ endpoint, model })));
   const cacheKey = `${prov}:${makeCacheKey(src, target, text)}`;
-  if (cacheManager && typeof cacheManager.has === 'function' ? cacheManager.has(cacheKey) : fallbackCache.has(cacheKey)) {
-    const data = _touchCache(cacheKey);
-    if (onData) onData(data.text);
-    return data;
+  // Check cache first
+  const cached = await _touchCache(cacheKey);
+  if (cached) {
+    if (onData) onData(cached.text);
+    return cached;
   }
 
     if (chooseStrategy({ noProxy, provider: prov }) === 'proxy' && messaging) {
@@ -915,7 +877,7 @@ async function qwenTranslateStream({ endpoint, apiKey, projectId, location, mode
         parallel: false,
         tone,
       });
-      _setCache(cacheKey, data);
+      await _setCache(cacheKey, data);
       if (TM && TM.set && data && typeof data.text === 'string') { 
         errorHandler.safe(() => TM.set(cacheKey, data.text), { operation: 'tm_cache' })();
       }
@@ -924,7 +886,7 @@ async function qwenTranslateStream({ endpoint, apiKey, projectId, location, mode
 
   try {
     const data = await providerTranslate({ endpoint, apiKey, projectId, location, model, text, source: src, target, tone, signal, debug, onData, stream, provider: prov, context: 'stream', autoInit, providerOrder: failover ? providerOrder : undefined, endpoints, secondaryModel });
-    _setCache(cacheKey, data);
+    await _setCache(cacheKey, data);
     if (!skipTM && TM && TM.set && data && typeof data.text === 'string') { 
       errorHandler.safe(() => TM.set(cacheKey, data.text), { operation: 'tm_cache' })();
     }
@@ -1035,6 +997,7 @@ async function batchOnce({
   }
   const SEP = makeDelimiter();
   // Warm TM using per-text language keys when we may translate
+  // Optimized TM cache warming - batch operations and reduce sequential processing
   if (TM && TM.get) {
     const missingKeys = [];
     const seen = new Set();
@@ -1045,18 +1008,25 @@ async function batchOnce({
       if (!lang) continue;
       if (!autoMode && det && det !== userSource) continue;
       const key = makeCacheKey(lang, opts.target, t);
-      if (!(cacheManager && typeof cacheManager.has === 'function' ? cacheManager.has(key) : fallbackCache.has(key)) && !seen.has(key)) {
+      if (!fallbackCache.has(key) && !seen.has(key)) {
         seen.add(key);
         missingKeys.push(key);
       }
     }
     if (missingKeys.length) {
+      // Batch TM lookup and cache setting for better performance
       const hits = await Promise.all(missingKeys.map(k => TM.get(k).catch(() => null)));
+      const cachePromises = [];
       for (let i = 0; i < missingKeys.length; i++) {
         const h = hits[i];
         if (h && typeof h.text === 'string') {
-          _setCache(missingKeys[i], { text: h.text });
+          // Batch cache operations instead of awaiting individually
+          cachePromises.push(_setCache(missingKeys[i], { text: h.text }));
         }
+      }
+      // Execute all cache operations in parallel
+      if (cachePromises.length) {
+        await Promise.all(cachePromises);
       }
     }
   }
@@ -1104,47 +1074,36 @@ async function batchOnce({
     return out;
   };
 
+  // Optimize token calculations by caching results for repeated texts
+  const tokenCache = new Map();
+  const getTokenCount = (text) => {
+    if (tokenCache.has(text)) return tokenCache.get(text);
+    const count = approxTokens(text);
+    tokenCache.set(text, count);
+    return count;
+  };
+
   const mapping = [];
-  texts.forEach((t, i) => {
+  for (let i = 0; i < texts.length; i++) {
+    const t = texts[i];
     const det = sourceByIndex[i];
     const lang = det || userSource;
     if (lang === opts.target || (!autoMode && det && det !== userSource)) {
       mapping.push({ index: i, chunk: 0, text: t, cached: true, lang });
       stats.words += t.trim().split(/\s+/).filter(Boolean).length;
-      stats.tokens += approxTokens(t);
-      return;
+      stats.tokens += getTokenCount(t); // Use cached token calculation
+      continue;
     }
     const key = makeCacheKey(lang, opts.target, t);
     
-    // Check cache using same priority order as setting
-    let hasInCache = false;
-    let v = null;
+    // Check unified cache system
+    const v = await _touchCache(key);
     
-    if (cacheManager && typeof cacheManager.has === 'function' && typeof cacheManager.get === 'function') {
-      // Try cache manager first
-      hasInCache = cacheManager.has(key);
-      if (hasInCache) {
-        v = cacheManager.get(key);
-      }
-    }
-    
-    // Note: Skip legacy adapter cache lookup due to getCacheValue implementation bug
-    // The legacy adapter is available for other functions (fetch, sanitize, etc.) but
-    // cache methods are unreliable. Using fallback cache ensures proper functionality.
-    
-    if (!hasInCache) {
-      // Try fallback cache last
-      hasInCache = fallbackCache.has(key);
-      if (hasInCache) {
-        v = fallbackCache.get(key);
-      }
-    }
-    
-    if (hasInCache && v) {
+    if (v) {
       mapping.push({ index: i, chunk: 0, text: v.text, cached: true, lang });
       stats.words += t.trim().split(/\s+/).filter(Boolean).length;
-      stats.tokens += approxTokens(t);
-      return;
+      stats.tokens += getTokenCount(t); // Use cached token calculation
+      continue;
     }
     
     // If not cached, add to mapping for translation (with text splitting if needed)
@@ -1161,7 +1120,7 @@ async function batchOnce({
       pieces = splitFn(t, tokenBudget);
     }
     pieces.forEach((p, idx) => mapping.push({ index: i, chunk: idx, text: p, lang }));
-  });
+  }
   const byIndex = new Map();
   mapping.forEach(m => {
     if (!byIndex.has(m.index)) byIndex.set(m.index, []);
@@ -1172,7 +1131,7 @@ async function batchOnce({
   // state per language: { items, tokens }
   const state = new Map();
   for (const m of mapping.filter(m => !m.cached)) {
-    const tk = approxTokens(m.text) + 1;
+    const tk = getTokenCount(m.text) + 1; // Use cached token calculation
     const lang = m.lang;
     let st = state.get(lang);
     if (!st) { st = { items: [], tokens: 0, lang }; state.set(lang, st); }
@@ -1260,7 +1219,7 @@ async function batchOnce({
   async function handleGroup(g, idx) {
     const joinedText = g.items.map(m => m.text.replaceAll(SEP, '')).join(SEP);
     const words = joinedText.replaceAll(SEP, ' ').trim().split(/\s+/).filter(Boolean).length;
-    const tokensNeeded = approxTokens(joinedText);
+    const tokensNeeded = getTokenCount(joinedText);
     const startProv = providers.length ? chooseProvider(tokensNeeded) : undefined;
     let res;
     let ms = 0;
@@ -1289,6 +1248,10 @@ async function batchOnce({
         if (tokenBudget > MIN_TOKEN_BUDGET) {
           dynamicTokenBudget = Math.max(MIN_TOKEN_BUDGET, Math.floor(tokenBudget / 2));
         }
+        // Process individual items and batch cache operations
+        const fallbackCachePromises = [];
+        const fallbackTmPromises = [];
+        
         for (const m of g.items) {
           let out;
           try {
@@ -1298,22 +1261,43 @@ async function batchOnce({
             out = m.text;
           }
           m.result = out;
-      const key = makeCacheKey(m.lang, opts.target, m.text);
-          _setCache(key, { text: out });
-          if (TM && TM.set) { try { TM.set(key, out); } catch {} }
+          const key = makeCacheKey(m.lang, opts.target, m.text);
+          
+          // Batch cache operations instead of awaiting individually
+          fallbackCachePromises.push(_setCache(key, { text: out }));
+          if (TM && TM.set) { 
+            fallbackTmPromises.push(TM.set(key, out).catch(() => {}));
+          }
+          
           stats.requests++;
-          stats.tokens += approxTokens(m.text);
+          stats.tokens += getTokenCount(m.text);
           stats.words += m.text.trim().split(/\s+/).filter(Boolean).length;
         }
+        
+        // Execute all cache operations in parallel
+        await Promise.all([
+          Promise.all(fallbackCachePromises),
+          Promise.all(fallbackTmPromises)
+        ]);
         return;
       }
     }
+    // Batch cache operations for better performance
+    const cachePromises = [];
+    const tmPromises = [];
     for (let i = 0; i < g.items.length; i++) {
       g.items[i].result = translated[i] || g.items[i].text;
       const key = makeCacheKey(g.lang, opts.target, g.items[i].text);
-      _setCache(key, { text: g.items[i].result });
-      if (TM && TM.set) { try { TM.set(key, g.items[i].result); } catch {} }
+      cachePromises.push(_setCache(key, { text: g.items[i].result }));
+      if (TM && TM.set) { 
+        tmPromises.push(TM.set(key, g.items[i].result).catch(() => {}));
+      }
     }
+    // Execute cache operations in parallel
+    await Promise.all([
+      Promise.all(cachePromises),
+      Promise.all(tmPromises)
+    ]);
     const elapsedMs = Date.now() - stats.start;
     const avg = elapsedMs / stats.requests;
     const etaMs = avg * (stats.totalRequests - stats.requests);
@@ -1386,7 +1370,7 @@ async function batchOnce({
     for (let i = 0; i < retryIdx.length; i++) {
       results[retryIdx[i]] = retr.texts[i];
       const key = makeCacheKey(retryLangs[i], opts.target, retryTexts[i]);
-      _setCache(key, { text: retr.texts[i] });
+      await _setCache(key, { text: retr.texts[i] });
       if (TM && TM.set) { try { TM.set(key, retr.texts[i]); } catch {} }
     }
   }

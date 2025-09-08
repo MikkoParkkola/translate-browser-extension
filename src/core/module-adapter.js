@@ -166,21 +166,6 @@ class ModuleAdapter {
         return { lang: 'en', confidence: 0.1 };
       },
 
-      // Cache adapter
-      getCacheValue(key) {
-        const cache = adapter.getModule('cache');
-        if (cache && typeof cache.get === 'function') {
-          return cache.get(key);
-        }
-        return undefined;
-      },
-
-      setCacheValue(key, value, options) {
-        const cache = adapter.getModule('cache');
-        if (cache && typeof cache.set === 'function') {
-          return cache.set(key, value, options);
-        }
-      },
 
       // Security adapter
       sanitizeInput(text, options) {

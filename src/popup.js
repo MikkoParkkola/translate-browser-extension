@@ -155,16 +155,53 @@ const Popup = {
     // Show a toast notification for translation errors
     const toast = document.createElement('div');
     toast.className = 'error-toast';
-    toast.innerHTML = `
-      <div class="toast-content">
-        <svg class="toast-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-          <line x1="15" y1="9" x2="9" y2="15" stroke="currentColor" stroke-width="2"/>
-          <line x1="9" y1="9" x2="15" y2="15" stroke="currentColor" stroke-width="2"/>
-        </svg>
-        <span class="toast-message">Translation failed: ${error.message}</span>
-      </div>
-    `;
+    // Create DOM elements securely instead of using innerHTML with user input
+    const toastContent = document.createElement('div');
+    toastContent.className = 'toast-content';
+    
+    // Create SVG element safely
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'toast-icon');
+    svg.setAttribute('width', '16');
+    svg.setAttribute('height', '16');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', '12');
+    circle.setAttribute('cy', '12');
+    circle.setAttribute('r', '10');
+    circle.setAttribute('stroke', 'currentColor');
+    circle.setAttribute('stroke-width', '2');
+    
+    const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line1.setAttribute('x1', '15');
+    line1.setAttribute('y1', '9');
+    line1.setAttribute('x2', '9');
+    line1.setAttribute('y2', '15');
+    line1.setAttribute('stroke', 'currentColor');
+    line1.setAttribute('stroke-width', '2');
+    
+    const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line2.setAttribute('x1', '9');
+    line2.setAttribute('y1', '9');
+    line2.setAttribute('x2', '15');
+    line2.setAttribute('y2', '15');
+    line2.setAttribute('stroke', 'currentColor');
+    line2.setAttribute('stroke-width', '2');
+    
+    svg.appendChild(circle);
+    svg.appendChild(line1);
+    svg.appendChild(line2);
+    
+    const message = document.createElement('span');
+    message.className = 'toast-message';
+    // Safely set user input as textContent, not innerHTML
+    message.textContent = `Translation failed: ${error.message || 'Unknown error'}`;
+    
+    toastContent.appendChild(svg);
+    toastContent.appendChild(message);
+    toast.appendChild(toastContent);
     
     document.body.appendChild(toast);
     
@@ -246,7 +283,10 @@ const Popup = {
       this.sourceLanguageSelect.removeChild(this.sourceLanguageSelect.firstChild);
     }
     
-    this.targetLanguageSelect.innerHTML = '';
+    // Clear target language select securely
+    while (this.targetLanguageSelect.firstChild) {
+      this.targetLanguageSelect.removeChild(this.targetLanguageSelect.firstChild);
+    }
     
     // Add all languages to both selects
     langs.forEach(lang => {
@@ -279,9 +319,13 @@ const Popup = {
       { code: 'ko', name: 'Korean' }
     ];
     
-    // Clear existing options
-    this.sourceLanguageSelect.innerHTML = '';
-    this.targetLanguageSelect.innerHTML = '';
+    // Clear existing options securely
+    while (this.sourceLanguageSelect.firstChild) {
+      this.sourceLanguageSelect.removeChild(this.sourceLanguageSelect.firstChild);
+    }
+    while (this.targetLanguageSelect.firstChild) {
+      this.targetLanguageSelect.removeChild(this.targetLanguageSelect.firstChild);
+    }
     
     // Add fallback options
     languages.forEach(lang => {
