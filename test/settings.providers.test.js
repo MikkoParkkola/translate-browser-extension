@@ -57,6 +57,10 @@ describe('settings provider cards', () => {
     const cb = cards[0].querySelector('input[type="checkbox"]');
     cb.checked = false;
     cb.dispatchEvent(new Event('change'));
+    
+    // Wait for async event handler to complete
+    await flush();
+    
     expect(window.qwenProviderConfig.saveProviderConfig).toHaveBeenCalledWith(expect.objectContaining({
       providers: expect.objectContaining({ p1: expect.objectContaining({ enabled: false }) }),
     }));
@@ -70,6 +74,10 @@ describe('settings provider cards', () => {
     const second = list.children[1];
     list.insertBefore(second, first);
     first.dispatchEvent(new Event('dragend'));
+    
+    // Wait for async event handler to complete
+    await flush();
+    
     expect(window.qwenProviderConfig.saveProviderConfig).toHaveBeenLastCalledWith(expect.objectContaining({
       providerOrder: ['p2', 'p1'],
     }));

@@ -191,7 +191,7 @@ If no endpoint is specified the tool defaults to `https://dashscope-intl.aliyunc
 Use `-d` to print detailed request and response logs.
 Press `Ctrl+C` or `Ctrl+D` to exit.
 
-### TypeScript
+### Development
 
 Basic type definitions for the translator APIs ship in `types/index.d.ts` and are referenced via the package `types` field.
 

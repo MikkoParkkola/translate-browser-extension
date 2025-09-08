@@ -1,32 +1,47 @@
 // @jest-environment jsdom
 
-describe('popup home:init includes provider usage', () => {
+describe('background home:init includes provider usage', () => {
   let listener;
   beforeEach(() => {
     jest.resetModules();
     global.chrome = {
-      runtime: {
-        sendMessage: jest.fn((msg, cb) => {
-          if (msg.action === 'metrics') {
-            cb({
-              usage: {},
-              cache: {},
-              tm: {},
-              providers: {},
-              providersUsage: { qwen: { requests: 1 } },
-              status: {},
-            });
-          }
-        }),
-        onMessage: { addListener: fn => { listener = fn; } },
+      action: { setBadgeText: jest.fn(), setBadgeBackgroundColor: jest.fn(), setIcon: jest.fn() },
+      runtime: { onInstalled: { addListener: jest.fn() }, onMessage: { addListener: jest.fn() }, onConnect: { addListener: jest.fn() } },
+      contextMenus: { create: jest.fn(), removeAll: jest.fn(cb => cb && cb()), onClicked: { addListener: jest.fn() } },
+      tabs: { onUpdated: { addListener: jest.fn() } },
+      storage: {
+        sync: { get: jest.fn((defaults, cb) => cb(defaults)) },
+        local: { get: jest.fn((defaults, cb) => cb(defaults)), set: jest.fn() }
       },
-      storage: { sync: { get: jest.fn((defaults, cb) => cb(defaults)) } },
     };
-    require('../src/popup.js');
+    global.importScripts = () => {};
+    global.setInterval = () => {};
+    global.self = global;
+    global.qwenThrottle = { configure: jest.fn(), getUsage: () => ({ requests: 0, requestLimit: 60, tokens: 0, tokenLimit: 100000 }), approxTokens: jest.fn().mockReturnValue(10) };
+    global.qwenGetCacheSize = () => 0;
+    global.qwenTM = { stats: () => ({ entries: 0 }) };
+    global.qwenTranslate = jest.fn().mockResolvedValue({ text: 'hola' });
+    
+    const backgroundModule = require('../src/background.js');
+    listener = global.chrome.runtime.onMessage.addListener.mock.calls[0][0];
   });
 
   test('returns providers usage', async () => {
+    // First simulate a translation to create provider usage using the exported function
+    const { handleTranslate } = require('../src/background.js');
+    await handleTranslate({
+      provider: 'qwen',
+      endpoint: 'test',
+      apiKey: 'test',
+      model: 'qwen-turbo',
+      text: 'hello',
+      source: 'en',
+      target: 'es'
+    });
+    
+    // Now check the home:init response
     const res = await new Promise(resolve => listener({ action: 'home:init' }, {}, resolve));
-    expect(res.providers).toEqual({ qwen: { requests: 1 } });
+    expect(res.providers.qwen).toBeDefined();
+    expect(res.providers.qwen.requests).toBeGreaterThan(0);
   });
 });

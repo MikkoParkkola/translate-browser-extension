@@ -395,16 +395,16 @@
       while ((cache.size > cfg.maxMemoryEntries || totalSize > cfg.maxMemorySize) && tail) {
         const node = tail;
         
-        // Make sure we don't evict too aggressively - keep at least one entry below limit
-        if (cache.size <= cfg.maxMemoryEntries && totalSize <= cfg.maxMemorySize) {
-          break;
-        }
-        
         removeNode(node);
         cache.delete(node.key);
         totalSize -= node.size;
         evictions++;
         evictedEntries.push(node.key);
+        
+        // Stop once limits are satisfied
+        if (cache.size <= cfg.maxMemoryEntries && totalSize <= cfg.maxMemorySize) {
+          break;
+        }
         
         // Batch evictions for performance
         if (evictedEntries.length >= cfg.evictionBatchSize) {
@@ -579,21 +579,19 @@
         // Create new node
         const node = createLRUNode(hashedKey, value, { ttl: ttl || cfg.defaultTTL });
         
-        // Check if cache would exceed limits
-        if (cache.size >= cfg.maxMemoryEntries || totalSize + node.size > cfg.maxMemorySize) {
-          await enforceMemoryLimits();
-          
-          // Check again after eviction
-          if (totalSize + node.size > cfg.maxMemorySize) {
-            logger.warn(`Entry too large for cache: ${node.size} bytes`, { key });
-            return false;
-          }
+        // Check if entry is too large for the cache entirely
+        if (node.size > cfg.maxMemorySize) {
+          logger.warn(`Entry too large for cache: ${node.size} bytes`, { key });
+          return false;
         }
 
         // Insert new entry
         insertAtHead(node);
         cache.set(hashedKey, node);
         totalSize += node.size;
+
+        // Enforce memory limits after insertion (this will evict LRU entries if needed)
+        await enforceMemoryLimits();
 
         await schedulePersistence();
 

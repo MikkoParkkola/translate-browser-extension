@@ -51,6 +51,7 @@
   --z-dropdown: 10;
   --z-modal: 50;
   --z-tooltip: 100;
+  --z-toast: 200;
   
   /* Transitions */
   --transition-fast: 150ms ease;
@@ -87,16 +88,24 @@
   
   /* Semantic Colors */
   --color-success-50: #f0fdf4;
+  --color-success-200: #bbf7d0;
+  --color-success-300: #86efac;
   --color-success-500: #22c55e;
+  --color-success-600: #16a34a;
   --color-success-700: #15803d;
+  --color-success-900: #14532d;
   
   --color-warning-50: #fffbeb;
   --color-warning-500: #f59e0b;
-  --color-warning-700: #d97706;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
   
   --color-error-50: #fef2f2;
+  --color-error-300: #fca5a5;
   --color-error-500: #ef4444;
-  --color-error-700: #dc2626;
+  --color-error-600: #dc2626;
+  --color-error-700: #b91c1c;
+  --color-error-900: #7f1d1d;
   
   /* Semantic Token Mappings */
   --background: var(--color-neutral-0);
@@ -123,6 +132,9 @@
   --success: var(--color-success-500);
   --warning: var(--color-warning-500);
   --error: var(--color-error-500);
+  
+  /* RGB Values for rgba() usage */
+  --color-primary-rgb: 37, 99, 235;
 }
 
 /* Dark Theme Colors */

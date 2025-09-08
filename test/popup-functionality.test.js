@@ -37,6 +37,9 @@ const mockChrome = {
           ]
         });
       }
+      if (message.action === 'home:quick-translate') {
+        return Promise.resolve({ success: true });
+      }
       return Promise.resolve({});
     }),
     openOptionsPage: jest.fn(),
@@ -68,199 +71,158 @@ global.fetch = jest.fn((url) => {
 // Mock window.close
 global.close = jest.fn();
 
+// Mock popup dependencies
+global.window.OnboardingWizard = {
+  init: jest.fn().mockResolvedValue()
+};
+global.window.IntelligentLanguageSelection = {
+  enhanceLanguageSelectors: jest.fn().mockResolvedValue(),
+  recordLanguagePair: jest.fn()
+};
+global.window.TranslationProgress = {
+  addProgressCallback: jest.fn(),
+  startTranslationSession: jest.fn(),
+  getCurrentSession: jest.fn().mockReturnValue(null),
+  handleTranslationError: jest.fn()
+};
+
 describe('Popup Functionality', () => {
   let Popup;
   
-  beforeEach(() => {
+  beforeEach(async () => {
     // Reset mocks
     jest.clearAllMocks();
     
-    // Create a basic DOM structure
+    // Create DOM structure matching the actual popup.html
     document.body.innerHTML = `
-      <div class="container fade-in">
-        <header class="header">
-          <h1>Translate</h1>
-          <div class="nav-icons">
-            <select id="theme-selector">
-              <option value="modern">Modern</option>
-              <option value="apple">Apple</option>
-              <option value="cyberpunk">Cyberpunk</option>
-            </select>
-            <button id="settings-button" aria-label="Settings">
+      <div id="loading-overlay" class="loading-overlay" style="display: none;">
+        <div class="loading-content">
+          <div class="loading-spinner"></div>
+          <div class="loading-text">Translating...</div>
+        </div>
+      </div>
+      <div class="popup-container">
+        <header class="popup-header">
+          <div class="popup-title">
+            <h1>Translator</h1>
+          </div>
+          <div class="popup-actions">
+            <button id="theme-toggle" class="icon-button" aria-label="Toggle theme">
+              <svg class="theme-icon-light" width="20" height="20"></svg>
+              <svg class="theme-icon-dark" width="20" height="20" style="display: none;"></svg>
+            </button>
+            <button id="settings-button" class="icon-button" aria-label="Settings">
               <svg></svg>
             </button>
           </div>
         </header>
-        <main>
-          <div id="provider-grid" class="provider-grid"></div>
-          <div class="form-group">
-            <label for="source-language">Source Language</label>
-            <select id="source-language">
+        <main class="popup-main">
+          <div class="language-selection">
+            <select id="source-language" class="language-select">
               <option value="auto">Auto Detect</option>
             </select>
+            <button id="swap-languages" class="swap-button"></button>
+            <select id="target-language" class="language-select"></select>
           </div>
-          <div class="form-group">
-            <label for="target-language">Target Language</label>
-            <select id="target-language"></select>
+          <div class="feature-toggle">
+            <label class="modern-toggle">
+              <input type="checkbox" id="auto-translate-toggle">
+              <span class="toggle-slider"></span>
+            </label>
           </div>
-          <button id="translate-button" class="button-primary">Translate Page</button>
+          <button id="translate-button" class="translate-button">
+            <span class="button-text">Translate Page</span>
+          </button>
+          <div class="stats-section">
+            <button id="stats-refresh" class="stats-refresh-btn"></button>
+            <div id="stats-chart" class="stats-chart"></div>
+          </div>
+          <div id="source-confidence" style="display: none;"></div>
         </main>
-      </div>
-      <div id="loading-overlay" class="loading-overlay" style="display: none;">
-        <div class="spinner"></div>
       </div>
     `;
     
     // Load the popup module
     Popup = require('../src/popup.js');
     
-    // Initialize popup properties
-    Popup.themeSelector = document.getElementById('theme-selector');
-    Popup.settingsButton = document.getElementById('settings-button');
-    Popup.providerGrid = document.getElementById('provider-grid');
-    Popup.sourceLanguageSelect = document.getElementById('source-language');
-    Popup.targetLanguageSelect = document.getElementById('target-language');
-    Popup.translateButton = document.getElementById('translate-button');
-    Popup.loadingOverlay = document.getElementById('loading-overlay');
-    Popup.activeProvider = null;
+    // Initialize the popup (this will set up element references)
+    await Popup.initialize();
   });
 
-  test('should load and display providers', async () => {
-    await Popup.loadProviders();
-    
-    // Check that providers were loaded
-    expect(Popup.providerGrid.children.length).toBeGreaterThan(0);
-    
-    // Check that provider cards were created
-    const providerCards = Popup.providerGrid.querySelectorAll('.provider-card');
-    expect(providerCards.length).toBe(4);
-    
-    // Check that the first provider card has the correct content
-    const firstCard = providerCards[0];
-    expect(firstCard.dataset.provider).toBe('qwen');
-    expect(firstCard.querySelector('h2').textContent).toBe('Qwen');
+  test('should initialize popup elements', async () => {
+    // Check that popup was initialized and elements were found
+    expect(Popup.translateButton).toBeTruthy();
+    expect(Popup.sourceLanguageSelect).toBeTruthy();
+    expect(Popup.targetLanguageSelect).toBeTruthy();
+    expect(Popup.loadingOverlay).toBeTruthy();
   });
 
-  test('should load and display languages', async () => {
-    // Mock the language data
-    const mockLanguages = [
-      { code: 'en', name: 'English' },
-      { code: 'es', name: 'Spanish' },
-      { code: 'fr', name: 'French' }
-    ];
+  test('should load languages from fallback', async () => {
+    // The popup should load languages during initialization
+    await Popup.loadLanguages();
     
-    Popup.populateLanguageSelects(mockLanguages);
+    // Check that languages were loaded (fallback should have basic languages)
+    const sourceOptions = Popup.sourceLanguageSelect.children;
+    const targetOptions = Popup.targetLanguageSelect.children;
     
-    // Check that languages were loaded
-    expect(Popup.sourceLanguageSelect.children.length).toBe(4); // auto + 3 languages
-    expect(Popup.targetLanguageSelect.children.length).toBe(3); // just 3 languages
+    expect(sourceOptions.length).toBeGreaterThan(1); // at least auto + some languages
+    expect(targetOptions.length).toBeGreaterThan(0); // at least some languages
     
-    // Check that the first language option is correct
-    const firstSourceOption = Popup.sourceLanguageSelect.children[0];
-    expect(firstSourceOption.value).toBe('auto');
-    expect(firstSourceOption.textContent).toBe('Auto Detect');
-    
-    const firstTargetOption = Popup.targetLanguageSelect.children[0];
-    expect(firstTargetOption.value).toBe('en');
-    expect(firstTargetOption.textContent).toBe('English');
+    // Check that auto detect is available for source
+    const autoOption = Array.from(sourceOptions).find(opt => opt.value === 'auto');
+    expect(autoOption).toBeTruthy();
   });
 
-  test('should handle provider selection', async () => {
-    await Popup.loadProviders();
-    Popup.setupEventListeners(); // Set up event listeners
+  test('should handle theme toggle', async () => {
+    // Theme should be initialized during popup init
+    await Popup.loadTheme();
     
-    // Click on the first provider card
-    const firstCard = Popup.providerGrid.querySelector('.provider-card');
-    const clickEvent = new MouseEvent('click', {
-      bubbles: true,
-      cancelable: true
-    });
-    firstCard.dispatchEvent(clickEvent);
+    // Toggle theme
+    Popup.handleThemeToggle();
     
-    // Check that the provider is now active
-    expect(Popup.activeProvider).toBe('qwen');
-  });
-
-  test('should handle theme changes', async () => {
-    Popup.loadTheme();
-    
-    // Change theme
-    Popup.themeSelector.value = 'cyberpunk';
-    Popup.handleThemeChange();
-    
-    // Check that the theme was saved
-    expect(mockChrome.storage.local.set).toHaveBeenCalledWith({ theme: 'cyberpunk' });
+    // Check that the theme was saved (should toggle from light to dark or vice versa)
+    expect(mockChrome.storage.local.set).toHaveBeenCalled();
+    const setCall = mockChrome.storage.local.set.mock.calls[0][0];
+    expect(setCall.theme).toBeDefined();
+    expect(['light', 'dark'].includes(setCall.theme)).toBe(true);
   });
 
   test('should handle translate button click', async () => {
-    await Popup.loadProviders();
-    await Popup.loadLanguages();
-    
-    // Select a provider first
-    Popup.setActiveProvider('qwen');
-    
-    // Set up source language
-    Popup.sourceLanguageSelect.innerHTML = '<option value="auto">Auto Detect</option>';
-    Popup.targetLanguageSelect.innerHTML = '<option value="en">English</option>';
+    // Set up languages
+    Popup.sourceLanguageSelect.innerHTML = '<option value="auto" selected>Auto Detect</option>';
+    Popup.targetLanguageSelect.innerHTML = '<option value="en" selected>English</option>';
     
     // Call handleTranslate
     await Popup.handleTranslate();
     
-    // Check that the translation message was sent
-    expect(mockChrome.tabs.sendMessage).toHaveBeenCalledWith(
-      1,
-      {
-        action: 'translatePage',
-        provider: 'qwen',
-        sourceLanguage: 'auto',
-        targetLanguage: 'en',
-      }
-    );
+    // Check that the translation message was sent to background script
+    expect(mockChrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'home:quick-translate' });
+    
+    // Check that progress tracking was started
+    expect(global.window.TranslationProgress.startTranslationSession).toHaveBeenCalled();
   });
 
-  test('should show error when trying to translate without selecting provider', async () => {
-    // Mock alert
-    const alertMock = jest.spyOn(window, 'alert').mockImplementation();
-    
-    // Call handleTranslate without selecting provider
-    await Popup.handleTranslate();
-    
-    // Check that alert was shown
-    expect(alertMock).toHaveBeenCalledWith('Please select a translation provider.');
-    
-    // Restore alert
-    alertMock.mockRestore();
-  });
-
-  test('should handle fetch errors gracefully', async () => {
+  test('should handle fallback language loading', async () => {
     // Test fallback language loading
     Popup.populateLanguageSelectsWithFallback();
     
-    // Check that languages still loaded (from fallback)
-    expect(Popup.sourceLanguageSelect.children.length).toBe(11); // auto + 10 languages
-    expect(Popup.targetLanguageSelect.children.length).toBe(10); // just 10 languages
+    // Check that languages were loaded from fallback
+    expect(Popup.sourceLanguageSelect.children.length).toBeGreaterThan(1);
+    expect(Popup.targetLanguageSelect.children.length).toBeGreaterThan(0);
     
-    // Load providers with fallback
-    await Popup.loadProviders();
-    
-    // Check that providers still loaded (from fallback)
-    expect(Popup.providerGrid.children.length).toBe(4); // 4 default providers
+    // Check that basic languages are present
+    const sourceOptions = Array.from(Popup.sourceLanguageSelect.children);
+    const autoOption = sourceOptions.find(opt => opt.value === 'auto');
+    expect(autoOption).toBeTruthy();
   });
   
   test('should apply theme correctly', () => {
-    // Test modern theme (no additional stylesheet)
-    Popup.applyTheme('modern');
-    expect(document.querySelectorAll('link[data-theme]').length).toBe(0);
+    // Test light theme (default)
+    Popup.applyTheme('light');
     expect(document.body.classList.contains('dark')).toBe(false);
     
-    // Test cyberpunk theme (adds stylesheet and dark class)
-    Popup.applyTheme('cyberpunk');
-    expect(document.querySelectorAll('link[data-theme]').length).toBe(1);
+    // Test dark theme
+    Popup.applyTheme('dark');
     expect(document.body.classList.contains('dark')).toBe(true);
-    
-    // Test apple theme (adds stylesheet but no dark class)
-    Popup.applyTheme('apple');
-    expect(document.querySelectorAll('link[data-theme]').length).toBe(1);
-    expect(document.body.classList.contains('dark')).toBe(false);
   });
 });

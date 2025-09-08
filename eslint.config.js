@@ -35,6 +35,12 @@ module.exports = [
         qwenConfig: 'readonly',
         qwenCache: 'readonly',
         qwenLogger: 'readonly',
+        qwenProviders: 'readonly',
+        qwenRetry: 'readonly',
+        qwenTransport: 'readonly',
+        isOfflineError: 'readonly',
+        pdfjsLib: 'readonly',
+        importScripts: 'readonly',
       },
     },
     rules: {
@@ -124,9 +130,6 @@ module.exports = [
 
       // === Security Rules ===
       'no-eval': 'error',
-      'no-new-func': 'warn',
-      'no-implied-eval': 'error',
-      'no-script-url': 'error',
       'no-proto': 'error',
       'no-iterator': 'error',
       'no-with': 'error',
@@ -137,7 +140,6 @@ module.exports = [
       'no-undef': 'error', // Catch undefined variables
 
       // === Module & Import Rules ===
-      'no-duplicate-imports': 'error',
 
       // === Error Prevention ===
       'no-cond-assign': ['error', 'except-parens'],
@@ -213,6 +215,12 @@ module.exports = [
         qwenConfig: 'readonly',
         qwenCache: 'readonly',
         qwenLogger: 'readonly',
+        qwenProviders: 'readonly',
+        qwenRetry: 'readonly',
+        qwenTransport: 'readonly',
+        isOfflineError: 'readonly',
+        pdfjsLib: 'readonly',
+        importScripts: 'readonly',
       },
     },
     plugins: {

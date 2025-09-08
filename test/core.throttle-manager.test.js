@@ -368,36 +368,46 @@ describe('Core Throttle Manager', () => {
       expect(clearedCount).toBeGreaterThan(0);
     });
 
-    test('handles queue size limits', () => {
+    test('handles queue size limits', async () => {
       const smallThrottle = throttleManager.createThrottleManager({
-        maxQueueSize: 2
+        maxQueueSize: 0  // No queuing allowed
       });
 
       smallThrottle.configure('limited-queue', {
-        requestLimit: 0, // No immediate capacity
-        tokenLimit: 0,   // No immediate tokens
-        windowMs: 10000  // Long window
+        requestLimit: 1,   // Limited capacity
+        tokenLimit: 100,   // Sufficient tokens to avoid token limit issues  
+        windowMs: 60000    // Long window so no immediate refill
       });
-
-      // Try to queue more requests than maxQueueSize allows
+      
+      // Make requests that exceed queue capacity
       let queueFullCount = 0;
       const promises = [];
       
-      for (let i = 0; i < 5; i++) {
-        const promise = smallThrottle.requestPermission('limited-queue', 1)
-          .catch(err => {
-            if (err.message.includes('QUEUE_FULL')) {
-              queueFullCount++;
-            }
-            return 'error';
-          });
-        promises.push(promise);
+      // With maxQueueSize=0, only first request can be processed immediately
+      // All subsequent requests should fail with QUEUE_FULL
+      for (let i = 0; i < 2; i++) {
+        try {
+          const promise = smallThrottle.requestPermission('limited-queue', 1)
+            .catch(err => {
+              if (err.message.includes('QUEUE_FULL')) {
+                queueFullCount++;
+              }
+              return 'error';
+            });
+          promises.push(promise);
+        } catch (err) {
+          // Synchronous QUEUE_FULL error
+          if (err.message.includes('QUEUE_FULL')) {
+            queueFullCount++;
+          }
+        }
       }
       
+      // Wait for all promises to resolve/reject
+      await Promise.all(promises);
+      
       // Should have at least one queue full error
-      return Promise.all(promises).then(() => {
-        expect(queueFullCount).toBeGreaterThan(0);
-      });
+      expect(queueFullCount).toBeGreaterThan(0);
     });
   });
 

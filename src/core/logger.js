@@ -66,10 +66,15 @@
   /**
    * Redact sensitive values from logs
    * @param {any} value - Value to redact
-   * @param {WeakSet} [seen] - Track seen objects to prevent circular references
+   * @param {Set} [seen] - Track seen objects to prevent circular references
    * @returns {any} Redacted value
    */
-  function redactValue(value, seen = new WeakSet()) {
+  function redactValue(value, seen) {
+    // Initialize seen Set on first call or if not provided
+    if (!seen || typeof seen.has !== 'function') {
+      seen = new Set();
+    }
+    
     if (typeof value === 'string') {
       return value
         .replace(/(api[-_\s]?key\s*[:=]\s*).*/ig, '$1<redacted>')
@@ -80,6 +85,11 @@
     }
     
     if (value instanceof Error) {
+      // Use string representation for Error circular detection
+      const errorKey = `Error:${value.name}:${value.message}`;
+      if (seen.has(errorKey)) return '[Circular Error]';
+      
+      seen.add(errorKey);
       const sanitized = {
         name: value.name,
         message: redactValue(value.message, seen),
@@ -92,30 +102,59 @@
           sanitized[key] = isSecretKey(key) ? '<redacted>' : redactValue(value[key], seen);
         }
       }
+      seen.delete(errorKey);
       return sanitized;
     }
     
     if (Array.isArray(value)) {
-      if (seen.has(value)) return '[Circular]';
+      // Create unique identifier for this array based on contents
+      const arrayKey = `Array:${value.length}:${Date.now()}:${Math.random()}`;
+      if (seen.has(value) || seen.has(arrayKey)) return '[Circular]';
+      
       seen.add(value);
-      const result = value.map(v => redactValue(v, seen));
-      seen.delete(value);
-      return result;
+      seen.add(arrayKey);
+      
+      try {
+        const result = value.map(v => redactValue(v, seen));
+        seen.delete(value);
+        seen.delete(arrayKey);
+        return result;
+      } catch (error) {
+        seen.delete(value);
+        seen.delete(arrayKey);
+        return '[Array]';
+      }
     }
     
     if (value && typeof value === 'object') {
-      if (seen.has(value)) return '[Circular]';
+      // Handle null explicitly
+      if (value === null) return null;
+      
+      // Create unique identifier for this object
+      const objectKey = `Object:${Object.keys(value).length}:${Date.now()}:${Math.random()}`;
+      if (seen.has(value) || seen.has(objectKey)) return '[Circular]';
+      
+      // Handle special object types
+      if (value instanceof Date) return value.toISOString();
+      if (value instanceof RegExp) return value.toString();
       
       try {
         seen.add(value);
+        seen.add(objectKey);
+        
         const sanitized = {};
         for (const [key, val] of Object.entries(value)) {
-          sanitized[key] = isSecretKey(key) ? '<redacted>' : redactValue(val, seen);
+          if (Object.prototype.hasOwnProperty.call(value, key)) {
+            sanitized[key] = isSecretKey(key) ? '<redacted>' : redactValue(val, seen);
+          }
         }
+        
         seen.delete(value);
+        seen.delete(objectKey);
         return sanitized;
       } catch (error) {
         seen.delete(value);
+        seen.delete(objectKey);
         return '[Object]';
       }
     }
@@ -129,7 +168,7 @@
    * @returns {any[]} Sanitized arguments
    */
   function sanitizeArgs(args) {
-    return args.map(redactValue);
+    return args.map(arg => redactValue(arg));
   }
 
   /**

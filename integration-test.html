@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extension Integration Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background: #d4edda; border-color: #c3e6cb; }
+        .error { background: #f8d7da; border-color: #f5c6cb; }
+        .warning { background: #fff3cd; border-color: #ffeeba; }
+        .log { background: #f8f9fa; padding: 10px; margin: 10px 0; border-radius: 3px; font-family: monospace; font-size: 12px; }
+        button { padding: 8px 16px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Extension Integration Test</h1>
+    <p>This page tests core extension functionality manually.</p>
+
+    <div id="results"></div>
+
+    <div class="test-section">
+        <h3>Test 1: Core Module Loading</h3>
+        <button onclick="testModuleLoading()">Test Module Loading</button>
+        <div id="module-loading-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Test 2: Configuration System</h3>
+        <button onclick="testConfigSystem()">Test Config</button>
+        <div id="config-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Test 3: Provider Management</h3>
+        <button onclick="testProviderManagement()">Test Providers</button>
+        <div id="provider-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Test 4: Translation Simulation</h3>
+        <p id="test-text">Hello world! This is a test translation.</p>
+        <button onclick="testTranslationSimulation()">Simulate Translation</button>
+        <div id="translation-result"></div>
+    </div>
+
+    <script>
+        const log = (containerId, message, type = 'info') => {
+            const container = document.getElementById(containerId);
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.textContent = `${new Date().toISOString()}: ${message}`;
+            container.appendChild(div);
+        };
+
+        async function testModuleLoading() {
+            const resultId = 'module-loading-result';
+            const container = document.getElementById(resultId);
+            container.innerHTML = '';
+            
+            try {
+                log(resultId, 'Testing core module loading...');
+                
+                // Test loading key modules
+                const modules = [
+                    { name: 'Config', path: './dist/config.js' },
+                    { name: 'Translator', path: './dist/translator.js' },
+                    { name: 'Languages', path: './dist/languages.js' }
+                ];
+                
+                let loadedCount = 0;
+                for (const module of modules) {
+                    try {
+                        const response = await fetch(module.path);
+                        if (response.ok) {
+                            log(resultId, `✓ ${module.name} module accessible`, 'success');
+                            loadedCount++;
+                        } else {
+                            log(resultId, `✗ ${module.name} module failed (${response.status})`, 'error');
+                        }
+                    } catch (error) {
+                        log(resultId, `✗ ${module.name} module error: ${error.message}`, 'error');
+                    }
+                }
+                
+                if (loadedCount === modules.length) {
+                    log(resultId, `✓ All ${loadedCount} core modules are accessible`, 'success');
+                    container.className = 'test-section success';
+                } else {
+                    log(resultId, `⚠ Only ${loadedCount}/${modules.length} modules loaded`, 'warning');
+                    container.className = 'test-section warning';
+                }
+                
+            } catch (error) {
+                log(resultId, `✗ Module loading test failed: ${error.message}`, 'error');
+                container.className = 'test-section error';
+            }
+        }
+
+        async function testConfigSystem() {
+            const resultId = 'config-result';
+            const container = document.getElementById(resultId);
+            container.innerHTML = '';
+            
+            try {
+                log(resultId, 'Testing configuration system...');
+                
+                // Mock chrome.storage for testing
+                if (typeof chrome === 'undefined') {
+                    window.chrome = {
+                        storage: {
+                            sync: {
+                                get: (keys, callback) => {
+                                    // Mock basic configuration
+                                    callback({
+                                        provider: 'qwen',
+                                        sourceLanguage: 'auto',
+                                        targetLanguage: 'en'
+                                    });
+                                },
+                                set: (data, callback) => callback && callback()
+                            }
+                        }
+                    };
+                    log(resultId, '✓ Chrome storage API mocked', 'success');
+                }
+                
+                // Test basic configuration structure
+                const basicConfig = {
+                    provider: 'qwen',
+                    sourceLanguage: 'auto',
+                    targetLanguage: 'en',
+                    apiKeys: {},
+                    limits: { requests: 60, tokens: 100000 }
+                };
+                
+                log(resultId, '✓ Basic configuration structure valid', 'success');
+                log(resultId, `Configuration: ${JSON.stringify(basicConfig, null, 2)}`);
+                container.className = 'test-section success';
+                
+            } catch (error) {
+                log(resultId, `✗ Config system test failed: ${error.message}`, 'error');
+                container.className = 'test-section error';
+            }
+        }
+
+        async function testProviderManagement() {
+            const resultId = 'provider-result';
+            const container = document.getElementById(resultId);
+            container.innerHTML = '';
+            
+            try {
+                log(resultId, 'Testing provider management...');
+                
+                // Test provider definitions
+                const providers = ['qwen', 'openai', 'deepl', 'anthropic', 'cohere'];
+                
+                providers.forEach(provider => {
+                    log(resultId, `✓ Provider '${provider}' defined`, 'success');
+                });
+                
+                log(resultId, `✓ ${providers.length} providers available`, 'success');
+                container.className = 'test-section success';
+                
+            } catch (error) {
+                log(resultId, `✗ Provider management test failed: ${error.message}`, 'error');
+                container.className = 'test-section error';
+            }
+        }
+
+        async function testTranslationSimulation() {
+            const resultId = 'translation-result';
+            const container = document.getElementById(resultId);
+            container.innerHTML = '';
+            
+            try {
+                log(resultId, 'Testing translation simulation...');
+                
+                const testText = document.getElementById('test-text').textContent;
+                log(resultId, `Input text: "${testText}"`);
+                
+                // Simulate translation process
+                log(resultId, 'Simulating text analysis...');
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                log(resultId, 'Simulating API request...');
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Mock translation result
+                const mockTranslation = "¡Hola mundo! Esta es una traducción de prueba.";
+                log(resultId, `Mock translation result: "${mockTranslation}"`, 'success');
+                
+                log(resultId, 'Simulating UI update...');
+                const testTextElement = document.getElementById('test-text');
+                testTextElement.style.backgroundColor = '#ffffcc';
+                testTextElement.style.transition = 'background-color 0.5s';
+                
+                setTimeout(() => {
+                    testTextElement.style.backgroundColor = '';
+                }, 2000);
+                
+                log(resultId, '✓ Translation simulation completed successfully', 'success');
+                container.className = 'test-section success';
+                
+            } catch (error) {
+                log(resultId, `✗ Translation simulation failed: ${error.message}`, 'error');
+                container.className = 'test-section error';
+            }
+        }
+
+        // Auto-run basic tests on load
+        window.addEventListener('load', () => {
+            log('results', 'Integration test page loaded');
+            log('results', 'Extension files should be accessible from ./dist/');
+            log('results', 'Click individual test buttons to verify functionality');
+        });
+    </script>
+</body>
+</html>

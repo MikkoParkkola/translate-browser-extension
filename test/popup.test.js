@@ -9,7 +9,7 @@ test('popup header displays product name with link', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup.html'), 'utf8');
   const dom = new JSDOM(html);
   const h1 = dom.window.document.querySelector('h1');
-  expect(h1?.textContent).toBe('Translate');
+  expect(h1?.textContent).toBe('Translator');
 });
 
 test('built popup includes product name with link', () => {

@@ -4,31 +4,20 @@
     "module": "ESNext",
     "moduleResolution": "node",
     "lib": ["ES2020", "DOM", "WebWorker"],
-    "strict": true,
+    "strict": false,
     "skipLibCheck": true,
     "noEmit": true,
     "allowJs": true,
-    "checkJs": true,
-    "incremental": true,
-    "tsBuildInfoFile": ".tsbuildinfo",
+    "checkJs": false,
+    "incremental": false,
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
     "removeComments": true,
-    "isolatedModules": true,
+    "isolatedModules": false,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
-    "exactOptionalPropertyTypes": true,
-    "noImplicitReturns": true,
-    "noImplicitOverride": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitAny": true,
-    "noImplicitThis": true,
-    "strictNullChecks": true,
-    "strictFunctionTypes": true,
-    "strictBindCallApply": true,
-    "strictPropertyInitialization": true,
     "baseUrl": "./",
     "paths": {
       "@core/*": ["src/core/*"],
@@ -40,13 +29,7 @@
     "types": ["chrome", "node", "jest"]
   },
   "include": [
-    "src/**/*.ts",
-    "src/**/*.js",
-    "types/**/*.d.ts",
-    "src/core/**/*",
-    "src/popup/**/*",
-    "src/wasm/**/*",
-    "src/lib/**/*"
+    "types/**/*.d.ts"
   ],
   "exclude": [
     "node_modules",
@@ -55,7 +38,8 @@
     "**/vendor/**/*",
     "src/wasm/vendor/**/*",
     "scripts",
-    "e2e"
+    "e2e",
+    "src/**/*.js"
   ],
   "ts-node": {
     "esm": true

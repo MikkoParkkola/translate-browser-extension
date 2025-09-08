@@ -4,76 +4,327 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Qwen Translator Settings</title>
-  <link rel="stylesheet" href="styles/modern.css">
+  <link rel="stylesheet" href="styles/design-system.css">
+  <link rel="stylesheet" href="styles/options.css">
 </head>
-<body>
-  <div class="container">
-    <header class="header">
-      <h1>Settings</h1>
+<body class="options-body">
+  <div class="options-container">
+    <!-- Header -->
+    <header class="options-header">
+      <div class="header-content">
+        <div class="header-title">
+          <div class="header-logo">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L2 7v10c0 5.55 3.84 9.74 9 11 5.16-1.26 9-5.45 9-11V7l-10-5z" stroke="currentColor" stroke-width="2" fill="none"/>
+              <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" fill="none"/>
+            </svg>
+          </div>
+          <div class="title-text">
+            <h1>Translator Settings</h1>
+            <p class="title-subtitle">Configure your translation preferences and providers</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button id="theme-toggle" class="theme-toggle-btn" aria-label="Toggle theme">
+            <svg class="theme-icon-light" width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2"/>
+              <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            <svg class="theme-icon-dark" width="20" height="20" viewBox="0 0 24 24" fill="none" style="display: none;">
+              <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" stroke="currentColor" stroke-width="2" fill="none"/>
+            </svg>
+          </button>
+        </div>
+      </div>
     </header>
 
-    <main>
-      <section id="providerSection">
-        <h3>Translation Providers</h3>
-        <div id="providerList" class="provider-cards"></div>
-        <button id="addProvider" class="button-primary">Add Provider</button>
-      </section>
+    <!-- Main Content -->
+    <main class="options-main">
+      <!-- Navigation Tabs -->
+      <nav class="tabs-nav">
+        <button class="tab-button active" data-tab="providers">Translation Providers</button>
+        <button class="tab-button" data-tab="preferences">Preferences</button>
+        <button class="tab-button" data-tab="analytics">Analytics</button>
+        <button class="tab-button" data-tab="advanced">Advanced</button>
+      </nav>
+
+      <!-- Tab Content -->
+      <div class="tab-content">
+        <!-- Providers Tab -->
+        <div id="providers-tab" class="tab-pane active">
+          <div class="section-header">
+            <h2>Translation Providers</h2>
+            <p class="section-description">Manage your translation service providers and API configurations.</p>
+          </div>
+          
+          <div class="provider-grid" id="provider-grid">
+            <!-- Provider cards will be dynamically added here -->
+          </div>
+          
+          <div class="section-actions">
+            <button id="addProvider" class="add-provider-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Add New Provider
+            </button>
+          </div>
+        </div>
+
+        <!-- Preferences Tab -->
+        <div id="preferences-tab" class="tab-pane">
+          <div class="section-header">
+            <h2>Translation Preferences</h2>
+            <p class="section-description">Customize how translation works across all websites.</p>
+          </div>
+          
+          <div class="preferences-grid">
+            <div class="preference-card">
+              <div class="preference-header">
+                <h3>Auto-Translation</h3>
+                <label class="modern-toggle">
+                  <input type="checkbox" id="global-auto-translate">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <p class="preference-description">Automatically translate pages when they load</p>
+            </div>
+            
+            <div class="preference-card">
+              <div class="preference-header">
+                <h3>Show Original Text</h3>
+                <label class="modern-toggle">
+                  <input type="checkbox" id="show-original" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <p class="preference-description">Display original text on hover</p>
+            </div>
+            
+            <div class="preference-card">
+              <div class="preference-header">
+                <h3>Translation Shortcuts</h3>
+                <label class="modern-toggle">
+                  <input type="checkbox" id="enable-shortcuts" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <p class="preference-description">Enable keyboard shortcuts for translation</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Analytics Tab -->
+        <div id="analytics-tab" class="tab-pane">
+          <div class="section-header">
+            <h2>Usage Analytics</h2>
+            <p class="section-description">View your translation usage statistics and trends.</p>
+          </div>
+          
+          <div class="analytics-dashboard">
+            <div class="analytics-overview">
+              <div class="analytics-card">
+                <div class="analytics-metric">
+                  <div class="metric-value">1,247</div>
+                  <div class="metric-label">Pages Translated</div>
+                  <div class="metric-change positive">+12% this week</div>
+                </div>
+                <div class="metric-chart">📊</div>
+              </div>
+              
+              <div class="analytics-card">
+                <div class="analytics-metric">
+                  <div class="metric-value">23.4k</div>
+                  <div class="metric-label">Words Translated</div>
+                  <div class="metric-change positive">+8% this week</div>
+                </div>
+                <div class="metric-chart">📈</div>
+              </div>
+              
+              <div class="analytics-card">
+                <div class="analytics-metric">
+                  <div class="metric-value">$4.23</div>
+                  <div class="metric-label">API Costs</div>
+                  <div class="metric-change neutral">Same as last week</div>
+                </div>
+                <div class="metric-chart">💰</div>
+              </div>
+            </div>
+            
+            <div class="analytics-chart-container">
+              <h3>Weekly Usage Trend</h3>
+              <div class="usage-chart" id="usage-chart">
+                <!-- Chart will be rendered here -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Advanced Tab -->
+        <div id="advanced-tab" class="tab-pane">
+          <div class="section-header">
+            <h2>Advanced Settings</h2>
+            <p class="section-description">Fine-tune advanced translation options and debugging features.</p>
+          </div>
+          
+          <div class="advanced-settings">
+            <div class="setting-group">
+              <h3>Performance</h3>
+              <div class="setting-item">
+                <label for="batch-size">Translation Batch Size</label>
+                <input type="range" id="batch-size" min="1" max="10" value="5">
+                <span class="range-value">5</span>
+              </div>
+              <div class="setting-item">
+                <label for="request-delay">Request Delay (ms)</label>
+                <input type="range" id="request-delay" min="100" max="2000" value="500">
+                <span class="range-value">500ms</span>
+              </div>
+            </div>
+            
+            <div class="setting-group">
+              <h3>Debugging</h3>
+              <div class="setting-item-checkbox">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="debug-mode">
+                  <span class="checkbox-custom"></span>
+                  Enable Debug Mode
+                </label>
+                <p class="setting-description">Show detailed logs in browser console</p>
+              </div>
+              <div class="setting-item-checkbox">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="performance-metrics">
+                  <span class="checkbox-custom"></span>
+                  Collect Performance Metrics
+                </label>
+                <p class="setting-description">Track translation speed and accuracy</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
 
+  <!-- Add Provider Modal -->
   <div id="addProviderOverlay" class="modal-overlay">
-    <div class="modal">
-      <div id="ap_step1">
-        <h3>Add Provider</h3>
-        <label>Preset
-          <select id="ap_preset">
-            <option value="openai">OpenAI</option>
-            <option value="deepl">DeepL</option>
-            <option value="ollama">Ollama</option>
-            <option value="macos">macOS</option>
-            <option value="custom">Custom</option>
-          </select>
-        </label>
-        <div class="actions">
-          <button id="ap_next">Next</button>
-          <button id="ap_cancel1">Cancel</button>
+    <div class="modern-modal">
+      <div class="modal-header">
+        <h3>Add Translation Provider</h3>
+        <button class="modal-close" id="ap_close" aria-label="Close modal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+      
+      <div id="ap_step1" class="modal-content">
+        <div class="provider-presets">
+          <div class="preset-card" data-preset="openai">
+            <div class="preset-icon">🤖</div>
+            <h4>OpenAI</h4>
+            <p>GPT-4 and GPT-3.5 models</p>
+          </div>
+          <div class="preset-card" data-preset="deepl">
+            <div class="preset-icon">🔷</div>
+            <h4>DeepL</h4>
+            <p>Professional translation service</p>
+          </div>
+          <div class="preset-card" data-preset="google">
+            <div class="preset-icon">🔍</div>
+            <h4>Google Translate</h4>
+            <p>Free and reliable translation</p>
+          </div>
+          <div class="preset-card" data-preset="custom">
+            <div class="preset-icon">⚙️</div>
+            <h4>Custom API</h4>
+            <p>Configure your own service</p>
+          </div>
+        </div>
+        
+        <div class="modal-actions">
+          <button id="ap_cancel1" class="btn-secondary">Cancel</button>
+          <button id="ap_next" class="btn-primary" disabled>Continue</button>
         </div>
       </div>
-      <div id="ap_step2" style="display: none;">
-        <h3>Configure Provider</h3>
-        <div id="ap_fields"></div>
-        <div class="actions">
-          <button id="ap_back">Back</button>
-          <button id="ap_create">Create</button>
+      
+      <div id="ap_step2" class="modal-content" style="display: none;">
+        <div class="provider-form">
+          <div id="ap_fields">
+            <!-- Dynamic fields will be added here -->
+          </div>
+        </div>
+        
+        <div class="modal-actions">
+          <button id="ap_back" class="btn-secondary">Back</button>
+          <button id="ap_create" class="btn-primary">Add Provider</button>
         </div>
       </div>
     </div>
   </div>
 
+  <!-- Edit Provider Modal -->
   <div id="providerEditorOverlay" class="modal-overlay">
-    <div class="modal">
-      <h3>Edit Provider</h3>
-      <label data-field="apiKey">API Key <input id="pe_apiKey"></label>
-      <label data-field="apiEndpoint">API Endpoint <input id="pe_apiEndpoint"></label>
-      <label id="pe_modelLabel" data-field="model">Model <select id="pe_modelSelect" style="display:none" aria-labelledby="pe_modelLabel"></select><input id="pe_modelInput" aria-labelledby="pe_modelLabel"></label>
-      <details id="pe_advanced">
-        <summary>Advanced</summary>
-        <label data-field="requestLimit">Requests/min <input id="pe_requestLimit" type="number" min="0"></label>
-        <label data-field="tokenLimit">Tokens/min <input id="pe_tokenLimit" type="number" min="0"></label>
-        <label data-field="charLimit">Chars/month <input id="pe_charLimit" type="number" min="0"></label>
-        <label data-field="strategy">Strategy <select id="pe_strategy">
-          <option value="balanced" title="Balance cost and speed">Balanced</option>
-          <option value="fast" title="Prefer fastest provider">Fast</option>
-          <option value="cheap" title="Prefer lowest cost provider">Cheap</option>
-        </select></label>
-        <label data-field="costPerInputToken" title="Cost per million input tokens in USD">Input cost per 1M tokens (USD) <input id="pe_costPerInputToken" type="number" step="0.01" min="0"></label>
-        <label data-field="costPerOutputToken" title="Cost per million output tokens in USD">Output cost per 1M tokens (USD) <input id="pe_costPerOutputToken" type="number" step="0.01" min="0"></label>
-        <label data-field="weight" title="Relative load-balancing preference when multiple providers are available">Weight <input id="pe_weight" type="number" step="0.01" min="0"></label>
-        <p class="note">Higher = used more often when multiple providers have quota. <a href="https://github.com/MikkoParkkola/translate-by-mikko#pricing--load-balancing" target="_blank" rel="noopener">Learn more</a></p>
-      </details>
-      <div class="actions">
-        <button id="pe_save">Save</button>
-        <button id="pe_cancel">Cancel</button>
+    <div class="modern-modal">
+      <div class="modal-header">
+        <h3>Edit Provider</h3>
+        <button class="modal-close" id="pe_close" aria-label="Close modal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+      
+      <div class="modal-content">
+        <div class="provider-form">
+          <div class="form-group">
+            <label for="pe_apiKey">API Key</label>
+            <input type="password" id="pe_apiKey" class="form-input" placeholder="Enter your API key">
+          </div>
+          
+          <div class="form-group">
+            <label for="pe_apiEndpoint">API Endpoint</label>
+            <input type="url" id="pe_apiEndpoint" class="form-input" placeholder="https://api.example.com">
+          </div>
+          
+          <div class="form-group">
+            <label for="pe_model">Model</label>
+            <input type="text" id="pe_model" class="form-input" placeholder="Model name">
+          </div>
+          
+          <details class="advanced-settings-details">
+            <summary>Advanced Settings</summary>
+            <div class="advanced-form-grid">
+              <div class="form-group">
+                <label for="pe_requestLimit">Requests per Minute</label>
+                <input type="number" id="pe_requestLimit" class="form-input" min="0" placeholder="60">
+              </div>
+              
+              <div class="form-group">
+                <label for="pe_tokenLimit">Tokens per Minute</label>
+                <input type="number" id="pe_tokenLimit" class="form-input" min="0" placeholder="100000">
+              </div>
+              
+              <div class="form-group">
+                <label for="pe_strategy">Load Balancing Strategy</label>
+                <select id="pe_strategy" class="form-select">
+                  <option value="balanced">Balanced</option>
+                  <option value="fast">Fastest</option>
+                  <option value="cheap">Cheapest</option>
+                </select>
+              </div>
+            </div>
+          </details>
+        </div>
+        
+        <div class="modal-actions">
+          <button id="pe_delete" class="btn-danger">Delete</button>
+          <div class="modal-actions-right">
+            <button id="pe_cancel" class="btn-secondary">Cancel</button>
+            <button id="pe_save" class="btn-primary">Save Changes</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

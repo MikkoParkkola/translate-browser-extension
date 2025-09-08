@@ -1,0 +1,275 @@
+/* Design System - Core Design Tokens */
+
+/* ========== Design Tokens ========== */
+:root {
+  /* Typography Scale */
+  --font-family-primary: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-family-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+  
+  --font-size-xs: 0.75rem;    /* 12px */
+  --font-size-sm: 0.875rem;   /* 14px */
+  --font-size-base: 1rem;     /* 16px */
+  --font-size-lg: 1.125rem;   /* 18px */
+  --font-size-xl: 1.25rem;    /* 20px */
+  --font-size-2xl: 1.5rem;    /* 24px */
+  --font-size-3xl: 1.875rem;  /* 30px */
+  
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+  
+  /* Spacing Scale */
+  --space-1: 0.25rem;   /* 4px */
+  --space-2: 0.5rem;    /* 8px */
+  --space-3: 0.75rem;   /* 12px */
+  --space-4: 1rem;      /* 16px */
+  --space-5: 1.25rem;   /* 20px */
+  --space-6: 1.5rem;    /* 24px */
+  --space-8: 2rem;      /* 32px */
+  --space-10: 2.5rem;   /* 40px */
+  --space-12: 3rem;     /* 48px */
+  
+  /* Border Radius */
+  --radius-sm: 0.25rem;   /* 4px */
+  --radius-md: 0.5rem;    /* 8px */
+  --radius-lg: 0.75rem;   /* 12px */
+  --radius-xl: 1rem;      /* 16px */
+  --radius-full: 9999px;  /* Fully rounded */
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  
+  /* Z-Index Scale */
+  --z-dropdown: 10;
+  --z-modal: 50;
+  --z-tooltip: 100;
+  --z-toast: 200;
+  
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+  --transition-slow: 350ms ease;
+}
+
+/* Light Theme Colors */
+:root {
+  /* Primary Colors */
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
+  
+  /* Neutral Colors */
+  --color-neutral-0: #ffffff;
+  --color-neutral-50: #f9fafb;
+  --color-neutral-100: #f3f4f6;
+  --color-neutral-200: #e5e7eb;
+  --color-neutral-300: #d1d5db;
+  --color-neutral-400: #9ca3af;
+  --color-neutral-500: #6b7280;
+  --color-neutral-600: #4b5563;
+  --color-neutral-700: #374151;
+  --color-neutral-800: #1f2937;
+  --color-neutral-900: #111827;
+  
+  /* Semantic Colors */
+  --color-success-50: #f0fdf4;
+  --color-success-200: #bbf7d0;
+  --color-success-300: #86efac;
+  --color-success-500: #22c55e;
+  --color-success-600: #16a34a;
+  --color-success-700: #15803d;
+  --color-success-900: #14532d;
+  
+  --color-warning-50: #fffbeb;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+  
+  --color-error-50: #fef2f2;
+  --color-error-300: #fca5a5;
+  --color-error-500: #ef4444;
+  --color-error-600: #dc2626;
+  --color-error-700: #b91c1c;
+  --color-error-900: #7f1d1d;
+  
+  /* Semantic Token Mappings */
+  --background: var(--color-neutral-0);
+  --background-secondary: var(--color-neutral-50);
+  --background-tertiary: var(--color-neutral-100);
+  
+  --surface: var(--color-neutral-0);
+  --surface-raised: var(--color-neutral-0);
+  --surface-overlay: var(--color-neutral-0);
+  
+  --text-primary: var(--color-neutral-900);
+  --text-secondary: var(--color-neutral-600);
+  --text-tertiary: var(--color-neutral-500);
+  --text-on-primary: var(--color-neutral-0);
+  
+  --border-light: var(--color-neutral-200);
+  --border-medium: var(--color-neutral-300);
+  --border-strong: var(--color-neutral-400);
+  
+  --primary: var(--color-primary-600);
+  --primary-hover: var(--color-primary-700);
+  --primary-light: var(--color-primary-100);
+  
+  --success: var(--color-success-500);
+  --warning: var(--color-warning-500);
+  --error: var(--color-error-500);
+  
+  /* RGB Values for rgba() usage */
+  --color-primary-rgb: 37, 99, 235;
+}
+
+/* Dark Theme Colors */
+[data-theme="dark"] {
+  /* Neutral Colors (Inverted) */
+  --color-neutral-0: #0f0f0f;
+  --color-neutral-50: #1a1a1a;
+  --color-neutral-100: #262626;
+  --color-neutral-200: #404040;
+  --color-neutral-300: #525252;
+  --color-neutral-400: #737373;
+  --color-neutral-500: #a3a3a3;
+  --color-neutral-600: #d4d4d4;
+  --color-neutral-700: #e5e5e5;
+  --color-neutral-800: #f5f5f5;
+  --color-neutral-900: #ffffff;
+  
+  /* Semantic Token Mappings for Dark Theme */
+  --background: var(--color-neutral-0);
+  --background-secondary: var(--color-neutral-50);
+  --background-tertiary: var(--color-neutral-100);
+  
+  --surface: var(--color-neutral-50);
+  --surface-raised: var(--color-neutral-100);
+  --surface-overlay: var(--color-neutral-100);
+  
+  --text-primary: var(--color-neutral-900);
+  --text-secondary: var(--color-neutral-600);
+  --text-tertiary: var(--color-neutral-500);
+  --text-on-primary: var(--color-neutral-0);
+  
+  --border-light: var(--color-neutral-200);
+  --border-medium: var(--color-neutral-300);
+  --border-strong: var(--color-neutral-400);
+}
+
+/* ========== Component Classes ========== */
+
+/* Typography */
+.text-xs { font-size: var(--font-size-xs); }
+.text-sm { font-size: var(--font-size-sm); }
+.text-base { font-size: var(--font-size-base); }
+.text-lg { font-size: var(--font-size-lg); }
+.text-xl { font-size: var(--font-size-xl); }
+.text-2xl { font-size: var(--font-size-2xl); }
+.text-3xl { font-size: var(--font-size-3xl); }
+
+.font-normal { font-weight: var(--font-weight-normal); }
+.font-medium { font-weight: var(--font-weight-medium); }
+.font-semibold { font-weight: var(--font-weight-semibold); }
+.font-bold { font-weight: var(--font-weight-bold); }
+
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-tertiary { color: var(--text-tertiary); }
+
+/* Layout */
+.container {
+  max-width: 100%;
+  padding: var(--space-4);
+}
+
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.justify-center { justify-content: center; }
+
+.gap-1 { gap: var(--space-1); }
+.gap-2 { gap: var(--space-2); }
+.gap-3 { gap: var(--space-3); }
+.gap-4 { gap: var(--space-4); }
+.gap-6 { gap: var(--space-6); }
+
+.p-2 { padding: var(--space-2); }
+.p-3 { padding: var(--space-3); }
+.p-4 { padding: var(--space-4); }
+.p-6 { padding: var(--space-6); }
+
+.px-3 { padding-left: var(--space-3); padding-right: var(--space-3); }
+.px-4 { padding-left: var(--space-4); padding-right: var(--space-4); }
+.py-2 { padding-top: var(--space-2); padding-bottom: var(--space-2); }
+.py-3 { padding-top: var(--space-3); padding-bottom: var(--space-3); }
+
+.m-0 { margin: 0; }
+.mb-4 { margin-bottom: var(--space-4); }
+.mb-6 { margin-bottom: var(--space-6); }
+
+/* Backgrounds */
+.bg-primary { background-color: var(--background); }
+.bg-secondary { background-color: var(--background-secondary); }
+.bg-surface { background-color: var(--surface); }
+.bg-surface-raised { background-color: var(--surface-raised); }
+
+/* Borders */
+.border { border: 1px solid var(--border-light); }
+.border-medium { border: 1px solid var(--border-medium); }
+.rounded { border-radius: var(--radius-md); }
+.rounded-lg { border-radius: var(--radius-lg); }
+.rounded-xl { border-radius: var(--radius-xl); }
+.rounded-full { border-radius: var(--radius-full); }
+
+/* Shadows */
+.shadow-sm { box-shadow: var(--shadow-sm); }
+.shadow-md { box-shadow: var(--shadow-md); }
+.shadow-lg { box-shadow: var(--shadow-lg); }
+.shadow-xl { box-shadow: var(--shadow-xl); }
+
+/* Transitions */
+.transition { transition: var(--transition-normal); }
+.transition-fast { transition: var(--transition-fast); }
+
+/* Hover Effects */
+.hover-lift {
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.hover-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+/* Focus Styles */
+.focus-ring:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Utilities */
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+.cursor-pointer { cursor: pointer; }
+.select-none { user-select: none; }
+.overflow-hidden { overflow: hidden; }
+.relative { position: relative; }
+.absolute { position: absolute; }
+.fixed { position: fixed; }
+.inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+.z-modal { z-index: var(--z-modal); }

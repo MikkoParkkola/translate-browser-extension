@@ -73,6 +73,10 @@ describe('Core Logger', () => {
       const parentLogger = logger.create('parent');
       const childLogger = parentLogger.create('child');
       
+      // Set log level to info so messages are output
+      parentLogger.setLevel('info');
+      childLogger.setLevel('info');
+      
       // Test that child namespace is properly formed
       childLogger.info('test message');
       
@@ -81,6 +85,10 @@ describe('Core Logger', () => {
 
     test('handles empty namespace gracefully', () => {
       const testLogger = logger.create('');
+      
+      // Set log level to info so messages are output
+      testLogger.setLevel('info');
+      
       testLogger.info('test');
       
       expect(consoleSpies.info).toHaveBeenCalledWith('[] test');

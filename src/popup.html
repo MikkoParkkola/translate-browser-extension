@@ -63,10 +63,10 @@
               </svg>
             </div>
           </div>
-          <div class="confidence-indicator" id="source-confidence">
-            <div class="confidence-text">Confidence: <span class="confidence-value">95%</span></div>
+          <div class="confidence-indicator" id="source-confidence" style="display: none;">
+            <div class="confidence-text">Confidence: <span class="confidence-value">--</span></div>
             <div class="confidence-bar">
-              <div class="confidence-fill" style="width: 95%;"></div>
+              <div class="confidence-fill" style="width: 0%;"></div>
             </div>
           </div>
         </div>
@@ -115,9 +115,15 @@
           </svg>
           <span class="button-text">Translate Page</span>
         </div>
-        <div class="button-loading">
+        <div class="button-loading" style="display: none;">
           <div class="loading-spinner-small"></div>
           <span>Translating...</span>
+        </div>
+        <div class="button-progress" style="display: none;">
+          <div class="progress-bar-mini">
+            <div class="progress-fill-mini"></div>
+          </div>
+          <span class="progress-text-mini">0%</span>
         </div>
       </button>
 
@@ -161,7 +167,15 @@
       </div>
     </main>
   </div>
+  
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
 
+  <!-- Load dependencies first -->
+  <script src="lib/providers.js"></script>
+  <script src="providers/index.js"></script>
+  <script src="providerConfig.js"></script>
+  <script src="languages.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

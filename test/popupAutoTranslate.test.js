@@ -10,6 +10,7 @@ describe('popup auto-translate toggle', () => {
       runtime: {
         sendMessage: jest.fn(),
         onMessage: { addListener: cb => { listener = cb; } },
+        getURL: jest.fn((path) => `chrome-extension://fake-id/${path}`),
       },
       storage: {
         sync: {

@@ -37,7 +37,7 @@
       const uniq = new Set(arr);
       return Array.from(uniq).filter(Boolean);
     }
-    return { register, get, choose, candidates, init, reset, isInitialized };
+    return { register, get, getProvider: get, choose, candidates, init, initProviders: init, reset, isInitialized };
   }
   const api = createRegistry();
   return Object.assign({ createRegistry }, api);

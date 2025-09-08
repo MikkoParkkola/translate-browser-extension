@@ -1,14 +1,18 @@
-/* src/styles/modern.css */
+/* src/styles/modern.css - Enhanced for beautiful UI */
 
+/* Import design system tokens */
+@import url('design-system.css');
+
+/* Legacy variable mappings for compatibility */
 :root {
-  --font-family-sans: 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
-  --background-color: #ffffff;
-  --text-color: #2d3748;
-  --border-color: #e2e8f0;
-  --primary-color: #3490dc;
-  --primary-hover: #2779bd;
-  --secondary-text: #718096;
-  --card-background: #f5f7fa;
+  --font-family-sans: var(--font-family-primary);
+  --background-color: var(--background);
+  --text-color: var(--text-primary);
+  --border-color: var(--border-light);
+  --primary-color: var(--primary);
+  --primary-hover: var(--primary-hover);
+  --secondary-text: var(--text-secondary);
+  --card-background: var(--surface-raised);
   --shadow-color: rgba(0, 0, 0, 0.05);
 }
 
@@ -156,9 +160,27 @@ body {
 
 .bar {
   height: 20px;
-  background-color: var(--primary-color);
+  background: linear-gradient(90deg, var(--primary), var(--color-primary-600));
   border-radius: 4px;
-  transition: width 0.5s ease-in-out;
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
 .bar-value {
@@ -189,4 +211,107 @@ body {
   background-color: var(--background-color);
   padding: 2rem;
   border-radius: 8px;
+}
+
+/* Additional styles for enhanced UI */
+.stats-bar-danger {
+  background: linear-gradient(90deg, var(--color-error-500), var(--color-error-600)) !important;
+}
+
+.stats-bar-warning {
+  background: linear-gradient(90deg, var(--color-warning-500), var(--color-warning-600)) !important;
+}
+
+/* Modern toggle component styles (used in both popup and options) */
+.modern-toggle {
+  position: relative;
+  display: inline-block;
+  width: 52px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.modern-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--color-neutral-300);
+  transition: var(--transition-normal);
+  border-radius: 28px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 24px;
+  width: 24px;
+  left: 2px;
+  bottom: 2px;
+  background: white;
+  transition: var(--transition-normal);
+  border-radius: 50%;
+  box-shadow: var(--shadow-md);
+}
+
+input:checked + .toggle-slider {
+  background: var(--primary);
+}
+
+input:checked + .toggle-slider:before {
+  transform: translateX(24px);
+}
+
+input:focus + .toggle-slider {
+  box-shadow: 0 0 0 3px var(--color-primary-100);
+}
+
+/* Animation improvements */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.loading-pulse {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Focus improvements for accessibility */
+.focus-visible:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Enhanced button hover effects */
+.button-primary {
+  position: relative;
+  overflow: hidden;
+}
+
+.button-primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.button-primary:hover::before {
+  left: 100%;
 }

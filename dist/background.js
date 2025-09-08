@@ -1085,6 +1085,85 @@ chrome.runtime.onConnect.addListener(port => {
       }
     }
   });
+  
+  // Home UI actions
+  if (msg.action === 'home:init') {
+    ensureThrottle().then(() => {
+      const usage = self.qwenThrottle.getUsage();
+      const cache = {
+        size: cacheStats.size != null ? cacheStats.size : (self.qwenGetCacheSize ? self.qwenGetCacheSize() : 0),
+        max: cacheStats.max != null ? cacheStats.max : ((self.qwenConfig && self.qwenConfig.memCacheMax) || 0),
+        hits: cacheStats.hits || 0,
+        misses: cacheStats.misses || 0,
+      };
+      const tm = {
+        hits: (self.qwenTM && self.qwenTM.getMetrics) ? self.qwenTM.getMetrics().hits : 0,
+        misses: (self.qwenTM && self.qwenTM.getMetrics) ? self.qwenTM.getMetrics().misses : 0,
+      };
+      // Build providers usage snapshot
+      const provUsage = {};
+      const now = Date.now();
+      for (const [name, pu] of providersUsage.entries()) {
+        const rt = (pu.reqTimes || []).filter(t => now - t < 60000);
+        const tt = (pu.tokTimes || []).filter(t => now - t.time < 60000);
+        provUsage[name] = {
+          requests: rt.length,
+          tokens: tt.reduce((s, t) => s + (t.tokens || 0), 0),
+          totalRequests: pu.totalReq || 0,
+          totalTokens: pu.totalTok || 0,
+          avoidedRequests: pu.avoidedReq || 0,
+          avoidedTokens: pu.avoidedTok || 0,
+        };
+      }
+      sendResponse({ usage, cache, tm, providers: provUsage, status: translationStatus });
+    });
+    return true;
+  }
+  
+  if (msg.action === 'home:auto-translate') {
+    (async () => {
+      try {
+        const enabled = !!msg.enabled;
+        chrome.storage.sync.set({ autoTranslate: enabled });
+        
+        if (!enabled) {
+          // Stop all active tabs
+          chrome.tabs.query({}, (tabs) => {
+            for (const tab of tabs) {
+              chrome.tabs.sendMessage(tab.id, { action: 'stop' }, () => {
+                // Ignore errors from tabs that can't receive messages
+                chrome.runtime.lastError;
+              });
+            }
+          });
+        }
+        sendResponse({ ok: true });
+      } catch (error) {
+        logger.error('Auto-translate toggle failed:', error);
+        sendResponse({ error: error.message });
+      }
+    })();
+    return true;
+  }
+  
+  if (msg.action === 'home:quick-translate') {
+    (async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab?.id) {
+          chrome.tabs.sendMessage(tab.id, { action: 'translate' }, () => {
+            // Ignore errors from tabs that can't receive messages
+            chrome.runtime.lastError;
+          });
+        }
+        sendResponse({ ok: true });
+      } catch (error) {
+        logger.error('Quick translate failed:', error);
+        sendResponse({ error: error.message });
+      }
+    })();
+    return true;
+  }
 });
 
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
