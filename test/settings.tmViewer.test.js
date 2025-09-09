@@ -23,6 +23,19 @@ describe('settings TM viewer', () => {
     global.self = global;
     global.qwenThrottle = { configure: jest.fn(), getUsage: () => ({ requests: 0, requestLimit: 60, tokens: 0, tokenLimit: 100000 }), recordUsage: jest.fn() };
     global.qwenGetCacheSize = () => 0;
+    global.qwenErrorHandler = {
+      handle: jest.fn(),
+      handleAsync: jest.fn((promise) => promise),
+      safe: jest.fn((fn, context, fallback, logger) => {
+        return () => {
+          try {
+            return fn();
+          } catch (error) {
+            return fallback || { ok: false, error };
+          }
+        };
+      })
+    };
     const tm = {
       getAll: jest.fn(() => Promise.resolve([{ k: 'a', text: '1' }])),
       clear: jest.fn(() => Promise.resolve()),
@@ -32,9 +45,9 @@ describe('settings TM viewer', () => {
     global.qwenTM = tm;
     require('../src/background.js');
     const listener = chrome.runtime.onMessage.addListener.mock.calls[0][0];
-    const res = await new Promise(resolve => listener({ action: 'tm-get-all' }, {}, resolve));
+    const res = await new Promise(resolve => listener({ action: 'tm-get-all' }, { id: 'test-extension', tab: { url: 'https://test.com' } }, resolve));
     expect(res.entries[0].k).toBe('a');
-    await new Promise(resolve => listener({ action: 'tm-clear' }, {}, resolve));
+    await new Promise(resolve => listener({ action: 'tm-clear' }, { id: 'test-extension', tab: { url: 'https://test.com' } }, resolve));
     expect(tm.clear).toHaveBeenCalled();
   });
 

@@ -19,10 +19,18 @@ test('logs batch translation steps', async () => {
       };
     },
   };
-  window.qwenTranslateBatch = async ({ texts }) => ({ texts: texts.map(t => `X${t}X`) });
+  window.qwenTranslateBatch = async ({ texts }) => {
+    await new Promise(resolve => setTimeout(resolve, 10)); // Simulate async behavior
+    return { texts: texts.map(t => `X${t}X`) };
+  };
   window.qwenLoadConfig = async () => ({ apiKey: 'k', apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'en', targetLanguage: 'es', debug: false });
   window.getComputedStyle = () => ({ visibility: 'visible', display: 'block' });
   Element.prototype.getClientRects = () => [1];
+  // Mock domOptimizer to prevent loading issues
+  window.qwenDOMOptimizer = { 
+    isVisible: () => true,
+    measureOperation: () => ({ endOperation: () => {} })
+  };
   const { translateBatch, collectNodes, setCurrentConfig } = require('../src/contentScript.js');
   document.body.innerHTML = '<p><span>Hello</span></p>';
   setCurrentConfig({ apiKey: 'k', apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'en', targetLanguage: 'es', debug: false });
@@ -54,6 +62,11 @@ test('clears controllers on unload', async () => {
   window.qwenLoadConfig = async () => ({ apiKey: 'k', apiEndpoint: 'https://e/', model: 'm', sourceLanguage: 'en', targetLanguage: 'es', debug: false });
   window.getComputedStyle = () => ({ visibility: 'visible', display: 'block' });
   Element.prototype.getClientRects = () => [1];
+  // Mock domOptimizer to prevent loading issues
+  global.qwenDOMOptimizer = { 
+    isVisible: () => true,
+    measureOperation: () => ({ endOperation: () => {} })
+  };
   delete window.__qwenCSLoaded;
   const { translateBatch, collectNodes, setCurrentConfig, __controllerCount } = require('../src/contentScript.js');
   document.body.innerHTML = '<p><span>Hello</span></p>';
@@ -61,6 +74,7 @@ test('clears controllers on unload', async () => {
   const nodes = [];
   collectNodes(document.body, nodes);
   const p = translateBatch(nodes);
+  await new Promise(resolve => setTimeout(resolve, 10)); // Allow controller to be added
   expect(__controllerCount()).toBe(1);
   window.dispatchEvent(new Event('beforeunload'));
   expect(__controllerCount()).toBe(0);

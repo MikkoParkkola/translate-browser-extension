@@ -73,6 +73,54 @@ if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
       }
     };
   }
+
+  // Load DOM optimizer module
+  let domOptimizer = null;
+  const loadDOMOptimizer = () => {
+    return new Promise((resolve) => {
+      try {
+        if (window.qwenDOMOptimizer) {
+          domOptimizer = window.qwenDOMOptimizer;
+          resolve(domOptimizer);
+        } else {
+          // Import DOM optimizer module
+          const domOptimizerScript = document.createElement('script');
+          domOptimizerScript.src = chrome.runtime.getURL('core/dom-optimizer.js');
+          domOptimizerScript.onload = () => {
+            domOptimizer = window.qwenDOMOptimizer;
+            resolve(domOptimizer);
+          };
+          domOptimizerScript.onerror = () => {
+            logger.warn('Failed to load DOM optimizer script');
+            resolve(createFallbackDOMOptimizer());
+          };
+          document.head.appendChild(domOptimizerScript);
+        }
+      } catch (e) {
+        logger.warn('Failed to load DOM optimizer module:', e);
+        resolve(createFallbackDOMOptimizer());
+      }
+    });
+  };
+  
+  function createFallbackDOMOptimizer() {
+    return {
+      replaceText: (node, newText, preserveWhitespace = true) => {
+        node.textContent = newText;
+      },
+      batchReplace: (replacements) => {
+        for (const { node, newText, preserveWhitespace } of replacements) {
+          node.textContent = newText;
+        }
+      },
+      executeBatch: () => {}
+    };
+  }
+  
+  // Initialize DOM optimizer asynchronously
+  loadDOMOptimizer().then(optimizer => {
+    domOptimizer = optimizer;
+  });
   let observers = [];
   let currentConfig;
   const batchQueue = [];
@@ -109,7 +157,10 @@ if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
 function handleLastError(cb) {
   return (...args) => {
     const err = chrome.runtime.lastError;
-    if (err && !err.message.includes('Receiving end does not exist')) console.debug(err);
+    // Only log meaningful errors, not routine communication cleanup
+    if (err && !err.message.includes('Receiving end does not exist')) {
+      console.warn('[CONTENT-SCRIPT]', 'Runtime error:', err.message);
+    }
     if (typeof cb === 'function') cb(...args);
   };
 }
@@ -118,7 +169,10 @@ function safeSendMessage(msg, cb) {
   try {
     chrome.runtime.sendMessage(msg, handleLastError(cb));
   } catch (err) {
-    if (err && !err.message.includes('Extension context invalidated')) console.debug(err);
+    // Only log meaningful errors, not routine context cleanup
+    if (err && !err.message.includes('Extension context invalidated')) {
+      console.warn('[CONTENT-SCRIPT]', 'Message send error:', err.message);
+    }
   }
 }
 
@@ -672,6 +726,10 @@ function shouldTranslate(node) {
 }
 
 async function translateNode(node) {
+  // Ensure DOM optimizer is loaded
+  if (!domOptimizer) {
+    domOptimizer = await loadDOMOptimizer();
+  }
   const original = node.textContent || '';
   const leading = original.match(/^\s*/)[0];
   const trailing = original.match(/\s*$/)[0];
@@ -720,7 +778,12 @@ async function translateNode(node) {
       }
     }
     
-    node.textContent = leading + safeTranslated + trailing;
+    // Use DOM optimizer for batched text replacement
+    if (domOptimizer && domOptimizer.replaceText) {
+      domOptimizer.replaceText(node, leading + safeTranslated + trailing, true);
+    } else {
+      node.textContent = leading + safeTranslated + trailing;
+    }
     mark(node);
   } catch (e) {
     const fallbackError = errorHandler ? errorHandler.handle(e, {
@@ -744,6 +807,10 @@ async function translateNode(node) {
 }
 
 async function translateBatch(elements, stats, force = false) {
+  // Ensure DOM optimizer is loaded
+  if (!domOptimizer) {
+    domOptimizer = await loadDOMOptimizer();
+  }
   logger.info('starting batch translation', { count: elements.length });
   const batchStart = Date.now();
   const originals = elements.map(el => el.textContent || '');
@@ -782,6 +849,11 @@ async function translateBatch(elements, stats, force = false) {
     clearTimeout(timeout);
     controllers.delete(controller);
   }
+  // Prepare batch replacements for DOM optimizer
+  const batchReplacements = [];
+  const elementsToMark = [];
+  const feedbackElements = [];
+  
   res.texts.forEach((t, i) => {
     const el = elements[i];
     const orig = originals[i];
@@ -796,10 +868,31 @@ async function translateBatch(elements, stats, force = false) {
         logger.warn('QTWARN: text already in target language; marking as untranslatable');
       }
     } else {
-      el.textContent = leading + t + trailing;
-      mark(el);
-      addFeedbackUI(el, texts[i], t, scoreConfidence(texts[i], t));
+      // Queue for batch replacement
+      batchReplacements.push({
+        node: el,
+        newText: leading + t + trailing,
+        preserveWhitespace: true
+      });
+      elementsToMark.push(el);
+      feedbackElements.push({ el, original: texts[i], translated: t, confidence: scoreConfidence(texts[i], t) });
     }
+  });
+  
+  // Execute batch DOM replacements
+  if (domOptimizer && domOptimizer.batchReplace && batchReplacements.length > 0) {
+    domOptimizer.batchReplace(batchReplacements);
+  } else {
+    // Fallback to individual replacements
+    batchReplacements.forEach(({ node, newText }) => {
+      node.textContent = newText;
+    });
+  }
+  
+  // Mark elements and add feedback UI after DOM operations
+  elementsToMark.forEach(el => mark(el));
+  feedbackElements.forEach(({ el, original, translated, confidence }) => {
+    addFeedbackUI(el, original, translated, confidence);
   });
   const batchTime = Date.now() - batchStart;
   logger.info('finished batch translation', { count: elements.length });
@@ -873,50 +966,120 @@ async function processQueue() {
 }
 
 function batchNodes(nodes) {
-  const maxTokens = 6000;
+  // Dynamic token budget based on config or performance
+  const dynamicTokenBudget = (currentConfig && currentConfig.tokenBudget) || 
+                             (window.qwenTranslateBatch && window.qwenTranslateBatch._getTokenBudget) ?
+                             window.qwenTranslateBatch._getTokenBudget() : 6000;
+  
+  const maxTokens = Math.min(dynamicTokenBudget, 12000); // Cap at 12K for safety
   const batches = [];
   let current = [];
   let tokens = 0;
   const approx = window.qwenThrottle ? window.qwenThrottle.approxTokens : t => Math.ceil(t.length / 4);
-  const seen = new Set();
-  nodes.forEach(el => {
+  const textMap = new Map(); // Use Map for better deduplication performance
+  
+  // Pre-process text extraction and deduplication
+  const processedNodes = [];
+  for (let i = 0; i < nodes.length; i++) {
+    const el = nodes[i];
     const text = el.textContent.trim();
-    const tok = approx(text);
-    const unique = !seen.has(text);
-    if (current.length && tokens + (unique ? tok : 0) > maxTokens) {
+    
+    if (!text) continue; // Skip empty nodes
+    
+    let tokCount;
+    if (textMap.has(text)) {
+      tokCount = 0; // No token cost for duplicates
+    } else {
+      tokCount = approx(text);
+      textMap.set(text, tokCount);
+    }
+    
+    processedNodes.push({ el, text, tokens: tokCount });
+  }
+  
+  // Efficient batching with look-ahead optimization
+  for (let i = 0; i < processedNodes.length; i++) {
+    const { el, tokens: nodeTokens } = processedNodes[i];
+    
+    // Check if adding this node would exceed limit
+    if (current.length && tokens + nodeTokens > maxTokens) {
+      // Look ahead to see if we can optimize batch size
+      if (current.length < 10 && i < processedNodes.length - 1) {
+        const nextNodeTokens = processedNodes[i + 1].tokens;
+        if (tokens + nodeTokens + nextNodeTokens <= maxTokens * 1.1) {
+          // Allow slight overage if it creates better batch sizes
+          current.push(el);
+          tokens += nodeTokens;
+          continue;
+        }
+      }
+      
       batches.push(current);
-      current = [];
-      tokens = 0;
-      seen.clear();
+      current = [el];
+      tokens = nodeTokens;
+    } else {
+      current.push(el);
+      tokens += nodeTokens;
     }
-    current.push(el);
-    if (unique) {
-      tokens += tok;
-      seen.add(text);
-    }
-  });
-  if (current.length) batches.push(current);
+  }
+  
+  if (current.length > 0) batches.push(current);
+  
+  // Enqueue batches with performance timing
   batches.forEach(b => enqueueBatch(b));
 }
 
 function collectNodes(root, out) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
-  let node;
-  while ((node = walker.nextNode())) {
-    if (node.textContent.trim() && shouldTranslate(node)) {
-      out.push(node);
+  // Pre-allocate array to avoid dynamic resizing and use iterative approach
+  const textNodes = [];
+  const stack = [root];
+  const seen = new Set();
+  
+  // Iterative traversal to avoid recursion overhead and stack depth issues
+  while (stack.length > 0) {
+    const current = stack.pop();
+    
+    // Skip if already processed (prevents infinite loops in shadow DOM)
+    if (seen.has(current)) continue;
+    seen.add(current);
+    
+    // Direct text node collection without TreeWalker overhead
+    if (current.nodeType === Node.TEXT_NODE) {
+      const text = current.textContent;
+      if (text && text.trim() && shouldTranslate(current)) {
+        textNodes.push(current);
+      }
+    } else if (current.nodeType === Node.ELEMENT_NODE) {
+      // Add child nodes to stack in reverse order for correct traversal
+      const children = current.childNodes;
+      for (let i = children.length - 1; i >= 0; i--) {
+        stack.push(children[i]);
+      }
+      
+      // Handle shadow DOM efficiently
+      if (current.shadowRoot) {
+        stack.push(current.shadowRoot);
+      }
     }
   }
+  
+  // Batch add to output array to minimize array operations
+  if (textNodes.length > 0) {
+    out.push(...textNodes);
+  }
+  
+  // Handle iframe/embed content separately for security and performance
   if (root.querySelectorAll) {
-    root.querySelectorAll('iframe,object,embed').forEach(el => {
+    const embeddedElements = root.querySelectorAll('iframe,object,embed');
+    for (let i = 0; i < embeddedElements.length; i++) {
+      const el = embeddedElements[i];
       try {
         const doc = el.contentDocument || el.getSVGDocument?.();
-        if (doc) collectNodes(doc, out);
+        if (doc && !seen.has(doc)) {
+          collectNodes(doc, out);
+        }
       } catch {}
-    });
-    root.querySelectorAll('*').forEach(el => {
-      if (el.shadowRoot) collectNodes(el.shadowRoot, out);
-    });
+    }
   }
 }
 
@@ -1050,7 +1213,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const original = msg.original || 'Hello world';
     const el = document.createElement('span');
     el.id = 'qwen-test-element';
-    el.textContent = original;
+    if (domOptimizer && domOptimizer.replaceText) {
+      domOptimizer.replaceText(el, original, true);
+    } else {
+      el.textContent = original;
+    }
     document.body.appendChild(el);
     if (cfg.debug) logger.debug('QTDEBUG: test-e2e request received');
     const controller = new AbortController();
@@ -1079,7 +1246,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (!res || typeof res.text !== 'string') {
           throw new Error('invalid response');
         }
-        el.textContent = res.text;
+        if (domOptimizer && domOptimizer.replaceText) {
+          domOptimizer.replaceText(el, res.text, true);
+        } else {
+          el.textContent = res.text;
+        }
         if (cfg.debug) logger.debug('QTDEBUG: test-e2e sending response');
         sendResponse({ text: res.text });
         setTimeout(() => el.remove(), 1000);

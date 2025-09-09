@@ -1,4 +1,8 @@
 (async function () {
+  // Initialize logger
+  const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwenLogger.create) 
+    ? window.qwenLogger.create('diagnostics')
+    : console;
   const statusTextEl = document.getElementById('statusText');
   const usageMetricsEl = document.getElementById('usageMetrics');
   const cacheMetricsEl = document.getElementById('cacheMetrics');
@@ -39,7 +43,7 @@
   function handleLastError(cb) {
     return (...args) => {
       const err = chrome.runtime.lastError;
-      if (err && !err.message.includes('Receiving end does not exist')) console.debug(err);
+      if (err && !err.message.includes('Receiving end does not exist')) logger.debug(err);
       if (typeof cb === 'function') cb(...args);
     };
   }

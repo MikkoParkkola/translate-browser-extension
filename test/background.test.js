@@ -46,6 +46,19 @@ describe('background icon plus indicator', () => {
       approxTokens: t => t.length,
     };
     global.qwenUsageColor = () => '#00ff00';
+    global.qwenErrorHandler = {
+      handle: jest.fn(),
+      handleAsync: jest.fn((promise) => promise),
+      safe: jest.fn((fn, context, fallback, logger) => {
+        return () => {
+          try {
+            return fn();
+          } catch (error) {
+            return fallback || { ok: false, error };
+          }
+        };
+      })
+    };
     ({ updateBadge, setUsingPlus, _setActiveTranslations, handleTranslate, _setConfig } = require('../src/background.js'));
     portListener = chrome.runtime.onConnect.addListener.mock.calls[0][0];
     chrome.action.setBadgeText.mockClear();
@@ -93,6 +106,7 @@ describe('background icon plus indicator', () => {
       source: 'en',
       target: 'es',
     }).catch(() => {});
+    updateBadge(); // Need to call updateBadge to refresh the icon
     await Promise.resolve();
     expect(lastCtx.fillStyle).toBe('#ff1744');
   });
@@ -109,7 +123,7 @@ describe('background icon plus indicator', () => {
       target: 'es',
     });
     const listener = chrome.runtime.onMessage.addListener.mock.calls[0][0];
-    const usage = await new Promise(resolve => listener({ action: 'usage' }, null, resolve));
+    const usage = await new Promise(resolve => listener({ action: 'usage' }, { id: 'test-extension', tab: { url: 'https://test.com' } }, resolve));
     expect(usage.models['google-nmt'].requests).toBe(1);
   });
 
@@ -274,6 +288,19 @@ describe('background cost tracking', () => {
       approxTokens: t => t.length,
     };
     global.qwenUsageColor = () => '#00ff00';
+    global.qwenErrorHandler = {
+      handle: jest.fn(),
+      handleAsync: jest.fn((promise) => promise),
+      safe: jest.fn((fn, context, fallback, logger) => {
+        return () => {
+          try {
+            return fn();
+          } catch (error) {
+            return fallback || { ok: false, error };
+          }
+        };
+      })
+    };
     global.qwenTranslate = jest
       .fn()
       .mockResolvedValueOnce({ text: 'out1' })
@@ -303,7 +330,7 @@ describe('background cost tracking', () => {
     });
     expect(store.usageHistory[0].provider).toBe('qwen');
     expect(store.usageHistory[1].provider).toBe('qwen');
-    const res = await new Promise(resolve => usageListener({ action: 'usage' }, null, resolve));
+    const res = await new Promise(resolve => usageListener({ action: 'usage' }, { id: 'test-extension', tab: { url: 'https://test.com' } }, resolve));
     expect(res.costs['qwen-mt-turbo']['24h']).toBeCloseTo(0);
     expect(res.costs['google-nmt']['24h']).toBeCloseTo(0.2);
     expect(res.costs.total['7d']).toBeCloseTo(0.2016, 4);

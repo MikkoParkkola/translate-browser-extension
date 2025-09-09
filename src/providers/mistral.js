@@ -6,6 +6,8 @@
 }(typeof self !== 'undefined' ? self : this, function (root) {
   const logger = (root.qwenLogger && root.qwenLogger.create) ? root.qwenLogger.create('provider:mistral') : console;
   const fetchFn = (typeof fetch !== 'undefined') ? fetch : (root.fetch || null);
+  const errorHandler = (root.qwenProviderErrorHandler) || 
+                      (typeof require !== 'undefined' ? require('../core/provider-error-handler') : null);
   function withSlash(u) { return /\/$/.test(u) ? u : (u + '/'); }
 
   async function translate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true }) {
@@ -23,8 +25,20 @@
       logger.debug('request params', { model, source, target });
     }
 
-    const resp = await fetchFn(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
+    let resp;
+    try {
+      resp = await fetchFn(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
+    } catch (error) {
+      if (errorHandler) {
+        errorHandler.handleNetworkError(error, { provider: 'mistral', logger, endpoint });
+      }
+      throw error;
+    }
     if (!resp.ok) {
+      if (errorHandler) {
+        await errorHandler.handleHttpError(resp, { provider: 'mistral', logger, endpoint });
+      }
+      // Fallback error handling
       let msg = resp.statusText;
       try { const err = await resp.json(); msg = err.error?.message || msg; } catch {}
       const error = new Error(`HTTP ${resp.status}: ${msg}`);
@@ -39,7 +53,13 @@
     if (!stream || !resp.body || typeof resp.body.getReader !== 'function') {
       const data = await resp.json();
       const out = data.choices?.[0]?.message?.content;
-      if (!out) throw new Error('Invalid API response');
+      if (!out) {
+        if (errorHandler) {
+          errorHandler.handleResponseError('Invalid API response: missing content', 
+            { provider: 'mistral', logger, response: data });
+        }
+        throw new Error('Invalid API response');
+      }
       return { text: out };
     }
 
@@ -77,7 +97,14 @@
     return { text: result };
   }
 
-  const provider = { translate, throttle: { requestLimit: 60, windowMs: 60000 } };
+  // Wrap main functions with standardized error handling
+  const wrappedTranslate = errorHandler ? 
+    errorHandler.wrapProviderOperation(translate, { provider: 'mistral', logger }) : translate;
+
+  const provider = { 
+    translate: wrappedTranslate, 
+    throttle: { requestLimit: 60, windowMs: 60000 } 
+  };
   // Register into provider registry if available
   try {
     const reg = root.qwenProviders || (typeof require !== 'undefined' ? require('../lib/providers') : null);

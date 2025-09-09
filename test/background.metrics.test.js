@@ -22,9 +22,22 @@ describe('background metrics endpoint', () => {
     global.qwenGetCacheStats = () => ({ hits: 0, misses: 0, hitRate: 0 });
     global.qwenConfig = { memCacheMax: 10 };
     global.qwenTM = { stats: () => ({ hits: 1, misses: 0 }) };
+    global.qwenErrorHandler = {
+      handle: jest.fn(),
+      handleAsync: jest.fn((promise) => promise),
+      safe: jest.fn((fn, context, fallback, logger) => {
+        return () => {
+          try {
+            return fn();
+          } catch (error) {
+            return fallback || { ok: false, error };
+          }
+        };
+      })
+    };
     require('../src/background.js');
     const listener = chrome.runtime.onMessage.addListener.mock.calls[0][0];
-    const res = await new Promise(resolve => listener({ action: 'metrics' }, {}, resolve));
+    const res = await new Promise(resolve => listener({ action: 'metrics' }, { id: 'test-extension', tab: { url: 'https://test.com' } }, resolve));
     expect(res.usage.requests).toBe(1);
     expect(res.cache.size).toBe(5);
     expect(res.tm.hits).toBe(1);
@@ -33,10 +46,10 @@ describe('background metrics endpoint', () => {
 
     listener(
       { action: 'translation-status', status: { active: false, summary: { tokens: 3, requests: 2, cache: { size: 7, max: 10, hits: 1, misses: 0, hitRate: 1 }, tm: { hits: 2, misses: 1 } } } },
-      {},
+      { id: 'test-extension', tab: { url: 'https://test.com' } },
       () => {}
     );
-    const res2 = await new Promise(resolve => listener({ action: 'metrics' }, {}, resolve));
+    const res2 = await new Promise(resolve => listener({ action: 'metrics' }, { id: 'test-extension', tab: { url: 'https://test.com' } }, resolve));
     expect(global.qwenThrottle.recordUsage).toHaveBeenCalledWith(3, 2);
     expect(res2.cache.hits).toBe(1);
     expect(res2.cache.hitRate).toBe(1);

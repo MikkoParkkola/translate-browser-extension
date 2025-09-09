@@ -1,5 +1,10 @@
 // src/options.js - Modern Beautiful Options Page
 
+// Initialize logger
+const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwenLogger.create) 
+  ? window.qwenLogger.create('options')
+  : console;
+
 // Options page management object
 const OptionsPage = {
   // UI Elements
@@ -116,7 +121,7 @@ const OptionsPage = {
       const { providers } = await chrome.storage.local.get({ providers: [] });
       this.providers = providers.length > 0 ? providers : this.getDefaultProviders();
     } catch (error) {
-      console.error('Failed to load providers:', error);
+      logger.error('Failed to load providers:', error);
       this.providers = this.getDefaultProviders();
     }
   },
@@ -411,16 +416,113 @@ const OptionsPage = {
     const { 
       globalAutoTranslate,
       showOriginal,
-      enableShortcuts 
+      enableShortcuts,
+      pdfEngine 
     } = await chrome.storage.local.get({
       globalAutoTranslate: false,
       showOriginal: true,
-      enableShortcuts: true
+      enableShortcuts: true,
+      pdfEngine: 'none'
     });
 
     document.getElementById('global-auto-translate').checked = globalAutoTranslate;
     document.getElementById('show-original').checked = showOriginal;
     document.getElementById('enable-shortcuts').checked = enableShortcuts;
+    
+    // Load PDF engine selection
+    this.loadPdfEngineConfig(pdfEngine);
+  },
+
+  // PDF Engine Configuration
+  loadPdfEngineConfig(selectedEngine = 'none') {
+    // Set the selected engine
+    const engineRadio = document.getElementById(`pdf-engine-${selectedEngine}`);
+    if (engineRadio) {
+      engineRadio.checked = true;
+    }
+    
+    // Update stats display
+    this.updatePdfEngineStats(selectedEngine);
+  },
+
+  updatePdfEngineStats(selectedEngine) {
+    const engineSizes = {
+      none: { size: '0MB', totalSaved: '16.1MB' },
+      pdfjs: { size: '1.3MB', totalSaved: '14.8MB' },
+      pdfium: { size: '5.5MB', totalSaved: '10.6MB' },
+      mupdf: { size: '9.3MB', totalSaved: '6.8MB' }
+    };
+    
+    const engineNames = {
+      none: 'Disabled',
+      pdfjs: 'PDF.js',
+      pdfium: 'PDFium', 
+      mupdf: 'MuPDF'
+    };
+    
+    const stats = engineSizes[selectedEngine] || engineSizes.none;
+    const engineName = engineNames[selectedEngine] || 'Unknown';
+    
+    const currentEngineEl = document.getElementById('current-pdf-engine');
+    const sizeSavedEl = document.getElementById('pdf-size-saved');
+    
+    if (currentEngineEl) {
+      currentEngineEl.textContent = `${engineName} (${stats.size})`;
+    }
+    
+    if (sizeSavedEl) {
+      sizeSavedEl.textContent = stats.totalSaved;
+    }
+  },
+
+  async savePdfEngineSelection(engineName) {
+    try {
+      await chrome.storage.local.set({ pdfEngine: engineName });
+      this.updatePdfEngineStats(engineName);
+      
+      // Show success feedback
+      this.showEngineChangeNotification(engineName);
+    } catch (error) {
+      logger.error('Failed to save PDF engine configuration:', error);
+    }
+  },
+
+  showEngineChangeNotification(engineName) {
+    const engineNames = {
+      none: 'PDF translation disabled',
+      pdfjs: 'PDF.js engine selected',
+      pdfium: 'PDFium engine selected',
+      mupdf: 'MuPDF engine selected'
+    };
+    
+    const message = engineNames[engineName] || 'Engine updated';
+    
+    // Create temporary notification
+    const notification = document.createElement('div');
+    notification.className = 'engine-notification';
+    notification.textContent = message;
+    notification.style.cssText = `
+      position: fixed;
+      top: 80px;
+      right: 20px;
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+      border: 1px solid var(--color-success-300);
+      padding: 12px 16px;
+      border-radius: 8px;
+      box-shadow: var(--shadow-lg);
+      z-index: 1000;
+      font-weight: 500;
+      animation: slideInRight 0.3s ease;
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+      notification.style.animation = 'slideOutRight 0.3s ease';
+      setTimeout(() => notification.remove(), 300);
+    }, 3000);
   },
 
   savePreference(key, value) {
@@ -500,6 +602,15 @@ const OptionsPage = {
     });
     document.getElementById('enable-shortcuts')?.addEventListener('change', (e) => {
       this.savePreference('enableShortcuts', e.target.checked);
+    });
+
+    // PDF engine selection
+    document.querySelectorAll('input[name="pdf-engine"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          this.savePdfEngineSelection(e.target.value);
+        }
+      });
     });
 
     // Advanced settings

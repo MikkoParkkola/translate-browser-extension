@@ -5,41 +5,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TRANSLATE! by Mikko</title>
   <link rel="stylesheet" href="styles/design-system.css">
-  <link rel="stylesheet" href="styles/popup.css">
+  <!-- popup.css eliminated - now using design-system.css only -->
 </head>
-<body class="popup-body">
-  <!-- Loading Overlay -->
-  <div id="loading-overlay" class="loading-overlay">
-    <div class="loading-content">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">Translating...</div>
+<body class="bg-primary m-0" style="width: 380px; min-height: 500px; overflow-x: hidden;">
+  <!-- Loading Overlay using design system components -->
+  <div id="loading-overlay" class="overlay" style="display: none;">
+    <div class="modal p-6 flex flex-col items-center gap-4">
+      <div class="progress-bar__fill" style="width: 40px; height: 40px; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+      <div class="text-base font-medium text-primary">Translating...</div>
     </div>
   </div>
 
-  <div class="popup-container">
-    <!-- Header -->
-    <header class="popup-header">
-      <div class="popup-title">
-        <div class="popup-logo">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <div class="container" style="background: linear-gradient(135deg, var(--color-primary-50) 0%, var(--background) 50%); height: 100vh;">
+    <!-- Header using design system -->
+    <header class="flex items-center justify-between p-4 border-b bg-surface">
+      <div class="flex items-center gap-3">
+        <div class="flex items-center justify-center w-8 h-8 bg-primary rounded-lg">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
             <path d="M12 2L2 7v10c0 5.55 3.84 9.74 9 11 5.16-1.26 9-5.45 9-11V7l-10-5z" stroke="currentColor" stroke-width="2" fill="none"/>
             <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" fill="none"/>
           </svg>
         </div>
-        <h1>TRANSLATE! <span class="by-author">by Mikko</span></h1>
+        <div>
+          <h1 class="text-lg font-bold text-primary m-0">TRANSLATE!</h1>
+          <p class="text-xs text-secondary m-0">by Mikko</p>
+        </div>
       </div>
-      <div class="popup-actions">
-        <button id="theme-toggle" class="icon-button" aria-label="Toggle theme">
-          <svg class="theme-icon-light" width="20" height="20" viewBox="0 0 24 24" fill="none">
+      
+      <div class="flex gap-1">
+        <button id="theme-toggle" class="btn btn--ghost btn--icon btn--sm" aria-label="Toggle theme">
+          <svg class="theme-icon-light" width="16" height="16" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2"/>
             <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="2"/>
           </svg>
-          <svg class="theme-icon-dark" width="20" height="20" viewBox="0 0 24 24" fill="none" style="display: none;">
+          <svg class="theme-icon-dark" width="16" height="16" viewBox="0 0 24 24" fill="none" style="display: none;">
             <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" stroke="currentColor" stroke-width="2" fill="none"/>
           </svg>
         </button>
-        <button id="settings-button" class="icon-button" aria-label="Settings">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <button id="settings-button" class="btn btn--ghost btn--icon btn--sm" aria-label="Settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
             <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51h.09a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="2"/>
           </svg>
@@ -48,31 +52,26 @@
     </header>
 
     <!-- Main Content -->
-    <main class="popup-main">
+    <main class="p-4">
       <!-- Language Selection -->
-      <div class="language-selection">
-        <div class="language-item">
-          <label class="language-label">From</label>
-          <div class="select-wrapper">
-            <select id="source-language" class="language-select">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="flex-1">
+          <label class="text-xs font-medium text-secondary mb-1 block">From</label>
+          <div class="select">
+            <select id="source-language" class="select__field">
               <option value="auto">🌐 Auto Detect</option>
             </select>
-            <div class="select-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
           </div>
-          <div class="confidence-indicator" id="source-confidence" style="display: none;">
-            <div class="confidence-text">Confidence: <span class="confidence-value">--</span></div>
-            <div class="confidence-bar">
-              <div class="confidence-fill" style="width: 0%;"></div>
+          <div id="source-confidence" class="mt-2" style="display: none;">
+            <div class="text-xs text-secondary mb-1">Confidence: <span class="confidence-value font-medium">--</span></div>
+            <div class="progress-bar progress-bar--sm">
+              <div class="progress-bar__fill confidence-fill" style="width: 0%;"></div>
             </div>
           </div>
         </div>
 
-        <div class="language-swap">
-          <button id="swap-languages" class="swap-button" aria-label="Swap languages">
+        <div class="flex-shrink-0 mt-6">
+          <button id="swap-languages" class="btn btn--ghost btn--icon" aria-label="Swap languages">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
               <path d="M8 3L4 7l4 4M4 7h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               <path d="M16 21l4-4-4-4M20 17H4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -80,96 +79,97 @@
           </button>
         </div>
 
-        <div class="language-item">
-          <label class="language-label">To</label>
-          <div class="select-wrapper">
-            <select id="target-language" class="language-select"></select>
-            <div class="select-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
+        <div class="flex-1">
+          <label class="text-xs font-medium text-secondary mb-1 block">To</label>
+          <div class="select">
+            <select id="target-language" class="select__field"></select>
           </div>
         </div>
       </div>
 
       <!-- Auto-Translate Toggle -->
-      <div class="feature-toggle">
-        <div class="toggle-content">
-          <div class="toggle-info">
-            <div class="toggle-title">Auto-Translate</div>
-            <div class="toggle-description">Automatically translate pages when loaded</div>
+      <div class="card p-3 mb-4">
+        <div class="flex items-center justify-between">
+          <div class="flex-1">
+            <div class="text-sm font-medium text-primary">Auto-Translate</div>
+            <div class="text-xs text-secondary">Automatically translate pages when loaded</div>
           </div>
-          <label class="modern-toggle">
-            <input type="checkbox" id="auto-translate-toggle">
-            <span class="toggle-slider"></span>
+          <label class="toggle">
+            <input type="checkbox" id="auto-translate-toggle" class="toggle__input">
+            <span class="toggle__slider"></span>
           </label>
         </div>
       </div>
 
       <!-- Translate Button -->
-      <button id="translate-button" class="translate-button">
-        <div class="button-content">
+      <button id="translate-button" class="btn btn--primary btn--lg w-full mb-4">
+        <div class="button-content flex items-center justify-center gap-2">
           <svg class="button-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
             <path d="M5 8l6 6M4 14l2-2 8-8M2 5h12M7 2h1M2 22l1-1m15-15l2-2M14 18H3M17 13l3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
           <span class="button-text">Translate Page</span>
         </div>
-        <div class="button-loading" style="display: none;">
-          <div class="loading-spinner-small"></div>
+        <div class="button-loading flex items-center justify-center gap-2" style="display: none;">
+          <div class="spinner spinner--sm"></div>
           <span>Translating...</span>
         </div>
-        <div class="button-progress" style="display: none;">
-          <div class="progress-bar-mini">
-            <div class="progress-fill-mini"></div>
+        <div class="button-progress flex items-center justify-center gap-2" style="display: none;">
+          <div class="progress-bar progress-bar--sm flex-1">
+            <div class="progress-bar__fill progress-fill-mini"></div>
           </div>
-          <span class="progress-text-mini">0%</span>
+          <span class="progress-text-mini text-xs">0%</span>
         </div>
       </button>
 
       <!-- Usage Statistics -->
-      <div class="stats-section">
-        <div class="stats-header">
-          <h3 class="stats-title">Usage Today</h3>
-          <button id="stats-refresh" class="stats-refresh-btn" aria-label="Refresh statistics">
+      <div class="card">
+        <div class="card__header">
+          <h3 class="card__title">Usage Today</h3>
+          <button id="stats-refresh" class="btn btn--ghost btn--icon btn--sm" aria-label="Refresh statistics">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M23 4v6h-6M1 20v-6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               <path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 003.51 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </button>
         </div>
-        <div class="stats-chart" id="stats-chart">
-          <div class="stats-item">
-            <div class="stats-label">Requests</div>
-            <div class="stats-bar-container">
-              <div class="stats-bar" style="width: 75%;"></div>
+        <div class="card__content space-y-3" id="stats-chart">
+          <div class="flex items-center justify-between">
+            <div class="text-sm text-secondary">Requests</div>
+            <div class="flex items-center gap-2 flex-1 mx-3">
+              <div class="progress-bar progress-bar--sm flex-1">
+                <div class="progress-bar__fill bg-primary" style="width: 75%;"></div>
+              </div>
             </div>
-            <div class="stats-value">45/60</div>
+            <div class="text-sm font-medium text-primary">45/60</div>
           </div>
-          <div class="stats-item">
-            <div class="stats-label">Tokens</div>
-            <div class="stats-bar-container">
-              <div class="stats-bar stats-bar-tokens" style="width: 60%;"></div>
+          <div class="flex items-center justify-between">
+            <div class="text-sm text-secondary">Tokens</div>
+            <div class="flex items-center gap-2 flex-1 mx-3">
+              <div class="progress-bar progress-bar--sm flex-1">
+                <div class="progress-bar__fill bg-accent" style="width: 60%;"></div>
+              </div>
             </div>
-            <div class="stats-value">60k/100k</div>
+            <div class="text-sm font-medium text-primary">60k/100k</div>
           </div>
-          <div class="stats-item">
-            <div class="stats-label">Characters</div>
-            <div class="stats-bar-container">
-              <div class="stats-bar stats-bar-chars" style="width: 40%;"></div>
+          <div class="flex items-center justify-between">
+            <div class="text-sm text-secondary">Characters</div>
+            <div class="flex items-center gap-2 flex-1 mx-3">
+              <div class="progress-bar progress-bar--sm flex-1">
+                <div class="progress-bar__fill bg-success" style="width: 40%;"></div>
+              </div>
             </div>
-            <div class="stats-value">2.1k/5k</div>
+            <div class="text-sm font-medium text-primary">2.1k/5k</div>
           </div>
         </div>
-        <div class="stats-footer">
-          <div class="stats-reset-info">Resets at midnight</div>
+        <div class="card__footer">
+          <div class="text-xs text-tertiary">Resets at midnight</div>
         </div>
       </div>
     </main>
   </div>
   
   <!-- Toast Container -->
-  <div id="toast-container" class="toast-container"></div>
+  <div id="toast-container" class="toast toast--container"></div>
 
   <!-- Load dependencies first -->
   <script src="lib/providers.js"></script>

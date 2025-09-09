@@ -54,3 +54,17 @@ if (typeof global.structuredClone !== 'function') {
     try { return JSON.parse(JSON.stringify(obj)); } catch { return obj; }
   };
 }
+
+// Ensure crypto.subtle is available for all tests
+if (typeof global.crypto === 'undefined' || !global.crypto.subtle) {
+  global.crypto = {
+    subtle: {
+      importKey: jest.fn().mockResolvedValue({}),
+      deriveKey: jest.fn().mockResolvedValue({}),
+      encrypt: jest.fn().mockResolvedValue(new ArrayBuffer(16)),
+      decrypt: jest.fn().mockResolvedValue(new ArrayBuffer(16))
+    },
+    getRandomValues: jest.fn().mockReturnValue(new Uint8Array(16)),
+    randomUUID: jest.fn().mockReturnValue('test-uuid-1234')
+  };
+}

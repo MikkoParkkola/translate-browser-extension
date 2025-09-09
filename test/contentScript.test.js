@@ -16,6 +16,12 @@ window.qwenLoadConfig = async () => ({ apiKey: 'k', apiEndpoint: 'https://e/', m
 window.getComputedStyle = () => ({ visibility: 'visible', display: 'block' });
 Element.prototype.getClientRects = () => [1];
 
+// Mock DOM optimizer to prevent script loading hang
+window.qwenDOMOptimizer = {
+  optimize: jest.fn(),
+  restore: jest.fn()
+};
+
 const { translateBatch, collectNodes, setCurrentConfig } = require('../src/contentScript.js');
 
 test('translates text nodes without altering structure', async () => {

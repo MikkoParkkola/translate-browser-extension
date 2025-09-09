@@ -1,5 +1,10 @@
 // src/popup/home.js - Compatible with existing tests
 
+// Initialize logger
+const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwenLogger.create) 
+  ? window.qwenLogger.create('home')
+  : console;
+
 // Initialize immediately when module loads
 (function() {
   // Create required DOM elements if they don't exist (for test compatibility)
@@ -34,7 +39,7 @@
         }
       });
     } catch (error) {
-      console.error('Failed to initialize home:', error);
+      logger.error('Failed to initialize home:', error);
     }
   }
 
@@ -134,7 +139,7 @@
       await loadSettings();
       setupEventListeners();
     } catch (error) {
-      console.error('Failed to setup modern UI:', error);
+      logger.error('Failed to setup modern UI:', error);
     }
   }
 

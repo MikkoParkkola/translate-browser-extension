@@ -6,6 +6,8 @@
 }(typeof self !== 'undefined' ? self : this, function (root) {
   const logger = (root.qwenLogger && root.qwenLogger.create) ? root.qwenLogger.create('provider:openai') : console;
   const fetchFn = (typeof fetch !== 'undefined') ? fetch : (root.fetch || null);
+  const errorHandler = (root.qwenProviderErrorHandler) || 
+                      (typeof require !== 'undefined' ? require('../core/provider-error-handler') : null);
   function withSlash(u) { return /\/$/.test(u) ? u : (u + '/'); }
 
   async function translate({ endpoint, apiKey, model, text, source, target, signal, debug, onData, stream = true }) {
@@ -23,23 +25,38 @@
       logger.debug('request params', { model, source, target });
     }
 
-    const resp = await fetchFn(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
+    let resp;
+    try {
+      resp = await fetchFn(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
+    } catch (error) {
+      if (errorHandler) {
+        return errorHandler.handleNetworkError(error, { provider: 'openai', logger, endpoint });
+      }
+      throw error;
+    }
+
     if (!resp.ok) {
+      if (errorHandler) {
+        return await errorHandler.handleHttpError(resp, { provider: 'openai', logger, endpoint });
+      }
+      // Fallback error handling
       let msg = resp.statusText;
       try { const err = await resp.json(); msg = err.error?.message || msg; } catch {}
       const error = new Error(`HTTP ${resp.status}: ${msg}`);
       error.status = resp.status; error.code = `HTTP_${resp.status}`;
-      const ra = resp.headers && resp.headers.get && resp.headers.get('retry-after');
-      if (ra) { let ms = Number(ra) * 1000; if (!Number.isFinite(ms)) { const t = Date.parse(ra); if (Number.isFinite(t)) ms = Math.max(0, t - Date.now()); } if (Number.isFinite(ms)) error.retryAfter = Math.max(100, Math.min(ms, 60000)); }
-      if (resp.status === 401 || resp.status === 403) error.retryable = false; else if (resp.status === 429 || resp.status >= 500) error.retryable = true; else error.retryable = false;
-      if (resp.status === 429 && !error.retryAfter) error.retryAfter = 60000;
       throw error;
     }
 
     if (!stream || !resp.body || typeof resp.body.getReader !== 'function') {
       const data = await resp.json();
       const out = data.choices?.[0]?.message?.content;
-      if (!out) throw new Error('Invalid API response');
+      if (!out) {
+        if (errorHandler) {
+          return errorHandler.handleResponseError('Invalid API response: missing content', 
+            { provider: 'openai', logger, response: data });
+        }
+        throw new Error('Invalid API response');
+      }
       return { text: out };
     }
 
@@ -84,13 +101,39 @@
     const headers = {};
     const key = (apiKey || '').trim();
     if (key) headers.Authorization = /^bearer\s/i.test(key) ? key : `Bearer ${key}`;
-    const resp = await fetchFn(url, { headers, signal });
-    if (!resp.ok) { const e = new Error(`HTTP ${resp.status}: ${resp.statusText}`); e.status = resp.status; e.code = `HTTP_${resp.status}`; throw e; }
+    let resp;
+    try {
+      resp = await fetchFn(url, { headers, signal });
+    } catch (error) {
+      if (errorHandler) {
+        return errorHandler.handleNetworkError(error, { provider: 'openai', logger, endpoint });
+      }
+      throw error;
+    }
+    
+    if (!resp.ok) {
+      if (errorHandler) {
+        return await errorHandler.handleHttpError(resp, { provider: 'openai', logger, endpoint });
+      }
+      const e = new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      e.status = resp.status; e.code = `HTTP_${resp.status}`;
+      throw e;
+    }
     const data = await resp.json();
     return (data.data || []).map(m => m.id).filter(Boolean);
   }
 
-  const provider = { translate, listModels, throttle: { requestLimit: 60, windowMs: 60000 } };
+  // Wrap main functions with standardized error handling
+  const wrappedTranslate = errorHandler ? 
+    errorHandler.wrapProviderOperation(translate, { provider: 'openai', logger }) : translate;
+  const wrappedListModels = errorHandler ? 
+    errorHandler.wrapProviderOperation(listModels, { provider: 'openai', logger }) : listModels;
+
+  const provider = { 
+    translate: wrappedTranslate, 
+    listModels: wrappedListModels, 
+    throttle: { requestLimit: 60, windowMs: 60000 } 
+  };
   // Register into provider registry if available
   try {
     const reg = root.qwenProviders || (typeof require !== 'undefined' ? require('../lib/providers') : null);

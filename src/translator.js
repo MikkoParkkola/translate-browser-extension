@@ -490,13 +490,26 @@ async function providerTranslate({ endpoint, apiKey, projectId, location, model,
   for (const id of chain) {
     if (!(Providers && typeof Providers.get === 'function')) break;
     
-    // Try to get existing provider or load on-demand
+    // Try to get existing provider or load on-demand using provider loader
     let impl = Providers.get(id);
-    if (!impl && typeof Providers.getProviderAsync === 'function') {
+    if (!impl) {
       try {
-        impl = await Providers.getProviderAsync(id);
+        // Use provider loader to dynamically load provider
+        const loader = (typeof self !== 'undefined' && self.qwenProviderLoader) ||
+                      (typeof window !== 'undefined' && window.qwenProviderLoader);
+        if (loader && typeof loader.loadProvider === 'function') {
+          const loaded = await loader.loadProvider(id);
+          if (loaded) {
+            impl = Providers.get(id); // Try to get provider after loading
+          }
+        }
+        
+        // Fallback to legacy async loading if provider loader not available
+        if (!impl && typeof Providers.getProviderAsync === 'function') {
+          impl = await Providers.getProviderAsync(id);
+        }
       } catch (e) {
-        console.warn(`Failed to load provider ${id} on-demand:`, e);
+        trLogger.warn(`Failed to load provider ${id} on-demand:`, e);
         continue;
       }
     }

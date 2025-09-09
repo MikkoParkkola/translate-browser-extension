@@ -1,35 +1,85 @@
 // src/popup.js
 
-// Import dependencies
-if (typeof window !== 'undefined') {
-  // Load required modules
-  const script1 = document.createElement('script');
-  script1.src = chrome.runtime.getURL('onboarding.js');
-  document.head.appendChild(script1);
+// Initialize logger
+const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwenLogger.create) 
+  ? window.qwenLogger.create('popup')
+  : console;
+
+// Initialize error handler first
+let errorHandler = null;
+if (typeof window !== 'undefined' && typeof chrome !== 'undefined') {
+  // Load error handler module
+  const errorHandlerScript = document.createElement('script');
+  errorHandlerScript.src = chrome.runtime.getURL('core/error-handler.js');
+  errorHandlerScript.onload = () => {
+    errorHandler = window.qwenErrorHandler;
+  };
+  errorHandlerScript.onerror = () => {
+    logger.warn('Failed to load error handler module, using fallback');
+    errorHandler = createFallbackErrorHandler();
+  };
+  document.head.appendChild(errorHandlerScript);
   
-  const script2 = document.createElement('script');
-  script2.src = chrome.runtime.getURL('intelligent-language-selection.js');
-  document.head.appendChild(script2);
+  // Load other dependencies with error handling
+  const loadScript = (src) => {
+    const script = document.createElement('script');
+    script.src = chrome.runtime.getURL(src);
+    script.onerror = () => logger.warn(`Failed to load ${src}`);
+    document.head.appendChild(script);
+  };
   
-  const script3 = document.createElement('script');
-  script3.src = chrome.runtime.getURL('translation-progress.js');
-  document.head.appendChild(script3);
+  const loadCSS = (href) => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = chrome.runtime.getURL(href);
+    css.onerror = () => logger.warn(`Failed to load ${href}`);
+    document.head.appendChild(css);
+  };
   
-  // Load CSS files
-  const css1 = document.createElement('link');
-  css1.rel = 'stylesheet';
-  css1.href = chrome.runtime.getURL('styles/onboarding.css');
-  document.head.appendChild(css1);
+  loadScript('onboarding.js');
+  loadScript('intelligent-language-selection.js');
+  loadScript('translation-progress.js');
   
-  const css2 = document.createElement('link');
-  css2.rel = 'stylesheet';
-  css2.href = chrome.runtime.getURL('styles/intelligent-language-selection.css');
-  document.head.appendChild(css2);
-  
-  const css3 = document.createElement('link');
-  css3.rel = 'stylesheet';
-  css3.href = chrome.runtime.getURL('styles/translation-progress.css');
-  document.head.appendChild(css3);
+  loadCSS('styles/onboarding.css');
+  loadCSS('styles/intelligent-language-selection.css');
+  loadCSS('styles/translation-progress.css');
+}
+
+// Fallback error handler for cases where the module fails to load
+function createFallbackErrorHandler() {
+  return {
+    handle: (error, context = {}, fallback) => {
+      logger.error('Error in popup:', error, context);
+      return fallback || null;
+    },
+    handleAsync: async (promise, context = {}, fallback) => {
+      try {
+        return await promise;
+      } catch (error) {
+        logger.error('Async error in popup:', error, context);
+        return fallback || null;
+      }
+    },
+    safe: (fn, context = {}, fallback) => {
+      return (...args) => {
+        try {
+          return fn.apply(this, args);
+        } catch (error) {
+          logger.error('Safe wrapper error in popup:', error, context);
+          return fallback || null;
+        }
+      };
+    },
+    isNetworkError: (error) => {
+      const message = error?.message || '';
+      return message.toLowerCase().includes('network') || message.toLowerCase().includes('fetch');
+    }
+  };
+}
+
+// Initialize error handler if not already loaded
+if (!errorHandler) {
+  errorHandler = createFallbackErrorHandler();
 }
 
 // Export functions for testing
@@ -54,32 +104,43 @@ const Popup = {
   async initialize() {
     if (this.isInitialized) return;
     
-    // Initialize UI elements
-    this.themeToggle = document.getElementById('theme-toggle');
-    this.settingsButton = document.getElementById('settings-button');
-    this.sourceLanguageSelect = document.getElementById('source-language');
-    this.targetLanguageSelect = document.getElementById('target-language');
-    this.swapLanguagesButton = document.getElementById('swap-languages');
-    this.autoTranslateToggle = document.getElementById('auto-translate-toggle');
-    this.translateButton = document.getElementById('translate-button');
-    this.loadingOverlay = document.getElementById('loading-overlay');
-    this.statsChart = document.getElementById('stats-chart');
-    this.statsRefreshButton = document.getElementById('stats-refresh');
-    this.sourceConfidence = document.getElementById('source-confidence');
+    // Initialize UI elements with error handling
+    const initElements = errorHandler.safe(() => {
+      this.themeToggle = document.getElementById('theme-toggle');
+      this.settingsButton = document.getElementById('settings-button');
+      this.sourceLanguageSelect = document.getElementById('source-language');
+      this.targetLanguageSelect = document.getElementById('target-language');
+      this.swapLanguagesButton = document.getElementById('swap-languages');
+      this.autoTranslateToggle = document.getElementById('auto-translate-toggle');
+      this.translateButton = document.getElementById('translate-button');
+      this.loadingOverlay = document.getElementById('loading-overlay');
+      this.statsChart = document.getElementById('stats-chart');
+      this.statsRefreshButton = document.getElementById('stats-refresh');
+      this.sourceConfidence = document.getElementById('source-confidence');
+    }, { operation: 'initializeElements', module: 'popup' }, undefined);
+    
+    initElements();
 
-    // Wait for dependencies to load
-    await this.waitForDependencies();
+    // Wait for dependencies to load with error handling
+    await errorHandler.handleAsync(
+      this.waitForDependencies(),
+      { operation: 'waitForDependencies', module: 'popup' },
+      undefined
+    );
     
-    // Initialize core functionality
-    await this.loadTheme();
-    await this.loadLanguages();
-    await this.loadSettings();
-    await this.initializeWithBackground();
-    await this.loadUsageStats();
-    this.setupEventListeners();
+    // Initialize core functionality with error handling
+    await errorHandler.handleAsync(this.loadTheme(), { operation: 'loadTheme', module: 'popup' });
+    await errorHandler.handleAsync(this.loadLanguages(), { operation: 'loadLanguages', module: 'popup' });
+    await errorHandler.handleAsync(this.loadSettings(), { operation: 'loadSettings', module: 'popup' });
+    await errorHandler.handleAsync(this.initializeWithBackground(), { operation: 'initializeWithBackground', module: 'popup' });
+    await errorHandler.handleAsync(this.loadUsageStats(), { operation: 'loadUsageStats', module: 'popup' });
     
-    // Initialize new features
-    await this.initializeEnhancements();
+    errorHandler.safe(() => {
+      this.setupEventListeners();
+    }, { operation: 'setupEventListeners', module: 'popup' }, undefined)();
+    
+    // Initialize new features with error handling
+    await errorHandler.handleAsync(this.initializeEnhancements(), { operation: 'initializeEnhancements', module: 'popup' });
     
     this.isInitialized = true;
   },
@@ -112,7 +173,7 @@ const Popup = {
         window.TranslationProgress.addProgressCallback(this.handleTranslationProgress.bind(this));
       }
     } catch (error) {
-      console.warn('Failed to initialize enhancements:', error);
+      logger.warn('Failed to initialize enhancements:', error);
     }
   },
   
@@ -217,9 +278,18 @@ const Popup = {
   // Theme Management
   // --------------------------------------------------------------------------
   async loadTheme() {
-    const { theme } = await chrome.storage.local.get({ theme: 'light' });
-    this.applyTheme(theme);
-    this.updateThemeToggleUI(theme);
+    const storageResult = await errorHandler.handleAsync(
+      chrome.storage.local.get({ theme: 'light' }),
+      { operation: 'loadTheme', module: 'popup' },
+      { theme: 'light' }
+    );
+    
+    const theme = storageResult?.theme || 'light';
+    
+    errorHandler.safe(() => {
+      this.applyTheme(theme);
+      this.updateThemeToggleUI(theme);
+    }, { operation: 'applyTheme', module: 'popup', theme }, undefined)();
   },
 
   applyTheme(theme) {
@@ -259,18 +329,23 @@ const Popup = {
   // Data Loading
   // --------------------------------------------------------------------------
   async loadLanguages() {
-    try {
-      // Load comprehensive language list
-      if (typeof window !== 'undefined' && window.qwenLanguages) {
-        this.populateLanguageSelects(window.qwenLanguages);
-      } else {
-        // Fallback to basic language list
+    const loadResult = await errorHandler.handleAsync(
+      (async () => {
+        if (typeof window !== 'undefined' && window.qwenLanguages) {
+          this.populateLanguageSelects(window.qwenLanguages);
+        } else {
+          this.populateLanguageSelectsWithFallback();
+        }
+      })(),
+      { operation: 'loadLanguages', module: 'popup' },
+      null
+    );
+    
+    // If main loading failed, use fallback
+    if (loadResult === null) {
+      errorHandler.safe(() => {
         this.populateLanguageSelectsWithFallback();
-      }
-    } catch (error) {
-      console.error('Failed to load comprehensive language list:', error);
-      // Fallback to basic language list
-      this.populateLanguageSelectsWithFallback();
+      }, { operation: 'loadLanguagesFallback', module: 'popup' }, undefined)();
     }
   },
 
@@ -344,52 +419,63 @@ const Popup = {
   },
 
   async loadUsageStats() {
-    try {
-      // Load usage statistics from background script
-      const response = await chrome.runtime.sendMessage({ action: 'usage' });
-      if (response && response.usage) {
-        // Transform the response to match expected format
-        const stats = {
-          requests: { 
-            used: response.usage.requests || 0, 
-            limit: response.usage.requestLimit || 60 
-          },
-          tokens: { 
-            used: response.usage.tokens || 0, 
-            limit: response.usage.tokenLimit || 100000 
-          },
-          characters: { 
-            used: Math.round((response.usage.tokens || 0) * 4), // Rough estimate
-            limit: 5000 
-          }
-        };
-        this.updateUsageStats(stats);
-      }
-    } catch (error) {
-      console.error('Failed to load usage stats:', error);
-      // Show default stats
-      this.updateUsageStats({
+    const response = await errorHandler.handleAsync(
+      chrome.runtime.sendMessage({ action: 'usage' }),
+      { operation: 'loadUsageStats', module: 'popup' },
+      null
+    );
+    
+    let stats;
+    if (response && response.usage) {
+      // Transform the response to match expected format
+      stats = {
+        requests: { 
+          used: response.usage.requests || 0, 
+          limit: response.usage.requestLimit || 60 
+        },
+        tokens: { 
+          used: response.usage.tokens || 0, 
+          limit: response.usage.tokenLimit || 100000 
+        },
+        characters: { 
+          used: Math.round((response.usage.tokens || 0) * 4), // Rough estimate
+          limit: 5000 
+        }
+      };
+    } else {
+      // Default stats fallback
+      stats = {
         requests: { used: 0, limit: 60 },
         tokens: { used: 0, limit: 100000 },
         characters: { used: 0, limit: 5000 }
-      });
+      };
     }
+    
+    errorHandler.safe(() => {
+      this.updateUsageStats(stats);
+    }, { operation: 'updateUsageStats', module: 'popup' }, undefined)();
   },
 
   async loadSettings() {
-    try {
-      const { sourceLanguage, targetLanguage, autoTranslate } = await chrome.storage.local.get({ 
+    const settings = await errorHandler.handleAsync(
+      chrome.storage.local.get({ 
         sourceLanguage: 'auto',
         targetLanguage: 'en',
         autoTranslate: false
-      });
-      
-      this.sourceLanguageSelect.value = sourceLanguage;
-      this.targetLanguageSelect.value = targetLanguage;
-      this.autoTranslateToggle.checked = autoTranslate;
-    } catch (error) {
-      console.error('Failed to load settings:', error);
-    }
+      }),
+      { operation: 'loadSettings', module: 'popup' },
+      { 
+        sourceLanguage: 'auto',
+        targetLanguage: 'en',
+        autoTranslate: false
+      }
+    );
+    
+    errorHandler.safe(() => {
+      if (this.sourceLanguageSelect) this.sourceLanguageSelect.value = settings.sourceLanguage;
+      if (this.targetLanguageSelect) this.targetLanguageSelect.value = settings.targetLanguage;
+      if (this.autoTranslateToggle) this.autoTranslateToggle.checked = settings.autoTranslate;
+    }, { operation: 'applySettings', module: 'popup', settings }, undefined)();
   },
 
   async initializeWithBackground() {
@@ -400,7 +486,7 @@ const Popup = {
         this.updateLegacyElements(response);
       }
     } catch (error) {
-      console.error('Failed to initialize with background:', error);
+      logger.error('Failed to initialize with background:', error);
     }
   },
 
@@ -593,7 +679,7 @@ const Popup = {
         enabled: autoTranslate
       });
     } catch (error) {
-      console.error('Failed to update auto-translate setting:', error);
+      logger.error('Failed to update auto-translate setting:', error);
     }
   },
 
@@ -676,53 +762,78 @@ const Popup = {
       this.activeProvider = 'qwen'; // Default provider
     }
 
-    // Record language pair usage for intelligent suggestions
-    if (window.IntelligentLanguageSelection) {
-      window.IntelligentLanguageSelection.recordLanguagePair(
-        this.sourceLanguageSelect.value,
-        this.targetLanguageSelect.value
-      );
-    }
+    // Record language pair usage for intelligent suggestions with error handling
+    errorHandler.safe(() => {
+      if (window.IntelligentLanguageSelection) {
+        window.IntelligentLanguageSelection.recordLanguagePair(
+          this.sourceLanguageSelect.value,
+          this.targetLanguageSelect.value
+        );
+      }
+    }, { operation: 'recordLanguagePair', module: 'popup' }, undefined)();
 
-    // Start progress tracking
-    if (window.TranslationProgress) {
-      window.TranslationProgress.startTranslationSession({
-        provider: this.activeProvider,
-        sourceLanguage: this.sourceLanguageSelect.value,
-        targetLanguage: this.targetLanguageSelect.value
-      });
-    }
-
-    this.loadingOverlay.style.display = 'flex';
-    this.showTranslatingState(true);
-
-    try {
-      // Use the existing background script method for translation
-      await chrome.runtime.sendMessage({ action: 'home:quick-translate' });
-      
-      // Don't close window immediately - let progress tracking handle it
-      setTimeout(() => {
-        if (!window.TranslationProgress?.getCurrentSession()) {
-          window.close();
-        }
-      }, 500);
-    } catch (error) {
-      console.error('Translation failed:', error);
-      this.showTranslationError(error);
-      
-      // Reset UI state
-      this.showTranslatingState(false);
-      
+    // Start progress tracking with error handling
+    errorHandler.safe(() => {
       if (window.TranslationProgress) {
-        window.TranslationProgress.handleTranslationError(error, {
+        window.TranslationProgress.startTranslationSession({
           provider: this.activeProvider,
           sourceLanguage: this.sourceLanguageSelect.value,
           targetLanguage: this.targetLanguageSelect.value
         });
       }
-    } finally {
-      this.loadingOverlay.style.display = 'none';
+    }, { operation: 'startProgressTracking', module: 'popup' }, undefined)();
+
+    // Show loading state
+    errorHandler.safe(() => {
+      if (this.loadingOverlay) this.loadingOverlay.style.display = 'flex';
+      this.showTranslatingState(true);
+    }, { operation: 'showLoadingState', module: 'popup' }, undefined)();
+
+    const translationResult = await errorHandler.handleAsync(
+      chrome.runtime.sendMessage({ action: 'home:quick-translate' }),
+      { 
+        operation: 'quickTranslate', 
+        module: 'popup',
+        provider: this.activeProvider,
+        sourceLanguage: this.sourceLanguageSelect.value,
+        targetLanguage: this.targetLanguageSelect.value
+      },
+      null
+    );
+
+    if (translationResult === null) {
+      // Translation failed, show error
+      const error = new Error('Translation request failed');
+      this.showTranslationError(error);
+      
+      // Reset UI state
+      this.showTranslatingState(false);
+      
+      // Handle translation error with progress tracking
+      errorHandler.safe(() => {
+        if (window.TranslationProgress) {
+          window.TranslationProgress.handleTranslationError(error, {
+            provider: this.activeProvider,
+            sourceLanguage: this.sourceLanguageSelect.value,
+            targetLanguage: this.targetLanguageSelect.value
+          });
+        }
+      }, { operation: 'handleTranslationError', module: 'popup' }, undefined)();
+    } else {
+      // Translation succeeded, close window with delay
+      errorHandler.safe(() => {
+        setTimeout(() => {
+          if (!window.TranslationProgress?.getCurrentSession()) {
+            window.close();
+          }
+        }, 500);
+      }, { operation: 'scheduleWindowClose', module: 'popup' }, undefined)();
     }
+
+    // Hide loading state
+    errorHandler.safe(() => {
+      if (this.loadingOverlay) this.loadingOverlay.style.display = 'none';
+    }, { operation: 'hideLoadingState', module: 'popup' }, undefined)();
   }
 };
 

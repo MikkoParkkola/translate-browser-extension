@@ -30,7 +30,19 @@
     cfg = config;
     refresh = onDone;
     const existing = (cfg.providers && cfg.providers[id]) || {};
-    apiKeyEl.value = existing.apiKey || '';
+    
+    // Try to get secure API key first, fall back to legacy
+    let apiKey = existing.apiKey || '';
+    if (window.qwenSecureStorage?.secureStorage) {
+      try {
+        const secureKey = await window.qwenSecureStorage.secureStorage.getSecure(`provider_${id}_apiKey`);
+        if (secureKey) apiKey = secureKey;
+      } catch (error) {
+        console.warn(`Failed to load secure API key for ${id}:`, error);
+      }
+    }
+    
+    apiKeyEl.value = apiKey;
     apiEndpointEl.value = existing.apiEndpoint || '';
     modelInputEl.value = existing.model || '';
     modelSelectEl.innerHTML = '';
@@ -43,7 +55,7 @@
     const cpi = existing.costPerInputToken ?? cfg.costPerInputToken ?? existing.costPerToken ?? cfg.costPerToken;
     const cpo = existing.costPerOutputToken ?? cfg.costPerOutputToken ?? existing.costPerToken ?? cfg.costPerToken;
     costPerInputTokenEl.value = cpi != null ? cpi * 1e6 : '';
-    costPerOutputTokenEl.value = cpo != null ? cpo * 1e6 : '';
+    costPerOutputTokenEl.value = cpo != null ? cpi * 1e6 : '';
     weightEl.value = existing.weight ?? cfg.weight ?? '';
     const prov = window.qwenProviders?.getProvider?.(id);
     if(prov?.listModels){
@@ -76,30 +88,77 @@
 
   advancedEl?.addEventListener('toggle', resizePopup);
 
-  saveBtn.addEventListener('click', () => {
+  saveBtn.addEventListener('click', async () => {
     const apiEndpoint = apiEndpointEl.value.trim();
     if(!validUrl(apiEndpoint)){
       apiEndpointEl.classList.add('invalid');
       return;
     }
     apiEndpointEl.classList.remove('invalid');
+    
+    const apiKey = apiKeyEl.value.trim();
     const providers = cfg.providers || {};
     const num = v => (v === '' ? undefined : Number(v));
     const costInRaw = num(costPerInputTokenEl.value.trim());
     const costOutRaw = num(costPerOutputTokenEl.value.trim());
-    providers[currentId] = {
-      ...(providers[currentId] || {}),
-      apiKey: apiKeyEl.value.trim(),
-      apiEndpoint,
-      model: (modelSelectEl.style.display !== 'none' ? modelSelectEl.value : modelInputEl.value).trim(),
-      requestLimit: num(reqLimitEl.value.trim()),
-      tokenLimit: num(tokLimitEl.value.trim()),
-      charLimit: num(charLimitEl.value.trim()),
-      strategy: strategyEl.value,
-      costPerInputToken: costInRaw == null ? undefined : costInRaw / 1e6,
-      costPerOutputToken: costOutRaw == null ? undefined : costOutRaw / 1e6,
-      weight: num(weightEl.value.trim()),
-    };
+    
+    // Store API key securely if available, otherwise use legacy storage
+    if (apiKey && window.qwenSecureStorage?.secureStorage) {
+      try {
+        await window.qwenSecureStorage.secureStorage.setSecure(`provider_${currentId}_apiKey`, apiKey);
+        // Remove API key from regular config to ensure it's not stored in plaintext
+        providers[currentId] = {
+          ...(providers[currentId] || {}),
+          // Don't store apiKey in regular config when using secure storage
+          apiEndpoint,
+          model: (modelSelectEl.style.display !== 'none' ? modelSelectEl.value : modelInputEl.value).trim(),
+          requestLimit: num(reqLimitEl.value.trim()),
+          tokenLimit: num(tokLimitEl.value.trim()),
+          charLimit: num(charLimitEl.value.trim()),
+          strategy: strategyEl.value,
+          costPerInputToken: costInRaw == null ? undefined : costInRaw / 1e6,
+          costPerOutputToken: costOutRaw == null ? undefined : costOutRaw / 1e6,
+          weight: num(weightEl.value.trim()),
+        };
+        
+        // Also remove from legacy storage
+        if (providers[currentId].apiKey) {
+          delete providers[currentId].apiKey;
+        }
+      } catch (error) {
+        console.error(`Failed to store secure API key for ${currentId}:`, error);
+        // Fall back to legacy storage if secure storage fails
+        providers[currentId] = {
+          ...(providers[currentId] || {}),
+          apiKey,
+          apiEndpoint,
+          model: (modelSelectEl.style.display !== 'none' ? modelSelectEl.value : modelInputEl.value).trim(),
+          requestLimit: num(reqLimitEl.value.trim()),
+          tokenLimit: num(tokLimitEl.value.trim()),
+          charLimit: num(charLimitEl.value.trim()),
+          strategy: strategyEl.value,
+          costPerInputToken: costInRaw == null ? undefined : costInRaw / 1e6,
+          costPerOutputToken: costOutRaw == null ? undefined : costOutRaw / 1e6,
+          weight: num(weightEl.value.trim()),
+        };
+      }
+    } else {
+      // Legacy storage
+      providers[currentId] = {
+        ...(providers[currentId] || {}),
+        apiKey,
+        apiEndpoint,
+        model: (modelSelectEl.style.display !== 'none' ? modelSelectEl.value : modelInputEl.value).trim(),
+        requestLimit: num(reqLimitEl.value.trim()),
+        tokenLimit: num(tokLimitEl.value.trim()),
+        charLimit: num(charLimitEl.value.trim()),
+        strategy: strategyEl.value,
+        costPerInputToken: costInRaw == null ? undefined : costInRaw / 1e6,
+        costPerOutputToken: costOutRaw == null ? undefined : costOutRaw / 1e6,
+        weight: num(weightEl.value.trim()),
+      };
+    }
+    
     cfg.providers = providers;
     if (!Array.isArray(cfg.providerOrder)) cfg.providerOrder = [];
     if (!cfg.providerOrder.includes(currentId)) cfg.providerOrder.push(currentId);

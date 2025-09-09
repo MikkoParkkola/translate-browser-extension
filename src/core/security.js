@@ -11,6 +11,13 @@
   }
 }(typeof self !== 'undefined' ? self : this, function () {
 
+  // Initialize logger
+  const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwenLogger.create) 
+    ? window.qwenLogger.create('security')
+    : (typeof self !== 'undefined' && self.qwenLogger && self.qwenLogger.create)
+      ? self.qwenLogger.create('security')
+      : console;
+
   /**
    * HTML entities for escaping
    */
@@ -256,8 +263,8 @@
    * @param {Object} details - Event details
    */
   function logSecurityEvent(event, details) {
-    // Use console.warn for security events to ensure visibility
-    console.warn(`[Security] ${event}:`, {
+    // Use logger.warn for security events to ensure visibility
+    logger.warn(`[Security] ${event}:`, {
       timestamp: new Date().toISOString(),
       ...details,
       // Don't log sensitive data

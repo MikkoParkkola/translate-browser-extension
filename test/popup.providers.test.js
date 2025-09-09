@@ -21,6 +21,19 @@ describe('background home:init includes provider usage', () => {
     global.qwenGetCacheSize = () => 0;
     global.qwenTM = { stats: () => ({ entries: 0 }) };
     global.qwenTranslate = jest.fn().mockResolvedValue({ text: 'hola' });
+    global.qwenErrorHandler = {
+      handle: jest.fn(),
+      handleAsync: jest.fn((promise) => promise),
+      safe: jest.fn((fn, context, fallback, logger) => {
+        return () => {
+          try {
+            return fn();
+          } catch (error) {
+            return fallback || { ok: false, error };
+          }
+        };
+      })
+    };
     
     const backgroundModule = require('../src/background.js');
     listener = global.chrome.runtime.onMessage.addListener.mock.calls[0][0];
@@ -40,7 +53,7 @@ describe('background home:init includes provider usage', () => {
     });
     
     // Now check the home:init response
-    const res = await new Promise(resolve => listener({ action: 'home:init' }, {}, resolve));
+    const res = await new Promise(resolve => listener({ action: 'home:init' }, { id: 'test-extension', tab: { url: 'https://test.com' } }, resolve));
     expect(res.providers.qwen).toBeDefined();
     expect(res.providers.qwen.requests).toBeGreaterThan(0);
   });

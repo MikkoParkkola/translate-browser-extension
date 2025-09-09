@@ -37,7 +37,9 @@
   "options_page": "options.html",
   "commands": {
     "translate-selection": {
-      "suggested_key": { "default": "Ctrl+Shift+T" },
+      "suggested_key": {
+        "default": "Ctrl+Shift+T"
+      },
       "description": "Translate selected text"
     }
   },
@@ -48,24 +50,10 @@
         "config.js",
         "throttle.js",
         "core/security.js",
-        "styles/contentScript.css",
-        "pdfViewer.html",
-        "pdfViewer.js",
-        "pdf.min.js",
-        "pdf.worker.min.js"
+        "styles/contentScript.css"
       ],
       "matches": [
         "<all_urls>"
-      ]
-    },
-    {
-      "resources": [
-        "wasm/vendor/mupdf.wasm",
-        "wasm/vendor/pdfium.wasm",
-        "wasm/vendor/hb.wasm"
-      ],
-      "matches": [
-        "file://*/*"
       ]
     }
   ]

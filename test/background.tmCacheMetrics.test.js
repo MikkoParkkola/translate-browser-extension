@@ -14,9 +14,22 @@ describe('background tm/cache metrics endpoint', () => {
     global.qwenTM = { stats: () => ({ hits: 1, misses: 0 }), enableSync: jest.fn() };
     global.qwenGetCacheStats = () => ({ hits: 2, misses: 0, hitRate: 1 });
     global.qwenThrottle = { configure: jest.fn(), getUsage: () => ({ requests: 0, requestLimit: 1, tokens: 0, tokenLimit: 1, totalRequests:0, totalTokens:0 }) };
+    global.qwenErrorHandler = {
+      handle: jest.fn(),
+      handleAsync: jest.fn((promise) => promise),
+      safe: jest.fn((fn, context, fallback, logger) => {
+        return () => {
+          try {
+            return fn();
+          } catch (error) {
+            return fallback || { ok: false, error };
+          }
+        };
+      })
+    };
     require('../src/background.js');
     const listener = chrome.runtime.onMessage.addListener.mock.calls[0][0];
-    const res = await new Promise(resolve => listener({ action: 'tm-cache-metrics' }, {}, resolve));
+    const res = await new Promise(resolve => listener({ action: 'tm-cache-metrics' }, { id: 'test-extension', tab: { url: 'https://test.com' } }, resolve));
     expect(res.tmMetrics.hits).toBe(1);
     expect(res.cacheStats.hits).toBe(2);
     expect(res.cacheStats.hitRate).toBe(1);

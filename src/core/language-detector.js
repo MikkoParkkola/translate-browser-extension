@@ -3,6 +3,13 @@
  * Provides language detection with multiple strategies and fallbacks
  */
 
+// Initialize logger
+const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwenLogger.create) 
+  ? window.qwenLogger.create('language-detector')
+  : (typeof self !== 'undefined' && self.qwenLogger && self.qwenLogger.create)
+    ? self.qwenLogger.create('language-detector')
+    : console;
+
 /**
  * Language Detector implementation
  */
@@ -47,7 +54,7 @@ class LanguageDetector {
         }
       }
     } catch (e) {
-      console.warn('Local language detector not available:', e);
+      logger.warn('Local language detector not available:', e);
     }
 
     // Add simple pattern-based detector as fallback
@@ -107,7 +114,7 @@ class LanguageDetector {
           }
         }
       } catch (e) {
-        console.warn(`Detector ${detector.name} failed:`, e);
+        logger.warn(`Detector ${detector.name} failed:`, e);
         continue;
       }
     }

@@ -1,5 +1,10 @@
 // src/popup/settings.js
 
+// Initialize logger
+const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwenLogger.create) 
+  ? window.qwenLogger.create('settings')
+  : console;
+
 // --------------------------------------------------------------------------
 // Theme Management
 // --------------------------------------------------------------------------
@@ -77,7 +82,7 @@ async function loadProviders() {
     // Render provider cards
     renderProviderCards(providers, config);
   } catch (error) {
-    console.error('Failed to load providers:', error);
+    logger.error('Failed to load providers:', error);
   }
 }
 
@@ -151,7 +156,7 @@ async function handleProviderToggle(providerId, enabled) {
     config.providers[providerId].enabled = enabled;
     await window.qwenProviderConfig.saveProviderConfig(config);
   } catch (error) {
-    console.error('Failed to toggle provider:', error);
+    logger.error('Failed to toggle provider:', error);
   }
 }
 
@@ -195,7 +200,7 @@ async function handleProviderDuplicate(providerId, currentConfig) {
     // Reload providers to show the new card
     await loadProviders();
   } catch (error) {
-    console.error('Failed to duplicate provider:', error);
+    logger.error('Failed to duplicate provider:', error);
   }
 }
 
@@ -209,7 +214,7 @@ async function handleProviderReorder() {
     config.providerOrder = newOrder;
     await window.qwenProviderConfig.saveProviderConfig(config);
   } catch (error) {
-    console.error('Failed to reorder providers:', error);
+    logger.error('Failed to reorder providers:', error);
   }
 }
 
@@ -243,7 +248,7 @@ function updateTMStats() {
 
   chrome.runtime.sendMessage({ action: 'tm-stats' }, (response) => {
     if (chrome.runtime.lastError) {
-      console.error('Failed to get TM stats:', chrome.runtime.lastError);
+      logger.error('Failed to get TM stats:', chrome.runtime.lastError);
       return;
     }
 
@@ -256,7 +261,7 @@ function updateTMStats() {
 function handleTMClear() {
   chrome.runtime.sendMessage({ action: 'tm-clear' }, (response) => {
     if (chrome.runtime.lastError) {
-      console.error('Failed to clear TM:', chrome.runtime.lastError);
+      logger.error('Failed to clear TM:', chrome.runtime.lastError);
       return;
     }
 
@@ -269,7 +274,7 @@ function handleTMClear() {
 function handleTMExport() {
   chrome.runtime.sendMessage({ action: 'tm-get-all' }, (response) => {
     if (chrome.runtime.lastError) {
-      console.error('Failed to export TM:', chrome.runtime.lastError);
+      logger.error('Failed to export TM:', chrome.runtime.lastError);
       return;
     }
 
@@ -298,7 +303,7 @@ function handleTMImport(event) {
       
       chrome.runtime.sendMessage({ action: 'tm-import', entries }, (response) => {
         if (chrome.runtime.lastError) {
-          console.error('Failed to import TM:', chrome.runtime.lastError);
+          logger.error('Failed to import TM:', chrome.runtime.lastError);
           return;
         }
 
@@ -306,7 +311,7 @@ function handleTMImport(event) {
         updateTMStats();
       });
     } catch (error) {
-      console.error('Failed to parse TM import file:', error);
+      logger.error('Failed to parse TM import file:', error);
     }
   };
   reader.readAsText(file);
@@ -325,7 +330,7 @@ async function updateStats() {
   if (usageStats) {
     chrome.runtime.sendMessage({ action: 'metrics' }, response => {
       if (chrome.runtime.lastError) {
-        console.error('Failed to get usage metrics:', chrome.runtime.lastError);
+        logger.error('Failed to get usage metrics:', chrome.runtime.lastError);
         if (usageStats) usageStats.textContent = 'Error loading stats.';
         return;
       }
@@ -340,7 +345,7 @@ async function updateStats() {
   if (tmMetrics || cacheStats) {
     chrome.runtime.sendMessage({ action: 'tm-cache-metrics' }, response => {
       if (chrome.runtime.lastError) {
-        console.error('Failed to get TM/cache metrics:', chrome.runtime.lastError);
+        logger.error('Failed to get TM/cache metrics:', chrome.runtime.lastError);
         return;
       }
       
@@ -389,7 +394,7 @@ async function initialize() {
 
 document.addEventListener('DOMContentLoaded', () => {
   initialize().catch(error => {
-    console.error('Initialize error:', error);
+    logger.error('Initialize error:', error);
   });
 });
 
@@ -398,7 +403,7 @@ if (document.readyState !== 'loading') {
   // DOM is already ready, run immediately
   setTimeout(() => {
     initialize().catch(error => {
-      console.error('Initialize error (immediate):', error);
+      logger.error('Initialize error (immediate):', error);
     });
   }, 0);
 }
