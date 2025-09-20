@@ -5,11 +5,17 @@
  * timeout settings, and translation memory sync.
  */
 
-if (typeof self.qwenCommandDispatcher === 'undefined') {
-  throw new Error('Command dispatcher not loaded');
-}
+(function() {
+  // Prevent duplicate loading
+  if (typeof self.qwenConfigCommands !== 'undefined') {
+    return;
+  }
 
-const { Command } = self.qwenCommandDispatcher;
+  if (typeof self.qwenCommandDispatcher === 'undefined') {
+    throw new Error('Command dispatcher not loaded');
+  }
+
+  const { Command } = self.qwenCommandDispatcher;
 
 class SetConfigCommand extends Command {
   constructor(ensureThrottle, config, logger) {
@@ -67,3 +73,5 @@ if (typeof module !== 'undefined' && module.exports) {
 } else {
   self.qwenConfigCommands = { SetConfigCommand };
 }
+
+})(); // End of IIFE

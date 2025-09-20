@@ -1,9 +1,24 @@
 // src/popup/settings.js
 
+// Resolve popup env/storage/messaging without Node require in browser
+const popupEnv = (typeof window !== 'undefined' && window.qwenPopupEnv)
+  || (typeof self !== 'undefined' && self.qwenPopupEnv)
+  || (typeof require === 'function' ? require('./env') : null);
+const { createPopupLogger } = popupEnv || { createPopupLogger: () => console };
+
+const popupStorage = (typeof window !== 'undefined' && window.qwenPopupStorage)
+  || (typeof self !== 'undefined' && self.qwenPopupStorage)
+  || (typeof require === 'function' ? require('./storage') : null);
+
+const popupMessaging = (typeof window !== 'undefined' && window.qwenPopupMessaging)
+  || (typeof self !== 'undefined' && self.qwenPopupMessaging)
+  || (typeof require === 'function' ? require('./messaging') : null);
+
 // Initialize logger
-const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwenLogger.create) 
-  ? window.qwenLogger.create('settings')
-  : console;
+const logger = createPopupLogger('settings');
+
+const { bridge: chromeBridge, loadPreferences, savePreferences } = popupStorage;
+const { sendMessage } = popupMessaging;
 
 // --------------------------------------------------------------------------
 // Theme Management
@@ -11,9 +26,9 @@ const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwe
 async function loadTheme() {
   const themeSelector = document.getElementById('theme-selector');
   if (!themeSelector) return;
-  
-  const { theme } = await chrome.storage.local.get({ theme: 'modern' });
-  themeSelector.value = theme;
+
+  const prefs = await loadPreferences({ theme: 'modern' });
+  themeSelector.value = prefs.theme || 'modern';
 }
 
 function handleThemeChange() {
@@ -21,7 +36,8 @@ function handleThemeChange() {
   if (!themeSelector) return;
   
   const newTheme = themeSelector.value;
-  chrome.runtime.sendMessage({ action: 'settings:theme-change', theme: newTheme });
+  savePreferences({ theme: newTheme });
+  sendMessage('settings:theme-change', { theme: newTheme });
 }
 
 // --------------------------------------------------------------------------
@@ -59,6 +75,13 @@ function setupEventListeners() {
   if (themeSelector) {
     themeSelector.addEventListener('change', handleThemeChange);
   }
+  // Qwen presets and test
+  const intlBtn = document.getElementById('presetQwenIntl');
+  const cnBtn = document.getElementById('presetQwenCN');
+  const testBtn = document.getElementById('testQwen');
+  if (intlBtn) intlBtn.addEventListener('click', () => applyQwenPreset('intl'));
+  if (cnBtn) cnBtn.addEventListener('click', () => applyQwenPreset('cn'));
+  if (testBtn) testBtn.addEventListener('click', () => testQwenConnection());
   
   setupTabSwitching();
 }
@@ -124,6 +147,7 @@ function createProviderCard(provider, config) {
         <span class="provider-label">${provider.label || provider.name}</span>
       </label>
       <div class="provider-actions">
+        <button type="button" class="edit" title="Edit Provider">✎</button>
         <button type="button" class="duplicate" title="Duplicate Provider">⧉</button>
       </div>
     </div>
@@ -139,6 +163,20 @@ function createProviderCard(provider, config) {
   const duplicateBtn = card.querySelector('button.duplicate');
   duplicateBtn.addEventListener('click', () => {
     handleProviderDuplicate(provider.name, config);
+  });
+
+  // Handle edit button → open provider editor overlay
+  const editBtn = card.querySelector('button.edit');
+  editBtn.addEventListener('click', () => {
+    try {
+      if (window.qwenProviderEditor && typeof window.qwenProviderEditor.open === 'function') {
+        window.qwenProviderEditor.open(provider.name);
+      } else {
+        setStatus('warn', 'Provider editor unavailable in this build.');
+      }
+    } catch (e) {
+      setStatus('error', `Failed to open editor: ${e?.message || e}`);
+    }
   });
 
   // Handle drag and drop
@@ -219,6 +257,134 @@ async function handleProviderReorder() {
 }
 
 // --------------------------------------------------------------------------
+// Qwen Presets and Diagnostics
+// --------------------------------------------------------------------------
+function setStatus(kind, message) {
+  const el = document.getElementById('providerStatus');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `status ${kind}`;
+}
+
+async function applyQwenPreset(region) {
+  try {
+    setStatus('info', 'Applying preset...');
+    const config = await window.qwenProviderConfig.loadProviderConfig();
+    const endpoint = region === 'cn'
+      ? 'https://dashscope.aliyuncs.com/api/v1'
+      : 'https://dashscope-intl.aliyuncs.com/api/v1';
+    const model = 'qwen-mt-turbo';
+
+    // Ensure provider entries
+    config.provider = 'dashscope';
+    config.providers = config.providers || {};
+    config.providers.dashscope = config.providers.dashscope || {};
+    config.providers.dashscope.enabled = true;
+    config.providers.dashscope.apiEndpoint = endpoint;
+    config.providers.dashscope.model = config.providers.dashscope.model || model;
+
+    // Move dashscope to front of order
+    config.providerOrder = Array.isArray(config.providerOrder) ? config.providerOrder.slice() : [];
+    config.providerOrder = ['dashscope', ...config.providerOrder.filter(p => p !== 'dashscope')];
+
+    await window.qwenProviderConfig.saveProviderConfig(config);
+    await loadProviders();
+    setStatus('success', `Preset applied: ${region === 'cn' ? 'Mainland China' : 'International'} endpoint ${endpoint}`);
+  } catch (e) {
+    setStatus('error', `Failed to apply preset: ${e?.message || e}`);
+  }
+}
+
+async function getDashscopeApiKey() {
+  // Try config first
+  try {
+    const config = await window.qwenProviderConfig.loadProviderConfig();
+    const key = config?.providers?.dashscope?.apiKey || '';
+    if (key) return key;
+  } catch {}
+  // Try secure storage
+  try {
+    if (window.qwenSecureStorage?.secureStorage) {
+      const k = await window.qwenSecureStorage.secureStorage.getSecure('provider_dashscope_apiKey');
+      if (k) return k;
+    }
+  } catch {}
+  return '';
+}
+
+async function testQwenConnection() {
+  try {
+    setStatus('info', 'Testing connection...');
+    // Load current config
+    const config = await window.qwenProviderConfig.loadProviderConfig();
+    const ep = (config?.providers?.dashscope?.apiEndpoint)
+      || config?.apiEndpoint
+      || 'https://dashscope-intl.aliyuncs.com/api/v1';
+    const model = (config?.providers?.dashscope?.model) || config?.model || 'qwen-mt-turbo';
+    const apiKey = (await getDashscopeApiKey()).trim();
+    if (!apiKey) {
+      setStatus('error', 'No API key found for Qwen — add it to the provider and try again.');
+      return;
+    }
+
+    let res = await sendMessage('testTranslation', {
+      provider: 'dashscope',
+      apiKey,
+      endpoint: ep,
+      model,
+      text: 'Hello',
+      source: 'en',
+      target: 'es'
+    });
+
+    // Fallback to direct fetch if background returns a generic/internal error
+    if (!res || res.error === 'Internal error' || /Command execution failed|Could not serialize/i.test(res.error || '')) {
+      try {
+        const url = (ep.endsWith('/') ? ep : (ep + '/')) + 'services/aigc/text-generation/generation';
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': /^bearer\s/i.test(apiKey) ? apiKey : `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model,
+            input: { messages: [{ role: 'user', content: 'Hello' }] },
+            parameters: { translation_options: { source_lang: 'en', target_lang: 'es' } }
+          })
+        });
+        if (r.ok) {
+          const j = await r.json();
+          const text = j?.output?.text || j?.output?.choices?.[0]?.message?.content || '';
+          res = { success: true, text };
+        } else {
+          let msg = r.statusText;
+          try { const je = await r.json(); msg = je?.error?.message || je?.message || msg; } catch {}
+          res = { success: false, error: `HTTP ${r.status}: ${msg}` };
+        }
+      } catch (e) {
+        res = { success: false, error: e?.message || 'Network error' };
+      }
+    }
+
+    if (res && res.success) {
+      setStatus('success', `OK — translated sample: "${res.text.slice(0, 60)}"...`);
+    } else {
+      const err = (res && res.error) || 'Unknown error';
+      if (/sender context/i.test(err)) {
+        setStatus('warn', 'Blocked by sender validation. Reload extension (chrome://extensions → Reload), then test again.');
+      } else if (/401|403|invalid api key/i.test(err)) {
+        setStatus('error', `Provider rejected the key (HTTP). Check endpoint region and key validity. Details: ${err}`);
+      } else {
+        setStatus('error', `Test failed: ${err}`);
+      }
+    }
+  } catch (e) {
+    setStatus('error', `Test error: ${e?.message || e}`);
+  }
+}
+
+// --------------------------------------------------------------------------
 // Translation Memory Management
 // --------------------------------------------------------------------------
 function setupTMManagement() {
@@ -246,38 +412,26 @@ function updateTMStats() {
   const tmStatsElement = document.getElementById('tmStats');
   if (!tmStatsElement) return;
 
-  chrome.runtime.sendMessage({ action: 'tm-stats' }, (response) => {
-    if (chrome.runtime.lastError) {
-      logger.error('Failed to get TM stats:', chrome.runtime.lastError);
-      return;
-    }
-
+  sendMessage('tm-stats').then(response => {
     if (response && response.stats) {
       tmStatsElement.textContent = JSON.stringify(response.stats, null, 2);
     }
+  }).catch(error => {
+    logger.error('Failed to get TM stats:', error);
   });
 }
 
 function handleTMClear() {
-  chrome.runtime.sendMessage({ action: 'tm-clear' }, (response) => {
-    if (chrome.runtime.lastError) {
-      logger.error('Failed to clear TM:', chrome.runtime.lastError);
-      return;
-    }
-
-    // Refresh stats after clearing
+  sendMessage('tm-clear').then(() => {
     updateTMStats();
     resizeWindowToContent();
+  }).catch(error => {
+    logger.error('Failed to clear TM:', error);
   });
 }
 
 function handleTMExport() {
-  chrome.runtime.sendMessage({ action: 'tm-get-all' }, (response) => {
-    if (chrome.runtime.lastError) {
-      logger.error('Failed to export TM:', chrome.runtime.lastError);
-      return;
-    }
-
+  sendMessage('tm-get-all').then(response => {
     if (response && response.entries) {
       const blob = new Blob([JSON.stringify(response.entries, null, 2)], { 
         type: 'application/json' 
@@ -289,6 +443,8 @@ function handleTMExport() {
       a.click();
       URL.revokeObjectURL(url);
     }
+  }).catch(error => {
+    logger.error('Failed to export TM:', error);
   });
 }
 
@@ -296,25 +452,21 @@ function handleTMImport(event) {
   const file = event.target.files[0];
   if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = async (e) => {
+  (async () => {
     try {
-      const entries = JSON.parse(e.target.result);
-      
-      chrome.runtime.sendMessage({ action: 'tm-import', entries }, (response) => {
-        if (chrome.runtime.lastError) {
-          logger.error('Failed to import TM:', chrome.runtime.lastError);
-          return;
-        }
-
-        // Refresh stats after import
-        updateTMStats();
-      });
+      const text = await (file.text ? file.text() : new Response(file).text());
+      const entries = JSON.parse(text);
+      sendMessage('tm-import', { entries })
+        .then(() => {
+          updateTMStats();
+        })
+        .catch(err => {
+          logger.error('Failed to import TM:', err);
+        });
     } catch (error) {
       logger.error('Failed to parse TM import file:', error);
     }
-  };
-  reader.readAsText(file);
+  })();
 }
 
 // --------------------------------------------------------------------------
@@ -328,27 +480,19 @@ async function updateStats() {
   
   // Get basic metrics first
   if (usageStats) {
-    chrome.runtime.sendMessage({ action: 'metrics' }, response => {
-      if (chrome.runtime.lastError) {
-        logger.error('Failed to get usage metrics:', chrome.runtime.lastError);
-        if (usageStats) usageStats.textContent = 'Error loading stats.';
-        return;
-      }
-      
+    sendMessage('metrics').then(response => {
       if (response && response.usage) {
         usageStats.textContent = JSON.stringify(response.usage, null, 2);
       }
+    }).catch(error => {
+      logger.error('Failed to get usage metrics:', error);
+      usageStats.textContent = 'Error loading stats.';
     });
   }
   
   // Get TM and cache metrics
   if (tmMetrics || cacheStats) {
-    chrome.runtime.sendMessage({ action: 'tm-cache-metrics' }, response => {
-      if (chrome.runtime.lastError) {
-        logger.error('Failed to get TM/cache metrics:', chrome.runtime.lastError);
-        return;
-      }
-      
+    sendMessage('tm-cache-metrics').then(response => {
       if (response) {
         if (response.tmMetrics && tmMetrics) {
           tmMetrics.textContent = JSON.stringify(response.tmMetrics, null, 2);
@@ -357,12 +501,14 @@ async function updateStats() {
           cacheStats.textContent = JSON.stringify(response.cacheStats, null, 2);
         }
       }
+    }).catch(error => {
+      logger.error('Failed to get TM/cache metrics:', error);
     });
   }
   
   // Get provider quota data
   if (quotaStats) {
-    chrome.runtime.sendMessage({ action: 'provider-usage' }, response => {
+    sendMessage('provider-usage').then(response => {
       if (response && response.providersUsage) {
         let quotaText = '';
         for (const [provider, usage] of Object.entries(response.providersUsage)) {
@@ -374,6 +520,8 @@ async function updateStats() {
         }
         quotaStats.textContent = quotaText || 'No quota data available';
       }
+    }).catch(error => {
+      logger.error('Failed to load provider usage:', error);
     });
   }
 }

@@ -91,9 +91,8 @@ describe('offline handling', () => {
     _setConfig({ apiEndpoint: 'https://e/', model: 'm' });
     const res = await handleTranslate({ endpoint: 'https://e/', model: 'm', text: 'hi', source: 'en', target: 'es' });
     expect(res).toEqual({ error: 'offline' });
-    expect(sendMessage).toHaveBeenCalledWith({ action: 'translation-status', status: { offline: true } });
+    expect(sendMessage).toHaveBeenCalledWith({ action: 'translation-status', status: { offline: true } }, expect.any(Function));
     Object.defineProperty(window.navigator, 'onLine', origDesc);
     global.qwenTranslate = origTranslate;
   });
 });
-

@@ -41,7 +41,7 @@ npm install
 npm run postinstall
 
 # Verify installation
-npm run typecheck:all
+npm run lint
 npm test
 ```
 
@@ -111,9 +111,9 @@ VSCode workspace settings (`.vscode/settings.json`):
 ```
 qwen-translator-extension/
 ├── src/                          # Source code
-│   ├── core/                     # Core modules (TypeScript)
-│   │   ├── types.ts              # Type definitions
-│   │   ├── config-manager.ts     # Configuration management
+│   ├── core/                     # Core modules (JSDoc-typed JS)
+│   │   ├── types.js              # Shared type helpers
+│   │   ├── config-manager.js     # Configuration management
 │   │   ├── cache-manager.js      # Caching system
 │   │   ├── throttle-manager.js   # Rate limiting
 │   │   ├── logger.js             # Logging system
@@ -146,7 +146,7 @@ qwen-translator-extension/
 │   ├── manifest.json            # Extension manifest
 │   └── styles/                  # CSS themes
 ├── dist/                        # Built extension files
-├── types/                       # TypeScript definitions
+├── types/                       # Type definition stubs for editor tooling
 ├── test/                        # Unit tests
 ├── e2e/                         # End-to-end tests
 ├── tools/                       # Build tools
@@ -185,9 +185,8 @@ The extension follows a layered architecture:
 
 ```bash
 # Development
-npm run build:fast        # Quick build without TypeScript
-npm run build             # Full build with TypeScript
-npm run typecheck:all     # Type check all files
+npm run build:fast        # Quick build (no optimisations)
+npm run build             # Copy current src/ into dist/
 npm run lint              # ESLint code checking
 npm run format            # Prettier code formatting
 
@@ -209,7 +208,6 @@ npm run build:zip        # Build and ZIP
 
 # Quality
 npm run secrets          # Security scan for secrets
-npm run type-check       # Shell script type checker
 ```
 
 ### Build Pipeline
@@ -218,44 +216,17 @@ The build process consists of several stages:
 
 ```mermaid
 graph TD
-    A[Source Files] --> B[TypeScript Compilation]
-    B --> C[ESLint Validation]
-    C --> D[File Copying]
-    D --> E[Bundle Size Check]
-    E --> F[Distribution Package]
+    A[Source Files] --> B[ESLint Validation]
+    B --> C[File Copying]
+    C --> D[Bundle Size Check]
+    D --> E[Distribution Package]
     
-    G[Test Files] --> H[Jest Unit Tests]
-    H --> I[Playwright E2E Tests]
-    I --> J[Coverage Report]
+    F[Test Files] --> G[Jest Unit Tests]
+    G --> H[Playwright E2E Tests]
+    H --> I[Coverage Report]
 ```
 
-#### 1. TypeScript Compilation
-
-Configuration in `tsconfig.build.json`:
-
-```json
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "outDir": "dist",
-    "declaration": false,
-    "sourceMap": false,
-    "removeComments": true
-  },
-  "include": [
-    "src/core/**/*.ts",
-    "types/**/*.ts"
-  ],
-  "exclude": [
-    "test/**/*",
-    "e2e/**/*",
-    "**/*.spec.ts",
-    "**/*.test.ts"
-  ]
-}
-```
-
-#### 2. Bundle Size Limits
+#### 1. Bundle Size Limits
 
 Size limits are enforced via `size-limit` configuration in `package.json`:
 
@@ -584,15 +555,15 @@ if (typeof self !== 'undefined') {
 export default ExampleModule;
 ```
 
-#### 2. TypeScript Integration
+#### 2. Type Definition Stubs
 
-Create corresponding TypeScript definitions:
+Create corresponding `.d.ts` definitions when editor tooling needs richer types:
 
 ```typescript
 // types/example-module.d.ts
 
 import { Logger } from './logger';
-import { ConfigManager } from './config-manager';
+import { ConfigManager } from './config-manager.js';
 
 export interface ExampleModuleOptions {
   logger?: Logger;
@@ -890,7 +861,7 @@ module.exports = {
 ```javascript
 // test/core/config-manager.test.js
 
-import { ConfigManager } from '../../src/core/config-manager';
+import { ConfigManager } from '../../src/core/config-manager.js';
 import { jest } from '@jest/globals';
 
 describe('ConfigManager', () => {
@@ -2380,7 +2351,6 @@ Before submitting a pull request, ensure all checks pass:
 # Run full quality check suite
 npm run lint                    # ESLint checks
 npm run format                  # Prettier formatting
-npm run typecheck:all          # TypeScript checking
 npm test                       # Unit tests
 npm run test:e2e              # End-to-end tests
 npm run size                   # Bundle size checks

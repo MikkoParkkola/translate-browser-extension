@@ -1,9 +1,31 @@
 // src/popup/home.js - Compatible with existing tests
 
+const { createPopupLogger } = require('./env');
+const popupStorage = require('./storage');
+const popupMessaging = require('./messaging');
+
+let languageHelpers;
+try {
+  if (typeof require === 'function') languageHelpers = require('../lib/languages');
+} catch (_) {
+  languageHelpers = null;
+}
+
+const getFallbackLanguages = languageHelpers?.getFallbackLanguages
+  || (typeof window !== 'undefined' && window.qwenLanguagesFallback && window.qwenLanguagesFallback.getFallbackLanguages)
+  || (() => [
+    { code: 'auto', name: 'Auto Detect' },
+    { code: 'en', name: 'English' },
+    { code: 'es', name: 'Spanish' },
+    { code: 'fr', name: 'French' },
+    { code: 'de', name: 'German' },
+    { code: 'zh', name: 'Chinese' },
+  ]);
+
 // Initialize logger
-const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwenLogger.create) 
-  ? window.qwenLogger.create('home')
-  : console;
+const logger = createPopupLogger('home');
+const { bridge: chromeBridge, loadPreferences, savePreferences, saveAutoTranslate } = popupStorage;
+const { sendMessage, sendMessageToTab, queryActiveTab } = popupMessaging;
 
 // Initialize immediately when module loads
 (function() {
@@ -33,7 +55,7 @@ const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwe
   // Initialize with background script
   function initializeHome() {
     try {
-      chrome.runtime.sendMessage({ action: 'home:init' }, response => {
+      sendMessage('home:init').then(response => {
         if (response) {
           updateUI(response);
         }
@@ -89,7 +111,7 @@ const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwe
   }
 
   // Setup runtime message listener
-  if (chrome && chrome.runtime && chrome.runtime.onMessage) {
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
     chrome.runtime.onMessage.addListener(handleRuntimeMessage);
   }
 
@@ -104,7 +126,7 @@ const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwe
     const quickTranslateButton = document.getElementById('quickTranslate');
     if (quickTranslateButton) {
       quickTranslateButton.addEventListener('click', () => {
-        chrome.runtime.sendMessage({ action: 'home:quick-translate' }, () => {});
+        sendMessage('home:quick-translate');
       });
     }
 
@@ -112,26 +134,31 @@ const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwe
     const autoTranslateCheckbox = document.getElementById('autoTranslate');
     if (autoTranslateCheckbox) {
       autoTranslateCheckbox.addEventListener('change', () => {
-        chrome.runtime.sendMessage({ 
-          action: 'home:auto-translate', 
+        sendMessage('home:auto-translate', { 
           enabled: autoTranslateCheckbox.checked 
-        }, () => {});
+        });
       });
     }
   }
 
   // Modern UI integration (if elements exist)
   document.addEventListener('DOMContentLoaded', () => {
-    const sourceLanguageSelect = document.getElementById('source-language');
-    const targetLanguageSelect = document.getElementById('target-language');
-    const translateButton = document.getElementById('translate-button');
-    const autoTranslateToggle = document.getElementById('auto-translate-toggle');
+    const { source, target, translate, autoToggle } = getModernElements();
 
     // Only setup modern UI if elements exist
-    if (sourceLanguageSelect && targetLanguageSelect && translateButton && autoTranslateToggle) {
+    if (source && target && translate && autoToggle) {
       setupModernUI();
     }
   });
+
+  function getModernElements() {
+    return {
+      source: document.getElementById('source-language'),
+      target: document.getElementById('target-language'),
+      translate: document.getElementById('translate-button'),
+      autoToggle: document.getElementById('auto-translate-toggle')
+    };
+  }
 
   async function setupModernUI() {
     try {
@@ -144,17 +171,107 @@ const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwe
   }
 
   async function loadLanguages() {
-    // This would be implemented for the modern UI
-    // Left empty for now to avoid fetch errors in tests
+    const { source, target } = getModernElements();
+    if (!source || !target) return;
+
+    const languages = Array.isArray(window.qwenLanguages) && window.qwenLanguages.length
+      ? window.qwenLanguages
+      : getFallbackLanguages();
+
+    const addOption = (select, code, label) => {
+      if (!select || !code || select.querySelector(`option[value="${code}"]`)) return;
+      const option = document.createElement('option');
+      option.value = code;
+      option.textContent = label;
+      select.appendChild(option);
+    };
+
+    source.innerHTML = '';
+    target.innerHTML = '';
+
+    addOption(source, 'auto', 'Auto Detect');
+
+    languages.forEach(lang => {
+      if (!lang || !lang.code || !lang.name) return;
+      if (lang.code === 'auto') {
+        // Auto option already added with canonical label
+        return;
+      }
+      addOption(source, lang.code, lang.name);
+      addOption(target, lang.code, lang.name);
+    });
+
+    // Ensure there is at least one target option
+    if (!target.value && target.options.length > 0) {
+      const englishOption = target.querySelector('option[value="en"]');
+      target.value = englishOption ? 'en' : target.options[0].value;
+    }
   }
 
   async function loadSettings() {
-    // This would load settings from storage
-    // Left empty for now
+    const { source, target, autoToggle } = getModernElements();
+
+    const defaults = { sourceLanguage: 'auto', targetLanguage: 'en', autoTranslate: false };
+    let settings = defaults;
+    try {
+      settings = await loadPreferences(defaults);
+    } catch (error) {
+      logger.warn('Failed to read home popup settings:', error);
+    }
+
+    if (source && settings.sourceLanguage && source.querySelector(`option[value="${settings.sourceLanguage}"]`)) {
+      source.value = settings.sourceLanguage;
+    }
+    if (target && settings.targetLanguage && target.querySelector(`option[value="${settings.targetLanguage}"]`)) {
+      target.value = settings.targetLanguage;
+    }
+    if (autoToggle) {
+      autoToggle.checked = !!settings.autoTranslate;
+    }
   }
 
   function setupEventListeners() {
-    // This would setup event listeners for modern UI
-    // Left empty for now
+    const { source, target, translate, autoToggle } = getModernElements();
+
+    if (translate) {
+      translate.addEventListener('click', async () => {
+        try {
+          translate.disabled = true;
+          translate.classList.add('is-loading');
+          await sendMessage('home:quick-translate', {
+            source: source ? source.value : 'auto',
+            target: target ? target.value : 'en'
+          });
+        } catch (error) {
+          logger.error('Failed to trigger quick translate from home popup:', error);
+        } finally {
+          setTimeout(() => {
+            translate.disabled = false;
+            translate.classList.remove('is-loading');
+          }, 300);
+        }
+      });
+    }
+
+    if (autoToggle) {
+      autoToggle.addEventListener('change', () => {
+        const enabled = autoToggle.checked;
+        const sourceLanguage = source ? source.value : 'auto';
+        const targetLanguage = target ? target.value : 'en';
+        saveAutoTranslate({ enabled, sourceLanguage, targetLanguage });
+      });
+    }
+
+    if (source) {
+      source.addEventListener('change', () => {
+        savePreferences({ sourceLanguage: source.value });
+      });
+    }
+
+    if (target) {
+      target.addEventListener('change', () => {
+        savePreferences({ targetLanguage: target.value });
+      });
+    }
   }
 })();

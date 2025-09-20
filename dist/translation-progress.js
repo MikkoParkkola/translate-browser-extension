@@ -3,6 +3,12 @@
  * Provides detailed progress tracking and intelligent error handling during translation
  */
 
+(function() {
+  // Prevent duplicate loading
+  if (typeof window !== 'undefined' && window.TranslationProgress) {
+    return;
+  }
+
 const TranslationProgress = {
   // Progress tracking
   currentSession: null,
@@ -976,3 +982,5 @@ if (typeof window !== 'undefined') {
 if (typeof module !== 'undefined') {
   module.exports = TranslationProgress;
 }
+
+})(); // End of IIFE

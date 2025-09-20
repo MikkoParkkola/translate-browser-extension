@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Settings</title>
   <link rel="stylesheet" href="../styles/modern.css">
+  <link rel="stylesheet" href="../styles/apple.css">
 </head>
 <body>
   <main>
@@ -17,6 +18,16 @@
             <option value="cyberpunk">Cyberpunk</option>
           </select>
         </label>
+      </section>
+      <section id="qwenPresets">
+        <h3>Qwen (DashScope) Presets</h3>
+        <p>Pick the correct endpoint for your API key region, then test.</p>
+        <div class="preset-row">
+          <button id="presetQwenIntl" class="btn-primary">Use Qwen — International Endpoint</button>
+          <button id="presetQwenCN" class="btn-secondary">Use Qwen — Mainland China Endpoint</button>
+          <button id="testQwen" class="btn-outline">Test Qwen Connection</button>
+        </div>
+        <div id="providerStatus" class="status" aria-live="polite">Ready.</div>
       </section>
       <section id="providerSection">
         <h3>Translation Providers</h3>
@@ -40,6 +51,15 @@
         <div id="quotaStats">Loading...</div>
       </section>
     </main>
+    <!-- Dependencies required by settings.js -->
+    <script src="../lib/logger.js"></script>
+    <script src="../lib/providers.js"></script>
+    <script src="../providers/index.js"></script>
+    <script src="../providerConfig.js"></script>
+    <script src="../popup/env.js"></script>
+    <script src="../popup/storage.js"></script>
+    <script src="../popup/messaging.js"></script>
+    <script src="../popup/providerEditor.js"></script>
     <script src="../popup/settings.js"></script>
 </body>
 </html>

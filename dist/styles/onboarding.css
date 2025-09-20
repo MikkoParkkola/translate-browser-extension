@@ -29,7 +29,7 @@
   max-height: 90vh;
   background: var(--surface);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-2xl);
+  box-shadow: var(--shadow-xl);
   overflow: hidden;
   animation: slideUp 0.3s ease;
 }
@@ -127,11 +127,11 @@
 }
 
 .step-icon.provider {
-  background: linear-gradient(135deg, var(--color-yellow-500), var(--color-orange-600));
+  background: linear-gradient(135deg, var(--color-warning-500), var(--color-warning-600));
 }
 
 .step-icon.test {
-  background: linear-gradient(135deg, var(--color-green-500), var(--color-emerald-600));
+  background: linear-gradient(135deg, var(--color-success-500), var(--color-success-600));
 }
 
 /* ========== Typography ========== */
@@ -177,8 +177,8 @@
 }
 
 .detection-info {
-  background: var(--color-blue-50);
-  border: 1px solid var(--color-blue-200);
+  background: var(--color-primary-50);
+  border: 1px solid var(--color-primary-200);
   border-radius: var(--radius-lg);
   padding: var(--space-4);
   margin: var(--space-4) 0;
@@ -206,7 +206,7 @@
 
 .language-select-modern {
   padding: var(--space-3);
-  border: 2px solid var(--border);
+  border: 2px solid var(--border-light);
   border-radius: var(--radius-lg);
   background: var(--surface);
   font-size: var(--font-size-base);
@@ -219,7 +219,7 @@
 .language-select-modern:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
 .usage-pattern {
@@ -238,7 +238,7 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3);
-  border: 2px solid var(--border);
+  border: 2px solid var(--border-light);
   border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -247,7 +247,7 @@
 
 .usage-option:hover {
   border-color: var(--primary);
-  background: var(--color-primary-25);
+  background: var(--color-primary-50);
 }
 
 .usage-option input[type="radio"] {
@@ -257,7 +257,7 @@
 .checkmark {
   width: 20px;
   height: 20px;
-  border: 2px solid var(--border);
+  border: 2px solid var(--border-light);
   border-radius: var(--radius-full);
   background: var(--surface);
   position: relative;
@@ -292,7 +292,7 @@
 }
 
 .provider-card {
-  border: 2px solid var(--border);
+  border: 2px solid var(--border-light);
   border-radius: var(--radius-xl);
   padding: var(--space-6);
   cursor: pointer;
@@ -308,12 +308,12 @@
 
 .provider-card.active {
   border-color: var(--primary);
-  background: var(--color-primary-25);
-  box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
+  background: var(--color-primary-50);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
 .provider-card.recommended {
-  border-color: var(--color-green-300);
+  border-color: var(--color-success-300);
 }
 
 .provider-card.recommended::before {
@@ -345,8 +345,8 @@
 .recommended-badge {
   display: inline-block;
   padding: var(--space-1) var(--space-2);
-  background: var(--color-green-100);
-  color: var(--color-green-800);
+  background: var(--color-success-200);
+  color: var(--color-success-900);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   border-radius: var(--radius-md);
@@ -357,8 +357,8 @@
 .free-badge {
   display: inline-block;
   padding: var(--space-1) var(--space-2);
-  background: var(--color-blue-100);
-  color: var(--color-blue-800);
+  background: var(--color-primary-100);
+  color: var(--color-primary-800);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   border-radius: var(--radius-md);
@@ -374,7 +374,7 @@
 .radio-button {
   width: 20px;
   height: 20px;
-  border: 2px solid var(--border);
+  border: 2px solid var(--border-light);
   border-radius: var(--radius-full);
   background: var(--surface);
   position: relative;
@@ -426,7 +426,7 @@
   text-align: left;
   margin-top: var(--space-6);
   padding: var(--space-6);
-  background: var(--color-neutral-25);
+  background: var(--color-neutral-50);
   border-radius: var(--radius-xl);
   border: 1px solid var(--border-light);
 }
@@ -452,7 +452,7 @@
   flex: 1;
   padding: var(--space-4);
   padding-right: var(--space-12);
-  border: 2px solid var(--border);
+  border: 2px solid var(--border-light);
   border-radius: var(--radius-lg);
   background: var(--surface);
   font-size: var(--font-size-base);
@@ -463,7 +463,7 @@
 .api-key-input:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
 .btn-icon {
@@ -532,11 +532,11 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3);
-  background: var(--color-green-50);
-  border: 1px solid var(--color-green-200);
+  background: var(--color-success-50);
+  border: 1px solid var(--color-success-200);
   border-radius: var(--radius-lg);
   font-size: var(--font-size-sm);
-  color: var(--color-green-800);
+  color: var(--color-success-900);
 }
 
 .validation-error {
@@ -544,11 +544,11 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3);
-  background: var(--color-red-50);
-  border: 1px solid var(--color-red-200);
+  background: var(--color-error-50);
+  border: 1px solid var(--color-error-300);
   border-radius: var(--radius-lg);
   font-size: var(--font-size-sm);
-  color: var(--color-red-800);
+  color: var(--color-error-900);
 }
 
 /* ========== Test Translation (Step 3) ========== */
@@ -579,7 +579,7 @@
 .test-textarea {
   min-height: 120px;
   padding: var(--space-4);
-  border: 2px solid var(--border);
+  border: 2px solid var(--border-light);
   border-radius: var(--radius-lg);
   background: var(--surface);
   font-size: var(--font-size-base);
@@ -591,7 +591,7 @@
 .test-textarea:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
 .translation-arrow {
@@ -609,9 +609,9 @@
 .test-result {
   min-height: 120px;
   padding: var(--space-4);
-  border: 2px solid var(--border);
+  border: 2px solid var(--border-light);
   border-radius: var(--radius-lg);
-  background: var(--color-neutral-25);
+  background: var(--color-neutral-50);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -660,7 +660,7 @@
 }
 
 .result-error {
-  color: var(--color-red-600);
+  color: var(--color-error-600);
   font-size: var(--font-size-sm);
   text-align: center;
   width: 100%;
@@ -675,7 +675,7 @@
   width: 100%;
   text-align: left;
   padding: var(--space-6);
-  background: var(--color-neutral-25);
+  background: var(--color-neutral-50);
   border-radius: var(--radius-xl);
   border: 1px solid var(--border-light);
 }
@@ -762,7 +762,7 @@
 
 .next-steps li::before {
   content: '✓';
-  color: var(--color-green-600);
+  color: var(--color-success-600);
   font-weight: var(--font-weight-bold);
   flex-shrink: 0;
   margin-top: 2px;
@@ -812,7 +812,7 @@
 .btn-secondary {
   background: transparent;
   color: var(--text-secondary);
-  border: 2px solid var(--border);
+  border: 2px solid var(--border-light);
 }
 
 .btn-secondary:hover {

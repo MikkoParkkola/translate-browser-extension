@@ -5,6 +5,14 @@ if (typeof window === 'undefined' && typeof fetchFn === 'undefined' && typeof re
   fetchFn = require('cross-fetch');
 }
 
+const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwenLogger.create) ? 
+              window.qwenLogger.create('provider:qwen') :
+              (typeof self !== 'undefined' && self.qwenLogger && self.qwenLogger.create) ?
+              self.qwenLogger.create('provider:qwen') : console;
+const errorHandler = (typeof window !== 'undefined' && window.qwenProviderErrorHandler) ||
+                   (typeof self !== 'undefined' && self.qwenProviderErrorHandler) ||
+                   (typeof require !== 'undefined' ? require('../core/provider-error-handler') : null);
+
 function withSlash(url) {
   return url.endsWith('/') ? url : `${url}/`;
 }
@@ -72,6 +80,10 @@ async function translate({ endpoint, apiKey, model, secondaryModel, text, source
         console.log('QTDEBUG: response headers', Object.fromEntries(resp.headers.entries()));
       }
     } catch (e) {
+      if (errorHandler) {
+        errorHandler.handleNetworkError(e, { provider: 'qwen', logger, endpoint });
+      }
+      // Fallback to XHR for non-stream requests
       if (!stream && typeof XMLHttpRequest !== 'undefined') {
         if (debug) console.log('QTDEBUG: fetch failed, falling back to XHR');
         resp = await fetchViaXHR(url, { method: 'POST', headers, body: JSON.stringify(body), signal }, debug);
@@ -81,6 +93,10 @@ async function translate({ endpoint, apiKey, model, secondaryModel, text, source
       }
     }
     if (!resp.ok) {
+      if (errorHandler) {
+        await errorHandler.handleHttpError(resp, { provider: 'qwen', logger, endpoint });
+      }
+      // Fallback error handling
       const err = await resp.json().catch(() => ({ message: resp.statusText }));
       const error = new Error(`HTTP ${resp.status}: ${err.message || 'Translation failed'}`);
       error.status = resp.status;
@@ -101,6 +117,10 @@ async function translate({ endpoint, apiKey, model, secondaryModel, text, source
       const data = await resp.json();
       const t = data.output?.text || data.output?.choices?.[0]?.message?.content;
       if (!t) {
+        if (errorHandler) {
+          errorHandler.handleResponseError('Invalid API response: missing content', 
+            { provider: 'qwen', logger, response: data });
+        }
         throw new Error('Invalid API response');
       }
       return { text: t };
@@ -155,9 +175,21 @@ async function getQuota({ endpoint, apiKey, model, debug }) {
   const headers = {};
   if (key) headers.Authorization = /^bearer\s/i.test(key) ? key : `Bearer ${key}`;
   try {
-    const resp = await fetchFn(`${url}?model=${encodeURIComponent(model || '')}`, { headers });
+    let resp;
+    try {
+      resp = await fetchFn(`${url}?model=${encodeURIComponent(model || '')}`, { headers });
+    } catch (error) {
+      if (errorHandler) {
+        errorHandler.handleNetworkError(error, { provider: 'qwen', logger, endpoint });
+      }
+      throw error;
+    }
     if (debug) console.log('QTDEBUG: quota status', resp.status);
     if (!resp.ok) {
+      if (errorHandler) {
+        await errorHandler.handleHttpError(resp, { provider: 'qwen', logger, endpoint });
+      }
+      // Fallback error handling for quota check
       const err = await resp.json().catch(() => ({ message: resp.statusText }));
       return { error: err.message || `HTTP ${resp.status}` };
     }
@@ -177,9 +209,15 @@ async function getQuota({ endpoint, apiKey, model, debug }) {
   }
 }
 
+// Wrap main functions with standardized error handling
+const wrappedTranslate = errorHandler ? 
+  errorHandler.wrapProviderOperation(translate, { provider: 'qwen', logger }) : translate;
+const wrappedGetQuota = errorHandler ? 
+  errorHandler.wrapProviderOperation(getQuota, { provider: 'qwen', logger }) : getQuota;
+
 const provider = {
-  translate,
-  getQuota,
+  translate: wrappedTranslate,
+  getQuota: wrappedGetQuota,
   label: 'Qwen',
   configFields: ['apiKey', 'apiEndpoint', 'model', 'secondaryModel', 'secondaryModelWarning'],
   throttle: { requestLimit: 5, windowMs: 1000 },

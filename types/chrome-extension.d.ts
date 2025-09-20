@@ -114,7 +114,7 @@ declare global {
   // Extension-specific globals
   interface QwenExtensionGlobals {
     qwenCore?: typeof import('../src/core/types');
-    qwenConfig?: typeof import('../src/core/config-manager');
+    qwenConfig?: typeof import('../src/core/config-manager.js');
     qwenCache?: typeof import('../src/core/cache-manager');
     qwenLogger?: typeof import('../src/core/logger');
   }

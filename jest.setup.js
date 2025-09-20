@@ -4,9 +4,11 @@ fetchMock.enableMocks();
 // Minimal chrome stub so modules under test can register listeners without blowing up
 global.chrome = {
   runtime: {
+    onInstalled: { addListener: () => {} },
+    onStartup: { addListener: () => {} },
     onConnect: { addListener: () => {} },
     onMessage: { addListener: () => {} },
-    sendMessage: () => {},
+    sendMessage: jest.fn(() => {}),
     getURL: p => p,
   },
   storage: {
@@ -42,16 +44,64 @@ global.chrome = {
     },
     sync: {
       get: (d, cb) => cb && cb(d),
-      set: (_o, cb) => cb && cb(),
+      set: jest.fn((_o, cb) => cb && cb()),
     },
   },
   tabs: { query: (_i, cb) => cb && cb([]), sendMessage: () => {}, onUpdated: { addListener: () => {} } },
+  contextMenus: { removeAll: (cb)=>cb&&cb(), create: ()=>{}, onClicked: { addListener: ()=>{} } },
   action: { setBadgeText: () => {}, setBadgeBackgroundColor: () => {}, setIcon: () => {} },
 };
 
 if (typeof global.structuredClone !== 'function') {
   global.structuredClone = obj => {
     try { return JSON.parse(JSON.stringify(obj)); } catch { return obj; }
+  };
+}
+
+// Canvas/OffscreenCanvas stubs
+if (typeof global.OffscreenCanvas === 'undefined') {
+  global.OffscreenCanvas = function (w, h) {
+    this.width = w; this.height = h;
+    this._ctx = {
+      clearRect: () => {},
+      beginPath: () => {},
+      arc: () => {},
+      stroke: () => {},
+      fill: () => {},
+      fillText: () => {},
+      getImageData: () => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
+      set lineWidth(v) {},
+      set strokeStyle(v) {},
+      set fillStyle(v) {},
+      font: '',
+      textAlign: '',
+      textBaseline: ''
+    };
+    this.getContext = () => this._ctx;
+  };
+}
+
+// Provide a canvas element fallback with a 2D context in jsdom
+if (typeof document !== 'undefined') {
+  const origCreate = document.createElement.bind(document);
+  document.createElement = function (tagName) {
+    const el = origCreate(tagName);
+    if (String(tagName).toLowerCase() === 'canvas') {
+      el.getContext = () => ({
+        clearRect: () => {},
+        beginPath: () => {},
+        arc: () => {},
+        stroke: () => {},
+        fill: () => {},
+        fillText: () => {},
+        getImageData: () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 }),
+        set lineWidth(v) {},
+        set strokeStyle(v) {},
+        set fillStyle(v) {},
+        font: '', textAlign: '', textBaseline: ''
+      });
+    }
+    return el;
   };
 }
 

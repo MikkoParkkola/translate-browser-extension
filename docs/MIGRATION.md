@@ -53,7 +53,7 @@ src/
 - **Testability**: Individual module testing
 - **Extensibility**: Plugin-based provider system
 - **Performance**: Lazy loading and bundle optimization
-- **Type Safety**: TypeScript integration
+- **Type Safety**: Shared `.d.ts` definitions for editor tooling
 - **Developer Experience**: Better debugging and tooling
 
 ### Migration Timeline
@@ -261,11 +261,8 @@ Document any customizations you've made:
 # Update to latest version
 npm install
 
-# Install new TypeScript dependencies
-npm install --save-dev typescript @types/chrome
-
-# Update build tooling
-npm install --save-dev @typescript-eslint/parser @typescript-eslint/eslint-plugin
+# Optional: install additional editor typings
+npm install --save-dev @types/chrome
 ```
 
 #### 2.2 Migrate Configuration System
@@ -1542,7 +1539,7 @@ for (const module of requiredModules) {
   } catch (error) {
     console.error(`Failed to load ${module}:`, error);
     // Load fallback or legacy module
-    if (module.includes('config-manager')) {
+    if (module.includes('config-manager.js')) {
       importScripts('config.js'); // Fallback to legacy
     }
   }

@@ -5,11 +5,17 @@
  * from content scripts and popups.
  */
 
-if (typeof self.qwenCommandDispatcher === 'undefined') {
-  throw new Error('Command dispatcher not loaded');
-}
+(function() {
+  // Prevent duplicate loading
+  if (typeof self.qwenTranslationCommand !== 'undefined') {
+    return;
+  }
 
-const { Command } = self.qwenCommandDispatcher;
+  if (typeof self.qwenCommandDispatcher === 'undefined') {
+    throw new Error('Command dispatcher not loaded');
+  }
+
+  const { Command } = self.qwenCommandDispatcher;
 
 class TranslationCommand extends Command {
   constructor(handleTranslate, logger) {
@@ -39,3 +45,5 @@ if (typeof module !== 'undefined' && module.exports) {
 } else {
   self.qwenTranslationCommand = TranslationCommand;
 }
+
+})(); // End of IIFE

@@ -4,11 +4,17 @@
  * Handles ping, debugging, usage logs, and other system utilities.
  */
 
-if (typeof self.qwenCommandDispatcher === 'undefined') {
-  throw new Error('Command dispatcher not loaded');
-}
+(function() {
+  // Prevent duplicate loading
+  if (typeof self.qwenSystemCommands !== 'undefined') {
+    return;
+  }
 
-const { Command } = self.qwenCommandDispatcher;
+  if (typeof self.qwenCommandDispatcher === 'undefined') {
+    throw new Error('Command dispatcher not loaded');
+  }
+
+  const { Command } = self.qwenCommandDispatcher;
 
 class PingCommand extends Command {
   constructor(logger) {
@@ -85,3 +91,5 @@ if (typeof module !== 'undefined' && module.exports) {
     GetSecurityAuditCommand,
   };
 }
+
+})(); // End of IIFE

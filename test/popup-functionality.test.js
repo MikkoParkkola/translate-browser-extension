@@ -26,27 +26,32 @@ const mockChrome = {
   },
   runtime: {
     getURL: jest.fn((url) => url),
-    sendMessage: jest.fn((message) => {
+    sendMessage: jest.fn((message, cb) => {
+      let result = {};
       if (message.action === 'getProviders') {
-        return Promise.resolve({
+        result = {
           providers: [
             { id: 'qwen', name: 'Qwen' },
             { id: 'google', name: 'Google' },
             { id: 'deepl', name: 'DeepL' },
             { id: 'openai', name: 'OpenAI' }
           ]
-        });
+        };
+      } else if (message.action === 'home:quick-translate') {
+        result = { success: true };
       }
-      if (message.action === 'home:quick-translate') {
-        return Promise.resolve({ success: true });
-      }
-      return Promise.resolve({});
+      if (typeof cb === 'function') cb(result);
+      return Promise.resolve(result);
     }),
     openOptionsPage: jest.fn(),
     lastError: null
   },
   tabs: {
-    query: jest.fn(() => Promise.resolve([{ id: 1 }])),
+    query: jest.fn((queryInfo, cb) => {
+      const result = [{ id: 1 }];
+      if (typeof cb === 'function') cb(result);
+      return Promise.resolve(result);
+    }),
     sendMessage: jest.fn(() => Promise.resolve())
   }
 };
@@ -196,7 +201,7 @@ describe('Popup Functionality', () => {
     await Popup.handleTranslate();
     
     // Check that the translation message was sent to background script
-    expect(mockChrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'home:quick-translate' });
+    expect(mockChrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'home:quick-translate' }, expect.any(Function));
     
     // Check that progress tracking was started
     expect(global.window.TranslationProgress.startTranslationSession).toHaveBeenCalled();

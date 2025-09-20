@@ -3,6 +3,12 @@
  * Analyzes page content, user history, and context to suggest optimal language pairs
  */
 
+(function() {
+  // Prevent duplicate loading
+  if (typeof window !== 'undefined' && window.IntelligentLanguageSelection) {
+    return;
+  }
+
 const IntelligentLanguageSelection = {
   // Cache for analysis results
   analysisCache: new Map(),
@@ -720,3 +726,5 @@ if (typeof window !== 'undefined') {
 if (typeof module !== 'undefined') {
   module.exports = IntelligentLanguageSelection;
 }
+
+})(); // End of IIFE

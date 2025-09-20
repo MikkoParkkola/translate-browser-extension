@@ -11,7 +11,9 @@
 
   async function runBenchmark() {
     if (!chrome?.storage?.sync) return { error: 'no storage' };
-    const { providerOrder = [], providers = {} } = await new Promise(r => chrome.storage.sync.get({ providerOrder: [], providers: {} }, r));
+    const { providerOrder = [], providers = {} } = await new Promise(r => {
+      chrome.storage.sync.get({ providerOrder: [], providers: {} }, r);
+    });
     const order = providerOrder.length ? providerOrder : Object.keys(providers);
     const results = {};
     for (const name of order) {

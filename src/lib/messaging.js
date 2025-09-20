@@ -4,8 +4,10 @@
 
   const Actions = new Set([
     'translate','ping','get-usage-log','set-config','clear-remote-tm','tm-get-all','tm-clear','tm-import','tm-stats',
-    'debug','usage','metrics','tm-cache-metrics','quota','detect','translation-status','get-status','get-stats',
+    'debug','get-security-audit','usage','metrics','tm-cache-metrics','quota','detect','translation-status','get-status','get-stats',
     'recalibrate','ensure-start','home:init','home:get-usage','home:quick-translate','home:auto-translate','navigate',
+    // Diagnostics & permissions
+    'testTranslation','debug-info','permissions-check','permissions-request'
   ]);
 
   function validateMessage(msg){

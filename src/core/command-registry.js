@@ -129,6 +129,12 @@ async function initializeCommands(dispatcher, dependencies) {
     });
   }
 
+  // Load and register testing/diagnostic commands
+  if (self.qwenTestingCommands) {
+    const { TestTranslationCommand } = self.qwenTestingCommands;
+    dispatcher.registerCommand('testTranslation', new TestTranslationCommand(handleTranslate, logger));
+  }
+
   logger?.info(`Command registry initialized with ${dispatcher.getRegisteredCommands().length} commands`);
 }
 

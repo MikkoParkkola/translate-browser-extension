@@ -86,19 +86,33 @@ class CommandDispatcher {
         return true;
       }
 
+      const sanitize = (obj) => {
+        try {
+          return JSON.parse(JSON.stringify(obj, (k, v) => {
+            if (typeof v === 'function') return undefined;
+            if (v && typeof v === 'object') {
+              if (v instanceof Map) return Object.fromEntries(v);
+              if (v instanceof Set) return Array.from(v);
+            }
+            if (typeof v === 'bigint') return Number(v);
+            return v;
+          }));
+        } catch (_) { return { error: 'Internal error' }; }
+      };
+
       // Execute command with error handling
       const result = await this.executeCommand(command, msg, sender);
       
       // Handle async responses
       if (result instanceof Promise) {
         result
-          .then(response => sendResponse(response))
+          .then(response => sendResponse(sanitize(response)))
           .catch(error => {
             this.logger?.error(`Command error for action ${msg.action}:`, error);
             sendResponse({ error: error.message || 'Command execution failed' });
           });
       } else {
-        sendResponse(result);
+        sendResponse(sanitize(result));
       }
 
       return true;

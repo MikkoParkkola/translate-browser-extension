@@ -5,11 +5,17 @@
  * importing data, and statistics.
  */
 
-if (typeof self.qwenCommandDispatcher === 'undefined') {
-  throw new Error('Command dispatcher not loaded');
-}
+(function() {
+  // Prevent duplicate loading
+  if (typeof self.qwenTranslationMemoryCommands !== 'undefined') {
+    return;
+  }
 
-const { Command } = self.qwenCommandDispatcher;
+  if (typeof self.qwenCommandDispatcher === 'undefined') {
+    throw new Error('Command dispatcher not loaded');
+  }
+
+  const { Command } = self.qwenCommandDispatcher;
 
 class ClearRemoteTMCommand extends Command {
   constructor() {
@@ -116,3 +122,5 @@ if (typeof module !== 'undefined' && module.exports) {
     TMCacheMetricsCommand,
   };
 }
+
+})(); // End of IIFE

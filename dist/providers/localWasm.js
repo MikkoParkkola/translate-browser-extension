@@ -1,5 +1,12 @@
 ;(function () {
 let modelPromise;
+const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwenLogger.create) ? 
+              window.qwenLogger.create('provider:localWasm') :
+              (typeof self !== 'undefined' && self.qwenLogger && self.qwenLogger.create) ?
+              self.qwenLogger.create('provider:localWasm') : console;
+const errorHandler = (typeof window !== 'undefined' && window.qwenProviderErrorHandler) ||
+                   (typeof self !== 'undefined' && self.qwenProviderErrorHandler) ||
+                   (typeof require !== 'undefined' ? require('../core/provider-error-handler') : null);
 
 async function loadModel() {
   if (!modelPromise) {
@@ -18,20 +25,42 @@ async function loadModel() {
 }
 
 async function translate({ text, source, target, debug }) {
-  const model = await loadModel();
-  if (!model || typeof model.translate !== 'function') {
-    throw new Error('Local model not available');
+  try {
+    const model = await loadModel();
+    if (!model || typeof model.translate !== 'function') {
+      if (errorHandler) {
+        errorHandler.handleResponseError('Local model not available', 
+          { provider: 'localWasm', logger });
+      }
+      throw new Error('Local model not available');
+    }
+    if (debug) {
+      console.log('QTDEBUG: local WASM translate', { text, source, target });
+    }
+    const out = await model.translate(text, { source, target });
+    const result = typeof out === 'string' ? out : out.text;
+    if (!result) {
+      if (errorHandler) {
+        errorHandler.handleResponseError('Local model returned empty result', 
+          { provider: 'localWasm', logger, response: out });
+      }
+      throw new Error('Local model returned empty result');
+    }
+    return { text: result };
+  } catch (error) {
+    if (errorHandler) {
+      errorHandler.handleNetworkError(error, { provider: 'localWasm', logger });
+    }
+    throw error;
   }
-  if (debug) {
-    console.log('QTDEBUG: local WASM translate', { text, source, target });
-  }
-  const out = await model.translate(text, { source, target });
-  const result = typeof out === 'string' ? out : out.text;
-  return { text: result };
 }
 
+// Wrap main functions with standardized error handling
+const wrappedTranslate = errorHandler ? 
+  errorHandler.wrapProviderOperation(translate, { provider: 'localWasm', logger }) : translate;
+
 const provider = {
-  translate,
+  translate: wrappedTranslate,
   label: 'Local WASM',
   configFields: [],
   throttle: { requestLimit: 1, windowMs: 1000 },

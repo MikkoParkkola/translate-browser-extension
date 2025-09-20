@@ -58,6 +58,36 @@ const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwe
     };
   }
 
+  let configManagerInstance = null;
+  try {
+    if (typeof require === 'function') {
+      const cmModule = require('./core/config-manager.js');
+      configManagerInstance = cmModule?.configManager || cmModule?.default || null;
+    }
+  } catch (error) {
+    logger.warn('Config manager module unavailable, using legacy defaults', error);
+    configManagerInstance = null;
+  }
+
+  const applyManagerDefaults = (config) => {
+    if (!configManagerInstance || typeof configManagerInstance.mergeWithDefaults !== 'function') {
+      return config;
+    }
+    try {
+      const merged = configManagerInstance.mergeWithDefaults({ ...config });
+      if (typeof configManagerInstance.validateConfig === 'function') {
+        const validation = configManagerInstance.validateConfig(merged);
+        if (validation?.errors?.length) {
+          validation.errors.forEach(err => logger.warn('Config validation error:', err));
+        }
+      }
+      return merged;
+    } catch (error) {
+      logger.warn('Failed to apply config manager defaults:', error);
+      return config;
+    }
+  };
+
   const TRANSLATE_TIMEOUT_MS = 20000;
 
   const defaultCfg = {
@@ -183,8 +213,9 @@ const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwe
                 { operation: 'migrateConfig', module: 'config' }, 
                 defaultCfg
               )();
+              const normalized = applyManagerDefaults(migrated);
               
-              chrome.storage.sync.set(migrated, () => {
+              chrome.storage.sync.set(normalized, () => {
                 if (chrome.runtime.lastError) {
                   // Log but don't fail - we can still return the migrated config
                   errorHandler.handle(
@@ -193,7 +224,7 @@ const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwe
                     null
                   );
                 }
-                resolve(migrated);
+                resolve(normalized);
               });
             });
           } catch (error) {
@@ -207,17 +238,19 @@ const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwe
 
     // For local testing (pdfViewer.html)
     if (typeof window !== 'undefined' && window.qwenConfig) {
-      return Promise.resolve(errorHandler.safe(() => ({ ...defaultCfg, ...window.qwenConfig }), 
+      const local = errorHandler.safe(() => ({ ...defaultCfg, ...window.qwenConfig }), 
         { operation: 'loadLocalConfig', module: 'config' }, 
         defaultCfg
-      )());
+      )();
+      return Promise.resolve(applyManagerDefaults(local));
     }
 
     // Fallback for other environments (like Node.js for jest tests)
-    return Promise.resolve(errorHandler.safe(() => migrate(), 
+    const fallback = errorHandler.safe(() => migrate(), 
       { operation: 'loadFallbackConfig', module: 'config' }, 
       defaultCfg
-    )());
+    )();
+    return Promise.resolve(applyManagerDefaults(fallback));
   }
 
   function qwenSaveConfig(cfg) {

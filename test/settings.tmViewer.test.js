@@ -130,7 +130,11 @@ describe('settings TM viewer', () => {
     Object.defineProperty(fileInput, 'files', { value: [file] });
     fileInput.dispatchEvent(new Event('change'));
     await flush();
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'tm-import', entries: [{ k: 'b', text: '2' }] }, expect.any(Function));
+    expect(
+      chrome.runtime.sendMessage.mock.calls.some(
+        ([msg]) => msg && msg.action === 'tm-import' && JSON.stringify(msg.entries) === JSON.stringify([{ k: 'b', text: '2' }])
+      )
+    ).toBe(true);
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'tm-stats' }, expect.any(Function));
   });
 });

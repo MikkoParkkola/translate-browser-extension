@@ -94,6 +94,20 @@
   color: var(--text-primary);
 }
 
+#productName {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+#productAuthor {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  opacity: 0.85;
+}
+
 .by-author {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
@@ -105,6 +119,13 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+.product-meta {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+  gap: 2px;
 }
 
 .icon-button {

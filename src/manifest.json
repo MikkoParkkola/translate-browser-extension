@@ -13,6 +13,7 @@
     "contextMenus"
   ],
   "host_permissions": [
+    "<all_urls>",
     "https://dashscope-intl.aliyuncs.com/*",
     "https://api.openai.com/*",
     "https://api.deepl.com/*",
@@ -21,9 +22,7 @@
     "https://generativelanguage.googleapis.com/*",
     "https://api.mistral.ai/*"
   ],
-  "optional_host_permissions": [
-    "<all_urls>"
-  ],
+  "optional_host_permissions": [],
   "background": {
     "service_worker": "background.js"
   },
@@ -50,6 +49,11 @@
         "config.js",
         "throttle.js",
         "core/security.js",
+        "core/dom-scanner.js",
+        "core/ui-manager.js",
+        "core/translation-batcher.js",
+        "core/translation-processor.js",
+        "core/content-script-coordinator.js",
         "styles/contentScript.css"
       ],
       "matches": [

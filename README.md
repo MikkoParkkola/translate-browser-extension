@@ -146,6 +146,10 @@ npm run test:e2e
 
 These tests launch a headless browser to open `src/qa/compare.html`, render two PDFs via `pdf.js`, and compute a visual diff score. The page also supports automation via query params: `?src1=/path/A.pdf&src2=/path/B.pdf&diff=1&autoload=1`, and exposes `window.diffScore` (0..1, lower is better).
 
+### Building the extension
+
+`dist/` is no longer tracked in git. Run `npm run build` whenever you need to regenerate the unpacked extension bundle before loading it in Chrome or Safari development environments.
+
 ### Provider registry & throttling
 
 Built-in providers (DashScope, OpenAI, Mistral, OpenRouter, Gemini, Anthropic, DeepL, Google, Qwen and Local WASM) are registered through `qwenProviders.initProviders()`. This initializer is no longer invoked automatically; call it before translating if you rely on the default set. `qwenProviders.isInitialized()` reports whether defaults have been loaded. Tests or host applications may create isolated registries with `qwenProviders.createRegistry()` and pre-register custom providers before calling `initProviders()` to avoid overrides. Each provider may expose a `throttle` config and receives its own rate-limit queue created via `createThrottle`, with optional per-context limits (for example, separate queues for streaming vs. standard requests) to tune burst behavior.

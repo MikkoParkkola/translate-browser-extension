@@ -29,7 +29,36 @@ function applyProviderConfig(provider, doc = document) {
   });
 }
 
-function loadProviderConfig() {
+let providerStore;
+try {
+  if (typeof window !== 'undefined' && window.qwenProviderStore) {
+    providerStore = window.qwenProviderStore;
+  } else if (typeof self !== 'undefined' && self.qwenProviderStore) {
+    providerStore = self.qwenProviderStore;
+  } else {
+    providerStore = require('./lib/providerStore');
+  }
+} catch (error) {
+  providerStore = null;
+}
+
+function legacyLoad(defaults) {
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+    return new Promise(resolve => {
+      chrome.storage.sync.get(defaults, resolve);
+    });
+  }
+  return Promise.resolve({ ...defaults });
+}
+
+async function loadProviderConfig() {
+  if (providerStore && providerStore.loadConfig) {
+    try {
+      return await providerStore.loadConfig({ includeSecrets: true });
+    } catch (error) {
+      console.warn('[providerConfig] providerStore.loadConfig failed, falling back', error);
+    }
+  }
   const defaults = {
     provider: 'qwen',
     providers: {},
@@ -47,15 +76,18 @@ function loadProviderConfig() {
     costPerOutputToken: undefined,
     weight: undefined,
   };
-  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
-    return new Promise(resolve => {
-      chrome.storage.sync.get(defaults, resolve);
-    });
-  }
-  return Promise.resolve({ ...defaults });
+  return legacyLoad(defaults);
 }
 
-function saveProviderConfig(cfg) {
+async function saveProviderConfig(cfg) {
+  if (providerStore && providerStore.saveConfig) {
+    try {
+      await providerStore.saveConfig(cfg || {});
+      return;
+    } catch (error) {
+      console.warn('[providerConfig] providerStore.saveConfig failed, falling back', error);
+    }
+  }
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
     const provider = cfg.provider || 'qwen';
     const providers = cfg.providers || {};
@@ -80,9 +112,8 @@ function saveProviderConfig(cfg) {
       costPerOutputToken: primary.costPerOutputToken,
       weight: primary.weight,
     };
-    return new Promise(resolve => chrome.storage.sync.set(toSave, resolve));
+    await new Promise(resolve => chrome.storage.sync.set(toSave, resolve));
   }
-  return Promise.resolve();
 }
 
 const api = { applyProviderConfig, loadProviderConfig, saveProviderConfig };

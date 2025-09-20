@@ -4,11 +4,17 @@
  * Manages translation providers, quota checks, and language detection functionality.
  */
 
-if (typeof self.qwenCommandDispatcher === 'undefined') {
-  throw new Error('Command dispatcher not loaded');
-}
+(function() {
+  // Prevent duplicate loading
+  if (typeof self.qwenProviderCommands !== 'undefined') {
+    return;
+  }
 
-const { Command } = self.qwenCommandDispatcher;
+  if (typeof self.qwenCommandDispatcher === 'undefined') {
+    throw new Error('Command dispatcher not loaded');
+  }
+
+  const { Command } = self.qwenCommandDispatcher;
 
 class GetProvidersCommand extends Command {
   constructor() {
@@ -114,3 +120,5 @@ if (typeof module !== 'undefined' && module.exports) {
     DetectCommand,
   };
 }
+
+})(); // End of IIFE
