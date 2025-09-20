@@ -612,6 +612,14 @@ const Popup = {
   updateStatusBadgeFromUsage(usage, offline = false) {
     const el = document.getElementById('status-badge');
     if (!el) return;
+    // Collapse usage section when there is no activity
+    try {
+      const stats = document.querySelector('.stats-section');
+      if (stats && usage) {
+        const hasAny = (usage.requests||0) > 0 || (usage.tokens||0) > 0 || (usage.characters||0) > 0;
+        stats.classList.toggle('is-collapsed', !hasAny);
+      }
+    } catch {}
     if (offline) {
       el.textContent = 'Offline';
       el.style.color = '#d32f2f';

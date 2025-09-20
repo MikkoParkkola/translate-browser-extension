@@ -7,8 +7,8 @@
   color: var(--text-primary);
   margin: 0;
   padding: 0;
-  width: 380px;
-  min-height: 500px;
+  width: 360px;
+  min-height: 420px;
   overflow-x: hidden;
   line-height: var(--line-height-normal);
 }
@@ -17,7 +17,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: linear-gradient(135deg, var(--color-primary-50) 0%, var(--background) 50%);
+  background: var(--background);
 }
 
 /* ========== Loading Overlay ========== */
@@ -64,7 +64,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-6) var(--space-6) var(--space-4);
+  padding: var(--space-4) var(--space-4) var(--space-3);
   border-bottom: 1px solid var(--border-light);
   background: var(--surface);
 }
@@ -79,8 +79,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   background: linear-gradient(135deg, var(--primary), var(--color-primary-700));
   border-radius: var(--radius-lg);
   color: white;
@@ -155,10 +155,10 @@
 /* ========== Main Content ========== */
 .popup-main {
   flex: 1;
-  padding: var(--space-6);
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-4);
 }
 
 /* ========== Language Selection ========== */
@@ -294,7 +294,7 @@
 
 /* ========== Feature Toggle ========== */
 .feature-toggle {
-  padding: var(--space-5);
+  padding: var(--space-4);
   background: var(--surface-raised);
   border-radius: var(--radius-xl);
   border: 1px solid var(--border-light);
