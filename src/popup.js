@@ -255,6 +255,15 @@ const Popup = {
       if (window.TranslationProgress) {
         window.TranslationProgress.addProgressCallback(this.handleTranslationProgress.bind(this));
       }
+      // Adjust popup height to reduce scrolling
+      try {
+        const fit = () => {
+          const maxH = 600;
+          const h = Math.min(maxH, document.body.scrollHeight + 12);
+          if (typeof window.resizeTo === 'function') window.resizeTo(window.outerWidth || 420, h);
+        };
+        fit(); setTimeout(fit, 120); setTimeout(fit, 400);
+      } catch {}
     } catch (error) {
       logger.warn('Failed to initialize enhancements:', error);
     }
@@ -307,6 +316,8 @@ const Popup = {
       const r = document.getElementById('err-retry');
       const s = document.getElementById('err-switch-cheap');
       const ebtn = document.getElementById('err-edit-provider');
+      const close = document.getElementById('err-close');
+      if (close) close.onclick = () => { panel.style.display = 'none'; };
       if (r) r.onclick = () => { panel.style.display = 'none'; this.handleTranslate(); };
       if (s) s.onclick = () => { panel.style.display = 'none'; applyStrategyPreset('cheap'); };
       if (ebtn) ebtn.onclick = () => {
@@ -571,6 +582,14 @@ const Popup = {
         // Update elements for compatibility with existing tests
         this.updateLegacyElements(response);
         this.updateActiveConfig(response);
+        // Provider/setup gate
+        try {
+          const configured = !!response.apiKey;
+          const gate = document.getElementById('setup-gate');
+          const mainSections = document.querySelectorAll('.language-selection, [aria-label="Translate actions"], .stats-section');
+          if (gate) gate.style.display = configured ? 'none' : '';
+          mainSections.forEach(el => { if (el) el.style.display = configured ? '' : 'none'; });
+        } catch {}
       }
     } catch (error) {
       logger.error('Failed to initialize with background:', error);
@@ -1232,6 +1251,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       });
     }
+  } catch {}
+
+  // Wire visible Settings buttons
+  try {
+    const openers = [
+      document.getElementById('settings-open'),
+      document.getElementById('open-settings-primary'),
+      document.getElementById('settings-button')
+    ];
+    openers.forEach(btn => {
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        const url = (chromeBridge && chromeBridge.runtime && chromeBridge.runtime.getURL)
+          ? chromeBridge.runtime.getURL('popup/settings.html')
+          : 'popup/settings.html';
+        try { window.open(url, '_blank', 'noopener'); } catch { location.href = url; }
+      });
+    });
   } catch {}
 });
 

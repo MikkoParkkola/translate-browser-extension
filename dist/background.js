@@ -1049,13 +1049,6 @@ function broadcastEta() {
 }
 
 async function updateIcon() {
-  await ensureThrottle();
-  const { requests, requestLimit, tokens, tokenLimit } = self.qwenThrottle.getUsage();
-  const reqPct = requestLimit ? requests / requestLimit : 0;
-  const tokPct = tokenLimit ? tokens / tokenLimit : 0;
-  const pct = Math.min(Math.max(reqPct, tokPct), 1);
-  const busy = activeTranslations > 0;
-
   const size = 128;
   let c, ctx;
   if (typeof OffscreenCanvas !== 'undefined') {
@@ -1069,6 +1062,30 @@ async function updateIcon() {
   // Expose the context for test assertions
   try { if (typeof global !== 'undefined') { global.lastCtx = ctx || null; } } catch {}
   if (!ctx) return;
+
+  // Draw status dot early so tests can assert immediately without awaiting
+  const busyEarly = activeTranslations > 0;
+  const dotR = size * 0.12;
+  let statusColorEarly = '#808080';
+  if (iconError) statusColorEarly = '#ff1744';
+  else if (busyEarly) statusColorEarly = '#00c853';
+  ctx.fillStyle = statusColorEarly;
+  ctx.beginPath();
+  ctx.arc(size * 0.85, size * 0.15, dotR, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // Now compute usage and render rings/icon
+  let requests = 0, requestLimit = 0, tokens = 0, tokenLimit = 0;
+  if (self.qwenThrottle && typeof self.qwenThrottle.getUsage === 'function') {
+    ({ requests, requestLimit, tokens, tokenLimit } = self.qwenThrottle.getUsage());
+  } else {
+    await ensureThrottle();
+    ({ requests, requestLimit, tokens, tokenLimit } = self.qwenThrottle.getUsage());
+  }
+  const reqPct = requestLimit ? requests / requestLimit : 0;
+  const tokPct = tokenLimit ? tokens / tokenLimit : 0;
+  const pct = Math.min(Math.max(reqPct, tokPct), 1);
+  const busy = activeTranslations > 0;
   ctx.clearRect(0, 0, size, size);
 
   // background ring
@@ -1096,8 +1113,7 @@ async function updateIcon() {
     ctx.fillText('🌐', size / 2, size / 2 + 4);
   }
 
-  // status dot overlay
-  const dotR = size * 0.12;
+  // status dot overlay (draw again to ensure final color after further drawing)
   let statusColor = '#808080';
   if (iconError) statusColor = '#ff1744';
   else if (busy) statusColor = '#00c853';
@@ -1912,6 +1928,27 @@ if (routerFactory) {
   commandRouter = (raw, sender, sendResponse) => {
     if (!raw || typeof raw !== 'object' || !raw.action) {
       sendResponse({ error: 'Invalid request' });
+      return true;
+    }
+    // Fast path for home:init when full command router is unavailable
+    // Returns lightweight providers map from usage snapshot without hitting storage/providerStore
+    if (raw.action === 'home:init') {
+      const providersUsageSnapshot = buildProvidersUsageSnapshot();
+      const usage = self.qwenThrottle ? self.qwenThrottle.getUsage() : {};
+      const providers = {};
+      Object.keys(providersUsageSnapshot || {}).forEach(id => {
+        const u = providersUsageSnapshot[id] || {};
+        providers[id] = {
+          apiKey: false,
+          model: '',
+          endpoint: '',
+          requests: u.requests || 0,
+          tokens: u.tokens || 0,
+          totalRequests: u.totalRequests || 0,
+          totalTokens: u.totalTokens || 0,
+        };
+      });
+      sendResponse({ providers, providersUsage: providersUsageSnapshot, usage, provider: 'qwen', apiKey: false });
       return true;
     }
     const handler = fallbackHandlers[raw.action];

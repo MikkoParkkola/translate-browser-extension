@@ -65,16 +65,25 @@
             <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" stroke="currentColor" stroke-width="2"/>
           </svg>
         </button>
-        <button id="settings-button" class="icon-button" aria-label="Open settings">
+        <button id="settings-button" class="icon-button" aria-label="Open settings" title="Settings">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
             <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51h.09a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="2"/>
           </svg>
         </button>
+        <button id="settings-open" class="btn btn--secondary btn--sm" aria-label="Open settings page" title="Open Settings" style="margin-left:6px;">Settings</button>
       </div>
     </header>
 
     <main class="popup-main">
+      <!-- Setup Gate -->
+      <div id="setup-gate" class="alert alert--info" style="display:none;">
+        <div class="alert__content">
+          <strong>Connect a provider</strong>
+          <p>Please add your API key and model to start translating.</p>
+          <button id="open-settings-primary" class="btn btn--primary btn--sm">Open Settings</button>
+        </div>
+      </div>
       <!-- Language Selection -->
       <section class="language-selection" aria-label="Language selection">
         <div class="language-item">
@@ -198,6 +207,22 @@
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
 
+  <!-- Error Panel -->
+  <div id="error-panel" class="error-panel" data-test="error-panel" style="display:none;">
+    <div class="error-title">Translation Error
+      <button id="err-close" class="btn btn--ghost btn--sm" aria-label="Close" style="float:right;">✕</button>
+    </div>
+    <div class="error-body">
+      <div id="error-message">An unexpected error occurred.</div>
+      <div id="error-detail" class="error-detail" style="font-size:12px;opacity:0.8;margin-top:4px;"></div>
+    </div>
+    <div class="error-actions" style="display:flex;gap:6px;margin-top:8px;">
+      <button id="err-retry" class="btn btn--primary btn--sm">Retry</button>
+      <button id="err-switch-cheap" class="btn btn--secondary btn--sm">Switch to Cheapest</button>
+      <button id="err-edit-provider" class="btn btn--ghost btn--sm">Edit Provider</button>
+    </div>
+  </div>
+
   <!-- Load dependencies -->
   <script src="lib/logger.js"></script>
   <!-- Popup environment and helpers must load before popup.js in browser context -->
@@ -214,16 +239,3 @@
   <script src="popup.js"></script>
 </body>
 </html>
-    <!-- Error Panel -->
-    <div id="error-panel" class="error-panel" data-test="error-panel" style="display:none;">
-      <div class="error-title">Translation Error</div>
-      <div class="error-body">
-        <div id="error-message">An unexpected error occurred.</div>
-        <div id="error-detail" class="error-detail" style="font-size:12px;opacity:0.8;margin-top:4px;"></div>
-      </div>
-      <div class="error-actions" style="display:flex;gap:6px;margin-top:8px;">
-        <button id="err-retry" class="btn btn--primary btn--sm">Retry</button>
-        <button id="err-switch-cheap" class="btn btn--secondary btn--sm">Switch to Cheapest</button>
-        <button id="err-edit-provider" class="btn btn--ghost btn--sm">Edit Provider</button>
-      </div>
-    </div>
