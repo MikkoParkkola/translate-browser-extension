@@ -34,7 +34,19 @@ const getFallbackLanguages = languageHelpers?.getFallbackLanguages
   ]);
 
 // Initialize logger
-const logger = createPopupLogger('popup');
+  const logger = createPopupLogger('popup');
+  // Surface version/build in UI
+  try {
+    const manifest = (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest) ? chrome.runtime.getManifest() : { version: '' };
+    const nameEl = document.getElementById('productName');
+    if (nameEl && manifest.version) {
+      const ver = document.createElement('span');
+      ver.id = 'productVersion';
+      ver.style.cssText = 'margin-left:6px;font-size:11px;opacity:.7;';
+      ver.textContent = `v${manifest.version}`;
+      nameEl.after(ver);
+    }
+  } catch {}
 
 // Initialize error handler first
 let errorHandler = null;
