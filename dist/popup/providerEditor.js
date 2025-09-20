@@ -31,15 +31,18 @@
     refresh = onDone;
     const existing = (cfg.providers && cfg.providers[id]) || {};
     
-    // Try to get secure API key first, fall back to legacy
+    // Try to get secure API key via providerStore (unified storage), fall back to legacy
     let apiKey = existing.apiKey || '';
-    if (window.qwenSecureStorage?.secureStorage) {
-      try {
-        const secureKey = await window.qwenSecureStorage.secureStorage.getSecure(`provider_${id}_apiKey`);
+    try {
+      if (window.qwenProviderStore?.getProviderSecret) {
+        const s = await window.qwenProviderStore.getProviderSecret(id);
+        if (s) apiKey = s;
+      } else if (window.qwenSecureStorage?.secureStorage) {
+        const secureKey = await window.qwenSecureStorage.secureStorage.getSecure(`provider:${id}`);
         if (secureKey) apiKey = secureKey;
-      } catch (error) {
-        console.warn(`Failed to load secure API key for ${id}:`, error);
       }
+    } catch (error) {
+      console.warn(`Failed to load API key for ${id}:`, error);
     }
     
     apiKeyEl.value = apiKey;
@@ -102,10 +105,33 @@
     const costInRaw = num(costPerInputTokenEl.value.trim());
     const costOutRaw = num(costPerOutputTokenEl.value.trim());
     
-    // Store API key securely if available, otherwise use legacy storage
-    if (apiKey && window.qwenSecureStorage?.secureStorage) {
+    // Store API key via providerStore if available, otherwise secure or legacy storage
+    if (apiKey && window.qwenProviderStore?.setProviderSecret) {
       try {
-        await window.qwenSecureStorage.secureStorage.setSecure(`provider_${currentId}_apiKey`, apiKey);
+        await window.qwenProviderStore.setProviderSecret(currentId, apiKey);
+      } catch (error) {
+        console.error(`providerStore.setProviderSecret failed for ${currentId}:`, error);
+        if (window.qwenSecureStorage?.secureStorage) {
+          await window.qwenSecureStorage.secureStorage.setSecure(`provider:${currentId}`, apiKey);
+        }
+      }
+      // Remove API key from regular config to ensure it's not stored in plaintext
+      providers[currentId] = {
+        ...(providers[currentId] || {}),
+        apiEndpoint,
+        model: (modelSelectEl.style.display !== 'none' ? modelSelectEl.value : modelInputEl.value).trim(),
+        requestLimit: num(reqLimitEl.value.trim()),
+        tokenLimit: num(tokLimitEl.value.trim()),
+        charLimit: num(charLimitEl.value.trim()),
+        strategy: strategyEl.value,
+        costPerInputToken: costInRaw == null ? undefined : costInRaw / 1e6,
+        costPerOutputToken: costOutRaw == null ? undefined : costOutRaw / 1e6,
+        weight: num(weightEl.value.trim()),
+      };
+      if (providers[currentId].apiKey) delete providers[currentId].apiKey;
+    } else if (apiKey && window.qwenSecureStorage?.secureStorage) {
+      try {
+        await window.qwenSecureStorage.secureStorage.setSecure(`provider:${currentId}`, apiKey);
         // Remove API key from regular config to ensure it's not stored in plaintext
         providers[currentId] = {
           ...(providers[currentId] || {}),
@@ -122,9 +148,7 @@
         };
         
         // Also remove from legacy storage
-        if (providers[currentId].apiKey) {
-          delete providers[currentId].apiKey;
-        }
+        if (providers[currentId].apiKey) delete providers[currentId].apiKey;
       } catch (error) {
         console.error(`Failed to store secure API key for ${currentId}:`, error);
         // Fall back to legacy storage if secure storage fails

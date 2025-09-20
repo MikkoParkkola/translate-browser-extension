@@ -302,10 +302,13 @@ async function getDashscopeApiKey() {
     const key = config?.providers?.dashscope?.apiKey || '';
     if (key) return key;
   } catch {}
-  // Try secure storage
+  // Try providerStore unified secret storage
   try {
-    if (window.qwenSecureStorage?.secureStorage) {
-      const k = await window.qwenSecureStorage.secureStorage.getSecure('provider_dashscope_apiKey');
+    if (window.qwenProviderStore?.getProviderSecret) {
+      const s = await window.qwenProviderStore.getProviderSecret('dashscope');
+      if (s) return s;
+    } else if (window.qwenSecureStorage?.secureStorage) {
+      const k = await window.qwenSecureStorage.secureStorage.getSecure('provider:dashscope');
       if (k) return k;
     }
   } catch {}
