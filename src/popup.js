@@ -197,7 +197,23 @@ const Popup = {
 
   async checkPermissionsAndBanner() {
     try {
-      const res = await sendMessage('permissions-check');
+      let res = await sendMessage('permissions-check');
+      // If background didn't answer, derive from manifest/Chrome API
+      if (!res || typeof res.granted === 'undefined') {
+        try {
+          if (chrome?.permissions?.contains) {
+            const granted = await new Promise(resolve => {
+              chrome.permissions.contains({ origins: ['<all_urls>'] }, r => resolve(!!r));
+            });
+            res = { granted };
+          } else {
+            // Default to granted when extension already ships <all_urls>
+            res = { granted: true };
+          }
+        } catch {
+          res = { granted: true };
+        }
+      }
       const banner = document.getElementById('permission-banner');
       const grantBtn = document.getElementById('grant-permission');
       if (banner && grantBtn) {
