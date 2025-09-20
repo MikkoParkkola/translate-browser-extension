@@ -135,6 +135,24 @@ async function initializeCommands(dispatcher, dependencies) {
     dispatcher.registerCommand('testTranslation', new TestTranslationCommand(handleTranslate, logger));
   }
 
+  // Bridge high-level actions to existing fallback handlers if available
+  try {
+    const { Command } = self.qwenCommandDispatcher || {};
+    const fh = self.fallbackHandlers;
+    if (Command && fh) {
+      class ProxyCommand extends Command {
+        constructor(action) { super(action, {}); this.action = action; }
+        async execute(msg, sender) {
+          const handler = fh[this.action];
+          if (typeof handler !== 'function') return { error: `Service not available: ${this.action}` };
+          return await handler({ msg, sender, state: (self.ensureTestState ? self.ensureTestState() : {}) });
+        }
+      }
+      ['debug-info','home:init','home:quick-translate','home:auto-translate','permissions-check','permissions-request']
+        .forEach(a => { try { dispatcher.registerCommand(a, new ProxyCommand(a)); } catch {} });
+    }
+  } catch {}
+
   logger?.info(`Command registry initialized with ${dispatcher.getRegisteredCommands().length} commands`);
 }
 
