@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Settings</title>
-  <link rel="stylesheet" href="../styles/modern.css">
-  <link rel="stylesheet" href="../styles/apple.css">
+  <link rel="stylesheet" href="../styles/design-system.css">
+  <link rel="stylesheet" href="../styles/options.css">
 </head>
 <body>
-  <main>
+  <main class="options-body" data-theme="light">
       <section id="themeSection">
         <h3>Theme</h3>
         <label>Style
@@ -32,7 +32,11 @@
       <section id="providerSection">
         <h3>Translation Providers</h3>
         <div id="providerList" class="provider-cards"></div>
-        <button id="addProvider">Add Provider</button>
+        <div class="section-actions" style="display:flex;gap:8px;align-items:center;">
+          <button id="addProvider" class="btn-primary">Add Provider</button>
+          <button id="saveAll" class="btn-secondary" title="Save all changes">Save</button>
+          <span id="saveStatus" class="status" aria-live="polite"></span>
+        </div>
       </section>
       <section id="statsDetails">
         <h3>Usage</h3>
@@ -54,6 +58,7 @@
     <!-- Dependencies required by settings.js -->
     <script src="../lib/logger.js"></script>
     <script src="../lib/providers.js"></script>
+    <script src="../lib/providerStore.js"></script>
     <script src="../providers/index.js"></script>
     <script src="../providerConfig.js"></script>
     <script src="../popup/env.js"></script>

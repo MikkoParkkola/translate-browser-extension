@@ -82,6 +82,18 @@ function setupEventListeners() {
   if (intlBtn) intlBtn.addEventListener('click', () => applyQwenPreset('intl'));
   if (cnBtn) cnBtn.addEventListener('click', () => applyQwenPreset('cn'));
   if (testBtn) testBtn.addEventListener('click', () => testQwenConnection());
+  const saveBtn = document.getElementById('saveAll');
+  if (saveBtn) saveBtn.addEventListener('click', async () => {
+    try {
+      const cfg = await window.qwenProviderConfig.loadProviderConfig();
+      await window.qwenProviderConfig.saveProviderConfig(cfg);
+      const st = document.getElementById('saveStatus');
+      if (st) { st.textContent = 'Saved'; setTimeout(()=> st.textContent = '', 1500); }
+    } catch (e) {
+      const st = document.getElementById('saveStatus');
+      if (st) st.textContent = 'Save failed';
+    }
+  });
   
   setupTabSwitching();
 }
