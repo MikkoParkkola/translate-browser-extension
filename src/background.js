@@ -1075,8 +1075,13 @@ async function updateIcon() {
   ctx.fill();
 
   // Now compute usage and render rings/icon
-  await ensureThrottle();
-  const { requests, requestLimit, tokens, tokenLimit } = self.qwenThrottle.getUsage();
+  let requests = 0, requestLimit = 0, tokens = 0, tokenLimit = 0;
+  if (self.qwenThrottle && typeof self.qwenThrottle.getUsage === 'function') {
+    ({ requests, requestLimit, tokens, tokenLimit } = self.qwenThrottle.getUsage());
+  } else {
+    await ensureThrottle();
+    ({ requests, requestLimit, tokens, tokenLimit } = self.qwenThrottle.getUsage());
+  }
   const reqPct = requestLimit ? requests / requestLimit : 0;
   const tokPct = tokenLimit ? tokens / tokenLimit : 0;
   const pct = Math.min(Math.max(reqPct, tokPct), 1);
@@ -1925,15 +1930,27 @@ if (routerFactory) {
       sendResponse({ error: 'Invalid request' });
       return true;
     }
-    // Fast path in tests to avoid async storage/providerStore timing
-    try {
-      if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test' && raw.action === 'home:init') {
-        const providersUsageSnapshot = buildProvidersUsageSnapshot();
-        const usage = self.qwenThrottle ? self.qwenThrottle.getUsage() : {};
-        sendResponse({ providers: {}, providersUsage: providersUsageSnapshot, usage, provider: 'qwen', apiKey: false });
-        return true;
-      }
-    } catch {}
+    // Fast path for home:init when full command router is unavailable
+    // Returns lightweight providers map from usage snapshot without hitting storage/providerStore
+    if (raw.action === 'home:init') {
+      const providersUsageSnapshot = buildProvidersUsageSnapshot();
+      const usage = self.qwenThrottle ? self.qwenThrottle.getUsage() : {};
+      const providers = {};
+      Object.keys(providersUsageSnapshot || {}).forEach(id => {
+        const u = providersUsageSnapshot[id] || {};
+        providers[id] = {
+          apiKey: false,
+          model: '',
+          endpoint: '',
+          requests: u.requests || 0,
+          tokens: u.tokens || 0,
+          totalRequests: u.totalRequests || 0,
+          totalTokens: u.totalTokens || 0,
+        };
+      });
+      sendResponse({ providers, providersUsage: providersUsageSnapshot, usage, provider: 'qwen', apiKey: false });
+      return true;
+    }
     const handler = fallbackHandlers[raw.action];
     if (typeof handler !== 'function') {
       sendResponse({ error: 'Service not available' });

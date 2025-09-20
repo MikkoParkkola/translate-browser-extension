@@ -905,6 +905,9 @@ const Popup = {
         if (typeof chrome !== 'undefined' && chrome.storage?.sync?.set) {
           chrome.storage.sync.set({ autoTranslate: !!message.enabled }, () => {});
         }
+        if (typeof window !== 'undefined' && window.chrome?.storage?.sync?.set) {
+          window.chrome.storage.sync.set({ autoTranslate: !!message.enabled }, () => {});
+        }
       } catch {}
       this.handleAutoTranslateMessage(message);
     }
@@ -921,6 +924,9 @@ const Popup = {
     try {
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync && typeof chrome.storage.sync.set === 'function') {
         chrome.storage.sync.set({ autoTranslate: message.enabled }, () => {});
+      }
+      if (typeof window !== 'undefined' && window.chrome?.storage?.sync?.set) {
+        window.chrome.storage.sync.set({ autoTranslate: message.enabled }, () => {});
       }
     } catch {}
     
