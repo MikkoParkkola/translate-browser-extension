@@ -19,6 +19,70 @@
                       (typeof require !== 'undefined' ? require('./error-handler') : null);
 
   /**
+   * Provider defaults from design document
+   */
+  const PROVIDER_DEFAULTS = {
+    'qwen-mt-turbo': {
+      name: 'Qwen MT Turbo',
+      type: 'ai-mt',
+      endpoint: 'https://dashscope-intl.aliyuncs.com/api/v1/services/aimt/text-translation/message',
+      model: 'qwen-mt-turbo',
+      features: ['fast', 'cost-effective', 'streaming'],
+      limits: {
+        requests: 100, // per minute
+        characters: 50000, // per minute
+        costPer1K: 0.002
+      },
+      languages: 100,
+      priority: 1,
+      enabled: true
+    },
+    'qwen-mt': {
+      name: 'Qwen MT',
+      type: 'ai-mt',
+      endpoint: 'https://dashscope-intl.aliyuncs.com/api/v1/services/aimt/text-translation/message',
+      model: 'qwen-mt',
+      features: ['high-quality', 'batch-support'],
+      limits: {
+        requests: 50, // per minute
+        characters: 30000, // per minute
+        costPer1K: 0.004
+      },
+      languages: 100,
+      priority: 2,
+      enabled: false
+    },
+    'deepl-free': {
+      name: 'DeepL Free',
+      type: 'traditional-mt',
+      endpoint: 'https://api-free.deepl.com/v2/translate',
+      features: ['high-quality', 'limited-usage'],
+      limits: {
+        requests: 100, // per hour
+        characters: 500000, // per month
+        costPer1K: 0
+      },
+      languages: 30,
+      priority: 3,
+      enabled: false
+    },
+    'deepl-pro': {
+      name: 'DeepL Pro',
+      type: 'traditional-mt',
+      endpoint: 'https://api.deepl.com/v2/translate',
+      features: ['highest-quality', 'unlimited', 'formal-informal'],
+      limits: {
+        requests: 1000, // per minute
+        characters: 1000000, // per minute
+        costPer1K: 0.020
+      },
+      languages: 30,
+      priority: 4,
+      enabled: false
+    }
+  };
+
+  /**
    * Configuration schema definitions
    */
   const CONFIG_SCHEMA = {
@@ -254,7 +318,7 @@
 
       for (const [sectionName, sectionSchema] of Object.entries(this.schema)) {
         if (sectionName === 'providers') {
-          defaultConfig.providers = {};
+          defaultConfig.providers = this.createDefaultProviders();
         } else {
           defaultConfig[sectionName] = {};
           for (const [fieldName, fieldSchema] of Object.entries(sectionSchema)) {
@@ -264,6 +328,73 @@
       }
 
       return defaultConfig;
+    }
+
+    /**
+     * Create default provider configurations
+     */
+    createDefaultProviders() {
+      const providers = {};
+
+      Object.entries(PROVIDER_DEFAULTS).forEach(([providerId, defaults]) => {
+        providers[providerId] = {
+          ...defaults,
+          apiKey: '' // Always start with empty API key for security
+        };
+      });
+
+      return providers;
+    }
+
+    /**
+     * Get enabled providers in priority order
+     */
+    getEnabledProviders(config) {
+      const providers = config.providers || {};
+
+      return Object.entries(providers)
+        .filter(([_, provider]) => provider.enabled && provider.apiKey)
+        .sort(([a], [b]) => {
+          const priorityA = providers[a].priority || 999;
+          const priorityB = providers[b].priority || 999;
+          return priorityA - priorityB;
+        })
+        .map(([id, provider]) => ({ ...provider, id }));
+    }
+
+    /**
+     * Select best provider based on strategy
+     */
+    selectProvider(config, strategy = 'smart', textLength = 0) {
+      const enabled = this.getEnabledProviders(config);
+      if (enabled.length === 0) {
+        return null;
+      }
+
+      switch (strategy) {
+        case 'fast':
+          return enabled.find(p => p.features?.includes('fast')) || enabled[0];
+
+        case 'quality':
+          return enabled.find(p => p.features?.includes('highest-quality')) ||
+                 enabled.find(p => p.features?.includes('high-quality')) ||
+                 enabled[0];
+
+        case 'smart':
+        default:
+          // Smart selection based on text length and capabilities
+          if (textLength < 1000) {
+            return enabled.find(p => p.features?.includes('fast')) || enabled[0];
+          } else if (textLength > 10000) {
+            const suitable = enabled.filter(p =>
+              p.limits?.characters >= textLength * 1.2 // 20% buffer
+            );
+            return suitable.find(p => p.features?.includes('high-quality')) ||
+                   suitable[0] || enabled[0];
+          } else {
+            return enabled[0];
+          }
+      }
     }
 
     /**
@@ -386,7 +517,8 @@
     ConfigManager,
     configManager,
     CONFIG_SCHEMA,
-    PROVIDER_SCHEMA
+    PROVIDER_SCHEMA,
+    PROVIDER_DEFAULTS
   };
 
 }));
