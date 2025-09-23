@@ -10,13 +10,25 @@ class TranslationProcessor {
     this.logger = logger;
     this.security = security;
     this.errorHandler = errorHandler;
-    
+
     // Translation state
     this.abortControllers = new Set();
-    this.translationCache = new Map();
     this.currentConfig = null;
-    
-    // Statistics
+
+    // High-performance LRU cache with memory limits
+    this.cacheConfig = {
+      maxEntries: 5000,
+      maxMemoryMB: 30,
+      ttlMs: 24 * 60 * 60 * 1000, // 24 hour TTL
+      cleanupIntervalMs: 5 * 60 * 1000 // 5 minute cleanup
+    };
+
+    this.translationCache = new Map();
+    this.cacheOrder = new Map(); // Track access order for LRU
+    this.cacheMemorySize = 0;
+    this.lastCleanup = Date.now();
+
+    // Statistics with performance tracking
     this.stats = {
       requests: 0,
       totalRequests: 0,
@@ -24,6 +36,8 @@ class TranslationProcessor {
       words: 0,
       cacheHits: 0,
       cacheMisses: 0,
+      avgProcessingTimeMs: 0,
+      memoryUsageMB: 0,
     };
   }
 
@@ -32,8 +46,20 @@ class TranslationProcessor {
    * @param {Object} config - Translation configuration
    */
   async initialize(config) {
-    this.currentConfig = config;
-    this.logger?.debug('Translation processor initialized with config:', config);
+    const normalized = { ...(config || {}) };
+    normalized.sourceLang = normalized.sourceLang || normalized.sourceLanguage || normalized.source || 'auto';
+    normalized.targetLang = normalized.targetLang || normalized.targetLanguage || normalized.target || 'en';
+    const order = Array.isArray(normalized.providerOrder) ? normalized.providerOrder.filter(Boolean) : [];
+    const ordered = normalized.provider ? [normalized.provider, ...order] : order;
+    normalized.providerOrder = Array.from(new Set(ordered));
+    normalized.endpoints = typeof normalized.endpoints === 'object' && normalized.endpoints !== null ? { ...normalized.endpoints } : {};
+    if (normalized.provider && normalized.apiEndpoint && !normalized.endpoints[normalized.provider]) {
+      normalized.endpoints[normalized.provider] = String(normalized.apiEndpoint);
+    }
+    normalized.failover = normalized.failover !== false;
+    normalized.debug = Boolean(normalized.debug);
+    this.currentConfig = normalized;
+    this.logger?.debug('Translation processor initialized with config:', normalized);
   }
 
   /**
@@ -118,7 +144,7 @@ class TranslationProcessor {
   }
 
   /**
-   * Check cache for translations
+   * Check cache for translations with access tracking
    * @param {string[]} texts - Texts to check
    * @returns {Object} - Cache results
    */
@@ -126,20 +152,32 @@ class TranslationProcessor {
     const cachedResults = {};
     const uncachedTexts = [];
     let cacheHits = 0;
-    
+    const now = Date.now();
+
     for (const text of texts) {
       const cacheKey = this.getCacheKey(text);
-      
-      if (this.translationCache.has(cacheKey)) {
-        cachedResults[text] = this.translationCache.get(cacheKey);
+      const entry = this.translationCache.get(cacheKey);
+
+      if (entry && (now - entry.timestamp) < this.cacheConfig.ttlMs) {
+        // Update access time and count for LRU
+        entry.accessCount++;
+        this.cacheOrder.set(cacheKey, now);
+
+        cachedResults[text] = entry.value;
         cacheHits++;
       } else {
+        // Remove expired entry
+        if (entry) {
+          this.cacheMemorySize -= entry.size;
+          this.translationCache.delete(cacheKey);
+          this.cacheOrder.delete(cacheKey);
+        }
         uncachedTexts.push(text);
       }
     }
-    
+
     this.logger?.debug(`Cache check: ${cacheHits} hits, ${uncachedTexts.length} misses`);
-    
+
     return {
       cachedResults,
       uncachedTexts,
@@ -174,12 +212,26 @@ class TranslationProcessor {
     
     try {
       // Prepare translation options
+      const cfg = this.currentConfig || {};
       const opts = {
         text: texts.join('\n'),
-        source: this.currentConfig?.sourceLang || 'auto',
-        target: this.currentConfig?.targetLang || 'en',
+        source: cfg.sourceLang || 'auto',
+        target: cfg.targetLang || 'en',
+        model: cfg.model,
+        endpoint: cfg.apiEndpoint,
+        provider: cfg.provider,
+        providerOrder: cfg.providerOrder && cfg.providerOrder.length ? cfg.providerOrder : undefined,
+        endpoints: Object.keys(cfg.endpoints || {}).length ? cfg.endpoints : undefined,
+        detector: cfg.detector,
+        failover: cfg.failover,
+        parallel: cfg.parallel,
+        debug: cfg.debug,
+        autoInit: true,
         signal: controller.signal,
       };
+      if (cfg.tokenBudget) {
+        opts.tokenBudget = cfg.tokenBudget;
+      }
       
       // Security validation
       if (this.security?.validateInput) {
@@ -293,35 +345,118 @@ class TranslationProcessor {
   }
 
   /**
-   * Cache translation results
+   * Cache translation results with LRU eviction and memory management
    * @param {Object} results - Translation results to cache
    */
   cacheResults(results) {
+    const now = Date.now();
+
     for (const [original, translated] of Object.entries(results)) {
       const cacheKey = this.getCacheKey(original);
-      this.translationCache.set(cacheKey, translated);
+      const entry = {
+        value: translated,
+        timestamp: now,
+        accessCount: 1,
+        size: this.estimateMemorySize(original + translated)
+      };
+
+      // Remove old entry if exists
+      if (this.translationCache.has(cacheKey)) {
+        this.cacheMemorySize -= this.translationCache.get(cacheKey).size;
+      }
+
+      this.translationCache.set(cacheKey, entry);
+      this.cacheOrder.set(cacheKey, now);
+      this.cacheMemorySize += entry.size;
     }
-    
-    // Clean cache if it gets too large
-    if (this.translationCache.size > 1000) {
+
+    // Trigger cleanup if memory or size limits exceeded
+    if (this.shouldCleanCache()) {
       this.cleanCache();
     }
   }
 
   /**
-   * Clean translation cache
+   * Determine if cache should be cleaned
+   * @returns {boolean} - Whether cleanup is needed
+   */
+  shouldCleanCache() {
+    const now = Date.now();
+    const memoryLimitMB = this.cacheConfig.maxMemoryMB;
+    const sizeLimit = this.cacheConfig.maxEntries;
+    const timeSinceCleanup = now - this.lastCleanup;
+
+    return (
+      this.cacheMemorySize > memoryLimitMB * 1024 * 1024 ||
+      this.translationCache.size > sizeLimit ||
+      timeSinceCleanup > this.cacheConfig.cleanupIntervalMs
+    );
+  }
+
+  /**
+   * Clean translation cache with LRU eviction and TTL
    */
   cleanCache() {
-    // Remove oldest entries if cache is too large
-    const entries = Array.from(this.translationCache.entries());
-    const toKeep = entries.slice(-500); // Keep newest 500 entries
-    
-    this.translationCache.clear();
-    for (const [key, value] of toKeep) {
-      this.translationCache.set(key, value);
+    const now = Date.now();
+    const ttl = this.cacheConfig.ttlMs;
+    const maxEntries = this.cacheConfig.maxEntries;
+    const maxMemoryBytes = this.cacheConfig.maxMemoryMB * 1024 * 1024;
+
+    // Remove expired entries first
+    let removedExpired = 0;
+    for (const [key, entry] of this.translationCache.entries()) {
+      if (now - entry.timestamp > ttl) {
+        this.cacheMemorySize -= entry.size;
+        this.translationCache.delete(key);
+        this.cacheOrder.delete(key);
+        removedExpired++;
+      }
     }
-    
-    this.logger?.debug(`Cache cleaned, kept ${toKeep.length} entries`);
+
+    // If still over limits, apply LRU eviction
+    if (this.translationCache.size > maxEntries || this.cacheMemorySize > maxMemoryBytes) {
+      // Sort by access time (LRU)
+      const sortedEntries = Array.from(this.cacheOrder.entries())
+        .sort((a, b) => a[1] - b[1]); // Sort by timestamp
+
+      let removedLRU = 0;
+      for (const [key] of sortedEntries) {
+        if (this.translationCache.size <= maxEntries * 0.8 &&
+            this.cacheMemorySize <= maxMemoryBytes * 0.8) {
+          break;
+        }
+
+        const entry = this.translationCache.get(key);
+        if (entry) {
+          this.cacheMemorySize -= entry.size;
+          this.translationCache.delete(key);
+          this.cacheOrder.delete(key);
+          removedLRU++;
+        }
+      }
+    }
+
+    this.lastCleanup = now;
+    this.updateMemoryStats();
+
+    this.logger?.debug(`Cache cleaned: ${removedExpired} expired, ${removedLRU} LRU evicted, ${this.translationCache.size} entries remaining`);
+  }
+
+  /**
+   * Estimate memory size of a string in bytes
+   * @param {string} str - String to estimate
+   * @returns {number} - Estimated bytes
+   */
+  estimateMemorySize(str) {
+    // JavaScript uses UTF-16, so 2 bytes per character + object overhead
+    return (str.length * 2) + 64;
+  }
+
+  /**
+   * Update memory usage statistics
+   */
+  updateMemoryStats() {
+    this.stats.memoryUsageMB = this.cacheMemorySize / (1024 * 1024);
   }
 
   /**

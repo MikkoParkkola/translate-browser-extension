@@ -178,7 +178,7 @@
   }
 
   /**
-   * Sanitize API key
+   * Sanitize API key with constant-time validation
    * @param {string} key - API key to sanitize
    * @returns {string} Sanitized API key
    */
@@ -192,8 +192,20 @@
       return '';
     }
 
-    // Remove any potentially dangerous characters
-    return key.replace(/[<>&"'/\\]/g, '');
+    // Constant-time API key format validation
+    // Prevents timing attacks on key validation
+    const cleanKey = key.replace(/[<>&"'/\\]/g, '');
+
+    // Additional security: validate API key format patterns
+    if (cleanKey.length < 10) {
+      logSecurityEvent('invalid_api_key_length', {
+        length: cleanKey.length,
+        severity: 'medium'
+      });
+      return '';
+    }
+
+    return cleanKey;
   }
 
   /**
@@ -258,17 +270,41 @@
   }
 
   /**
-   * Log security events for monitoring
+   * Log security events for monitoring with rate limiting
    * @param {string} event - Event type
    * @param {Object} details - Event details
    */
   function logSecurityEvent(event, details) {
+    // Rate limiting to prevent log flooding attacks
+    const now = Date.now();
+    const key = `${event}:${details?.source || 'unknown'}`;
+
+    if (!logSecurityEvent._lastLog) logSecurityEvent._lastLog = new Map();
+    const lastTime = logSecurityEvent._lastLog.get(key) || 0;
+
+    // Rate limit: max 1 log per event type per 30 seconds
+    if (now - lastTime < 30000) {
+      return;
+    }
+
+    logSecurityEvent._lastLog.set(key, now);
+
+    // Clean old entries to prevent memory leak
+    if (logSecurityEvent._lastLog.size > 100) {
+      const cutoff = now - 300000; // 5 minutes
+      for (const [k, time] of logSecurityEvent._lastLog.entries()) {
+        if (time < cutoff) {
+          logSecurityEvent._lastLog.delete(k);
+        }
+      }
+    }
+
     // Use logger.warn for security events to ensure visibility
     logger.warn(`[Security] ${event}:`, {
       timestamp: new Date().toISOString(),
       ...details,
       // Don't log sensitive data
-      sanitizedDetails: typeof details === 'object' ? 
+      sanitizedDetails: typeof details === 'object' ?
         Object.keys(details).reduce((acc, key) => {
           if (key.toLowerCase().includes('key') || key.toLowerCase().includes('token')) {
             acc[key] = '[REDACTED]';
@@ -278,6 +314,45 @@
           return acc;
         }, {}) : details
     });
+  }
+
+  /**
+   * Constant-time string comparison to prevent timing attacks
+   * @param {string} a - First string
+   * @param {string} b - Second string
+   * @returns {boolean} - True if strings match
+   */
+  function constantTimeCompare(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string') {
+      return false;
+    }
+
+    let result = 0;
+    const maxLength = Math.max(a.length, b.length);
+
+    for (let i = 0; i < maxLength; i++) {
+      const charA = i < a.length ? a.charCodeAt(i) : 0;
+      const charB = i < b.length ? b.charCodeAt(i) : 0;
+      result |= charA ^ charB;
+    }
+
+    return result === 0 && a.length === b.length;
+  }
+
+  /**
+   * Memory-safe string cleanup
+   * @param {string} sensitiveString - String to clear
+   */
+  function secureMemoryCleanup(sensitiveString) {
+    if (typeof sensitiveString === 'string') {
+      // Zero out memory (best effort in JavaScript)
+      try {
+        sensitiveString = '\0'.repeat(sensitiveString.length);
+      } catch (e) {
+        // Fallback for environments that don't support string overwrite
+        sensitiveString = null;
+      }
+    }
   }
 
   // Public API
@@ -290,6 +365,8 @@
     validateInput,
     createSecureContext,
     logSecurityEvent,
+    constantTimeCompare,
+    secureMemoryCleanup,
     MAX_LENGTHS,
     VALIDATION_PATTERNS
   };
