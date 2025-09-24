@@ -51,9 +51,11 @@
         "lib/qualityVerifier.js",
         "lib/progressIndicator.js",
         "localModel.js",
+        "localModelUI.js",
         "llamacpp-worker.js",
         "styles/contentScript.css",
-        "styles/translation-progress.css"
+        "styles/translation-progress.css",
+        "styles/local-model.css"
       ],
       "matches": [
         "<all_urls>"

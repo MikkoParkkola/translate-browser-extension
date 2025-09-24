@@ -848,10 +848,100 @@ class BackgroundService {
 
       if (!text || !text.trim()) {
         logger.warn('No text provided for translation');
-        // Performance monitoring disabled
         sendResponse({ success: false, error: 'No text provided' });
         return;
       }
+
+      // Get configuration including local model settings
+      const config = await this.loadConfig();
+      const enableLocalModel = config.enableLocalModel || false;
+      const localModelFallback = config.localModelFallback !== false; // default to true
+
+      // Try local model first if enabled and available
+      if (enableLocalModel && this.localModel) {
+        try {
+          const isLocalModelReady = this.localModel.isModelReady();
+          if (isLocalModelReady) {
+            logger.info('Attempting translation with local model');
+            const localResult = await this.translateWithLocalModel(request);
+            if (localResult.success) {
+              logger.info('Local model translation successful');
+              sendResponse(localResult);
+              return;
+            } else {
+              logger.warn('Local model translation failed:', localResult.error);
+              if (!localModelFallback) {
+                sendResponse(localResult);
+                return;
+              }
+              logger.info('Falling back to API translation');
+            }
+          } else {
+            logger.info('Local model not ready, using API translation');
+            if (!localModelFallback) {
+              sendResponse({
+                success: false,
+                error: 'Local model is not ready and fallback is disabled'
+              });
+              return;
+            }
+          }
+        } catch (localError) {
+          logger.error('Local model translation error:', localError);
+          if (!localModelFallback) {
+            sendResponse({
+              success: false,
+              error: `Local model failed: ${localError.message}`
+            });
+            return;
+          }
+          logger.info('Falling back to API translation after local model error');
+        }
+      }
+
+      // Continue with existing API translation logic
+      await this.handleApiTranslation(request, sendResponse, startTime);
+
+    } catch (error) {
+      logger.error('Translation handling failed:', error);
+      sendResponse({
+        success: false,
+        error: error.message,
+        latency: Date.now() - startTime
+      });
+    }
+  }
+
+  // Handle translation using local model
+  async translateWithLocalModel(request) {
+    try {
+      const { text, source, target } = request;
+      const sourceLanguage = source || 'auto';
+      const targetLanguage = target || 'en';
+
+      const result = await this.localModel.translate(text, sourceLanguage, targetLanguage);
+
+      return {
+        success: true,
+        text: result.text,
+        source: result.detectedLanguage || sourceLanguage,
+        target: targetLanguage,
+        provider: 'hunyuan-local',
+        latency: result.inferenceTime || 0,
+        cached: false
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Handle API-based translation (existing logic)
+  async handleApiTranslation(request, sendResponse, startTime) {
+    try {
+      const { text, source, target } = request;
 
       // Security: Basic text validation
       let sanitizedText = text;

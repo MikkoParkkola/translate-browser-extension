@@ -6,6 +6,7 @@
   <title>Qwen Translator Settings</title>
   <link rel="stylesheet" href="styles/design-system.css">
   <link rel="stylesheet" href="styles/options.css">
+  <link rel="stylesheet" href="styles/local-model.css">
 </head>
 <body class="options-body">
   <div class="options-container">
@@ -269,6 +270,33 @@
             </div>
             
             <div class="setting-group">
+              <h3>Local Translation Model</h3>
+              <p class="setting-description">Run translations locally using Hunyuan-MT-7B model (4.37GB) without API calls</p>
+
+              <div id="local-model-container">
+                <!-- LocalModelUI will be injected here -->
+              </div>
+
+              <div class="setting-item-checkbox">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="enable-local-model">
+                  <span class="checkbox-custom"></span>
+                  Enable Local Model
+                </label>
+                <p class="setting-description">Use local LLM for translations when available (requires model download)</p>
+              </div>
+
+              <div class="setting-item-checkbox">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="local-model-fallback" checked>
+                  <span class="checkbox-custom"></span>
+                  Auto-fallback to API
+                </label>
+                <p class="setting-description">Automatically use API providers when local model fails or is unavailable</p>
+              </div>
+            </div>
+
+            <div class="setting-group">
               <h3>Debugging</h3>
               <div class="setting-item-checkbox">
                 <label class="checkbox-label">
@@ -420,6 +448,8 @@
     </div>
   </div>
 
+  <script src="localModel.js"></script>
+  <script src="localModelUI.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

@@ -32,9 +32,25 @@ const OptionsPage = {
     await this.loadProviders();
     await this.loadPreferences();
     this.setupEventListeners();
+    this.initializeLocalModel();
     this.renderProviders();
     this.renderAnalytics();
     this.setupTabNavigation();
+  },
+
+  // Initialize local model UI
+  initializeLocalModel() {
+    try {
+      // Initialize LocalModelUI if available
+      if (typeof LocalModelUI !== 'undefined') {
+        this.localModelUI = new LocalModelUI('local-model-container');
+        logger.info('Local model UI initialized');
+      } else {
+        logger.warn('LocalModelUI not available');
+      }
+    } catch (error) {
+      logger.error('Failed to initialize local model UI:', error);
+    }
   },
 
   initializeElements() {
@@ -476,21 +492,27 @@ const OptionsPage = {
   // Preferences Management
   // --------------------------------------------------------------------------
   async loadPreferences() {
-    const { 
+    const {
       globalAutoTranslate,
       showOriginal,
       enableShortcuts,
-      pdfEngine 
+      enableLocalModel,
+      localModelFallback,
+      pdfEngine
     } = await chrome.storage.local.get({
       globalAutoTranslate: false,
       showOriginal: true,
       enableShortcuts: true,
+      enableLocalModel: false,
+      localModelFallback: true,
       pdfEngine: 'none'
     });
 
     document.getElementById('global-auto-translate').checked = globalAutoTranslate;
     document.getElementById('show-original').checked = showOriginal;
     document.getElementById('enable-shortcuts').checked = enableShortcuts;
+    document.getElementById('enable-local-model').checked = enableLocalModel;
+    document.getElementById('local-model-fallback').checked = localModelFallback;
     
     // Load PDF engine selection
     this.loadPdfEngineConfig(pdfEngine);
@@ -665,6 +687,15 @@ const OptionsPage = {
     });
     document.getElementById('enable-shortcuts')?.addEventListener('change', (e) => {
       this.savePreference('enableShortcuts', e.target.checked);
+    });
+
+    // Local model settings
+    document.getElementById('enable-local-model')?.addEventListener('change', (e) => {
+      this.savePreference('enableLocalModel', e.target.checked);
+    });
+
+    document.getElementById('local-model-fallback')?.addEventListener('change', (e) => {
+      this.savePreference('localModelFallback', e.target.checked);
     });
 
     // PDF engine selection
