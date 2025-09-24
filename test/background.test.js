@@ -329,7 +329,7 @@ describe('background cost tracking', () => {
       target: 'es',
     });
     expect(store.usageHistory[0].provider).toBe('qwen');
-    expect(store.usageHistory[1].provider).toBe('qwen');
+    expect(store.usageHistory[1].provider).toBe('google');
     const res = await new Promise(resolve => usageListener({ action: 'usage' }, { id: 'test-extension', tab: { url: 'https://test.com' } }, resolve));
     expect(res.costs['qwen-mt-turbo']['24h']).toBeCloseTo(0);
     expect(res.costs['google-nmt']['24h']).toBeCloseTo(0.2);

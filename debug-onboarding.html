@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Debug Onboarding</title>
+  <link rel="stylesheet" href="src/styles/design-system.css">
+  <link rel="stylesheet" href="src/styles/onboarding.css">
+</head>
+<body>
+  <div id="test-container">
+    <h1>Onboarding Debug Test</h1>
+    <button onclick="testOnboarding()">Test Onboarding Wizard</button>
+    <div id="debug-output"></div>
+  </div>
+
+  <script>
+    // Simulate Chrome extension environment
+    const chrome = {
+      storage: {
+        local: {
+          get: async (keys) => {
+            console.log('chrome.storage.local.get called with:', keys);
+            return { hasCompletedOnboarding: false };
+          },
+          set: async (data) => {
+            console.log('chrome.storage.local.set called with:', data);
+          }
+        },
+        sync: {
+          get: async (keys) => {
+            console.log('chrome.storage.sync.get called with:', keys);
+            return {};
+          },
+          set: async (data) => {
+            console.log('chrome.storage.sync.set called with:', data);
+          }
+        }
+      },
+      runtime: {
+        sendMessage: async (message) => {
+          console.log('chrome.runtime.sendMessage called with:', message);
+          return { success: false, error: 'Test environment' };
+        }
+      }
+    };
+
+    window.chrome = chrome;
+
+    function testOnboarding() {
+      const debugOutput = document.getElementById('debug-output');
+      
+      try {
+        debugOutput.innerHTML = '<p>Loading OnboardingWizard...</p>';
+        
+        // Check if OnboardingWizard is available
+        if (typeof window.OnboardingWizard === 'undefined') {
+          debugOutput.innerHTML += '<p style="color: red;">ERROR: OnboardingWizard not found!</p>';
+          return;
+        }
+        
+        debugOutput.innerHTML += '<p style="color: green;">OnboardingWizard found!</p>';
+        debugOutput.innerHTML += '<p>Initializing wizard...</p>';
+        
+        window.OnboardingWizard.show();
+        
+        debugOutput.innerHTML += '<p style="color: green;">Wizard should be visible now!</p>';
+        
+      } catch (error) {
+        debugOutput.innerHTML += `<p style="color: red;">ERROR: ${error.message}</p>`;
+        console.error('Onboarding test error:', error);
+      }
+    }
+  </script>
+  
+  <!-- Load the onboarding wizard -->
+  <script src="src/onboarding.js"></script>
+</body>
+</html>

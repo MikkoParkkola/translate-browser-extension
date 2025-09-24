@@ -3,6 +3,12 @@
  * Provides guided 3-step setup with provider recommendations and API validation
  */
 
+(function() {
+  // Prevent duplicate loading
+  if (typeof window !== 'undefined' && window.OnboardingWizard) {
+    return;
+  }
+
 const OnboardingWizard = {
   currentStep: 1,
   totalSteps: 3,
@@ -27,6 +33,15 @@ const OnboardingWizard = {
     this.renderStep(1);
   },
 
+  start() {
+    this.show();
+  },
+
+  showSettings() {
+    this.createModal();
+    this.renderStep(2);
+  },
+
   hide() {
     if (this.modal) {
       this.modal.classList.add('onboarding-fade-out');
@@ -36,14 +51,23 @@ const OnboardingWizard = {
           this.modal = null;
         }
       }, 300);
+      // Mark as completed when user closes to avoid repeated prompts
+      try { chrome.storage.local.set({ hasCompletedOnboarding: true }); } catch {}
     }
   },
 
   createModal() {
+    if (this.modal) {
+      // Ensure modal is visible if it already exists
+      this.modal.classList.remove('onboarding-fade-out');
+      this.modal.style.display = '';
+      return;
+    }
+
     this.modal = document.createElement('div');
     this.modal.className = 'onboarding-modal';
     this.modal.innerHTML = `
-      <div class="onboarding-backdrop" onclick="OnboardingWizard.hide()"></div>
+      <div class="onboarding-backdrop" data-action="hide"></div>
       <div class="onboarding-container">
         <div class="onboarding-header">
           <div class="onboarding-progress">
@@ -52,7 +76,7 @@ const OnboardingWizard = {
             </div>
             <div class="progress-text">Step <span class="current-step">1</span> of <span class="total-steps">3</span></div>
           </div>
-          <button class="onboarding-close" onclick="OnboardingWizard.hide()">
+          <button class="btn btn--ghost btn--icon onboarding-close" data-action="hide">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2"/>
             </svg>
@@ -64,6 +88,43 @@ const OnboardingWizard = {
       </div>
     `;
     document.body.appendChild(this.modal);
+    this.setupEventListeners();
+  },
+
+  setupEventListeners() {
+    if (!this.modal) return;
+    
+    // Use event delegation to handle all button clicks
+    this.modal.addEventListener('click', (event) => {
+      const target = event.target.closest('[data-action]');
+      if (!target) return;
+      
+      const action = target.getAttribute('data-action');
+      event.preventDefault();
+      
+      switch (action) {
+        case 'hide':
+          this.hide();
+          break;
+        case 'nextStep':
+          this.nextStep();
+          break;
+        case 'prevStep':
+          this.prevStep();
+          break;
+        case 'complete':
+          this.complete();
+          break;
+        case 'runTest':
+          this.runTest();
+          break;
+        case 'toggleApiKeyVisibility':
+          this.toggleApiKeyVisibility();
+          break;
+        default:
+          console.warn('Unknown action:', action);
+      }
+    });
   },
 
   // --------------------------------------------------------------------------
@@ -114,7 +175,7 @@ const OnboardingWizard = {
             <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2"/>
           </svg>
         </div>
-        <h2>Welcome to Qwen Translator!</h2>
+        <h2>Welcome to TRANSLATE! by Mikko</h2>
         <p class="step-description">Let's set up your translation preferences in just 3 easy steps.</p>
         
         <div class="language-detection">
@@ -160,8 +221,8 @@ const OnboardingWizard = {
         </div>
         
         <div class="step-actions">
-          <button class="btn-secondary" onclick="OnboardingWizard.hide()">Skip Setup</button>
-          <button class="btn-primary" onclick="OnboardingWizard.nextStep()" id="welcome-next">
+          <button class="btn btn--secondary" data-action="hide">Skip Setup</button>
+          <button class="btn btn--primary" data-action="nextStep" id="welcome-next">
             Continue <span class="btn-arrow">→</span>
           </button>
         </div>
@@ -225,7 +286,7 @@ const OnboardingWizard = {
           
           <div class="api-input-group">
             <input type="password" id="api-key-input" class="api-key-input" placeholder="Enter your API key...">
-            <button class="btn-icon" onclick="OnboardingWizard.toggleApiKeyVisibility()">
+            <button class="btn btn--ghost btn--icon" data-action="toggleApiKeyVisibility">
               <svg class="eye-open" width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2"/>
                 <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
@@ -261,8 +322,8 @@ const OnboardingWizard = {
         </div>
         
         <div class="step-actions">
-          <button class="btn-secondary" onclick="OnboardingWizard.prevStep()">← Back</button>
-          <button class="btn-primary" onclick="OnboardingWizard.nextStep()" id="provider-next" disabled>
+          <button class="btn btn--secondary" data-action="prevStep">← Back</button>
+          <button class="btn btn--primary" data-action="nextStep" id="provider-next" disabled>
             Continue <span class="btn-arrow">→</span>
           </button>
         </div>
@@ -418,7 +479,7 @@ const OnboardingWizard = {
         </div>
         
         <div class="test-controls">
-          <button class="btn-secondary" onclick="OnboardingWizard.runTest()" id="test-button">
+          <button class="btn btn--secondary" data-action="runTest" id="test-button">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <polygon points="5,3 19,12 5,21" fill="currentColor"/>
             </svg>
@@ -445,8 +506,8 @@ const OnboardingWizard = {
         </div>
         
         <div class="step-actions">
-          <button class="btn-secondary" onclick="OnboardingWizard.prevStep()">← Back</button>
-          <button class="btn-primary" onclick="OnboardingWizard.complete()" id="complete-setup">
+          <button class="btn btn--secondary" data-action="prevStep">← Back</button>
+          <button class="btn btn--primary" data-action="complete" id="complete-setup">
             Complete Setup <span class="btn-arrow">🎉</span>
           </button>
         </div>
@@ -576,7 +637,7 @@ const OnboardingWizard = {
           </svg>
         </div>
         <h2>Setup Complete! 🎉</h2>
-        <p>Your Qwen Translator is ready to use. You can now translate web pages with ease!</p>
+        <p>Your TRANSLATE! extension is ready to use. You can now translate web pages with ease!</p>
         <div class="next-steps">
           <h3>What's next?</h3>
           <ul>
@@ -740,7 +801,7 @@ const OnboardingWizard = {
 
   async testProviderConnection(providerId, apiKey, testText = 'Hello', sourceLanguage = 'en', targetLanguage = 'es') {
     try {
-      // Use background script to test translation
+      // Try background command first
       const response = await chrome.runtime.sendMessage({
         action: 'testTranslation',
         provider: providerId,
@@ -756,42 +817,97 @@ const OnboardingWizard = {
           translatedText: response.text,
           confidence: response.confidence || 0.9
         };
-      } else {
-        return {
-          success: false,
-          error: response.error || 'Unknown error'
-        };
       }
+
+      // If dispatcher reported a generic/internal error, fall back to direct fetch
+      const errMsg = (response && response.error) || '';
+      if (errMsg === 'Internal error' || /Command execution failed|Could not serialize/i.test(errMsg)) {
+        const endpoint = 'https://dashscope-intl.aliyuncs.com/api/v1';
+        try {
+          const r = await fetch(`${endpoint}/services/aigc/text-generation/generation`, {
+            method: 'POST',
+            headers: {
+              'Authorization': /^bearer\s/i.test(apiKey) ? apiKey : `Bearer ${apiKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: 'qwen-mt-turbo',
+              input: { messages: [{ role: 'user', content: testText }] },
+              parameters: { translation_options: { source_lang: sourceLanguage, target_lang: targetLanguage } }
+            })
+          });
+          if (r.ok) {
+            const j = await r.json();
+            const text = j?.output?.text || j?.output?.choices?.[0]?.message?.content || '';
+            return { success: true, translatedText: text, confidence: 0.9 };
+          } else {
+            let msg = r.statusText;
+            try { const je = await r.json(); msg = je?.error?.message || je?.message || msg; } catch {}
+            return { success: false, error: `HTTP ${r.status}: ${msg}` };
+          }
+        } catch (e) {
+          return { success: false, error: e?.message || 'Network error' };
+        }
+      }
+
+      return { success: false, error: errMsg || 'Unknown error' };
     } catch (error) {
-      return {
-        success: false,
-        error: error.message
-      };
+      return { success: false, error: error.message };
     }
   },
 
   async saveConfiguration() {
-    const config = {
-      apiKey: this.userData.apiKey,
+    const providerId = this.userData.selectedProvider || 'dashscope';
+    const endpoint = this.userData.endpoint || 'https://dashscope-intl.aliyuncs.com/api/v1';
+    const model = this.userData.model || 'qwen-mt-turbo';
+
+    // Persist provider configuration (without secrets)
+    try {
+      if (window.qwenProviderConfig) {
+        const cfg = await window.qwenProviderConfig.loadProviderConfig();
+        cfg.provider = providerId;
+        cfg.providers = cfg.providers || {};
+        cfg.providers[providerId] = Object.assign({}, cfg.providers[providerId] || {}, {
+          enabled: true,
+          apiEndpoint: endpoint,
+          model,
+        });
+        cfg.providerOrder = Array.isArray(cfg.providerOrder) ? cfg.providerOrder : [];
+        cfg.providerOrder = [providerId, ...cfg.providerOrder.filter(p => p !== providerId)];
+        await window.qwenProviderConfig.saveProviderConfig(cfg);
+      }
+    } catch (e) {
+      console.warn('Failed to save provider config during onboarding:', e);
+    }
+
+    // Persist secret in secure storage or provider store
+    try {
+      const key = String(this.userData.apiKey || '').trim();
+      if (key) {
+        if (window.qwenProviderStore && typeof window.qwenProviderStore.setProviderSecret === 'function') {
+          await window.qwenProviderStore.setProviderSecret(providerId, key);
+        } else if (window.qwenSecureStorage?.secureStorage) {
+          await window.qwenSecureStorage.secureStorage.setSecure(`provider_${providerId}_apiKey`, key);
+          if (window.qwenSecureStorage?.setSecureApiKey) {
+            await window.qwenSecureStorage.setSecureApiKey(key);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to save API key securely during onboarding:', e);
+    }
+
+    // Save basic preferences
+    const prefs = {
       sourceLanguage: this.userData.sourceLanguage,
       targetLanguage: this.userData.targetLanguage,
-      selectedProvider: this.userData.selectedProvider,
+      selectedProvider: providerId,
       usagePattern: this.userData.usagePattern,
-      autoTranslate: false, // User can enable this later
-      hasCompletedOnboarding: true
+      autoTranslate: false,
+      hasCompletedOnboarding: true,
     };
-
-    await chrome.storage.local.set(config);
-    
-    // Also sync to chrome storage
-    try {
-      await chrome.storage.sync.set({
-        sourceLanguage: config.sourceLanguage,
-        targetLanguage: config.targetLanguage
-      });
-    } catch (error) {
-      console.warn('Could not sync to chrome storage:', error);
-    }
+    try { await chrome.storage.local.set(prefs); } catch {}
+    try { await chrome.storage.sync.set({ sourceLanguage: prefs.sourceLanguage, targetLanguage: prefs.targetLanguage }); } catch {}
   },
 
   toggleApiKeyVisibility() {
@@ -814,9 +930,12 @@ const OnboardingWizard = {
 // Initialize onboarding when page loads
 if (typeof window !== 'undefined') {
   window.OnboardingWizard = OnboardingWizard;
+  window.onboardingWizard = OnboardingWizard;
 }
 
 // Export for testing
 if (typeof module !== 'undefined') {
   module.exports = OnboardingWizard;
 }
+
+})(); // End of IIFE

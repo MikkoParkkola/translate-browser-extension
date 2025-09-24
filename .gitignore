@@ -1,4 +1,5 @@
 node_modules/
+dist/
 src/config.local.js
 # Private PDFs and large artifacts at repo root
 /*.pdf

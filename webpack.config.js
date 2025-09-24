@@ -15,8 +15,7 @@ module.exports = {
     translator: './src/translator.js',
     config: './src/config.js',
     // Core modules
-    'core/types': './src/core/types.ts',
-    'core/config-manager': './src/core/config-manager.ts',
+    'core/config-manager': './src/core/config-manager.js',
     'core/cache-manager': './src/core/cache-manager.js',
     'core/logger': './src/core/logger.js',
     'core/storage-adapter': './src/core/storage-adapter.js',
@@ -30,7 +29,7 @@ module.exports = {
     clean: false // Don't clean dist as it contains other files
   },
   resolve: {
-    extensions: ['.ts', '.js', '.json'],
+    extensions: ['.js', '.json'],
     alias: {
       '@core': path.resolve(__dirname, 'src/core'),
       '@popup': path.resolve(__dirname, 'src/popup'),
@@ -41,17 +40,6 @@ module.exports = {
   },
   module: {
     rules: [
-      {
-        test: /\.ts$/,
-        use: {
-          loader: 'ts-loader',
-          options: {
-            configFile: path.resolve(__dirname, 'tsconfig.json'),
-            transpileOnly: true // Skip type checking for faster builds
-          }
-        },
-        exclude: /node_modules/
-      },
       {
         test: /\.js$/,
         use: {

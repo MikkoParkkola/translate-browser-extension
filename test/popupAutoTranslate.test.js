@@ -26,13 +26,16 @@ describe('popup auto-translate toggle', () => {
     require('../src/popup.js');
   });
 
-  test('disabling auto-translate stops all tabs', () => {
+  const flush = () => new Promise(res => setTimeout(res, 0));
+
+  test('disabling auto-translate stops all tabs', async () => {
     chrome.tabs.sendMessage.mockClear();
     listener({ action: 'home:auto-translate', enabled: false });
-    expect(chrome.storage.sync.set).toHaveBeenCalledWith({ autoTranslate: false });
+    await flush();
+    expect(chrome.storage.sync.set).toHaveBeenCalledWith({ autoTranslate: false }, expect.any(Function));
     expect(chrome.tabs.query).toHaveBeenCalledWith({}, expect.any(Function));
     expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(2);
-    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, { action: 'stop' }, expect.any(Function));
-    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(2, { action: 'stop' }, expect.any(Function));
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, { action: 'stop' }, {}, expect.any(Function));
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(2, { action: 'stop' }, {}, expect.any(Function));
   });
 });

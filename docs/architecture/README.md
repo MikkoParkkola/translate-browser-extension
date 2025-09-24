@@ -15,7 +15,7 @@ The Qwen Translator Extension is a Chrome/Safari browser extension that provides
 1. **Modular Core Architecture**: Separated concerns into distinct core modules with well-defined interfaces
 2. **Provider-Agnostic System**: Pluggable translation providers with unified interfaces
 3. **Chrome Extension MV3 Compliance**: Service worker-based background processing with messaging protocols
-4. **TypeScript Integration**: Full type safety with backward compatibility for legacy JavaScript
+4. **Typed Definitions**: Shared `.d.ts` surface with JSDoc-based validation for JavaScript modules
 5. **Lazy Loading Strategy**: On-demand module loading to optimize bundle size and startup performance
 6. **Multi-Context Communication**: Unified messaging system across popup, content scripts, and background
 
@@ -385,9 +385,9 @@ Provider failover      | < 5000ms  | 2000ms    | 8000ms
 - *Rationale*: Extension longevity and feature development velocity more important than minimal initial bundle size
 
 **Type Safety vs. Legacy Compatibility**
-- *Decision*: Incremental TypeScript adoption with JavaScript fallbacks
-- *Trade-off*: Dual maintenance burden during transition
-- *Rationale*: Risk mitigation while gaining type safety benefits
+- *Decision*: JSDoc-first JavaScript with shared `.d.ts` hints for tooling
+- *Trade-off*: Fewer compile-time guarantees in exchange for simpler build tooling
+- *Rationale*: Keep bundles lightweight while still offering editor support and optional type metadata
 
 **Provider Coupling vs. Abstraction**
 - *Decision*: Provider abstraction layer with unified interfaces

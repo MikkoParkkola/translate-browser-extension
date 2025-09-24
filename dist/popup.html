@@ -3,67 +3,98 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Qwen Translator</title>
+  <title>TRANSLATE! by Mikko</title>
   <link rel="stylesheet" href="styles/design-system.css">
   <link rel="stylesheet" href="styles/popup.css">
+  <link rel="stylesheet" href="styles/onboarding.css">
 </head>
-<body class="popup-body">
-  <!-- Loading Overlay -->
-  <div id="loading-overlay" class="loading-overlay">
+<body class="popup-body" data-theme="light">
+  <!-- Initialization Loading Indicator -->
+  <div id="init-loading" class="loading-overlay" aria-live="polite" role="status">
     <div class="loading-content">
-      <div class="loading-spinner"></div>
+      <div class="loading-spinner" aria-hidden="true"></div>
+      <div class="loading-text">Initializing extension...</div>
+    </div>
+  </div>
+
+  <!-- Translation Loading Overlay -->
+  <div id="loading-overlay" class="loading-overlay" style="display: none;" aria-live="polite" role="status">
+    <div class="loading-content">
+      <div class="loading-spinner" aria-hidden="true"></div>
       <div class="loading-text">Translating...</div>
     </div>
   </div>
 
   <div class="popup-container">
-    <!-- Header -->
+    <div id="permission-banner" class="alert alert--warning" style="display:none;">
+      <div class="alert__content">
+        <strong>Permission needed</strong>
+        <p>This site isn’t enabled for translation. Click Grant and approve Chrome’s prompt.</p>
+        <button id="grant-permission" class="btn btn--primary btn--sm">Grant</button>
+      </div>
+    </div>
     <header class="popup-header">
       <div class="popup-title">
-        <div class="popup-logo">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2L2 7v10c0 5.55 3.84 9.74 9 11 5.16-1.26 9-5.45 9-11V7l-10-5z" stroke="currentColor" stroke-width="2" fill="none"/>
-            <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" fill="none"/>
+        <div class="popup-logo" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L2 7v10c0 5.55 3.84 9.74 9 11 5.16-1.26 9-5.45 9-11V7l-10-5z" stroke="currentColor" stroke-width="2"/>
+            <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2"/>
           </svg>
         </div>
-        <h1>Translate</h1>
+        <div class="product-meta">
+          <h1 id="productName">TRANSLATE!</h1>
+          <span id="productAuthor">by Mikko</span>
+          <div id="active-config" class="active-config" aria-live="polite" title="Active provider and model" style="font-size:12px;opacity:0.8;margin-top:2px;">
+            <span id="activeProvider" data-test="active-provider">—</span>
+            <span aria-hidden="true">·</span>
+            <span id="activeModel" data-test="active-model">—</span>
+          </div>
+        </div>
+      </div>
+      <div class="popup-status">
+        <span id="status-badge" class="status-badge" data-test="status-badge" title="Service status" style="font-size:12px;padding:2px 6px;border-radius:6px;border:1px solid currentColor;opacity:0.85;">Checking…</span>
+        <button id="copy-debug" class="btn btn--ghost btn--sm" data-test="copy-debug" title="Copy Debug Info" style="margin-left:6px;">Copy Debug</button>
       </div>
       <div class="popup-actions">
         <button id="theme-toggle" class="icon-button" aria-label="Toggle theme">
-          <svg class="theme-icon-light" width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <svg class="theme-icon-light" width="18" height="18" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2"/>
             <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="2"/>
           </svg>
-          <svg class="theme-icon-dark" width="20" height="20" viewBox="0 0 24 24" fill="none" style="display: none;">
-            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" stroke="currentColor" stroke-width="2" fill="none"/>
+          <svg class="theme-icon-dark" width="18" height="18" viewBox="0 0 24 24" fill="none" style="display: none;">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" stroke="currentColor" stroke-width="2"/>
           </svg>
         </button>
-        <button id="settings-button" class="icon-button" aria-label="Settings">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <button id="settings-button" class="icon-button" aria-label="Open settings" title="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
             <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51h.09a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="2"/>
           </svg>
         </button>
+        <button id="settings-open" class="btn btn--secondary btn--sm" aria-label="Open settings page" title="Open Settings" style="margin-left:6px;">Settings</button>
       </div>
     </header>
 
-    <!-- Main Content -->
     <main class="popup-main">
+      <!-- Setup Gate -->
+      <div id="setup-gate" class="alert alert--info" style="display:none;">
+        <div class="alert__content">
+          <strong>Connect a provider</strong>
+          <p>Please add your API key and model to start translating.</p>
+          <button id="open-settings-primary" class="btn btn--primary btn--sm">Open Settings</button>
+        </div>
+      </div>
       <!-- Language Selection -->
-      <div class="language-selection">
+      <section class="language-selection" aria-label="Language selection">
         <div class="language-item">
-          <label class="language-label">From</label>
+          <label class="language-label" for="source-language">From</label>
           <div class="select-wrapper">
             <select id="source-language" class="language-select">
               <option value="auto">🌐 Auto Detect</option>
             </select>
-            <div class="select-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
+            <span class="select-icon" aria-hidden="true">▾</span>
           </div>
-          <div class="confidence-indicator" id="source-confidence" style="display: none;">
+          <div id="source-confidence" class="confidence-indicator" style="display: none;">
             <div class="confidence-text">Confidence: <span class="confidence-value">--</span></div>
             <div class="confidence-bar">
               <div class="confidence-fill" style="width: 0%;"></div>
@@ -73,64 +104,69 @@
 
         <div class="language-swap">
           <button id="swap-languages" class="swap-button" aria-label="Swap languages">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M8 3L4 7l4 4M4 7h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M16 21l4-4-4-4M20 17H4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M17 17H7l4 4m-4-14h10l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </button>
         </div>
 
         <div class="language-item">
-          <label class="language-label">To</label>
+          <label class="language-label" for="target-language">To</label>
           <div class="select-wrapper">
             <select id="target-language" class="language-select"></select>
-            <div class="select-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
+            <span class="select-icon" aria-hidden="true">▾</span>
           </div>
         </div>
-      </div>
+      </section>
 
-      <!-- Auto-Translate Toggle -->
-      <div class="feature-toggle">
+      <!-- Strategy Presets -->
+      <section class="strategy-presets" aria-label="Strategy presets" style="margin-top:6px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button id="strategy-fast"    class="btn btn--secondary btn--sm" data-test="strategy-fast" title="Prefer fastest providers">Fastest</button>
+          <button id="strategy-cheap"   class="btn btn--secondary btn--sm" data-test="strategy-cheap" title="Prefer cheapest providers">Cheapest</button>
+          <button id="strategy-balanced"class="btn btn--secondary btn--sm" data-test="strategy-balanced" title="Balanced strategy">Balanced</button>
+        </div>
+      </section>
+
+      <!-- Auto translate toggle -->
+      <section class="feature-toggle" aria-label="Auto translate toggle">
         <div class="toggle-content">
           <div class="toggle-info">
-            <div class="toggle-title">Auto-Translate</div>
-            <div class="toggle-description">Automatically translate pages when loaded</div>
+            <div class="toggle-title">Auto translate this tab</div>
+            <div class="toggle-description">Automatically translate new content as it appears.</div>
           </div>
-          <label class="modern-toggle">
+          <label class="modern-toggle" aria-label="Auto translate this tab">
             <input type="checkbox" id="auto-translate-toggle">
             <span class="toggle-slider"></span>
           </label>
         </div>
-      </div>
+      </section>
 
-      <!-- Translate Button -->
-      <button id="translate-button" class="translate-button">
-        <div class="button-content">
-          <svg class="button-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <path d="M5 8l6 6M4 14l2-2 8-8M2 5h12M7 2h1M2 22l1-1m15-15l2-2M14 18H3M17 13l3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <span class="button-text">Translate Page</span>
-        </div>
-        <div class="button-loading" style="display: none;">
-          <div class="loading-spinner-small"></div>
-          <span>Translating...</span>
-        </div>
-        <div class="button-progress" style="display: none;">
-          <div class="progress-bar-mini">
+      <!-- Translate button -->
+      <section aria-label="Translate actions">
+        <button id="translate-button" class="translate-button">
+          <span class="button-content">
+            <svg class="button-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 3C8.134 3 5 6.13401 5 10C5 14.4183 9.5 19.5 12 21C14.5 19.5 19 14.4183 19 10C19 6.13401 15.866 3 12 3Z" stroke="currentColor" stroke-width="2"/>
+              <path d="M9 10l2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="button-text">Translate Selection</span>
+          </span>
+          <span class="button-loading" aria-hidden="true">
+            <span class="loading-spinner-small"></span>
+            <span>Translating…</span>
+          </span>
+          <div class="progress-bar-mini" aria-hidden="true">
             <div class="progress-fill-mini"></div>
           </div>
-          <span class="progress-text-mini">0%</span>
-        </div>
-      </button>
+          <div class="progress-text-mini" aria-hidden="true">Preparing…</div>
+        </button>
+      </section>
 
-      <!-- Usage Statistics -->
-      <div class="stats-section">
+      <!-- Usage statistics -->
+      <section class="stats-section" aria-label="Usage summary">
         <div class="stats-header">
-          <h3 class="stats-title">Usage Today</h3>
+          <h2 class="stats-title">Usage Today</h2>
           <button id="stats-refresh" class="stats-refresh-btn" aria-label="Refresh statistics">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M23 4v6h-6M1 20v-6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -142,40 +178,65 @@
           <div class="stats-item">
             <div class="stats-label">Requests</div>
             <div class="stats-bar-container">
-              <div class="stats-bar" style="width: 75%;"></div>
+              <div class="stats-bar" style="width: 0%;"></div>
             </div>
-            <div class="stats-value">45/60</div>
+            <div class="stats-value">0/60</div>
           </div>
           <div class="stats-item">
             <div class="stats-label">Tokens</div>
             <div class="stats-bar-container">
-              <div class="stats-bar stats-bar-tokens" style="width: 60%;"></div>
+              <div class="stats-bar" style="width: 0%;"></div>
             </div>
-            <div class="stats-value">60k/100k</div>
+            <div class="stats-value">0/100k</div>
           </div>
           <div class="stats-item">
             <div class="stats-label">Characters</div>
             <div class="stats-bar-container">
-              <div class="stats-bar stats-bar-chars" style="width: 40%;"></div>
+              <div class="stats-bar" style="width: 0%;"></div>
             </div>
-            <div class="stats-value">2.1k/5k</div>
+            <div class="stats-value">0/5k</div>
           </div>
         </div>
-        <div class="stats-footer">
-          <div class="stats-reset-info">Resets at midnight</div>
-        </div>
-      </div>
+        <footer class="stats-footer">
+          <span class="stats-reset-info">Usage resets at midnight</span>
+        </footer>
+      </section>
     </main>
   </div>
-  
-  <!-- Toast Container -->
-  <div id="toast-container" class="toast-container"></div>
 
-  <!-- Load dependencies first -->
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Error Panel -->
+  <div id="error-panel" class="error-panel" data-test="error-panel" style="display:none;">
+    <div class="error-title">Translation Error
+      <button id="err-close" class="btn btn--ghost btn--sm" aria-label="Close" style="float:right;">✕</button>
+    </div>
+    <div class="error-body">
+      <div id="error-message">An unexpected error occurred.</div>
+      <div id="error-detail" class="error-detail" style="font-size:12px;opacity:0.8;margin-top:4px;"></div>
+    </div>
+    <div class="error-actions" style="display:flex;gap:6px;margin-top:8px;">
+      <button id="err-retry" class="btn btn--primary btn--sm">Retry</button>
+      <button id="err-switch-cheap" class="btn btn--secondary btn--sm">Switch to Cheapest</button>
+      <button id="err-edit-provider" class="btn btn--ghost btn--sm">Edit Provider</button>
+    </div>
+  </div>
+
+  <!-- Load dependencies -->
+  <script src="lib/logger.js"></script>
+  <!-- Popup environment and helpers must load before popup.js in browser context -->
+  <script src="popup/env.js"></script>
+  <script src="popup/storage.js"></script>
+  <script src="popup/messaging.js"></script>
   <script src="lib/providers.js"></script>
+  <script src="lib/providerStore.js"></script>
   <script src="providers/index.js"></script>
   <script src="providerConfig.js"></script>
   <script src="languages.js"></script>
+  <script src="onboarding.js"></script>
+  <script src="intelligent-language-selection.js"></script>
+  <script src="translation-progress.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

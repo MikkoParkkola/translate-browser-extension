@@ -3,11 +3,16 @@ import { chooseEngine, ensureWasmAssets } from './wasm/engine.js';
 import { safeFetchPdf } from './wasm/pdfFetch.js';
 import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
 
+// Initialize logger
+const logger = (typeof window !== 'undefined' && window.qwenLogger && window.qwenLogger.create) 
+  ? window.qwenLogger.create('pdf-viewer')
+  : console;
+
 (async function() {
   function handleLastError(cb) {
     return (...args) => {
       const err = chrome.runtime.lastError;
-      if (err && !err.message.includes('Receiving end does not exist')) console.debug(err);
+      if (err && !err.message.includes('Receiving end does not exist')) logger.debug(err);
       if (typeof cb === 'function') cb(...args);
     };
   }
@@ -238,12 +243,11 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
 
   if (!file && !sessionKey) {
     viewer.textContent = 'No PDF specified';
-    console.log('DEBUG: No PDF file specified.');
+    logger.warn('[PDF-VIEWER]', 'No PDF file specified');
     return;
   }
 
   pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdf.worker.min.js', import.meta.url).href;
-  console.log('DEBUG: PDF.js worker source set.');
 
   const cfg = await window.qwenLoadConfig();
   if (window.qwenSetTokenBudget) {
@@ -286,7 +290,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
           range.insertNode(document.createTextNode(translated));
           sel.removeAllRanges();
         } catch (e) {
-          console.error('Failed to translate selection', e);
+          logger.error('Failed to translate selection', e);
         }
       })();
     }
@@ -308,7 +312,16 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
         if (avail.pdfium) opts.push({ v: 'pdfium', t: 'Engine: PDFium' });
         if (avail.overlay) opts.push({ v: 'overlay', t: 'Engine: Overlay' });
         opts.push({ v: 'simple', t: 'Engine: Simple' });
-        sel.innerHTML = opts.map(o => `<option value="${o.v}">${o.t}</option>`).join('');
+        // Clear existing options and add new ones securely
+        while (sel.firstChild) {
+          sel.removeChild(sel.firstChild);
+        }
+        opts.forEach(o => {
+          const option = document.createElement('option');
+          option.value = o.v;
+          option.textContent = o.t;
+          sel.appendChild(option);
+        });
         chrome.storage.sync.get({ wasmEngine: cfg.wasmEngine || '' }, s => {
           const choice = s.wasmEngine || best || 'auto';
           sel.value = choice;
@@ -325,7 +338,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
                 } else {
                   gotoTranslated(origFile, key);
                 }
-              } catch (e) { console.error('Engine switch failed', e); }
+              } catch (e) { logger.error('Engine switch failed', e); }
             }
           });
         });
@@ -363,11 +376,18 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     sel.id = 'pdfTranslateSelect';
     sel.className = 'btn';
     sel.title = 'PDF translation engine';
-    sel.innerHTML = [
+    // Add options securely using DOM creation
+    const pdfEngineOptions = [
       { v: 'wasm', t: 'PDF: WASM' },
       { v: 'google', t: 'PDF: Google' },
       { v: 'deepl-pro', t: 'PDF: DeepL Pro' },
-    ].map(o => `<option value="${o.v}">${o.t}</option>`).join('');
+    ];
+    pdfEngineOptions.forEach(o => {
+      const option = document.createElement('option');
+      option.value = o.v;
+      option.textContent = o.t;
+      sel.appendChild(option);
+    });
     wasmSel.parentNode.insertBefore(sel, wasmSel);
     chrome.storage.sync.get({ pdfTranslateEngine: 'wasm' }, s => {
       sel.value = s.pdfTranslateEngine || 'wasm';
@@ -384,7 +404,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
             } else {
               gotoTranslated(origFile, key);
             }
-          } catch (e) { console.error('PDF engine switch failed', e); }
+          } catch (e) { logger.error('PDF engine switch failed', e); }
         }
       });
     });
@@ -417,7 +437,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   }
 
   async function generateTranslatedSessionKey(originalUrl) {
-    console.log('DEBUG: starting translation for', originalUrl);
+    console.info('[PDF-VIEWER]', 'Starting translation for', originalUrl);
     const overlay = document.getElementById('regenOverlay');
     const text = document.getElementById('regenText');
     const bar = document.getElementById('regenBar');
@@ -436,7 +456,11 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     const flags = await new Promise(r => chrome.storage.sync.get(['useWasmEngine','autoOpenAfterSave','wasmEngine','wasmStrict','pdfTranslateEngine'], r));
     cfgNow = { ...cfgNow, ...flags, useWasmEngine: true };
     const engine = flags.pdfTranslateEngine || 'wasm';
-    if (!cfgNow.apiKey) { alert('Configure API key first.'); throw new Error('API key missing'); }
+    if (!cfgNow.apiKey) { 
+      logger.warn('[PDF-VIEWER]', 'API key not configured');
+      alert('Configure API key first.'); 
+      throw new Error('API key missing'); 
+    }
     if (overlay) overlay.style.display = 'flex'; setProgress('Preparing…', 2);
     let summary;
     const progressCb = (p) => {
@@ -459,13 +483,13 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
           chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary } }, handleLastError());
           return key;
         } catch (err) {
-          console.warn('Provider translation failed, falling back to WASM', err);
+          logger.warn('Provider translation failed, falling back to WASM', err);
         }
       }
       const blob = await regeneratePdfFromUrl(originalUrl, cfgNow, progressCb);
-      console.log('DEBUG: translation finished, blob size', blob.size);
+      console.info('[PDF-VIEWER]', 'Translation completed, blob size:', blob.size);
       const key = await storePdfInSession(blob);
-      console.log('DEBUG: stored translated PDF key', key);
+      console.info('[PDF-VIEWER]', 'Stored translated PDF with key:', key);
       chrome.runtime.sendMessage({ action: 'translation-status', status: { active: false, summary } }, handleLastError());
       return key;
     } catch (e) {
@@ -478,17 +502,17 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   }
 
   function gotoOriginal(originalUrl) {
-    console.log('DEBUG: navigating to original', originalUrl);
+    console.info('[PDF-VIEWER]', 'Navigating to original view');
     const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(originalUrl) + '&orig=' + encodeURIComponent(originalUrl);
     window.location.href = viewerUrl;
   }
   function gotoTranslated(originalUrl, sessionKey) {
-    console.log('DEBUG: navigating to translated', { originalUrl, sessionKey });
+    console.info('[PDF-VIEWER]', 'Navigating to translated view');
     const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + `?translated=1&session=${encodeURIComponent(sessionKey)}&orig=${encodeURIComponent(originalUrl)}`;
     window.location.href = viewerUrl;
   }
   function gotoCompare(originalUrl, sessionKey) {
-    console.log('DEBUG: navigating to compare', { originalUrl, sessionKey });
+    console.info('[PDF-VIEWER]', 'Navigating to compare view');
     const viewerUrl = chrome.runtime.getURL('pdfViewer.html') + `?compare=1&session=${encodeURIComponent(sessionKey)}&orig=${encodeURIComponent(originalUrl)}`;
     window.location.href = viewerUrl;
   }
@@ -505,7 +529,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
         btnOriginal && (btnOriginal.disabled = true);
         const key = isTranslatedParam ? sessionKey : await generateTranslatedSessionKey(origFile);
         gotoTranslated(origFile, key);
-      } catch (e) { console.error('Translate view failed', e); }
+      } catch (e) { logger.error('Translate view failed', e); }
       finally {
         btnTranslated.disabled = false;
         btnOriginal && (btnOriginal.disabled = false);
@@ -520,7 +544,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
         btnOriginal && (btnOriginal.disabled = true);
         const key = isTranslatedParam ? sessionKey : await generateTranslatedSessionKey(origFile);
         gotoCompare(origFile, key);
-      } catch (e) { console.error('Compare view failed', e); }
+      } catch (e) { logger.error('Compare view failed', e); }
       finally {
         btnCompare.disabled = false;
         btnOriginal && (btnOriginal.disabled = false);
@@ -552,7 +576,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
         const ts = new Date();
         const fname = `translated-${ts.getFullYear()}${String(ts.getMonth()+1).padStart(2,'0')}${String(ts.getDate()).padStart(2,'0')}-${String(ts.getHours()).padStart(2,'0')}${String(ts.getMinutes()).padStart(2,'0')}${String(ts.getSeconds()).padStart(2,'0')}.pdf`;
         a.href = url; a.download = fname; a.click();
-      } catch (e) { console.error('Save translated failed', e); }
+      } catch (e) { logger.error('Save translated failed', e); }
     });
   }
 
@@ -565,7 +589,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
       gotoTranslated(origFile, key);
       return; // stop rendering original while navigating
     } catch (e) {
-      console.error('Auto-translate preview failed', e);
+      logger.error('Auto-translate preview failed', e);
     }
   }
   if (isCompareParam) {
@@ -573,7 +597,10 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
       viewer.textContent = 'No translated PDF for comparison';
       return;
     }
-    viewer.innerHTML = '';
+    // Clear viewer content securely
+    while (viewer.firstChild) {
+      viewer.removeChild(viewer.firstChild);
+    }
     const left = document.createElement('iframe');
     left.className = 'pdfPane';
     left.src = chrome.runtime.getURL('pdfViewer.html') + '?file=' + encodeURIComponent(origFile) + '&orig=' + encodeURIComponent(origFile);
@@ -586,31 +613,24 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
   }
   if (!cfg.apiKey) {
     viewer.textContent = 'API key not configured';
-    console.log('DEBUG: API key not configured.');
+    logger.warn('[PDF-VIEWER]', 'API key not configured');
     return;
   }
-  console.log('DEBUG: API key loaded.');
 
   try {
     let buffer;
     if (sessionKey) {
       buffer = await readPdfFromSession(sessionKey);
-      console.log('DEBUG: Loaded PDF from session storage.');
     } else {
-      console.log(`DEBUG: Attempting to fetch PDF from: ${file}`);
       buffer = await safeFetchPdf(file);
-      console.log('DEBUG: PDF fetched successfully.');
     }
     const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
-    console.log('DEBUG: PDF loading task created.');
     const pdf = await loadingTask.promise;
-    console.log(`DEBUG: PDF loaded. Number of pages: ${pdf.numPages}`);
+    console.info('[PDF-VIEWER]', `PDF loaded with ${pdf.numPages} pages`);
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      console.log(`DEBUG: Processing page ${pageNum}`);
       const page = await pdf.getPage(pageNum);
       const viewport = page.getViewport({ scale: 1.5 });
-      console.log(`DEBUG: Page ${pageNum} viewport created.`);
 
       const pageDiv = document.createElement('div');
       pageDiv.className = 'page';
@@ -635,16 +655,13 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
       pageDiv.appendChild(num);
 
       // UI bindings handled above; no per-page hooks needed
-      console.log(`DEBUG: Canvas created for page ${pageNum}.`);
 
       const renderContext = {
         canvasContext: ctx,
         viewport: viewport,
         transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined,
       };
-      console.log(`DEBUG: Rendering page ${pageNum} to canvas.`);
       await page.render(renderContext).promise;
-      console.log(`DEBUG: Page ${pageNum} rendered to canvas.`);
 
       if (thumbs) {
         const thumbCanvas = document.createElement('canvas');
@@ -665,7 +682,6 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
       // Build a DOM text layer that exactly matches PDF.js layout
       const textContent = await page.getTextContent();
       const original = textContent.items.map(i => i.str);
-      console.log(`DEBUG: Extracted ${original.length} text items from page ${pageNum}.`);
 
       // Create text layer container
       const textLayer = document.createElement('div');
@@ -775,7 +791,7 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
       // Selection enabled via textLayer above; translation overlay rendered
     }
   } catch (e) {
-    console.error('Error loading PDF', e);
+    logger.error('Error loading PDF', e);
     viewer.textContent = 'Failed to load PDF';
     const link = document.createElement('a');
     link.href = file;
@@ -783,6 +799,6 @@ import { storePdfInSession, readPdfFromSession } from './sessionPdf.js';
     link.target = '_blank';
     viewer.appendChild(document.createTextNode(' '));
     viewer.appendChild(link);
-    console.log(`DEBUG: Caught error: ${e.message}`);
+    logger.error('[PDF-VIEWER]', 'PDF loading error:', e.message);
   }
 })();

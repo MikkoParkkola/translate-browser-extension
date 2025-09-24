@@ -6,6 +6,8 @@
 }(typeof self !== 'undefined' ? self : this, function (root) {
   const logger = (root.qwenLogger && root.qwenLogger.create) ? root.qwenLogger.create('provider:ollama') : console;
   const fetchFn = (typeof fetch !== 'undefined') ? fetch : (root.fetch || null);
+  const errorHandler = (root.qwenProviderErrorHandler) || 
+                      (typeof require !== 'undefined' ? require('../core/provider-error-handler') : null);
   function withSlash(u) { return /\/$/.test(u) ? u : (u + '/'); }
 
   async function translate({ endpoint, model, text, source, target, signal, debug, onData, stream = true }) {
@@ -25,11 +27,18 @@
     try {
       resp = await fetchFn(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
     } catch (e) {
+      if (errorHandler) {
+        errorHandler.handleNetworkError(e, { provider: 'ollama', logger, endpoint });
+      }
       e.retryable = true;
       throw e;
     }
 
     if (!resp.ok) {
+      if (errorHandler) {
+        await errorHandler.handleHttpError(resp, { provider: 'ollama', logger, endpoint });
+      }
+      // Fallback error handling
       let msg = resp.statusText;
       try { const err = await resp.json(); msg = err.error || err.message || msg; } catch {}
       const error = new Error(`HTTP ${resp.status}: ${msg}`);
@@ -44,7 +53,13 @@
     if (!stream || !resp.body || typeof resp.body.getReader !== 'function') {
       const data = await resp.json();
       const out = data.response || '';
-      if (!out) throw new Error('Invalid API response');
+      if (!out) {
+        if (errorHandler) {
+          errorHandler.handleResponseError('Invalid API response: missing response', 
+            { provider: 'ollama', logger, response: data });
+        }
+        throw new Error('Invalid API response');
+      }
       return { text: out };
     }
 
@@ -80,8 +95,23 @@
     if (!fetchFn) throw new Error('fetch not available');
     const base = withSlash(endpoint || 'http://localhost:11434');
     const url = base + 'api/tags';
-    const resp = await fetchFn(url, { signal });
-    if (!resp.ok) { const e = new Error(`HTTP ${resp.status}: ${resp.statusText}`); e.status = resp.status; e.code = `HTTP_${resp.status}`; throw e; }
+    let resp;
+    try {
+      resp = await fetchFn(url, { signal });
+    } catch (error) {
+      if (errorHandler) {
+        errorHandler.handleNetworkError(error, { provider: 'ollama', logger, endpoint });
+      }
+      throw error;
+    }
+    if (!resp.ok) {
+      if (errorHandler) {
+        await errorHandler.handleHttpError(resp, { provider: 'ollama', logger, endpoint });
+      }
+      const e = new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      e.status = resp.status; e.code = `HTTP_${resp.status}`;
+      throw e;
+    }
     const data = await resp.json();
     return (data.models || []).map(m => m.name).filter(Boolean);
   }
@@ -95,7 +125,20 @@
     }
   }
 
-  const provider = { translate, listModels, capabilities, throttle: { requestLimit: 60, windowMs: 60000 } };
+  // Wrap main functions with standardized error handling
+  const wrappedTranslate = errorHandler ? 
+    errorHandler.wrapProviderOperation(translate, { provider: 'ollama', logger }) : translate;
+  const wrappedListModels = errorHandler ? 
+    errorHandler.wrapProviderOperation(listModels, { provider: 'ollama', logger }) : listModels;
+  const wrappedCapabilities = errorHandler ? 
+    errorHandler.wrapProviderOperation(capabilities, { provider: 'ollama', logger }) : capabilities;
+
+  const provider = { 
+    translate: wrappedTranslate, 
+    listModels: wrappedListModels, 
+    capabilities: wrappedCapabilities, 
+    throttle: { requestLimit: 60, windowMs: 60000 } 
+  };
   try {
     const reg = root.qwenProviders || (typeof require !== 'undefined' ? require('../lib/providers') : null);
     if (reg && reg.register && !reg.get('ollama')) reg.register('ollama', provider);

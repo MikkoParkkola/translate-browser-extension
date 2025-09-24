@@ -1,5 +1,7 @@
 // @jest-environment jsdom
 
+const flush = () => new Promise(res => setTimeout(res, 0));
+
 describe('home view display', () => {
   beforeEach(() => {
     jest.resetModules();
@@ -32,19 +34,26 @@ describe('home view display', () => {
     global.window.qwenUsageColor = global.qwenUsageColor;
   });
 
-  test('initializes and handles actions', () => {
+  test('initializes and handles actions', async () => {
       chrome.runtime.sendMessage.mockImplementation((msg, cb) => {
-        if (msg.action === 'home:init') cb({
-          provider: 'qwen',
-          apiKey: false,
-          usage: { requests: 5, tokens: 10, requestLimit: 100, tokenLimit: 200, queue: 0 },
-          cache: { size: 1, max: 2 },
-          tm: { hits: 3, misses: 4 },
-          auto: false,
-          active: false,
-        });
+        if (msg.action === 'home:init') {
+          const response = {
+            provider: 'qwen',
+            apiKey: false,
+            usage: { requests: 5, tokens: 10, requestLimit: 100, tokenLimit: 200, queue: 0 },
+            cache: { size: 1, max: 2 },
+            tm: { hits: 3, misses: 4 },
+            auto: false,
+            active: false,
+          };
+          if (typeof cb === 'function') cb(response);
+          return Promise.resolve(response);
+        }
+        if (typeof cb === 'function') cb({});
+        return Promise.resolve({});
       });
     require('../src/popup/home.js');
+    await flush();
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'home:init' }, expect.any(Function));
       expect(document.getElementById('providerName').textContent).toBe('qwen');
       expect(document.getElementById('providerKey').textContent).toBe('✗');

@@ -4,8 +4,11 @@
   else if (typeof self !== 'undefined') self.qwenProviderDeepL = provider;
   if (typeof module !== 'undefined') module.exports = provider;
 }(typeof self !== 'undefined' ? self : this, function (root) {
+  const logger = (root.qwenLogger && root.qwenLogger.create) ? root.qwenLogger.create('provider:deepl') : console;
   const fetchFn = (typeof fetch !== 'undefined') ? fetch : (root.fetch || null);
-    function withSlash(u) { return /\/$/.test(u) ? u : u + '/'; }
+  const errorHandler = (root.qwenProviderErrorHandler) || 
+                      (typeof require !== 'undefined' ? require('../core/provider-error-handler') : null);
+  function withSlash(u) { return /\/$/.test(u) ? u : u + '/'; }
 
   async function translate({ endpoint = 'https://api.deepl.com/', apiKey, text, source, target, signal, debug }) {
     if (!fetchFn) throw new Error('fetch not available');
@@ -18,8 +21,20 @@
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
     const key = (apiKey || '').trim();
     if (key) headers.Authorization = /^deepl-auth-key\s/i.test(key) ? key : `DeepL-Auth-Key ${key}`;
-    const resp = await fetchFn(url, { method: 'POST', headers, body: params.toString(), signal });
+    let resp;
+    try {
+      resp = await fetchFn(url, { method: 'POST', headers, body: params.toString(), signal });
+    } catch (error) {
+      if (errorHandler) {
+        errorHandler.handleNetworkError(error, { provider: 'deepl', logger, endpoint });
+      }
+      throw error;
+    }
     if (!resp.ok) {
+      if (errorHandler) {
+        await errorHandler.handleHttpError(resp, { provider: 'deepl', logger, endpoint });
+      }
+      // Fallback error handling
       let msg = resp.statusText;
       try { const err = await resp.json(); msg = err.message || err.message_detail || msg; } catch {}
       const error = new Error(`HTTP ${resp.status}: ${msg}`);
@@ -37,7 +52,13 @@
     }
     const data = await resp.json();
     const out = data && data.translations && data.translations[0] && data.translations[0].text;
-    if (!out) throw new Error('Invalid API response');
+    if (!out) {
+      if (errorHandler) {
+        errorHandler.handleResponseError('Invalid API response: missing translation text', 
+          { provider: 'deepl', logger, response: data });
+      }
+      throw new Error('Invalid API response');
+    }
     const usage = resp.headers.get('x-deepl-usage');
     let characters;
     if (usage) {
@@ -48,8 +69,14 @@
   }
 
     function makeProvider(ep) {
+      const wrappedTranslate = errorHandler ? 
+        errorHandler.wrapProviderOperation(
+          opts => translate({ ...opts, endpoint: ep || opts.endpoint }), 
+          { provider: 'deepl', logger }
+        ) : opts => translate({ ...opts, endpoint: ep || opts.endpoint });
+
       return {
-        translate: opts => translate({ ...opts, endpoint: ep || opts.endpoint }),
+        translate: wrappedTranslate,
         label: 'DeepL',
         configFields: ['apiKey', 'apiEndpoint'],
         throttle: { requestLimit: 15, windowMs: 1000 },

@@ -183,6 +183,92 @@
             </div>
             
             <div class="setting-group">
+              <h3>PDF Engine</h3>
+              <p class="setting-description">Choose PDF processing engine. Larger engines provide more features but increase bundle size.</p>
+              
+              <div class="pdf-engine-selection">
+                <div class="engine-options">
+                  <label class="engine-option" for="pdf-engine-none">
+                    <input type="radio" id="pdf-engine-none" name="pdf-engine" value="none" checked>
+                    <div class="engine-card">
+                      <div class="engine-header">
+                        <span class="engine-name">Disabled</span>
+                        <span class="engine-size">0MB</span>
+                      </div>
+                      <p class="engine-description">PDF translation disabled (smallest bundle)</p>
+                      <div class="engine-features">
+                        <span class="feature-badge disabled">No PDF support</span>
+                      </div>
+                    </div>
+                  </label>
+                  
+                  <label class="engine-option" for="pdf-engine-pdfjs">
+                    <input type="radio" id="pdf-engine-pdfjs" name="pdf-engine" value="pdfjs">
+                    <div class="engine-card">
+                      <div class="engine-header">
+                        <span class="engine-name">PDF.js</span>
+                        <span class="engine-size">1.3MB</span>
+                        <span class="engine-badge recommended">Recommended</span>
+                      </div>
+                      <p class="engine-description">Mozilla PDF.js - Good balance of features and size</p>
+                      <div class="engine-features">
+                        <span class="feature-badge">Text Extract</span>
+                        <span class="feature-badge">Render</span>
+                        <span class="feature-badge">Annotations</span>
+                      </div>
+                    </div>
+                  </label>
+                  
+                  <label class="engine-option" for="pdf-engine-mupdf">
+                    <input type="radio" id="pdf-engine-mupdf" name="pdf-engine" value="mupdf">
+                    <div class="engine-card">
+                      <div class="engine-header">
+                        <span class="engine-name">MuPDF</span>
+                        <span class="engine-size">9.3MB</span>
+                        <span class="engine-badge advanced">Advanced</span>
+                      </div>
+                      <p class="engine-description">Full-featured PDF processing with editing support</p>
+                      <div class="engine-features">
+                        <span class="feature-badge">Text Extract</span>
+                        <span class="feature-badge">Render</span>
+                        <span class="feature-badge">Forms</span>
+                        <span class="feature-badge">Editing</span>
+                        <span class="feature-badge">Annotations</span>
+                      </div>
+                    </div>
+                  </label>
+                  
+                  <label class="engine-option" for="pdf-engine-pdfium">
+                    <input type="radio" id="pdf-engine-pdfium" name="pdf-engine" value="pdfium">
+                    <div class="engine-card">
+                      <div class="engine-header">
+                        <span class="engine-name">PDFium</span>
+                        <span class="engine-size">5.5MB</span>
+                      </div>
+                      <p class="engine-description">Google Chrome PDF engine - fast and reliable</p>
+                      <div class="engine-features">
+                        <span class="feature-badge">Text Extract</span>
+                        <span class="feature-badge">Render</span>
+                        <span class="feature-badge">Forms</span>
+                      </div>
+                    </div>
+                  </label>
+                </div>
+                
+                <div class="pdf-engine-stats">
+                  <div class="stat-item">
+                    <span class="stat-label">Current Selection:</span>
+                    <span id="current-pdf-engine">Disabled (0MB)</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-label">Bundle Size Saved:</span>
+                    <span id="pdf-size-saved">16.1MB</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="setting-group">
               <h3>Debugging</h3>
               <div class="setting-item-checkbox">
                 <label class="checkbox-label">

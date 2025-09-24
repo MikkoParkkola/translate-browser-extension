@@ -120,6 +120,23 @@ const OptionsPage = {
     try {
       const { providers } = await chrome.storage.local.get({ providers: [] });
       this.providers = providers.length > 0 ? providers : this.getDefaultProviders();
+
+      // Validate and fix provider statuses based on API key presence
+      let needsUpdate = false;
+      this.providers.forEach(provider => {
+        const shouldBeActive = provider.apiKey && provider.apiKey.trim().length > 0;
+        const newStatus = shouldBeActive ? 'active' : 'inactive';
+
+        if (provider.status !== newStatus) {
+          provider.status = newStatus;
+          needsUpdate = true;
+        }
+      });
+
+      // Save corrected statuses if any were updated
+      if (needsUpdate) {
+        await this.saveProviders();
+      }
     } catch (error) {
       logger.error('Failed to load providers:', error);
       this.providers = this.getDefaultProviders();
@@ -129,20 +146,33 @@ const OptionsPage = {
   getDefaultProviders() {
     return [
       {
-        id: 'qwen',
-        name: 'Alibaba Qwen',
-        type: 'openai',
+        id: 'qwen-mt-turbo',
+        name: 'Alibaba Qwen MT Turbo',
+        type: 'dashscope',
         icon: '🤖',
         status: 'active',
         apiKey: '',
-        apiEndpoint: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation',
+        apiEndpoint: 'https://dashscope-intl.aliyuncs.com/api/v1/services/aimt/text-translation/message',
         model: 'qwen-turbo',
         usage: { requests: 0, tokens: 0, limit: 1000 }
       },
       {
+        id: 'hunyuan-local',
+        name: 'Hunyuan Local Model',
+        type: 'local',
+        icon: '🏠',
+        status: 'inactive',
+        apiKey: 'local-model', // Special value to indicate local model
+        apiEndpoint: 'local://hunyuan-mt',
+        model: 'Hunyuan-MT-7B.i1-Q4_K_M.gguf',
+        usage: { requests: 0, tokens: 0, limit: Infinity }, // No limit for local model
+        description: 'Runs locally on your device (4.37GB download)',
+        downloadSize: '4.37GB'
+      },
+      {
         id: 'openai',
         name: 'OpenAI GPT',
-        type: 'openai', 
+        type: 'openai',
         icon: '🧠',
         status: 'inactive',
         apiKey: '',
@@ -182,13 +212,13 @@ const OptionsPage = {
           </div>
         </div>
         <div class="provider-actions">
-          <button class="provider-action-btn" onclick="OptionsPage.editProvider(${index})" aria-label="Edit provider">
+          <button class="provider-action-btn js-edit" aria-label="Edit provider">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2"/>
               <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2"/>
             </svg>
           </button>
-          <button class="provider-action-btn" onclick="OptionsPage.deleteProvider(${index})" aria-label="Delete provider">
+          <button class="provider-action-btn js-delete" aria-label="Delete provider">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <polyline points="3,6 5,6 21,6" stroke="currentColor" stroke-width="2"/>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-width="2"/>
@@ -207,6 +237,11 @@ const OptionsPage = {
         </div>
       </div>
     `;
+
+    const editBtn = card.querySelector('.js-edit');
+    const delBtn = card.querySelector('.js-delete');
+    editBtn.addEventListener('click', () => OptionsPage.editProvider(index));
+    delBtn.addEventListener('click', () => OptionsPage.deleteProvider(index));
     
     return card;
   },
@@ -307,7 +342,31 @@ const OptionsPage = {
           </div>
         `;
         break;
-      
+
+      case 'qwen':
+        formHTML = `
+          <div class="form-group">
+            <label for="provider-name">Provider Name</label>
+            <input type="text" id="provider-name" class="form-input" value="Alibaba Qwen MT Turbo" placeholder="Enter provider name">
+          </div>
+          <div class="form-group">
+            <label for="provider-api-key">API Key</label>
+            <input type="password" id="provider-api-key" class="form-input" placeholder="Enter your DashScope API key">
+          </div>
+          <div class="form-group">
+            <label for="provider-model">Model</label>
+            <select id="provider-model" class="form-select">
+              <option value="qwen-turbo" selected>Qwen Turbo</option>
+              <option value="qwen-plus">Qwen Plus</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="provider-endpoint">API Endpoint</label>
+            <input type="text" id="provider-endpoint" class="form-input" value="https://dashscope-intl.aliyuncs.com/api/v1/services/aimt/text-translation/message" readonly>
+          </div>
+        `;
+        break;
+
       default:
         formHTML = `
           <div class="form-group">
@@ -348,7 +407,7 @@ const OptionsPage = {
       name: name,
       type: this.selectedPreset,
       icon: this.getPresetIcon(this.selectedPreset),
-      status: 'inactive',
+      status: apiKey && apiKey.trim().length > 0 ? 'active' : 'inactive',
       apiKey: apiKey,
       apiEndpoint: endpoint,
       model: model,
@@ -364,6 +423,7 @@ const OptionsPage = {
   getPresetIcon(presetType) {
     const icons = {
       'openai': '🧠',
+      'qwen': '🚀',
       'deepl': '🔷',
       'google': '🔍',
       'custom': '⚙️'
@@ -385,12 +445,15 @@ const OptionsPage = {
 
   saveProvider() {
     if (this.editingProvider === null) return;
-    
+
     const provider = this.providers[this.editingProvider];
     provider.apiKey = document.getElementById('pe_apiKey').value;
     provider.apiEndpoint = document.getElementById('pe_apiEndpoint').value;
     provider.model = document.getElementById('pe_model').value;
-    
+
+    // Update provider status based on API key presence
+    provider.status = provider.apiKey && provider.apiKey.trim().length > 0 ? 'active' : 'inactive';
+
     this.saveProviders();
     this.renderProviders();
     this.hideProviderEditor();

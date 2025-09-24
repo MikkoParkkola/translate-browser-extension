@@ -11,6 +11,11 @@ describe('content script auto-translate visibility', () => {
         onMessage: { addListener: () => {} },
       },
     };
+    
+    // Mock location for contentScript.js - jsdom already provides location
+    // Just need to ensure it has the right href
+    console.log('location.href before:', location.href);
+    // Test will work with jsdom's default location
     window.qwenTranslateBatch = jest.fn(async () => ({ texts: [] }));
     window.qwenLoadConfig = async () => ({ autoTranslate: true, debug: false });
     window.qwenSetTokenBudget = jest.fn();
@@ -61,6 +66,16 @@ describe('content script auto-translate visibility', () => {
     // Use real timers to avoid complex timing issues
     require('../src/contentScript.js');
     
+    // Wait for async initialization to complete
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    // Add debug logging
+    console.log('After loading contentScript.js and waiting');
+    console.log('Document body content:', document.body.innerHTML);
+    console.log('Document hidden:', document.hidden);
+    console.log('qwenLoadConfig calls:', window.qwenLoadConfig.mock.calls.length);
+    console.log('window.qwenTranslateBatch calls so far:', window.qwenTranslateBatch.mock.calls.length);
+    
     // Initial state - should not translate while hidden
     await new Promise(resolve => setTimeout(resolve, 10));
     expect(window.qwenTranslateBatch).not.toHaveBeenCalled();
@@ -68,10 +83,13 @@ describe('content script auto-translate visibility', () => {
     // Make document visible and dispatch event
     Object.defineProperty(document, 'hidden', { value: false, configurable: true });
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    console.log('Before visibilitychange event - Document hidden:', document.hidden);
     document.dispatchEvent(new Event('visibilitychange'));
+    console.log('After visibilitychange event dispatched');
     
     // Allow async chain to complete
     await new Promise(resolve => setTimeout(resolve, 200));
+    console.log('After 200ms wait - qwenTranslateBatch calls:', window.qwenTranslateBatch.mock.calls.length);
     
     expect(window.qwenTranslateBatch).toHaveBeenCalled();
     

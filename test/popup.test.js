@@ -5,21 +5,27 @@ global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder;
 const { JSDOM } = require('jsdom');
 
-test('popup header displays product name with link', () => {
+test('popup header displays branded product name', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup.html'), 'utf8');
   const dom = new JSDOM(html);
-  const h1 = dom.window.document.querySelector('h1');
-  expect(h1?.textContent).toBe('TRANSLATE!');
+  const productName = dom.window.document.querySelector('#productName');
+  expect(productName?.textContent?.trim()).toBe('TRANSLATE!');
+
+  const productAuthor = dom.window.document.querySelector('#productAuthor');
+  expect(productAuthor?.textContent?.trim()).toBe('by Mikko');
+
+  const body = dom.window.document.body;
+  expect(body.classList.contains('popup-body')).toBe(true);
+  expect(body.dataset.theme).toBe('light');
 });
 
-test('built popup includes product name with link', () => {
-  const html = fs.readFileSync(path.join(__dirname, '..', 'dist', 'popup.html'), 'utf8');
+test('popup translate button has structured content and loading state elements', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup.html'), 'utf8');
   const dom = new JSDOM(html);
-  const h1 = dom.window.document.querySelector('h1');
-  expect(h1?.textContent).toBe('Translate');
+  const btn = dom.window.document.querySelector('#translate-button');
+  expect(btn).toBeTruthy();
+  expect(btn.querySelector('.button-text')?.textContent?.trim()).toBe('Translate Selection');
+  expect(btn.querySelector('.button-loading')).not.toBeNull();
+  expect(btn.querySelector('.progress-bar-mini')).not.toBeNull();
 });
 
-test('built popup css styles product name', () => {
-  const css = fs.readFileSync(path.join(__dirname, '..', 'dist', 'styles', 'popup.css'), 'utf8');
-  expect(css).toMatch(/#productName/);
-});

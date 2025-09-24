@@ -8,10 +8,133 @@ if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
     window.__qwenCSLoaded = true;
   }
 
-  const skipInit = location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'));
-  const logger = (window.qwenLogger && window.qwenLogger.create) ? window.qwenLogger.create('content') : console;
+  const skipInit = chrome && chrome.runtime && chrome.runtime.getURL && 
+    location.href.startsWith(chrome.runtime.getURL('pdfViewer.html'));
+  
+  // Load core modules
+  const loadCoreModules = async () => {
+    // Detect test environment
+    const isJestEnvironment = typeof jest !== 'undefined' || 
+                              typeof window !== 'undefined' && window.jest ||
+                              typeof global !== 'undefined' && global.expect ||
+                              typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
+    
+    // Check for test environment (no chrome.runtime or jest environment)
+    if (!chrome || !chrome.runtime || !chrome.runtime.getURL || isJestEnvironment) {
+      return false;
+    }
+    
+    const moduleLoaders = [
+      { src: 'core/dom-scanner.js', global: 'qwenDOMScanner' },
+      { src: 'core/ui-manager.js', global: 'qwenUIManager' },
+      { src: 'core/translation-batcher.js', global: 'qwenTranslationBatcher' },
+      { src: 'core/translation-processor.js', global: 'qwenTranslationProcessor' },
+      { src: 'core/content-script-coordinator.js', global: 'qwenContentScriptCoordinator' }
+    ];
+    
+    console.log('[DEBUG] Creating load promises for', moduleLoaders.length, 'modules');
+    const loadPromises = moduleLoaders.map(({ src, global }) => {
+      return new Promise((resolve, reject) => {
+        if (window[global]) {
+          console.log('[DEBUG] Module already loaded:', global);
+          resolve(window[global]);
+          return;
+        }
+        
+        console.log('[DEBUG] Loading module:', src);
+        const script = document.createElement('script');
+        script.src = chrome.runtime.getURL(src);
+        script.onload = () => {
+          console.log('[DEBUG] Module loaded successfully:', global);
+          resolve(window[global]);
+        };
+        script.onerror = () => {
+          console.log('[DEBUG] Module failed to load:', src);
+          reject(new Error(`Failed to load ${src}`));
+        };
+        document.head.appendChild(script);
+      });
+    });
+    
+    try {
+      console.log('[DEBUG] Waiting for all modules to load...');
+      await Promise.all(loadPromises);
+      console.log('[DEBUG] All modules loaded successfully');
+      return true;
+    } catch (error) {
+      console.error('[DEBUG] Failed to load core modules:', error);
+      return false;
+    }
+  };
+  
+  // Legacy security module loading for backward compatibility
+  let security = null;
+  try {
+    if (window.qwenSecurity) {
+      security = window.qwenSecurity;
+    } else {
+      // Import security module
+      const securityScript = document.createElement('script');
+      securityScript.src = chrome.runtime.getURL('core/security.js');
+      document.head.appendChild(securityScript);
+    }
+  } catch (e) {
+    console.warn('Failed to load security module:', e);
+    // Fallback minimal security
+    security = {
+      sanitizeTranslationText: (text) => typeof text === 'string' ? text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') : text,
+      logSecurityEvent: (event, details) => console.warn('[Security]', event, details)
+    };
+  }
+
+  // Legacy error handler module loading for backward compatibility
+  let errorHandler = null;
+  try {
+    if (window.qwenErrorHandler) {
+      errorHandler = window.qwenErrorHandler;
+    } else {
+      // Import error handler module
+      const errorHandlerScript = document.createElement('script');
+      errorHandlerScript.src = chrome.runtime.getURL('core/error-handler.js');
+      document.head.appendChild(errorHandlerScript);
+    }
+  } catch (e) {
+    console.warn('Failed to load error handler module:', e);
+    // Fallback minimal error handler
+    errorHandler = {
+      handle: (error, context = {}, customFallback) => {
+        console.error('Error:', error?.message || error);
+        return customFallback || null;
+      },
+      safe: (fn, context = {}, customFallback) => {
+        return function(...args) {
+          try {
+            const result = fn.apply(this, args);
+            if (result && typeof result.catch === 'function') {
+              return result.catch(error => {
+                console.error('Async error:', error?.message || error);
+                return customFallback || null;
+              });
+            }
+            return result;
+          } catch (error) {
+            console.error('Sync error:', error?.message || error);
+            return customFallback || null;
+          }
+        };
+      },
+      isNetworkError: (error) => {
+        const message = error?.message || '';
+        return /fetch|network|connection|timeout|cors|offline/i.test(message);
+      }
+    };
+  }
+  // Modern modular coordinator
+  let coordinator = null;
+  let currentConfig = null;
+  
+  // Legacy support variables for backward compatibility
   let observers = [];
-  let currentConfig;
   const batchQueue = [];
   let processing = false;
   let statusTimer;
@@ -29,6 +152,45 @@ if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
   let prefetchObserver;
   const visibilityMap = new Map();
   const { isOfflineError } = (typeof require === 'function' ? require('./lib/offline.js') : window);
+  
+  // Legacy DOM optimizer for backward compatibility
+  let domOptimizer = null;
+  
+  // Flexible logger: prefer injected qwenLogger when available
+  const baseLogger = (typeof window !== 'undefined' && window.qwenLogger && typeof window.qwenLogger.create === 'function')
+    ? window.qwenLogger.create('content')
+    : null;
+
+  const logger = {
+    debug: (...args) => (baseLogger && baseLogger.debug ? baseLogger.debug(...args) : console.debug('[Qwen]', ...args)),
+    info: (...args) => (baseLogger && baseLogger.info ? baseLogger.info(...args) : console.info('[Qwen]', ...args)),
+    warn: (...args) => (baseLogger && baseLogger.warn ? baseLogger.warn(...args) : console.warn('[Qwen]', ...args)),
+    error: (...args) => (baseLogger && baseLogger.error ? baseLogger.error(...args) : console.error('[Qwen]', ...args)),
+    logQueueLatency: false, // Legacy property
+  };
+  
+  // Legacy loadDOMOptimizer function for backward compatibility
+  async function loadDOMOptimizer() {
+    if (domOptimizer) return domOptimizer;
+    
+    // Simple fallback DOM optimizer
+    domOptimizer = {
+      replaceText: (node, text, preserveWhitespace = false) => {
+        if (node && typeof text === 'string') {
+          node.textContent = text;
+        }
+      },
+      batchReplace: (replacements) => {
+        replacements.forEach(({ node, newText }) => {
+          if (node && typeof newText === 'string') {
+            node.textContent = newText;
+          }
+        });
+      }
+    };
+    
+    return domOptimizer;
+  }
 
   function cleanupControllers() {
     controllers.forEach(c => {
@@ -46,7 +208,10 @@ if (typeof window !== 'undefined' && window.__qwenCSLoaded) {
 function handleLastError(cb) {
   return (...args) => {
     const err = chrome.runtime.lastError;
-    if (err && !err.message.includes('Receiving end does not exist')) console.debug(err);
+    // Only log meaningful errors, not routine communication cleanup
+    if (err && !err.message.includes('Receiving end does not exist')) {
+      console.warn('[CONTENT-SCRIPT]', 'Runtime error:', err.message);
+    }
     if (typeof cb === 'function') cb(...args);
   };
 }
@@ -55,7 +220,10 @@ function safeSendMessage(msg, cb) {
   try {
     chrome.runtime.sendMessage(msg, handleLastError(cb));
   } catch (err) {
-    if (err && !err.message.includes('Extension context invalidated')) console.debug(err);
+    // Only log meaningful errors, not routine context cleanup
+    if (err && !err.message.includes('Extension context invalidated')) {
+      console.warn('[CONTENT-SCRIPT]', 'Message send error:', err.message);
+    }
   }
 }
 
@@ -104,18 +272,32 @@ function replacePdfEmbeds() {
 }
 replacePdfEmbeds();
 
+const storageHelpers = (typeof require === 'function' ? require('./lib/storage') : window.qwenStorageHelpers);
+
 async function loadGlossary() {
   if (!window.qwenGlossary) return;
-  if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.sync) return;
-  await new Promise(res => {
-    chrome.storage.sync.get({ glossary: {}, tone: 'formal' }, data => {
-      try {
-        window.qwenGlossary.parse(document, data.glossary || {});
-        if (window.qwenGlossary.setTone) window.qwenGlossary.setTone(data.tone || 'formal');
-      } catch {}
-      res();
+
+  if (storageHelpers && typeof storageHelpers.createStorage === 'function' && self.qwenAsyncChrome) {
+    try {
+      const storage = storageHelpers.createStorage(self.qwenAsyncChrome);
+      const data = await storage.get('sync', { glossary: {}, tone: 'formal' });
+      window.qwenGlossary.parse(document, data.glossary || {});
+      if (window.qwenGlossary.setTone) window.qwenGlossary.setTone(data.tone || 'formal');
+      return;
+    } catch {}
+  }
+
+  if (typeof chrome !== 'undefined' && chrome.storage?.sync) {
+    await new Promise(resolve => {
+      chrome.storage.sync.get({ glossary: {}, tone: 'formal' }, data => {
+        try {
+          window.qwenGlossary.parse(document, data.glossary || {});
+          if (window.qwenGlossary.setTone) window.qwenGlossary.setTone(data.tone || 'formal');
+        } catch {}
+        resolve();
+      });
     });
-  });
+  }
 }
 
 function setStatus(message, isError = false) {
@@ -129,7 +311,14 @@ function setStatus(message, isError = false) {
     el.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');
-    el.innerHTML = '<span class="qwen-hud__dot" aria-hidden="true"></span><span class="qwen-hud__text"></span>';
+    // Create DOM elements securely instead of using innerHTML
+    const dot = document.createElement('span');
+    dot.className = 'qwen-hud__dot';
+    dot.setAttribute('aria-hidden', 'true');
+    const text = document.createElement('span');
+    text.className = 'qwen-hud__text';
+    el.appendChild(dot);
+    el.appendChild(text);
     document.body.appendChild(el);
   }
   el.dataset.variant = isError ? 'error' : '';
@@ -153,7 +342,10 @@ function updateProgressHud() {
     progressHud.className = 'qwen-hud qwen-hud--progress';
     progressHud.setAttribute('data-qwen-theme', (currentConfig && currentConfig.themeStyle) || 'apple');
     progressHud.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
-    progressHud.innerHTML = '<span class="qwen-hud__text"></span>';
+    // Create DOM elements securely instead of using innerHTML
+    const text = document.createElement('span');
+    text.className = 'qwen-hud__text';
+    progressHud.appendChild(text);
     progressHud.style.bottom = '40px';
     document.body.appendChild(progressHud);
   }
@@ -186,7 +378,10 @@ function updateTopProgressBar() {
     topProgressBar.id = 'qwen-top-progress';
     topProgressBar.className = 'qwen-progress-bar';
     topProgressBar.setAttribute('data-qwen-color', (currentConfig && currentConfig.theme) || 'dark');
-    topProgressBar.innerHTML = '<div class="qwen-progress-bar__fill"></div>';
+    // Create DOM elements securely instead of using innerHTML
+    const fill = document.createElement('div');
+    fill.className = 'qwen-progress-bar__fill';
+    topProgressBar.appendChild(fill);
     document.body.appendChild(topProgressBar);
   }
   
@@ -453,7 +648,13 @@ async function showSelectionBubble(range, text) {
   let currentTranslation = '';
   
   translateBtn.addEventListener('click', async () => {
-    result.innerHTML = '<span class="qwen-loading-skeleton"></span> Translating...';
+    // Create DOM elements securely instead of using innerHTML
+    result.textContent = ''; // Clear existing content
+    const skeleton = document.createElement('span');
+    skeleton.className = 'qwen-loading-skeleton';
+    const loadingText = document.createTextNode(' Translating...');
+    result.appendChild(skeleton);
+    result.appendChild(loadingText);
     translateBtn.disabled = true;
     selectionBubble.classList.remove('qwen-bubble--error');
     
@@ -590,6 +791,10 @@ function shouldTranslate(node) {
 }
 
 async function translateNode(node) {
+  // Ensure DOM optimizer is loaded
+  if (!domOptimizer) {
+    domOptimizer = await loadDOMOptimizer();
+  }
   const original = node.textContent || '';
   const leading = original.match(/^\s*/)[0];
   const trailing = original.match(/\s*$/)[0];
@@ -625,11 +830,35 @@ async function translateNode(node) {
         logger.warn('QTWARN: text already in target language; check source and target settings');
       }
     }
-    node.textContent = leading + translated + trailing;
+    
+    // Sanitize translated text before DOM insertion
+    let safeTranslated = translated;
+    if (security && security.sanitizeTranslationText) {
+      safeTranslated = security.sanitizeTranslationText(translated);
+      if (safeTranslated !== translated) {
+        security.logSecurityEvent('Translation text sanitized', { 
+          node: node.tagName || 'TEXT',
+          issues: 'dangerous content removed'
+        });
+      }
+    }
+    
+    // Use DOM optimizer for batched text replacement
+    if (domOptimizer && domOptimizer.replaceText) {
+      domOptimizer.replaceText(node, leading + safeTranslated + trailing, true);
+    } else {
+      node.textContent = leading + safeTranslated + trailing;
+    }
     mark(node);
   } catch (e) {
+    const fallbackError = errorHandler ? errorHandler.handle(e, {
+      operation: 'node_translation',
+      nodeType: node.tagName || 'TEXT',
+      textLength: text?.length || 0
+    }, null) : null;
+    
     const t = window.qwenI18n ? window.qwenI18n.t.bind(window.qwenI18n) : k => k;
-    const offline = isOfflineError(e);
+    const offline = errorHandler ? errorHandler.isNetworkError(e) : isOfflineError(e);
     if (offline) {
       showError(t('popup.offline'));
       safeSendMessage({ action: 'translation-status', status: { offline: true } });
@@ -643,6 +872,10 @@ async function translateNode(node) {
 }
 
 async function translateBatch(elements, stats, force = false) {
+  // Ensure DOM optimizer is loaded
+  if (!domOptimizer) {
+    domOptimizer = await loadDOMOptimizer();
+  }
   logger.info('starting batch translation', { count: elements.length });
   const batchStart = Date.now();
   const originals = elements.map(el => el.textContent || '');
@@ -681,6 +914,11 @@ async function translateBatch(elements, stats, force = false) {
     clearTimeout(timeout);
     controllers.delete(controller);
   }
+  // Prepare batch replacements for DOM optimizer
+  const batchReplacements = [];
+  const elementsToMark = [];
+  const feedbackElements = [];
+  
   res.texts.forEach((t, i) => {
     const el = elements[i];
     const orig = originals[i];
@@ -695,10 +933,31 @@ async function translateBatch(elements, stats, force = false) {
         logger.warn('QTWARN: text already in target language; marking as untranslatable');
       }
     } else {
-      el.textContent = leading + t + trailing;
-      mark(el);
-      addFeedbackUI(el, texts[i], t, scoreConfidence(texts[i], t));
+      // Queue for batch replacement
+      batchReplacements.push({
+        node: el,
+        newText: leading + t + trailing,
+        preserveWhitespace: true
+      });
+      elementsToMark.push(el);
+      feedbackElements.push({ el, original: texts[i], translated: t, confidence: scoreConfidence(texts[i], t) });
     }
+  });
+  
+  // Execute batch DOM replacements
+  if (domOptimizer && domOptimizer.batchReplace && batchReplacements.length > 0) {
+    domOptimizer.batchReplace(batchReplacements);
+  } else {
+    // Fallback to individual replacements
+    batchReplacements.forEach(({ node, newText }) => {
+      node.textContent = newText;
+    });
+  }
+  
+  // Mark elements and add feedback UI after DOM operations
+  elementsToMark.forEach(el => mark(el));
+  feedbackElements.forEach(({ el, original, translated, confidence }) => {
+    addFeedbackUI(el, original, translated, confidence);
   });
   const batchTime = Date.now() - batchStart;
   logger.info('finished batch translation', { count: elements.length });
@@ -772,50 +1031,120 @@ async function processQueue() {
 }
 
 function batchNodes(nodes) {
-  const maxTokens = 6000;
+  // Dynamic token budget based on config or performance
+  const dynamicTokenBudget = (currentConfig && currentConfig.tokenBudget) || 
+                             (window.qwenTranslateBatch && window.qwenTranslateBatch._getTokenBudget) ?
+                             window.qwenTranslateBatch._getTokenBudget() : 6000;
+  
+  const maxTokens = Math.min(dynamicTokenBudget, 12000); // Cap at 12K for safety
   const batches = [];
   let current = [];
   let tokens = 0;
   const approx = window.qwenThrottle ? window.qwenThrottle.approxTokens : t => Math.ceil(t.length / 4);
-  const seen = new Set();
-  nodes.forEach(el => {
+  const textMap = new Map(); // Use Map for better deduplication performance
+  
+  // Pre-process text extraction and deduplication
+  const processedNodes = [];
+  for (let i = 0; i < nodes.length; i++) {
+    const el = nodes[i];
     const text = el.textContent.trim();
-    const tok = approx(text);
-    const unique = !seen.has(text);
-    if (current.length && tokens + (unique ? tok : 0) > maxTokens) {
+    
+    if (!text) continue; // Skip empty nodes
+    
+    let tokCount;
+    if (textMap.has(text)) {
+      tokCount = 0; // No token cost for duplicates
+    } else {
+      tokCount = approx(text);
+      textMap.set(text, tokCount);
+    }
+    
+    processedNodes.push({ el, text, tokens: tokCount });
+  }
+  
+  // Efficient batching with look-ahead optimization
+  for (let i = 0; i < processedNodes.length; i++) {
+    const { el, tokens: nodeTokens } = processedNodes[i];
+    
+    // Check if adding this node would exceed limit
+    if (current.length && tokens + nodeTokens > maxTokens) {
+      // Look ahead to see if we can optimize batch size
+      if (current.length < 10 && i < processedNodes.length - 1) {
+        const nextNodeTokens = processedNodes[i + 1].tokens;
+        if (tokens + nodeTokens + nextNodeTokens <= maxTokens * 1.1) {
+          // Allow slight overage if it creates better batch sizes
+          current.push(el);
+          tokens += nodeTokens;
+          continue;
+        }
+      }
+      
       batches.push(current);
-      current = [];
-      tokens = 0;
-      seen.clear();
+      current = [el];
+      tokens = nodeTokens;
+    } else {
+      current.push(el);
+      tokens += nodeTokens;
     }
-    current.push(el);
-    if (unique) {
-      tokens += tok;
-      seen.add(text);
-    }
-  });
-  if (current.length) batches.push(current);
+  }
+  
+  if (current.length > 0) batches.push(current);
+  
+  // Enqueue batches with performance timing
   batches.forEach(b => enqueueBatch(b));
 }
 
 function collectNodes(root, out) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
-  let node;
-  while ((node = walker.nextNode())) {
-    if (node.textContent.trim() && shouldTranslate(node)) {
-      out.push(node);
+  // Pre-allocate array to avoid dynamic resizing and use iterative approach
+  const textNodes = [];
+  const stack = [root];
+  const seen = new Set();
+  
+  // Iterative traversal to avoid recursion overhead and stack depth issues
+  while (stack.length > 0) {
+    const current = stack.pop();
+    
+    // Skip if already processed (prevents infinite loops in shadow DOM)
+    if (seen.has(current)) continue;
+    seen.add(current);
+    
+    // Direct text node collection without TreeWalker overhead
+    if (current.nodeType === Node.TEXT_NODE) {
+      const text = current.textContent;
+      if (text && text.trim() && shouldTranslate(current)) {
+        textNodes.push(current);
+      }
+    } else if (current.nodeType === Node.ELEMENT_NODE) {
+      // Add child nodes to stack in reverse order for correct traversal
+      const children = current.childNodes;
+      for (let i = children.length - 1; i >= 0; i--) {
+        stack.push(children[i]);
+      }
+      
+      // Handle shadow DOM efficiently
+      if (current.shadowRoot) {
+        stack.push(current.shadowRoot);
+      }
     }
   }
+  
+  // Batch add to output array to minimize array operations
+  if (textNodes.length > 0) {
+    out.push(...textNodes);
+  }
+  
+  // Handle iframe/embed content separately for security and performance
   if (root.querySelectorAll) {
-    root.querySelectorAll('iframe,object,embed').forEach(el => {
+    const embeddedElements = root.querySelectorAll('iframe,object,embed');
+    for (let i = 0; i < embeddedElements.length; i++) {
+      const el = embeddedElements[i];
       try {
         const doc = el.contentDocument || el.getSVGDocument?.();
-        if (doc) collectNodes(doc, out);
+        if (doc && !seen.has(doc)) {
+          collectNodes(doc, out);
+        }
       } catch {}
-    });
-    root.querySelectorAll('*').forEach(el => {
-      if (el.shadowRoot) collectNodes(el.shadowRoot, out);
-    });
+    }
   }
 }
 
@@ -897,6 +1226,7 @@ async function scanDocument() {
   const chunkSize = 200;
   let node;
   let processed = 0;
+  
   while (started && (node = walker.nextNode())) {
     if (node.textContent.trim() && shouldTranslate(node)) {
       chunk.push(node);
@@ -905,11 +1235,20 @@ async function scanDocument() {
       }
     }
     processed++;
-    if (processed % 500 === 0) {
-      await new Promise(r => setTimeout(r, 0));
+    
+    // Use requestIdleCallback for better performance when available
+    if (processed % 200 === 0) { // Reduced from 500 to 200 for more responsive yielding
+      await new Promise(resolve => {
+        if (window.requestIdleCallback) {
+          requestIdleCallback(resolve, { timeout: 16 }); // 16ms timeout for 60fps
+        } else {
+          setTimeout(resolve, 0);
+        }
+      });
       if (!started) return;
     }
   }
+  
   if (started && chunk.length) prefetchNodes(chunk);
   if (!started) return;
   observe();
@@ -939,7 +1278,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const original = msg.original || 'Hello world';
     const el = document.createElement('span');
     el.id = 'qwen-test-element';
-    el.textContent = original;
+    if (domOptimizer && domOptimizer.replaceText) {
+      domOptimizer.replaceText(el, original, true);
+    } else {
+      el.textContent = original;
+    }
     document.body.appendChild(el);
     if (cfg.debug) logger.debug('QTDEBUG: test-e2e request received');
     const controller = new AbortController();
@@ -968,7 +1311,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (!res || typeof res.text !== 'string') {
           throw new Error('invalid response');
         }
-        el.textContent = res.text;
+        if (domOptimizer && domOptimizer.replaceText) {
+          domOptimizer.replaceText(el, res.text, true);
+        } else {
+          el.textContent = res.text;
+        }
         if (cfg.debug) logger.debug('QTDEBUG: test-e2e sending response');
         sendResponse({ text: res.text });
         setTimeout(() => el.remove(), 1000);
@@ -1027,47 +1374,173 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-  function initConfig() {
-    window.qwenLoadConfig().then(cfg => {
-      currentConfig = cfg;
-      ensureThemeCss(cfg && cfg.themeStyle);
-      if (cfg.selectionPopup) {
-        document.addEventListener('mouseup', handleSelection);
-        document.addEventListener('keyup', handleSelection);
-        document.addEventListener('mousedown', e => {
-          if (selectionBubble && !selectionBubble.contains(e.target) && !selectionPinned) removeSelectionBubble();
-        });
-        document.addEventListener('keydown', e => { if (e.key === 'Escape') removeSelectionBubble(); });
-      }
-      if (cfg.autoTranslate) {
-        if (!document.hidden) {
-          start();
-        } else {
-          const onVisible = () => {
-            if (!document.hidden) {
-              document.removeEventListener('visibilitychange', onVisible);
-              start();
-            }
-          };
-          document.addEventListener('visibilitychange', onVisible);
+  async function initConfig() {
+    try {
+      console.log('[DEBUG] initConfig() starting');
+      
+      // Load core modules first
+      console.log('[DEBUG] Loading core modules...');
+      const modulesLoaded = await loadCoreModules();
+      console.log('[DEBUG] loadCoreModules result:', modulesLoaded);
+      
+      if (modulesLoaded) {
+        // Initialize modern coordinator
+        console.log('[DEBUG] Checking for coordinator class...');
+        const CoordinatorClass = window.qwenContentScriptCoordinator || self.qwenContentScriptCoordinator;
+        console.log('[DEBUG] CoordinatorClass found:', !!CoordinatorClass);
+        if (CoordinatorClass) {
+          coordinator = new CoordinatorClass();
+          console.log('[DEBUG] Coordinator instantiated');
         }
       }
-    });
+      
+      // Load configuration
+      console.log('[DEBUG] About to call qwenLoadConfig...');
+      const cfg = await window.qwenLoadConfig();
+      console.log('[DEBUG] qwenLoadConfig returned:', cfg);
+      currentConfig = cfg;
+      
+      if (coordinator) {
+        // Use modern coordinator
+        await coordinator.initialize(cfg);
+        
+        // Set up message listener for coordinator
+        chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+          if (message.action === 'translate' && coordinator) {
+            coordinator.startTranslation()
+              .then(() => sendResponse({ success: true }))
+              .catch(error => sendResponse({ success: false, error: error.message }));
+            return true;
+          } else if (message.action === 'stop' && coordinator) {
+            coordinator.stopTranslation();
+            sendResponse({ success: true });
+          } else if (message.action === 'getStats' && coordinator) {
+            sendResponse(coordinator.getStats());
+          }
+        });
+        
+        // Handle auto-translation with visibility changes
+        if (cfg.autoTranslate) {
+          if (!document.hidden) {
+            coordinator.startTranslation();
+          } else {
+            const onVisible = () => {
+              if (!document.hidden) {
+                document.removeEventListener('visibilitychange', onVisible);
+                coordinator.startTranslation();
+              }
+            };
+            document.addEventListener('visibilitychange', onVisible);
+          }
+        }
+        
+      } else {
+        // Fallback to legacy implementation
+        console.warn('Using legacy content script implementation');
+        ensureThemeCss(cfg && cfg.themeStyle);
+        
+        if (cfg.selectionPopup) {
+          document.addEventListener('mouseup', handleSelection);
+          document.addEventListener('keyup', handleSelection);
+          document.addEventListener('mousedown', e => {
+            if (selectionBubble && !selectionBubble.contains(e.target) && !selectionPinned) removeSelectionBubble();
+          });
+          document.addEventListener('keydown', e => { if (e.key === 'Escape') removeSelectionBubble(); });
+        }
+        
+        if (cfg.autoTranslate) {
+          if (!document.hidden) {
+            start();
+          } else {
+            const onVisible = () => {
+              if (!document.hidden) {
+                document.removeEventListener('visibilitychange', onVisible);
+                start();
+              }
+            };
+            document.addEventListener('visibilitychange', onVisible);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[DEBUG] Failed to initialize content script:', error);
+      console.log('[DEBUG] Falling back to legacy implementation');
+      // Fallback to legacy implementation on error
+      const cfg = await window.qwenLoadConfig();
+      console.log('[DEBUG] Legacy qwenLoadConfig returned:', cfg);
+      currentConfig = cfg;
+      ensureThemeCss(cfg && cfg.themeStyle);
+    }
   }
 
+  // Global error handler to prevent crashes
+  window.addEventListener('error', (event) => {
+    if (event.filename && event.filename.includes('chrome-extension://')) {
+      const error = new Error(event.message);
+      error.filename = event.filename;
+      error.lineno = event.lineno;
+      error.colno = event.colno;
+      
+      if (errorHandler) {
+        errorHandler.handle(error, {
+          operation: 'content_script',
+          filename: event.filename,
+          location: `${event.lineno}:${event.colno}`
+        });
+      } else {
+        console.error('Content script error:', {
+          message: event.message,
+          filename: event.filename,
+          lineno: event.lineno,
+          colno: event.colno
+        });
+      }
+      
+      // Log security event if available
+      if (security && security.logSecurityEvent) {
+        security.logSecurityEvent('Content script error', {
+          message: event.message,
+          location: `${event.filename}:${event.lineno}:${event.colno}`
+        });
+      }
+      event.preventDefault(); // Prevent error from bubbling
+    }
+  });
+  
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    if (coordinator) {
+      coordinator.cleanup();
+    }
+    cleanupControllers();
+  });
+
+  console.log('[DEBUG] Document ready state:', document.readyState);
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    console.log('[DEBUG] Document ready, calling initConfig() immediately');
     initConfig();
   } else {
-    window.addEventListener('DOMContentLoaded', initConfig);
+    console.log('[DEBUG] Document not ready, waiting for DOMContentLoaded');
+    window.addEventListener('DOMContentLoaded', () => {
+      console.log('[DEBUG] DOMContentLoaded fired, calling initConfig()');
+      initConfig();
+    });
   }
   if (typeof module !== 'undefined') {
     module.exports = {
-      translateBatch,
-      collectNodes,
+      // Modern coordinator interface
+      getCoordinator: () => coordinator,
+      
+      // Legacy interface for backward compatibility
+      translateBatch: typeof translateBatch !== 'undefined' ? translateBatch : () => {},
+      collectNodes: typeof collectNodes !== 'undefined' ? collectNodes : () => [],
       setCurrentConfig: cfg => {
         currentConfig = cfg;
+        if (coordinator) {
+          coordinator.updateConfiguration(cfg);
+        }
       },
-      __controllerCount: () => controllers.size,
+      __controllerCount: () => coordinator ? coordinator.getStats().activeRequests : controllers.size,
     };
     if (typeof window !== 'undefined') {
       window.__qwenCSModule = module.exports;

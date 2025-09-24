@@ -2,6 +2,7 @@
   if (root.qwenTransport) return;
   var runWithRetry;
   var getProvider;
+  /* eslint-disable no-undef */
   if (typeof window === 'undefined') {
     if (typeof self !== 'undefined' && self.qwenRetry) {
       ({ runWithRetry } = self.qwenRetry);
@@ -34,6 +35,7 @@
       initProviders();
     }
   }
+  /* eslint-enable no-undef */
   async function translateRequest(opts) {
     const { provider = 'qwen', text, debug, onRetry, retryDelay, onData } = opts;
     return runWithRetry(

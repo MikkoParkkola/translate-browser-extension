@@ -80,4 +80,68 @@ describe('config migration', () => {
     expect(cfg.sourceLanguage).toBe('auto');
     expect(cfg.targetLanguage).toBe('en');
   });
+
+  test('builds endpoints map and normalizes provider order', async () => {
+    const stored = {
+      provider: 'qwen',
+      apiEndpoint: 'https://dashscope-intl.aliyuncs.com/api/v1',
+      providers: {
+        qwen: { apiEndpoint: 'https://dashscope-intl.aliyuncs.com/api/v1' },
+        openai: { apiEndpoint: 'https://api.openai.com/v1', apiKey: 'test-key' },
+      },
+      providerOrder: ['openai'],
+    };
+    const set = jest.fn((o, cb) => cb && cb());
+    global.chrome.storage.sync.get = jest.fn((d, cb) => cb({ ...d, ...stored }));
+    global.chrome.storage.sync.set = set;
+    const { qwenLoadConfig } = require('../src/config.js');
+    const cfg = await qwenLoadConfig();
+    expect(cfg.endpoints).toEqual(expect.objectContaining({
+      qwen: 'https://dashscope-intl.aliyuncs.com/api/v1',
+      openai: 'https://api.openai.com/v1',
+    }));
+    expect(cfg.providerOrder[0]).toBe('qwen');
+    expect(cfg.providerOrder).toEqual(expect.arrayContaining(['openai']));
+  });
+
+  test('sets google detector when detect api key present', async () => {
+    const stored = { detectApiKey: 'secret-key' };
+    const set = jest.fn((o, cb) => cb && cb());
+    global.chrome.storage.sync.get = jest.fn((d, cb) => cb({ ...d, ...stored }));
+    global.chrome.storage.sync.set = set;
+    const { qwenLoadConfig } = require('../src/config.js');
+    const cfg = await qwenLoadConfig();
+    expect(cfg.detector).toBe('google');
+  });
+
+  test('clears google detector when detect api key removed', async () => {
+    const stored = { detector: 'google', detectApiKey: '' };
+    const set = jest.fn((o, cb) => cb && cb());
+    global.chrome.storage.sync.get = jest.fn((d, cb) => cb({ ...d, ...stored }));
+    global.chrome.storage.sync.set = set;
+    const { qwenLoadConfig } = require('../src/config.js');
+    const cfg = await qwenLoadConfig();
+    expect(cfg.detector).toBeUndefined();
+  });
+
+  test('qwenSaveConfig persists endpoints map', async () => {
+    const set = jest.fn((o, cb) => cb && cb());
+    global.chrome.storage.sync.set = set;
+    const { qwenSaveConfig } = require('../src/config.js');
+    await qwenSaveConfig({
+      provider: 'openai',
+      apiEndpoint: 'https://api.openai.com/v1',
+      providers: {
+        openai: { apiEndpoint: 'https://api.openai.com/v1' },
+        qwen: { apiEndpoint: 'https://dashscope-intl.aliyuncs.com/api/v1' },
+      },
+    });
+    expect(set).toHaveBeenCalled();
+    const saved = set.mock.calls[0][0];
+    expect(saved.endpoints).toEqual(expect.objectContaining({
+      openai: 'https://api.openai.com/v1',
+      qwen: 'https://dashscope-intl.aliyuncs.com/api/v1',
+    }));
+    expect(saved.providerOrder[0]).toBe('openai');
+  });
 });

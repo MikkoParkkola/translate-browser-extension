@@ -211,7 +211,7 @@ Environment variables:
 - Provider ecosystem
   - Add additional providers (Azure OpenAI, Anthropic/Claude) behind registry; extend error normalization tests accordingly.
 - Typed interfaces
-  - Basic TypeScript declarations live in `types/index.d.ts`; expand coverage to remaining modules.
+  - Basic declaration stubs live in `types/index.d.ts`; expand coverage to remaining modules as needed.
 - Release ops
   - Store submission assets and a short checklist (icons, screenshots, store text). Consider a canary channel for staged rollouts.
 
@@ -223,3 +223,232 @@ Environment variables:
 Please be aware that all cloud-based models (including Codex, Claude, Gemini, etc.) are subject to rate limits. If a model becomes unresponsive, it is likely that it has hit a rate limit. These limits will reset after a certain period of time.
 
 The only model not subject to rate limits is the locally-run Ollama.
+## Product Vision (TRANSLATE! by Mikko)
+
+- One‑click, privacy‑respecting, provider‑agnostic translation that “just works” across the whole web.
+- Fast, resilient, and cost‑aware routing across multiple backends (DashScope/Qwen, OpenAI, DeepL, Google, etc.).
+- Zero-hassle onboarding: no prompts if permissions and a working provider are already available.
+
+## Design Principles
+
+- Don’t block: degrade gracefully, stream progress, and recover automatically.
+- No surprises: never re‑ask for permissions or keys if already granted/stored.
+- Single source of truth: background owns state; popup/settings reflect it instantly.
+- Safety first: secure key storage, redacted logs, structured‑cloneable messaging.
+- Testable by default: deterministic units, thin adapters, Playwright e2e paths.
+
+## UX Gap Analysis (Current → Target)
+
+- Permissions: Per‑site prompts → Global host access with auto‑injection.
+- Onboarding: Repeated wizard → Gate by apiKey present AND lastProviderOk; never auto‑show if OK.
+- Error surface: Generic errors → Provider‑specific messages (status/code) and actionable hints.
+- Settings sync: Stale until reload → Background cache invalidation on storage change.
+- Visibility: No context → Header shows active provider/model and live status badge.
+
+## Backlog (Now → Next)
+
+1) Error clarity and recovery (Now)
+   - Return provider error details from background (status/code). DONE
+   - Popup error panel shows exact reason (auth/quota/rate-limit) with CTA.
+
+2) Provider resilience (Next)
+   - Circuit breaker per provider (backoff on 5xx/timeout).
+   - Quota awareness and spillover before hard limit.
+
+3) QA / CI
+   - Playwright: popup→translate success, status badge updates, settings persist.
+   - CI guard: fail on non‑cloneable background responses; eslint/prettier on PR.
+
+4) UX polish
+   - Strategy presets (Fastest/Cheapest/Balanced). DONE
+   - Status badge (Online/Busy/Rate limited/Offline). DONE
+   - Optional compact popup layout toggle.
+
+5) Observability
+   - Lightweight in‑extension diagnostics (last errors, provider health, cache/TM).
+
+6) Roadmap later
+   - Per‑site preferences, glossary/tone quick toggles, PDF engine selector in Settings.
+
+## Definition of Done (DoD) Gap Assessment
+
+Status vs DoD:
+- TDD and failing tests first: PARTIAL — unit tests exist; bug‑first policy added; needs automation.
+- Test automation coverage ≥ 80% (95% target): PARTIAL — coverage high in core, missing UX/e2e.
+- CI passing locally/remote: PARTIAL — CI exists; tighten gates (contract/cloneable, CSP).
+- Lint/format/audit before commit: PARTIAL — scripts exist; make required checks.
+- Troubleshooting & debug logging current: PARTIAL — one‑click debug added; needs docs.
+- Documentation/code/dead code removal: PARTIAL — docs OK; remove archives/unused modules.
+- Dashboards/stats up to date: PARTIAL — basic stats; needs richer metrics.
+- Security review + recs: PARTIAL — gitleaks in place; add threat model & CSP audit.
+- Architecture review + recs: PARTIAL — guidelines added; add diagrams/ADRs.
+- Performance review: PARTIAL — add budgets & profiling.
+- Cross‑browser & accessibility checks: PARTIAL — add Edge/Firefox/Safari checklists & axe tests.
+- Legal review (IPR/GDPR/License): PARTIAL — add dep license scan & privacy statement.
+- Error handling, recovery, failbacks: PARTIAL — improved; add circuit breaker/quota spillover.
+- Breaking change approval, version bump, changelog: PARTIAL — Changesets; enforce in CI.
+
+## Backlog to Close DoD Gaps (Actionable)
+
+1) Testing & Coverage
+- Add coverage thresholds (global 80%, changed files 90%) in jest config; gate CI.
+- Playwright e2e: popup→translate success; settings round‑trip; error flows (401/403/429/offline); PDF smoke.
+- Contract test: assert structured‑cloneable background responses for all actions.
+- Provider mocks: deterministic mock server for DashScope/OpenAI/DeepL (HTTP 200/401/403/429/5xx).
+- Bug‑first harness: `npm run test:bug` template that scaffolds a failing spec from a report.
+
+2) CI/CD Hardening
+- Require checks: lint, format, unit (coverage gate), contract, e2e, audit, gitleaks.
+- Build reproducibility check (hash diff) and manifest policy (has <all_urls>, CSP rules).
+- Changesets enforced: block PR if version bump missing for functional change.
+
+3) Security & Privacy
+- Threat model doc; review secrets flow; ensure keys never enter content scope.
+- CSP audit script to detect inline handlers; CI fail on violations.
+- Dependency license scan (oss‑review‑toolkit or license‑checker) + privacy statement.
+
+4) Architecture & Docs
+- ADRs for provider abstraction, messaging schema, caching, error handling.
+- Diagrams (C4): context, container, component for background/popup/content.
+- Remove dead code (`.consolidation-archive`, unused scripts); add lint rule to disallow unused files.
+
+5) Performance & Resilience
+- Circuit breaker per provider; exponential backoff and cooldown windows.
+- Quota‑aware spillover before hard limit; dynamic weights.
+- Performance budgets: scan time per N nodes, translate latency p95, memory caps; CI asserts.
+
+6) UX & Accessibility
+- Status badge states mapped to exact remedies; richer error panel with CTA.
+- Axe‑core accessibility tests for popup/options; keyboard navigation tests.
+- Compact mode toggle; responsive checks at 320px/768px/1024px.
+
+7) One‑Click Debug & Troubleshooting
+- Finalize “Copy Debug Info” schema; add Settings → Diagnostics panel with copy/export.
+- Issue template auto‑fills with pasted JSON; doc: how to capture logs and reproduce locally.
+
+8) Cross‑Browser
+- Edge/Firefox compatibility matrix (manifest nuances); Safari converter smoke; CI job that builds safari/.
+
+Owners & Tracking
+- Each backlog item must link to an issue and a PR checklist (tests, docs, changelog, rollout notes).
+
+## Architecture Guidelines
+
+- Layered boundaries: popup (UI) ↔ background (state/orchestration) ↔ content (page ops). Message schemas live in one place.
+- Provider plug‑ins: each provider implements translate(), listModels() and optional getQuota(); wrapped with standardized error handler.
+- Central config: providerStore (secrets + settings) is the single source of truth; cache invalidation on storage changes.
+- Resilience: throttle + circuit breaker + retry/jitter; fail fast to next provider when unhealthy.
+- Security: secure storage for secrets, redacted logs, structured‑cloneable messages only.
+
+### Architecture Deep‑Dive
+
+- Message Contracts
+  - Define all background actions and payloads in a single schema file; versioned; validated on both ends.
+  - Only structured‑cloneable types cross process boundaries; add CI guards.
+- Provider Abstraction
+  - Provider adapters return normalized results `{ text, confidence?, meta? }` and throw ProviderError(status, code).
+  - Feature flags per provider (streaming, quota, detection) allow capabilities to degrade gracefully.
+- Configuration Flow
+  - Settings → providerStore → background cache invalidation → popup refresh via `home:init`.
+  - Secrets never flow to content scripts; background injects only what’s safe.
+
+## Coding Guidelines
+
+- Prefer pure functions and narrow modules; hide side‑effects behind adapters.
+- No inline event handlers (CSP). Use addEventListener only.
+- Defensive APIs: validate/sanitize inputs; never throw from message boundaries.
+- Log with context and redaction; include operation/module in every entry.
+- Types: add JSDoc/TS typedefs for message payloads, provider config, and usage stats.
+
+### Additional Coding Standards
+
+- Keep functions < 50 LOC where practical; extract helpers.
+- Feature flags behind `config` + environment guards; avoid dead code paths.
+- Name things for behavior (e.g., `buildProvidersUsageSnapshot`) not implementation.
+- Prefer async/await with try/catch around external calls; never swallow errors silently.
+
+## CI/CD Guidelines
+
+- Required checks: lint, unit, e2e (Chromium), build reproducibility, audit, gitleaks.
+- Block PR on non‑cloneable response detection and CSP regressions (static check + e2e).
+- Artifacts: upload dist zip + sourcemaps; tag with Changesets; generate changelog.
+- Release: semantic versioning; rollback plan; keep signed artifacts.
+
+### CI/CD Pipeline Details
+
+1) Lint/Format: eslint (strict) + prettier; fail on warnings for touched files.
+2) Unit: jest with jsdom; coverage gate ≥ 80%.
+3) Contract Test: spawn background; send/receive every action; assert structured‑cloneable payloads.
+4) E2E: Playwright (Chromium) – popup → translate success; settings round‑trip; error surfacing.
+5) Build: reproducible dist with manifest checks; zip artifact hash diff.
+6) Security: `npm audit --production` and `gitleaks detect --no-git`.
+7) Release: Changesets version bump; GitHub Release with signed zip; publish to canary channel if enabled.
+
+## Git & Merge Principles
+
+- Conventional Commits (feat/fix/chore/docs/refactor/test).
+- Small, focused PRs with a clear problem statement and test plan.
+- Rebase/merge queue only when all required checks are green.
+- Avoid force‑push on shared branches; maintain linear history for release branches.
+
+### Commit/PR Hygiene
+
+- Subject imperative, ≤ 72 chars; body explains the why; link issue.
+- Include screenshots/GIFs for UI; include logs for bugfixes.
+- Every fix adds/updates tests that fail before the fix and pass after.
+
+## UX Design Principles
+
+- Don’t ask twice: if permission or model is present and working, no re‑prompts.
+- Clear status at a glance: active provider/model, service badge, and immediate next action.
+- Progressive disclosure: advanced settings behind details; primary actions prominent.
+- Accessibility: keyboardable UIs; color‑contrast; aria‑live for status changes.
+
+### UX Testing Principles
+
+- Heuristics: first‑run path must complete in ≤ 60s with minimal input.
+- Error copy: informative, actionable, and non‑blocking; provide recovery (retry/change provider/open settings).
+- Layout resilience: no overflow on 320px width; dark/light themes consistent.
+- Keyboard flows: Tab order logical; Enter/Escape mapped where expected.
+
+## UX Testing Principles
+
+- Golden paths: first‑run setup with a valid key (no extra prompts), translate selection/page, and settings edit.
+- Negative flows: invalid key, offline, rate‑limit; show actionable messages and recovery CTAs.
+- Visual checks: status badge states, strategy buttons, provider editor save/test.
+
+## Testing & Test Automation
+
+- Unit: providers, error normalization, throttling, messaging validation (structured‑cloneable contract test).
+- Integration: background resolveProviderSettings → handleTranslate happy/edge cases.
+- E2E (Playwright): popup → translate (injected content), settings round‑trip, status updates.
+- Performance: basic timings for batch operations; budget thresholds in CI.
+
+### Test Strategy & Bug Policy
+
+- Bug First Rule: when a user reports a bug, write an automated test that reproduces it (fail red) before any fix.
+- Narrowing: add additional tests to pinpoint the exact failing layer and cover close variants.
+- Only then fix; keep the failing tests; add a regression test if needed.
+- CI must include the new test; PR must show red→green with the fix.
+
+### One‑Click Debug Info (Testability by Design)
+
+- Provide a “Copy Debug Info” button in error panels and Settings → Diagnostics to copy a redacted JSON blob including:
+  - App/version; manifest; active provider/model; strategy; key presence (boolean only).
+  - Last provider error `{ message, status, code }`; lastProviderOk flag; usage snapshot.
+  - Recent background logs (sanitized); message action traces around failure.
+- The blob must be structured and ready to paste into an AI‑assistant or issue template.
+
+## Bug Investigation Playbook
+
+1) Repro quickly: capture console logs (popup/background), network (provider call), and message payloads.
+2) Classify: UX (CSP/DOM), messaging (schema/clone), provider (HTTP/auth/quota), resilience (retry/backoff), or permissions.
+3) Isolate: write a focused unit/integration test that fails for the exact symptom.
+4) Fix at the right layer: e.g., sanitize responses in dispatcher, normalize provider errors, or adjust config resolution.
+5) Prevent regression: add a CI guard/e2e covering the scenario; link the test to the issue.
+
+### Example Debug Flow
+
+- User hits “Translation request failed” → clicks “Copy Debug Info” → pastes blob in issue.
+- Dev runs `npm run test:bug -- -t "copy debug blob reproduces"` → failure shown.
+- Add targeted unit test for provider error mapping; fix; PR shows failing test passes.

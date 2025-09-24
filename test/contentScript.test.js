@@ -194,6 +194,7 @@ test('passes provider config to batch translation', async () => {
   expect(spy).toHaveBeenCalledWith(expect.objectContaining({
     providerOrder: ['a', 'b'],
     endpoints: { a: 'https://a/', b: 'https://b/' },
+    autoInit: true,
   }));
 });
 
@@ -220,6 +221,7 @@ test('selection translation threads provider config', async () => {
   expect(spy).toHaveBeenCalledWith(expect.objectContaining({
     providerOrder: ['x', 'y'],
     endpoints: { x: 'https://x/', y: 'https://y/' },
+    autoInit: true,
   }));
 });
 

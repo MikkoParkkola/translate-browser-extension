@@ -1,6 +1,4 @@
 const globals = require('globals');
-const typescriptPlugin = require('@typescript-eslint/eslint-plugin');
-const typescriptParser = require('@typescript-eslint/parser');
 
 module.exports = [
   {
@@ -193,77 +191,6 @@ module.exports = [
       'strict': 'off', // Mixed module environments
       'no-param-reassign': 'off', // Common in translation processing
       'consistent-return': 'off', // Mixed return patterns in callbacks
-    },
-  },
-  // TypeScript configuration
-  {
-    files: ['**/*.ts', '**/*.tsx'],
-    languageOptions: {
-      ecmaVersion: 2021,
-      sourceType: 'module',
-      parser: typescriptParser,
-      parserOptions: {
-        project: './tsconfig.json',
-        tsconfigRootDir: __dirname,
-      },
-      globals: {
-        ...globals.browser,
-        ...globals.node,
-        ...globals.jest,
-        chrome: 'readonly',
-        qwenCore: 'readonly',
-        qwenConfig: 'readonly',
-        qwenCache: 'readonly',
-        qwenLogger: 'readonly',
-        qwenProviders: 'readonly',
-        qwenRetry: 'readonly',
-        qwenTransport: 'readonly',
-        isOfflineError: 'readonly',
-        pdfjsLib: 'readonly',
-        importScripts: 'readonly',
-      },
-    },
-    plugins: {
-      '@typescript-eslint': typescriptPlugin,
-    },
-    rules: {
-      // Extend base JavaScript rules
-      ...typescriptPlugin.configs.recommended.rules,
-      ...typescriptPlugin.configs['recommended-requiring-type-checking'].rules,
-
-      // === TypeScript-specific rules ===
-      '@typescript-eslint/no-unused-vars': ['warn', {
-        argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_',
-        caughtErrorsIgnorePattern: '^_',
-        destructuredArrayIgnorePattern: '^_',
-      }],
-      '@typescript-eslint/no-explicit-any': 'warn', // Allow any but warn
-      '@typescript-eslint/no-non-null-assertion': 'warn',
-      '@typescript-eslint/prefer-nullish-coalescing': 'error',
-      '@typescript-eslint/prefer-optional-chain': 'error',
-      '@typescript-eslint/no-unnecessary-type-assertion': 'error',
-      '@typescript-eslint/no-inferrable-types': 'warn',
-
-      // === Disable JavaScript rules that conflict with TypeScript ===
-      'no-unused-vars': 'off', // Use @typescript-eslint/no-unused-vars instead
-      'no-undef': 'off', // TypeScript handles this
-      'no-redeclare': 'off', // TypeScript handles this
-
-      // === Extension-specific TypeScript rules ===
-      '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
-      '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
-      '@typescript-eslint/explicit-function-return-type': ['warn', {
-        allowExpressions: true,
-        allowTypedFunctionExpressions: true,
-        allowHigherOrderFunctions: true,
-      }],
-
-      // === Relaxed for extension compatibility ===
-      '@typescript-eslint/no-misused-promises': 'off', // Chrome API patterns
-      '@typescript-eslint/require-await': 'off', // Common in extension async patterns
-      '@typescript-eslint/no-floating-promises': 'warn', // Warn but don't error
-      '@typescript-eslint/unbound-method': 'off', // Chrome API binding patterns
     },
   },
 ];
