@@ -3,29 +3,35 @@
  * Compatible with the simple background script
  */
 
+// Import logger for consistent logging with redaction
+import { logger } from './lib/logger.js';
+import { PerformanceDashboard } from './components/performanceDashboard.js';
+
 class SimpleTranslationPopup {
   constructor() {
     this.currentStrategy = 'smart';
     this.isAutoTranslateEnabled = false;
     this.currentProvider = 'qwen-mt-turbo';
     this.stats = { requests: 0, tokens: 0, errors: 0 };
+    this.performanceDashboard = null;
 
     this.initialize();
   }
 
   async initialize() {
     try {
-      console.log('[Popup] Initializing...');
+      logger.info('Popup', 'Initializing...');
 
       this.setupEventListeners();
       this.populateLanguageSelectors();
       await this.loadSettings();
       await this.updateStats();
+      this.initializePerformanceDashboard();
       this.hideLoadingOverlay();
 
-      console.log('[Popup] Initialized successfully');
+      logger.info('Popup', 'Initialized successfully');
     } catch (error) {
-      console.error('[Popup] Failed to initialize:', error);
+      logger.error('Popup', 'Failed to initialize:', error);
       this.showError('Failed to initialize extension');
     }
   }
@@ -75,6 +81,12 @@ class SimpleTranslationPopup {
     const errorClose = document.getElementById('error-close');
     if (errorClose) {
       errorClose.addEventListener('click', () => this.hideError());
+    }
+
+    // Performance dashboard toggle
+    const perfDashboardButton = document.getElementById('performance-dashboard-button');
+    if (perfDashboardButton) {
+      perfDashboardButton.addEventListener('click', () => this.togglePerformanceDashboard());
     }
 
     // Language change handlers
@@ -180,7 +192,7 @@ class SimpleTranslationPopup {
       this.updateApiKeyStatus(!!result.apiKey);
 
     } catch (error) {
-      console.error('[Popup] Failed to load settings:', error);
+      logger.error('Popup', 'Failed to load settings:', error);
     }
   }
 
@@ -196,7 +208,7 @@ class SimpleTranslationPopup {
 
       await chrome.storage.sync.set(settings);
     } catch (error) {
-      console.error('[Popup] Failed to save language settings:', error);
+      logger.error('Popup', 'Failed to save language settings:', error);
     }
   }
 
@@ -214,7 +226,7 @@ class SimpleTranslationPopup {
     }
 
     // Save to storage
-    chrome.storage.sync.set({ translationStrategy: strategy }).catch(console.error);
+    chrome.storage.sync.set({ translationStrategy: strategy }).catch(err => logger.error('Popup', 'Failed to save strategy:', err));
   }
 
   swapLanguages() {
@@ -250,7 +262,7 @@ class SimpleTranslationPopup {
 
         // If enabling auto-translate, immediately translate the current page
         if (enabled) {
-          console.log('[Popup] Auto-translate enabled - triggering immediate translation');
+          logger.debug('Popup', 'Auto-translate enabled - triggering immediate translation');
 
           // First inject the content script
           try {
@@ -270,11 +282,11 @@ class SimpleTranslationPopup {
             if (response?.success) {
               this.showToast('Auto-translate enabled and page translated');
             } else {
-              console.log('[Popup] Translation response:', response);
+              logger.debug('Popup', 'Translation response:', response);
               this.showToast('Auto-translate enabled');
             }
           } catch (error) {
-            console.warn('[Popup] Failed to immediately translate:', error.message);
+            logger.warn('Popup', 'Failed to immediately translate:', error.message);
             // Still send the toggle message even if immediate translation fails
           }
         }
@@ -287,7 +299,7 @@ class SimpleTranslationPopup {
         });
       }
     } catch (error) {
-      console.error('[Popup] Failed to toggle auto-translate:', error);
+      logger.error('Popup', 'Failed to toggle auto-translate:', error);
     }
   }
 
@@ -321,7 +333,7 @@ class SimpleTranslationPopup {
       }
 
     } catch (error) {
-      console.error('[Popup] Selection translation failed:', error);
+      logger.error('Popup', 'Selection translation failed:', error);
 
       // Show more helpful error messages
       let errorMessage = error.message;
@@ -367,7 +379,7 @@ class SimpleTranslationPopup {
       }
 
     } catch (error) {
-      console.error('[Popup] Page translation failed:', error);
+      logger.error('Popup', 'Page translation failed:', error);
 
       // Show more helpful error messages
       let errorMessage = error.message;
@@ -395,12 +407,12 @@ class SimpleTranslationPopup {
         this.updateStatsDisplay();
       } else {
         // Background script may not be ready yet, use default stats
-        console.warn('[Popup] Stats not available from background, using defaults');
+        logger.warn('Popup', 'Stats not available from background, using defaults');
         this.stats = { requests: 0, tokens: 0, errors: 0 };
         this.updateStatsDisplay();
       }
     } catch (error) {
-      console.warn('[Popup] Background script not ready, using default stats:', error.message);
+      logger.warn('Popup', 'Background script not ready, using default stats:', error.message);
       // Use default stats if background isn't ready
       this.stats = { requests: 0, tokens: 0, errors: 0 };
       this.updateStatsDisplay();
@@ -484,7 +496,7 @@ class SimpleTranslationPopup {
         }
       }
     } catch (error) {
-      console.warn('[Popup] Failed to get local model status:', error);
+      logger.warn('Popup', 'Failed to get local model status:', error);
       const statusElement = document.getElementById('provider-status');
       if (statusElement) {
         statusElement.textContent = '❌ Error';
@@ -567,15 +579,58 @@ class SimpleTranslationPopup {
       }
     }, 3000);
   }
+
+  // Performance Dashboard Methods
+  initializePerformanceDashboard() {
+    try {
+      const dashboardContainer = document.getElementById('performance-dashboard-container');
+      if (dashboardContainer) {
+        this.performanceDashboard = new PerformanceDashboard(dashboardContainer);
+        logger.debug('Popup', 'Performance dashboard initialized');
+      } else {
+        logger.debug('Popup', 'Performance dashboard container not found, creating...');
+        this.createPerformanceDashboardContainer();
+      }
+    } catch (error) {
+      logger.error('Popup', 'Failed to initialize performance dashboard:', error);
+    }
+  }
+
+  createPerformanceDashboardContainer() {
+    const container = document.createElement('div');
+    container.id = 'performance-dashboard-container';
+
+    // Insert after stats section or at end of main content
+    const statsSection = document.querySelector('.stats-section');
+    if (statsSection && statsSection.parentNode) {
+      statsSection.parentNode.insertBefore(container, statsSection.nextSibling);
+    } else {
+      document.querySelector('.popup-content')?.appendChild(container);
+    }
+
+    this.performanceDashboard = new PerformanceDashboard(container);
+  }
+
+  togglePerformanceDashboard() {
+    if (this.performanceDashboard) {
+      this.performanceDashboard.toggle();
+    } else {
+      logger.warn('Popup', 'Performance dashboard not initialized');
+      this.initializePerformanceDashboard();
+      if (this.performanceDashboard) {
+        this.performanceDashboard.show();
+      }
+    }
+  }
 }
 
 // Initialize popup when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
   try {
-    console.log('[Popup] DOM content loaded, initializing popup...');
+    logger.info('Popup', 'DOM content loaded, initializing popup...');
     new SimpleTranslationPopup();
   } catch (error) {
-    console.error('[Popup] Critical initialization error:', error);
+    logger.error('Popup', 'Critical initialization error:', error);
     // Show fallback UI
     document.body.innerHTML = `
       <div style="padding: 20px; color: red; font-family: Arial;">
@@ -588,18 +643,18 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Additional debugging
-console.log('[Popup] Script loaded successfully');
+logger.info('Popup', 'Script loaded successfully');
 
 // Check if all required APIs are available
 if (typeof chrome === 'undefined') {
-  console.error('[Popup] Chrome extension APIs not available');
+  logger.error('Popup', 'Chrome extension APIs not available');
 } else {
-  console.log('[Popup] Chrome extension APIs available');
+  logger.debug('Popup', 'Chrome extension APIs available');
 }
 
 // Test that we can access storage API
 if (chrome && chrome.storage && chrome.storage.sync) {
-  console.log('[Popup] Storage API available');
+  logger.debug('Popup', 'Storage API available');
 } else {
-  console.error('[Popup] Storage API not available');
+  logger.error('Popup', 'Storage API not available');
 }

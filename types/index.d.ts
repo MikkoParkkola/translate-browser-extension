@@ -55,3 +55,13 @@ export * from './providers';
 export * from './messaging';
 export * from './popup';
 export * from './tm';
+
+// Modular architecture types
+export * from './background/backgroundService';
+export * from './background/configManager';
+export * from './background/messageRouter';
+export * from './background/translationService';
+export * from './content/contentObserver';
+export * from './content/languageDetector';
+export * from './content/translationService';
+export * from './lib/performanceTracker';

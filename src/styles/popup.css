@@ -578,6 +578,48 @@ input:checked + .toggle-slider:before {
   color: var(--color-gray-400, #9ca3af);
 }
 
+/* ========== Performance Controls ========== */
+
+.performance-controls {
+  margin-top: var(--space-3, 0.75rem);
+  display: flex;
+  justify-content: center;
+}
+
+.performance-button {
+  background: var(--color-blue-500, #3b82f6);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md, 0.375rem);
+  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+  font-size: var(--font-size-xs, 0.75rem);
+  font-weight: var(--font-weight-medium, 500);
+  cursor: pointer;
+  transition: var(--transition-fast, 150ms ease);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1, 0.25rem);
+}
+
+.performance-button:hover {
+  background: var(--color-blue-600, #2563eb);
+  transform: translateY(-1px);
+}
+
+.performance-button:active {
+  background: var(--color-blue-700, #1d4ed8);
+  transform: translateY(0);
+}
+
+.popup-body[data-theme="dark"] .performance-button {
+  background: var(--color-blue-400, #60a5fa);
+  color: var(--color-gray-900, #111827);
+}
+
+.popup-body[data-theme="dark"] .performance-button:hover {
+  background: var(--color-blue-300, #93c5fd);
+}
+
 /* ========== Toast Container ========== */
 
 .toast-container {
