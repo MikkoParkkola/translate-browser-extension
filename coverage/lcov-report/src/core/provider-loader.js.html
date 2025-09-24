@@ -30,9 +30,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">56.17% </span>
+                <span class="strong">52.8% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>50/89</span>
+                <span class='fraction'>47/89</span>
             </div>
         
             
@@ -491,24 +491,24 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -867,7 +867,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -882,21 +882,21 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -918,8 +918,8 @@
   'use strict';
 &nbsp;
   // Initialize logger
-  const logger = (typeof window !== 'undefined' &amp;&amp; window.qwenLogger &amp;&amp; window.qwenLogger.create) 
-    ? window.qwenLogger.create('provider-loader')
+  const logger = (typeof window !== 'undefined' &amp;&amp; window.qwenLogger &amp;&amp; <span class="branch-2 cbranch-no" title="branch not covered" >window.qwenLogger.create) </span>
+    ? <span class="branch-0 cbranch-no" title="branch not covered" >window.qwenLogger.create('provider-loader')</span>
     : (typeof self !== 'undefined' &amp;&amp; self.qwenLogger &amp;&amp; <span class="branch-2 cbranch-no" title="branch not covered" >self.qwenLogger.create)</span>
       ? <span class="branch-0 cbranch-no" title="branch not covered" >self.qwenLogger.create('provider-loader')</span>
       : (typeof global !== 'undefined' &amp;&amp; global.qwenLogger &amp;&amp; <span class="branch-2 cbranch-no" title="branch not covered" >global.qwenLogger.create)</span>
@@ -1291,7 +1291,7 @@
 &nbsp;
   // Public API
   const providerLoader = {
-    loadProvider: typeof importScripts === 'function' ? loadProviderWorker : loadProviderContent,
+    loadProvider: typeof importScripts === 'function' ? loadProviderWorker : <span class="branch-1 cbranch-no" title="branch not covered" >loadProviderContent,</span>
     loadProviders,
     loadConfiguredProviders,
     preloadLikelyProviders,
@@ -1339,7 +1339,7 @@
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-20T17:25:05.591Z
+                at 2025-09-23T01:02:19.545Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

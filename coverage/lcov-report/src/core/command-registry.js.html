@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">5.4% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>2/37</span>
+                <span class='fraction'>0/50</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">11.53% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>3/26</span>
+                <span class='fraction'>0/36</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/5</span>
+                <span class='fraction'>0/8</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">5.4% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>2/37</span>
+                <span class='fraction'>0/47</span>
             </div>
         
             
@@ -244,7 +244,25 @@
 <a name='L179'></a><a href='#L179'>179</a>
 <a name='L180'></a><a href='#L180'>180</a>
 <a name='L181'></a><a href='#L181'>181</a>
-<a name='L182'></a><a href='#L182'>182</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L182'></a><a href='#L182'>182</a>
+<a name='L183'></a><a href='#L183'>183</a>
+<a name='L184'></a><a href='#L184'>184</a>
+<a name='L185'></a><a href='#L185'>185</a>
+<a name='L186'></a><a href='#L186'>186</a>
+<a name='L187'></a><a href='#L187'>187</a>
+<a name='L188'></a><a href='#L188'>188</a>
+<a name='L189'></a><a href='#L189'>189</a>
+<a name='L190'></a><a href='#L190'>190</a>
+<a name='L191'></a><a href='#L191'>191</a>
+<a name='L192'></a><a href='#L192'>192</a>
+<a name='L193'></a><a href='#L193'>193</a>
+<a name='L194'></a><a href='#L194'>194</a>
+<a name='L195'></a><a href='#L195'>195</a>
+<a name='L196'></a><a href='#L196'>196</a>
+<a name='L197'></a><a href='#L197'>197</a>
+<a name='L198'></a><a href='#L198'>198</a>
+<a name='L199'></a><a href='#L199'>199</a>
+<a name='L200'></a><a href='#L200'>200</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -381,6 +399,24 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -420,8 +456,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -562,6 +598,24 @@ async function <span class="fstat-no" title="function not covered" >initializeCo
 <span class="cstat-no" title="statement not covered" >    dispatcher.registerCommand('testTranslation', new TestTranslationCommand(handleTranslate, logger));</span>
   }
 &nbsp;
+  // Bridge high-level actions to existing fallback handlers if available
+<span class="cstat-no" title="statement not covered" >  try {</span>
+    const { Command } = <span class="cstat-no" title="statement not covered" >self.qwenCommandDispatcher || {};</span>
+    const fh = <span class="cstat-no" title="statement not covered" >self.fallbackHandlers;</span>
+<span class="cstat-no" title="statement not covered" >    if (Command &amp;&amp; fh) {</span>
+      class ProxyCommand extends Command {
+<span class="fstat-no" title="function not covered" >        co</span>nstructor(action) { <span class="cstat-no" title="statement not covered" >super(action, {}); <span class="cstat-no" title="statement not covered" ></span>this.action = action; </span>}
+<span class="fstat-no" title="function not covered" >        as</span>ync execute(msg, sender) {
+          const handler = <span class="cstat-no" title="statement not covered" >fh[this.action];</span>
+<span class="cstat-no" title="statement not covered" >          if (typeof handler !== 'function') <span class="cstat-no" title="statement not covered" >return { error: `Service not available: ${this.action}` };</span></span>
+<span class="cstat-no" title="statement not covered" >          return await handler({ msg, sender, state: (self.ensureTestState ? self.ensureTestState() : {}) });</span>
+        }
+      }
+<span class="cstat-no" title="statement not covered" >      ['debug-info','home:init','home:quick-translate','home:auto-translate','permissions-check','permissions-request']</span>
+        .forEach(<span class="fstat-no" title="function not covered" >a </span>=&gt; { <span class="cstat-no" title="statement not covered" >try { <span class="cstat-no" title="statement not covered" >dispatcher.registerCommand(a, new ProxyCommand(a)); </span>} catch {} </span>});
+    }
+  } catch {}
+&nbsp;
 <span class="cstat-no" title="statement not covered" >  logger?.info(`Command registry initialized with ${dispatcher.getRegisteredCommands().length} commands`);</span>
 }
 &nbsp;
@@ -601,9 +655,9 @@ function <span class="fstat-no" title="function not covered" >createSecurityVali
 }
 &nbsp;
 // Export for use in background script
-if (typeof module !== 'undefined' &amp;&amp; module.exports) {
-  module.exports = { initializeCommands, createSecurityValidators };
-} else <span class="missing-if-branch" title="else path not taken" >E</span>{
+<span class="cstat-no" title="statement not covered" >if (typeof module !== 'undefined' &amp;&amp; module.exports) {</span>
+<span class="cstat-no" title="statement not covered" >  module.exports = { initializeCommands, createSecurityValidators };</span>
+} else {
 <span class="cstat-no" title="statement not covered" >  self.qwenCommandRegistry = { initializeCommands, createSecurityValidators };</span>
 }
 &nbsp;</pre></td></tr></table></pre>
@@ -613,7 +667,7 @@ if (typeof module !== 'undefined' &amp;&amp; module.exports) {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-20T17:25:05.591Z
+                at 2025-09-23T01:02:19.545Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

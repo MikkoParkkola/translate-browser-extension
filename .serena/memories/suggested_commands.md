@@ -1,0 +1,15 @@
+# Suggested Commands
+- `npm install` — install dependencies after cloning; rerun when `package.json` changes.
+- `npx playwright install --with-deps chromium` — one-time Playwright browser/runtime setup for e2e suites.
+- `npm run build` / `npm run build:fast` — copy `src/` into `dist/` (load unpacked extension after edits).
+- `npm run build:zip` / `npm run zip` — build and package distributable archives (Chrome signing workflow expects these artifacts).
+- `npm run build:safari` — generate Safari web-extension Xcode project via `scripts/convert-safari.sh`.
+- `npm run serve` — host `dist/` at http://localhost:8080 for manual testing.
+- `npm run clean` — remove `dist/` output before rebuilding if needed.
+- `npm run lint` — ESLint checks with security/best-practice rules; run before commits.
+- `npm run format` — Prettier check (currently targets `package.json`); run with `--write` locally if reformatting.
+- `npm test` — Jest unit/integration suite (jsdom, coverage ≥80%).
+- `npm run test:e2e:web` / `npm run test:e2e:pdf` / `npm run test:e2e` — Playwright smoke tests for popup/DOM flows and PDF translations.
+- `npm run size` / `npm run size:analyze` / `npm run size:report` — enforce and inspect bundle size budgets.
+- `npm run secrets` — bundled gitleaks scan (`--no-git`) for leaked credentials.
+- `npm run pr` — automated PR flow (requires `BRANCH_NAME`/`COMMIT_MESSAGE`, optional `PR_TITLE/PR_BODY/BASE_BRANCH`, authenticated `gh`).

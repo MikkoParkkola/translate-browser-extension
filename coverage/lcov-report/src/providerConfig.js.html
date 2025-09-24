@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">40.47% </span>
+                <span class="strong">35.41% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>17/42</span>
+                <span class='fraction'>17/48</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">19.35% </span>
+                <span class="strong">17.39% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>12/62</span>
+                <span class='fraction'>12/69</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">44.44% </span>
+                <span class="strong">40% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>4/9</span>
+                <span class='fraction'>4/10</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">41.46% </span>
+                <span class="strong">36.17% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>17/41</span>
+                <span class='fraction'>17/47</span>
             </div>
         
             
@@ -190,7 +190,17 @@
 <a name='L125'></a><a href='#L125'>125</a>
 <a name='L126'></a><a href='#L126'>126</a>
 <a name='L127'></a><a href='#L127'>127</a>
-<a name='L128'></a><a href='#L128'>128</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -268,22 +278,23 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -303,6 +314,15 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -382,6 +402,7 @@ async function <span class="fstat-no" title="function not covered" >loadProvider
     provider: 'qwen',
     providers: {},
     providerOrder: [],
+    endpoints: {},
     failover: true,
     parallel: 'auto',
     model: '',
@@ -414,7 +435,7 @@ async function <span class="fstat-no" title="function not covered" >saveProvider
     const toSave = <span class="cstat-no" title="statement not covered" >{</span>
       provider,
       providers,
-      providerOrder: cfg.providerOrder || [],
+      providerOrder: Array.from(new Set([provider, ...(cfg.providerOrder || [])])).filter(Boolean),
       failover: cfg.failover !== false,
       parallel:
         cfg.parallel === true ? 'on' : cfg.parallel === false ? 'off' : cfg.parallel || 'auto',
@@ -431,6 +452,15 @@ async function <span class="fstat-no" title="function not covered" >saveProvider
       costPerOutputToken: primary.costPerOutputToken,
       weight: primary.weight,
     };
+<span class="cstat-no" title="statement not covered" >    toSave.endpoints = Object.entries(providers).reduce(<span class="fstat-no" title="function not covered" >(a</span>cc, [id, info = <span class="branch-0 cbranch-no" title="branch not covered" >{}]</span>) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >      if (info &amp;&amp; info.apiEndpoint) {</span>
+<span class="cstat-no" title="statement not covered" >        acc[id] = String(info.apiEndpoint);</span>
+      }
+<span class="cstat-no" title="statement not covered" >      return acc;</span>
+    }, {});
+<span class="cstat-no" title="statement not covered" >    if (primary.apiEndpoint) {</span>
+<span class="cstat-no" title="statement not covered" >      toSave.endpoints[provider] = String(primary.apiEndpoint);</span>
+    }
 <span class="cstat-no" title="statement not covered" >    await new Promise(<span class="fstat-no" title="function not covered" >re</span>solve =&gt; <span class="cstat-no" title="statement not covered" >chrome.storage.sync.set(toSave, resolve))</span>;</span>
   }
 }
@@ -451,7 +481,7 @@ const api = { applyProviderConfig, loadProviderConfig, saveProviderConfig };
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-20T17:25:05.591Z
+                at 2025-09-23T01:02:19.545Z
             </div>
         <script src="../prettify.js"></script>
         <script>

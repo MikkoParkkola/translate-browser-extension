@@ -135,9 +135,17 @@ describe('Popup Functionality', () => {
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <button id="translate-button" class="translate-button">
-            <span class="button-text">Translate Page</span>
-          </button>
+          <div class="translate-actions">
+            <div class="translate-actions__buttons">
+              <button id="translate-selection-button" class="translate-button">
+                <span class="button-text">Translate Selection</span>
+              </button>
+              <button id="translate-page-button" class="translate-button translate-button--secondary">
+                <span class="button-text">Translate Page</span>
+              </button>
+            </div>
+            <p id="translation-status-text" class="translation-status-text">Ready</p>
+          </div>
           <div class="stats-section">
             <button id="stats-refresh" class="stats-refresh-btn"></button>
             <div id="stats-chart" class="stats-chart"></div>
@@ -156,7 +164,8 @@ describe('Popup Functionality', () => {
 
   test('should initialize popup elements', async () => {
     // Check that popup was initialized and elements were found
-    expect(Popup.translateButton).toBeTruthy();
+    expect(Popup.translateSelectionButton).toBeTruthy();
+    expect(Popup.translatePageButton).toBeTruthy();
     expect(Popup.sourceLanguageSelect).toBeTruthy();
     expect(Popup.targetLanguageSelect).toBeTruthy();
     expect(Popup.loadingOverlay).toBeTruthy();
@@ -205,6 +214,35 @@ describe('Popup Functionality', () => {
     
     // Check that progress tracking was started
     expect(global.window.TranslationProgress.startTranslationSession).toHaveBeenCalled();
+  });
+
+  test('should update status text when usage updates', () => {
+    const spy = jest.spyOn(Popup, 'updateStatusBadgeFromUsage');
+    Popup.handleUsageUpdate({
+      usage: { requests: 2, requestLimit: 10, tokens: 20, tokenLimit: 100 },
+      active: true,
+      providers: { qwen: { model: 'qwen-mt-turbo' } },
+    });
+    expect(spy).toHaveBeenCalled();
+    expect(Popup.translationStatusText.textContent).toContain('Translation in progress');
+    spy.mockRestore();
+  });
+
+  test('should reflect auto-translate runtime updates', () => {
+    Popup.autoTranslateToggle.checked = false;
+    Popup.handleAutoTranslateMessage({ enabled: true });
+    expect(Popup.autoTranslateToggle.checked).toBe(true);
+    expect(Popup.translationStatusText.textContent).toMatch(/Auto-translate enabled/i);
+  });
+
+  test('should translate selected text', async () => {
+    mockChrome.tabs.sendMessage.mockResolvedValueOnce({});
+    await Popup.handleTranslateSelection();
+    const [tabId, payload] = mockChrome.tabs.sendMessage.mock.calls[0];
+    expect(tabId).toBe(1);
+    expect(payload).toEqual(expect.objectContaining({ action: 'translate-selection' }));
+    expect(global.window.TranslationProgress.startTranslationSession).toHaveBeenCalledWith(expect.objectContaining({ context: 'selection' }));
+    expect(Popup.translationStatusText.textContent).toBe('Ready');
   });
 
   test('should handle fallback language loading', async () => {

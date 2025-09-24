@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">55.47% </span>
+                <span class="strong">52.82% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>157/283</span>
+                <span class='fraction'>159/301</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">39.69% </span>
+                <span class="strong">38.27% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>79/199</span>
+                <span class='fraction'>80/209</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">60% </span>
+                <span class="strong">57.89% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>33/55</span>
+                <span class='fraction'>33/57</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">59.92% </span>
+                <span class="strong">57.99% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>154/257</span>
+                <span class='fraction'>156/269</span>
             </div>
         
             
@@ -620,7 +620,22 @@
 <a name='L555'></a><a href='#L555'>555</a>
 <a name='L556'></a><a href='#L556'>556</a>
 <a name='L557'></a><a href='#L557'>557</a>
-<a name='L558'></a><a href='#L558'>558</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L558'></a><a href='#L558'>558</a>
+<a name='L559'></a><a href='#L559'>559</a>
+<a name='L560'></a><a href='#L560'>560</a>
+<a name='L561'></a><a href='#L561'>561</a>
+<a name='L562'></a><a href='#L562'>562</a>
+<a name='L563'></a><a href='#L563'>563</a>
+<a name='L564'></a><a href='#L564'>564</a>
+<a name='L565'></a><a href='#L565'>565</a>
+<a name='L566'></a><a href='#L566'>566</a>
+<a name='L567'></a><a href='#L567'>567</a>
+<a name='L568'></a><a href='#L568'>568</a>
+<a name='L569'></a><a href='#L569'>569</a>
+<a name='L570'></a><a href='#L570'>570</a>
+<a name='L571'></a><a href='#L571'>571</a>
+<a name='L572'></a><a href='#L572'>572</a>
+<a name='L573'></a><a href='#L573'>573</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">6x</span>
@@ -704,6 +719,18 @@
 <span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -925,6 +952,9 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -1261,6 +1291,18 @@ function setupEventListeners() {
   <span class="missing-if-branch" title="if path not taken" >I</span>if (intlBtn) <span class="cstat-no" title="statement not covered" >intlBtn.addEventListener('click', <span class="fstat-no" title="function not covered" >()</span> =&gt; <span class="cstat-no" title="statement not covered" >applyQwenPreset('intl'))</span>;</span>
   <span class="missing-if-branch" title="if path not taken" >I</span>if (cnBtn) <span class="cstat-no" title="statement not covered" >cnBtn.addEventListener('click', <span class="fstat-no" title="function not covered" >()</span> =&gt; <span class="cstat-no" title="statement not covered" >applyQwenPreset('cn'))</span>;</span>
   <span class="missing-if-branch" title="if path not taken" >I</span>if (testBtn) <span class="cstat-no" title="statement not covered" >testBtn.addEventListener('click', <span class="fstat-no" title="function not covered" >()</span> =&gt; <span class="cstat-no" title="statement not covered" >testQwenConnection())</span>;</span>
+  const saveBtn = document.getElementById('saveAll');
+  <span class="missing-if-branch" title="if path not taken" >I</span>if (saveBtn) <span class="cstat-no" title="statement not covered" >saveBtn.addEventListener('click', <span class="fstat-no" title="function not covered" >as</span>ync () =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >    try {</span>
+      const cfg = <span class="cstat-no" title="statement not covered" >await window.qwenProviderConfig.loadProviderConfig();</span>
+<span class="cstat-no" title="statement not covered" >      await window.qwenProviderConfig.saveProviderConfig(cfg);</span>
+      const st = <span class="cstat-no" title="statement not covered" >document.getElementById('saveStatus');</span>
+<span class="cstat-no" title="statement not covered" >      if (st) { <span class="cstat-no" title="statement not covered" >st.textContent = 'Saved'; <span class="cstat-no" title="statement not covered" ></span>setTimeout(<span class="fstat-no" title="function not covered" >()</span>=&gt; <span class="cstat-no" title="statement not covered" >st.textContent = '',</span> 1500); </span>}</span>
+    } catch (e) {
+      const st = <span class="cstat-no" title="statement not covered" >document.getElementById('saveStatus');</span>
+<span class="cstat-no" title="statement not covered" >      if (st) <span class="cstat-no" title="statement not covered" >st.textContent = 'Save failed';</span></span>
+    }
+  });
   
   setupTabSwitching();
 }
@@ -1481,10 +1523,13 @@ async function <span class="fstat-no" title="function not covered" >getDashscope
     const key = <span class="cstat-no" title="statement not covered" >config?.providers?.dashscope?.apiKey || '';</span>
 <span class="cstat-no" title="statement not covered" >    if (key) <span class="cstat-no" title="statement not covered" >return key;</span></span>
   } catch {}
-  // Try secure storage
+  // Try providerStore unified secret storage
 <span class="cstat-no" title="statement not covered" >  try {</span>
-<span class="cstat-no" title="statement not covered" >    if (window.qwenSecureStorage?.secureStorage) {</span>
-      const k = <span class="cstat-no" title="statement not covered" >await window.qwenSecureStorage.secureStorage.getSecure('provider_dashscope_apiKey');</span>
+<span class="cstat-no" title="statement not covered" >    if (window.qwenProviderStore?.getProviderSecret) {</span>
+      const s = <span class="cstat-no" title="statement not covered" >await window.qwenProviderStore.getProviderSecret('dashscope');</span>
+<span class="cstat-no" title="statement not covered" >      if (s) <span class="cstat-no" title="statement not covered" >return s;</span></span>
+    } else <span class="cstat-no" title="statement not covered" >if (window.qwenSecureStorage?.secureStorage) {</span>
+      const k = <span class="cstat-no" title="statement not covered" >await window.qwenSecureStorage.secureStorage.getSecure('provider:dashscope');</span>
 <span class="cstat-no" title="statement not covered" >      if (k) <span class="cstat-no" title="statement not covered" >return k;</span></span>
     }
   } catch {}
@@ -1741,7 +1786,7 @@ document.addEventListener('DOMContentLoaded', <span class="fstat-no" title="func
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-20T17:25:05.591Z
+                at 2025-09-23T01:02:19.545Z
             </div>
         <script src="../../prettify.js"></script>
         <script>
