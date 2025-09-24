@@ -32,9 +32,25 @@ const OptionsPage = {
     await this.loadProviders();
     await this.loadPreferences();
     this.setupEventListeners();
+    this.initializeLocalModel();
     this.renderProviders();
     this.renderAnalytics();
     this.setupTabNavigation();
+  },
+
+  // Initialize local model UI
+  initializeLocalModel() {
+    try {
+      // Initialize LocalModelUI if available
+      if (typeof LocalModelUI !== 'undefined') {
+        this.localModelUI = new LocalModelUI('local-model-container');
+        logger.info('Local model UI initialized');
+      } else {
+        logger.warn('LocalModelUI not available');
+      }
+    } catch (error) {
+      logger.error('Failed to initialize local model UI:', error);
+    }
   },
 
   initializeElements() {
@@ -120,6 +136,23 @@ const OptionsPage = {
     try {
       const { providers } = await chrome.storage.local.get({ providers: [] });
       this.providers = providers.length > 0 ? providers : this.getDefaultProviders();
+
+      // Validate and fix provider statuses based on API key presence
+      let needsUpdate = false;
+      this.providers.forEach(provider => {
+        const shouldBeActive = provider.apiKey && provider.apiKey.trim().length > 0;
+        const newStatus = shouldBeActive ? 'active' : 'inactive';
+
+        if (provider.status !== newStatus) {
+          provider.status = newStatus;
+          needsUpdate = true;
+        }
+      });
+
+      // Save corrected statuses if any were updated
+      if (needsUpdate) {
+        await this.saveProviders();
+      }
     } catch (error) {
       logger.error('Failed to load providers:', error);
       this.providers = this.getDefaultProviders();
@@ -129,20 +162,33 @@ const OptionsPage = {
   getDefaultProviders() {
     return [
       {
-        id: 'qwen',
-        name: 'Alibaba Qwen',
-        type: 'openai',
+        id: 'qwen-mt-turbo',
+        name: 'Alibaba Qwen MT Turbo',
+        type: 'dashscope',
         icon: '🤖',
         status: 'active',
         apiKey: '',
-        apiEndpoint: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation',
+        apiEndpoint: 'https://dashscope-intl.aliyuncs.com/api/v1/services/aimt/text-translation/message',
         model: 'qwen-turbo',
         usage: { requests: 0, tokens: 0, limit: 1000 }
       },
       {
+        id: 'hunyuan-local',
+        name: 'Hunyuan Local Model',
+        type: 'local',
+        icon: '🏠',
+        status: 'inactive',
+        apiKey: 'local-model', // Special value to indicate local model
+        apiEndpoint: 'local://hunyuan-mt',
+        model: 'Hunyuan-MT-7B.i1-Q4_K_M.gguf',
+        usage: { requests: 0, tokens: 0, limit: Infinity }, // No limit for local model
+        description: 'Runs locally on your device (4.37GB download)',
+        downloadSize: '4.37GB'
+      },
+      {
         id: 'openai',
         name: 'OpenAI GPT',
-        type: 'openai', 
+        type: 'openai',
         icon: '🧠',
         status: 'inactive',
         apiKey: '',
@@ -312,7 +358,31 @@ const OptionsPage = {
           </div>
         `;
         break;
-      
+
+      case 'qwen':
+        formHTML = `
+          <div class="form-group">
+            <label for="provider-name">Provider Name</label>
+            <input type="text" id="provider-name" class="form-input" value="Alibaba Qwen MT Turbo" placeholder="Enter provider name">
+          </div>
+          <div class="form-group">
+            <label for="provider-api-key">API Key</label>
+            <input type="password" id="provider-api-key" class="form-input" placeholder="Enter your DashScope API key">
+          </div>
+          <div class="form-group">
+            <label for="provider-model">Model</label>
+            <select id="provider-model" class="form-select">
+              <option value="qwen-turbo" selected>Qwen Turbo</option>
+              <option value="qwen-plus">Qwen Plus</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="provider-endpoint">API Endpoint</label>
+            <input type="text" id="provider-endpoint" class="form-input" value="https://dashscope-intl.aliyuncs.com/api/v1/services/aimt/text-translation/message" readonly>
+          </div>
+        `;
+        break;
+
       default:
         formHTML = `
           <div class="form-group">
@@ -353,7 +423,7 @@ const OptionsPage = {
       name: name,
       type: this.selectedPreset,
       icon: this.getPresetIcon(this.selectedPreset),
-      status: 'inactive',
+      status: apiKey && apiKey.trim().length > 0 ? 'active' : 'inactive',
       apiKey: apiKey,
       apiEndpoint: endpoint,
       model: model,
@@ -369,6 +439,7 @@ const OptionsPage = {
   getPresetIcon(presetType) {
     const icons = {
       'openai': '🧠',
+      'qwen': '🚀',
       'deepl': '🔷',
       'google': '🔍',
       'custom': '⚙️'
@@ -390,12 +461,15 @@ const OptionsPage = {
 
   saveProvider() {
     if (this.editingProvider === null) return;
-    
+
     const provider = this.providers[this.editingProvider];
     provider.apiKey = document.getElementById('pe_apiKey').value;
     provider.apiEndpoint = document.getElementById('pe_apiEndpoint').value;
     provider.model = document.getElementById('pe_model').value;
-    
+
+    // Update provider status based on API key presence
+    provider.status = provider.apiKey && provider.apiKey.trim().length > 0 ? 'active' : 'inactive';
+
     this.saveProviders();
     this.renderProviders();
     this.hideProviderEditor();
@@ -418,21 +492,27 @@ const OptionsPage = {
   // Preferences Management
   // --------------------------------------------------------------------------
   async loadPreferences() {
-    const { 
+    const {
       globalAutoTranslate,
       showOriginal,
       enableShortcuts,
-      pdfEngine 
+      enableLocalModel,
+      localModelFallback,
+      pdfEngine
     } = await chrome.storage.local.get({
       globalAutoTranslate: false,
       showOriginal: true,
       enableShortcuts: true,
+      enableLocalModel: false,
+      localModelFallback: true,
       pdfEngine: 'none'
     });
 
     document.getElementById('global-auto-translate').checked = globalAutoTranslate;
     document.getElementById('show-original').checked = showOriginal;
     document.getElementById('enable-shortcuts').checked = enableShortcuts;
+    document.getElementById('enable-local-model').checked = enableLocalModel;
+    document.getElementById('local-model-fallback').checked = localModelFallback;
     
     // Load PDF engine selection
     this.loadPdfEngineConfig(pdfEngine);
@@ -607,6 +687,15 @@ const OptionsPage = {
     });
     document.getElementById('enable-shortcuts')?.addEventListener('change', (e) => {
       this.savePreference('enableShortcuts', e.target.checked);
+    });
+
+    // Local model settings
+    document.getElementById('enable-local-model')?.addEventListener('change', (e) => {
+      this.savePreference('enableLocalModel', e.target.checked);
+    });
+
+    document.getElementById('local-model-fallback')?.addEventListener('change', (e) => {
+      this.savePreference('localModelFallback', e.target.checked);
     });
 
     // PDF engine selection

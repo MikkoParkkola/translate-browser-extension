@@ -1,113 +1,226 @@
-(function (root, factory) {
-  const mod = factory(root);
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  else root.qwenLogger = mod;
-}(typeof self !== 'undefined' ? self : this, function (root) {
-  const LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
-  function parseLevel(l) {
-    if (typeof l === 'number') return Math.max(0, Math.min(3, l|0));
-    const s = String(l || '').toLowerCase();
-    return LEVELS[s] ?? 1;
-  }
-  function isSecretKey(k) {
-    return /^authorization$/i.test(k) || /^api(?:[-_\s]?key)$/i.test(k) || /token/i.test(k);
-  }
-  function redactValue(v) {
-    if (typeof v === 'string') {
-      return v
-        .replace(/(api[-_\s]?key\s*[:=]\s*).*/ig, '$1<redacted>')
-        .replace(/(authorization\s*[:=]\s*).*/ig, '$1<redacted>')
-        .replace(/(token\s*[:=]\s*).*/ig, '$1<redacted>');
-    }
-    if (v instanceof Error) {
-      const out = {};
-      for (const k of Object.getOwnPropertyNames(v)) {
-        if (isSecretKey(k)) {
-          out[k] = '<redacted>';
-        } else {
-          out[k] = redactValue(v[k]);
-        }
-      }
-      return out;
-    }
-    if (Array.isArray(v)) {
-      return v.map(redactValue);
-    }
-    if (v && typeof v === 'object') {
-      const out = Array.isArray(v) ? [] : {};
-      for (const k of Object.keys(v)) {
-        if (isSecretKey(k)) {
-          out[k] = '<redacted>';
-        } else {
-          out[k] = redactValue(v[k]);
-        }
-      }
-      return out;
-    }
-    return v;
-  }
-  function redact(args) {
-    return args.map(redactValue);
-  }
-  const collectors = new Set();
-  function addCollector(fn) {
-    if (typeof fn === 'function') {
-      collectors.add(fn);
-      return () => collectors.delete(fn);
-    }
-    return () => {};
-  }
-  function emit(level, ns, redArgs) {
-    const entry = { level, ns, args: redArgs };
-    collectors.forEach(fn => { try { fn(entry); } catch {} });
-  }
-  function format(ns, red) {
-    if (!red.length) return [`[${ns}]`];
-    const [first, ...rest] = red;
-    if (typeof first === 'string') return [`[${ns}] ${first}`, ...rest];
-    return [`[${ns}]`, first, ...rest];
-  }
-  function globalLevel() {
-    try {
-      if (root.qwenConfig && root.qwenConfig.logLevel) return parseLevel(root.qwenConfig.logLevel);
-    } catch {}
-    try {
-      if (typeof process !== 'undefined' && process.env && process.env.QWEN_LOG_LEVEL) {
-        return parseLevel(process.env.QWEN_LOG_LEVEL);
-      }
-    } catch {}
-    return 1; // default warn+
-  }
-  function create(ns) {
-    const base = root.console || console;
-    let lvl = globalLevel();
-    return {
-      setLevel(l) { lvl = parseLevel(l); },
-      level() { return lvl; },
-      create(child) { return create(ns ? `${ns}:${child}` : child); },
-      debug(...a) { if (lvl >= 3) { const red = redact(a); base.debug(...format(ns, red)); emit('debug', ns, red); } },
-      info(...a)  { if (lvl >= 2) { const red = redact(a); base.info(...format(ns, red)); emit('info', ns, red); } },
-      warn(...a)  { if (lvl >= 1) { const red = redact(a); base.warn(...format(ns, red)); emit('warn', ns, red); } },
-      error(...a) { const red = redact(a); base.error(...format(ns, red)); emit('error', ns, red); },
-      logBatchTime(ms) { if (lvl >= 2) { const red = redact([{ batchTimeMs: ms }]); base.info(...format(ns, red)); emit('info', ns, red); } },
-      logQueueLatency(ms) { if (lvl >= 2) { const red = redact([{ queueLatencyMs: ms }]); base.info(...format(ns, red)); emit('info', ns, red); } },
-      async time(fn) {
-        const start = Date.now();
-        try {
-          const result = await fn();
-          const ms = Date.now() - start;
-          const red = redact([{ latencyMs: ms }]);
-          emit('debug', ns, red);
-          return { result, ms };
-        } catch (err) {
-          const ms = Date.now() - start;
-          const red = redact([{ latencyMs: ms, error: err && err.message }]);
-          emit('debug', ns, red);
-          if (err && typeof err === 'object') err.latencyMs = ms;
-          throw err;
-        }
-      },
+/**
+ * Centralized logging system with environment-based levels and security redaction
+ * Replaces scattered console.* calls throughout the extension
+ */
+
+class Logger {
+  constructor(options = {}) {
+    // Initialize levels first
+    this.levels = {
+      DEBUG: 0,
+      INFO: 1,
+      WARN: 2,
+      ERROR: 3,
+      NONE: 4
     };
+
+    // Now we can safely call detectLogLevel which uses this.levels
+    this.level = this.detectLogLevel();
+    this.component = options.component || 'Extension';
+    this.enableConsole = options.enableConsole !== false;
+    this.enableStorage = options.enableStorage || false;
+    this.maxStoredLogs = options.maxStoredLogs || 100;
+
+    // API key patterns for redaction
+    this.sensitivePatterns = [
+      /(['"]\w*[Aa]pi[Kk]ey['"]?\s*[:=]\s*['"])[^'"]{8,}(['"])/g,
+      /(['"]\w*[Tt]oken['"]?\s*[:=]\s*['"])[^'"]{8,}(['"])/g,
+      /(['"]\w*[Ss]ecret['"]?\s*[:=]\s*['"])[^'"]{8,}(['"])/g,
+      /(['"]\w*[Aa]uth['"]?\s*[:=]\s*['"])[^'"]{8,}(['"])/g,
+      /(Bearer\s+)[A-Za-z0-9\-._~+/]+=*/g,
+      /(sk-[a-zA-Z0-9]{32,})/g, // OpenAI-style keys
+      /(sk_[a-zA-Z0-9_]{32,})/g, // Alternative format
+    ];
+
+    this.storedLogs = [];
+    this.init();
   }
-  return { create, parseLevel, addCollector };
-}));
+
+  detectLogLevel() {
+    // Check multiple environment indicators
+    const isDevelopment =
+      // Chrome extension context
+      (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest &&
+       chrome.runtime.getManifest().version_name &&
+       chrome.runtime.getManifest().version_name.includes('dev')) ||
+      // General development indicators
+      window.location?.hostname === 'localhost' ||
+      window.location?.protocol === 'moz-extension:' ||
+      // Explicit debug flag
+      localStorage.getItem('debug') === 'true' ||
+      // URL parameter
+      new URLSearchParams(window.location?.search || '').has('debug');
+
+    return isDevelopment ? this.levels.DEBUG : this.levels.INFO;
+  }
+
+  init() {
+    // Override global console in development for debugging
+    if (this.level === this.levels.DEBUG && typeof window !== 'undefined') {
+      window.originalConsole = { ...console };
+      // Don't override console in development - keep original behavior
+    }
+  }
+
+  shouldLog(level) {
+    return this.levels[level] >= this.level;
+  }
+
+  redactSensitiveData(message) {
+    if (typeof message !== 'string') {
+      try {
+        message = JSON.stringify(message, null, 2);
+      } catch {
+        message = String(message);
+      }
+    }
+
+    let redacted = message;
+
+    // Apply each pattern
+    for (const pattern of this.sensitivePatterns) {
+      redacted = redacted.replace(pattern, (match, prefix, suffix) => {
+        if (suffix) {
+          // Pattern has both prefix and suffix (key-value pairs)
+          return `${prefix}***REDACTED***${suffix}`;
+        } else {
+          // Pattern is just the sensitive part (tokens)
+          return '***REDACTED***';
+        }
+      });
+    }
+
+    // Additional PII patterns
+    redacted = redacted.replace(/(\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b)/g, '***CARD***');
+    redacted = redacted.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '***EMAIL***');
+
+    return redacted;
+  }
+
+  formatMessage(level, component, ...args) {
+    const timestamp = new Date().toISOString();
+    const prefix = `[${timestamp}] [${level}] [${component}]`;
+
+    // Redact sensitive data from all arguments
+    const redactedArgs = args.map(arg => this.redactSensitiveData(arg));
+
+    return { prefix, args: redactedArgs, timestamp, level, component };
+  }
+
+  storeLog(logData) {
+    if (!this.enableStorage) return;
+
+    this.storedLogs.push({
+      ...logData,
+      id: Date.now() + Math.random()
+    });
+
+    // Keep only recent logs
+    if (this.storedLogs.length > this.maxStoredLogs) {
+      this.storedLogs = this.storedLogs.slice(-this.maxStoredLogs);
+    }
+
+    // Persist to chrome.storage in background context
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      chrome.storage.local.set({
+        'extension_logs': this.storedLogs.slice(-50) // Keep last 50 in storage
+      }).catch(() => {}); // Fail silently if storage unavailable
+    }
+  }
+
+  log(level, component, ...args) {
+    if (!this.shouldLog(level)) return;
+
+    const logData = this.formatMessage(level, component || this.component, ...args);
+
+    // Store log entry
+    this.storeLog(logData);
+
+    // Output to console if enabled
+    if (this.enableConsole) {
+      const consoleMethod = level.toLowerCase() === 'debug' ? 'log' : level.toLowerCase();
+      if (console[consoleMethod]) {
+        console[consoleMethod](logData.prefix, ...logData.args);
+      } else {
+        console.log(logData.prefix, ...logData.args);
+      }
+    }
+  }
+
+  debug(component, ...args) {
+    if (typeof component === 'string') {
+      this.log('DEBUG', component, ...args);
+    } else {
+      this.log('DEBUG', this.component, component, ...args);
+    }
+  }
+
+  info(component, ...args) {
+    if (typeof component === 'string') {
+      this.log('INFO', component, ...args);
+    } else {
+      this.log('INFO', this.component, component, ...args);
+    }
+  }
+
+  warn(component, ...args) {
+    if (typeof component === 'string') {
+      this.log('WARN', component, ...args);
+    } else {
+      this.log('WARN', this.component, component, ...args);
+    }
+  }
+
+  error(component, ...args) {
+    if (typeof component === 'string') {
+      this.log('ERROR', component, ...args);
+    } else {
+      this.log('ERROR', this.component, component, ...args);
+    }
+  }
+
+  // Utility methods
+  setLevel(level) {
+    if (typeof level === 'string' && this.levels[level.toUpperCase()] !== undefined) {
+      this.level = this.levels[level.toUpperCase()];
+    } else if (typeof level === 'number') {
+      this.level = level;
+    }
+  }
+
+  getStoredLogs() {
+    return this.storedLogs;
+  }
+
+  clearLogs() {
+    this.storedLogs = [];
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      chrome.storage.local.remove('extension_logs').catch(() => {});
+    }
+  }
+
+  // Create component-specific loggers
+  createComponentLogger(componentName) {
+    return new Logger({
+      component: componentName,
+      enableConsole: this.enableConsole,
+      enableStorage: this.enableStorage
+    });
+  }
+}
+
+// Create default logger instance
+const logger = new Logger();
+
+// Export both class and instance
+export { Logger, logger };
+
+// For CommonJS compatibility (browser extension context)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { Logger, logger };
+}
+
+// Global registration for easy access
+if (typeof window !== 'undefined') {
+  window.ExtensionLogger = logger;
+}

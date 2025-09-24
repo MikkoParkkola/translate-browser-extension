@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">7.54% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/106</span>
+                <span class='fraction'>8/106</span>
             </div>
         
             
@@ -37,16 +37,16 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">13.33% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/15</span>
+                <span class='fraction'>2/15</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">7.61% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/105</span>
+                <span class='fraction'>8/105</span>
             </div>
         
             
@@ -418,30 +418,21 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -449,7 +440,16 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -760,22 +760,22 @@ import { startTimer, endTimer, trackTranslation, trackError } from '../lib/perfo
 import { createErrorHandler, throwStandardError, ERROR_CODES } from '../lib/standardErrorHandler.js';
 &nbsp;
 class TranslationService {
-<span class="fstat-no" title="function not covered" >  co</span>nstructor() {
-<span class="cstat-no" title="statement not covered" >    this.providers = new Map();</span>
-<span class="cstat-no" title="statement not covered" >    this.cache = new Map();</span>
-<span class="cstat-no" title="statement not covered" >    this.throttle = new OptimizedThrottle({</span>
+  constructor() {
+    this.providers = new Map();
+    this.cache = new Map();
+    this.throttle = new OptimizedThrottle({
       requestLimit: 60,
       tokenLimit: 100000,
       windowMs: 60000
     });
-<span class="cstat-no" title="statement not covered" >    this.errorHandler = createErrorHandler('TranslationService');</span>
+    this.errorHandler = createErrorHandler('TranslationService');
 &nbsp;
-<span class="cstat-no" title="statement not covered" >    this.initializeProviders();</span>
+    this.initializeProviders();
   }
 &nbsp;
-<span class="fstat-no" title="function not covered" >  in</span>itializeProviders() {
+  initializeProviders() {
     // Qwen MT Turbo (fast, good quality)
-<span class="cstat-no" title="statement not covered" >    this.providers.set('qwen-mt-turbo', {</span>
+    this.providers.set('qwen-mt-turbo', {
       endpoint: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions',
       model: 'qwen-mt-turbo',
       maxTokens: 8192,
@@ -784,7 +784,7 @@ class TranslationService {
     });
 &nbsp;
     // Qwen MT (slower, higher quality)
-<span class="cstat-no" title="statement not covered" >    this.providers.set('qwen-mt', {</span>
+    this.providers.set('qwen-mt', {
       endpoint: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions',
       model: 'qwen-mt',
       maxTokens: 8192,
@@ -792,7 +792,7 @@ class TranslationService {
       cost: { inputPer1k: 0.003, outputPer1k: 0.006 }
     });
 &nbsp;
-<span class="cstat-no" title="statement not covered" >    logger.info('TranslationService', `Initialized ${this.providers.size} translation providers`);</span>
+    logger.info('TranslationService', `Initialized ${this.providers.size} translation providers`);
   }
 &nbsp;
   // Main translation method
@@ -1099,7 +1099,7 @@ export { TranslationService };</pre></td></tr></table></pre>
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-24T14:48:01.121Z
+                at 2025-09-24T18:05:18.709Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

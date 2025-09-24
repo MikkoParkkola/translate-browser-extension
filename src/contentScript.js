@@ -6,14 +6,17 @@
 import { ContentObserver } from './content/contentObserver.js';
 import { AdvancedLanguageDetector } from './content/languageDetector.js';
 import { TranslationService } from './content/translationService.js';
+import { Logger } from './lib/logger.js';
 
 // Wrap everything in an IIFE to allow early returns and prevent conflicts
 (function() {
   'use strict';
 
+  const logger = new Logger({ component: 'ContentScript' });
+
   // Prevent multiple script injections by checking if we're already initialized
   if (window.translationExtensionInitialized) {
-    console.log('[ContentScript] Extension already initialized, skipping duplicate injection...');
+    logger.debug('Extension already initialized, skipping duplicate injection...');
     return;
   }
 
@@ -29,7 +32,7 @@ import { TranslationService } from './content/translationService.js';
       }
       delete window.translationScriptInstance;
     } catch (error) {
-      console.warn('[ContentScript] Error cleaning up previous instance:', error);
+      logger.warn('Error cleaning up previous instance:', error);
     }
   }
 
@@ -37,7 +40,7 @@ import { TranslationService } from './content/translationService.js';
   window.ContentObserver = ContentObserver;
   window.AdvancedLanguageDetector = AdvancedLanguageDetector;
 
-  console.log('[ContentScript] Modular classes loaded successfully');
+  logger.info('Modular classes loaded successfully');
 
   // Main script execution wrapped in try-catch for context invalidation
   try {
@@ -56,12 +59,12 @@ import { TranslationService } from './content/translationService.js';
       async initialize() {
         if (this.isInitialized) return;
 
-        console.log('[ContentScript] Initializing modular content script...');
+        logger.info('Initializing modular content script...');
 
         try {
           // Check if extension context is still valid
           if (!(await this.isExtensionContextValid())) {
-            console.error('[ContentScript] Extension context is invalid, cannot initialize');
+            logger.error('Extension context is invalid, cannot initialize');
             this.handleContextInvalidation();
             return;
           }
@@ -85,10 +88,10 @@ import { TranslationService } from './content/translationService.js';
           this.initializeProgressIndicator();
 
           this.isInitialized = true;
-          console.log('[ContentScript] Modular content script initialized successfully');
+          logger.info('Modular content script initialized successfully');
 
         } catch (error) {
-          console.error('[ContentScript] Failed to initialize:', error);
+          logger.error('Failed to initialize:', error);
           if (error.message?.includes('Extension context invalidated')) {
             this.handleContextInvalidation();
           }
@@ -100,7 +103,7 @@ import { TranslationService } from './content/translationService.js';
           const id = chrome.runtime.id;
           return !!id;
         } catch (error) {
-          console.warn('[ContentScript] Extension context invalid:', error.message);
+          logger.warn('Extension context invalid:', error.message);
           return false;
         }
       }
@@ -122,7 +125,7 @@ import { TranslationService } from './content/translationService.js';
         setTimeout(() => {
           if (document.body) {
             this.contentObserver.startObserving(document.body);
-            console.log('[ContentScript] Content observer started');
+            logger.info('Content observer started');
           }
         }, 1000);
       }
@@ -130,7 +133,7 @@ import { TranslationService } from './content/translationService.js';
       async handleNewContent(nodes, metadata = {}) {
         if (!this.translationService || !nodes || nodes.length === 0) return;
 
-        console.log(`[ContentScript] New content detected: ${nodes.length} nodes (source: ${metadata.source})`);
+        logger.debug(`New content detected: ${nodes.length} nodes (source: ${metadata.source})`);
 
         // Check if auto-translation is enabled
         try {
@@ -141,17 +144,17 @@ import { TranslationService } from './content/translationService.js';
               this.translationService.autoTranslateCount++;
               await this.translationService.translateNodes(nodes);
             } else {
-              console.log('[ContentScript] Auto-translate limit reached, skipping new content');
+              logger.warn('Auto-translate limit reached, skipping new content');
             }
           }
         } catch (error) {
-          console.warn('[ContentScript] Failed to handle new content:', error);
+          logger.warn('Failed to handle new content:', error);
         }
       }
 
       async handleMessage(request, sender, sendResponse) {
         try {
-          console.log('[ContentScript] Received message:', request.type);
+          logger.debug('Received message:', request.type);
 
           // Delegate to translation service
           if (this.translationService) {
@@ -161,7 +164,7 @@ import { TranslationService } from './content/translationService.js';
           }
 
         } catch (error) {
-          console.error('[ContentScript] Message handler error:', error);
+          logger.error('Message handler error:', error);
           sendResponse({ error: error.message });
         }
       }
@@ -171,7 +174,7 @@ import { TranslationService } from './content/translationService.js';
           try {
             return await chrome.runtime.sendMessage(message);
           } catch (error) {
-            console.warn(`[ContentScript] Message attempt ${attempt}/${maxRetries} failed:`, error.message);
+            logger.warn(`Message attempt ${attempt}/${maxRetries} failed:`, error.message);
 
             if (attempt === maxRetries) {
               if (error.message?.includes('Extension context invalidated')) {
@@ -210,7 +213,7 @@ import { TranslationService } from './content/translationService.js';
         document.body?.appendChild(progressIndicator);
         this.progressIndicator = progressIndicator;
 
-        console.log('[ContentScript] Progress indicator initialized');
+        logger.debug('Progress indicator initialized');
       }
 
       showProgress(show = true) {
@@ -220,7 +223,7 @@ import { TranslationService } from './content/translationService.js';
       }
 
       handleContextInvalidation() {
-        console.warn('[ContentScript] Extension context invalidated, cleaning up...');
+        logger.warn('Extension context invalidated, cleaning up...');
         this.cleanup();
 
         // Mark the global flag as false so a new instance can be created when extension reloads
@@ -288,10 +291,10 @@ import { TranslationService } from './content/translationService.js';
       TranslationService
     };
 
-    console.log('[ContentScript] Content script coordinator initialized');
+    logger.info('Content script coordinator initialized');
 
   } catch (extensionError) {
-    console.error('[ContentScript] Critical initialization error:', extensionError);
+    logger.error('Critical initialization error:', extensionError);
     // Mark as not initialized so reload can try again
     window.translationExtensionInitialized = false;
   }

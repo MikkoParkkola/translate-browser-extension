@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">1.33% </span>
+                <span class="strong">10.66% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>2/150</span>
+                <span class='fraction'>16/150</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">3.61% </span>
+                <span class="strong">7.22% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>3/83</span>
+                <span class='fraction'>6/83</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">5.26% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/19</span>
+                <span class='fraction'>1/19</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">1.39% </span>
+                <span class="strong">11.18% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>2/143</span>
+                <span class='fraction'>16/143</span>
             </div>
         
             
@@ -447,28 +447,28 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -819,29 +819,29 @@ import { secureLogger } from './secureLogging.js';
 import { startTimer, endTimer, trackAPICall, trackError } from './performanceTracker.js';
 &nbsp;
 class OptimizedThrottle {
-<span class="fstat-no" title="function not covered" >  co</span>nstructor(options = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
-<span class="cstat-no" title="statement not covered" >    this.requestLimit = options.requestLimit || 60;</span>
-<span class="cstat-no" title="statement not covered" >    this.tokenLimit = options.tokenLimit || 100000;</span>
-<span class="cstat-no" title="statement not covered" >    this.windowMs = options.windowMs || 60000; </span>// 1 minute
+  constructor(options = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
+    this.requestLimit = options.requestLimit || <span class="branch-1 cbranch-no" title="branch not covered" >60;</span>
+    this.tokenLimit = options.tokenLimit || <span class="branch-1 cbranch-no" title="branch not covered" >100000;</span>
+    this.windowMs = options.windowMs || <span class="branch-1 cbranch-no" title="branch not covered" >60000;</span> // 1 minute
 &nbsp;
     // Use circular buffer for better performance than array filtering
-<span class="cstat-no" title="statement not covered" >    this.requestBuffer = new Array(this.requestLimit);</span>
-<span class="cstat-no" title="statement not covered" >    this.requestIndex = 0;</span>
-<span class="cstat-no" title="statement not covered" >    this.requestCount = 0;</span>
+    this.requestBuffer = new Array(this.requestLimit);
+    this.requestIndex = 0;
+    this.requestCount = 0;
 &nbsp;
-<span class="cstat-no" title="statement not covered" >    this.tokens = 0;</span>
-<span class="cstat-no" title="statement not covered" >    this.tokenResetTime = Date.now() + this.windowMs;</span>
+    this.tokens = 0;
+    this.tokenResetTime = Date.now() + this.windowMs;
 &nbsp;
     // Performance optimization: cache calculations
-<span class="cstat-no" title="statement not covered" >    this.lastCleanupTime = 0;</span>
-<span class="cstat-no" title="statement not covered" >    this.cleanupInterval = Math.min(10000, this.windowMs / 6); </span>// Cleanup every ~10s
+    this.lastCleanupTime = 0;
+    this.cleanupInterval = Math.min(10000, this.windowMs / 6); // Cleanup every ~10s
 &nbsp;
     // Predictive capacity tracking
-<span class="cstat-no" title="statement not covered" >    this.usageHistory = [];</span>
-<span class="cstat-no" title="statement not covered" >    this.maxHistorySize = 10;</span>
-<span class="cstat-no" title="statement not covered" >    this.predictedNextWindow = null;</span>
+    this.usageHistory = [];
+    this.maxHistorySize = 10;
+    this.predictedNextWindow = null;
 &nbsp;
-<span class="cstat-no" title="statement not covered" >    this.stats = {</span>
+    this.stats = {
       totalRequests: 0,
       totalTokens: 0,
       rateLimitHits: 0,
@@ -1189,7 +1189,7 @@ export { OptimizedThrottle };
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-24T14:48:01.121Z
+                at 2025-09-24T18:05:18.709Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

@@ -4,6 +4,8 @@
  * Features: IndexedDB persistence, Chrome Storage sync, LRU eviction, hit/miss metrics
  */
 
+import { logger } from './logger.js';
+
 class TranslationMemory {
   constructor(options = {}) {
     this.dbName = options.dbName || 'qwen-translation-memory';
@@ -49,10 +51,10 @@ class TranslationMemory {
         await this.loadFromSync();
       }
 
-      console.log('[TM] Translation Memory initialized successfully');
+      logger.info('TranslationMemory', 'Translation Memory initialized successfully');
       return true;
     } catch (error) {
-      console.error('[TM] Failed to initialize Translation Memory:', error);
+      logger.error('TranslationMemory', 'Failed to initialize Translation Memory:', error);
       return false;
     }
   }
@@ -62,7 +64,7 @@ class TranslationMemory {
    */
   async initDB() {
     if (typeof indexedDB === 'undefined') {
-      console.warn('[TM] IndexedDB not available, using memory-only cache');
+      logger.warn('TranslationMemory', 'IndexedDB not available, using memory-only cache');
       return;
     }
 
@@ -71,7 +73,7 @@ class TranslationMemory {
 
       request.onerror = () => {
         this.metrics.dbErrors++;
-        console.error('[TM] IndexedDB open failed:', request.error);
+        logger.error('TranslationMemory', 'IndexedDB open failed:', request.error);
         resolve(); // Continue without DB
       };
 
@@ -135,19 +137,19 @@ class TranslationMemory {
             loaded++;
           }
 
-          console.log(`[TM] Loaded ${loaded} translations from IndexedDB (${expired} expired entries cleaned)`);
+          logger.info('TranslationMemory', `Loaded ${loaded} translations from IndexedDB (${expired} expired entries cleaned)`);
           resolve();
         };
 
         request.onerror = () => {
           this.metrics.dbErrors++;
-          console.error('[TM] Failed to load from IndexedDB:', request.error);
+          logger.error('TranslationMemory', 'Failed to load from IndexedDB:', request.error);
           resolve();
         };
       });
     } catch (error) {
       this.metrics.dbErrors++;
-      console.error('[TM] Error loading from IndexedDB:', error);
+      logger.error('TranslationMemory', 'Error loading from IndexedDB:', error);
     }
   }
 
@@ -184,10 +186,10 @@ class TranslationMemory {
         }
       }
 
-      console.log(`[TM] Loaded ${syncLoaded} translations from Chrome Storage sync`);
+      logger.info('TranslationMemory', `Loaded ${syncLoaded} translations from Chrome Storage sync`);
     } catch (error) {
       this.metrics.syncErrors++;
-      console.error('[TM] Failed to load from Chrome Storage sync:', error);
+      logger.error('TranslationMemory', 'Failed to load from Chrome Storage sync:', error);
     }
   }
 
@@ -297,7 +299,7 @@ class TranslationMemory {
       this.metrics.evictionsLRU++;
     }
 
-    console.log(`[TM] LRU evicted ${toRemove} entries, cache size: ${this.cache.size}`);
+    logger.debug('TranslationMemory', `LRU evicted ${toRemove} entries, cache size: ${this.cache.size}`);
   }
 
   /**
@@ -324,7 +326,7 @@ class TranslationMemory {
       store.put(record);
     } catch (error) {
       this.metrics.dbErrors++;
-      console.error('[TM] Failed to save to IndexedDB:', error);
+      logger.error('TranslationMemory', 'Failed to save to IndexedDB:', error);
     }
   }
 
@@ -340,7 +342,7 @@ class TranslationMemory {
       store.delete(key);
     } catch (error) {
       this.metrics.dbErrors++;
-      console.error('[TM] Failed to delete from IndexedDB:', error);
+      logger.error('TranslationMemory', 'Failed to delete from IndexedDB:', error);
     }
   }
 
@@ -372,10 +374,10 @@ class TranslationMemory {
         chrome.storage.sync.set({ [this.syncKey]: syncData }, resolve);
       });
 
-      console.log(`[TM] Synced ${syncData.length} translations to Chrome Storage`);
+      logger.info('TranslationMemory', `Synced ${syncData.length} translations to Chrome Storage`);
     } catch (error) {
       this.metrics.syncErrors++;
-      console.error('[TM] Failed to sync to Chrome Storage:', error);
+      logger.error('TranslationMemory', 'Failed to sync to Chrome Storage:', error);
     }
   }
 
@@ -397,7 +399,7 @@ class TranslationMemory {
         store.clear();
       } catch (error) {
         this.metrics.dbErrors++;
-        console.error('[TM] Failed to clear IndexedDB:', error);
+        logger.error('TranslationMemory', 'Failed to clear IndexedDB:', error);
       }
     }
 
@@ -409,11 +411,11 @@ class TranslationMemory {
         });
       } catch (error) {
         this.metrics.syncErrors++;
-        console.error('[TM] Failed to clear Chrome Storage sync:', error);
+        logger.error('TranslationMemory', 'Failed to clear Chrome Storage sync:', error);
       }
     }
 
-    console.log('[TM] Translation Memory cleared');
+    logger.info('TranslationMemory', 'Translation Memory cleared');
   }
 
   /**
@@ -474,11 +476,11 @@ class TranslationMemory {
         };
       } catch (error) {
         this.metrics.dbErrors++;
-        console.error('[TM] Failed to cleanup IndexedDB:', error);
+        logger.error('TranslationMemory', 'Failed to cleanup IndexedDB:', error);
       }
     }
 
-    console.log(`[TM] Cleaned up ${cleaned} expired translations`);
+    logger.info('TranslationMemory', `Cleaned up ${cleaned} expired translations`);
     return cleaned;
   }
 }

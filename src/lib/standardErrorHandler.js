@@ -456,3 +456,10 @@ export function withRetry(asyncFn, errorHandler, context = {}) {
     return errorHandler.retryOperation(() => asyncFn(...args), context);
   };
 }
+
+// Create default singleton instance for global use
+export const standardErrorHandler = new StandardErrorHandler({
+  component: 'Extension',
+  enableUserNotifications: true,
+  enableTelemetry: false // Disable telemetry by default for privacy
+});

@@ -13,6 +13,8 @@
  * - Accessibility compliance maintenance
  */
 
+import { logger } from './logger.js';
+
 class DOMOptimizer {
   constructor(options = {}) {
     // Configuration with intelligent defaults
@@ -153,7 +155,7 @@ class DOMOptimizer {
         });
         observer.observe({ entryTypes: ['measure'] });
       } catch (e) {
-        console.warn('Performance observer not supported for measures');
+        logger.warn('DOMOptimizer', 'Performance observer not supported for measures');
       }
     }
   }
@@ -228,7 +230,7 @@ class DOMOptimizer {
     // Schedule batch processing
     this.scheduleBatchProcessing();
 
-    console.log(`🔄 DOM operation queued: ${operationId} (priority: ${priority})`);
+    logger.debug('DOMOptimizer', `DOM operation queued: ${operationId} (priority: ${priority})`);
     return operationId;
   }
 
@@ -362,7 +364,7 @@ class DOMOptimizer {
     const batchSize = Math.min(this.config.batchSize, queue.length);
     const batch = queue.splice(0, batchSize);
 
-    console.log(`⚡ Processing ${priority} priority batch: ${batch.length} operations`);
+    logger.debug('DOMOptimizer', `Processing ${priority} priority batch: ${batch.length} operations`);
 
     // Group operations by type for optimal DOM manipulation
     const groupedOperations = this.groupOperationsByType(batch);
@@ -394,7 +396,7 @@ class DOMOptimizer {
       this.state.pendingOperations.delete(result.operationId);
     });
 
-    console.log(`✅ Batch completed in ${processingTime.toFixed(2)}ms`);
+    logger.debug('DOMOptimizer', `Batch completed in ${processingTime.toFixed(2)}ms`);
   }
 
   /**
@@ -461,7 +463,7 @@ class DOMOptimizer {
       );
 
     } catch (error) {
-      console.error(`Error processing ${operationType} operations:`, error);
+      logger.error('DOMOptimizer', `Error processing ${operationType} operations:`, error);
 
       // Mark all operations in this group as failed
       operations.forEach(operation => {
@@ -815,13 +817,13 @@ class DOMOptimizer {
 
     // Retry if under limit
     if (operation.retries < 3) {
-      console.warn(`⚠️ Retrying operation ${operation.id} (attempt ${operation.retries + 1})`);
+      logger.warn('DOMOptimizer', `Retrying operation ${operation.id} (attempt ${operation.retries + 1})`);
 
       // Re-queue with lower priority
       const newPriority = this.downgradePriority(operation.priority);
       this.operationQueues[newPriority].push(operation);
     } else {
-      console.error(`❌ Operation ${operation.id} failed permanently:`, result.error);
+      logger.error('DOMOptimizer', `Operation ${operation.id} failed permanently:`, result.error);
 
       // Store error for analysis
       this.state.errorOperations.add(operation.id);
@@ -1022,7 +1024,7 @@ class DOMOptimizer {
         this.metrics.performance.domUpdateTime.slice(-100);
     }
 
-    console.log('🧹 DOM optimizer cleanup completed');
+    logger.info('DOMOptimizer', 'DOM optimizer cleanup completed');
   }
 
   /**
@@ -1055,7 +1057,7 @@ class DOMOptimizer {
 
     this.virtualDOM.clear();
 
-    console.log('🔥 DOM optimizer destroyed');
+    logger.info('DOMOptimizer', 'DOM optimizer destroyed');
   }
 }
 

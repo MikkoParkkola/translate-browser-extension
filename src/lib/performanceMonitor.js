@@ -3,6 +3,8 @@
  * Tracks translation performance, API metrics, memory usage, and system health
  */
 
+import { logger } from './logger.js';
+
 class PerformanceMonitor {
   constructor(options = {}) {
     this.options = {
@@ -99,7 +101,7 @@ class PerformanceMonitor {
     // Initialize monitoring
     this.initialize();
 
-    console.log('[PerformanceMonitor] Initialized with session ID:', this.sessionId);
+    logger.info('PerformanceMonitor', 'Initialized with session ID:', this.sessionId);
   }
 
   /**
@@ -203,7 +205,7 @@ class PerformanceMonitor {
       timestamp: endTime
     });
 
-    console.log(`[PerformanceMonitor] API request completed: ${latency}ms (${request.provider})`);
+    logger.debug('PerformanceMonitor', `API request completed: ${latency}ms (${request.provider})`);
   }
 
   /**
@@ -235,7 +237,7 @@ class PerformanceMonitor {
       timestamp: endTime
     });
 
-    console.warn(`[PerformanceMonitor] API request failed: ${latency}ms (${error.message})`);
+    logger.warn('PerformanceMonitor', `API request failed: ${latency}ms (${error.message})`);
   }
 
   /**
@@ -358,7 +360,7 @@ class PerformanceMonitor {
 
     this.markEvent('error', errorInfo);
 
-    console.error(`[PerformanceMonitor] Error tracked: ${type} - ${error.message}`);
+    logger.error('PerformanceMonitor', `Error tracked: ${type} - ${error.message}`);
   }
 
   /**
@@ -394,7 +396,7 @@ class PerformanceMonitor {
       });
 
     } catch (error) {
-      console.warn('[PerformanceMonitor] Memory tracking failed:', error);
+      logger.warn('PerformanceMonitor', 'Memory tracking failed:', error);
     }
   }
 
@@ -566,7 +568,7 @@ class PerformanceMonitor {
         this.performanceObserver.observe({ entryTypes: ['mark', 'measure'] });
       }
     } catch (error) {
-      console.warn('[PerformanceMonitor] Performance observer setup failed:', error);
+      logger.warn('PerformanceMonitor', 'Performance observer setup failed:', error);
     }
   }
 
@@ -585,7 +587,7 @@ class PerformanceMonitor {
   startPeriodicReporting() {
     this.reportingTimer = setInterval(() => {
       const report = this.getPerformanceReport();
-      console.log('[PerformanceMonitor] Periodic report:', {
+      logger.debug('PerformanceMonitor', 'Periodic report:', {
         apiRequests: report.metrics.api.requests,
         averageLatency: report.metrics.api.averageLatency.toFixed(0) + 'ms',
         successRate: (report.derived.apiSuccessRate * 100).toFixed(1) + '%',
@@ -658,7 +660,7 @@ class PerformanceMonitor {
 
     this.timeline = [];
     this.sessionStartTime = Date.now();
-    console.log('[PerformanceMonitor] Metrics reset');
+    logger.info('PerformanceMonitor', 'Metrics reset');
   }
 
   /**
@@ -908,7 +910,7 @@ class PerformanceMonitor {
       timestamp: Date.now()
     });
 
-    console.log('[PerformanceMonitor] Destroyed');
+    logger.info('PerformanceMonitor', 'Destroyed');
   }
 
   /**
@@ -916,7 +918,7 @@ class PerformanceMonitor {
    */
   configure(newOptions) {
     this.options = { ...this.options, ...newOptions };
-    console.log('[PerformanceMonitor] Configuration updated:', newOptions);
+    logger.debug('PerformanceMonitor', 'Configuration updated:', newOptions);
   }
 
   /**

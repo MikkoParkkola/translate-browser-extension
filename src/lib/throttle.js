@@ -3,6 +3,8 @@
  * Prevents API overuse and handles rate limit errors
  */
 
+import { logger } from './logger.js';
+
 class Throttle {
   constructor(options = {}) {
     this.requestLimit = options.requestLimit || 60;
@@ -97,7 +99,7 @@ class Throttle {
           const baseWait = isParameterLimit ? 2000 : 3000;
           const waitTime = Math.min(baseWait * Math.pow(1.5, attempt), 45000); // More conservative backoff
 
-          console.warn(`${isParameterLimit ? 'Parameter limit' : 'Rate limit'} hit, waiting ${waitTime}ms before retry ${attempt + 1}/${retries}`);
+          logger.warn('Throttle', `${isParameterLimit ? 'Parameter limit' : 'Rate limit'} hit, waiting ${waitTime}ms before retry ${attempt + 1}/${retries}`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
           continue;
         }

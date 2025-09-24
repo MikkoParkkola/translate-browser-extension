@@ -1,5 +1,4 @@
 export async function storePdfInSession(data) {
-  console.log('DEBUG: storing PDF in session');
   let raw;
   if (typeof Blob !== 'undefined' && data instanceof Blob) {
     raw = data.arrayBuffer ? await data.arrayBuffer() : await new Response(data).arrayBuffer();
@@ -11,7 +10,6 @@ export async function storePdfInSession(data) {
     const text = String(data);
     raw = new TextEncoder().encode(text).buffer;
   }
-  console.log(`DEBUG: raw buffer length ${raw.byteLength}`);
   const b64 = base64Encode(raw);
   const key = `pdf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   const db = await openDb();
@@ -22,12 +20,10 @@ export async function storePdfInSession(data) {
     const store = tx.objectStore('pdfs');
     store.put(b64, key);
   });
-  console.log(`DEBUG: stored PDF under key ${key}`);
   return key;
 }
 
 export async function readPdfFromSession(key) {
-  console.log(`DEBUG: reading PDF from session key ${key}`);
   const db = await openDb();
   const b64 = await new Promise((resolve, reject) => {
     const tx = db.transaction('pdfs', 'readonly');
@@ -39,11 +35,9 @@ export async function readPdfFromSession(key) {
     req.onerror = () => reject(req.error);
   });
   if (!b64) {
-    console.log('DEBUG: session PDF missing');
     throw new Error('Session PDF missing');
   }
   const buf = base64Decode(b64);
-  console.log(`DEBUG: decoded session PDF size ${buf.byteLength} bytes`);
   return buf;
 }
 

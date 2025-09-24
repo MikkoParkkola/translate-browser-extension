@@ -22,22 +22,26 @@ describe('LocalModelManager Validation Functionality', () => {
 
   beforeEach(() => {
     jest.resetModules();
-    jest.clearAllMocks();
 
     // Mock console methods
     jest.spyOn(console, 'log').mockImplementation();
     jest.spyOn(console, 'warn').mockImplementation();
     jest.spyOn(console, 'error').mockImplementation();
 
+    // Ensure crypto mock is properly set up
+    global.crypto = {
+      subtle: {
+        digest: jest.fn((algorithm, data) => {
+          // Return a consistent hash for testing
+          const mockHash = new Uint8Array(32).fill(0x42); // Fill with 0x42
+          return Promise.resolve(mockHash.buffer);
+        }),
+        importKey: jest.fn()
+      }
+    };
+
     LocalModelManager = require('../src/localModel.js');
     modelManager = new LocalModelManager();
-
-    // Mock crypto.subtle.digest to return deterministic hash
-    global.crypto.subtle.digest.mockImplementation((algorithm, data) => {
-      // Return a consistent hash for testing
-      const mockHash = new Uint8Array(32).fill(0x42); // Fill with 0x42
-      return Promise.resolve(mockHash.buffer);
-    });
   });
 
   afterEach(() => {

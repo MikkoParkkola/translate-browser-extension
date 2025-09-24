@@ -3,8 +3,11 @@
  * Handles language detection from text content and DOM context
  */
 
+import { Logger } from '../lib/logger.js';
+
 class AdvancedLanguageDetector {
   constructor(options = {}) {
+    this.logger = new Logger({ component: 'LanguageDetector' });
     this.options = {
       enableDOMAnalysis: true,
       enableContextualHints: true,
@@ -49,7 +52,7 @@ class AdvancedLanguageDetector {
       return result;
 
     } catch (error) {
-      console.warn('[LanguageDetector] Detection failed:', error);
+      this.logger.warn('Detection failed:', error);
       return null;
     }
   }

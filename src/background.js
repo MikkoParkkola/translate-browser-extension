@@ -4,23 +4,25 @@
  */
 
 import { BackgroundService } from './background/backgroundService.js';
+import { Logger } from './lib/logger.js';
 
 // Initialize global background service instance
 let backgroundService = null;
+const logger = new Logger({ component: 'Background' });
 
 // Chrome extension event handlers
 chrome.runtime.onInstalled.addListener(async (details) => {
-  console.log('Extension installed/updated:', details.reason);
+  logger.info('Extension installed/updated:', details.reason);
 
   try {
     // Initialize background service
     backgroundService = new BackgroundService();
     await backgroundService.initialize();
 
-    console.log('Background service initialized successfully');
+    logger.info('Background service initialized successfully');
 
   } catch (error) {
-    console.error('Failed to initialize background service:', error);
+    logger.error('Failed to initialize background service:', error);
     // Fallback to basic functionality if initialization fails
     setupFallbackHandlers();
   }
@@ -28,14 +30,14 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
 // Chrome extension startup handler
 chrome.runtime.onStartup.addListener(async () => {
-  console.log('Extension starting up');
+  logger.info('Extension starting up');
 
   if (!backgroundService) {
     try {
       backgroundService = new BackgroundService();
       await backgroundService.initialize();
     } catch (error) {
-      console.error('Failed to initialize background service on startup:', error);
+      logger.error('Failed to initialize background service on startup:', error);
       setupFallbackHandlers();
     }
   }
@@ -43,7 +45,7 @@ chrome.runtime.onStartup.addListener(async () => {
 
 // Service worker suspension handler
 chrome.runtime.onSuspend?.addListener(() => {
-  console.log('Service worker suspending');
+  logger.info('Service worker suspending');
 
   if (backgroundService) {
     backgroundService.handleSuspend();
@@ -52,7 +54,7 @@ chrome.runtime.onSuspend?.addListener(() => {
 
 // Fallback handlers for when modular system fails
 function setupFallbackHandlers() {
-  console.warn('Setting up fallback message handlers');
+  logger.warn('Setting up fallback message handlers');
 
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Basic ping handler

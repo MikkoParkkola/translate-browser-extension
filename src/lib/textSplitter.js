@@ -13,6 +13,8 @@
  * - Smart rejoining with proper spacing and formatting
  */
 
+import { logger } from './logger.js';
+
 (function(global) {
   'use strict';
 
@@ -125,7 +127,7 @@
         endMarker: '] ◦'
       };
 
-      console.log('[TextSplitter] Initialized with options:', this.options);
+      logger.debug('TextSplitter', 'Initialized with options:', this.options);
     }
 
     /**
@@ -185,7 +187,7 @@
         return finalChunks;
 
       } catch (error) {
-        console.warn('[TextSplitter] Error during splitting, falling back to simple split:', error);
+        logger.warn('TextSplitter', 'Error during splitting, falling back to simple split:', error);
         return this.fallbackSplit(text, config);
       }
     }
@@ -783,7 +785,7 @@
      */
     reset() {
       this.clearCache();
-      console.log('[TextSplitter] Reset completed');
+      logger.debug('TextSplitter', 'Reset completed');
     }
   }
 

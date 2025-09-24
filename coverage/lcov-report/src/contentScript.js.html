@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">37.19% </span>
+                <span class="strong">37.7% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>45/121</span>
+                <span class='fraction'>46/122</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">37.71% </span>
+                <span class="strong">38.26% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>43/114</span>
+                <span class='fraction'>44/115</span>
             </div>
         
             
@@ -361,7 +361,11 @@
 <a name='L296'></a><a href='#L296'>296</a>
 <a name='L297'></a><a href='#L297'>297</a>
 <a name='L298'></a><a href='#L298'>298</a>
-<a name='L299'></a><a href='#L299'>299</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L299'></a><a href='#L299'>299</a>
+<a name='L300'></a><a href='#L300'>300</a>
+<a name='L301'></a><a href='#L301'>301</a>
+<a name='L302'></a><a href='#L302'>302</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -373,6 +377,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">8x</span>
@@ -667,14 +673,17 @@
 import { ContentObserver } from './content/contentObserver.js';
 import { AdvancedLanguageDetector } from './content/languageDetector.js';
 import { TranslationService } from './content/translationService.js';
+import { Logger } from './lib/logger.js';
 &nbsp;
 // Wrap everything in an IIFE to allow early returns and prevent conflicts
 (function() {
   'use strict';
 &nbsp;
+  const logger = new Logger({ component: 'ContentScript' });
+&nbsp;
   // Prevent multiple script injections by checking if we're already initialized
   if (window.translationExtensionInitialized) {
-    console.log('[ContentScript] Extension already initialized, skipping duplicate injection...');
+    logger.debug('Extension already initialized, skipping duplicate injection...');
     return;
   }
 &nbsp;
@@ -690,7 +699,7 @@ import { TranslationService } from './content/translationService.js';
       }
 <span class="cstat-no" title="statement not covered" >      delete window.translationScriptInstance;</span>
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.warn('[ContentScript] Error cleaning up previous instance:', error);</span>
+<span class="cstat-no" title="statement not covered" >      logger.warn('Error cleaning up previous instance:', error);</span>
     }
   }
 &nbsp;
@@ -698,7 +707,7 @@ import { TranslationService } from './content/translationService.js';
   window.ContentObserver = ContentObserver;
   window.AdvancedLanguageDetector = AdvancedLanguageDetector;
 &nbsp;
-  console.log('[ContentScript] Modular classes loaded successfully');
+  logger.info('Modular classes loaded successfully');
 &nbsp;
   // Main script execution wrapped in try-catch for context invalidation
   try {
@@ -717,12 +726,12 @@ import { TranslationService } from './content/translationService.js';
       async initialize() {
         <span class="missing-if-branch" title="if path not taken" >I</span>if (this.isInitialized) <span class="cstat-no" title="statement not covered" >return;</span>
 &nbsp;
-        console.log('[ContentScript] Initializing modular content script...');
+        logger.info('Initializing modular content script...');
 &nbsp;
         try {
           // Check if extension context is still valid
           <span class="missing-if-branch" title="else path not taken" >E</span>if (!(await this.isExtensionContextValid())) {
-            console.error('[ContentScript] Extension context is invalid, cannot initialize');
+            logger.error('Extension context is invalid, cannot initialize');
             this.handleContextInvalidation();
             return;
           }
@@ -746,10 +755,10 @@ import { TranslationService } from './content/translationService.js';
 <span class="cstat-no" title="statement not covered" >          this.initializeProgressIndicator();</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >          this.isInitialized = true;</span>
-<span class="cstat-no" title="statement not covered" >          console.log('[ContentScript] Modular content script initialized successfully');</span>
+<span class="cstat-no" title="statement not covered" >          logger.info('Modular content script initialized successfully');</span>
 &nbsp;
         } catch (error) {
-<span class="cstat-no" title="statement not covered" >          console.error('[ContentScript] Failed to initialize:', error);</span>
+<span class="cstat-no" title="statement not covered" >          logger.error('Failed to initialize:', error);</span>
 <span class="cstat-no" title="statement not covered" >          if (error.message?.includes('Extension context invalidated')) {</span>
 <span class="cstat-no" title="statement not covered" >            this.handleContextInvalidation();</span>
           }
@@ -761,7 +770,7 @@ import { TranslationService } from './content/translationService.js';
           const id = chrome.runtime.id;
           return !!id;
         } catch (error) {
-<span class="cstat-no" title="statement not covered" >          console.warn('[ContentScript] Extension context invalid:', error.message);</span>
+<span class="cstat-no" title="statement not covered" >          logger.warn('Extension context invalid:', error.message);</span>
 <span class="cstat-no" title="statement not covered" >          return false;</span>
         }
       }
@@ -783,7 +792,7 @@ import { TranslationService } from './content/translationService.js';
 <span class="cstat-no" title="statement not covered" >        setTimeout(<span class="fstat-no" title="function not covered" >()</span> =&gt; {</span>
 <span class="cstat-no" title="statement not covered" >          if (document.body) {</span>
 <span class="cstat-no" title="statement not covered" >            this.contentObserver.startObserving(document.body);</span>
-<span class="cstat-no" title="statement not covered" >            console.log('[ContentScript] Content observer started');</span>
+<span class="cstat-no" title="statement not covered" >            logger.info('Content observer started');</span>
           }
         }, 1000);
       }
@@ -791,7 +800,7 @@ import { TranslationService } from './content/translationService.js';
 <span class="fstat-no" title="function not covered" >      as</span>ync handleNewContent(nodes, metadata = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
 <span class="cstat-no" title="statement not covered" >        if (!this.translationService || !nodes || nodes.length === 0) <span class="cstat-no" title="statement not covered" >return;</span></span>
 &nbsp;
-<span class="cstat-no" title="statement not covered" >        console.log(`[ContentScript] New content detected: ${nodes.length} nodes (source: ${metadata.source})`);</span>
+<span class="cstat-no" title="statement not covered" >        logger.debug(`New content detected: ${nodes.length} nodes (source: ${metadata.source})`);</span>
 &nbsp;
         // Check if auto-translation is enabled
 <span class="cstat-no" title="statement not covered" >        try {</span>
@@ -802,17 +811,17 @@ import { TranslationService } from './content/translationService.js';
 <span class="cstat-no" title="statement not covered" >              this.translationService.autoTranslateCount++;</span>
 <span class="cstat-no" title="statement not covered" >              await this.translationService.translateNodes(nodes);</span>
             } else {
-<span class="cstat-no" title="statement not covered" >              console.log('[ContentScript] Auto-translate limit reached, skipping new content');</span>
+<span class="cstat-no" title="statement not covered" >              logger.warn('Auto-translate limit reached, skipping new content');</span>
             }
           }
         } catch (error) {
-<span class="cstat-no" title="statement not covered" >          console.warn('[ContentScript] Failed to handle new content:', error);</span>
+<span class="cstat-no" title="statement not covered" >          logger.warn('Failed to handle new content:', error);</span>
         }
       }
 &nbsp;
 <span class="fstat-no" title="function not covered" >      as</span>ync handleMessage(request, sender, sendResponse) {
 <span class="cstat-no" title="statement not covered" >        try {</span>
-<span class="cstat-no" title="statement not covered" >          console.log('[ContentScript] Received message:', request.type);</span>
+<span class="cstat-no" title="statement not covered" >          logger.debug('Received message:', request.type);</span>
 &nbsp;
           // Delegate to translation service
 <span class="cstat-no" title="statement not covered" >          if (this.translationService) {</span>
@@ -822,7 +831,7 @@ import { TranslationService } from './content/translationService.js';
           }
 &nbsp;
         } catch (error) {
-<span class="cstat-no" title="statement not covered" >          console.error('[ContentScript] Message handler error:', error);</span>
+<span class="cstat-no" title="statement not covered" >          logger.error('Message handler error:', error);</span>
 <span class="cstat-no" title="statement not covered" >          sendResponse({ error: error.message });</span>
         }
       }
@@ -832,7 +841,7 @@ import { TranslationService } from './content/translationService.js';
 <span class="cstat-no" title="statement not covered" >          try {</span>
 <span class="cstat-no" title="statement not covered" >            return await chrome.runtime.sendMessage(message);</span>
           } catch (error) {
-<span class="cstat-no" title="statement not covered" >            console.warn(`[ContentScript] Message attempt ${attempt}/${maxRetries} failed:`, error.message);</span>
+<span class="cstat-no" title="statement not covered" >            logger.warn(`Message attempt ${attempt}/${maxRetries} failed:`, error.message);</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >            if (attempt === maxRetries) {</span>
 <span class="cstat-no" title="statement not covered" >              if (error.message?.includes('Extension context invalidated')) {</span>
@@ -871,7 +880,7 @@ import { TranslationService } from './content/translationService.js';
 <span class="cstat-no" title="statement not covered" >        document.body?.appendChild(progressIndicator);</span>
 <span class="cstat-no" title="statement not covered" >        this.progressIndicator = progressIndicator;</span>
 &nbsp;
-<span class="cstat-no" title="statement not covered" >        console.log('[ContentScript] Progress indicator initialized');</span>
+<span class="cstat-no" title="statement not covered" >        logger.debug('Progress indicator initialized');</span>
       }
 &nbsp;
 <span class="fstat-no" title="function not covered" >      sh</span>owProgress(show = <span class="branch-0 cbranch-no" title="branch not covered" >true)</span> {
@@ -881,7 +890,7 @@ import { TranslationService } from './content/translationService.js';
       }
 &nbsp;
       handleContextInvalidation() {
-        console.warn('[ContentScript] Extension context invalidated, cleaning up...');
+        logger.warn('Extension context invalidated, cleaning up...');
         this.cleanup();
 &nbsp;
         // Mark the global flag as false so a new instance can be created when extension reloads
@@ -949,10 +958,10 @@ import { TranslationService } from './content/translationService.js';
       TranslationService
     };
 &nbsp;
-    console.log('[ContentScript] Content script coordinator initialized');
+    logger.info('Content script coordinator initialized');
 &nbsp;
   } catch (extensionError) {
-<span class="cstat-no" title="statement not covered" >    console.error('[ContentScript] Critical initialization error:', extensionError);</span>
+<span class="cstat-no" title="statement not covered" >    logger.error('Critical initialization error:', extensionError);</span>
     // Mark as not initialized so reload can try again
 <span class="cstat-no" title="statement not covered" >    window.translationExtensionInitialized = false;</span>
   }
@@ -964,7 +973,7 @@ import { TranslationService } from './content/translationService.js';
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-24T14:48:01.121Z
+                at 2025-09-24T18:05:18.709Z
             </div>
         <script src="../prettify.js"></script>
         <script>

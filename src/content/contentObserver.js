@@ -3,8 +3,11 @@
  * Handles DOM mutation monitoring and dynamic content detection
  */
 
+import { Logger } from '../lib/logger.js';
+
 class ContentObserver {
   constructor(onNewContent, options = {}) {
+    this.logger = new Logger({ component: 'ContentObserver' });
     this.onNewContent = onNewContent;
     this.options = {
       enableSmartFiltering: true,
@@ -45,7 +48,7 @@ class ContentObserver {
     });
 
     this.isObserving = true;
-    console.log('[ContentObserver] Started observing DOM changes');
+    this.logger.info('Started observing DOM changes');
   }
 
   stopObserving() {
@@ -54,7 +57,7 @@ class ContentObserver {
     this.mutationObserver.disconnect();
     this.clearBatchTimer();
     this.isObserving = false;
-    console.log('[ContentObserver] Stopped observing DOM changes');
+    this.logger.info('Stopped observing DOM changes');
   }
 
   handleMutations(mutations) {
@@ -105,7 +108,7 @@ class ContentObserver {
       );
 
       let node;
-      while (node = walker.nextNode()) {
+      while ((node = walker.nextNode())) {
         collector.add(node);
       }
     }
@@ -203,7 +206,7 @@ class ContentObserver {
           batchSize: validNodes.length
         });
       } catch (error) {
-        console.error('[ContentObserver] Error in batch processing callback:', error);
+        this.logger.error('Error in batch processing callback:', error);
       }
     }
   }

@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/68</span>
+                <span class='fraction'>0/62</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/57</span>
+                <span class='fraction'>0/51</span>
             </div>
         
             
@@ -138,14 +138,7 @@
 <a name='L73'></a><a href='#L73'>73</a>
 <a name='L74'></a><a href='#L74'>74</a>
 <a name='L75'></a><a href='#L75'>75</a>
-<a name='L76'></a><a href='#L76'>76</a>
-<a name='L77'></a><a href='#L77'>77</a>
-<a name='L78'></a><a href='#L78'>78</a>
-<a name='L79'></a><a href='#L79'>79</a>
-<a name='L80'></a><a href='#L80'>80</a>
-<a name='L81'></a><a href='#L81'>81</a>
-<a name='L82'></a><a href='#L82'>82</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<a name='L76'></a><a href='#L76'>76</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -166,9 +159,7 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -182,13 +173,10 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -226,7 +214,6 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">export async function <span class="fstat-no" title="function not covered" >storePdfInSession(</span>data) {
-<span class="cstat-no" title="statement not covered" >  console.log('DEBUG: storing PDF in session');</span>
   let raw;
 <span class="cstat-no" title="statement not covered" >  if (typeof Blob !== 'undefined' &amp;&amp; data instanceof Blob) {</span>
 <span class="cstat-no" title="statement not covered" >    raw = data.arrayBuffer ? await data.arrayBuffer() : await new Response(data).arrayBuffer();</span>
@@ -238,7 +225,6 @@
     const text = <span class="cstat-no" title="statement not covered" >String(data);</span>
 <span class="cstat-no" title="statement not covered" >    raw = new TextEncoder().encode(text).buffer;</span>
   }
-<span class="cstat-no" title="statement not covered" >  console.log(`DEBUG: raw buffer length ${raw.byteLength}`);</span>
   const b64 = <span class="cstat-no" title="statement not covered" >base64Encode(raw);</span>
   const key = <span class="cstat-no" title="statement not covered" >`pdf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;</span>
   const db = <span class="cstat-no" title="statement not covered" >await openDb();</span>
@@ -249,12 +235,10 @@
     const store = <span class="cstat-no" title="statement not covered" >tx.objectStore('pdfs');</span>
 <span class="cstat-no" title="statement not covered" >    store.put(b64, key);</span>
   });
-<span class="cstat-no" title="statement not covered" >  console.log(`DEBUG: stored PDF under key ${key}`);</span>
 <span class="cstat-no" title="statement not covered" >  return key;</span>
 }
 &nbsp;
 export async function <span class="fstat-no" title="function not covered" >readPdfFromSession(</span>key) {
-<span class="cstat-no" title="statement not covered" >  console.log(`DEBUG: reading PDF from session key ${key}`);</span>
   const db = <span class="cstat-no" title="statement not covered" >await openDb();</span>
   const b64 = <span class="cstat-no" title="statement not covered" >await new Promise(<span class="fstat-no" title="function not covered" >(r</span>esolve, reject) =&gt; {</span>
     const tx = <span class="cstat-no" title="statement not covered" >db.transaction('pdfs', 'readonly');</span>
@@ -266,11 +250,9 @@ export async function <span class="fstat-no" title="function not covered" >readP
 <span class="cstat-no" title="statement not covered" >    req.onerror = <span class="fstat-no" title="function not covered" >()</span> =&gt; <span class="cstat-no" title="statement not covered" >reject(req.error);</span></span>
   });
 <span class="cstat-no" title="statement not covered" >  if (!b64) {</span>
-<span class="cstat-no" title="statement not covered" >    console.log('DEBUG: session PDF missing');</span>
 <span class="cstat-no" title="statement not covered" >    throw new Error('Session PDF missing');</span>
   }
   const buf = <span class="cstat-no" title="statement not covered" >base64Decode(b64);</span>
-<span class="cstat-no" title="statement not covered" >  console.log(`DEBUG: decoded session PDF size ${buf.byteLength} bytes`);</span>
 <span class="cstat-no" title="statement not covered" >  return buf;</span>
 }
 &nbsp;
@@ -313,7 +295,7 @@ function <span class="fstat-no" title="function not covered" >base64Decode(</spa
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-24T14:48:01.121Z
+                at 2025-09-24T18:05:18.709Z
             </div>
         <script src="../prettify.js"></script>
         <script>

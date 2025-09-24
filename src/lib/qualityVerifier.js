@@ -3,9 +3,11 @@
  * Analyzes translation quality using multiple verification methods
  */
 
+import { logger } from './logger.js';
+
 // Avoid redeclaration errors in Brave Browser
 if (typeof window !== 'undefined' && window.TranslationQualityVerifier) {
-  console.log('[TranslationQualityVerifier] Class already exists, skipping redeclaration');
+  logger.debug('QualityVerifier', 'Class already exists, skipping redeclaration');
 } else {
 
 class TranslationQualityVerifier {
@@ -68,7 +70,7 @@ class TranslationQualityVerifier {
     this.cacheMaxSize = options.cacheSize || 1000;
     this.cacheTTL = options.cacheTTL || 10 * 60 * 1000; // 10 minutes
 
-    console.log('[QualityVerifier] Initialized with options:', this.options);
+    logger.debug('QualityVerifier', 'Initialized with options:', this.options);
   }
 
   /**
@@ -92,7 +94,7 @@ class TranslationQualityVerifier {
         return cached.result;
       }
 
-      console.log(`[QualityVerifier] Verifying translation quality for ${original.length} chars`);
+      logger.debug('QualityVerifier', `Verifying translation quality for ${original.length} chars`);
 
       // Initialize verification result
       const verification = {
@@ -127,7 +129,7 @@ class TranslationQualityVerifier {
         try {
           await method();
         } catch (error) {
-          console.warn('[QualityVerifier] Verification method failed:', error);
+          logger.warn('QualityVerifier', 'Verification method failed:', error);
         }
       }
 
@@ -150,12 +152,12 @@ class TranslationQualityVerifier {
       this.cleanupCache();
 
       const duration = Date.now() - startTime;
-      console.log(`[QualityVerifier] Verification completed in ${duration}ms, score: ${verification.overallScore.toFixed(2)}`);
+      logger.debug('QualityVerifier', `Verification completed in ${duration}ms, score: ${verification.overallScore.toFixed(2)}`);
 
       return verification;
 
     } catch (error) {
-      console.error('[QualityVerifier] Verification failed:', error);
+      logger.error('QualityVerifier', 'Verification failed:', error);
       return {
         status: 'error',
         error: error.message,
@@ -668,7 +670,7 @@ class TranslationQualityVerifier {
    */
   clearCache() {
     this.qualityCache.clear();
-    console.log('[QualityVerifier] Cache cleared');
+    logger.debug('QualityVerifier', 'Cache cleared');
   }
 
   /**
@@ -676,7 +678,7 @@ class TranslationQualityVerifier {
    */
   configure(newOptions) {
     this.options = { ...this.options, ...newOptions };
-    console.log('[QualityVerifier] Configuration updated:', newOptions);
+    logger.debug('QualityVerifier', 'Configuration updated:', newOptions);
   }
 }
 

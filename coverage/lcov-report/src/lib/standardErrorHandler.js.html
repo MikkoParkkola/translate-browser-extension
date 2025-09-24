@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0.87% </span>
+                <span class="strong">7.01% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>1/114</span>
+                <span class='fraction'>8/114</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">5.08% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/118</span>
+                <span class='fraction'>6/118</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">8.33% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/24</span>
+                <span class='fraction'>2/24</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0.9% </span>
+                <span class="strong">7.2% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>1/111</span>
+                <span class='fraction'>8/111</span>
             </div>
         
             
@@ -665,14 +665,14 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -947,7 +947,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1121,15 +1121,15 @@ export class ExtensionError extends Error {
  * Error Handler class for centralized error management
  */
 export class StandardErrorHandler {
-<span class="fstat-no" title="function not covered" >  co</span>nstructor(options = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
-<span class="cstat-no" title="statement not covered" >    this.component = options.component || 'Unknown';</span>
-<span class="cstat-no" title="statement not covered" >    this.enableUserNotifications = options.enableUserNotifications !== false;</span>
-<span class="cstat-no" title="statement not covered" >    this.enableTelemetry = options.enableTelemetry !== false;</span>
-<span class="cstat-no" title="statement not covered" >    this.maxRetries = options.maxRetries || 3;</span>
-<span class="cstat-no" title="statement not covered" >    this.retryDelays = options.retryDelays || [1000, 2000, 4000]; </span>// Exponential backoff
+  constructor(options = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
+    this.component = options.component || <span class="branch-1 cbranch-no" title="branch not covered" >'Unknown';</span>
+    this.enableUserNotifications = options.enableUserNotifications !== false;
+    this.enableTelemetry = options.enableTelemetry !== false;
+    this.maxRetries = options.maxRetries || 3;
+    this.retryDelays = options.retryDelays || [1000, 2000, 4000]; // Exponential backoff
 &nbsp;
     // Error statistics
-<span class="cstat-no" title="statement not covered" >    this.stats = {</span>
+    this.stats = {
       totalErrors: 0,
       errorsByCategory: {},
       errorsByCode: {},
@@ -1403,8 +1403,8 @@ export class StandardErrorHandler {
 /**
  * Create a standardized error handler for a component
  */
-export function <span class="fstat-no" title="function not covered" >createErrorHandler(</span>component, options = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
-<span class="cstat-no" title="statement not covered" >  return new StandardErrorHandler({ ...options, component });</span>
+export function createErrorHandler(component, options = {}) {
+  return new StandardErrorHandler({ ...options, component });
 }
 &nbsp;
 /**
@@ -1441,7 +1441,7 @@ export function <span class="fstat-no" title="function not covered" >withRetry(<
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-24T14:48:01.121Z
+                at 2025-09-24T18:05:18.709Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

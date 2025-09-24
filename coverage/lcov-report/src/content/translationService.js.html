@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/316</span>
+                <span class='fraction'>0/317</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/288</span>
+                <span class='fraction'>0/289</span>
             </div>
         
             
@@ -703,7 +703,9 @@
 <a name='L638'></a><a href='#L638'>638</a>
 <a name='L639'></a><a href='#L639'>639</a>
 <a name='L640'></a><a href='#L640'>640</a>
-<a name='L641'></a><a href='#L641'>641</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L641'></a><a href='#L641'>641</a>
+<a name='L642'></a><a href='#L642'>642</a>
+<a name='L643'></a><a href='#L643'>643</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -712,6 +714,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -1349,9 +1353,11 @@
  */
 &nbsp;
 import { startTimer, endTimer, trackTranslation, trackDOMScan } from '../lib/performanceTracker.js';
+import { Logger } from '../lib/logger.js';
 &nbsp;
 class TranslationService {
 <span class="fstat-no" title="function not covered" >  co</span>nstructor(options = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
+<span class="cstat-no" title="statement not covered" >    this.logger = new Logger({ component: 'TranslationService' });</span>
 <span class="cstat-no" title="statement not covered" >    this.isInitialized = false;</span>
 <span class="cstat-no" title="statement not covered" >    this.translatedNodes = new WeakSet();</span>
 <span class="cstat-no" title="statement not covered" >    this.isTranslating = false;</span>
@@ -1392,7 +1398,7 @@ class TranslationService {
 &nbsp;
 <span class="fstat-no" title="function not covered" >  as</span>ync handleMessage(request, sender, sendResponse) {
 <span class="cstat-no" title="statement not covered" >    try {</span>
-<span class="cstat-no" title="statement not covered" >      console.log('[TranslationService] Received message:', request.type);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.debug('Received message:', request.type);</span>
 &nbsp;
       const handler = <span class="cstat-no" title="statement not covered" >this.messageHandlers.get(request.type);</span>
 <span class="cstat-no" title="statement not covered" >      if (!handler) {</span>
@@ -1404,7 +1410,7 @@ class TranslationService {
 <span class="cstat-no" title="statement not covered" >      sendResponse({ success: true, result });</span>
 &nbsp;
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[TranslationService] Message handler error:', error);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.error('Message handler error:', error);</span>
 <span class="cstat-no" title="statement not covered" >      sendResponse({ error: error.message });</span>
     }
   }
@@ -1414,7 +1420,7 @@ class TranslationService {
 <span class="cstat-no" title="statement not covered" >      try {</span>
 <span class="cstat-no" title="statement not covered" >        return await chrome.runtime.sendMessage(message);</span>
       } catch (error) {
-<span class="cstat-no" title="statement not covered" >        console.warn(`[TranslationService] Message attempt ${attempt}/${maxRetries} failed:`, error.message);</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.warn(`Message attempt ${attempt}/${maxRetries} failed:`, error.message);</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >        if (attempt === maxRetries) {</span>
 <span class="cstat-no" title="statement not covered" >          if (error.message?.includes('Extension context invalidated')) {</span>
@@ -1423,25 +1429,25 @@ class TranslationService {
 <span class="cstat-no" title="statement not covered" >          throw error;</span>
         }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >        await new Promise(<span class="fstat-no" title="function not covered" >re</span>solve =&gt; <span class="cstat-no" title="statement not covered" >setTimeout(resolve, 100 * attempt))</span>;</span>
+<span class="cstat-no" title="statement not covered" >        await new Promise(<span class="fstat-no" title="function not covered" >re</span>solve =&gt; { <span class="cstat-no" title="statement not covered" >setTimeout(resolve, 100 * attempt); </span>});</span>
       }
     }
   }
 &nbsp;
 <span class="fstat-no" title="function not covered" >  as</span>ync translateSelection(text) {
 <span class="cstat-no" title="statement not covered" >    if (!text || text.trim().length === 0) {</span>
-<span class="cstat-no" title="statement not covered" >      console.warn('[TranslationService] No text provided for selection translation');</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.warn('No text provided for selection translation');</span>
 <span class="cstat-no" title="statement not covered" >      return null;</span>
     }
 &nbsp;
 <span class="cstat-no" title="statement not covered" >    try {</span>
       const settings = <span class="cstat-no" title="statement not covered" >await this.sendMessageWithRetry({ type: 'getSettings' });</span>
 <span class="cstat-no" title="statement not covered" >      if (!settings || !settings.success) {</span>
-<span class="cstat-no" title="statement not covered" >        console.error('[TranslationService] Failed to get settings for selection translation');</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.error('Failed to get settings for selection translation');</span>
 <span class="cstat-no" title="statement not covered" >        return null;</span>
       }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >      console.log('[TranslationService] Translating selection:', text.substring(0, 100) + '...');</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.info('Translating selection:', text.substring(0, 100) + '...');</span>
 &nbsp;
       const response = <span class="cstat-no" title="statement not covered" >await this.sendMessageWithRetry({</span>
         type: 'translate',
@@ -1466,18 +1472,18 @@ class TranslationService {
 &nbsp;
 <span class="cstat-no" title="statement not covered" >        return result;</span>
       } else {
-<span class="cstat-no" title="statement not covered" >        console.error('[TranslationService] Translation failed:', response);</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.error('Translation failed:', response);</span>
 <span class="cstat-no" title="statement not covered" >        return null;</span>
       }
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[TranslationService] Selection translation error:', error);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.error('Selection translation error:', error);</span>
 <span class="cstat-no" title="statement not covered" >      return null;</span>
     }
   }
 &nbsp;
 <span class="fstat-no" title="function not covered" >  as</span>ync translatePage() {
 <span class="cstat-no" title="statement not covered" >    if (this.isTranslating) {</span>
-<span class="cstat-no" title="statement not covered" >      console.log('[TranslationService] Translation already in progress, skipping');</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.debug('Translation already in progress, skipping');</span>
 <span class="cstat-no" title="statement not covered" >      return { alreadyInProgress: true };</span>
     }
 &nbsp;
@@ -1485,28 +1491,28 @@ class TranslationService {
 <span class="cstat-no" title="statement not covered" >    this.isTranslating = true;</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >    try {</span>
-<span class="cstat-no" title="statement not covered" >      console.log('[TranslationService] Starting page translation');</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.info('Starting page translation');</span>
 &nbsp;
       // Detect JavaScript framework for optimization
       const framework = <span class="cstat-no" title="statement not covered" >this.detectJavaScriptFramework();</span>
-<span class="cstat-no" title="statement not covered" >      console.log('[TranslationService] Detected framework:', framework);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.debug('Detected framework:', framework);</span>
 &nbsp;
       // Find noscript content that might contain fallback text
 <span class="cstat-no" title="statement not covered" >      this.findNoscriptContent();</span>
 &nbsp;
       // Comprehensive scan of all text nodes
       const nodes = <span class="cstat-no" title="statement not covered" >this.comprehensiveScan();</span>
-<span class="cstat-no" title="statement not covered" >      console.log(`[TranslationService] Found ${nodes.length} text nodes to translate`);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.info(`Found ${nodes.length} text nodes to translate`);</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      if (nodes.length === 0) {</span>
-<span class="cstat-no" title="statement not covered" >        console.log('[TranslationService] No translatable text found');</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.debug('No translatable text found');</span>
 <span class="cstat-no" title="statement not covered" >        return { noContent: true };</span>
       }
 &nbsp;
       // Language detection and settings
       const settings = <span class="cstat-no" title="statement not covered" >await this.ensureLanguageDetection();</span>
 <span class="cstat-no" title="statement not covered" >      if (!settings) {</span>
-<span class="cstat-no" title="statement not covered" >        console.error('[TranslationService] Failed to get translation settings');</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.error('Failed to get translation settings');</span>
 <span class="cstat-no" title="statement not covered" >        return { error: 'Settings unavailable' };</span>
       }
 &nbsp;
@@ -1516,7 +1522,7 @@ class TranslationService {
       // Process nodes in optimized batches
       const result = <span class="cstat-no" title="statement not covered" >await this.translateNodes(nodes, settings);</span>
 &nbsp;
-<span class="cstat-no" title="statement not covered" >      console.log(`[TranslationService] Translation completed: ${result.translatedCount}/${result.totalNodes} nodes`);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.info(`Translation completed: ${result.translatedCount}/${result.totalNodes} nodes`);</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      return {</span>
         success: true,
@@ -1526,7 +1532,7 @@ class TranslationService {
       };
 &nbsp;
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[TranslationService] Page translation error:', error);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.error('Page translation error:', error);</span>
       const duration = <span class="cstat-no" title="statement not covered" >endTimer(timerId, { success: false });</span>
 <span class="cstat-no" title="statement not covered" >      return { error: error.message };</span>
     } finally {
@@ -1566,7 +1572,7 @@ class TranslationService {
 <span class="fstat-no" title="function not covered" >  fi</span>ndNoscriptContent() {
     const noscriptElements = <span class="cstat-no" title="statement not covered" >document.querySelectorAll('noscript');</span>
 <span class="cstat-no" title="statement not covered" >    if (noscriptElements.length &gt; 0) {</span>
-<span class="cstat-no" title="statement not covered" >      console.log(`[TranslationService] Found ${noscriptElements.length} noscript elements`);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.debug(`Found ${noscriptElements.length} noscript elements`);</span>
     }
   }
 &nbsp;
@@ -1576,7 +1582,7 @@ class TranslationService {
     const translatableNodes = <span class="cstat-no" title="statement not covered" >allTextNodes.filter(<span class="fstat-no" title="function not covered" >no</span>de =&gt; <span class="cstat-no" title="statement not covered" >this.isTranslatableNode(node))</span>;</span>
 &nbsp;
     const duration = <span class="cstat-no" title="statement not covered" >endTimer(timerId);</span>
-<span class="cstat-no" title="statement not covered" >    console.log(`[TranslationService] Comprehensive scan: ${allTextNodes.length} total, ${translatableNodes.length} translatable (${duration}ms)`);</span>
+<span class="cstat-no" title="statement not covered" >    this.logger.debug(`Comprehensive scan: ${allTextNodes.length} total, ${translatableNodes.length} translatable (${duration}ms)`);</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >    return translatableNodes;</span>
   }
@@ -1604,7 +1610,7 @@ class TranslationService {
       }
     }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >    console.log('[TranslationService] Debug text analysis:', result);</span>
+<span class="cstat-no" title="statement not covered" >    this.logger.debug('Debug text analysis:', result);</span>
 <span class="cstat-no" title="statement not covered" >    return result;</span>
   }
 &nbsp;
@@ -1626,7 +1632,7 @@ class TranslationService {
       }
     }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >    console.log('[TranslationService] Hidden content analysis:', hiddenElements);</span>
+<span class="cstat-no" title="statement not covered" >    this.logger.debug('Hidden content analysis:', hiddenElements);</span>
 <span class="cstat-no" title="statement not covered" >    return { hiddenElements: hiddenElements.slice(0, 10) };</span>
   }
 &nbsp;
@@ -1661,7 +1667,7 @@ class TranslationService {
       }
     }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >    console.log('[TranslationService] Iframe scan results:', results);</span>
+<span class="cstat-no" title="statement not covered" >    this.logger.debug('Iframe scan results:', results);</span>
 <span class="cstat-no" title="statement not covered" >    return { iframes: results };</span>
   }
 &nbsp;
@@ -1691,7 +1697,7 @@ class TranslationService {
     );
 &nbsp;
     let node;
-<span class="cstat-no" title="statement not covered" >    while (node = walker.nextNode()) {</span>
+<span class="cstat-no" title="statement not covered" >    while ((node = walker.nextNode())) {</span>
 <span class="cstat-no" title="statement not covered" >      textNodes.push(node);</span>
     }
 &nbsp;
@@ -1753,11 +1759,11 @@ class TranslationService {
 &nbsp;
       // Create optimized batches
       const batches = <span class="cstat-no" title="statement not covered" >this.createBatches(nodes, 20);</span>
-<span class="cstat-no" title="statement not covered" >      console.log(`[TranslationService] Created ${batches.length} batches for ${nodes.length} nodes`);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.debug(`Created ${batches.length} batches for ${nodes.length} nodes`);</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      for (let i = <span class="cstat-no" title="statement not covered" >0;</span> i &lt; batches.length; i++) {</span>
         const batch = <span class="cstat-no" title="statement not covered" >batches[i];</span>
-<span class="cstat-no" title="statement not covered" >        console.log(`[TranslationService] Processing batch ${i + 1}/${batches.length} (${batch.length} nodes)`);</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.debug(`Processing batch ${i + 1}/${batches.length} (${batch.length} nodes)`);</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >        try {</span>
           const batchResult = <span class="cstat-no" title="statement not covered" >await this.translateOptimizedBatch(batch, settings);</span>
@@ -1765,17 +1771,17 @@ class TranslationService {
 &nbsp;
           // Small delay between batches to prevent overwhelming the API
 <span class="cstat-no" title="statement not covered" >          if (i &lt; batches.length - 1) {</span>
-<span class="cstat-no" title="statement not covered" >            await new Promise(<span class="fstat-no" title="function not covered" >re</span>solve =&gt; <span class="cstat-no" title="statement not covered" >setTimeout(resolve, 100))</span>;</span>
+<span class="cstat-no" title="statement not covered" >            await new Promise(<span class="fstat-no" title="function not covered" >re</span>solve =&gt; { <span class="cstat-no" title="statement not covered" >setTimeout(resolve, 100); </span>});</span>
           }
 &nbsp;
         } catch (error) {
-<span class="cstat-no" title="statement not covered" >          console.error(`[TranslationService] Batch ${i + 1} failed:`, error);</span>
+<span class="cstat-no" title="statement not covered" >          this.logger.error(`Batch ${i + 1} failed:`, error);</span>
           // Continue with next batch
         }
       }
 &nbsp;
       const duration = <span class="cstat-no" title="statement not covered" >endTimer(timerId, { success: true, translatedCount });</span>
-<span class="cstat-no" title="statement not covered" >      console.log(`[TranslationService] Translation completed: ${translatedCount}/${nodes.length} nodes in ${duration}ms`);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.info(`Translation completed: ${translatedCount}/${nodes.length} nodes in ${duration}ms`);</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      return { translatedCount, totalNodes: nodes.length };</span>
 &nbsp;
@@ -1868,7 +1874,7 @@ class TranslationService {
 &nbsp;
       // Prepare batch translation request
       const textsToTranslate = <span class="cstat-no" title="statement not covered" >Array.from(uniqueTexts.keys());</span>
-<span class="cstat-no" title="statement not covered" >      console.log(`[TranslationService] Batch: ${nodes.length} nodes, ${uniqueTexts.size} unique texts`);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.debug(`Batch: ${nodes.length} nodes, ${uniqueTexts.size} unique texts`);</span>
 &nbsp;
       const response = <span class="cstat-no" title="statement not covered" >await this.sendMessageWithRetry({</span>
         type: 'translateBatch',
@@ -1913,7 +1919,7 @@ class TranslationService {
 &nbsp;
     } catch (error) {
 <span class="cstat-no" title="statement not covered" >      endTimer(timerId, { success: false, error: error.message });</span>
-<span class="cstat-no" title="statement not covered" >      console.error('[TranslationService] Batch translation error:', error);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.error('Batch translation error:', error);</span>
 <span class="cstat-no" title="statement not covered" >      throw error;</span>
     }
   }
@@ -1942,12 +1948,12 @@ class TranslationService {
 <span class="cstat-no" title="statement not covered" >      this.originalTextMap.set(originalText, translatedText);</span>
 &nbsp;
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[TranslationService] Error applying translation:', error);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.error('Error applying translation:', error);</span>
     }
   }
 &nbsp;
 <span class="fstat-no" title="function not covered" >  sh</span>owTranslationResult(original, translated, info = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
-<span class="cstat-no" title="statement not covered" >    console.log(`[TranslationService] Translation result (${info.method || 'unknown'}):`, {</span>
+<span class="cstat-no" title="statement not covered" >    this.logger.debug(`Translation result (${info.method || 'unknown'}):`, {</span>
       original: original.substring(0, 100),
       translated: translated.substring(0, 100),
       provider: info.provider
@@ -1957,7 +1963,7 @@ class TranslationService {
   }
 &nbsp;
 <span class="fstat-no" title="function not covered" >  ha</span>ndleContextInvalidation() {
-<span class="cstat-no" title="statement not covered" >    console.warn('[TranslationService] Extension context invalidated, cleaning up...');</span>
+<span class="cstat-no" title="statement not covered" >    this.logger.warn('Extension context invalidated, cleaning up...');</span>
 <span class="cstat-no" title="statement not covered" >    this.cleanup();</span>
   }
 &nbsp;
@@ -1990,7 +1996,7 @@ export { TranslationService };</pre></td></tr></table></pre>
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-24T14:48:01.121Z
+                at 2025-09-24T18:05:18.709Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

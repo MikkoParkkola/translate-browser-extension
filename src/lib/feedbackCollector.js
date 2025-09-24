@@ -6,6 +6,8 @@
  * feedback (user ratings, corrections) and implicit feedback (usage patterns, errors).
  */
 
+import { logger } from './logger.js';
+
 class FeedbackCollector {
   constructor(options = {}) {
     this.config = {
@@ -906,7 +908,7 @@ class FeedbackCollector {
 
   log(message, data = null) {
     if (this.config.debug) {
-      console.log(`[FeedbackCollector] ${message}`, data || '');
+      logger.debug('FeedbackCollector', message, data || '');
     }
   }
 

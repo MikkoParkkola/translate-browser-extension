@@ -3,9 +3,11 @@
  * Shows real-time translation status, progress, and time estimates
  */
 
+import { logger } from './logger.js';
+
 // Avoid redeclaration errors in Brave Browser
 if (typeof window !== 'undefined' && window.TranslationProgressIndicator) {
-  console.log('[TranslationProgressIndicator] Class already exists, skipping redeclaration');
+  logger.debug('ProgressIndicator', 'Class already exists, skipping redeclaration');
 } else {
 
 class TranslationProgressIndicator {

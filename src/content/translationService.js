@@ -4,9 +4,11 @@
  */
 
 import { startTimer, endTimer, trackTranslation, trackDOMScan } from '../lib/performanceTracker.js';
+import { Logger } from '../lib/logger.js';
 
 class TranslationService {
   constructor(options = {}) {
+    this.logger = new Logger({ component: 'TranslationService' });
     this.isInitialized = false;
     this.translatedNodes = new WeakSet();
     this.isTranslating = false;
@@ -47,7 +49,7 @@ class TranslationService {
 
   async handleMessage(request, sender, sendResponse) {
     try {
-      console.log('[TranslationService] Received message:', request.type);
+      this.logger.debug('Received message:', request.type);
 
       const handler = this.messageHandlers.get(request.type);
       if (!handler) {
@@ -59,7 +61,7 @@ class TranslationService {
       sendResponse({ success: true, result });
 
     } catch (error) {
-      console.error('[TranslationService] Message handler error:', error);
+      this.logger.error('Message handler error:', error);
       sendResponse({ error: error.message });
     }
   }
@@ -69,7 +71,7 @@ class TranslationService {
       try {
         return await chrome.runtime.sendMessage(message);
       } catch (error) {
-        console.warn(`[TranslationService] Message attempt ${attempt}/${maxRetries} failed:`, error.message);
+        this.logger.warn(`Message attempt ${attempt}/${maxRetries} failed:`, error.message);
 
         if (attempt === maxRetries) {
           if (error.message?.includes('Extension context invalidated')) {
@@ -78,25 +80,25 @@ class TranslationService {
           throw error;
         }
 
-        await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+        await new Promise(resolve => { setTimeout(resolve, 100 * attempt); });
       }
     }
   }
 
   async translateSelection(text) {
     if (!text || text.trim().length === 0) {
-      console.warn('[TranslationService] No text provided for selection translation');
+      this.logger.warn('No text provided for selection translation');
       return null;
     }
 
     try {
       const settings = await this.sendMessageWithRetry({ type: 'getSettings' });
       if (!settings || !settings.success) {
-        console.error('[TranslationService] Failed to get settings for selection translation');
+        this.logger.error('Failed to get settings for selection translation');
         return null;
       }
 
-      console.log('[TranslationService] Translating selection:', text.substring(0, 100) + '...');
+      this.logger.info('Translating selection:', text.substring(0, 100) + '...');
 
       const response = await this.sendMessageWithRetry({
         type: 'translate',
@@ -121,18 +123,18 @@ class TranslationService {
 
         return result;
       } else {
-        console.error('[TranslationService] Translation failed:', response);
+        this.logger.error('Translation failed:', response);
         return null;
       }
     } catch (error) {
-      console.error('[TranslationService] Selection translation error:', error);
+      this.logger.error('Selection translation error:', error);
       return null;
     }
   }
 
   async translatePage() {
     if (this.isTranslating) {
-      console.log('[TranslationService] Translation already in progress, skipping');
+      this.logger.debug('Translation already in progress, skipping');
       return { alreadyInProgress: true };
     }
 
@@ -140,28 +142,28 @@ class TranslationService {
     this.isTranslating = true;
 
     try {
-      console.log('[TranslationService] Starting page translation');
+      this.logger.info('Starting page translation');
 
       // Detect JavaScript framework for optimization
       const framework = this.detectJavaScriptFramework();
-      console.log('[TranslationService] Detected framework:', framework);
+      this.logger.debug('Detected framework:', framework);
 
       // Find noscript content that might contain fallback text
       this.findNoscriptContent();
 
       // Comprehensive scan of all text nodes
       const nodes = this.comprehensiveScan();
-      console.log(`[TranslationService] Found ${nodes.length} text nodes to translate`);
+      this.logger.info(`Found ${nodes.length} text nodes to translate`);
 
       if (nodes.length === 0) {
-        console.log('[TranslationService] No translatable text found');
+        this.logger.debug('No translatable text found');
         return { noContent: true };
       }
 
       // Language detection and settings
       const settings = await this.ensureLanguageDetection();
       if (!settings) {
-        console.error('[TranslationService] Failed to get translation settings');
+        this.logger.error('Failed to get translation settings');
         return { error: 'Settings unavailable' };
       }
 
@@ -171,7 +173,7 @@ class TranslationService {
       // Process nodes in optimized batches
       const result = await this.translateNodes(nodes, settings);
 
-      console.log(`[TranslationService] Translation completed: ${result.translatedCount}/${result.totalNodes} nodes`);
+      this.logger.info(`Translation completed: ${result.translatedCount}/${result.totalNodes} nodes`);
 
       return {
         success: true,
@@ -181,7 +183,7 @@ class TranslationService {
       };
 
     } catch (error) {
-      console.error('[TranslationService] Page translation error:', error);
+      this.logger.error('Page translation error:', error);
       const duration = endTimer(timerId, { success: false });
       return { error: error.message };
     } finally {
@@ -221,7 +223,7 @@ class TranslationService {
   findNoscriptContent() {
     const noscriptElements = document.querySelectorAll('noscript');
     if (noscriptElements.length > 0) {
-      console.log(`[TranslationService] Found ${noscriptElements.length} noscript elements`);
+      this.logger.debug(`Found ${noscriptElements.length} noscript elements`);
     }
   }
 
@@ -231,7 +233,7 @@ class TranslationService {
     const translatableNodes = allTextNodes.filter(node => this.isTranslatableNode(node));
 
     const duration = endTimer(timerId);
-    console.log(`[TranslationService] Comprehensive scan: ${allTextNodes.length} total, ${translatableNodes.length} translatable (${duration}ms)`);
+    this.logger.debug(`Comprehensive scan: ${allTextNodes.length} total, ${translatableNodes.length} translatable (${duration}ms)`);
 
     return translatableNodes;
   }
@@ -259,7 +261,7 @@ class TranslationService {
       }
     }
 
-    console.log('[TranslationService] Debug text analysis:', result);
+    this.logger.debug('Debug text analysis:', result);
     return result;
   }
 
@@ -281,7 +283,7 @@ class TranslationService {
       }
     }
 
-    console.log('[TranslationService] Hidden content analysis:', hiddenElements);
+    this.logger.debug('Hidden content analysis:', hiddenElements);
     return { hiddenElements: hiddenElements.slice(0, 10) };
   }
 
@@ -316,7 +318,7 @@ class TranslationService {
       }
     }
 
-    console.log('[TranslationService] Iframe scan results:', results);
+    this.logger.debug('Iframe scan results:', results);
     return { iframes: results };
   }
 
@@ -346,7 +348,7 @@ class TranslationService {
     );
 
     let node;
-    while (node = walker.nextNode()) {
+    while ((node = walker.nextNode())) {
       textNodes.push(node);
     }
 
@@ -408,11 +410,11 @@ class TranslationService {
 
       // Create optimized batches
       const batches = this.createBatches(nodes, 20);
-      console.log(`[TranslationService] Created ${batches.length} batches for ${nodes.length} nodes`);
+      this.logger.debug(`Created ${batches.length} batches for ${nodes.length} nodes`);
 
       for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
-        console.log(`[TranslationService] Processing batch ${i + 1}/${batches.length} (${batch.length} nodes)`);
+        this.logger.debug(`Processing batch ${i + 1}/${batches.length} (${batch.length} nodes)`);
 
         try {
           const batchResult = await this.translateOptimizedBatch(batch, settings);
@@ -420,17 +422,17 @@ class TranslationService {
 
           // Small delay between batches to prevent overwhelming the API
           if (i < batches.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => { setTimeout(resolve, 100); });
           }
 
         } catch (error) {
-          console.error(`[TranslationService] Batch ${i + 1} failed:`, error);
+          this.logger.error(`Batch ${i + 1} failed:`, error);
           // Continue with next batch
         }
       }
 
       const duration = endTimer(timerId, { success: true, translatedCount });
-      console.log(`[TranslationService] Translation completed: ${translatedCount}/${nodes.length} nodes in ${duration}ms`);
+      this.logger.info(`Translation completed: ${translatedCount}/${nodes.length} nodes in ${duration}ms`);
 
       return { translatedCount, totalNodes: nodes.length };
 
@@ -523,7 +525,7 @@ class TranslationService {
 
       // Prepare batch translation request
       const textsToTranslate = Array.from(uniqueTexts.keys());
-      console.log(`[TranslationService] Batch: ${nodes.length} nodes, ${uniqueTexts.size} unique texts`);
+      this.logger.debug(`Batch: ${nodes.length} nodes, ${uniqueTexts.size} unique texts`);
 
       const response = await this.sendMessageWithRetry({
         type: 'translateBatch',
@@ -568,7 +570,7 @@ class TranslationService {
 
     } catch (error) {
       endTimer(timerId, { success: false, error: error.message });
-      console.error('[TranslationService] Batch translation error:', error);
+      this.logger.error('Batch translation error:', error);
       throw error;
     }
   }
@@ -597,12 +599,12 @@ class TranslationService {
       this.originalTextMap.set(originalText, translatedText);
 
     } catch (error) {
-      console.error('[TranslationService] Error applying translation:', error);
+      this.logger.error('Error applying translation:', error);
     }
   }
 
   showTranslationResult(original, translated, info = {}) {
-    console.log(`[TranslationService] Translation result (${info.method || 'unknown'}):`, {
+    this.logger.debug(`Translation result (${info.method || 'unknown'}):`, {
       original: original.substring(0, 100),
       translated: translated.substring(0, 100),
       provider: info.provider
@@ -612,7 +614,7 @@ class TranslationService {
   }
 
   handleContextInvalidation() {
-    console.warn('[TranslationService] Extension context invalidated, cleaning up...');
+    this.logger.warn('Extension context invalidated, cleaning up...');
     this.cleanup();
   }
 

@@ -13,6 +13,8 @@
  * - Integration with existing caching and storage systems
  */
 
+import { logger } from './logger.js';
+
 class OfflineDetector {
   constructor(options = {}) {
     this.config = {
@@ -634,7 +636,7 @@ class OfflineDetector {
    */
   log(...args) {
     if (this.config.debug) {
-      console.log('[OfflineDetector]', ...args);
+      logger.debug('OfflineDetector', ...args);
     }
   }
 
