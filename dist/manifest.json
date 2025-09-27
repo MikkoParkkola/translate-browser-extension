@@ -54,6 +54,8 @@
         "lib/progressIndicator.js",
         "localModel.js",
         "llamacpp-worker.js",
+        "i18n/*.json",
+        "providers/*.js",
         "styles/contentScript.css",
         "styles/translation-progress.css"
       ],
