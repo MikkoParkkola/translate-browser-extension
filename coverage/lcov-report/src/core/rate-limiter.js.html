@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/221</span>
+                <span class='fraction'>0/222</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/216</span>
+                <span class='fraction'>0/217</span>
             </div>
         
             
@@ -888,7 +888,11 @@
 <a name='L823'></a><a href='#L823'>823</a>
 <a name='L824'></a><a href='#L824'>824</a>
 <a name='L825'></a><a href='#L825'>825</a>
-<a name='L826'></a><a href='#L826'>826</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L826'></a><a href='#L826'>826</a>
+<a name='L827'></a><a href='#L827'>827</a>
+<a name='L828'></a><a href='#L828'>828</a>
+<a name='L829'></a><a href='#L829'>829</a>
+<a name='L830'></a><a href='#L830'>830</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -957,6 +961,10 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -1723,6 +1731,8 @@
  * @version 1.0.0
  */
 &nbsp;
+import { Logger } from '../lib/logger.js';
+&nbsp;
 /**
  * @typedef {Object} ProviderLimits
  * @property {number} requestsPerMinute - Requests per minute limit
@@ -1783,6 +1793,8 @@ class AdaptiveRateLimiter {
      * Initialize rate limiter with provider configurations
      */
 <span class="fstat-no" title="function not covered" >    co</span>nstructor() {
+<span class="cstat-no" title="statement not covered" >        this.logger = Logger.create('rate-limiter');</span>
+&nbsp;
         /** @type {Map&lt;string, ProviderLimits&gt;} */
 <span class="cstat-no" title="statement not covered" >        this.providerLimits = new Map();</span>
 &nbsp;
@@ -1824,9 +1836,9 @@ class AdaptiveRateLimiter {
 <span class="cstat-no" title="statement not covered" >            this._startMonitoring();</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >            this.isInitialized = true;</span>
-<span class="cstat-no" title="statement not covered" >            console.log('Adaptive rate limiter initialized for', this.providerLimits.size, 'providers');</span>
+<span class="cstat-no" title="statement not covered" >            this.logger.info('Adaptive rate limiter initialized for', this.providerLimits.size, 'providers');</span>
         } catch (error) {
-<span class="cstat-no" title="statement not covered" >            console.error('Failed to initialize rate limiter:', error);</span>
+<span class="cstat-no" title="statement not covered" >            this.logger.error('Failed to initialize rate limiter:', error);</span>
 <span class="cstat-no" title="statement not covered" >            throw new Error(`Rate limiter initialization failed: ${error.message}`);</span>
         }
     }
@@ -1895,7 +1907,7 @@ class AdaptiveRateLimiter {
             }
         });
 &nbsp;
-<span class="cstat-no" title="statement not covered" >        console.log('Provider limits initialized for', this.providerLimits.size, 'providers');</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.info('Provider limits initialized for', this.providerLimits.size, 'providers');</span>
     }
 &nbsp;
     /**
@@ -2234,7 +2246,7 @@ class AdaptiveRateLimiter {
 <span class="fstat-no" title="function not covered" >    as</span>ync recordUsage(providerId, metrics) {
         const usage = <span class="cstat-no" title="statement not covered" >this.usageTracking.get(providerId);</span>
 <span class="cstat-no" title="statement not covered" >        if (!usage) {</span>
-<span class="cstat-no" title="statement not covered" >            console.warn(`No usage tracking for provider: ${providerId}`);</span>
+<span class="cstat-no" title="statement not covered" >            this.logger.warn(`No usage tracking for provider: ${providerId}`);</span>
 <span class="cstat-no" title="statement not covered" >            return;</span>
         }
 &nbsp;
@@ -2264,7 +2276,7 @@ class AdaptiveRateLimiter {
         // Persist usage data
 <span class="cstat-no" title="statement not covered" >        await this._persistUsageData();</span>
 &nbsp;
-<span class="cstat-no" title="statement not covered" >        console.log(`Usage recorded for ${providerId}:`, {</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.info(`Usage recorded for ${providerId}:`, {</span>
             characters: metrics.characterCount,
             cost: metrics.cost,
             success: metrics.success
@@ -2416,11 +2428,11 @@ class AdaptiveRateLimiter {
                         }
                     });
 &nbsp;
-<span class="cstat-no" title="statement not covered" >                    console.log('Persisted usage data loaded');</span>
+<span class="cstat-no" title="statement not covered" >                    this.logger.info('Persisted usage data loaded');</span>
                 }
             }
         } catch (error) {
-<span class="cstat-no" title="statement not covered" >            console.warn('Failed to load persisted usage data:', error);</span>
+<span class="cstat-no" title="statement not covered" >            this.logger.warn('Failed to load persisted usage data:', error);</span>
         }
     }
 &nbsp;
@@ -2439,7 +2451,7 @@ class AdaptiveRateLimiter {
 <span class="cstat-no" title="statement not covered" >                await chrome.storage.local.set({ rateLimiterUsage: usageData });</span>
             }
         } catch (error) {
-<span class="cstat-no" title="statement not covered" >            console.warn('Failed to persist usage data:', error);</span>
+<span class="cstat-no" title="statement not covered" >            this.logger.warn('Failed to persist usage data:', error);</span>
         }
     }
 &nbsp;
@@ -2457,7 +2469,7 @@ class AdaptiveRateLimiter {
 <span class="cstat-no" title="statement not covered" >            this._cleanupExpiredData();</span>
         }, this.monitoringInterval);
 &nbsp;
-<span class="cstat-no" title="statement not covered" >        console.log(`Rate limiter monitoring started (interval: ${this.monitoringInterval / 1000}s)`);</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.info(`Rate limiter monitoring started (interval: ${this.monitoringInterval / 1000}s)`);</span>
     }
 &nbsp;
     /**
@@ -2488,7 +2500,7 @@ class AdaptiveRateLimiter {
             }
 &nbsp;
 <span class="cstat-no" title="statement not covered" >            if (warnings.length &gt; 0) {</span>
-<span class="cstat-no" title="statement not covered" >                console.warn(`Provider ${providerId} approaching limits:`, warnings.join(', '));</span>
+<span class="cstat-no" title="statement not covered" >                this.logger.warn(`Provider ${providerId} approaching limits:`, warnings.join(', '));</span>
             }
         });
     }
@@ -2511,7 +2523,7 @@ class AdaptiveRateLimiter {
 <span class="cstat-no" title="statement not covered" >        if (this.usageTracking.has(providerId)) {</span>
 <span class="cstat-no" title="statement not covered" >            this.usageTracking.set(providerId, this._createNewUsageWindow());</span>
 <span class="cstat-no" title="statement not covered" >            this._persistUsageData();</span>
-<span class="cstat-no" title="statement not covered" >            console.log(`Usage reset for provider: ${providerId}`);</span>
+<span class="cstat-no" title="statement not covered" >            this.logger.info(`Usage reset for provider: ${providerId}`);</span>
         }
     }
 &nbsp;
@@ -2529,7 +2541,7 @@ class AdaptiveRateLimiter {
 <span class="cstat-no" title="statement not covered" >        this.pendingRequests.clear();</span>
 <span class="cstat-no" title="statement not covered" >        this.isInitialized = false;</span>
 &nbsp;
-<span class="cstat-no" title="statement not covered" >        console.log('Adaptive rate limiter destroyed');</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.info('Adaptive rate limiter destroyed');</span>
     }
 }
 &nbsp;
@@ -2545,7 +2557,7 @@ class AdaptiveRateLimiter {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-23T01:02:19.545Z
+                at 2025-09-25T18:54:34.199Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

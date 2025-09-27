@@ -37,4 +37,8 @@ test('auto translates page content', async ({ page }) => {
   await page.waitForFunction(() => document.querySelector('p').textContent.endsWith('-fr'));
   const txt = await page.textContent('p');
   expect(txt).toBe('Mock page for E2E translation tests.-fr');
+  const uiAvailable = await page.evaluate(() => {
+    return !!(window.__translationContentScript && window.__translationContentScript.uiManager && typeof window.__translationContentScript.uiManager.createProgressIndicator === 'function');
+  });
+  expect(uiAvailable).toBe(true);
 });

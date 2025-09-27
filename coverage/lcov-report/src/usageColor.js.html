@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>13/13</span>
+                <span class='fraction'>0/13</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">80% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>8/10</span>
+                <span class='fraction'>0/10</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>2/2</span>
+                <span class='fraction'>0/2</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>13/13</span>
+                <span class='fraction'>0/13</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line high'></div>
+    <div class='status-line low'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -82,44 +82,44 @@
 <a name='L17'></a><a href='#L17'>17</a>
 <a name='L18'></a><a href='#L18'>18</a>
 <a name='L19'></a><a href='#L19'>19</a>
-<a name='L20'></a><a href='#L20'>20</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
+<a name='L20'></a><a href='#L20'>20</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">8x</span>
-<span class="cline-any cline-yes">8x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">;(function(root){
-  function usageColor(ratio){
-    const r = Math.max(0, Math.min(1, ratio || 0));
-    if (r &gt; 0.8){
-      const t = Math.min((r - 0.8) / 0.2, 1);
-      return `hsl(0, 70%, ${45 - t * 10}%)`;
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">;<span class="cstat-no" title="statement not covered" >(<span class="fstat-no" title="function not covered" >fu</span>nction(root){</span>
+  function <span class="fstat-no" title="function not covered" >usageColor(</span>ratio){
+    const r = <span class="cstat-no" title="statement not covered" >Math.max(0, Math.min(1, ratio || 0));</span>
+<span class="cstat-no" title="statement not covered" >    if (r &gt; 0.8){</span>
+      const t = <span class="cstat-no" title="statement not covered" >Math.min((r - 0.8) / 0.2, 1);</span>
+<span class="cstat-no" title="statement not covered" >      return `hsl(0, 70%, ${45 - t * 10}%)`;</span>
     }
-    if (r &gt; 0.5){
-      const t = (r - 0.5) / 0.3;
-      return `hsl(60, 80%, ${40 + t * 10}%)`;
+<span class="cstat-no" title="statement not covered" >    if (r &gt; 0.5){</span>
+      const t = <span class="cstat-no" title="statement not covered" >(r - 0.5) / 0.3;</span>
+<span class="cstat-no" title="statement not covered" >      return `hsl(60, 80%, ${40 + t * 10}%)`;</span>
     }
-    const t = r / 0.5;
-    return `hsl(120, 70%, ${35 + t * 10}%)`;
+    const t = <span class="cstat-no" title="statement not covered" >r / 0.5;</span>
+<span class="cstat-no" title="statement not covered" >    return `hsl(120, 70%, ${35 + t * 10}%)`;</span>
   }
-  <span class="missing-if-branch" title="else path not taken" >E</span>if (typeof module !== 'undefined') {
-    module.exports = usageColor;
+<span class="cstat-no" title="statement not covered" >  if (typeof module !== 'undefined') {</span>
+<span class="cstat-no" title="statement not covered" >    module.exports = usageColor;</span>
   }
-  root.qwenUsageColor = usageColor;
-})(typeof self !== 'undefined' ? self : <span class="branch-1 cbranch-no" title="branch not covered" >this)</span>;
+<span class="cstat-no" title="statement not covered" >  root.qwenUsageColor = usageColor;</span>
+})(typeof self !== 'undefined' ? self : this);
 &nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
@@ -127,7 +127,7 @@
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-24T11:05:09.171Z
+                at 2025-09-25T18:54:34.199Z
             </div>
         <script src="../prettify.js"></script>
         <script>

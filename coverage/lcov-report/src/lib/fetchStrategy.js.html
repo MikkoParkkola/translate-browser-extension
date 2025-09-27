@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">95% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>19/20</span>
+                <span class='fraction'>0/21</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">83.33% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>20/24</span>
+                <span class='fraction'>0/23</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>5/5</span>
+                <span class='fraction'>0/5</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">93.33% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>14/15</span>
+                <span class='fraction'>0/18</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line high'></div>
+    <div class='status-line low'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -86,51 +86,90 @@
 <a name='L21'></a><a href='#L21'>21</a>
 <a name='L22'></a><a href='#L22'>22</a>
 <a name='L23'></a><a href='#L23'>23</a>
-<a name='L24'></a><a href='#L24'>24</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">33x</span>
-<span class="cline-any cline-yes">33x</span>
-<span class="cline-any cline-yes">33x</span>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">57x</span>
-<span class="cline-any cline-yes">56x</span>
-<span class="cline-any cline-yes">56x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">55x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">5x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">33x</span>
-<span class="cline-any cline-yes">58x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">33x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">(function (root, factory) {
-  const mod = factory(root);
-  if (typeof module !== 'undefined' &amp;&amp; module.exports) module.exports = mod;
-  else <span class="cstat-no" title="statement not covered" ><span class="missing-if-branch" title="else path not taken" >E</span>root.qwenFetchStrategy = mod;</span>
-}(typeof self !== 'undefined' ? self : <span class="branch-1 cbranch-no" title="branch not covered" >this,</span> function (root) {
-  function defaultChooser(opts = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
-    if (opts.provider &amp;&amp; /local/i.test(String(opts.provider))) return 'local';
-    try {
-      if (typeof navigator !== 'undefined' &amp;&amp; navigator.onLine === false) return 'local';
-    } catch {}
-    if (opts.noProxy) return 'direct';
-    try {
-      if (typeof chrome === 'undefined' || !chrome.runtime) return 'direct';
-    } catch {}
-    return 'proxy';
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js"><span class="cstat-no" title="statement not covered" >(<span class="fstat-no" title="function not covered" >fu</span>nction (root, factory) {</span>
+  const mod = <span class="cstat-no" title="statement not covered" >factory(root);</span>
+<span class="cstat-no" title="statement not covered" >  if (typeof module !== 'undefined' &amp;&amp; module.exports) <span class="cstat-no" title="statement not covered" >module.exports = mod;</span></span>
+  else <span class="cstat-no" title="statement not covered" >root.qwenFetchStrategy = mod;</span>
+}(typeof self !== 'undefined' ? self : this, <span class="fstat-no" title="function not covered" >fu</span>nction (root) {
+  function <span class="fstat-no" title="function not covered" >defaultChooser(</span>opts = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
+<span class="cstat-no" title="statement not covered" >    if (opts.noProxy) <span class="cstat-no" title="statement not covered" >return 'direct';</span></span>
+<span class="cstat-no" title="statement not covered" >    if (opts.provider &amp;&amp; String(opts.provider).toLowerCase().includes('local')) <span class="cstat-no" title="statement not covered" >return 'direct';</span></span>
+<span class="cstat-no" title="statement not covered" >    try {</span>
+<span class="cstat-no" title="statement not covered" >      if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id) {</span>
+<span class="cstat-no" title="statement not covered" >        return 'direct';</span>
+      }
+    } catch {
+<span class="cstat-no" title="statement not covered" >      return 'direct';</span>
+    }
+<span class="cstat-no" title="statement not covered" >    return 'proxy';</span>
   }
-  let chooser = defaultChooser;
-  function choose(opts = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> { return chooser(opts); }
-  function setChooser(fn) {
-    chooser = typeof fn === 'function' ? fn : defaultChooser;
+&nbsp;
+  let chooser = <span class="cstat-no" title="statement not covered" >defaultChooser;</span>
+&nbsp;
+  function <span class="fstat-no" title="function not covered" >choose(</span>opts = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
+<span class="cstat-no" title="statement not covered" >    try {</span>
+<span class="cstat-no" title="statement not covered" >      return chooser(opts) || 'proxy';</span>
+    } catch {
+<span class="cstat-no" title="statement not covered" >      return defaultChooser(opts);</span>
+    }
   }
-  return { choose, setChooser };
+&nbsp;
+  function <span class="fstat-no" title="function not covered" >setChooser(</span>fn) {
+<span class="cstat-no" title="statement not covered" >    if (typeof fn === 'function') {</span>
+<span class="cstat-no" title="statement not covered" >      chooser = fn;</span>
+    }
+  }
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  return { choose, setChooser };</span>
 }));
 &nbsp;</pre></td></tr></table></pre>
 
@@ -139,7 +178,7 @@
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-23T01:02:19.545Z
+                at 2025-09-25T18:54:34.199Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

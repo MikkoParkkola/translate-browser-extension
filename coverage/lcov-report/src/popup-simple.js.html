@@ -25,28 +25,28 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/263</span>
+                <span class='fraction'>0/269</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/144</span>
+                <span class='fraction'>0/150</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/43</span>
+                <span class='fraction'>0/47</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/252</span>
+                <span class='fraction'>0/257</span>
             </div>
         
             
@@ -667,13 +667,31 @@
 <a name='L602'></a><a href='#L602'>602</a>
 <a name='L603'></a><a href='#L603'>603</a>
 <a name='L604'></a><a href='#L604'>604</a>
-<a name='L605'></a><a href='#L605'>605</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L605'></a><a href='#L605'>605</a>
+<a name='L606'></a><a href='#L606'>606</a>
+<a name='L607'></a><a href='#L607'>607</a>
+<a name='L608'></a><a href='#L608'>608</a>
+<a name='L609'></a><a href='#L609'>609</a>
+<a name='L610'></a><a href='#L610'>610</a>
+<a name='L611'></a><a href='#L611'>611</a>
+<a name='L612'></a><a href='#L612'>612</a>
+<a name='L613'></a><a href='#L613'>613</a>
+<a name='L614'></a><a href='#L614'>614</a>
+<a name='L615'></a><a href='#L615'>615</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -1115,12 +1133,14 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1141,6 +1161,7 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -1149,7 +1170,6 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1276,6 +1296,14 @@
  * Compatible with the simple background script
  */
 &nbsp;
+// Simple logger for popup
+const logger = <span class="cstat-no" title="statement not covered" >{</span>
+  info: <span class="fstat-no" title="function not covered" >(.</span>..args) =&gt; <span class="cstat-no" title="statement not covered" >console.log('[Popup]', ...args),</span>
+  warn: <span class="fstat-no" title="function not covered" >(.</span>..args) =&gt; <span class="cstat-no" title="statement not covered" >console.warn('[Popup]', ...args),</span>
+  error: <span class="fstat-no" title="function not covered" >(.</span>..args) =&gt; <span class="cstat-no" title="statement not covered" >console.error('[Popup]', ...args),</span>
+  debug: <span class="fstat-no" title="function not covered" >(.</span>..args) =&gt; <span class="cstat-no" title="statement not covered" >console.debug('[Popup]', ...args)</span>
+};
+&nbsp;
 class SimpleTranslationPopup {
 <span class="fstat-no" title="function not covered" >  co</span>nstructor() {
 <span class="cstat-no" title="statement not covered" >    this.currentStrategy = 'smart';</span>
@@ -1288,7 +1316,7 @@ class SimpleTranslationPopup {
 &nbsp;
 <span class="fstat-no" title="function not covered" >  as</span>ync initialize() {
 <span class="cstat-no" title="statement not covered" >    try {</span>
-<span class="cstat-no" title="statement not covered" >      console.log('[Popup] Initializing...');</span>
+<span class="cstat-no" title="statement not covered" >      logger.info('Initializing...');</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      this.setupEventListeners();</span>
 <span class="cstat-no" title="statement not covered" >      this.populateLanguageSelectors();</span>
@@ -1296,9 +1324,9 @@ class SimpleTranslationPopup {
 <span class="cstat-no" title="statement not covered" >      await this.updateStats();</span>
 <span class="cstat-no" title="statement not covered" >      this.hideLoadingOverlay();</span>
 &nbsp;
-<span class="cstat-no" title="statement not covered" >      console.log('[Popup] Initialized successfully');</span>
+<span class="cstat-no" title="statement not covered" >      logger.info('Initialized successfully');</span>
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[Popup] Failed to initialize:', error);</span>
+<span class="cstat-no" title="statement not covered" >      logger.error('Failed to initialize:', error);</span>
 <span class="cstat-no" title="statement not covered" >      this.showError('Failed to initialize extension');</span>
     }
   }
@@ -1334,7 +1362,7 @@ class SimpleTranslationPopup {
     }
 &nbsp;
     // Action buttons
-    const translateSelectionButton = <span class="cstat-no" title="statement not covered" >document.getElementById('translate-selection-button');</span>
+    const translateSelectionButton = <span class="cstat-no" title="statement not covered" >document.getElementById('translate-button');</span>
 <span class="cstat-no" title="statement not covered" >    if (translateSelectionButton) {</span>
 <span class="cstat-no" title="statement not covered" >      translateSelectionButton.addEventListener('click', <span class="fstat-no" title="function not covered" >()</span> =&gt; <span class="cstat-no" title="statement not covered" >this.translateSelection())</span>;</span>
     }
@@ -1453,7 +1481,7 @@ class SimpleTranslationPopup {
 <span class="cstat-no" title="statement not covered" >      this.updateApiKeyStatus(!!result.apiKey);</span>
 &nbsp;
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[Popup] Failed to load settings:', error);</span>
+<span class="cstat-no" title="statement not covered" >      logger.error('Failed to load settings:', error);</span>
     }
   }
 &nbsp;
@@ -1469,7 +1497,7 @@ class SimpleTranslationPopup {
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      await chrome.storage.sync.set(settings);</span>
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[Popup] Failed to save language settings:', error);</span>
+<span class="cstat-no" title="statement not covered" >      logger.error('Failed to save language settings:', error);</span>
     }
   }
 &nbsp;
@@ -1487,7 +1515,7 @@ class SimpleTranslationPopup {
     }
 &nbsp;
     // Save to storage
-<span class="cstat-no" title="statement not covered" >    chrome.storage.sync.set({ translationStrategy: strategy }).catch(console.error);</span>
+<span class="cstat-no" title="statement not covered" >    chrome.storage.sync.set({ translationStrategy: strategy }).catch(logger.error);</span>
   }
 &nbsp;
 <span class="fstat-no" title="function not covered" >  sw</span>apLanguages() {
@@ -1523,7 +1551,7 @@ class SimpleTranslationPopup {
 &nbsp;
         // If enabling auto-translate, immediately translate the current page
 <span class="cstat-no" title="statement not covered" >        if (enabled) {</span>
-<span class="cstat-no" title="statement not covered" >          console.log('[Popup] Auto-translate enabled - triggering immediate translation');</span>
+<span class="cstat-no" title="statement not covered" >          logger.info('Auto-translate enabled - triggering immediate translation');</span>
 &nbsp;
           // First inject the content script
 <span class="cstat-no" title="statement not covered" >          try {</span>
@@ -1543,11 +1571,11 @@ class SimpleTranslationPopup {
 <span class="cstat-no" title="statement not covered" >            if (response?.success) {</span>
 <span class="cstat-no" title="statement not covered" >              this.showToast('Auto-translate enabled and page translated');</span>
             } else {
-<span class="cstat-no" title="statement not covered" >              console.log('[Popup] Translation response:', response);</span>
+<span class="cstat-no" title="statement not covered" >              logger.info('Translation response:', response);</span>
 <span class="cstat-no" title="statement not covered" >              this.showToast('Auto-translate enabled');</span>
             }
           } catch (error) {
-<span class="cstat-no" title="statement not covered" >            console.warn('[Popup] Failed to immediately translate:', error.message);</span>
+<span class="cstat-no" title="statement not covered" >            logger.warn('Failed to immediately translate:', error.message);</span>
             // Still send the toggle message even if immediate translation fails
           }
         }
@@ -1560,7 +1588,7 @@ class SimpleTranslationPopup {
         });
       }
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[Popup] Failed to toggle auto-translate:', error);</span>
+<span class="cstat-no" title="statement not covered" >      logger.error('Failed to toggle auto-translate:', error);</span>
     }
   }
 &nbsp;
@@ -1594,7 +1622,7 @@ class SimpleTranslationPopup {
       }
 &nbsp;
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[Popup] Selection translation failed:', error);</span>
+<span class="cstat-no" title="statement not covered" >      logger.error('Selection translation failed:', error);</span>
 &nbsp;
       // Show more helpful error messages
       let errorMessage = <span class="cstat-no" title="statement not covered" >error.message;</span>
@@ -1640,7 +1668,7 @@ class SimpleTranslationPopup {
       }
 &nbsp;
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[Popup] Page translation failed:', error);</span>
+<span class="cstat-no" title="statement not covered" >      logger.error('Page translation failed:', error);</span>
 &nbsp;
       // Show more helpful error messages
       let errorMessage = <span class="cstat-no" title="statement not covered" >error.message;</span>
@@ -1668,12 +1696,12 @@ class SimpleTranslationPopup {
 <span class="cstat-no" title="statement not covered" >        this.updateStatsDisplay();</span>
       } else {
         // Background script may not be ready yet, use default stats
-<span class="cstat-no" title="statement not covered" >        console.warn('[Popup] Stats not available from background, using defaults');</span>
+<span class="cstat-no" title="statement not covered" >        logger.warn('Stats not available from background, using defaults');</span>
 <span class="cstat-no" title="statement not covered" >        this.stats = { requests: 0, tokens: 0, errors: 0 };</span>
 <span class="cstat-no" title="statement not covered" >        this.updateStatsDisplay();</span>
       }
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.warn('[Popup] Background script not ready, using default stats:', error.message);</span>
+<span class="cstat-no" title="statement not covered" >      logger.warn('Background script not ready, using default stats:', error.message);</span>
       // Use default stats if background isn't ready
 <span class="cstat-no" title="statement not covered" >      this.stats = { requests: 0, tokens: 0, errors: 0 };</span>
 <span class="cstat-no" title="statement not covered" >      this.updateStatsDisplay();</span>
@@ -1719,8 +1747,10 @@ class SimpleTranslationPopup {
     const providerElement = <span class="cstat-no" title="statement not covered" >document.getElementById('current-provider');</span>
 <span class="cstat-no" title="statement not covered" >    if (providerElement) {</span>
       const providerNames = <span class="cstat-no" title="statement not covered" >{</span>
-        'qwen-mt-turbo': 'Qwen MT Turbo',
-        'qwen-mt': 'Qwen MT',
+        'qwen-mt-turbo': 'DashScope · Qwen MT Turbo',
+        'qwen-mt': 'DashScope · Qwen MT',
+        'qwen': 'DashScope · Qwen',
+        'dashscope': 'DashScope',
         'deepl-free': 'DeepL Free',
         'deepl-pro': 'DeepL Pro',
         'hunyuan-local': 'Hunyuan Local 🏠'
@@ -1740,24 +1770,24 @@ class SimpleTranslationPopup {
         type: 'localModel:status'
       });
 &nbsp;
-<span class="cstat-no" title="statement not covered" >      if (response.success) {</span>
-        const status = <span class="cstat-no" title="statement not covered" >response.status;</span>
+<span class="cstat-no" title="statement not covered" >      if (response &amp;&amp; response.success) {</span>
         const statusElement = <span class="cstat-no" title="statement not covered" >document.getElementById('provider-status');</span>
+<span class="cstat-no" title="statement not covered" >        if (!statusElement) <span class="cstat-no" title="statement not covered" >return;</span></span>
 &nbsp;
-<span class="cstat-no" title="statement not covered" >        if (statusElement) {</span>
-<span class="cstat-no" title="statement not covered" >          if (status.downloading) {</span>
-<span class="cstat-no" title="statement not covered" >            statusElement.textContent = `⬇️ Downloading ${Math.round(status.progress)}%`;</span>
-          } else <span class="cstat-no" title="statement not covered" >if (status.available &amp;&amp; status.ready) {</span>
-<span class="cstat-no" title="statement not covered" >            statusElement.textContent = '🏠 Ready (Local)';</span>
-          } else <span class="cstat-no" title="statement not covered" >if (status.available) {</span>
-<span class="cstat-no" title="statement not covered" >            statusElement.textContent = '💤 Available (Loading...)';</span>
-          } else {
-<span class="cstat-no" title="statement not covered" >            statusElement.textContent = '❓ Not Downloaded';</span>
-          }
+        const downloadProgress = <span class="cstat-no" title="statement not covered" >typeof response.downloadProgress === 'number' ? response.downloadProgress : 0;</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >        if (response.ready) {</span>
+<span class="cstat-no" title="statement not covered" >          statusElement.textContent = '🏠 Ready (Local)';</span>
+        } else <span class="cstat-no" title="statement not covered" >if (downloadProgress &gt; 0 &amp;&amp; downloadProgress &lt; 100) {</span>
+<span class="cstat-no" title="statement not covered" >          statusElement.textContent = `⬇️ Downloading ${Math.round(downloadProgress)}%`;</span>
+        } else <span class="cstat-no" title="statement not covered" >if (response.loaded || response.available) {</span>
+<span class="cstat-no" title="statement not covered" >          statusElement.textContent = '💤 Available (Initializing)';</span>
+        } else {
+<span class="cstat-no" title="statement not covered" >          statusElement.textContent = '❓ Not Downloaded';</span>
         }
       }
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.warn('[Popup] Failed to get local model status:', error);</span>
+<span class="cstat-no" title="statement not covered" >      logger.warn('Failed to get local model status:', error);</span>
       const statusElement = <span class="cstat-no" title="statement not covered" >document.getElementById('provider-status');</span>
 <span class="cstat-no" title="statement not covered" >      if (statusElement) {</span>
 <span class="cstat-no" title="statement not covered" >        statusElement.textContent = '❌ Error';</span>
@@ -1845,10 +1875,10 @@ class SimpleTranslationPopup {
 // Initialize popup when DOM is ready
 <span class="cstat-no" title="statement not covered" >document.addEventListener('DOMContentLoaded', <span class="fstat-no" title="function not covered" >()</span> =&gt; {</span>
 <span class="cstat-no" title="statement not covered" >  try {</span>
-<span class="cstat-no" title="statement not covered" >    console.log('[Popup] DOM content loaded, initializing popup...');</span>
+<span class="cstat-no" title="statement not covered" >    logger.info('DOM content loaded, initializing popup...');</span>
 <span class="cstat-no" title="statement not covered" >    new SimpleTranslationPopup();</span>
   } catch (error) {
-<span class="cstat-no" title="statement not covered" >    console.error('[Popup] Critical initialization error:', error);</span>
+<span class="cstat-no" title="statement not covered" >    logger.error('Critical initialization error:', error);</span>
     // Show fallback UI
 <span class="cstat-no" title="statement not covered" >    document.body.innerHTML = `</span>
       &lt;div style="padding: 20px; color: red; font-family: Arial;"&gt;
@@ -1861,20 +1891,20 @@ class SimpleTranslationPopup {
 });
 &nbsp;
 // Additional debugging
-<span class="cstat-no" title="statement not covered" >console.log('[Popup] Script loaded successfully');</span>
+<span class="cstat-no" title="statement not covered" >logger.info('Script loaded successfully');</span>
 &nbsp;
 // Check if all required APIs are available
 <span class="cstat-no" title="statement not covered" >if (typeof chrome === 'undefined') {</span>
-<span class="cstat-no" title="statement not covered" >  console.error('[Popup] Chrome extension APIs not available');</span>
+<span class="cstat-no" title="statement not covered" >  logger.error('Chrome extension APIs not available');</span>
 } else {
-<span class="cstat-no" title="statement not covered" >  console.log('[Popup] Chrome extension APIs available');</span>
+<span class="cstat-no" title="statement not covered" >  logger.info('Chrome extension APIs available');</span>
 }
 &nbsp;
 // Test that we can access storage API
 <span class="cstat-no" title="statement not covered" >if (chrome &amp;&amp; chrome.storage &amp;&amp; chrome.storage.sync) {</span>
-<span class="cstat-no" title="statement not covered" >  console.log('[Popup] Storage API available');</span>
+<span class="cstat-no" title="statement not covered" >  logger.info('Storage API available');</span>
 } else {
-<span class="cstat-no" title="statement not covered" >  console.error('[Popup] Storage API not available');</span>
+<span class="cstat-no" title="statement not covered" >  logger.error('Storage API not available');</span>
 }</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
@@ -1882,7 +1912,7 @@ class SimpleTranslationPopup {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-24T11:05:09.171Z
+                at 2025-09-25T18:54:34.199Z
             </div>
         <script src="../prettify.js"></script>
         <script>

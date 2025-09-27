@@ -25,14 +25,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/163</span>
+                <span class='fraction'>0/164</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/95</span>
+                <span class='fraction'>0/93</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/157</span>
+                <span class='fraction'>0/158</span>
             </div>
         
             
@@ -624,7 +624,11 @@
 <a name='L559'></a><a href='#L559'>559</a>
 <a name='L560'></a><a href='#L560'>560</a>
 <a name='L561'></a><a href='#L561'>561</a>
-<a name='L562'></a><a href='#L562'>562</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L562'></a><a href='#L562'>562</a>
+<a name='L563'></a><a href='#L563'>563</a>
+<a name='L564'></a><a href='#L564'>564</a>
+<a name='L565'></a><a href='#L565'>565</a>
+<a name='L566'></a><a href='#L566'>566</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -675,6 +679,10 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -1195,6 +1203,8 @@
  * @version 1.0.0
  */
 &nbsp;
+import { Logger } from '../lib/logger.js';
+&nbsp;
 /**
  * @typedef {Object} Provider
  * @property {string} id - Unique provider identifier
@@ -1237,6 +1247,8 @@ class ProviderManager {
      * Initialize provider manager
      */
 <span class="fstat-no" title="function not covered" >    co</span>nstructor() {
+<span class="cstat-no" title="statement not covered" >        this.logger = Logger.create('provider-manager');</span>
+&nbsp;
         /** @type {Map&lt;string, Provider&gt;} */
 <span class="cstat-no" title="statement not covered" >        this.providers = new Map();</span>
 &nbsp;
@@ -1281,9 +1293,9 @@ class ProviderManager {
 <span class="cstat-no" title="statement not covered" >            this._startHealthMonitoring();</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >            this.isInitialized = true;</span>
-<span class="cstat-no" title="statement not covered" >            console.log('Provider manager initialized with', this.providers.size, 'providers');</span>
+<span class="cstat-no" title="statement not covered" >            this.logger.info('Provider manager initialized', { providerCount: this.providers.size });</span>
         } catch (error) {
-<span class="cstat-no" title="statement not covered" >            console.error('Failed to initialize provider manager:', error);</span>
+<span class="cstat-no" title="statement not covered" >            this.logger.error('Failed to initialize provider manager', { error: error.message });</span>
 <span class="cstat-no" title="statement not covered" >            throw new Error(`Provider manager initialization failed: ${error.message}`);</span>
         }
     }
@@ -1326,7 +1338,7 @@ class ProviderManager {
         // Initialize performance history
 <span class="cstat-no" title="statement not covered" >        this.performanceHistory.set(provider.id, []);</span>
 &nbsp;
-<span class="cstat-no" title="statement not covered" >        console.log(`Provider registered: ${provider.name} (${provider.id})`);</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.info('Provider registered', { name: provider.name, id: provider.id });</span>
     }
 &nbsp;
     /**
@@ -1375,7 +1387,7 @@ class ProviderManager {
         );
 &nbsp;
 <span class="cstat-no" title="statement not covered" >        if (capableProviders.length === 0) {</span>
-<span class="cstat-no" title="statement not covered" >            console.warn('No capable providers found for criteria:', criteria);</span>
+<span class="cstat-no" title="statement not covered" >            this.logger.warn('No capable providers found for criteria', { criteria });</span>
 <span class="cstat-no" title="statement not covered" >            return null;</span>
         }
 &nbsp;
@@ -1396,7 +1408,7 @@ class ProviderManager {
         const selectedProvider = <span class="cstat-no" title="statement not covered" >providerScores[0]?.provider;</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >        if (selectedProvider) {</span>
-<span class="cstat-no" title="statement not covered" >            console.log(`Selected provider: ${selectedProvider.name} (score: ${providerScores[0].score.toFixed(3)})`);</span>
+<span class="cstat-no" title="statement not covered" >            this.logger.info('Selected provider', { name: selectedProvider.name, score: providerScores[0].score.toFixed(3) });</span>
         }
 &nbsp;
 <span class="cstat-no" title="statement not covered" >        return selectedProvider;</span>
@@ -1634,7 +1646,7 @@ class ProviderManager {
      */
 <span class="fstat-no" title="function not covered" >    as</span>ync _loadProviderConfigurations() {
         // This will be implemented when provider classes are available
-<span class="cstat-no" title="statement not covered" >        console.log('Provider configurations will be loaded when provider classes are registered');</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.info('Provider configurations will be loaded when provider classes are registered');</span>
     }
 &nbsp;
     /**
@@ -1643,7 +1655,7 @@ class ProviderManager {
      */
 <span class="fstat-no" title="function not covered" >    as</span>ync _performInitialHealthChecks() {
 <span class="cstat-no" title="statement not covered" >        if (this.providers.size &gt; 0) {</span>
-<span class="cstat-no" title="statement not covered" >            console.log('Performing initial health checks...');</span>
+<span class="cstat-no" title="statement not covered" >            this.logger.info('Performing initial health checks...');</span>
 <span class="cstat-no" title="statement not covered" >            await this.checkHealth();</span>
         }
     }
@@ -1660,13 +1672,13 @@ class ProviderManager {
 <span class="cstat-no" title="statement not covered" >        this.healthCheckTimer = setInterval(<span class="fstat-no" title="function not covered" >as</span>ync () =&gt; {</span>
 <span class="cstat-no" title="statement not covered" >            try {</span>
 <span class="cstat-no" title="statement not covered" >                await this.checkHealth();</span>
-<span class="cstat-no" title="statement not covered" >                console.log('Automated health check completed');</span>
+<span class="cstat-no" title="statement not covered" >                this.logger.info('Automated health check completed');</span>
             } catch (error) {
-<span class="cstat-no" title="statement not covered" >                console.error('Automated health check failed:', error);</span>
+<span class="cstat-no" title="statement not covered" >                this.logger.error('Automated health check failed', { error: error.message });</span>
             }
         }, this.healthCheckInterval);
 &nbsp;
-<span class="cstat-no" title="statement not covered" >        console.log(`Health monitoring started (interval: ${this.healthCheckInterval / 1000}s)`);</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.info('Health monitoring started', { intervalSeconds: this.healthCheckInterval / 1000 });</span>
     }
 &nbsp;
     /**
@@ -1678,7 +1690,7 @@ class ProviderManager {
         const provider = <span class="cstat-no" title="statement not covered" >this.providers.get(providerId);</span>
 <span class="cstat-no" title="statement not covered" >        if (provider) {</span>
 <span class="cstat-no" title="statement not covered" >            provider.enabled = enabled;</span>
-<span class="cstat-no" title="statement not covered" >            console.log(`Provider ${providerId} ${enabled ? 'enabled' : 'disabled'}`);</span>
+<span class="cstat-no" title="statement not covered" >            this.logger.info('Provider status changed', { providerId, enabled });</span>
         } else {
 <span class="cstat-no" title="statement not covered" >            throw new Error(`Provider not found: ${providerId}`);</span>
         }
@@ -1690,7 +1702,7 @@ class ProviderManager {
      */
 <span class="fstat-no" title="function not covered" >    up</span>dateSelectionWeights(newWeights) {
 <span class="cstat-no" title="statement not covered" >        this.selectionWeights = { ...this.selectionWeights, ...newWeights };</span>
-<span class="cstat-no" title="statement not covered" >        console.log('Provider selection weights updated:', this.selectionWeights);</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.info('Provider selection weights updated', { weights: this.selectionWeights });</span>
     }
 &nbsp;
     /**
@@ -1737,7 +1749,7 @@ class ProviderManager {
 <span class="cstat-no" title="statement not covered" >        this.performanceHistory.clear();</span>
 <span class="cstat-no" title="statement not covered" >        this.isInitialized = false;</span>
 &nbsp;
-<span class="cstat-no" title="statement not covered" >        console.log('Provider manager destroyed');</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.info('Provider manager destroyed');</span>
     }
 }
 &nbsp;
@@ -1753,7 +1765,7 @@ class ProviderManager {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-23T01:02:19.545Z
+                at 2025-09-25T18:54:34.199Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

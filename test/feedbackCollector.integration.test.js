@@ -130,8 +130,13 @@ describe('Feedback Collection Integration', () => {
       }
     };
 
-    const result = feedbackCollector.collectImplicitFeedback(signalData);
-    expect(result).toBe(true);
+    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const result = feedbackCollector.collectImplicitFeedback(signalData);
+      expect(result).toBe(true);
+    } finally {
+      randomSpy.mockRestore();
+    }
 
     const status = feedbackCollector.getStatus();
     expect(status.queues.implicitSignals).toBeGreaterThan(0);

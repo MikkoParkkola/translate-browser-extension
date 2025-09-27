@@ -7,7 +7,15 @@
 (function(global) {
   'use strict';
 
-  /**
+  
+  // Simple logger for advanced configuration
+  const logger = {
+    info: (...args) => console.log('[AdvancedConfig]', ...args),
+    warn: (...args) => console.warn('[AdvancedConfig]', ...args),
+    error: (...args) => console.error('[AdvancedConfig]', ...args),
+    debug: (...args) => console.debug('[AdvancedConfig]', ...args)
+  };
+/**
    * Advanced Configuration System for dynamic feature management and runtime adaptation
    */
   class AdvancedConfiguration {
@@ -108,7 +116,7 @@
      */
     async initialize() {
       if (this.options.debug) {
-        console.log('[AdvancedConfiguration] Initializing configuration system...');
+        logger.info('Initializing configuration system...');
       }
 
       // Set up default configuration
@@ -139,7 +147,7 @@
       }
 
       if (this.options.debug) {
-        console.log('[AdvancedConfiguration] Configuration system initialized');
+        logger.info('Configuration system initialized');
       }
     }
 
@@ -229,7 +237,7 @@
             this.mergeConfig(persistedConfig);
 
             if (this.options.debug) {
-              console.log('[AdvancedConfiguration] Loaded persisted configuration');
+              logger.info('Loaded persisted configuration');
             }
           }
         }
@@ -241,7 +249,7 @@
           }
         }
       } catch (error) {
-        console.warn('[AdvancedConfiguration] Failed to load persisted config:', error);
+        logger.warn('Failed to load persisted config:', error);
       }
     }
 
@@ -289,7 +297,7 @@
       this.mergeConfig(envConfig);
 
       if (this.options.debug) {
-        console.log('[AdvancedConfiguration] Applied environment configuration:', envConfig);
+        logger.info('Applied environment configuration:', envConfig);
       }
     }
 
@@ -312,7 +320,7 @@
       }
 
       if (this.options.debug) {
-        console.log('[AdvancedConfiguration] Initialized feature flags:', this.featureFlags.size);
+        logger.info('Initialized feature flags:', this.featureFlags.size);
       }
     }
 
@@ -386,7 +394,7 @@
           this.mergeConfig(segment.config);
 
           if (this.options.debug) {
-            console.log(`[AdvancedConfiguration] Applied ${segmentName} segment configuration`);
+            logger.info(`Applied ${segmentName} segment configuration`);
           }
         }
       }
@@ -462,11 +470,11 @@
         this.mergeConfig(remoteConfig);
 
         if (this.options.debug) {
-          console.log('[AdvancedConfiguration] Applied remote configuration');
+          logger.info('Applied remote configuration');
         }
 
       } catch (error) {
-        console.warn('[AdvancedConfiguration] Failed to fetch remote config:', error);
+        logger.warn('Failed to fetch remote config:', error);
       }
     }
 
@@ -548,7 +556,7 @@
       }
 
       if (this.options.debug) {
-        console.log(`[AdvancedConfiguration] Set ${key} = ${value}`);
+        logger.info(`Set ${key} = ${value}`);
       }
     }
 
@@ -774,11 +782,11 @@
         }
 
         if (this.options.debug) {
-          console.log('[AdvancedConfiguration] Configuration persisted');
+          logger.info('Configuration persisted');
         }
 
       } catch (error) {
-        console.warn('[AdvancedConfiguration] Failed to persist config:', error);
+        logger.warn('Failed to persist config:', error);
       }
     }
 
@@ -953,7 +961,7 @@
       this.persistConfig();
 
       if (this.options.debug) {
-        console.log('[AdvancedConfiguration] Configuration reset to defaults');
+        logger.info('Configuration reset to defaults');
       }
     }
 
@@ -986,7 +994,7 @@
       }
 
       if (this.options.debug) {
-        console.log('[AdvancedConfiguration] Configuration imported');
+        logger.info('Configuration imported');
       }
     }
 
@@ -1002,7 +1010,7 @@
       this.pendingUpdates.clear();
 
       if (this.options.debug) {
-        console.log('[AdvancedConfiguration] Configuration system cleaned up');
+        logger.info('Configuration system cleaned up');
       }
     }
   }

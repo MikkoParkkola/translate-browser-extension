@@ -25,14 +25,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/241</span>
+                <span class='fraction'>0/246</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/89</span>
+                <span class='fraction'>0/93</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/226</span>
+                <span class='fraction'>0/231</span>
             </div>
         
             
@@ -786,7 +786,15 @@
 <a name='L721'></a><a href='#L721'>721</a>
 <a name='L722'></a><a href='#L722'>722</a>
 <a name='L723'></a><a href='#L723'>723</a>
-<a name='L724'></a><a href='#L724'>724</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L724'></a><a href='#L724'>724</a>
+<a name='L725'></a><a href='#L725'>725</a>
+<a name='L726'></a><a href='#L726'>726</a>
+<a name='L727'></a><a href='#L727'>727</a>
+<a name='L728'></a><a href='#L728'>728</a>
+<a name='L729'></a><a href='#L729'>729</a>
+<a name='L730'></a><a href='#L730'>730</a>
+<a name='L731'></a><a href='#L731'>731</a>
+<a name='L732'></a><a href='#L732'>732</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -912,6 +920,14 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1635,8 +1651,16 @@ const OptionsPage = <span class="cstat-no" title="statement not covered" >{</spa
       // Validate and fix provider statuses based on API key presence
       let needsUpdate = <span class="cstat-no" title="statement not covered" >false;</span>
 <span class="cstat-no" title="statement not covered" >      this.providers.forEach(<span class="fstat-no" title="function not covered" >pr</span>ovider =&gt; {</span>
-        const shouldBeActive = <span class="cstat-no" title="statement not covered" >provider.apiKey &amp;&amp; provider.apiKey.trim().length &gt; 0;</span>
-        const newStatus = <span class="cstat-no" title="statement not covered" >shouldBeActive ? 'active' : 'inactive';</span>
+<span class="cstat-no" title="statement not covered" >        if (provider.type === 'local') {</span>
+<span class="cstat-no" title="statement not covered" >          if (!provider.status) {</span>
+<span class="cstat-no" title="statement not covered" >            provider.status = 'active';</span>
+<span class="cstat-no" title="statement not covered" >            needsUpdate = true;</span>
+          }
+<span class="cstat-no" title="statement not covered" >          return;</span>
+        }
+&nbsp;
+        const hasKey = <span class="cstat-no" title="statement not covered" >typeof provider.apiKey === 'string' &amp;&amp; provider.apiKey.trim().length &gt; 0;</span>
+        const newStatus = <span class="cstat-no" title="statement not covered" >hasKey ? 'active' : 'inactive';</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >        if (provider.status !== newStatus) {</span>
 <span class="cstat-no" title="statement not covered" >          provider.status = newStatus;</span>
@@ -1661,7 +1685,7 @@ const OptionsPage = <span class="cstat-no" title="statement not covered" >{</spa
         name: 'Alibaba Qwen MT Turbo',
         type: 'dashscope',
         icon: '🤖',
-        status: 'active',
+        status: 'inactive',
         apiKey: '',
         apiEndpoint: 'https://dashscope-intl.aliyuncs.com/api/v1/services/aimt/text-translation/message',
         model: 'qwen-turbo',
@@ -1672,8 +1696,8 @@ const OptionsPage = <span class="cstat-no" title="statement not covered" >{</spa
         name: 'Hunyuan Local Model',
         type: 'local',
         icon: '🏠',
-        status: 'inactive',
-        apiKey: 'local-model', // Special value to indicate local model
+        status: 'active',
+        apiKey: '',
         apiEndpoint: 'local://hunyuan-mt',
         model: 'Hunyuan-MT-7B.i1-Q4_K_M.gguf',
         usage: { requests: 0, tokens: 0, limit: Infinity }, // No limit for local model
@@ -2239,7 +2263,7 @@ const OptionsPage = <span class="cstat-no" title="statement not covered" >{</spa
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-24T11:05:09.171Z
+                at 2025-09-25T18:54:34.199Z
             </div>
         <script src="../prettify.js"></script>
         <script>

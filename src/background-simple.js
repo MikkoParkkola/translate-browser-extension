@@ -3,34 +3,7 @@
  * Handles message routing, provider communication, caching, and throttling
  */
 
-// Load only essential modules immediately for fast startup
-console.log('[Background] Service Worker Starting...');
-try {
-  console.log('[Background] Loading essential modules...');
-  // Skip throttle module loading for now - use simple rate limiting instead
-  console.log('[Background] Essential modules loaded successfully (simplified mode)');
-} catch (error) {
-  console.error('[Background] Failed to load essential modules:', error);
-  console.error('[Background] Error details:', error.message, error.stack);
-}
-
-// Load additional modules on-demand
-let advancedModulesLoaded = false;
-async function loadAdvancedModules() {
-  if (advancedModulesLoaded) return;
-
-  try {
-    console.log('[Background] Loading advanced modules...');
-    // Only load modules that exist - most advanced features are now inlined or optional
-    // importScripts for advanced modules commented out - features are now simpler/inlined
-    advancedModulesLoaded = true;
-    console.log('[Background] Advanced modules loading skipped - using simplified features');
-  } catch (error) {
-    console.error('[Background] Failed to load advanced modules:', error);
-  }
-}
-
-// Simple logger
+// Simple logger - define first before using
 const logger = {
   info: (...args) => console.log('[Background]', ...args),
   warn: (...args) => console.warn('[Background]', ...args),
@@ -38,8 +11,51 @@ const logger = {
   debug: (...args) => console.debug('[Background]', ...args)
 };
 
+// Load only essential modules immediately for fast startup
+logger.info('Service Worker Starting...');
+try {
+  logger.info('Loading essential modules...');
+  // Skip throttle module loading for now - use simple rate limiting instead
+  logger.info('Essential modules loaded successfully (simplified mode)');
+} catch (error) {
+  logger.error('Failed to load essential modules:', error);
+  logger.error('Error details:', error.message, error.stack);
+}
+
+// Load additional modules on-demand
+let advancedModulesLoaded = false;
+async function loadAdvancedModules(service) {
+  if (advancedModulesLoaded || !service) return;
+
+  try {
+    logger.info('Loading advanced modules...');
+
+    if (!service.errorHandler && self.qwenErrorHandler) {
+      service.errorHandler = self.qwenErrorHandler;
+    }
+
+    if (!service.ge && typeof self.GlossaryExtractor === 'function') {
+      service.ge = new self.GlossaryExtractor();
+    }
+
+    if (!service.ts && typeof self.IntelligentTextSplitter === 'function') {
+      service.ts = new self.IntelligentTextSplitter();
+    }
+
+    advancedModulesLoaded = true;
+    logger.info('Advanced modules ready');
+  } catch (error) {
+    logger.error('Failed to load advanced modules:', error);
+  }
+}
+
 // Simple provider configuration
 const PROVIDERS = {
+  'google-free': {
+    endpoint: 'https://translate.googleapis.com/translate_a/single',
+    requiresKey: false,
+    label: 'Google (public)'
+  },
   'qwen-mt-turbo': {
     endpoint: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions',
     model: 'qwen-mt-turbo'
@@ -59,19 +75,37 @@ const PROVIDERS = {
     model: 'Hunyuan-MT-7B.i1-Q4_K_M.gguf',
     downloadUrl: 'https://huggingface.co/mradermacher/Hunyuan-MT-7B-i1-GGUF/resolve/main/Hunyuan-MT-7B.i1-Q4_K_M.gguf',
     modelSize: '4.37GB', // Q4_K_M quantized size
-    description: 'Local Hunyuan MT 7B model (runs offline)'
+    description: 'Local Hunyuan MT 7B model (runs offline)',
+    requiresKey: false
   }
 };
 
-// Import local model manager
-importScripts('localModel.js');
+// Import local model manager and shared modules
+const SHARED_MODULES = [
+  'localModel-sw.js',
+  'lib/logger.js',
+  'core/error-handler.js',
+  'lib/cache.js',
+  'lib/glossaryExtractor.js',
+  'lib/textSplitter.js',
+  'lib/tm.js',
+  'config.js'
+];
+
+if (typeof importScripts === 'function') {
+  importScripts(...SHARED_MODULES);
+} else if (typeof require === 'function') {
+  SHARED_MODULES.forEach((modulePath) => {
+    try { require('./' + modulePath); } catch (error) { console.warn('Failed to require module:', modulePath, error?.message || error); }
+  });
+}
 
 // Background service state
 class BackgroundService {
   constructor() {
     // Initialize local model manager
     this.localModel = new LocalModelManager();
-    console.log('[Background] BackgroundService constructor starting...');
+    logger.info('BackgroundService constructor starting...');
     this.isInitialized = false;
     this.currentConfig = null;
     this.stats = {
@@ -84,25 +118,38 @@ class BackgroundService {
 
     // Initialize essential features only for fast startup
     this.globalScope = typeof window !== 'undefined' ? window : self;
-    this.errorHandler = null; // Simplified error handling
-    // Throttle module removed - using simple built-in rate limiting
-    this.cache = null; // Using simple caching instead
-    this.translationMemory = null; // Simplified translation memory
+    this.errorHandler = self.qwenErrorHandler || (this.globalScope && this.globalScope.qwenErrorHandler) || null;
 
-    // Advanced features loaded on-demand (initialized as null)
+    this.cache = (this.globalScope && this.globalScope.Cache && typeof this.globalScope.Cache.createKey === 'function')
+      ? this.globalScope.Cache
+      : null;
+
+    // Lightweight translation memory implementation
+    this.tmStore = new Map();
+    this.tmOrder = new Map();
+    this.tmStats = { hits: 0, misses: 0, sets: 0, evictionsTTL: 0, evictionsLRU: 0 };
+    this.tmMaxEntries = 5000;
+    this.tm = {
+      get: (source, target, text) => this.translationMemoryGet(source, target, text),
+      set: (source, target, originalText, translatedText, provider = 'unknown') =>
+        this.translationMemorySet(source, target, originalText, translatedText, provider),
+      getStats: () => this.translationMemoryStats(),
+      searchSimilar: (text, source, target, threshold = 0.8) =>
+        this.translationMemorySearchSimilar(text, source, target, threshold)
+    };
+
+    // Advanced feature placeholders (instantiated lazily if available)
+    this.ge = typeof self.GlossaryExtractor === 'function' ? new self.GlossaryExtractor() : null;
+    this.ts = typeof self.IntelligentTextSplitter === 'function' ? new self.IntelligentTextSplitter() : null;
+
     this.languageDetector = null;
     this.qualityVerifier = null;
-
-    // All advanced features will be loaded on-demand
     this.performanceMonitor = null;
-    this.textSplitter = null;
     this.glossaryExtractor = null;
     this.domOptimizer = null;
     this.adaptiveLimitDetector = null;
     this.offlineDetector = null;
     this.feedbackCollector = null;
-
-    // Security and configuration features will be loaded on-demand
     this.securityEnhancements = null;
     this.advancedConfiguration = null;
     this.intelligentLanguageSelection = null;
@@ -120,12 +167,6 @@ class BackgroundService {
       windowMs: 60000     // 1 minute
     };
 
-    // Simple cache implementation
-    this.simpleCache = new Map();
-
-    // Simple translation memory
-    this.simpleTM = new Map();
-
     // Language Detector will be initialized lazily when needed
 
     // Quality Verifier will be initialized lazily when needed
@@ -135,7 +176,100 @@ class BackgroundService {
     // Intelligent Language Selection, Security Enhancements, Advanced Configuration)
     // are deferred to lazy loading via ensureAdvancedModulesLoaded() for fast startup
 
-    console.log('[Background] BackgroundService constructor completed - advanced features will load on demand');
+    logger.info('BackgroundService constructor completed - advanced features will load on demand');
+  }
+
+  normalizeTMKey(sourceLanguage, targetLanguage, text) {
+    const safeSource = (sourceLanguage || 'auto').toLowerCase();
+    const safeTarget = (targetLanguage || 'en').toLowerCase();
+    const normalizedText = (text || '')
+      .toString()
+      .trim()
+      .normalize('NFC')
+      .toLowerCase();
+    return `${safeSource}:${safeTarget}:${normalizedText}`;
+  }
+
+  async translationMemoryGet(sourceLanguage, targetLanguage, text) {
+    if (!text) {
+      this.tmStats.misses++;
+      return null;
+    }
+
+    const key = this.normalizeTMKey(sourceLanguage, targetLanguage, text);
+    const record = this.tmStore.get(key);
+
+    if (!record) {
+      this.tmStats.misses++;
+      return null;
+    }
+
+    const { expiresAt } = record;
+    if (expiresAt && Date.now() > expiresAt) {
+      this.tmStore.delete(key);
+      this.tmOrder.delete(key);
+      this.tmStats.evictionsTTL++;
+      this.tmStats.misses++;
+      return null;
+    }
+
+    this.tmStats.hits++;
+    this.tmOrder.set(key, Date.now());
+    return { ...record, cached: true };
+  }
+
+  async translationMemorySet(sourceLanguage, targetLanguage, originalText, translatedText, provider = 'unknown') {
+    if (!originalText || !translatedText) return null;
+
+    const key = this.normalizeTMKey(sourceLanguage, targetLanguage, originalText);
+    const entry = {
+      text: translatedText,
+      source: sourceLanguage,
+      target: targetLanguage,
+      provider,
+      timestamp: Date.now(),
+      expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000
+    };
+
+    this.tmStore.set(key, entry);
+    this.tmOrder.set(key, entry.timestamp);
+    this.tmStats.sets++;
+
+    if (this.tmStore.size > this.tmMaxEntries) {
+      const oldestKey = [...this.tmOrder.entries()].sort((a, b) => a[1] - b[1])[0]?.[0];
+      if (oldestKey) {
+        this.tmStore.delete(oldestKey);
+        this.tmOrder.delete(oldestKey);
+        this.tmStats.evictionsLRU++;
+      }
+    }
+
+    return entry;
+  }
+
+  translationMemoryStats() {
+    return {
+      ...this.tmStats,
+      entries: this.tmStore.size
+    };
+  }
+
+  translationMemorySearchSimilar(text, sourceLanguage, targetLanguage, threshold = 0.8) {
+    if (!text) return null;
+    const baseKey = this.normalizeTMKey(sourceLanguage, targetLanguage, text);
+    const direct = this.tmStore.get(baseKey);
+    if (direct) return direct;
+
+    // Extremely lightweight similarity: try trimmed variants
+    const trimmed = text.trim();
+    if (trimmed !== text) {
+      const altKey = this.normalizeTMKey(sourceLanguage, targetLanguage, trimmed);
+      const alt = this.tmStore.get(altKey);
+      if (alt) return alt;
+    }
+
+    // No fuzzy matching implemented in simplified cache
+    return null;
   }
 
   // Simple rate limiting helper
@@ -221,7 +355,7 @@ class BackgroundService {
     const maxDepth = 5; // Prevent infinite recursion
 
     if (depth > maxDepth) {
-      console.warn('[Background] Max split depth reached, returning original text');
+      logger.warn('Max split depth reached, returning original text');
       return text;
     }
 
@@ -235,13 +369,13 @@ class BackgroundService {
         throw error;
       }
 
-      console.log(`[Background] Content filter hit at depth ${depth}, splitting text (${text.length} chars)`);
+      logger.info(`Content filter hit at depth ${depth}, splitting text (${text.length} chars)`);
 
       // Strategy 0: Smart language boundary detection (new!)
       if (depth === 0) {
         const segments = this.detectLanguageBoundaries(text, sourceLanguage, targetLanguage);
         if (segments.length > 1) {
-          console.log(`[Background] Detected ${segments.length} language segments, translating selectively`);
+          logger.info(`Detected ${segments.length} language segments, translating selectively`);
           const translatedParts = [];
 
           for (const segment of segments) {
@@ -249,15 +383,23 @@ class BackgroundService {
               try {
                 const translated = await this.splitAndTranslate(segment.text, sourceLanguage, targetLanguage, config, provider, depth + 1);
                 translatedParts.push(translated);
-                console.log(`[Background] Translated segment: "${segment.text}" → "${translated}"`);
+                logger.info('Translated segment', {
+                  segmentLength: segment.text.length,
+                  translatedLength: translated.length
+                });
               } catch (segmentError) {
-                console.warn(`[Background] Segment translation failed, keeping original: "${segment.text}"`);
+                logger.warn('Segment translation failed, keeping original text', {
+                  segmentLength: segment.text.length
+                });
                 translatedParts.push(segment.text);
               }
             } else {
               translatedParts.push(segment.text); // Keep as-is (whitespace or already in target language)
               if (!segment.isWhitespace) {
-                console.log(`[Background] Keeping segment as-is: "${segment.text}" (detected as ${targetLanguage})`);
+                logger.info('Keeping segment as-is', {
+                  segmentLength: segment.text.length,
+                  targetLanguage
+                });
               }
             }
           }
@@ -323,7 +465,9 @@ class BackgroundService {
 
       // Strategy 4: Character-by-character (last resort)
       if (text.length > 1) {
-        console.log(`[Background] Trying character-by-character split for: "${text.substring(0, 20)}..."`);
+        logger.info('Trying character-by-character split', {
+          textLength: text.length
+        });
         const chars = text.split('');
         const translatedChars = [];
 
@@ -340,7 +484,9 @@ class BackgroundService {
       }
 
       // If all else fails, return the original text
-      console.log(`[Background] All split strategies failed, keeping original: "${text.substring(0, 50)}..."`);
+      logger.info('All split strategies failed, keeping original text', {
+        textLength: text.length
+      });
       return text;
     }
   }
@@ -351,6 +497,14 @@ class BackgroundService {
   async performTranslationDirect(text, sourceLanguage, targetLanguage, config, provider) {
     // This is a simplified version of performTranslation without caching and advanced features
     // to avoid recursive issues during splitting
+
+    if (config.provider === 'google-free') {
+      return await this.translateWithGoogleFree(text, sourceLanguage, targetLanguage, config, provider);
+    }
+
+    if (config.provider === 'hunyuan-local') {
+      return await this.translateWithLocal(text, sourceLanguage, targetLanguage, config, provider);
+    }
 
     const payload = {
       model: provider.model,
@@ -429,7 +583,7 @@ class BackgroundService {
       this.updateFeatureAvailability();
 
       if (this.options?.debug) {
-        console.log('[Background] Applied configuration overrides');
+        logger.info('Applied configuration overrides');
       }
 
     } catch (error) {
@@ -462,7 +616,7 @@ class BackgroundService {
     this.enabledFeatures = features;
 
     if (this.options?.debug) {
-      console.log('[Background] Updated feature availability:', features);
+      logger.info('Updated feature availability:', features);
     }
   }
 
@@ -494,63 +648,109 @@ class BackgroundService {
 
   // Lazy load advanced modules when needed
   async ensureAdvancedModulesLoaded() {
-    if (!advancedModulesLoaded) {
-      await loadAdvancedModules();
+    await loadAdvancedModules(this);
+  }
+
+  resolveProvider(candidate, providers = {}) {
+    if (!candidate) return null;
+    const normalized = String(candidate).toLowerCase();
+
+    if (normalized === 'hunyuan-local') {
+      const canTranslate = this.localModel &&
+        typeof this.localModel.isModelAvailable === 'function' &&
+        typeof this.localModel.supportsTranslation === 'function' &&
+        this.localModel.isModelAvailable() &&
+        this.localModel.supportsTranslation();
+
+      if (canTranslate) {
+        return { mapped: 'hunyuan-local', source: candidate };
+      }
+      return null;
     }
-    // Simplified initialization - advanced modules removed for stability
-    if (!this.isInitialized) {
-      this.isInitialized = true;
-      console.log('[Background] Simplified service initialized');
+
+    if (normalized === 'google-free' || normalized === 'google') {
+      return { mapped: 'google-free', source: candidate };
     }
+
+    if (PROVIDERS[normalized]) {
+      return { mapped: normalized, source: candidate };
+    }
+
+    if (['dashscope', 'qwen', 'qwen-mt', 'qwen-mt-turbo'].includes(normalized)) {
+      return { mapped: 'qwen-mt-turbo', source: candidate };
+    }
+
+    if (['deepl', 'deepl-pro'].includes(normalized)) {
+      return { mapped: 'deepl-pro', source: candidate };
+    }
+
+    if (normalized === 'deepl-free') {
+      return { mapped: 'deepl-free', source: candidate };
+    }
+
+    return null;
   }
 
   async loadConfig() {
     try {
-      // Load basic settings from sync storage
-      const syncResult = await chrome.storage.sync.get([
-        'provider',
-        'apiKey',
-        'sourceLanguage',
-        'targetLanguage',
-        'translationStrategy',
-        'autoTranslateEnabled'
-      ]);
+      const loader = (this.globalScope && this.globalScope.qwenLoadConfig)
+        || (typeof require === 'function' ? require('./config.js').qwenLoadConfig : null);
 
-      // Load providers from local storage (where options.js saves them)
-      const localResult = await chrome.storage.local.get(['providers']);
+    const config = loader ? await loader() : {
+      providerOrder: ['google-free'],
+      providers: {},
+      sourceLanguage: 'auto',
+      targetLanguage: 'en',
+      strategy: 'smart',
+      autoTranslate: false,
+        apiKey: ''
+      };
 
-      let apiKey = syncResult.apiKey || '';
-      const providers = localResult.providers || [];
+      this.fullConfig = config;
 
-      // If no API key in sync storage, try to find it in the provider list
-      if (!apiKey && providers.length > 0) {
-        // Find the active provider or the first qwen provider
-        const activeProvider = providers.find(p => p.status === 'active') ||
-                             providers.find(p => p.type === 'dashscope' || p.name.toLowerCase().includes('qwen')) ||
-                             providers[0];
+      const providers = config.providers || {};
+      const order = Array.isArray(config.providerOrder) ? config.providerOrder : [];
+    const preferenceList = [config.provider, ...order, 'google-free', 'hunyuan-local', 'dashscope', 'qwen', 'qwen-mt-turbo', 'deepl-pro', 'deepl-free']
+      .filter(Boolean);
 
-        if (activeProvider && activeProvider.apiKey) {
-          apiKey = activeProvider.apiKey;
-          logger.info('Found API key in provider:', activeProvider.name);
+    let resolved = 'google-free';
+    let sourceKey = 'google-free';
+
+      for (const candidate of preferenceList) {
+        const resolution = this.resolveProvider(candidate, providers);
+        if (resolution) {
+          resolved = resolution.mapped;
+          sourceKey = resolution.source;
+          break;
         }
       }
 
+      const providerConfig = providers[sourceKey] || providers[resolved] || {};
+      let apiKey = providerConfig.apiKey || config.apiKey || '';
+      if (typeof apiKey === 'string' && apiKey.trim().toLowerCase() === 'local-model') {
+        apiKey = '';
+      }
+
+      if (resolved === 'hunyuan-local' || resolved === 'google-free') {
+        apiKey = '';
+      }
+
       return {
-        provider: syncResult.provider || 'qwen-mt-turbo',
-        apiKey: apiKey,
-        sourceLanguage: syncResult.sourceLanguage || 'auto',
-        targetLanguage: syncResult.targetLanguage || 'en',
-        strategy: syncResult.translationStrategy || 'smart',
-        autoTranslateEnabled: syncResult.autoTranslateEnabled || false
+        provider: resolved,
+        apiKey: apiKey ? apiKey.trim() : '',
+        sourceLanguage: config.sourceLanguage || 'auto',
+        targetLanguage: config.targetLanguage || 'en',
+        strategy: config.strategy || config.translationStrategy || 'smart',
+        autoTranslateEnabled: !!(config.autoTranslate || config.autoTranslateEnabled)
       };
     } catch (error) {
       logger.error('Failed to load config:', error);
-      return {
-        provider: 'qwen-mt-turbo',
-        apiKey: '',
-        sourceLanguage: 'auto',
-        targetLanguage: 'en',
-        strategy: 'smart',
+    return {
+      provider: 'google-free',
+      apiKey: '',
+      sourceLanguage: 'auto',
+      targetLanguage: 'en',
+      strategy: 'smart',
         autoTranslateEnabled: false
       };
     }
@@ -613,12 +813,12 @@ class BackgroundService {
           break;
 
         case 'translateBatch':
-          console.log('[Background] Handling translateBatch request with', request.texts?.length, 'texts');
+          logger.info('Handling translateBatch request with', request.texts?.length, 'texts');
           await this.handleBatchTranslation(request, sender, sendResponse);
           break;
 
         case 'ping':
-          console.log('[Background] Received ping from tab:', sender.tab?.id);
+          logger.info('Received ping from tab:', sender.tab?.id);
           sendResponse({ success: true, message: 'Background service is alive' });
           break;
 
@@ -801,6 +1001,13 @@ class BackgroundService {
           await this.handleConfigSet(request, sender, sendResponse);
           break;
 
+        case 'config:reload':
+          this.currentConfig = null;
+          this.fullConfig = null;
+          this.currentConfig = await this.loadConfig();
+          sendResponse({ success: true, provider: this.currentConfig.provider });
+          break;
+
         case 'config:feature':
           await this.handleConfigFeature(request, sender, sendResponse);
           break;
@@ -825,6 +1032,10 @@ class BackgroundService {
           await this.handleLocalModelProgress(request, sender, sendResponse);
           break;
 
+        case 'checkLocalModelStatus':
+          await this.handleLocalModelStatus(request, sendResponse);
+          break;
+
         default:
           logger.warn('Unknown message type:', request.type || request.action);
           sendResponse({ success: false, error: 'Unknown message type' });
@@ -844,7 +1055,11 @@ class BackgroundService {
 
     try {
       const { text, source, target } = request;
-      logger.info(`Translation request: ${text.substring(0, 50)}... (${text.length} chars)`);
+      logger.info('Translation request received', {
+        textLength: typeof text === 'string' ? text.length : 0,
+        sourceLanguage: source,
+        targetLanguage: target
+      });
 
       if (!text || !text.trim()) {
         logger.warn('No text provided for translation');
@@ -879,13 +1094,6 @@ class BackgroundService {
       const targetLanguage = target || config.targetLanguage;
 
       logger.info(`Using provider: ${config.provider}, source: ${sourceLanguage}, target: ${targetLanguage}`);
-
-      if (!config.apiKey) {
-        logger.warn('API key not configured');
-        // Performance monitoring disabled
-        sendResponse({ success: false, error: 'API key not configured. Please configure your API key in settings.' });
-        return;
-      }
 
       // Check Translation Memory first (persistent across sessions)
       if (this.tm) {
@@ -952,17 +1160,28 @@ class BackgroundService {
         return;
       }
 
-      // Check throttling with simple rate limiting
-      const tokensNeeded = this.approxTokens(sanitizedText);
-
-      if (!this.checkRateLimit(tokensNeeded)) {
-        logger.warn('Rate limit would be exceeded');
-        sendResponse({
-          success: false,
-          error: 'Rate limit exceeded. Please wait a moment before retrying.',
-          latency: Date.now() - startTime
-        });
+      const requiresKey = provider.requiresKey !== false;
+      if (requiresKey && !config.apiKey) {
+        logger.warn('API key not configured');
+        sendResponse({ success: false, error: 'API key not configured. Please configure your API key in settings.' });
         return;
+      }
+
+      // Check throttling with simple rate limiting (skip for local models)
+      if (config.provider !== 'hunyuan-local') {
+        const tokensNeeded = this.approxTokens(sanitizedText);
+
+        if (!this.checkRateLimit(tokensNeeded)) {
+          logger.warn('Rate limit would be exceeded');
+          sendResponse({
+            success: false,
+            error: 'Rate limit exceeded. Please wait a moment before retrying.',
+            latency: Date.now() - startTime
+          });
+          return;
+        }
+      } else {
+        logger.info('Skipping rate limiting for local model');
       }
 
       // Perform translation with error handling - rate limiting already checked above
@@ -994,7 +1213,7 @@ class BackgroundService {
             targetLanguage,
             sanitizedText, // Store with sanitized input
             result.translatedText, // Already sanitized above
-            'qwen'
+            config.provider
           );
         } catch (tmError) {
           logger.warn('Failed to store translation in TM:', tmError);
@@ -1079,7 +1298,7 @@ class BackgroundService {
 
     // Keep service worker alive during batch translation
     const keepAliveInterval = setInterval(() => {
-      console.log('[Background] Keeping service worker alive during translation...');
+      logger.info('Keeping service worker alive during translation...');
     }, 20000); // Keep alive every 20 seconds
 
     const startTime = Date.now();
@@ -1091,7 +1310,7 @@ class BackgroundService {
       logger.info(`Batch translation request: ${texts.length} texts`);
 
       // Simple rate limiting enabled
-      console.log('[Background] Using simple rate limiting for batch translation');
+      logger.info('Using simple rate limiting for batch translation');
 
       if (!texts || !Array.isArray(texts) || texts.length === 0) {
         logger.warn('No texts provided for batch translation');
@@ -1107,19 +1326,19 @@ class BackgroundService {
 
       logger.info(`Using provider: ${config.provider}, source: ${source}, target: ${target}`);
 
-      if (!config.apiKey) {
-        logger.warn('API key not configured');
-        // Performance monitoring disabled
-        sendResponse({ success: false, error: 'API key not configured. Please configure your API key in settings.' });
-        return;
-      }
-
       // Get provider info
       const provider = PROVIDERS[config.provider];
       if (!provider) {
         logger.error('Provider not supported:', config.provider);
         // Performance monitoring disabled
         sendResponse({ success: false, error: `Provider not supported: ${config.provider}` });
+        return;
+      }
+
+      const requiresKey = provider.requiresKey !== false;
+      if (requiresKey && !config.apiKey) {
+        logger.warn('API key not configured');
+        sendResponse({ success: false, error: 'API key not configured. Please configure your API key in settings.' });
         return;
       }
 
@@ -1161,7 +1380,7 @@ class BackgroundService {
           // Check simple rate limiting with retries
           let rateLimitRetries = 3;
           while (!this.checkRateLimit(tokensNeeded) && rateLimitRetries > 0) {
-            console.log(`[Background] Rate limit hit for text ${i + 1}/${texts.length}, waiting... (${rateLimitRetries} retries left)`);
+            logger.info(`Rate limit hit for text ${i + 1}/${texts.length}, waiting... (${rateLimitRetries} retries left)`);
             this.sendProgressUpdate(sender, i, texts.length, 'waiting');
 
             // Wait until next window (simple backoff)
@@ -1174,12 +1393,12 @@ class BackgroundService {
 
             // If this text is too large for our token limit, split it
             if (rateLimitRetries === 0 && tokensNeeded > this.simpleRateLimit.tokenLimit * 0.8) {
-              console.log(`[Background] Text ${i + 1} is too large (${tokensNeeded} tokens), attempting split translation`);
+              logger.info(`Text ${i + 1} is too large (${tokensNeeded} tokens), attempting split translation`);
               try {
                 result = await this.splitAndTranslate(text, source, target, config, provider);
                 break; // Success with split, break out of rate limit loop
               } catch (splitError) {
-                console.warn(`[Background] Split translation failed for text ${i + 1}:`, splitError.message);
+                logger.warn(`Split translation failed for text ${i + 1}:`, splitError.message);
                 // Fall through to error handling
               }
             }
@@ -1192,7 +1411,7 @@ class BackgroundService {
 
           // Only translate if we don't already have a result (from split translation)
           if (!result) {
-            console.log(`[Background] Translating text ${i + 1}/${texts.length}, tokens: ${tokensNeeded}`);
+            logger.info(`Translating text ${i + 1}/${texts.length}, tokens: ${tokensNeeded}`);
             result = await translationFunc();
           }
 
@@ -1219,7 +1438,10 @@ class BackgroundService {
           if (error.message?.includes('DataInspectionFailed')) {
             logger.info(`Text ${i + 1} rejected by content filter - attempting to split and translate`);
             // Debug: show first 50 chars to help identify filtered content patterns
-            console.debug(`[Background] Attempting split translation for: "${texts[i].substring(0, 50)}..."`);
+            logger.debug('Attempting split translation for text', {
+              textIndex: i,
+              textLength: typeof text === 'string' ? text.length : 0
+            });
 
             try {
               // Try to translate using the split strategy
@@ -1318,11 +1540,11 @@ class BackgroundService {
           }
         }).catch(error => {
           // Content script might not be ready or tab might be closed
-          console.log('[Background] Could not send progress update:', error.message);
+          logger.info('Could not send progress update:', error.message);
         });
       }
     } catch (error) {
-      console.error('[Background] Error sending progress update:', error);
+      logger.error('Error sending progress update:', error);
     }
   }
 
@@ -1447,7 +1669,9 @@ class BackgroundService {
             logger.info(`Translating chunk ${i + 1}/${chunks.length} (${chunk.text.length} chars)`);
 
             let chunkResult;
-            if (config.provider.startsWith('qwen')) {
+            if (config.provider === 'google-free') {
+              chunkResult = await this.translateWithGoogleFree(chunk.text, sourceLanguage, targetLanguage, config, provider);
+            } else if (config.provider.startsWith('qwen')) {
               chunkResult = await this.translateWithQwen(chunk.text, sourceLanguage, targetLanguage, config, provider);
             } else if (config.provider.startsWith('deepl')) {
               chunkResult = await this.translateWithDeepL(chunk.text, sourceLanguage, targetLanguage, config, provider);
@@ -1482,7 +1706,9 @@ class BackgroundService {
 
     // Direct translation for shorter texts or if splitting failed
     let result;
-    if (config.provider.startsWith('qwen')) {
+    if (config.provider === 'google-free') {
+      result = await this.translateWithGoogleFree(text, sourceLanguage, targetLanguage, config, provider);
+    } else if (config.provider.startsWith('qwen')) {
       result = await this.translateWithQwen(text, sourceLanguage, targetLanguage, config, provider);
     } else if (config.provider.startsWith('deepl')) {
       result = await this.translateWithDeepL(text, sourceLanguage, targetLanguage, config, provider);
@@ -1514,30 +1740,12 @@ class BackgroundService {
       max_tokens: 8000
     };
 
-    console.log(`🔍 QWEN API REQUEST DEBUG:`, {
+    logger.info('Preparing Qwen translation request', {
       endpoint: provider.endpoint,
       model: provider.model,
-      text: text.substring(0, 100) + '...',
-      source_language: sourceLanguageValue,
-      target_language: targetLanguage
-    });
-
-    logger.info('Qwen API request:', {
-      endpoint: provider.endpoint,
-      model: provider.model,
-      requestBody: requestBody
-    });
-
-    console.log('🔍 DEBUG: Full API request details:', {
-      url: provider.endpoint,
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.apiKey?.substring(0, 10)}...${config.apiKey?.slice(-4)}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody, null, 2),
-      textLength: text.length,
-      timestamp: new Date().toISOString()
+      sourceLanguage: sourceLanguageValue,
+      targetLanguage,
+      textLength: text.length
     });
 
     const requestStartTime = Date.now();
@@ -1625,7 +1833,7 @@ class BackgroundService {
           allHeaders: headers
         };
 
-        console.error('🚨 QWEN API ERROR DETAILS:', JSON.stringify(errorDetails, null, 2));
+        logger.error('🚨 QWEN API ERROR DETAILS:', JSON.stringify(errorDetails, null, 2));
         logger.error('Qwen API error response:', JSON.stringify(errorDetails, null, 2));
         throw new Error(`Qwen API error: ${response.status} - ${errorText}`);
       }
@@ -1668,10 +1876,11 @@ class BackgroundService {
 
     const data = await response.json();
 
-    console.log('🔍 DEBUG: Full API response:', {
+    logger.info('Received Qwen response', {
       status: response.status,
       statusText: response.statusText,
-      data: JSON.stringify(data, null, 2)
+      bodyKeys: Object.keys(data || {}),
+      inputLength: typeof text === 'string' ? text.length : 0
     });
 
     // Parse response using OpenAI-compatible format
@@ -1682,11 +1891,11 @@ class BackgroundService {
                           data.output?.translation;
 
     if (translatedText) {
-      console.log('🔍 DEBUG: Translation result:', {
-        originalText: text,
-        translatedText: translatedText,
-        sourceLanguage: sourceLanguage,
-        targetLanguage: targetLanguage
+      logger.info('Qwen translation completed', {
+        sourceLanguage,
+        targetLanguage,
+        inputLength: typeof text === 'string' ? text.length : 0,
+        outputLength: translatedText.length
       });
 
       // Perform quality verification if available
@@ -1700,9 +1909,9 @@ class BackgroundService {
             translationId: Date.now().toString()
           });
 
-          console.log(`[Background] Quality verification: ${qualityVerification.status} (score: ${qualityVerification.overallScore.toFixed(2)})`);
+          logger.info(`Quality verification: ${qualityVerification.status} (score: ${qualityVerification.overallScore.toFixed(2)})`);
         } catch (error) {
-          console.warn('[Background] Quality verification failed:', error);
+          logger.warn('Quality verification failed:', error);
         }
       }
 
@@ -1747,9 +1956,9 @@ class BackgroundService {
             this.fc.sessionState.translationCount++;
           }
 
-          console.log(`[Background] Feedback quality assessment: ${feedbackAssessment?.qualityLevel} (score: ${feedbackAssessment?.qualityScore?.toFixed(2) || 'N/A'})`);
+          logger.info(`Feedback quality assessment: ${feedbackAssessment?.qualityLevel} (score: ${feedbackAssessment?.qualityScore?.toFixed(2) || 'N/A'})`);
         } catch (error) {
-          console.warn('[Background] Feedback quality assessment failed:', error);
+          logger.warn('Feedback quality assessment failed:', error);
         }
       }
 
@@ -1764,6 +1973,51 @@ class BackgroundService {
       logger.error('Unexpected Qwen API response format:', data);
       throw new Error('Unexpected response format from Qwen API');
     }
+  }
+
+  async translateWithGoogleFree(text, sourceLanguage, targetLanguage, _config, provider) {
+    const params = new URLSearchParams({
+      client: 'gtx',
+      sl: sourceLanguage && sourceLanguage !== 'auto' ? sourceLanguage : 'auto',
+      tl: targetLanguage || 'en',
+      dt: 't',
+      q: text,
+    });
+
+    const requestUrl = `${provider.endpoint}?${params.toString()}`;
+    const response = await fetch(requestUrl, {
+      method: 'GET',
+      credentials: 'omit',
+      headers: { 'Accept': 'application/json, text/plain, */*' },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Google Translate API error: ${response.status}`);
+    }
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (error) {
+      throw new Error('Failed to parse response from Google Translate');
+    }
+
+    const translated = Array.isArray(data)
+      ? data[0]?.map(segment => segment[0]).join('')
+      : '';
+
+    if (!translated) {
+      throw new Error('Empty translation result from Google Translate');
+    }
+
+    const detectedLanguage = Array.isArray(data) ? data[2] : null;
+
+    return {
+      text: translated,
+      translatedText: translated,
+      detectedLanguage: detectedLanguage || (sourceLanguage !== 'auto' ? sourceLanguage : null),
+      provider: 'google-free'
+    };
   }
 
   async translateWithDeepL(text, sourceLanguage, targetLanguage, config, provider) {
@@ -2706,19 +2960,21 @@ class BackgroundService {
       }
 
       // Start download with progress callback
-      this.localModel.downloadModel((progress, downloaded, total) => {
-        // Send progress updates to requesting tab
-        if (sender.tab?.id) {
-          chrome.tabs.sendMessage(sender.tab.id, {
-            type: 'localModelProgress',
-            progress: progress,
-            downloaded: downloaded,
-            total: total
-          }).catch(() => {
-            // Tab might have been closed, ignore errors
-          });
-        }
-      }).then(() => {
+      try {
+        await this.localModel.downloadModel((progress, downloaded, total) => {
+          // Send progress updates to requesting tab
+          if (sender.tab?.id) {
+            chrome.tabs.sendMessage(sender.tab.id, {
+              type: 'localModelProgress',
+              progress: progress,
+              downloaded: downloaded,
+              total: total
+            }).catch(() => {
+              // Tab might have been closed, ignore errors
+            });
+          }
+        });
+
         logger.info('Local model download completed successfully');
 
         // Notify completion
@@ -2729,19 +2985,21 @@ class BackgroundService {
             // Tab might have been closed, ignore errors
           });
         }
-      }).catch(error => {
-        logger.error('Local model download failed:', error);
+      } catch (downloadError) {
+        logger.error('Local model download failed:', downloadError);
 
         // Notify failure
         if (sender.tab?.id) {
           chrome.tabs.sendMessage(sender.tab.id, {
             type: 'localModelDownloadError',
-            error: error.message
+            error: downloadError.message
           }).catch(() => {
             // Tab might have been closed, ignore errors
           });
         }
-      });
+
+        throw downloadError; // Re-throw to be caught by outer catch
+      }
 
       sendResponse({
         success: true,
@@ -2754,28 +3012,36 @@ class BackgroundService {
     }
   }
 
-  async handleLocalModelStatus(request, sender, sendResponse) {
+  async handleLocalModelStatus(request, sendResponse) {
     try {
-      const status = await this.localModel.getModelStatus();
-      const downloadProgress = this.localModel.getDownloadProgress();
+      const available = await this.localModel.isAvailable();
+      const status = this.localModel.getStatus();
 
       sendResponse({
         success: true,
-        status: {
-          downloaded: status.downloaded,
-          available: this.localModel.isModelAvailable(),
-          ready: this.localModel.isModelReady(),
-          downloading: downloadProgress.isDownloading,
-          progress: downloadProgress.progress,
-          size: status.size,
-          downloadedAt: status.downloadedAt,
-          modelInfo: PROVIDERS['hunyuan-local']
-        }
+        available: available,
+        loaded: status.loaded,
+        ready: typeof status.ready === 'boolean' ? status.ready : false,
+        downloadProgress: status.downloadProgress,
+        model: status.model,
+        provider: status.provider,
+        size: status.size,
+        threads: status.threads,
+        contextSize: status.contextSize
       });
 
     } catch (error) {
       logger.error('Failed to get local model status:', error);
-      sendResponse({ success: false, error: error.message });
+      sendResponse({
+        success: true,
+        available: false,
+        loaded: false,
+        ready: false,
+        downloadProgress: 0,
+        model: null,
+        provider: 'fallback',
+        error: error.message
+      });
     }
   }
 
@@ -2814,63 +3080,104 @@ class BackgroundService {
 }
 
 // Initialize background service
-console.log('[Background] Creating BackgroundService instance...');
+logger.info('Creating BackgroundService instance...');
 const backgroundService = new BackgroundService();
-console.log('[Background] BackgroundService instance created');
+logger.info('BackgroundService instance created');
 
 // Context menu click handler
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === 'translate-selection' && info.selectionText) {
-    chrome.tabs.sendMessage(tab.id, {
-      type: 'translateSelection',
-      text: info.selectionText
-    });
-  }
-});
+if (chrome.contextMenus && chrome.contextMenus.onClicked && typeof chrome.contextMenus.onClicked.addListener === 'function') {
+  chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === 'translate-selection' && info.selectionText) {
+      chrome.tabs.sendMessage(tab.id, {
+        type: 'translateSelection',
+        text: info.selectionText
+      });
+    }
+  });
+}
 
 // Extension installation/startup
-chrome.runtime.onInstalled.addListener(() => {
-  logger.info('Extension installed/updated');
-  backgroundService.initialize();
-});
+if (chrome.runtime && chrome.runtime.onInstalled && typeof chrome.runtime.onInstalled.addListener === 'function') {
+  chrome.runtime.onInstalled.addListener(() => {
+    console.log('🚀 TRANSLATE! Extension installed/updated');
+    logger.info('Extension installed/updated');
+    backgroundService.initialize();
+  });
+}
 
-chrome.runtime.onStartup.addListener(() => {
-  logger.info('Extension started');
-  backgroundService.initialize();
-});
+// Service worker startup
+if (chrome.runtime && chrome.runtime.onStartup && typeof chrome.runtime.onStartup.addListener === 'function') {
+  chrome.runtime.onStartup.addListener(() => {
+    console.log('🚀 TRANSLATE! Service worker starting up');
+    logger.info('Service worker starting up');
+  });
+}
+
+// Debug: Add console log on service worker load
+console.log('🚀 TRANSLATE! Background script loaded');
 
 // Initialize immediately
-console.log('[Background] Calling backgroundService.initialize()...');
+logger.info('Calling backgroundService.initialize()...');
 backgroundService.initialize().then(() => {
-  console.log('[Background] Initial backgroundService.initialize() completed');
+  logger.info('Initial backgroundService.initialize() completed');
 }).catch(error => {
-  console.error('[Background] Initial backgroundService.initialize() failed:', error);
+  logger.error('Initial backgroundService.initialize() failed:', error);
 });
 
 // Auto-injection system (like legacy extension)
 async function injectContentScripts(tabId) {
   try {
+    await chrome.scripting.insertCSS({
+      target: { tabId, allFrames: true },
+      files: ['styles/apple.css']
+    });
+  } catch (error) {
+    logger.debug('CSS injection failed for tab:', tabId, error);
+  }
+
+  try {
     await chrome.scripting.executeScript({
       target: { tabId, allFrames: true },
-      files: ['contentScript-simple.js']
+      files: [
+        'i18n/index.js',
+        'lib/logger.js',
+        'lib/messaging.js',
+        'lib/batchDelim.js',
+        'lib/providers.js',
+        'core/provider-loader.js',
+        'core/dom-optimizer.js',
+        'lib/glossary.js',
+        'lib/tm.js',
+        'lib/detect.js',
+        'lib/feedback.js',
+        'lib/offline.js',
+        'config.js',
+        'throttle.js',
+        'translator.js',
+        'contentScript.js',
+      ]
     });
     logger.info('Content scripts injected into tab:', tabId);
   } catch (error) {
-    // Tab may have been closed or is protected; ignore injection failure
     logger.debug('Content script injection failed for tab:', tabId, error);
   }
 }
 
 async function ensureInjected(tabId) {
-  // Check if content script is already present
   try {
-    const response = await chrome.tabs.sendMessage(tabId, { type: 'ping' });
-    return response?.pong === true;
-  } catch {
-    // Content script not present, inject it
-    await injectContentScripts(tabId);
-    return true;
+    const response = await chrome.tabs.sendMessage(tabId, { type: 'test-read', action: 'test-read' });
+    if (response && (typeof response.title === 'string' || typeof response.url === 'string')) {
+      return true;
+    }
+  } catch (error) {
+    logger.debug('Content script ping failed, injecting...', error?.message || error);
   }
+
+  await injectContentScripts(tabId);
+
+  // Allow a brief moment for scripts to initialize before returning.
+  await new Promise(resolve => setTimeout(resolve, 100));
+  return true;
 }
 
 function urlEligible(url) {
@@ -2879,41 +3186,46 @@ function urlEligible(url) {
 }
 
 async function maybeAutoInject(tabId, url) {
-  console.log('[Background] maybeAutoInject called for tab:', tabId, 'url:', url);
+  logger.info('maybeAutoInject called for tab:', tabId, 'url:', url);
 
   if (!urlEligible(url)) {
-    console.log('[Background] URL not eligible:', url);
+    logger.info('URL not eligible:', url);
     return;
   }
 
   try {
     const tabInfo = await chrome.tabs.get(tabId);
     if (!tabInfo || !tabInfo.active) {
-      console.log('[Background] Tab not active or not found:', tabInfo);
+      logger.info('Tab not active or not found:', tabInfo);
       return;
     }
 
     // Check if auto-translate is enabled
     const config = await backgroundService.getConfig();
-    console.log('[Background] Auto-translate config:', config.autoTranslateEnabled);
+    logger.info('Auto-translate config:', config.autoTranslateEnabled);
 
     if (!config.autoTranslateEnabled) {
-      console.log('[Background] Auto-translate is disabled');
+      logger.info('Auto-translate is disabled');
       return;
     }
 
-    console.log('[Background] Auto-translate enabled! Injecting content script...');
+    logger.info('Auto-translate enabled! Injecting content script...');
 
     // Inject content script and start auto-translation
     await ensureInjected(tabId);
 
-    // Give content script time to initialize, then start auto-translate
+    // Kick off translation on the page using the main content script contract
     setTimeout(() => {
-      console.log('[Background] Sending startAutoTranslate message to tab:', tabId);
-      chrome.tabs.sendMessage(tabId, { type: 'startAutoTranslate' }).catch((error) => {
-        console.log('[Background] Failed to send startAutoTranslate message:', error);
+      logger.info('Enabling auto-translate on tab:', tabId);
+      chrome.tabs.sendMessage(tabId, { type: 'toggleAutoTranslate', action: 'toggle-auto-translate', enabled: true }).catch((error) => {
+        logger.info('Failed to toggle auto-translate:', error);
       });
-    }, 500);
+
+      logger.info('Sending start message to tab:', tabId);
+      chrome.tabs.sendMessage(tabId, { type: 'start', action: 'start', force: true }).catch((error) => {
+        logger.info('Failed to send start message:', error);
+      });
+    }, 300);
 
   } catch (error) {
     logger.debug('Auto-injection failed for tab:', tabId, error);
@@ -2921,26 +3233,30 @@ async function maybeAutoInject(tabId, url) {
 }
 
 // Listen for tab updates (page loads)
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  console.log('[Background] Tab updated:', tabId, 'status:', changeInfo.status, 'active:', tab?.active);
+if (chrome.tabs && chrome.tabs.onUpdated && typeof chrome.tabs.onUpdated.addListener === 'function') {
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    logger.info('Tab updated:', tabId, 'status:', changeInfo.status, 'active:', tab?.active);
 
-  if (changeInfo.status === 'complete' && tab && tab.url && tab.active) {
-    console.log('[Background] Tab loaded completely, attempting auto-inject...');
-    maybeAutoInject(tabId, tab.url);
-  }
-});
-
-// Listen for tab activation (switching tabs)
-chrome.tabs.onActivated.addListener(async ({ tabId }) => {
-  console.log('[Background] Tab activated:', tabId);
-
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    if (tab && tab.url && tab.status === 'complete') {
-      console.log('[Background] Activated tab is complete, attempting auto-inject...');
+    if (changeInfo.status === 'complete' && tab && tab.url && tab.active) {
+      logger.info('Tab loaded completely, attempting auto-inject...');
       maybeAutoInject(tabId, tab.url);
     }
-  } catch (error) {
-    logger.debug('Tab activation handling failed:', error);
-  }
-});
+  });
+}
+
+// Listen for tab activation (switching tabs)
+if (chrome.tabs && chrome.tabs.onActivated && typeof chrome.tabs.onActivated.addListener === 'function') {
+  chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+    logger.info('Tab activated:', tabId);
+
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab && tab.url && tab.status === 'complete') {
+        logger.info('Activated tab is complete, attempting auto-inject...');
+        maybeAutoInject(tabId, tab.url);
+      }
+    } catch (error) {
+      logger.debug('Tab activation handling failed:', error);
+    }
+  });
+}

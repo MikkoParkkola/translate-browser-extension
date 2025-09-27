@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">12.34% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>10/81</span>
+                <span class='fraction'>0/81</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">20.31% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>13/64</span>
+                <span class='fraction'>0/64</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">5.55% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>1/18</span>
+                <span class='fraction'>0/18</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">13.33% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>10/75</span>
+                <span class='fraction'>0/75</span>
             </div>
         
             
@@ -306,12 +306,12 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -507,24 +507,24 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
-<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -538,13 +538,13 @@
  * HTTP Client implementation following the defined interface
  */
 class HttpClient {
-  constructor(options = {}) {
-    this.defaultRetries = options.retries || 3;
-    this.timeout = options.timeout || 30000;
-    this.userAgent = options.userAgent || 'Qwen-Translator/1.0';
+<span class="fstat-no" title="function not covered" >  co</span>nstructor(options = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
+<span class="cstat-no" title="statement not covered" >    this.defaultRetries = options.retries || 3;</span>
+<span class="cstat-no" title="statement not covered" >    this.timeout = options.timeout || 30000;</span>
+<span class="cstat-no" title="statement not covered" >    this.userAgent = options.userAgent || 'Qwen-Translator/1.0';</span>
     
     // Use fetch if available, fallback to XHR
-    this.fetchFn = typeof fetch !== 'undefined' ? fetch : <span class="branch-1 cbranch-no" title="branch not covered" >null;</span>
+<span class="cstat-no" title="statement not covered" >    this.fetchFn = typeof fetch !== 'undefined' ? fetch : null;</span>
   }
 &nbsp;
   /**
@@ -740,24 +740,24 @@ class HttpClient {
 }
 &nbsp;
 // Create default instance
-const defaultHttpClient = new HttpClient();
+const defaultHttpClient = <span class="cstat-no" title="statement not covered" >new HttpClient();</span>
 &nbsp;
 // Export for different environments
-<span class="missing-if-branch" title="else path not taken" >E</span>if (typeof module !== 'undefined') {
-  module.exports = {
+<span class="cstat-no" title="statement not covered" >if (typeof module !== 'undefined') {</span>
+<span class="cstat-no" title="statement not covered" >  module.exports = {</span>
     HttpClient,
     defaultHttpClient
   };
 }
 &nbsp;
-<span class="missing-if-branch" title="else path not taken" >E</span>if (typeof window !== 'undefined') {
-  window.qwenHttpClient = {
+<span class="cstat-no" title="statement not covered" >if (typeof window !== 'undefined') {</span>
+<span class="cstat-no" title="statement not covered" >  window.qwenHttpClient = {</span>
     HttpClient,
     defaultHttpClient
   };
 }
 &nbsp;
-<span class="missing-if-branch" title="if path not taken" >I</span>if (typeof self !== 'undefined' &amp;&amp; typeof window === 'undefined') {
+<span class="cstat-no" title="statement not covered" >if (typeof self !== 'undefined' &amp;&amp; typeof window === 'undefined') {</span>
 <span class="cstat-no" title="statement not covered" >  self.qwenHttpClient = {</span>
     HttpClient,  
     defaultHttpClient
@@ -769,7 +769,7 @@ const defaultHttpClient = new HttpClient();
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-23T01:02:19.545Z
+                at 2025-09-25T18:54:34.199Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

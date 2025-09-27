@@ -1,7 +1,8 @@
 
 (function(root){
-  const TARGET_PROVIDERS = ['openai', 'claude', 'gemini', 'mistral'];
+  const TARGET_PROVIDERS = ['hunyuan-local', 'openai', 'claude', 'gemini', 'mistral'];
   const COST_RATES = {
+    'hunyuan-local': 0,
     openai: 0.000002,
     claude: 0.000003,
     gemini: 0.0000015,
@@ -18,8 +19,15 @@
     const results = {};
     for (const name of order) {
       if (!TARGET_PROVIDERS.includes(name)) continue;
-      const cfg = providers[name];
-      if (!cfg || !cfg.apiKey || !cfg.apiEndpoint || !cfg.model) continue;
+      const cfg = { ...(providers[name] || {}) };
+      if (name === 'hunyuan-local') {
+        cfg.apiEndpoint = cfg.apiEndpoint || 'local://hunyuan-mt-7b';
+        cfg.model = cfg.model || 'Hunyuan-MT-7B.i1-Q4_K_M.gguf';
+        cfg.enabled = cfg.enabled !== false;
+        if (!cfg.enabled) continue;
+      }
+      if (!cfg.apiEndpoint || !cfg.model) continue;
+      if (name !== 'hunyuan-local' && !cfg.apiKey) continue;
       const start = Date.now();
       try {
         await root.qwenTranslate({

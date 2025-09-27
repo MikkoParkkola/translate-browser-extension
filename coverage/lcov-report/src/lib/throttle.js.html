@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">14.75% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>9/61</span>
+                <span class='fraction'>0/61</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">22.22% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>8/36</span>
+                <span class='fraction'>0/36</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">5.88% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>1/17</span>
+                <span class='fraction'>0/17</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">16.36% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>9/55</span>
+                <span class='fraction'>0/55</span>
             </div>
         
             
@@ -233,13 +233,13 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -340,7 +340,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -369,8 +369,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -395,14 +395,14 @@
  */
 &nbsp;
 class Throttle {
-  constructor(options = {}) {
-    this.requestLimit = options.requestLimit || 60;
-    this.tokenLimit = options.tokenLimit || 100000;
-    this.windowMs = options.windowMs || 60000; // 1 minute
+<span class="fstat-no" title="function not covered" >  co</span>nstructor(options = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
+<span class="cstat-no" title="statement not covered" >    this.requestLimit = options.requestLimit || 60;</span>
+<span class="cstat-no" title="statement not covered" >    this.tokenLimit = options.tokenLimit || 100000;</span>
+<span class="cstat-no" title="statement not covered" >    this.windowMs = options.windowMs || 60000; </span>// 1 minute
     
-    this.requests = [];
-    this.tokens = 0;
-    this.tokenResetTime = Date.now() + this.windowMs;
+<span class="cstat-no" title="statement not covered" >    this.requests = [];</span>
+<span class="cstat-no" title="statement not covered" >    this.tokens = 0;</span>
+<span class="cstat-no" title="statement not covered" >    this.tokenResetTime = Date.now() + this.windowMs;</span>
   }
 &nbsp;
   // Check if we can make a request
@@ -503,7 +503,7 @@ class Throttle {
 }
 &nbsp;
 // Global throttle instance
-let globalThrottle = new Throttle();
+let globalThrottle = <span class="cstat-no" title="statement not covered" >new Throttle();</span>
 &nbsp;
 // Factory function to create throttles
 function <span class="fstat-no" title="function not covered" >createThrottle(</span>options) {
@@ -532,8 +532,8 @@ function <span class="fstat-no" title="function not covered" >approxTokens(</spa
 }
 &nbsp;
 // Export for browser extension
-if (typeof window !== 'undefined') {
-  window.Throttle = {
+<span class="cstat-no" title="statement not covered" >if (typeof window !== 'undefined') {</span>
+<span class="cstat-no" title="statement not covered" >  window.Throttle = {</span>
     createThrottle,
     configure,
     getUsage,
@@ -541,7 +541,7 @@ if (typeof window !== 'undefined') {
     approxTokens,
     globalThrottle: <span class="fstat-no" title="function not covered" >()</span> =&gt; <span class="cstat-no" title="statement not covered" >globalThrottle</span>
   };
-} else <span class="cstat-no" title="statement not covered" ><span class="missing-if-branch" title="else path not taken" >E</span>if (typeof self !== 'undefined') {</span>
+} else <span class="cstat-no" title="statement not covered" >if (typeof self !== 'undefined') {</span>
   // Service worker context
 <span class="cstat-no" title="statement not covered" >  self.Throttle = {</span>
     createThrottle,
@@ -559,7 +559,7 @@ if (typeof window !== 'undefined') {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-24T11:05:09.171Z
+                at 2025-09-25T18:54:34.199Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

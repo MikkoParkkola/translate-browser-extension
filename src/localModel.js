@@ -1,3 +1,5 @@
+import { Logger } from './lib/logger.js';
+
 /**
  * Local Model Manager for Hunyuan-MT-7B using llama.cpp
  * Handles model download, loading, and translation with memory efficiency
@@ -5,6 +7,7 @@
 
 class LocalModelManager {
   constructor() {
+    this.logger = Logger.create('local-model');
     this.isInitialized = false;
     this.modelLoaded = false;
     this.llamaCppInstance = null;
@@ -29,13 +32,13 @@ class LocalModelManager {
       // Check if model exists in storage
       const modelStatus = await this.getModelStatus();
       if (modelStatus.downloaded) {
-        console.log('[LocalModel] Model already downloaded');
+        this.logger.info('[LocalModel] Model already downloaded');
         this.modelPath = modelStatus.path;
       }
 
       this.isInitialized = true;
     } catch (error) {
-      console.error('[LocalModel] Initialization failed:', error);
+      this.logger.error('[LocalModel] Initialization failed:', error);
     }
   }
 
@@ -115,10 +118,10 @@ class LocalModelManager {
       });
 
       this.modelPath = 'indexeddb://hunyuan-mt-model';
-      console.log('[LocalModel] Model downloaded successfully');
+      this.logger.info('[LocalModel] Model downloaded successfully');
 
     } catch (error) {
-      console.error('[LocalModel] Download failed:', error);
+      this.logger.error('[LocalModel] Download failed:', error);
       throw error;
     } finally {
       this.isDownloading = false;
@@ -192,9 +195,9 @@ class LocalModelManager {
         });
       });
 
-      console.log('[LocalModel] Model loaded successfully');
+      this.logger.info('[LocalModel] Model loaded successfully');
     } catch (error) {
-      console.error('[LocalModel] Failed to load model:', error);
+      this.logger.error('[LocalModel] Failed to load model:', error);
       throw error;
     }
   }
@@ -301,9 +304,9 @@ Text to translate: ${text}<|im_end|>
       }
 
       this.modelLoaded = false;
-      console.log('[LocalModel] Model unloaded to free memory');
+      this.logger.info('[LocalModel] Model unloaded to free memory');
     } catch (error) {
-      console.error('[LocalModel] Error unloading model:', error);
+      this.logger.error('[LocalModel] Error unloading model:', error);
     }
   }
 
@@ -325,7 +328,7 @@ Text to translate: ${text}<|im_end|>
           // Clear storage
           chrome.storage.local.remove(['localModel'], () => {
             this.modelPath = null;
-            console.log('[LocalModel] Model deleted successfully');
+            this.logger.info('[LocalModel] Model deleted successfully');
             resolve();
           });
         };

@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/180</span>
+                <span class='fraction'>0/181</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/173</span>
+                <span class='fraction'>0/174</span>
             </div>
         
             
@@ -654,7 +654,12 @@
 <a name='L589'></a><a href='#L589'>589</a>
 <a name='L590'></a><a href='#L590'>590</a>
 <a name='L591'></a><a href='#L591'>591</a>
-<a name='L592'></a><a href='#L592'>592</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L592'></a><a href='#L592'>592</a>
+<a name='L593'></a><a href='#L593'>593</a>
+<a name='L594'></a><a href='#L594'>594</a>
+<a name='L595'></a><a href='#L595'>595</a>
+<a name='L596'></a><a href='#L596'>596</a>
+<a name='L597'></a><a href='#L597'>597</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -703,6 +708,11 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1245,7 +1255,9 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { Logger } from '../lib/logger.js';
+&nbsp;
+/**
  * Translation Engine - Core translation orchestration and provider management
  *
  * Provides unified interface for translation services with intelligent provider selection,
@@ -1293,6 +1305,9 @@ class TranslationEngine {
      * Initialize translation engine with provider manager and rate limiter
      */
 <span class="fstat-no" title="function not covered" >    co</span>nstructor() {
+        /** @type {Logger} */
+<span class="cstat-no" title="statement not covered" >        this.logger = Logger.create('translation-engine');</span>
+&nbsp;
         /** @type {ProviderManager} */
 <span class="cstat-no" title="statement not covered" >        this.providerManager = null;</span>
 &nbsp;
@@ -1333,9 +1348,9 @@ class TranslationEngine {
 <span class="cstat-no" title="statement not covered" >            await this.rateLimiter.initialize();</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >            this.isInitialized = true;</span>
-<span class="cstat-no" title="statement not covered" >            console.log('Translation engine initialized successfully');</span>
+<span class="cstat-no" title="statement not covered" >            this.logger.info('Translation engine initialized successfully');</span>
         } catch (error) {
-<span class="cstat-no" title="statement not covered" >            console.error('Failed to initialize translation engine:', error);</span>
+<span class="cstat-no" title="statement not covered" >            this.logger.error('Failed to initialize translation engine:', error);</span>
 <span class="cstat-no" title="statement not covered" >            throw new Error(`Translation engine initialization failed: ${error.message}`);</span>
         }
     }
@@ -1441,7 +1456,7 @@ class TranslationEngine {
 &nbsp;
             } catch (error) {
 <span class="cstat-no" title="statement not covered" >                lastError = error;</span>
-<span class="cstat-no" title="statement not covered" >                console.warn(`Translation attempt ${attempts} failed:`, error.message);</span>
+<span class="cstat-no" title="statement not covered" >                this.logger.warn(`Translation attempt ${attempts} failed:`, error.message);</span>
 &nbsp;
                 // Don't retry for certain errors
 <span class="cstat-no" title="statement not covered" >                if (error.message.includes('authentication') ||</span>
@@ -1672,7 +1687,7 @@ class TranslationEngine {
 <span class="cstat-no" title="statement not covered" >                    if (result.status === 'fulfilled') {</span>
 <span class="cstat-no" title="statement not covered" >                        results.push(result.value);</span>
                     } else {
-<span class="cstat-no" title="statement not covered" >                        console.error(`Batch translation failed for text ${i + index}:`, result.reason);</span>
+<span class="cstat-no" title="statement not covered" >                        this.logger.error(`Batch translation failed for text ${i + index}:`, result.reason);</span>
                         // Create error result
 <span class="cstat-no" title="statement not covered" >                        results.push({</span>
                             originalText: batch[index],
@@ -1766,7 +1781,7 @@ class TranslationEngine {
      */
 <span class="fstat-no" title="function not covered" >    cl</span>earCache() {
 <span class="cstat-no" title="statement not covered" >        this.cache.clear();</span>
-<span class="cstat-no" title="statement not covered" >        console.log('Translation cache cleared');</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.info('Translation cache cleared');</span>
     }
 &nbsp;
     /**
@@ -1777,11 +1792,11 @@ class TranslationEngine {
 <span class="cstat-no" title="statement not covered" >            try {</span>
 <span class="cstat-no" title="statement not covered" >                controller.abort();</span>
             } catch (error) {
-<span class="cstat-no" title="statement not covered" >                console.warn('Error aborting request:', error);</span>
+<span class="cstat-no" title="statement not covered" >                this.logger.warn('Error aborting request:', error);</span>
             }
         });
 <span class="cstat-no" title="statement not covered" >        this.activeRequests = [];</span>
-<span class="cstat-no" title="statement not covered" >        console.log('All active translation requests cancelled');</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.info('All active translation requests cancelled');</span>
     }
 &nbsp;
     /**
@@ -1827,7 +1842,7 @@ class TranslationEngine {
 <span class="cstat-no" title="statement not covered" >        this.cancelAllRequests();</span>
 <span class="cstat-no" title="statement not covered" >        this.clearCache();</span>
 <span class="cstat-no" title="statement not covered" >        this.isInitialized = false;</span>
-<span class="cstat-no" title="statement not covered" >        console.log('Translation engine destroyed');</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.info('Translation engine destroyed');</span>
     }
 }
 &nbsp;
@@ -1843,7 +1858,7 @@ class TranslationEngine {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-23T01:02:19.545Z
+                at 2025-09-25T18:54:34.199Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

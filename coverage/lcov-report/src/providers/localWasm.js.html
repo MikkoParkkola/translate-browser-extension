@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">30.23% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>13/43</span>
+                <span class='fraction'>0/43</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">35.59% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>21/59</span>
+                <span class='fraction'>0/59</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">20% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>1/5</span>
+                <span class='fraction'>0/5</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">27.02% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>10/37</span>
+                <span class='fraction'>0/37</span>
             </div>
         
             
@@ -142,13 +142,13 @@
 <a name='L77'></a><a href='#L77'>77</a>
 <a name='L78'></a><a href='#L78'>78</a>
 <a name='L79'></a><a href='#L79'>79</a>
-<a name='L80'></a><a href='#L80'>80</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">2x</span>
+<a name='L80'></a><a href='#L80'>80</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -200,36 +200,36 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">;(function () {
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">;<span class="cstat-no" title="statement not covered" >(<span class="fstat-no" title="function not covered" >fu</span>nction () {</span>
 let modelPromise;
-const logger = (typeof window !== 'undefined' &amp;&amp; window.qwenLogger &amp;&amp; <span class="branch-2 cbranch-no" title="branch not covered" >window.qwenLogger.create)</span> ? 
-<span class="branch-0 cbranch-no" title="branch not covered" >              window.qwenLogger.create('provider:localWasm') </span>:
-              (typeof self !== 'undefined' &amp;&amp; self.qwenLogger &amp;&amp; <span class="branch-2 cbranch-no" title="branch not covered" >self.qwenLogger.create)</span> ?
-<span class="branch-0 cbranch-no" title="branch not covered" >              self.qwenLogger.create('provider:localWasm') </span>: console;
-const errorHandler = (typeof window !== 'undefined' &amp;&amp; window.qwenProviderErrorHandler) ||
+const logger = <span class="cstat-no" title="statement not covered" >(typeof window !== 'undefined' &amp;&amp; window.qwenLogger &amp;&amp; window.qwenLogger.create) ? </span>
+              window.qwenLogger.create('provider:localWasm') :
+              (typeof self !== 'undefined' &amp;&amp; self.qwenLogger &amp;&amp; self.qwenLogger.create) ?
+              self.qwenLogger.create('provider:localWasm') : console;
+const errorHandler = <span class="cstat-no" title="statement not covered" >(typeof window !== 'undefined' &amp;&amp; window.qwenProviderErrorHandler) ||</span>
                    (typeof self !== 'undefined' &amp;&amp; self.qwenProviderErrorHandler) ||
-                   (typeof require !== 'undefined' ? require('../core/provider-error-handler') : <span class="branch-1 cbranch-no" title="branch not covered" >null)</span>;
+                   (typeof require !== 'undefined' ? require('../core/provider-error-handler') : null);
 &nbsp;
 async function <span class="fstat-no" title="function not covered" >loadModel(</span>) {
 <span class="cstat-no" title="statement not covered" >  if (!modelPromise) {</span>
@@ -279,26 +279,26 @@ async function <span class="fstat-no" title="function not covered" >translate(</
 }
 &nbsp;
 // Wrap main functions with standardized error handling
-const wrappedTranslate = errorHandler ? 
-  errorHandler.wrapProviderOperation(translate, { provider: 'localWasm', logger }) : <span class="branch-1 cbranch-no" title="branch not covered" >translate;</span>
+const wrappedTranslate = <span class="cstat-no" title="statement not covered" >errorHandler ? </span>
+  errorHandler.wrapProviderOperation(translate, { provider: 'localWasm', logger }) : translate;
 &nbsp;
-const provider = {
+const provider = <span class="cstat-no" title="statement not covered" >{</span>
   translate: wrappedTranslate,
   label: 'Local WASM',
   configFields: [],
   throttle: { requestLimit: 1, windowMs: 1000 },
 };
-if (typeof window !== 'undefined') window.qwenProviderLocalWasm = provider;
-else <span class="cstat-no" title="statement not covered" ><span class="missing-if-branch" title="else path not taken" >E</span>if (typeof self !== 'undefined') <span class="cstat-no" title="statement not covered" >self.qwenProviderLocalWasm = provider;</span></span>
+<span class="cstat-no" title="statement not covered" >if (typeof window !== 'undefined') <span class="cstat-no" title="statement not covered" >window.qwenProviderLocalWasm = provider;</span></span>
+else <span class="cstat-no" title="statement not covered" >if (typeof self !== 'undefined') <span class="cstat-no" title="statement not covered" >self.qwenProviderLocalWasm = provider;</span></span>
 &nbsp;
-try {
-  const reg = (typeof window !== 'undefined' &amp;&amp; window.qwenProviders) ||
-              (<span class="branch-2 cbranch-no" title="branch not covered" >typeof self !== 'undefined' </span>&amp;&amp; <span class="branch-3 cbranch-no" title="branch not covered" >self.qwenProviders)</span> ||
-              (<span class="branch-4 cbranch-no" title="branch not covered" >typeof require !== 'undefined' ? require('../lib/providers') : null)</span>;
-  <span class="missing-if-branch" title="else path not taken" >E</span>if (reg &amp;&amp; reg.register &amp;&amp; !reg.get('local-wasm')) reg.register('local-wasm', provider);
+<span class="cstat-no" title="statement not covered" >try {</span>
+  const reg = <span class="cstat-no" title="statement not covered" >(typeof window !== 'undefined' &amp;&amp; window.qwenProviders) ||</span>
+              (typeof self !== 'undefined' &amp;&amp; self.qwenProviders) ||
+              (typeof require !== 'undefined' ? require('../lib/providers') : null);
+<span class="cstat-no" title="statement not covered" >  if (reg &amp;&amp; reg.register &amp;&amp; !reg.get('local-wasm')) <span class="cstat-no" title="statement not covered" >reg.register('local-wasm', provider);</span></span>
 } catch {}
 &nbsp;
-<span class="missing-if-branch" title="else path not taken" >E</span>if (typeof module !== 'undefined') module.exports = provider;
+<span class="cstat-no" title="statement not covered" >if (typeof module !== 'undefined') <span class="cstat-no" title="statement not covered" >module.exports = provider;</span></span>
 })();
 &nbsp;</pre></td></tr></table></pre>
 
@@ -307,7 +307,7 @@ try {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-23T01:02:19.545Z
+                at 2025-09-25T18:54:34.199Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

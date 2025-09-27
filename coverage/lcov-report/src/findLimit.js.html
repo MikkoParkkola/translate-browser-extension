@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">91.3% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>21/23</span>
+                <span class='fraction'>0/23</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">61.11% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>11/18</span>
+                <span class='fraction'>0/18</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">66.66% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>2/3</span>
+                <span class='fraction'>0/3</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">94.11% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>16/17</span>
+                <span class='fraction'>0/17</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line high'></div>
+    <div class='status-line low'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -93,57 +93,57 @@
 <a name='L28'></a><a href='#L28'>28</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">43x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">20x</span>
-<span class="cline-any cline-yes">20x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-yes">20x</span>
-<span class="cline-any cline-yes">20x</span>
-<span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">10x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">function <span class="fstat-no" title="function not covered" >defaultCheck(</span>) { <span class="cstat-no" title="statement not covered" >return Promise.resolve(false); </span>}
 &nbsp;
-async function findLimit(check = <span class="branch-0 cbranch-no" title="branch not covered" >defaultCheck,</span> { start = <span class="branch-0 cbranch-no" title="branch not covered" >1,</span> max = <span class="branch-0 cbranch-no" title="branch not covered" >8192 </span>} = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
-  <span class="missing-if-branch" title="if path not taken" >I</span>if (start &lt; 1) <span class="cstat-no" title="statement not covered" >start = 1;</span>
-  let low = 0;
-  let high = start;
-  async function safe(n) {
-    try { return await check(n); } catch { return false; }
+async function <span class="fstat-no" title="function not covered" >findLimit(</span>check = <span class="branch-0 cbranch-no" title="branch not covered" >defaultCheck,</span> { start = <span class="branch-0 cbranch-no" title="branch not covered" >1,</span> max = <span class="branch-0 cbranch-no" title="branch not covered" >8192 </span>} = <span class="branch-0 cbranch-no" title="branch not covered" >{})</span> {
+<span class="cstat-no" title="statement not covered" >  if (start &lt; 1) <span class="cstat-no" title="statement not covered" >start = 1;</span></span>
+  let low = <span class="cstat-no" title="statement not covered" >0;</span>
+  let high = <span class="cstat-no" title="statement not covered" >start;</span>
+  async function <span class="fstat-no" title="function not covered" >safe(</span>n) {
+<span class="cstat-no" title="statement not covered" >    try { <span class="cstat-no" title="statement not covered" >return await check(n); </span>} catch { <span class="cstat-no" title="statement not covered" >return false; </span>}</span>
   }
-  while (high &lt;= max &amp;&amp; (await safe(high))) {
-    low = high;
-    high *= 2;
+<span class="cstat-no" title="statement not covered" >  while (high &lt;= max &amp;&amp; (await safe(high))) {</span>
+<span class="cstat-no" title="statement not covered" >    low = high;</span>
+<span class="cstat-no" title="statement not covered" >    high *= 2;</span>
   }
-  if (high &gt; max) high = max + 1;
-  while (low + 1 &lt; high) {
-    const mid = Math.floor((low + high) / 2);
-    if (mid &gt; max || !(await safe(mid))) {
-      high = mid;
+<span class="cstat-no" title="statement not covered" >  if (high &gt; max) <span class="cstat-no" title="statement not covered" >high = max + 1;</span></span>
+<span class="cstat-no" title="statement not covered" >  while (low + 1 &lt; high) {</span>
+    const mid = <span class="cstat-no" title="statement not covered" >Math.floor((low + high) / 2);</span>
+<span class="cstat-no" title="statement not covered" >    if (mid &gt; max || !(await safe(mid))) {</span>
+<span class="cstat-no" title="statement not covered" >      high = mid;</span>
     } else {
-      low = mid;
+<span class="cstat-no" title="statement not covered" >      low = mid;</span>
     }
   }
-  return low;
+<span class="cstat-no" title="statement not covered" >  return low;</span>
 }
 &nbsp;
-<span class="missing-if-branch" title="else path not taken" >E</span>if (typeof module !== 'undefined') module.exports = findLimit;
-<span class="missing-if-branch" title="else path not taken" >E</span>if (typeof window !== 'undefined') window.qwenFindLimit = findLimit;
+<span class="cstat-no" title="statement not covered" >if (typeof module !== 'undefined') <span class="cstat-no" title="statement not covered" >module.exports = findLimit;</span></span>
+<span class="cstat-no" title="statement not covered" >if (typeof window !== 'undefined') <span class="cstat-no" title="statement not covered" >window.qwenFindLimit = findLimit;</span></span>
 &nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
@@ -151,7 +151,7 @@ async function findLimit(check = <span class="branch-0 cbranch-no" title="branch
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-24T11:05:09.171Z
+                at 2025-09-25T18:54:34.199Z
             </div>
         <script src="../prettify.js"></script>
         <script>

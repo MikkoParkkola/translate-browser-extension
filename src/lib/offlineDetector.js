@@ -57,7 +57,9 @@ class OfflineDetector {
       connectivityChecks: [],
       currentStreak: 0, // consecutive successes or failures
       connectionQuality: 'unknown', // 'excellent', 'good', 'poor', 'offline'
-      qualityScore: 0 // 0-100
+      qualityScore: 0, // 0-100
+      qualityInitialized: false,
+      lastQualitySource: 'auto'
     };
 
     // Retry queue for failed requests
@@ -190,7 +192,7 @@ class OfflineDetector {
       });
 
       clearTimeout(timeoutId);
-      const duration = Date.now() - startTime;
+      const duration = Math.max(1, Date.now() - startTime);
 
       return {
         success: true,
@@ -349,7 +351,7 @@ class OfflineDetector {
    */
   async assessConnectionQuality() {
     if (!this.state.isOnline) {
-      this.updateQuality('offline', 0);
+      this.updateQuality('offline', 0, { source: 'auto' });
       return;
     }
 
@@ -365,7 +367,7 @@ class OfflineDetector {
         .map(r => r.value);
 
       if (successfulPings.length === 0) {
-        this.updateQuality('poor', 10);
+        this.updateQuality('poor', 10, { source: 'auto' });
         return;
       }
 
@@ -397,22 +399,24 @@ class OfflineDetector {
         score = Math.max(5, successRate * 30);
       }
 
-      this.updateQuality(quality, Math.round(score));
+      this.updateQuality(quality, Math.round(score), { source: 'auto' });
 
     } catch (error) {
       this.log('Quality assessment failed:', error.message);
-      this.updateQuality('poor', 20);
+      this.updateQuality('poor', 20, { source: 'auto' });
     }
   }
 
   /**
    * Update connection quality state
    */
-  updateQuality(quality, score) {
+  updateQuality(quality, score, { source = 'manual' } = {}) {
     const previousQuality = this.state.connectionQuality;
 
     this.state.connectionQuality = quality;
     this.state.qualityScore = score;
+    this.state.qualityInitialized = true;
+    this.state.lastQualitySource = source;
 
     if (quality !== previousQuality) {
       this.log(`Connection quality changed: ${previousQuality} → ${quality} (${score})`);
@@ -607,9 +611,24 @@ class OfflineDetector {
    * Check if should use fallbacks
    */
   shouldUseFallbacks() {
-    return !this.state.isOnline ||
-           this.state.connectionQuality === 'poor' ||
-           this.state.connectionQuality === 'very-poor';
+    if (this.config.debug) {
+      console.log('[OfflineDetector] shouldUseFallbacks check', {
+        isOnline: this.state.isOnline,
+        quality: this.state.connectionQuality,
+        initialized: this.state.qualityInitialized,
+        source: this.state.lastQualitySource
+      });
+    }
+    if (!this.state.isOnline) return true;
+    if (!this.state.qualityInitialized) return false;
+    if (this.state.connectionQuality === 'unknown') return false;
+    const poorQuality = this.state.connectionQuality === 'poor' ||
+                        this.state.connectionQuality === 'very-poor';
+    if (!poorQuality) return false;
+    const source = this.state.lastQualitySource || 'manual';
+    if (source !== 'auto') return true;
+    const checks = (this.state.connectivityChecks && this.state.connectivityChecks.length) || 0;
+    return checks >= (this.config.connectivityThreshold || 1);
   }
 
   /**

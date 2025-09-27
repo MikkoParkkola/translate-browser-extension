@@ -1,3 +1,5 @@
+import { Logger } from './logger.js';
+
 /**
  * Advanced Language Detection System
  * Enhanced language detection with machine learning-like heuristics,
@@ -6,11 +8,14 @@
 
 // Avoid redeclaration errors in Brave Browser
 if (typeof window !== 'undefined' && window.AdvancedLanguageDetector) {
+  // Logger not available outside class context, keeping console for this bootstrap message
   console.log('[AdvancedLanguageDetector] Class already exists, skipping redeclaration');
 } else {
 
 class AdvancedLanguageDetector {
   constructor(options = {}) {
+    this.logger = Logger.create('language-detector');
+
     this.options = {
       minSampleLength: 50,
       maxSampleLength: 1000,
@@ -200,7 +205,7 @@ class AdvancedLanguageDetector {
             results.push(result);
           }
         } catch (error) {
-          console.warn('[LanguageDetector] Detection method failed:', error);
+          this.logger.warn('[LanguageDetector] Detection method failed:', error);
         }
       }
 
@@ -217,7 +222,7 @@ class AdvancedLanguageDetector {
       return finalResult;
 
     } catch (error) {
-      console.error('[LanguageDetector] Detection failed:', error);
+      this.logger.error('[LanguageDetector] Detection failed:', error);
       return this.createResult(null, 0, 'detection_error');
     }
   }
@@ -395,7 +400,7 @@ class AdvancedLanguageDetector {
       }
 
     } catch (error) {
-      console.warn('[LanguageDetector] DOM detection failed:', error);
+      this.logger.warn('[LanguageDetector] DOM detection failed:', error);
     }
 
     return null;
@@ -424,7 +429,7 @@ class AdvancedLanguageDetector {
         }
       }
     } catch (error) {
-      console.warn('[LanguageDetector] Translation Memory detection failed:', error);
+      this.logger.warn('[LanguageDetector] Translation Memory detection failed:', error);
     }
 
     return null;
@@ -625,7 +630,7 @@ class AdvancedLanguageDetector {
     this.contentObserver = contentObserver;
     this.realTimeQueue = [];
 
-    console.log('[LanguageDetector] Real-time analysis started');
+    this.logger.info('[LanguageDetector] Real-time analysis started');
   }
 
   async analyzeNewContent(nodes, metadata = {}) {
@@ -664,7 +669,7 @@ class AdvancedLanguageDetector {
       return result;
 
     } catch (error) {
-      console.warn('[LanguageDetector] Real-time analysis failed:', error);
+      this.logger.warn('[LanguageDetector] Real-time analysis failed:', error);
     }
   }
 
@@ -729,7 +734,7 @@ class AdvancedLanguageDetector {
   clearCache() {
     this.detectionCache.clear();
     this.domainCache.clear();
-    console.log('[LanguageDetector] Cache cleared');
+    this.logger.info('[LanguageDetector] Cache cleared');
   }
 
   destroy() {
@@ -738,7 +743,7 @@ class AdvancedLanguageDetector {
       clearTimeout(this.analysisTimer);
     }
     this.realTimeQueue = [];
-    console.log('[LanguageDetector] Detector destroyed');
+    this.logger.info('[LanguageDetector] Detector destroyed');
   }
 }
 

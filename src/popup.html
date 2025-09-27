@@ -26,20 +26,23 @@
           </svg>
         </div>
         <div class="brand-text">
-          <h1 class="brand-title">TRANSLATE!</h1>
-          <button id="settings-button" class="settings-link" aria-label="Settings">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
-              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51h.09a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="2"/>
-            </svg>
-          </button>
+          <h1 class="brand-title">
+            <span id="productName">TRANSLATE!</span>
+            <span id="productAuthor" class="brand-author">by Mikko</span>
+          </h1>
         </div>
+        <button id="settings-button" class="settings-link" aria-label="Settings">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51h.09a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="2"/>
+          </svg>
+        </button>
       </div>
 
       <!-- Provider Status -->
       <div class="provider-status">
         <div class="provider-info">
-          <span id="current-provider" class="provider-name">Qwen MT Turbo</span>
+          <span id="current-provider" class="provider-name">Local Model (Hunyuan-MT-7B)</span>
           <span id="provider-status" class="status-indicator">🟢 Ready</span>
         </div>
       </div>
@@ -90,6 +93,32 @@
         </div>
       </section>
 
+      <!-- Provider Selection -->
+      <section class="provider-section">
+        <div class="provider-field">
+          <label for="provider-select" class="provider-label">Provider</label>
+          <div class="select-wrapper">
+            <select id="provider-select" class="provider-select" aria-label="Translation provider"></select>
+            <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <p id="provider-hint" class="provider-hint">Public Google Translate (no API key required).</p>
+        </div>
+
+        <div id="api-key-group" class="api-key-group" style="display: none;">
+          <div class="api-key-header">
+            <label for="api-key-input" class="provider-label">API key</label>
+            <button type="button" id="toggle-api-key" class="api-key-toggle" aria-label="Show API key">Show</button>
+          </div>
+          <div class="api-key-row">
+            <input type="password" id="api-key-input" class="api-key-input" placeholder="Enter API key" autocomplete="off" spellcheck="false">
+            <button type="button" id="save-api-key" class="api-key-save">Save</button>
+          </div>
+          <p id="api-key-hint" class="api-key-hint">Stored securely in Chrome sync storage.</p>
+        </div>
+      </section>
+
       <!-- Auto Translate Toggle -->
       <section class="auto-translate-section">
         <div class="toggle-row">
@@ -105,11 +134,15 @@
 
       <!-- Action Buttons -->
       <section class="action-section">
-        <button id="translate-selection-button" class="action-button action-button--primary">
-          <svg class="action-icon" width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2l3.09 6.26L22 9l-5 4.87L18.18 22 12 18.77 5.82 22 7 13.87 2 9l6.91-.74L12 2z" stroke="currentColor" stroke-width="2" fill="none"/>
-          </svg>
-          🎯 Translate Selection
+        <button id="translate-button" class="action-button action-button--primary">
+          <span class="button-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2l3.09 6.26L22 9l-5 4.87L18.18 22 12 18.77 5.82 22 7 13.87 2 9l6.91-.74L12 2z" stroke="currentColor" stroke-width="2" fill="none"/>
+            </svg>
+          </span>
+          <span class="button-text">Translate Selection</span>
+          <span class="button-loading" aria-hidden="true"></span>
+          <span class="progress-bar-mini" aria-hidden="true"></span>
         </button>
 
         <button id="translate-page-button" class="action-button action-button--secondary">

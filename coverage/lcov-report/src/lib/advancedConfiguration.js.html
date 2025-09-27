@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/308</span>
+                <span class='fraction'>0/313</span>
             </div>
         
             
@@ -39,14 +39,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/42</span>
+                <span class='fraction'>0/46</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/301</span>
+                <span class='fraction'>0/306</span>
             </div>
         
             
@@ -1081,7 +1081,15 @@
 <a name='L1016'></a><a href='#L1016'>1016</a>
 <a name='L1017'></a><a href='#L1017'>1017</a>
 <a name='L1018'></a><a href='#L1018'>1018</a>
-<a name='L1019'></a><a href='#L1019'>1019</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L1019'></a><a href='#L1019'>1019</a>
+<a name='L1020'></a><a href='#L1020'>1020</a>
+<a name='L1021'></a><a href='#L1021'>1021</a>
+<a name='L1022'></a><a href='#L1022'>1022</a>
+<a name='L1023'></a><a href='#L1023'>1023</a>
+<a name='L1024'></a><a href='#L1024'>1024</a>
+<a name='L1025'></a><a href='#L1025'>1025</a>
+<a name='L1026'></a><a href='#L1026'>1026</a>
+<a name='L1027'></a><a href='#L1027'>1027</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1089,6 +1097,14 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -2108,7 +2124,15 @@
 <span class="cstat-no" title="statement not covered" >(<span class="fstat-no" title="function not covered" >fu</span>nction(global) {</span>
   'use strict';
 &nbsp;
-  /**
+  
+  // Simple logger for advanced configuration
+  const logger = <span class="cstat-no" title="statement not covered" >{</span>
+    info: <span class="fstat-no" title="function not covered" >(.</span>..args) =&gt; <span class="cstat-no" title="statement not covered" >console.log('[AdvancedConfig]', ...args),</span>
+    warn: <span class="fstat-no" title="function not covered" >(.</span>..args) =&gt; <span class="cstat-no" title="statement not covered" >console.warn('[AdvancedConfig]', ...args),</span>
+    error: <span class="fstat-no" title="function not covered" >(.</span>..args) =&gt; <span class="cstat-no" title="statement not covered" >console.error('[AdvancedConfig]', ...args),</span>
+    debug: <span class="fstat-no" title="function not covered" >(.</span>..args) =&gt; <span class="cstat-no" title="statement not covered" >console.debug('[AdvancedConfig]', ...args)</span>
+  };
+/**
    * Advanced Configuration System for dynamic feature management and runtime adaptation
    */
   class AdvancedConfiguration {
@@ -2209,7 +2233,7 @@
      */
 <span class="fstat-no" title="function not covered" >    as</span>ync initialize() {
 <span class="cstat-no" title="statement not covered" >      if (this.options.debug) {</span>
-<span class="cstat-no" title="statement not covered" >        console.log('[AdvancedConfiguration] Initializing configuration system...');</span>
+<span class="cstat-no" title="statement not covered" >        logger.info('Initializing configuration system...');</span>
       }
 &nbsp;
       // Set up default configuration
@@ -2240,7 +2264,7 @@
       }
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      if (this.options.debug) {</span>
-<span class="cstat-no" title="statement not covered" >        console.log('[AdvancedConfiguration] Configuration system initialized');</span>
+<span class="cstat-no" title="statement not covered" >        logger.info('Configuration system initialized');</span>
       }
     }
 &nbsp;
@@ -2330,7 +2354,7 @@
 <span class="cstat-no" title="statement not covered" >            this.mergeConfig(persistedConfig);</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >            if (this.options.debug) {</span>
-<span class="cstat-no" title="statement not covered" >              console.log('[AdvancedConfiguration] Loaded persisted configuration');</span>
+<span class="cstat-no" title="statement not covered" >              logger.info('Loaded persisted configuration');</span>
             }
           }
         }
@@ -2342,7 +2366,7 @@
           }
         }
       } catch (error) {
-<span class="cstat-no" title="statement not covered" >        console.warn('[AdvancedConfiguration] Failed to load persisted config:', error);</span>
+<span class="cstat-no" title="statement not covered" >        logger.warn('Failed to load persisted config:', error);</span>
       }
     }
 &nbsp;
@@ -2390,7 +2414,7 @@
 <span class="cstat-no" title="statement not covered" >      this.mergeConfig(envConfig);</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      if (this.options.debug) {</span>
-<span class="cstat-no" title="statement not covered" >        console.log('[AdvancedConfiguration] Applied environment configuration:', envConfig);</span>
+<span class="cstat-no" title="statement not covered" >        logger.info('Applied environment configuration:', envConfig);</span>
       }
     }
 &nbsp;
@@ -2413,7 +2437,7 @@
       }
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      if (this.options.debug) {</span>
-<span class="cstat-no" title="statement not covered" >        console.log('[AdvancedConfiguration] Initialized feature flags:', this.featureFlags.size);</span>
+<span class="cstat-no" title="statement not covered" >        logger.info('Initialized feature flags:', this.featureFlags.size);</span>
       }
     }
 &nbsp;
@@ -2487,7 +2511,7 @@
 <span class="cstat-no" title="statement not covered" >          this.mergeConfig(segment.config);</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >          if (this.options.debug) {</span>
-<span class="cstat-no" title="statement not covered" >            console.log(`[AdvancedConfiguration] Applied ${segmentName} segment configuration`);</span>
+<span class="cstat-no" title="statement not covered" >            logger.info(`Applied ${segmentName} segment configuration`);</span>
           }
         }
       }
@@ -2563,11 +2587,11 @@
 <span class="cstat-no" title="statement not covered" >        this.mergeConfig(remoteConfig);</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >        if (this.options.debug) {</span>
-<span class="cstat-no" title="statement not covered" >          console.log('[AdvancedConfiguration] Applied remote configuration');</span>
+<span class="cstat-no" title="statement not covered" >          logger.info('Applied remote configuration');</span>
         }
 &nbsp;
       } catch (error) {
-<span class="cstat-no" title="statement not covered" >        console.warn('[AdvancedConfiguration] Failed to fetch remote config:', error);</span>
+<span class="cstat-no" title="statement not covered" >        logger.warn('Failed to fetch remote config:', error);</span>
       }
     }
 &nbsp;
@@ -2649,7 +2673,7 @@
       }
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      if (this.options.debug) {</span>
-<span class="cstat-no" title="statement not covered" >        console.log(`[AdvancedConfiguration] Set ${key} = ${value}`);</span>
+<span class="cstat-no" title="statement not covered" >        logger.info(`Set ${key} = ${value}`);</span>
       }
     }
 &nbsp;
@@ -2875,11 +2899,11 @@
         }
 &nbsp;
 <span class="cstat-no" title="statement not covered" >        if (this.options.debug) {</span>
-<span class="cstat-no" title="statement not covered" >          console.log('[AdvancedConfiguration] Configuration persisted');</span>
+<span class="cstat-no" title="statement not covered" >          logger.info('Configuration persisted');</span>
         }
 &nbsp;
       } catch (error) {
-<span class="cstat-no" title="statement not covered" >        console.warn('[AdvancedConfiguration] Failed to persist config:', error);</span>
+<span class="cstat-no" title="statement not covered" >        logger.warn('Failed to persist config:', error);</span>
       }
     }
 &nbsp;
@@ -3054,7 +3078,7 @@
 <span class="cstat-no" title="statement not covered" >      this.persistConfig();</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      if (this.options.debug) {</span>
-<span class="cstat-no" title="statement not covered" >        console.log('[AdvancedConfiguration] Configuration reset to defaults');</span>
+<span class="cstat-no" title="statement not covered" >        logger.info('Configuration reset to defaults');</span>
       }
     }
 &nbsp;
@@ -3087,7 +3111,7 @@
       }
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      if (this.options.debug) {</span>
-<span class="cstat-no" title="statement not covered" >        console.log('[AdvancedConfiguration] Configuration imported');</span>
+<span class="cstat-no" title="statement not covered" >        logger.info('Configuration imported');</span>
       }
     }
 &nbsp;
@@ -3103,7 +3127,7 @@
 <span class="cstat-no" title="statement not covered" >      this.pendingUpdates.clear();</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      if (this.options.debug) {</span>
-<span class="cstat-no" title="statement not covered" >        console.log('[AdvancedConfiguration] Configuration system cleaned up');</span>
+<span class="cstat-no" title="statement not covered" >        logger.info('Configuration system cleaned up');</span>
       }
     }
   }
@@ -3124,7 +3148,7 @@
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-24T11:05:09.171Z
+                at 2025-09-25T18:54:34.199Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

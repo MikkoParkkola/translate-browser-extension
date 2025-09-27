@@ -52,7 +52,7 @@ class ContentObserver {
     });
 
     // Intersection Observer for visibility tracking
-    if (this.options.enableSmartFiltering && 'IntersectionObserver' in window) {
+    if (this.options.enableSmartFiltering && typeof window.IntersectionObserver === 'function') {
       this.intersectionObserver = new IntersectionObserver(
         (entries) => this.handleIntersection(entries),
         {
@@ -119,6 +119,10 @@ class ContentObserver {
 
   // Collect translatable nodes from a root node
   collectTranslatableNodes(rootNode, collector) {
+    if (!rootNode || (typeof Node !== 'undefined' && !(rootNode instanceof Node))) {
+      return;
+    }
+
     if (rootNode.nodeType === Node.TEXT_NODE) {
       if (this.isTranslatableTextNode(rootNode)) {
         collector.add(rootNode);
@@ -144,7 +148,9 @@ class ContentObserver {
     this.processedNodes.add(element);
 
     // Use TreeWalker for efficient text node collection
-    const walker = document.createTreeWalker(
+    const doc = element.ownerDocument || document;
+
+    const walker = doc.createTreeWalker(
       element,
       NodeFilter.SHOW_TEXT,
       {
@@ -204,28 +210,41 @@ class ContentObserver {
 
   // Check if element should be translated
   isTranslatableElement(element) {
-    if (!element || element.nodeType !== Node.ELEMENT_NODE) return false;
+    if (!element) return false;
 
-    const tagName = element.tagName.toLowerCase();
+    const elementNodeType = (typeof Node !== 'undefined' && typeof Node.ELEMENT_NODE === 'number') ? Node.ELEMENT_NODE : 1;
+    if (typeof element.nodeType === 'number' && element.nodeType !== elementNodeType) {
+      return false;
+    }
+
+    const tagName = (element.tagName || '').toLowerCase();
 
     // Skip certain elements
     if (this.options.skipElements.includes(tagName)) return false;
 
+    const hasGetAttribute = typeof element.getAttribute === 'function';
+    const hasHasAttribute = typeof element.hasAttribute === 'function';
+    const hasClassList = typeof element.classList !== 'undefined' && typeof element.classList.contains === 'function';
+
     // Skip elements with no-translate attributes
     for (const attr of this.options.skipAttributes) {
+      if (!hasGetAttribute && !hasHasAttribute) break;
       if (attr.includes('=')) {
+        if (!hasGetAttribute) continue;
         const [name, value] = attr.split('=');
         if (element.getAttribute(name.trim()) === value.replace(/"/g, '').trim()) {
           return false;
         }
-      } else if (element.hasAttribute(attr)) {
+      } else if (hasHasAttribute && element.hasAttribute(attr)) {
         return false;
       }
     }
 
     // Skip elements with no-translate classes
-    for (const className of this.options.skipClasses) {
-      if (element.classList.contains(className)) return false;
+    if (hasClassList) {
+      for (const className of this.options.skipClasses) {
+        if (element.classList.contains(className)) return false;
+      }
     }
 
     // Skip hidden elements
@@ -242,7 +261,8 @@ class ContentObserver {
     }
 
     // Skip if parent has data-translated (already processed)
-    if (element.hasAttribute('data-translated') || element.closest('[data-translated]')) {
+    if ((typeof element.hasAttribute === 'function' && element.hasAttribute('data-translated')) ||
+        (typeof element.closest === 'function' && element.closest('[data-translated]'))) {
       return false;
     }
 
@@ -310,7 +330,18 @@ class ContentObserver {
     this.pendingNodes.clear();
 
     // Filter out nodes that are no longer in document
-    const validNodes = nodes.filter(node => document.contains(node));
+    const validNodes = nodes.filter(node => {
+      if (!node || typeof node !== 'object') return false;
+      if (typeof document.contains === 'function') {
+        const candidate = node.nodeType != null ? node : node.parentElement;
+        if (candidate && typeof candidate.nodeType === 'number') {
+          try {
+            if (!document.contains(candidate)) return false;
+          } catch (_) {}
+        }
+      }
+      return true;
+    });
 
     if (validNodes.length > 0) {
       // Group nodes by visibility for smart processing
@@ -396,22 +427,31 @@ class ContentObserver {
   // Check for pending translations in newly visible elements
   checkForPendingTranslations(element) {
     const textNodes = [];
-    const walker = document.createTreeWalker(
-      element,
-      NodeFilter.SHOW_TEXT,
-      {
-        acceptNode: (node) => {
-          return this.isTranslatableTextNode(node)
-            ? NodeFilter.FILTER_ACCEPT
-            : NodeFilter.FILTER_REJECT;
+
+    if (!element || (typeof element.nodeType === 'number' && typeof Node !== 'undefined' && element.nodeType !== Node.ELEMENT_NODE)) {
+      return;
+    }
+
+    let walker;
+    try {
+      walker = document.createTreeWalker(
+        element,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: (node) => {
+            return this.isTranslatableTextNode(node)
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_REJECT;
+          }
         }
-      }
-    );
+      );
+    } catch (_) {
+      return;
+    }
 
     let textNode;
     while (textNode = walker.nextNode()) {
-      // Check if this node needs translation
-      if (!textNode.parentElement.hasAttribute('data-translated')) {
+      if (!textNode.parentElement || !textNode.parentElement.hasAttribute || !textNode.parentElement.hasAttribute('data-translated')) {
         textNodes.push(textNode);
       }
     }

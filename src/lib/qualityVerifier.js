@@ -3,13 +3,17 @@
  * Analyzes translation quality using multiple verification methods
  */
 
+import { Logger } from './logger.js';
+
 // Avoid redeclaration errors in Brave Browser
 if (typeof window !== 'undefined' && window.TranslationQualityVerifier) {
-  console.log('[TranslationQualityVerifier] Class already exists, skipping redeclaration');
+  Logger.create('quality-verifier').info('[TranslationQualityVerifier] Class already exists, skipping redeclaration');
 } else {
 
 class TranslationQualityVerifier {
   constructor(options = {}) {
+    this.logger = Logger.create('quality-verifier');
+
     this.options = {
       enableLengthAnalysis: true,
       enableCharacterSetAnalysis: true,
@@ -68,7 +72,7 @@ class TranslationQualityVerifier {
     this.cacheMaxSize = options.cacheSize || 1000;
     this.cacheTTL = options.cacheTTL || 10 * 60 * 1000; // 10 minutes
 
-    console.log('[QualityVerifier] Initialized with options:', this.options);
+    this.logger.info('[QualityVerifier] Initialized with options:', this.options);
   }
 
   /**
@@ -92,7 +96,7 @@ class TranslationQualityVerifier {
         return cached.result;
       }
 
-      console.log(`[QualityVerifier] Verifying translation quality for ${original.length} chars`);
+      this.logger.info(`[QualityVerifier] Verifying translation quality for ${original.length} chars`);
 
       // Initialize verification result
       const verification = {
@@ -127,7 +131,7 @@ class TranslationQualityVerifier {
         try {
           await method();
         } catch (error) {
-          console.warn('[QualityVerifier] Verification method failed:', error);
+          this.logger.warn('[QualityVerifier] Verification method failed:', error);
         }
       }
 
@@ -150,12 +154,12 @@ class TranslationQualityVerifier {
       this.cleanupCache();
 
       const duration = Date.now() - startTime;
-      console.log(`[QualityVerifier] Verification completed in ${duration}ms, score: ${verification.overallScore.toFixed(2)}`);
+      this.logger.info(`[QualityVerifier] Verification completed in ${duration}ms, score: ${verification.overallScore.toFixed(2)}`);
 
       return verification;
 
     } catch (error) {
-      console.error('[QualityVerifier] Verification failed:', error);
+      this.logger.error('[QualityVerifier] Verification failed:', error);
       return {
         status: 'error',
         error: error.message,
@@ -668,7 +672,7 @@ class TranslationQualityVerifier {
    */
   clearCache() {
     this.qualityCache.clear();
-    console.log('[QualityVerifier] Cache cleared');
+    this.logger.info('[QualityVerifier] Cache cleared');
   }
 
   /**
@@ -676,7 +680,7 @@ class TranslationQualityVerifier {
    */
   configure(newOptions) {
     this.options = { ...this.options, ...newOptions };
-    console.log('[QualityVerifier] Configuration updated:', newOptions);
+    this.logger.info('[QualityVerifier] Configuration updated:', newOptions);
   }
 }
 

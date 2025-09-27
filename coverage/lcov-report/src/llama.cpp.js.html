@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/105</span>
+                <span class='fraction'>0/107</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/104</span>
+                <span class='fraction'>0/106</span>
             </div>
         
             
@@ -347,11 +347,20 @@
 <a name='L282'></a><a href='#L282'>282</a>
 <a name='L283'></a><a href='#L283'>283</a>
 <a name='L284'></a><a href='#L284'>284</a>
-<a name='L285'></a><a href='#L285'>285</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L285'></a><a href='#L285'>285</a>
+<a name='L286'></a><a href='#L286'>286</a>
+<a name='L287'></a><a href='#L287'>287</a>
+<a name='L288'></a><a href='#L288'>288</a>
+<a name='L289'></a><a href='#L289'>289</a>
+<a name='L290'></a><a href='#L290'>290</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -364,6 +373,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -637,6 +647,10 @@
  */
 &nbsp;
 // Simulate llama.cpp module creation
+import { Logger } from './lib/logger.js';
+&nbsp;
+const logger = <span class="cstat-no" title="statement not covered" >Logger.create('llama-cpp');</span>
+&nbsp;
 async function <span class="fstat-no" title="function not covered" >createLlamaModule(</span>) {
 <span class="cstat-no" title="statement not covered" >  return new Promise(<span class="fstat-no" title="function not covered" >(r</span>esolve) =&gt; {</span>
     // Simulate module loading delay
@@ -648,6 +662,7 @@ async function <span class="fstat-no" title="function not covered" >createLlamaM
 &nbsp;
 class LlamaCppModule {
 <span class="fstat-no" title="function not covered" >  co</span>nstructor() {
+<span class="cstat-no" title="statement not covered" >    this.logger = Logger.create('llama-cpp');</span>
 <span class="cstat-no" title="statement not covered" >    this.FS = new FileSystem();</span>
 <span class="cstat-no" title="statement not covered" >    this.models = new Map();</span>
 <span class="cstat-no" title="statement not covered" >    this.contexts = new Map();</span>
@@ -669,7 +684,7 @@ class LlamaCppModule {
 <span class="cstat-no" title="statement not covered" >    try {</span>
       // Simulate model loading
 <span class="cstat-no" title="statement not covered" >      if (!this.FS.files.has(path)) {</span>
-<span class="cstat-no" title="statement not covered" >        console.error('[LlamaCpp] Model file not found:', path);</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.error('Model file not found:', path);</span>
 <span class="cstat-no" title="statement not covered" >        return null;</span>
       }
 &nbsp;
@@ -678,7 +693,7 @@ class LlamaCppModule {
 &nbsp;
       // Simulate model validation
 <span class="cstat-no" title="statement not covered" >      if (modelData.length &lt; 1000000) { // Less than 1MB - invalid model</span>
-<span class="cstat-no" title="statement not covered" >        console.error('[LlamaCpp] Invalid model file size');</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.error('Invalid model file size');</span>
 <span class="cstat-no" title="statement not covered" >        return null;</span>
       }
 &nbsp;
@@ -691,10 +706,10 @@ class LlamaCppModule {
         n_ctx_max: 4096    // Max context size
       });
 &nbsp;
-<span class="cstat-no" title="statement not covered" >      console.log('[LlamaCpp] Model loaded successfully:', modelId);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.info('Model loaded successfully:', modelId);</span>
 <span class="cstat-no" title="statement not covered" >      return modelId;</span>
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[LlamaCpp] Failed to load model:', error);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.error('Failed to load model:', error);</span>
 <span class="cstat-no" title="statement not covered" >      return null;</span>
     }
   }
@@ -714,7 +729,7 @@ class LlamaCppModule {
 <span class="fstat-no" title="function not covered" >  ll</span>ama_new_context_with_model(modelId, params) {
 <span class="cstat-no" title="statement not covered" >    try {</span>
 <span class="cstat-no" title="statement not covered" >      if (!this.models.has(modelId)) {</span>
-<span class="cstat-no" title="statement not covered" >        console.error('[LlamaCpp] Model not found:', modelId);</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.error('Model not found:', modelId);</span>
 <span class="cstat-no" title="statement not covered" >        return null;</span>
       }
 &nbsp;
@@ -730,10 +745,10 @@ class LlamaCppModule {
         vocab_size: model.vocab_size
       });
 &nbsp;
-<span class="cstat-no" title="statement not covered" >      console.log('[LlamaCpp] Context created:', contextId);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.info('Context created:', contextId);</span>
 <span class="cstat-no" title="statement not covered" >      return contextId;</span>
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[LlamaCpp] Failed to create context:', error);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.error('Failed to create context:', error);</span>
 <span class="cstat-no" title="statement not covered" >      return null;</span>
     }
   }
@@ -742,7 +757,7 @@ class LlamaCppModule {
 <span class="fstat-no" title="function not covered" >  ll</span>ama_tokenize(contextId, text, add_bos = <span class="branch-0 cbranch-no" title="branch not covered" >true,</span> parse_special = <span class="branch-0 cbranch-no" title="branch not covered" >false)</span> {
 <span class="cstat-no" title="statement not covered" >    try {</span>
 <span class="cstat-no" title="statement not covered" >      if (!this.contexts.has(contextId)) {</span>
-<span class="cstat-no" title="statement not covered" >        console.error('[LlamaCpp] Context not found:', contextId);</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.error('Context not found:', contextId);</span>
 <span class="cstat-no" title="statement not covered" >        return [];</span>
       }
 &nbsp;
@@ -766,7 +781,7 @@ class LlamaCppModule {
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      return tokens;</span>
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[LlamaCpp] Tokenization failed:', error);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.error('Tokenization failed:', error);</span>
 <span class="cstat-no" title="statement not covered" >      return [];</span>
     }
   }
@@ -788,7 +803,7 @@ class LlamaCppModule {
       // Random simulation of success/failure
 <span class="cstat-no" title="statement not covered" >      return Math.random() &gt; 0.05 ? 0 : -1; </span>// 95% success rate
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[LlamaCpp] Decode failed:', error);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.error('Decode failed:', error);</span>
 <span class="cstat-no" title="statement not covered" >      return -1;</span>
     }
   }
@@ -820,7 +835,7 @@ class LlamaCppModule {
       const tokenId = <span class="cstat-no" title="statement not covered" >translationTokens[context.n_past % translationTokens.length];</span>
 <span class="cstat-no" title="statement not covered" >      return tokenId;</span>
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[LlamaCpp] Token sampling failed:', error);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.error('Token sampling failed:', error);</span>
 <span class="cstat-no" title="statement not covered" >      return -1;</span>
     }
   }
@@ -848,7 +863,7 @@ class LlamaCppModule {
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      return tokenMappings[token] || `_${token}_`;</span>
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[LlamaCpp] Token to piece conversion failed:', error);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.error('Token to piece conversion failed:', error);</span>
 <span class="cstat-no" title="statement not covered" >      return '';</span>
     }
   }
@@ -857,14 +872,14 @@ class LlamaCppModule {
 <span class="fstat-no" title="function not covered" >  ll</span>ama_free(contextId) {
 <span class="cstat-no" title="statement not covered" >    if (this.contexts.has(contextId)) {</span>
 <span class="cstat-no" title="statement not covered" >      this.contexts.delete(contextId);</span>
-<span class="cstat-no" title="statement not covered" >      console.log('[LlamaCpp] Context freed:', contextId);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.info('Context freed:', contextId);</span>
     }
   }
 &nbsp;
 <span class="fstat-no" title="function not covered" >  ll</span>ama_free_model(modelId) {
 <span class="cstat-no" title="statement not covered" >    if (this.models.has(modelId)) {</span>
 <span class="cstat-no" title="statement not covered" >      this.models.delete(modelId);</span>
-<span class="cstat-no" title="statement not covered" >      console.log('[LlamaCpp] Model freed:', modelId);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.info('Model freed:', modelId);</span>
     }
   }
 &nbsp;
@@ -922,7 +937,7 @@ class FileSystem {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-24T11:05:09.171Z
+                at 2025-09-25T18:54:34.199Z
             </div>
         <script src="../prettify.js"></script>
         <script>

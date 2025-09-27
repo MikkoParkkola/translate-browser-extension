@@ -4,6 +4,10 @@
  */
 
 // Simulate llama.cpp module creation
+import { Logger } from './lib/logger.js';
+
+const logger = Logger.create('llama-cpp');
+
 async function createLlamaModule() {
   return new Promise((resolve) => {
     // Simulate module loading delay
@@ -15,6 +19,7 @@ async function createLlamaModule() {
 
 class LlamaCppModule {
   constructor() {
+    this.logger = Logger.create('llama-cpp');
     this.FS = new FileSystem();
     this.models = new Map();
     this.contexts = new Map();
@@ -36,7 +41,7 @@ class LlamaCppModule {
     try {
       // Simulate model loading
       if (!this.FS.files.has(path)) {
-        console.error('[LlamaCpp] Model file not found:', path);
+        this.logger.error('Model file not found:', path);
         return null;
       }
 
@@ -45,7 +50,7 @@ class LlamaCppModule {
 
       // Simulate model validation
       if (modelData.length < 1000000) { // Less than 1MB - invalid model
-        console.error('[LlamaCpp] Invalid model file size');
+        this.logger.error('Invalid model file size');
         return null;
       }
 
@@ -58,10 +63,10 @@ class LlamaCppModule {
         n_ctx_max: 4096    // Max context size
       });
 
-      console.log('[LlamaCpp] Model loaded successfully:', modelId);
+      this.logger.info('Model loaded successfully:', modelId);
       return modelId;
     } catch (error) {
-      console.error('[LlamaCpp] Failed to load model:', error);
+      this.logger.error('Failed to load model:', error);
       return null;
     }
   }
@@ -81,7 +86,7 @@ class LlamaCppModule {
   llama_new_context_with_model(modelId, params) {
     try {
       if (!this.models.has(modelId)) {
-        console.error('[LlamaCpp] Model not found:', modelId);
+        this.logger.error('Model not found:', modelId);
         return null;
       }
 
@@ -97,10 +102,10 @@ class LlamaCppModule {
         vocab_size: model.vocab_size
       });
 
-      console.log('[LlamaCpp] Context created:', contextId);
+      this.logger.info('Context created:', contextId);
       return contextId;
     } catch (error) {
-      console.error('[LlamaCpp] Failed to create context:', error);
+      this.logger.error('Failed to create context:', error);
       return null;
     }
   }
@@ -109,7 +114,7 @@ class LlamaCppModule {
   llama_tokenize(contextId, text, add_bos = true, parse_special = false) {
     try {
       if (!this.contexts.has(contextId)) {
-        console.error('[LlamaCpp] Context not found:', contextId);
+        this.logger.error('Context not found:', contextId);
         return [];
       }
 
@@ -133,7 +138,7 @@ class LlamaCppModule {
 
       return tokens;
     } catch (error) {
-      console.error('[LlamaCpp] Tokenization failed:', error);
+      this.logger.error('Tokenization failed:', error);
       return [];
     }
   }
@@ -155,7 +160,7 @@ class LlamaCppModule {
       // Random simulation of success/failure
       return Math.random() > 0.05 ? 0 : -1; // 95% success rate
     } catch (error) {
-      console.error('[LlamaCpp] Decode failed:', error);
+      this.logger.error('Decode failed:', error);
       return -1;
     }
   }
@@ -187,7 +192,7 @@ class LlamaCppModule {
       const tokenId = translationTokens[context.n_past % translationTokens.length];
       return tokenId;
     } catch (error) {
-      console.error('[LlamaCpp] Token sampling failed:', error);
+      this.logger.error('Token sampling failed:', error);
       return -1;
     }
   }
@@ -215,7 +220,7 @@ class LlamaCppModule {
 
       return tokenMappings[token] || `_${token}_`;
     } catch (error) {
-      console.error('[LlamaCpp] Token to piece conversion failed:', error);
+      this.logger.error('Token to piece conversion failed:', error);
       return '';
     }
   }
@@ -224,14 +229,14 @@ class LlamaCppModule {
   llama_free(contextId) {
     if (this.contexts.has(contextId)) {
       this.contexts.delete(contextId);
-      console.log('[LlamaCpp] Context freed:', contextId);
+      this.logger.info('Context freed:', contextId);
     }
   }
 
   llama_free_model(modelId) {
     if (this.models.has(modelId)) {
       this.models.delete(modelId);
-      console.log('[LlamaCpp] Model freed:', modelId);
+      this.logger.info('Model freed:', modelId);
     }
   }
 

@@ -4,14 +4,19 @@
  * Features: IndexedDB persistence, Chrome Storage sync, LRU eviction, hit/miss metrics
  */
 
+import { Logger } from './logger.js';
+
 class TranslationMemory {
   constructor(options = {}) {
+    this.logger = Logger.create('translation-memory');
+
     this.dbName = options.dbName || 'qwen-translation-memory';
     this.storeName = options.storeName || 'translations';
     this.syncKey = options.syncKey || 'qwen-tm-sync';
-    this.maxEntries = options.maxEntries || 10000;
-    this.defaultTTL = options.defaultTTL || 7 * 24 * 60 * 60 * 1000; // 1 week
+    this.maxEntries = options.maxEntries ?? 5000;
+    this.defaultTTL = options.defaultTTL ?? 7 * 24 * 60 * 60 * 1000; // 1 week
     this.syncEnabled = options.syncEnabled !== false;
+    this.resetOnInit = options.resetOnInit ?? (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test');
 
     // In-memory cache for fast access
     this.cache = new Map();
@@ -41,6 +46,10 @@ class TranslationMemory {
       // Initialize IndexedDB
       await this.initDB();
 
+      if (this.resetOnInit) {
+        await this.resetPersistentStores();
+      }
+
       // Load existing translations into memory cache
       await this.loadFromDB();
 
@@ -49,10 +58,10 @@ class TranslationMemory {
         await this.loadFromSync();
       }
 
-      console.log('[TM] Translation Memory initialized successfully');
+      this.logger.info('[TM] Translation Memory initialized successfully');
       return true;
     } catch (error) {
-      console.error('[TM] Failed to initialize Translation Memory:', error);
+      this.logger.error('[TM] Failed to initialize Translation Memory:', error);
       return false;
     }
   }
@@ -62,7 +71,7 @@ class TranslationMemory {
    */
   async initDB() {
     if (typeof indexedDB === 'undefined') {
-      console.warn('[TM] IndexedDB not available, using memory-only cache');
+      this.logger.warn('[TM] IndexedDB not available, using memory-only cache');
       return;
     }
 
@@ -71,7 +80,7 @@ class TranslationMemory {
 
       request.onerror = () => {
         this.metrics.dbErrors++;
-        console.error('[TM] IndexedDB open failed:', request.error);
+        this.logger.error('[TM] IndexedDB open failed:', request.error);
         resolve(); // Continue without DB
       };
 
@@ -90,6 +99,10 @@ class TranslationMemory {
           store.createIndex('timestamp', 'timestamp', { unique: false });
           store.createIndex('provider', 'provider', { unique: false });
         }
+      };
+
+      request.onblocked = () => {
+        this.logger.warn('[TM] IndexedDB upgrade blocked by existing connections');
       };
     });
   }
@@ -135,19 +148,19 @@ class TranslationMemory {
             loaded++;
           }
 
-          console.log(`[TM] Loaded ${loaded} translations from IndexedDB (${expired} expired entries cleaned)`);
+          this.logger.info(`[TM] Loaded ${loaded} translations from IndexedDB (${expired} expired entries cleaned)`);
           resolve();
         };
 
         request.onerror = () => {
           this.metrics.dbErrors++;
-          console.error('[TM] Failed to load from IndexedDB:', request.error);
+          this.logger.error('[TM] Failed to load from IndexedDB:', request.error);
           resolve();
         };
       });
     } catch (error) {
       this.metrics.dbErrors++;
-      console.error('[TM] Error loading from IndexedDB:', error);
+      this.logger.error('[TM] Error loading from IndexedDB:', error);
     }
   }
 
@@ -184,10 +197,10 @@ class TranslationMemory {
         }
       }
 
-      console.log(`[TM] Loaded ${syncLoaded} translations from Chrome Storage sync`);
+      this.logger.info(`[TM] Loaded ${syncLoaded} translations from Chrome Storage sync`);
     } catch (error) {
       this.metrics.syncErrors++;
-      console.error('[TM] Failed to load from Chrome Storage sync:', error);
+      this.logger.error('[TM] Failed to load from Chrome Storage sync:', error);
     }
   }
 
@@ -246,7 +259,7 @@ class TranslationMemory {
 
     const key = this.createKey(sourceLanguage, targetLanguage, originalText);
     const now = Date.now();
-    const expiresAt = now + this.defaultTTL;
+    const expiresAt = this.defaultTTL > 0 ? now + this.defaultTTL : null;
 
     const entry = {
       text: translatedText,
@@ -280,7 +293,8 @@ class TranslationMemory {
    * Enforce cache size limit using LRU eviction
    */
   async enforceCacheLimit() {
-    if (this.cache.size <= this.maxEntries) {
+    const overflow = this.cache.size - this.maxEntries;
+    if (overflow <= 0) {
       return;
     }
 
@@ -289,15 +303,15 @@ class TranslationMemory {
       .sort((a, b) => a[1] - b[1]);
 
     // Remove oldest entries
-    const toRemove = this.cache.size - this.maxEntries + 100; // Remove extra for buffer
-    for (let i = 0; i < toRemove && i < sortedEntries.length; i++) {
+    const toRemove = Math.min(overflow, sortedEntries.length);
+    for (let i = 0; i < toRemove; i++) {
       const [key] = sortedEntries[i];
       this.cache.delete(key);
       this.accessOrder.delete(key);
       this.metrics.evictionsLRU++;
     }
 
-    console.log(`[TM] LRU evicted ${toRemove} entries, cache size: ${this.cache.size}`);
+    this.logger.info(`[TM] LRU evicted ${toRemove} entries, cache size: ${this.cache.size}`);
   }
 
   /**
@@ -321,10 +335,23 @@ class TranslationMemory {
         expiresAt: entry.expiresAt
       };
 
-      store.put(record);
+      await new Promise((resolve, reject) => {
+        const req = store.put(record);
+        req.onsuccess = () => resolve();
+        req.onerror = () => {
+          this.metrics.dbErrors++;
+          this.logger.error('[TM] Failed to save to IndexedDB:', req.error);
+          resolve();
+        };
+        transaction.onerror = () => {
+          this.metrics.dbErrors++;
+          this.logger.error('[TM] IndexedDB transaction error:', transaction.error);
+          resolve();
+        };
+      });
     } catch (error) {
       this.metrics.dbErrors++;
-      console.error('[TM] Failed to save to IndexedDB:', error);
+      this.logger.error('[TM] Failed to save to IndexedDB:', error);
     }
   }
 
@@ -337,10 +364,18 @@ class TranslationMemory {
     try {
       const transaction = this.db.transaction([this.storeName], 'readwrite');
       const store = transaction.objectStore(this.storeName);
-      store.delete(key);
+      await new Promise((resolve) => {
+        const req = store.delete(key);
+        req.onsuccess = () => resolve();
+        req.onerror = () => {
+          this.metrics.dbErrors++;
+          this.logger.error('[TM] Failed to delete from IndexedDB:', req.error);
+          resolve();
+        };
+      });
     } catch (error) {
       this.metrics.dbErrors++;
-      console.error('[TM] Failed to delete from IndexedDB:', error);
+      this.logger.error('[TM] Failed to delete from IndexedDB:', error);
     }
   }
 
@@ -372,10 +407,10 @@ class TranslationMemory {
         chrome.storage.sync.set({ [this.syncKey]: syncData }, resolve);
       });
 
-      console.log(`[TM] Synced ${syncData.length} translations to Chrome Storage`);
+      this.logger.info(`[TM] Synced ${syncData.length} translations to Chrome Storage`);
     } catch (error) {
       this.metrics.syncErrors++;
-      console.error('[TM] Failed to sync to Chrome Storage:', error);
+      this.logger.error('[TM] Failed to sync to Chrome Storage:', error);
     }
   }
 
@@ -388,32 +423,15 @@ class TranslationMemory {
     // Clear memory cache
     this.cache.clear();
     this.accessOrder.clear();
+    this.metrics.hits = 0;
+    this.metrics.misses = 0;
+    this.metrics.sets = 0;
+    this.metrics.evictionsLRU = 0;
+    this.metrics.evictionsTTL = 0;
 
-    // Clear IndexedDB
-    if (this.db) {
-      try {
-        const transaction = this.db.transaction([this.storeName], 'readwrite');
-        const store = transaction.objectStore(this.storeName);
-        store.clear();
-      } catch (error) {
-        this.metrics.dbErrors++;
-        console.error('[TM] Failed to clear IndexedDB:', error);
-      }
-    }
+    await this.resetPersistentStores();
 
-    // Clear Chrome Storage sync
-    if (this.syncEnabled && typeof chrome !== 'undefined' && chrome.storage?.sync) {
-      try {
-        await new Promise((resolve) => {
-          chrome.storage.sync.remove([this.syncKey], resolve);
-        });
-      } catch (error) {
-        this.metrics.syncErrors++;
-        console.error('[TM] Failed to clear Chrome Storage sync:', error);
-      }
-    }
-
-    console.log('[TM] Translation Memory cleared');
+    this.logger.info('[TM] Translation Memory cleared');
   }
 
   /**
@@ -474,12 +492,53 @@ class TranslationMemory {
         };
       } catch (error) {
         this.metrics.dbErrors++;
-        console.error('[TM] Failed to cleanup IndexedDB:', error);
+        this.logger.error('[TM] Failed to cleanup IndexedDB:', error);
       }
     }
 
-    console.log(`[TM] Cleaned up ${cleaned} expired translations`);
+    this.logger.info(`[TM] Cleaned up ${cleaned} expired translations`);
     return cleaned;
+  }
+  async resetPersistentStores() {
+    if (this.db) {
+      try {
+        await new Promise((resolve) => {
+          const tx = this.db.transaction([this.storeName], 'readwrite');
+          const store = tx.objectStore(this.storeName);
+          const req = store.clear();
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => {
+            this.metrics.dbErrors++;
+            this.logger.error('[TM] Failed to reset IndexedDB store:', tx.error);
+            resolve();
+          };
+          req.onerror = () => {
+            this.metrics.dbErrors++;
+            this.logger.error('[TM] Failed to clear IndexedDB store:', req.error);
+            resolve();
+          };
+        });
+      } catch (error) {
+        this.metrics.dbErrors++;
+        this.logger.error('[TM] Error resetting IndexedDB store:', error);
+      }
+    }
+
+    if (this.syncEnabled && typeof chrome !== 'undefined') {
+      const removeFn = chrome.storage?.sync && typeof chrome.storage.sync.remove === 'function'
+        ? chrome.storage.sync.remove.bind(chrome.storage.sync)
+        : null;
+      if (removeFn) {
+        try {
+          await new Promise((resolve) => {
+            removeFn([this.syncKey], resolve);
+          });
+        } catch (error) {
+          this.metrics.syncErrors++;
+          this.logger.error('[TM] Failed to reset Chrome Storage sync:', error);
+        }
+      }
+    }
   }
 }
 
@@ -495,22 +554,22 @@ function getTranslationMemory(options = {}) {
 }
 
 // Export for different environments
-if (typeof window !== 'undefined') {
-  window.TranslationMemory = {
-    TranslationMemory,
-    getTranslationMemory,
+const exported = {
+  TranslationMemory,
+  getTranslationMemory
+};
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = exported;
+}
+
+const globalScope = typeof globalThis !== 'undefined'
+  ? globalThis
+  : (typeof self !== 'undefined' ? self : (typeof window !== 'undefined' ? window : undefined));
+
+if (globalScope) {
+  const existing = globalScope.TranslationMemory || {};
+  globalScope.TranslationMemory = Object.assign(existing, exported, {
     globalTM: () => globalTM
-  };
-} else if (typeof self !== 'undefined') {
-  // Service worker context
-  self.TranslationMemory = {
-    TranslationMemory,
-    getTranslationMemory,
-    globalTM: () => globalTM
-  };
-} else if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    TranslationMemory,
-    getTranslationMemory
-  };
+  });
 }

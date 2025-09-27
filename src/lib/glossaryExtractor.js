@@ -20,11 +20,23 @@
 (function() {
   'use strict';
 
+  // Simple logger for IIFE pattern
+  const Logger = {
+    create: (name) => ({
+      info: (...args) => console.log(`[${name}]`, ...args),
+      warn: (...args) => console.warn(`[${name}]`, ...args),
+      error: (...args) => console.error(`[${name}]`, ...args),
+      debug: (...args) => console.debug(`[${name}]`, ...args)
+    })
+  };
+
   /**
    * Smart Glossary and Terminology Extractor
    */
   class GlossaryExtractor {
     constructor(options = {}) {
+      this.logger = Logger.create('glossary-extractor');
+
       this.options = {
         // Detection settings
         minTermLength: options.minTermLength || 3,
@@ -137,7 +149,7 @@
       // Initialize storage
       this.initializeStorage();
 
-      console.log('[GlossaryExtractor] Initialized with options:', this.options);
+      this.logger.info('[GlossaryExtractor] Initialized with options:', this.options);
     }
 
     /**
@@ -160,13 +172,13 @@
             this.domainCategories = new Map(Object.entries(data.domainCategories));
           }
 
-          console.log('[GlossaryExtractor] Loaded persistent data:', {
+          this.logger.info('[GlossaryExtractor] Loaded persistent data:', {
             userTerms: this.userGlossary.size,
             translations: this.termTranslations.size,
             categories: this.domainCategories.size
           });
         } catch (error) {
-          console.warn('[GlossaryExtractor] Failed to load persistent data:', error);
+          this.logger.warn('[GlossaryExtractor] Failed to load persistent data:', error);
         }
       }
     }
@@ -183,9 +195,9 @@
             domainCategories: Object.fromEntries(this.domainCategories)
           });
 
-          console.log('[GlossaryExtractor] Saved persistent data');
+          this.logger.info('[GlossaryExtractor] Saved persistent data');
         } catch (error) {
-          console.warn('[GlossaryExtractor] Failed to save persistent data:', error);
+          this.logger.warn('[GlossaryExtractor] Failed to save persistent data:', error);
         }
       }
     }
@@ -261,7 +273,7 @@
           this.detectedTerms.set(term.term, term);
         });
 
-        console.log('[GlossaryExtractor] Extracted terms:', {
+        this.logger.info('[GlossaryExtractor] Extracted terms:', {
           total: results.terms.length,
           unique: results.summary.uniqueTerms,
           domains: results.summary.domains
@@ -270,7 +282,7 @@
         return results;
 
       } catch (error) {
-        console.error('[GlossaryExtractor] Error during term extraction:', error);
+        this.logger.error('[GlossaryExtractor] Error during term extraction:', error);
         return results;
       }
     }
@@ -421,13 +433,17 @@
             ...termData,
             frequency: 0,
             positions: [],
-            contexts: []
+            contexts: [],
+            confidence: termData.confidence ?? 0.5
           });
         }
 
         const existing = uniqueTerms.get(key);
         existing.frequency++;
         existing.positions.push(termData.position);
+        existing.confidence = Math.max(existing.confidence ?? 0, termData.confidence ?? 0.5);
+        existing.type = existing.type || termData.type;
+        existing.category = existing.category || termData.category;
 
         // Add context information
         const termContext = this.extractTermContext(text, termData.position, termData.term.length);
@@ -437,8 +453,9 @@
       // Score and filter terms
       const scoredTerms = Array.from(uniqueTerms.values())
         .filter(term => {
-          // Filter by frequency threshold
-          return term.frequency >= this.options.minFrequency;
+          // Filter by frequency threshold but allow high-confidence single detections
+          if (term.frequency >= this.options.minFrequency) return true;
+          return term.confidence >= 0.65 || term.type === 'acronym' || term.type === 'properNoun';
         })
         .map(term => {
           // Calculate composite score
@@ -626,7 +643,7 @@
       // Save to persistent storage
       this.saveToStorage();
 
-      console.log('[GlossaryExtractor] Added user term:', { term, translation, domain });
+      this.logger.info('[GlossaryExtractor] Added user term:', { term, translation, domain });
       return termData;
     }
 
@@ -641,7 +658,7 @@
 
       if (removed) {
         this.saveToStorage();
-        console.log('[GlossaryExtractor] Removed user term:', term);
+        this.logger.info('[GlossaryExtractor] Removed user term:', term);
       }
 
       return removed;
@@ -758,7 +775,7 @@
         // Save to storage
         this.saveToStorage();
 
-        console.log('[GlossaryExtractor] Imported glossary data:', {
+        this.logger.info('[GlossaryExtractor] Imported glossary data:', {
           userTerms: this.userGlossary.size,
           translations: this.termTranslations.size,
           categories: this.domainCategories.size
@@ -767,7 +784,7 @@
         return true;
 
       } catch (error) {
-        console.error('[GlossaryExtractor] Failed to import glossary:', error);
+        this.logger.error('[GlossaryExtractor] Failed to import glossary:', error);
         return false;
       }
     }
@@ -856,7 +873,7 @@
         this.saveToStorage();
       }
 
-      console.log('[GlossaryExtractor] Cleared all data');
+      this.logger.info('[GlossaryExtractor] Cleared all data');
     }
 
     /**

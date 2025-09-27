@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/169</span>
+                <span class='fraction'>0/170</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/161</span>
+                <span class='fraction'>0/162</span>
             </div>
         
             
@@ -425,13 +425,19 @@
 <a name='L360'></a><a href='#L360'>360</a>
 <a name='L361'></a><a href='#L361'>361</a>
 <a name='L362'></a><a href='#L362'>362</a>
-<a name='L363'></a><a href='#L363'>363</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L363'></a><a href='#L363'>363</a>
+<a name='L364'></a><a href='#L364'>364</a>
+<a name='L365'></a><a href='#L365'>365</a>
+<a name='L366'></a><a href='#L366'>366</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -787,13 +793,16 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { Logger } from './lib/logger.js';
+&nbsp;
+/**
  * Local Model Manager for Hunyuan-MT-7B using llama.cpp
  * Handles model download, loading, and translation with memory efficiency
  */
 &nbsp;
 class LocalModelManager {
 <span class="fstat-no" title="function not covered" >  co</span>nstructor() {
+<span class="cstat-no" title="statement not covered" >    this.logger = Logger.create('local-model');</span>
 <span class="cstat-no" title="statement not covered" >    this.isInitialized = false;</span>
 <span class="cstat-no" title="statement not covered" >    this.modelLoaded = false;</span>
 <span class="cstat-no" title="statement not covered" >    this.llamaCppInstance = null;</span>
@@ -818,13 +827,13 @@ class LocalModelManager {
       // Check if model exists in storage
       const modelStatus = <span class="cstat-no" title="statement not covered" >await this.getModelStatus();</span>
 <span class="cstat-no" title="statement not covered" >      if (modelStatus.downloaded) {</span>
-<span class="cstat-no" title="statement not covered" >        console.log('[LocalModel] Model already downloaded');</span>
+<span class="cstat-no" title="statement not covered" >        this.logger.info('[LocalModel] Model already downloaded');</span>
 <span class="cstat-no" title="statement not covered" >        this.modelPath = modelStatus.path;</span>
       }
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      this.isInitialized = true;</span>
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[LocalModel] Initialization failed:', error);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.error('[LocalModel] Initialization failed:', error);</span>
     }
   }
 &nbsp;
@@ -904,10 +913,10 @@ class LocalModelManager {
       });
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      this.modelPath = 'indexeddb://hunyuan-mt-model';</span>
-<span class="cstat-no" title="statement not covered" >      console.log('[LocalModel] Model downloaded successfully');</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.info('[LocalModel] Model downloaded successfully');</span>
 &nbsp;
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[LocalModel] Download failed:', error);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.error('[LocalModel] Download failed:', error);</span>
 <span class="cstat-no" title="statement not covered" >      throw error;</span>
     } finally {
 <span class="cstat-no" title="statement not covered" >      this.isDownloading = false;</span>
@@ -981,9 +990,9 @@ class LocalModelManager {
         });
       });
 &nbsp;
-<span class="cstat-no" title="statement not covered" >      console.log('[LocalModel] Model loaded successfully');</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.info('[LocalModel] Model loaded successfully');</span>
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[LocalModel] Failed to load model:', error);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.error('[LocalModel] Failed to load model:', error);</span>
 <span class="cstat-no" title="statement not covered" >      throw error;</span>
     }
   }
@@ -1090,9 +1099,9 @@ Text to translate: ${text}&lt;|im_end|&gt;
       }
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      this.modelLoaded = false;</span>
-<span class="cstat-no" title="statement not covered" >      console.log('[LocalModel] Model unloaded to free memory');</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.info('[LocalModel] Model unloaded to free memory');</span>
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error('[LocalModel] Error unloading model:', error);</span>
+<span class="cstat-no" title="statement not covered" >      this.logger.error('[LocalModel] Error unloading model:', error);</span>
     }
   }
 &nbsp;
@@ -1114,7 +1123,7 @@ Text to translate: ${text}&lt;|im_end|&gt;
           // Clear storage
 <span class="cstat-no" title="statement not covered" >          chrome.storage.local.remove(['localModel'], <span class="fstat-no" title="function not covered" >()</span> =&gt; {</span>
 <span class="cstat-no" title="statement not covered" >            this.modelPath = null;</span>
-<span class="cstat-no" title="statement not covered" >            console.log('[LocalModel] Model deleted successfully');</span>
+<span class="cstat-no" title="statement not covered" >            this.logger.info('[LocalModel] Model deleted successfully');</span>
 <span class="cstat-no" title="statement not covered" >            resolve();</span>
           });
         };
@@ -1156,7 +1165,7 @@ const localModelManager = <span class="cstat-no" title="statement not covered" >
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-09-24T11:05:09.171Z
+                at 2025-09-25T18:54:34.199Z
             </div>
         <script src="../prettify.js"></script>
         <script>

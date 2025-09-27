@@ -124,8 +124,16 @@ const OptionsPage = {
       // Validate and fix provider statuses based on API key presence
       let needsUpdate = false;
       this.providers.forEach(provider => {
-        const shouldBeActive = provider.apiKey && provider.apiKey.trim().length > 0;
-        const newStatus = shouldBeActive ? 'active' : 'inactive';
+        if (provider.type === 'local') {
+          if (!provider.status) {
+            provider.status = 'active';
+            needsUpdate = true;
+          }
+          return;
+        }
+
+        const hasKey = typeof provider.apiKey === 'string' && provider.apiKey.trim().length > 0;
+        const newStatus = hasKey ? 'active' : 'inactive';
 
         if (provider.status !== newStatus) {
           provider.status = newStatus;
@@ -150,7 +158,7 @@ const OptionsPage = {
         name: 'Alibaba Qwen MT Turbo',
         type: 'dashscope',
         icon: '🤖',
-        status: 'active',
+        status: 'inactive',
         apiKey: '',
         apiEndpoint: 'https://dashscope-intl.aliyuncs.com/api/v1/services/aimt/text-translation/message',
         model: 'qwen-turbo',
@@ -161,8 +169,8 @@ const OptionsPage = {
         name: 'Hunyuan Local Model',
         type: 'local',
         icon: '🏠',
-        status: 'inactive',
-        apiKey: 'local-model', // Special value to indicate local model
+        status: 'active',
+        apiKey: '',
         apiEndpoint: 'local://hunyuan-mt',
         model: 'Hunyuan-MT-7B.i1-Q4_K_M.gguf',
         usage: { requests: 0, tokens: 0, limit: Infinity }, // No limit for local model
@@ -196,6 +204,23 @@ const OptionsPage = {
     });
   },
 
+  toggleProviderStatus(index) {
+    const provider = this.providers[index];
+    if (!provider) return;
+
+    if (provider.status !== 'active') {
+      const hasKey = typeof provider.apiKey === 'string' && provider.apiKey.trim().length > 0;
+      if (provider.type !== 'local' && !hasKey) {
+        alert('Add an API key before enabling this provider.');
+        return;
+      }
+    }
+
+    provider.status = provider.status === 'active' ? 'inactive' : 'active';
+    this.saveProviders();
+    this.renderProviders();
+  },
+
   createProviderCard(provider, index) {
     const card = document.createElement('div');
     card.className = `provider-card ${provider.status === 'active' ? 'active' : ''}`;
@@ -212,6 +237,9 @@ const OptionsPage = {
           </div>
         </div>
         <div class="provider-actions">
+          <button class="provider-toggle ${provider.status === 'active' ? 'active' : ''}" type="button">
+            ${provider.status === 'active' ? 'Disable' : 'Enable'}
+          </button>
           <button class="provider-action-btn js-edit" aria-label="Edit provider">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2"/>
@@ -238,8 +266,10 @@ const OptionsPage = {
       </div>
     `;
 
+    const toggleBtn = card.querySelector('.provider-toggle');
     const editBtn = card.querySelector('.js-edit');
     const delBtn = card.querySelector('.js-delete');
+    toggleBtn.addEventListener('click', () => OptionsPage.toggleProviderStatus(index));
     editBtn.addEventListener('click', () => OptionsPage.editProvider(index));
     delBtn.addEventListener('click', () => OptionsPage.deleteProvider(index));
     
