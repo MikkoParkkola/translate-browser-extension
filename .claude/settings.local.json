@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(mkdir:*)",
+      "Bash(npm test:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npx eslint:*)",
+      "Bash(chmod:*)",
+      "Bash(node:*)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "mcp__semgrep__security_check",
+      "mcp__trivy__scan_filesystem",
+      "Bash(wc:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm install:*)",
+      "Bash(npx playwright test:*)",
+      "Bash(npx jest:*)",
+      "Bash(npm run typecheck:all:*)",
+      "Bash(npm run build:*)",
+      "Bash(test:*)",
+      "Bash(sed:*)",
+      "Bash(git checkout:*)",
+      "Bash(git push:*)"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash /Users/mikko/github/claude-elite/statusline-elite-hybrid.sh",
+    "padding": 0
+  }
+}

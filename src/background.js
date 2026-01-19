@@ -286,10 +286,15 @@ function normalizeProviderSnapshot(raw) {
     if (!snapshot.providers[fallbackId]) snapshot.providers[fallbackId] = {};
     snapshot.providers[fallbackId].enabled = true;
   }
+  const isEnabled = (id) => {
+    if (!id) return false;
+    const info = snapshot.providers[id];
+    return !!info && info.enabled !== false;
+  };
   if (!hasRemoteEnabled && hasLocalEnabled && !snapshot.providerOrder.includes(LOCAL_PROVIDER_ID)) {
     snapshot.providerOrder.unshift(LOCAL_PROVIDER_ID);
   }
-  if (isEnabled(GOOGLE_FREE_PROVIDER_ID)) {
+  if (snapshot.providerOrder.includes(GOOGLE_FREE_PROVIDER_ID) && isEnabled(GOOGLE_FREE_PROVIDER_ID)) {
     snapshot.providerOrder = snapshot.providerOrder.filter(id => id !== GOOGLE_FREE_PROVIDER_ID);
     snapshot.providerOrder.unshift(GOOGLE_FREE_PROVIDER_ID);
     if (!hasRemoteEnabled) {
@@ -381,7 +386,7 @@ function buildProviderOrder(snapshot, requested, overrideOrder) {
     if (!order.includes(id)) order.push(id);
   };
 
-  if (isEnabled(GOOGLE_FREE_PROVIDER_ID)) {
+  if (baseOrder.includes(GOOGLE_FREE_PROVIDER_ID) && isEnabled(GOOGLE_FREE_PROVIDER_ID)) {
     push(GOOGLE_FREE_PROVIDER_ID, { force: true });
   }
   baseOrder.forEach(id => push(id));

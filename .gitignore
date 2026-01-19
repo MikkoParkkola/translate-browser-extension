@@ -18,3 +18,6 @@ src/wasm/vendor/*.zip
 tools/icu4x-segmenter/target/
 tools/icu4x-segmenter/pkg/
 .aider*
+
+# Coverage reports
+coverage/

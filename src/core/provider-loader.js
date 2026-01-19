@@ -101,9 +101,10 @@
     'hunyuan-local': {
       file: 'providers/localWasm.js',
       globalVar: 'qwenProviderLocalWasm',
-      size: 1673,
+      size: 0,
       priority: 4,
-      description: 'Hunyuan local translation provider'
+      description: 'Hunyuan local translation provider',
+      aliasOf: 'localWasm'
     },
     'macos': {
       file: 'providers/macos.js',
@@ -120,7 +121,9 @@
    * @returns {boolean}
    */
   function isProviderLoaded(providerName) {
-    return loadedProviders.has(providerName);
+    const config = providerConfig[providerName];
+    const baseName = config && config.aliasOf ? config.aliasOf : providerName;
+    return loadedProviders.has(providerName) || loadedProviders.has(baseName);
   }
 
   /**
@@ -129,23 +132,46 @@
    * @returns {Object} Size information
    */
   function getProviderSizes(providers = null) {
-    const targetProviders = providers || Object.keys(providerConfig);
-    const total = targetProviders.reduce((sum, name) => {
-      return sum + (providerConfig[name]?.size || 0);
-    }, 0);
-    
+    const allProviders = providers || Object.keys(providerConfig).filter(name => !providerConfig[name]?.aliasOf);
+
+    const seenFiles = new Set();
+    const toSize = (name) => {
+      const config = providerConfig[name];
+      if (!config) return 0;
+      const baseName = config.aliasOf || name;
+      const baseConfig = providerConfig[baseName] || config;
+      const fileKey = baseConfig.file || baseName;
+      if (providers) {
+        // When explicit providers requested, don't dedupe to allow caller-controlled selection
+        return baseConfig.size || 0;
+      }
+      if (seenFiles.has(fileKey)) return 0;
+      seenFiles.add(fileKey);
+      return baseConfig.size || 0;
+    };
+
+    const total = allProviders.reduce((sum, name) => sum + toSize(name), 0);
+
+    const loadedFiles = new Set();
     const loaded = Array.from(loadedProviders).reduce((sum, name) => {
-      return sum + (providerConfig[name]?.size || 0);
+      const config = providerConfig[name];
+      if (!config) return sum;
+      const baseName = config.aliasOf || name;
+      const baseConfig = providerConfig[baseName] || config;
+      const fileKey = baseConfig.file || baseName;
+      if (loadedFiles.has(fileKey)) return sum;
+      loadedFiles.add(fileKey);
+      return sum + (baseConfig.size || 0);
     }, 0);
-    
+
     return {
       total,
       loaded,
       saved: total - loaded,
       count: {
-        total: targetProviders.length,
-        loaded: loadedProviders.size,
-        pending: targetProviders.length - loadedProviders.size
+        total: allProviders.length,
+        loaded: loadedFiles.size,
+        pending: allProviders.length - loadedFiles.size
       }
     };
   }
@@ -167,24 +193,29 @@
    * @returns {Promise<boolean>} Success status
    */
   async function loadProviderWorker(providerName) {
-    if (loadedProviders.has(providerName)) {
-      return true;
-    }
-
-    if (loadingPromises.has(providerName)) {
-      return await loadingPromises.get(providerName);
-    }
-
     const config = providerConfig[providerName];
     if (!config) {
       logger.warn(`Provider ${providerName} not found in configuration`);
       return false;
     }
 
+    const baseName = config.aliasOf || providerName;
+    const baseConfig = providerConfig[baseName] || config;
+    const loadKey = baseName;
+
+    if (loadedProviders.has(providerName) || loadedProviders.has(baseName)) {
+      return true;
+    }
+
+    if (loadingPromises.has(loadKey)) {
+      return await loadingPromises.get(loadKey);
+    }
+
     const loadPromise = new Promise((resolve) => {
       try {
         // Check if already available globally
-        if (global[config.globalVar]) {
+        if (global[baseConfig.globalVar]) {
+          loadedProviders.add(baseName);
           loadedProviders.add(providerName);
           logger.debug(`Provider ${providerName} already loaded`);
           resolve(true);
@@ -193,14 +224,15 @@
 
         // Load using importScripts in service worker
         if (typeof importScripts === 'function') {
-          importScripts(config.file);
-          
-          if (global[config.globalVar]) {
+          importScripts(baseConfig.file);
+
+          if (global[baseConfig.globalVar]) {
+            loadedProviders.add(baseName);
             loadedProviders.add(providerName);
-            logger.debug(`Provider ${providerName} loaded successfully (${config.size} bytes)`);
+            logger.debug(`Provider ${providerName} loaded successfully (${baseConfig.size} bytes)`);
             resolve(true);
           } else {
-            logger.error(`Provider ${providerName} failed to load: global variable ${config.globalVar} not found`);
+            logger.error(`Provider ${providerName} failed to load: global variable ${baseConfig.globalVar} not found`);
             resolve(false);
           }
         } else {
@@ -213,13 +245,13 @@
       }
     });
 
-    loadingPromises.set(providerName, loadPromise);
+    loadingPromises.set(loadKey, loadPromise);
     
     try {
       const result = await loadPromise;
       return result;
     } finally {
-      loadingPromises.delete(providerName);
+      loadingPromises.delete(loadKey);
     }
   }
 
@@ -229,24 +261,27 @@
    * @returns {Promise<boolean>} Success status
    */
   async function loadProviderContent(providerName) {
-    if (loadedProviders.has(providerName)) {
-      return true;
-    }
-
-    if (loadingPromises.has(providerName)) {
-      return await loadingPromises.get(providerName);
-    }
-
     const config = providerConfig[providerName];
     if (!config) {
       logger.warn(`Provider ${providerName} not found in configuration`);
       return false;
     }
 
+    const baseName = config.aliasOf || providerName;
+    const baseConfig = providerConfig[baseName] || config;
+
+    if (loadedProviders.has(providerName) || loadedProviders.has(baseName)) {
+      return true;
+    }
+
+    if (loadingPromises.has(baseName)) {
+      return await loadingPromises.get(baseName);
+    }
+
     const loadPromise = new Promise((resolve) => {
       try {
-        // Check if already available globally
-        if (global[config.globalVar]) {
+        if (global[baseConfig.globalVar]) {
+          loadedProviders.add(baseName);
           loadedProviders.add(providerName);
           logger.debug(`Provider ${providerName} already loaded`);
           resolve(true);
@@ -254,10 +289,10 @@
         }
 
         const url = (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.getURL === 'function')
-          ? chrome.runtime.getURL(config.file)
-          : config.file;
+          ? chrome.runtime.getURL(baseConfig.file)
+          : baseConfig.file;
         if (!url) {
-          logger.error(`Provider ${providerName} cannot be loaded: unable to resolve URL for ${config.file}`);
+          logger.error(`Provider ${providerName} cannot be loaded: unable to resolve URL for ${baseConfig.file}`);
           resolve(false);
           return;
         }
@@ -272,7 +307,6 @@
                 }
                 return await response.text();
               }
-
               return await new Promise((resolveFetch, rejectFetch) => {
                 try {
                   const xhr = new XMLHttpRequest();
@@ -296,17 +330,15 @@
 
             const code = await loadText();
             const sourceURL = `\n//# sourceURL=${url}`;
-            // Execute the provider module within the isolated content-script world
-            // so chrome.runtime APIs remain available.
-            // eslint-disable-next-line no-new-func
             new Function(code + sourceURL).call(global);
 
-            if (global[config.globalVar]) {
+            if (global[baseConfig.globalVar]) {
+              loadedProviders.add(baseName);
               loadedProviders.add(providerName);
-              logger.debug(`Provider ${providerName} loaded successfully (${config.size} bytes)`);
+              logger.debug(`Provider ${providerName} loaded successfully (${baseConfig.size} bytes)`);
               resolve(true);
             } else {
-              logger.error(`Provider ${providerName} failed to register global ${config.globalVar}`);
+              logger.error(`Provider ${providerName} failed to register global ${baseConfig.globalVar}`);
               resolve(false);
             }
           } catch (error) {
@@ -320,13 +352,13 @@
       }
     });
 
-    loadingPromises.set(providerName, loadPromise);
-    
+    loadingPromises.set(baseName, loadPromise);
+
     try {
       const result = await loadPromise;
       return result;
     } finally {
-      loadingPromises.delete(providerName);
+      loadingPromises.delete(baseName);
     }
   }
 
