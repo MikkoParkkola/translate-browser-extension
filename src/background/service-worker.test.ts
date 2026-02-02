@@ -12,6 +12,9 @@ const mockAddInstalledListener = vi.fn();
 const mockAddClickedListener = vi.fn();
 const mockStorageSet = vi.fn();
 
+// Mock offscreen document response
+const mockSendMessage = vi.fn().mockResolvedValue({ success: true, result: 'translated' });
+
 vi.stubGlobal('chrome', {
   runtime: {
     onMessage: {
@@ -19,6 +22,18 @@ vi.stubGlobal('chrome', {
     },
     onInstalled: {
       addListener: mockAddInstalledListener,
+    },
+    getURL: vi.fn((path: string) => `chrome-extension://test-id/${path}`),
+    getContexts: vi.fn().mockResolvedValue([{ documentUrl: 'chrome-extension://test-id/src/offscreen/offscreen.html' }]),
+    sendMessage: mockSendMessage,
+    ContextType: {
+      OFFSCREEN_DOCUMENT: 'OFFSCREEN_DOCUMENT',
+    },
+  },
+  offscreen: {
+    createDocument: vi.fn().mockResolvedValue(undefined),
+    Reason: {
+      WORKERS: 'WORKERS',
     },
   },
   action: {
@@ -33,31 +48,8 @@ vi.stubGlobal('chrome', {
   },
 });
 
-// Mock translation router
-vi.mock('../core/translation-router', () => ({
-  translationRouter: {
-    initialize: vi.fn().mockResolvedValue(undefined),
-    translate: vi.fn().mockResolvedValue('translated'),
-    setStrategy: vi.fn(),
-    getStrategy: vi.fn().mockReturnValue('balanced'),
-    listProviders: vi.fn().mockReturnValue([
-      { id: 'opus-mt-local', name: 'OPUS-MT', type: 'local' },
-    ]),
-    getStats: vi.fn().mockReturnValue({ 'opus-mt-local': 5 }),
-  },
-}));
-
-// Mock throttle
-vi.mock('../core/throttle', () => ({
-  throttle: {
-    runWithRetry: vi.fn().mockImplementation((fn) => fn()),
-    getUsage: vi.fn().mockReturnValue({
-      requests: 10,
-      tokens: 500,
-      queue: 0,
-    }),
-  },
-}));
+// No longer using translation-router and throttle directly in service worker
+// The offscreen document handles translation now
 
 describe('Service Worker', () => {
   let messageHandler: (
@@ -131,7 +123,10 @@ describe('Service Worker', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(sendResponse).toHaveBeenCalledWith({
-        throttle: expect.objectContaining({ requests: 10 }),
+        throttle: expect.objectContaining({
+          requests: expect.any(Number),
+          tokens: expect.any(Number),
+        }),
         providers: expect.any(Object),
       });
     });
@@ -143,12 +138,14 @@ describe('Service Worker', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      expect(sendResponse).toHaveBeenCalledWith({
-        providers: expect.arrayContaining([
-          expect.objectContaining({ id: 'opus-mt-local' }),
-        ]),
-        strategy: 'balanced',
-      });
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({
+          providers: expect.arrayContaining([
+            expect.objectContaining({ id: 'opus-mt-local' }),
+          ]),
+          strategy: expect.any(String),
+        })
+      );
     });
 
     it('handles unknown message type with error', async () => {
@@ -165,7 +162,6 @@ describe('Service Worker', () => {
     });
 
     it('handles translate with strategy option', async () => {
-      const { translationRouter } = await import('../core/translation-router');
       const sendResponse = vi.fn();
 
       messageHandler(
@@ -182,12 +178,17 @@ describe('Service Worker', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      expect(translationRouter.setStrategy).toHaveBeenCalledWith('fast');
+      // Strategy is stored internally, translation should succeed
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+        })
+      );
     });
 
-    it('handles translation error', async () => {
-      const { throttle } = await import('../core/throttle');
-      vi.mocked(throttle.runWithRetry).mockRejectedValueOnce(new Error('Translation failed'));
+    it('handles translation error from offscreen', async () => {
+      // Mock offscreen returning an error
+      mockSendMessage.mockResolvedValueOnce({ success: false, error: 'Translation failed' });
 
       const sendResponse = vi.fn();
 

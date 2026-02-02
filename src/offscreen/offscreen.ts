@@ -44,7 +44,20 @@ const FRANC_TO_ISO: Record<string, string> = {
 
 // Detect language from text
 function detectLanguage(text: string): string {
-  const detected = franc(text, { minLength: 10 });
+  // franc returns 'und' (undetermined) if it can't detect
+  const detected = franc(text, { minLength: 3 });
+  console.log(`[Offscreen] franc raw detection: "${detected}" for text: "${text.slice(0, 50)}..."`);
+
+  if (detected === 'und' || !detected) {
+    // Try to guess from character sets
+    if (/[\u3040-\u309f\u30a0-\u30ff]/.test(text)) return 'ja'; // Japanese
+    if (/[\u4e00-\u9fff]/.test(text)) return 'zh'; // Chinese
+    if (/[\u0400-\u04ff]/.test(text)) return 'ru'; // Cyrillic -> Russian
+    if (/[äöåÄÖÅ]/.test(text)) return 'fi'; // Finnish characters
+    console.log('[Offscreen] Could not detect language, defaulting to English');
+    return 'en';
+  }
+
   const lang = FRANC_TO_ISO[detected];
   console.log(`[Offscreen] Detected language: ${detected} -> ${lang || 'en'}`);
   return lang || 'en'; // Default to English if unknown
@@ -176,4 +189,4 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true; // Keep channel open for async response
 });
 
-console.log('[Offscreen] Document ready');
+console.log('[Offscreen] Document ready - v2.1 with language detection');
