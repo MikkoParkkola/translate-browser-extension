@@ -222,6 +222,47 @@ describe('WebGPUDetector', () => {
 
       expect(device).toBeNull();
     });
+
+    it('handles device lost event', async () => {
+      let lostResolve: () => void;
+      const lostPromise = new Promise<void>((resolve) => {
+        lostResolve = resolve;
+      });
+
+      const mockDevice = {
+        lost: lostPromise.then(() => ({
+          message: 'Device was lost',
+          reason: 'destroyed',
+        })),
+      };
+
+      const mockAdapter = {
+        requestAdapterInfo: vi.fn().mockResolvedValue({ device: 'GPU' }),
+        requestDevice: vi.fn().mockResolvedValue(mockDevice),
+      };
+
+      const mockGpu = {
+        requestAdapter: vi.fn().mockResolvedValue(mockAdapter),
+      };
+
+      Object.defineProperty(global, 'navigator', {
+        value: { gpu: mockGpu },
+        writable: true,
+      });
+
+      const { webgpuDetector } = await import('./webgpu-detector');
+      await webgpuDetector.detect();
+      await webgpuDetector.initialize();
+
+      expect(webgpuDetector.initialized).toBe(true);
+
+      // Simulate device lost
+      lostResolve!();
+      await new Promise((r) => setTimeout(r, 10));
+
+      // After device lost, initialized should be false
+      expect(webgpuDetector.initialized).toBe(false);
+    });
   });
 
   describe('getExecutionProvider', () => {

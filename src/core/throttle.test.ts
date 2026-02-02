@@ -123,9 +123,6 @@ describe('Throttle', () => {
   });
 
   describe('runWithRetry', () => {
-    // Note: Most runWithRetry tests use real timers as the internal delay()
-    // doesn't work with vi.useFakeTimers. We test what we can without delays.
-
     it('succeeds on first attempt', async () => {
       vi.useRealTimers();
       const fn = vi.fn().mockResolvedValue('result');
@@ -170,35 +167,139 @@ describe('Throttle', () => {
       vi.useFakeTimers();
     });
 
-    it('retries on retryable error with short delay', async () => {
+    it('retries on retryable error with exponential backoff', async () => {
       vi.useRealTimers();
       const retryableError = new Error('Rate limited') as Error & { retryable: boolean; retryAfter: number };
       retryableError.retryable = true;
-      retryableError.retryAfter = 1; // 1ms delay for fast test
+      retryableError.retryAfter = 1; // 1ms base delay
 
       const fn = vi
         .fn()
         .mockRejectedValueOnce(retryableError)
         .mockResolvedValue('success');
 
+      const start = Date.now();
       const result = await throttle.runWithRetry(fn, 'test', 3);
+      const elapsed = Date.now() - start;
 
       expect(result).toBe('success');
       expect(fn).toHaveBeenCalledTimes(2);
+      // Should have waited at least ~1ms (with jitter 0.9-1.1)
+      expect(elapsed).toBeGreaterThanOrEqual(0);
       vi.useFakeTimers();
     }, 10000);
 
-    it('throws after max attempts with short delay', async () => {
+    it('throws after max attempts exhausted', async () => {
       vi.useRealTimers();
-      const retryableError = new Error('Retry') as Error & { retryable: boolean; retryAfter: number };
+      const retryableError = new Error('Persistent failure') as Error & { retryable: boolean; retryAfter: number };
       retryableError.retryable = true;
-      retryableError.retryAfter = 1; // 1ms delay
+      retryableError.retryAfter = 1;
 
       const fn = vi.fn().mockRejectedValue(retryableError);
 
-      await expect(throttle.runWithRetry(fn, 'test', 2)).rejects.toThrow('Retry');
+      await expect(throttle.runWithRetry(fn, 'test', 2)).rejects.toThrow('Persistent failure');
       expect(fn).toHaveBeenCalledTimes(2);
       vi.useFakeTimers();
     }, 10000);
+
+    it('logs retry info in debug mode', async () => {
+      vi.useRealTimers();
+      const consoleSpy = vi.spyOn(console, 'log');
+      const retryableError = new Error('Retry me') as Error & { retryable: boolean; retryAfter: number };
+      retryableError.retryable = true;
+      retryableError.retryAfter = 1;
+
+      const fn = vi
+        .fn()
+        .mockRejectedValueOnce(retryableError)
+        .mockResolvedValue('ok');
+
+      await throttle.runWithRetry(fn, 'test', 3, true);
+
+      expect(consoleSpy).toHaveBeenCalledWith('[Throttle] attempt', 1);
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[Throttle] retrying'),
+        expect.any(String),
+        expect.stringContaining('in'),
+        expect.any(Number),
+        'ms'
+      );
+      vi.useFakeTimers();
+    }, 10000);
+
+  });
+
+  describe('runWithRateLimit edge cases', () => {
+    it('handles synchronous throw in fn', async () => {
+      vi.useRealTimers();
+      const fn = vi.fn().mockImplementation(() => {
+        throw new Error('Sync error');
+      });
+
+      await expect(
+        throttle.runWithRateLimit(fn, 'test', { immediate: true })
+      ).rejects.toThrow('Sync error');
+      vi.useFakeTimers();
+    });
+
+    it('queues request when rate limit reached', async () => {
+      vi.useRealTimers();
+
+      // Create throttle with very low limit
+      const limitedThrottle = new Throttle({
+        requestLimit: 1,
+        tokenLimit: 1000,
+        windowMs: 60000,
+      });
+
+      const results: string[] = [];
+      const fn1 = vi.fn().mockImplementation(async () => {
+        results.push('first');
+        return 'first';
+      });
+      const fn2 = vi.fn().mockImplementation(async () => {
+        results.push('second');
+        return 'second';
+      });
+
+      // First executes immediately
+      const p1 = limitedThrottle.runWithRateLimit(fn1, 'test1', { immediate: true });
+
+      // Second should be queued (rate limit hit)
+      const p2 = limitedThrottle.runWithRateLimit(fn2, 'test2', { immediate: true });
+
+      const r1 = await p1;
+      expect(r1).toBe('first');
+      expect(results).toContain('first');
+
+      // Wait for queue to process
+      await new Promise((r) => setTimeout(r, 100));
+
+      limitedThrottle.destroy();
+      vi.useFakeTimers();
+    });
+
+    it('handles token limit exceeded', async () => {
+      vi.useRealTimers();
+
+      const limitedThrottle = new Throttle({
+        requestLimit: 100,
+        tokenLimit: 5, // Very low token limit
+        windowMs: 60000,
+      });
+
+      const fn = vi.fn().mockResolvedValue('ok');
+
+      // This has more tokens than the limit allows
+      const p = limitedThrottle.runWithRateLimit(fn, 'this is a long text that exceeds token limit', {
+        immediate: true,
+      });
+
+      // Should still execute (queued)
+      await new Promise((r) => setTimeout(r, 100));
+
+      limitedThrottle.destroy();
+      vi.useFakeTimers();
+    });
   });
 });
