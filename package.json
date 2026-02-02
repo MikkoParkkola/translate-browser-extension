@@ -17,10 +17,13 @@
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.24.0",
+    "@testing-library/jest-dom": "^6.9.1",
     "@types/chrome": "^0.0.268",
     "@types/node": "^20.14.0",
+    "@vitest/coverage-v8": "^2.1.9",
     "eslint": "^9.0.0",
     "eslint-plugin-solid": "^0.14.0",
+    "jsdom": "^28.0.0",
     "typescript": "^5.4.0",
     "vite": "^5.4.0",
     "vite-plugin-solid": "^2.10.0",
