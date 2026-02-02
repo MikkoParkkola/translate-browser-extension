@@ -236,7 +236,13 @@ document.head.appendChild(style);
 
 // Listen for messages from popup/background
 chrome.runtime.onMessage.addListener(
-  (message: TranslateMessage, _sender, sendResponse: (response: boolean) => void) => {
+  (message: TranslateMessage | { type: 'ping' }, _sender, sendResponse: (response: boolean | { loaded: boolean }) => void) => {
+    // Ping to check if content script is loaded
+    if (message.type === 'ping') {
+      sendResponse({ loaded: true });
+      return true;
+    }
+
     if (message.type === 'translateSelection') {
       translateSelection(message.sourceLang, message.targetLang, message.strategy)
         .then(() => sendResponse(true))

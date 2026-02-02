@@ -49,11 +49,33 @@ export default function App() {
     }
   };
 
+  // Inject content script if not already loaded
+  const ensureContentScript = async (tabId: number): Promise<boolean> => {
+    try {
+      // Try to ping the content script
+      await chrome.tabs.sendMessage(tabId, { type: 'ping' });
+      return true;
+    } catch {
+      // Content script not loaded, inject it
+      console.log('[Popup] Injecting content script...');
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: ['content.js'],
+        });
+        // Wait a bit for script to initialize
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return true;
+      } catch (injectError) {
+        console.error('[Popup] Failed to inject content script:', injectError);
+        return false;
+      }
+    }
+  };
+
   const handleError = (e: unknown) => {
     const msg = e instanceof Error ? e.message : String(e);
-    if (msg.includes('Receiving end does not exist')) {
-      setError('Please refresh the page first');
-    } else if (msg.includes('Cannot access')) {
+    if (msg.includes('Cannot access')) {
       setError('Cannot translate this page');
     } else {
       setError(msg);
@@ -74,6 +96,12 @@ export default function App() {
       // Check if it's a restricted URL
       if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('about:') || tab.url?.startsWith('chrome-extension://')) {
         setError('Cannot translate browser pages');
+        return;
+      }
+      // Ensure content script is loaded
+      const injected = await ensureContentScript(tab.id);
+      if (!injected) {
+        setError('Cannot access this page');
         return;
       }
       await chrome.tabs.sendMessage(tab.id, {
@@ -101,6 +129,12 @@ export default function App() {
       }
       if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('about:') || tab.url?.startsWith('chrome-extension://')) {
         setError('Cannot translate browser pages');
+        return;
+      }
+      // Ensure content script is loaded
+      const injected = await ensureContentScript(tab.id);
+      if (!injected) {
+        setError('Cannot access this page');
         return;
       }
       await chrome.tabs.sendMessage(tab.id, {
