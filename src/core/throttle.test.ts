@@ -63,6 +63,23 @@ describe('Throttle', () => {
 
       expect(batches.length).toBe(1);
     });
+
+    it('splits when accumulated tokens exceed limit mid-batch', () => {
+      // Create texts where accumulation exceeds limit mid-way
+      const texts = [
+        'First sentence here.',
+        'Second sentence here.',
+        'Third sentence here.',
+        'Fourth sentence here.',
+      ];
+      // Set limit low enough that we overflow mid-batch
+      const batches = throttle.predictiveBatch(texts, 8);
+
+      // Should create multiple batches
+      expect(batches.length).toBeGreaterThan(1);
+      // All texts should be included
+      expect(batches.flat().length).toBe(4);
+    });
   });
 
   describe('getUsage', () => {

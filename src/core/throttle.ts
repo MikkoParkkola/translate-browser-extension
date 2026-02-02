@@ -211,6 +211,8 @@ export class Throttle {
         wait = Math.min(base * 2, 60000);
       }
     }
+    // Note: This is unreachable - loop throws on last attempt (i === attempts - 1)
+    // TypeScript requires a return/throw here for type safety
     throw new Error('Max retries exceeded');
   }
 

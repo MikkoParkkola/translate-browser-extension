@@ -94,6 +94,21 @@ describe('OpusMTProvider', () => {
       expect(result).toBe('');
     });
 
+    it('throws and logs error when translation fails', async () => {
+      const consoleSpy = vi.spyOn(console, 'error');
+      const translationError = new Error('Translation failed');
+
+      const mockPipeInstance = vi.fn().mockRejectedValue(translationError);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).pipelineFactory = vi.fn().mockResolvedValue(mockPipeInstance);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).isInitialized = true;
+
+      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow('Translation failed');
+      expect(consoleSpy).toHaveBeenCalledWith('[OPUS-MT] Single translation error:', translationError);
+    });
+
     it('translates single text', async () => {
       const mockPipeInstance = vi
         .fn()
