@@ -167,6 +167,19 @@ describe('OpusMTProvider', () => {
       // Should return true because mock allows initialization
       expect(result).toBe(true);
     });
+
+    it('returns false when initialization throws error', async () => {
+      const newProvider = new OpusMTProvider();
+      // Force initialization to throw
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (newProvider as any).isInitialized = false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (newProvider as any).initialize = vi.fn().mockRejectedValue(new Error('Init failed'));
+
+      const result = await newProvider.isAvailable();
+
+      expect(result).toBe(false);
+    });
   });
 
   describe('test', () => {

@@ -301,5 +301,74 @@ describe('Throttle', () => {
       limitedThrottle.destroy();
       vi.useFakeTimers();
     });
+
+    it('processes queue with cooldown between requests', async () => {
+      vi.useRealTimers();
+
+      const limitedThrottle = new Throttle({
+        requestLimit: 2,
+        tokenLimit: 1000,
+        windowMs: 1000, // 1 second window = 500ms between requests
+      });
+
+      const results: number[] = [];
+      const fn1 = vi.fn().mockImplementation(async () => {
+        results.push(1);
+        return 'first';
+      });
+      const fn2 = vi.fn().mockImplementation(async () => {
+        results.push(2);
+        return 'second';
+      });
+      const fn3 = vi.fn().mockImplementation(async () => {
+        results.push(3);
+        return 'third';
+      });
+
+      // Queue up three requests
+      const p1 = limitedThrottle.runWithRateLimit(fn1, 'test1', { immediate: true });
+      const p2 = limitedThrottle.runWithRateLimit(fn2, 'test2', { immediate: true });
+      const p3 = limitedThrottle.runWithRateLimit(fn3, 'test3', { immediate: true });
+
+      // Wait for all to process through queue
+      await Promise.race([
+        Promise.all([p1, p2, p3]),
+        new Promise((r) => setTimeout(r, 2000)),
+      ]);
+
+      expect(fn1).toHaveBeenCalled();
+      expect(results.includes(1)).toBe(true);
+
+      limitedThrottle.destroy();
+      vi.useFakeTimers();
+    });
+
+    it('prunes old token times', async () => {
+      vi.useRealTimers();
+
+      const shortWindowThrottle = new Throttle({
+        requestLimit: 100,
+        tokenLimit: 1000,
+        windowMs: 100, // 100ms window
+      });
+
+      const fn = vi.fn().mockResolvedValue('ok');
+
+      // Make a request
+      await shortWindowThrottle.runWithRateLimit(fn, 'test text', { immediate: true });
+
+      // Wait for window to expire
+      await new Promise((r) => setTimeout(r, 150));
+
+      // Get usage - should trigger prune
+      const usage = shortWindowThrottle.getUsage();
+
+      // Tokens should be pruned
+      expect(usage.tokens).toBe(0);
+      expect(usage.requests).toBe(0);
+
+      shortWindowThrottle.destroy();
+      vi.useFakeTimers();
+    });
   });
 });

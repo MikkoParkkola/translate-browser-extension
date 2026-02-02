@@ -172,5 +172,19 @@ describe('TranslationRouter', () => {
 
       expect(result).toBe('Mocked translation');
     });
+
+    it('translates with quality strategy', async () => {
+      router.setStrategy('quality');
+      const result = await router.translate('Hello', 'en', 'fi');
+
+      expect(result).toBe('Mocked translation');
+    });
+
+    it('translates with fast strategy', async () => {
+      router.setStrategy('fast');
+      const result = await router.translate('Hello', 'en', 'fi');
+
+      expect(result).toBe('Mocked translation');
+    });
   });
 });
