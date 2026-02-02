@@ -3,25 +3,52 @@ import solidPlugin from 'vite-plugin-solid';
 import { resolve } from 'path';
 import { copyFileSync, mkdirSync, existsSync } from 'fs';
 
-// Plugin to copy manifest.json to dist
-function copyManifest() {
+// Plugin to copy manifest.json and ONNX Runtime files to dist
+function copyExtensionFiles() {
   return {
-    name: 'copy-manifest',
+    name: 'copy-extension-files',
     closeBundle() {
       const distDir = resolve(__dirname, 'dist');
+      const assetsDir = resolve(distDir, 'assets');
+
       if (!existsSync(distDir)) {
         mkdirSync(distDir, { recursive: true });
       }
+      if (!existsSync(assetsDir)) {
+        mkdirSync(assetsDir, { recursive: true });
+      }
+
+      // Copy manifest
       copyFileSync(
         resolve(__dirname, 'src/manifest.json'),
         resolve(distDir, 'manifest.json')
       );
+
+      // Copy ONNX Runtime WASM files from transformers package
+      // These are needed for local inference without CDN
+      const transformersDir = resolve(
+        __dirname,
+        'node_modules/@huggingface/transformers/dist'
+      );
+      const wasmFiles = [
+        'ort-wasm-simd-threaded.jsep.wasm',
+        'ort-wasm-simd-threaded.jsep.mjs',
+      ];
+
+      for (const file of wasmFiles) {
+        const src = resolve(transformersDir, file);
+        const dest = resolve(assetsDir, file);
+        if (existsSync(src)) {
+          copyFileSync(src, dest);
+          console.log(`Copied: ${file}`);
+        }
+      }
     },
   };
 }
 
 export default defineConfig({
-  plugins: [solidPlugin(), copyManifest()],
+  plugins: [solidPlugin(), copyExtensionFiles()],
   // Chrome extensions need relative paths, not root-absolute
   base: '',
   resolve: {
@@ -54,7 +81,13 @@ export default defineConfig({
           return 'assets/[name]-[hash].js';
         },
         chunkFileNames: 'assets/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash][extname]',
+        assetFileNames: (assetInfo) => {
+          // Keep WASM files without hash - Transformers.js expects exact names
+          if (assetInfo.name?.endsWith('.wasm')) {
+            return 'assets/[name][extname]';
+          }
+          return 'assets/[name]-[hash][extname]';
+        },
       },
     },
   },

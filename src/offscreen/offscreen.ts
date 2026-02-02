@@ -3,8 +3,20 @@
  * Service workers can't use window/document, so we run ML here.
  */
 
-import { pipeline, type Pipeline } from '@huggingface/transformers';
+import { pipeline, env, type Pipeline } from '@huggingface/transformers';
 import { franc } from 'franc-min';
+
+// Configure Transformers.js for Chrome extension environment
+env.allowRemoteModels = true;  // Models from HuggingFace Hub
+env.allowLocalModels = false;  // No local filesystem
+env.useBrowserCache = true;    // Cache models in IndexedDB
+
+// CRITICAL: Point ONNX Runtime to bundled WASM files (not CDN)
+// This avoids CSP violations from dynamic CDN imports
+const wasmBasePath = chrome.runtime.getURL('assets/');
+env.backends.onnx.wasm.wasmPaths = wasmBasePath;
+
+console.log('[Offscreen] WASM path configured:', wasmBasePath);
 
 // Model mapping
 const MODEL_MAP: Record<string, string> = {
