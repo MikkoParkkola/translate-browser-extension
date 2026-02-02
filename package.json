@@ -1,119 +1,33 @@
 {
-  "name": "translate-by-mikko",
-  "version": "1.44.1",
-  "description": "Extension to translate web pages using multiple providers",
-  "main": "index.js",
+  "name": "translate-extension",
+  "version": "2.0.0",
+  "type": "module",
   "scripts": {
-    "test": "jest",
-    "build:safari": "bash scripts/convert-safari.sh",
-    "test:e2e:web": "playwright test e2e/context-menu.spec.js e2e/dom-translate.spec.js e2e/translate-page.spec.js e2e/streaming-cancel.spec.js",
-    "test:e2e:pdf": "playwright test e2e/pdf-compare.spec.js",
-    "test:e2e-web": "npm run test:e2e:web",
-    "test:e2e-pdf": "npm run test:e2e:pdf",
-    "test:e2e": "npm run test:e2e:web && npm run test:e2e:pdf",
-    "e2e": "npm run test:e2e",
-    "postinstall": "bash scripts/fetch-wasm-assets.sh",
-    "clean": "rimraf dist",
-    "build": "rimraf dist && copyfiles -u 1 \"src/**/*\" dist",
-    "build:fast": "rimraf dist && copyfiles -u 1 \"src/**/*\" dist",
-    "zip": "bestzip dist/translate-by-mikko-v$npm_package_version.zip dist/*",
-    "build:zip": "npm run build && npm run zip",
-    "serve": "http-server dist -p 8080",
-    "lint": "eslint .",
-    "format": "prettier --check package.json",
-    "size": "npm run build && size-limit",
-    "size:analyze": "npm run build && webpack-bundle-analyzer dist --port 8888",
-    "size:report": "npm run build && size-limit --json > size-report.json",
-    "secrets": "gitleaks detect --no-git",
-    "changeset": "changeset",
-    "release": "changeset publish",
-    "pr": "bash scripts/pr.sh"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "AGPL-3.0-or-later",
-  "type": "commonjs",
-  "size-limit": [
-    {
-      "name": "Core translator module",
-      "path": "dist/translator.js",
-      "limit": "60 KB"
-    },
-    {
-      "name": "Background service worker",
-      "path": "dist/background.js",
-      "limit": "50 KB"
-    },
-    {
-      "name": "Content script (initial)",
-      "path": "dist/contentScript.js",
-      "limit": "40 KB"
-    },
-    {
-      "name": "Popup interface",
-      "path": "dist/popup.js",
-      "limit": "35 KB"
-    },
-    {
-      "name": "Core modules (combined)",
-      "path": "dist/core/*.js",
-      "limit": "150 KB",
-      "ignore": [
-        "dist/core/*loader.js"
-      ]
-    },
-    {
-      "name": "WASM loaders (should be lazy)",
-      "path": "dist/core/*loader.js",
-      "limit": "25 KB"
-    },
-    {
-      "name": "Initial bundle (critical path)",
-      "path": [
-        "dist/background.js",
-        "dist/translator.js",
-        "dist/config.js"
-      ],
-      "limit": "120 KB"
-    }
-  ],
-  "devDependencies": {
-    "@0xts/gitleaks-cli": "^0.1.3",
-    "@babel/core": "^7.28.4",
-    "@babel/plugin-transform-modules-commonjs": "^7.27.1",
-    "@babel/preset-env": "^7.28.3",
-    "@changesets/changelog-github": "^0.5.1",
-    "@changesets/cli": "^2.29.6",
-    "@playwright/test": "^1.54.2",
-    "@size-limit/file": "^11.1.5",
-    "@size-limit/webpack": "^11.1.5",
-    "@types/chrome": "^0.0.268",
-    "@types/jest": "^30.0.0",
-    "@types/node": "^22.0.0",
-    "babel-jest": "^30.0.5",
-    "bestzip": "^2.2.1",
-    "copyfiles": "^2.4.1",
-    "cross-fetch": "^4.1.0",
-    "electron": "^37.3.1",
-    "eslint": "^8.57.0",
-    "eslint-plugin-import": "^2.29.0",
-    "fake-indexeddb": "^6.1.0",
-    "globals": "^16.3.0",
-    "http-server": "^14.1.1",
-    "jest": "^30.0.5",
-    "jest-environment-jsdom": "^30.0.5",
-    "jest-fetch-mock": "^3.0.3",
-    "lz-string": "^1.5.0",
-    "pdf-lib": "^1.17.1",
-    "prettier": "^3.3.2",
-    "rimraf": "^6.0.1",
-    "size-limit": "^11.1.5",
-    "webpack": "^5.95.0",
-    "webpack-bundle-analyzer": "^4.10.0"
+    "dev": "vite build --watch",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "lint": "eslint src --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@xenova/transformers": "^2.17.2",
-    "mupdf": "^1.26.4",
-    "pdfjs-dist": "^5.4.54"
+    "@huggingface/transformers": "^3.0.0",
+    "solid-js": "^1.8.0"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.24.0",
+    "@types/chrome": "^0.0.268",
+    "@types/node": "^20.14.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-solid": "^0.14.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.4.0",
+    "vite-plugin-solid": "^2.10.0",
+    "vite-plugin-web-extension": "^4.1.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

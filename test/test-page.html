@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Translation Extension Test Page</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem;
+      line-height: 1.6;
+    }
+    h1 { color: #1e293b; }
+    section {
+      margin: 2rem 0;
+      padding: 1.5rem;
+      background: #f8fafc;
+      border-radius: 8px;
+    }
+    h2 { color: #3b82f6; margin-top: 0; }
+    .test-text {
+      padding: 1rem;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      margin: 0.5rem 0;
+    }
+    .status {
+      margin-top: 2rem;
+      padding: 1rem;
+      background: #dbeafe;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>TRANSLATE! Extension Test Page</h1>
+
+  <section>
+    <h2>English to Finnish Test</h2>
+    <div class="test-text">
+      <p>Hello, how are you today?</p>
+      <p>The weather is beautiful.</p>
+      <p>I would like to order some coffee, please.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Longer Text Test</h2>
+    <div class="test-text">
+      <p>
+        The quick brown fox jumps over the lazy dog. This sentence contains every
+        letter of the English alphabet and is commonly used for testing purposes.
+        Translation systems need to handle various sentence structures and lengths
+        effectively.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Technical Text Test</h2>
+    <div class="test-text">
+      <p>
+        WebGPU is a new web API that provides modern GPU access for rendering and
+        computation. It enables high-performance machine learning inference directly
+        in the browser, making local translation models fast and efficient.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Mixed Content Test</h2>
+    <div class="test-text">
+      <p>Welcome to our website!</p>
+      <ul>
+        <li>First item in the list</li>
+        <li>Second item with more text</li>
+        <li>Third item to translate</li>
+      </ul>
+      <p>Thank you for visiting.</p>
+    </div>
+  </section>
+
+  <div class="status">
+    <strong>Instructions:</strong>
+    <ol>
+      <li>Load the extension from <code>dist/</code> folder in Chrome</li>
+      <li>Click the extension icon</li>
+      <li>Select "English" as source and "Finnish" as target</li>
+      <li>Click "Translate Page" to translate all text</li>
+      <li>Or select some text and click "Translate Selection"</li>
+    </ol>
+  </div>
+</body>
+</html>

@@ -21,3 +21,4 @@ tools/icu4x-segmenter/pkg/
 
 # Coverage reports
 coverage/
+_legacy/
