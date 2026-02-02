@@ -255,4 +255,31 @@ chrome.runtime.onMessage.addListener(
   }
 );
 
+// Check for automatic translation mode
+async function checkAutoTranslate(): Promise<void> {
+  try {
+    const settings = await chrome.storage.local.get(['autoTranslate', 'sourceLang', 'targetLang', 'strategy']);
+    if (settings.autoTranslate) {
+      console.log('[Content] Auto-translate enabled, translating page...');
+      // Small delay to let page settle
+      setTimeout(() => {
+        translatePage(
+          settings.sourceLang || 'auto',
+          settings.targetLang || 'fi',
+          settings.strategy || 'smart'
+        );
+      }, 1000);
+    }
+  } catch (e) {
+    console.log('[Content] Could not check auto-translate settings:', e);
+  }
+}
+
+// Run auto-translate check on load
+if (document.readyState === 'complete') {
+  checkAutoTranslate();
+} else {
+  window.addEventListener('load', checkAutoTranslate);
+}
+
 console.log('[Content] Translation content script loaded');

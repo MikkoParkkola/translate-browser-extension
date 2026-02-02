@@ -13,6 +13,8 @@ export default function App() {
   const [providerName, _setProviderName] = createSignal('Helsinki-NLP OPUS-MT');
   const [providerStatus, _setProviderStatus] = createSignal<'ready' | 'loading' | 'error'>('ready');
   const [isTranslating, setIsTranslating] = createSignal(false);
+  const [autoTranslate, setAutoTranslate] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
   const [usage, _setUsage] = createSignal<UsageStats>({
     today: { requests: 0, characters: 0, cost: 0 },
     budget: { monthly: 2.0, used: 0 },
@@ -21,29 +23,68 @@ export default function App() {
   onMount(async () => {
     // Load saved preferences
     try {
-      const stored = await chrome.storage.local.get(['sourceLang', 'targetLang', 'strategy']);
+      const stored = await chrome.storage.local.get(['sourceLang', 'targetLang', 'strategy', 'autoTranslate']);
       if (stored.sourceLang) setSourceLang(stored.sourceLang);
       if (stored.targetLang) setTargetLang(stored.targetLang);
       if (stored.strategy) setStrategy(stored.strategy);
+      if (stored.autoTranslate !== undefined) setAutoTranslate(stored.autoTranslate);
     } catch (e) {
       console.log('[Popup] Storage not available:', e);
     }
   });
 
+  const toggleAutoTranslate = async () => {
+    const newValue = !autoTranslate();
+    setAutoTranslate(newValue);
+    try {
+      await chrome.storage.local.set({
+        autoTranslate: newValue,
+        sourceLang: sourceLang(),
+        targetLang: targetLang(),
+        strategy: strategy(),
+      });
+      console.log('[Popup] Auto-translate:', newValue);
+    } catch (e) {
+      console.error('[Popup] Failed to save auto-translate:', e);
+    }
+  };
+
+  const handleError = (e: unknown) => {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('Receiving end does not exist')) {
+      setError('Please refresh the page first');
+    } else if (msg.includes('Cannot access')) {
+      setError('Cannot translate this page');
+    } else {
+      setError(msg);
+    }
+    // Clear error after 5 seconds
+    setTimeout(() => setError(null), 5000);
+  };
+
   const handleTranslateSelection = async () => {
     setIsTranslating(true);
+    setError(null);
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab?.id) {
-        await chrome.tabs.sendMessage(tab.id, {
-          type: 'translateSelection',
-          sourceLang: sourceLang(),
-          targetLang: targetLang(),
-          strategy: strategy(),
-        });
+      if (!tab?.id) {
+        setError('No active tab');
+        return;
       }
+      // Check if it's a restricted URL
+      if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('about:') || tab.url?.startsWith('chrome-extension://')) {
+        setError('Cannot translate browser pages');
+        return;
+      }
+      await chrome.tabs.sendMessage(tab.id, {
+        type: 'translateSelection',
+        sourceLang: sourceLang(),
+        targetLang: targetLang(),
+        strategy: strategy(),
+      });
     } catch (e) {
       console.error('[Popup] Translation failed:', e);
+      handleError(e);
     } finally {
       setIsTranslating(false);
     }
@@ -51,18 +92,26 @@ export default function App() {
 
   const handleTranslatePage = async () => {
     setIsTranslating(true);
+    setError(null);
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab?.id) {
-        await chrome.tabs.sendMessage(tab.id, {
-          type: 'translatePage',
-          sourceLang: sourceLang(),
-          targetLang: targetLang(),
-          strategy: strategy(),
-        });
+      if (!tab?.id) {
+        setError('No active tab');
+        return;
       }
+      if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('about:') || tab.url?.startsWith('chrome-extension://')) {
+        setError('Cannot translate browser pages');
+        return;
+      }
+      await chrome.tabs.sendMessage(tab.id, {
+        type: 'translatePage',
+        sourceLang: sourceLang(),
+        targetLang: targetLang(),
+        strategy: strategy(),
+      });
     } catch (e) {
       console.error('[Popup] Page translation failed:', e);
+      handleError(e);
     } finally {
       setIsTranslating(false);
     }
@@ -127,35 +176,53 @@ export default function App() {
         {/* Strategy Selection */}
         <StrategySelector selected={strategy()} onChange={setStrategy} />
 
+        {/* Auto-Translate Toggle */}
+        <section class="auto-section">
+          <label class="auto-toggle">
+            <input
+              type="checkbox"
+              checked={autoTranslate()}
+              onChange={toggleAutoTranslate}
+            />
+            <span class="toggle-slider"></span>
+            <span class="toggle-label">Auto-translate pages</span>
+          </label>
+        </section>
+
+        {/* Error Display */}
+        <Show when={error()}>
+          <div class="error-banner">{error()}</div>
+        </Show>
+
         {/* Action Buttons */}
         <section class="action-section">
           <button
             class="action-button action-button--primary"
-            onClick={handleTranslateSelection}
+            onClick={handleTranslatePage}
             disabled={isTranslating()}
           >
             <Show when={!isTranslating()} fallback={<span class="spinner" />}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M12 2l3.09 6.26L22 9l-5 4.87L18.18 22 12 18.77 5.82 22 7 13.87 2 9l6.91-.74L12 2z"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  fill="none"
-                />
+                <path d="M4 6h16M4 10h16M4 14h16M4 18h16" stroke="currentColor" stroke-width="2" />
               </svg>
             </Show>
-            <span>Translate Selection</span>
+            <span>Translate Page</span>
           </button>
 
           <button
             class="action-button action-button--secondary"
-            onClick={handleTranslatePage}
+            onClick={handleTranslateSelection}
             disabled={isTranslating()}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M4 6h16M4 10h16M4 14h16M4 18h16" stroke="currentColor" stroke-width="2" />
+              <path
+                d="M12 2l3.09 6.26L22 9l-5 4.87L18.18 22 12 18.77 5.82 22 7 13.87 2 9l6.91-.74L12 2z"
+                stroke="currentColor"
+                stroke-width="2"
+                fill="none"
+              />
             </svg>
-            <span>Translate Page</span>
+            <span>Translate Selection</span>
           </button>
         </section>
 

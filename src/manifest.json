@@ -23,8 +23,10 @@
   "permissions": [
     "storage",
     "activeTab",
-    "scripting"
+    "scripting",
+    "offscreen"
   ],
+  "minimum_chrome_version": "116",
   "host_permissions": [
     "<all_urls>"
   ],

@@ -116,4 +116,9 @@ export interface TranslateResponse {
   duration?: number;
 }
 
-export type ExtensionMessage = TranslateMessage | { type: 'getUsage' } | { type: 'getProviders' };
+export type ExtensionMessage =
+  | (TranslateMessage & { target?: string })
+  | { type: 'getUsage'; target?: string }
+  | { type: 'getProviders'; target?: string }
+  | { type: 'getSupportedLanguages'; target?: string }
+  | { type: 'ping'; target?: string };

@@ -1,22 +1,105 @@
 /**
  * Background Service Worker
- * Handles translation requests and provider management
+ * Uses offscreen document for ML inference (service workers can't access DOM)
  */
 
-import { translationRouter } from '../core/translation-router';
-import { throttle } from '../core/throttle';
 import type { ExtensionMessage, TranslateResponse, Strategy } from '../types';
 
-// Initialize router on startup
-translationRouter.initialize().catch(console.error);
+// Offscreen document management
+let creatingOffscreen: Promise<void> | null = null;
+
+async function ensureOffscreenDocument(): Promise<void> {
+  const offscreenUrl = chrome.runtime.getURL('src/offscreen/offscreen.html');
+
+  // Check if already exists
+  const existingContexts = await chrome.runtime.getContexts({
+    contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT],
+    documentUrls: [offscreenUrl],
+  });
+
+  if (existingContexts.length > 0) {
+    return;
+  }
+
+  // Avoid race condition
+  if (creatingOffscreen) {
+    await creatingOffscreen;
+    return;
+  }
+
+  creatingOffscreen = chrome.offscreen.createDocument({
+    url: offscreenUrl,
+    reasons: [chrome.offscreen.Reason.WORKERS],
+    justification: 'Run Transformers.js ML inference in document context',
+  });
+
+  await creatingOffscreen;
+  creatingOffscreen = null;
+  console.log('[Background] Offscreen document created');
+}
+
+// Send message to offscreen document
+async function sendToOffscreen<T>(message: Record<string, unknown>): Promise<T> {
+  await ensureOffscreenDocument();
+  return chrome.runtime.sendMessage({ ...message, target: 'offscreen' });
+}
+
+// Strategy state (simple, no need for complex router in service worker)
+let currentStrategy: Strategy = 'smart';
+
+// Rate limiting state
+interface RateLimitState {
+  requests: number;
+  tokens: number;
+  windowStart: number;
+}
+
+const rateLimit: RateLimitState = {
+  requests: 0,
+  tokens: 0,
+  windowStart: Date.now(),
+};
+
+const RATE_LIMIT = {
+  requestsPerMinute: 60,
+  tokensPerMinute: 100000,
+  windowMs: 60000,
+};
+
+function checkRateLimit(tokenEstimate: number): boolean {
+  const now = Date.now();
+  if (now - rateLimit.windowStart > RATE_LIMIT.windowMs) {
+    rateLimit.requests = 0;
+    rateLimit.tokens = 0;
+    rateLimit.windowStart = now;
+  }
+
+  if (rateLimit.requests >= RATE_LIMIT.requestsPerMinute) return false;
+  if (rateLimit.tokens + tokenEstimate > RATE_LIMIT.tokensPerMinute) return false;
+
+  return true;
+}
+
+function recordUsage(tokens: number): void {
+  rateLimit.requests++;
+  rateLimit.tokens += tokens;
+}
+
+function estimateTokens(text: string | string[]): number {
+  const str = Array.isArray(text) ? text.join(' ') : text;
+  return Math.max(1, Math.ceil(str.length / 4));
+}
 
 // Message handler
 chrome.runtime.onMessage.addListener(
   (
     message: ExtensionMessage,
-    _sender: chrome.runtime.MessageSender,
+    sender: chrome.runtime.MessageSender,
     sendResponse: (response: TranslateResponse | unknown) => void
   ) => {
+    // Ignore messages from offscreen document
+    if (message.target === 'offscreen') return false;
+
     handleMessage(message)
       .then(sendResponse)
       .catch((error) => {
@@ -26,8 +109,7 @@ chrome.runtime.onMessage.addListener(
         });
       });
 
-    // Return true to indicate async response
-    return true;
+    return true; // Async response
   }
 );
 
@@ -53,28 +135,36 @@ async function handleTranslate(message: {
   const startTime = Date.now();
 
   try {
-    // Set strategy if provided
     if (message.options?.strategy) {
-      translationRouter.setStrategy(message.options.strategy);
+      currentStrategy = message.options.strategy;
     }
 
-    // Use throttle for rate limiting
-    const result = await throttle.runWithRetry(
-      async () => {
-        return await translationRouter.translate(
-          message.text,
-          message.sourceLang,
-          message.targetLang,
-          message.options
-        );
-      },
-      typeof message.text === 'string' ? message.text : message.text.join(' '),
-      3 // max retries
-    );
+    const tokenEstimate = estimateTokens(message.text);
+
+    if (!checkRateLimit(tokenEstimate)) {
+      return {
+        success: false,
+        error: 'Rate limit exceeded. Please wait a moment.',
+        duration: Date.now() - startTime,
+      };
+    }
+
+    const response = await sendToOffscreen<{ success: boolean; result?: string | string[]; error?: string }>({
+      type: 'translate',
+      text: message.text,
+      sourceLang: message.sourceLang,
+      targetLang: message.targetLang,
+    });
+
+    if (!response.success) {
+      throw new Error(response.error || 'Translation failed');
+    }
+
+    recordUsage(tokenEstimate);
 
     return {
       success: true,
-      result,
+      result: response.result,
       duration: Date.now() - startTime,
     };
   } catch (error) {
@@ -89,22 +179,56 @@ async function handleTranslate(message: {
 
 function handleGetUsage(): unknown {
   return {
-    throttle: throttle.getUsage(),
-    providers: translationRouter.getStats(),
+    throttle: {
+      requests: rateLimit.requests,
+      tokens: rateLimit.tokens,
+      requestLimit: RATE_LIMIT.requestsPerMinute,
+      tokenLimit: RATE_LIMIT.tokensPerMinute,
+      queue: 0,
+    },
+    providers: {},
   };
 }
 
-function handleGetProviders(): unknown {
-  return {
-    providers: translationRouter.listProviders(),
-    strategy: translationRouter.getStrategy(),
-  };
+async function handleGetProviders(): Promise<unknown> {
+  try {
+    const response = await sendToOffscreen<{ success: boolean; languages?: Array<{ src: string; tgt: string }> }>({
+      type: 'getSupportedLanguages',
+    });
+
+    return {
+      providers: [
+        {
+          id: 'opus-mt-local',
+          name: 'Helsinki-NLP OPUS-MT',
+          type: 'local',
+          qualityTier: 'standard',
+          icon: '',
+        },
+      ],
+      strategy: currentStrategy,
+      supportedLanguages: response.success ? response.languages : [],
+    };
+  } catch {
+    return {
+      providers: [
+        {
+          id: 'opus-mt-local',
+          name: 'Helsinki-NLP OPUS-MT',
+          type: 'local',
+          qualityTier: 'standard',
+          icon: '',
+        },
+      ],
+      strategy: currentStrategy,
+      supportedLanguages: [],
+    };
+  }
 }
 
 // Extension icon click handler
 chrome.action.onClicked.addListener(async (tab) => {
   if (tab.id) {
-    // Open popup is default behavior, but we can add custom logic here
     console.log('[Background] Extension icon clicked for tab:', tab.id);
   }
 });
@@ -113,7 +237,6 @@ chrome.action.onClicked.addListener(async (tab) => {
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
     console.log('[Background] Extension installed');
-    // Set default preferences
     chrome.storage.local.set({
       sourceLang: 'auto',
       targetLang: 'fi',

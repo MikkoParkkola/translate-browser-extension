@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^3.0.0",
+    "franc-min": "^6.2.0",
     "solid-js": "^1.8.0"
   },
   "devDependencies": {

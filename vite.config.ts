@@ -22,6 +22,8 @@ function copyManifest() {
 
 export default defineConfig({
   plugins: [solidPlugin(), copyManifest()],
+  // Chrome extensions need relative paths, not root-absolute
+  base: '',
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
@@ -39,6 +41,7 @@ export default defineConfig({
       input: {
         popup: resolve(__dirname, 'src/popup/index.html'),
         options: resolve(__dirname, 'src/options/index.html'),
+        offscreen: resolve(__dirname, 'src/offscreen/offscreen.html'),
         background: resolve(__dirname, 'src/background/service-worker.ts'),
         content: resolve(__dirname, 'src/content/index.ts'),
       },
