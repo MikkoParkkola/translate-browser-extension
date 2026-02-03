@@ -62,39 +62,61 @@ echo "[Container] Architecture: $(uname -m)"
 echo ""
 echo "[Container] Installing dependencies..."
 pip install --quiet --upgrade pip
-pip install --quiet transformers optimum onnx onnxruntime accelerate
-pip install --quiet onnxconverter-common huggingface_hub
+
+# Install optimum first, then upgrade transformers to support gemma3
+echo "[Container] Installing optimum..."
+pip install --quiet "optimum[onnxruntime]==1.19.0" onnx accelerate
+
+echo "[Container] Upgrading transformers for gemma3 support..."
+pip install --quiet --upgrade "transformers>=4.45" sentencepiece protobuf
+pip install --quiet onnxconverter-common huggingface_hub onnxslim
 
 echo ""
-echo "[Container] Cloning Transformers.js conversion scripts..."
-cd /tmp
-git clone --depth 1 https://github.com/xenova/transformers.js
-
-echo ""
-echo "[Container] Installing conversion script dependencies..."
-pip install --quiet sentencepiece protobuf
+echo "[Container] Verifying transformers version..."
+python3 -c "import transformers; print(f'transformers={transformers.__version__}')"
 
 echo ""
 echo "[Container] Testing model access..."
 python3 -c "
-from transformers import AutoProcessor
-processor = AutoProcessor.from_pretrained(\"google/translategemma-4b-it\", trust_remote_code=True)
-print(\"Model access confirmed!\")
+from transformers import AutoConfig
+config = AutoConfig.from_pretrained('google/translategemma-4b-it', trust_remote_code=True)
+print(f'Model type: {config.model_type}')
+print('Model access confirmed!')
 "
 
 echo ""
-echo "[Container] Starting ONNX conversion..."
+echo "[Container] Starting ONNX conversion with optimum-cli..."
 echo "[Container] Started at: $(date)"
 START=$(date +%s)
 
-cd /tmp/transformers.js
-python3 -m scripts.convert \
-    --model_id google/translategemma-4b-it \
-    --output_parent_dir /output \
+# Export to ONNX using optimum-cli with CUDA for fp16
+echo "[Container] Exporting to ONNX (fp16)..."
+optimum-cli export onnx \
+    --model google/translategemma-4b-it \
     --task image-text-to-text \
-    --trust_remote_code \
-    --quantize \
-    -- --modes fp16 q4
+    --trust-remote-code \
+    --device cuda \
+    --dtype fp16 \
+    /output/onnx
+
+# Quantize to int4 using onnxruntime
+echo ""
+echo "[Container] Quantizing to int4..."
+python3 -c "
+from onnxruntime.quantization import quantize_dynamic, QuantType
+import os
+import glob
+
+onnx_dir = '/output/onnx'
+for onnx_file in glob.glob(os.path.join(onnx_dir, '*.onnx')):
+    if '_quantized' not in onnx_file and '_q4' not in onnx_file:
+        output_file = onnx_file.replace('.onnx', '_q4.onnx')
+        print(f'Quantizing {onnx_file} -> {output_file}')
+        try:
+            quantize_dynamic(onnx_file, output_file, weight_type=QuantType.QUInt4x2)
+        except Exception as e:
+            print(f'Warning: Could not quantize {onnx_file}: {e}')
+"
 
 END=$(date +%s)
 DURATION=$((END - START))
