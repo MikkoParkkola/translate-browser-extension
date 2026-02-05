@@ -27,7 +27,7 @@
       "@providers/*": ["src/providers/*"],
       "@components/*": ["src/popup/components/*"]
     },
-    "types": ["chrome", "node"]
+    "types": ["chrome", "node", "@webgpu/types"]
   },
   "include": ["src/**/*", "vite.config.ts"],
   "exclude": ["node_modules", "dist", "_legacy"]

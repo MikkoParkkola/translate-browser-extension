@@ -1,17 +1,22 @@
-import { createSignal, onMount, Show } from 'solid-js';
+import { createSignal, onMount, onCleanup, Show } from 'solid-js';
 import { ProviderStatus } from './components/ProviderStatus';
+import { ProviderSelector } from './components/ProviderSelector';
 import { LanguageSelector } from './components/LanguageSelector';
 import { StrategySelector } from './components/StrategySelector';
 import { UsageBar } from './components/UsageBar';
 import { CostMonitor } from './components/CostMonitor';
-import type { Strategy, UsageStats } from '../types';
+import { ModelStatus } from './components/ModelStatus';
+import type { Strategy, UsageStats, ModelProgressMessage, TranslationProviderId } from '../types';
 
 export default function App() {
   const [sourceLang, setSourceLang] = createSignal('auto');
   const [targetLang, setTargetLang] = createSignal('fi');
   const [strategy, setStrategy] = createSignal<Strategy>('smart');
-  const [providerName, _setProviderName] = createSignal('Helsinki-NLP OPUS-MT');
-  const [providerStatus, _setProviderStatus] = createSignal<'ready' | 'loading' | 'error'>('ready');
+  const [activeProvider, setActiveProvider] = createSignal<TranslationProviderId>('opus-mt');
+  const [providerStatus, setProviderStatus] = createSignal<'ready' | 'loading' | 'error'>('ready');
+
+  const providerName = () =>
+    activeProvider() === 'translategemma' ? 'TranslateGemma 4B' : 'Helsinki-NLP OPUS-MT';
   const [isTranslating, setIsTranslating] = createSignal(false);
   const [autoTranslate, setAutoTranslate] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
@@ -20,14 +25,76 @@ export default function App() {
     budget: { monthly: 2.0, used: 0 },
   });
 
+  // Model caching state
+  const [isModelLoading, setIsModelLoading] = createSignal(false);
+  const [modelProgress, setModelProgress] = createSignal(0);
+  const [isModelCached, setIsModelCached] = createSignal(false);
+  const [currentModelId, setCurrentModelId] = createSignal<string | null>(null);
+  const [downloadingFile, setDownloadingFile] = createSignal<string | null>(null);
+
+  // Handle model progress messages from offscreen document
+  const handleModelProgress = (message: ModelProgressMessage) => {
+    if (message.type !== 'modelProgress') return;
+
+    console.log('[Popup] Model progress:', message.status, message.progress);
+    setCurrentModelId(message.modelId);
+
+    switch (message.status) {
+      case 'initiate':
+        setIsModelLoading(true);
+        setIsModelCached(false);
+        setModelProgress(0);
+        setProviderStatus('loading');
+        setDownloadingFile(message.file || null);
+        break;
+      case 'download':
+      case 'progress':
+        setIsModelLoading(true);
+        setModelProgress(message.progress ?? 0);
+        setDownloadingFile(message.file || null);
+        break;
+      case 'done':
+        setModelProgress(100);
+        setDownloadingFile(null);
+        break;
+      case 'ready':
+        setIsModelLoading(false);
+        setIsModelCached(true);
+        setModelProgress(100);
+        setProviderStatus('ready');
+        setDownloadingFile(null);
+        break;
+      case 'error':
+        setIsModelLoading(false);
+        setProviderStatus('error');
+        setDownloadingFile(null);
+        if (message.error) {
+          setError(`Model error: ${message.error}`);
+        }
+        break;
+    }
+  };
+
   onMount(async () => {
+    // Listen for model progress messages
+    const messageListener = (message: ModelProgressMessage) => {
+      handleModelProgress(message);
+    };
+    chrome.runtime.onMessage.addListener(messageListener);
+
+    // Store cleanup function
+    onCleanup(() => {
+      chrome.runtime.onMessage.removeListener(messageListener);
+    });
+
     // Load saved preferences
     try {
-      const stored = await chrome.storage.local.get(['sourceLang', 'targetLang', 'strategy', 'autoTranslate']);
+      const stored = await chrome.storage.local.get(['sourceLang', 'targetLang', 'strategy', 'autoTranslate', 'provider']);
       if (stored.sourceLang) setSourceLang(stored.sourceLang);
       if (stored.targetLang) setTargetLang(stored.targetLang);
       if (stored.strategy) setStrategy(stored.strategy);
       if (stored.autoTranslate !== undefined) setAutoTranslate(stored.autoTranslate);
+      if (stored.provider) setActiveProvider(stored.provider as TranslationProviderId);
     } catch (e) {
       console.log('[Popup] Storage not available:', e);
     }
@@ -46,6 +113,21 @@ export default function App() {
       console.log('[Popup] Auto-translate:', newValue);
     } catch (e) {
       console.error('[Popup] Failed to save auto-translate:', e);
+    }
+  };
+
+  const handleProviderChange = async (provider: TranslationProviderId) => {
+    setActiveProvider(provider);
+    setProviderStatus('ready');
+    setError(null);
+
+    try {
+      await chrome.storage.local.set({ provider });
+      // Notify background service worker
+      await chrome.runtime.sendMessage({ type: 'setProvider', provider });
+      console.log('[Popup] Provider changed to:', provider);
+    } catch (e) {
+      console.error('[Popup] Failed to set provider:', e);
     }
   };
 
@@ -109,6 +191,7 @@ export default function App() {
         sourceLang: sourceLang(),
         targetLang: targetLang(),
         strategy: strategy(),
+        provider: activeProvider(),
       });
     } catch (e) {
       console.error('[Popup] Translation failed:', e);
@@ -142,6 +225,7 @@ export default function App() {
         sourceLang: sourceLang(),
         targetLang: targetLang(),
         strategy: strategy(),
+        provider: activeProvider(),
       });
     } catch (e) {
       console.error('[Popup] Page translation failed:', e);
@@ -195,9 +279,22 @@ export default function App() {
           </button>
         </div>
         <ProviderStatus name={providerName()} status={providerStatus()} />
+        <ModelStatus
+          isLoading={isModelLoading()}
+          progress={modelProgress()}
+          isCached={isModelCached()}
+          modelId={currentModelId()}
+          currentFile={downloadingFile()}
+        />
       </header>
 
       <main class="popup-main">
+        {/* Provider Selection */}
+        <ProviderSelector
+          selected={activeProvider()}
+          onChange={handleProviderChange}
+        />
+
         {/* Language Selection */}
         <LanguageSelector
           sourceLang={sourceLang()}
