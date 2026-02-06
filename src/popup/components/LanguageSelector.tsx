@@ -19,6 +19,8 @@ const LANGUAGES = [
   { code: 'ru', name: 'Russian', flag: '' },
   { code: 'zh', name: 'Chinese', flag: '' },
   { code: 'ja', name: 'Japanese', flag: '' },
+  { code: 'nl', name: 'Dutch', flag: '' },
+  { code: 'cs', name: 'Czech', flag: '' },
 ];
 
 export const LanguageSelector: Component<Props> = (props) => {

@@ -59,7 +59,7 @@ describe('Content Script', () => {
       const styleText = Array.from(styles)
         .map((s) => s.textContent)
         .join('');
-      expect(styleText).toContain('fadeIn');
+      expect(styleText).toContain('translateFadeIn');
     });
   });
 

@@ -61,7 +61,7 @@ const pipelines = new Map<string, Pipeline>();
 // TranslateGemma Configuration
 // ============================================================================
 
-const TRANSLATEGEMMA_MODEL = 'm1cc0z/translategemma-4b-it-onnx-q4-webgpu';
+const TRANSLATEGEMMA_MODEL = 'm1cc0z/translategemma-4b-webgpu-q4';
 
 // Language names for TranslateGemma prompt (ISO 639-1 -> English name)
 const LANG_NAMES: Record<string, string> = {
