@@ -8,6 +8,7 @@ import type { TranslationProviderId } from '../types';
 import { getTranslationCache, type TranslationCacheStats } from '../core/translation-cache';
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
+import { profiler } from '../core/profiler';
 
 // Extracted modules
 import { MODEL_MAP, PIVOT_ROUTES } from './model-maps';
@@ -15,6 +16,12 @@ import { getCachedPipeline, cachePipeline } from './pipeline-cache';
 import { detectLanguage } from './language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline } from './translategemma';
 import { getChromeTranslator, isChromeTranslatorAvailable } from '../providers/chrome-translator';
+
+// Cloud providers
+import { deeplProvider } from '../providers/deepl';
+import { openaiProvider } from '../providers/openai';
+import { anthropicProvider } from '../providers/anthropic';
+import { googleCloudProvider } from '../providers/google-cloud';
 
 const log = createLogger('Offscreen');
 
@@ -61,7 +68,7 @@ async function detectWebGPU(): Promise<boolean> {
  * Get or create pipeline for a language pair with LRU caching.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getPipeline(sourceLang: string, targetLang: string): Promise<any> {
+async function getPipeline(sourceLang: string, targetLang: string, sessionId?: string): Promise<any> {
   const key = `${sourceLang}-${targetLang}`;
   const modelId = MODEL_MAP[key];
 
@@ -73,10 +80,14 @@ async function getPipeline(sourceLang: string, targetLang: string): Promise<any>
   const cached = getCachedPipeline(modelId);
   if (cached) {
     log.info(` Pipeline cache HIT: ${modelId}`);
+    if (sessionId) {
+      profiler.recordTiming(sessionId, 'model_load', 0, { cached: true, modelId });
+    }
     return cached;
   }
 
   log.info(` Loading model: ${modelId}`);
+  const loadStart = performance.now();
 
   const webgpu = await detectWebGPU();
   const device = webgpu ? 'webgpu' : 'wasm';
@@ -90,9 +101,14 @@ async function getPipeline(sourceLang: string, targetLang: string): Promise<any>
     `Loading model ${modelId}`
   );
 
+  const loadDuration = performance.now() - loadStart;
+  if (sessionId) {
+    profiler.recordTiming(sessionId, 'model_load', loadDuration, { cached: false, modelId, device });
+  }
+  log.info(` Model loaded: ${modelId} in ${loadDuration.toFixed(0)}ms`);
+
   // Store in LRU cache (may evict old models)
   cachePipeline(modelId, pipe);
-  log.info(` Model loaded: ${modelId}`);
 
   return pipe;
 }
@@ -103,9 +119,12 @@ async function getPipeline(sourceLang: string, targetLang: string): Promise<any>
 async function translateDirect(
   text: string | string[],
   sourceLang: string,
-  targetLang: string
+  targetLang: string,
+  sessionId?: string
 ): Promise<string | string[]> {
-  const pipe = await getPipeline(sourceLang, targetLang);
+  const pipe = await getPipeline(sourceLang, targetLang, sessionId);
+
+  const inferenceStart = performance.now();
 
   if (Array.isArray(text)) {
     const results = await Promise.all(
@@ -115,11 +134,28 @@ async function translateDirect(
         return (result as Array<{ translation_text: string }>)[0].translation_text;
       })
     );
+
+    const inferenceDuration = performance.now() - inferenceStart;
+    if (sessionId) {
+      profiler.recordTiming(sessionId, 'model_inference', inferenceDuration, {
+        batchSize: text.length,
+        totalChars: text.reduce((sum, t) => sum + (t?.length || 0), 0),
+      });
+    }
     return results;
   }
 
   if (!text || text.trim().length === 0) return text;
   const result = await pipe(text, { max_length: 512 });
+
+  const inferenceDuration = performance.now() - inferenceStart;
+  if (sessionId) {
+    profiler.recordTiming(sessionId, 'model_inference', inferenceDuration, {
+      batchSize: 1,
+      totalChars: text.length,
+    });
+  }
+
   return (result as Array<{ translation_text: string }>)[0].translation_text;
 }
 
@@ -130,13 +166,18 @@ async function translate(
   text: string | string[],
   sourceLang: string,
   targetLang: string,
-  provider: TranslationProviderId = 'opus-mt'
+  provider: TranslationProviderId = 'opus-mt',
+  sessionId?: string
 ): Promise<string | string[]> {
   // Handle auto-detection
   let actualSourceLang = sourceLang;
   if (sourceLang === 'auto') {
+    const detectStart = performance.now();
     const sampleText = Array.isArray(text) ? text.slice(0, 3).join(' ') : text;
     actualSourceLang = detectLanguage(sampleText);
+    if (sessionId) {
+      profiler.recordTiming(sessionId, 'language_detect', performance.now() - detectStart);
+    }
     console.log(`[Offscreen] Auto-detected source: ${actualSourceLang}`);
 
     // Don't translate if source equals target
@@ -178,7 +219,8 @@ async function translate(
         uncachedTexts,
         actualSourceLang,
         targetLang,
-        provider
+        provider,
+        sessionId
       );
 
       // Store results and cache them
@@ -211,7 +253,7 @@ async function translate(
   }
 
   // Translate and cache
-  const result = await translateWithProvider(text, actualSourceLang, targetLang, provider);
+  const result = await translateWithProvider(text, actualSourceLang, targetLang, provider, sessionId);
 
   // Cache the translation (fire and forget)
   const resultText = Array.isArray(result) ? result[0] : result;
@@ -229,7 +271,8 @@ async function translateWithProvider(
   text: string | string[],
   sourceLang: string,
   targetLang: string,
-  provider: TranslationProviderId
+  provider: TranslationProviderId,
+  _sessionId?: string
 ): Promise<string | string[]> {
   // Chrome Built-in Translator (Chrome 138+)
   if (provider === 'chrome-builtin') {
@@ -247,13 +290,53 @@ async function translateWithProvider(
     return translateWithGemma(text, sourceLang, targetLang);
   }
 
+  // DeepL Cloud Provider
+  if (provider === 'deepl') {
+    console.log(`[Offscreen] DeepL translation: ${sourceLang} -> ${targetLang}`);
+    await deeplProvider.initialize();
+    if (!(await deeplProvider.isAvailable())) {
+      throw new Error('DeepL API key not configured. Please configure in Settings.');
+    }
+    return deeplProvider.translate(text, sourceLang, targetLang);
+  }
+
+  // OpenAI Cloud Provider
+  if (provider === 'openai') {
+    console.log(`[Offscreen] OpenAI translation: ${sourceLang} -> ${targetLang}`);
+    await openaiProvider.initialize();
+    if (!(await openaiProvider.isAvailable())) {
+      throw new Error('OpenAI API key not configured. Please configure in Settings.');
+    }
+    return openaiProvider.translate(text, sourceLang, targetLang);
+  }
+
+  // Anthropic Cloud Provider
+  if (provider === 'anthropic') {
+    console.log(`[Offscreen] Anthropic translation: ${sourceLang} -> ${targetLang}`);
+    await anthropicProvider.initialize();
+    if (!(await anthropicProvider.isAvailable())) {
+      throw new Error('Anthropic API key not configured. Please configure in Settings.');
+    }
+    return anthropicProvider.translate(text, sourceLang, targetLang);
+  }
+
+  // Google Cloud Provider
+  if (provider === 'google-cloud') {
+    console.log(`[Offscreen] Google Cloud translation: ${sourceLang} -> ${targetLang}`);
+    await googleCloudProvider.initialize();
+    if (!(await googleCloudProvider.isAvailable())) {
+      throw new Error('Google Cloud API key not configured. Please configure in Settings.');
+    }
+    return googleCloudProvider.translate(text, sourceLang, targetLang);
+  }
+
   // OPUS-MT: check for direct model or pivot route
   const key = `${sourceLang}-${targetLang}`;
 
   // Check if we have a direct model
   if (MODEL_MAP[key]) {
     console.log(`[Offscreen] Direct translation: ${key}`);
-    return translateDirect(text, sourceLang, targetLang);
+    return translateDirect(text, sourceLang, targetLang, _sessionId);
   }
 
   // Check if we have a pivot route
@@ -266,10 +349,10 @@ async function translateWithProvider(
     console.log(`[Offscreen] Pivot translation: ${sourceLang} -> ${firstTgt} -> ${targetLang}`);
 
     // First hop: source -> English
-    const intermediateResult = await translateDirect(text, firstSrc, firstTgt);
+    const intermediateResult = await translateDirect(text, firstSrc, firstTgt, _sessionId);
 
     // Second hop: English -> target
-    const finalResult = await translateDirect(intermediateResult, secondSrc, secondTgt);
+    const finalResult = await translateDirect(intermediateResult, secondSrc, secondTgt, _sessionId);
 
     return finalResult;
   }
@@ -303,17 +386,48 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {
       switch (message.type) {
         case 'translate': {
+          // Support profiling sessions passed from background
+          const sessionId = message.sessionId;
+          if (sessionId) {
+            profiler.startTiming(sessionId, 'offscreen_processing');
+          }
+
           const result = await translate(
             message.text,
             message.sourceLang,
             message.targetLang,
-            message.provider || 'opus-mt'
+            message.provider || 'opus-mt',
+            sessionId
           );
-          sendResponse({ success: true, result });
+
+          // Collect profiling data to send back
+          let profilingData = undefined;
+          if (sessionId) {
+            profiler.endTiming(sessionId, 'offscreen_processing');
+            profilingData = profiler.getSessionData(sessionId);
+          }
+
+          sendResponse({ success: true, result, profilingData });
+          break;
+        }
+        case 'getProfilingStats': {
+          // Return aggregate profiling statistics
+          sendResponse({
+            success: true,
+            aggregates: profiler.getAllAggregates(),
+            formatted: profiler.formatAggregates(),
+          });
           break;
         }
         case 'preloadModel': {
           // Preload the requested provider's model
+          // Priority: 'low' for background/predictive preloads, 'high' for user-initiated
+          const isLowPriority = message.priority === 'low';
+
+          if (isLowPriority) {
+            log.debug(`Low-priority preload: ${message.sourceLang}->${message.targetLang}`);
+          }
+
           if (message.provider === 'translategemma') {
             await getTranslateGemmaPipeline();
             sendResponse({ success: true, preloaded: true });
@@ -327,6 +441,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             if (MODEL_MAP[pair]) {
               await getPipeline(message.sourceLang, message.targetLang);
               sendResponse({ success: true, preloaded: true });
+            } else if (PIVOT_ROUTES[pair]) {
+              // For pivot routes, preload the first hop model (source -> English)
+              const [firstHop] = PIVOT_ROUTES[pair];
+              const [firstSrc, firstTgt] = firstHop.split('-');
+              await getPipeline(firstSrc, firstTgt);
+              sendResponse({ success: true, preloaded: true, partial: true });
             } else {
               sendResponse({ success: true, preloaded: false });
             }
@@ -358,6 +478,28 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           sendResponse({ success: true, available });
           break;
         }
+        case 'getCloudProviderUsage': {
+          // Get usage stats for a specific cloud provider
+          const providerId = message.provider as string;
+          let usage = { tokens: 0, cost: 0, limitReached: false };
+
+          if (providerId === 'deepl') {
+            await deeplProvider.initialize();
+            usage = await deeplProvider.getUsage();
+          } else if (providerId === 'openai') {
+            await openaiProvider.initialize();
+            usage = await openaiProvider.getUsage();
+          } else if (providerId === 'anthropic') {
+            await anthropicProvider.initialize();
+            usage = await anthropicProvider.getUsage();
+          } else if (providerId === 'google-cloud') {
+            await googleCloudProvider.initialize();
+            usage = await googleCloudProvider.getUsage();
+          }
+
+          sendResponse({ success: true, usage });
+          break;
+        }
         default:
           sendResponse({ success: false, error: `Unknown type: ${message.type}` });
       }
@@ -373,4 +515,4 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true; // Keep channel open for async response
 });
 
-log.info(' Document ready - v2.3 with modular architecture');
+log.info(' Document ready - v2.4 with predictive preloading support');

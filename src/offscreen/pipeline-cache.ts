@@ -22,7 +22,29 @@ export interface PipelineCacheEntry {
 const pipelineCache = new Map<string, PipelineCacheEntry>();
 
 /**
+ * Dispose pipeline resources (WebGPU memory, tensors, etc.)
+ *
+ * P0 FIX: Properly release GPU memory when evicting pipelines.
+ * Transformers.js pipelines hold WebGPU resources that won't be GC'd
+ * without explicit disposal.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function disposePipeline(pipeline: any, modelId: string): Promise<void> {
+  try {
+    // Transformers.js pipelines have .dispose() method
+    if (typeof pipeline?.dispose === 'function') {
+      await pipeline.dispose();
+      log.info(` Disposed pipeline resources: ${modelId}`);
+    }
+  } catch (error) {
+    log.warn(` Failed to dispose pipeline ${modelId}:`, error);
+  }
+}
+
+/**
  * Evict least-recently-used pipelines when cache exceeds limit.
+ *
+ * P0 FIX: Now properly disposes evicted pipelines to prevent memory leaks.
  */
 export function evictLRUPipelines(): void {
   while (pipelineCache.size >= MAX_CACHED_PIPELINES) {
@@ -39,6 +61,12 @@ export function evictLRUPipelines(): void {
     if (oldestKey) {
       const evicted = pipelineCache.get(oldestKey);
       pipelineCache.delete(oldestKey);
+
+      // P0 FIX: Dispose the evicted pipeline to free GPU memory
+      if (evicted?.pipeline) {
+        disposePipeline(evicted.pipeline, evicted.modelId);
+      }
+
       log.info(` Evicted LRU pipeline: ${evicted?.modelId} (cache: ${pipelineCache.size}/${MAX_CACHED_PIPELINES})`);
     }
   }
@@ -80,8 +108,21 @@ export function getCacheSize(): number {
 
 /**
  * Clear all cached pipelines.
+ *
+ * P0 FIX: Now properly disposes all pipelines before clearing.
  */
-export function clearCache(): void {
+export async function clearCache(): Promise<void> {
+  // Dispose all pipelines to free GPU memory
+  const disposePromises: Promise<void>[] = [];
+  for (const [_modelId, entry] of pipelineCache) {
+    if (entry.pipeline) {
+      disposePromises.push(disposePipeline(entry.pipeline, entry.modelId));
+    }
+  }
+
+  // Wait for all disposals to complete
+  await Promise.allSettled(disposePromises);
+
   pipelineCache.clear();
   log.info(' Pipeline cache cleared');
 }

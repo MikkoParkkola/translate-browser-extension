@@ -6,6 +6,7 @@
  * - LRU translation cache (max 100 entries)
  * - Lazy model loading (preload on popup open)
  * - Retry with exponential backoff for transient failures
+ * - Predictive model pre-translation based on browsing patterns
  */
 
 import type { ExtensionMessage, TranslateResponse, Strategy, TranslationProviderId } from '../types';
@@ -20,7 +21,11 @@ import {
 import { createLogger } from '../core/logger';
 import { safeStorageGet, safeStorageSet } from '../core/storage';
 import { generateCacheKey } from '../core/hash';
+import { getPredictionEngine } from '../core/prediction-engine';
 import { CONFIG } from '../config';
+import { profiler, type AggregateStats } from '../core/profiler';
+// Browser API imported but may not be needed in Chrome service worker
+// import { browserAPI, getURL } from '../core/browser-api';
 
 const log = createLogger('Background');
 
@@ -115,6 +120,98 @@ let cacheHits = 0;
 let cacheMisses = 0;
 
 // ============================================================================
+// Prediction Engine Integration
+// ============================================================================
+
+const predictionEngine = getPredictionEngine();
+
+// Track preloaded models to avoid duplicate preloads
+const preloadedModels = new Set<string>();
+
+/**
+ * Preload models based on predictions (called on tab navigation)
+ */
+async function preloadPredictedModels(url: string): Promise<void> {
+  try {
+    // Check if user has recent activity
+    const hasActivity = await predictionEngine.hasRecentActivity();
+    if (!hasActivity) {
+      log.debug('No recent activity, skipping predictive preload');
+      return;
+    }
+
+    // Get predictions for this URL
+    const predictions = await predictionEngine.predict(url);
+    if (predictions.length === 0) {
+      return;
+    }
+
+    log.info(`Predictive preload: ${predictions.length} candidates for ${url}`);
+
+    // Preload top predictions (up to 3 models max)
+    for (const prediction of predictions) {
+      const key = `${prediction.sourceLang}-${prediction.targetLang}`;
+
+      // Skip if already preloaded
+      if (preloadedModels.has(key)) {
+        log.debug(`Model ${key} already preloaded`);
+        continue;
+      }
+
+      // Skip low confidence predictions
+      if (prediction.confidence < 0.3) {
+        log.debug(`Skipping low confidence prediction: ${key} (${prediction.confidence.toFixed(2)})`);
+        continue;
+      }
+
+      log.info(`Preloading predicted model: ${key} (confidence: ${prediction.confidence.toFixed(2)})`);
+
+      // Send preload message to offscreen (fire and forget)
+      sendToOffscreen<{ success: boolean; preloaded?: boolean }>({
+        type: 'preloadModel',
+        sourceLang: prediction.sourceLang,
+        targetLang: prediction.targetLang,
+        provider: currentProvider,
+        priority: 'low', // Background preload
+      })
+        .then((response) => {
+          if (response.preloaded) {
+            preloadedModels.add(key);
+            log.info(`Predictive preload complete: ${key}`);
+          }
+        })
+        .catch((error) => {
+          log.warn(`Predictive preload failed for ${key}:`, error);
+        });
+    }
+  } catch (error) {
+    log.warn('Predictive preload error:', error);
+  }
+}
+
+/**
+ * Record language detection for prediction engine
+ */
+async function recordLanguageDetection(url: string, language: string): Promise<void> {
+  try {
+    await predictionEngine.recordDetection(url, language);
+  } catch (error) {
+    log.warn('Failed to record language detection:', error);
+  }
+}
+
+/**
+ * Record translation for prediction engine (updates activity and preferred target)
+ */
+async function recordTranslation(targetLang: string): Promise<void> {
+  try {
+    await predictionEngine.recordTranslation(targetLang);
+  } catch (error) {
+    log.warn('Failed to record translation:', error);
+  }
+}
+
+// ============================================================================
 // Offscreen Document Management
 // ============================================================================
 
@@ -136,8 +233,19 @@ const OFFSCREEN_RETRY_CONFIG: Partial<RetryConfig> = {
 
 /**
  * Create or verify offscreen document exists
+ *
+ * P0 FIX: Race condition guard moved BEFORE async getContexts() call
+ * to prevent TOCTOU window where multiple calls could pass the contexts
+ * check before the first creation starts.
  */
 async function ensureOffscreenDocument(): Promise<void> {
+  // P0 FIX: Check creation lock FIRST to avoid TOCTOU race condition
+  // If another call is already creating the document, just wait for it
+  if (creatingOffscreen) {
+    await creatingOffscreen;
+    return;
+  }
+
   const offscreenUrl = chrome.runtime.getURL('src/offscreen/offscreen.html');
 
   try {
@@ -152,7 +260,7 @@ async function ensureOffscreenDocument(): Promise<void> {
       return;
     }
 
-    // Avoid race condition
+    // Double-check: another call might have created it while we were checking
     if (creatingOffscreen) {
       await creatingOffscreen;
       return;
@@ -373,6 +481,22 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
       return handleClearCache();
     case 'checkChromeTranslator':
       return handleCheckChromeTranslator();
+    case 'getPredictionStats':
+      return handleGetPredictionStats();
+    case 'recordLanguageDetection':
+      return handleRecordLanguageDetection(message as { type: 'recordLanguageDetection'; url: string; language: string });
+    case 'getCloudProviderStatus':
+      return handleGetCloudProviderStatus();
+    case 'setCloudApiKey':
+      return handleSetCloudApiKey(message as { type: 'setCloudApiKey'; provider: string; apiKey: string; options?: Record<string, unknown> });
+    case 'clearCloudApiKey':
+      return handleClearCloudApiKey(message as { type: 'clearCloudApiKey'; provider: string });
+    case 'getCloudProviderUsage':
+      return handleGetCloudProviderUsage(message as { type: 'getCloudProviderUsage'; provider: string });
+    case 'getProfilingStats':
+      return handleGetProfilingStats();
+    case 'clearProfilingStats':
+      return handleClearProfilingStats();
     default:
       throw new Error(`Unknown message type: ${(message as { type: string }).type}`);
   }
@@ -468,14 +592,222 @@ async function handleCheckChromeTranslator(): Promise<unknown> {
   }
 }
 
+/**
+ * Get prediction engine statistics
+ */
+async function handleGetPredictionStats(): Promise<unknown> {
+  try {
+    const stats = await predictionEngine.getStats();
+    return {
+      success: true,
+      prediction: stats,
+    };
+  } catch (error) {
+    log.warn('Failed to get prediction stats:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Handle language detection recording from content script
+ */
+async function handleRecordLanguageDetection(message: {
+  type: 'recordLanguageDetection';
+  url: string;
+  language: string;
+}): Promise<unknown> {
+  await recordLanguageDetection(message.url, message.language);
+  return { success: true };
+}
+
+// Cloud provider API key storage keys
+const CLOUD_PROVIDER_KEYS: Record<string, string> = {
+  'deepl': 'deepl_api_key',
+  'openai': 'openai_api_key',
+  'anthropic': 'anthropic_api_key',
+  'google-cloud': 'google_cloud_api_key',
+};
+
+/**
+ * Get cloud provider configuration status (which providers have API keys)
+ */
+async function handleGetCloudProviderStatus(): Promise<unknown> {
+  try {
+    const keys = Object.values(CLOUD_PROVIDER_KEYS);
+    const stored = await safeStorageGet<Record<string, string>>(keys);
+
+    const status: Record<string, boolean> = {};
+    for (const [provider, storageKey] of Object.entries(CLOUD_PROVIDER_KEYS)) {
+      status[provider] = !!stored[storageKey];
+    }
+
+    return {
+      success: true,
+      status,
+    };
+  } catch (error) {
+    log.warn('Failed to get cloud provider status:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      status: {},
+    };
+  }
+}
+
+/**
+ * Set API key for a cloud provider
+ */
+async function handleSetCloudApiKey(message: {
+  type: 'setCloudApiKey';
+  provider: string;
+  apiKey: string;
+  options?: Record<string, unknown>;
+}): Promise<unknown> {
+  const storageKey = CLOUD_PROVIDER_KEYS[message.provider];
+  if (!storageKey) {
+    return {
+      success: false,
+      error: `Unknown provider: ${message.provider}`,
+    };
+  }
+
+  try {
+    const dataToStore: Record<string, unknown> = {
+      [storageKey]: message.apiKey,
+    };
+
+    // Handle provider-specific options
+    if (message.provider === 'deepl' && message.options) {
+      if (message.options.isPro !== undefined) {
+        dataToStore['deepl_is_pro'] = message.options.isPro;
+      }
+      if (message.options.formality !== undefined) {
+        dataToStore['deepl_formality'] = message.options.formality;
+      }
+    } else if (message.provider === 'openai' && message.options) {
+      if (message.options.model !== undefined) {
+        dataToStore['openai_model'] = message.options.model;
+      }
+      if (message.options.formality !== undefined) {
+        dataToStore['openai_formality'] = message.options.formality;
+      }
+    } else if (message.provider === 'anthropic' && message.options) {
+      if (message.options.model !== undefined) {
+        dataToStore['anthropic_model'] = message.options.model;
+      }
+      if (message.options.formality !== undefined) {
+        dataToStore['anthropic_formality'] = message.options.formality;
+      }
+    }
+
+    await safeStorageSet(dataToStore);
+    log.info(` API key set for ${message.provider}`);
+
+    return {
+      success: true,
+      provider: message.provider,
+    };
+  } catch (error) {
+    log.error(' Failed to set API key:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Clear API key for a cloud provider
+ */
+async function handleClearCloudApiKey(message: {
+  type: 'clearCloudApiKey';
+  provider: string;
+}): Promise<unknown> {
+  const storageKey = CLOUD_PROVIDER_KEYS[message.provider];
+  if (!storageKey) {
+    return {
+      success: false,
+      error: `Unknown provider: ${message.provider}`,
+    };
+  }
+
+  try {
+    // Clear all related keys for the provider
+    const keysToRemove = [storageKey];
+    if (message.provider === 'deepl') {
+      keysToRemove.push('deepl_is_pro', 'deepl_formality');
+    } else if (message.provider === 'openai') {
+      keysToRemove.push('openai_model', 'openai_formality', 'openai_temperature', 'openai_tokens_used');
+    } else if (message.provider === 'anthropic') {
+      keysToRemove.push('anthropic_model', 'anthropic_formality', 'anthropic_tokens_used');
+    } else if (message.provider === 'google-cloud') {
+      keysToRemove.push('google_cloud_chars_used');
+    }
+
+    await chrome.storage.local.remove(keysToRemove);
+    log.info(` API key cleared for ${message.provider}`);
+
+    return {
+      success: true,
+      provider: message.provider,
+    };
+  } catch (error) {
+    log.error(' Failed to clear API key:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Get usage statistics for a cloud provider
+ */
+async function handleGetCloudProviderUsage(message: {
+  type: 'getCloudProviderUsage';
+  provider: string;
+}): Promise<unknown> {
+  try {
+    // Forward to offscreen document to use provider instances
+    const result = await sendToOffscreen<{
+      success: boolean;
+      usage?: { tokens: number; cost: number; limitReached: boolean };
+      error?: string;
+    }>({
+      type: 'getCloudProviderUsage',
+      provider: message.provider,
+    });
+
+    return result;
+  } catch (error) {
+    log.warn(' Failed to get cloud provider usage:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function handleTranslate(message: {
   text: string | string[];
   sourceLang: string;
   targetLang: string;
   options?: { strategy?: Strategy };
   provider?: TranslationProviderId;
+  enableProfiling?: boolean;
 }): Promise<TranslateResponse> {
   const startTime = Date.now();
+
+  // Start profiling session if requested
+  const sessionId = message.enableProfiling ? profiler.startSession() : undefined;
+  if (sessionId) {
+    profiler.startTiming(sessionId, 'total');
+    profiler.startTiming(sessionId, 'validation');
+  }
 
   try {
     // Validate input first
@@ -484,6 +816,10 @@ async function handleTranslate(message: {
       message.sourceLang,
       message.targetLang
     );
+
+    if (sessionId) {
+      profiler.endTiming(sessionId, 'validation');
+    }
 
     if (!validation.valid) {
       return {
@@ -503,13 +839,22 @@ async function handleTranslate(message: {
     const provider = message.provider || currentProvider;
 
     // Check cache first (skip for 'auto' source since detected language may vary)
+    if (sessionId) {
+      profiler.startTiming(sessionId, 'cache_lookup');
+    }
     const cacheKey = getCacheKey(text, message.sourceLang, message.targetLang, provider);
     if (message.sourceLang !== 'auto') {
       const cached = getCachedTranslation(cacheKey);
+      if (sessionId) {
+        profiler.endTiming(sessionId, 'cache_lookup');
+      }
       if (cached) {
         cacheHits++;
         const duration = Date.now() - startTime;
         log.info(` Cache hit, returning in ${duration}ms`);
+        if (sessionId) {
+          profiler.endTiming(sessionId, 'total');
+        }
         return {
           success: true,
           result: cached.result,
@@ -517,6 +862,8 @@ async function handleTranslate(message: {
           cached: true,
         } as TranslateResponse & { cached: boolean };
       }
+    } else if (sessionId) {
+      profiler.endTiming(sessionId, 'cache_lookup');
     }
     cacheMisses++;
 
@@ -532,6 +879,11 @@ async function handleTranslate(message: {
 
     console.log('[Background] Translating:', message.sourceLang, '->', message.targetLang);
 
+    // Start IPC timing
+    if (sessionId) {
+      profiler.startTiming(sessionId, 'ipc_background_to_offscreen');
+    }
+
     // Use retry for network-related failures
     const response = await withRetry(
       async () => {
@@ -539,12 +891,14 @@ async function handleTranslate(message: {
           success: boolean;
           result?: string | string[];
           error?: unknown;
+          profilingData?: object;
         }>({
           type: 'translate',
           text,
           sourceLang: message.sourceLang,
           targetLang: message.targetLang,
           provider,
+          sessionId, // Pass session ID for offscreen profiling
         });
 
         if (!result) {
@@ -570,21 +924,56 @@ async function handleTranslate(message: {
       }
     );
 
+    if (sessionId) {
+      profiler.endTiming(sessionId, 'ipc_background_to_offscreen');
+
+      // Import profiling data from offscreen document
+      if (response.profilingData) {
+        profiler.importSessionData(response.profilingData);
+      }
+    }
+
     console.log('[Background] Translation complete');
     recordUsage(tokenEstimate);
 
     // Cache the result (use actual source lang if auto-detected)
+    if (sessionId) {
+      profiler.startTiming(sessionId, 'cache_store');
+    }
     const actualSourceLang = message.sourceLang === 'auto' ? 'auto' : message.sourceLang;
     if (response.result && actualSourceLang !== 'auto') {
       setCachedTranslation(cacheKey, response.result, actualSourceLang, message.targetLang);
+    }
+    if (sessionId) {
+      profiler.endTiming(sessionId, 'cache_store');
+      profiler.endTiming(sessionId, 'total');
+    }
+
+    // Record translation for prediction engine (fire and forget)
+    recordTranslation(message.targetLang).catch(() => {
+      // Ignore errors - prediction tracking is non-critical
+    });
+
+    // Include profiling report if enabled
+    let profilingReport: object | undefined;
+    if (sessionId) {
+      const report = profiler.getReport(sessionId);
+      if (report) {
+        profilingReport = report;
+        console.log(profiler.formatReport(sessionId));
+      }
     }
 
     return {
       success: true,
       result: response.result,
       duration: Date.now() - startTime,
-    };
+      profilingReport,
+    } as TranslateResponse & { profilingReport?: object };
   } catch (error) {
+    if (sessionId) {
+      profiler.endTiming(sessionId, 'total');
+    }
     const translationError = createTranslationError(error);
     log.error(' Translation error:', translationError.technicalDetails);
 
@@ -608,6 +997,57 @@ function handleGetUsage(): unknown {
     cache: getCacheStats(),
     providers: {},
   };
+}
+
+/**
+ * Get aggregate profiling statistics
+ */
+async function handleGetProfilingStats(): Promise<unknown> {
+  try {
+    // Get local background profiling stats
+    const localStats = profiler.getAllAggregates();
+
+    // Also get stats from offscreen document
+    let offscreenStats: Record<string, AggregateStats> = {};
+    try {
+      const offscreenResult = await sendToOffscreen<{
+        success: boolean;
+        aggregates?: Record<string, AggregateStats>;
+        formatted?: string;
+      }>({
+        type: 'getProfilingStats',
+      });
+      if (offscreenResult?.success && offscreenResult.aggregates) {
+        offscreenStats = offscreenResult.aggregates;
+      }
+    } catch {
+      // Offscreen may not be available
+    }
+
+    // Merge stats
+    const mergedStats = { ...localStats, ...offscreenStats };
+
+    return {
+      success: true,
+      aggregates: mergedStats,
+      formatted: profiler.formatAggregates(),
+    };
+  } catch (error) {
+    log.warn('Failed to get profiling stats:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Clear all profiling statistics
+ */
+function handleClearProfilingStats(): unknown {
+  profiler.clear();
+  log.info('Profiling stats cleared');
+  return { success: true };
 }
 
 async function handleGetProviders(): Promise<unknown> {
@@ -679,6 +1119,19 @@ chrome.action.onClicked.addListener(async (tab) => {
   }
 });
 
+// Tab update listener for predictive model preloading
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+  // Only trigger on complete page load with valid URL
+  if (changeInfo.status === 'complete' && tab.url && !tab.url.startsWith('chrome://')) {
+    log.debug(`Tab updated: ${tab.url}`);
+
+    // Trigger predictive preload (fire and forget)
+    preloadPredictedModels(tab.url).catch((error) => {
+      log.warn('Predictive preload trigger failed:', error);
+    });
+  }
+});
+
 // Installation handler
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
@@ -714,4 +1167,14 @@ chrome.runtime.onStartup.addListener(() => {
   });
 });
 
-console.log('[Background] Service worker initialized v2.2 with TranslateGemma + caching + preload');
+// Initialize prediction engine on startup
+(async () => {
+  try {
+    await predictionEngine.load();
+    console.log('[Background] Prediction engine initialized');
+  } catch (error) {
+    log.warn('Failed to initialize prediction engine:', error);
+  }
+})();
+
+console.log('[Background] Service worker initialized v2.3 with predictive model preloading');

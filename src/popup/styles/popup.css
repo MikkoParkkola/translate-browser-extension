@@ -827,6 +827,72 @@ body {
   text-align: right;
 }
 
+/* Cloud Provider Styles */
+.model-selector-label.cloud-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-3);
+}
+
+.configure-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-primary);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.configure-link:hover {
+  text-decoration: underline;
+}
+
+.model-selector-buttons.cloud-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-2);
+}
+
+.model-selector-button.cloud-provider {
+  position: relative;
+}
+
+.model-selector-button.cloud-provider .cloud-icon {
+  margin-right: 4px;
+  opacity: 0.7;
+}
+
+.model-selector-button.cloud-provider.active .cloud-icon {
+  opacity: 1;
+}
+
+.model-selector-button.unconfigured {
+  opacity: 0.7;
+  border-style: dashed;
+}
+
+.model-selector-button.unconfigured:hover {
+  opacity: 1;
+  border-color: var(--color-primary);
+}
+
+.model-selector-api-required {
+  font-size: 9px;
+  color: var(--color-warning);
+  font-weight: 500;
+}
+
+.model-selector-cost {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.model-selector-button.active .model-selector-cost {
+  color: var(--color-primary-light);
+}
+
 /* API Key Manager */
 .api-key-manager {
   padding: var(--space-4);

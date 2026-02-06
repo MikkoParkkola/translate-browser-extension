@@ -17,8 +17,46 @@ import { glossary, type GlossaryStore } from '../core/glossary';
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
 import { safeStorageGet } from '../core/storage';
+import { browserAPI } from '../core/browser-api';
+// measureTimeAsync imported for future use in async profiling
+// import { measureTimeAsync } from '../core/profiler';
 
 const log = createLogger('Content');
+
+// Simple content-script timing tracker (separate from background profiler)
+const contentTimings: {
+  domScan: number[];
+  domUpdate: number[];
+  glossaryApply: number[];
+  ipcRoundtrip: number[];
+} = {
+  domScan: [],
+  domUpdate: [],
+  glossaryApply: [],
+  ipcRoundtrip: [],
+};
+
+function recordContentTiming(category: keyof typeof contentTimings, durationMs: number): void {
+  const arr = contentTimings[category];
+  arr.push(durationMs);
+  // Keep last 100 entries
+  if (arr.length > 100) arr.shift();
+}
+
+function getContentTimingStats(): Record<string, { avg: number; min: number; max: number; count: number }> {
+  const result: Record<string, { avg: number; min: number; max: number; count: number }> = {};
+  for (const [key, arr] of Object.entries(contentTimings)) {
+    if (arr.length === 0) continue;
+    const sum = arr.reduce((a, b) => a + b, 0);
+    result[key] = {
+      avg: sum / arr.length,
+      min: Math.min(...arr),
+      max: Math.max(...arr),
+      count: arr.length,
+    };
+  }
+  return result;
+}
 
 // Content-script specific message types (extend base types)
 interface TranslateSelectionMessage {
@@ -249,7 +287,7 @@ async function translateSelection(
     const g = await loadGlossary();
     const { processedText, restore } = await glossary.applyGlossary(sanitized, g);
 
-    const response = (await chrome.runtime.sendMessage({
+    const response = (await browserAPI.runtime.sendMessage({
       type: 'translate',
       text: processedText,
       sourceLang,
@@ -280,7 +318,8 @@ async function translatePage(
   sourceLang: string,
   targetLang: string,
   strategy: Strategy,
-  provider?: string
+  provider?: string,
+  enableProfiling = false
 ): Promise<void> {
   if (isTranslating) {
     log.info(' Translation already in progress');
@@ -289,18 +328,26 @@ async function translatePage(
 
   isTranslating = true;
   log.info(' Translating page...');
+  const pageStart = performance.now();
 
   try {
+    // Time DOM scanning
+    const scanStart = performance.now();
     const textNodes = getTextNodes(document.body);
-    console.log(`[Content] Found ${textNodes.length} text nodes`);
+    const scanDuration = performance.now() - scanStart;
+    recordContentTiming('domScan', scanDuration);
+    console.log(`[Content] Found ${textNodes.length} text nodes in ${scanDuration.toFixed(2)}ms`);
 
     if (textNodes.length === 0) {
       log.info(' No translatable text found');
       return;
     }
 
-    // Load glossary once for the page
+    // Time glossary loading
+    const glossaryStart = performance.now();
     const g = await loadGlossary();
+    const glossaryDuration = performance.now() - glossaryStart;
+    recordContentTiming('glossaryApply', glossaryDuration);
 
     // Create batches with length validation (prevent DoS from malicious pages)
     const batches: Array<{ nodes: Text[]; texts: string[]; restoreFns: Array<(text: string) => string> }> = [];
@@ -323,21 +370,32 @@ async function translatePage(
 
     let translatedCount = 0;
     let errorCount = 0;
+    let totalIpcTime = 0;
+    let totalDomUpdateTime = 0;
 
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
       const batch = batches[batchIndex];
 
       try {
-        const response = (await chrome.runtime.sendMessage({
+        // Time IPC roundtrip
+        const ipcStart = performance.now();
+        const response = (await browserAPI.runtime.sendMessage({
           type: 'translate',
           text: batch.texts,
           sourceLang,
           targetLang,
           options: { strategy },
           provider,
+          enableProfiling,
         })) as TranslateResponse;
+        const ipcDuration = performance.now() - ipcStart;
+        totalIpcTime += ipcDuration;
+        recordContentTiming('ipcRoundtrip', ipcDuration);
 
         if (response.success && Array.isArray(response.result)) {
+          // Time DOM updates
+          const domUpdateStart = performance.now();
+
           // Replace text nodes with translations
           response.result.forEach((translated, idx) => {
             const node = batch.nodes[idx];
@@ -360,6 +418,10 @@ async function translatePage(
               }
             }
           });
+
+          const domUpdateDuration = performance.now() - domUpdateStart;
+          totalDomUpdateTime += domUpdateDuration;
+          recordContentTiming('domUpdate', domUpdateDuration);
         } else {
           console.error(`[Content] Batch ${batchIndex + 1} failed:`, response.error);
           errorCount += batch.nodes.length;
@@ -370,9 +432,19 @@ async function translatePage(
       }
     }
 
+    const totalTime = performance.now() - pageStart;
     console.log(
-      `[Content] Page translation complete: ${translatedCount} translated, ${errorCount} errors`
+      `[Content] Page translation complete: ${translatedCount} translated, ${errorCount} errors\n` +
+      `  Total: ${totalTime.toFixed(2)}ms\n` +
+      `  DOM Scan: ${scanDuration.toFixed(2)}ms (${((scanDuration / totalTime) * 100).toFixed(1)}%)\n` +
+      `  IPC Total: ${totalIpcTime.toFixed(2)}ms (${((totalIpcTime / totalTime) * 100).toFixed(1)}%)\n` +
+      `  DOM Update: ${totalDomUpdateTime.toFixed(2)}ms (${((totalDomUpdateTime / totalTime) * 100).toFixed(1)}%)`
     );
+
+    // Log content timing stats
+    if (enableProfiling) {
+      console.log('[Content] Timing Stats:', getContentTimingStats());
+    }
   } finally {
     isTranslating = false;
   }
@@ -402,7 +474,7 @@ async function translateDynamicContent(nodes: Node[]): Promise<void> {
     const g = await loadGlossary();
     const { processedTexts, restoreFns } = await glossary.applyGlossaryBatch(rawTexts, g);
 
-    const response = (await chrome.runtime.sendMessage({
+    const response = (await browserAPI.runtime.sendMessage({
       type: 'translate',
       text: processedTexts,
       sourceLang: currentSettings.sourceLang,
@@ -647,7 +719,7 @@ document.head.appendChild(style);
 // Message Handling
 // ============================================================================
 
-chrome.runtime.onMessage.addListener(
+browserAPI.runtime.onMessage.addListener(
   (
     message: ContentMessage,
     _sender,

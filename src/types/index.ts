@@ -145,6 +145,22 @@ export interface PreloadModelMessage {
   sourceLang: string;
   targetLang: string;
   target?: string;
+  provider?: TranslationProviderId;
+  priority?: 'low' | 'high';
+}
+
+// Language detection recording message
+export interface RecordLanguageDetectionMessage {
+  type: 'recordLanguageDetection';
+  url: string;
+  language: string;
+  target?: string;
+}
+
+// Get prediction statistics message
+export interface GetPredictionStatsMessage {
+  type: 'getPredictionStats';
+  target?: string;
 }
 
 // Batch progress message
@@ -204,6 +220,43 @@ export interface GetSupportedLanguagesMessage {
   target?: string;
 }
 
+// Cloud provider API key management
+export interface GetCloudProviderStatusMessage {
+  type: 'getCloudProviderStatus';
+  target?: string;
+}
+
+export interface SetCloudApiKeyMessage {
+  type: 'setCloudApiKey';
+  provider: string;
+  apiKey: string;
+  options?: Record<string, unknown>;
+  target?: string;
+}
+
+export interface ClearCloudApiKeyMessage {
+  type: 'clearCloudApiKey';
+  provider: string;
+  target?: string;
+}
+
+export interface GetCloudProviderUsageMessage {
+  type: 'getCloudProviderUsage';
+  provider: string;
+  target?: string;
+}
+
+// Profiling stats
+export interface GetProfilingStatsMessage {
+  type: 'getProfilingStats';
+  target?: string;
+}
+
+export interface ClearProfilingStatsMessage {
+  type: 'clearProfilingStats';
+  target?: string;
+}
+
 export type ExtensionMessage =
   | TranslateMessage
   | TranslatePageMessage
@@ -220,4 +273,12 @@ export type ExtensionMessage =
   | ModelProgressMessage
   | ModelStatusMessage
   | BatchProgressMessage
-  | SetProviderMessage;
+  | SetProviderMessage
+  | RecordLanguageDetectionMessage
+  | GetPredictionStatsMessage
+  | GetCloudProviderStatusMessage
+  | SetCloudApiKeyMessage
+  | ClearCloudApiKeyMessage
+  | GetCloudProviderUsageMessage
+  | GetProfilingStatsMessage
+  | ClearProfilingStatsMessage;

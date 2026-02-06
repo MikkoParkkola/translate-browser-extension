@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TRANSLATE! Profiling Test Page</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    h1 { color: #1e40af; }
+    .test-text {
+      background: #f3f4f6;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    .controls {
+      background: #eff6ff;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    button:hover { background: #2563eb; }
+    button:disabled { background: #9ca3af; cursor: not-allowed; }
+    pre {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 20px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 12px;
+    }
+    .status {
+      padding: 10px;
+      border-radius: 6px;
+      margin: 10px 0;
+    }
+    .status.success { background: #dcfce7; color: #166534; }
+    .status.error { background: #fee2e2; color: #991b1b; }
+    .status.info { background: #dbeafe; color: #1e40af; }
+  </style>
+</head>
+<body>
+  <h1>TRANSLATE! Profiling Test Page</h1>
+
+  <div class="controls">
+    <h3>Profiling Controls</h3>
+    <button id="runTest" onclick="runProfilingTest()">Run Profiling Test (en -> fi)</button>
+    <button id="getStats" onclick="getProfilingStats()">Get Aggregate Stats</button>
+    <button id="clearStats" onclick="clearProfilingStats()">Clear Stats</button>
+    <div id="status" class="status info">Ready to test. Make sure the TRANSLATE! extension is installed and enabled.</div>
+  </div>
+
+  <div class="test-text" id="testContent">
+    <h2>Sample Text for Translation</h2>
+    <p>The quick brown fox jumps over the lazy dog. This sentence contains every letter of the English alphabet.</p>
+    <p>Machine learning has revolutionized the way we approach language translation. Neural networks can now understand context and nuance in ways that were impossible just a decade ago.</p>
+    <p>Web browsers have become incredibly powerful platforms for running complex applications. WebGPU enables hardware-accelerated machine learning directly in the browser, opening new possibilities for privacy-preserving AI.</p>
+    <p>Open-source software has democratized access to cutting-edge technology. Anyone can now build sophisticated applications using freely available tools and libraries.</p>
+    <p>The future of translation lies in local processing. By running translation models directly on user devices, we can provide fast, private translations without sending data to external servers.</p>
+  </div>
+
+  <h3>Profiling Results</h3>
+  <pre id="results">No results yet. Run a profiling test to see timing data.</pre>
+
+  <h3>Expected Timing Breakdown</h3>
+  <pre>
+Translation Profile:
+- Total: XXms
+- Model Load: XXms (XX%)     - First translation loads model (~5-30s cold, 0ms warm)
+- Inference: XXms (XX%)       - Model.generate() time (~50-500ms per batch)
+- DOM Scan: XXms (XX%)        - Finding text nodes (~1-50ms depending on page size)
+- DOM Update: XXms (XX%)      - Replacing text (~1-10ms per batch)
+- IPC Overhead: XXms (XX%)    - Message passing between contexts (~5-20ms)
+  </pre>
+
+  <h3>How to Use</h3>
+  <ol>
+    <li>Install and enable the TRANSLATE! extension</li>
+    <li>Click "Run Profiling Test" to translate this page with profiling enabled</li>
+    <li>View the timing breakdown in the results section</li>
+    <li>Run multiple times to see aggregate statistics</li>
+    <li>Click "Get Aggregate Stats" to see min/max/avg/p95 across all runs</li>
+  </ol>
+
+  <script>
+    function setStatus(message, type = 'info') {
+      const status = document.getElementById('status');
+      status.textContent = message;
+      status.className = 'status ' + type;
+    }
+
+    function setResults(text) {
+      document.getElementById('results').textContent = text;
+    }
+
+    async function runProfilingTest() {
+      const button = document.getElementById('runTest');
+      button.disabled = true;
+      setStatus('Running profiling test...', 'info');
+
+      try {
+        // Send message to the extension to translate with profiling enabled
+        const response = await chrome.runtime.sendMessage({
+          type: 'translate',
+          text: [
+            'The quick brown fox jumps over the lazy dog.',
+            'Machine learning has revolutionized language translation.',
+            'Web browsers have become incredibly powerful platforms.',
+            'Open-source software has democratized access to technology.',
+            'The future of translation lies in local processing.'
+          ],
+          sourceLang: 'en',
+          targetLang: 'fi',
+          enableProfiling: true
+        });
+
+        if (response.success) {
+          setStatus('Translation complete! Check profiling results below.', 'success');
+
+          let resultText = 'Translation Result:\n';
+          resultText += '==================\n\n';
+
+          if (Array.isArray(response.result)) {
+            response.result.forEach((text, i) => {
+              resultText += `[${i + 1}] ${text}\n`;
+            });
+          } else {
+            resultText += response.result;
+          }
+
+          resultText += '\n\nProfiling Data:\n';
+          resultText += '===============\n\n';
+
+          if (response.profilingReport) {
+            const report = response.profilingReport;
+            resultText += `Total Duration: ${report.totalMs?.toFixed(2) || 'N/A'}ms\n\n`;
+            resultText += 'Breakdown:\n';
+            if (report.breakdown) {
+              report.breakdown.forEach(item => {
+                resultText += `  ${item.name.padEnd(30)} ${item.durationMs.toFixed(2).padStart(10)}ms (${item.percentOfTotal.toFixed(1).padStart(5)}%)\n`;
+              });
+            }
+          } else {
+            resultText += 'No profiling data available.\n';
+            resultText += 'Make sure profiling is enabled in the extension.\n';
+          }
+
+          resultText += `\nResponse Duration: ${response.duration}ms`;
+
+          setResults(resultText);
+        } else {
+          setStatus('Translation failed: ' + response.error, 'error');
+          setResults('Error: ' + response.error);
+        }
+      } catch (error) {
+        setStatus('Error: ' + error.message, 'error');
+        setResults('Error: ' + error.message + '\n\nMake sure the TRANSLATE! extension is installed and enabled.');
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function getProfilingStats() {
+      setStatus('Fetching aggregate stats...', 'info');
+
+      try {
+        const response = await chrome.runtime.sendMessage({
+          type: 'getProfilingStats'
+        });
+
+        if (response.success) {
+          setStatus('Stats retrieved successfully!', 'success');
+
+          let resultText = 'Aggregate Profiling Statistics:\n';
+          resultText += '================================\n\n';
+
+          if (response.formatted) {
+            resultText += response.formatted;
+          } else if (response.aggregates) {
+            for (const [name, stats] of Object.entries(response.aggregates)) {
+              resultText += `${name}:\n`;
+              resultText += `  Count: ${stats.count}\n`;
+              resultText += `  Min:   ${stats.min.toFixed(2)}ms\n`;
+              resultText += `  Max:   ${stats.max.toFixed(2)}ms\n`;
+              resultText += `  Avg:   ${stats.avg.toFixed(2)}ms\n`;
+              resultText += `  P50:   ${stats.p50.toFixed(2)}ms\n`;
+              resultText += `  P95:   ${stats.p95.toFixed(2)}ms\n`;
+              resultText += '\n';
+            }
+          } else {
+            resultText += 'No aggregate data available yet.\n';
+            resultText += 'Run some profiling tests first.';
+          }
+
+          setResults(resultText);
+        } else {
+          setStatus('Failed to get stats: ' + response.error, 'error');
+        }
+      } catch (error) {
+        setStatus('Error: ' + error.message, 'error');
+        setResults('Error: ' + error.message);
+      }
+    }
+
+    async function clearProfilingStats() {
+      try {
+        const response = await chrome.runtime.sendMessage({
+          type: 'clearProfilingStats'
+        });
+
+        if (response.success) {
+          setStatus('Profiling stats cleared!', 'success');
+          setResults('Stats cleared. Run new profiling tests to collect data.');
+        } else {
+          setStatus('Failed to clear stats', 'error');
+        }
+      } catch (error) {
+        setStatus('Error: ' + error.message, 'error');
+      }
+    }
+
+    // Check if extension is available
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+      setStatus('Extension detected. Ready for profiling tests.', 'success');
+    } else {
+      setStatus('Chrome extension API not available. Make sure the extension is installed.', 'error');
+    }
+  </script>
+</body>
+</html>

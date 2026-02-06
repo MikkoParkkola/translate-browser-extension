@@ -11,6 +11,7 @@ const mockAddMessageListener = vi.fn();
 const mockAddInstalledListener = vi.fn();
 const mockAddClickedListener = vi.fn();
 const mockAddStartupListener = vi.fn();
+const mockAddTabsUpdatedListener = vi.fn();
 const mockStorageSet = vi.fn();
 
 // Mock offscreen document response
@@ -57,6 +58,11 @@ vi.stubGlobal('chrome', {
   action: {
     onClicked: {
       addListener: mockAddClickedListener,
+    },
+  },
+  tabs: {
+    onUpdated: {
+      addListener: mockAddTabsUpdatedListener,
     },
   },
   storage: {
@@ -117,6 +123,10 @@ describe('Service Worker', () => {
 
     it('registers startup handler', () => {
       expect(mockAddStartupListener).toHaveBeenCalled();
+    });
+
+    it('registers tabs updated handler for predictive preloading', () => {
+      expect(mockAddTabsUpdatedListener).toHaveBeenCalled();
     });
   });
 

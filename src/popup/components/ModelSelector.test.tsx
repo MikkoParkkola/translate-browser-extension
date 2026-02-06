@@ -5,13 +5,15 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { ModelSelector, MODELS, type ModelDownloadStatus, type ModelInfo } from './ModelSelector';
+import { ModelSelector, MODELS, LOCAL_MODELS, CLOUD_PROVIDERS, type ModelDownloadStatus, type ModelInfo } from './ModelSelector';
 import type { TranslationProviderId } from '../../types';
 
 describe('MODELS constant', () => {
-  it('exports three model configurations', () => {
+  it('exports seven model configurations (3 local + 4 cloud)', () => {
     expect(MODELS).toBeDefined();
-    expect(MODELS.length).toBe(3);
+    expect(MODELS.length).toBe(7);
+    expect(LOCAL_MODELS.length).toBe(3);
+    expect(CLOUD_PROVIDERS.length).toBe(4);
   });
 
   describe('opus-mt model', () => {
@@ -228,9 +230,87 @@ describe('model validation', () => {
   });
 
   it('model ids match TranslationProviderId type', () => {
-    const validIds: TranslationProviderId[] = ['opus-mt', 'translategemma', 'chrome-builtin'];
+    const validIds: TranslationProviderId[] = [
+      'opus-mt',
+      'translategemma',
+      'chrome-builtin',
+      'deepl',
+      'openai',
+      'anthropic',
+      'google-cloud',
+    ];
     for (const model of MODELS) {
       expect(validIds).toContain(model.id);
     }
+  });
+});
+
+describe('CLOUD_PROVIDERS constant', () => {
+  it('all cloud providers have isCloud set to true', () => {
+    for (const provider of CLOUD_PROVIDERS) {
+      expect(provider.isCloud).toBe(true);
+    }
+  });
+
+  it('all cloud providers have costEstimate', () => {
+    for (const provider of CLOUD_PROVIDERS) {
+      expect(provider.costEstimate).toBeDefined();
+      expect(provider.costEstimate!.length).toBeGreaterThan(0);
+    }
+  });
+
+  describe('deepl provider', () => {
+    const deepl = CLOUD_PROVIDERS.find((p) => p.id === 'deepl');
+
+    it('exists in the provider list', () => {
+      expect(deepl).toBeDefined();
+    });
+
+    it('has correct properties', () => {
+      expect(deepl?.name).toBe('DeepL');
+      expect(deepl?.tag).toBe('Premium');
+      expect(deepl?.isCloud).toBe(true);
+    });
+  });
+
+  describe('openai provider', () => {
+    const openai = CLOUD_PROVIDERS.find((p) => p.id === 'openai');
+
+    it('exists in the provider list', () => {
+      expect(openai).toBeDefined();
+    });
+
+    it('has correct properties', () => {
+      expect(openai?.name).toBe('OpenAI');
+      expect(openai?.tag).toBe('GPT-4');
+      expect(openai?.isCloud).toBe(true);
+    });
+  });
+
+  describe('anthropic provider', () => {
+    const anthropic = CLOUD_PROVIDERS.find((p) => p.id === 'anthropic');
+
+    it('exists in the provider list', () => {
+      expect(anthropic).toBeDefined();
+    });
+
+    it('has correct properties', () => {
+      expect(anthropic?.name).toBe('Claude');
+      expect(anthropic?.isCloud).toBe(true);
+    });
+  });
+
+  describe('google-cloud provider', () => {
+    const googleCloud = CLOUD_PROVIDERS.find((p) => p.id === 'google-cloud');
+
+    it('exists in the provider list', () => {
+      expect(googleCloud).toBeDefined();
+    });
+
+    it('has correct properties', () => {
+      expect(googleCloud?.name).toBe('Google');
+      expect(googleCloud?.tag).toBe('Cloud');
+      expect(googleCloud?.isCloud).toBe(true);
+    });
   });
 });

@@ -25,8 +25,8 @@ vi.mock('../core/logger', () => ({
 }));
 
 describe('Pipeline Cache', () => {
-  beforeEach(() => {
-    clearCache();
+  beforeEach(async () => {
+    await clearCache();
   });
 
   describe('MAX_CACHED_PIPELINES', () => {
@@ -164,14 +164,14 @@ describe('Pipeline Cache', () => {
   });
 
   describe('clearCache', () => {
-    it('removes all cached pipelines', () => {
+    it('removes all cached pipelines', async () => {
       cachePipeline('model-1', { id: 1 });
       cachePipeline('model-2', { id: 2 });
       cachePipeline('model-3', { id: 3 });
 
       expect(getCacheSize()).toBe(3);
 
-      clearCache();
+      await clearCache();
 
       expect(getCacheSize()).toBe(0);
       expect(getCachedPipeline('model-1')).toBeNull();
@@ -179,9 +179,9 @@ describe('Pipeline Cache', () => {
       expect(getCachedPipeline('model-3')).toBeNull();
     });
 
-    it('allows caching after clear', () => {
+    it('allows caching after clear', async () => {
       cachePipeline('model-1', { id: 1 });
-      clearCache();
+      await clearCache();
       cachePipeline('model-2', { id: 2 });
 
       expect(getCacheSize()).toBe(1);

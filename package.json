@@ -5,13 +5,16 @@
   "scripts": {
     "dev": "vite build --watch",
     "build": "vite build",
+    "build:firefox": "vite build --config vite.config.firefox.ts",
+    "build:all": "npm run build && npm run build:firefox",
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:e2e:playwright": "npx playwright test e2e/extension-playwright.spec.ts --headed",
     "lint": "eslint src --ext .ts,.tsx",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "package:firefox": "cd dist-firefox && zip -r ../translate-firefox.xpi *"
   },
   "keywords": [],
   "author": "",

@@ -8,6 +8,7 @@ import { CostMonitor } from './components/CostMonitor';
 import { ModelStatus } from './components/ModelStatus';
 import type { Strategy, UsageStats, ModelProgressMessage, TranslationProviderId } from '../types';
 import { safeStorageGet, safeStorageSet } from '../core/storage';
+import { browserAPI } from '../core/browser-api';
 
 // Detect browser's preferred language, fallback to 'en'
 const getBrowserLanguage = () => {
@@ -177,11 +178,11 @@ export default function App() {
     const messageListener = (message: ModelProgressMessage) => {
       handleModelProgress(message);
     };
-    chrome.runtime.onMessage.addListener(messageListener);
+    browserAPI.runtime.onMessage.addListener(messageListener);
 
     // Store cleanup function
     onCleanup(() => {
-      chrome.runtime.onMessage.removeListener(messageListener);
+      browserAPI.runtime.onMessage.removeListener(messageListener);
     });
 
     // Load saved preferences (use internal setters to avoid re-saving)
@@ -202,7 +203,7 @@ export default function App() {
 
     // Check Chrome Translator API availability (Chrome 138+)
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'checkChromeTranslator' });
+      const response = await browserAPI.runtime.sendMessage({ type: 'checkChromeTranslator' });
       if (response?.available) {
         console.log('[Popup] Chrome Translator API available');
         updateModelStatus('chrome-builtin', { isDownloaded: true, error: null });
@@ -238,7 +239,7 @@ export default function App() {
     await safeStorageSet({ provider });
     try {
       // Notify background service worker
-      await chrome.runtime.sendMessage({ type: 'setProvider', provider });
+      await browserAPI.runtime.sendMessage({ type: 'setProvider', provider });
       console.log('[Popup] Provider changed to:', provider);
     } catch (e) {
       console.error('[Popup] Failed to set provider:', e);
@@ -249,13 +250,13 @@ export default function App() {
   const ensureContentScript = async (tabId: number): Promise<boolean> => {
     try {
       // Try to ping the content script
-      await chrome.tabs.sendMessage(tabId, { type: 'ping' });
+      await browserAPI.tabs.sendMessage(tabId, { type: 'ping' });
       return true;
     } catch {
       // Content script not loaded, inject it
       console.log('[Popup] Injecting content script...');
       try {
-        await chrome.scripting.executeScript({
+        await browserAPI.scripting.executeScript({
           target: { tabId },
           files: ['content.js'],
         });
@@ -284,13 +285,17 @@ export default function App() {
     setIsTranslating(true);
     setError(null);
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) {
         setError('No active tab');
         return;
       }
-      // Check if it's a restricted URL
-      if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('about:') || tab.url?.startsWith('chrome-extension://')) {
+      // Check if it's a restricted URL (handles both Chrome and Firefox)
+      const restrictedPrefixes = [
+        'chrome://', 'about:', 'chrome-extension://',
+        'moz-extension://', 'resource://', 'view-source:'
+      ];
+      if (tab.url && restrictedPrefixes.some(prefix => tab.url!.startsWith(prefix))) {
         setError('Cannot translate browser pages');
         return;
       }
@@ -300,7 +305,7 @@ export default function App() {
         setError('Cannot access this page');
         return;
       }
-      await chrome.tabs.sendMessage(tab.id, {
+      await browserAPI.tabs.sendMessage(tab.id, {
         type: 'translateSelection',
         sourceLang: sourceLang(),
         targetLang: targetLang(),
@@ -319,12 +324,17 @@ export default function App() {
     setIsTranslating(true);
     setError(null);
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) {
         setError('No active tab');
         return;
       }
-      if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('about:') || tab.url?.startsWith('chrome-extension://')) {
+      // Check if it's a restricted URL (handles both Chrome and Firefox)
+      const restrictedPrefixes = [
+        'chrome://', 'about:', 'chrome-extension://',
+        'moz-extension://', 'resource://', 'view-source:'
+      ];
+      if (tab.url && restrictedPrefixes.some(prefix => tab.url!.startsWith(prefix))) {
         setError('Cannot translate browser pages');
         return;
       }
@@ -334,7 +344,7 @@ export default function App() {
         setError('Cannot access this page');
         return;
       }
-      await chrome.tabs.sendMessage(tab.id, {
+      await browserAPI.tabs.sendMessage(tab.id, {
         type: 'translatePage',
         sourceLang: sourceLang(),
         targetLang: targetLang(),
@@ -358,7 +368,7 @@ export default function App() {
   };
 
   const openSettings = () => {
-    chrome.runtime.openOptionsPage();
+    browserAPI.runtime.openOptionsPage();
   };
 
   return (
