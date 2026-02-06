@@ -5,3 +5,6 @@ export { UsageBar } from './UsageBar';
 export { CostMonitor } from './CostMonitor';
 export { ModelSelector, type ModelDownloadStatus, type ModelInfo, MODELS } from './ModelSelector';
 export { ProviderSelector } from './ProviderSelector';
+export { SiteRulesManager } from './SiteRulesManager';
+export { GlossaryManager } from './GlossaryManager';
+export { ApiKeyManager } from './ApiKeyManager';

@@ -5,6 +5,10 @@
  */
 
 import { opusMTProvider } from '../providers/opus-mt-local';
+import { deeplProvider } from '../providers/deepl';
+import { openaiProvider } from '../providers/openai';
+import { googleCloudProvider } from '../providers/google-cloud';
+import { anthropicProvider } from '../providers/anthropic';
 import { webgpuDetector } from './webgpu-detector';
 import type {
   TranslationProvider,
@@ -19,37 +23,83 @@ interface ProviderCandidate {
   score: number;
 }
 
+// Storage key for router preferences
+const STORAGE_KEY = 'routerPreferences';
+
+// Default preferences
+const DEFAULT_PREFERENCES: RouterPreferences = {
+  prioritize: 'balanced',
+  preferLocal: true,
+  enabledProviders: ['opus-mt-local'],
+  primaryProvider: 'opus-mt-local',
+};
+
 export class TranslationRouter {
   private providers = new Map<string, TranslationProvider>();
   private preferences: RouterPreferences;
   private stats = new Map<string, number>();
   private initialized = false;
+  private preferencesLoaded = false;
 
   constructor() {
-    this.preferences = this.loadPreferences();
+    // Start with defaults, will be overwritten by loadPreferences()
+    this.preferences = { ...DEFAULT_PREFERENCES };
     // Register default providers
     this.registerProvider(opusMTProvider);
+    // Register cloud providers
+    this.registerProvider(deeplProvider);
+    this.registerProvider(openaiProvider);
+    this.registerProvider(googleCloudProvider);
+    this.registerProvider(anthropicProvider);
   }
 
   /**
-   * Load user preferences
+   * Load user preferences from chrome.storage.local
    */
-  private loadPreferences(): RouterPreferences {
-    // TODO: Load from chrome.storage
-    return {
-      prioritize: 'balanced',
-      preferLocal: true,
-      enabledProviders: ['opus-mt-local'],
-      primaryProvider: 'opus-mt-local',
-    };
+  private async loadPreferences(): Promise<RouterPreferences> {
+    try {
+      // Check if chrome.storage is available (may not be in tests or non-extension context)
+      if (typeof chrome === 'undefined' || !chrome.storage?.local) {
+        console.log('[Router] chrome.storage not available, using defaults');
+        return { ...DEFAULT_PREFERENCES };
+      }
+
+      const result = await chrome.storage.local.get(STORAGE_KEY);
+      const stored = result[STORAGE_KEY] as RouterPreferences | undefined;
+
+      if (stored) {
+        console.log('[Router] Loaded preferences from storage:', stored);
+        // Merge with defaults to handle any new fields added in updates
+        return { ...DEFAULT_PREFERENCES, ...stored };
+      }
+
+      console.log('[Router] No stored preferences, using defaults');
+      return { ...DEFAULT_PREFERENCES };
+    } catch (error) {
+      console.error('[Router] Failed to load preferences:', error);
+      return { ...DEFAULT_PREFERENCES };
+    }
   }
 
   /**
-   * Save preferences to storage
+   * Save preferences to chrome.storage.local
    */
   async savePreferences(prefs: Partial<RouterPreferences>): Promise<void> {
     this.preferences = { ...this.preferences, ...prefs };
-    // TODO: Save to chrome.storage
+
+    try {
+      // Check if chrome.storage is available
+      if (typeof chrome === 'undefined' || !chrome.storage?.local) {
+        console.log('[Router] chrome.storage not available, preferences saved in memory only');
+        return;
+      }
+
+      await chrome.storage.local.set({ [STORAGE_KEY]: this.preferences });
+      console.log('[Router] Saved preferences to storage:', this.preferences);
+    } catch (error) {
+      console.error('[Router] Failed to save preferences:', error);
+      throw error;
+    }
   }
 
   /**
@@ -59,6 +109,12 @@ export class TranslationRouter {
     if (this.initialized) return;
 
     console.log('[Router] Initializing...');
+
+    // Load preferences from storage (only once)
+    if (!this.preferencesLoaded) {
+      this.preferences = await this.loadPreferences();
+      this.preferencesLoaded = true;
+    }
 
     // Detect WebGPU support
     await webgpuDetector.detect();

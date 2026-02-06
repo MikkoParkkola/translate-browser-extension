@@ -6,6 +6,7 @@
 import { pipeline, env, type TextGenerationPipeline } from '@huggingface/transformers';
 import { franc } from 'franc-min';
 import type { TranslationProviderId } from '../types';
+import { getTranslationCache, type TranslationCacheStats } from '../core/translation-cache';
 
 // Configure Transformers.js for Chrome extension environment
 env.allowRemoteModels = true;  // Models from HuggingFace Hub
@@ -36,39 +37,192 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 
 console.log('[Offscreen] WASM path configured:', wasmBasePath);
 
-// Model mapping (direct language pairs with available models)
+// Model mapping (direct language pairs with available Xenova OPUS-MT models)
+// Source: https://huggingface.co/models?search=xenova/opus-mt (76 models)
 const MODEL_MAP: Record<string, string> = {
-  'en-fi': 'Xenova/opus-mt-en-fi',
-  'fi-en': 'Xenova/opus-mt-fi-en',
+  // === English <-> Major European Languages ===
   'en-de': 'Xenova/opus-mt-en-de',
   'de-en': 'Xenova/opus-mt-de-en',
   'en-fr': 'Xenova/opus-mt-en-fr',
   'fr-en': 'Xenova/opus-mt-fr-en',
   'en-es': 'Xenova/opus-mt-en-es',
   'es-en': 'Xenova/opus-mt-es-en',
+  'en-it': 'Xenova/opus-mt-en-it',
+  'it-en': 'Xenova/opus-mt-it-en',
+  'en-nl': 'Xenova/opus-mt-en-nl',
+  'nl-en': 'Xenova/opus-mt-nl-en',
+
+  // === English <-> Nordic Languages ===
+  'en-fi': 'Xenova/opus-mt-en-fi',
+  'fi-en': 'Xenova/opus-mt-fi-en',
   'en-sv': 'Xenova/opus-mt-en-sv',
   'sv-en': 'Xenova/opus-mt-sv-en',
+  'en-da': 'Xenova/opus-mt-en-da',
+  'da-en': 'Xenova/opus-mt-da-en',
+
+  // === English <-> Eastern European Languages ===
   'en-ru': 'Xenova/opus-mt-en-ru',
   'ru-en': 'Xenova/opus-mt-ru-en',
+  'en-uk': 'Xenova/opus-mt-en-uk',
+  'uk-en': 'Xenova/opus-mt-uk-en',
+  'en-cs': 'Xenova/opus-mt-en-cs',
+  'cs-en': 'Xenova/opus-mt-cs-en',
+  'en-hu': 'Xenova/opus-mt-en-hu',
+  'hu-en': 'Xenova/opus-mt-hu-en',
+  'en-ro': 'Xenova/opus-mt-en-ro',
+  // Note: ro-en not directly available, use pivot
+
+  // === English <-> Asian Languages ===
   'en-zh': 'Xenova/opus-mt-en-zh',
   'zh-en': 'Xenova/opus-mt-zh-en',
   'en-ja': 'Xenova/opus-mt-en-jap',
   'ja-en': 'Xenova/opus-mt-jap-en',
-  // Dutch
-  'en-nl': 'Xenova/opus-mt-en-nl',
-  'nl-en': 'Xenova/opus-mt-nl-en',
-  // Czech
-  'en-cs': 'Xenova/opus-mt-en-cs',
-  'cs-en': 'Xenova/opus-mt-cs-en',
+  'en-ko': 'Xenova/opus-mt-en-mul', // Korean via multilingual (no direct ko model)
+  'ko-en': 'Xenova/opus-mt-ko-en',
+  'en-vi': 'Xenova/opus-mt-en-vi',
+  'vi-en': 'Xenova/opus-mt-vi-en',
+  'en-th': 'Xenova/opus-mt-en-mul', // Thai via multilingual (no direct th model)
+  'th-en': 'Xenova/opus-mt-th-en',
+  'en-hi': 'Xenova/opus-mt-en-hi',
+  'hi-en': 'Xenova/opus-mt-hi-en',
+  'en-id': 'Xenova/opus-mt-en-id',
+  'id-en': 'Xenova/opus-mt-id-en',
+
+  // === English <-> Middle Eastern Languages ===
+  'en-ar': 'Xenova/opus-mt-en-ar',
+  'ar-en': 'Xenova/opus-mt-ar-en',
+  // Note: Hebrew (he) not available in Xenova collection
+
+  // === English <-> Other Languages ===
+  'en-af': 'Xenova/opus-mt-en-af',
+  'af-en': 'Xenova/opus-mt-af-en',
+  'en-xh': 'Xenova/opus-mt-en-xh', // Xhosa
+  'xh-en': 'Xenova/opus-mt-xh-en',
+  'et-en': 'Xenova/opus-mt-et-en', // Estonian (en-et not available)
+
+  // === Turkish (tc-big model for better quality) ===
+  'tr-en': 'Xenova/opus-mt-tc-big-tr-en',
+  // Note: en-tr not directly available, use ROMANCE or pivot
+
+  // === Direct Non-English Pairs (Romance languages) ===
+  'fr-de': 'Xenova/opus-mt-fr-de',
+  'de-fr': 'Xenova/opus-mt-de-fr',
+  'fr-es': 'Xenova/opus-mt-fr-es',
+  'es-fr': 'Xenova/opus-mt-es-fr',
+  'it-fr': 'Xenova/opus-mt-it-fr',
+  'it-es': 'Xenova/opus-mt-it-es',
+  'es-it': 'Xenova/opus-mt-es-it',
+  'de-es': 'Xenova/opus-mt-de-es',
+  'es-de': 'Xenova/opus-mt-es-de',
+  'nl-fr': 'Xenova/opus-mt-nl-fr',
+  'ro-fr': 'Xenova/opus-mt-ro-fr',
+  'fr-ro': 'Xenova/opus-mt-fr-ro',
+
+  // === Direct Non-English Pairs (Slavic and others) ===
+  'ru-uk': 'Xenova/opus-mt-ru-uk',
+  'uk-ru': 'Xenova/opus-mt-uk-ru',
+  'ru-fr': 'Xenova/opus-mt-ru-fr',
+  'fr-ru': 'Xenova/opus-mt-fr-ru',
+  'ru-es': 'Xenova/opus-mt-ru-es',
+  'es-ru': 'Xenova/opus-mt-es-ru',
+
+  // === Nordic <-> German pairs ===
+  'da-de': 'Xenova/opus-mt-da-de',
+  'no-de': 'Xenova/opus-mt-no-de', // Note: no = Norwegian
+  'fi-de': 'Xenova/opus-mt-fi-de',
+
+  // === Multilingual Models (fallback) ===
+  // 'mul-en': 'Xenova/opus-mt-mul-en',  // Many languages -> English
+  // 'en-mul': 'Xenova/opus-mt-en-mul',  // English -> Many languages
+  // 'ROMANCE-en': 'Xenova/opus-mt-ROMANCE-en', // Romance languages -> English
+  // 'en-ROMANCE': 'Xenova/opus-mt-en-ROMANCE', // English -> Romance languages
+  // 'gem-gem': 'Xenova/opus-mt-gem-gem',  // Germanic family
+  // 'gmw-gmw': 'Xenova/opus-mt-gmw-gmw',  // West Germanic family
+  // 'bat-en': 'Xenova/opus-mt-bat-en',    // Baltic languages -> English
 };
 
 // Pivot routes for language pairs without direct models (translate via English)
 // Format: 'source-target': ['source-en', 'en-target']
 const PIVOT_ROUTES: Record<string, [string, string]> = {
+  // === Nordic <-> Other European ===
   'nl-fi': ['nl-en', 'en-fi'],  // Dutch -> English -> Finnish
   'fi-nl': ['fi-en', 'en-nl'],  // Finnish -> English -> Dutch
   'cs-fi': ['cs-en', 'en-fi'],  // Czech -> English -> Finnish
   'fi-cs': ['fi-en', 'en-cs'],  // Finnish -> English -> Czech
+  'sv-fi': ['sv-en', 'en-fi'],  // Swedish -> English -> Finnish
+  'fi-sv': ['fi-en', 'en-sv'],  // Finnish -> English -> Swedish
+  'da-fi': ['da-en', 'en-fi'],  // Danish -> English -> Finnish
+  'fi-da': ['fi-en', 'en-da'],  // Finnish -> English -> Danish
+
+  // === German <-> Various ===
+  'de-fi': ['de-en', 'en-fi'],  // German -> English -> Finnish (fi-de exists but not de-fi)
+  'de-nl': ['de-en', 'en-nl'],  // German -> English -> Dutch
+  'nl-de': ['nl-en', 'en-de'],  // Dutch -> English -> German
+  'de-it': ['de-en', 'en-it'],  // German -> English -> Italian
+  'it-de': ['it-en', 'en-de'],  // Italian -> English -> German
+  'de-ru': ['de-en', 'en-ru'],  // German -> English -> Russian
+  'ru-de': ['ru-en', 'en-de'],  // Russian -> English -> German
+
+  // === Polish (no direct en-pl or pl-en, use pivot via mul) ===
+  // Note: Polish not available in Xenova OPUS-MT - recommend TranslateGemma instead
+
+  // === Portuguese (no direct models, use pivot via ROMANCE) ===
+  // Note: Portuguese not available in Xenova OPUS-MT - recommend TranslateGemma instead
+
+  // === Norwegian (no-en not available, but no-de exists) ===
+  // Note: Norwegian has limited support - use TranslateGemma for better coverage
+
+  // === Greek, Hebrew, Turkish (en-*) ===
+  // Note: These don't have en->X models - use TranslateGemma
+
+  // === Romanian pivots ===
+  'ro-en': ['ro-fr', 'fr-en'],  // Romanian -> French -> English (no direct ro-en)
+  'ro-de': ['ro-fr', 'fr-de'],  // Romanian -> French -> German
+  'ro-es': ['ro-fr', 'fr-es'],  // Romanian -> French -> Spanish
+  'de-ro': ['de-fr', 'fr-ro'],  // German -> French -> Romanian
+  'es-ro': ['es-fr', 'fr-ro'],  // Spanish -> French -> Romanian
+
+  // === Asian language pivots (where direct not available) ===
+  'ja-de': ['ja-en', 'en-de'],  // Japanese -> English -> German
+  'de-ja': ['de-en', 'en-ja'],  // German -> English -> Japanese
+  'ja-fr': ['ja-en', 'en-fr'],  // Japanese -> English -> French
+  'fr-ja': ['fr-en', 'en-ja'],  // French -> English -> Japanese
+  'zh-de': ['zh-en', 'en-de'],  // Chinese -> English -> German
+  'de-zh': ['de-en', 'en-zh'],  // German -> English -> Chinese
+  'zh-fr': ['zh-en', 'en-fr'],  // Chinese -> English -> French
+  'fr-zh': ['fr-en', 'en-zh'],  // French -> English -> Chinese
+  'ko-de': ['ko-en', 'en-de'],  // Korean -> English -> German
+  'ko-fr': ['ko-en', 'en-fr'],  // Korean -> English -> French
+
+  // === Slavic language pivots ===
+  'cs-de': ['cs-en', 'en-de'],  // Czech -> English -> German
+  'de-cs': ['de-en', 'en-cs'],  // German -> English -> Czech
+  'uk-de': ['uk-en', 'en-de'],  // Ukrainian -> English -> German
+  'de-uk': ['de-en', 'en-uk'],  // German -> English -> Ukrainian
+  'uk-fr': ['uk-en', 'en-fr'],  // Ukrainian -> English -> French
+  'fr-uk': ['fr-en', 'en-uk'],  // French -> English -> Ukrainian
+
+  // === Hungarian pivots ===
+  'hu-de': ['hu-en', 'en-de'],  // Hungarian -> English -> German
+  'de-hu': ['de-en', 'en-hu'],  // German -> English -> Hungarian
+  'hu-fr': ['hu-en', 'en-fr'],  // Hungarian -> English -> French
+  'fr-hu': ['fr-en', 'en-hu'],  // French -> English -> Hungarian
+
+  // === Arabic pivots ===
+  'ar-de': ['ar-en', 'en-de'],  // Arabic -> English -> German
+  'de-ar': ['de-en', 'en-ar'],  // German -> English -> Arabic
+  'ar-fr': ['ar-en', 'en-fr'],  // Arabic -> English -> French
+  'fr-ar': ['fr-en', 'en-ar'],  // French -> English -> Arabic
+
+  // === Vietnamese pivots ===
+  'vi-de': ['vi-en', 'en-de'],  // Vietnamese -> English -> German
+  'de-vi': ['de-en', 'en-vi'],  // German -> English -> Vietnamese
+  'vi-fr': ['vi-en', 'en-fr'],  // Vietnamese -> English -> French
+  'fr-vi': ['fr-en', 'en-vi'],  // French -> English -> Vietnamese
+
+  // === Hindi pivots ===
+  'hi-de': ['hi-en', 'en-de'],  // Hindi -> English -> German
+  'de-hi': ['de-en', 'en-hi'],  // German -> English -> Hindi
 };
 
 // Pipeline cache (OPUS-MT) - using unknown to avoid Transformers.js type conflicts
@@ -253,18 +407,80 @@ async function translateWithGemma(
 }
 
 // Map franc ISO 639-3 codes to our ISO 639-1 codes
+// See: https://iso639-3.sil.org/code_tables/639/data
 const FRANC_TO_ISO: Record<string, string> = {
+  // Major European languages
   'eng': 'en',
-  'fin': 'fi',
   'deu': 'de',
   'fra': 'fr',
   'spa': 'es',
-  'swe': 'sv',
-  'rus': 'ru',
-  'cmn': 'zh',
-  'jpn': 'ja',
+  'ita': 'it',
   'nld': 'nl',  // Dutch
+  'por': 'pt',  // Portuguese
+
+  // Nordic languages
+  'fin': 'fi',
+  'swe': 'sv',
+  'dan': 'da',  // Danish
+  'nor': 'no',  // Norwegian (generic)
+  'nob': 'no',  // Norwegian Bokmal
+  'nno': 'no',  // Norwegian Nynorsk
+
+  // Eastern European languages
+  'rus': 'ru',
+  'ukr': 'uk',  // Ukrainian
+  'pol': 'pl',  // Polish
   'ces': 'cs',  // Czech
+  'hun': 'hu',  // Hungarian
+  'ron': 'ro',  // Romanian
+  'bul': 'bg',  // Bulgarian
+  'hrv': 'hr',  // Croatian
+  'slk': 'sk',  // Slovak
+  'slv': 'sl',  // Slovenian
+  'est': 'et',  // Estonian
+  'lav': 'lv',  // Latvian
+  'lit': 'lt',  // Lithuanian
+
+  // Asian languages
+  'cmn': 'zh',  // Mandarin Chinese
+  'zho': 'zh',  // Chinese (generic)
+  'jpn': 'ja',
+  'kor': 'ko',
+  'vie': 'vi',  // Vietnamese
+  'tha': 'th',  // Thai
+  'hin': 'hi',  // Hindi
+  'ind': 'id',  // Indonesian
+  'msa': 'ms',  // Malay
+
+  // Middle Eastern languages
+  'ara': 'ar',  // Arabic
+  'heb': 'he',  // Hebrew
+  'fas': 'fa',  // Persian/Farsi
+  'tur': 'tr',  // Turkish
+
+  // Other languages
+  'ell': 'el',  // Greek
+  'afr': 'af',  // Afrikaans
+  'xho': 'xh',  // Xhosa
+  'swa': 'sw',  // Swahili
+  'urd': 'ur',  // Urdu
+  'ben': 'bn',  // Bengali
+  'tam': 'ta',  // Tamil
+  'tel': 'te',  // Telugu
+  'mal': 'ml',  // Malayalam
+  'kat': 'ka',  // Georgian
+  'hye': 'hy',  // Armenian
+  'sqi': 'sq',  // Albanian
+  'mkd': 'mk',  // Macedonian
+  'srp': 'sr',  // Serbian
+  'bos': 'bs',  // Bosnian
+  'isl': 'is',  // Icelandic
+  'mlt': 'mt',  // Maltese
+  'gle': 'ga',  // Irish
+  'cym': 'cy',  // Welsh
+  'eus': 'eu',  // Basque
+  'cat': 'ca',  // Catalan
+  'glg': 'gl',  // Galician
 };
 
 // Detect language from text
@@ -377,19 +593,104 @@ async function translate(
     }
   }
 
+  const cache = getTranslationCache();
+
+  // Handle array of texts
+  if (Array.isArray(text)) {
+    const results: string[] = [];
+    const uncachedItems: Array<{ index: number; text: string }> = [];
+
+    // Check cache for each text
+    for (let i = 0; i < text.length; i++) {
+      const t = text[i];
+      if (!t || t.trim().length === 0) {
+        results[i] = t;
+        continue;
+      }
+
+      const cached = await cache.get(t, actualSourceLang, targetLang, provider);
+      if (cached !== null) {
+        console.log(`[Offscreen] Cache hit for text ${i + 1}/${text.length}`);
+        results[i] = cached;
+      } else {
+        uncachedItems.push({ index: i, text: t });
+      }
+    }
+
+    // Translate uncached items
+    if (uncachedItems.length > 0) {
+      console.log(`[Offscreen] Translating ${uncachedItems.length} uncached items`);
+      const uncachedTexts = uncachedItems.map((item) => item.text);
+      const translations = await translateWithProvider(
+        uncachedTexts,
+        actualSourceLang,
+        targetLang,
+        provider
+      );
+
+      // Store results and cache them
+      const translationArray = Array.isArray(translations) ? translations : [translations];
+      for (let i = 0; i < uncachedItems.length; i++) {
+        const { index, text: originalText } = uncachedItems[i];
+        const translation = translationArray[i];
+        results[index] = translation;
+
+        // Cache the translation (fire and forget)
+        cache.set(originalText, actualSourceLang, targetLang, provider, translation).catch((err) => {
+          console.warn('[Offscreen] Failed to cache translation:', err);
+        });
+      }
+    }
+
+    return results;
+  }
+
+  // Handle single text
+  if (!text || text.trim().length === 0) {
+    return text;
+  }
+
+  // Check cache first
+  const cached = await cache.get(text, actualSourceLang, targetLang, provider);
+  if (cached !== null) {
+    console.log('[Offscreen] Cache hit');
+    return cached;
+  }
+
+  // Translate and cache
+  const result = await translateWithProvider(text, actualSourceLang, targetLang, provider);
+
+  // Cache the translation (fire and forget)
+  const resultText = Array.isArray(result) ? result[0] : result;
+  cache.set(text, actualSourceLang, targetLang, provider, resultText).catch((err) => {
+    console.warn('[Offscreen] Failed to cache translation:', err);
+  });
+
+  return result;
+}
+
+/**
+ * Internal translation function that routes to the appropriate provider.
+ */
+async function translateWithProvider(
+  text: string | string[],
+  sourceLang: string,
+  targetLang: string,
+  provider: TranslationProviderId
+): Promise<string | string[]> {
   // TranslateGemma: supports any-to-any translation with a single model
   if (provider === 'translategemma') {
-    console.log(`[Offscreen] TranslateGemma translation: ${actualSourceLang} -> ${targetLang}`);
-    return translateWithGemma(text, actualSourceLang, targetLang);
+    console.log(`[Offscreen] TranslateGemma translation: ${sourceLang} -> ${targetLang}`);
+    return translateWithGemma(text, sourceLang, targetLang);
   }
 
   // OPUS-MT: check for direct model or pivot route
-  const key = `${actualSourceLang}-${targetLang}`;
+  const key = `${sourceLang}-${targetLang}`;
 
   // Check if we have a direct model
   if (MODEL_MAP[key]) {
     console.log(`[Offscreen] Direct translation: ${key}`);
-    return translateDirect(text, actualSourceLang, targetLang);
+    return translateDirect(text, sourceLang, targetLang);
   }
 
   // Check if we have a pivot route
@@ -399,7 +700,7 @@ async function translate(
     const [firstSrc, firstTgt] = firstHop.split('-');
     const [secondSrc, secondTgt] = secondHop.split('-');
 
-    console.log(`[Offscreen] Pivot translation: ${actualSourceLang} -> ${firstTgt} -> ${targetLang}`);
+    console.log(`[Offscreen] Pivot translation: ${sourceLang} -> ${firstTgt} -> ${targetLang}`);
 
     // First hop: source -> English
     const intermediateResult = await translateDirect(text, firstSrc, firstTgt);
@@ -469,6 +770,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         }
         case 'ping': {
           sendResponse({ success: true, status: 'ready' });
+          break;
+        }
+        case 'getCacheStats': {
+          const cache = getTranslationCache();
+          const stats: TranslationCacheStats = await cache.getStats();
+          sendResponse({ success: true, stats });
+          break;
+        }
+        case 'clearCache': {
+          const cache = getTranslationCache();
+          await cache.clear();
+          sendResponse({ success: true, cleared: true });
           break;
         }
         default:

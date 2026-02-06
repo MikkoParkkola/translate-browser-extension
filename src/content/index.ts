@@ -7,9 +7,13 @@
  * - Graceful degradation on translation failures
  * - Skip untranslatable elements (scripts, styles, inputs)
  * - Throttled translation to prevent rate limiting
+ * - Per-site rules for automatic translation preferences
+ * - Glossary support for custom term replacements
  */
 
-import type { Strategy } from '../types';
+import type { Strategy, TranslationProviderId } from '../types';
+import { siteRules } from '../core/site-rules';
+import { glossary, type GlossaryStore } from '../core/glossary';
 
 interface TranslateMessage {
   type: 'translateSelection' | 'translatePage';
@@ -77,6 +81,9 @@ let currentSettings: {
   strategy: Strategy;
   provider?: string;
 } | null = null;
+
+// Cache for glossary terms (loaded once per page)
+let cachedGlossary: GlossaryStore | null = null;
 
 // ============================================================================
 // Element Filtering
@@ -198,6 +205,21 @@ function getTextNodesFromNodes(nodes: Node[]): Text[] {
 // ============================================================================
 
 /**
+ * Load glossary if not cached
+ */
+async function loadGlossary(): Promise<GlossaryStore> {
+  if (cachedGlossary === null) {
+    try {
+      cachedGlossary = await glossary.getGlossary();
+    } catch (e) {
+      console.error('[Content] Failed to load glossary:', e);
+      cachedGlossary = {};
+    }
+  }
+  return cachedGlossary;
+}
+
+/**
  * Translate selected text with error handling
  */
 async function translateSelection(
@@ -222,9 +244,13 @@ async function translateSelection(
   console.log('[Content] Translating selection:', sanitized.substring(0, 50) + '...');
 
   try {
+    // Apply glossary pre-processing
+    const g = await loadGlossary();
+    const { processedText, restore } = await glossary.applyGlossary(sanitized, g);
+
     const response = (await chrome.runtime.sendMessage({
       type: 'translate',
-      text: sanitized,
+      text: processedText,
       sourceLang,
       targetLang,
       options: { strategy },
@@ -232,7 +258,9 @@ async function translateSelection(
     })) as TranslateResponse;
 
     if (response.success && response.result) {
-      showTranslationTooltip(response.result as string, selection.getRangeAt(0));
+      // Apply glossary post-processing (restore placeholders)
+      const finalResult = restore(response.result as string);
+      showTranslationTooltip(finalResult, selection.getRangeAt(0));
     } else {
       console.error('[Content] Translation failed:', response.error);
       showErrorTooltip(response.error || 'Translation failed', selection.getRangeAt(0));
@@ -270,12 +298,18 @@ async function translatePage(
       return;
     }
 
+    // Load glossary once for the page
+    const g = await loadGlossary();
+
     // Create batches
-    const batches: Array<{ nodes: Text[]; texts: string[] }> = [];
+    const batches: Array<{ nodes: Text[]; texts: string[]; restoreFns: Array<(text: string) => string> }> = [];
     for (let i = 0; i < textNodes.length; i += BATCH_SIZE) {
       const batchNodes = textNodes.slice(i, i + BATCH_SIZE);
-      const texts = batchNodes.map((n) => sanitizeText(n.textContent || ''));
-      batches.push({ nodes: batchNodes, texts });
+      const rawTexts = batchNodes.map((n) => sanitizeText(n.textContent || ''));
+
+      // Apply glossary to batch
+      const { processedTexts, restoreFns } = await glossary.applyGlossaryBatch(rawTexts, g);
+      batches.push({ nodes: batchNodes, texts: processedTexts, restoreFns });
     }
 
     console.log(`[Content] Processing ${batches.length} batches`);
@@ -302,12 +336,15 @@ async function translatePage(
             const node = batch.nodes[idx];
             if (node && translated && node.parentElement) {
               try {
+                // Apply glossary post-processing
+                const finalText = batch.restoreFns[idx](translated);
+
                 // Preserve whitespace
                 const original = node.textContent || '';
                 const leadingSpace = original.match(/^\s*/)?.[0] || '';
                 const trailingSpace = original.match(/\s*$/)?.[0] || '';
 
-                node.textContent = leadingSpace + translated + trailingSpace;
+                node.textContent = leadingSpace + finalText + trailingSpace;
                 node.parentElement.setAttribute(TRANSLATED_ATTR, 'true');
                 translatedCount++;
               } catch {
@@ -345,12 +382,16 @@ async function translateDynamicContent(nodes: Node[]): Promise<void> {
 
   console.log(`[Content] Translating ${textNodes.length} dynamic text nodes`);
 
-  const texts = textNodes.map((n) => sanitizeText(n.textContent || ''));
+  const rawTexts = textNodes.map((n) => sanitizeText(n.textContent || ''));
 
   try {
+    // Apply glossary to batch
+    const g = await loadGlossary();
+    const { processedTexts, restoreFns } = await glossary.applyGlossaryBatch(rawTexts, g);
+
     const response = (await chrome.runtime.sendMessage({
       type: 'translate',
-      text: texts,
+      text: processedTexts,
       sourceLang: currentSettings.sourceLang,
       targetLang: currentSettings.targetLang,
       options: { strategy: currentSettings.strategy },
@@ -362,11 +403,14 @@ async function translateDynamicContent(nodes: Node[]): Promise<void> {
         const node = textNodes[idx];
         if (node && translated && node.parentElement) {
           try {
+            // Apply glossary post-processing
+            const finalText = restoreFns[idx](translated);
+
             const original = node.textContent || '';
             const leadingSpace = original.match(/^\s*/)?.[0] || '';
             const trailingSpace = original.match(/\s*$/)?.[0] || '';
 
-            node.textContent = leadingSpace + translated + trailingSpace;
+            node.textContent = leadingSpace + finalText + trailingSpace;
             node.parentElement.setAttribute(TRANSLATED_ATTR, 'true');
           } catch {
             // Ignore - node may have been removed
@@ -644,6 +688,11 @@ chrome.runtime.onMessage.addListener(
 
 async function checkAutoTranslate(): Promise<void> {
   try {
+    // First check per-site rules
+    const hostname = window.location.hostname;
+    const siteSpecificRules = await siteRules.getRules(hostname);
+
+    // Get global settings as fallback
     const settings = await chrome.storage.local.get([
       'autoTranslate',
       'sourceLang',
@@ -652,14 +701,25 @@ async function checkAutoTranslate(): Promise<void> {
       'provider',
     ]);
 
-    if (settings.autoTranslate) {
+    // Merge settings: site rules take precedence over global settings
+    const shouldAutoTranslate = siteSpecificRules?.autoTranslate ?? settings.autoTranslate;
+    const sourceLang = siteSpecificRules?.sourceLang || settings.sourceLang || 'auto';
+    const targetLang = siteSpecificRules?.targetLang || settings.targetLang || 'fi';
+    const strategy = siteSpecificRules?.strategy || settings.strategy || 'smart';
+    const provider = siteSpecificRules?.preferredProvider || settings.provider || 'opus-mt';
+
+    if (siteSpecificRules) {
+      console.log('[Content] Site-specific rules found for', hostname, siteSpecificRules);
+    }
+
+    if (shouldAutoTranslate) {
       console.log('[Content] Auto-translate enabled, translating page...');
 
       currentSettings = {
-        sourceLang: settings.sourceLang || 'auto',
-        targetLang: settings.targetLang || 'fi',
-        strategy: settings.strategy || 'smart',
-        provider: settings.provider || 'opus-mt',
+        sourceLang,
+        targetLang,
+        strategy: strategy as Strategy,
+        provider: provider as TranslationProviderId,
       };
 
       // Small delay to let page settle
@@ -691,4 +751,4 @@ window.addEventListener('unload', () => {
   stopMutationObserver();
 });
 
-console.log('[Content] Translation content script loaded v2.2 with MutationObserver + provider support');
+console.log('[Content] Translation content script loaded v2.3 with MutationObserver + site rules + glossary support');
