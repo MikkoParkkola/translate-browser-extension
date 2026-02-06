@@ -251,9 +251,72 @@ const PIVOT_ROUTES: Record<string, [string, string]> = {
   'de-hi': ['de-en', 'en-hi'],  // German -> English -> Hindi
 };
 
-// Pipeline cache (OPUS-MT) - using unknown to avoid Transformers.js type conflicts
+// ============================================================================
+// Pipeline Cache with LRU Eviction
+// Prevents memory exhaustion (each OPUS-MT model ~170MB, TranslateGemma ~3.6GB)
+// ============================================================================
+
+const MAX_CACHED_PIPELINES = 3; // ~500MB max memory for OPUS-MT models
+
+interface PipelineCacheEntry {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pipeline: any;
+  lastUsed: number;
+  modelId: string;
+}
+
+const pipelineCache = new Map<string, PipelineCacheEntry>();
+
+/**
+ * Evict least-recently-used pipelines when cache exceeds limit.
+ */
+function evictLRUPipelines(): void {
+  while (pipelineCache.size >= MAX_CACHED_PIPELINES) {
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+
+    for (const [key, entry] of pipelineCache) {
+      if (entry.lastUsed < oldestTime) {
+        oldestTime = entry.lastUsed;
+        oldestKey = key;
+      }
+    }
+
+    if (oldestKey) {
+      const evicted = pipelineCache.get(oldestKey);
+      pipelineCache.delete(oldestKey);
+      log.info(` Evicted LRU pipeline: ${evicted?.modelId} (cache: ${pipelineCache.size}/${MAX_CACHED_PIPELINES})`);
+    }
+  }
+}
+
+/**
+ * Get pipeline from cache and update LRU timestamp.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const pipelines = new Map<string, any>();
+function getCachedPipeline(modelId: string): any | null {
+  const entry = pipelineCache.get(modelId);
+  if (entry) {
+    entry.lastUsed = Date.now();
+    return entry.pipeline;
+  }
+  return null;
+}
+
+/**
+ * Store pipeline in cache with LRU eviction.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function cachePipeline(modelId: string, pipeline: any): void {
+  evictLRUPipelines();
+  pipelineCache.set(modelId, {
+    pipeline,
+    lastUsed: Date.now(),
+    modelId,
+  });
+  log.info(` Cached pipeline: ${modelId} (cache: ${pipelineCache.size}/${MAX_CACHED_PIPELINES})`);
+}
+
 
 // ============================================================================
 // TranslateGemma Configuration
@@ -342,7 +405,7 @@ async function getTranslateGemmaPipeline(): Promise<TextGenerationPipeline> {
             }
           },
         }),
-        CONFIG.timeouts.modelLoadMs,
+        CONFIG.timeouts.translateGemmaMs,  // 5 min for ~3.6GB model
         `Loading TranslateGemma model`
       );
 
@@ -541,7 +604,7 @@ async function detectWebGPU(): Promise<boolean> {
   }
 }
 
-// Get or create pipeline for a language pair
+// Get or create pipeline for a language pair with LRU caching
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getPipeline(sourceLang: string, targetLang: string): Promise<any> {
   const key = `${sourceLang}-${targetLang}`;
@@ -551,25 +614,30 @@ async function getPipeline(sourceLang: string, targetLang: string): Promise<any>
     throw new Error(`Unsupported language pair: ${key}`);
   }
 
-  if (pipelines.has(modelId)) {
-    return pipelines.get(modelId)!;
+  // Check LRU cache first
+  const cached = getCachedPipeline(modelId);
+  if (cached) {
+    log.info(` Pipeline cache HIT: ${modelId}`);
+    return cached;
   }
 
-  console.log(`[Offscreen] Loading model: ${modelId}`);
+  log.info(` Loading model: ${modelId}`);
 
   const webgpu = await detectWebGPU();
   const device = webgpu ? 'webgpu' : 'wasm';
-  console.log(`[Offscreen] Using device: ${device}`);
+  log.info(` Using device: ${device}`);
 
   // Note: dtype removed because q4f16 quantization causes numeric errors with some models
+  // Use optimized timeout for OPUS-MT direct models (~170MB, typically loads in <60s)
   const pipe = await withTimeout(
     pipeline('translation', modelId, { device }),
-    CONFIG.timeouts.modelLoadMs,
+    CONFIG.timeouts.opusMtDirectMs,
     `Loading model ${modelId}`
   );
 
-  pipelines.set(modelId, pipe);
-  console.log(`[Offscreen] Model loaded: ${modelId}`);
+  // Store in LRU cache (may evict old models)
+  cachePipeline(modelId, pipe);
+  log.info(` Model loaded: ${modelId}`);
 
   return pipe;
 }

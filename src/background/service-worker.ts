@@ -19,6 +19,7 @@ import {
 } from '../core/errors';
 import { createLogger } from '../core/logger';
 import { safeStorageGet, safeStorageSet } from '../core/storage';
+import { generateCacheKey } from '../core/hash';
 import { CONFIG } from '../config';
 
 const log = createLogger('Background');
@@ -38,14 +39,11 @@ const translationCache = new Map<string, CacheEntry>();
 
 /**
  * Generate cache key from translation parameters.
- * Uses first 100 chars of text to balance uniqueness vs memory.
+ * Uses FNV-1a hash to prevent collisions from text truncation.
  */
 function getCacheKey(text: string | string[], sourceLang: string, targetLang: string, provider?: string): string {
-  const textKey = Array.isArray(text)
-    ? text.map(t => t.substring(0, 50)).join('|').substring(0, 200)
-    : text.substring(0, 100);
   const providerKey = provider || currentProvider;
-  return `${providerKey}:${sourceLang}-${targetLang}-${textKey}`;
+  return generateCacheKey(text, sourceLang, targetLang, providerKey);
 }
 
 /**

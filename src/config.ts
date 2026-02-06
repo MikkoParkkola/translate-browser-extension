@@ -13,13 +13,20 @@ export const CONFIG = {
   },
 
   /**
-   * Timeout settings for various operations
+   * Timeout settings for various operations.
+   * Split by model size to avoid UI blocking for smaller models.
    */
   timeouts: {
-    /** Model loading timeout (5 minutes for large models like TranslateGemma ~3.6GB) */
-    modelLoadMs: 5 * 60 * 1000,
+    /** OPUS-MT direct model loading timeout (60s for ~170MB models) */
+    opusMtDirectMs: 60 * 1000,
+    /** OPUS-MT pivot model loading timeout (120s for 2 × ~170MB models) */
+    opusMtPivotMs: 2 * 60 * 1000,
+    /** TranslateGemma model loading timeout (5 minutes for ~3.6GB model) */
+    translateGemmaMs: 5 * 60 * 1000,
+    /** Legacy: default model loading timeout (kept for backward compatibility) */
+    modelLoadMs: 2 * 60 * 1000,
     /** Offscreen document communication timeout */
-    offscreenMs: 5 * 60 * 1000,
+    offscreenMs: 2 * 60 * 1000,
   },
 
   /**

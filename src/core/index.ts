@@ -56,6 +56,9 @@ export { createLogger } from './logger';
 // Storage utilities
 export { safeStorageGet, safeStorageSet } from './storage';
 
+// Hash utilities
+export { fnv1aHash, generateCacheKey } from './hash';
+
 // WebGPU detection
 export { webgpuDetector } from './webgpu-detector';
 

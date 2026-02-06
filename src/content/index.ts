@@ -302,11 +302,17 @@ async function translatePage(
     // Load glossary once for the page
     const g = await loadGlossary();
 
-    // Create batches
+    // Create batches with length validation (prevent DoS from malicious pages)
     const batches: Array<{ nodes: Text[]; texts: string[]; restoreFns: Array<(text: string) => string> }> = [];
     for (let i = 0; i < textNodes.length; i += CONFIG.batching.maxSize) {
       const batchNodes = textNodes.slice(i, i + CONFIG.batching.maxSize);
-      const rawTexts = batchNodes.map((n) => sanitizeText(n.textContent || ''));
+      const rawTexts = batchNodes.map((n) => {
+        const text = sanitizeText(n.textContent || '');
+        // Enforce max length per text (defense against memory exhaustion)
+        return text.length > CONFIG.batching.maxTextLength
+          ? text.substring(0, CONFIG.batching.maxTextLength)
+          : text;
+      });
 
       // Apply glossary to batch
       const { processedTexts, restoreFns } = await glossary.applyGlossaryBatch(rawTexts, g);
@@ -383,7 +389,13 @@ async function translateDynamicContent(nodes: Node[]): Promise<void> {
 
   console.log(`[Content] Translating ${textNodes.length} dynamic text nodes`);
 
-  const rawTexts = textNodes.map((n) => sanitizeText(n.textContent || ''));
+  // Apply length validation (prevent DoS from malicious dynamic content)
+  const rawTexts = textNodes.map((n) => {
+    const text = sanitizeText(n.textContent || '');
+    return text.length > CONFIG.batching.maxTextLength
+      ? text.substring(0, CONFIG.batching.maxTextLength)
+      : text;
+  });
 
   try {
     // Apply glossary to batch
