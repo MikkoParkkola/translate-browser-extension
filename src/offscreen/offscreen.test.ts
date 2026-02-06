@@ -8,7 +8,7 @@
  * since the module has side effects that run on import.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 // Test the pure functions and data structures from offscreen module
 // without importing the module directly (which has side effects)

@@ -283,7 +283,7 @@ describe('Throttle', () => {
       const p1 = limitedThrottle.runWithRateLimit(fn1, 'test1', { immediate: true });
 
       // Second should be queued (rate limit hit)
-      const p2 = limitedThrottle.runWithRateLimit(fn2, 'test2', { immediate: true });
+      void limitedThrottle.runWithRateLimit(fn2, 'test2', { immediate: true });
 
       const r1 = await p1;
       expect(r1).toBe('first');
@@ -308,7 +308,7 @@ describe('Throttle', () => {
       const fn = vi.fn().mockResolvedValue('ok');
 
       // This has more tokens than the limit allows
-      const p = limitedThrottle.runWithRateLimit(fn, 'this is a long text that exceeds token limit', {
+      void limitedThrottle.runWithRateLimit(fn, 'this is a long text that exceeds token limit', {
         immediate: true,
       });
 

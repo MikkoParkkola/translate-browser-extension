@@ -15,7 +15,6 @@ import {
   DEFAULT_RETRY_CONFIG,
   MAX_TEXT_LENGTH,
   MAX_BATCH_SIZE,
-  type TranslationError,
   type RetryConfig,
 } from './errors';
 

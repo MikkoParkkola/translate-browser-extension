@@ -51,13 +51,6 @@ const SKIP_TAGS = new Set([
   'EMBED',
 ]);
 
-// Attributes that indicate untranslatable content
-const SKIP_ATTRS = [
-  'data-no-translate',
-  'translate',
-  'data-translated',
-];
-
 // Mark translated nodes to avoid re-translation
 const TRANSLATED_ATTR = 'data-translated';
 

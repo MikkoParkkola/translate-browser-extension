@@ -59,7 +59,7 @@ vi.stubGlobal('chrome', {
   storage: {
     local: {
       set: mockStorageSet,
-      get: vi.fn((keys, callback) => {
+      get: vi.fn((_keys, callback) => {
         // Return empty result by default
         if (callback && typeof callback === 'function') {
           callback({});
