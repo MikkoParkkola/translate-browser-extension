@@ -1,6 +1,6 @@
 import { createSignal, onMount, onCleanup, Show } from 'solid-js';
 import { ProviderStatus } from './components/ProviderStatus';
-import { ProviderSelector } from './components/ProviderSelector';
+import { ModelSelector, type ModelDownloadStatus } from './components/ModelSelector';
 import { LanguageSelector } from './components/LanguageSelector';
 import { StrategySelector } from './components/StrategySelector';
 import { UsageBar } from './components/UsageBar';
@@ -32,12 +32,41 @@ export default function App() {
   const [currentModelId, setCurrentModelId] = createSignal<string | null>(null);
   const [downloadingFile, setDownloadingFile] = createSignal<string | null>(null);
 
+  // Per-model download status for ModelSelector
+  const [modelDownloadStatus, setModelDownloadStatus] = createSignal<
+    Record<TranslationProviderId, ModelDownloadStatus>
+  >({
+    'opus-mt': { isDownloading: false, progress: 0, isDownloaded: false, error: null },
+    'translategemma': { isDownloading: false, progress: 0, isDownloaded: false, error: null },
+  });
+
+  // Determine provider from model ID (e.g., "Xenova/opus-mt-en-fi" -> "opus-mt")
+  const getProviderFromModelId = (modelId: string): TranslationProviderId | null => {
+    if (modelId.includes('opus-mt')) return 'opus-mt';
+    if (modelId.includes('gemma') || modelId.includes('translategemma')) return 'translategemma';
+    return null;
+  };
+
+  // Update per-model download status
+  const updateModelStatus = (
+    providerId: TranslationProviderId,
+    updates: Partial<ModelDownloadStatus>
+  ) => {
+    setModelDownloadStatus((prev) => ({
+      ...prev,
+      [providerId]: { ...prev[providerId], ...updates },
+    }));
+  };
+
   // Handle model progress messages from offscreen document
   const handleModelProgress = (message: ModelProgressMessage) => {
     if (message.type !== 'modelProgress') return;
 
     console.log('[Popup] Model progress:', message.status, message.progress);
     setCurrentModelId(message.modelId);
+
+    // Determine which provider this model belongs to
+    const providerId = getProviderFromModelId(message.modelId);
 
     switch (message.status) {
       case 'initiate':
@@ -46,16 +75,35 @@ export default function App() {
         setModelProgress(0);
         setProviderStatus('loading');
         setDownloadingFile(message.file || null);
+        if (providerId) {
+          updateModelStatus(providerId, {
+            isDownloading: true,
+            progress: 0,
+            isDownloaded: false,
+            error: null,
+          });
+        }
         break;
       case 'download':
       case 'progress':
         setIsModelLoading(true);
         setModelProgress(message.progress ?? 0);
         setDownloadingFile(message.file || null);
+        if (providerId) {
+          updateModelStatus(providerId, {
+            isDownloading: true,
+            progress: message.progress ?? 0,
+          });
+        }
         break;
       case 'done':
         setModelProgress(100);
         setDownloadingFile(null);
+        if (providerId) {
+          updateModelStatus(providerId, {
+            progress: 100,
+          });
+        }
         break;
       case 'ready':
         setIsModelLoading(false);
@@ -63,6 +111,14 @@ export default function App() {
         setModelProgress(100);
         setProviderStatus('ready');
         setDownloadingFile(null);
+        if (providerId) {
+          updateModelStatus(providerId, {
+            isDownloading: false,
+            progress: 100,
+            isDownloaded: true,
+            error: null,
+          });
+        }
         break;
       case 'error':
         setIsModelLoading(false);
@@ -70,6 +126,12 @@ export default function App() {
         setDownloadingFile(null);
         if (message.error) {
           setError(`Model error: ${message.error}`);
+        }
+        if (providerId) {
+          updateModelStatus(providerId, {
+            isDownloading: false,
+            error: message.error || 'Unknown error',
+          });
         }
         break;
     }
@@ -289,10 +351,11 @@ export default function App() {
       </header>
 
       <main class="popup-main">
-        {/* Provider Selection */}
-        <ProviderSelector
+        {/* Model Selection with Download Status */}
+        <ModelSelector
           selected={activeProvider()}
           onChange={handleProviderChange}
+          downloadStatus={modelDownloadStatus()}
         />
 
         {/* Language Selection */}
