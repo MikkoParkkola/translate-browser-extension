@@ -64,6 +64,9 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: true,
     target: 'esnext',
+    // Transformers.js is ~870KB minified - unavoidable for ML inference
+    // Suppress warning since it's in a lazy-loaded chunk
+    chunkSizeWarningLimit: 900,
     rollupOptions: {
       input: {
         popup: resolve(__dirname, 'src/popup/index.html'),
@@ -87,6 +90,21 @@ export default defineConfig({
             return 'assets/[name][extname]';
           }
           return 'assets/[name]-[hash][extname]';
+        },
+        // Manual chunks for better code splitting
+        manualChunks: (id) => {
+          // Transformers.js core - shared by all ML providers
+          if (id.includes('@huggingface/transformers')) {
+            return 'transformers';
+          }
+          // ONNX Runtime - separate chunk for WASM-based inference
+          if (id.includes('onnxruntime')) {
+            return 'onnx-runtime';
+          }
+          // Solid.js - UI framework (popup/options only)
+          if (id.includes('solid-js') || id.includes('solid-refresh')) {
+            return 'solid';
+          }
         },
       },
     },
