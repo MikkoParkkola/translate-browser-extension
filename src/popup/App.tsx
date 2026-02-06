@@ -22,8 +22,13 @@ export default function App() {
   const [activeProvider, setActiveProvider] = createSignal<TranslationProviderId>('opus-mt');
   const [providerStatus, setProviderStatus] = createSignal<'ready' | 'loading' | 'error'>('ready');
 
-  const providerName = () =>
-    activeProvider() === 'translategemma' ? 'TranslateGemma 4B' : 'Helsinki-NLP OPUS-MT';
+  const providerName = () => {
+    switch (activeProvider()) {
+      case 'translategemma': return 'TranslateGemma 4B';
+      case 'chrome-builtin': return 'Chrome Built-in';
+      default: return 'Helsinki-NLP OPUS-MT';
+    }
+  };
   const [isTranslating, setIsTranslating] = createSignal(false);
   const [autoTranslate, setAutoTranslate] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
@@ -194,6 +199,21 @@ export default function App() {
     if (stored.autoTranslate !== undefined) setAutoTranslate(stored.autoTranslate);
     if (stored.provider) setActiveProvider(stored.provider);
     console.log('[Popup] Loaded preferences:', { source: stored.sourceLang, target: stored.targetLang });
+
+    // Check Chrome Translator API availability (Chrome 138+)
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'checkChromeTranslator' });
+      if (response?.available) {
+        console.log('[Popup] Chrome Translator API available');
+        updateModelStatus('chrome-builtin', { isDownloaded: true, error: null });
+      } else {
+        console.log('[Popup] Chrome Translator API not available (Chrome 138+ required)');
+        updateModelStatus('chrome-builtin', { isDownloaded: false, error: 'Chrome 138+ required' });
+      }
+    } catch (e) {
+      console.log('[Popup] Chrome Translator check failed:', e);
+      updateModelStatus('chrome-builtin', { isDownloaded: false, error: 'Not available' });
+    }
   });
 
   const toggleAutoTranslate = async () => {

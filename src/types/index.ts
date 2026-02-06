@@ -215,6 +215,7 @@ export type ExtensionMessage =
   | { type: 'getModelStatus'; target?: string }
   | { type: 'getDeviceInfo'; target?: string }
   | { type: 'getCacheStats'; target?: string }
+  | { type: 'checkChromeTranslator'; target?: string }
   | PreloadModelMessage
   | ModelProgressMessage
   | ModelStatusMessage

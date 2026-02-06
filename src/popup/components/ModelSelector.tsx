@@ -37,6 +37,13 @@ export const MODELS: ModelInfo[] = [
     description: 'Google 4B',
     size: '~3.6GB',
   },
+  {
+    id: 'chrome-builtin',
+    name: 'Chrome Built-in',
+    tag: 'Native',
+    description: 'Chrome 138+',
+    size: 'No download',
+  },
 ];
 
 /**

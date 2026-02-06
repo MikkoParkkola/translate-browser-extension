@@ -14,6 +14,7 @@ import { MODEL_MAP, PIVOT_ROUTES } from './model-maps';
 import { getCachedPipeline, cachePipeline } from './pipeline-cache';
 import { detectLanguage } from './language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline } from './translategemma';
+import { getChromeTranslator, isChromeTranslatorAvailable } from '../providers/chrome-translator';
 
 const log = createLogger('Offscreen');
 
@@ -230,6 +231,16 @@ async function translateWithProvider(
   targetLang: string,
   provider: TranslationProviderId
 ): Promise<string | string[]> {
+  // Chrome Built-in Translator (Chrome 138+)
+  if (provider === 'chrome-builtin') {
+    console.log(`[Offscreen] Chrome Built-in translation: ${sourceLang} -> ${targetLang}`);
+    const chromeTranslator = getChromeTranslator();
+    if (!(await chromeTranslator.isAvailable())) {
+      throw new Error('Chrome Translator API not available (requires Chrome 138+)');
+    }
+    return chromeTranslator.translate(text, sourceLang, targetLang);
+  }
+
   // TranslateGemma: supports any-to-any translation with a single model
   if (provider === 'translategemma') {
     console.log(`[Offscreen] TranslateGemma translation: ${sourceLang} -> ${targetLang}`);
@@ -306,6 +317,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           if (message.provider === 'translategemma') {
             await getTranslateGemmaPipeline();
             sendResponse({ success: true, preloaded: true });
+          } else if (message.provider === 'chrome-builtin') {
+            // Chrome Built-in doesn't need preloading, just check availability
+            const available = await isChromeTranslatorAvailable();
+            sendResponse({ success: true, preloaded: available, available });
           } else {
             // OPUS-MT: preload the pipeline for the language pair
             const pair = `${message.sourceLang}-${message.targetLang}`;
@@ -336,6 +351,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           const cache = getTranslationCache();
           await cache.clear();
           sendResponse({ success: true, cleared: true });
+          break;
+        }
+        case 'checkChromeTranslator': {
+          const available = await isChromeTranslatorAvailable();
+          sendResponse({ success: true, available });
           break;
         }
         default:

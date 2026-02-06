@@ -9,9 +9,9 @@ import { ModelSelector, MODELS, type ModelDownloadStatus, type ModelInfo } from 
 import type { TranslationProviderId } from '../../types';
 
 describe('MODELS constant', () => {
-  it('exports two model configurations', () => {
+  it('exports three model configurations', () => {
     expect(MODELS).toBeDefined();
-    expect(MODELS.length).toBe(2);
+    expect(MODELS.length).toBe(3);
   });
 
   describe('opus-mt model', () => {
@@ -228,7 +228,7 @@ describe('model validation', () => {
   });
 
   it('model ids match TranslationProviderId type', () => {
-    const validIds: TranslationProviderId[] = ['opus-mt', 'translategemma'];
+    const validIds: TranslationProviderId[] = ['opus-mt', 'translategemma', 'chrome-builtin'];
     for (const model of MODELS) {
       expect(validIds).toContain(model.id);
     }

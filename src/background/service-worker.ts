@@ -371,6 +371,8 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
       return handleGetCacheStats();
     case 'clearCache':
       return handleClearCache();
+    case 'checkChromeTranslator':
+      return handleCheckChromeTranslator();
     default:
       throw new Error(`Unknown message type: ${(message as { type: string }).type}`);
   }
@@ -443,6 +445,27 @@ function handleClearCache(): unknown {
     success: true,
     clearedEntries: previousSize,
   };
+}
+
+/**
+ * Check if Chrome Translator API is available (Chrome 138+)
+ */
+async function handleCheckChromeTranslator(): Promise<unknown> {
+  try {
+    const result = await sendToOffscreen<{ success: boolean; available?: boolean }>({
+      type: 'checkChromeTranslator',
+    });
+    return {
+      success: true,
+      available: result?.available ?? false,
+    };
+  } catch (error) {
+    log.warn(' Chrome Translator check failed:', error);
+    return {
+      success: true,
+      available: false,
+    };
+  }
 }
 
 async function handleTranslate(message: {
