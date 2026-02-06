@@ -73,13 +73,16 @@ describe('Translation Memory Integration', () => {
     console.log('✅ Translation Memory integration verified');
   });
 
-  test('should verify background script loads TM correctly', async () => {
-    // Verify the background script can initialize with TM
-    const SimpleTranslationService = require('../src/background-simple.js');
+  test('should verify modular background service loads TM correctly', async () => {
+    // Verify the background service uses our standardized modules
+    const { BackgroundService } = require('../src/background/backgroundService.js');
+    const service = new BackgroundService();
 
-    if (SimpleTranslationService) {
-      console.log('✅ Background script loads successfully with TM');
-    }
+    expect(service).toBeDefined();
+    expect(service.translationService).toBeDefined();
+    expect(service.configManager).toBeDefined();
+
+    console.log('✅ Modular background service loads successfully with TM');
   });
 
   test('should show API call reduction with TM', () => {
