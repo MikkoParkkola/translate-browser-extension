@@ -154,6 +154,29 @@ const PIVOT_ROUTES: Record<string, [string, string]> = {
   'da-fi': ['da-en', 'en-fi'],  // Danish -> English -> Finnish
   'fi-da': ['fi-en', 'en-da'],  // Finnish -> English -> Danish
 
+  // === Major European <-> Finnish (via English pivot) ===
+  'it-fi': ['it-en', 'en-fi'],  // Italian -> English -> Finnish
+  'fi-it': ['fi-en', 'en-it'],  // Finnish -> English -> Italian
+  'fr-fi': ['fr-en', 'en-fi'],  // French -> English -> Finnish
+  'fi-fr': ['fi-en', 'en-fr'],  // Finnish -> English -> French
+  'es-fi': ['es-en', 'en-fi'],  // Spanish -> English -> Finnish
+  'fi-es': ['fi-en', 'en-es'],  // Finnish -> English -> Spanish
+  'ru-fi': ['ru-en', 'en-fi'],  // Russian -> English -> Finnish
+  'fi-ru': ['fi-en', 'en-ru'],  // Finnish -> English -> Russian
+  'hu-fi': ['hu-en', 'en-fi'],  // Hungarian -> English -> Finnish
+  'fi-hu': ['fi-en', 'en-hu'],  // Finnish -> English -> Hungarian
+  'uk-fi': ['uk-en', 'en-fi'],  // Ukrainian -> English -> Finnish
+  'fi-uk': ['fi-en', 'en-uk'],  // Finnish -> English -> Ukrainian
+  'ar-fi': ['ar-en', 'en-fi'],  // Arabic -> English -> Finnish
+  'zh-fi': ['zh-en', 'en-fi'],  // Chinese -> English -> Finnish
+  'fi-zh': ['fi-en', 'en-zh'],  // Finnish -> English -> Chinese
+  'ja-fi': ['ja-en', 'en-fi'],  // Japanese -> English -> Finnish
+  'fi-ja': ['fi-en', 'en-ja'],  // Finnish -> English -> Japanese
+  'ko-fi': ['ko-en', 'en-fi'],  // Korean -> English -> Finnish
+  'vi-fi': ['vi-en', 'en-fi'],  // Vietnamese -> English -> Finnish
+  'hi-fi': ['hi-en', 'en-fi'],  // Hindi -> English -> Finnish
+  'tr-fi': ['tr-en', 'en-fi'],  // Turkish -> English -> Finnish
+
   // === German <-> Various ===
   'de-fi': ['de-en', 'en-fi'],  // German -> English -> Finnish (fi-de exists but not de-fi)
   'de-nl': ['de-en', 'en-nl'],  // German -> English -> Dutch
