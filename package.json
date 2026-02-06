@@ -8,6 +8,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc --noEmit"
   },
