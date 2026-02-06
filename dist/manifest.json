@@ -1,25 +1,41 @@
 {
   "manifest_version": 3,
   "name": "TRANSLATE! by Mikko",
-  "description": "Translate web pages with multiple AI providers - provider agnostic translation extension",
-  "version": "1.44.1",
-  "version_name": "2025-08-21",
-  "update_url": "https://raw.githubusercontent.com/MikkoParkkola/translate-browser-extension/main/updates.xml",
+  "version": "2.0.0",
+  "description": "Local-first translation with OPUS-MT and WebGPU acceleration",
+  "author": "Mikko",
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "TRANSLATE!"
+  },
+  "options_page": "src/options/index.html",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "permissions": [
     "storage",
     "activeTab",
-    "tabs",
     "scripting",
-    "contextMenus",
-    "clipboardRead"
+    "offscreen"
   ],
+  "minimum_chrome_version": "116",
   "host_permissions": [
-    "<all_urls>",
-    "https://dashscope-intl.aliyuncs.com/*",
-    "https://api.deepl.com/*",
-    "https://api-free.deepl.com/*",
-    "https://generativelanguage.googleapis.com/*"
+    "<all_urls>"
   ],
+<<<<<<< HEAD
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*", "chunks/*"],
+      "matches": ["<all_urls>"]
+=======
   "optional_host_permissions": [],
   "background": {
     "service_worker": "background.js",
@@ -61,6 +77,10 @@
       "matches": [
         "<all_urls>"
       ]
+>>>>>>> origin/main
     }
-  ]
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
 }
