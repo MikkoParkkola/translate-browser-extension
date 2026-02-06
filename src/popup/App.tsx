@@ -8,10 +8,16 @@ import { CostMonitor } from './components/CostMonitor';
 import { ModelStatus } from './components/ModelStatus';
 import type { Strategy, UsageStats, ModelProgressMessage, TranslationProviderId } from '../types';
 
+// Detect browser's preferred language, fallback to 'en'
+const getBrowserLanguage = () => {
+  const lang = navigator.language?.split('-')[0] || 'en';
+  return lang;
+};
+
 export default function App() {
-  const [sourceLang, setSourceLang] = createSignal('auto');
-  const [targetLang, setTargetLang] = createSignal('fi');
-  const [strategy, setStrategy] = createSignal<Strategy>('smart');
+  const [sourceLang, setSourceLangInternal] = createSignal('auto');
+  const [targetLang, setTargetLangInternal] = createSignal(getBrowserLanguage());
+  const [strategy, setStrategyInternal] = createSignal<Strategy>('smart');
   const [activeProvider, setActiveProvider] = createSignal<TranslationProviderId>('opus-mt');
   const [providerStatus, setProviderStatus] = createSignal<'ready' | 'loading' | 'error'>('ready');
 
@@ -44,6 +50,23 @@ export default function App() {
     'google-cloud': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
     'anthropic': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
   });
+
+  // Wrapper functions that persist language preferences to storage
+  const setSourceLang = (lang: string) => {
+    setSourceLangInternal(lang);
+    chrome.storage.local.set({ sourceLang: lang }).catch(console.error);
+  };
+
+  const setTargetLang = (lang: string) => {
+    setTargetLangInternal(lang);
+    chrome.storage.local.set({ targetLang: lang }).catch(console.error);
+    console.log('[Popup] Target language saved:', lang);
+  };
+
+  const setStrategy = (s: Strategy) => {
+    setStrategyInternal(s);
+    chrome.storage.local.set({ strategy: s }).catch(console.error);
+  };
 
   // Determine provider from model ID (e.g., "Xenova/opus-mt-en-fi" -> "opus-mt")
   const getProviderFromModelId = (modelId: string): TranslationProviderId | null => {
@@ -154,14 +177,15 @@ export default function App() {
       chrome.runtime.onMessage.removeListener(messageListener);
     });
 
-    // Load saved preferences
+    // Load saved preferences (use internal setters to avoid re-saving)
     try {
       const stored = await chrome.storage.local.get(['sourceLang', 'targetLang', 'strategy', 'autoTranslate', 'provider']);
-      if (stored.sourceLang) setSourceLang(stored.sourceLang);
-      if (stored.targetLang) setTargetLang(stored.targetLang);
-      if (stored.strategy) setStrategy(stored.strategy);
+      if (stored.sourceLang) setSourceLangInternal(stored.sourceLang);
+      if (stored.targetLang) setTargetLangInternal(stored.targetLang);
+      if (stored.strategy) setStrategyInternal(stored.strategy);
       if (stored.autoTranslate !== undefined) setAutoTranslate(stored.autoTranslate);
       if (stored.provider) setActiveProvider(stored.provider as TranslationProviderId);
+      console.log('[Popup] Loaded preferences:', { source: stored.sourceLang, target: stored.targetLang });
     } catch (e) {
       console.log('[Popup] Storage not available:', e);
     }

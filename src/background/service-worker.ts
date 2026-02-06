@@ -669,9 +669,12 @@ chrome.action.onClicked.addListener(async (tab) => {
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
     console.log('[Background] Extension installed');
+    // Detect browser's preferred language for target
+    const browserLang = chrome.i18n.getUILanguage().split('-')[0]; // e.g., 'en-US' -> 'en'
+    console.log('[Background] Browser language detected:', browserLang);
     chrome.storage.local.set({
       sourceLang: 'auto',
-      targetLang: 'fi',
+      targetLang: browserLang || 'en', // Use browser language, fallback to English
       strategy: 'smart',
       provider: 'opus-mt',
     });

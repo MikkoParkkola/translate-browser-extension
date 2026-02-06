@@ -44,6 +44,9 @@ vi.stubGlobal('chrome', {
       OFFSCREEN_DOCUMENT: 'OFFSCREEN_DOCUMENT',
     },
   },
+  i18n: {
+    getUILanguage: vi.fn(() => 'en-US'), // Mock browser language as English
+  },
   offscreen: {
     createDocument: vi.fn().mockResolvedValue(undefined),
     closeDocument: vi.fn().mockResolvedValue(undefined),
@@ -179,14 +182,15 @@ describe('Service Worker', () => {
   });
 
   describe('install handler', () => {
-    it('sets default preferences on fresh install', () => {
+    it('sets default preferences on fresh install with browser language', () => {
       mockStorageSet.mockClear();
 
       installHandler({ reason: 'install' });
 
+      // Browser language 'en-US' is detected and shortened to 'en'
       expect(mockStorageSet).toHaveBeenCalledWith({
         sourceLang: 'auto',
-        targetLang: 'fi',
+        targetLang: 'en', // Detected from mocked chrome.i18n.getUILanguage()
         strategy: 'smart',
         provider: 'opus-mt',
       });
