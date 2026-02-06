@@ -3,7 +3,7 @@
  * Service workers can't use window/document, so we run ML here.
  */
 
-import { pipeline, env, type Pipeline, type TextGenerationPipeline } from '@huggingface/transformers';
+import { pipeline, env, type TextGenerationPipeline } from '@huggingface/transformers';
 import { franc } from 'franc-min';
 import type { TranslationProviderId } from '../types';
 
@@ -15,7 +15,24 @@ env.useBrowserCache = true;    // Cache models in IndexedDB
 // CRITICAL: Point ONNX Runtime to bundled WASM files (not CDN)
 // This avoids CSP violations from dynamic CDN imports
 const wasmBasePath = chrome.runtime.getURL('assets/');
-env.backends.onnx.wasm.wasmPaths = wasmBasePath;
+if (env.backends?.onnx?.wasm) {
+  env.backends.onnx.wasm.wasmPaths = wasmBasePath;
+}
+
+// Model loading timeout (5 minutes for large models like TranslateGemma)
+const MODEL_LOAD_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * Wrap a promise with a timeout.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout: ${message} (${ms / 1000}s)`)), ms)
+    ),
+  ]);
+}
 
 console.log('[Offscreen] WASM path configured:', wasmBasePath);
 
@@ -54,8 +71,9 @@ const PIVOT_ROUTES: Record<string, [string, string]> = {
   'fi-cs': ['fi-en', 'en-cs'],  // Finnish -> English -> Czech
 };
 
-// Pipeline cache (OPUS-MT)
-const pipelines = new Map<string, Pipeline>();
+// Pipeline cache (OPUS-MT) - using unknown to avoid Transformers.js type conflicts
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const pipelines = new Map<string, any>();
 
 // ============================================================================
 // TranslateGemma Configuration
@@ -124,25 +142,29 @@ async function getTranslateGemmaPipeline(): Promise<TextGenerationPipeline> {
     }
 
     try {
-      const pipe = await pipeline('text-generation', TRANSLATEGEMMA_MODEL, {
-        device: 'webgpu',
-        progress_callback: (progress: Record<string, unknown>) => {
-          // Forward progress to popup via service worker
-          try {
-            chrome.runtime.sendMessage({
-              type: 'modelProgress',
-              modelId: TRANSLATEGEMMA_MODEL,
-              status: progress.status || 'progress',
-              progress: progress.progress ?? 0,
-              file: progress.file || null,
-              loaded: progress.loaded || null,
-              total: progress.total || null,
-            });
-          } catch {
-            // Popup may be closed
-          }
-        },
-      });
+      const pipe = await withTimeout(
+        pipeline('text-generation', TRANSLATEGEMMA_MODEL, {
+          device: 'webgpu',
+          progress_callback: (progress: Record<string, unknown>) => {
+            // Forward progress to popup via service worker
+            try {
+              chrome.runtime.sendMessage({
+                type: 'modelProgress',
+                modelId: TRANSLATEGEMMA_MODEL,
+                status: progress.status || 'progress',
+                progress: progress.progress ?? 0,
+                file: progress.file || null,
+                loaded: progress.loaded || null,
+                total: progress.total || null,
+              });
+            } catch {
+              // Popup may be closed
+            }
+          },
+        }),
+        MODEL_LOAD_TIMEOUT_MS,
+        `Loading TranslateGemma model`
+      );
 
       tgPipeline = pipe as TextGenerationPipeline;
       tgLoading = null;
@@ -278,7 +300,8 @@ async function detectWebGPU(): Promise<boolean> {
 }
 
 // Get or create pipeline for a language pair
-async function getPipeline(sourceLang: string, targetLang: string): Promise<Pipeline> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getPipeline(sourceLang: string, targetLang: string): Promise<any> {
   const key = `${sourceLang}-${targetLang}`;
   const modelId = MODEL_MAP[key];
 
@@ -297,9 +320,11 @@ async function getPipeline(sourceLang: string, targetLang: string): Promise<Pipe
   console.log(`[Offscreen] Using device: ${device}`);
 
   // Note: dtype removed because q4f16 quantization causes numeric errors with some models
-  const pipe = await pipeline('translation', modelId, {
-    device,
-  });
+  const pipe = await withTimeout(
+    pipeline('translation', modelId, { device }),
+    MODEL_LOAD_TIMEOUT_MS,
+    `Loading model ${modelId}`
+  );
 
   pipelines.set(modelId, pipe);
   console.log(`[Offscreen] Model loaded: ${modelId}`);

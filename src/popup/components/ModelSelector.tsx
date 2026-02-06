@@ -1,4 +1,4 @@
-import { Component, Show, createEffect, createSignal, onMount } from 'solid-js';
+import { Component, Show } from 'solid-js';
 import type { TranslationProviderId } from '../../types';
 
 export interface ModelInfo {
@@ -58,14 +58,6 @@ export const ModelSelector: Component<Props> = (props) => {
     if (status.error) return 'model-error';
     if (status.isDownloading) return 'model-downloading';
     if (status.isDownloaded) return 'model-ready';
-    return '';
-  };
-
-  const getStatusIcon = (modelId: TranslationProviderId): string => {
-    const status = getStatus(modelId);
-    if (status.error) return '!';
-    if (status.isDownloading) return '';
-    if (status.isDownloaded) return '';
     return '';
   };
 

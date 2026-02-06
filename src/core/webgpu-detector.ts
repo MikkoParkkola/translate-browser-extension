@@ -3,38 +3,9 @@
  * Automatically detects WebGPU support and configures acceleration
  */
 
-import type { WebGPUInfo } from '../types';
+/// <reference types="@webgpu/types" />
 
-// WebGPU types (not fully available in TypeScript yet)
-declare global {
-  interface Navigator {
-    gpu?: GPU;
-  }
-  interface GPU {
-    requestAdapter(options?: GPURequestAdapterOptions): Promise<GPUAdapter | null>;
-  }
-  interface GPURequestAdapterOptions {
-    powerPreference?: 'low-power' | 'high-performance';
-  }
-  interface GPUAdapter {
-    requestDevice(descriptor?: GPUDeviceDescriptor): Promise<GPUDevice>;
-    requestAdapterInfo?(): Promise<GPUAdapterInfo>;
-  }
-  interface GPUDeviceDescriptor {
-    requiredLimits?: Record<string, number>;
-  }
-  interface GPUAdapterInfo {
-    device?: string;
-    vendor?: string;
-  }
-  interface GPUDevice {
-    lost: Promise<GPUDeviceLostInfo>;
-  }
-  interface GPUDeviceLostInfo {
-    message: string;
-    reason: string;
-  }
-}
+import type { WebGPUInfo } from '../types';
 
 class WebGPUDetector {
   private _supported = false;
@@ -74,9 +45,9 @@ class WebGPUDetector {
       this._supported = true;
       console.log('[WebGPU] Detected and supported');
 
-      // Log GPU info if available
-      const info = await adapter.requestAdapterInfo?.();
-      if (info) {
+      // Log GPU info if available (requestAdapterInfo may not exist in older implementations)
+      if ('requestAdapterInfo' in adapter) {
+        const info = await (adapter as GPUAdapter & { requestAdapterInfo(): Promise<GPUAdapterInfo> }).requestAdapterInfo();
         console.log('[WebGPU] GPU:', info.device || 'Unknown');
       }
 
