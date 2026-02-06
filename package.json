@@ -9,6 +9,7 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:e2e:playwright": "npx playwright test e2e/extension-playwright.spec.ts --headed",
     "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc --noEmit"
   },
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.24.0",
+    "@playwright/test": "^1.58.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@types/chrome": "^0.0.268",
     "@types/node": "^20.14.0",

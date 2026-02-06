@@ -1,41 +1,38 @@
-const { defineConfig, devices } = require('@playwright/test');
+import { defineConfig, devices } from '@playwright/test';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-module.exports = defineConfig({
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const EXTENSION_PATH = path.resolve(__dirname, 'dist');
+
+export default defineConfig({
   testDir: './e2e',
-  /* Run tests in files in parallel */
-  fullyParallel: true,
-  /* Fail the build on CI if you accidentally left test.only in the source code. */
+  fullyParallel: false, // Extensions need serial execution
   forbidOnly: !!process.env.CI,
-  /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
-  /* Reporter to use. See https://playwright.dev/docs/test-reporters */
+  workers: 1, // Single worker for extension tests
   reporter: 'html',
-  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
-  use: {
-    /* Base URL to use in actions like `await page.goto('/')`. */
-    // baseURL: 'http://127.0.0.1:3000',
+  timeout: 60000,
 
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
+  use: {
     trace: 'on-first-retry',
   },
 
-  /* Configure projects for major browsers */
   projects: [
     {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      name: 'extension',
+      use: {
+        // Chrome with extension loaded
+        channel: 'chrome',
+        headless: false, // Extensions require headed mode
+        launchOptions: {
+          args: [
+            `--disable-extensions-except=${EXTENSION_PATH}`,
+            `--load-extension=${EXTENSION_PATH}`,
+            '--no-first-run',
+          ],
+        },
+      },
     },
   ],
-
-  /* Run your local dev server before starting the tests */
-  webServer: {
-    command: "npx http-server -p 8080 -c-1 . -H 'Permissions-Policy: accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=()'",
-    url: 'http://127.0.0.1:8080',
-    reuseExistingServer: true,
-    timeout: 120000
-  }
 });
-
-
