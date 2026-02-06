@@ -6,7 +6,7 @@
 export type ProviderType = 'local' | 'cloud' | 'hybrid';
 export type QualityTier = 'basic' | 'standard' | 'premium';
 export type Strategy = 'smart' | 'fast' | 'quality' | 'cost' | 'balanced';
-export type TranslationProviderId = 'opus-mt' | 'translategemma' | 'deepl' | 'openai' | 'google-cloud' | 'anthropic';
+export type TranslationProviderId = 'opus-mt' | 'translategemma' | 'chrome-builtin' | 'deepl' | 'openai' | 'google-cloud' | 'anthropic';
 
 export interface ProviderConfig {
   id: string;

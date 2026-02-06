@@ -180,6 +180,8 @@ describe('ModelSelector component', () => {
         isDownloaded: false,
         error: null,
       },
+      // Chrome Built-in Translator (Chrome 138+) - no download needed
+      'chrome-builtin': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
       // Cloud providers - always "ready" (no download needed)
       'deepl': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
       'openai': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
