@@ -180,6 +180,11 @@ describe('ModelSelector component', () => {
         isDownloaded: false,
         error: null,
       },
+      // Cloud providers - always "ready" (no download needed)
+      'deepl': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
+      'openai': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
+      'google-cloud': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
+      'anthropic': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
     };
 
     const props = {

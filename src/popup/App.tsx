@@ -33,11 +33,16 @@ export default function App() {
   const [downloadingFile, setDownloadingFile] = createSignal<string | null>(null);
 
   // Per-model download status for ModelSelector
+  // Cloud providers (deepl, openai, google-cloud, anthropic) don't need downloads - always "ready"
   const [modelDownloadStatus, setModelDownloadStatus] = createSignal<
     Record<TranslationProviderId, ModelDownloadStatus>
   >({
     'opus-mt': { isDownloading: false, progress: 0, isDownloaded: false, error: null },
     'translategemma': { isDownloading: false, progress: 0, isDownloaded: false, error: null },
+    'deepl': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
+    'openai': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
+    'google-cloud': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
+    'anthropic': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
   });
 
   // Determine provider from model ID (e.g., "Xenova/opus-mt-en-fi" -> "opus-mt")

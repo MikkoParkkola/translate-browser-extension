@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TRANSLATE! by Mikko",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Local-first translation with OPUS-MT and WebGPU acceleration",
   "author": "Mikko",
   "action": {
@@ -30,25 +30,6 @@
   "host_permissions": [
     "<all_urls>"
   ],
-<<<<<<< HEAD
-  "web_accessible_resources": [
-    {
-      "resources": ["assets/*", "chunks/*"],
-      "matches": ["<all_urls>"]
-=======
-  "optional_host_permissions": [],
-  "background": {
-    "service_worker": "background.js",
-    "type": "module"
-  },
-  "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'none'; connect-src 'self' https://dashscope-intl.aliyuncs.com https://api.deepl.com https://api-free.deepl.com https://generativelanguage.googleapis.com; img-src 'self' data:; font-src 'self'; media-src 'none';"
-  },
-  "action": {
-    "default_popup": "popup.html",
-    "default_title": "TRANSLATE! by Mikko"
-  },
-  "options_page": "options.html",
   "commands": {
     "translate-selection": {
       "suggested_key": {
@@ -59,28 +40,11 @@
   },
   "web_accessible_resources": [
     {
-      "resources": [
-        "lib/cache.js",
-        "lib/throttle.js",
-        "lib/errorHandler.js",
-        "lib/contentObserver.js",
-        "lib/languageDetector.js",
-        "lib/qualityVerifier.js",
-        "lib/progressIndicator.js",
-        "localModel.js",
-        "localModelUI.js",
-        "llamacpp-worker.js",
-        "styles/contentScript.css",
-        "styles/translation-progress.css",
-        "styles/local-model.css"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
->>>>>>> origin/main
+      "resources": ["assets/*", "chunks/*"],
+      "matches": ["<all_urls>"]
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://api.deepl.com https://api-free.deepl.com https://api.openai.com https://generativelanguage.googleapis.com https://api.anthropic.com;"
   }
 }
