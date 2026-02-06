@@ -31,6 +31,12 @@
     "<all_urls>"
   ],
   "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+T"
+      },
+      "description": "Open translation popup"
+    },
     "translate-selection": {
       "suggested_key": {
         "default": "Ctrl+Shift+T"

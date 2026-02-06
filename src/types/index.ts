@@ -257,6 +257,17 @@ export interface ClearProfilingStatsMessage {
   target?: string;
 }
 
+// Translation history
+export interface GetHistoryMessage {
+  type: 'getHistory';
+  target?: string;
+}
+
+export interface ClearHistoryMessage {
+  type: 'clearHistory';
+  target?: string;
+}
+
 export type ExtensionMessage =
   | TranslateMessage
   | TranslatePageMessage
@@ -281,4 +292,6 @@ export type ExtensionMessage =
   | ClearCloudApiKeyMessage
   | GetCloudProviderUsageMessage
   | GetProfilingStatsMessage
-  | ClearProfilingStatsMessage;
+  | ClearProfilingStatsMessage
+  | GetHistoryMessage
+  | ClearHistoryMessage;

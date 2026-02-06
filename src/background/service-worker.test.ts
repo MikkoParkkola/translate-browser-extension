@@ -12,6 +12,7 @@ const mockAddInstalledListener = vi.fn();
 const mockAddClickedListener = vi.fn();
 const mockAddStartupListener = vi.fn();
 const mockAddTabsUpdatedListener = vi.fn();
+const mockAddCommandListener = vi.fn();
 const mockStorageSet = vi.fn();
 
 // Mock offscreen document response
@@ -58,6 +59,11 @@ vi.stubGlobal('chrome', {
   action: {
     onClicked: {
       addListener: mockAddClickedListener,
+    },
+  },
+  commands: {
+    onCommand: {
+      addListener: mockAddCommandListener,
     },
   },
   tabs: {

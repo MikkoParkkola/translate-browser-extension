@@ -75,7 +75,7 @@ interface TranslatePageMessage {
   provider?: string;
 }
 
-type ContentMessage = TranslateSelectionMessage | TranslatePageMessage | { type: 'ping' } | { type: 'stopAutoTranslate' };
+type ContentMessage = TranslateSelectionMessage | TranslatePageMessage | { type: 'ping' } | { type: 'stopAutoTranslate' } | { type: 'undoTranslation' };
 
 // ============================================================================
 // Configuration
@@ -106,6 +106,9 @@ const SKIP_TAGS = new Set([
 // Mark translated nodes to avoid re-translation
 const TRANSLATED_ATTR = 'data-translated';
 
+// Attribute to store original text for undo
+const ORIGINAL_TEXT_ATTR = 'data-original-text';
+
 // ============================================================================
 // State
 // ============================================================================
@@ -123,6 +126,52 @@ let currentSettings: {
 
 // Cache for glossary terms (loaded once per page)
 let cachedGlossary: GlossaryStore | null = null;
+
+// ============================================================================
+// Toast Notifications
+// ============================================================================
+
+/**
+ * Show a brief info toast message to the user
+ */
+function showInfoToast(message: string, durationMs = 3000): void {
+  // Remove any existing toast
+  const existing = document.getElementById('translate-ext-toast');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.id = 'translate-ext-toast';
+  toast.textContent = message;
+  Object.assign(toast.style, {
+    position: 'fixed',
+    bottom: '20px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    background: '#1e293b',
+    color: '#f1f5f9',
+    padding: '12px 20px',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+    zIndex: '2147483647',
+    opacity: '0',
+    transition: 'opacity 0.2s ease',
+  });
+
+  document.body.appendChild(toast);
+
+  // Fade in
+  requestAnimationFrame(() => {
+    toast.style.opacity = '1';
+  });
+
+  // Fade out and remove
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 200);
+  }, durationMs);
+}
 
 // ============================================================================
 // Element Filtering
@@ -270,12 +319,14 @@ async function translateSelection(
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed) {
     log.info(' No text selected');
+    showInfoToast('Select text to translate');
     return;
   }
 
   const text = selection.toString().trim();
   if (!isValidText(text)) {
     log.info(' Selected text is not valid for translation');
+    showInfoToast('Select text to translate');
     return;
   }
 
@@ -409,6 +460,11 @@ async function translatePage(
                 const leadingSpace = original.match(/^\s*/)?.[0] || '';
                 const trailingSpace = original.match(/\s*$/)?.[0] || '';
 
+                // Store original text for undo (only if not already stored)
+                if (!node.parentElement.hasAttribute(ORIGINAL_TEXT_ATTR)) {
+                  node.parentElement.setAttribute(ORIGINAL_TEXT_ATTR, original);
+                }
+
                 node.textContent = leadingSpace + finalText + trailingSpace;
                 node.parentElement.setAttribute(TRANSLATED_ATTR, 'true');
                 translatedCount++;
@@ -495,6 +551,11 @@ async function translateDynamicContent(nodes: Node[]): Promise<void> {
             const leadingSpace = original.match(/^\s*/)?.[0] || '';
             const trailingSpace = original.match(/\s*$/)?.[0] || '';
 
+            // Store original text for undo (only if not already stored)
+            if (!node.parentElement.hasAttribute(ORIGINAL_TEXT_ATTR)) {
+              node.parentElement.setAttribute(ORIGINAL_TEXT_ATTR, original);
+            }
+
             node.textContent = leadingSpace + finalText + trailingSpace;
             node.parentElement.setAttribute(TRANSLATED_ATTR, 'true');
           } catch {
@@ -506,6 +567,45 @@ async function translateDynamicContent(nodes: Node[]): Promise<void> {
   } catch (error) {
     log.error(' Dynamic translation error:', error);
   }
+}
+
+// ============================================================================
+// Undo Translation
+// ============================================================================
+
+/**
+ * Undo all translations on the page, restoring original text
+ */
+function undoTranslation(): number {
+  // Stop any ongoing mutation observation
+  stopMutationObserver();
+  currentSettings = null;
+
+  // Find all translated elements
+  const translatedElements = document.querySelectorAll(`[${TRANSLATED_ATTR}]`);
+  let restoredCount = 0;
+
+  translatedElements.forEach((element) => {
+    const originalText = element.getAttribute(ORIGINAL_TEXT_ATTR);
+    if (originalText !== null) {
+      // Find the text node and restore original
+      const textNode = Array.from(element.childNodes).find(
+        (node) => node.nodeType === Node.TEXT_NODE
+      );
+      if (textNode) {
+        textNode.textContent = originalText;
+        restoredCount++;
+      }
+    }
+
+    // Clean up attributes
+    element.removeAttribute(TRANSLATED_ATTR);
+    element.removeAttribute(ORIGINAL_TEXT_ATTR);
+  });
+
+  log.info(` Restored ${restoredCount} elements to original text`);
+  showInfoToast(`Restored ${restoredCount} translations`);
+  return restoredCount;
 }
 
 // ============================================================================
@@ -723,7 +823,7 @@ browserAPI.runtime.onMessage.addListener(
   (
     message: ContentMessage,
     _sender,
-    sendResponse: (response: boolean | { loaded: boolean }) => void
+    sendResponse: (response: boolean | { loaded: boolean } | { success: boolean; restoredCount: number }) => void
   ) => {
     if (message.type === 'ping') {
       sendResponse({ loaded: true });
@@ -734,6 +834,12 @@ browserAPI.runtime.onMessage.addListener(
       stopMutationObserver();
       currentSettings = null;
       sendResponse(true);
+      return true;
+    }
+
+    if (message.type === 'undoTranslation') {
+      const restoredCount = undoTranslation();
+      sendResponse({ success: true, restoredCount });
       return true;
     }
 

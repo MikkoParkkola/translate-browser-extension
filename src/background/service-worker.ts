@@ -24,6 +24,7 @@ import { generateCacheKey } from '../core/hash';
 import { getPredictionEngine } from '../core/prediction-engine';
 import { CONFIG } from '../config';
 import { profiler, type AggregateStats } from '../core/profiler';
+import { addToHistory, getHistory, clearHistory as clearTranslationHistory } from '../core/history';
 // Browser API imported but may not be needed in Chrome service worker
 // import { browserAPI, getURL } from '../core/browser-api';
 
@@ -497,6 +498,10 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
       return handleGetProfilingStats();
     case 'clearProfilingStats':
       return handleClearProfilingStats();
+    case 'getHistory':
+      return handleGetHistory();
+    case 'clearHistory':
+      return handleClearHistory();
     default:
       throw new Error(`Unknown message type: ${(message as { type: string }).type}`);
   }
@@ -954,6 +959,13 @@ async function handleTranslate(message: {
       // Ignore errors - prediction tracking is non-critical
     });
 
+    // Record to history (fire and forget) - only for single text translations
+    if (response.result && typeof text === 'string' && typeof response.result === 'string') {
+      addToHistory(text, response.result, message.sourceLang, message.targetLang).catch(() => {
+        // Ignore errors - history tracking is non-critical
+      });
+    }
+
     // Include profiling report if enabled
     let profilingReport: object | undefined;
     if (sessionId) {
@@ -1050,6 +1062,42 @@ function handleClearProfilingStats(): unknown {
   return { success: true };
 }
 
+/**
+ * Get translation history
+ */
+async function handleGetHistory(): Promise<unknown> {
+  try {
+    const historyEntries = await getHistory();
+    return {
+      success: true,
+      history: historyEntries,
+    };
+  } catch (error) {
+    log.warn('Failed to get history:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      history: [],
+    };
+  }
+}
+
+/**
+ * Clear translation history
+ */
+async function handleClearHistory(): Promise<unknown> {
+  try {
+    await clearTranslationHistory();
+    return { success: true };
+  } catch (error) {
+    log.warn('Failed to clear history:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function handleGetProviders(): Promise<unknown> {
   try {
     const response = await sendToOffscreen<{
@@ -1116,6 +1164,34 @@ async function handleGetProviders(): Promise<unknown> {
 chrome.action.onClicked.addListener(async (tab) => {
   if (tab.id) {
     console.log('[Background] Extension icon clicked for tab:', tab.id);
+  }
+});
+
+// Keyboard shortcut handler
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  console.log('[Background] Command received:', command);
+
+  if (command === 'translate-selection' && tab?.id) {
+    try {
+      // Get current settings
+      const settings = await safeStorageGet<{
+        sourceLang?: string;
+        targetLang?: string;
+        strategy?: Strategy;
+        provider?: TranslationProviderId;
+      }>(['sourceLang', 'targetLang', 'strategy', 'provider']);
+
+      // Send message to content script to translate selection
+      await chrome.tabs.sendMessage(tab.id, {
+        type: 'translateSelection',
+        sourceLang: settings.sourceLang || 'auto',
+        targetLang: settings.targetLang || 'en',
+        strategy: settings.strategy || 'smart',
+        provider: settings.provider || currentProvider,
+      });
+    } catch (error) {
+      log.warn('Failed to translate selection via keyboard shortcut:', error);
+    }
   }
 });
 
