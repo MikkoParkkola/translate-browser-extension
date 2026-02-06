@@ -215,10 +215,14 @@ async function resetOffscreenDocument(): Promise<void> {
 
 /**
  * Send message to offscreen document with timeout and retry
+ * Timeout increased to 5 minutes because:
+ * - First-time model download can be 50-170MB per model
+ * - Pivot translations load TWO models (e.g., nl-en + en-fi)
+ * - WebGPU initialization adds overhead
  */
 async function sendToOffscreen<T>(
   message: Record<string, unknown>,
-  timeoutMs = 60000
+  timeoutMs = 5 * 60 * 1000 // 5 minutes
 ): Promise<T> {
   return withRetry(
     async () => {
