@@ -59,6 +59,13 @@ vi.stubGlobal('chrome', {
   storage: {
     local: {
       set: mockStorageSet,
+      get: vi.fn((keys, callback) => {
+        // Return empty result by default
+        if (callback && typeof callback === 'function') {
+          callback({});
+        }
+        return Promise.resolve({});
+      }),
     },
   },
 });
@@ -121,6 +128,7 @@ describe('Service Worker', () => {
       expect(sendResponse).toHaveBeenCalledWith({
         success: true,
         status: 'ready',
+        provider: 'opus-mt',
       });
     });
 
@@ -180,6 +188,7 @@ describe('Service Worker', () => {
         sourceLang: 'auto',
         targetLang: 'fi',
         strategy: 'smart',
+        provider: 'opus-mt',
       });
     });
 
