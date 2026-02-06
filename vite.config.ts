@@ -73,12 +73,12 @@ export default defineConfig({
         options: resolve(__dirname, 'src/options/index.html'),
         offscreen: resolve(__dirname, 'src/offscreen/offscreen.html'),
         background: resolve(__dirname, 'src/background/service-worker.ts'),
-        content: resolve(__dirname, 'src/content/index.ts'),
+        // Content script is built separately via vite.content.config.ts (IIFE format)
       },
       output: {
         entryFileNames: (chunkInfo) => {
-          // Keep background and content at root level
-          if (chunkInfo.name === 'background' || chunkInfo.name === 'content') {
+          // Keep background at root level (content script built separately)
+          if (chunkInfo.name === 'background') {
             return '[name].js';
           }
           return 'assets/[name]-[hash].js';
