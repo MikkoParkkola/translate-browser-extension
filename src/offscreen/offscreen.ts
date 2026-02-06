@@ -7,6 +7,10 @@ import { pipeline, env, type TextGenerationPipeline } from '@huggingface/transfo
 import { franc } from 'franc-min';
 import type { TranslationProviderId } from '../types';
 import { getTranslationCache, type TranslationCacheStats } from '../core/translation-cache';
+import { CONFIG } from '../config';
+import { createLogger } from '../core/logger';
+
+const log = createLogger('Offscreen');
 
 // Configure Transformers.js for Chrome extension environment
 env.allowRemoteModels = true;  // Models from HuggingFace Hub
@@ -20,8 +24,7 @@ if (env.backends?.onnx?.wasm) {
   env.backends.onnx.wasm.wasmPaths = wasmBasePath;
 }
 
-// Model loading timeout (5 minutes for large models like TranslateGemma)
-const MODEL_LOAD_TIMEOUT_MS = 5 * 60 * 1000;
+// Model loading timeout from centralized config
 
 /**
  * Wrap a promise with a timeout.
@@ -35,7 +38,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
   ]);
 }
 
-console.log('[Offscreen] WASM path configured:', wasmBasePath);
+log.info(' WASM path configured:', wasmBasePath);
 
 // Model mapping (direct language pairs with available Xenova OPUS-MT models)
 // Source: https://huggingface.co/models?search=xenova/opus-mt (76 models)
@@ -309,7 +312,7 @@ async function getTranslateGemmaPipeline(): Promise<TextGenerationPipeline> {
   if (tgLoading) return tgLoading;
 
   tgLoading = (async () => {
-    console.log('[Offscreen] Loading TranslateGemma model...');
+    log.info(' Loading TranslateGemma model...');
 
     const webgpu = await detectWebGPU();
     if (!webgpu) {
@@ -339,7 +342,7 @@ async function getTranslateGemmaPipeline(): Promise<TextGenerationPipeline> {
             }
           },
         }),
-        MODEL_LOAD_TIMEOUT_MS,
+        CONFIG.timeouts.modelLoadMs,
         `Loading TranslateGemma model`
       );
 
@@ -358,11 +361,11 @@ async function getTranslateGemmaPipeline(): Promise<TextGenerationPipeline> {
         // Popup may be closed
       }
 
-      console.log('[Offscreen] TranslateGemma loaded successfully');
+      log.info(' TranslateGemma loaded successfully');
       return tgPipeline;
     } catch (error) {
       tgLoading = null;
-      console.error('[Offscreen] TranslateGemma failed to load:', error);
+      log.error(' TranslateGemma failed to load:', error);
 
       // Notify error
       try {
@@ -518,7 +521,7 @@ function detectLanguage(text: string): string {
     if (/[\u4e00-\u9fff]/.test(text)) return 'zh'; // Chinese
     if (/[\u0400-\u04ff]/.test(text)) return 'ru'; // Cyrillic -> Russian
     if (/[äöåÄÖÅ]/.test(text)) return 'fi'; // Finnish characters
-    console.log('[Offscreen] Could not detect language, defaulting to English');
+    log.info(' Could not detect language, defaulting to English');
     return 'en';
   }
 
@@ -561,7 +564,7 @@ async function getPipeline(sourceLang: string, targetLang: string): Promise<any>
   // Note: dtype removed because q4f16 quantization causes numeric errors with some models
   const pipe = await withTimeout(
     pipeline('translation', modelId, { device }),
-    MODEL_LOAD_TIMEOUT_MS,
+    CONFIG.timeouts.modelLoadMs,
     `Loading model ${modelId}`
   );
 
@@ -611,7 +614,7 @@ async function translate(
 
     // Don't translate if source equals target
     if (actualSourceLang === targetLang) {
-      console.log('[Offscreen] Source equals target, skipping translation');
+      log.info(' Source equals target, skipping translation');
       return text;
     }
   }
@@ -660,7 +663,7 @@ async function translate(
 
         // Cache the translation (fire and forget)
         cache.set(originalText, actualSourceLang, targetLang, provider, translation).catch((err) => {
-          console.warn('[Offscreen] Failed to cache translation:', err);
+          log.warn(' Failed to cache translation:', err);
         });
       }
     }
@@ -676,7 +679,7 @@ async function translate(
   // Check cache first
   const cached = await cache.get(text, actualSourceLang, targetLang, provider);
   if (cached !== null) {
-    console.log('[Offscreen] Cache hit');
+    log.info(' Cache hit');
     return cached;
   }
 
@@ -686,7 +689,7 @@ async function translate(
   // Cache the translation (fire and forget)
   const resultText = Array.isArray(result) ? result[0] : result;
   cache.set(text, actualSourceLang, targetLang, provider, resultText).catch((err) => {
-    console.warn('[Offscreen] Failed to cache translation:', err);
+    log.warn(' Failed to cache translation:', err);
   });
 
   return result;
@@ -811,7 +814,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           sendResponse({ success: false, error: `Unknown type: ${message.type}` });
       }
     } catch (error) {
-      console.error('[Offscreen] Error:', error);
+      log.error(' Error:', error);
       sendResponse({
         success: false,
         error: error instanceof Error ? error.message : String(error)
@@ -822,4 +825,4 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true; // Keep channel open for async response
 });
 
-console.log('[Offscreen] Document ready - v2.2 with TranslateGemma + language detection');
+log.info(' Document ready - v2.2 with TranslateGemma + language detection');

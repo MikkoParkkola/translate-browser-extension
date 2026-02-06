@@ -6,40 +6,11 @@
 
 import { BaseProvider } from './base-provider';
 import { createTranslationError } from '../core/errors';
+import { handleProviderHttpError } from '../core/http-errors';
+import { getLanguageName, getAllLanguageCodes } from '../core/language-map';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 const OPENAI_API = 'https://api.openai.com/v1/chat/completions';
-
-// Language names for prompts
-const LANGUAGE_NAMES: Record<string, string> = {
-  en: 'English',
-  de: 'German',
-  fr: 'French',
-  es: 'Spanish',
-  it: 'Italian',
-  nl: 'Dutch',
-  pl: 'Polish',
-  ru: 'Russian',
-  ja: 'Japanese',
-  zh: 'Chinese',
-  ko: 'Korean',
-  pt: 'Portuguese',
-  ar: 'Arabic',
-  hi: 'Hindi',
-  fi: 'Finnish',
-  sv: 'Swedish',
-  da: 'Danish',
-  no: 'Norwegian',
-  cs: 'Czech',
-  el: 'Greek',
-  he: 'Hebrew',
-  hu: 'Hungarian',
-  id: 'Indonesian',
-  th: 'Thai',
-  tr: 'Turkish',
-  uk: 'Ukrainian',
-  vi: 'Vietnamese',
-};
 
 export type OpenAIFormality = 'formal' | 'informal' | 'neutral';
 export type OpenAIModel = 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4-turbo' | 'gpt-3.5-turbo';
@@ -161,15 +132,15 @@ export class OpenAIProvider extends BaseProvider {
   /**
    * Get language name for prompts
    */
-  private getLanguageName(code: string): string {
-    return LANGUAGE_NAMES[code.toLowerCase()] || code;
+  private getLangName(code: string): string {
+    return getLanguageName(code);
   }
 
   /**
    * Build translation prompt with formality
    */
   private buildPrompt(targetLang: string, formality: OpenAIFormality): string {
-    const langName = this.getLanguageName(targetLang);
+    const langName = this.getLangName(targetLang);
     let formalityInst = '';
 
     switch (formality) {
@@ -209,7 +180,7 @@ export class OpenAIProvider extends BaseProvider {
 
     // Add source language hint if known
     if (sourceLang !== 'auto') {
-      userPrompt = `[Source: ${this.getLanguageName(sourceLang)}]\n${inputText}`;
+      userPrompt = `[Source: ${this.getLangName(sourceLang)}]\n${inputText}`;
     }
 
     // For batch, add instruction
@@ -236,15 +207,14 @@ export class OpenAIProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (response.status === 401) {
-          throw new Error('Invalid OpenAI API key');
-        } else if (response.status === 429) {
-          throw new Error('OpenAI rate limit exceeded');
-        } else if (response.status === 402) {
-          throw new Error('OpenAI quota exceeded');
-        }
-        throw new Error(`OpenAI API error: ${response.status} - ${JSON.stringify(errorData)}`);
+        const errorText = await response.text().catch(() => '');
+        const httpError = handleProviderHttpError(
+          response.status,
+          'OpenAI',
+          errorText,
+          response.headers.get('Retry-After')
+        );
+        throw new Error(httpError.message);
       }
 
       const data: OpenAIChatResponse = await response.json();
@@ -360,7 +330,7 @@ export class OpenAIProvider extends BaseProvider {
    * OpenAI supports translation between most languages
    */
   getSupportedLanguages(): LanguagePair[] {
-    const languages = Object.keys(LANGUAGE_NAMES);
+    const languages = getAllLanguageCodes();
     const pairs: LanguagePair[] = [];
     for (const src of languages) {
       for (const tgt of languages) {

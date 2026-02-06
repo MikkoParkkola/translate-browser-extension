@@ -8,6 +8,10 @@
  * - Import/export as JSON
  */
 
+import { createLogger } from './logger';
+
+const log = createLogger('Glossary');
+
 export interface GlossaryTerm {
   replacement: string;
   caseSensitive: boolean;
@@ -32,7 +36,7 @@ export async function getGlossary(): Promise<GlossaryStore> {
     const data = await chrome.storage.local.get(STORAGE_KEY);
     return data[STORAGE_KEY] || {};
   } catch (e) {
-    console.error('[Glossary] Failed to get glossary:', e);
+    log.error(' Failed to get glossary:', e);
     return {};
   }
 }
@@ -54,9 +58,9 @@ export async function addTerm(
     const glossary = await getGlossary();
     glossary[term] = { replacement, caseSensitive, description };
     await chrome.storage.local.set({ [STORAGE_KEY]: glossary });
-    console.log('[Glossary] Added term:', term, '->', replacement);
+    log.info(' Added term:', term, '->', replacement);
   } catch (e) {
-    console.error('[Glossary] Failed to add term:', e);
+    log.error(' Failed to add term:', e);
     throw e;
   }
 }
@@ -69,9 +73,9 @@ export async function removeTerm(term: string): Promise<void> {
     const glossary = await getGlossary();
     delete glossary[term];
     await chrome.storage.local.set({ [STORAGE_KEY]: glossary });
-    console.log('[Glossary] Removed term:', term);
+    log.info(' Removed term:', term);
   } catch (e) {
-    console.error('[Glossary] Failed to remove term:', e);
+    log.error(' Failed to remove term:', e);
     throw e;
   }
 }
@@ -82,9 +86,9 @@ export async function removeTerm(term: string): Promise<void> {
 export async function clearGlossary(): Promise<void> {
   try {
     await chrome.storage.local.remove(STORAGE_KEY);
-    console.log('[Glossary] Cleared glossary');
+    log.info(' Cleared glossary');
   } catch (e) {
-    console.error('[Glossary] Failed to clear glossary:', e);
+    log.error(' Failed to clear glossary:', e);
     throw e;
   }
 }
@@ -262,11 +266,11 @@ export async function importGlossary(json: string): Promise<number> {
     const merged = { ...existing, ...imported };
 
     await chrome.storage.local.set({ [STORAGE_KEY]: merged });
-    console.log('[Glossary] Imported', Object.keys(imported).length, 'terms');
+    log.info(' Imported', Object.keys(imported).length, 'terms');
 
     return Object.keys(imported).length;
   } catch (e) {
-    console.error('[Glossary] Failed to import glossary:', e);
+    log.error(' Failed to import glossary:', e);
     throw e;
   }
 }

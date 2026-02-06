@@ -10,6 +10,7 @@
  */
 
 import type { ThrottleConfig, ThrottleUsage } from '../types';
+import { CONFIG } from '../config';
 
 interface QueueItem<T> {
   fn: () => Promise<T>;
@@ -43,9 +44,9 @@ export class Throttle {
 
   constructor(opts: Partial<ThrottleConfig> = {}) {
     this.config = {
-      requestLimit: opts.requestLimit ?? 60,
-      tokenLimit: opts.tokenLimit ?? 100000,
-      windowMs: opts.windowMs ?? 60000,
+      requestLimit: opts.requestLimit ?? CONFIG.throttle.requestLimit,
+      tokenLimit: opts.tokenLimit ?? CONFIG.throttle.tokenLimit,
+      windowMs: opts.windowMs ?? CONFIG.throttle.windowMs,
     };
     this.availableRequests = this.config.requestLimit;
     this.availableTokens = this.config.tokenLimit;

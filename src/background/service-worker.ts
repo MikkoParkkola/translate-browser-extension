@@ -17,6 +17,11 @@ import {
   type TranslationError,
   type RetryConfig,
 } from '../core/errors';
+import { createLogger } from '../core/logger';
+import { safeStorageGet, safeStorageSet } from '../core/storage';
+import { CONFIG } from '../config';
+
+const log = createLogger('Background');
 
 // ============================================================================
 // Translation Cache (LRU, max 100 entries)
@@ -29,7 +34,6 @@ interface CacheEntry {
   targetLang: string;
 }
 
-const CACHE_MAX_SIZE = 100;
 const translationCache = new Map<string, CacheEntry>();
 
 /**
@@ -53,7 +57,7 @@ function getCachedTranslation(key: string): CacheEntry | undefined {
     // Move to end for LRU (delete and re-add)
     translationCache.delete(key);
     translationCache.set(key, entry);
-    console.log(`[Background] Cache HIT: ${key.substring(0, 40)}...`);
+    log.info(` Cache HIT: ${key.substring(0, 40)}...`);
   }
   return entry;
 }
@@ -68,11 +72,11 @@ function setCachedTranslation(
   targetLang: string
 ): void {
   // Evict oldest entries if at capacity
-  while (translationCache.size >= CACHE_MAX_SIZE) {
+  while (translationCache.size >= CONFIG.cache.maxSize) {
     const oldestKey = translationCache.keys().next().value;
     if (oldestKey) {
       translationCache.delete(oldestKey);
-      console.log(`[Background] Cache evicted oldest entry`);
+      log.info(` Cache evicted oldest entry`);
     }
   }
 
@@ -82,7 +86,7 @@ function setCachedTranslation(
     sourceLang,
     targetLang,
   });
-  console.log(`[Background] Cached translation (${translationCache.size}/${CACHE_MAX_SIZE})`);
+  log.info(` Cached translation (${translationCache.size}/${CONFIG.cache.maxSize})`);
 }
 
 /**
@@ -102,7 +106,7 @@ function getCacheStats(): {
   }
   return {
     size: translationCache.size,
-    maxSize: CACHE_MAX_SIZE,
+    maxSize: CONFIG.cache.maxSize,
     hitRate: `${cacheHits}/${cacheHits + cacheMisses} (${cacheHits + cacheMisses > 0 ? Math.round(cacheHits / (cacheHits + cacheMisses) * 100) : 0}%)`,
     oldestEntry: oldestTimestamp,
   };
@@ -118,19 +122,18 @@ let cacheMisses = 0;
 
 let creatingOffscreen: Promise<void> | null = null;
 let offscreenFailureCount = 0;
-const MAX_OFFSCREEN_FAILURES = 3;
 
-// Retry configuration for different scenarios
+// Retry configuration for different scenarios (from centralized config)
 const NETWORK_RETRY_CONFIG: Partial<RetryConfig> = {
-  maxRetries: 3,
-  baseDelayMs: 1000,
-  maxDelayMs: 10000,
+  maxRetries: CONFIG.retry.network.maxRetries,
+  baseDelayMs: CONFIG.retry.network.baseDelayMs,
+  maxDelayMs: CONFIG.retry.network.maxDelayMs,
 };
 
 const OFFSCREEN_RETRY_CONFIG: Partial<RetryConfig> = {
-  maxRetries: 2,
-  baseDelayMs: 500,
-  maxDelayMs: 3000,
+  maxRetries: CONFIG.retry.offscreen.maxRetries,
+  baseDelayMs: CONFIG.retry.offscreen.baseDelayMs,
+  maxDelayMs: CONFIG.retry.offscreen.maxDelayMs,
 };
 
 /**
@@ -174,10 +177,10 @@ async function ensureOffscreenDocument(): Promise<void> {
     offscreenFailureCount++;
 
     const errMsg = error instanceof Error ? error.message : String(error);
-    console.error('[Background] Failed to create offscreen document:', errMsg);
+    log.error(' Failed to create offscreen document:', errMsg);
 
     // If we've failed too many times, give a clearer error
-    if (offscreenFailureCount >= MAX_OFFSCREEN_FAILURES) {
+    if (offscreenFailureCount >= CONFIG.retry.maxOffscreenFailures) {
       throw new Error(
         'Translation engine failed to start. Please reload the extension or restart Chrome.'
       );
@@ -203,7 +206,7 @@ async function resetOffscreenDocument(): Promise<void> {
       console.log('[Background] Closed existing offscreen document');
     }
   } catch (error) {
-    console.warn('[Background] Error closing offscreen document:', error);
+    log.warn(' Error closing offscreen document:', error);
   }
 
   creatingOffscreen = null;
@@ -222,7 +225,7 @@ async function resetOffscreenDocument(): Promise<void> {
  */
 async function sendToOffscreen<T>(
   message: Record<string, unknown>,
-  timeoutMs = 5 * 60 * 1000 // 5 minutes
+  timeoutMs = CONFIG.timeouts.offscreenMs
 ): Promise<T> {
   return withRetry(
     async () => {
@@ -291,22 +294,16 @@ const rateLimit: RateLimitState = {
   windowStart: Date.now(),
 };
 
-const RATE_LIMIT = {
-  requestsPerMinute: 60,
-  tokensPerMinute: 100000,
-  windowMs: 60000,
-};
-
 function checkRateLimit(tokenEstimate: number): boolean {
   const now = Date.now();
-  if (now - rateLimit.windowStart > RATE_LIMIT.windowMs) {
+  if (now - rateLimit.windowStart > CONFIG.rateLimits.windowMs) {
     rateLimit.requests = 0;
     rateLimit.tokens = 0;
     rateLimit.windowStart = now;
   }
 
-  if (rateLimit.requests >= RATE_LIMIT.requestsPerMinute) return false;
-  if (rateLimit.tokens + tokenEstimate > RATE_LIMIT.tokensPerMinute) return false;
+  if (rateLimit.requests >= CONFIG.rateLimits.requestsPerMinute) return false;
+  if (rateLimit.tokens + tokenEstimate > CONFIG.rateLimits.tokensPerMinute) return false;
 
   return true;
 }
@@ -346,7 +343,7 @@ chrome.runtime.onMessage.addListener(
       .then(sendResponse)
       .catch((error) => {
         const translationError = createTranslationError(error);
-        console.error('[Background] Error:', translationError.technicalDetails);
+        log.error(' Error:', translationError.technicalDetails);
 
         sendResponse({
           success: false,
@@ -389,13 +386,9 @@ async function handleSetProvider(message: {
   provider: TranslationProviderId;
 }): Promise<unknown> {
   currentProvider = message.provider;
-  console.log(`[Background] Provider set to: ${currentProvider}`);
+  log.info(` Provider set to: ${currentProvider}`);
 
-  try {
-    await chrome.storage.local.set({ provider: currentProvider });
-  } catch {
-    // Storage may not be available
-  }
+  await safeStorageSet({ provider: currentProvider });
 
   return { success: true, provider: currentProvider };
 }
@@ -410,7 +403,7 @@ async function handlePreloadModel(message: {
   provider?: TranslationProviderId;
 }): Promise<unknown> {
   const provider = message.provider || currentProvider;
-  console.log(`[Background] Preloading ${provider} model: ${message.sourceLang} -> ${message.targetLang}`);
+  log.info(` Preloading ${provider} model: ${message.sourceLang} -> ${message.targetLang}`);
   try {
     const response = await sendToOffscreen<{ success: boolean; preloaded?: boolean; error?: string }>({
       type: 'preloadModel',
@@ -420,7 +413,7 @@ async function handlePreloadModel(message: {
     });
     return response;
   } catch (error) {
-    console.warn('[Background] Preload failed:', error);
+    log.warn(' Preload failed:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
@@ -447,7 +440,7 @@ function handleClearCache(): unknown {
   translationCache.clear();
   cacheHits = 0;
   cacheMisses = 0;
-  console.log(`[Background] Cache cleared (was ${previousSize} entries)`);
+  log.info(` Cache cleared (was ${previousSize} entries)`);
   return {
     success: true,
     clearedEntries: previousSize,
@@ -495,7 +488,7 @@ async function handleTranslate(message: {
       if (cached) {
         cacheHits++;
         const duration = Date.now() - startTime;
-        console.log(`[Background] Cache hit, returning in ${duration}ms`);
+        log.info(` Cache hit, returning in ${duration}ms`);
         return {
           success: true,
           result: cached.result,
@@ -572,7 +565,7 @@ async function handleTranslate(message: {
     };
   } catch (error) {
     const translationError = createTranslationError(error);
-    console.error('[Background] Translation error:', translationError.technicalDetails);
+    log.error(' Translation error:', translationError.technicalDetails);
 
     return {
       success: false,
@@ -587,8 +580,8 @@ function handleGetUsage(): unknown {
     throttle: {
       requests: rateLimit.requests,
       tokens: rateLimit.tokens,
-      requestLimit: RATE_LIMIT.requestsPerMinute,
-      tokenLimit: RATE_LIMIT.tokensPerMinute,
+      requestLimit: CONFIG.rateLimits.requestsPerMinute,
+      tokenLimit: CONFIG.rateLimits.tokensPerMinute,
       queue: 0,
     },
     cache: getCacheStats(),
@@ -629,7 +622,7 @@ async function handleGetProviders(): Promise<unknown> {
       supportedLanguages: response.success ? response.languages : [],
     };
   } catch (error) {
-    console.warn('[Background] Error getting providers:', error);
+    log.warn(' Error getting providers:', error);
 
     return {
       providers: [
@@ -672,7 +665,7 @@ chrome.runtime.onInstalled.addListener((details) => {
     // Detect browser's preferred language for target
     const browserLang = chrome.i18n.getUILanguage().split('-')[0]; // e.g., 'en-US' -> 'en'
     console.log('[Background] Browser language detected:', browserLang);
-    chrome.storage.local.set({
+    safeStorageSet({
       sourceLang: 'auto',
       targetLang: browserLang || 'en', // Use browser language, fallback to English
       strategy: 'smart',
@@ -684,18 +677,19 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 
 // Load saved provider on startup
-chrome.storage.local.get(['provider'], (result) => {
+(async () => {
+  const result = await safeStorageGet<{ provider?: TranslationProviderId }>(['provider']);
   if (result.provider) {
-    currentProvider = result.provider as TranslationProviderId;
+    currentProvider = result.provider;
     console.log('[Background] Restored provider:', currentProvider);
   }
-});
+})();
 
 // Handle extension startup - pre-warm the offscreen document
 chrome.runtime.onStartup.addListener(() => {
   console.log('[Background] Extension startup, pre-warming offscreen document...');
   ensureOffscreenDocument().catch((error) => {
-    console.warn('[Background] Pre-warm failed (will retry on first use):', error);
+    log.warn(' Pre-warm failed (will retry on first use):', error);
   });
 });
 

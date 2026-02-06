@@ -6,6 +6,7 @@
 
 import { BaseProvider } from './base-provider';
 import { createTranslationError } from '../core/errors';
+import { handleProviderHttpError } from '../core/http-errors';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
@@ -238,15 +239,14 @@ Rules:
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (response.status === 401) {
-          throw new Error('Invalid Anthropic API key');
-        } else if (response.status === 429) {
-          throw new Error('Anthropic rate limit exceeded');
-        } else if (response.status === 529) {
-          throw new Error('Anthropic API overloaded');
-        }
-        throw new Error(`Anthropic API error: ${response.status} - ${JSON.stringify(errorData)}`);
+        const errorText = await response.text().catch(() => '');
+        const httpError = handleProviderHttpError(
+          response.status,
+          'Anthropic',
+          errorText,
+          response.headers.get('Retry-After')
+        );
+        throw new Error(httpError.message);
       }
 
       const data: AnthropicMessageResponse = await response.json();

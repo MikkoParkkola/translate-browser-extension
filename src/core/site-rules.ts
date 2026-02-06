@@ -9,6 +9,9 @@
  */
 
 import type { TranslationProviderId, Strategy } from '../types';
+import { createLogger } from './logger';
+
+const log = createLogger('SiteRules');
 
 export interface SiteRules {
   autoTranslate: boolean;
@@ -82,7 +85,7 @@ export async function getRules(hostname: string): Promise<SiteRules | null> {
     const match = findMatchingRule(hostname, allRules);
     return match ? match.rules : null;
   } catch (e) {
-    console.error('[SiteRules] Failed to get rules:', e);
+    log.error(' Failed to get rules:', e);
     return null;
   }
 }
@@ -98,9 +101,9 @@ export async function setRules(hostnameOrPattern: string, rules: SiteRules): Pro
     allRules[hostnameOrPattern] = rules;
 
     await chrome.storage.local.set({ [STORAGE_KEY]: allRules });
-    console.log('[SiteRules] Updated rules for:', hostnameOrPattern, rules);
+    log.info(' Updated rules for:', hostnameOrPattern, rules);
   } catch (e) {
-    console.error('[SiteRules] Failed to set rules:', e);
+    log.error(' Failed to set rules:', e);
     throw e;
   }
 }
@@ -116,9 +119,9 @@ export async function clearRules(hostnameOrPattern: string): Promise<void> {
     delete allRules[hostnameOrPattern];
 
     await chrome.storage.local.set({ [STORAGE_KEY]: allRules });
-    console.log('[SiteRules] Cleared rules for:', hostnameOrPattern);
+    log.info(' Cleared rules for:', hostnameOrPattern);
   } catch (e) {
-    console.error('[SiteRules] Failed to clear rules:', e);
+    log.error(' Failed to clear rules:', e);
     throw e;
   }
 }
@@ -131,7 +134,7 @@ export async function getAllRules(): Promise<SiteRulesStore> {
     const data = await chrome.storage.local.get(STORAGE_KEY);
     return data[STORAGE_KEY] || {};
   } catch (e) {
-    console.error('[SiteRules] Failed to get all rules:', e);
+    log.error(' Failed to get all rules:', e);
     return {};
   }
 }
@@ -142,9 +145,9 @@ export async function getAllRules(): Promise<SiteRulesStore> {
 export async function clearAllRules(): Promise<void> {
   try {
     await chrome.storage.local.remove(STORAGE_KEY);
-    console.log('[SiteRules] Cleared all rules');
+    log.info(' Cleared all rules');
   } catch (e) {
-    console.error('[SiteRules] Failed to clear all rules:', e);
+    log.error(' Failed to clear all rules:', e);
     throw e;
   }
 }
@@ -182,11 +185,11 @@ export async function importRules(json: string): Promise<number> {
     const merged = { ...existing, ...imported };
 
     await chrome.storage.local.set({ [STORAGE_KEY]: merged });
-    console.log('[SiteRules] Imported', Object.keys(imported).length, 'rules');
+    log.info(' Imported', Object.keys(imported).length, 'rules');
 
     return Object.keys(imported).length;
   } catch (e) {
-    console.error('[SiteRules] Failed to import rules:', e);
+    log.error(' Failed to import rules:', e);
     throw e;
   }
 }

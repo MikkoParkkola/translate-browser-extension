@@ -11,23 +11,33 @@
  * - Glossary support for custom term replacements
  */
 
-import type { Strategy, TranslationProviderId } from '../types';
+import type { Strategy, TranslationProviderId, TranslateResponse } from '../types';
 import { siteRules } from '../core/site-rules';
 import { glossary, type GlossaryStore } from '../core/glossary';
+import { CONFIG } from '../config';
+import { createLogger } from '../core/logger';
+import { safeStorageGet } from '../core/storage';
 
-interface TranslateMessage {
-  type: 'translateSelection' | 'translatePage';
+const log = createLogger('Content');
+
+// Content-script specific message types (extend base types)
+interface TranslateSelectionMessage {
+  type: 'translateSelection';
   sourceLang: string;
   targetLang: string;
   strategy: Strategy;
   provider?: string;
 }
 
-interface TranslateResponse {
-  success: boolean;
-  result?: string | string[];
-  error?: string;
+interface TranslatePageMessage {
+  type: 'translatePage';
+  sourceLang: string;
+  targetLang: string;
+  strategy: Strategy;
+  provider?: string;
 }
+
+type ContentMessage = TranslateSelectionMessage | TranslatePageMessage | { type: 'ping' } | { type: 'stopAutoTranslate' };
 
 // ============================================================================
 // Configuration
@@ -57,15 +67,6 @@ const SKIP_TAGS = new Set([
 
 // Mark translated nodes to avoid re-translation
 const TRANSLATED_ATTR = 'data-translated';
-
-// Batch configuration
-const BATCH_SIZE = 50;
-const MAX_TEXT_LENGTH = 5000;
-const MIN_TEXT_LENGTH = 2;
-
-// Throttle configuration for dynamic content
-const MUTATION_DEBOUNCE_MS = 500;
-const MAX_PENDING_MUTATIONS = 100;
 
 // ============================================================================
 // State
@@ -127,8 +128,8 @@ function isValidText(text: string | null): text is string {
   if (!text) return false;
 
   const trimmed = text.trim();
-  if (trimmed.length < MIN_TEXT_LENGTH) return false;
-  if (trimmed.length > MAX_TEXT_LENGTH) return false;
+  if (trimmed.length < CONFIG.batching.minTextLength) return false;
+  if (trimmed.length > CONFIG.batching.maxTextLength) return false;
 
   // Skip text that's only whitespace, numbers, or symbols
   if (/^[\s\d\p{P}\p{S}]+$/u.test(trimmed)) return false;
@@ -212,7 +213,7 @@ async function loadGlossary(): Promise<GlossaryStore> {
     try {
       cachedGlossary = await glossary.getGlossary();
     } catch (e) {
-      console.error('[Content] Failed to load glossary:', e);
+      log.error(' Failed to load glossary:', e);
       cachedGlossary = {};
     }
   }
@@ -230,18 +231,18 @@ async function translateSelection(
 ): Promise<void> {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed) {
-    console.log('[Content] No text selected');
+    log.info(' No text selected');
     return;
   }
 
   const text = selection.toString().trim();
   if (!isValidText(text)) {
-    console.log('[Content] Selected text is not valid for translation');
+    log.info(' Selected text is not valid for translation');
     return;
   }
 
   const sanitized = sanitizeText(text);
-  console.log('[Content] Translating selection:', sanitized.substring(0, 50) + '...');
+  log.info(' Translating selection:', sanitized.substring(0, 50) + '...');
 
   try {
     // Apply glossary pre-processing
@@ -262,11 +263,11 @@ async function translateSelection(
       const finalResult = restore(response.result as string);
       showTranslationTooltip(finalResult, selection.getRangeAt(0));
     } else {
-      console.error('[Content] Translation failed:', response.error);
+      log.error(' Translation failed:', response.error);
       showErrorTooltip(response.error || 'Translation failed', selection.getRangeAt(0));
     }
   } catch (error) {
-    console.error('[Content] Translation error:', error);
+    log.error(' Translation error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
     showErrorTooltip(message, selection.getRangeAt(0));
   }
@@ -282,19 +283,19 @@ async function translatePage(
   provider?: string
 ): Promise<void> {
   if (isTranslating) {
-    console.log('[Content] Translation already in progress');
+    log.info(' Translation already in progress');
     return;
   }
 
   isTranslating = true;
-  console.log('[Content] Translating page...');
+  log.info(' Translating page...');
 
   try {
     const textNodes = getTextNodes(document.body);
     console.log(`[Content] Found ${textNodes.length} text nodes`);
 
     if (textNodes.length === 0) {
-      console.log('[Content] No translatable text found');
+      log.info(' No translatable text found');
       return;
     }
 
@@ -303,8 +304,8 @@ async function translatePage(
 
     // Create batches
     const batches: Array<{ nodes: Text[]; texts: string[]; restoreFns: Array<(text: string) => string> }> = [];
-    for (let i = 0; i < textNodes.length; i += BATCH_SIZE) {
-      const batchNodes = textNodes.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < textNodes.length; i += CONFIG.batching.maxSize) {
+      const batchNodes = textNodes.slice(i, i + CONFIG.batching.maxSize);
       const rawTexts = batchNodes.map((n) => sanitizeText(n.textContent || ''));
 
       // Apply glossary to batch
@@ -419,7 +420,7 @@ async function translateDynamicContent(nodes: Node[]): Promise<void> {
       });
     }
   } catch (error) {
-    console.error('[Content] Dynamic translation error:', error);
+    log.error(' Dynamic translation error:', error);
   }
 }
 
@@ -462,7 +463,7 @@ function startMutationObserver(): void {
   mutationObserver = new MutationObserver((mutations) => {
     // Add to pending mutations
     for (const mutation of mutations) {
-      if (pendingMutations.length < MAX_PENDING_MUTATIONS) {
+      if (pendingMutations.length < CONFIG.mutations.maxPending) {
         pendingMutations.push(mutation);
       }
     }
@@ -475,7 +476,7 @@ function startMutationObserver(): void {
     mutationDebounceTimer = window.setTimeout(() => {
       mutationDebounceTimer = null;
       processPendingMutations();
-    }, MUTATION_DEBOUNCE_MS);
+    }, CONFIG.mutations.debounceMs);
   });
 
   mutationObserver.observe(document.body, {
@@ -483,7 +484,7 @@ function startMutationObserver(): void {
     subtree: true,
   });
 
-  console.log('[Content] MutationObserver started');
+  log.info(' MutationObserver started');
 }
 
 /**
@@ -501,7 +502,7 @@ function stopMutationObserver(): void {
   }
 
   pendingMutations = [];
-  console.log('[Content] MutationObserver stopped');
+  log.info(' MutationObserver stopped');
 }
 
 // ============================================================================
@@ -636,7 +637,7 @@ document.head.appendChild(style);
 
 chrome.runtime.onMessage.addListener(
   (
-    message: TranslateMessage | { type: 'ping' } | { type: 'stopAutoTranslate' },
+    message: ContentMessage,
     _sender,
     sendResponse: (response: boolean | { loaded: boolean }) => void
   ) => {
@@ -687,55 +688,58 @@ chrome.runtime.onMessage.addListener(
 // ============================================================================
 
 async function checkAutoTranslate(): Promise<void> {
-  try {
-    // First check per-site rules
-    const hostname = window.location.hostname;
-    const siteSpecificRules = await siteRules.getRules(hostname);
+  // First check per-site rules
+  const hostname = window.location.hostname;
+  const siteSpecificRules = await siteRules.getRules(hostname);
 
-    // Get global settings as fallback
-    const settings = await chrome.storage.local.get([
-      'autoTranslate',
-      'sourceLang',
-      'targetLang',
-      'strategy',
-      'provider',
-    ]);
+  // Get global settings as fallback
+  interface StoredSettings {
+    autoTranslate?: boolean;
+    sourceLang?: string;
+    targetLang?: string;
+    strategy?: Strategy;
+    provider?: TranslationProviderId;
+  }
+  const settings = await safeStorageGet<StoredSettings>([
+    'autoTranslate',
+    'sourceLang',
+    'targetLang',
+    'strategy',
+    'provider',
+  ]);
 
-    // Merge settings: site rules take precedence over global settings
-    const shouldAutoTranslate = siteSpecificRules?.autoTranslate ?? settings.autoTranslate;
-    const sourceLang = siteSpecificRules?.sourceLang || settings.sourceLang || 'auto';
-    const targetLang = siteSpecificRules?.targetLang || settings.targetLang || 'fi';
-    const strategy = siteSpecificRules?.strategy || settings.strategy || 'smart';
-    const provider = siteSpecificRules?.preferredProvider || settings.provider || 'opus-mt';
+  // Merge settings: site rules take precedence over global settings
+  const shouldAutoTranslate = siteSpecificRules?.autoTranslate ?? settings.autoTranslate;
+  const sourceLang = siteSpecificRules?.sourceLang || settings.sourceLang || 'auto';
+  const targetLang = siteSpecificRules?.targetLang || settings.targetLang || 'fi';
+  const strategy = siteSpecificRules?.strategy || settings.strategy || 'smart';
+  const provider = siteSpecificRules?.preferredProvider || settings.provider || 'opus-mt';
 
-    if (siteSpecificRules) {
-      console.log('[Content] Site-specific rules found for', hostname, siteSpecificRules);
-    }
+  if (siteSpecificRules) {
+    log.info(' Site-specific rules found for', hostname, siteSpecificRules);
+  }
 
-    if (shouldAutoTranslate) {
-      console.log('[Content] Auto-translate enabled, translating page...');
+  if (shouldAutoTranslate) {
+    log.info(' Auto-translate enabled, translating page...');
 
-      currentSettings = {
-        sourceLang,
-        targetLang,
-        strategy: strategy as Strategy,
-        provider: provider as TranslationProviderId,
-      };
+    currentSettings = {
+      sourceLang,
+      targetLang,
+      strategy: strategy as Strategy,
+      provider: provider as TranslationProviderId,
+    };
 
-      // Small delay to let page settle
-      setTimeout(() => {
-        translatePage(
-          currentSettings!.sourceLang,
-          currentSettings!.targetLang,
-          currentSettings!.strategy,
-          currentSettings!.provider
-        ).then(() => {
-          startMutationObserver();
-        });
-      }, 1000);
-    }
-  } catch (e) {
-    console.log('[Content] Could not check auto-translate settings:', e);
+    // Small delay to let page settle
+    setTimeout(() => {
+      translatePage(
+        currentSettings!.sourceLang,
+        currentSettings!.targetLang,
+        currentSettings!.strategy,
+        currentSettings!.provider
+      ).then(() => {
+        startMutationObserver();
+      });
+    }, 1000);
   }
 }
 
@@ -751,4 +755,4 @@ window.addEventListener('unload', () => {
   stopMutationObserver();
 });
 
-console.log('[Content] Translation content script loaded v2.3 with MutationObserver + site rules + glossary support');
+log.info(' Translation content script loaded v2.3 with MutationObserver + site rules + glossary support');

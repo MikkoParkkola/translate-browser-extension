@@ -4,6 +4,9 @@
  */
 
 import type { TranslationProviderId } from '../types';
+import { createLogger } from './logger';
+
+const log = createLogger('TranslationCache');
 
 /** Cache entry stored in IndexedDB */
 export interface CacheEntry {
@@ -87,13 +90,13 @@ export class TranslationCache {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => {
-        console.error('[TranslationCache] Failed to open database:', request.error);
+        log.error(' Failed to open database:', request.error);
         reject(request.error);
       };
 
       request.onsuccess = () => {
         this.db = request.result;
-        console.log('[TranslationCache] Database opened successfully');
+        log.info(' Database opened successfully');
         resolve(request.result);
       };
 
@@ -107,7 +110,7 @@ export class TranslationCache {
           // Index for timestamp-based LRU queries
           store.createIndex('timestamp', 'timestamp', { unique: false });
 
-          console.log('[TranslationCache] Object store created');
+          log.info(' Object store created');
         }
       };
     });
@@ -155,7 +158,7 @@ export class TranslationCache {
       });
     } catch (error) {
       this.misses++;
-      console.error('[TranslationCache] Get error:', error);
+      log.error(' Get error:', error);
       return null;
     }
   }
@@ -195,7 +198,7 @@ export class TranslationCache {
         const request = store.put(entry);
 
         request.onerror = () => {
-          console.error('[TranslationCache] Set error:', request.error);
+          log.error(' Set error:', request.error);
           reject(request.error);
         };
 
@@ -204,7 +207,7 @@ export class TranslationCache {
         };
       });
     } catch (error) {
-      console.error('[TranslationCache] Set error:', error);
+      log.error(' Set error:', error);
       // Don't throw - caching failures should not break translation
     }
   }
@@ -270,12 +273,12 @@ export class TranslationCache {
         request.onsuccess = () => {
           this.hits = 0;
           this.misses = 0;
-          console.log('[TranslationCache] Cache cleared');
+          log.info(' Cache cleared');
           resolve();
         };
       });
     } catch (error) {
-      console.error('[TranslationCache] Clear error:', error);
+      log.error(' Clear error:', error);
       throw error;
     }
   }
@@ -290,8 +293,6 @@ export class TranslationCache {
       return new Promise((resolve, reject) => {
         const transaction = db.transaction(STORE_NAME, 'readonly');
         const store = transaction.objectStore(STORE_NAME);
-        // Index available for timestamp-sorted queries if needed
-        void store.index('timestamp');
 
         let entries = 0;
         let totalSize = 0;
@@ -337,7 +338,7 @@ export class TranslationCache {
         };
       });
     } catch (error) {
-      console.error('[TranslationCache] Stats error:', error);
+      log.error(' Stats error:', error);
       return {
         entries: 0,
         totalSize: 0,

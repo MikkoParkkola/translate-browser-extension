@@ -6,6 +6,7 @@
 
 import { BaseProvider } from './base-provider';
 import { createTranslationError } from '../core/errors';
+import { handleProviderHttpError } from '../core/http-errors';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 const GOOGLE_TRANSLATE_API = 'https://translation.googleapis.com/language/translate/v2';
@@ -139,14 +140,14 @@ export class GoogleCloudProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (response.status === 400) {
-          const msg = errorData?.error?.message || 'Bad request';
-          throw new Error(`Google Cloud Translation error: ${msg}`);
-        } else if (response.status === 403) {
-          throw new Error('Invalid Google Cloud API key or API not enabled');
-        }
-        throw new Error(`Google Cloud API error: ${response.status} - ${JSON.stringify(errorData)}`);
+        const errorText = await response.text().catch(() => '');
+        const httpError = handleProviderHttpError(
+          response.status,
+          'Google Cloud',
+          errorText,
+          response.headers.get('Retry-After')
+        );
+        throw new Error(httpError.message);
       }
 
       const data: GoogleTranslateResponse = await response.json();

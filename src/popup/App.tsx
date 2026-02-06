@@ -7,6 +7,7 @@ import { UsageBar } from './components/UsageBar';
 import { CostMonitor } from './components/CostMonitor';
 import { ModelStatus } from './components/ModelStatus';
 import type { Strategy, UsageStats, ModelProgressMessage, TranslationProviderId } from '../types';
+import { safeStorageGet, safeStorageSet } from '../core/storage';
 
 // Detect browser's preferred language, fallback to 'en'
 const getBrowserLanguage = () => {
@@ -54,18 +55,18 @@ export default function App() {
   // Wrapper functions that persist language preferences to storage
   const setSourceLang = (lang: string) => {
     setSourceLangInternal(lang);
-    chrome.storage.local.set({ sourceLang: lang }).catch(console.error);
+    safeStorageSet({ sourceLang: lang });
   };
 
   const setTargetLang = (lang: string) => {
     setTargetLangInternal(lang);
-    chrome.storage.local.set({ targetLang: lang }).catch(console.error);
+    safeStorageSet({ targetLang: lang });
     console.log('[Popup] Target language saved:', lang);
   };
 
   const setStrategy = (s: Strategy) => {
     setStrategyInternal(s);
-    chrome.storage.local.set({ strategy: s }).catch(console.error);
+    safeStorageSet({ strategy: s });
   };
 
   // Determine provider from model ID (e.g., "Xenova/opus-mt-en-fi" -> "opus-mt")
@@ -178,32 +179,33 @@ export default function App() {
     });
 
     // Load saved preferences (use internal setters to avoid re-saving)
-    try {
-      const stored = await chrome.storage.local.get(['sourceLang', 'targetLang', 'strategy', 'autoTranslate', 'provider']);
-      if (stored.sourceLang) setSourceLangInternal(stored.sourceLang);
-      if (stored.targetLang) setTargetLangInternal(stored.targetLang);
-      if (stored.strategy) setStrategyInternal(stored.strategy);
-      if (stored.autoTranslate !== undefined) setAutoTranslate(stored.autoTranslate);
-      if (stored.provider) setActiveProvider(stored.provider as TranslationProviderId);
-      console.log('[Popup] Loaded preferences:', { source: stored.sourceLang, target: stored.targetLang });
-    } catch (e) {
-      console.log('[Popup] Storage not available:', e);
+    interface StoredPrefs {
+      sourceLang?: string;
+      targetLang?: string;
+      strategy?: Strategy;
+      autoTranslate?: boolean;
+      provider?: TranslationProviderId;
     }
+    const stored = await safeStorageGet<StoredPrefs>(['sourceLang', 'targetLang', 'strategy', 'autoTranslate', 'provider']);
+    if (stored.sourceLang) setSourceLangInternal(stored.sourceLang);
+    if (stored.targetLang) setTargetLangInternal(stored.targetLang);
+    if (stored.strategy) setStrategyInternal(stored.strategy);
+    if (stored.autoTranslate !== undefined) setAutoTranslate(stored.autoTranslate);
+    if (stored.provider) setActiveProvider(stored.provider);
+    console.log('[Popup] Loaded preferences:', { source: stored.sourceLang, target: stored.targetLang });
   });
 
   const toggleAutoTranslate = async () => {
     const newValue = !autoTranslate();
     setAutoTranslate(newValue);
-    try {
-      await chrome.storage.local.set({
-        autoTranslate: newValue,
-        sourceLang: sourceLang(),
-        targetLang: targetLang(),
-        strategy: strategy(),
-      });
+    const saved = await safeStorageSet({
+      autoTranslate: newValue,
+      sourceLang: sourceLang(),
+      targetLang: targetLang(),
+      strategy: strategy(),
+    });
+    if (saved) {
       console.log('[Popup] Auto-translate:', newValue);
-    } catch (e) {
-      console.error('[Popup] Failed to save auto-translate:', e);
     }
   };
 
@@ -212,8 +214,8 @@ export default function App() {
     setProviderStatus('ready');
     setError(null);
 
+    await safeStorageSet({ provider });
     try {
-      await chrome.storage.local.set({ provider });
       // Notify background service worker
       await chrome.runtime.sendMessage({ type: 'setProvider', provider });
       console.log('[Popup] Provider changed to:', provider);

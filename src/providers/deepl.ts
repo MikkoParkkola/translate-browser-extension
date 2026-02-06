@@ -6,47 +6,13 @@
 
 import { BaseProvider } from './base-provider';
 import { createTranslationError } from '../core/errors';
+import { handleProviderHttpError } from '../core/http-errors';
+import { toDeepLCode, getDeepLSupportedLanguages } from '../core/language-map';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 // DeepL API endpoints
 const DEEPL_FREE_API = 'https://api-free.deepl.com/v2';
 const DEEPL_PRO_API = 'https://api.deepl.com/v2';
-
-// Language mappings (DeepL uses some different codes)
-const LANGUAGE_MAP: Record<string, string> = {
-  en: 'EN',
-  de: 'DE',
-  fr: 'FR',
-  es: 'ES',
-  it: 'IT',
-  nl: 'NL',
-  pl: 'PL',
-  ru: 'RU',
-  ja: 'JA',
-  zh: 'ZH',
-  pt: 'PT',
-  cs: 'CS',
-  da: 'DA',
-  el: 'EL',
-  fi: 'FI',
-  hu: 'HU',
-  id: 'ID',
-  ko: 'KO',
-  lt: 'LT',
-  lv: 'LV',
-  nb: 'NB',
-  ro: 'RO',
-  sk: 'SK',
-  sl: 'SL',
-  sv: 'SV',
-  tr: 'TR',
-  uk: 'UK',
-  bg: 'BG',
-  et: 'ET',
-};
-
-// Supported language pairs (DeepL supports most combinations)
-const SUPPORTED_LANGUAGES = Object.keys(LANGUAGE_MAP);
 
 export type DeepLFormality = 'default' | 'more' | 'less' | 'prefer_more' | 'prefer_less';
 
@@ -142,7 +108,7 @@ export class DeepLProvider extends BaseProvider {
    * Convert language code to DeepL format
    */
   private toDeepLLang(lang: string): string {
-    return LANGUAGE_MAP[lang.toLowerCase()] || lang.toUpperCase();
+    return toDeepLCode(lang);
   }
 
   /**
@@ -192,13 +158,14 @@ export class DeepLProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        if (response.status === 403) {
-          throw new Error('Invalid DeepL API key');
-        } else if (response.status === 456) {
-          throw new Error('DeepL quota exceeded');
-        }
-        throw new Error(`DeepL API error: ${response.status} - ${errorText}`);
+        const errorText = await response.text().catch(() => '');
+        const httpError = handleProviderHttpError(
+          response.status,
+          'DeepL',
+          errorText,
+          response.headers.get('Retry-After')
+        );
+        throw new Error(httpError.message);
       }
 
       const data: DeepLTranslateResponse = await response.json();
@@ -310,9 +277,10 @@ export class DeepLProvider extends BaseProvider {
    * DeepL supports translation between most language pairs
    */
   getSupportedLanguages(): LanguagePair[] {
+    const supportedLanguages = getDeepLSupportedLanguages();
     const pairs: LanguagePair[] = [];
-    for (const src of SUPPORTED_LANGUAGES) {
-      for (const tgt of SUPPORTED_LANGUAGES) {
+    for (const src of supportedLanguages) {
+      for (const tgt of supportedLanguages) {
         if (src !== tgt) {
           pairs.push({ src, tgt });
         }

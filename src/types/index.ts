@@ -170,16 +170,51 @@ export interface SetProviderMessage {
   target?: string;
 }
 
+// Page translation message
+export interface TranslatePageMessage {
+  type: 'translatePage';
+  sourceLang: string;
+  targetLang: string;
+  strategy?: Strategy;
+  provider?: TranslationProviderId;
+  target?: string;
+}
+
+// Ping message for checking extension availability
+export interface PingMessage {
+  type: 'ping';
+  target?: string;
+}
+
+// Get usage statistics
+export interface GetUsageMessage {
+  type: 'getUsage';
+  target?: string;
+}
+
+// Clear translation cache
+export interface ClearCacheMessage {
+  type: 'clearCache';
+  target?: string;
+}
+
+// Get supported languages
+export interface GetSupportedLanguagesMessage {
+  type: 'getSupportedLanguages';
+  target?: string;
+}
+
 export type ExtensionMessage =
-  | (TranslateMessage & { target?: string })
-  | { type: 'getUsage'; target?: string }
+  | TranslateMessage
+  | TranslatePageMessage
+  | PingMessage
+  | GetUsageMessage
+  | GetSupportedLanguagesMessage
+  | ClearCacheMessage
   | { type: 'getProviders'; target?: string }
-  | { type: 'getSupportedLanguages'; target?: string }
   | { type: 'getModelStatus'; target?: string }
   | { type: 'getDeviceInfo'; target?: string }
   | { type: 'getCacheStats'; target?: string }
-  | { type: 'clearCache'; target?: string }
-  | { type: 'ping'; target?: string }
   | PreloadModelMessage
   | ModelProgressMessage
   | ModelStatusMessage
