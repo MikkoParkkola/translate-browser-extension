@@ -5,14 +5,22 @@ describe('offline handling', () => {
     jest.resetModules();
     delete window.__qwenCSLoaded;
     delete window.__qwenCSModule;
+    delete window.translationExtensionInitialized;
     let messageListener;
     const sendMessage = jest.fn();
     global.chrome = {
       runtime: {
+        id: 'test-extension-id',
         getURL: () => 'chrome-extension://abc/',
         sendMessage,
         onMessage: { addListener: cb => { messageListener = cb; } },
       },
+      storage: {
+        sync: {
+          get: jest.fn((keys) => Promise.resolve({})),
+          set: jest.fn((data) => Promise.resolve())
+        }
+      }
     };
     window.qwenI18n = { t: k => (k === 'popup.offline' ? 'Offline' : k === 'bubble.offline' ? 'Offline' : k), ready: Promise.resolve() };
     const origTranslate = window.qwenTranslate;
@@ -21,8 +29,10 @@ describe('offline handling', () => {
     window.getSelection = () => ({ toString: () => 'hi' });
     const origDesc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.navigator), 'onLine');
     Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true });
-    require('../src/contentScript.js');
-    messageListener({ action: 'translate-selection' });
+    require('../src/contentScript-simple.js');
+    // Wait for initialization to complete (contentScript-simple has 100ms delay)
+    await new Promise(r => setTimeout(r, 150));
+    messageListener({ type: 'translateSelection' }, {}, () => {});
     await new Promise(r => setTimeout(r, 0));
     expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'popup-status', text: 'Offline', error: true }), expect.any(Function));
     expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'translation-status', status: { offline: true } }), expect.any(Function));
@@ -36,14 +46,22 @@ describe('offline handling', () => {
     jest.resetModules();
     delete window.__qwenCSLoaded;
     delete window.__qwenCSModule;
+    delete window.translationExtensionInitialized;
     let messageListener;
     const sendMessage = jest.fn();
     global.chrome = {
       runtime: {
+        id: 'test-extension-id',
         getURL: () => 'chrome-extension://abc/',
         sendMessage,
         onMessage: { addListener: cb => { messageListener = cb; } },
       },
+      storage: {
+        sync: {
+          get: jest.fn((keys) => Promise.resolve({})),
+          set: jest.fn((data) => Promise.resolve())
+        }
+      }
     };
     window.qwenI18n = { t: k => (k === 'popup.offline' ? 'Offline' : k === 'bubble.offline' ? 'Offline' : k), ready: Promise.resolve() };
     const origTranslate = window.qwenTranslate;
@@ -54,8 +72,10 @@ describe('offline handling', () => {
     window.getSelection = () => ({ toString: () => 'hi' });
     const origDesc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window.navigator), 'onLine');
     Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true });
-    require('../src/contentScript.js');
-    messageListener({ action: 'translate-selection' });
+    require('../src/contentScript-simple.js');
+    // Wait for initialization to complete (contentScript-simple has 100ms delay)
+    await new Promise(r => setTimeout(r, 150));
+    messageListener({ type: 'translateSelection' }, {}, () => {});
     await new Promise(r => setTimeout(r, 0));
     expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'translation-status', status: { offline: true } }), expect.any(Function));
     const status = document.getElementById('qwen-status');

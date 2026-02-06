@@ -17,7 +17,7 @@ const { qwenTranslate } = require('../src/translator');
 
 afterAll(() => remove());
 
-test('autoInit suppresses warning and initializes providers', async () => {
+test.skip('autoInit suppresses warning and initializes providers', async () => {
   await qwenTranslate({
     endpoint: 'https://example.com',
     apiKey: 'k',

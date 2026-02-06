@@ -2,24 +2,11 @@
  * Tests for Translation Memory integration
  */
 
-// Mock IndexedDB for testing
-const mockIndexedDB = {
-  open: jest.fn().mockReturnValue({
-    result: { createObjectStore: jest.fn() },
-    onsuccess: null,
-    onerror: null,
-    onupgradeneeded: null
-  })
-};
-
-global.indexedDB = mockIndexedDB;
-
-// Ensure we're in Node.js environment for module.exports
-global.module = { exports: {} };
+// Use fake-indexeddb to emulate IndexedDB in Jest
+require('fake-indexeddb/auto');
 
 // Import the Translation Memory module
-require('../src/lib/translationMemory.js');
-const { TranslationMemory, getTranslationMemory } = module.exports;
+const { TranslationMemory, getTranslationMemory } = require('../src/lib/translationMemory.js');
 
 describe('Translation Memory', () => {
   let tm;

@@ -1,9 +1,17 @@
 {
-  "name": "translate-by-mikko",
-  "version": "1.44.1",
-  "description": "Extension to translate web pages using multiple providers",
-  "main": "index.js",
+  "name": "translate-extension",
+  "version": "2.0.0",
+  "type": "module",
   "scripts": {
+<<<<<<< HEAD
+    "dev": "vite build --watch",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "lint": "eslint src --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit"
+=======
     "test": "jest",
     "build:safari": "bash scripts/convert-safari.sh",
     "test:e2e:web": "playwright test e2e/context-menu.spec.js e2e/dom-translate.spec.js e2e/translate-page.spec.js e2e/streaming-cancel.spec.js",
@@ -110,9 +118,31 @@
     "size-limit": "^11.1.5",
     "webpack": "^5.95.0",
     "webpack-bundle-analyzer": "^4.10.0"
+>>>>>>> origin/main
   },
   "dependencies": {
-    "mupdf": "^1.26.4",
-    "pdfjs-dist": "^5.4.54"
+    "@huggingface/transformers": "^3.0.0",
+    "franc-min": "^6.2.0",
+    "solid-js": "^1.8.0"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.24.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@types/chrome": "^0.0.268",
+    "@types/node": "^20.14.0",
+    "@vitest/coverage-v8": "^2.1.9",
+    "@webgpu/types": "^0.1.69",
+    "eslint": "^9.0.0",
+    "eslint-plugin-solid": "^0.14.0",
+    "jsdom": "^28.0.0",
+    "puppeteer": "^24.36.1",
+    "typescript": "^5.4.0",
+    "vite": "^5.4.0",
+    "vite-plugin-solid": "^2.10.0",
+    "vite-plugin-web-extension": "^4.1.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

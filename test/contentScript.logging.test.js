@@ -1,7 +1,29 @@
 // @jest-environment jsdom
 
+function installContentScriptStubs() {
+  global.UIManager = class {
+    constructor() {}
+    createProgressIndicator() { return 'progress'; }
+    updateProgress() {}
+    removeProgressIndicator() {}
+    showToast() {}
+    cleanup() {}
+    createSelectionOverlay() { return 'overlay'; }
+    createTranslationOverlay() { return 'overlay'; }
+    updateOverlay() {}
+  };
+
+  global.ContentObserver = class {
+    constructor() {}
+    startObserving() {}
+    stopObserving() {}
+    destroy() {}
+  };
+}
+
 test('logs batch translation steps', async () => {
   jest.resetModules();
+  installContentScriptStubs();
   const sendMessage = jest.fn();
   global.chrome = {
     runtime: {
@@ -43,6 +65,7 @@ test('logs batch translation steps', async () => {
 
 test('clears controllers on unload', async () => {
   jest.resetModules();
+  installContentScriptStubs();
   const sendMessage = jest.fn();
   global.chrome = {
     runtime: {
@@ -83,6 +106,7 @@ test('clears controllers on unload', async () => {
 
 test('reuses cached exports on subsequent loads', () => {
   jest.resetModules();
+  installContentScriptStubs();
   const sendMessage = jest.fn();
   global.chrome = {
     runtime: {
