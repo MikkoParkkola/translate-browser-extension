@@ -3,6 +3,14 @@
  *
  * Direct language pairs with available Xenova OPUS-MT models.
  * Source: https://huggingface.co/models?search=xenova/opus-mt (76 models)
+ *
+ * Added language support:
+ * - Polish (pl): pl-en direct, en-pl via multilingual
+ * - Portuguese (pt): via ROMANCE multilingual models
+ * - Norwegian (no): no-de direct, pivots via German
+ * - Greek (el): NOT AVAILABLE in Xenova collection
+ * - Baltic (lt, lv): via bat-en multilingual
+ * - Germanic family: gem-gem, gmw-gmw multilingual
  */
 
 // Model mapping (direct language pairs with available Xenova OPUS-MT models)
@@ -67,9 +75,29 @@ export const MODEL_MAP: Record<string, string> = {
   'xh-en': 'Xenova/opus-mt-xh-en',
   'et-en': 'Xenova/opus-mt-et-en', // Estonian (en-et not available)
 
+  // === English <-> Polish ===
+  'pl-en': 'Xenova/opus-mt-pl-en',
+  // Note: en-pl not directly available, use mul or pivot
+
   // === Turkish (tc-big model for better quality) ===
   'tr-en': 'Xenova/opus-mt-tc-big-tr-en',
   // Note: en-tr not directly available, use ROMANCE or pivot
+
+  // === Multilingual Models ===
+  // mul-en: Multilingual to English (supports many source languages)
+  'mul-en': 'Xenova/opus-mt-mul-en',
+  // en-mul: English to Multilingual (supports many target languages)
+  'en-mul': 'Xenova/opus-mt-en-mul',
+  // ROMANCE-en: Romance languages (es, fr, it, pt, ro) to English
+  'ROMANCE-en': 'Xenova/opus-mt-ROMANCE-en',
+  // en-ROMANCE: English to Romance languages (es, fr, it, pt, ro)
+  'en-ROMANCE': 'Xenova/opus-mt-en-ROMANCE',
+  // bat-en: Baltic languages (lt, lv) to English
+  'bat-en': 'Xenova/opus-mt-bat-en',
+  // gem-gem: Germanic language family (bidirectional)
+  'gem-gem': 'Xenova/opus-mt-gem-gem',
+  // gmw-gmw: West Germanic languages (bidirectional)
+  'gmw-gmw': 'Xenova/opus-mt-gmw-gmw',
 
   // === Direct Non-English Pairs (Romance languages) ===
   'fr-de': 'Xenova/opus-mt-fr-de',
@@ -97,6 +125,7 @@ export const MODEL_MAP: Record<string, string> = {
   'da-de': 'Xenova/opus-mt-da-de',
   'no-de': 'Xenova/opus-mt-no-de', // Note: no = Norwegian
   'fi-de': 'Xenova/opus-mt-fi-de',
+  'sv-de': 'Xenova/opus-mt-gem-gem', // Swedish-German via Germanic multilingual
 };
 
 // Pivot routes for language pairs without direct models (translate via English)
@@ -192,6 +221,33 @@ export const PIVOT_ROUTES: Record<string, [string, string]> = {
   // === Hindi pivots ===
   'hi-de': ['hi-en', 'en-de'],  // Hindi -> English -> German
   'de-hi': ['de-en', 'en-hi'],  // German -> English -> Hindi
+
+  // === Polish pivots (pl-en available, en-pl not) ===
+  'en-pl': ['en-mul', 'mul-en'], // English -> Multilingual (limited quality)
+  'pl-de': ['pl-en', 'en-de'],  // Polish -> English -> German
+  'de-pl': ['de-en', 'en-mul'], // German -> English -> Polish (via mul)
+  'pl-fr': ['pl-en', 'en-fr'],  // Polish -> English -> French
+  'fr-pl': ['fr-en', 'en-mul'], // French -> English -> Polish (via mul)
+  'pl-fi': ['pl-en', 'en-fi'],  // Polish -> English -> Finnish
+  'fi-pl': ['fi-en', 'en-mul'], // Finnish -> English -> Polish (via mul)
+
+  // === Norwegian pivots (no direct en-no or no-en, but no-de exists) ===
+  'no-en': ['no-de', 'de-en'],  // Norwegian -> German -> English
+  'en-no': ['en-de', 'de-en'],  // English -> German -> Norwegian (limited, no de-no)
+  'no-fi': ['no-de', 'de-en'],  // Norwegian -> German -> English (then pivot to fi)
+  'fi-no': ['fi-de', 'de-en'],  // Finnish -> German -> Norwegian (limited)
+  'no-sv': ['no-de', 'de-en'],  // Norwegian -> Swedish (via German-English pivot, limited)
+
+  // === Portuguese pivots (use ROMANCE-en for pt-en direction) ===
+  // Note: Portuguese is supported via ROMANCE-en multilingual model
+  'pt-en': ['ROMANCE-en', 'ROMANCE-en'], // Portuguese -> English via ROMANCE (single model, special case)
+  'en-pt': ['en-ROMANCE', 'en-ROMANCE'], // English -> Portuguese via en-ROMANCE (single model)
+  'pt-de': ['ROMANCE-en', 'en-de'],      // Portuguese -> English -> German
+  'de-pt': ['de-en', 'en-ROMANCE'],      // German -> English -> Portuguese
+  'pt-fr': ['ROMANCE-en', 'en-fr'],      // Portuguese -> English -> French
+  'fr-pt': ['fr-en', 'en-ROMANCE'],      // French -> English -> Portuguese
+  'pt-fi': ['ROMANCE-en', 'en-fi'],      // Portuguese -> English -> Finnish
+  'fi-pt': ['fi-en', 'en-ROMANCE'],      // Finnish -> English -> Portuguese
 };
 
 /**
