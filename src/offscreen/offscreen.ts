@@ -100,11 +100,26 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   log.info(` Using device: ${device}, dtype: ${dtype}`);
 
   // Use optimized timeout for OPUS-MT direct models (~170MB, typically loads in <60s)
-  const pipe = await withTimeout(
-    pipeline('translation', modelId, { device, dtype } as Record<string, unknown>),
-    CONFIG.timeouts.opusMtDirectMs,
-    `Loading model ${modelId}`
-  );
+  // If WebGPU+fp16 fails (GPU incompatibility), fall back to WASM+fp32 automatically.
+  let pipe;
+  try {
+    pipe = await withTimeout(
+      pipeline('translation', modelId, { device, dtype } as Record<string, unknown>),
+      CONFIG.timeouts.opusMtDirectMs,
+      `Loading model ${modelId}`
+    );
+  } catch (err) {
+    if (device === 'webgpu') {
+      log.warn(` WebGPU+fp16 failed, falling back to WASM: ${err instanceof Error ? err.message : err}`);
+      pipe = await withTimeout(
+        pipeline('translation', modelId, { device: 'wasm', dtype: 'fp32' } as Record<string, unknown>),
+        CONFIG.timeouts.opusMtDirectMs,
+        `Loading model ${modelId} (WASM fallback)`
+      );
+    } else {
+      throw err;
+    }
+  }
 
   const loadDuration = performance.now() - loadStart;
   if (sessionId) {
