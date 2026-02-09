@@ -3,9 +3,50 @@
  *
  * Utilities for Chrome extension testing with Puppeteer.
  * Handles extension ID discovery, popup navigation, and element waiting.
+ *
+ * IMPORTANT: Uses Chrome for Testing, not regular Chrome.
+ * Regular Chrome ignores --disable-extensions-except for security.
  */
 
 import { Browser, Page } from 'puppeteer';
+import { existsSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
+
+/**
+ * Find Chrome for Testing executable.
+ * Puppeteer downloads this to ~/.cache/puppeteer/chrome/
+ */
+export function findChromeForTesting(): string | undefined {
+  const cacheDir = join(homedir(), '.cache', 'puppeteer', 'chrome');
+
+  // Common paths for Chrome for Testing on macOS
+  const possiblePaths = [
+    // Specific version we know exists
+    join(cacheDir, 'mac_arm-145.0.7632.46/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'),
+    // Try to find any version
+  ];
+
+  for (const p of possiblePaths) {
+    if (existsSync(p)) {
+      return p;
+    }
+  }
+
+  // Try to find any Chrome for Testing in cache
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync(`find "${cacheDir}" -name "Google Chrome for Testing" -type f 2>/dev/null | head -1`, { encoding: 'utf-8' });
+    const found = result.trim();
+    if (found && existsSync(found)) {
+      return found;
+    }
+  } catch {
+    // Ignore errors
+  }
+
+  return undefined;
+}
 
 /**
  * Default timeouts for E2E operations
@@ -22,15 +63,16 @@ export const TIMEOUTS = {
  * Tries multiple detection methods:
  * 1. Service worker target (MV3)
  * 2. Any chrome-extension:// target
+ * 3. Background page (MV2/hybrid)
  *
  * @param browser - Puppeteer Browser instance
- * @param maxRetries - Number of retry attempts (default: 20)
+ * @param maxRetries - Number of retry attempts (default: 40)
  * @param delayMs - Delay between retries in ms (default: 500)
  * @returns Extension ID or null if not found
  */
 export async function getExtensionId(
   browser: Browser,
-  maxRetries = 20,
+  maxRetries = 40,
   delayMs = 500
 ): Promise<string | null> {
   for (let i = 0; i < maxRetries; i++) {
@@ -47,7 +89,18 @@ export async function getExtensionId(
       if (match) return match[1];
     }
 
-    // Method 2: Find any extension-related target
+    // Method 2: Find background page (some MV3 extensions register this)
+    const bgTarget = targets.find(
+      (t) =>
+        t.type() === 'background_page' &&
+        t.url().startsWith('chrome-extension://')
+    );
+    if (bgTarget) {
+      const match = bgTarget.url().match(/chrome-extension:\/\/([^/]+)/);
+      if (match) return match[1];
+    }
+
+    // Method 3: Find any extension-related target (popup, options, etc.)
     const extTarget = targets.find((t) =>
       t.url().startsWith('chrome-extension://')
     );

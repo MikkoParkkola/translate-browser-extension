@@ -39,8 +39,8 @@ describe('MODELS constant', () => {
       expect(opusMt?.description).toBe('Helsinki-NLP');
     });
 
-    it('shows ~170MB per pair size', () => {
-      expect(opusMt?.size).toBe('~170MB per pair');
+    it('shows ~170MB size', () => {
+      expect(opusMt?.size).toBe('~170MB');
     });
   });
 
@@ -134,14 +134,14 @@ describe('ModelInfo type', () => {
       name: 'OPUS-MT',
       tag: 'Fast',
       description: 'Helsinki-NLP',
-      size: '~170MB per pair',
+      size: '~170MB',
     };
 
     expect(model.id).toBe('opus-mt');
     expect(model.name).toBe('OPUS-MT');
     expect(model.tag).toBe('Fast');
     expect(model.description).toBe('Helsinki-NLP');
-    expect(model.size).toBe('~170MB per pair');
+    expect(model.size).toBe('~170MB');
   });
 });
 

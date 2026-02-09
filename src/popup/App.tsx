@@ -3,10 +3,8 @@ import { ProviderStatus } from './components/ProviderStatus';
 import { ModelSelector, type ModelDownloadStatus } from './components/ModelSelector';
 import { LanguageSelector } from './components/LanguageSelector';
 import { StrategySelector } from './components/StrategySelector';
-import { UsageBar } from './components/UsageBar';
-import { CostMonitor } from './components/CostMonitor';
 import { ModelStatus } from './components/ModelStatus';
-import type { Strategy, UsageStats, ModelProgressMessage, TranslationProviderId } from '../types';
+import type { Strategy, ModelProgressMessage, TranslationProviderId } from '../types';
 import { safeStorageGet, safeStorageSet } from '../core/storage';
 import { browserAPI } from '../core/browser-api';
 
@@ -32,11 +30,8 @@ export default function App() {
   };
   const [isTranslating, setIsTranslating] = createSignal(false);
   const [autoTranslate, setAutoTranslate] = createSignal(false);
+  const [bilingualMode, setBilingualMode] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
-  const [usage, _setUsage] = createSignal<UsageStats>({
-    today: { requests: 0, characters: 0, cost: 0 },
-    budget: { monthly: 2.0, used: 0 },
-  });
 
   // Model caching state
   const [isModelLoading, setIsModelLoading] = createSignal(false);
@@ -270,15 +265,50 @@ export default function App() {
     }
   };
 
+  const handleToggleBilingual = async () => {
+    try {
+      const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) return;
+
+      // Ensure content script is loaded
+      const injected = await ensureContentScript(tab.id);
+      if (!injected) {
+        setError('Cannot access this page');
+        return;
+      }
+
+      const response = await browserAPI.tabs.sendMessage(tab.id, { type: 'toggleBilingualMode' }) as { enabled: boolean } | undefined;
+      if (response) {
+        setBilingualMode(response.enabled);
+        console.log('[Popup] Bilingual mode:', response.enabled);
+      }
+    } catch (e) {
+      console.error('[Popup] Toggle bilingual mode failed:', e);
+    }
+  };
+
   const handleError = (e: unknown) => {
     const msg = e instanceof Error ? e.message : String(e);
+    const msgLower = msg.toLowerCase();
+
     if (msg.includes('Cannot access')) {
-      setError('Cannot translate this page');
-    } else {
+      setError('Cannot translate this page. Browser internal pages cannot be translated.');
+    } else if (msgLower.includes('language pair') || msgLower.includes('not available') || msgLower.includes('unsupported')) {
+      // Language pair errors - the message already includes suggestions from errors.ts
       setError(msg);
+    } else if (msgLower.includes('network') || msgLower.includes('connection') || (msgLower.includes('fetch') && !msgLower.includes('model'))) {
+      setError(`Connection error: ${msg}. Check your internet connection.`);
+    } else if (msgLower.includes('timeout') || msgLower.includes('timed out')) {
+      setError(`${msg}. Try with less text or wait for the model to fully load.`);
+    } else if (msgLower.includes('model') || msgLower.includes('pipeline') || msgLower.includes('load')) {
+      setError(`${msg}. Try waiting for the model to download, or switch to Chrome Built-in translator.`);
+    } else if (msgLower.includes('memory') || msgLower.includes('oom')) {
+      setError(`${msg}. Try closing other tabs or using a smaller text selection.`);
+    } else {
+      setError(msg || 'Translation failed. Please try again or select a different provider.');
     }
-    // Clear error after 5 seconds
-    setTimeout(() => setError(null), 5000);
+    // Clear error after 8 seconds (longer to read suggestions)
+    setTimeout(() => setError(null), 8000);
   };
 
   const handleTranslateSelection = async () => {
@@ -367,6 +397,20 @@ export default function App() {
     }
   };
 
+  const handleUndo = async () => {
+    try {
+      const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) return;
+
+      const injected = await ensureContentScript(tab.id);
+      if (!injected) return;
+
+      await browserAPI.tabs.sendMessage(tab.id, { type: 'undoTranslation' });
+    } catch (e) {
+      console.error('[Popup] Undo failed:', e);
+    }
+  };
+
   const openSettings = () => {
     browserAPI.runtime.openOptionsPage();
   };
@@ -443,50 +487,79 @@ export default function App() {
             <span class="toggle-slider"></span>
             <span class="toggle-label">Auto-translate pages</span>
           </label>
+          <label class="auto-toggle">
+            <input
+              type="checkbox"
+              checked={bilingualMode()}
+              onChange={handleToggleBilingual}
+            />
+            <span class="toggle-slider"></span>
+            <span class="toggle-label">Bilingual mode</span>
+          </label>
         </section>
 
         {/* Error Display */}
         <Show when={error()}>
-          <div class="error-banner">{error()}</div>
+          <div class="error-banner" role="alert">
+            <svg class="error-banner__icon" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+              <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="12" cy="16" r="1" fill="currentColor"/>
+            </svg>
+            <div class="error-banner__content">
+              <div class="error-banner__message">{error()}</div>
+            </div>
+            <button
+              class="error-banner__dismiss"
+              onClick={() => setError(null)}
+              aria-label="Dismiss error"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
         </Show>
 
-        {/* Action Buttons */}
-        <section class="action-section">
+        {/* Action Buttons - Compact */}
+        <section class="action-bar">
           <button
-            class="action-button action-button--primary"
+            class="action-btn action-btn--primary"
             onClick={handleTranslatePage}
             disabled={isTranslating()}
+            title="Translate entire page"
           >
-            <Show when={!isTranslating()} fallback={<span class="spinner" />}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path d="M4 6h16M4 10h16M4 14h16M4 18h16" stroke="currentColor" stroke-width="2" />
+            <Show when={!isTranslating()} fallback={<span class="spinner-small" />}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M3 5h12M9 3v2m1.048 3.5A3.5 3.5 0 016.5 12a3.5 3.5 0 01-2.45-5.943M6 16l-2 6 3-2 3 2-2-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </Show>
-            <span>Translate Page</span>
+            <span>Page</span>
           </button>
 
           <button
-            class="action-button action-button--secondary"
+            class="action-btn action-btn--secondary"
             onClick={handleTranslateSelection}
             disabled={isTranslating()}
+            title="Translate selected text"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 2l3.09 6.26L22 9l-5 4.87L18.18 22 12 18.77 5.82 22 7 13.87 2 9l6.91-.74L12 2z"
-                stroke="currentColor"
-                stroke-width="2"
-                fill="none"
-              />
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M4 7V4h16v3M9 20h6M12 4v16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <span>Translate Selection</span>
+            <span>Selection</span>
+          </button>
+
+          <button
+            class="action-btn action-btn--tertiary"
+            onClick={handleUndo}
+            title="Undo translation"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M3 7v6h6M3 13a9 9 0 1018 0 9 9 0 00-15-6.7L3 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Undo</span>
           </button>
         </section>
-
-        {/* Usage Tracking */}
-        <UsageBar usage={usage()} />
-
-        {/* Cost Monitor */}
-        <CostMonitor usage={usage()} />
       </main>
     </div>
   );

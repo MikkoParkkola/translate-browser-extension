@@ -2,9 +2,20 @@
  * TranslateGemma Module
  *
  * Handles TranslateGemma 4B model for high-quality translation with WebGPU.
+ *
+ * Architecture note: The HuggingFace model config declares model_type "gemma3"
+ * (multimodal) with Gemma3ForConditionalGeneration, but Transformers.js only maps
+ * "gemma3_text" to Gemma3ForCausalLM for text generation. We bypass the pipeline
+ * auto-detection by loading Gemma3ForCausalLM + AutoTokenizer directly.
  */
 
-import { pipeline, type TextGenerationPipeline } from '@huggingface/transformers';
+import {
+  Gemma3ForCausalLM,
+  AutoTokenizer,
+  type PreTrainedModel,
+  type PreTrainedTokenizer,
+  type Tensor,
+} from '@huggingface/transformers';
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
 
@@ -28,9 +39,10 @@ export const LANG_NAMES: Record<string, string> = {
   af: 'Afrikaans', sw: 'Swahili',
 };
 
-// TranslateGemma pipeline (text-generation, singleton)
-let tgPipeline: TextGenerationPipeline | null = null;
-let tgLoading: Promise<TextGenerationPipeline> | null = null;
+// TranslateGemma model + tokenizer (loaded directly, not via pipeline)
+let tgModel: PreTrainedModel | null = null;
+let tgTokenizer: PreTrainedTokenizer | null = null;
+let tgLoading: Promise<{ model: PreTrainedModel; tokenizer: PreTrainedTokenizer }> | null = null;
 
 /**
  * Wrap a promise with a timeout.
@@ -81,14 +93,33 @@ export function formatTranslateGemmaPrompt(
 }
 
 /**
- * Load TranslateGemma model (singleton, cached in IndexedDB).
+ * Send model progress update to popup via service worker.
  */
-export async function getTranslateGemmaPipeline(): Promise<TextGenerationPipeline> {
-  if (tgPipeline) return tgPipeline;
+function sendProgress(update: Record<string, unknown>): void {
+  try {
+    chrome.runtime.sendMessage({
+      type: 'modelProgress',
+      modelId: TRANSLATEGEMMA_MODEL,
+      ...update,
+    });
+  } catch {
+    // Popup may be closed
+  }
+}
+
+/**
+ * Load TranslateGemma model + tokenizer directly (singleton, cached in IndexedDB).
+ *
+ * Uses Gemma3ForCausalLM explicitly instead of pipeline() to bypass the
+ * model_type auto-detection issue: the model declares model_type "gemma3"
+ * but Transformers.js only maps "gemma3_text" to the causal LM class.
+ */
+export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedModel; tokenizer: PreTrainedTokenizer }> {
+  if (tgModel && tgTokenizer) return { model: tgModel, tokenizer: tgTokenizer };
   if (tgLoading) return tgLoading;
 
   tgLoading = (async () => {
-    log.info(' Loading TranslateGemma model...');
+    log.info('Loading TranslateGemma model...');
 
     const webgpu = await detectWebGPU();
     if (!webgpu) {
@@ -98,62 +129,49 @@ export async function getTranslateGemmaPipeline(): Promise<TextGenerationPipelin
     }
 
     try {
-      const pipe = await withTimeout(
-        pipeline('text-generation', TRANSLATEGEMMA_MODEL, {
-          device: 'webgpu',
-          progress_callback: (progress: Record<string, unknown>) => {
-            // Forward progress to popup via service worker
-            try {
-              chrome.runtime.sendMessage({
-                type: 'modelProgress',
-                modelId: TRANSLATEGEMMA_MODEL,
-                status: progress.status || 'progress',
-                progress: progress.progress ?? 0,
-                file: progress.file || null,
-                loaded: progress.loaded || null,
-                total: progress.total || null,
-              });
-            } catch {
-              // Popup may be closed
-            }
-          },
-        }),
+      const progressCallback = (progress: Record<string, unknown>) => {
+        sendProgress({
+          status: progress.status || 'progress',
+          progress: progress.progress ?? 0,
+          file: progress.file || null,
+          loaded: progress.loaded || null,
+          total: progress.total || null,
+        });
+      };
+
+      // Load model and tokenizer in parallel for faster startup.
+      // Gemma3ForCausalLM is used directly to avoid pipeline model_type
+      // resolution failure (model declares "gemma3", TJS only maps "gemma3_text").
+      const [model, tokenizer] = await withTimeout(
+        Promise.all([
+          Gemma3ForCausalLM.from_pretrained(TRANSLATEGEMMA_MODEL, {
+            device: 'webgpu',
+            progress_callback: progressCallback,
+          } as Record<string, unknown>),
+          AutoTokenizer.from_pretrained(TRANSLATEGEMMA_MODEL, {
+            progress_callback: progressCallback,
+          }),
+        ]),
         CONFIG.timeouts.translateGemmaMs,  // 5 min for ~3.6GB model
         `Loading TranslateGemma model`
       );
 
-      tgPipeline = pipe as TextGenerationPipeline;
+      tgModel = model as PreTrainedModel;
+      tgTokenizer = tokenizer as PreTrainedTokenizer;
       tgLoading = null;
 
-      // Notify ready
-      try {
-        chrome.runtime.sendMessage({
-          type: 'modelProgress',
-          modelId: TRANSLATEGEMMA_MODEL,
-          status: 'ready',
-          progress: 100,
-        });
-      } catch {
-        // Popup may be closed
-      }
+      sendProgress({ status: 'ready', progress: 100 });
+      log.info('TranslateGemma loaded successfully');
 
-      log.info(' TranslateGemma loaded successfully');
-      return tgPipeline;
+      return { model: tgModel, tokenizer: tgTokenizer };
     } catch (error) {
       tgLoading = null;
-      log.error(' TranslateGemma failed to load:', error);
+      log.error('TranslateGemma failed to load:', error);
 
-      // Notify error
-      try {
-        chrome.runtime.sendMessage({
-          type: 'modelProgress',
-          modelId: TRANSLATEGEMMA_MODEL,
-          status: 'error',
-          error: error instanceof Error ? error.message : String(error),
-        });
-      } catch {
-        // Popup may be closed
-      }
+      sendProgress({
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      });
 
       throw error;
     }
@@ -163,30 +181,40 @@ export async function getTranslateGemmaPipeline(): Promise<TextGenerationPipelin
 }
 
 /**
- * Translate using TranslateGemma (text-generation pipeline).
+ * Translate using TranslateGemma (direct model + tokenizer).
  */
 export async function translateWithGemma(
   text: string | string[],
   sourceLang: string,
   targetLang: string
 ): Promise<string | string[]> {
-  const pipe = await getTranslateGemmaPipeline();
+  const { model, tokenizer } = await getTranslateGemmaPipeline();
 
   const translateSingle = async (t: string): Promise<string> => {
     if (!t || t.trim().length === 0) return t;
 
     const prompt = formatTranslateGemmaPrompt(t, sourceLang, targetLang);
-    const result = await pipe(prompt, {
+    const inputs = tokenizer(prompt);
+
+    // Generate translation
+    const outputIds = await (model as PreTrainedModel & {
+      generate(params: Record<string, unknown>): Promise<Tensor>;
+    }).generate({
+      ...inputs,
       max_new_tokens: 1024,
       do_sample: false,
-      return_full_text: false,
     });
 
-    // Extract generated text
-    const output = (result as Array<{ generated_text: string }>)[0];
-    let translation = output.generated_text || '';
+    // Decode only the generated tokens (skip input prompt tokens)
+    const inputLength = (inputs.input_ids as Tensor).dims[1];
+    const allTokenIds = (outputIds as Tensor).tolist() as number[][];
+    const generatedTokenIds = (allTokenIds[0] ?? []).slice(inputLength);
+    let translation = tokenizer.decode(
+      generatedTokenIds,
+      { skip_special_tokens: true }
+    );
 
-    // Clean up: remove any trailing special tokens
+    // Clean up: remove any trailing special tokens / template artifacts
     translation = translation
       .replace(/<end_of_turn>/g, '')
       .replace(/<start_of_turn>/g, '')
@@ -212,7 +240,7 @@ export async function translateWithGemma(
  * Check if TranslateGemma is loaded.
  */
 export function isTranslateGemmaLoaded(): boolean {
-  return tgPipeline !== null;
+  return tgModel !== null;
 }
 
 /**

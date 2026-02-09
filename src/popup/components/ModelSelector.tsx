@@ -8,7 +8,7 @@ export interface ModelInfo {
   description: string;
   size: string;
   isCloud?: boolean;
-  costEstimate?: string; // e.g., "~$0.02/1K chars"
+  costEstimate?: string;
 }
 
 export interface ModelDownloadStatus {
@@ -41,7 +41,7 @@ export const LOCAL_MODELS: ModelInfo[] = [
     name: 'OPUS-MT',
     tag: 'Fast',
     description: 'Helsinki-NLP',
-    size: '~170MB per pair',
+    size: '~170MB',
   },
   {
     id: 'translategemma',
@@ -55,7 +55,7 @@ export const LOCAL_MODELS: ModelInfo[] = [
     name: 'Chrome Built-in',
     tag: 'Native',
     description: 'Chrome 138+',
-    size: 'No download',
+    size: 'Built-in',
   },
 ];
 
@@ -99,42 +99,23 @@ export const CLOUD_PROVIDERS: ModelInfo[] = [
   },
 ];
 
-// Combined list for backward compatibility
 export const MODELS: ModelInfo[] = [...LOCAL_MODELS, ...CLOUD_PROVIDERS];
 
 /**
- * Cloud icon SVG component
- */
-const CloudIcon: Component = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" class="cloud-icon">
-    <path
-      d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    />
-  </svg>
-);
-
-/**
- * Model selector component with download status indicators.
- * Shows available translation models with their characteristics and current status.
- * Includes cloud providers with API key status.
+ * Compact dropdown model selector
  */
 export const ModelSelector: Component<Props> = (props) => {
-  // Track cloud provider availability from storage
   const [cloudApiStatus, setCloudApiStatus] = createSignal<Record<string, boolean>>({});
+  const [isOpen, setIsOpen] = createSignal(false);
 
   onMount(async () => {
-    // Check which cloud providers have API keys configured
     try {
       const response = await chrome.runtime.sendMessage({ type: 'getCloudProviderStatus' });
       if (response?.status) {
         setCloudApiStatus(response.status);
       }
     } catch {
-      // Ignore errors - cloud providers just won't show as configured
+      // Ignore
     }
   });
 
@@ -147,128 +128,117 @@ export const ModelSelector: Component<Props> = (props) => {
     };
   };
 
-  const getStatusClass = (modelId: TranslationProviderId): string => {
-    const status = getStatus(modelId);
-    if (status.error) return 'model-error';
-    if (status.isDownloading) return 'model-downloading';
-    if (status.isDownloaded) return 'model-ready';
-    return '';
-  };
-
   const isCloudConfigured = (modelId: TranslationProviderId): boolean => {
     return cloudApiStatus()[modelId] ?? false;
   };
 
-  const openOptions = () => {
-    chrome.runtime.openOptionsPage();
+  const selectedModel = () => MODELS.find(m => m.id === props.selected) || LOCAL_MODELS[0];
+
+  const handleSelect = (modelId: TranslationProviderId) => {
+    const model = MODELS.find(m => m.id === modelId);
+    if (model?.isCloud && !isCloudConfigured(modelId)) {
+      chrome.runtime.openOptionsPage();
+    } else {
+      props.onChange(modelId);
+    }
+    setIsOpen(false);
   };
 
-  const renderModelButton = (model: ModelInfo) => {
-    const status = () => getStatus(model.id);
-    const isActive = () => props.selected === model.id;
-    const isCloud = model.isCloud ?? false;
-    const configured = () => isCloud ? isCloudConfigured(model.id) : true;
-
-    return (
-      <button
-        class={`model-selector-button ${isActive() ? 'active' : ''} ${getStatusClass(model.id)} ${isCloud ? 'cloud-provider' : ''} ${isCloud && !configured() ? 'unconfigured' : ''}`}
-        onClick={() => {
-          if (isCloud && !configured()) {
-            openOptions();
-          } else {
-            props.onChange(model.id);
-          }
-        }}
-        disabled={status().isDownloading}
-        aria-pressed={isActive()}
-        aria-label={`Select ${model.name} - ${model.tag} - ${model.size}`}
-      >
-        <div class="model-selector-header">
-          <span class="model-selector-name">
-            <Show when={isCloud}>
-              <CloudIcon />
-            </Show>
-            {model.name}
-          </span>
-          <span class="model-selector-tag">{model.tag}</span>
-        </div>
-
-        <div class="model-selector-meta">
-          <Show when={isCloud && !configured()}>
-            <span class="model-selector-api-required" title="Click to configure API key">
-              API Key Required
-            </span>
-          </Show>
-          <Show when={isCloud && configured()}>
-            <span class="model-selector-cost" title={`Estimated cost: ${model.costEstimate}`}>
-              {model.costEstimate}
-            </span>
-          </Show>
-          <Show when={!isCloud}>
-            <span class="model-selector-size">{model.size}</span>
-          </Show>
-          <Show when={status().isDownloaded && !status().isDownloading && !isCloud}>
-            <span class="model-selector-status model-status-ready" title="Model ready">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-            </span>
-          </Show>
-          <Show when={isCloud && configured()}>
-            <span class="model-selector-status model-status-ready" title="API configured">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-            </span>
-          </Show>
-          <Show when={status().error}>
-            <span class="model-selector-status model-status-error" title={status().error || 'Error'}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
-                <path d="M12 8v4m0 4h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-              </svg>
-            </span>
-          </Show>
-        </div>
-
-        <Show when={status().isDownloading}>
-          <div class="model-selector-progress">
-            <div class="model-selector-progress-bar">
-              <div
-                class="model-selector-progress-fill"
-                style={{ width: `${status().progress}%` }}
-              />
-            </div>
-            <span class="model-selector-progress-text">
-              {Math.round(status().progress)}%
-            </span>
-          </div>
-        </Show>
-      </button>
-    );
+  const getStatusIcon = (model: ModelInfo) => {
+    const status = getStatus(model.id);
+    if (status.isDownloading) return '⏳';
+    if (status.error) return '⚠️';
+    if (model.isCloud) {
+      return isCloudConfigured(model.id) ? '✓' : '🔑';
+    }
+    if (status.isDownloaded) return '✓';
+    return '';
   };
 
   return (
-    <section class="model-selector-section">
-      {/* Local Models */}
-      <div class="model-selector-label">Local Models</div>
-      <div class="model-selector-buttons">
-        <For each={LOCAL_MODELS}>
-          {(model) => renderModelButton(model)}
-        </For>
-      </div>
-
-      {/* Cloud Providers */}
-      <div class="model-selector-label cloud-label">
-        Cloud Providers
-        <button class="configure-link" onClick={openOptions} title="Configure API keys">
-          Configure
+    <section class="model-dropdown-section">
+      <div class="model-dropdown-wrapper">
+        <button
+          class="model-dropdown-trigger"
+          onClick={() => setIsOpen(!isOpen())}
+          aria-expanded={isOpen()}
+          aria-haspopup="listbox"
+        >
+          <div class="model-dropdown-selected">
+            <span class="model-dropdown-name">{selectedModel().name}</span>
+            <span class="model-dropdown-tag">{selectedModel().tag}</span>
+          </div>
+          <svg class="model-dropdown-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
         </button>
-      </div>
-      <div class="model-selector-buttons cloud-buttons">
-        <For each={CLOUD_PROVIDERS}>
-          {(model) => renderModelButton(model)}
-        </For>
+
+        <Show when={isOpen()}>
+          <div class="model-dropdown-menu" role="listbox">
+            <div class="model-dropdown-group">
+              <div class="model-dropdown-group-label">Local Models</div>
+              <For each={LOCAL_MODELS}>
+                {(model) => (
+                  <button
+                    class={`model-dropdown-item ${props.selected === model.id ? 'active' : ''}`}
+                    onClick={() => handleSelect(model.id)}
+                    role="option"
+                    aria-selected={props.selected === model.id}
+                  >
+                    <span class="model-dropdown-item-name">{model.name}</span>
+                    <span class="model-dropdown-item-meta">
+                      <span class="model-dropdown-item-tag">{model.tag}</span>
+                      <span class="model-dropdown-item-size">{model.size}</span>
+                      <span class="model-dropdown-item-status">{getStatusIcon(model)}</span>
+                    </span>
+                  </button>
+                )}
+              </For>
+            </div>
+
+            <div class="model-dropdown-group">
+              <div class="model-dropdown-group-label">
+                Cloud Providers
+                <button
+                  class="model-dropdown-configure"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    chrome.runtime.openOptionsPage();
+                  }}
+                >
+                  Configure
+                </button>
+              </div>
+              <For each={CLOUD_PROVIDERS}>
+                {(model) => (
+                  <button
+                    class={`model-dropdown-item ${props.selected === model.id ? 'active' : ''} ${!isCloudConfigured(model.id) ? 'unconfigured' : ''}`}
+                    onClick={() => handleSelect(model.id)}
+                    role="option"
+                    aria-selected={props.selected === model.id}
+                  >
+                    <span class="model-dropdown-item-name">{model.name}</span>
+                    <span class="model-dropdown-item-meta">
+                      <span class="model-dropdown-item-tag">{model.tag}</span>
+                      <span class="model-dropdown-item-cost">{model.costEstimate}</span>
+                      <span class="model-dropdown-item-status">{getStatusIcon(model)}</span>
+                    </span>
+                  </button>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
+
+        {/* Download progress overlay */}
+        <Show when={getStatus(props.selected).isDownloading}>
+          <div class="model-dropdown-progress">
+            <div
+              class="model-dropdown-progress-fill"
+              style={{ width: `${getStatus(props.selected).progress}%` }}
+            />
+          </div>
+        </Show>
       </div>
     </section>
   );

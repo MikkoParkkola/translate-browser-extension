@@ -112,3 +112,42 @@ Do NOT import from `_legacy/` - it contains broken vanilla JS code.
 - Solid.js JSX in `.tsx` files
 - CSS in component-specific files
 - No emoji in code (user preference)
+
+## MANDATORY: Quality Gates Before Deployment
+
+**NEVER deploy features without completing these steps:**
+
+### 1. Build Verification (BLOCKING)
+```bash
+npm run build        # Must succeed without errors
+npm run typecheck    # Must pass with no errors
+npm run test         # ALL tests must pass
+```
+
+### 2. New Feature Requirements
+For any new feature implementation:
+- Write unit tests BEFORE marking complete
+- Add integration tests for cross-component interactions
+- Update `QA_CHECKLIST.md` with manual test items
+- Document error handling with user-friendly messages
+
+### 3. Code Quality Checks
+- Event listeners MUST have cleanup paths (add/remove pairs)
+- Async operations MUST clear state BEFORE cleanup (race conditions)
+- Error messages MUST be specific and actionable
+- Caches MUST have size limits (LRU eviction)
+
+### 4. Pre-Deployment Checklist
+Before declaring any feature "done":
+1. Run full test suite: `npm run test`
+2. Load extension in Chrome and verify no console errors
+3. Test the specific feature manually in browser
+4. Check `QA_CHECKLIST.md` for applicable items
+
+### 5. Anti-Patterns (REJECT)
+- "Build succeeds" does NOT mean "feature works"
+- "Code compiles" does NOT mean "logic is correct"
+- Parallel agent implementation without integration testing
+- Trusting automated builds without manual verification
+
+**Reference**: `QA_CHECKLIST.md` for full pre-deployment checklist

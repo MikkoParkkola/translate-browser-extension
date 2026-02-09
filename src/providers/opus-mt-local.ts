@@ -15,22 +15,48 @@ type Pipeline = (text: string, options?: Record<string, unknown>) => Promise<Arr
 
 // Supported language pairs with Xenova quantized models
 const SUPPORTED_PAIRS: Record<string, string> = {
+  // English ↔ Finnish
   'en-fi': 'Xenova/opus-mt-en-fi',
   'fi-en': 'Xenova/opus-mt-fi-en',
+  // English ↔ German
   'en-de': 'Xenova/opus-mt-en-de',
   'de-en': 'Xenova/opus-mt-de-en',
+  // English ↔ French
   'en-fr': 'Xenova/opus-mt-en-fr',
   'fr-en': 'Xenova/opus-mt-fr-en',
+  // English ↔ Spanish
   'en-es': 'Xenova/opus-mt-en-es',
   'es-en': 'Xenova/opus-mt-es-en',
+  // English ↔ Swedish
   'en-sv': 'Xenova/opus-mt-en-sv',
   'sv-en': 'Xenova/opus-mt-sv-en',
+  // English ↔ Dutch
+  'en-nl': 'Xenova/opus-mt-en-nl',
+  'nl-en': 'Xenova/opus-mt-nl-en',
+  // English ↔ Russian
   'en-ru': 'Xenova/opus-mt-en-ru',
   'ru-en': 'Xenova/opus-mt-ru-en',
+  // English ↔ Chinese
   'en-zh': 'Xenova/opus-mt-en-zh',
   'zh-en': 'Xenova/opus-mt-zh-en',
+  // English ↔ Japanese
   'en-ja': 'Xenova/opus-mt-en-jap',
   'ja-en': 'Xenova/opus-mt-jap-en',
+  // English ↔ Italian
+  'en-it': 'Xenova/opus-mt-en-it',
+  'it-en': 'Xenova/opus-mt-it-en',
+  // English ↔ Portuguese
+  'en-pt': 'Xenova/opus-mt-en-pt',
+  'pt-en': 'Xenova/opus-mt-pt-en',
+  // English ↔ Polish
+  'en-pl': 'Xenova/opus-mt-en-pl',
+  'pl-en': 'Xenova/opus-mt-pl-en',
+  // English ↔ Danish
+  'en-da': 'Xenova/opus-mt-en-da',
+  'da-en': 'Xenova/opus-mt-da-en',
+  // English ↔ Norwegian
+  'en-no': 'Xenova/opus-mt-en-no',
+  'no-en': 'Xenova/opus-mt-no-en',
 };
 
 export class OpusMTProvider extends BaseProvider {
@@ -138,7 +164,17 @@ export class OpusMTProvider extends BaseProvider {
 
     const modelId = this.getModelId(sourceLang, targetLang);
     if (!modelId) {
-      throw new Error(`[OPUS-MT] Unsupported language pair: ${sourceLang} -> ${targetLang}`);
+      // Get list of available target languages for this source
+      const availableTargets = Object.keys(SUPPORTED_PAIRS)
+        .filter(pair => pair.startsWith(`${sourceLang}-`))
+        .map(pair => pair.split('-')[1])
+        .join(', ');
+
+      const hint = availableTargets
+        ? `Available targets for ${sourceLang}: ${availableTargets}`
+        : `${sourceLang} is not a supported source language`;
+
+      throw new Error(`Unsupported language pair: ${sourceLang} -> ${targetLang}. ${hint}`);
     }
 
     try {

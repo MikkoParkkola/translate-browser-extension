@@ -23,6 +23,9 @@ import { openaiProvider } from '../providers/openai';
 import { anthropicProvider } from '../providers/anthropic';
 import { googleCloudProvider } from '../providers/google-cloud';
 
+// OCR service
+import { extractTextFromImage, terminateOCR, type OCRResult } from '../core/ocr-service';
+
 const log = createLogger('Offscreen');
 
 // Configure Transformers.js for Chrome extension environment
@@ -498,6 +501,27 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           }
 
           sendResponse({ success: true, usage });
+          break;
+        }
+        case 'ocrImage': {
+          // Extract text from image using Tesseract.js
+          log.info('Processing OCR request...');
+          const ocrResult: OCRResult = await extractTextFromImage(
+            message.imageData,
+            message.lang
+          );
+          sendResponse({
+            success: true,
+            text: ocrResult.text,
+            confidence: ocrResult.confidence,
+            blocks: ocrResult.blocks,
+          });
+          break;
+        }
+        case 'terminateOCR': {
+          // Clean up OCR worker
+          await terminateOCR();
+          sendResponse({ success: true });
           break;
         }
         default:

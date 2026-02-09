@@ -48,31 +48,96 @@ if (env.backends?.onnx?.wasm) {
 log.info('WASM path configured:', wasmBasePath);
 
 // ============================================================================
-// Translation Cache (LRU, max 100 entries)
+// Enhanced Translation Memory (Persistent LRU Cache)
 // ============================================================================
 
-interface CacheEntry {
+/**
+ * Persistent cache entry with usage tracking.
+ */
+interface PersistentCacheEntry {
   result: string | string[];
   timestamp: number;
   sourceLang: string;
   targetLang: string;
+  useCount: number;
 }
 
-const translationCache = new Map<string, CacheEntry>();
+const translationCache = new Map<string, PersistentCacheEntry>();
 let cacheHits = 0;
 let cacheMisses = 0;
+let cacheInitialized = false;
+let saveCacheTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Load cache from persistent storage on startup.
+ */
+async function loadPersistentCache(): Promise<void> {
+  if (cacheInitialized) return;
+
+  try {
+    const stored = await browserAPI.storage.local.get([
+      CONFIG.cache.storageKey,
+      'cacheStats',
+    ]);
+
+    if (stored[CONFIG.cache.storageKey]) {
+      const entries = stored[CONFIG.cache.storageKey] as [string, PersistentCacheEntry][];
+      entries.forEach(([key, value]) => {
+        translationCache.set(key, value);
+      });
+      log.info(`Loaded ${translationCache.size} cached translations from storage`);
+    }
+
+    if (stored.cacheStats) {
+      const stats = stored.cacheStats as { hits: number; misses: number };
+      cacheHits = stats.hits || 0;
+      cacheMisses = stats.misses || 0;
+    }
+
+    cacheInitialized = true;
+  } catch (error) {
+    log.warn('Failed to load persistent cache:', error);
+    cacheInitialized = true;
+  }
+}
+
+/**
+ * Schedule cache save to persistent storage (debounced).
+ */
+function scheduleCacheSave(): void {
+  if (saveCacheTimer) return;
+
+  saveCacheTimer = setTimeout(async () => {
+    saveCacheTimer = null;
+    try {
+      const entries = Array.from(translationCache.entries());
+      await browserAPI.storage.local.set({
+        [CONFIG.cache.storageKey]: entries,
+        cacheStats: { hits: cacheHits, misses: cacheMisses },
+      });
+      log.debug(`Saved ${entries.length} translations to persistent storage`);
+    } catch (error) {
+      log.warn('Failed to save cache:', error);
+    }
+  }, CONFIG.cache.saveDebounceMs);
+}
 
 function getCacheKey(text: string | string[], sourceLang: string, targetLang: string, provider?: string): string {
   const providerKey = provider || currentProvider;
   return generateCacheKey(text, sourceLang, targetLang, providerKey);
 }
 
-function getCachedTranslation(key: string): CacheEntry | undefined {
+function getCachedTranslation(key: string): PersistentCacheEntry | undefined {
   const entry = translationCache.get(key);
   if (entry) {
+    entry.useCount++;
     translationCache.delete(key);
     translationCache.set(key, entry);
-    log.info(`Cache HIT: ${key.substring(0, 40)}...`);
+    cacheHits++;
+    scheduleCacheSave();
+    log.debug(`Cache HIT: ${key.substring(0, 40)}... (used ${entry.useCount}x)`);
+  } else {
+    cacheMisses++;
   }
   return entry;
 }
@@ -84,10 +149,13 @@ function setCachedTranslation(
   targetLang: string
 ): void {
   while (translationCache.size >= CONFIG.cache.maxSize) {
-    const oldestKey = translationCache.keys().next().value;
-    if (oldestKey) {
-      translationCache.delete(oldestKey);
-    }
+    const entries = Array.from(translationCache.entries());
+    const oldestCount = Math.max(10, Math.floor(entries.length * 0.1));
+    const oldestEntries = entries.slice(0, oldestCount);
+    const leastUsed = oldestEntries.reduce((min, curr) =>
+      curr[1].useCount < min[1].useCount ? curr : min
+    );
+    translationCache.delete(leastUsed[0]);
   }
 
   translationCache.set(key, {
@@ -95,29 +163,96 @@ function setCachedTranslation(
     timestamp: Date.now(),
     sourceLang,
     targetLang,
+    useCount: 1,
   });
-  log.info(`Cached translation (${translationCache.size}/${CONFIG.cache.maxSize})`);
+
+  scheduleCacheSave();
+  log.debug(`Cached translation (${translationCache.size}/${CONFIG.cache.maxSize})`);
 }
 
-function getCacheStats(): {
+/**
+ * Detailed cache statistics for diagnostics.
+ */
+interface DetailedCacheStats {
   size: number;
   maxSize: number;
   hitRate: string;
+  totalHits: number;
+  totalMisses: number;
   oldestEntry: number | null;
-} {
+  mostUsed: Array<{ text: string; useCount: number; langs: string }>;
+  memoryEstimate: string;
+  languagePairs: Record<string, number>;
+}
+
+function getCacheStats(): DetailedCacheStats {
+  const entries = Array.from(translationCache.entries());
+
   let oldestTimestamp: number | null = null;
-  for (const entry of translationCache.values()) {
+  for (const [, entry] of entries) {
     if (oldestTimestamp === null || entry.timestamp < oldestTimestamp) {
       oldestTimestamp = entry.timestamp;
     }
   }
+
+  const mostUsed = entries
+    .sort((a, b) => b[1].useCount - a[1].useCount)
+    .slice(0, 5)
+    .map(([key, value]) => ({
+      text: key.substring(0, 50) + (key.length > 50 ? '...' : ''),
+      useCount: value.useCount,
+      langs: `${value.sourceLang} -> ${value.targetLang}`,
+    }));
+
+  const languagePairs: Record<string, number> = {};
+  for (const [, entry] of entries) {
+    const pair = `${entry.sourceLang}-${entry.targetLang}`;
+    languagePairs[pair] = (languagePairs[pair] || 0) + 1;
+  }
+
+  const totalChars = entries.reduce((sum, [key, value]) => {
+    const resultLen = Array.isArray(value.result)
+      ? value.result.join('').length
+      : value.result.length;
+    return sum + key.length + resultLen;
+  }, 0);
+
+  const totalTranslations = cacheHits + cacheMisses;
+  const hitRatePercent = totalTranslations > 0
+    ? Math.round((cacheHits / totalTranslations) * 100)
+    : 0;
+
   return {
     size: translationCache.size,
     maxSize: CONFIG.cache.maxSize,
-    hitRate: `${cacheHits}/${cacheHits + cacheMisses} (${cacheHits + cacheMisses > 0 ? Math.round(cacheHits / (cacheHits + cacheMisses) * 100) : 0}%)`,
+    hitRate: `${cacheHits}/${totalTranslations} (${hitRatePercent}%)`,
+    totalHits: cacheHits,
+    totalMisses: cacheMisses,
     oldestEntry: oldestTimestamp,
+    mostUsed,
+    memoryEstimate: `~${Math.round(totalChars / 1024)}KB`,
+    languagePairs,
   };
 }
+
+/**
+ * Clear translation cache and reset statistics.
+ */
+async function clearTranslationCache(): Promise<void> {
+  translationCache.clear();
+  cacheHits = 0;
+  cacheMisses = 0;
+
+  try {
+    await browserAPI.storage.local.remove([CONFIG.cache.storageKey, 'cacheStats']);
+    log.info('Translation cache cleared');
+  } catch (error) {
+    log.warn('Failed to clear persistent cache:', error);
+  }
+}
+
+// Load cache on startup
+loadPersistentCache();
 
 // ============================================================================
 // ML Pipeline Management (Direct - no offscreen needed)
@@ -442,19 +577,17 @@ async function handlePreloadModel(message: {
   }
 }
 
-function handleGetCacheStats(): unknown {
+async function handleGetCacheStats(): Promise<unknown> {
+  await loadPersistentCache();
   return {
     success: true,
     cache: getCacheStats(),
   };
 }
 
-function handleClearCache(): unknown {
+async function handleClearCache(): Promise<unknown> {
   const previousSize = translationCache.size;
-  translationCache.clear();
-  cacheHits = 0;
-  cacheMisses = 0;
-  log.info(`Cache cleared (was ${previousSize} entries)`);
+  await clearTranslationCache();
   return {
     success: true,
     clearedEntries: previousSize,
@@ -633,6 +766,56 @@ if (browserAPI.browserAction?.onClicked) {
   browserAPI.browserAction.onClicked.addListener(async (tab) => {
     if (tab.id) {
       log.info('Extension icon clicked for tab:', tab.id);
+    }
+  });
+}
+
+// ============================================================================
+// Keyboard Shortcuts
+// ============================================================================
+
+if (browserAPI.commands?.onCommand) {
+  browserAPI.commands.onCommand.addListener(async (command: string) => {
+    log.info('Command received:', command);
+
+    // Get active tab
+    const tabs = await browserAPI.tabs.query({ active: true, currentWindow: true });
+    const tab = tabs[0];
+
+    if (!tab?.id) return;
+
+    const settings = await safeStorageGet<{
+      sourceLang?: string;
+      targetLang?: string;
+      strategy?: Strategy;
+      provider?: TranslationProviderId;
+    }>(['sourceLang', 'targetLang', 'strategy', 'provider']);
+
+    const sourceLang = settings.sourceLang || 'auto';
+    const targetLang = settings.targetLang || 'en';
+    const strategy = settings.strategy || 'smart';
+    const provider = settings.provider || currentProvider;
+
+    try {
+      switch (command) {
+        case 'translate-selection':
+          await browserAPI.tabs.sendMessage(tab.id, {
+            type: 'translateSelection',
+            sourceLang,
+            targetLang,
+            strategy,
+            provider,
+          });
+          break;
+
+        case 'toggle-widget':
+          await browserAPI.tabs.sendMessage(tab.id, {
+            type: 'toggleWidget',
+          });
+          break;
+      }
+    } catch (error) {
+      log.warn('Keyboard shortcut action failed:', error);
     }
   });
 }

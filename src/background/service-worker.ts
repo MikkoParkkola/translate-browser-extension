@@ -25,23 +25,103 @@ import { getPredictionEngine } from '../core/prediction-engine';
 import { CONFIG } from '../config';
 import { profiler, type AggregateStats } from '../core/profiler';
 import { addToHistory, getHistory, clearHistory as clearTranslationHistory } from '../core/history';
+import {
+  addCorrection,
+  getCorrection,
+  getAllCorrections,
+  clearCorrections,
+  deleteCorrection,
+  getCorrectionStats,
+  exportCorrections,
+  importCorrections,
+} from '../core/corrections';
 // Browser API imported but may not be needed in Chrome service worker
 // import { browserAPI, getURL } from '../core/browser-api';
 
 const log = createLogger('Background');
 
 // ============================================================================
-// Translation Cache (LRU, max 100 entries)
+// Enhanced Translation Memory (Persistent LRU Cache)
 // ============================================================================
 
-interface CacheEntry {
+/**
+ * Persistent cache entry with usage tracking.
+ * Stores translation result along with metadata for smart eviction.
+ */
+interface PersistentCacheEntry {
   result: string | string[];
   timestamp: number;
   sourceLang: string;
   targetLang: string;
+  useCount: number;
 }
 
-const translationCache = new Map<string, CacheEntry>();
+// In-memory cache (fast access, survives service worker restarts via persistence)
+const translationCache = new Map<string, PersistentCacheEntry>();
+
+// Cache statistics (persisted alongside cache)
+let cacheHits = 0;
+let cacheMisses = 0;
+let cacheInitialized = false;
+
+// Debounced save timer
+let saveCacheTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Load cache from persistent storage on startup.
+ * Called once when service worker initializes.
+ */
+async function loadPersistentCache(): Promise<void> {
+  if (cacheInitialized) return;
+
+  try {
+    const stored = await chrome.storage.local.get([
+      CONFIG.cache.storageKey,
+      'cacheStats',
+    ]);
+
+    if (stored[CONFIG.cache.storageKey]) {
+      const entries = stored[CONFIG.cache.storageKey] as [string, PersistentCacheEntry][];
+      entries.forEach(([key, value]) => {
+        translationCache.set(key, value);
+      });
+      log.info(`Loaded ${translationCache.size} cached translations from storage`);
+    }
+
+    if (stored.cacheStats) {
+      const stats = stored.cacheStats as { hits: number; misses: number };
+      cacheHits = stats.hits || 0;
+      cacheMisses = stats.misses || 0;
+    }
+
+    cacheInitialized = true;
+  } catch (error) {
+    log.warn('Failed to load persistent cache:', error);
+    cacheInitialized = true; // Mark initialized to prevent retry loops
+  }
+}
+
+/**
+ * Schedule cache save to persistent storage (debounced).
+ * Prevents excessive writes during rapid translation activity.
+ */
+function scheduleCacheSave(): void {
+  if (saveCacheTimer) return;
+
+  saveCacheTimer = setTimeout(async () => {
+    saveCacheTimer = null;
+    try {
+      const entries = Array.from(translationCache.entries());
+      await chrome.storage.local.set({
+        [CONFIG.cache.storageKey]: entries,
+        cacheStats: { hits: cacheHits, misses: cacheMisses },
+      });
+      log.debug(`Saved ${entries.length} translations to persistent storage`);
+    } catch (error) {
+      log.warn('Failed to save cache:', error);
+    }
+  }, CONFIG.cache.saveDebounceMs);
+}
 
 /**
  * Generate cache key from translation parameters.
@@ -53,21 +133,28 @@ function getCacheKey(text: string | string[], sourceLang: string, targetLang: st
 }
 
 /**
- * Get cached translation if available.
+ * Get cached translation with usage tracking.
+ * Updates LRU order and increments use count for smart eviction.
  */
-function getCachedTranslation(key: string): CacheEntry | undefined {
+function getCachedTranslation(key: string): PersistentCacheEntry | undefined {
   const entry = translationCache.get(key);
   if (entry) {
-    // Move to end for LRU (delete and re-add)
+    // Update usage count and move to end for LRU
+    entry.useCount++;
     translationCache.delete(key);
     translationCache.set(key, entry);
-    log.info(` Cache HIT: ${key.substring(0, 40)}...`);
+    cacheHits++;
+    scheduleCacheSave();
+    log.debug(`Cache HIT: ${key.substring(0, 40)}... (used ${entry.useCount}x)`);
+  } else {
+    cacheMisses++;
   }
   return entry;
 }
 
 /**
- * Store translation in cache with LRU eviction.
+ * Store translation in cache with smart eviction.
+ * Uses hybrid LRU/LFU eviction: evicts least-used among oldest entries.
  */
 function setCachedTranslation(
   key: string,
@@ -75,13 +162,19 @@ function setCachedTranslation(
   sourceLang: string,
   targetLang: string
 ): void {
-  // Evict oldest entries if at capacity
+  // Evict entries if at capacity using smart eviction
   while (translationCache.size >= CONFIG.cache.maxSize) {
-    const oldestKey = translationCache.keys().next().value;
-    if (oldestKey) {
-      translationCache.delete(oldestKey);
-      log.info(` Cache evicted oldest entry`);
-    }
+    // Find entry with lowest use count among oldest 10%
+    const entries = Array.from(translationCache.entries());
+    const oldestCount = Math.max(10, Math.floor(entries.length * 0.1));
+    const oldestEntries = entries.slice(0, oldestCount);
+
+    const leastUsed = oldestEntries.reduce((min, curr) =>
+      curr[1].useCount < min[1].useCount ? curr : min
+    );
+
+    translationCache.delete(leastUsed[0]);
+    log.debug(`Cache evicted: ${leastUsed[0].substring(0, 40)}... (used ${leastUsed[1].useCount}x)`);
   }
 
   translationCache.set(key, {
@@ -89,36 +182,103 @@ function setCachedTranslation(
     timestamp: Date.now(),
     sourceLang,
     targetLang,
+    useCount: 1,
   });
-  log.info(` Cached translation (${translationCache.size}/${CONFIG.cache.maxSize})`);
+
+  scheduleCacheSave();
+  log.debug(`Cached translation (${translationCache.size}/${CONFIG.cache.maxSize})`);
 }
 
 /**
- * Get cache statistics for diagnostics.
+ * Detailed cache statistics for diagnostics and UI display.
  */
-function getCacheStats(): {
+interface DetailedCacheStats {
   size: number;
   maxSize: number;
   hitRate: string;
+  totalHits: number;
+  totalMisses: number;
   oldestEntry: number | null;
-} {
+  mostUsed: Array<{ text: string; useCount: number; langs: string }>;
+  memoryEstimate: string;
+  languagePairs: Record<string, number>;
+}
+
+/**
+ * Get detailed cache statistics for diagnostics.
+ */
+function getCacheStats(): DetailedCacheStats {
+  const entries = Array.from(translationCache.entries());
+
+  // Find oldest entry
   let oldestTimestamp: number | null = null;
-  for (const entry of translationCache.values()) {
+  for (const [, entry] of entries) {
     if (oldestTimestamp === null || entry.timestamp < oldestTimestamp) {
       oldestTimestamp = entry.timestamp;
     }
   }
+
+  // Top 5 most used translations
+  const mostUsed = entries
+    .sort((a, b) => b[1].useCount - a[1].useCount)
+    .slice(0, 5)
+    .map(([key, value]) => ({
+      text: key.substring(0, 50) + (key.length > 50 ? '...' : ''),
+      useCount: value.useCount,
+      langs: `${value.sourceLang} -> ${value.targetLang}`,
+    }));
+
+  // Language pair distribution
+  const languagePairs: Record<string, number> = {};
+  for (const [, entry] of entries) {
+    const pair = `${entry.sourceLang}-${entry.targetLang}`;
+    languagePairs[pair] = (languagePairs[pair] || 0) + 1;
+  }
+
+  // Rough memory estimate (characters in keys + results)
+  const totalChars = entries.reduce((sum, [key, value]) => {
+    const resultLen = Array.isArray(value.result)
+      ? value.result.join('').length
+      : value.result.length;
+    return sum + key.length + resultLen;
+  }, 0);
+
+  const totalTranslations = cacheHits + cacheMisses;
+  const hitRatePercent = totalTranslations > 0
+    ? Math.round((cacheHits / totalTranslations) * 100)
+    : 0;
+
   return {
     size: translationCache.size,
     maxSize: CONFIG.cache.maxSize,
-    hitRate: `${cacheHits}/${cacheHits + cacheMisses} (${cacheHits + cacheMisses > 0 ? Math.round(cacheHits / (cacheHits + cacheMisses) * 100) : 0}%)`,
+    hitRate: `${cacheHits}/${totalTranslations} (${hitRatePercent}%)`,
+    totalHits: cacheHits,
+    totalMisses: cacheMisses,
     oldestEntry: oldestTimestamp,
+    mostUsed,
+    memoryEstimate: `~${Math.round(totalChars / 1024)}KB`,
+    languagePairs,
   };
 }
 
-// Cache hit/miss tracking
-let cacheHits = 0;
-let cacheMisses = 0;
+/**
+ * Clear translation cache and reset statistics.
+ */
+async function clearTranslationCache(): Promise<void> {
+  translationCache.clear();
+  cacheHits = 0;
+  cacheMisses = 0;
+
+  try {
+    await chrome.storage.local.remove([CONFIG.cache.storageKey, 'cacheStats']);
+    log.info('Translation cache cleared');
+  } catch (error) {
+    log.warn('Failed to clear persistent cache:', error);
+  }
+}
+
+// Load cache on startup
+loadPersistentCache();
 
 // ============================================================================
 // Prediction Engine Integration
@@ -502,8 +662,75 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
       return handleGetHistory();
     case 'clearHistory':
       return handleClearHistory();
+    case 'addCorrection':
+      return handleAddCorrection(message as {
+        type: 'addCorrection';
+        original: string;
+        machineTranslation: string;
+        userCorrection: string;
+        sourceLang: string;
+        targetLang: string;
+      });
+    case 'getCorrection':
+      return handleGetCorrection(message as {
+        type: 'getCorrection';
+        original: string;
+        sourceLang: string;
+        targetLang: string;
+      });
+    case 'getAllCorrections':
+      return handleGetAllCorrections();
+    case 'getCorrectionStats':
+      return handleGetCorrectionStats();
+    case 'clearCorrections':
+      return handleClearCorrections();
+    case 'deleteCorrection':
+      return handleDeleteCorrection(message as {
+        type: 'deleteCorrection';
+        original: string;
+        sourceLang: string;
+        targetLang: string;
+      });
+    case 'exportCorrections':
+      return handleExportCorrections();
+    case 'importCorrections':
+      return handleImportCorrections(message as {
+        type: 'importCorrections';
+        json: string;
+      });
+    case 'ocrImage':
+      return handleOCRImage(message as {
+        type: 'ocrImage';
+        imageData: string;
+        lang?: string;
+      });
+    case 'getDownloadedModels':
+      // Return cached model info from storage
+      try {
+        const stored = await chrome.storage.local.get(['downloadedModels']);
+        return { success: true, models: stored.downloadedModels || [] };
+      } catch {
+        return { success: true, models: [] };
+      }
+    case 'getSettings':
+      // Settings request from legacy content script
+      try {
+        const settings = await chrome.storage.local.get(['sourceLanguage', 'targetLanguage', 'provider', 'strategy']);
+        return {
+          success: true,
+          data: {
+            sourceLanguage: settings.sourceLanguage || 'auto',
+            targetLanguage: settings.targetLanguage || 'en',
+            provider: settings.provider || 'opus-mt',
+            strategy: settings.strategy || 'smart',
+          },
+        };
+      } catch {
+        return { success: false, error: 'Failed to get settings' };
+      }
     default:
-      throw new Error(`Unknown message type: ${(message as { type: string }).type}`);
+      console.warn(`[Background] Unknown message type: ${(message as { type: string }).type}`);
+      return { success: false, error: `Unknown message type: ${(message as { type: string }).type}` };
   }
 }
 
@@ -553,7 +780,9 @@ async function handlePreloadModel(message: {
 /**
  * Get cache statistics for diagnostics
  */
-function handleGetCacheStats(): unknown {
+async function handleGetCacheStats(): Promise<unknown> {
+  // Ensure cache is loaded before getting stats
+  await loadPersistentCache();
   const stats = getCacheStats();
   return {
     success: true,
@@ -564,12 +793,9 @@ function handleGetCacheStats(): unknown {
 /**
  * Clear the translation cache
  */
-function handleClearCache(): unknown {
+async function handleClearCache(): Promise<unknown> {
   const previousSize = translationCache.size;
-  translationCache.clear();
-  cacheHits = 0;
-  cacheMisses = 0;
-  log.info(` Cache cleared (was ${previousSize} entries)`);
+  await clearTranslationCache();
   return {
     success: true,
     clearedEntries: previousSize,
@@ -801,11 +1027,20 @@ async function handleTranslate(message: {
   text: string | string[];
   sourceLang: string;
   targetLang: string;
-  options?: { strategy?: Strategy };
+  options?: { strategy?: Strategy; context?: { before: string; after: string } };
   provider?: TranslationProviderId;
   enableProfiling?: boolean;
 }): Promise<TranslateResponse> {
   const startTime = Date.now();
+
+  // Log context if provided (for debugging translation quality)
+  if (message.options?.context) {
+    const { before, after } = message.options.context;
+    log.debug('Translation context:', {
+      before: before?.substring(0, 50),
+      after: after?.substring(0, 50),
+    });
+  }
 
   // Start profiling session if requested
   const sessionId = message.enableProfiling ? profiler.startSession() : undefined;
@@ -871,6 +1106,27 @@ async function handleTranslate(message: {
       profiler.endTiming(sessionId, 'cache_lookup');
     }
     cacheMisses++;
+
+    // Check for user corrections (only for single strings, not arrays)
+    // Corrections take precedence over machine translation
+    if (typeof text === 'string' && message.sourceLang !== 'auto') {
+      const userCorrection = await getCorrection(text, message.sourceLang, message.targetLang);
+      if (userCorrection) {
+        const duration = Date.now() - startTime;
+        log.info(`Using user correction, returning in ${duration}ms`);
+        if (sessionId) {
+          profiler.endTiming(sessionId, 'total');
+        }
+        // Cache the correction for faster future lookups
+        setCachedTranslation(cacheKey, userCorrection, message.sourceLang, message.targetLang);
+        return {
+          success: true,
+          result: userCorrection,
+          duration,
+          fromCorrection: true,
+        } as TranslateResponse & { fromCorrection: boolean };
+      }
+    }
 
     const tokenEstimate = estimateTokens(text);
 
@@ -1098,6 +1354,197 @@ async function handleClearHistory(): Promise<unknown> {
   }
 }
 
+// ============================================================================
+// Corrections Handlers (Learn from user corrections)
+// ============================================================================
+
+/**
+ * Add a user correction for a translation
+ */
+async function handleAddCorrection(message: {
+  type: 'addCorrection';
+  original: string;
+  machineTranslation: string;
+  userCorrection: string;
+  sourceLang: string;
+  targetLang: string;
+}): Promise<unknown> {
+  try {
+    await addCorrection(
+      message.original,
+      message.machineTranslation,
+      message.userCorrection,
+      message.sourceLang,
+      message.targetLang
+    );
+    return { success: true };
+  } catch (error) {
+    log.warn('Failed to add correction:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Get correction for a specific text
+ */
+async function handleGetCorrection(message: {
+  type: 'getCorrection';
+  original: string;
+  sourceLang: string;
+  targetLang: string;
+}): Promise<unknown> {
+  try {
+    const correction = await getCorrection(
+      message.original,
+      message.sourceLang,
+      message.targetLang
+    );
+    return {
+      success: true,
+      correction,
+      hasCorrection: correction !== null,
+    };
+  } catch (error) {
+    log.warn('Failed to get correction:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      correction: null,
+      hasCorrection: false,
+    };
+  }
+}
+
+/**
+ * Get all corrections
+ */
+async function handleGetAllCorrections(): Promise<unknown> {
+  try {
+    const corrections = await getAllCorrections();
+    return {
+      success: true,
+      corrections,
+    };
+  } catch (error) {
+    log.warn('Failed to get corrections:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      corrections: [],
+    };
+  }
+}
+
+/**
+ * Get correction statistics
+ */
+async function handleGetCorrectionStats(): Promise<unknown> {
+  try {
+    const stats = await getCorrectionStats();
+    return {
+      success: true,
+      stats,
+    };
+  } catch (error) {
+    log.warn('Failed to get correction stats:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      stats: { total: 0, totalUses: 0, topCorrections: [] },
+    };
+  }
+}
+
+/**
+ * Clear all corrections
+ */
+async function handleClearCorrections(): Promise<unknown> {
+  try {
+    await clearCorrections();
+    return { success: true };
+  } catch (error) {
+    log.warn('Failed to clear corrections:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Delete a specific correction
+ */
+async function handleDeleteCorrection(message: {
+  type: 'deleteCorrection';
+  original: string;
+  sourceLang: string;
+  targetLang: string;
+}): Promise<unknown> {
+  try {
+    const deleted = await deleteCorrection(
+      message.original,
+      message.sourceLang,
+      message.targetLang
+    );
+    return {
+      success: true,
+      deleted,
+    };
+  } catch (error) {
+    log.warn('Failed to delete correction:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      deleted: false,
+    };
+  }
+}
+
+/**
+ * Export corrections as JSON
+ */
+async function handleExportCorrections(): Promise<unknown> {
+  try {
+    const json = await exportCorrections();
+    return {
+      success: true,
+      json,
+    };
+  } catch (error) {
+    log.warn('Failed to export corrections:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Import corrections from JSON
+ */
+async function handleImportCorrections(message: {
+  type: 'importCorrections';
+  json: string;
+}): Promise<unknown> {
+  try {
+    const count = await importCorrections(message.json);
+    return {
+      success: true,
+      importedCount: count,
+    };
+  } catch (error) {
+    log.warn('Failed to import corrections:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      importedCount: 0,
+    };
+  }
+}
+
 async function handleGetProviders(): Promise<unknown> {
   try {
     const response = await sendToOffscreen<{
@@ -1167,31 +1614,213 @@ chrome.action.onClicked.addListener(async (tab) => {
   }
 });
 
-// Keyboard shortcut handler
+// ============================================================================
+// OCR (Optical Character Recognition)
+// ============================================================================
+
+/**
+ * Handle OCR image request - extract text from image using Tesseract.js
+ */
+async function handleOCRImage(message: {
+  type: 'ocrImage';
+  imageData: string;
+  lang?: string;
+}): Promise<unknown> {
+  try {
+    log.info('Processing OCR request...');
+
+    const result = await sendToOffscreen<{
+      success: boolean;
+      text?: string;
+      confidence?: number;
+      blocks?: Array<{ text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } }>;
+      error?: string;
+    }>({
+      type: 'ocrImage',
+      imageData: message.imageData,
+      lang: message.lang,
+    });
+
+    if (result.success) {
+      log.info(`OCR completed: ${result.blocks?.length || 0} blocks, ${result.confidence?.toFixed(1)}% confidence`);
+    }
+
+    return result;
+  } catch (error) {
+    log.error('OCR failed:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+// ============================================================================
+// Context Menus
+// ============================================================================
+
+/**
+ * Create context menu items
+ */
+function setupContextMenus(): void {
+  // Remove existing menus first
+  chrome.contextMenus.removeAll(() => {
+    // Translate selection
+    chrome.contextMenus.create({
+      id: 'translate-selection',
+      title: 'Translate Selection',
+      contexts: ['selection'],
+    });
+
+    // Translate page
+    chrome.contextMenus.create({
+      id: 'translate-page',
+      title: 'Translate Page',
+      contexts: ['page'],
+    });
+
+    // Separator
+    chrome.contextMenus.create({
+      id: 'separator',
+      type: 'separator',
+      contexts: ['page', 'selection'],
+    });
+
+    // Undo translation
+    chrome.contextMenus.create({
+      id: 'undo-translation',
+      title: 'Undo Translation',
+      contexts: ['page'],
+    });
+
+    // Translate image text (OCR)
+    chrome.contextMenus.create({
+      id: 'translate-image',
+      title: 'Translate Image Text',
+      contexts: ['image'],
+    });
+
+    log.info('Context menus created');
+  });
+}
+
+// Handle context menu clicks
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (!tab?.id) return;
+
+  const settings = await safeStorageGet<{
+    sourceLang?: string;
+    targetLang?: string;
+    strategy?: Strategy;
+    provider?: TranslationProviderId;
+  }>(['sourceLang', 'targetLang', 'strategy', 'provider']);
+
+  const sourceLang = settings.sourceLang || 'auto';
+  const targetLang = settings.targetLang || 'en';
+  const strategy = settings.strategy || 'smart';
+  const provider = settings.provider || 'opus-mt';
+
+  try {
+    switch (info.menuItemId) {
+      case 'translate-selection':
+        await chrome.tabs.sendMessage(tab.id, {
+          type: 'translateSelection',
+          sourceLang,
+          targetLang,
+          strategy,
+          provider,
+        });
+        break;
+
+      case 'translate-page':
+        await chrome.tabs.sendMessage(tab.id, {
+          type: 'translatePage',
+          sourceLang,
+          targetLang,
+          strategy,
+          provider,
+        });
+        break;
+
+      case 'undo-translation':
+        await chrome.tabs.sendMessage(tab.id, {
+          type: 'undoTranslation',
+        });
+        break;
+
+      case 'translate-image':
+        // Send the image URL to content script for OCR translation
+        await chrome.tabs.sendMessage(tab.id, {
+          type: 'translateImage',
+          imageUrl: info.srcUrl,
+          sourceLang,
+          targetLang,
+          provider,
+        });
+        break;
+    }
+  } catch (error) {
+    log.warn('Context menu action failed:', error);
+  }
+});
+
+// ============================================================================
+// Keyboard Shortcuts
+// ============================================================================
+
 chrome.commands.onCommand.addListener(async (command, tab) => {
   console.log('[Background] Command received:', command);
 
-  if (command === 'translate-selection' && tab?.id) {
-    try {
-      // Get current settings
-      const settings = await safeStorageGet<{
-        sourceLang?: string;
-        targetLang?: string;
-        strategy?: Strategy;
-        provider?: TranslationProviderId;
-      }>(['sourceLang', 'targetLang', 'strategy', 'provider']);
+  if (!tab?.id) return;
 
-      // Send message to content script to translate selection
-      await chrome.tabs.sendMessage(tab.id, {
-        type: 'translateSelection',
-        sourceLang: settings.sourceLang || 'auto',
-        targetLang: settings.targetLang || 'en',
-        strategy: settings.strategy || 'smart',
-        provider: settings.provider || currentProvider,
-      });
-    } catch (error) {
-      log.warn('Failed to translate selection via keyboard shortcut:', error);
+  const settings = await safeStorageGet<{
+    sourceLang?: string;
+    targetLang?: string;
+    strategy?: Strategy;
+    provider?: TranslationProviderId;
+  }>(['sourceLang', 'targetLang', 'strategy', 'provider']);
+
+  const sourceLang = settings.sourceLang || 'auto';
+  const targetLang = settings.targetLang || 'en';
+  const strategy = settings.strategy || 'smart';
+  const provider = settings.provider || currentProvider;
+
+  try {
+    switch (command) {
+      case 'translate-page':
+        await chrome.tabs.sendMessage(tab.id, {
+          type: 'translatePage',
+          sourceLang,
+          targetLang,
+          strategy,
+          provider,
+        });
+        break;
+
+      case 'translate-selection':
+        await chrome.tabs.sendMessage(tab.id, {
+          type: 'translateSelection',
+          sourceLang,
+          targetLang,
+          strategy,
+          provider,
+        });
+        break;
+
+      case 'undo-translation':
+        await chrome.tabs.sendMessage(tab.id, {
+          type: 'undoTranslation',
+        });
+        break;
+
+      case 'toggle-widget':
+        await chrome.tabs.sendMessage(tab.id, {
+          type: 'toggleWidget',
+        });
+        break;
     }
+  } catch (error) {
+    log.warn('Keyboard shortcut action failed:', error);
   }
 });
 
@@ -1209,10 +1838,22 @@ chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
 });
 
 // Installation handler
-chrome.runtime.onInstalled.addListener((details) => {
+chrome.runtime.onInstalled.addListener(async (details) => {
+  // Setup context menus on install/update
+  setupContextMenus();
+
   if (details.reason === 'install') {
     console.log('[Background] Extension installed');
-    // Detect browser's preferred language for target
+
+    // Check if onboarding was already completed (shouldn't happen on fresh install)
+    const { onboardingComplete } = await chrome.storage.local.get('onboardingComplete');
+    if (!onboardingComplete) {
+      // Open onboarding page in a new tab
+      console.log('[Background] Opening onboarding page');
+      chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/index.html') });
+    }
+
+    // Set default settings (will be overwritten by onboarding if user completes it)
     const browserLang = chrome.i18n.getUILanguage().split('-')[0]; // e.g., 'en-US' -> 'en'
     console.log('[Background] Browser language detected:', browserLang);
     safeStorageSet({

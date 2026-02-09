@@ -17,7 +17,29 @@ vi.stubGlobal('chrome', {
     sendMessage: mockSendMessage,
     onMessage: mockOnMessage,
   },
+  storage: {
+    local: {
+      get: vi.fn().mockResolvedValue({}),
+      set: vi.fn().mockResolvedValue(undefined),
+    },
+  },
 });
+
+// Mock glossary module - functions are async, must return Promises
+vi.mock('../core/glossary', () => ({
+  glossary: {
+    getGlossary: vi.fn().mockResolvedValue({}),
+    applyGlossary: vi.fn().mockImplementation(async (text: string) => ({
+      processedText: text,
+      restore: (result: string) => result,
+    })),
+    applyGlossaryBatch: vi.fn().mockImplementation(async (texts: string[]) => ({
+      processedTexts: texts,
+      restoreFns: texts.map(() => (result: string) => result),
+    })),
+  },
+}));
+
 
 describe('Content Script', () => {
   let messageHandler: (
@@ -405,13 +427,20 @@ describe('Content Script', () => {
       const sendResponse = vi.fn();
       const consoleSpy = vi.spyOn(console, 'error');
 
+      vi.useFakeTimers();
+
       messageHandler(
         { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
         {},
         sendResponse
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Advance timers to flush retry backoff delays and async operations
+      for (let i = 0; i < 10; i++) {
+        await vi.advanceTimersByTimeAsync(2000);
+      }
+
+      vi.useRealTimers();
 
       expect(consoleSpy).toHaveBeenCalled();
     });

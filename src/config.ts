@@ -5,11 +5,15 @@
 
 export const CONFIG = {
   /**
-   * Translation cache settings (LRU cache in service worker)
+   * Translation cache settings (persistent LRU cache in service worker)
    */
   cache: {
     /** Maximum number of cached translations */
-    maxSize: 100,
+    maxSize: 1000,
+    /** Storage key for persistent cache */
+    storageKey: 'translationMemory',
+    /** Debounce delay for saving cache to storage (ms) */
+    saveDebounceMs: 5000,
   },
 
   /**
@@ -79,8 +83,8 @@ export const CONFIG = {
   mutations: {
     /** Debounce delay for processing mutations */
     debounceMs: 500,
-    /** Maximum pending mutations to buffer */
-    maxPending: 100,
+    /** Maximum pending mutations to buffer (high for content-heavy pages like Dutch news sites) */
+    maxPending: 500,
   },
 
   /**

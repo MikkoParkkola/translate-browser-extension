@@ -24,7 +24,8 @@
     "storage",
     "activeTab",
     "scripting",
-    "offscreen"
+    "offscreen",
+    "contextMenus"
   ],
   "minimum_chrome_version": "116",
   "host_permissions": [
@@ -37,11 +38,26 @@
       },
       "description": "Open translation popup"
     },
+    "translate-page": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+P",
+        "mac": "Command+Shift+P"
+      },
+      "description": "Translate entire page"
+    },
     "translate-selection": {
       "suggested_key": {
-        "default": "Ctrl+Shift+T"
+        "default": "Ctrl+Shift+T",
+        "mac": "Command+Shift+T"
       },
       "description": "Translate selected text"
+    },
+    "undo-translation": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+U",
+        "mac": "Command+Shift+U"
+      },
+      "description": "Undo translation"
     }
   },
   "web_accessible_resources": [
@@ -51,6 +67,6 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://cdn-lfs.huggingface.co https://cdn-lfs-us-1.hf.co https://cdn-lfs-eu-1.hf.co https://cdn-lfs-ap-1.hf.co https://huggingface.co https://hf.co https://api.deepl.com https://api-free.deepl.com https://api.openai.com https://generativelanguage.googleapis.com https://api.anthropic.com;"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://cdn-lfs.huggingface.co https://cdn-lfs-us-1.hf.co https://cdn-lfs-eu-1.hf.co https://cdn-lfs-ap-1.hf.co https://huggingface.co https://hf.co https://*.xethub.hf.co https://cas-bridge.xethub.hf.co https://api.deepl.com https://api-free.deepl.com https://api.openai.com https://generativelanguage.googleapis.com https://api.anthropic.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com;"
   }
 }

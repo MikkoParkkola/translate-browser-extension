@@ -43,6 +43,25 @@ function copyExtensionFiles() {
           console.log(`Copied: ${file}`);
         }
       }
+
+      // Copy Tesseract.js WASM files for OCR
+      const tesseractCoreDir = resolve(
+        __dirname,
+        'node_modules/tesseract.js-core'
+      );
+      const tesseractWasmFiles = [
+        'tesseract-core-simd-lstm.wasm',
+        'tesseract-core-simd-lstm.wasm.js',
+      ];
+
+      for (const file of tesseractWasmFiles) {
+        const src = resolve(tesseractCoreDir, file);
+        const dest = resolve(assetsDir, file);
+        if (existsSync(src)) {
+          copyFileSync(src, dest);
+          console.log(`Copied: ${file}`);
+        }
+      }
     },
   };
 }
@@ -72,6 +91,7 @@ export default defineConfig({
         popup: resolve(__dirname, 'src/popup/index.html'),
         options: resolve(__dirname, 'src/options/index.html'),
         offscreen: resolve(__dirname, 'src/offscreen/offscreen.html'),
+        onboarding: resolve(__dirname, 'src/onboarding/index.html'),
         background: resolve(__dirname, 'src/background/service-worker.ts'),
         // Content script is built separately via vite.content.config.ts (IIFE format)
       },

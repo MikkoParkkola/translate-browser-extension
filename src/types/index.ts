@@ -24,10 +24,16 @@ export interface TranslationResult {
   duration: number;
 }
 
+export interface TranslationContext {
+  before: string;
+  after: string;
+}
+
 export interface TranslationOptions {
   strategy?: Strategy;
   maxRetries?: number;
   timeout?: number;
+  context?: TranslationContext;
 }
 
 // Language types
@@ -180,6 +186,15 @@ export interface CacheStats {
   oldestEntry: number | null;
 }
 
+// Detailed cache statistics (enhanced translation memory)
+export interface DetailedCacheStats extends CacheStats {
+  totalHits: number;
+  totalMisses: number;
+  mostUsed: Array<{ text: string; useCount: number; langs: string }>;
+  memoryEstimate: string;
+  languagePairs: Record<string, number>;
+}
+
 export interface SetProviderMessage {
   type: 'setProvider';
   provider: TranslationProviderId;
@@ -268,6 +283,67 @@ export interface ClearHistoryMessage {
   target?: string;
 }
 
+// Corrections (learn from user edits)
+export interface AddCorrectionMessage {
+  type: 'addCorrection';
+  original: string;
+  machineTranslation: string;
+  userCorrection: string;
+  sourceLang: string;
+  targetLang: string;
+  target?: string;
+}
+
+export interface GetCorrectionMessage {
+  type: 'getCorrection';
+  original: string;
+  sourceLang: string;
+  targetLang: string;
+  target?: string;
+}
+
+export interface GetAllCorrectionsMessage {
+  type: 'getAllCorrections';
+  target?: string;
+}
+
+export interface GetCorrectionStatsMessage {
+  type: 'getCorrectionStats';
+  target?: string;
+}
+
+export interface ClearCorrectionsMessage {
+  type: 'clearCorrections';
+  target?: string;
+}
+
+export interface DeleteCorrectionMessage {
+  type: 'deleteCorrection';
+  original: string;
+  sourceLang: string;
+  targetLang: string;
+  target?: string;
+}
+
+export interface ExportCorrectionsMessage {
+  type: 'exportCorrections';
+  target?: string;
+}
+
+export interface ImportCorrectionsMessage {
+  type: 'importCorrections';
+  json: string;
+  target?: string;
+}
+
+// OCR (image text extraction)
+export interface OCRImageMessage {
+  type: 'ocrImage';
+  imageData: string;
+  lang?: string;
+  target?: string;
+}
+
 export type ExtensionMessage =
   | TranslateMessage
   | TranslatePageMessage
@@ -294,4 +370,15 @@ export type ExtensionMessage =
   | GetProfilingStatsMessage
   | ClearProfilingStatsMessage
   | GetHistoryMessage
-  | ClearHistoryMessage;
+  | ClearHistoryMessage
+  | AddCorrectionMessage
+  | GetCorrectionMessage
+  | GetAllCorrectionsMessage
+  | GetCorrectionStatsMessage
+  | ClearCorrectionsMessage
+  | DeleteCorrectionMessage
+  | ExportCorrectionsMessage
+  | ImportCorrectionsMessage
+  | OCRImageMessage
+  | { type: 'getDownloadedModels'; target?: string }
+  | { type: 'getSettings'; target?: string };

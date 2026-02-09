@@ -129,14 +129,20 @@ export function createTranslationError(error: unknown): TranslationError {
         suggestion: 'The model may still be downloading. Please wait and try again.',
       };
 
-    case 'language':
+    case 'language': {
+      // Extract language codes from error message if available
+      const pairMatch = rawMessage.match(/(\w+)\s*->\s*(\w+)/);
+      const sourceLang = pairMatch?.[1]?.toUpperCase() || 'source';
+      const targetLang = pairMatch?.[2]?.toUpperCase() || 'target';
+
       return {
         category,
-        message: 'Language pair not supported',
+        message: `${sourceLang} to ${targetLang} translation not available`,
         technicalDetails: rawMessage,
         retryable: false,
-        suggestion: 'Please select a different source or target language',
+        suggestion: 'Try selecting a different language pair, or switch to a cloud provider (DeepL, OpenAI) for more language options.',
       };
+    }
 
     case 'timeout':
       return {

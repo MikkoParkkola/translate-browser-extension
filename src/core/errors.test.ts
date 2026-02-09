@@ -46,7 +46,7 @@ describe('createTranslationError', () => {
       const error = createTranslationError(new Error('unsupported language pair'));
       expect(error.category).toBe('language');
       expect(error.retryable).toBe(false);
-      expect(error.message).toBe('Language pair not supported');
+      expect(error.message).toBe('source to target translation not available');
     });
 
     it('categorizes timeout errors', () => {

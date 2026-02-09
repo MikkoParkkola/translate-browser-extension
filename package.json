@@ -12,6 +12,9 @@
     "test:ui": "vitest --ui",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:e2e:playwright": "npx playwright test e2e/extension-playwright.spec.ts --headed",
+    "test:e2e:background": "BACKGROUND=true npx playwright test e2e/csp-model-loading.spec.ts",
+    "test:e2e:csp": "vitest run test/e2e/csp-validation.test.ts --config vitest.e2e.config.ts --reporter=verbose",
+    "test:e2e:quick": "vitest run test/e2e/quick-validation.test.ts --config vitest.e2e.config.ts --reporter=verbose",
     "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
     "package:firefox": "cd dist-firefox && zip -r ../translate-firefox.xpi *"
@@ -22,7 +25,8 @@
   "dependencies": {
     "@huggingface/transformers": "^3.0.0",
     "franc-min": "^6.2.0",
-    "solid-js": "^1.8.0"
+    "solid-js": "^1.8.0",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.24.0",
