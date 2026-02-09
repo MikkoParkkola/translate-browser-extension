@@ -197,8 +197,10 @@ function showInfoToast(message: string, durationMs = 3000): void {
     position: 'fixed',
     bottom: '20px',
     left: '50%',
-    transform: 'translateX(-50%)',
-    background: '#1e293b',
+    transform: 'translateX(-50%) translateY(8px)',
+    background: 'rgba(30, 41, 59, 0.85)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
     color: '#f1f5f9',
     padding: '12px 20px',
     borderRadius: '8px',
@@ -207,20 +209,22 @@ function showInfoToast(message: string, durationMs = 3000): void {
     boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
     zIndex: '2147483647',
     opacity: '0',
-    transition: 'opacity 0.2s ease',
+    transition: 'opacity 0.25s ease, transform 0.25s ease',
   });
 
   document.body.appendChild(toast);
 
-  // Fade in
+  // Slide up + fade in
   requestAnimationFrame(() => {
     toast.style.opacity = '1';
+    toast.style.transform = 'translateX(-50%) translateY(0)';
   });
 
-  // Fade out and remove
+  // Fade out + slide down and remove
   setTimeout(() => {
     toast.style.opacity = '0';
-    setTimeout(() => toast.remove(), 200);
+    toast.style.transform = 'translateX(-50%) translateY(8px)';
+    setTimeout(() => toast.remove(), 250);
   }, durationMs);
 }
 
@@ -317,8 +321,10 @@ function showErrorToast(message: string, durationMs = 6000): void {
     position: 'fixed',
     bottom: '20px',
     left: '50%',
-    transform: 'translateX(-50%)',
-    background: '#991b1b',
+    transform: 'translateX(-50%) translateY(8px)',
+    background: 'rgba(153, 27, 27, 0.88)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
     color: '#fef2f2',
     padding: '12px 20px',
     borderRadius: '8px',
@@ -327,7 +333,7 @@ function showErrorToast(message: string, durationMs = 6000): void {
     boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)',
     zIndex: '2147483647',
     opacity: '0',
-    transition: 'opacity 0.2s ease',
+    transition: 'opacity 0.25s ease, transform 0.25s ease',
     maxWidth: '400px',
     textAlign: 'center',
     lineHeight: '1.4',
@@ -350,15 +356,17 @@ function showErrorToast(message: string, durationMs = 6000): void {
 
   document.body.appendChild(toast);
 
-  // Fade in
+  // Slide up + fade in
   requestAnimationFrame(() => {
     toast.style.opacity = '1';
+    toast.style.transform = 'translateX(-50%) translateY(0)';
   });
 
-  // Fade out and remove
+  // Fade out + slide down and remove
   setTimeout(() => {
     toast.style.opacity = '0';
-    setTimeout(() => toast.remove(), 200);
+    toast.style.transform = 'translateX(-50%) translateY(8px)';
+    setTimeout(() => toast.remove(), 250);
   }, durationMs);
 }
 
@@ -614,7 +622,8 @@ function showHoverTooltip(text: string, translatedText: string, rect: DOMRect): 
     borderRadius: '8px',
     fontSize: '13px',
     lineHeight: '1.4',
-    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25)',
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(96, 165, 250, 0.2)',
+    border: '1px solid rgba(96, 165, 250, 0.15)',
     zIndex: '2147483647',
     animation: 'hoverFadeIn 0.15s ease',
     display: 'flex',

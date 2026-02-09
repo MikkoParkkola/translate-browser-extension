@@ -48,6 +48,10 @@
 
   /* Transitions */
   --transition-fast: 150ms ease;
+
+  /* Premium polish */
+  --color-primary-glow: rgba(59, 130, 246, 0.4);
+  --header-gradient: linear-gradient(135deg, var(--color-bg) 0%, var(--color-bg-secondary) 100%);
 }
 
 /* Dark Mode */
@@ -76,6 +80,9 @@
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+
+    --color-primary-glow: rgba(96, 165, 250, 0.35);
+    --header-gradient: linear-gradient(135deg, var(--color-bg) 0%, var(--color-bg-secondary) 100%);
   }
 }
 
@@ -106,7 +113,7 @@ body {
 .popup-header {
   padding: var(--space-3);
   border-bottom: 1px solid var(--color-border);
-  background: var(--color-bg);
+  background: var(--header-gradient);
 }
 
 .header-brand {
@@ -125,6 +132,7 @@ body {
   background: var(--color-primary);
   color: white;
   border-radius: var(--radius-md);
+  box-shadow: 0 0 12px var(--color-primary-glow), 0 0 4px var(--color-primary-glow);
 }
 
 .brand-text {
@@ -242,12 +250,15 @@ body {
 .provider-button:hover {
   border-color: var(--color-primary);
   color: var(--color-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
 }
 
 .provider-button.active {
   background: var(--color-primary);
-  border-color: var(--color-primary);
+  border-color: transparent;
   color: white;
+  box-shadow: 0 0 0 1px var(--color-primary), 0 0 0 3px var(--color-primary-glow);
 }
 
 .provider-button-name {
@@ -300,6 +311,14 @@ body {
 
 .language-select:hover {
   border-color: var(--color-primary);
+}
+
+@supports (backdrop-filter: blur(8px)) {
+  .language-select {
+    background: color-mix(in srgb, var(--color-bg) 90%, transparent);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
 }
 
 .language-select:focus {
@@ -1356,6 +1375,14 @@ body {
   overflow-y: auto;
 }
 
+@supports (backdrop-filter: blur(12px)) {
+  .model-dropdown-menu {
+    background: color-mix(in srgb, var(--color-bg) 85%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+}
+
 .model-dropdown-group {
   padding: var(--space-1) 0;
 }
@@ -1527,4 +1554,102 @@ body {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ============================================
+   PREMIUM POLISH - Micro-interactions & Effects
+   ============================================ */
+
+/* Shimmer animation for loading/downloading state */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.model-loading {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-primary-light) 0%,
+    color-mix(in srgb, var(--color-primary-light) 60%, white) 50%,
+    var(--color-primary-light) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+.model-downloading .model-selector-progress-bar,
+.model-selector-button.model-downloading {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(245, 158, 11, 0.08) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+/* Satisfying button press (scale down on :active) */
+.action-button:active:not(:disabled),
+.action-btn:active:not(:disabled),
+.provider-button:active,
+.strategy-button:active,
+.model-selector-button:active:not(:disabled),
+.model-dropdown-trigger:active,
+.settings-button:active,
+.swap-button:active,
+.api-key-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Provider/strategy buttons: reset translateY on active press */
+.provider-button:active {
+  transform: translateY(0) scale(0.97);
+}
+
+/* Smooth focus-visible outlines for keyboard navigation (a11y) */
+.action-button:focus-visible,
+.action-btn:focus-visible,
+.provider-button:focus-visible,
+.strategy-button:focus-visible,
+.model-selector-button:focus-visible,
+.model-dropdown-trigger:focus-visible,
+.model-dropdown-item:focus-visible,
+.settings-button:focus-visible,
+.swap-button:focus-visible,
+.language-select:focus-visible,
+.toggle-slider:focus-visible,
+.api-key-btn:focus-visible,
+.api-key-input:focus-visible,
+.api-key-close:focus-visible,
+.configure-link:focus-visible,
+.model-dropdown-configure:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Remove default focus ring since we handle it with focus-visible */
+.action-button:focus:not(:focus-visible),
+.action-btn:focus:not(:focus-visible),
+.provider-button:focus:not(:focus-visible),
+.strategy-button:focus:not(:focus-visible),
+.model-selector-button:focus:not(:focus-visible),
+.model-dropdown-trigger:focus:not(:focus-visible),
+.settings-button:focus:not(:focus-visible),
+.swap-button:focus:not(:focus-visible),
+.api-key-btn:focus:not(:focus-visible),
+.api-key-close:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Model selector button hover lift */
+.model-selector-button:hover:not(:disabled):not(.active) {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.06);
+}
+
+/* Strategy button hover lift */
+.strategy-button:hover:not(.active) {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.06);
 }
