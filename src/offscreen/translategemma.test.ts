@@ -232,6 +232,90 @@ describe('isTranslateGemmaLoading', () => {
   });
 });
 
+describe('formatTranslateGemmaPrompt with context parameter', () => {
+  describe('when context is provided', () => {
+    it('injects context line into prompt', () => {
+      const prompt = formatTranslateGemmaPrompt('Bank', 'en', 'fi', 'Financial news article');
+      expect(prompt).toContain('Context:');
+      expect(prompt).toContain('Financial news article');
+    });
+
+    it('includes disambiguation instruction', () => {
+      const prompt = formatTranslateGemmaPrompt('Bank', 'en', 'fi', 'River description');
+      expect(prompt).toContain('disambiguation');
+    });
+
+    it('places context between translator instruction and translation request', () => {
+      const prompt = formatTranslateGemmaPrompt('Bank', 'en', 'fi', 'Financial article');
+      const contextIndex = prompt.indexOf('Context:');
+      const translatorIndex = prompt.indexOf('professional');
+      const translateIndex = prompt.indexOf('Produce only');
+
+      expect(contextIndex).toBeGreaterThan(translatorIndex);
+      expect(contextIndex).toBeLessThan(translateIndex);
+    });
+
+    it('wraps context in quotes within the prompt', () => {
+      const prompt = formatTranslateGemmaPrompt('Test', 'en', 'fi', 'page header');
+      expect(prompt).toContain('"page header"');
+    });
+
+    it('still contains all standard prompt elements with context', () => {
+      const prompt = formatTranslateGemmaPrompt('Hello', 'en', 'fi', 'main content');
+      expect(prompt).toMatch(/^<start_of_turn>user\n/);
+      expect(prompt).toMatch(/<start_of_turn>model\n$/);
+      expect(prompt).toContain('<end_of_turn>');
+      expect(prompt).toContain('Hello');
+      expect(prompt).toContain('English');
+      expect(prompt).toContain('Finnish');
+    });
+  });
+
+  describe('when context is undefined', () => {
+    it('does not include context line', () => {
+      const prompt = formatTranslateGemmaPrompt('Hello', 'en', 'fi', undefined);
+      expect(prompt).not.toContain('Context:');
+    });
+
+    it('produces identical output to no-context call', () => {
+      const withUndefined = formatTranslateGemmaPrompt('Hello', 'en', 'fi', undefined);
+      const withoutArg = formatTranslateGemmaPrompt('Hello', 'en', 'fi');
+      expect(withUndefined).toBe(withoutArg);
+    });
+  });
+
+  describe('when context is empty string', () => {
+    it('does not include context line for empty string', () => {
+      const prompt = formatTranslateGemmaPrompt('Hello', 'en', 'fi', '');
+      expect(prompt).not.toContain('Context:');
+    });
+
+    it('produces identical output to no-context call for empty string', () => {
+      const withEmpty = formatTranslateGemmaPrompt('Hello', 'en', 'fi', '');
+      const withoutArg = formatTranslateGemmaPrompt('Hello', 'en', 'fi');
+      expect(withEmpty).toBe(withoutArg);
+    });
+  });
+
+  describe('context with various content', () => {
+    it('handles long context strings', () => {
+      const longContext = 'A'.repeat(500);
+      const prompt = formatTranslateGemmaPrompt('Test', 'en', 'fi', longContext);
+      expect(prompt).toContain(longContext);
+    });
+
+    it('handles context with special characters', () => {
+      const prompt = formatTranslateGemmaPrompt('Test', 'en', 'fi', 'News > Sports > Football');
+      expect(prompt).toContain('News > Sports > Football');
+    });
+
+    it('handles context with unicode', () => {
+      const prompt = formatTranslateGemmaPrompt('Test', 'en', 'fi', 'Uutiset > Urheilu');
+      expect(prompt).toContain('Uutiset > Urheilu');
+    });
+  });
+});
+
 describe('prompt template validation', () => {
   it('matches official TranslateGemma chat template format', () => {
     const prompt = formatTranslateGemmaPrompt('Test', 'en', 'fi');
