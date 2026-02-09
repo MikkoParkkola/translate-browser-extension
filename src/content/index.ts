@@ -1539,7 +1539,14 @@ async function translateBatchWithRetry(
       lastError = response.error || 'Translation returned unsuccessful response';
     } catch (error) {
       lastError = error;
-      // Network errors are retryable
+      // Extension context invalidated = service worker restarted, not retryable
+      if (error instanceof Error && error.message.includes('Extension context invalidated')) {
+        console.warn('[Content] Extension context invalidated — stopping translation. Reload the page.');
+        stopMutationObserver();
+        currentSettings = null;
+        return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime: 0, domUpdateTime: 0 };
+      }
+      // Other errors are retryable
       if (attempt === maxRetries) break;
     }
   }
