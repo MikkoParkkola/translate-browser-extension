@@ -94,12 +94,14 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
 
   const webgpu = await detectWebGPU();
   const device = webgpu ? 'webgpu' : 'wasm';
-  log.info(` Using device: ${device}`);
+  // fp16 on WebGPU avoids the "unaligned accesses" ORT bug that fp32+WebGPU triggers.
+  // fp32 on WASM is safe and avoids q4f16 numeric errors noted previously.
+  const dtype = webgpu ? 'fp16' : 'fp32';
+  log.info(` Using device: ${device}, dtype: ${dtype}`);
 
-  // Note: dtype removed because q4f16 quantization causes numeric errors with some models
   // Use optimized timeout for OPUS-MT direct models (~170MB, typically loads in <60s)
   const pipe = await withTimeout(
-    pipeline('translation', modelId, { device }),
+    pipeline('translation', modelId, { device, dtype } as Record<string, unknown>),
     CONFIG.timeouts.opusMtDirectMs,
     `Loading model ${modelId}`
   );
