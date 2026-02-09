@@ -24,36 +24,53 @@ import { browserAPI } from '../core/browser-api';
 const log = createLogger('Content');
 
 // Simple content-script timing tracker (separate from background profiler)
-const contentTimings: {
-  domScan: number[];
-  domUpdate: number[];
-  glossaryApply: number[];
-  ipcRoundtrip: number[];
-} = {
-  domScan: [],
-  domUpdate: [],
-  glossaryApply: [],
-  ipcRoundtrip: [],
+// Uses pre-allocated circular buffers instead of shift() which is O(n).
+const TIMING_BUFFER_SIZE = 100;
+
+class CircularTimingBuffer {
+  private buffer: Float64Array;
+  private writeIndex = 0;
+  private count = 0;
+
+  constructor(size: number) {
+    this.buffer = new Float64Array(size);
+  }
+
+  push(value: number): void {
+    this.buffer[this.writeIndex] = value;
+    this.writeIndex = (this.writeIndex + 1) % this.buffer.length;
+    if (this.count < this.buffer.length) this.count++;
+  }
+
+  getStats(): { avg: number; min: number; max: number; count: number } | null {
+    if (this.count === 0) return null;
+    let sum = 0, min = Infinity, max = -Infinity;
+    for (let i = 0; i < this.count; i++) {
+      const val = this.buffer[i];
+      sum += val;
+      if (val < min) min = val;
+      if (val > max) max = val;
+    }
+    return { avg: sum / this.count, min, max, count: this.count };
+  }
+}
+
+const contentTimings = {
+  domScan: new CircularTimingBuffer(TIMING_BUFFER_SIZE),
+  domUpdate: new CircularTimingBuffer(TIMING_BUFFER_SIZE),
+  glossaryApply: new CircularTimingBuffer(TIMING_BUFFER_SIZE),
+  ipcRoundtrip: new CircularTimingBuffer(TIMING_BUFFER_SIZE),
 };
 
 function recordContentTiming(category: keyof typeof contentTimings, durationMs: number): void {
-  const arr = contentTimings[category];
-  arr.push(durationMs);
-  // Keep last 100 entries
-  if (arr.length > 100) arr.shift();
+  contentTimings[category].push(durationMs);
 }
 
 function getContentTimingStats(): Record<string, { avg: number; min: number; max: number; count: number }> {
   const result: Record<string, { avg: number; min: number; max: number; count: number }> = {};
-  for (const [key, arr] of Object.entries(contentTimings)) {
-    if (arr.length === 0) continue;
-    const sum = arr.reduce((a, b) => a + b, 0);
-    result[key] = {
-      avg: sum / arr.length,
-      min: Math.min(...arr),
-      max: Math.max(...arr),
-      count: arr.length,
-    };
+  for (const [key, buffer] of Object.entries(contentTimings)) {
+    const stats = buffer.getStats();
+    if (stats) result[key] = stats;
   }
   return result;
 }
@@ -137,10 +154,13 @@ const TARGET_LANG_ATTR = 'data-target-lang';
 // State
 // ============================================================================
 
-let isTranslating = false;
+let isTranslatingPage = false;
+let isTranslatingDynamic = false;
 let pendingMutations: MutationRecord[] = [];
 let mutationDebounceTimer: number | null = null;
 let mutationObserver: MutationObserver | null = null;
+/** Queued dynamic nodes that arrived during page translation, translated after page completes */
+let queuedDynamicNodes: Node[] = [];
 
 // WeakMap cache for shouldSkip results — avoids redundant getComputedStyle
 // across text nodes sharing the same parent element. Auto-GC'd when elements detach.
@@ -313,17 +333,20 @@ function showErrorToast(message: string, durationMs = 6000): void {
     lineHeight: '1.4',
   });
 
-  // Add icon and message
-  toast.innerHTML = `
-    <div style="display: flex; align-items: flex-start; gap: 10px;">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink: 0; margin-top: 2px;">
-        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-        <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <circle cx="12" cy="16" r="1" fill="currentColor"/>
-      </svg>
-      <span>${message}</span>
-    </div>
+  // Add icon and message (use textContent for message to prevent XSS)
+  const wrapper = document.createElement('div');
+  Object.assign(wrapper.style, { display: 'flex', alignItems: 'flex-start', gap: '10px' });
+  wrapper.innerHTML = `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink: 0; margin-top: 2px;">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+      <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="12" cy="16" r="1" fill="currentColor"/>
+    </svg>
   `;
+  const msgSpan = document.createElement('span');
+  msgSpan.textContent = message;
+  wrapper.appendChild(msgSpan);
+  toast.appendChild(wrapper);
 
   document.body.appendChild(toast);
 
@@ -471,9 +494,9 @@ let correctionHintShown = false;
 function showCorrectionHint(_element: HTMLElement): void {
   if (correctionHintShown) return;
 
-  // Check if we've shown the hint before
+  // Check if we've shown the hint before (use browserAPI for cross-browser compat)
   const hintKey = 'translate_correction_hint_shown';
-  chrome.storage?.local?.get(hintKey).then((result) => {
+  safeStorageGet<Record<string, boolean>>([hintKey]).then((result) => {
     if (result[hintKey]) {
       correctionHintShown = true;
       return;
@@ -504,8 +527,8 @@ function showCorrectionHint(_element: HTMLElement): void {
     document.body.appendChild(hint);
     correctionHintShown = true;
 
-    // Mark as shown in storage
-    chrome.storage?.local?.set({ [hintKey]: true }).catch(() => {});
+    // Mark as shown in storage (fire-and-forget)
+    browserAPI.storage?.local?.set({ [hintKey]: true }).catch(() => {});
 
     // Remove after a few seconds
     setTimeout(() => {
@@ -1494,7 +1517,9 @@ async function translateBatchWithRetry(
 
         response.result.forEach((translated, idx) => {
           const node = batch.nodes[idx];
-          if (node && translated && node.parentElement) {
+          // Guard: skip detached nodes (removed from DOM during translation) and already-translated
+          if (node && translated && node.parentElement && document.contains(node) &&
+              !node.parentElement.hasAttribute(TRANSLATED_ATTR)) {
             try {
               const finalText = batch.restoreFns[idx](translated);
               const original = node.textContent || '';
@@ -1585,12 +1610,12 @@ async function translatePage(
   provider?: string,
   enableProfiling = false
 ): Promise<void> {
-  if (isTranslating) {
+  if (isTranslatingPage) {
     log.info(' Translation already in progress');
     return;
   }
 
-  isTranslating = true;
+  isTranslatingPage = true;
   stopBelowFoldObserver();
   log.info(' Translating page...');
   const pageStart = performance.now();
@@ -1748,7 +1773,15 @@ async function translatePage(
       console.log('[Content] Timing Stats:', getContentTimingStats());
     }
   } finally {
-    isTranslating = false;
+    isTranslatingPage = false;
+
+    // Drain any dynamic nodes that were queued during page translation
+    if (queuedDynamicNodes.length > 0 && currentSettings) {
+      const queued = queuedDynamicNodes;
+      queuedDynamicNodes = [];
+      log.info(` Draining ${queued.length} queued dynamic nodes`);
+      translateDynamicContent(queued);
+    }
   }
 }
 
@@ -1852,7 +1885,16 @@ function setupScrollAwareTranslation(
  * Translate dynamically added content (with batching to respect MAX_BATCH_SIZE)
  */
 async function translateDynamicContent(nodes: Node[]): Promise<void> {
-  if (!currentSettings || isTranslating) return;
+  if (!currentSettings) return;
+
+  // If page translation is running, queue these nodes instead of dropping them
+  if (isTranslatingPage) {
+    queuedDynamicNodes.push(...nodes);
+    return;
+  }
+
+  if (isTranslatingDynamic) return;
+  isTranslatingDynamic = true;
 
   const textNodes = getTextNodesFromNodes(nodes);
   if (textNodes.length === 0) return;
@@ -1886,6 +1928,8 @@ async function translateDynamicContent(nodes: Node[]): Promise<void> {
     if (error instanceof Error && !isTransientError(error.message)) {
       showErrorToast(error.message);
     }
+  } finally {
+    isTranslatingDynamic = false;
   }
 }
 
@@ -2700,11 +2744,22 @@ if (document.readyState === 'complete') {
   window.addEventListener('load', checkAutoTranslate);
 }
 
-// Cleanup on unload
+// Cleanup on unload - release all resources
 window.addEventListener('unload', () => {
   stopMutationObserver();
   stopBelowFoldObserver();
   removeProgressToast();
+  clearImageOverlays();
+  hoverTranslationCache.clear();
+  queuedDynamicNodes = [];
+  currentSettings = null;
+  cachedGlossary = null;
+
+  // Remove hover translation listeners
+  document.removeEventListener('mousemove', onMouseMove);
+  document.removeEventListener('keydown', onKeyDown);
+  document.removeEventListener('keyup', onKeyUp);
+  removeWidgetDragListeners();
 });
 
 log.info(' Translation content script loaded v2.3 with MutationObserver + site rules + glossary support');

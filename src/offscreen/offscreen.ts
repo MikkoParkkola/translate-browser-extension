@@ -44,14 +44,16 @@ log.info(' WASM path configured:', wasmBasePath);
 
 /**
  * Wrap a promise with a timeout.
+ * Properly clears the timer when the promise resolves/rejects to prevent timer leaks.
  */
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`Timeout: ${message} (${ms / 1000}s)`)), ms)
-    ),
-  ]);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timeout: ${message} (${ms / 1000}s)`)), ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
 }
 
 /**
@@ -147,11 +149,20 @@ async function translateDirect(
   const inferenceStart = performance.now();
 
   if (Array.isArray(text)) {
+    // Short-circuit for empty batches
+    if (text.length === 0) return [];
+
     const results = await Promise.all(
       text.map(async (t) => {
         if (!t || t.trim().length === 0) return t;
-        const result = await pipe(t, { max_length: 512 });
-        return (result as Array<{ translation_text: string }>)[0].translation_text;
+        try {
+          const result = await pipe(t, { max_length: 512 });
+          return (result as Array<{ translation_text: string }>)[0].translation_text;
+        } catch (err) {
+          // Per-item error: return original text instead of crashing entire batch
+          log.warn(` Translation failed for item (${t.substring(0, 30)}...):`, err);
+          return t;
+        }
       })
     );
 
@@ -406,6 +417,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {
       switch (message.type) {
         case 'translate': {
+          // Validate required fields to prevent cryptic downstream errors
+          if (message.text === undefined || message.text === null) {
+            sendResponse({ success: false, error: 'Missing required field: text' });
+            return;
+          }
+          if (!message.sourceLang || !message.targetLang) {
+            sendResponse({ success: false, error: 'Missing required field: sourceLang or targetLang' });
+            return;
+          }
+
           // Support profiling sessions passed from background
           const sessionId = message.sessionId;
           if (sessionId) {
