@@ -124,6 +124,26 @@ function scheduleCacheSave(): void {
 }
 
 /**
+ * Flush pending cache save immediately (for service worker shutdown).
+ * Service workers can be killed after 30s of inactivity in MV3.
+ */
+function flushCacheSave(): void {
+  if (!saveCacheTimer) return;
+  clearTimeout(saveCacheTimer);
+  saveCacheTimer = null;
+  // Synchronous-start: chrome.storage.local.set returns a promise but
+  // we fire it without awaiting — the browser keeps the SW alive
+  // long enough for pending chrome.storage writes to complete.
+  const entries = Array.from(translationCache.entries());
+  chrome.storage.local.set({
+    [CONFIG.cache.storageKey]: entries,
+    cacheStats: { hits: cacheHits, misses: cacheMisses },
+  }).catch((error) => {
+    log.warn('Failed to flush cache on shutdown:', error);
+  });
+}
+
+/**
  * Generate cache key from translation parameters.
  * Uses FNV-1a hash to prevent collisions from text truncation.
  */
@@ -1089,7 +1109,7 @@ async function handleTranslate(message: {
         profiler.endTiming(sessionId, 'cache_lookup');
       }
       if (cached) {
-        cacheHits++;
+        // Note: cacheHits already incremented inside getCachedTranslation()
         const duration = Date.now() - startTime;
         log.info(` Cache hit, returning in ${duration}ms`);
         if (sessionId) {
@@ -1105,7 +1125,7 @@ async function handleTranslate(message: {
     } else if (sessionId) {
       profiler.endTiming(sessionId, 'cache_lookup');
     }
-    cacheMisses++;
+    // Note: cacheMisses already incremented inside getCachedTranslation() when entry not found
 
     // Check for user corrections (only for single strings, not arrays)
     // Corrections take precedence over machine translation
@@ -1976,5 +1996,15 @@ chrome.runtime.onStartup.addListener(() => {
     log.warn('Failed to initialize prediction engine:', error);
   }
 })();
+
+// Flush pending cache writes when service worker is about to shut down.
+// In MV3 service workers, onSuspend fires before the worker is terminated.
+// In MV2 (Firefox), chrome.runtime.onSuspend also applies.
+if (chrome.runtime.onSuspend) {
+  chrome.runtime.onSuspend.addListener(() => {
+    console.log('[Background] Service worker suspending, flushing cache...');
+    flushCacheSave();
+  });
+}
 
 console.log('[Background] Service worker initialized v2.3 with predictive model preloading');
