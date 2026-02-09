@@ -64,13 +64,9 @@ interface LanguageDetectorAPI {
   create(): Promise<LanguageDetector>;
 }
 
-// Extend global window type for Chrome AI APIs
-declare global {
-  interface Window {
-    Translator?: TranslatorAPI;
-    LanguageDetector?: LanguageDetectorAPI;
-  }
-}
+// Chrome AI APIs are on globalThis/self (not window-specific)
+declare const Translator: TranslatorAPI | undefined;
+declare const LanguageDetector: LanguageDetectorAPI | undefined;
 
 /**
  * Chrome Built-in Translator Provider
@@ -111,23 +107,16 @@ export class ChromeTranslatorProvider extends BaseProvider {
       return this.apiAvailable;
     }
 
-    // Check for Chrome AI APIs
-    if (typeof window === 'undefined') {
-      // Running in service worker - check via chrome.* APIs
-      this.apiAvailable = false;
-      return false;
-    }
-
-    // Check for Translator API (Chrome 138+)
-    if (!window.Translator) {
-      log.info('Chrome Translator API not available (Chrome 138+ required)');
+    // Feature detection per Chrome docs: 'Translator' in self
+    if (typeof Translator === 'undefined') {
+      log.info('Chrome Translator API not available (Chrome 138+ required, not in offscreen docs)');
       this.apiAvailable = false;
       return false;
     }
 
     // API exists - check if it's actually usable
     try {
-      const testAvail = await window.Translator.availability({
+      const testAvail = await Translator.availability({
         sourceLanguage: 'en',
         targetLanguage: 'es',
       });
@@ -155,7 +144,7 @@ export class ChromeTranslatorProvider extends BaseProvider {
     }
 
     try {
-      const availability = await window.Translator!.availability({
+      const availability = await Translator!.availability({
         sourceLanguage: sourceLang,
         targetLanguage: targetLang,
       });
@@ -211,7 +200,7 @@ export class ChromeTranslatorProvider extends BaseProvider {
         continue;
       }
       try {
-        const avail = await window.Translator!.availability({
+        const avail = await Translator!.availability({
           sourceLanguage: lang,
           targetLanguage: 'en',
         });
@@ -265,7 +254,7 @@ export class ChromeTranslatorProvider extends BaseProvider {
       }
 
       log.info(`Creating translator: ${actualSourceLang} -> ${targetLang}`);
-      this.translator = await window.Translator!.create({
+      this.translator = await Translator!.create({
         sourceLanguage: actualSourceLang,
         targetLanguage: targetLang,
       });
@@ -298,14 +287,14 @@ export class ChromeTranslatorProvider extends BaseProvider {
    * Detect language using Chrome's LanguageDetector API.
    */
   async detectLanguage(text: string): Promise<string> {
-    if (!window.LanguageDetector) {
+    if (typeof LanguageDetector === 'undefined') {
       // Fallback to simple heuristics
       return 'en';
     }
 
     try {
       if (!this.detector) {
-        this.detector = await window.LanguageDetector.create();
+        this.detector = await LanguageDetector.create();
       }
 
       const results = await this.detector.detect(text.substring(0, 500));
@@ -337,7 +326,7 @@ export class ChromeTranslatorProvider extends BaseProvider {
     }
 
     try {
-      const availability = await window.Translator!.availability({
+      const availability = await Translator!.availability({
         sourceLanguage: sourceLang,
         targetLanguage: targetLang,
       });
