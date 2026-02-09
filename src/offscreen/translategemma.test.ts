@@ -38,7 +38,7 @@ vi.stubGlobal('navigator', {
 
 describe('TRANSLATEGEMMA_MODEL', () => {
   it('points to WebGPU quantized model', () => {
-    expect(TRANSLATEGEMMA_MODEL).toBe('m1cc0z/translategemma-4b-webgpu-q4');
+    expect(TRANSLATEGEMMA_MODEL).toBe('m1cc0z/translategemma-4b-it-onnx-q4-webgpu');
   });
 });
 

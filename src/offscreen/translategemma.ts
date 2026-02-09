@@ -3,10 +3,9 @@
  *
  * Handles TranslateGemma 4B model for high-quality translation with WebGPU.
  *
- * Architecture note: The HuggingFace model config declares model_type "gemma3"
- * (multimodal) with Gemma3ForConditionalGeneration, but Transformers.js only maps
- * "gemma3_text" to Gemma3ForCausalLM for text generation. We bypass the pipeline
- * auto-detection by loading Gemma3ForCausalLM + AutoTokenizer directly.
+ * Uses Gemma3ForCausalLM + AutoTokenizer directly (not pipeline) because
+ * the model config declares model_type "gemma3_text" which maps correctly,
+ * but direct loading gives us more control over dtype and device selection.
  */
 
 import {
@@ -21,7 +20,7 @@ import { createLogger } from '../core/logger';
 
 const log = createLogger('TranslateGemma');
 
-export const TRANSLATEGEMMA_MODEL = 'm1cc0z/translategemma-4b-webgpu-q4';
+export const TRANSLATEGEMMA_MODEL = 'm1cc0z/translategemma-4b-it-onnx-q4-webgpu';
 
 // Language names for TranslateGemma prompt (ISO 639-1 -> English name)
 export const LANG_NAMES: Record<string, string> = {
@@ -146,6 +145,7 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
         Promise.all([
           Gemma3ForCausalLM.from_pretrained(TRANSLATEGEMMA_MODEL, {
             device: 'webgpu',
+            dtype: 'q4',
             progress_callback: progressCallback,
           } as Record<string, unknown>),
           AutoTokenizer.from_pretrained(TRANSLATEGEMMA_MODEL, {
