@@ -141,6 +141,10 @@ let isTranslating = false;
 let pendingMutations: MutationRecord[] = [];
 let mutationDebounceTimer: number | null = null;
 let mutationObserver: MutationObserver | null = null;
+
+// WeakMap cache for shouldSkip results — avoids redundant getComputedStyle
+// across text nodes sharing the same parent element. Auto-GC'd when elements detach.
+const skipCache = new WeakMap<Element, boolean>();
 let currentSettings: {
   sourceLang: string;
   targetLang: string;
@@ -1195,7 +1199,17 @@ function getBilingualModeState(): boolean {
  * Check if element should be skipped for translation
  */
 function shouldSkip(element: Element): boolean {
-  // Skip by tag name
+  // Check WeakMap cache first — many text nodes share parents
+  const cached = skipCache.get(element);
+  if (cached !== undefined) return cached;
+
+  const result = shouldSkipUncached(element);
+  skipCache.set(element, result);
+  return result;
+}
+
+function shouldSkipUncached(element: Element): boolean {
+  // Skip by tag name (cheapest check first)
   if (SKIP_TAGS.has(element.tagName)) return true;
 
   // Skip already translated
@@ -1633,28 +1647,39 @@ async function translatePage(
     let totalDomUpdateTime = 0;
     let firstTranslation = true;
 
-    for (let batchIndex = 0; batchIndex < viewportBatches.length; batchIndex++) {
+    // Translate viewport batches with concurrency limit of 2:
+    // Pipelines IPC round-trips while model processes previous batch.
+    // DOM updates happen in-order within each batch's callback.
+    const BATCH_CONCURRENCY = 2;
+    for (let i = 0; i < viewportBatches.length; i += BATCH_CONCURRENCY) {
+      const chunk = viewportBatches.slice(i, i + BATCH_CONCURRENCY);
+
       if (totalBatches > 1) {
-        updateProgressToast(`Translating... ${batchIndex + 1}/${totalBatches}`);
+        updateProgressToast(`Translating... ${i + 1}/${totalBatches}`);
       }
 
-      const result = await translateBatchWithRetry(
-        viewportBatches[batchIndex], sourceLang, targetLang, strategy, provider, enableProfiling
+      const results = await Promise.all(
+        chunk.map((batch) =>
+          translateBatchWithRetry(batch, sourceLang, targetLang, strategy, provider, enableProfiling)
+        )
       );
 
-      // Show correction hint on first successful translation
-      if (firstTranslation && result.translatedCount > 0) {
-        const firstNode = viewportBatches[batchIndex].nodes[0];
-        if (firstNode?.parentElement) {
-          showCorrectionHint(firstNode.parentElement);
+      for (let j = 0; j < results.length; j++) {
+        const result = results[j];
+        // Show correction hint on first successful translation
+        if (firstTranslation && result.translatedCount > 0) {
+          const firstNode = chunk[j].nodes[0];
+          if (firstNode?.parentElement) {
+            showCorrectionHint(firstNode.parentElement);
+          }
+          firstTranslation = false;
         }
-        firstTranslation = false;
-      }
 
-      translatedCount += result.translatedCount;
-      errorCount += result.errorCount;
-      totalIpcTime += result.ipcTime;
-      totalDomUpdateTime += result.domUpdateTime;
+        translatedCount += result.translatedCount;
+        errorCount += result.errorCount;
+        totalIpcTime += result.ipcTime;
+        totalDomUpdateTime += result.domUpdateTime;
+      }
     }
 
     // --- Phase 2: Translate below-fold content progressively as user scrolls ---
@@ -1886,9 +1911,10 @@ function undoTranslation(): number {
       }
     }
 
-    // Clean up attributes
+    // Clean up attributes and invalidate skip cache
     element.removeAttribute(TRANSLATED_ATTR);
     element.removeAttribute(ORIGINAL_TEXT_ATTR);
+    skipCache.delete(element);
   });
 
   log.info(` Restored ${restoredCount} elements to original text`);
