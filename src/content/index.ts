@@ -1013,10 +1013,14 @@ async function handleHoverTranslation(e: MouseEvent): Promise<void> {
 
   const rect = range.getBoundingClientRect();
 
-  // Check cache first
+  // Check cache first (LRU: re-insert on hit to keep at end)
   const cacheKey = text.toLowerCase();
-  if (hoverTranslationCache.has(cacheKey)) {
-    showHoverTooltip(text, hoverTranslationCache.get(cacheKey)!, rect);
+  const cachedTranslation = hoverTranslationCache.get(cacheKey);
+  if (cachedTranslation !== undefined) {
+    // Touch: move to end of Map for LRU ordering
+    hoverTranslationCache.delete(cacheKey);
+    hoverTranslationCache.set(cacheKey, cachedTranslation);
+    showHoverTooltip(text, cachedTranslation, rect);
     return;
   }
 
@@ -1040,9 +1044,11 @@ async function handleHoverTranslation(e: MouseEvent): Promise<void> {
 
     if (response.success && response.result) {
       const translated = response.result as string;
+      // LRU: delete then re-insert to move to end of Map iteration order
+      hoverTranslationCache.delete(cacheKey);
       hoverTranslationCache.set(cacheKey, translated);
 
-      // Keep cache size reasonable
+      // Evict oldest (first) entry when over limit — Map preserves insertion order
       if (hoverTranslationCache.size > 100) {
         const firstKey = hoverTranslationCache.keys().next().value;
         if (firstKey) hoverTranslationCache.delete(firstKey);
@@ -1525,16 +1531,13 @@ async function translateBatchWithRetry(
 }
 
 /**
- * Check if an error is likely transient and worth retrying
+ * Check if an error is likely transient and worth retrying.
+ * Pre-compiled regex for performance (called on every retry).
  */
+const TRANSIENT_ERROR_RE = /timeout|network|connection|econnreset|fetch failed|service worker|disconnected|offscreen|loading model/i;
+
 function isTransientError(errorMsg: string): boolean {
-  const transientPatterns = [
-    'timeout', 'network', 'connection', 'ECONNRESET',
-    'fetch failed', 'service worker', 'disconnected',
-    'offscreen', 'loading model',
-  ];
-  const lower = errorMsg.toLowerCase();
-  return transientPatterns.some((p) => lower.includes(p));
+  return TRANSIENT_ERROR_RE.test(errorMsg);
 }
 
 /** Active IntersectionObserver for scroll-aware below-fold translation */
@@ -1582,9 +1585,10 @@ async function translatePage(
 
     // Sort nodes: viewport-visible first, then top-to-bottom by position
     // Users read rendered content top-down, so translate what they see first
+    // Performance: cache getBoundingClientRect() results to avoid redundant layout thrashing
     const viewportHeight = window.innerHeight;
     const viewportNodes: Text[] = [];
-    const belowFoldNodes: Text[] = [];
+    const belowFoldWithPos: Array<{ node: Text; top: number }> = [];
 
     for (const node of textNodes) {
       const parent = node.parentElement;
@@ -1594,19 +1598,16 @@ async function translatePage(
         if (rect.top < viewportHeight && rect.bottom > 0) {
           viewportNodes.push(node);
         } else {
-          belowFoldNodes.push(node);
+          belowFoldWithPos.push({ node, top: rect.top });
         }
       } catch {
-        belowFoldNodes.push(node);
+        belowFoldWithPos.push({ node, top: Infinity });
       }
     }
 
-    // Sort below-fold by Y position (top-down reading order)
-    belowFoldNodes.sort((a, b) => {
-      const rectA = a.parentElement?.getBoundingClientRect();
-      const rectB = b.parentElement?.getBoundingClientRect();
-      return (rectA?.top ?? 0) - (rectB?.top ?? 0);
-    });
+    // Sort below-fold by cached Y position (no second getBoundingClientRect pass)
+    belowFoldWithPos.sort((a, b) => a.top - b.top);
+    const belowFoldNodes = belowFoldWithPos.map(item => item.node);
 
     console.log(`[Content] Viewport: ${viewportNodes.length} nodes, below fold: ${belowFoldNodes.length} nodes`);
 
@@ -1900,8 +1901,12 @@ function undoTranslation(): number {
 // ============================================================================
 
 /**
- * Process pending mutations with debouncing
+ * Process pending mutations with debouncing and chunked processing.
+ * Caps per-cycle processing to avoid blocking the main thread on
+ * content-heavy pages that generate hundreds of mutations.
  */
+const MUTATION_BATCH_CAP = 100;
+
 function processPendingMutations(): void {
   if (pendingMutations.length === 0) return;
 
@@ -1920,8 +1925,34 @@ function processPendingMutations(): void {
 
   pendingMutations = [];
 
-  if (addedNodes.length > 0) {
+  if (addedNodes.length === 0) return;
+
+  // Process in capped chunks to avoid main-thread jank
+  if (addedNodes.length <= MUTATION_BATCH_CAP) {
     translateDynamicContent(addedNodes);
+  } else {
+    // Process first chunk immediately
+    translateDynamicContent(addedNodes.slice(0, MUTATION_BATCH_CAP));
+    // Defer remaining chunks via requestIdleCallback / setTimeout
+    let offset = MUTATION_BATCH_CAP;
+    const processNextChunk = () => {
+      if (offset >= addedNodes.length) return;
+      const chunk = addedNodes.slice(offset, offset + MUTATION_BATCH_CAP);
+      offset += MUTATION_BATCH_CAP;
+      translateDynamicContent(chunk);
+      if (offset < addedNodes.length) {
+        if ('requestIdleCallback' in window) {
+          (window as unknown as { requestIdleCallback: (cb: () => void) => void }).requestIdleCallback(processNextChunk);
+        } else {
+          setTimeout(processNextChunk, 50);
+        }
+      }
+    };
+    if ('requestIdleCallback' in window) {
+      (window as unknown as { requestIdleCallback: (cb: () => void) => void }).requestIdleCallback(processNextChunk);
+    } else {
+      setTimeout(processNextChunk, 50);
+    }
   }
 }
 
