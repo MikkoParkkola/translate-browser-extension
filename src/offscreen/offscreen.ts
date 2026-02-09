@@ -198,7 +198,8 @@ async function translate(
   sourceLang: string,
   targetLang: string,
   provider: TranslationProviderId = 'opus-mt',
-  sessionId?: string
+  sessionId?: string,
+  pageContext?: string
 ): Promise<string | string[]> {
   // Handle auto-detection
   let actualSourceLang = sourceLang;
@@ -251,7 +252,8 @@ async function translate(
         actualSourceLang,
         targetLang,
         provider,
-        sessionId
+        sessionId,
+        pageContext
       );
 
       // Store results and cache them
@@ -284,7 +286,7 @@ async function translate(
   }
 
   // Translate and cache
-  const result = await translateWithProvider(text, actualSourceLang, targetLang, provider, sessionId);
+  const result = await translateWithProvider(text, actualSourceLang, targetLang, provider, sessionId, pageContext);
 
   // Cache the translation (fire and forget)
   const resultText = Array.isArray(result) ? result[0] : result;
@@ -303,7 +305,8 @@ async function translateWithProvider(
   sourceLang: string,
   targetLang: string,
   provider: TranslationProviderId,
-  _sessionId?: string
+  _sessionId?: string,
+  pageContext?: string
 ): Promise<string | string[]> {
   // Chrome Built-in Translator (Chrome 138+)
   if (provider === 'chrome-builtin') {
@@ -318,7 +321,7 @@ async function translateWithProvider(
   // TranslateGemma: supports any-to-any translation with a single model
   if (provider === 'translategemma') {
     console.log(`[Offscreen] TranslateGemma translation: ${sourceLang} -> ${targetLang}`);
-    return translateWithGemma(text, sourceLang, targetLang);
+    return translateWithGemma(text, sourceLang, targetLang, pageContext);
   }
 
   // DeepL Cloud Provider
@@ -433,12 +436,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             profiler.startTiming(sessionId, 'offscreen_processing');
           }
 
+          // Extract page context from translation options if provided
+          const pageContext = message.pageContext as string | undefined;
+
           const result = await translate(
             message.text,
             message.sourceLang,
             message.targetLang,
             message.provider || 'opus-mt',
-            sessionId
+            sessionId,
+            pageContext
           );
 
           // Collect profiling data to send back
@@ -560,6 +567,32 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           // Clean up OCR worker
           await terminateOCR();
           sendResponse({ success: true });
+          break;
+        }
+        case 'cropImage': {
+          // Crop a screenshot image to a specified rectangle
+          const { imageData: cropSrc, rect, devicePixelRatio = 1 } = message;
+          const img = new Image();
+          img.src = cropSrc;
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error('Failed to load image for cropping'));
+          });
+
+          const canvas = document.createElement('canvas');
+          const dpr = devicePixelRatio as number;
+          canvas.width = rect.width * dpr;
+          canvas.height = rect.height * dpr;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(
+            img,
+            rect.x * dpr, rect.y * dpr,
+            rect.width * dpr, rect.height * dpr,
+            0, 0,
+            canvas.width, canvas.height
+          );
+
+          sendResponse({ success: true, imageData: canvas.toDataURL('image/png') });
           break;
         }
         default:

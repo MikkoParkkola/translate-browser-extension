@@ -724,6 +724,12 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
         imageData: string;
         lang?: string;
       });
+    case 'captureScreenshot':
+      return handleCaptureScreenshot(message as {
+        type: 'captureScreenshot';
+        rect?: { x: number; y: number; width: number; height: number };
+        devicePixelRatio?: number;
+      });
     case 'getDownloadedModels':
       // Return cached model info from storage
       try {
@@ -1047,7 +1053,7 @@ async function handleTranslate(message: {
   text: string | string[];
   sourceLang: string;
   targetLang: string;
-  options?: { strategy?: Strategy; context?: { before: string; after: string } };
+  options?: { strategy?: Strategy; context?: { before: string; after: string; pageContext?: string } };
   provider?: TranslationProviderId;
   enableProfiling?: boolean;
 }): Promise<TranslateResponse> {
@@ -1055,10 +1061,11 @@ async function handleTranslate(message: {
 
   // Log context if provided (for debugging translation quality)
   if (message.options?.context) {
-    const { before, after } = message.options.context;
+    const { before, after, pageContext } = message.options.context;
     log.debug('Translation context:', {
       before: before?.substring(0, 50),
       after: after?.substring(0, 50),
+      pageContext: pageContext?.substring(0, 80),
     });
   }
 
@@ -1234,6 +1241,7 @@ async function handleTranslate(message: {
           targetLang: message.targetLang,
           provider,
           sessionId, // Pass session ID for offscreen profiling
+          pageContext: message.options?.context?.pageContext, // Pass page context for TranslateGemma disambiguation
         });
 
         if (!result) {
@@ -1730,6 +1738,47 @@ async function handleOCRImage(message: {
 }
 
 // ============================================================================
+// Screenshot Capture
+// ============================================================================
+
+/**
+ * Handle screenshot capture request - captures visible tab and optionally crops to rect
+ */
+async function handleCaptureScreenshot(message: {
+  type: 'captureScreenshot';
+  rect?: { x: number; y: number; width: number; height: number };
+  devicePixelRatio?: number;
+}): Promise<unknown> {
+  try {
+    const dataUrl = await chrome.tabs.captureVisibleTab({ format: 'png' });
+
+    // If rect provided, crop the image in offscreen document
+    if (message.rect) {
+      const cropResponse = await sendToOffscreen<{
+        success: boolean;
+        imageData?: string;
+        error?: string;
+      }>({
+        type: 'cropImage',
+        imageData: dataUrl,
+        rect: message.rect,
+        devicePixelRatio: message.devicePixelRatio || 1,
+      });
+
+      return { success: true, imageData: cropResponse.imageData };
+    }
+
+    return { success: true, imageData: dataUrl };
+  } catch (error) {
+    log.error('Screenshot capture failed:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+// ============================================================================
 // Context Menus
 // ============================================================================
 
@@ -1890,6 +1939,12 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
       case 'toggle-widget':
         await chrome.tabs.sendMessage(tab.id, {
           type: 'toggleWidget',
+        });
+        break;
+
+      case 'screenshot-translate':
+        await chrome.tabs.sendMessage(tab.id, {
+          type: 'enterScreenshotMode',
         });
         break;
     }

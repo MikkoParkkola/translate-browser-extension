@@ -40,6 +40,12 @@
         "default": "Alt+W"
       },
       "description": "Toggle translation widget"
+    },
+    "screenshot-translate": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S"
+      },
+      "description": "Screenshot translate mode"
     }
   },
   "web_accessible_resources": [

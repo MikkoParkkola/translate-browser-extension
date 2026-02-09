@@ -27,6 +27,7 @@ export interface TranslationResult {
 export interface TranslationContext {
   before: string;
   after: string;
+  pageContext?: string;  // Page structure context for better disambiguation
 }
 
 export interface TranslationOptions {
@@ -344,6 +345,14 @@ export interface OCRImageMessage {
   target?: string;
 }
 
+// Screenshot capture (for OCR translation of screen regions)
+export interface CaptureScreenshotMessage {
+  type: 'captureScreenshot';
+  rect?: { x: number; y: number; width: number; height: number };
+  devicePixelRatio?: number;
+  target?: string;
+}
+
 export type ExtensionMessage =
   | TranslateMessage
   | TranslatePageMessage
@@ -380,5 +389,6 @@ export type ExtensionMessage =
   | ExportCorrectionsMessage
   | ImportCorrectionsMessage
   | OCRImageMessage
+  | CaptureScreenshotMessage
   | { type: 'getDownloadedModels'; target?: string }
   | { type: 'getSettings'; target?: string };

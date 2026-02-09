@@ -74,16 +74,21 @@ async function detectWebGPU(): Promise<boolean> {
 export function formatTranslateGemmaPrompt(
   text: string,
   sourceLang: string,
-  targetLang: string
+  targetLang: string,
+  context?: string
 ): string {
   const srcName = LANG_NAMES[sourceLang] || sourceLang;
   const tgtName = LANG_NAMES[targetLang] || targetLang;
+
+  const contextLine = context
+    ? `\nContext: This text appears in "${context}". Use this context for disambiguation.\n`
+    : '';
 
   return (
     `<start_of_turn>user\n` +
     `You are a professional ${srcName} (${sourceLang}) to ${tgtName} (${targetLang}) translator. ` +
     `Your goal is to accurately convey the meaning and nuances of the original ${srcName} text ` +
-    `while adhering to ${tgtName} grammar, vocabulary, and cultural sensitivities.\n` +
+    `while adhering to ${tgtName} grammar, vocabulary, and cultural sensitivities.${contextLine}` +
     `Produce only the ${tgtName} translation, without any additional explanations or commentary. ` +
     `Please translate the following ${srcName} text into ${tgtName}:\n\n\n` +
     `${text}<end_of_turn>\n` +
@@ -186,14 +191,15 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
 export async function translateWithGemma(
   text: string | string[],
   sourceLang: string,
-  targetLang: string
+  targetLang: string,
+  context?: string
 ): Promise<string | string[]> {
   const { model, tokenizer } = await getTranslateGemmaPipeline();
 
   const translateSingle = async (t: string): Promise<string> => {
     if (!t || t.trim().length === 0) return t;
 
-    const prompt = formatTranslateGemmaPrompt(t, sourceLang, targetLang);
+    const prompt = formatTranslateGemmaPrompt(t, sourceLang, targetLang, context);
     const inputs = tokenizer(prompt);
 
     // Generate translation

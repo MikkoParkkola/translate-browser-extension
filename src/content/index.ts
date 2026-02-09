@@ -18,6 +18,7 @@ import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
 import { safeStorageGet } from '../core/storage';
 import { browserAPI } from '../core/browser-api';
+import { initSubtitleTranslation, cleanupSubtitleTranslation } from './subtitle-translator';
 // measureTimeAsync imported for future use in async profiling
 // import { measureTimeAsync } from '../core/profiler';
 
@@ -111,7 +112,8 @@ type ContentMessage =
   | { type: 'setBilingualMode'; enabled: boolean }
   | { type: 'getBilingualMode' }
   | { type: 'toggleWidget' }
-  | { type: 'showWidget' };
+  | { type: 'showWidget' }
+  | { type: 'enterScreenshotMode' };
 
 // ============================================================================
 // Configuration
@@ -368,6 +370,219 @@ function showErrorToast(message: string, durationMs = 6000): void {
     toast.style.transform = 'translateX(-50%) translateY(8px)';
     setTimeout(() => toast.remove(), 250);
   }, durationMs);
+}
+
+// ============================================================================
+// Screenshot Translation Mode
+// ============================================================================
+
+// Screenshot translation mode state
+let screenshotMode = false;
+let selectionOverlay: HTMLDivElement | null = null;
+let selectionStart: { x: number; y: number } | null = null;
+
+/**
+ * Enter screenshot translation mode.
+ * Creates a crosshair cursor overlay and lets users draw a selection rectangle.
+ */
+function enterScreenshotMode(): void {
+  if (screenshotMode) return;
+  screenshotMode = true;
+  document.body.style.cursor = 'crosshair';
+
+  // Create selection overlay
+  selectionOverlay = document.createElement('div');
+  Object.assign(selectionOverlay.style, {
+    position: 'fixed',
+    border: '2px dashed #4A90D9',
+    backgroundColor: 'rgba(74, 144, 217, 0.1)',
+    zIndex: '2147483646',
+    display: 'none',
+    pointerEvents: 'none',
+  });
+  document.body.appendChild(selectionOverlay);
+
+  document.addEventListener('mousedown', onScreenshotMouseDown);
+  document.addEventListener('mousemove', onScreenshotMouseMove);
+  document.addEventListener('mouseup', onScreenshotMouseUp);
+  document.addEventListener('keydown', onScreenshotKeyDown);
+
+  showInfoToast('Draw a rectangle over text to translate');
+}
+
+/**
+ * Exit screenshot translation mode and clean up event listeners.
+ */
+function exitScreenshotMode(): void {
+  screenshotMode = false;
+  document.body.style.cursor = '';
+  selectionStart = null;
+
+  if (selectionOverlay) {
+    selectionOverlay.remove();
+    selectionOverlay = null;
+  }
+
+  document.removeEventListener('mousedown', onScreenshotMouseDown);
+  document.removeEventListener('mousemove', onScreenshotMouseMove);
+  document.removeEventListener('mouseup', onScreenshotMouseUp);
+  document.removeEventListener('keydown', onScreenshotKeyDown);
+}
+
+function onScreenshotKeyDown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') exitScreenshotMode();
+}
+
+function onScreenshotMouseDown(e: MouseEvent): void {
+  if (!screenshotMode) return;
+  e.preventDefault();
+  selectionStart = { x: e.clientX, y: e.clientY };
+  if (selectionOverlay) {
+    selectionOverlay.style.display = 'block';
+    selectionOverlay.style.left = `${e.clientX}px`;
+    selectionOverlay.style.top = `${e.clientY}px`;
+    selectionOverlay.style.width = '0px';
+    selectionOverlay.style.height = '0px';
+  }
+}
+
+function onScreenshotMouseMove(e: MouseEvent): void {
+  if (!selectionStart || !selectionOverlay) return;
+  const x = Math.min(selectionStart.x, e.clientX);
+  const y = Math.min(selectionStart.y, e.clientY);
+  const w = Math.abs(e.clientX - selectionStart.x);
+  const h = Math.abs(e.clientY - selectionStart.y);
+  Object.assign(selectionOverlay.style, {
+    left: `${x}px`,
+    top: `${y}px`,
+    width: `${w}px`,
+    height: `${h}px`,
+  });
+}
+
+async function onScreenshotMouseUp(e: MouseEvent): Promise<void> {
+  if (!selectionStart) return;
+
+  const rect = {
+    x: Math.min(selectionStart.x, e.clientX),
+    y: Math.min(selectionStart.y, e.clientY),
+    width: Math.abs(e.clientX - selectionStart.x),
+    height: Math.abs(e.clientY - selectionStart.y),
+  };
+
+  exitScreenshotMode();
+
+  // Minimum selection size
+  if (rect.width < 20 || rect.height < 20) return;
+
+  showInfoToast('Extracting text from selection...');
+
+  try {
+    // Ask background to capture the visible tab
+    const response = await browserAPI.runtime.sendMessage({
+      type: 'captureScreenshot',
+      rect,
+      devicePixelRatio: window.devicePixelRatio || 1,
+    }) as { success: boolean; imageData?: string; error?: string };
+
+    if (!response?.success) {
+      showErrorToast(response?.error || 'Screenshot failed');
+      return;
+    }
+
+    // OCR the captured region
+    const ocrResponse = await browserAPI.runtime.sendMessage({
+      type: 'ocrImage',
+      imageData: response.imageData,
+    }) as { success: boolean; text?: string; error?: string };
+
+    if (!ocrResponse?.success || !ocrResponse.text?.trim()) {
+      showInfoToast('No text found in selection');
+      return;
+    }
+
+    // Translate the extracted text
+    const settings = currentSettings || { sourceLang: 'auto', targetLang: 'en' };
+    const translateResponse = await browserAPI.runtime.sendMessage({
+      type: 'translate',
+      text: ocrResponse.text,
+      sourceLang: settings.sourceLang,
+      targetLang: settings.targetLang,
+    }) as TranslateResponse;
+
+    if (translateResponse?.success && translateResponse.result) {
+      // Show result as overlay at selection position
+      showScreenshotResult(translateResponse.result as string, ocrResponse.text, rect);
+    } else {
+      showErrorToast((translateResponse as { error?: string })?.error || 'Translation failed');
+    }
+  } catch (error) {
+    showErrorToast(`OCR error: ${(error as Error).message}`);
+  }
+}
+
+/**
+ * Show the screenshot translation result in a floating tooltip near the selection.
+ */
+function showScreenshotResult(
+  translation: string,
+  original: string,
+  rect: { x: number; y: number; width: number; height: number }
+): void {
+  const tooltip = document.createElement('div');
+  Object.assign(tooltip.style, {
+    position: 'fixed',
+    left: `${rect.x}px`,
+    top: `${rect.y + rect.height + 8}px`,
+    maxWidth: `${Math.max(rect.width, 300)}px`,
+    padding: '12px 16px',
+    backgroundColor: 'rgba(30, 30, 30, 0.95)',
+    backdropFilter: 'blur(12px)',
+    color: '#fff',
+    borderRadius: '8px',
+    fontSize: '14px',
+    lineHeight: '1.5',
+    zIndex: '2147483647',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+  });
+
+  const originalEl = document.createElement('div');
+  originalEl.textContent = original;
+  Object.assign(originalEl.style, {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: '12px',
+    marginBottom: '8px',
+    borderBottom: '1px solid rgba(255,255,255,0.1)',
+    paddingBottom: '8px',
+  });
+
+  const translationEl = document.createElement('div');
+  translationEl.textContent = translation;
+
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '\u00D7';
+  Object.assign(closeBtn.style, {
+    position: 'absolute',
+    top: '4px',
+    right: '8px',
+    background: 'none',
+    border: 'none',
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: '18px',
+    cursor: 'pointer',
+    padding: '0 4px',
+  });
+  closeBtn.onclick = () => tooltip.remove();
+
+  tooltip.appendChild(closeBtn);
+  tooltip.appendChild(originalEl);
+  tooltip.appendChild(translationEl);
+  document.body.appendChild(tooltip);
+
+  // Auto-remove after 30s
+  setTimeout(() => tooltip.remove(), 30000);
 }
 
 // ============================================================================
@@ -1365,6 +1580,41 @@ function getTextNodesFromNodes(nodes: Node[]): Text[] {
 // ============================================================================
 
 /**
+ * Analyze page structure to provide translation context.
+ * Returns a context string describing the page section a node belongs to.
+ */
+function getPageContext(node: Text): string {
+  const sections: string[] = [];
+  let el: Element | null = node.parentElement;
+
+  // Walk up to find semantic containers
+  while (el && sections.length < 3) {
+    const tag = el.tagName.toLowerCase();
+    const role = el.getAttribute('role');
+
+    // Semantic HTML5 elements
+    if (tag === 'article' || role === 'article') sections.push('article body');
+    else if (tag === 'nav' || role === 'navigation') sections.push('navigation menu');
+    else if (tag === 'header' || role === 'banner') sections.push('page header');
+    else if (tag === 'footer' || role === 'contentinfo') sections.push('page footer');
+    else if (tag === 'aside' || role === 'complementary') sections.push('sidebar');
+    else if (tag === 'main' || role === 'main') sections.push('main content');
+    else if (tag === 'h1' || tag === 'h2' || tag === 'h3') sections.push(`heading level ${tag[1]}`);
+    else if (el.classList.contains('comment') || el.classList.contains('comments')) sections.push('user comments');
+
+    el = el.parentElement;
+  }
+
+  // Get page title for global context
+  const title = document.title || '';
+
+  if (sections.length === 0 && title) return title;
+  if (sections.length > 0 && title) return `${title} > ${sections.reverse().join(' > ')}`;
+  if (sections.length > 0) return sections.reverse().join(' > ');
+  return '';
+}
+
+/**
  * Get surrounding context for better translation of ambiguous words
  * Extracts text before and after the selection from the containing block element
  */
@@ -1514,13 +1764,19 @@ async function translateBatchWithRetry(
         console.log(`[Content] Retry attempt ${attempt} for batch`);
       }
 
+      // Extract page context from the first node in the batch for disambiguation
+      const pageContext = batch.nodes[0] ? getPageContext(batch.nodes[0]) : '';
+
       const ipcStart = performance.now();
       const response = (await browserAPI.runtime.sendMessage({
         type: 'translate',
         text: batch.texts,
         sourceLang,
         targetLang,
-        options: { strategy },
+        options: {
+          strategy,
+          context: pageContext ? { before: '', after: '', pageContext } : undefined,
+        },
         provider,
         enableProfiling,
       })) as TranslateResponse;
@@ -1765,6 +2021,9 @@ async function translatePage(
 
     removeProgressToast();
 
+    // Start translating video subtitles/captions alongside page text
+    initSubtitleTranslation(targetLang);
+
     const totalTime = performance.now() - pageStart;
     console.log(
       `[Content] Page translation complete: ${translatedCount} translated, ${errorCount} errors\n` +
@@ -1969,6 +2228,9 @@ function undoTranslation(): number {
   // Stop any ongoing mutation observation
   stopMutationObserver();
   currentSettings = null;
+
+  // Clean up subtitle translation overlays and observers
+  cleanupSubtitleTranslation();
 
   // Count and clear image translation overlays
   const imageOverlayCount = imageTranslationOverlays.length;
@@ -2687,6 +2949,12 @@ browserAPI.runtime.onMessage.addListener(
       )
         .then(() => sendResponse(true))
         .catch(() => sendResponse(false));
+      return true;
+    }
+
+    if (message.type === 'enterScreenshotMode') {
+      enterScreenshotMode();
+      sendResponse(true);
       return true;
     }
 
