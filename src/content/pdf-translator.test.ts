@@ -29,6 +29,12 @@ vi.mock('../core/browser-api', () => ({
   },
 }));
 
+// Mock pdf-loader so initPdfTranslation tests don't try to inject <script> tags
+const mockLoadPdfjs = vi.fn();
+vi.mock('./pdf-loader', () => ({
+  loadPdfjs: (...args: unknown[]) => mockLoadPdfjs(...args),
+}));
+
 import {
   isPdfPage,
   getPdfUrl,
@@ -825,16 +831,19 @@ describe('PDF Translator', () => {
 
   describe('initPdfTranslation', () => {
     it('rejects if pdfjs-dist cannot be loaded', async () => {
-      // The dynamic import of pdfjs-dist will fail in the test environment
-      // because we haven't set up the full pdf.js mock. This tests error handling.
-      await expect(initPdfTranslation('fi')).rejects.toThrow();
+      // loadPdfjs rejects -- simulates chunk load failure
+      mockLoadPdfjs.mockRejectedValue(new Error('Failed to load pdfjs chunk'));
+
+      await expect(initPdfTranslation('fi')).rejects.toThrow('Failed to load pdfjs chunk');
 
       // Cleanup should have run automatically on failure
       expect(document.getElementById('translate-pdf-overlay')).toBeNull();
     });
 
     it('prevents double initialization', async () => {
-      // First call will fail (no pdf.js mock), but sets active flag briefly
+      // First call will fail (loadPdfjs rejects), but sets active flag briefly
+      mockLoadPdfjs.mockRejectedValue(new Error('load failed'));
+
       try {
         await initPdfTranslation('fi');
       } catch {
@@ -846,8 +855,11 @@ describe('PDF Translator', () => {
       try {
         await initPdfTranslation('fi');
       } catch {
-        // Expected to fail again (no pdf.js)
+        // Expected to fail again
       }
+
+      // loadPdfjs should have been called twice (once per attempt)
+      expect(mockLoadPdfjs).toHaveBeenCalledTimes(2);
     });
   });
 

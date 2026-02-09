@@ -151,3 +151,17 @@ Before declaring any feature "done":
 - Trusting automated builds without manual verification
 
 **Reference**: `QA_CHECKLIST.md` for full pre-deployment checklist
+
+### 6. Agent Implementation Rule (BLOCKING)
+**When spawning agents to implement features, EVERY agent prompt MUST include:**
+1. "Write unit tests for all new functions"
+2. "Verify tests pass before reporting completion"
+3. "New code without corresponding test files = NOT DONE"
+
+**Orchestrator responsibility**: After ALL implementation agents complete, ALWAYS spawn
+a verification agent that runs the full test suite AND checks that new source files
+have corresponding test files. Never commit agent output without this gate.
+
+**Why this exists**: On 2025-07-19, three agents shipped 1055 lines of new feature code
+with zero new tests. All existing 798 tests passed, creating false confidence.
+The code compiled but was never verified to actually work. This rule prevents that.

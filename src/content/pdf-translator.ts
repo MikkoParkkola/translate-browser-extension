@@ -16,6 +16,7 @@
 import type { TranslateResponse } from '../types';
 import { browserAPI } from '../core/browser-api';
 import { createLogger } from '../core/logger';
+import { loadPdfjs } from './pdf-loader';
 
 const log = createLogger('PDF');
 
@@ -483,14 +484,9 @@ export async function initPdfTranslation(targetLang: string): Promise<void> {
   };
 
   try {
-    // Dynamic import to avoid loading pdf.js unless needed
-    const pdfjsLib = await import('pdfjs-dist');
-
-    // Configure the worker
-    // In a browser extension, we serve the worker from the extension bundle
-    pdfjsLib.GlobalWorkerOptions.workerSrc = browserAPI.runtime.getURL(
-      'pdf.worker.min.mjs'
-    );
+    // Lazy-load pdfjs from a separate chunk to keep content.js small.
+    // The pdf-loader handles script injection and worker configuration.
+    const pdfjsLib = await loadPdfjs();
 
     const loadingTask = pdfjsLib.getDocument(pdfUrl);
     const pdf = await loadingTask.promise;

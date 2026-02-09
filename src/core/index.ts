@@ -62,5 +62,8 @@ export { fnv1aHash, generateCacheKey } from './hash';
 // WebGPU detection
 export { webgpuDetector } from './webgpu-detector';
 
+// Language detection
+export { detectLanguage, samplePageText } from './language-detector';
+
 // Translation router
 export { TranslationRouter, translationRouter } from './translation-router';

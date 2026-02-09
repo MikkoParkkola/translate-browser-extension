@@ -21,6 +21,12 @@ import { browserAPI } from '../core/browser-api';
 import { initSubtitleTranslation, cleanupSubtitleTranslation } from './subtitle-translator';
 import { isPdfPage, initPdfTranslation, cleanupPdfTranslation } from './pdf-translator';
 import { detectLanguage, samplePageText } from '../core/language-detector';
+import {
+  walkShadowRoots,
+  observeShadowRoots,
+  observeShadowRoot,
+  cleanupShadowObservers,
+} from './shadow-dom-walker';
 // measureTimeAsync imported for future use in async profiling
 // import { measureTimeAsync } from '../core/profiler';
 
@@ -185,6 +191,8 @@ let isTranslatingDynamic = false;
 let pendingMutations: MutationRecord[] = [];
 let mutationDebounceTimer: number | null = null;
 let mutationObserver: MutationObserver | null = null;
+/** Cleanup function returned by observeShadowRoots */
+let shadowRootCleanup: (() => void) | null = null;
 /** Queued dynamic nodes that arrived during page translation, translated after page completes */
 let queuedDynamicNodes: Node[] = [];
 
@@ -1554,11 +1562,14 @@ function sanitizeText(text: string): string {
 // ============================================================================
 
 /**
- * Get all translatable text nodes in element
+ * Get all translatable text nodes in element.
+ * Also traverses shadow roots (open and intercepted-closed) so that
+ * text inside web components is included in translation.
  */
 function getTextNodes(root: Element): Text[] {
   const nodes: Text[] = [];
 
+  // Standard TreeWalker for the light DOM
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => {
       const parent = node.parentElement;
@@ -1573,11 +1584,24 @@ function getTextNodes(root: Element): Text[] {
     nodes.push(node as Text);
   }
 
+  // Walk shadow roots for text nodes the TreeWalker cannot reach
+  walkShadowRoots(root, (textNode) => {
+    const parent = textNode.parentElement;
+    if (!parent || shouldSkip(parent)) return;
+    if (!isValidText(textNode.textContent)) return;
+    // Avoid duplicates: TreeWalker already collected light-DOM text nodes
+    if (!nodes.includes(textNode)) {
+      nodes.push(textNode);
+    }
+  });
+
   return nodes;
 }
 
 /**
- * Get text nodes from a specific set of elements (for mutations)
+ * Get text nodes from a specific set of elements (for mutations).
+ * Handles shadow roots inside added elements via getTextNodes which
+ * now walks shadow trees automatically.
  */
 function getTextNodesFromNodes(nodes: Node[]): Text[] {
   const textNodes: Text[] = [];
@@ -1593,6 +1617,14 @@ function getTextNodesFromNodes(nodes: Node[]): Text[] {
       if (!shouldSkip(element)) {
         textNodes.push(...getTextNodes(element));
       }
+    } else if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+      // Handle ShadowRoot nodes directly (they are DocumentFragments)
+      walkShadowRoots(node, (textNode) => {
+        const parent = textNode.parentElement;
+        if (parent && !shouldSkip(parent) && isValidText(textNode.textContent)) {
+          textNodes.push(textNode);
+        }
+      });
     }
   }
 
@@ -2349,46 +2381,64 @@ function processPendingMutations(): void {
 }
 
 /**
- * Start observing DOM mutations for auto-translation
+ * Shared mutation callback for both the main observer and shadow root observers.
+ */
+function handleMutations(mutations: MutationRecord[]): void {
+  for (const mutation of mutations) {
+    if (pendingMutations.length < CONFIG.mutations.maxPending) {
+      pendingMutations.push(mutation);
+    }
+  }
+
+  if (mutationDebounceTimer !== null) {
+    clearTimeout(mutationDebounceTimer);
+  }
+
+  mutationDebounceTimer = window.setTimeout(() => {
+    mutationDebounceTimer = null;
+    processPendingMutations();
+  }, CONFIG.mutations.debounceMs);
+}
+
+/**
+ * Start observing DOM mutations for auto-translation.
+ * Also starts shadow root observation so mutations inside web components
+ * are captured for dynamic translation.
  */
 function startMutationObserver(): void {
   if (mutationObserver) return;
 
-  mutationObserver = new MutationObserver((mutations) => {
-    // Add to pending mutations
-    for (const mutation of mutations) {
-      if (pendingMutations.length < CONFIG.mutations.maxPending) {
-        pendingMutations.push(mutation);
-      }
-    }
-
-    // Debounce processing
-    if (mutationDebounceTimer !== null) {
-      clearTimeout(mutationDebounceTimer);
-    }
-
-    mutationDebounceTimer = window.setTimeout(() => {
-      mutationDebounceTimer = null;
-      processPendingMutations();
-    }, CONFIG.mutations.debounceMs);
-  });
+  mutationObserver = new MutationObserver(handleMutations);
 
   mutationObserver.observe(document.body, {
     childList: true,
     subtree: true,
   });
 
-  log.info(' MutationObserver started');
+  // Observe shadow roots: when a new shadow root appears, attach a
+  // MutationObserver inside it so dynamic content is translated.
+  shadowRootCleanup = observeShadowRoots(document, (shadowRoot) => {
+    observeShadowRoot(shadowRoot, handleMutations);
+  });
+
+  log.info(' MutationObserver started (with shadow DOM support)');
 }
 
 /**
- * Stop observing DOM mutations
+ * Stop observing DOM mutations (including shadow root observers)
  */
 function stopMutationObserver(): void {
   if (mutationObserver) {
     mutationObserver.disconnect();
     mutationObserver = null;
   }
+
+  // Clean up shadow root observers and interceptor
+  if (shadowRootCleanup) {
+    shadowRootCleanup();
+    shadowRootCleanup = null;
+  }
+  cleanupShadowObservers();
 
   if (mutationDebounceTimer !== null) {
     clearTimeout(mutationDebounceTimer);
