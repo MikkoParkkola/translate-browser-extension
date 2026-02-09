@@ -61,12 +61,21 @@ vi.stubGlobal('chrome', {
       addListener: mockAddClickedListener,
     },
   },
+  contextMenus: {
+    create: vi.fn(),
+    removeAll: vi.fn((cb?: () => void) => { if (cb) cb(); }),
+    onClicked: {
+      addListener: vi.fn(),
+    },
+  },
   commands: {
     onCommand: {
       addListener: mockAddCommandListener,
     },
   },
   tabs: {
+    create: vi.fn(),
+    query: vi.fn().mockResolvedValue([]),
     onUpdated: {
       addListener: mockAddTabsUpdatedListener,
     },
@@ -198,10 +207,10 @@ describe('Service Worker', () => {
   });
 
   describe('install handler', () => {
-    it('sets default preferences on fresh install with browser language', () => {
+    it('sets default preferences on fresh install with browser language', async () => {
       mockStorageSet.mockClear();
 
-      installHandler({ reason: 'install' });
+      await installHandler({ reason: 'install' });
 
       // Browser language 'en-US' is detected and shortened to 'en'
       expect(mockStorageSet).toHaveBeenCalledWith({
@@ -212,10 +221,10 @@ describe('Service Worker', () => {
       });
     });
 
-    it('does not set preferences on update', () => {
+    it('does not set preferences on update', async () => {
       mockStorageSet.mockClear();
 
-      installHandler({ reason: 'update', previousVersion: '1.0.0' });
+      await installHandler({ reason: 'update', previousVersion: '1.0.0' });
 
       expect(mockStorageSet).not.toHaveBeenCalled();
     });

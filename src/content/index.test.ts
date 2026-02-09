@@ -256,6 +256,12 @@ describe('Content Script', () => {
     });
 
     it('sends translate message for selected text', async () => {
+      // Create a real DOM text node inside a block element for getSelectionContext
+      const p = document.createElement('p');
+      p.textContent = 'Selected text here';
+      document.body.appendChild(p);
+      const textNode = p.firstChild!;
+
       // Create a mock range with getBoundingClientRect
       const mockRange = {
         getBoundingClientRect: () => ({
@@ -266,12 +272,14 @@ describe('Content Script', () => {
           width: 150,
           height: 20,
         }),
+        commonAncestorContainer: textNode,
       };
 
       const mockSelection = {
         isCollapsed: false,
         toString: () => 'Selected text here',
         getRangeAt: () => mockRange,
+        rangeCount: 1,
       };
 
       vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
@@ -300,6 +308,12 @@ describe('Content Script', () => {
     });
 
     it('creates tooltip after successful translation', async () => {
+      // Create a real DOM text node inside a block element for getSelectionContext
+      const p = document.createElement('p');
+      p.textContent = 'Text';
+      document.body.appendChild(p);
+      const textNode = p.firstChild!;
+
       const mockRange = {
         getBoundingClientRect: () => ({
           top: 100,
@@ -309,12 +323,14 @@ describe('Content Script', () => {
           width: 150,
           height: 20,
         }),
+        commonAncestorContainer: textNode,
       };
 
       const mockSelection = {
         isCollapsed: false,
         toString: () => 'Text',
         getRangeAt: () => mockRange,
+        rangeCount: 1,
       };
 
       vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
@@ -453,6 +469,12 @@ describe('Content Script', () => {
       existingTooltip.id = 'translate-tooltip';
       document.body.appendChild(existingTooltip);
 
+      // Create a real DOM text node inside a block element for getSelectionContext
+      const p = document.createElement('p');
+      p.textContent = 'New text';
+      document.body.appendChild(p);
+      const textNode = p.firstChild!;
+
       const mockRange = {
         getBoundingClientRect: () => ({
           top: 100,
@@ -462,12 +484,14 @@ describe('Content Script', () => {
           width: 150,
           height: 20,
         }),
+        commonAncestorContainer: textNode,
       };
 
       const mockSelection = {
         isCollapsed: false,
         toString: () => 'New text',
         getRangeAt: () => mockRange,
+        rangeCount: 1,
       };
 
       vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
@@ -493,6 +517,12 @@ describe('Content Script', () => {
     });
 
     it('creates tooltip with correct structure', async () => {
+      // Create a real DOM text node inside a block element for getSelectionContext
+      const p = document.createElement('p');
+      p.textContent = 'Text';
+      document.body.appendChild(p);
+      const textNode = p.firstChild!;
+
       const mockRange = {
         getBoundingClientRect: () => ({
           top: 100,
@@ -502,12 +532,14 @@ describe('Content Script', () => {
           width: 150,
           height: 20,
         }),
+        commonAncestorContainer: textNode,
       };
 
       const mockSelection = {
         isCollapsed: false,
         toString: () => 'Text',
         getRangeAt: () => mockRange,
+        rangeCount: 1,
       };
 
       vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
@@ -535,6 +567,12 @@ describe('Content Script', () => {
     });
 
     it('has close button that removes tooltip', async () => {
+      // Create a real DOM text node inside a block element for getSelectionContext
+      const p = document.createElement('p');
+      p.textContent = 'Text';
+      document.body.appendChild(p);
+      const textNode = p.firstChild!;
+
       const mockRange = {
         getBoundingClientRect: () => ({
           top: 100,
@@ -544,12 +582,14 @@ describe('Content Script', () => {
           width: 150,
           height: 20,
         }),
+        commonAncestorContainer: textNode,
       };
 
       const mockSelection = {
         isCollapsed: false,
         toString: () => 'Text',
         getRangeAt: () => mockRange,
+        rangeCount: 1,
       };
 
       vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
