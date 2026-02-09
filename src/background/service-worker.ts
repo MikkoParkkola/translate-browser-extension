@@ -1921,12 +1921,41 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   }
 });
 
-// Load saved provider on startup
+// Load saved provider on startup, auto-detect Chrome Built-in availability
 (async () => {
   const result = await safeStorageGet<{ provider?: TranslationProviderId }>(['provider']);
   if (result.provider) {
     currentProvider = result.provider;
     console.log('[Background] Restored provider:', currentProvider);
+  }
+
+  // Auto-detect Chrome Built-in Translator on startup
+  // If user hasn't explicitly chosen a provider, and Chrome Built-in is available,
+  // prefer it as the fastest option (no model download, native performance).
+  try {
+    if (currentProvider === 'opus-mt') {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const tabId = tabs[0]?.id;
+      if (tabId) {
+        const detection = await chrome.scripting.executeScript({
+          target: { tabId },
+          world: 'MAIN' as chrome.scripting.ExecutionWorld,
+          func: () => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            return typeof (self as any).Translator !== 'undefined';
+          },
+        });
+        const chromeBuiltinAvailable = detection[0]?.result === true;
+        if (chromeBuiltinAvailable) {
+          currentProvider = 'chrome-builtin';
+          await safeStorageSet({ provider: 'chrome-builtin' });
+          console.log('[Background] Auto-detected Chrome Built-in Translator, setting as default');
+        }
+      }
+    }
+  } catch (error) {
+    // Silently ignore — detection may fail on restricted pages
+    log.debug('Chrome Built-in auto-detection skipped:', error);
   }
 })();
 

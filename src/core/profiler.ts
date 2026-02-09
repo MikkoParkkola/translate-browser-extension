@@ -59,6 +59,8 @@ export type TimingCategory =
   | 'cache_store'
   | 'glossary_apply'
   | 'language_detect'
+  | 'chrome_builtin_translate'
+  | 'offscreen_processing'
   | 'validation';
 
 /**
