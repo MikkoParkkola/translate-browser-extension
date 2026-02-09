@@ -37,6 +37,12 @@ export interface TranslationOptions {
   context?: TranslationContext;
 }
 
+// Language detection
+export interface LanguageDetectionResult {
+  lang: string;
+  confidence: number;
+}
+
 // Language types
 export interface LanguagePair {
   src: string;
@@ -337,6 +343,13 @@ export interface ImportCorrectionsMessage {
   target?: string;
 }
 
+// PDF translation
+export interface TranslatePdfMessage {
+  type: 'translatePdf';
+  targetLang: string;
+  target?: string;
+}
+
 // OCR (image text extraction)
 export interface OCRImageMessage {
   type: 'ocrImage';
@@ -388,6 +401,7 @@ export type ExtensionMessage =
   | DeleteCorrectionMessage
   | ExportCorrectionsMessage
   | ImportCorrectionsMessage
+  | TranslatePdfMessage
   | OCRImageMessage
   | CaptureScreenshotMessage
   | { type: 'getDownloadedModels'; target?: string }

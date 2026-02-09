@@ -25,6 +25,7 @@
   "dependencies": {
     "@huggingface/transformers": "^3.0.0",
     "franc-min": "^6.2.0",
+    "pdfjs-dist": "^5.4.624",
     "solid-js": "^1.8.0",
     "tesseract.js": "^7.0.0"
   },

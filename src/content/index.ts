@@ -19,10 +19,28 @@ import { createLogger } from '../core/logger';
 import { safeStorageGet } from '../core/storage';
 import { browserAPI } from '../core/browser-api';
 import { initSubtitleTranslation, cleanupSubtitleTranslation } from './subtitle-translator';
+import { isPdfPage, initPdfTranslation, cleanupPdfTranslation } from './pdf-translator';
+import { detectLanguage, samplePageText } from '../core/language-detector';
 // measureTimeAsync imported for future use in async profiling
 // import { measureTimeAsync } from '../core/profiler';
 
 const log = createLogger('Content');
+
+/**
+ * Resolve 'auto' source language using fast trigram-based detection.
+ * Falls back to 'auto' if detection fails or confidence is too low.
+ */
+function resolveSourceLang(sourceLang: string, text?: string): string {
+  if (sourceLang !== 'auto') return sourceLang;
+  const sample = text || samplePageText(300);
+  if (!sample) return 'auto';
+  const result = detectLanguage(sample);
+  if (result && result.confidence >= 0.20) {
+    log.info(`Detected language: ${result.lang} (confidence: ${result.confidence.toFixed(2)})`);
+    return result.lang;
+  }
+  return 'auto';
+}
 
 // Simple content-script timing tracker (separate from background profiler)
 // Uses pre-allocated circular buffers instead of shift() which is O(n).
@@ -101,10 +119,16 @@ interface TranslateImageMessage {
   provider?: string;
 }
 
+interface TranslatePdfContentMessage {
+  type: 'translatePdf';
+  targetLang: string;
+}
+
 type ContentMessage =
   | TranslateSelectionMessage
   | TranslatePageMessage
   | TranslateImageMessage
+  | TranslatePdfContentMessage
   | { type: 'ping' }
   | { type: 'stopAutoTranslate' }
   | { type: 'undoTranslation' }
@@ -1116,7 +1140,7 @@ function createFloatingWidget(): HTMLElement {
       const response = await browserAPI.runtime.sendMessage({
         type: 'translate',
         text,
-        sourceLang: 'auto',
+        sourceLang: resolveSourceLang('auto', text),
         targetLang: langSelect.value,
         options: { strategy: 'fast' },
       }) as TranslateResponse;
@@ -1291,7 +1315,7 @@ async function handleHoverTranslation(e: MouseEvent): Promise<void> {
       browserAPI.runtime.sendMessage({
         type: 'translate',
         text: text,
-        sourceLang: 'auto',
+        sourceLang: resolveSourceLang('auto', text),
         targetLang,
         options: { strategy: 'fast' },
         provider,
@@ -2915,27 +2939,44 @@ browserAPI.runtime.onMessage.addListener(
     }
 
     if (message.type === 'translateSelection') {
-      translateSelection(message.sourceLang, message.targetLang, message.strategy, message.provider)
+      const selSourceLang = resolveSourceLang(message.sourceLang);
+      translateSelection(selSourceLang, message.targetLang, message.strategy, message.provider)
         .then(() => sendResponse(true))
         .catch(() => sendResponse(false));
       return true;
     }
 
     if (message.type === 'translatePage') {
+      // For PDF pages, use the specialized PDF translator
+      if (isPdfPage()) {
+        initPdfTranslation(message.targetLang)
+          .then(() => sendResponse(true))
+          .catch(() => sendResponse(false));
+        return true;
+      }
+
       // Store settings for dynamic content translation
+      const resolvedPageLang = resolveSourceLang(message.sourceLang);
       currentSettings = {
-        sourceLang: message.sourceLang,
+        sourceLang: resolvedPageLang,
         targetLang: message.targetLang,
         strategy: message.strategy,
         provider: message.provider,
       };
 
-      translatePage(message.sourceLang, message.targetLang, message.strategy, message.provider)
+      translatePage(resolvedPageLang, message.targetLang, message.strategy, message.provider)
         .then(() => {
           // Start observing for dynamic content
           startMutationObserver();
           sendResponse(true);
         })
+        .catch(() => sendResponse(false));
+      return true;
+    }
+
+    if (message.type === 'translatePdf') {
+      initPdfTranslation(message.targetLang)
+        .then(() => sendResponse(true))
         .catch(() => sendResponse(false));
       return true;
     }
@@ -2989,7 +3030,8 @@ async function checkAutoTranslate(): Promise<void> {
 
   // Merge settings: site rules take precedence over global settings
   const shouldAutoTranslate = siteSpecificRules?.autoTranslate ?? settings.autoTranslate;
-  const sourceLang = siteSpecificRules?.sourceLang || settings.sourceLang || 'auto';
+  const rawSourceLang = siteSpecificRules?.sourceLang || settings.sourceLang || 'auto';
+  const sourceLang = resolveSourceLang(rawSourceLang);
   const targetLang = siteSpecificRules?.targetLang || settings.targetLang || 'fi';
   const strategy = siteSpecificRules?.strategy || settings.strategy || 'smart';
   const provider = siteSpecificRules?.preferredProvider || settings.provider || 'opus-mt';
@@ -3043,6 +3085,7 @@ window.addEventListener('unload', () => {
   stopBelowFoldObserver();
   removeProgressToast();
   clearImageOverlays();
+  cleanupPdfTranslation();
   hoverTranslationCache.clear();
   queuedDynamicNodes = [];
   currentSettings = null;
