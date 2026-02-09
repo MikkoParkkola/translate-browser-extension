@@ -2,7 +2,7 @@
  * Chrome Translator Provider Tests
  *
  * Tests the Chrome 138+ built-in Translator API integration.
- * Mocks the window.Translator and window.LanguageDetector APIs.
+ * Mocks the global Translator and LanguageDetector APIs (on globalThis/self).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -35,7 +35,6 @@ const mockDetectorAPI = {
 
 describe('ChromeTranslatorProvider', () => {
   let provider: ChromeTranslatorProvider;
-  let originalWindow: typeof globalThis.window;
 
   beforeEach(() => {
     // Reset mocks
@@ -47,45 +46,26 @@ describe('ChromeTranslatorProvider', () => {
     mockDetectorAPI.availability.mockResolvedValue({ available: 'readily' });
     mockDetectorAPI.create.mockResolvedValue(mockDetectorInstance);
 
-    // Save original window
-    originalWindow = globalThis.window;
-
     // Create provider (fresh instance each test)
     provider = new ChromeTranslatorProvider();
   });
 
   afterEach(() => {
-    // Restore original window
-    if (originalWindow !== undefined) {
-      globalThis.window = originalWindow;
-    }
+    // Clean up globals
+    vi.unstubAllGlobals();
     provider.destroy();
   });
 
   describe('isAvailable', () => {
     it('returns false when Translator API is not present', async () => {
-      // Mock window without Translator API
-      vi.stubGlobal('window', {});
-
+      // No Translator global = API not available
       const result = await provider.isAvailable();
 
       expect(result).toBe(false);
     });
 
-    it('returns false in service worker context (no window)', async () => {
-      // Remove window to simulate service worker
-      vi.stubGlobal('window', undefined);
-
-      const newProvider = new ChromeTranslatorProvider();
-      const result = await newProvider.isAvailable();
-
-      expect(result).toBe(false);
-    });
-
     it('returns true when Translator API is available', async () => {
-      vi.stubGlobal('window', {
-        Translator: mockTranslatorAPI,
-      });
+      vi.stubGlobal('Translator', mockTranslatorAPI);
 
       const result = await provider.isAvailable();
 
@@ -98,9 +78,7 @@ describe('ChromeTranslatorProvider', () => {
 
     it('returns false when availability check returns "no"', async () => {
       mockTranslatorAPI.availability.mockResolvedValue({ available: 'no' });
-      vi.stubGlobal('window', {
-        Translator: mockTranslatorAPI,
-      });
+      vi.stubGlobal('Translator', mockTranslatorAPI);
 
       const result = await provider.isAvailable();
 
@@ -108,9 +86,7 @@ describe('ChromeTranslatorProvider', () => {
     });
 
     it('caches availability result', async () => {
-      vi.stubGlobal('window', {
-        Translator: mockTranslatorAPI,
-      });
+      vi.stubGlobal('Translator', mockTranslatorAPI);
 
       await provider.isAvailable();
       await provider.isAvailable();
@@ -122,9 +98,7 @@ describe('ChromeTranslatorProvider', () => {
 
   describe('isPairSupported', () => {
     beforeEach(() => {
-      vi.stubGlobal('window', {
-        Translator: mockTranslatorAPI,
-      });
+      vi.stubGlobal('Translator', mockTranslatorAPI);
     });
 
     it('returns true for supported language pair', async () => {
@@ -158,10 +132,8 @@ describe('ChromeTranslatorProvider', () => {
 
   describe('translate', () => {
     beforeEach(() => {
-      vi.stubGlobal('window', {
-        Translator: mockTranslatorAPI,
-        LanguageDetector: mockDetectorAPI,
-      });
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+      vi.stubGlobal('LanguageDetector', mockDetectorAPI);
     });
 
     it('translates single text', async () => {
@@ -220,7 +192,7 @@ describe('ChromeTranslatorProvider', () => {
     });
 
     it('throws when API not available', async () => {
-      vi.stubGlobal('window', {});
+      vi.unstubAllGlobals(); // Remove Translator global
       const unavailableProvider = new ChromeTranslatorProvider();
 
       await expect(
@@ -251,10 +223,8 @@ describe('ChromeTranslatorProvider', () => {
 
   describe('detectLanguage', () => {
     it('detects language using LanguageDetector API', async () => {
-      vi.stubGlobal('window', {
-        Translator: mockTranslatorAPI,
-        LanguageDetector: mockDetectorAPI,
-      });
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+      vi.stubGlobal('LanguageDetector', mockDetectorAPI);
       mockDetect.mockResolvedValue([{ detectedLanguage: 'es', confidence: 0.85 }]);
 
       const result = await provider.detectLanguage('Hola mundo');
@@ -263,10 +233,8 @@ describe('ChromeTranslatorProvider', () => {
     });
 
     it('returns "en" when confidence is low', async () => {
-      vi.stubGlobal('window', {
-        Translator: mockTranslatorAPI,
-        LanguageDetector: mockDetectorAPI,
-      });
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+      vi.stubGlobal('LanguageDetector', mockDetectorAPI);
       mockDetect.mockResolvedValue([{ detectedLanguage: 'es', confidence: 0.5 }]);
 
       const result = await provider.detectLanguage('Hola');
@@ -275,10 +243,8 @@ describe('ChromeTranslatorProvider', () => {
     });
 
     it('returns "en" when LanguageDetector not available', async () => {
-      vi.stubGlobal('window', {
-        Translator: mockTranslatorAPI,
-        // No LanguageDetector
-      });
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+      // No LanguageDetector global
 
       const result = await provider.detectLanguage('Hola mundo');
 
@@ -288,9 +254,7 @@ describe('ChromeTranslatorProvider', () => {
 
   describe('getAvailabilityStatus', () => {
     beforeEach(() => {
-      vi.stubGlobal('window', {
-        Translator: mockTranslatorAPI,
-      });
+      vi.stubGlobal('Translator', mockTranslatorAPI);
     });
 
     it('returns "readily" for immediately available pairs', async () => {
@@ -322,7 +286,7 @@ describe('ChromeTranslatorProvider', () => {
     });
 
     it('returns "unavailable" when API not present', async () => {
-      vi.stubGlobal('window', {});
+      vi.unstubAllGlobals(); // Remove Translator global
       const unavailableProvider = new ChromeTranslatorProvider();
 
       const status = await unavailableProvider.getAvailabilityStatus('en', 'de');
@@ -333,10 +297,8 @@ describe('ChromeTranslatorProvider', () => {
 
   describe('destroy', () => {
     beforeEach(() => {
-      vi.stubGlobal('window', {
-        Translator: mockTranslatorAPI,
-        LanguageDetector: mockDetectorAPI,
-      });
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+      vi.stubGlobal('LanguageDetector', mockDetectorAPI);
     });
 
     it('destroys translator and detector', async () => {
@@ -376,8 +338,7 @@ describe('Helper functions', () => {
 
   describe('isChromeTranslatorAvailable', () => {
     it('returns availability status', async () => {
-      vi.stubGlobal('window', {});
-
+      // No Translator global = not available
       const result = await isChromeTranslatorAvailable();
 
       expect(typeof result).toBe('boolean');

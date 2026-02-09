@@ -1140,6 +1140,60 @@ async function handleTranslate(message: {
 
     console.log('[Background] Translating:', message.sourceLang, '->', message.targetLang);
 
+    // Chrome Built-in Translator: runs in tab's main world (not offscreen)
+    // because the Translator API is only available in page contexts.
+    if (provider === 'chrome-builtin') {
+      if (sessionId) profiler.startTiming(sessionId, 'chrome_builtin_translate');
+      try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tabId = tabs[0]?.id;
+        if (!tabId) throw new Error('No active tab for Chrome Translator');
+
+        const texts = Array.isArray(text) ? text : [text];
+        // The func runs in the page's main world where Chrome AI APIs exist
+        // on globalThis. TypeScript doesn't know about them here, so we use
+        // (self as any) to access Translator which Chrome 138+ injects.
+        const results = await chrome.scripting.executeScript({
+          target: { tabId },
+          world: 'MAIN' as chrome.scripting.ExecutionWorld,
+          func: async (textsToTranslate: string[], srcLang: string, tgtLang: string) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const TranslatorAPI = (self as any).Translator;
+            if (!TranslatorAPI) {
+              throw new Error('Chrome Translator API not available (requires Chrome 138+)');
+            }
+            const avail = await TranslatorAPI.availability({ sourceLanguage: srcLang, targetLanguage: tgtLang });
+            if (avail.available === 'no') {
+              throw new Error(`Language pair not supported: ${srcLang}-${tgtLang}`);
+            }
+            const t = await TranslatorAPI.create({ sourceLanguage: srcLang, targetLanguage: tgtLang });
+            const translated: string[] = [];
+            for (const txt of textsToTranslate) {
+              translated.push(txt.trim() ? await t.translate(txt) : txt);
+            }
+            t.destroy();
+            return translated;
+          },
+          args: [texts, message.sourceLang, message.targetLang],
+        });
+
+        if (sessionId) profiler.endTiming(sessionId, 'chrome_builtin_translate');
+        const translated = results[0]?.result as string[] | undefined;
+        if (!translated) throw new Error('Chrome Translator returned no result');
+
+        const result = Array.isArray(text) ? translated : translated[0];
+        const duration = Date.now() - startTime;
+        setCachedTranslation(cacheKey, result, message.sourceLang, message.targetLang);
+        if (sessionId) profiler.endTiming(sessionId, 'total');
+        return { success: true, result, duration, provider: 'chrome-builtin' };
+      } catch (error) {
+        if (sessionId) profiler.endTiming(sessionId, 'total');
+        const errMsg = error instanceof Error ? error.message : String(error);
+        log.error('Chrome Built-in translation failed:', errMsg);
+        return { success: false, error: errMsg, duration: Date.now() - startTime };
+      }
+    }
+
     // Start IPC timing
     if (sessionId) {
       profiler.startTiming(sessionId, 'ipc_background_to_offscreen');
