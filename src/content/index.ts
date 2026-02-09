@@ -1060,14 +1060,22 @@ async function handleHoverTranslation(e: MouseEvent): Promise<void> {
     const targetLang = settings.targetLang || 'en';
     const provider = settings.provider || 'opus-mt';
 
-    const response = (await browserAPI.runtime.sendMessage({
-      type: 'translate',
-      text: text,
-      sourceLang: 'auto',
-      targetLang,
-      options: { strategy: 'fast' },
-      provider,
-    })) as TranslateResponse;
+    // Timeout prevents indefinite hang if service worker is unresponsive
+    const HOVER_TIMEOUT_MS = 10000;
+    let hoverTimer: ReturnType<typeof setTimeout> | undefined;
+    const response = (await Promise.race([
+      browserAPI.runtime.sendMessage({
+        type: 'translate',
+        text: text,
+        sourceLang: 'auto',
+        targetLang,
+        options: { strategy: 'fast' },
+        provider,
+      }),
+      new Promise<never>((_, reject) => {
+        hoverTimer = setTimeout(() => reject(new Error('Hover translation timed out')), HOVER_TIMEOUT_MS);
+      }),
+    ]).finally(() => { if (hoverTimer) clearTimeout(hoverTimer); })) as TranslateResponse;
 
     if (response.success && response.result) {
       const translated = response.result as string;

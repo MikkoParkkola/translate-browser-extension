@@ -34,6 +34,12 @@
         "default": "Ctrl+Shift+T"
       },
       "description": "Translate selected text"
+    },
+    "toggle-widget": {
+      "suggested_key": {
+        "default": "Alt+W"
+      },
+      "description": "Toggle translation widget"
     }
   },
   "web_accessible_resources": [
