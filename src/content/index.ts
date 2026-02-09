@@ -1819,14 +1819,17 @@ async function createBatches(
 /**
  * Set up IntersectionObserver to translate deferred below-fold content
  * as the user scrolls near it. Translates in chunks using sentinel elements.
+ *
+ * IMPORTANT: Uses currentSettings at callback time (not closure-captured params)
+ * to avoid stale language settings if the user changes language mid-scroll.
  */
 function setupScrollAwareTranslation(
   deferredNodes: Text[],
-  sourceLang: string,
-  targetLang: string,
-  strategy: Strategy,
+  _sourceLang: string,
+  _targetLang: string,
+  _strategy: Strategy,
   g: GlossaryStore,
-  provider?: string,
+  _provider?: string,
   enableProfiling = false
 ): void {
   // Split deferred nodes into chunks of ~2 batches worth
@@ -1852,7 +1855,9 @@ function setupScrollAwareTranslation(
         belowFoldObserver?.unobserve(entry.target);
 
         const chunk = chunks[chunkIndex];
+        // Read live settings to avoid stale language/strategy from closure
         if (!chunk || !currentSettings) return;
+        const { sourceLang, targetLang, strategy, provider } = currentSettings;
 
         // Filter out nodes that are no longer in the DOM or already translated
         const validNodes = chunk.filter(
@@ -1905,7 +1910,10 @@ async function translateDynamicContent(nodes: Node[]): Promise<void> {
   isTranslatingDynamic = true;
 
   const textNodes = getTextNodesFromNodes(nodes);
-  if (textNodes.length === 0) return;
+  if (textNodes.length === 0) {
+    isTranslatingDynamic = false;
+    return;
+  }
 
   console.log(`[Content] Translating ${textNodes.length} dynamic text nodes`);
 

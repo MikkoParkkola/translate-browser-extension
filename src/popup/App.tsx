@@ -169,9 +169,13 @@ export default function App() {
   };
 
   onMount(async () => {
-    // Listen for model progress messages
+    // Listen for model progress messages (with error boundary to prevent popup crash)
     const messageListener = (message: ModelProgressMessage) => {
-      handleModelProgress(message);
+      try {
+        handleModelProgress(message);
+      } catch (error) {
+        console.error('[Popup] Error handling model progress message:', error);
+      }
     };
     browserAPI.runtime.onMessage.addListener(messageListener);
 
