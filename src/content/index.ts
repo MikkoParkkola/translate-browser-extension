@@ -1215,8 +1215,8 @@ function shouldSkipUncached(element: Element): boolean {
   // Skip already translated
   if (element.getAttribute(TRANSLATED_ATTR)) return true;
 
-  // Skip elements with contenteditable
-  if (element.closest('[contenteditable="true"]')) return true;
+  // Skip elements with contenteditable (isContentEditable checks inheritance, avoids DOM traversal)
+  if ((element as HTMLElement).isContentEditable) return true;
 
   // Skip elements marked as no-translate
   if (element.hasAttribute('data-no-translate')) return true;
@@ -1236,6 +1236,10 @@ function shouldSkipUncached(element: Element): boolean {
   return false;
 }
 
+// Pre-compiled regexes for isValidText (called per text node, thousands/page)
+const NON_TRANSLATABLE_RE = /^[\s\d\p{P}\p{S}]+$/u;
+const CODE_OR_URL_RE = /^(https?:|www\.|\/\/|{|}|\[|\]|function|const |let |var )/;
+
 /**
  * Validate text for translation
  */
@@ -1247,10 +1251,10 @@ function isValidText(text: string | null): text is string {
   if (trimmed.length > CONFIG.batching.maxTextLength) return false;
 
   // Skip text that's only whitespace, numbers, or symbols
-  if (/^[\s\d\p{P}\p{S}]+$/u.test(trimmed)) return false;
+  if (NON_TRANSLATABLE_RE.test(trimmed)) return false;
 
   // Skip text that looks like code or URLs
-  if (/^(https?:|www\.|\/\/|{|}|\[|\]|function|const |let |var )/.test(trimmed)) return false;
+  if (CODE_OR_URL_RE.test(trimmed)) return false;
 
   return true;
 }
