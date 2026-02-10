@@ -37,9 +37,6 @@ export default defineConfig({
       output: {
         // Inline all dependencies (except externals above)
         inlineDynamicImports: true,
-        globals: {
-          'pdfjs-dist': 'window.__pdfjs',
-        },
       },
     },
   },

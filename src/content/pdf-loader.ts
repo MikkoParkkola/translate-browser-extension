@@ -5,10 +5,10 @@
  * Including pdfjs-dist (~400KB) in the main bundle is wasteful since
  * PDF translation is only needed on PDF pages.
  *
- * This module loads pdfjs from a separate chunk (`chunks/pdfjs.js`)
- * that is built as a standalone IIFE and exposed via the extension's
- * web_accessible_resources. The chunk sets `window.__pdfjs` which
- * this loader reads after the script executes.
+ * Loading strategy:
+ * - Uses dynamic import() to load the ES module chunk from the
+ *   extension's web_accessible_resources. This runs in the content
+ *   script's isolated world — no eval, no globals, no CSP issues.
  *
  * Usage:
  *   const pdfjsLib = await loadPdfjs();
@@ -22,7 +22,7 @@ const log = createLogger('PDFLoader');
 
 /** Minimal interface for the pdfjs API surface we use. */
 export interface PdfjsLib {
-  getDocument(src: string | URL): { promise: Promise<PdfjsDocument> };
+  getDocument(src: string | URL | { url: string; disableAutoFetch?: boolean; disableStream?: boolean }): { promise: Promise<PdfjsDocument> };
   GlobalWorkerOptions: { workerSrc: string };
 }
 
@@ -55,18 +55,30 @@ let cachedPdfjs: PdfjsLib | null = null;
 let loadingPromise: Promise<PdfjsLib> | null = null;
 
 /**
+ * Dynamic import wrapper.
+ *
+ * The @vite-ignore comment tells Vite/Rollup to leave this import()
+ * as-is in the output. Chrome content scripts support native import()
+ * for URLs in web_accessible_resources (Chrome 89+).
+ */
+function dynamicImport(url: string): Promise<Record<string, unknown>> {
+  return import(/* @vite-ignore */ url);
+}
+
+/**
  * Inject a script tag pointing to the extension-bundled pdfjs chunk
  * and wait for it to finish loading.
  *
- * The chunk sets `window.__pdfjs` as its export mechanism.
+ * NOTE: This is a fallback for environments without dynamic import().
+ * The script runs in the page's main world, not the content script's
+ * isolated world, so it has limited usefulness.
  */
 export function injectScript(url: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.src = url;
-    script.type = 'text/javascript';
+    script.type = 'module';
     script.onload = () => {
-      // Clean up the script tag after loading
       script.remove();
       resolve();
     };
@@ -78,28 +90,19 @@ export function injectScript(url: string): Promise<void> {
   });
 }
 
-// Declare the global that pdfjs chunk will set
-declare global {
-  interface Window {
-    __pdfjs?: PdfjsLib;
-  }
-}
-
 /**
- * Load pdfjs-dist lazily from a separate chunk.
+ * Load pdfjs-dist lazily from a separate ES module chunk.
  *
  * Returns the pdfjs library object. Caches the result so subsequent
  * calls return immediately.
  *
- * @throws Error if the chunk fails to load or the global is not set.
+ * @throws Error if the chunk fails to load or the module exports are invalid.
  */
 export async function loadPdfjs(): Promise<PdfjsLib> {
-  // Return cached instance if already loaded
   if (cachedPdfjs) {
     return cachedPdfjs;
   }
 
-  // Deduplicate concurrent calls
   if (loadingPromise) {
     return loadingPromise;
   }
@@ -108,20 +111,32 @@ export async function loadPdfjs(): Promise<PdfjsLib> {
     log.info('Loading pdfjs-dist chunk...');
 
     const chunkUrl = browserAPI.runtime.getURL('chunks/pdfjs.js');
-    await injectScript(chunkUrl);
 
-    const pdfjsLib = window.__pdfjs;
-    if (!pdfjsLib) {
+    // Dynamic import() works in Chrome MV3 content scripts (Chrome 89+)
+    // for URLs listed in web_accessible_resources.
+    let module: Record<string, unknown>;
+    try {
+      module = await dynamicImport(chunkUrl);
+    } catch (importError) {
+      log.error('Dynamic import of pdfjs chunk failed:', importError);
       throw new Error(
-        'pdfjs-dist chunk loaded but window.__pdfjs is not set. ' +
-        'Ensure chunks/pdfjs.js is built correctly.'
+        `Failed to import pdfjs chunk: ${importError instanceof Error ? importError.message : String(importError)}`
       );
     }
 
-    // Configure the worker path
-    pdfjsLib.GlobalWorkerOptions.workerSrc = browserAPI.runtime.getURL(
-      'pdf.worker.min.mjs'
-    );
+    // The ES module default export is the pdfjs library
+    const pdfjsLib = (module.default || module) as PdfjsLib;
+    if (!pdfjsLib || typeof pdfjsLib.getDocument !== 'function') {
+      throw new Error(
+        'pdfjs chunk loaded but exports are invalid. ' +
+        'Expected getDocument function on default export.'
+      );
+    }
+
+    // Point worker to the bundled worker file in web_accessible_resources.
+    // Chrome content scripts can spawn workers from extension URLs.
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      browserAPI.runtime.getURL('chunks/pdf.worker.min.mjs');
 
     cachedPdfjs = pdfjsLib;
     log.info('pdfjs-dist loaded successfully');
@@ -131,7 +146,6 @@ export async function loadPdfjs(): Promise<PdfjsLib> {
   try {
     return await loadingPromise;
   } catch (err) {
-    // Reset so a retry is possible
     loadingPromise = null;
     throw err;
   }
@@ -150,5 +164,4 @@ export function isPdfjsLoaded(): boolean {
 export function resetPdfjsLoader(): void {
   cachedPdfjs = null;
   loadingPromise = null;
-  delete window.__pdfjs;
 }

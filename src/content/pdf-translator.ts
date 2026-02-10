@@ -16,6 +16,7 @@
 import type { TranslateResponse } from '../types';
 import { browserAPI } from '../core/browser-api';
 import { createLogger } from '../core/logger';
+import { detectLanguage } from '../core/language-detector';
 import { loadPdfjs } from './pdf-loader';
 
 const log = createLogger('PDF');
@@ -89,20 +90,33 @@ let state: PdfTranslatorState | null = null;
  * Detect whether the current page is displaying a PDF.
  *
  * Checks (in order):
- * 1. URL ends with `.pdf` (with optional query/hash)
- * 2. An `<embed type="application/pdf">` is present (Chrome's built-in viewer)
- * 3. Content-type meta tag indicates PDF
+ * 1. document.contentType === 'application/pdf' (most reliable, works for
+ *    URLs like arxiv.org/pdf/1706.03762 that lack a .pdf extension)
+ * 2. URL ends with `.pdf` (with optional query/hash)
+ * 3. An `<embed type="application/pdf">` is present (Chrome's built-in viewer)
+ * 4. Chrome's newer `<pdf-viewer>` custom element
+ * 5. Content-type meta tag indicates PDF
  */
 export function isPdfPage(): boolean {
-  // Check URL pattern
+  // Most reliable: browser knows the content type from the HTTP response
+  if (document.contentType === 'application/pdf') {
+    return true;
+  }
+
+  // Check URL pattern (.pdf with optional query/hash)
   const url = window.location.href;
   if (/\.pdf(\?[^#]*)?(#.*)?$/i.test(url)) {
     return true;
   }
 
-  // Check for embedded PDF viewer
+  // Check for embedded PDF viewer (classic Chrome viewer)
   const embed = document.querySelector('embed[type="application/pdf"]');
   if (embed) {
+    return true;
+  }
+
+  // Check for Chrome's newer PDF viewer custom element
+  if (document.querySelector('pdf-viewer')) {
     return true;
   }
 
@@ -252,10 +266,16 @@ function createSpanGroup(spans: PdfTextSpan[]): SpanGroup {
  * Sends each group's text through `browserAPI.runtime.sendMessage` and
  * populates `translatedText` on each group.
  *
+ * Translation is sequential (one group at a time) to prevent loading
+ * multiple OPUS-MT models simultaneously, which exhausts WASM memory
+ * (~170MB per model). The first request loads the model; subsequent
+ * requests reuse it from the pipeline cache and are fast.
+ *
  * Uses a local cache to avoid re-translating identical text.
  */
 export async function translateGroups(
   groups: SpanGroup[],
+  sourceLang: string,
   targetLang: string,
   cache: Map<string, string>,
   onProgress?: (completed: number, total: number) => void
@@ -263,47 +283,44 @@ export async function translateGroups(
   const total = groups.length;
   let completed = 0;
 
-  // Translate in small batches to avoid overwhelming the background worker
-  const BATCH_SIZE = 10;
-
-  for (let i = 0; i < groups.length; i += BATCH_SIZE) {
-    const batch = groups.slice(i, i + BATCH_SIZE);
-    const promises = batch.map(async (group) => {
-      // Check cache first
-      const cached = cache.get(group.text);
-      if (cached) {
-        group.translatedText = cached;
-        completed++;
-        onProgress?.(completed, total);
-        return;
-      }
-
-      try {
-        const response = (await browserAPI.runtime.sendMessage({
-          type: 'translate',
-          text: group.text,
-          sourceLang: 'auto',
-          targetLang,
-        })) as TranslateResponse;
-
-        if (response?.success && response.result) {
-          const translated =
-            typeof response.result === 'string'
-              ? response.result
-              : response.result[0];
-          group.translatedText = translated;
-          cache.set(group.text, translated);
-        }
-      } catch (err) {
-        log.error('Translation failed for group', group.text, err);
-        // Leave translatedText undefined on failure
-      }
-
+  // Translate sequentially to avoid concurrent model loading.
+  // Each OPUS-MT model is ~170MB; parallel requests for different
+  // language pairs exhaust WASM memory with ~200MB allocation failures.
+  // After the first request loads the model, subsequent requests
+  // use the cached pipeline and translate quickly.
+  for (const group of groups) {
+    // Check cache first
+    const cached = cache.get(group.text);
+    if (cached) {
+      group.translatedText = cached;
       completed++;
       onProgress?.(completed, total);
-    });
+      continue;
+    }
 
-    await Promise.all(promises);
+    try {
+      const response = (await browserAPI.runtime.sendMessage({
+        type: 'translate',
+        text: group.text,
+        sourceLang,
+        targetLang,
+      })) as TranslateResponse;
+
+      if (response?.success && response.result) {
+        const translated =
+          typeof response.result === 'string'
+            ? response.result
+            : response.result[0];
+        group.translatedText = translated;
+        cache.set(group.text, translated);
+      }
+    } catch (err) {
+      log.error('Translation failed for group', group.text, err);
+      // Leave translatedText undefined on failure
+    }
+
+    completed++;
+    onProgress?.(completed, total);
   }
 }
 
@@ -488,7 +505,13 @@ export async function initPdfTranslation(targetLang: string): Promise<void> {
     // The pdf-loader handles script injection and worker configuration.
     const pdfjsLib = await loadPdfjs();
 
-    const loadingTask = pdfjsLib.getDocument(pdfUrl);
+    // Use object form to disable streaming/auto-fetch which can fail
+    // in content script context due to CORS restrictions
+    const loadingTask = pdfjsLib.getDocument({
+      url: pdfUrl,
+      disableAutoFetch: true,
+      disableStream: true,
+    });
     const pdf = await loadingTask.promise;
 
     log.info(`PDF loaded: ${pdf.numPages} pages`);
@@ -520,9 +543,26 @@ export async function initPdfTranslation(targetLang: string): Promise<void> {
     const totalGroups = state.pages.reduce((sum, p) => sum + p.groups.length, 0);
     log.info(`Extracted ${totalGroups} text groups from ${pdf.numPages} pages`);
 
-    // Translate all groups
+    // Detect document language ONCE from a large sample of all pages.
+    // This prevents per-fragment false positives (e.g. short references
+    // being misidentified as Dutch/Turkish/Czech) which would trigger
+    // loading many different OPUS-MT models and exhausting WASM memory.
     const allGroups = state.pages.flatMap((p) => p.groups);
-    await translateGroups(allGroups, targetLang, state.translationCache);
+    const sampleText = allGroups
+      .slice(0, 50)
+      .map((g) => g.text)
+      .join(' ');
+    const detected = detectLanguage(sampleText);
+    const documentLang = detected?.lang ?? 'en';
+    log.info(`Document language detected: ${documentLang} (confidence: ${detected?.confidence ?? 0})`);
+
+    // Skip translation if document is already in target language
+    if (documentLang === targetLang) {
+      log.info('Document already in target language, skipping translation');
+      return;
+    }
+
+    await translateGroups(allGroups, documentLang, targetLang, state.translationCache);
 
     const translatedCount = allGroups.filter((g) => g.translatedText).length;
     log.info(`Translated ${translatedCount}/${totalGroups} groups`);

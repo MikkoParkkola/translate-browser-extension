@@ -18,14 +18,12 @@ export default defineConfig({
     target: 'esnext',
     lib: {
       entry: resolve(__dirname, 'src/pdfjs-entry.ts'),
-      name: 'PdfjsChunk',
       fileName: () => 'pdfjs.js',
-      formats: ['iife'],
+      formats: ['es'],
     },
     rollupOptions: {
       output: {
         inlineDynamicImports: true,
-        globals: {},
       },
     },
   },

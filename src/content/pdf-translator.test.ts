@@ -35,6 +35,11 @@ vi.mock('./pdf-loader', () => ({
   loadPdfjs: (...args: unknown[]) => mockLoadPdfjs(...args),
 }));
 
+// Mock language-detector for document-level detection in initPdfTranslation
+vi.mock('../core/language-detector', () => ({
+  detectLanguage: () => ({ lang: 'en', confidence: 0.95 }),
+}));
+
 import {
   isPdfPage,
   getPdfUrl,
@@ -186,6 +191,33 @@ describe('PDF Translator', () => {
         configurable: true,
       });
       expect(isPdfPage()).toBe(false);
+    });
+
+    it('detects PDF via document.contentType (arxiv-style URLs)', () => {
+      Object.defineProperty(document, 'contentType', {
+        value: 'application/pdf',
+        writable: true,
+        configurable: true,
+      });
+      // URL doesn't end with .pdf, but contentType reveals it
+      Object.defineProperty(window, 'location', {
+        value: { href: 'https://arxiv.org/pdf/1706.03762', hostname: 'arxiv.org' },
+        writable: true,
+        configurable: true,
+      });
+      expect(isPdfPage()).toBe(true);
+      // Reset contentType
+      Object.defineProperty(document, 'contentType', {
+        value: 'text/html',
+        writable: true,
+        configurable: true,
+      });
+    });
+
+    it('detects PDF via pdf-viewer custom element', () => {
+      const viewer = document.createElement('pdf-viewer');
+      document.body.appendChild(viewer);
+      expect(isPdfPage()).toBe(true);
     });
   });
 
@@ -427,13 +459,13 @@ describe('PDF Translator', () => {
       ];
       const cache = new Map<string, string>();
 
-      await translateGroups(groups, 'fi', cache);
+      await translateGroups(groups, 'en', 'fi', cache);
 
       expect(groups[0].translatedText).toBe('Hei maailma');
       expect(mockSendMessage).toHaveBeenCalledWith({
         type: 'translate',
         text: 'Hello world',
-        sourceLang: 'auto',
+        sourceLang: 'en',
         targetLang: 'fi',
       });
     });
@@ -451,7 +483,7 @@ describe('PDF Translator', () => {
         { text: 'Hello', spans: [makeSpan({ str: 'Hello' })] },
       ];
 
-      await translateGroups(groups, 'fi', cache);
+      await translateGroups(groups, 'en', 'fi', cache);
 
       // Should use cached value, not call sendMessage
       expect(groups[0].translatedText).toBe('Hei (cached)');
@@ -469,7 +501,7 @@ describe('PDF Translator', () => {
         { text: 'Source text', spans: [makeSpan({ str: 'Source text' })] },
       ];
 
-      await translateGroups(groups, 'fi', cache);
+      await translateGroups(groups, 'en', 'fi', cache);
 
       expect(cache.get('Source text')).toBe('Translated text');
     });
@@ -483,7 +515,7 @@ describe('PDF Translator', () => {
       const cache = new Map<string, string>();
 
       // Should not throw
-      await expect(translateGroups(groups, 'fi', cache)).resolves.not.toThrow();
+      await expect(translateGroups(groups, 'en', 'fi', cache)).resolves.not.toThrow();
       expect(groups[0].translatedText).toBeUndefined();
     });
 
@@ -498,7 +530,7 @@ describe('PDF Translator', () => {
       ];
       const cache = new Map<string, string>();
 
-      await translateGroups(groups, 'fi', cache);
+      await translateGroups(groups, 'en', 'fi', cache);
 
       expect(groups[0].translatedText).toBeUndefined();
     });
@@ -514,7 +546,7 @@ describe('PDF Translator', () => {
       ];
       const cache = new Map<string, string>();
 
-      await translateGroups(groups, 'fi', cache);
+      await translateGroups(groups, 'en', 'fi', cache);
 
       expect(groups[0].translatedText).toBe('Batch result');
     });
@@ -532,7 +564,7 @@ describe('PDF Translator', () => {
       const cache = new Map<string, string>();
       const progress = vi.fn();
 
-      await translateGroups(groups, 'fi', cache, progress);
+      await translateGroups(groups, 'en', 'fi', cache, progress);
 
       expect(progress).toHaveBeenCalledTimes(2);
       expect(progress).toHaveBeenCalledWith(1, 2);
@@ -545,14 +577,14 @@ describe('PDF Translator', () => {
         result: 'OK',
       });
 
-      // Create 15 groups to test batch boundary (BATCH_SIZE = 10)
+      // Create 15 groups to test sequential translation
       const groups: SpanGroup[] = Array.from({ length: 15 }, (_, i) => ({
         text: `Text ${i}`,
         spans: [makeSpan({ str: `Text ${i}` })],
       }));
       const cache = new Map<string, string>();
 
-      await translateGroups(groups, 'fi', cache);
+      await translateGroups(groups, 'en', 'fi', cache);
 
       expect(mockSendMessage).toHaveBeenCalledTimes(15);
       expect(groups.every((g) => g.translatedText === 'OK')).toBe(true);
@@ -891,7 +923,7 @@ describe('PDF Translator', () => {
 
     it('translateGroups handles empty groups array', async () => {
       const cache = new Map<string, string>();
-      await expect(translateGroups([], 'fi', cache)).resolves.not.toThrow();
+      await expect(translateGroups([], 'en', 'fi', cache)).resolves.not.toThrow();
     });
 
     it('renderPageOverlay handles group with multiple spans for bounding box', () => {

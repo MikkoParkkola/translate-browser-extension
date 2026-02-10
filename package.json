@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite build --watch && vite build --config vite.content.config.ts --watch",
-    "build": "vite build && vite build --config vite.pdfjs.config.ts && vite build --config vite.content.config.ts",
-    "build:firefox": "vite build --config vite.config.firefox.ts && vite build --config vite.pdfjs.config.ts && vite build --config vite.content.config.ts --outDir dist-firefox",
+    "build": "vite build && vite build --config vite.pdfjs.config.ts && cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs dist/chunks/pdf.worker.min.mjs && vite build --config vite.content.config.ts",
+    "build:firefox": "vite build --config vite.config.firefox.ts && vite build --config vite.pdfjs.config.ts && cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs dist/chunks/pdf.worker.min.mjs && vite build --config vite.content.config.ts --outDir dist-firefox",
     "build:all": "npm run build && npm run build:firefox",
     "preview": "vite preview",
     "test": "vitest",

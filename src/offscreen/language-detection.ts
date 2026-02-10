@@ -89,10 +89,16 @@ export const FRANC_TO_ISO: Record<string, string> = {
 /**
  * Detect language from text using franc.
  * Falls back to character set detection and English as default.
+ *
+ * Uses minLength=20 to avoid false positives on short text fragments
+ * (e.g., PDF references, author names, mathematical terms).
+ * franc needs at least ~20 chars to produce reliable results.
  */
 export function detectLanguage(text: string): string {
   // franc returns 'und' (undetermined) if it can't detect
-  const detected = franc(text, { minLength: 3 });
+  // minLength=20 prevents false positives on short fragments that
+  // would trigger loading many different OPUS-MT models
+  const detected = franc(text, { minLength: 20 });
   console.log(`[LanguageDetection] franc raw detection: "${detected}" for text: "${text.slice(0, 50)}..."`);
 
   if (detected === 'und' || !detected) {
