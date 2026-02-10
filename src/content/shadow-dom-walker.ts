@@ -296,6 +296,53 @@ function scanForExistingShadowRoots(
 }
 
 // ---------------------------------------------------------------------------
+// Deep Selection (Shadow DOM-aware)
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the current text selection, traversing into shadow DOMs.
+ *
+ * `window.getSelection()` only sees selections in the main document.
+ * When text is selected inside a shadow root (e.g., LinkedIn chat, web
+ * components), we need to walk the active element chain into shadow roots
+ * to find the actual selection.
+ *
+ * Strategy:
+ * 1. Check `window.getSelection()` first (covers 99% of cases)
+ * 2. If empty/collapsed, walk `document.activeElement` -> `shadowRoot`
+ *    chain and check each shadow root's `getSelection()` (Chromium 53+)
+ * 3. Also check our captured closed shadow roots
+ */
+export function getDeepSelection(): Selection | null {
+  // Try main document first
+  const mainSelection = window.getSelection();
+  if (mainSelection && !mainSelection.isCollapsed && mainSelection.toString().trim()) {
+    return mainSelection;
+  }
+
+  // Walk the active element chain into shadow roots
+  let element: Element | null = document.activeElement;
+  while (element) {
+    const shadow = getShadowRoot(element);
+    if (shadow) {
+      // Chromium supports getSelection() on shadow roots since Chrome 53
+      // TypeScript doesn't have this in its types, but it exists at runtime
+      const shadowSelection = (shadow as unknown as { getSelection?: () => Selection | null }).getSelection?.();
+      if (shadowSelection && !shadowSelection.isCollapsed && shadowSelection.toString().trim()) {
+        return shadowSelection;
+      }
+      // Continue deeper — activeElement inside shadow root
+      element = shadow.activeElement;
+    } else {
+      break;
+    }
+  }
+
+  // Fallback: return whatever main selection has (even if collapsed)
+  return mainSelection;
+}
+
+// ---------------------------------------------------------------------------
 // Exports for Testing
 // ---------------------------------------------------------------------------
 

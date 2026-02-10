@@ -13,6 +13,7 @@ import {
   cleanupShadowObservers,
   installAttachShadowInterceptor,
   removeAttachShadowInterceptor,
+  getDeepSelection,
   _testing,
 } from './shadow-dom-walker';
 
@@ -486,6 +487,68 @@ describe('shadow-dom-walker', () => {
       // Cleanup
       cleanup();
       expect(_testing.interceptInstalled).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // getDeepSelection
+  // -------------------------------------------------------------------------
+  describe('getDeepSelection', () => {
+    it('returns main document selection when text is selected there', () => {
+      const div = document.createElement('div');
+      div.textContent = 'Hello world';
+      document.body.appendChild(div);
+
+      // Create a real selection
+      const range = document.createRange();
+      range.selectNodeContents(div);
+      const sel = window.getSelection()!;
+      sel.removeAllRanges();
+      sel.addRange(range);
+
+      const result = getDeepSelection();
+      expect(result).not.toBeNull();
+      expect(result!.toString()).toBe('Hello world');
+
+      sel.removeAllRanges();
+      document.body.removeChild(div);
+    });
+
+    it('returns null-like selection when nothing is selected', () => {
+      window.getSelection()?.removeAllRanges();
+      const result = getDeepSelection();
+      // Returns the main selection object (collapsed), which is fine —
+      // callers check isCollapsed
+      expect(result).not.toBeNull();
+      expect(result!.isCollapsed).toBe(true);
+    });
+
+    it('falls back to main selection when shadow root has no getSelection', () => {
+      // Create a host with open shadow root
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      const shadow = host.attachShadow({ mode: 'open' });
+      shadow.innerHTML = '<span>Shadow text</span>';
+
+      // No selection anywhere
+      window.getSelection()?.removeAllRanges();
+
+      // Mock activeElement to point into shadow host
+      Object.defineProperty(document, 'activeElement', {
+        value: host,
+        configurable: true,
+      });
+
+      const result = getDeepSelection();
+      // Should return main selection (collapsed) as fallback
+      expect(result).not.toBeNull();
+
+      // Cleanup
+      Object.defineProperty(document, 'activeElement', {
+        value: document.body,
+        configurable: true,
+      });
+      document.body.removeChild(host);
     });
   });
 });

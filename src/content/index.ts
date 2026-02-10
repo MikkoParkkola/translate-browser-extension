@@ -26,6 +26,7 @@ import {
   observeShadowRoots,
   observeShadowRoot,
   cleanupShadowObservers,
+  getDeepSelection,
 } from './shadow-dom-walker';
 // measureTimeAsync imported for future use in async profiling
 // import { measureTimeAsync } from '../core/profiler';
@@ -1675,7 +1676,7 @@ function getPageContext(node: Text): string {
  * Extracts text before and after the selection from the containing block element
  */
 function getSelectionContext(): { before: string; after: string } | null {
-  const selection = window.getSelection();
+  const selection = getDeepSelection();
   if (!selection || selection.rangeCount === 0) return null;
 
   const range = selection.getRangeAt(0);
@@ -1736,9 +1737,10 @@ async function translateSelection(
   strategy: Strategy,
   provider?: string
 ): Promise<void> {
-  const selection = window.getSelection();
+  // Use deep selection to find text in shadow DOMs (e.g., LinkedIn chat)
+  const selection = getDeepSelection();
   if (!selection || selection.isCollapsed) {
-    log.info(' No text selected');
+    log.info(' No text selected (checked main document + shadow roots)');
     showInfoToast('Select text to translate');
     return;
   }
