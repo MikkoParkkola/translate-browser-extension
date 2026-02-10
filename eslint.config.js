@@ -12,7 +12,6 @@ module.exports = [
       'src/mupdf.engine.js',
       'src/qa/',
       'src/wasm/',
-      'webpack.config.js',
       'scripts/',
       'e2e/',
       '**/*.d.ts', // Skip type definition files
