@@ -10,6 +10,7 @@ import { openaiProvider } from '../providers/openai';
 import { googleCloudProvider } from '../providers/google-cloud';
 import { anthropicProvider } from '../providers/anthropic';
 import { webgpuDetector } from './webgpu-detector';
+import { CircuitBreaker } from './circuit-breaker';
 import type {
   TranslationProvider,
   TranslationOptions,
@@ -40,8 +41,10 @@ export class TranslationRouter {
   private stats = new Map<string, number>();
   private initialized = false;
   private preferencesLoaded = false;
+  readonly circuitBreaker: CircuitBreaker;
 
-  constructor() {
+  constructor(circuitBreaker?: CircuitBreaker) {
+    this.circuitBreaker = circuitBreaker ?? new CircuitBreaker();
     // Start with defaults, will be overwritten by loadPreferences()
     this.preferences = { ...DEFAULT_PREFERENCES };
     // Register default providers
@@ -160,6 +163,12 @@ export class TranslationRouter {
         continue;
       }
 
+      // Check circuit breaker before attempting provider
+      if (!this.circuitBreaker.isAvailable(provider.id)) {
+        console.log(`[Router] Provider ${provider.name} circuit is open, skipping`);
+        continue;
+      }
+
       const isAvailable = await provider.isAvailable();
       if (!isAvailable) {
         console.log(`[Router] Provider ${provider.name} not available`);
@@ -270,9 +279,14 @@ export class TranslationRouter {
 
       console.log(`[Router] Translating with ${provider.name}: ${sourceLang}->${targetLang}`);
 
-      const result = await provider.translate(text, sourceLang, targetLang, options);
-
-      return result;
+      try {
+        const result = await provider.translate(text, sourceLang, targetLang, options);
+        this.circuitBreaker.recordSuccess(provider.id);
+        return result;
+      } catch (providerError) {
+        this.circuitBreaker.recordFailure(provider.id);
+        throw providerError;
+      }
     } catch (error) {
       console.error('[Router] Translation error:', error);
       throw error;

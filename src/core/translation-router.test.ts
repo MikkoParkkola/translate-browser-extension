@@ -4,6 +4,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TranslationRouter } from './translation-router';
+import { CircuitBreaker } from './circuit-breaker';
 
 // Mock the opus-mt provider
 vi.mock('../providers/opus-mt-local', () => ({
@@ -185,6 +186,74 @@ describe('TranslationRouter', () => {
       const result = await router.translate('Hello', 'en', 'fi');
 
       expect(result).toBe('Mocked translation');
+    });
+  });
+
+  describe('circuit breaker integration', () => {
+    it('creates a circuit breaker by default', () => {
+      expect(router.circuitBreaker).toBeInstanceOf(CircuitBreaker);
+    });
+
+    it('accepts a custom circuit breaker', () => {
+      const customBreaker = new CircuitBreaker({ failureThreshold: 2 });
+      const customRouter = new TranslationRouter(customBreaker);
+      expect(customRouter.circuitBreaker).toBe(customBreaker);
+    });
+
+    it('records success on the circuit breaker after translation', async () => {
+      const breaker = new CircuitBreaker();
+      const routerWithBreaker = new TranslationRouter(breaker);
+
+      await routerWithBreaker.translate('Hello', 'en', 'fi');
+
+      const state = breaker.getState('opus-mt-local');
+      expect(state.state).toBe('closed');
+      expect(state.consecutiveFailures).toBe(0);
+    });
+
+    it('records failure on the circuit breaker when provider throws', async () => {
+      const { opusMTProvider } = await import('../providers/opus-mt-local');
+      vi.mocked(opusMTProvider.translate).mockRejectedValueOnce(new Error('Provider failed'));
+
+      const breaker = new CircuitBreaker();
+      const routerWithBreaker = new TranslationRouter(breaker);
+
+      await expect(routerWithBreaker.translate('Hello', 'en', 'fi')).rejects.toThrow('Provider failed');
+
+      const state = breaker.getState('opus-mt-local');
+      expect(state.consecutiveFailures).toBe(1);
+    });
+
+    it('skips providers with open circuits during selection', async () => {
+      const breaker = new CircuitBreaker({ failureThreshold: 1 });
+      const routerWithBreaker = new TranslationRouter(breaker);
+
+      // Open the circuit for opus-mt-local
+      breaker.recordFailure('opus-mt-local');
+
+      // Since opus-mt-local is the only enabled provider, this should throw
+      await expect(
+        routerWithBreaker.translate('Hello', 'en', 'fi')
+      ).rejects.toThrow('No available provider');
+    });
+
+    it('allows provider after circuit recovers', async () => {
+      const breaker = new CircuitBreaker({
+        failureThreshold: 1,
+        recoveryTimeoutMs: 0, // Instant recovery for testing
+      });
+      const routerWithBreaker = new TranslationRouter(breaker);
+
+      // Open the circuit
+      breaker.recordFailure('opus-mt-local');
+
+      // With 0ms recovery, the next isAvailable check transitions to half_open
+      const result = await routerWithBreaker.translate('Hello', 'en', 'fi');
+      expect(result).toBe('Mocked translation');
+
+      // Success should close the circuit
+      const state = breaker.getState('opus-mt-local');
+      expect(state.state).toBe('closed');
     });
   });
 });

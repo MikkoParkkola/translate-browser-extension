@@ -59,6 +59,11 @@ interface PersistentCacheEntry {
 // In-memory cache (fast access, survives service worker restarts via persistence)
 const translationCache = new Map<string, PersistentCacheEntry>();
 
+// In-flight request deduplication map.
+// When multiple frames request the same translation simultaneously,
+// they share a single API call instead of making duplicate requests.
+const inFlightRequests = new Map<string, Promise<TranslateResponse>>();
+
 // Cache statistics (persisted alongside cache)
 let cacheHits = 0;
 let cacheMisses = 0;
@@ -1050,6 +1055,39 @@ async function handleGetCloudProviderUsage(message: {
 }
 
 async function handleTranslate(message: {
+  text: string | string[];
+  sourceLang: string;
+  targetLang: string;
+  options?: { strategy?: Strategy; context?: { before: string; after: string; pageContext?: string } };
+  provider?: TranslationProviderId;
+  enableProfiling?: boolean;
+}): Promise<TranslateResponse> {
+  // Request deduplication: if the same translation is already in-flight,
+  // share the result instead of making a duplicate API call.
+  const provider = message.provider || currentProvider;
+  const dedupKey = getCacheKey(message.text, message.sourceLang, message.targetLang, provider);
+
+  const existing = inFlightRequests.get(dedupKey);
+  if (existing) {
+    log.debug('Deduplicating in-flight request:', dedupKey.substring(0, 40));
+    return existing;
+  }
+
+  const promise = handleTranslateInner(message);
+  inFlightRequests.set(dedupKey, promise);
+
+  try {
+    return await promise;
+  } finally {
+    inFlightRequests.delete(dedupKey);
+  }
+}
+
+/**
+ * Inner translation handler that performs the actual work.
+ * Separated from handleTranslate to support request deduplication.
+ */
+async function handleTranslateInner(message: {
   text: string | string[];
   sourceLang: string;
   targetLang: string;
