@@ -27,11 +27,18 @@ import {
   observeShadowRoot,
   cleanupShadowObservers,
   getDeepSelection,
+  installAttachShadowInterceptor,
 } from './shadow-dom-walker';
 // measureTimeAsync imported for future use in async profiling
 // import { measureTimeAsync } from '../core/profiler';
 
 const log = createLogger('Content');
+
+// Install shadow root interceptor ASAP to capture closed roots created during
+// page initialization. Content script runs at document_idle, so any shadow roots
+// created after this point will be intercepted. The interceptor is idempotent —
+// calling it again in startMutationObserver is safe.
+installAttachShadowInterceptor();
 
 /**
  * Resolve 'auto' source language using fast trigram-based detection.
@@ -1527,6 +1534,9 @@ function shouldSkipUncached(element: Element): boolean {
 // Pre-compiled regexes for isValidText (called per text node, thousands/page)
 const NON_TRANSLATABLE_RE = /^[\s\d\p{P}\p{S}]+$/u;
 const CODE_OR_URL_RE = /^(https?:|www\.|\/\/|{|}|\[|\]|function|const |let |var )/;
+// Prices, measurements, quantities common on e-commerce pages (ah.nl, bol.com etc.)
+// Matches strings composed entirely of currency symbols, digits, and price punctuation
+const PRICE_OR_MEASURE_RE = /^[\s€$£¥₹\d.,\-+×x%°:/']+$/u;
 
 /**
  * Validate text for translation
@@ -1540,6 +1550,9 @@ function isValidText(text: string | null): text is string {
 
   // Skip text that's only whitespace, numbers, or symbols
   if (NON_TRANSLATABLE_RE.test(trimmed)) return false;
+
+  // Skip prices and measurements (e.g., "€29,99", "$10.50", "30%", "1,5")
+  if (PRICE_OR_MEASURE_RE.test(trimmed)) return false;
 
   // Skip text that looks like code or URLs
   if (CODE_OR_URL_RE.test(trimmed)) return false;
@@ -2382,6 +2395,9 @@ function processPendingMutations(): void {
   }
 }
 
+/** Counter for mutations dropped due to buffer overflow (diagnostic) */
+let droppedMutationCount = 0;
+
 /**
  * Shared mutation callback for both the main observer and shadow root observers.
  */
@@ -2389,7 +2405,14 @@ function handleMutations(mutations: MutationRecord[]): void {
   for (const mutation of mutations) {
     if (pendingMutations.length < CONFIG.mutations.maxPending) {
       pendingMutations.push(mutation);
+    } else {
+      droppedMutationCount++;
     }
+  }
+
+  // Log dropped mutations periodically so heavy SPAs are diagnosable
+  if (droppedMutationCount > 0 && droppedMutationCount % 200 === 0) {
+    log.warn(`Dropped ${droppedMutationCount} mutations (maxPending=${CONFIG.mutations.maxPending})`);
   }
 
   if (mutationDebounceTimer !== null) {

@@ -837,20 +837,25 @@ async function handleClearCache(): Promise<unknown> {
  * Check if Chrome Translator API is available (Chrome 138+)
  */
 async function handleCheckChromeTranslator(): Promise<unknown> {
+  // Check in the page's MAIN world where the Translator API actually lives.
+  // The offscreen document cannot see Chrome AI APIs — they only exist in
+  // page contexts (Chrome 138+). This mirrors the auto-detection at startup.
   try {
-    const result = await sendToOffscreen<{ success: boolean; available?: boolean }>({
-      type: 'checkChromeTranslator',
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tabId = tabs[0]?.id;
+    if (!tabId) {
+      return { success: true, available: false };
+    }
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN' as chrome.scripting.ExecutionWorld,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      func: () => typeof (self as any).Translator !== 'undefined',
     });
-    return {
-      success: true,
-      available: result?.available ?? false,
-    };
+    return { success: true, available: results[0]?.result === true };
   } catch (error) {
-    log.warn(' Chrome Translator check failed:', error);
-    return {
-      success: true,
-      available: false,
-    };
+    log.debug('Chrome Translator check failed (restricted page?):', error);
+    return { success: true, available: false };
   }
 }
 

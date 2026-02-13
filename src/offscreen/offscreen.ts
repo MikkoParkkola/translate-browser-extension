@@ -521,11 +521,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           sendResponse({ success: true, cleared: true });
           break;
         }
-        case 'checkChromeTranslator': {
-          const available = await isChromeTranslatorAvailable();
-          sendResponse({ success: true, available });
-          break;
-        }
+        // checkChromeTranslator: handled directly in service-worker via
+        // chrome.scripting.executeScript (MAIN world) — offscreen cannot
+        // see the Translator API.
         case 'getCloudProviderUsage': {
           // Get usage stats for a specific cloud provider
           const providerId = message.provider as string;

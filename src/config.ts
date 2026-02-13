@@ -83,8 +83,8 @@ export const CONFIG = {
   mutations: {
     /** Debounce delay for processing mutations */
     debounceMs: 500,
-    /** Maximum pending mutations to buffer (high for content-heavy pages like Dutch news sites) */
-    maxPending: 500,
+    /** Maximum pending mutations to buffer (high for SPAs like ah.nl, bol.com) */
+    maxPending: 2000,
   },
 
   /**
