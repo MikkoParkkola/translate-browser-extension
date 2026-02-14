@@ -22,6 +22,7 @@ tools/icu4x-segmenter/pkg/
 # Coverage reports
 coverage/
 _legacy/
+*.tsbuildinfo
 
 # Sensitive research documentation (stored in private repo)
 docs/GCQ_TECHNICAL_SPECIFICATION.md
