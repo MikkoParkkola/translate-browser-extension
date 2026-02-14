@@ -24,6 +24,21 @@ function copyExtensionFiles() {
         resolve(distDir, 'manifest.json')
       );
 
+      // Copy extension icons
+      const iconsDir = resolve(distDir, 'assets', 'icons');
+      if (!existsSync(iconsDir)) {
+        mkdirSync(iconsDir, { recursive: true });
+      }
+      const iconSizes = ['icon16.png', 'icon48.png', 'icon128.png'];
+      for (const icon of iconSizes) {
+        const src = resolve(__dirname, 'src/assets/icons', icon);
+        const dest = resolve(iconsDir, icon);
+        if (existsSync(src)) {
+          copyFileSync(src, dest);
+          console.log(`Copied: icons/${icon}`);
+        }
+      }
+
       // Copy ONNX Runtime WASM files from transformers package
       // These are needed for local inference without CDN
       const transformersDir = resolve(
