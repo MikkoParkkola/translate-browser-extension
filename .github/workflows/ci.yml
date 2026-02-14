@@ -63,6 +63,7 @@ jobs:
 
       - name: Check bundle size
         run: npm run size
+        continue-on-error: false
 
       - name: Build ZIP artifact
         run: npm run build:zip

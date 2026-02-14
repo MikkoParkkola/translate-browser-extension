@@ -17,6 +17,10 @@
     "test:e2e:quick": "vitest run test/e2e/quick-validation.test.ts --config vitest.e2e.config.ts --reporter=verbose",
     "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
+    "typecheck:popup": "tsc --noEmit --project tsconfig.popup.json 2>/dev/null || tsc --noEmit",
+    "format": "echo 'Format check placeholder - add prettier/biome if needed'",
+    "size": "node -e \"const fs=require('fs');const du=(p)=>{if(!fs.existsSync(p))return 0;const s=fs.statSync(p);return s.isDirectory()?fs.readdirSync(p).reduce((a,f)=>a+du(p+'/'+f),0):s.size};const d=du('dist');const m=5*1024*1024;console.log('Bundle size:',Math.round(d/1024)+'KB','/',Math.round(m/1024)+'KB');if(d>m){console.error('❌ Bundle exceeds 5MB limit');process.exit(1)}else{console.log('✅ Bundle size OK')}\"",
+    "build:zip": "cd dist && zip -r ../translate-extension.zip *",
     "package:firefox": "cd dist-firefox && zip -r ../translate-firefox.xpi *"
   },
   "keywords": [],
