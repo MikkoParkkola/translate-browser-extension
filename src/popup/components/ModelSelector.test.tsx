@@ -282,7 +282,7 @@ describe('CLOUD_PROVIDERS constant', () => {
 
     it('has correct properties', () => {
       expect(openai?.name).toBe('OpenAI');
-      expect(openai?.tag).toBe('GPT-4');
+      expect(openai?.tag).toBe('OpenAI');
       expect(openai?.isCloud).toBe(true);
     });
   });

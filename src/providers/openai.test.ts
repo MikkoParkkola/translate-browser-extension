@@ -70,7 +70,7 @@ describe('OpenAIProvider', () => {
     it('sets correct provider info', () => {
       const info = provider.getInfo();
       expect(info.id).toBe('openai');
-      expect(info.name).toBe('OpenAI GPT-4');
+      expect(info.name).toBe('OpenAI');
       expect(info.type).toBe('cloud');
       expect(info.qualityTier).toBe('premium');
     });
@@ -524,7 +524,7 @@ describe('OpenAIProvider', () => {
       expect(info.model).toBe('gpt-4-turbo');
       expect(info.formality).toBe('informal');
       expect(info.id).toBe('openai');
-      expect(info.name).toBe('OpenAI GPT-4');
+      expect(info.name).toBe('OpenAI');
     });
   });
 });

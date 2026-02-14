@@ -25,7 +25,7 @@ const CLOUD_PROVIDERS = [
     hasProTier: false,
     placeholder: 'sk-...',
     helpUrl: 'https://platform.openai.com/api-keys',
-    description: 'GPT-4 powered translations with context understanding.',
+    description: 'LLM-powered translations with context understanding.',
   },
   {
     id: 'google-cloud' as TranslationProviderId,

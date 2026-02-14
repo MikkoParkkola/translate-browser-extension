@@ -73,7 +73,7 @@ export const CLOUD_PROVIDERS: ModelInfo[] = [
   {
     id: 'openai',
     name: 'OpenAI',
-    tag: 'GPT-4',
+    tag: 'OpenAI',
     description: 'AI translation',
     size: 'API',
     isCloud: true,

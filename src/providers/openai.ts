@@ -1,5 +1,5 @@
 /**
- * OpenAI GPT-4 Translation Provider
+ * OpenAI Translation Provider
  * Uses chat completions API with translation prompts
  * https://platform.openai.com/docs/api-reference/chat
  */
@@ -44,7 +44,7 @@ export class OpenAIProvider extends BaseProvider {
   constructor() {
     super({
       id: 'openai',
-      name: 'OpenAI GPT-4',
+      name: 'OpenAI',
       type: 'cloud',
       qualityTier: 'premium',
       costPerMillion: 5000, // $5 per 1M input tokens for GPT-4o (simplified)
