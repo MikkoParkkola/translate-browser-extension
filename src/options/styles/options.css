@@ -87,8 +87,23 @@
     background: #1e293b;
   }
 
-  .options-card {
+  .settings-section {
     background: #334155;
+    border-color: #475569;
+  }
+
+  .options-footer {
+    background: #1e293b;
+    border-color: #475569;
+  }
+
+  .modal {
+    background: #334155;
+  }
+
+  .modal-header,
+  .modal-footer {
+    border-color: #475569;
   }
 
   .form-input,
@@ -101,6 +116,38 @@
   .form-input:focus,
   .form-select:focus {
     border-color: #60a5fa;
+  }
+
+  .provider-card {
+    border-color: #475569;
+    background: #334155;
+  }
+
+  .provider-card.enabled {
+    border-color: rgba(59, 130, 246, 0.4);
+    background: rgba(59, 130, 246, 0.15);
+  }
+
+  .model-card {
+    border-color: #475569;
+    background: #334155;
+  }
+
+  .glossary-term {
+    border-color: #475569;
+  }
+
+  .glossary-term:hover,
+  .site-rule:hover {
+    background: #1e293b;
+  }
+
+  .site-rule {
+    border-color: #475569;
+  }
+
+  .toggle-slider {
+    background: #475569;
   }
 }
 
