@@ -1,10 +1,14 @@
 node_modules/
 dist/
+dist-firefox/
+*.tsbuildinfo
 src/config.local.js
 # Private PDFs and large artifacts at repo root
 /*.pdf
 !src/**/*.pdf
 !e2e/**/*.pdf
+# Generated test PDFs
+e2e/pdfs/translated*.pdf
 
 # Playwright outputs
 playwright-report/
@@ -33,3 +37,11 @@ docs/GCQ_QUICK_REFERENCE.md
 scripts/quantize-gcq-full.py
 src/ml/gcq-runtime-full.ts
 src/ml/gcq-shaders/
+
+# Build outputs
+dist/
+dist-firefox/
+*.tsbuildinfo
+
+# Generated test files
+e2e/pdfs/translated*.pdf

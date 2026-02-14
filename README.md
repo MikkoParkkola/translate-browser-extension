@@ -23,6 +23,20 @@ AI-powered browser extension that translates entire web pages, PDFs, and selecte
 - **Keyboard shortcuts** -- `Ctrl+Shift+P` translate page, `Ctrl+Shift+T` translate selection, `Ctrl+Shift+U` undo.
 - **Diagnostics dashboard** -- live usage metrics, cost tracking, latency histogram, and connectivity checks.
 
+## Screenshots
+
+<p align="center">
+  <img src="pics/Screenshot 2025-09-20 at 19.43.13.png" alt="Extension popup showing translation controls" width="600">
+</p>
+
+<p align="center">
+  <img src="pics/Screenshot 2025-09-20 at 19.43.43.png" alt="Settings page with provider configuration" width="600">
+</p>
+
+<p align="center">
+  <img src="pics/Screenshot 2025-09-20 at 20.11.12.png" alt="Diagnostics dashboard with usage metrics" width="600">
+</p>
+
 ## How It Works
 
 TRANSLATE! started as a Qwen-MT-Turbo translation extension and evolved into a multi-provider translation platform. The architecture routes translation requests through a background service worker that manages provider selection, rate limiting, and caching.
