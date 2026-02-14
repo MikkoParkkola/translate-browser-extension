@@ -29,7 +29,7 @@ const CLOUD_PROVIDERS = [
     hasProTier: false,
     placeholder: 'sk-...',
     helpUrl: 'https://platform.openai.com/api-keys',
-    description: 'GPT-4 powered translations with context understanding.',
+    description: 'LLM-powered translations with context understanding.',
     models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
   },
   {
