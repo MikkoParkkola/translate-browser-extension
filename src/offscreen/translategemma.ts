@@ -151,6 +151,7 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
           Gemma3ForCausalLM.from_pretrained(TRANSLATEGEMMA_MODEL, {
             device: 'webgpu',
             dtype: 'q4',
+            use_external_data_format: 3, // Split into 3 chunks (<2GB each) to avoid ArrayBuffer limit
             progress_callback: progressCallback,
           } as Record<string, unknown>),
           AutoTokenizer.from_pretrained(TRANSLATEGEMMA_MODEL, {
