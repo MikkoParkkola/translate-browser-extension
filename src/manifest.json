@@ -1,85 +1,72 @@
 {
   "manifest_version": 3,
   "name": "TRANSLATE! by Mikko",
-  "version": "2.1.0",
-  "description": "Local-first translation with OPUS-MT and WebGPU acceleration",
-  "author": "Mikko",
-  "icons": {
-    "16": "assets/icons/icon16.png",
-    "48": "assets/icons/icon48.png",
-    "128": "assets/icons/icon128.png"
-  },
-  "action": {
-    "default_popup": "src/popup/index.html",
-    "default_icon": {
-      "16": "assets/icons/icon16.png",
-      "48": "assets/icons/icon48.png",
-      "128": "assets/icons/icon128.png"
-    },
-    "default_title": "TRANSLATE!"
-  },
-  "options_page": "src/options/index.html",
+  "description": "Translate web pages with multiple AI providers - provider agnostic translation extension",
+  "version": "1.44.1",
+  "version_name": "2025-08-21",
+  "update_url": "https://raw.githubusercontent.com/MikkoParkkola/translate-browser-extension/main/updates.xml",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "scripting",
+    "contextMenus",
+    "clipboardRead"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "https://dashscope-intl.aliyuncs.com/*",
+    "https://api.deepl.com/*",
+    "https://api-free.deepl.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://huggingface.co/*",
+    "https://*.hf.co/*"
+  ],
+  "optional_host_permissions": [],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
-  ],
-  "permissions": [
-    "storage",
-    "activeTab",
-    "scripting",
-    "offscreen",
-    "contextMenus"
-  ],
-  "minimum_chrome_version": "116",
-  "host_permissions": [
-    "<all_urls>"
-  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'none'; connect-src 'self' https://dashscope-intl.aliyuncs.com https://api.deepl.com https://api-free.deepl.com https://generativelanguage.googleapis.com https://huggingface.co https://*.huggingface.co https://*.hf.co; img-src 'self' data:; font-src 'self'; media-src 'none';"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "TRANSLATE! by Mikko"
+  },
+  "options_page": "options.html",
   "commands": {
-    "_execute_action": {
-      "suggested_key": {
-        "default": "Alt+T"
-      },
-      "description": "Open translation popup"
-    },
-    "translate-page": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+P",
-        "mac": "Command+Shift+P"
-      },
-      "description": "Translate entire page"
-    },
     "translate-selection": {
       "suggested_key": {
-        "default": "Ctrl+Shift+T",
-        "mac": "Command+Shift+T"
+        "default": "Ctrl+Shift+T"
       },
       "description": "Translate selected text"
-    },
-    "undo-translation": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+U",
-        "mac": "Command+Shift+U"
-      },
-      "description": "Undo translation"
-    },
-    "screenshot-translate": {
-      "description": "Screenshot translate mode"
     }
   },
   "web_accessible_resources": [
     {
-      "resources": ["assets/*", "chunks/*"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "lib/cache.js",
+        "lib/throttle.js",
+        "lib/errorHandler.js",
+        "lib/contentObserver.js",
+        "lib/languageDetector.js",
+        "lib/qualityVerifier.js",
+        "lib/progressIndicator.js",
+        "localModel.js",
+        "localModelUI.js",
+        "llamacpp-worker.js",
+        "llama.cpp.js",
+        "wllama.bundle.js",
+        "wllama-single.wasm",
+        "wllama-multi.wasm",
+        "styles/contentScript.css",
+        "styles/translation-progress.css",
+        "styles/local-model.css"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
-  ],
-  "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://cdn-lfs.huggingface.co https://cdn-lfs-us-1.hf.co https://cdn-lfs-eu-1.hf.co https://cdn-lfs-ap-1.hf.co https://huggingface.co https://hf.co https://*.xethub.hf.co https://cas-bridge.xethub.hf.co https://api.deepl.com https://api-free.deepl.com https://api.openai.com https://generativelanguage.googleapis.com https://api.anthropic.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com;"
-  }
+  ]
 }

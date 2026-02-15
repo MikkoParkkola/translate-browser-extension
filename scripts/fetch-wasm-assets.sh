@@ -42,3 +42,15 @@ curl -L -o "$VENDOR_DIR/fonts/NotoSans-Regular.ttf" "https://fonts.gstatic.com/s
 curl -L -o "$VENDOR_DIR/fonts/NotoSans-Bold.ttf" "https://fonts.gstatic.com/s/notosans/v39/o-0mIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjcz6L1SoM-jCpoiyAaBN9d.ttf"
 
 echo "All assets downloaded successfully."
+
+# 7) wllama WASM binaries (for local model inference)
+echo "Copying wllama WASM assets..."
+WLLAMA_DIR="$ROOT_DIR/node_modules/@wllama/wllama/esm"
+if [ -d "$WLLAMA_DIR" ]; then
+  cp "$WLLAMA_DIR/single-thread/wllama.wasm" "$ROOT_DIR/src/wllama-single.wasm"
+  cp "$WLLAMA_DIR/multi-thread/wllama.wasm" "$ROOT_DIR/src/wllama-multi.wasm"
+  cp "$WLLAMA_DIR/index.min.js" "$ROOT_DIR/src/wllama.bundle.js"
+  echo "wllama assets copied."
+else
+  echo "WARNING: wllama not found in node_modules. Run 'npm install' first."
+fi
