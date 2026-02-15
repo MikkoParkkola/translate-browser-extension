@@ -42,6 +42,24 @@ async function detectWebGPU() {
 }
 
 /**
+ * Log memory usage if performance.memory is available (Chrome only).
+ * @param {string} label - Context label for the log entry
+ */
+function logMemoryUsage(label) {
+  try {
+    if (typeof performance !== 'undefined' && performance.memory) {
+      const mem = performance.memory;
+      const usedMB = (mem.usedJSHeapSize / (1024 * 1024)).toFixed(1);
+      const totalMB = (mem.totalJSHeapSize / (1024 * 1024)).toFixed(1);
+      const limitMB = (mem.jsHeapSizeLimit / (1024 * 1024)).toFixed(1);
+      console.log(`[InferenceEngine:memory] ${label}: ${usedMB}MB used / ${totalMB}MB total / ${limitMB}MB limit`);
+    }
+  } catch {
+    // performance.memory not available; skip silently
+  }
+}
+
+/**
  * High-level inference engine wrapping wllama.
  * Handles model loading (with sharding support), inference, and cleanup.
  */
@@ -121,6 +139,10 @@ class InferenceEngine {
     const urls = Array.isArray(modelUrls) ? modelUrls : [modelUrls];
 
     console.log('[InferenceEngine] Loading model from', urls.length, 'shard(s)');
+    logMemoryUsage('pre-load');
+
+    const loadStartTime = Date.now();
+    let lastProgressTime = loadStartTime;
 
     const loadConfig = {
       n_ctx: config.n_ctx || 2048,
@@ -139,19 +161,28 @@ class InferenceEngine {
       await this.wllama.loadModelFromUrl(urls, {
         ...loadConfig,
         progressCallback: onProgress ? ({ loaded, total }) => {
+          const now = Date.now();
           const progress = total > 0 ? (loaded / total) * 100 : 0;
-          onProgress({ loaded, total, progress });
+          const elapsed = now - lastProgressTime;
+          lastProgressTime = now;
+          onProgress({ loaded, total, progress, elapsed });
         } : undefined,
       });
 
+      const loadDurationMs = Date.now() - loadStartTime;
       this.isModelLoaded = true;
       this.modelInfo = this.wllama.getLoadedContextInfo();
 
       console.log('[InferenceEngine] Model loaded successfully:', this.modelInfo);
+      console.log('[InferenceEngine:timing] Model load completed in', loadDurationMs, 'ms');
+      logMemoryUsage('post-load');
+
       return { success: true, modelInfo: this.modelInfo };
 
     } catch (error) {
+      const loadDurationMs = Date.now() - loadStartTime;
       console.error('[InferenceEngine] Model loading failed:', error);
+      console.error('[InferenceEngine:timing] Model load failed after', loadDurationMs, 'ms');
       this.isModelLoaded = false;
       throw error;
     }
@@ -182,14 +213,23 @@ class InferenceEngine {
       ...config,
     };
 
+    const loadStartTime = Date.now();
+
     try {
       await this.wllama.loadModel(blobs, loadConfig);
+      const loadDurationMs = Date.now() - loadStartTime;
+
       this.isModelLoaded = true;
       this.modelInfo = this.wllama.getLoadedContextInfo();
       console.log('[InferenceEngine] Model loaded from blobs:', this.modelInfo);
+      console.log('[InferenceEngine:timing] Blob load completed in', loadDurationMs, 'ms');
+      logMemoryUsage('post-blob-load');
+
       return { success: true, modelInfo: this.modelInfo };
     } catch (error) {
+      const loadDurationMs = Date.now() - loadStartTime;
       console.error('[InferenceEngine] Model loading from blobs failed:', error);
+      console.error('[InferenceEngine:timing] Blob load failed after', loadDurationMs, 'ms');
       this.isModelLoaded = false;
       throw error;
     }
