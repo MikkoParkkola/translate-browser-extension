@@ -213,10 +213,15 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       }
     };
 
-    // If WebGPU is not available at all, go straight to WASM
+    // If WebGPU is not available, reject immediately.
+    // The 3.6GB model cannot fit in the 4GB WASM heap — attempting to load it
+    // corrupts the ONNX Runtime and breaks all subsequent model loads.
     if (!gpu.supported) {
-      log.info('WebGPU not supported, using WASM + q4');
-      return loadWasmFallback();
+      tgLoading = null;
+      const msg = 'TranslateGemma requires WebGPU. The 3.6GB model cannot run without GPU acceleration.';
+      log.error(msg);
+      sendProgress({ status: 'error', error: msg });
+      throw new Error(msg);
     }
 
     // Strategy: webgpu+q4f16 -> webgpu+q4 -> wasm+q4
@@ -249,10 +254,15 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       // Both WebGPU attempts failed — mark WebGPU ONNX state as tainted
       // so subsequent model loads (e.g., OPUS-MT) skip WebGPU directly.
       _webGpuOnnxTainted = true;
-    }
 
-    // Step 3: Final fallback — WASM + q4
-    return loadWasmFallback();
+      // Do NOT fall back to WASM: the 3.6GB model exceeds the 4GB WASM heap
+      // and attempting it corrupts ONNX Runtime, breaking ALL subsequent models.
+      tgLoading = null;
+      const msg = 'TranslateGemma WebGPU loading failed. The model is too large for CPU fallback.';
+      log.error(msg);
+      sendProgress({ status: 'error', error: msg });
+      throw new Error(msg);
+    }
   })();
 
   return tgLoading;

@@ -352,7 +352,12 @@ async function executeProvider(
   }
 
   // TranslateGemma: supports any-to-any translation with a single model
+  // Requires WebGPU -- the 3.6GB model cannot fit in the 4GB WASM heap.
   if (provider === 'translategemma') {
+    const gpu = await detectWebGPU();
+    if (!gpu.supported) {
+      throw new Error('TranslateGemma requires WebGPU (GPU acceleration). This browser does not support WebGPU. Please use OPUS-MT instead.');
+    }
     return translateWithGemma(text, sourceLang, targetLang, pageContext);
   }
 
@@ -566,6 +571,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           }
 
           if (message.provider === 'translategemma') {
+            const gpu = await detectWebGPU();
+            if (!gpu.supported) {
+              sendResponse({ success: false, error: 'TranslateGemma requires WebGPU. GPU acceleration is not available.' });
+              break;
+            }
             await getTranslateGemmaPipeline();
             sendResponse({ success: true, preloaded: true });
           } else if (message.provider === 'chrome-builtin') {
