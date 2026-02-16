@@ -1,0 +1,152 @@
+{
+  "extensionName": {
+    "message": "TRANSLATE! by Mikko",
+    "description": "Extension name shown in browser"
+  },
+  "extensionDescription": {
+    "message": "Local-first translation with OPUS-MT and WebGPU acceleration",
+    "description": "Extension description shown in browser"
+  },
+
+  "appTitle": {
+    "message": "TRANSLATE!",
+    "description": "Brand title in popup"
+  },
+  "settingsTitle": {
+    "message": "TRANSLATE! Settings",
+    "description": "Settings page title"
+  },
+  "settingsSubtitle": {
+    "message": "Configure your translation preferences",
+    "description": "Settings page subtitle"
+  },
+
+  "btnTranslatePage": {
+    "message": "Translate entire page",
+    "description": "Page translation button"
+  },
+  "btnTranslateSelection": {
+    "message": "Translate selected text",
+    "description": "Selection translation button"
+  },
+  "btnUndo": {
+    "message": "Undo translation",
+    "description": "Undo button"
+  },
+  "btnSettings": {
+    "message": "Settings",
+    "description": "Open settings button"
+  },
+  "btnSave": {
+    "message": "Save",
+    "description": "Save button"
+  },
+  "btnCancel": {
+    "message": "Cancel",
+    "description": "Cancel button"
+  },
+  "btnRemove": {
+    "message": "Remove",
+    "description": "Remove button"
+  },
+  "btnRetry": {
+    "message": "Retry",
+    "description": "Retry button"
+  },
+  "btnConfigure": {
+    "message": "Configure",
+    "description": "Configure button"
+  },
+
+  "labelAutoTranslate": {
+    "message": "Auto-translate pages",
+    "description": "Auto-translate toggle label"
+  },
+  "labelBilingualMode": {
+    "message": "Bilingual mode",
+    "description": "Bilingual mode toggle label"
+  },
+
+  "tabGeneral": {
+    "message": "General",
+    "description": "General settings tab"
+  },
+  "tabCloudProviders": {
+    "message": "Cloud Providers",
+    "description": "Cloud providers settings tab"
+  },
+  "tabLocalModels": {
+    "message": "Local Models",
+    "description": "Local models settings tab"
+  },
+  "tabGlossary": {
+    "message": "Glossary",
+    "description": "Glossary settings tab"
+  },
+  "tabSiteRules": {
+    "message": "Site Rules",
+    "description": "Site rules settings tab"
+  },
+  "tabCache": {
+    "message": "Cache",
+    "description": "Cache settings tab"
+  },
+
+  "statusConfigured": {
+    "message": "Configured",
+    "description": "Provider status when API key is set"
+  },
+  "statusNotConfigured": {
+    "message": "Not configured",
+    "description": "Provider status when API key is missing"
+  },
+
+  "confirmRemoveTitle": {
+    "message": "Remove API Key",
+    "description": "Confirmation dialog title for removing API key"
+  },
+  "confirmRemoveMessage": {
+    "message": "Remove $PROVIDER$ API key? You will need to re-enter it to use this provider.",
+    "description": "Confirmation dialog message",
+    "placeholders": {
+      "provider": {
+        "content": "$1",
+        "example": "DeepL"
+      }
+    }
+  },
+  "confirmClearCacheTitle": {
+    "message": "Clear Translation Cache",
+    "description": "Confirmation dialog title for clearing cache"
+  },
+  "confirmClearCacheMessage": {
+    "message": "This will delete all cached translations. You cannot undo this action.",
+    "description": "Confirmation dialog message for clearing cache"
+  },
+
+  "errorNoNetwork": {
+    "message": "No network connection. Switch to a local model for offline translation.",
+    "description": "Error when offline and using cloud provider"
+  },
+  "errorApiKeyMissing": {
+    "message": "API key not configured. Add your key in Settings.",
+    "description": "Error when API key is missing"
+  },
+  "errorConnectionFailed": {
+    "message": "Connection error. Check your internet connection.",
+    "description": "Error on network failure"
+  },
+  "errorRateLimited": {
+    "message": "Rate limited. Please wait a moment and try again.",
+    "description": "Error when rate limited"
+  },
+
+  "groupLocalModels": {
+    "message": "Local Models",
+    "description": "Model selector group label for local models"
+  },
+  "groupCloudProviders": {
+    "message": "Cloud Providers",
+    "description": "Model selector group label for cloud providers"
+  }
+}

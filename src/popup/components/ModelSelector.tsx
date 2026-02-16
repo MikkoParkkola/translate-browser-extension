@@ -1,4 +1,4 @@
-import { Component, Show, createSignal, onMount, For } from 'solid-js';
+import { Component, Show, createSignal, onMount, onCleanup, For, createEffect } from 'solid-js';
 import type { TranslationProviderId } from '../../types';
 
 export interface ModelInfo {
@@ -107,6 +107,9 @@ export const MODELS: ModelInfo[] = [...LOCAL_MODELS, ...CLOUD_PROVIDERS];
 export const ModelSelector: Component<Props> = (props) => {
   const [cloudApiStatus, setCloudApiStatus] = createSignal<Record<string, boolean>>({});
   const [isOpen, setIsOpen] = createSignal(false);
+  const [focusedIndex, setFocusedIndex] = createSignal(-1);
+  let wrapperRef: HTMLDivElement | undefined;
+  let triggerRef: HTMLButtonElement | undefined;
 
   onMount(async () => {
     try {
@@ -118,6 +121,72 @@ export const ModelSelector: Component<Props> = (props) => {
       // Ignore
     }
   });
+
+  // Click outside to close
+  const handleClickOutside = (e: MouseEvent) => {
+    if (wrapperRef && !wrapperRef.contains(e.target as Node)) {
+      setIsOpen(false);
+    }
+  };
+
+  createEffect(() => {
+    if (isOpen()) {
+      document.addEventListener('mousedown', handleClickOutside);
+      // Set focus to current selection
+      const currentIdx = MODELS.findIndex(m => m.id === props.selected);
+      setFocusedIndex(currentIdx >= 0 ? currentIdx : 0);
+    } else {
+      document.removeEventListener('mousedown', handleClickOutside);
+      setFocusedIndex(-1);
+    }
+  });
+
+  onCleanup(() => {
+    document.removeEventListener('mousedown', handleClickOutside);
+  });
+
+  // Keyboard navigation
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (!isOpen()) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        setIsOpen(true);
+      }
+      return;
+    }
+
+    switch (e.key) {
+      case 'Escape':
+        e.preventDefault();
+        setIsOpen(false);
+        triggerRef?.focus();
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        setFocusedIndex(i => Math.min(i + 1, MODELS.length - 1));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setFocusedIndex(i => Math.max(i - 1, 0));
+        break;
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        if (focusedIndex() >= 0 && focusedIndex() < MODELS.length) {
+          handleSelect(MODELS[focusedIndex()].id);
+          triggerRef?.focus();
+        }
+        break;
+      case 'Home':
+        e.preventDefault();
+        setFocusedIndex(0);
+        break;
+      case 'End':
+        e.preventDefault();
+        setFocusedIndex(MODELS.length - 1);
+        break;
+    }
+  };
 
   const getStatus = (modelId: TranslationProviderId): ModelDownloadStatus => {
     return props.downloadStatus?.[modelId] ?? {
@@ -157,12 +226,15 @@ export const ModelSelector: Component<Props> = (props) => {
 
   return (
     <section class="model-dropdown-section">
-      <div class="model-dropdown-wrapper">
+      <div class="model-dropdown-wrapper" ref={wrapperRef} onKeyDown={handleKeyDown}>
         <button
+          ref={triggerRef}
           class="model-dropdown-trigger"
           onClick={() => setIsOpen(!isOpen())}
           aria-expanded={isOpen()}
           aria-haspopup="listbox"
+          aria-label={`Translation model: ${selectedModel().name}. Click to change.`}
+          aria-activedescendant={isOpen() && focusedIndex() >= 0 ? `model-option-${focusedIndex()}` : undefined}
         >
           <div class="model-dropdown-selected">
             <span class="model-dropdown-name">{selectedModel().name}</span>
@@ -178,10 +250,12 @@ export const ModelSelector: Component<Props> = (props) => {
             <div class="model-dropdown-group">
               <div class="model-dropdown-group-label">Local Models</div>
               <For each={LOCAL_MODELS}>
-                {(model) => (
+                {(model, idx) => (
                   <button
-                    class={`model-dropdown-item ${props.selected === model.id ? 'active' : ''}`}
+                    id={`model-option-${idx()}`}
+                    class={`model-dropdown-item ${props.selected === model.id ? 'active' : ''} ${focusedIndex() === idx() ? 'focused' : ''}`}
                     onClick={() => handleSelect(model.id)}
+                    onMouseEnter={() => setFocusedIndex(idx())}
                     role="option"
                     aria-selected={props.selected === model.id}
                   >
@@ -205,15 +279,20 @@ export const ModelSelector: Component<Props> = (props) => {
                     e.stopPropagation();
                     chrome.runtime.openOptionsPage();
                   }}
+                  aria-label="Configure cloud provider API keys"
                 >
                   Configure
                 </button>
               </div>
               <For each={CLOUD_PROVIDERS}>
-                {(model) => (
+                {(model, idx) => {
+                  const absoluteIdx = () => LOCAL_MODELS.length + idx();
+                  return (
                   <button
-                    class={`model-dropdown-item ${props.selected === model.id ? 'active' : ''} ${!isCloudConfigured(model.id) ? 'unconfigured' : ''}`}
+                    id={`model-option-${absoluteIdx()}`}
+                    class={`model-dropdown-item ${props.selected === model.id ? 'active' : ''} ${!isCloudConfigured(model.id) ? 'unconfigured' : ''} ${focusedIndex() === absoluteIdx() ? 'focused' : ''}`}
                     onClick={() => handleSelect(model.id)}
+                    onMouseEnter={() => setFocusedIndex(absoluteIdx())}
                     role="option"
                     aria-selected={props.selected === model.id}
                   >
@@ -224,7 +303,8 @@ export const ModelSelector: Component<Props> = (props) => {
                       <span class="model-dropdown-item-status">{getStatusIcon(model)}</span>
                     </span>
                   </button>
-                )}
+                  );
+                }}
               </For>
             </div>
           </div>
@@ -232,7 +312,14 @@ export const ModelSelector: Component<Props> = (props) => {
 
         {/* Download progress overlay */}
         <Show when={getStatus(props.selected).isDownloading}>
-          <div class="model-dropdown-progress">
+          <div
+            class="model-dropdown-progress"
+            role="progressbar"
+            aria-valuenow={Math.round(getStatus(props.selected).progress)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Downloading model: ${Math.round(getStatus(props.selected).progress)}%`}
+          >
             <div
               class="model-dropdown-progress-fill"
               style={{ width: `${getStatus(props.selected).progress}%` }}

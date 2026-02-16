@@ -7,6 +7,7 @@ import { ModelStatus } from './components/ModelStatus';
 import type { Strategy, ModelProgressMessage, TranslationProviderId } from '../types';
 import { safeStorageGet, safeStorageSet } from '../core/storage';
 import { browserAPI } from '../core/browser-api';
+import { checkVersion, dismissUpdateNotice, isUpdateDismissed } from '../core/version';
 
 // Detect browser's preferred language, fallback to 'en'
 const getBrowserLanguage = () => {
@@ -32,6 +33,9 @@ export default function App() {
   const [autoTranslate, setAutoTranslate] = createSignal(false);
   const [bilingualMode, setBilingualMode] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
+  const [errorAction, setErrorAction] = createSignal<{ label: string; handler: () => void } | null>(null);
+  const [showUpdateBadge, setShowUpdateBadge] = createSignal(false);
+  const [updateVersion, setUpdateVersion] = createSignal<string | null>(null);
 
   // Model caching state
   const [isModelLoading, setIsModelLoading] = createSignal(false);
@@ -214,6 +218,20 @@ export default function App() {
       console.log('[Popup] Chrome Translator check failed:', e);
       updateModelStatus('chrome-builtin', { isDownloaded: false, error: 'Not available' });
     }
+
+    // Check for version update
+    try {
+      const versionInfo = await checkVersion();
+      if (versionInfo.isUpdate) {
+        const dismissed = await isUpdateDismissed();
+        if (!dismissed) {
+          setShowUpdateBadge(true);
+          setUpdateVersion(versionInfo.current);
+        }
+      }
+    } catch {
+      // Version check is non-critical
+    }
   });
 
   const toggleAutoTranslate = async () => {
@@ -291,28 +309,48 @@ export default function App() {
     }
   };
 
+  const clearError = () => {
+    setError(null);
+    setErrorAction(null);
+  };
+
   const handleError = (e: unknown) => {
     const msg = e instanceof Error ? e.message : String(e);
     const msgLower = msg.toLowerCase();
 
+    // Reset action
+    setErrorAction(null);
+
     if (msg.includes('Cannot access')) {
       setError('Cannot translate this page. Browser internal pages cannot be translated.');
+    } else if (msgLower.includes('not configured') || msgLower.includes('api key')) {
+      setError(`${msg}`);
+      setErrorAction({ label: 'Open Settings', handler: () => { clearError(); openSettings(); } });
+    } else if (msgLower.includes('no network') || msgLower.includes('offline')) {
+      setError('No network connection. Switch to a local model for offline translation.');
+      setErrorAction({ label: 'Use OPUS-MT', handler: () => { clearError(); handleProviderChange('opus-mt'); } });
     } else if (msgLower.includes('language pair') || msgLower.includes('not available') || msgLower.includes('unsupported')) {
-      // Language pair errors - the message already includes suggestions from errors.ts
       setError(msg);
     } else if (msgLower.includes('network') || msgLower.includes('connection') || (msgLower.includes('fetch') && !msgLower.includes('model'))) {
-      setError(`Connection error: ${msg}. Check your internet connection.`);
+      setError(`Connection error. Check your internet connection.`);
+      setErrorAction({ label: 'Retry', handler: () => { clearError(); handleTranslatePage(); } });
+    } else if (msgLower.includes('rate') && msgLower.includes('limit')) {
+      setError(`Rate limited. Please wait a moment before retrying.`);
+      setErrorAction({ label: 'Retry', handler: () => { clearError(); handleTranslatePage(); } });
     } else if (msgLower.includes('timeout') || msgLower.includes('timed out')) {
       setError(`${msg}. Try with less text or wait for the model to fully load.`);
+      setErrorAction({ label: 'Retry', handler: () => { clearError(); handleTranslatePage(); } });
     } else if (msgLower.includes('model') || msgLower.includes('pipeline') || msgLower.includes('load')) {
-      setError(`${msg}. Try waiting for the model to download, or switch to Chrome Built-in translator.`);
+      setError(`${msg}. Try waiting for the model to download.`);
+      setErrorAction({ label: 'Switch Provider', handler: () => { clearError(); handleProviderChange('chrome-builtin'); } });
     } else if (msgLower.includes('memory') || msgLower.includes('oom')) {
       setError(`${msg}. Try closing other tabs or using a smaller text selection.`);
     } else {
-      setError(msg || 'Translation failed. Please try again or select a different provider.');
+      setError(msg || 'Translation failed. Please try again.');
+      setErrorAction({ label: 'Retry', handler: () => { clearError(); handleTranslatePage(); } });
     }
-    // Clear error after 8 seconds (longer to read suggestions)
-    setTimeout(() => setError(null), 8000);
+    // Clear error after 12 seconds (longer for action buttons)
+    setTimeout(() => clearError(), 12000);
   };
 
   const handleTranslateSelection = async () => {
@@ -339,13 +377,17 @@ export default function App() {
         setError('Cannot access this page');
         return;
       }
-      await browserAPI.tabs.sendMessage(tab.id, {
+      const response = await browserAPI.tabs.sendMessage(tab.id, {
         type: 'translateSelection',
         sourceLang: sourceLang(),
         targetLang: targetLang(),
         strategy: strategy(),
         provider: activeProvider(),
       });
+      // Check for structured error response from content script
+      if (response && typeof response === 'object' && 'success' in response && !response.success) {
+        handleError(new Error(response.error || 'Translation failed'));
+      }
     } catch (e) {
       console.error('[Popup] Translation failed:', e);
       handleError(e);
@@ -378,13 +420,17 @@ export default function App() {
         setError('Cannot access this page');
         return;
       }
-      await browserAPI.tabs.sendMessage(tab.id, {
+      const response = await browserAPI.tabs.sendMessage(tab.id, {
         type: 'translatePage',
         sourceLang: sourceLang(),
         targetLang: targetLang(),
         strategy: strategy(),
         provider: activeProvider(),
       });
+      // Check for structured error response from content script
+      if (response && typeof response === 'object' && 'success' in response && !response.success) {
+        handleError(new Error(response.error || 'Page translation failed'));
+      }
     } catch (e) {
       console.error('[Popup] Page translation failed:', e);
       handleError(e);
@@ -436,7 +482,20 @@ export default function App() {
             </svg>
           </div>
           <div class="brand-text">
-            <h1 class="brand-title">TRANSLATE!</h1>
+            <h1 class="brand-title">
+              TRANSLATE!
+              <Show when={showUpdateBadge()}>
+                <span
+                  class="update-badge"
+                  role="status"
+                  aria-label={`Updated to v${updateVersion()}`}
+                  onClick={() => { setShowUpdateBadge(false); dismissUpdateNotice(); }}
+                  title={`Updated to v${updateVersion()}. Click to dismiss.`}
+                >
+                  v{updateVersion()}
+                </span>
+              </Show>
+            </h1>
             <span class="brand-author">by Mikko</span>
           </div>
           <button class="settings-button" onClick={openSettings} aria-label="Settings">
@@ -460,7 +519,7 @@ export default function App() {
         />
       </header>
 
-      <main class="popup-main">
+      <main class="popup-main" aria-label="Translation controls">
         {/* Model Selection with Download Status */}
         <ModelSelector
           selected={activeProvider()}
@@ -481,14 +540,15 @@ export default function App() {
         <StrategySelector selected={strategy()} onChange={setStrategy} />
 
         {/* Auto-Translate Toggle */}
-        <section class="auto-section">
+        <section class="auto-section" aria-label="Translation options">
           <label class="auto-toggle">
             <input
               type="checkbox"
               checked={autoTranslate()}
               onChange={toggleAutoTranslate}
+              aria-label="Auto-translate pages"
             />
-            <span class="toggle-slider"></span>
+            <span class="toggle-slider" aria-hidden="true"></span>
             <span class="toggle-label">Auto-translate pages</span>
           </label>
           <label class="auto-toggle">
@@ -496,15 +556,16 @@ export default function App() {
               type="checkbox"
               checked={bilingualMode()}
               onChange={handleToggleBilingual}
+              aria-label="Bilingual mode"
             />
-            <span class="toggle-slider"></span>
+            <span class="toggle-slider" aria-hidden="true"></span>
             <span class="toggle-label">Bilingual mode</span>
           </label>
         </section>
 
         {/* Error Display */}
         <Show when={error()}>
-          <div class="error-banner" role="alert">
+          <div class="error-banner" role="alert" aria-live="assertive">
             <svg class="error-banner__icon" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
               <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -512,10 +573,19 @@ export default function App() {
             </svg>
             <div class="error-banner__content">
               <div class="error-banner__message">{error()}</div>
+              <Show when={errorAction()}>
+                <button
+                  class="error-banner__action"
+                  onClick={() => errorAction()?.handler()}
+                  aria-label={errorAction()?.label}
+                >
+                  {errorAction()?.label}
+                </button>
+              </Show>
             </div>
             <button
               class="error-banner__dismiss"
-              onClick={() => setError(null)}
+              onClick={() => clearError()}
               aria-label="Dismiss error"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -526,12 +596,13 @@ export default function App() {
         </Show>
 
         {/* Action Buttons - Compact */}
-        <section class="action-bar">
+        <section class="action-bar" aria-label="Translation actions">
           <button
             class="action-btn action-btn--primary"
             onClick={handleTranslatePage}
             disabled={isTranslating()}
             title="Translate entire page"
+            aria-label={isTranslating() ? 'Translating page...' : 'Translate entire page'}
           >
             <Show when={!isTranslating()} fallback={<span class="spinner-small" />}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -546,6 +617,7 @@ export default function App() {
             onClick={handleTranslateSelection}
             disabled={isTranslating()}
             title="Translate selected text"
+            aria-label="Translate selected text"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M4 7V4h16v3M9 20h6M12 4v16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -557,6 +629,7 @@ export default function App() {
             class="action-btn action-btn--tertiary"
             onClick={handleUndo}
             title="Undo translation"
+            aria-label="Undo translation"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M3 7v6h6M3 13a9 9 0 1018 0 9 9 0 00-15-6.7L3 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>

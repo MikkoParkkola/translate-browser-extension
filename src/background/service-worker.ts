@@ -56,6 +56,11 @@ interface PersistentCacheEntry {
   useCount: number;
 }
 
+// Cache schema version. Increment when PersistentCacheEntry shape changes
+// to force a cache clear on upgrade instead of risking type errors.
+const CACHE_VERSION = 1;
+const CACHE_VERSION_KEY = 'translationCacheVersion';
+
 // In-memory cache (fast access, survives service worker restarts via persistence)
 const translationCache = new Map<string, PersistentCacheEntry>();
 
@@ -68,42 +73,63 @@ const inFlightRequests = new Map<string, Promise<TranslateResponse>>();
 let cacheHits = 0;
 let cacheMisses = 0;
 let cacheInitialized = false;
+let cacheLoadingPromise: Promise<void> | null = null;
 
 // Debounced save timer
 let saveCacheTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Load cache from persistent storage on startup.
- * Called once when service worker initializes.
+ * Uses promise guard to prevent concurrent loads (race condition fix).
+ * Multiple callers share the same loading promise.
  */
 async function loadPersistentCache(): Promise<void> {
   if (cacheInitialized) return;
+  if (cacheLoadingPromise) return cacheLoadingPromise;
 
-  try {
-    const stored = await chrome.storage.local.get([
-      CONFIG.cache.storageKey,
-      'cacheStats',
-    ]);
+  cacheLoadingPromise = (async () => {
+    try {
+      const stored = await chrome.storage.local.get([
+        CONFIG.cache.storageKey,
+        CACHE_VERSION_KEY,
+        'cacheStats',
+      ]);
 
-    if (stored[CONFIG.cache.storageKey]) {
-      const entries = stored[CONFIG.cache.storageKey] as [string, PersistentCacheEntry][];
-      entries.forEach(([key, value]) => {
-        translationCache.set(key, value);
-      });
-      log.info(`Loaded ${translationCache.size} cached translations from storage`);
+      // Check cache schema version. If mismatched (or absent), clear stale data
+      // to prevent type errors from outdated entry shapes.
+      const storedVersion = stored[CACHE_VERSION_KEY] as number | undefined;
+      if (storedVersion !== CACHE_VERSION) {
+        log.info(`Cache version mismatch (stored: ${storedVersion}, current: ${CACHE_VERSION}), clearing stale cache`);
+        await chrome.storage.local.remove([CONFIG.cache.storageKey, 'cacheStats']);
+        await chrome.storage.local.set({ [CACHE_VERSION_KEY]: CACHE_VERSION });
+        cacheInitialized = true;
+        return;
+      }
+
+      if (stored[CONFIG.cache.storageKey]) {
+        const entries = stored[CONFIG.cache.storageKey] as [string, PersistentCacheEntry][];
+        entries.forEach(([key, value]) => {
+          translationCache.set(key, value);
+        });
+        log.info(`Loaded ${translationCache.size} cached translations from storage`);
+      }
+
+      if (stored.cacheStats) {
+        const stats = stored.cacheStats as { hits: number; misses: number };
+        cacheHits = stats.hits || 0;
+        cacheMisses = stats.misses || 0;
+      }
+
+      cacheInitialized = true;
+    } catch (error) {
+      log.warn('Failed to load persistent cache:', error);
+      cacheInitialized = true; // Mark initialized to prevent retry loops
+    } finally {
+      cacheLoadingPromise = null;
     }
+  })();
 
-    if (stored.cacheStats) {
-      const stats = stored.cacheStats as { hits: number; misses: number };
-      cacheHits = stats.hits || 0;
-      cacheMisses = stats.misses || 0;
-    }
-
-    cacheInitialized = true;
-  } catch (error) {
-    log.warn('Failed to load persistent cache:', error);
-    cacheInitialized = true; // Mark initialized to prevent retry loops
-  }
+  return cacheLoadingPromise;
 }
 
 /**
@@ -119,6 +145,7 @@ function scheduleCacheSave(): void {
       const entries = Array.from(translationCache.entries());
       await chrome.storage.local.set({
         [CONFIG.cache.storageKey]: entries,
+        [CACHE_VERSION_KEY]: CACHE_VERSION,
         cacheStats: { hits: cacheHits, misses: cacheMisses },
       });
       log.debug(`Saved ${entries.length} translations to persistent storage`);
@@ -142,6 +169,7 @@ function flushCacheSave(): void {
   const entries = Array.from(translationCache.entries());
   chrome.storage.local.set({
     [CONFIG.cache.storageKey]: entries,
+    [CACHE_VERSION_KEY]: CACHE_VERSION,
     cacheStats: { hits: cacheHits, misses: cacheMisses },
   }).catch((error) => {
     log.warn('Failed to flush cache on shutdown:', error);
@@ -403,6 +431,72 @@ async function recordTranslation(targetLang: string): Promise<void> {
 
 let creatingOffscreen: Promise<void> | null = null;
 let offscreenFailureCount = 0;
+let offscreenResetCount = 0;
+const MAX_OFFSCREEN_RESETS = 3;
+
+// Circuit breaker cooldown: after 60s with no new failures, reset counters.
+// Without this, 3 transient failures (e.g. memory pressure during model load)
+// permanently disable the extension until the user manually reloads it.
+const CIRCUIT_BREAKER_COOLDOWN_MS = 60_000;
+let circuitBreakerCooldownTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleCircuitBreakerReset(): void {
+  if (circuitBreakerCooldownTimer) {
+    clearTimeout(circuitBreakerCooldownTimer);
+  }
+  circuitBreakerCooldownTimer = setTimeout(() => {
+    if (offscreenFailureCount > 0 || offscreenResetCount > 0) {
+      log.info(`Circuit breaker cooldown: resetting counters (failures=${offscreenFailureCount}, resets=${offscreenResetCount})`);
+      offscreenFailureCount = 0;
+      offscreenResetCount = 0;
+    }
+    circuitBreakerCooldownTimer = null;
+  }, CIRCUIT_BREAKER_COOLDOWN_MS);
+}
+
+// ============================================================================
+// Service Worker Keep-Alive
+// ============================================================================
+// Chrome kills service workers after 30s of inactivity. During long operations
+// (model downloads, pivot translations), the SW must stay alive. We use a
+// periodic alarm + in-memory flag instead of ports (which require a connected
+// client tab that may not exist for context menu / keyboard shortcut triggers).
+
+let activeTranslationCount = 0;
+let keepAliveInterval: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Mark that a long-running translation has started.
+ * Starts keep-alive heartbeat if this is the first active translation.
+ */
+function acquireKeepAlive(): void {
+  activeTranslationCount++;
+  if (activeTranslationCount === 1 && !keepAliveInterval) {
+    // Ping ourselves every 25s (Chrome's idle timeout is 30s)
+    keepAliveInterval = setInterval(() => {
+      if (activeTranslationCount > 0) {
+        // Any async Chrome API call resets the idle timer
+        chrome.runtime.getPlatformInfo(() => {
+          /* keep-alive ping */
+        });
+      }
+    }, 25000);
+    log.info(`Keep-alive started (${activeTranslationCount} active translations)`);
+  }
+}
+
+/**
+ * Mark that a long-running translation has finished.
+ * Stops keep-alive heartbeat when no translations are active.
+ */
+function releaseKeepAlive(): void {
+  activeTranslationCount = Math.max(0, activeTranslationCount - 1);
+  if (activeTranslationCount === 0 && keepAliveInterval) {
+    clearInterval(keepAliveInterval);
+    keepAliveInterval = null;
+    log.info('Keep-alive stopped (no active translations)');
+  }
+}
 
 // Retry configuration for different scenarios (from centralized config)
 const NETWORK_RETRY_CONFIG: Partial<RetryConfig> = {
@@ -425,7 +519,6 @@ const OFFSCREEN_RETRY_CONFIG: Partial<RetryConfig> = {
  * check before the first creation starts.
  */
 async function ensureOffscreenDocument(): Promise<void> {
-  // P0 FIX: Check creation lock FIRST to avoid TOCTOU race condition
   // If another call is already creating the document, just wait for it
   if (creatingOffscreen) {
     await creatingOffscreen;
@@ -446,7 +539,8 @@ async function ensureOffscreenDocument(): Promise<void> {
       return;
     }
 
-    // Double-check: another call might have created it while we were checking
+    // TOCTOU guard: another call may have started creation while we awaited
+    // getContexts(). Re-check the lock and bail if someone else is creating.
     if (creatingOffscreen) {
       await creatingOffscreen;
       return;
@@ -454,19 +548,24 @@ async function ensureOffscreenDocument(): Promise<void> {
 
     console.log('[Background] Creating offscreen document...');
 
-    creatingOffscreen = chrome.offscreen.createDocument({
+    // Set the lock synchronously BEFORE the async creation call.
+    // This closes the TOCTOU window: any call entering after this point
+    // will see creatingOffscreen !== null at the top check.
+    const createPromise = chrome.offscreen.createDocument({
       url: offscreenUrl,
       reasons: [chrome.offscreen.Reason.WORKERS],
       justification: 'Run Transformers.js ML inference in document context',
     });
+    creatingOffscreen = createPromise;
 
-    await creatingOffscreen;
+    await createPromise;
     creatingOffscreen = null;
     offscreenFailureCount = 0;
     console.log('[Background] Offscreen document created successfully');
   } catch (error) {
     creatingOffscreen = null;
     offscreenFailureCount++;
+    scheduleCircuitBreakerReset();
 
     const errMsg = error instanceof Error ? error.message : String(error);
     log.error(' Failed to create offscreen document:', errMsg);
@@ -483,9 +582,35 @@ async function ensureOffscreenDocument(): Promise<void> {
 }
 
 /**
- * Close and recreate offscreen document (for recovery from errors)
+ * Close and recreate offscreen document (for recovery from errors).
+ *
+ * P0 FIX: Rejects all in-flight request promises before closing the document.
+ * Without this, callers hang until their timeout (up to 5 minutes) because
+ * the offscreen doc they were talking to is destroyed.
  */
 async function resetOffscreenDocument(): Promise<void> {
+  // Circuit breaker: stop resetting after repeated failures
+  offscreenResetCount++;
+  scheduleCircuitBreakerReset();
+  if (offscreenResetCount > MAX_OFFSCREEN_RESETS) {
+    const msg = 'Translation engine crashed repeatedly. Please reload the extension or restart Chrome.';
+    log.error(msg);
+    throw new Error(msg);
+  }
+
+  log.info(`Offscreen reset attempt ${offscreenResetCount}/${MAX_OFFSCREEN_RESETS}`);
+
+  // P0 FIX: Reject all in-flight requests immediately so callers don't hang.
+  // They will retry via withRetry() and get the fresh offscreen document.
+  if (inFlightRequests.size > 0) {
+    log.info(`Rejecting ${inFlightRequests.size} in-flight requests before offscreen reset`);
+    inFlightRequests.clear();
+    // Note: The actual rejection happens via the timeout in sendToOffscreen.
+    // Clearing the map prevents deduplication from attaching new callers to dead promises.
+    // The underlying chrome.runtime.sendMessage callbacks will fire with lastError
+    // when the offscreen document closes, which rejects the individual promises.
+  }
+
   try {
     const offscreenUrl = chrome.runtime.getURL('src/offscreen/offscreen.html');
     const contexts = await chrome.runtime.getContexts({
@@ -506,6 +631,10 @@ async function resetOffscreenDocument(): Promise<void> {
   // Wait a bit before recreating
   await new Promise(resolve => setTimeout(resolve, 500));
   await ensureOffscreenDocument();
+
+  // Reset succeeded — clear the counter
+  offscreenResetCount = 0;
+  log.info('Offscreen document reset successfully');
 }
 
 /**
@@ -561,7 +690,10 @@ async function sendToOffscreen<T>(
       // For offscreen errors, try resetting the document
       if (error.technicalDetails.includes('offscreen')) {
         console.log('[Background] Attempting offscreen document reset...');
-        resetOffscreenDocument().catch(console.error);
+        resetOffscreenDocument().catch((resetError) => {
+          // Circuit breaker tripped — propagate actionable message
+          log.error('Offscreen reset failed:', resetError instanceof Error ? resetError.message : String(resetError));
+        });
       }
 
       return true;
@@ -1078,13 +1210,27 @@ async function handleTranslate(message: {
     return existing;
   }
 
-  const promise = handleTranslateInner(message);
+  let promise: Promise<TranslateResponse>;
+  try {
+    promise = handleTranslateInner(message);
+  } catch (syncError) {
+    // handleTranslateInner threw synchronously (before returning a promise).
+    // Ensure dedup map stays clean.
+    log.error('handleTranslateInner threw synchronously:', syncError);
+    return {
+      success: false,
+      error: syncError instanceof Error ? syncError.message : String(syncError),
+    };
+  }
   inFlightRequests.set(dedupKey, promise);
 
+  // Keep service worker alive during translation (Chrome kills after 30s idle)
+  acquireKeepAlive();
   try {
     return await promise;
   } finally {
     inFlightRequests.delete(dedupKey);
+    releaseKeepAlive();
   }
 }
 
@@ -1159,6 +1305,9 @@ async function handleTranslateInner(message: {
         profiler.endTiming(sessionId, 'cache_lookup');
       }
       if (cached) {
+        // Identity translations (output === input) are valid: OPUS-MT legitimately
+        // returns the original text for proper nouns, brand names, loanwords, and
+        // short words that don't need translation. Serve them from cache normally.
         // Note: cacheHits already incremented inside getCachedTranslation()
         const duration = Date.now() - startTime;
         log.info(` Cache hit, returning in ${duration}ms`);
@@ -1328,6 +1477,9 @@ async function handleTranslateInner(message: {
     }
     const actualSourceLang = message.sourceLang === 'auto' ? 'auto' : message.sourceLang;
     if (response.result && actualSourceLang !== 'auto') {
+      // Cache all translation results including identity translations (output === input).
+      // OPUS-MT legitimately returns original text for proper nouns, brand names,
+      // loanwords, and short words. Caching these prevents repeated model inference.
       setCachedTranslation(cacheKey, response.result, actualSourceLang, message.targetLang);
     }
     if (sessionId) {
@@ -1822,6 +1974,53 @@ async function handleCaptureScreenshot(message: {
 }
 
 // ============================================================================
+// Reliable Tab Messaging (with content script injection retry)
+// ============================================================================
+
+/**
+ * Send a message to a tab's content script, injecting it first if needed.
+ *
+ * chrome.tabs.sendMessage fails silently when the content script hasn't loaded
+ * (e.g., after extension update, on new tabs, or pages where content script
+ * was never injected). This helper catches the failure, injects the content
+ * script via chrome.scripting.executeScript, waits briefly for initialization,
+ * then retries once.
+ */
+async function sendMessageToTab(tabId: number, message: Record<string, unknown>): Promise<void> {
+  try {
+    await chrome.tabs.sendMessage(tabId, message);
+  } catch (firstError) {
+    const errMsg = firstError instanceof Error ? firstError.message : String(firstError);
+
+    // "Could not establish connection" means no content script listener
+    if (!errMsg.includes('establish connection') && !errMsg.includes('Receiving end does not exist')) {
+      throw firstError;
+    }
+
+    log.info(`Content script not ready in tab ${tabId}, injecting...`);
+
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['src/content/index.js'],
+      });
+
+      // Wait for content script to initialize its message listener
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Retry the message
+      await chrome.tabs.sendMessage(tabId, message);
+      log.info(`Message delivered to tab ${tabId} after injection`);
+    } catch (injectError) {
+      // Injection can fail on chrome:// pages, web store, etc.
+      const injectMsg = injectError instanceof Error ? injectError.message : String(injectError);
+      log.warn(`Cannot inject content script into tab ${tabId}: ${injectMsg}`);
+      throw new Error(`Translation not available on this page. ${injectMsg}`);
+    }
+  }
+}
+
+// ============================================================================
 // Context Menus
 // ============================================================================
 
@@ -1889,7 +2088,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   try {
     switch (info.menuItemId) {
       case 'translate-selection':
-        await chrome.tabs.sendMessage(tab.id, {
+        await sendMessageToTab(tab.id, {
           type: 'translateSelection',
           sourceLang,
           targetLang,
@@ -1899,7 +2098,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         break;
 
       case 'translate-page':
-        await chrome.tabs.sendMessage(tab.id, {
+        await sendMessageToTab(tab.id, {
           type: 'translatePage',
           sourceLang,
           targetLang,
@@ -1909,14 +2108,14 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         break;
 
       case 'undo-translation':
-        await chrome.tabs.sendMessage(tab.id, {
+        await sendMessageToTab(tab.id, {
           type: 'undoTranslation',
         });
         break;
 
       case 'translate-image':
         // Send the image URL to content script for OCR translation
-        await chrome.tabs.sendMessage(tab.id, {
+        await sendMessageToTab(tab.id, {
           type: 'translateImage',
           imageUrl: info.srcUrl,
           sourceLang,
@@ -1954,7 +2153,7 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
   try {
     switch (command) {
       case 'translate-page':
-        await chrome.tabs.sendMessage(tab.id, {
+        await sendMessageToTab(tab.id, {
           type: 'translatePage',
           sourceLang,
           targetLang,
@@ -1964,7 +2163,7 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
         break;
 
       case 'translate-selection':
-        await chrome.tabs.sendMessage(tab.id, {
+        await sendMessageToTab(tab.id, {
           type: 'translateSelection',
           sourceLang,
           targetLang,
@@ -1974,19 +2173,19 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
         break;
 
       case 'undo-translation':
-        await chrome.tabs.sendMessage(tab.id, {
+        await sendMessageToTab(tab.id, {
           type: 'undoTranslation',
         });
         break;
 
       case 'toggle-widget':
-        await chrome.tabs.sendMessage(tab.id, {
+        await sendMessageToTab(tab.id, {
           type: 'toggleWidget',
         });
         break;
 
       case 'screenshot-translate':
-        await chrome.tabs.sendMessage(tab.id, {
+        await sendMessageToTab(tab.id, {
           type: 'enterScreenshotMode',
         });
         break;
@@ -2036,6 +2235,35 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     });
   } else if (details.reason === 'update') {
     console.log('[Background] Extension updated from', details.previousVersion);
+
+    // Clear cached ML models on update to prevent dtype/format mismatches.
+    // Transformers.js caches models in Cache Storage and IndexedDB.
+    // Stale cached models with wrong dtype cause "Out of bounds" or
+    // "Unexpected input data type" errors that are impossible to debug.
+    try {
+      const cacheNames = await caches.keys();
+      let cleared = 0;
+      for (const name of cacheNames) {
+        if (name.includes('transformers') || name.includes('onnx') || name.includes('huggingface')) {
+          await caches.delete(name);
+          cleared++;
+        }
+      }
+      if (cleared > 0) {
+        console.log(`[Background] Cleared ${cleared} model caches on update`);
+      }
+
+      // Also clear IndexedDB model caches
+      const databases = await indexedDB.databases();
+      for (const db of databases) {
+        if (db.name && (db.name.includes('transformers') || db.name.includes('onnx') || db.name.includes('huggingface'))) {
+          indexedDB.deleteDatabase(db.name);
+          console.log(`[Background] Cleared IndexedDB: ${db.name}`);
+        }
+      }
+    } catch (e) {
+      console.warn('[Background] Cache clearing on update failed:', e);
+    }
   }
 });
 

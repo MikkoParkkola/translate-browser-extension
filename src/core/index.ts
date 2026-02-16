@@ -54,7 +54,7 @@ export {
 export { createLogger } from './logger';
 
 // Storage utilities
-export { safeStorageGet, safeStorageSet } from './storage';
+export { safeStorageGet, safeStorageSet, lastStorageError } from './storage';
 
 // Hash utilities
 export { fnv1aHash, generateCacheKey } from './hash';
@@ -65,5 +65,14 @@ export { webgpuDetector } from './webgpu-detector';
 // Language detection
 export { detectLanguage, samplePageText } from './language-detector';
 
+// Network status
+export { isOnline, isCloudProvider, initNetworkMonitoring, onNetworkChange } from './network-status';
+
 // Translation router
 export { TranslationRouter, translationRouter } from './translation-router';
+
+// Internationalization
+export { t, getUILanguage } from './i18n';
+
+// Version detection
+export { checkVersion, dismissUpdateNotice, isUpdateDismissed } from './version';

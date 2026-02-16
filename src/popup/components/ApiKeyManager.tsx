@@ -5,6 +5,7 @@
 
 import { Component, createSignal, For, Show, onMount } from 'solid-js';
 import type { TranslationProviderId } from '../../types';
+import { ConfirmDialog } from '../../shared/ConfirmDialog';
 
 // Cloud provider definitions
 const CLOUD_PROVIDERS = [
@@ -64,6 +65,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [success, setSuccess] = createSignal<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = createSignal<string | null>(null);
 
   // Load current status on mount
   onMount(async () => {
@@ -219,7 +221,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
                       <Show when={status().hasKey}>
                         <button
                           class="api-key-btn api-key-btn--remove"
-                          onClick={() => removeApiKey(provider.id)}
+                          onClick={() => setConfirmRemove(provider.id)}
                         >
                           Remove
                         </button>
@@ -287,6 +289,21 @@ export const ApiKeyManager: Component<Props> = (props) => {
           }}
         </For>
       </div>
+
+      <ConfirmDialog
+        open={!!confirmRemove()}
+        title="Remove API Key"
+        message={`Remove ${CLOUD_PROVIDERS.find(p => p.id === confirmRemove())?.name ?? ''} API key? You will need to re-enter it to use this provider.`}
+        confirmLabel="Remove"
+        cancelLabel="Keep"
+        variant="danger"
+        onConfirm={() => {
+          const id = confirmRemove();
+          setConfirmRemove(null);
+          if (id) removeApiKey(id);
+        }}
+        onCancel={() => setConfirmRemove(null)}
+      />
     </div>
   );
 };

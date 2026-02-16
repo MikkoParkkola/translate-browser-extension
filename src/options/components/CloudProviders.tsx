@@ -5,6 +5,7 @@
 
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import type { TranslationProviderId } from '../../types';
+import { ConfirmDialog } from '../../shared/ConfirmDialog';
 
 // Cloud provider definitions
 const CLOUD_PROVIDERS = [
@@ -74,6 +75,7 @@ export const CloudProviders: Component = () => {
   const [selectedModel, setSelectedModel] = createSignal('');
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = createSignal<string | null>(null);
 
   onMount(async () => {
     await loadProviderStatus();
@@ -176,8 +178,7 @@ export const CloudProviders: Component = () => {
     const provider = CLOUD_PROVIDERS.find((p) => p.id === providerId);
     if (!provider) return;
 
-    if (!confirm(`Remove ${provider.name} API key?`)) return;
-
+    setConfirmRemove(null);
     try {
       const keysToRemove = [provider.keyField, provider.enabledField];
       if (provider.hasProTier && provider.proField) {
@@ -408,7 +409,7 @@ export const CloudProviders: Component = () => {
                     {status().hasKey ? 'Update API Key' : 'Add API Key'}
                   </button>
                   <Show when={status().hasKey}>
-                    <button class="btn btn-danger" onClick={() => removeApiKey(provider.id)}>
+                    <button class="btn btn-danger" onClick={() => setConfirmRemove(provider.id)}>
                       Remove
                     </button>
                   </Show>
@@ -418,6 +419,20 @@ export const CloudProviders: Component = () => {
           );
         }}
       </For>
+
+      <ConfirmDialog
+        open={!!confirmRemove()}
+        title="Remove API Key"
+        message={`Remove ${CLOUD_PROVIDERS.find(p => p.id === confirmRemove())?.name ?? ''} API key? You will need to re-enter it to use this provider.`}
+        confirmLabel="Remove"
+        cancelLabel="Keep"
+        variant="danger"
+        onConfirm={() => {
+          const id = confirmRemove();
+          if (id) removeApiKey(id);
+        }}
+        onCancel={() => setConfirmRemove(null)}
+      />
     </div>
   );
 };

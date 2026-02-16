@@ -204,6 +204,14 @@ let shadowRootCleanup: (() => void) | null = null;
 /** Queued dynamic nodes that arrived during page translation, translated after page completes */
 let queuedDynamicNodes: Node[] = [];
 
+/**
+ * Navigation abort controller: signals in-flight translation batches to stop.
+ * Created fresh when a page translation starts; aborted on beforeunload or
+ * when the user triggers undo. Prevents wasted API calls and DOM writes to
+ * nodes that no longer exist after navigation.
+ */
+let navigationAbortController: AbortController | null = null;
+
 // WeakMap cache for shouldSkip results — avoids redundant getComputedStyle
 // across text nodes sharing the same parent element. Auto-GC'd when elements detach.
 const skipCache = new WeakMap<Element, boolean>();
@@ -1318,6 +1326,7 @@ async function handleHoverTranslation(e: MouseEvent): Promise<void> {
   // Show loading
   showLoadingTooltip(rect);
 
+  let tooltipReplaced = false;
   try {
     // Get current settings
     const settings = await safeStorageGet<{ targetLang?: string; provider?: string }>(['targetLang', 'provider']);
@@ -1354,12 +1363,16 @@ async function handleHoverTranslation(e: MouseEvent): Promise<void> {
       }
 
       showHoverTooltip(text, translated, rect);
-    } else {
-      removeHoverTooltip();
+      tooltipReplaced = true;
     }
   } catch (error) {
     log.error('Hover translation failed:', error);
-    removeHoverTooltip();
+  } finally {
+    // Always clean up loading tooltip on error/timeout/failure paths.
+    // Only keep DOM element if showHoverTooltip replaced it with a result.
+    if (!tooltipReplaced) {
+      removeHoverTooltip();
+    }
   }
 }
 
@@ -1729,16 +1742,27 @@ function getSelectionContext(): { before: string; after: string } | null {
 /**
  * Load glossary if not cached
  */
+// Promise guard: prevents concurrent glossary loads from racing.
+// Without this, two batches starting simultaneously both see null,
+// both load, and the second overwrites the first (benign but wasteful).
+let glossaryLoadingPromise: Promise<GlossaryStore> | null = null;
+
 async function loadGlossary(): Promise<GlossaryStore> {
-  if (cachedGlossary === null) {
+  if (cachedGlossary !== null) return cachedGlossary;
+  if (glossaryLoadingPromise) return glossaryLoadingPromise;
+
+  glossaryLoadingPromise = (async () => {
     try {
       cachedGlossary = await glossary.getGlossary();
     } catch (e) {
       log.error(' Failed to load glossary:', e);
       cachedGlossary = {};
     }
-  }
-  return cachedGlossary;
+    glossaryLoadingPromise = null;
+    return cachedGlossary;
+  })();
+
+  return glossaryLoadingPromise;
 }
 
 /**
@@ -1870,6 +1894,11 @@ async function translateBatchWithRetry(
               const leadingSpace = original.match(/^\s*/)?.[0] || '';
               const trailingSpace = original.match(/\s*$/)?.[0] || '';
 
+              // Debug: log first 3 replacements to verify translation is actually different
+              if (idx < 3) {
+                console.log(`[Content] DOM Replace #${idx}: "${original.trim().substring(0, 40)}" -> "${finalText.substring(0, 40)}" (same=${original.trim() === finalText})`);
+              }
+
               if (!node.parentElement.hasAttribute(ORIGINAL_TEXT_ATTR)) {
                 node.parentElement.setAttribute(ORIGINAL_TEXT_ATTR, original);
               }
@@ -1961,6 +1990,13 @@ async function translatePage(
 
   isTranslatingPage = true;
   stopBelowFoldObserver();
+
+  // Create abort controller for this translation session.
+  // Aborted on navigation (beforeunload) or undo to stop wasting API calls.
+  if (navigationAbortController) navigationAbortController.abort();
+  navigationAbortController = new AbortController();
+  const { signal } = navigationAbortController;
+
   log.info(' Translating page...');
   const pageStart = performance.now();
 
@@ -2032,6 +2068,12 @@ async function translatePage(
     // DOM updates happen in-order within each batch's callback.
     const BATCH_CONCURRENCY = 2;
     for (let i = 0; i < viewportBatches.length; i += BATCH_CONCURRENCY) {
+      // Check abort signal between batches to stop on navigation
+      if (signal.aborted) {
+        log.info('Translation aborted (navigation or undo)');
+        break;
+      }
+
       const chunk = viewportBatches.slice(i, i + BATCH_CONCURRENCY);
 
       if (totalBatches > 1) {
@@ -2075,6 +2117,7 @@ async function translatePage(
       // Translate the first section below fold immediately
       const immediateBatches = await createBatches(immediateNodes, g);
       for (const batch of immediateBatches) {
+        if (signal.aborted) break;
         const result = await translateBatchWithRetry(
           batch, sourceLang, targetLang, strategy, provider, enableProfiling
         );
@@ -2248,15 +2291,16 @@ async function translateDynamicContent(nodes: Node[]): Promise<void> {
   if (isTranslatingDynamic) return;
   isTranslatingDynamic = true;
 
-  const textNodes = getTextNodesFromNodes(nodes);
-  if (textNodes.length === 0) {
-    isTranslatingDynamic = false;
-    return;
-  }
-
-  console.log(`[Content] Translating ${textNodes.length} dynamic text nodes`);
-
   try {
+    // P0 FIX: Moved inside try/finally so isTranslatingDynamic is always
+    // cleared even if getTextNodesFromNodes() throws unexpectedly.
+    const textNodes = getTextNodesFromNodes(nodes);
+    if (textNodes.length === 0) {
+      return; // finally block handles cleanup
+    }
+
+    console.log(`[Content] Translating ${textNodes.length} dynamic text nodes`);
+
     const g = await loadGlossary();
     const batches = await createBatches(textNodes, g);
 
@@ -2296,6 +2340,12 @@ async function translateDynamicContent(nodes: Node[]): Promise<void> {
  * Undo all translations on the page, restoring original text
  */
 function undoTranslation(): number {
+  // Abort any in-flight translation batches
+  if (navigationAbortController) {
+    navigationAbortController.abort();
+    navigationAbortController = null;
+  }
+
   // Stop any ongoing mutation observation
   stopMutationObserver();
   currentSettings = null;
@@ -3017,7 +3067,11 @@ browserAPI.runtime.onMessage.addListener(
       const selSourceLang = resolveSourceLang(message.sourceLang);
       translateSelection(selSourceLang, message.targetLang, message.strategy, message.provider)
         .then(() => sendResponse(true))
-        .catch(() => sendResponse(false));
+        .catch((error) => {
+          const msg = error instanceof Error ? error.message : 'Translation failed';
+          log.error('translateSelection failed:', msg);
+          sendResponse({ success: false, error: msg });
+        });
       return true;
     }
 
@@ -3026,7 +3080,11 @@ browserAPI.runtime.onMessage.addListener(
       if (isPdfPage()) {
         initPdfTranslation(message.targetLang)
           .then(() => sendResponse(true))
-          .catch(() => sendResponse(false));
+          .catch((error) => {
+            const msg = error instanceof Error ? error.message : 'PDF translation failed';
+            log.error('initPdfTranslation failed:', msg);
+            sendResponse({ success: false, error: msg });
+          });
         return true;
       }
 
@@ -3045,14 +3103,22 @@ browserAPI.runtime.onMessage.addListener(
           startMutationObserver();
           sendResponse(true);
         })
-        .catch(() => sendResponse(false));
+        .catch((error) => {
+          const msg = error instanceof Error ? error.message : 'Page translation failed';
+          log.error('translatePage failed:', msg);
+          sendResponse({ success: false, error: msg });
+        });
       return true;
     }
 
     if (message.type === 'translatePdf') {
       initPdfTranslation(message.targetLang)
         .then(() => sendResponse(true))
-        .catch(() => sendResponse(false));
+        .catch((error) => {
+          const msg = error instanceof Error ? error.message : 'PDF translation failed';
+          log.error('translatePdf failed:', msg);
+          sendResponse({ success: false, error: msg });
+        });
       return true;
     }
 
@@ -3064,7 +3130,11 @@ browserAPI.runtime.onMessage.addListener(
         message.provider
       )
         .then(() => sendResponse(true))
-        .catch(() => sendResponse(false));
+        .catch((error) => {
+          const msg = error instanceof Error ? error.message : 'Image translation failed';
+          log.error('translateImage failed:', msg);
+          sendResponse({ success: false, error: msg });
+        });
       return true;
     }
 
@@ -3154,8 +3224,27 @@ if (document.readyState === 'complete') {
   window.addEventListener('load', checkAutoTranslate);
 }
 
+// Abort in-flight translations and release observers on navigation.
+// beforeunload fires BEFORE unload (which is unreliable on some browsers),
+// so we do full cleanup here to prevent resource leaks.
+window.addEventListener('beforeunload', () => {
+  if (navigationAbortController) {
+    navigationAbortController.abort();
+    navigationAbortController = null;
+  }
+  stopBelowFoldObserver();
+  stopMutationObserver();
+  removeProgressToast();
+});
+
 // Cleanup on unload - release all resources
 window.addEventListener('unload', () => {
+  // Ensure abort fires even if beforeunload didn't (e.g., some mobile browsers)
+  if (navigationAbortController) {
+    navigationAbortController.abort();
+    navigationAbortController = null;
+  }
+
   stopMutationObserver();
   stopBelowFoldObserver();
   removeProgressToast();
@@ -3165,6 +3254,7 @@ window.addEventListener('unload', () => {
   queuedDynamicNodes = [];
   currentSettings = null;
   cachedGlossary = null;
+  glossaryLoadingPromise = null;
 
   // Remove hover translation listeners
   document.removeEventListener('mousemove', onMouseMove);

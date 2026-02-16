@@ -3,7 +3,7 @@
  * Sections: General, Cloud Providers, Local Models, Glossary, Site Rules, Cache
  */
 
-import { createSignal, onMount, Show, For } from 'solid-js';
+import { createSignal, onMount, Show, For, createEffect } from 'solid-js';
 import { GeneralSettings } from './components/GeneralSettings';
 import { CloudProviders } from './components/CloudProviders';
 import { LocalModels } from './components/LocalModels';
@@ -36,6 +36,40 @@ export default function Options() {
     }
     setLoading(false);
   });
+
+  const handleTabKeyDown = (e: KeyboardEvent) => {
+    const tabIds = TABS.map(t => t.id);
+    const currentIdx = tabIds.indexOf(activeTab());
+    let newIdx = currentIdx;
+
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'ArrowRight':
+        e.preventDefault();
+        newIdx = (currentIdx + 1) % tabIds.length;
+        break;
+      case 'ArrowUp':
+      case 'ArrowLeft':
+        e.preventDefault();
+        newIdx = (currentIdx - 1 + tabIds.length) % tabIds.length;
+        break;
+      case 'Home':
+        e.preventDefault();
+        newIdx = 0;
+        break;
+      case 'End':
+        e.preventDefault();
+        newIdx = tabIds.length - 1;
+        break;
+      default:
+        return;
+    }
+
+    setActiveTab(tabIds[newIdx]);
+    // Focus the new tab button
+    const btn = document.getElementById(`tab-${tabIds[newIdx]}`);
+    btn?.focus();
+  };
 
   const renderIcon = (icon: string) => {
     switch (icon) {
@@ -133,12 +167,17 @@ export default function Options() {
       {/* Main Content */}
       <div class="options-content">
         {/* Sidebar Navigation */}
-        <nav class="options-nav">
+        <nav class="options-nav" role="tablist" aria-label="Settings sections" onKeyDown={handleTabKeyDown}>
           <For each={TABS}>
             {(tab) => (
               <button
+                id={`tab-${tab.id}`}
                 class={`nav-item ${activeTab() === tab.id ? 'active' : ''}`}
                 onClick={() => setActiveTab(tab.id)}
+                role="tab"
+                aria-selected={activeTab() === tab.id}
+                aria-controls={`tabpanel-${tab.id}`}
+                tabIndex={activeTab() === tab.id ? 0 : -1}
               >
                 {renderIcon(tab.icon)}
                 <span>{tab.label}</span>
@@ -148,7 +187,7 @@ export default function Options() {
         </nav>
 
         {/* Tab Content */}
-        <main class="options-main">
+        <main class="options-main" role="tabpanel" id={`tabpanel-${activeTab()}`} aria-labelledby={`tab-${activeTab()}`}>
           <Show when={!loading()} fallback={<div class="loading">Loading...</div>}>
             <Show when={activeTab() === 'general'}>
               <GeneralSettings />

@@ -5,6 +5,7 @@
 
 import { Component, createSignal, onMount, Show } from 'solid-js';
 import type { TranslationCacheStats } from '../../core/translation-cache';
+import { ConfirmDialog } from '../../shared/ConfirmDialog';
 
 // Format bytes to human-readable
 function formatBytes(bytes: number): string {
@@ -38,6 +39,7 @@ export const CacheSettings: Component = () => {
   const [stats, setStats] = createSignal<TranslationCacheStats | null>(null);
   const [error, setError] = createSignal<string | null>(null);
   const [success, setSuccess] = createSignal<string | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = createSignal(false);
 
   onMount(async () => {
     await loadStats();
@@ -81,8 +83,7 @@ export const CacheSettings: Component = () => {
   };
 
   const clearCache = async () => {
-    if (!confirm('Clear all cached translations? This cannot be undone.')) return;
-
+    setShowClearConfirm(false);
     setClearing(true);
     setError(null);
 
@@ -238,7 +239,7 @@ export const CacheSettings: Component = () => {
           <div class="btn-group">
             <button
               class="btn btn-danger"
-              onClick={clearCache}
+              onClick={() => setShowClearConfirm(true)}
               disabled={clearing() || stats()!.entries === 0}
             >
               {clearing() ? (
@@ -280,6 +281,17 @@ export const CacheSettings: Component = () => {
           </div>
         </section>
       </Show>
+
+      <ConfirmDialog
+        open={showClearConfirm()}
+        title="Clear Translation Cache"
+        message="This will delete all cached translations. You cannot undo this action. Future translations will need to be fetched again."
+        confirmLabel="Clear Cache"
+        cancelLabel="Keep Cache"
+        variant="warning"
+        onConfirm={clearCache}
+        onCancel={() => setShowClearConfirm(false)}
+      />
     </div>
   );
 };

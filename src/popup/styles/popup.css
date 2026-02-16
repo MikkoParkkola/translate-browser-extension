@@ -144,6 +144,26 @@ body {
   font-size: var(--font-size-base);
   font-weight: 700;
   letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.update-badge {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  padding: 0.125rem 0.375rem;
+  background: var(--color-success-light);
+  color: var(--color-success);
+  border-radius: 999px;
+  cursor: pointer;
+  animation: badge-pulse 2s ease-in-out 3;
+}
+
+@keyframes badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 .brand-author {
@@ -600,6 +620,29 @@ body {
 .error-banner__suggestion {
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
+}
+
+.error-banner__action {
+  margin-top: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.error-banner__action:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.error-banner__action:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .error-banner__dismiss {
@@ -1431,8 +1474,14 @@ body {
   text-align: left;
 }
 
-.model-dropdown-item:hover {
+.model-dropdown-item:hover,
+.model-dropdown-item.focused {
   background: var(--color-bg-secondary);
+}
+
+.model-dropdown-item.focused {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
 
 .model-dropdown-item.active {

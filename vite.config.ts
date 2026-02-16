@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 import { resolve } from 'path';
-import { copyFileSync, mkdirSync, existsSync } from 'fs';
+import { copyFileSync, mkdirSync, existsSync, cpSync } from 'fs';
 
 // Plugin to copy manifest.json and ONNX Runtime files to dist
 function copyExtensionFiles() {
@@ -76,6 +76,13 @@ function copyExtensionFiles() {
           copyFileSync(src, dest);
           console.log(`Copied: ${file}`);
         }
+      }
+
+      // Copy _locales directory for chrome.i18n
+      const localesDir = resolve(__dirname, 'src/_locales');
+      if (existsSync(localesDir)) {
+        cpSync(localesDir, resolve(distDir, '_locales'), { recursive: true });
+        console.log('Copied: _locales/');
       }
     },
   };
