@@ -32,6 +32,7 @@ interface Props {
   onChange: (provider: TranslationProviderId) => void;
   downloadStatus?: Record<TranslationProviderId, ModelDownloadStatus>;
   cloudStatus?: Record<string, CloudProviderStatus>;
+  webGpuAvailable?: boolean | null;
 }
 
 // Local models (no API key required)
@@ -213,7 +214,14 @@ export const ModelSelector: Component<Props> = (props) => {
     setIsOpen(false);
   };
 
+  const isModelDisabled = (model: ModelInfo): boolean => {
+    // TranslateGemma requires WebGPU -- disable when unavailable
+    if (model.id === 'translategemma' && props.webGpuAvailable === false) return true;
+    return false;
+  };
+
   const getStatusIcon = (model: ModelInfo) => {
+    if (isModelDisabled(model)) return '';
     const status = getStatus(model.id);
     if (status.isDownloading) return '⏳';
     if (status.error) return '⚠️';
@@ -250,23 +258,34 @@ export const ModelSelector: Component<Props> = (props) => {
             <div class="model-dropdown-group">
               <div class="model-dropdown-group-label">Local Models</div>
               <For each={LOCAL_MODELS}>
-                {(model, idx) => (
+                {(model, idx) => {
+                  const disabled = () => isModelDisabled(model);
+                  return (
                   <button
                     id={`model-option-${idx()}`}
-                    class={`model-dropdown-item ${props.selected === model.id ? 'active' : ''} ${focusedIndex() === idx() ? 'focused' : ''}`}
+                    class={`model-dropdown-item ${props.selected === model.id ? 'active' : ''} ${focusedIndex() === idx() ? 'focused' : ''} ${disabled() ? 'disabled' : ''}`}
                     onClick={() => handleSelect(model.id)}
                     onMouseEnter={() => setFocusedIndex(idx())}
                     role="option"
                     aria-selected={props.selected === model.id}
+                    aria-disabled={disabled()}
+                    title={disabled() ? 'Requires WebGPU (GPU acceleration not available in this browser)' : undefined}
                   >
                     <span class="model-dropdown-item-name">{model.name}</span>
                     <span class="model-dropdown-item-meta">
-                      <span class="model-dropdown-item-tag">{model.tag}</span>
-                      <span class="model-dropdown-item-size">{model.size}</span>
-                      <span class="model-dropdown-item-status">{getStatusIcon(model)}</span>
+                      <Show when={disabled()} fallback={
+                        <>
+                          <span class="model-dropdown-item-tag">{model.tag}</span>
+                          <span class="model-dropdown-item-size">{model.size}</span>
+                          <span class="model-dropdown-item-status">{getStatusIcon(model)}</span>
+                        </>
+                      }>
+                        <span class="model-dropdown-item-tag model-dropdown-item-tag--disabled">Requires WebGPU</span>
+                      </Show>
                     </span>
                   </button>
-                )}
+                  );
+                }}
               </For>
             </div>
 

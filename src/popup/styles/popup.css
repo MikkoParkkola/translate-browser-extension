@@ -1492,6 +1492,20 @@ body {
   opacity: 0.6;
 }
 
+.model-dropdown-item.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.model-dropdown-item.disabled:hover {
+  background: transparent;
+}
+
+.model-dropdown-item-tag--disabled {
+  color: var(--color-error, #e74c3c);
+  font-style: italic;
+}
+
 .model-dropdown-item-name {
   font-size: var(--font-size-sm);
   font-weight: 500;

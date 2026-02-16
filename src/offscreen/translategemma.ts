@@ -71,7 +71,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 /**
  * Check WebGPU support and capabilities.
  */
-async function detectWebGPU(): Promise<{ supported: boolean; fp16: boolean }> {
+export async function detectWebGPU(): Promise<{ supported: boolean; fp16: boolean }> {
   if (!navigator.gpu) return { supported: false, fp16: false };
   try {
     const adapter = await navigator.gpu.requestAdapter();

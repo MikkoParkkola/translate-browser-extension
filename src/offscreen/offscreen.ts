@@ -14,7 +14,7 @@ import { profiler } from '../core/profiler';
 import { MODEL_MAP, PIVOT_ROUTES } from './model-maps';
 import { getCachedPipeline, cachePipeline, clearCache as clearPipelineCache } from './pipeline-cache';
 import { detectLanguage } from './language-detection';
-import { translateWithGemma, getTranslateGemmaPipeline } from './translategemma';
+import { translateWithGemma, getTranslateGemmaPipeline, detectWebGPU } from './translategemma';
 import { getChromeTranslator, isChromeTranslatorAvailable } from '../providers/chrome-translator';
 
 // Cloud providers
@@ -596,6 +596,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         }
         case 'ping': {
           sendResponse({ success: true, status: 'ready' });
+          break;
+        }
+        case 'checkWebGPU': {
+          const gpu = await detectWebGPU();
+          sendResponse({ success: true, ...gpu });
           break;
         }
         case 'getCacheStats': {

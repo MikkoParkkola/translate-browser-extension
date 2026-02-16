@@ -44,6 +44,9 @@ export default function App() {
   const [currentModelId, setCurrentModelId] = createSignal<string | null>(null);
   const [downloadingFile, setDownloadingFile] = createSignal<string | null>(null);
 
+  // WebGPU availability (TranslateGemma requires WebGPU)
+  const [webGpuAvailable, setWebGpuAvailable] = createSignal<boolean | null>(null);
+
   // Per-model download status for ModelSelector
   // Cloud providers and chrome-builtin don't need downloads - always "ready"
   const [modelDownloadStatus, setModelDownloadStatus] = createSignal<
@@ -219,6 +222,30 @@ export default function App() {
       updateModelStatus('chrome-builtin', { isDownloaded: false, error: 'Not available' });
     }
 
+    // Check WebGPU availability (TranslateGemma needs it -- 3.6GB model cannot fit WASM heap)
+    try {
+      const gpuResponse = await browserAPI.runtime.sendMessage({ type: 'checkWebGPU' });
+      const available = gpuResponse?.supported === true;
+      setWebGpuAvailable(available);
+      console.log('[Popup] WebGPU available:', available, gpuResponse?.fp16 ? '(fp16)' : '');
+      if (!available) {
+        updateModelStatus('translategemma', {
+          isDownloaded: false,
+          error: 'Requires WebGPU (GPU acceleration not available)',
+        });
+        // Auto-switch away from TranslateGemma if it was saved from a previous session
+        if (activeProvider() === 'translategemma') {
+          console.log('[Popup] WebGPU unavailable, switching from TranslateGemma to OPUS-MT');
+          handleProviderChange('opus-mt');
+          setError('TranslateGemma requires WebGPU. Switched to OPUS-MT.');
+          setTimeout(() => clearError(), 8000);
+        }
+      }
+    } catch (e) {
+      console.log('[Popup] WebGPU check failed:', e);
+      setWebGpuAvailable(false);
+    }
+
     // Check for version update
     try {
       const versionInfo = await checkVersion();
@@ -249,6 +276,13 @@ export default function App() {
   };
 
   const handleProviderChange = async (provider: TranslationProviderId) => {
+    // Block TranslateGemma when WebGPU is not available
+    if (provider === 'translategemma' && webGpuAvailable() === false) {
+      setError('TranslateGemma requires WebGPU (GPU acceleration). Your browser does not support WebGPU. Use OPUS-MT for local translation instead.');
+      setErrorAction({ label: 'Use OPUS-MT', handler: () => { clearError(); handleProviderChange('opus-mt'); } });
+      return;
+    }
+
     setActiveProvider(provider);
     setProviderStatus('ready');
     setError(null);
@@ -525,6 +559,7 @@ export default function App() {
           selected={activeProvider()}
           onChange={handleProviderChange}
           downloadStatus={modelDownloadStatus()}
+          webGpuAvailable={webGpuAvailable()}
         />
 
         {/* Language Selection */}

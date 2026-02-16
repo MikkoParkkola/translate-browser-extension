@@ -806,6 +806,8 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
       return handleClearCache();
     case 'checkChromeTranslator':
       return handleCheckChromeTranslator();
+    case 'checkWebGPU':
+      return handleCheckWebGPU();
     case 'getPredictionStats':
       return handleGetPredictionStats();
     case 'recordLanguageDetection':
@@ -1096,6 +1098,24 @@ async function handleCheckChromeTranslator(): Promise<unknown> {
   } catch (error) {
     log.debug('Chrome Translator check failed (restricted page?):', error);
     return { success: true, available: false };
+  }
+}
+
+/**
+ * Check WebGPU availability via the offscreen document (which has access to navigator.gpu).
+ * TranslateGemma requires WebGPU -- the 3.6GB model cannot fit in the WASM 4GB heap.
+ */
+async function handleCheckWebGPU(): Promise<unknown> {
+  try {
+    const response = await sendToOffscreen<{
+      success: boolean;
+      supported: boolean;
+      fp16: boolean;
+    }>({ type: 'checkWebGPU' });
+    return response;
+  } catch (error) {
+    log.debug('WebGPU check failed:', error);
+    return { success: true, supported: false, fp16: false };
   }
 }
 
