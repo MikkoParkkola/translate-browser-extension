@@ -148,17 +148,17 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
     const dtype = 'q4f16';
     log.info(`WebGPU shader-f16: ${gpu.fp16}, using dtype: ${dtype}`);
 
-    try {
-      const progressCallback = (progress: Record<string, unknown>) => {
-        sendProgress({
-          status: progress.status || 'progress',
-          progress: progress.progress ?? 0,
-          file: progress.file || null,
-          loaded: progress.loaded || null,
-          total: progress.total || null,
-        });
-      };
+    const progressCallback = (progress: Record<string, unknown>) => {
+      sendProgress({
+        status: progress.status || 'progress',
+        progress: progress.progress ?? 0,
+        file: progress.file || null,
+        loaded: progress.loaded || null,
+        total: progress.total || null,
+      });
+    };
 
+    const loadModel = async () => {
       // Load model and tokenizer in parallel for faster startup.
       // Gemma3ForCausalLM is used directly to avoid pipeline model_type
       // resolution failure (model declares "gemma3", TJS only maps "gemma3_text").
@@ -177,9 +177,14 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
         CONFIG.timeouts.translateGemmaMs,  // 5 min for ~3.6GB model
         `Loading TranslateGemma model`
       );
+      return { model: model as PreTrainedModel, tokenizer: tokenizer as PreTrainedTokenizer };
+    };
 
-      tgModel = model as PreTrainedModel;
-      tgTokenizer = tokenizer as PreTrainedTokenizer;
+    try {
+      const result = await loadModel();
+
+      tgModel = result.model;
+      tgTokenizer = result.tokenizer;
       tgLoading = null;
 
       sendProgress({ status: 'ready', progress: 100 });
@@ -187,12 +192,47 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
 
       return { model: tgModel, tokenizer: tgTokenizer };
     } catch (error) {
+      // ONNX type mismatch (e.g. "Type parameter (T) of Optype (Add) bound to
+      // different types") can happen when a stale cached ONNX session was compiled
+      // with a different dtype (e.g. q4/fp32 vs q4f16). Clear the Transformers.js
+      // browser cache and retry once to force a fresh session compilation.
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const isTypeMismatch = errorMsg.includes('Type parameter') || errorMsg.includes('bound to different types');
+
+      if (isTypeMismatch) {
+        log.warn('ONNX type mismatch detected, clearing cache and retrying...');
+        try {
+          if (typeof caches !== 'undefined') {
+            await caches.delete('transformers-cache');
+            log.info('Cleared transformers-cache, retrying model load');
+          }
+
+          const result = await loadModel();
+          tgModel = result.model;
+          tgTokenizer = result.tokenizer;
+          tgLoading = null;
+
+          sendProgress({ status: 'ready', progress: 100 });
+          log.info('TranslateGemma loaded successfully after cache clear');
+
+          return { model: tgModel, tokenizer: tgTokenizer };
+        } catch (retryError) {
+          tgLoading = null;
+          log.error('TranslateGemma failed to load after cache clear:', retryError);
+          sendProgress({
+            status: 'error',
+            error: retryError instanceof Error ? retryError.message : String(retryError),
+          });
+          throw retryError;
+        }
+      }
+
       tgLoading = null;
       log.error('TranslateGemma failed to load:', error);
 
       sendProgress({
         status: 'error',
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMsg,
       });
 
       throw error;

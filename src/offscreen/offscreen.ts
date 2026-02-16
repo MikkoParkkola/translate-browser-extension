@@ -446,32 +446,15 @@ async function getFallbackProviders(
 
   // Local models as fallbacks (free, no API key needed)
   if (primary !== 'opus-mt') fallbacks.push('opus-mt');
-  if (primary !== 'chrome-builtin') {
-    try {
-      if (await isChromeTranslatorAvailable()) fallbacks.push('chrome-builtin');
-    } catch { /* not available */ }
-  }
 
-  // Cloud providers as fallbacks (skip entirely when offline)
-  if (isOnline()) {
-    const cloudProviders: Array<{ id: TranslationProviderId; provider: typeof deeplProvider }> = [
-      { id: 'deepl', provider: deeplProvider },
-      { id: 'openai', provider: openaiProvider },
-      { id: 'anthropic', provider: anthropicProvider },
-      { id: 'google-cloud', provider: googleCloudProvider },
-    ];
+  // NOTE: chrome-builtin is NOT included as a fallback. It throws DOMException
+  // in the offscreen document context (no user gesture for language pack download,
+  // wrong execution context). Only use when explicitly selected by the user.
 
-    for (const { id, provider } of cloudProviders) {
-      if (id !== primary) {
-        try {
-          await provider.initialize();
-          if (await provider.isAvailable()) fallbacks.push(id);
-        } catch { /* not available */ }
-      }
-    }
-  } else {
-    log.info('Offline: skipping cloud provider fallbacks');
-  }
+  // NOTE: Cloud providers (DeepL, OpenAI, Anthropic, Google Cloud) are NOT included
+  // as automatic fallbacks. They require API keys and their initialize() calls
+  // fail with chrome.storage.local errors in certain offscreen document lifecycle
+  // states. Only use when explicitly configured by the user.
 
   return fallbacks;
 }
