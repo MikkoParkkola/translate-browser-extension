@@ -965,11 +965,23 @@ async function handleGetCacheStats(): Promise<unknown> {
 }
 
 /**
- * Clear the translation cache
+ * Clear the translation cache (both service worker and offscreen caches).
+ *
+ * The offscreen document maintains its own TranslationCache instance.
+ * Without forwarding the clear, corrupt entries in the offscreen cache
+ * survive and get served on subsequent translation requests.
  */
 async function handleClearCache(): Promise<unknown> {
   const previousSize = translationCache.size;
   await clearTranslationCache();
+
+  // Also clear the offscreen document's translation cache
+  try {
+    await sendToOffscreen({ type: 'clearCache' });
+  } catch {
+    log.warn('Could not clear offscreen translation cache (may not be running)');
+  }
+
   return {
     success: true,
     clearedEntries: previousSize,
