@@ -45,7 +45,7 @@ describe('Content Script', () => {
   let messageHandler: (
     message: { type: string; sourceLang: string; targetLang: string; strategy: string },
     sender: unknown,
-    sendResponse: (response: boolean) => void
+    sendResponse: (response: unknown) => void
   ) => boolean | undefined;
 
   beforeEach(async () => {
@@ -459,6 +459,67 @@ describe('Content Script', () => {
       vi.useRealTimers();
 
       expect(consoleSpy).toHaveBeenCalled();
+    });
+
+    it('sends immediate acknowledgment before async translation', () => {
+      document.body.innerHTML = '<div>Hello world</div>';
+
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Hei maailma'],
+      });
+
+      const sendResponse = vi.fn();
+
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+
+      // sendResponse should be called synchronously with started status
+      expect(sendResponse).toHaveBeenCalledTimes(1);
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+    });
+
+    it('sends immediate acknowledgment for translateSelection', () => {
+      document.body.innerHTML = '<p>Selected text</p>';
+
+      // Mock window.getSelection
+      const mockRange = {
+        getBoundingClientRect: () => ({ top: 0, left: 0, bottom: 10, right: 50, width: 50, height: 10 }),
+        cloneContents: () => {
+          const frag = document.createDocumentFragment();
+          frag.appendChild(document.createTextNode('Selected text'));
+          return frag;
+        },
+        commonAncestorContainer: document.body,
+        startContainer: document.body.firstChild!,
+        endContainer: document.body.firstChild!,
+        startOffset: 0,
+        endOffset: 1,
+      };
+      const mockSelection = {
+        rangeCount: 1,
+        getRangeAt: () => mockRange,
+        toString: () => 'Selected text',
+        isCollapsed: false,
+        anchorNode: document.body.firstChild,
+        focusNode: document.body.firstChild,
+      };
+      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+
+      const sendResponse = vi.fn();
+
+      messageHandler(
+        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+
+      // sendResponse should be called synchronously with started status
+      expect(sendResponse).toHaveBeenCalledTimes(1);
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
     });
   });
 

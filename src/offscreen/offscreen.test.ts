@@ -710,6 +710,79 @@ describe('Provider routing in offscreen document', () => {
   });
 });
 
+describe('getFallbackProviders', () => {
+  // Replicate the getFallbackProviders logic from offscreen.ts
+  // Only opus-mt is a valid fallback. chrome-builtin throws DOMException in
+  // offscreen context, and cloud providers require API keys + fail with
+  // chrome.storage.local errors in certain lifecycle states.
+
+  type TranslationProviderId = 'opus-mt' | 'translategemma' | 'chrome-builtin' | 'deepl' | 'openai' | 'anthropic' | 'google-cloud';
+
+  async function getFallbackProviders(
+    primary: TranslationProviderId
+  ): Promise<TranslationProviderId[]> {
+    const fallbacks: TranslationProviderId[] = [];
+    if (primary !== 'opus-mt') fallbacks.push('opus-mt');
+    return fallbacks;
+  }
+
+  it('returns opus-mt as fallback when primary is translategemma', async () => {
+    const fallbacks = await getFallbackProviders('translategemma');
+    expect(fallbacks).toEqual(['opus-mt']);
+  });
+
+  it('returns opus-mt as fallback when primary is chrome-builtin', async () => {
+    const fallbacks = await getFallbackProviders('chrome-builtin');
+    expect(fallbacks).toEqual(['opus-mt']);
+  });
+
+  it('returns empty array when primary is opus-mt (no self-fallback)', async () => {
+    const fallbacks = await getFallbackProviders('opus-mt');
+    expect(fallbacks).toEqual([]);
+  });
+
+  it('returns opus-mt as fallback for cloud providers', async () => {
+    const cloudProviders: TranslationProviderId[] = ['deepl', 'openai', 'anthropic', 'google-cloud'];
+    for (const provider of cloudProviders) {
+      const fallbacks = await getFallbackProviders(provider);
+      expect(fallbacks).toEqual(['opus-mt']);
+    }
+  });
+
+  it('never includes chrome-builtin as a fallback', async () => {
+    const allProviders: TranslationProviderId[] = [
+      'opus-mt', 'translategemma', 'chrome-builtin', 'deepl', 'openai', 'anthropic', 'google-cloud',
+    ];
+    for (const provider of allProviders) {
+      const fallbacks = await getFallbackProviders(provider);
+      expect(fallbacks).not.toContain('chrome-builtin');
+    }
+  });
+
+  it('never includes cloud providers as fallbacks', async () => {
+    const allProviders: TranslationProviderId[] = [
+      'opus-mt', 'translategemma', 'chrome-builtin', 'deepl', 'openai', 'anthropic', 'google-cloud',
+    ];
+    const cloudIds: TranslationProviderId[] = ['deepl', 'openai', 'anthropic', 'google-cloud'];
+    for (const provider of allProviders) {
+      const fallbacks = await getFallbackProviders(provider);
+      for (const cloudId of cloudIds) {
+        expect(fallbacks).not.toContain(cloudId);
+      }
+    }
+  });
+
+  it('returns at most one fallback provider', async () => {
+    const allProviders: TranslationProviderId[] = [
+      'opus-mt', 'translategemma', 'chrome-builtin', 'deepl', 'openai', 'anthropic', 'google-cloud',
+    ];
+    for (const provider of allProviders) {
+      const fallbacks = await getFallbackProviders(provider);
+      expect(fallbacks.length).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
 describe('withTimeout utility', () => {
   // Replicate the withTimeout function from offscreen.ts
   function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {

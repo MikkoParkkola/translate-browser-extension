@@ -420,6 +420,134 @@ describe('TRANSLATEGEMMA_MODEL constant', () => {
   });
 });
 
+describe('TranslateGemma cache-bust retry on ONNX type mismatch', () => {
+  // When getTranslateGemmaPipeline encounters an ONNX type mismatch error
+  // ("Type parameter" or "bound to different types"), it should clear the
+  // transformers-cache and retry the model load. This tests the retry logic
+  // conceptually (actual model loading requires WebGPU).
+
+  // Replicate the error detection logic from getTranslateGemmaPipeline
+  function isTypeMismatch(error: unknown): boolean {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    return errorMsg.includes('Type parameter') || errorMsg.includes('bound to different types');
+  }
+
+  describe('error detection', () => {
+    it('detects "Type parameter" error as type mismatch', () => {
+      const error = new Error(
+        'Type parameter (T) of Optype (Add) bound to different types (tensor(float) and tensor(float16))'
+      );
+      expect(isTypeMismatch(error)).toBe(true);
+    });
+
+    it('detects "bound to different types" error as type mismatch', () => {
+      const error = new Error('ONNX error: bound to different types in operator');
+      expect(isTypeMismatch(error)).toBe(true);
+    });
+
+    it('does not match unrelated errors', () => {
+      expect(isTypeMismatch(new Error('Network error'))).toBe(false);
+      expect(isTypeMismatch(new Error('Out of memory'))).toBe(false);
+      expect(isTypeMismatch(new Error('WebGPU not supported'))).toBe(false);
+    });
+
+    it('handles string errors', () => {
+      expect(isTypeMismatch('Type parameter mismatch')).toBe(true);
+      expect(isTypeMismatch('some other error')).toBe(false);
+    });
+
+    it('handles non-string/non-Error values', () => {
+      expect(isTypeMismatch(42)).toBe(false);
+      expect(isTypeMismatch(null)).toBe(false);
+      expect(isTypeMismatch(undefined)).toBe(false);
+    });
+  });
+
+  describe('retry flow', () => {
+    // Simulate the cache-bust retry logic from getTranslateGemmaPipeline
+    async function loadWithRetry(
+      loadModel: () => Promise<{ model: string }>,
+      deleteCache: () => Promise<boolean>
+    ): Promise<{ model: string; cacheCleared: boolean }> {
+      let cacheCleared = false;
+      try {
+        const result = await loadModel();
+        return { ...result, cacheCleared };
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const isMismatch = errorMsg.includes('Type parameter') || errorMsg.includes('bound to different types');
+
+        if (isMismatch) {
+          await deleteCache();
+          cacheCleared = true;
+          const result = await loadModel();
+          return { ...result, cacheCleared };
+        }
+        throw error;
+      }
+    }
+
+    it('succeeds on first try without clearing cache', async () => {
+      const loadModel = vi.fn().mockResolvedValue({ model: 'ok' });
+      const deleteCache = vi.fn().mockResolvedValue(true);
+
+      const result = await loadWithRetry(loadModel, deleteCache);
+
+      expect(result.model).toBe('ok');
+      expect(result.cacheCleared).toBe(false);
+      expect(loadModel).toHaveBeenCalledTimes(1);
+      expect(deleteCache).not.toHaveBeenCalled();
+    });
+
+    it('clears cache and retries on type mismatch error', async () => {
+      const loadModel = vi.fn()
+        .mockRejectedValueOnce(new Error('Type parameter (T) of Optype (Add) bound to different types'))
+        .mockResolvedValueOnce({ model: 'ok-after-retry' });
+      const deleteCache = vi.fn().mockResolvedValue(true);
+
+      const result = await loadWithRetry(loadModel, deleteCache);
+
+      expect(result.model).toBe('ok-after-retry');
+      expect(result.cacheCleared).toBe(true);
+      expect(loadModel).toHaveBeenCalledTimes(2);
+      expect(deleteCache).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws non-type-mismatch errors without retry', async () => {
+      const loadModel = vi.fn().mockRejectedValue(new Error('Network error'));
+      const deleteCache = vi.fn().mockResolvedValue(true);
+
+      await expect(loadWithRetry(loadModel, deleteCache)).rejects.toThrow('Network error');
+      expect(loadModel).toHaveBeenCalledTimes(1);
+      expect(deleteCache).not.toHaveBeenCalled();
+    });
+
+    it('throws if retry also fails after cache clear', async () => {
+      const loadModel = vi.fn()
+        .mockRejectedValueOnce(new Error('Type parameter mismatch'))
+        .mockRejectedValueOnce(new Error('Still broken after cache clear'));
+      const deleteCache = vi.fn().mockResolvedValue(true);
+
+      await expect(loadWithRetry(loadModel, deleteCache)).rejects.toThrow('Still broken after cache clear');
+      expect(loadModel).toHaveBeenCalledTimes(2);
+      expect(deleteCache).toHaveBeenCalledTimes(1);
+    });
+
+    it('detects "bound to different types" variant', async () => {
+      const loadModel = vi.fn()
+        .mockRejectedValueOnce(new Error('ONNX Runtime: bound to different types'))
+        .mockResolvedValueOnce({ model: 'recovered' });
+      const deleteCache = vi.fn().mockResolvedValue(true);
+
+      const result = await loadWithRetry(loadModel, deleteCache);
+
+      expect(result.model).toBe('recovered');
+      expect(result.cacheCleared).toBe(true);
+      expect(deleteCache).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
 describe('LANG_NAMES completeness', () => {
   it('covers all OPUS-MT supported languages', () => {
     // Languages that OPUS-MT supports should also be in LANG_NAMES

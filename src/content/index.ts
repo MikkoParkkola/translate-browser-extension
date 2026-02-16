@@ -3010,7 +3010,7 @@ browserAPI.runtime.onMessage.addListener(
   (
     message: ContentMessage,
     _sender,
-    sendResponse: (response: boolean | { loaded: boolean } | { success: boolean; restoredCount: number } | { enabled: boolean } | { visible: boolean }) => void
+    sendResponse: (response: boolean | { loaded: boolean } | { success: boolean; restoredCount: number } | { enabled: boolean } | { visible: boolean } | { success: boolean; status: string } | { success: boolean; error: string }) => void
   ) => {
     if (message.type === 'ping') {
       sendResponse({ loaded: true });
@@ -3065,12 +3065,12 @@ browserAPI.runtime.onMessage.addListener(
 
     if (message.type === 'translateSelection') {
       const selSourceLang = resolveSourceLang(message.sourceLang);
+      // Acknowledge immediately so the caller does not time out
+      sendResponse({ success: true, status: 'started' });
       translateSelection(selSourceLang, message.targetLang, message.strategy, message.provider)
-        .then(() => sendResponse(true))
         .catch((error) => {
           const msg = error instanceof Error ? error.message : 'Translation failed';
           log.error('translateSelection failed:', msg);
-          sendResponse({ success: false, error: msg });
         });
       return true;
     }
@@ -3078,12 +3078,12 @@ browserAPI.runtime.onMessage.addListener(
     if (message.type === 'translatePage') {
       // For PDF pages, use the specialized PDF translator
       if (isPdfPage()) {
+        // Acknowledge immediately so the caller does not time out
+        sendResponse({ success: true, status: 'started' });
         initPdfTranslation(message.targetLang)
-          .then(() => sendResponse(true))
           .catch((error) => {
             const msg = error instanceof Error ? error.message : 'PDF translation failed';
             log.error('initPdfTranslation failed:', msg);
-            sendResponse({ success: false, error: msg });
           });
         return true;
       }
@@ -3097,43 +3097,44 @@ browserAPI.runtime.onMessage.addListener(
         provider: message.provider,
       };
 
+      // Acknowledge immediately so the caller does not time out
+      sendResponse({ success: true, status: 'started' });
+
       translatePage(resolvedPageLang, message.targetLang, message.strategy, message.provider)
         .then(() => {
           // Start observing for dynamic content
           startMutationObserver();
-          sendResponse(true);
         })
         .catch((error) => {
           const msg = error instanceof Error ? error.message : 'Page translation failed';
           log.error('translatePage failed:', msg);
-          sendResponse({ success: false, error: msg });
         });
       return true;
     }
 
     if (message.type === 'translatePdf') {
+      // Acknowledge immediately so the caller does not time out
+      sendResponse({ success: true, status: 'started' });
       initPdfTranslation(message.targetLang)
-        .then(() => sendResponse(true))
         .catch((error) => {
           const msg = error instanceof Error ? error.message : 'PDF translation failed';
           log.error('translatePdf failed:', msg);
-          sendResponse({ success: false, error: msg });
         });
       return true;
     }
 
     if (message.type === 'translateImage') {
+      // Acknowledge immediately so the caller does not time out
+      sendResponse({ success: true, status: 'started' });
       translateImage(
         message.imageUrl,
         message.sourceLang,
         message.targetLang,
         message.provider
       )
-        .then(() => sendResponse(true))
         .catch((error) => {
           const msg = error instanceof Error ? error.message : 'Image translation failed';
           log.error('translateImage failed:', msg);
-          sendResponse({ success: false, error: msg });
         });
       return true;
     }
