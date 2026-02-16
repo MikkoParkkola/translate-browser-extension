@@ -875,6 +875,10 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
       } catch {
         return { success: true, models: [] };
       }
+    case 'deleteModel':
+      return handleDeleteModel(message as { type: 'deleteModel'; modelId: string });
+    case 'clearAllModels':
+      return handleClearAllModels();
     case 'getSettings':
       // Settings request from legacy content script
       try {
@@ -963,6 +967,91 @@ async function handleClearCache(): Promise<unknown> {
     success: true,
     clearedEntries: previousSize,
   };
+}
+
+/**
+ * Delete a specific downloaded model.
+ * Clears it from the offscreen pipeline cache and removes the tracking entry.
+ */
+async function handleDeleteModel(message: {
+  type: 'deleteModel';
+  modelId: string;
+}): Promise<unknown> {
+  const { modelId } = message;
+  log.info(`Deleting model: ${modelId}`);
+
+  try {
+    // 1. Clear from offscreen pipeline cache (frees GPU/WASM memory)
+    try {
+      await sendToOffscreen({ type: 'clearPipelineCache' });
+    } catch {
+      log.warn('Could not clear offscreen pipeline cache (may not be running)');
+    }
+
+    // 2. Remove from tracked models list in storage
+    const stored = await chrome.storage.local.get(['downloadedModels']);
+    const models: Array<{ id: string }> = stored.downloadedModels || [];
+    const filtered = models.filter((m) => m.id !== modelId);
+    await chrome.storage.local.set({ downloadedModels: filtered });
+
+    log.info(`Model ${modelId} deleted`);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to delete model:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Clear all downloaded models.
+ * Clears offscreen pipeline caches, tracked model list, and browser Cache API entries.
+ */
+async function handleClearAllModels(): Promise<unknown> {
+  log.info('Clearing all downloaded models...');
+
+  try {
+    // 1. Clear offscreen pipeline cache (frees GPU/WASM memory)
+    try {
+      await sendToOffscreen({ type: 'clearPipelineCache' });
+    } catch {
+      log.warn('Could not clear offscreen pipeline cache (may not be running)');
+    }
+
+    // 2. Clear tracked models from storage
+    await chrome.storage.local.remove(['downloadedModels']);
+
+    // 3. Clear Transformers.js model cache from Cache API
+    // Transformers.js stores downloaded model files in the Cache API
+    // under cache names containing 'transformers'
+    try {
+      const cacheNames = await caches.keys();
+      let cleared = 0;
+      for (const name of cacheNames) {
+        if (name.includes('transformers') || name.includes('onnx') || name.includes('model')) {
+          await caches.delete(name);
+          cleared++;
+          log.info(`Cleared cache: ${name}`);
+        }
+      }
+      log.info(`Cleared ${cleared} model caches`);
+    } catch (cacheError) {
+      log.warn('Cache API not available in service worker:', cacheError);
+      // Cache API may not be available in service worker context.
+      // The offscreen document or options page will handle it.
+    }
+
+    log.info('All models cleared');
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to clear all models:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 /**

@@ -12,7 +12,7 @@ import { profiler } from '../core/profiler';
 
 // Extracted modules
 import { MODEL_MAP, PIVOT_ROUTES } from './model-maps';
-import { getCachedPipeline, cachePipeline } from './pipeline-cache';
+import { getCachedPipeline, cachePipeline, clearCache as clearPipelineCache } from './pipeline-cache';
 import { detectLanguage } from './language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline } from './translategemma';
 import { getChromeTranslator, isChromeTranslatorAvailable } from '../providers/chrome-translator';
@@ -646,6 +646,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         case 'clearCache': {
           const cache = getTranslationCache();
           await cache.clear();
+          sendResponse({ success: true, cleared: true });
+          break;
+        }
+        case 'clearPipelineCache': {
+          // Clear all loaded ML pipelines (frees GPU/WASM memory)
+          await clearPipelineCache();
           sendResponse({ success: true, cleared: true });
           break;
         }
