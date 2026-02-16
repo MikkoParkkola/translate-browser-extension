@@ -62,20 +62,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
   });
 }
 
-/**
- * Check WebGPU support and shader-f16 capability.
- */
-async function detectWebGPU(): Promise<{ supported: boolean; fp16: boolean }> {
-  if (!navigator.gpu) return { supported: false, fp16: false };
-  try {
-    const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) return { supported: false, fp16: false };
-    const fp16 = adapter.features.has('shader-f16');
-    return { supported: true, fp16 };
-  } catch {
-    return { supported: false, fp16: false };
-  }
-}
 
 /**
  * Select optimal dtype for OPUS-MT models.
@@ -118,11 +104,12 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   log.info(` Loading model: ${modelId}`);
   const loadStart = performance.now();
 
-  const webgpu = await detectWebGPU();
-  const device = webgpu.supported ? 'webgpu' : 'wasm';
-  // Auto-detect optimal dtype: fp16 (WebGPU+shader-f16), q8 (WebGPU or WASM)
-  // Xenova ONNX models ship with _quantized (q8) and _fp16 variants (~85MB vs ~170MB fp32).
-  const dtype = selectOpusMtDtype(webgpu);
+  // OPUS-MT models MUST use WASM device. WebGPU causes degenerate output
+  // (repeated words like "Figure Figure..." or "Switzerland Switzerland...")
+  // with q8-quantized Marian models. WebGPU is only viable for models with
+  // dedicated fp16 ONNX files (e.g., TranslateGemma).
+  const device = 'wasm';
+  const dtype = selectOpusMtDtype({ supported: false, fp16: false });
   log.info(` Using device: ${device}, dtype: ${dtype}`);
 
   // Use optimized timeout for OPUS-MT direct models (~85MB quantized, typically loads in <30s)
@@ -135,16 +122,7 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
       `Loading model ${modelId}`
     );
   } catch (err) {
-    if (device === 'webgpu') {
-      log.warn(` WebGPU failed, falling back to WASM+q8: ${err instanceof Error ? err.message : err}`);
-      pipe = await withTimeout(
-        pipeline('translation', modelId, { device: 'wasm', dtype: 'q8' } as Record<string, unknown>),
-        CONFIG.timeouts.opusMtDirectMs,
-        `Loading model ${modelId} (WASM fallback)`
-      );
-    } else {
-      throw err;
-    }
+    throw err;
   }
 
   const loadDuration = performance.now() - loadStart;

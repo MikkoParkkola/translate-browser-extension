@@ -12,6 +12,8 @@ import {
   formatTranslateGemmaPrompt,
   isTranslateGemmaLoaded,
   isTranslateGemmaLoading,
+  isWebGpuOnnxTainted,
+  isOnnxTypeMismatch,
 } from './translategemma';
 
 // Mock the logger
@@ -339,70 +341,82 @@ describe('prompt template validation', () => {
 });
 
 /**
- * TranslateGemma dtype selection tests.
+ * TranslateGemma dtype and device selection tests.
  *
- * The model repo (m1cc0z/translategemma-4b-it-onnx-q4-webgpu) only ships q4f16
- * ONNX files. Requesting 'q4' loads the same q4f16 files but attempts fp32
- * compute, causing mixed float16/float32 type errors:
- *   "Type parameter (T) of Optype (Add) bound to different types"
+ * The model repo (m1cc0z/translategemma-4b-it-onnx-q4-webgpu) ships both:
+ * - model_q4f16.onnx: for WebGPU with shader-f16 (float16 compute)
+ * - model_q4.onnx: for WASM (float32 compute)
  *
- * TranslateGemma REQUIRES WebGPU with shader-f16. No fallback to q4.
+ * The q4f16 ONNX graph has a known bug: layernorm Add operations mix
+ * tensor(float) and tensor(float16), causing type mismatch on WebGPU.
+ * Strategy: try WebGPU+q4f16 first, fall back to WASM+q4 on type mismatch.
  */
-describe('TranslateGemma dtype selection', () => {
-  // Replicate the dtype selection logic from getTranslateGemmaPipeline
-  function selectDtype(gpuSupported: boolean, fp16: boolean): string {
-    if (!gpuSupported) {
-      throw new Error('TranslateGemma requires WebGPU');
+describe('TranslateGemma dtype/device selection', () => {
+  // Replicate the loading strategy from getTranslateGemmaPipeline
+  function selectDeviceAndDtype(
+    gpuSupported: boolean,
+    fp16: boolean
+  ): { device: 'webgpu' | 'wasm'; dtype: string } {
+    if (gpuSupported && fp16) {
+      return { device: 'webgpu', dtype: 'q4f16' };
     }
-    if (!fp16) {
-      throw new Error('TranslateGemma requires WebGPU with shader-f16 support');
-    }
-    return 'q4f16';
+    // No WebGPU or no shader-f16: fall back to WASM + q4
+    return { device: 'wasm', dtype: 'q4' };
   }
 
-  describe('dtype selection', () => {
-    it('selects q4f16 when GPU supports shader-f16', () => {
-      expect(selectDtype(true, true)).toBe('q4f16');
-    });
-
-    it('throws when GPU does not support shader-f16', () => {
-      expect(() => selectDtype(true, false)).toThrow('shader-f16');
-    });
-
-    it('throws when WebGPU is not supported', () => {
-      expect(() => selectDtype(false, false)).toThrow('TranslateGemma requires WebGPU');
-    });
-
-    it('throws when WebGPU is not supported even with fp16 flag', () => {
-      expect(() => selectDtype(false, true)).toThrow('TranslateGemma requires WebGPU');
+  describe('primary path: WebGPU + q4f16', () => {
+    it('selects WebGPU + q4f16 when GPU supports shader-f16', () => {
+      const { device, dtype } = selectDeviceAndDtype(true, true);
+      expect(device).toBe('webgpu');
+      expect(dtype).toBe('q4f16');
     });
   });
 
-  describe('dtype is always q4f16', () => {
-    it('q4f16 is the only valid dtype for this model', () => {
-      // Model repo only ships q4f16 ONNX files
-      const dtype = selectDtype(true, true);
-      expect(dtype).toBe('q4f16');
-      expect(dtype).not.toBe('q4'); // q4 causes mixed-precision crash
+  describe('fallback path: WASM + q4', () => {
+    it('falls back to WASM + q4 when GPU lacks shader-f16', () => {
+      const { device, dtype } = selectDeviceAndDtype(true, false);
+      expect(device).toBe('wasm');
+      expect(dtype).toBe('q4');
     });
 
-    it('never returns q4 (causes ONNX type mismatch)', () => {
-      // q4 loads q4f16 files but attempts fp32 compute → crash
-      const dtype = selectDtype(true, true);
+    it('falls back to WASM + q4 when WebGPU is not supported', () => {
+      const { device, dtype } = selectDeviceAndDtype(false, false);
+      expect(device).toBe('wasm');
+      expect(dtype).toBe('q4');
+    });
+
+    it('falls back to WASM + q4 even with fp16 flag when no WebGPU', () => {
+      const { device, dtype } = selectDeviceAndDtype(false, true);
+      expect(device).toBe('wasm');
+      expect(dtype).toBe('q4');
+    });
+  });
+
+  describe('dtype correctness', () => {
+    it('WebGPU path uses q4f16 (not q4)', () => {
+      const { dtype } = selectDeviceAndDtype(true, true);
+      expect(dtype).toBe('q4f16');
       expect(dtype).not.toBe('q4');
+    });
+
+    it('WASM path uses q4 (not q4f16)', () => {
+      const { dtype } = selectDeviceAndDtype(false, false);
+      expect(dtype).toBe('q4');
+      expect(dtype).not.toBe('q4f16');
     });
   });
 
   describe('regression: ONNX float16/float32 mismatch', () => {
-    it('uses q4f16 to match float16 Constants in model', () => {
-      const dtype = selectDtype(true, true);
-      expect(dtype).toBe('q4f16');
+    it('does not hard-reject when shader-f16 unavailable (falls back to WASM)', () => {
+      // Before: threw error. Now: falls back gracefully to WASM + q4.
+      expect(() => selectDeviceAndDtype(true, false)).not.toThrow();
+      expect(selectDeviceAndDtype(true, false)).toEqual({ device: 'wasm', dtype: 'q4' });
     });
 
-    it('rejects GPUs without shader-f16 instead of using broken q4', () => {
-      // Before fix: returned 'q4' which caused:
-      // "Type parameter (T) of Optype (Add) bound to different types (tensor(float) and tensor(float16))"
-      expect(() => selectDtype(true, false)).toThrow('shader-f16');
+    it('does not hard-reject when WebGPU unavailable (falls back to WASM)', () => {
+      // Before: threw error. Now: falls back gracefully to WASM + q4.
+      expect(() => selectDeviceAndDtype(false, false)).not.toThrow();
+      expect(selectDeviceAndDtype(false, false)).toEqual({ device: 'wasm', dtype: 'q4' });
     });
   });
 });
@@ -420,130 +434,232 @@ describe('TRANSLATEGEMMA_MODEL constant', () => {
   });
 });
 
-describe('TranslateGemma cache-bust retry on ONNX type mismatch', () => {
-  // When getTranslateGemmaPipeline encounters an ONNX type mismatch error
-  // ("Type parameter" or "bound to different types"), it should clear the
-  // transformers-cache and retry the model load. This tests the retry logic
-  // conceptually (actual model loading requires WebGPU).
-
-  // Replicate the error detection logic from getTranslateGemmaPipeline
-  function isTypeMismatch(error: unknown): boolean {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    return errorMsg.includes('Type parameter') || errorMsg.includes('bound to different types');
-  }
-
-  describe('error detection', () => {
-    it('detects "Type parameter" error as type mismatch', () => {
-      const error = new Error(
-        'Type parameter (T) of Optype (Add) bound to different types (tensor(float) and tensor(float16))'
-      );
-      expect(isTypeMismatch(error)).toBe(true);
-    });
-
-    it('detects "bound to different types" error as type mismatch', () => {
-      const error = new Error('ONNX error: bound to different types in operator');
-      expect(isTypeMismatch(error)).toBe(true);
-    });
-
-    it('does not match unrelated errors', () => {
-      expect(isTypeMismatch(new Error('Network error'))).toBe(false);
-      expect(isTypeMismatch(new Error('Out of memory'))).toBe(false);
-      expect(isTypeMismatch(new Error('WebGPU not supported'))).toBe(false);
-    });
-
-    it('handles string errors', () => {
-      expect(isTypeMismatch('Type parameter mismatch')).toBe(true);
-      expect(isTypeMismatch('some other error')).toBe(false);
-    });
-
-    it('handles non-string/non-Error values', () => {
-      expect(isTypeMismatch(42)).toBe(false);
-      expect(isTypeMismatch(null)).toBe(false);
-      expect(isTypeMismatch(undefined)).toBe(false);
-    });
+describe('isOnnxTypeMismatch (exported)', () => {
+  it('detects "Type parameter" error as type mismatch', () => {
+    const error = new Error(
+      'Type parameter (T) of Optype (Add) bound to different types (tensor(float) and tensor(float16))'
+    );
+    expect(isOnnxTypeMismatch(error)).toBe(true);
   });
 
-  describe('retry flow', () => {
-    // Simulate the cache-bust retry logic from getTranslateGemmaPipeline
-    async function loadWithRetry(
-      loadModel: () => Promise<{ model: string }>,
-      deleteCache: () => Promise<boolean>
-    ): Promise<{ model: string; cacheCleared: boolean }> {
-      let cacheCleared = false;
-      try {
-        const result = await loadModel();
-        return { ...result, cacheCleared };
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        const isMismatch = errorMsg.includes('Type parameter') || errorMsg.includes('bound to different types');
+  it('detects "bound to different types" error as type mismatch', () => {
+    const error = new Error('ONNX error: bound to different types in operator');
+    expect(isOnnxTypeMismatch(error)).toBe(true);
+  });
 
-        if (isMismatch) {
-          await deleteCache();
-          cacheCleared = true;
-          const result = await loadModel();
-          return { ...result, cacheCleared };
-        }
-        throw error;
-      }
+  it('does not match unrelated errors', () => {
+    expect(isOnnxTypeMismatch(new Error('Network error'))).toBe(false);
+    expect(isOnnxTypeMismatch(new Error('Out of memory'))).toBe(false);
+    expect(isOnnxTypeMismatch(new Error('WebGPU not supported'))).toBe(false);
+  });
+
+  it('handles string errors', () => {
+    expect(isOnnxTypeMismatch('Type parameter mismatch')).toBe(true);
+    expect(isOnnxTypeMismatch('some other error')).toBe(false);
+  });
+
+  it('handles non-string/non-Error values', () => {
+    expect(isOnnxTypeMismatch(42)).toBe(false);
+    expect(isOnnxTypeMismatch(null)).toBe(false);
+    expect(isOnnxTypeMismatch(undefined)).toBe(false);
+  });
+});
+
+describe('isWebGpuOnnxTainted', () => {
+  it('returns false initially (module fresh state)', () => {
+    // Fresh module state - no WebGPU load has failed yet
+    expect(isWebGpuOnnxTainted()).toBe(false);
+  });
+});
+
+describe('TranslateGemma loading strategy with WASM fallback', () => {
+  // The new loading strategy:
+  // 1. Try WebGPU + q4f16 (best performance)
+  // 2. On type mismatch -> WASM + q4 (model graph bug, not cache issue)
+  // 3. On other errors -> cache-bust + retry WebGPU -> WASM + q4 as final fallback
+
+  // Simulate the full loading strategy from getTranslateGemmaPipeline
+  async function loadWithStrategy(
+    loadModel: (device: string, dtype: string) => Promise<{ model: string }>,
+    deleteCache: () => Promise<boolean>,
+    gpuSupported: boolean,
+    fp16: boolean
+  ): Promise<{ model: string; device: string; dtype: string; cacheCleared: boolean; tainted: boolean }> {
+    let cacheCleared = false;
+    let tainted = false;
+
+    const isMismatch = (error: unknown): boolean => {
+      const msg = error instanceof Error ? error.message : String(error);
+      return msg.includes('Type parameter') || msg.includes('bound to different types');
+    };
+
+    // No WebGPU or no fp16: straight to WASM
+    if (!gpuSupported || !fp16) {
+      const result = await loadModel('wasm', 'q4');
+      return { ...result, device: 'wasm', dtype: 'q4', cacheCleared, tainted };
     }
 
-    it('succeeds on first try without clearing cache', async () => {
+    // Try WebGPU + q4f16
+    try {
+      const result = await loadModel('webgpu', 'q4f16');
+      return { ...result, device: 'webgpu', dtype: 'q4f16', cacheCleared, tainted };
+    } catch (error) {
+      if (isMismatch(error)) {
+        // Type mismatch: model graph issue. Go straight to WASM, no cache-bust.
+        tainted = true;
+        const result = await loadModel('wasm', 'q4');
+        return { ...result, device: 'wasm', dtype: 'q4', cacheCleared, tainted };
+      }
+
+      // Other error: cache-bust + retry WebGPU
+      await deleteCache();
+      cacheCleared = true;
+      try {
+        const result = await loadModel('webgpu', 'q4f16');
+        return { ...result, device: 'webgpu', dtype: 'q4f16', cacheCleared, tainted };
+      } catch (retryError) {
+        if (isMismatch(retryError)) {
+          tainted = true;
+        }
+        // Final fallback: WASM + q4
+        const result = await loadModel('wasm', 'q4');
+        return { ...result, device: 'wasm', dtype: 'q4', cacheCleared, tainted };
+      }
+    }
+  }
+
+  describe('happy path', () => {
+    it('succeeds with WebGPU + q4f16 on first try', async () => {
       const loadModel = vi.fn().mockResolvedValue({ model: 'ok' });
       const deleteCache = vi.fn().mockResolvedValue(true);
 
-      const result = await loadWithRetry(loadModel, deleteCache);
+      const result = await loadWithStrategy(loadModel, deleteCache, true, true);
 
       expect(result.model).toBe('ok');
+      expect(result.device).toBe('webgpu');
+      expect(result.dtype).toBe('q4f16');
       expect(result.cacheCleared).toBe(false);
+      expect(result.tainted).toBe(false);
       expect(loadModel).toHaveBeenCalledTimes(1);
+      expect(loadModel).toHaveBeenCalledWith('webgpu', 'q4f16');
+    });
+  });
+
+  describe('type mismatch -> WASM fallback (no cache-bust)', () => {
+    it('falls back to WASM + q4 on type mismatch without clearing cache', async () => {
+      const loadModel = vi.fn()
+        .mockRejectedValueOnce(new Error('Type parameter (T) of Optype (Add) bound to different types'))
+        .mockResolvedValueOnce({ model: 'ok-wasm' });
+      const deleteCache = vi.fn().mockResolvedValue(true);
+
+      const result = await loadWithStrategy(loadModel, deleteCache, true, true);
+
+      expect(result.model).toBe('ok-wasm');
+      expect(result.device).toBe('wasm');
+      expect(result.dtype).toBe('q4');
+      expect(result.cacheCleared).toBe(false); // NO cache clear for type mismatch
+      expect(result.tainted).toBe(true); // Tainted flag set
+      expect(loadModel).toHaveBeenCalledTimes(2);
+      expect(loadModel).toHaveBeenNthCalledWith(1, 'webgpu', 'q4f16');
+      expect(loadModel).toHaveBeenNthCalledWith(2, 'wasm', 'q4');
       expect(deleteCache).not.toHaveBeenCalled();
     });
 
-    it('clears cache and retries on type mismatch error', async () => {
+    it('sets tainted flag on "bound to different types" variant', async () => {
       const loadModel = vi.fn()
-        .mockRejectedValueOnce(new Error('Type parameter (T) of Optype (Add) bound to different types'))
+        .mockRejectedValueOnce(new Error('ONNX: bound to different types'))
+        .mockResolvedValueOnce({ model: 'wasm-ok' });
+      const deleteCache = vi.fn().mockResolvedValue(true);
+
+      const result = await loadWithStrategy(loadModel, deleteCache, true, true);
+
+      expect(result.tainted).toBe(true);
+      expect(result.device).toBe('wasm');
+      expect(deleteCache).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('other errors -> cache-bust + retry -> WASM fallback', () => {
+    it('clears cache and retries WebGPU on non-type-mismatch error', async () => {
+      const loadModel = vi.fn()
+        .mockRejectedValueOnce(new Error('GPU device lost'))
         .mockResolvedValueOnce({ model: 'ok-after-retry' });
       const deleteCache = vi.fn().mockResolvedValue(true);
 
-      const result = await loadWithRetry(loadModel, deleteCache);
+      const result = await loadWithStrategy(loadModel, deleteCache, true, true);
 
       expect(result.model).toBe('ok-after-retry');
+      expect(result.device).toBe('webgpu');
+      expect(result.dtype).toBe('q4f16');
       expect(result.cacheCleared).toBe(true);
-      expect(loadModel).toHaveBeenCalledTimes(2);
+      expect(result.tainted).toBe(false);
       expect(deleteCache).toHaveBeenCalledTimes(1);
     });
 
-    it('throws non-type-mismatch errors without retry', async () => {
-      const loadModel = vi.fn().mockRejectedValue(new Error('Network error'));
+    it('falls back to WASM when cache-bust retry also fails', async () => {
+      const loadModel = vi.fn()
+        .mockRejectedValueOnce(new Error('GPU device lost'))
+        .mockRejectedValueOnce(new Error('GPU device lost again'))
+        .mockResolvedValueOnce({ model: 'wasm-final' });
       const deleteCache = vi.fn().mockResolvedValue(true);
 
-      await expect(loadWithRetry(loadModel, deleteCache)).rejects.toThrow('Network error');
-      expect(loadModel).toHaveBeenCalledTimes(1);
-      expect(deleteCache).not.toHaveBeenCalled();
+      const result = await loadWithStrategy(loadModel, deleteCache, true, true);
+
+      expect(result.model).toBe('wasm-final');
+      expect(result.device).toBe('wasm');
+      expect(result.dtype).toBe('q4');
+      expect(result.cacheCleared).toBe(true);
+      expect(loadModel).toHaveBeenCalledTimes(3);
     });
 
-    it('throws if retry also fails after cache clear', async () => {
+    it('sets tainted flag when retry fails with type mismatch', async () => {
+      const loadModel = vi.fn()
+        .mockRejectedValueOnce(new Error('GPU device lost'))
+        .mockRejectedValueOnce(new Error('Type parameter mismatch after retry'))
+        .mockResolvedValueOnce({ model: 'wasm-final' });
+      const deleteCache = vi.fn().mockResolvedValue(true);
+
+      const result = await loadWithStrategy(loadModel, deleteCache, true, true);
+
+      expect(result.tainted).toBe(true);
+      expect(result.device).toBe('wasm');
+    });
+  });
+
+  describe('no WebGPU -> straight to WASM', () => {
+    it('uses WASM + q4 when WebGPU not supported', async () => {
+      const loadModel = vi.fn().mockResolvedValue({ model: 'wasm-ok' });
+      const deleteCache = vi.fn().mockResolvedValue(true);
+
+      const result = await loadWithStrategy(loadModel, deleteCache, false, false);
+
+      expect(result.device).toBe('wasm');
+      expect(result.dtype).toBe('q4');
+      expect(loadModel).toHaveBeenCalledTimes(1);
+      expect(loadModel).toHaveBeenCalledWith('wasm', 'q4');
+    });
+
+    it('uses WASM + q4 when no shader-f16', async () => {
+      const loadModel = vi.fn().mockResolvedValue({ model: 'wasm-ok' });
+      const deleteCache = vi.fn().mockResolvedValue(true);
+
+      const result = await loadWithStrategy(loadModel, deleteCache, true, false);
+
+      expect(result.device).toBe('wasm');
+      expect(result.dtype).toBe('q4');
+    });
+  });
+
+  describe('WASM fallback failure', () => {
+    it('throws when WASM fallback also fails after type mismatch', async () => {
       const loadModel = vi.fn()
         .mockRejectedValueOnce(new Error('Type parameter mismatch'))
-        .mockRejectedValueOnce(new Error('Still broken after cache clear'));
+        .mockRejectedValueOnce(new Error('WASM OOM'));
       const deleteCache = vi.fn().mockResolvedValue(true);
 
-      await expect(loadWithRetry(loadModel, deleteCache)).rejects.toThrow('Still broken after cache clear');
-      expect(loadModel).toHaveBeenCalledTimes(2);
-      expect(deleteCache).toHaveBeenCalledTimes(1);
-    });
-
-    it('detects "bound to different types" variant', async () => {
-      const loadModel = vi.fn()
-        .mockRejectedValueOnce(new Error('ONNX Runtime: bound to different types'))
-        .mockResolvedValueOnce({ model: 'recovered' });
-      const deleteCache = vi.fn().mockResolvedValue(true);
-
-      const result = await loadWithRetry(loadModel, deleteCache);
-
-      expect(result.model).toBe('recovered');
-      expect(result.cacheCleared).toBe(true);
-      expect(deleteCache).toHaveBeenCalledTimes(1);
+      await expect(
+        loadWithStrategy(loadModel, deleteCache, true, true)
+      ).rejects.toThrow('WASM OOM');
     });
   });
 });

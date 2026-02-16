@@ -43,6 +43,19 @@ let tgModel: PreTrainedModel | null = null;
 let tgTokenizer: PreTrainedTokenizer | null = null;
 let tgLoading: Promise<{ model: PreTrainedModel; tokenizer: PreTrainedTokenizer }> | null = null;
 
+// Flag: set to true when TranslateGemma WebGPU load fails with ONNX type mismatch.
+// This indicates the ONNX Runtime WebGPU state is corrupted, so subsequent WebGPU
+// loads (e.g., OPUS-MT) should skip straight to WASM.
+let _webGpuOnnxTainted = false;
+
+/**
+ * Check if the ONNX Runtime WebGPU state is tainted by a failed TranslateGemma load.
+ * When true, other models should skip WebGPU and use WASM directly.
+ */
+export function isWebGpuOnnxTainted(): boolean {
+  return _webGpuOnnxTainted;
+}
+
 /**
  * Wrap a promise with a timeout.
  */
@@ -114,7 +127,20 @@ function sendProgress(update: Record<string, unknown>): void {
 }
 
 /**
+ * Check if an error is an ONNX type mismatch (float vs float16 in layernorm).
+ */
+export function isOnnxTypeMismatch(error: unknown): boolean {
+  const errorMsg = error instanceof Error ? error.message : String(error);
+  return errorMsg.includes('Type parameter') || errorMsg.includes('bound to different types');
+}
+
+/**
  * Load TranslateGemma model + tokenizer directly (singleton, cached in IndexedDB).
+ *
+ * Loading strategy:
+ * 1. Try WebGPU + q4f16 (best performance)
+ * 2. On ONNX type mismatch -> fall back to WASM + q4 (the model graph is broken for WebGPU)
+ * 3. On other WebGPU errors -> clear cache + retry WebGPU, then WASM + q4 as final fallback
  *
  * Uses Gemma3ForCausalLM explicitly instead of pipeline() to bypass the
  * model_type auto-detection issue: the model declares model_type "gemma3"
@@ -128,25 +154,6 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
     log.info('Loading TranslateGemma model...');
 
     const gpu = await detectWebGPU();
-    if (!gpu.supported) {
-      throw new Error(
-        'TranslateGemma requires WebGPU. Please use Chrome 113+ with WebGPU enabled.'
-      );
-    }
-
-    if (!gpu.fp16) {
-      throw new Error(
-        'TranslateGemma requires WebGPU with shader-f16 support. ' +
-        'Your GPU does not support shader-f16. Try OPUS-MT or Chrome Built-in instead.'
-      );
-    }
-
-    // Always use q4f16: the model repo (m1cc0z/translategemma-4b-it-onnx-q4-webgpu)
-    // only ships q4f16 ONNX files. Requesting 'q4' loads the same q4f16 files but
-    // attempts fp32 compute, causing mixed float16/float32 type errors:
-    //   "Type parameter (T) of Optype (Add) bound to different types"
-    const dtype = 'q4f16';
-    log.info(`WebGPU shader-f16: ${gpu.fp16}, using dtype: ${dtype}`);
 
     const progressCallback = (progress: Record<string, unknown>) => {
       sendProgress({
@@ -158,14 +165,15 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       });
     };
 
-    const loadModel = async () => {
+    const loadModel = async (device: 'webgpu' | 'wasm', dtype: string) => {
+      log.info(`Loading TranslateGemma with device: ${device}, dtype: ${dtype}`);
       // Load model and tokenizer in parallel for faster startup.
       // Gemma3ForCausalLM is used directly to avoid pipeline model_type
       // resolution failure (model declares "gemma3", TJS only maps "gemma3_text").
       const [model, tokenizer] = await withTimeout(
         Promise.all([
           Gemma3ForCausalLM.from_pretrained(TRANSLATEGEMMA_MODEL, {
-            device: 'webgpu',
+            device,
             dtype,
             use_external_data_format: 2, // Split into 2 chunks (<2GB each) to avoid ArrayBuffer limit
             progress_callback: progressCallback,
@@ -175,67 +183,81 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
           }),
         ]),
         CONFIG.timeouts.translateGemmaMs,  // 5 min for ~3.6GB model
-        `Loading TranslateGemma model`
+        `Loading TranslateGemma model (${device}/${dtype})`
       );
       return { model: model as PreTrainedModel, tokenizer: tokenizer as PreTrainedTokenizer };
     };
 
-    try {
-      const result = await loadModel();
-
+    const setResult = (result: { model: PreTrainedModel; tokenizer: PreTrainedTokenizer }) => {
       tgModel = result.model;
       tgTokenizer = result.tokenizer;
       tgLoading = null;
-
       sendProgress({ status: 'ready', progress: 100 });
-      log.info('TranslateGemma loaded successfully');
-
       return { model: tgModel, tokenizer: tgTokenizer };
+    };
+
+    const loadWasmFallback = async () => {
+      log.info('TranslateGemma: falling back to WASM + q4');
+      try {
+        const result = await loadModel('wasm', 'q4');
+        log.info('TranslateGemma loaded successfully via WASM + q4');
+        return setResult(result);
+      } catch (wasmError) {
+        tgLoading = null;
+        log.error('TranslateGemma WASM fallback also failed:', wasmError);
+        sendProgress({
+          status: 'error',
+          error: wasmError instanceof Error ? wasmError.message : String(wasmError),
+        });
+        throw wasmError;
+      }
+    };
+
+    // If WebGPU is not available or lacks shader-f16, go straight to WASM
+    if (!gpu.supported || !gpu.fp16) {
+      log.info(`WebGPU ${!gpu.supported ? 'not supported' : 'lacks shader-f16'}, using WASM + q4`);
+      return loadWasmFallback();
+    }
+
+    // Try WebGPU + q4f16 first (best performance path)
+    try {
+      const result = await loadModel('webgpu', 'q4f16');
+      log.info('TranslateGemma loaded successfully via WebGPU + q4f16');
+      return setResult(result);
     } catch (error) {
-      // ONNX type mismatch (e.g. "Type parameter (T) of Optype (Add) bound to
-      // different types") can happen when a stale cached ONNX session was compiled
-      // with a different dtype (e.g. q4/fp32 vs q4f16). Clear the Transformers.js
-      // browser cache and retry once to force a fresh session compilation.
       const errorMsg = error instanceof Error ? error.message : String(error);
-      const isTypeMismatch = errorMsg.includes('Type parameter') || errorMsg.includes('bound to different types');
 
-      if (isTypeMismatch) {
-        log.warn('ONNX type mismatch detected, clearing cache and retrying...');
-        try {
-          if (typeof caches !== 'undefined') {
-            await caches.delete('transformers-cache');
-            log.info('Cleared transformers-cache, retrying model load');
-          }
-
-          const result = await loadModel();
-          tgModel = result.model;
-          tgTokenizer = result.tokenizer;
-          tgLoading = null;
-
-          sendProgress({ status: 'ready', progress: 100 });
-          log.info('TranslateGemma loaded successfully after cache clear');
-
-          return { model: tgModel, tokenizer: tgTokenizer };
-        } catch (retryError) {
-          tgLoading = null;
-          log.error('TranslateGemma failed to load after cache clear:', retryError);
-          sendProgress({
-            status: 'error',
-            error: retryError instanceof Error ? retryError.message : String(retryError),
-          });
-          throw retryError;
-        }
+      if (isOnnxTypeMismatch(error)) {
+        // ONNX type mismatch: the model graph mixes float and float16 in layernorm.
+        // This is a model graph issue, not a cache issue. Fall back to WASM + q4.
+        // Also mark WebGPU ONNX state as tainted to protect subsequent model loads.
+        _webGpuOnnxTainted = true;
+        log.warn(`TranslateGemma: WebGPU q4f16 failed (type mismatch), falling back to WASM q4. Error: ${errorMsg}`);
+        return loadWasmFallback();
       }
 
-      tgLoading = null;
-      log.error('TranslateGemma failed to load:', error);
+      // Other WebGPU errors (timeout, GPU crash, etc): try cache-bust + retry WebGPU
+      log.warn(`TranslateGemma: WebGPU load failed (${errorMsg}), clearing cache and retrying...`);
+      try {
+        if (typeof caches !== 'undefined') {
+          await caches.delete('transformers-cache');
+          log.info('Cleared transformers-cache, retrying WebGPU load');
+        }
 
-      sendProgress({
-        status: 'error',
-        error: errorMsg,
-      });
+        const result = await loadModel('webgpu', 'q4f16');
+        log.info('TranslateGemma loaded successfully after cache clear (WebGPU + q4f16)');
+        return setResult(result);
+      } catch (retryError) {
+        // Cache-bust retry also failed. Final fallback: WASM + q4
+        const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
+        log.warn(`TranslateGemma: WebGPU retry also failed (${retryMsg}), final fallback to WASM + q4`);
 
-      throw error;
+        if (isOnnxTypeMismatch(retryError)) {
+          _webGpuOnnxTainted = true;
+        }
+
+        return loadWasmFallback();
+      }
     }
   })();
 

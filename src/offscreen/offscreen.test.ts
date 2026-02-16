@@ -828,3 +828,89 @@ describe('withTimeout utility', () => {
     ).rejects.toThrow('original error');
   });
 });
+
+describe('OPUS-MT WebGPU taint awareness', () => {
+  // When TranslateGemma's WebGPU load fails with ONNX type mismatch, it sets
+  // a tainted flag. OPUS-MT's getPipeline should check this flag and skip
+  // WebGPU entirely, going straight to WASM.
+
+  // Replicate the device selection logic from offscreen.ts getPipeline
+  function selectOpusMtDevice(
+    webgpuSupported: boolean,
+    webgpuOnnxTainted: boolean
+  ): 'webgpu' | 'wasm' {
+    if (webgpuSupported && !webgpuOnnxTainted) {
+      return 'webgpu';
+    }
+    return 'wasm';
+  }
+
+  it('uses WebGPU when supported and not tainted', () => {
+    expect(selectOpusMtDevice(true, false)).toBe('webgpu');
+  });
+
+  it('forces WASM when WebGPU is tainted', () => {
+    expect(selectOpusMtDevice(true, true)).toBe('wasm');
+  });
+
+  it('uses WASM when WebGPU not supported (regardless of taint)', () => {
+    expect(selectOpusMtDevice(false, false)).toBe('wasm');
+    expect(selectOpusMtDevice(false, true)).toBe('wasm');
+  });
+
+  describe('TranslateGemma error path detection', () => {
+    // Errors containing TranslateGemma model paths indicate ONNX state corruption
+    function isTranslateGemmaErrorPath(errorMsg: string): boolean {
+      return errorMsg.includes('language_model/layers');
+    }
+
+    it('detects TranslateGemma layernorm path in error', () => {
+      const err = 'Type parameter (T) of Optype (Add) bound to different types in node (/model/language_model/layers.0/input_layernorm/Add)';
+      expect(isTranslateGemmaErrorPath(err)).toBe(true);
+    });
+
+    it('does not flag OPUS-MT errors', () => {
+      const err = 'Type parameter (T) of Optype (Mul) bound to different types in node (/encoder/layer.0)';
+      expect(isTranslateGemmaErrorPath(err)).toBe(false);
+    });
+
+    it('does not flag generic errors', () => {
+      expect(isTranslateGemmaErrorPath('Network error')).toBe(false);
+      expect(isTranslateGemmaErrorPath('Out of memory')).toBe(false);
+    });
+  });
+
+  describe('full pipeline device selection with taint', () => {
+    interface PipelineConfig {
+      device: 'webgpu' | 'wasm';
+      dtype: string;
+    }
+
+    function getOpusMtConfig(
+      webgpuSupported: boolean,
+      webgpuOnnxTainted: boolean
+    ): PipelineConfig {
+      const device = (webgpuSupported && !webgpuOnnxTainted) ? 'webgpu' : 'wasm';
+      return { device, dtype: 'q8' };
+    }
+
+    it('WebGPU + q8 when healthy', () => {
+      expect(getOpusMtConfig(true, false)).toEqual({ device: 'webgpu', dtype: 'q8' });
+    });
+
+    it('WASM + q8 when tainted', () => {
+      expect(getOpusMtConfig(true, true)).toEqual({ device: 'wasm', dtype: 'q8' });
+    });
+
+    it('WASM + q8 when no WebGPU', () => {
+      expect(getOpusMtConfig(false, false)).toEqual({ device: 'wasm', dtype: 'q8' });
+    });
+
+    it('dtype is always q8 regardless of taint state', () => {
+      expect(getOpusMtConfig(true, false).dtype).toBe('q8');
+      expect(getOpusMtConfig(true, true).dtype).toBe('q8');
+      expect(getOpusMtConfig(false, false).dtype).toBe('q8');
+      expect(getOpusMtConfig(false, true).dtype).toBe('q8');
+    });
+  });
+});
