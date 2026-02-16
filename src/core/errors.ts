@@ -11,6 +11,8 @@ export type ErrorCategory =
   | 'input'
   | 'language'
   | 'timeout'
+  | 'auth'
+  | 'rate_limit'
   | 'internal';
 
 // User-friendly error with technical details preserved
@@ -69,6 +71,26 @@ const ERROR_PATTERNS = {
     /timed out/i,
     /deadline/i,
     /took too long/i,
+    /AbortError/i,
+    /aborted/i,
+  ],
+  auth: [
+    /401/,
+    /403/,
+    /unauthorized/i,
+    /forbidden/i,
+    /invalid.*api.*key/i,
+    /authentication/i,
+    /not configured/i,
+    /API key/i,
+  ],
+  rate_limit: [
+    /429/,
+    /rate.?limit/i,
+    /too many requests/i,
+    /quota.*exceeded/i,
+    /limit.*reached/i,
+    /Retry-After/i,
   ],
   input: [
     /invalid input/i,
@@ -147,10 +169,28 @@ export function createTranslationError(error: unknown): TranslationError {
     case 'timeout':
       return {
         category,
-        message: 'Translation took too long',
+        message: 'Translation request timed out',
         technicalDetails: rawMessage,
         retryable: true,
-        suggestion: 'Try with a shorter text or wait for the model to fully load',
+        suggestion: 'The service may be slow. Try again, or use a shorter text.',
+      };
+
+    case 'auth':
+      return {
+        category,
+        message: 'Authentication failed',
+        technicalDetails: rawMessage,
+        retryable: false,
+        suggestion: 'Check your API key in Settings. It may be invalid or expired.',
+      };
+
+    case 'rate_limit':
+      return {
+        category,
+        message: 'Too many requests',
+        technicalDetails: rawMessage,
+        retryable: true,
+        suggestion: 'You have hit the API rate limit. Wait a moment and try again.',
       };
 
     case 'input':

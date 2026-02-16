@@ -62,6 +62,7 @@ const SUPPORTED_PAIRS: Record<string, string> = {
 export class OpusMTProvider extends BaseProvider {
   private pipelines = new Map<string, Pipeline>();
   private webgpuSupported = false;
+  private webgpuFp16 = false;
   private isInitialized = false;
   private pipelineFactory: ((task: string, model: string, options: Record<string, unknown>) => Promise<Pipeline>) | null = null;
 
@@ -87,13 +88,24 @@ export class OpusMTProvider extends BaseProvider {
       const transformers = await import('@huggingface/transformers');
       this.pipelineFactory = transformers.pipeline as unknown as typeof this.pipelineFactory;
 
-      // Check for WebGPU support
+      // Check for WebGPU support and shader-f16 capability
       await webgpuDetector.detect();
       this.webgpuSupported = webgpuDetector.supported;
 
       if (this.webgpuSupported) {
         console.log('[OPUS-MT] WebGPU support detected');
         await webgpuDetector.initialize();
+
+        // Detect shader-f16 for optimal dtype selection
+        try {
+          if (typeof navigator !== 'undefined' && navigator.gpu) {
+            const adapter = await navigator.gpu.requestAdapter();
+            this.webgpuFp16 = adapter?.features.has('shader-f16') ?? false;
+          }
+        } catch {
+          this.webgpuFp16 = false;
+        }
+        console.log(`[OPUS-MT] shader-f16: ${this.webgpuFp16}`);
       } else {
         console.log('[OPUS-MT] Using WASM acceleration');
       }
@@ -129,7 +141,9 @@ export class OpusMTProvider extends BaseProvider {
       console.log(`[OPUS-MT] Loading model: ${modelId}`);
 
       const device = this.webgpuSupported ? 'webgpu' : 'wasm';
-      const dtype = 'q4f16'; // 4-bit quantization with fp16 fallback
+      // Auto-detect optimal dtype: fp16 (WebGPU+shader-f16), q8 (WebGPU or WASM)
+      // Xenova ONNX models ship with _quantized (q8) and _fp16 variants (~85MB vs ~170MB fp32).
+      const dtype = (this.webgpuSupported && this.webgpuFp16) ? 'fp16' : 'q8';
 
       const pipe = await this.pipelineFactory('translation', modelId, {
         device,

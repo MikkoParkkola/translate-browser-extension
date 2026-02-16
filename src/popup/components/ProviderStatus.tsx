@@ -18,10 +18,10 @@ export const ProviderStatus: Component<Props> = (props) => {
   };
 
   return (
-    <div class="provider-status">
+    <div class="provider-status" role="status" aria-live="polite" aria-label={`Provider: ${props.name}, ${statusIndicator().text}`}>
       <div class="provider-info">
         <span class="provider-name">{props.name}</span>
-        <span class={`status-indicator ${statusIndicator().class}`}>
+        <span class={`status-indicator ${statusIndicator().class}`} aria-hidden="true">
           <span class="status-icon">{statusIndicator().icon}</span>
           <span class="status-text">{statusIndicator().text}</span>
         </span>

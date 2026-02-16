@@ -4,7 +4,7 @@
  */
 
 import { Component, createSignal, onMount, For } from 'solid-js';
-import { safeStorageGet, safeStorageSet } from '../../core/storage';
+import { safeStorageGet, safeStorageSet, lastStorageError } from '../../core/storage';
 import type { Strategy } from '../../types';
 
 const LANGUAGES = [
@@ -63,8 +63,11 @@ export const GeneralSettings: Component = () => {
     if (stored.autoTranslate !== undefined) setAutoTranslate(stored.autoTranslate);
   });
 
+  const [saveError, setSaveError] = createSignal<string | null>(null);
+
   const saveSettings = async () => {
     setSaving(true);
+    setSaveError(null);
     const success = await safeStorageSet({
       sourceLang: sourceLang(),
       targetLang: targetLang(),
@@ -76,6 +79,8 @@ export const GeneralSettings: Component = () => {
     if (success) {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+    } else {
+      setSaveError(lastStorageError || 'Failed to save settings. Please try again.');
     }
   };
 
@@ -188,6 +193,11 @@ export const GeneralSettings: Component = () => {
           )}
         </button>
       </div>
+      {saveError() && (
+        <div style={{ color: '#dc2626', "margin-top": "0.5rem", "font-size": "0.875rem" }}>
+          {saveError()}
+        </div>
+      )}
     </div>
   );
 };

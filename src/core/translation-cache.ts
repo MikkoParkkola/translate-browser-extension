@@ -134,6 +134,18 @@ export class TranslationCache {
         const store = transaction.objectStore(STORE_NAME);
         const request = store.get(key);
 
+        transaction.onerror = () => {
+          log.error(' Transaction error (get):', transaction.error);
+          this.misses++;
+          reject(transaction.error);
+        };
+
+        transaction.onabort = () => {
+          log.error(' Transaction aborted (get):', transaction.error);
+          this.misses++;
+          reject(transaction.error || new Error('Transaction aborted'));
+        };
+
         request.onerror = () => {
           this.misses++;
           reject(request.error);
@@ -197,6 +209,16 @@ export class TranslationCache {
         const store = transaction.objectStore(STORE_NAME);
         const request = store.put(entry);
 
+        transaction.onerror = () => {
+          log.error(' Transaction error (set):', transaction.error);
+          reject(transaction.error);
+        };
+
+        transaction.onabort = () => {
+          log.error(' Transaction aborted (set):', transaction.error);
+          reject(transaction.error || new Error('Transaction aborted'));
+        };
+
         request.onerror = () => {
           log.error(' Set error:', request.error);
           reject(request.error);
@@ -230,6 +252,16 @@ export class TranslationCache {
       const transaction = db.transaction(STORE_NAME, 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
       const index = store.index('timestamp');
+
+      transaction.onerror = () => {
+        log.error(' Transaction error (evict):', transaction.error);
+        reject(transaction.error);
+      };
+
+      transaction.onabort = () => {
+        log.error(' Transaction aborted (evict):', transaction.error);
+        reject(transaction.error || new Error('Transaction aborted'));
+      };
 
       // Cursor in ascending order (oldest first)
       const request = index.openCursor();
@@ -266,6 +298,16 @@ export class TranslationCache {
         const store = transaction.objectStore(STORE_NAME);
         const request = store.clear();
 
+        transaction.onerror = () => {
+          log.error(' Transaction error (clear):', transaction.error);
+          reject(transaction.error);
+        };
+
+        transaction.onabort = () => {
+          log.error(' Transaction aborted (clear):', transaction.error);
+          reject(transaction.error || new Error('Transaction aborted'));
+        };
+
         request.onerror = () => {
           reject(request.error);
         };
@@ -293,6 +335,16 @@ export class TranslationCache {
       return new Promise((resolve, reject) => {
         const transaction = db.transaction(STORE_NAME, 'readonly');
         const store = transaction.objectStore(STORE_NAME);
+
+        transaction.onerror = () => {
+          log.error(' Transaction error (stats):', transaction.error);
+          reject(transaction.error);
+        };
+
+        transaction.onabort = () => {
+          log.error(' Transaction aborted (stats):', transaction.error);
+          reject(transaction.error || new Error('Transaction aborted'));
+        };
 
         let entries = 0;
         let totalSize = 0;

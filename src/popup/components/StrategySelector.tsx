@@ -14,14 +14,15 @@ const STRATEGIES: Array<{ id: Strategy; label: string; title: string }> = [
 
 export const StrategySelector: Component<Props> = (props) => {
   return (
-    <section class="strategy-section">
-      <div class="strategy-buttons">
+    <section class="strategy-section" aria-label="Translation strategy">
+      <div class="strategy-buttons" role="group" aria-label="Strategy selection">
         <For each={STRATEGIES}>
           {(strategy) => (
             <button
               class={`strategy-button ${props.selected === strategy.id ? 'active' : ''}`}
               data-strategy={strategy.id}
               title={strategy.title}
+              aria-pressed={props.selected === strategy.id}
               onClick={() => props.onChange(strategy.id)}
             >
               {strategy.label}

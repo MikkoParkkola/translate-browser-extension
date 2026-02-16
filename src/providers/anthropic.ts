@@ -7,40 +7,11 @@
 import { BaseProvider } from './base-provider';
 import { createTranslationError } from '../core/errors';
 import { handleProviderHttpError } from '../core/http-errors';
+import { getLanguageName, getAllLanguageCodes } from '../core/language-map';
+import { CONFIG } from '../config';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
-
-// Language names for prompts
-const LANGUAGE_NAMES: Record<string, string> = {
-  en: 'English',
-  de: 'German',
-  fr: 'French',
-  es: 'Spanish',
-  it: 'Italian',
-  nl: 'Dutch',
-  pl: 'Polish',
-  ru: 'Russian',
-  ja: 'Japanese',
-  zh: 'Chinese',
-  ko: 'Korean',
-  pt: 'Portuguese',
-  ar: 'Arabic',
-  hi: 'Hindi',
-  fi: 'Finnish',
-  sv: 'Swedish',
-  da: 'Danish',
-  no: 'Norwegian',
-  cs: 'Czech',
-  el: 'Greek',
-  he: 'Hebrew',
-  hu: 'Hungarian',
-  id: 'Indonesian',
-  th: 'Thai',
-  tr: 'Turkish',
-  uk: 'Ukrainian',
-  vi: 'Vietnamese',
-};
 
 export type ClaudeFormality = 'formal' | 'informal' | 'neutral';
 export type ClaudeModel = 'claude-sonnet-4-20250514' | 'claude-3-5-haiku-20241022' | 'claude-3-5-sonnet-20241022';
@@ -159,15 +130,15 @@ export class AnthropicProvider extends BaseProvider {
   /**
    * Get language name for prompts
    */
-  private getLanguageName(code: string): string {
-    return LANGUAGE_NAMES[code.toLowerCase()] || code;
+  private getLangName(code: string): string {
+    return getLanguageName(code);
   }
 
   /**
    * Build translation system prompt with formality
    */
   private buildSystemPrompt(targetLang: string, formality: ClaudeFormality): string {
-    const langName = this.getLanguageName(targetLang);
+    const langName = this.getLangName(targetLang);
     let formalityInst = '';
 
     switch (formality) {
@@ -215,7 +186,7 @@ Rules:
 
     // Add source language hint if known
     if (sourceLang !== 'auto') {
-      userContent = `[Source language: ${this.getLanguageName(sourceLang)}]\n\n${userContent}`;
+      userContent = `[Source language: ${this.getLangName(sourceLang)}]\n\n${userContent}`;
     }
 
     const systemPrompt = this.buildSystemPrompt(targetLang, this.config.formality);
@@ -236,10 +207,11 @@ Rules:
             { role: 'user', content: userContent },
           ],
         }),
+        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
+        const errorText = await response.text().catch((e) => { console.warn('[Anthropic] Failed to read error body:', e); return ''; });
         const httpError = handleProviderHttpError(
           response.status,
           'Anthropic',
@@ -254,7 +226,7 @@ Rules:
       // Track token usage
       if (data.usage) {
         this.totalTokensUsed += data.usage.input_tokens + data.usage.output_tokens;
-        chrome.storage.local.set({ anthropic_tokens_used: this.totalTokensUsed }).catch(() => {});
+        chrome.storage.local.set({ anthropic_tokens_used: this.totalTokensUsed }).catch((e) => console.warn('[Anthropic] Failed to persist token usage:', e));
       }
 
       const translated = data.content[0]?.text?.trim() || '';
@@ -311,6 +283,7 @@ Rules:
             { role: 'user', content: text.slice(0, 200) },
           ],
         }),
+        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });
 
       if (response.ok) {
@@ -369,7 +342,7 @@ Rules:
    * Claude supports translation between most languages
    */
   getSupportedLanguages(): LanguagePair[] {
-    const languages = Object.keys(LANGUAGE_NAMES);
+    const languages = getAllLanguageCodes();
     const pairs: LanguagePair[] = [];
     for (const src of languages) {
       for (const tgt of languages) {

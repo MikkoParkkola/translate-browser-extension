@@ -515,43 +515,243 @@ describe('Translation Result Handling', () => {
 });
 
 describe('WebGPU Detection Logic', () => {
-  async function detectWebGPU(navigatorGpu: unknown): Promise<boolean> {
-    if (!navigatorGpu) return false;
+  // Mirrors the upgraded detectWebGPU in offscreen.ts that returns {supported, fp16}
+  async function detectWebGPU(navigatorGpu: unknown): Promise<{ supported: boolean; fp16: boolean }> {
+    if (!navigatorGpu) return { supported: false, fp16: false };
     try {
-      const gpu = navigatorGpu as { requestAdapter: () => Promise<unknown> };
+      const gpu = navigatorGpu as { requestAdapter: () => Promise<{ features: { has: (f: string) => boolean } } | null> };
       const adapter = await gpu.requestAdapter();
-      return adapter !== null;
+      if (!adapter) return { supported: false, fp16: false };
+      const fp16 = adapter.features.has('shader-f16');
+      return { supported: true, fp16 };
     } catch {
-      return false;
+      return { supported: false, fp16: false };
     }
   }
 
-  it('returns false when navigator.gpu is undefined', async () => {
-    expect(await detectWebGPU(undefined)).toBe(false);
+  it('returns {supported: false, fp16: false} when navigator.gpu is undefined', async () => {
+    expect(await detectWebGPU(undefined)).toEqual({ supported: false, fp16: false });
   });
 
-  it('returns false when navigator.gpu is null', async () => {
-    expect(await detectWebGPU(null)).toBe(false);
+  it('returns {supported: false, fp16: false} when navigator.gpu is null', async () => {
+    expect(await detectWebGPU(null)).toEqual({ supported: false, fp16: false });
   });
 
-  it('returns false when adapter is null', async () => {
+  it('returns {supported: false, fp16: false} when adapter is null', async () => {
     const mockGpu = {
       requestAdapter: vi.fn().mockResolvedValue(null),
     };
-    expect(await detectWebGPU(mockGpu)).toBe(false);
+    expect(await detectWebGPU(mockGpu)).toEqual({ supported: false, fp16: false });
   });
 
-  it('returns true when adapter is available', async () => {
+  it('returns {supported: true, fp16: true} when adapter supports shader-f16', async () => {
     const mockGpu = {
-      requestAdapter: vi.fn().mockResolvedValue({ some: 'adapter' }),
+      requestAdapter: vi.fn().mockResolvedValue({
+        features: { has: (f: string) => f === 'shader-f16' },
+      }),
     };
-    expect(await detectWebGPU(mockGpu)).toBe(true);
+    expect(await detectWebGPU(mockGpu)).toEqual({ supported: true, fp16: true });
   });
 
-  it('returns false when requestAdapter throws', async () => {
+  it('returns {supported: true, fp16: false} when adapter lacks shader-f16', async () => {
+    const mockGpu = {
+      requestAdapter: vi.fn().mockResolvedValue({
+        features: { has: () => false },
+      }),
+    };
+    expect(await detectWebGPU(mockGpu)).toEqual({ supported: true, fp16: false });
+  });
+
+  it('returns {supported: false, fp16: false} when requestAdapter throws', async () => {
     const mockGpu = {
       requestAdapter: vi.fn().mockRejectedValue(new Error('WebGPU error')),
     };
-    expect(await detectWebGPU(mockGpu)).toBe(false);
+    expect(await detectWebGPU(mockGpu)).toEqual({ supported: false, fp16: false });
+  });
+});
+
+describe('OPUS-MT dtype auto-detection', () => {
+  // Xenova/Helsinki-NLP ONNX models ship with _quantized (q8) and _fp16 variants.
+  // Auto-detect optimal dtype based on WebGPU + shader-f16 capability.
+
+  // Replicate the selectOpusMtDtype logic from offscreen.ts
+  function selectOpusMtDtype(webgpu: { supported: boolean; fp16: boolean }): string {
+    if (webgpu.supported && webgpu.fp16) return 'fp16';
+    return 'q8';
+  }
+
+  it('uses fp16 when WebGPU + shader-f16 is available', () => {
+    expect(selectOpusMtDtype({ supported: true, fp16: true })).toBe('fp16');
+  });
+
+  it('uses q8 when WebGPU is available but shader-f16 is not', () => {
+    expect(selectOpusMtDtype({ supported: true, fp16: false })).toBe('q8');
+  });
+
+  it('uses q8 when WASM fallback (no WebGPU)', () => {
+    expect(selectOpusMtDtype({ supported: false, fp16: false })).toBe('q8');
+  });
+
+  it('does NOT use fp32 in any scenario (wasteful ~170MB)', () => {
+    const scenarios: Array<{ supported: boolean; fp16: boolean }> = [
+      { supported: true, fp16: true },
+      { supported: true, fp16: false },
+      { supported: false, fp16: false },
+    ];
+    for (const scenario of scenarios) {
+      expect(selectOpusMtDtype(scenario)).not.toBe('fp32');
+    }
+  });
+
+  it('does NOT use q4/q4f16 for OPUS-MT (those are for TranslateGemma)', () => {
+    const dtype = selectOpusMtDtype({ supported: true, fp16: true });
+    expect(dtype).not.toBe('q4');
+    expect(dtype).not.toBe('q4f16');
+  });
+});
+
+describe('OPUS-MT WebGPU fallback logic', () => {
+  // If WebGPU fails (GPU incompatibility), fall back to WASM + q8
+  // This tests the fallback strategy used in offscreen.ts getPipeline()
+
+  interface PipelineConfig {
+    device: 'webgpu' | 'wasm';
+    dtype: string;
+  }
+
+  function selectOpusMtDtype(webgpu: { supported: boolean; fp16: boolean }): string {
+    if (webgpu.supported && webgpu.fp16) return 'fp16';
+    return 'q8';
+  }
+
+  function getPipelineConfig(webgpu: { supported: boolean; fp16: boolean }): PipelineConfig {
+    return {
+      device: webgpu.supported ? 'webgpu' : 'wasm',
+      dtype: selectOpusMtDtype(webgpu),
+    };
+  }
+
+  function getFallbackConfig(): PipelineConfig {
+    return { device: 'wasm', dtype: 'q8' };
+  }
+
+  it('uses WebGPU+fp16 when shader-f16 supported', () => {
+    const config = getPipelineConfig({ supported: true, fp16: true });
+    expect(config.device).toBe('webgpu');
+    expect(config.dtype).toBe('fp16');
+  });
+
+  it('uses WebGPU+q8 when no shader-f16', () => {
+    const config = getPipelineConfig({ supported: true, fp16: false });
+    expect(config.device).toBe('webgpu');
+    expect(config.dtype).toBe('q8');
+  });
+
+  it('uses WASM+q8 when WebGPU not supported', () => {
+    const config = getPipelineConfig({ supported: false, fp16: false });
+    expect(config.device).toBe('wasm');
+    expect(config.dtype).toBe('q8');
+  });
+
+  it('fallback always uses WASM + q8', () => {
+    const fallback = getFallbackConfig();
+    expect(fallback.device).toBe('wasm');
+    expect(fallback.dtype).toBe('q8');
+  });
+
+  it('fallback uses q8 matching the WASM primary path', () => {
+    const primary = getPipelineConfig({ supported: false, fp16: false });
+    const fallback = getFallbackConfig();
+    expect(primary.dtype).toBe(fallback.dtype);
+    expect(primary.dtype).toBe('q8');
+  });
+});
+
+describe('Provider routing in offscreen document', () => {
+  // Test that the offscreen message handler routes to the correct provider
+
+  type ProviderId = 'opus-mt' | 'translategemma' | 'chrome-builtin' | 'deepl' | 'openai' | 'anthropic' | 'google-cloud';
+
+  function classifyProvider(provider: ProviderId): 'local-opusmt' | 'local-gemma' | 'local-chrome' | 'cloud' {
+    if (provider === 'opus-mt') return 'local-opusmt';
+    if (provider === 'translategemma') return 'local-gemma';
+    if (provider === 'chrome-builtin') return 'local-chrome';
+    return 'cloud';
+  }
+
+  describe('local provider classification', () => {
+    it('classifies opus-mt as local-opusmt', () => {
+      expect(classifyProvider('opus-mt')).toBe('local-opusmt');
+    });
+
+    it('classifies translategemma as local-gemma', () => {
+      expect(classifyProvider('translategemma')).toBe('local-gemma');
+    });
+
+    it('classifies chrome-builtin as local-chrome', () => {
+      expect(classifyProvider('chrome-builtin')).toBe('local-chrome');
+    });
+  });
+
+  describe('cloud provider classification', () => {
+    it.each([
+      'deepl', 'openai', 'anthropic', 'google-cloud',
+    ] as ProviderId[])('classifies %s as cloud', (provider) => {
+      expect(classifyProvider(provider)).toBe('cloud');
+    });
+  });
+
+  describe('default provider', () => {
+    it('opus-mt is the default provider when none specified', () => {
+      // This mirrors the offscreen.ts translate() default parameter
+      const defaultProvider: ProviderId = 'opus-mt';
+      expect(classifyProvider(defaultProvider)).toBe('local-opusmt');
+    });
+  });
+});
+
+describe('withTimeout utility', () => {
+  // Replicate the withTimeout function from offscreen.ts
+  function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Timeout: ${message} (${ms / 1000}s)`)), ms);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+      if (timer !== undefined) clearTimeout(timer);
+    });
+  }
+
+  it('resolves when promise resolves before timeout', async () => {
+    const result = await withTimeout(
+      Promise.resolve('ok'),
+      1000,
+      'test'
+    );
+    expect(result).toBe('ok');
+  });
+
+  it('rejects with timeout error when promise takes too long', async () => {
+    const neverResolves = new Promise<string>(() => { /* intentionally never resolves */ });
+    await expect(
+      withTimeout(neverResolves, 50, 'slow operation')
+    ).rejects.toThrow('Timeout: slow operation (0.05s)');
+  });
+
+  it('includes duration in timeout error message', async () => {
+    const neverResolves = new Promise<string>(() => {});
+    try {
+      await withTimeout(neverResolves, 100, 'test op');
+    } catch (error) {
+      expect((error as Error).message).toContain('0.1s');
+      expect((error as Error).message).toContain('test op');
+    }
+  });
+
+  it('rejects with original error when promise rejects before timeout', async () => {
+    const failingPromise = Promise.reject(new Error('original error'));
+    await expect(
+      withTimeout(failingPromise, 1000, 'test')
+    ).rejects.toThrow('original error');
   });
 });

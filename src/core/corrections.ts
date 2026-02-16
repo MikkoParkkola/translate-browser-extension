@@ -179,7 +179,7 @@ export async function getCorrection(
     correction.useCount++;
     correction.timestamp = Date.now();
     // Save async - don't block on this
-    saveCorrections().catch(() => {});
+    saveCorrections().catch((e) => { log.warn('Failed to persist correction update:', e); });
     log.debug(`Using saved correction (${correction.useCount}x): "${original.substring(0, 30)}..."`);
     return correction.userCorrection;
   }

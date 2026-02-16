@@ -25,7 +25,7 @@ const LANGUAGES = [
 
 export const LanguageSelector: Component<Props> = (props) => {
   return (
-    <section class="language-section">
+    <section class="language-section" aria-label="Language selection">
       <div class="language-inputs">
         <div class="language-group">
           <div class="select-wrapper">

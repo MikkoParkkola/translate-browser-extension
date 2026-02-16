@@ -7,24 +7,11 @@
 import { BaseProvider } from './base-provider';
 import { createTranslationError } from '../core/errors';
 import { handleProviderHttpError } from '../core/http-errors';
+import { getAllLanguageCodes } from '../core/language-map';
+import { CONFIG } from '../config';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 const GOOGLE_TRANSLATE_API = 'https://translation.googleapis.com/language/translate/v2';
-
-// Supported languages for Google Cloud Translation v2
-const SUPPORTED_LANGUAGES = [
-  'af', 'sq', 'am', 'ar', 'hy', 'az', 'eu', 'be', 'bn', 'bs',
-  'bg', 'ca', 'ceb', 'zh', 'co', 'hr', 'cs', 'da', 'nl', 'en',
-  'eo', 'et', 'fi', 'fr', 'fy', 'gl', 'ka', 'de', 'el', 'gu',
-  'ht', 'ha', 'haw', 'he', 'hi', 'hmn', 'hu', 'is', 'ig', 'id',
-  'ga', 'it', 'ja', 'jv', 'kn', 'kk', 'km', 'rw', 'ko', 'ku',
-  'ky', 'lo', 'la', 'lv', 'lt', 'lb', 'mk', 'mg', 'ms', 'ml',
-  'mt', 'mi', 'mr', 'mn', 'my', 'ne', 'no', 'ny', 'or', 'ps',
-  'fa', 'pl', 'pt', 'pa', 'ro', 'ru', 'sm', 'gd', 'sr', 'st',
-  'sn', 'sd', 'si', 'sk', 'sl', 'so', 'es', 'su', 'sw', 'sv',
-  'tl', 'tg', 'ta', 'tt', 'te', 'th', 'tr', 'tk', 'uk', 'ur',
-  'ug', 'uz', 'vi', 'cy', 'xh', 'yi', 'yo', 'zu',
-];
 
 export interface GoogleCloudConfig {
   apiKey: string;
@@ -137,10 +124,11 @@ export class GoogleCloudProvider extends BaseProvider {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
+        const errorText = await response.text().catch((e) => { console.warn('[GoogleCloud] Failed to read error body:', e); return ''; });
         const httpError = handleProviderHttpError(
           response.status,
           'Google Cloud',
@@ -155,7 +143,7 @@ export class GoogleCloudProvider extends BaseProvider {
       // Track character usage
       const charsUsed = texts.reduce((sum, t) => sum + t.length, 0);
       this.charactersUsed += charsUsed;
-      chrome.storage.local.set({ google_cloud_chars_used: this.charactersUsed }).catch(() => {});
+      chrome.storage.local.set({ google_cloud_chars_used: this.charactersUsed }).catch((e) => console.warn('[GoogleCloud] Failed to persist char usage:', e));
 
       const results = data.data.translations.map(t => t.translatedText);
       return isArray ? results : results[0];
@@ -185,6 +173,7 @@ export class GoogleCloudProvider extends BaseProvider {
         body: JSON.stringify({
           q: text.slice(0, 200), // Use small sample
         }),
+        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });
 
       if (response.ok) {
@@ -235,9 +224,10 @@ export class GoogleCloudProvider extends BaseProvider {
    * Google Cloud supports translation between most language pairs
    */
   getSupportedLanguages(): LanguagePair[] {
+    const languages = getAllLanguageCodes();
     const pairs: LanguagePair[] = [];
-    for (const src of SUPPORTED_LANGUAGES) {
-      for (const tgt of SUPPORTED_LANGUAGES) {
+    for (const src of languages) {
+      for (const tgt of languages) {
         if (src !== tgt) {
           pairs.push({ src, tgt });
         }

@@ -356,8 +356,8 @@ describe('GoogleCloudProvider', () => {
     it('returns extensive language pair combinations', () => {
       const pairs = provider.getSupportedLanguages();
 
-      // Google supports 100+ languages, so many pairs
-      expect(pairs.length).toBeGreaterThan(5000);
+      // Uses centralized language map (~35 languages = ~1190 pairs)
+      expect(pairs.length).toBeGreaterThan(500);
 
       for (const pair of pairs) {
         expect(pair.src).not.toBe(pair.tgt);

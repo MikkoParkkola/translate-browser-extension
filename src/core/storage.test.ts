@@ -23,7 +23,7 @@ vi.mock('./browser-api', () => ({
   },
 }));
 
-import { safeStorageGet, safeStorageSet } from './storage';
+import { safeStorageGet, safeStorageSet, lastStorageError } from './storage';
 
 describe('safeStorageGet', () => {
   beforeEach(() => {
@@ -58,16 +58,16 @@ describe('safeStorageGet', () => {
     expect(result).toEqual({});
   });
 
-  it('logs warning on error', async () => {
-    const warnSpy = vi.spyOn(console, 'warn');
+  it('logs error on failure', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockStorage.local.get.mockRejectedValue(new Error('Quota exceeded'));
 
     await safeStorageGet('test');
 
-    expect(warnSpy).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       '[Storage]',
-      'Storage get failed:',
-      expect.any(Error)
+      'Storage get failed for keys [test]:',
+      'Quota exceeded'
     );
   });
 
@@ -104,16 +104,16 @@ describe('safeStorageSet', () => {
     expect(result).toBe(false);
   });
 
-  it('logs warning on error', async () => {
-    const warnSpy = vi.spyOn(console, 'warn');
+  it('logs error on failure', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockStorage.local.set.mockRejectedValue(new Error('Write failed'));
 
     await safeStorageSet({ key: 'val' });
 
-    expect(warnSpy).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       '[Storage]',
-      'Storage set failed:',
-      expect.any(Error)
+      'Storage set failed for keys [key]:',
+      'Write failed'
     );
   });
 
@@ -142,5 +142,53 @@ describe('safeStorageSet', () => {
 
     expect(result).toBe(true);
     expect(mockStorage.local.set).toHaveBeenCalledWith(items);
+  });
+});
+
+describe('lastStorageError', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  it('is null after successful get', async () => {
+    mockStorage.local.get.mockResolvedValue({ key: 'val' });
+    await safeStorageGet('key');
+    expect(lastStorageError).toBeNull();
+  });
+
+  it('contains descriptive message after failed get', async () => {
+    mockStorage.local.get.mockRejectedValue(new Error('Quota exceeded'));
+    await safeStorageGet('settings');
+    expect(lastStorageError).toContain('Failed to read settings');
+    expect(lastStorageError).toContain('settings');
+    expect(lastStorageError).toContain('Quota exceeded');
+  });
+
+  it('is null after successful set', async () => {
+    mockStorage.local.set.mockResolvedValue(undefined);
+    await safeStorageSet({ key: 'val' });
+    expect(lastStorageError).toBeNull();
+  });
+
+  it('contains descriptive message after failed set', async () => {
+    mockStorage.local.set.mockRejectedValue(new Error('Disk full'));
+    await safeStorageSet({ theme: 'dark' });
+    expect(lastStorageError).toContain('Failed to save settings');
+    expect(lastStorageError).toContain('theme');
+    expect(lastStorageError).toContain('Disk full');
+  });
+
+  it('is cleared on subsequent success', async () => {
+    // First: fail
+    mockStorage.local.get.mockRejectedValue(new Error('Fail'));
+    await safeStorageGet('key');
+    expect(lastStorageError).not.toBeNull();
+
+    // Then: succeed
+    mockStorage.local.get.mockResolvedValue({});
+    await safeStorageGet('key');
+    expect(lastStorageError).toBeNull();
   });
 });

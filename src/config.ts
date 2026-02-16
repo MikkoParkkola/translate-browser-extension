@@ -31,6 +31,8 @@ export const CONFIG = {
     modelLoadMs: 2 * 60 * 1000,
     /** Offscreen document communication timeout */
     offscreenMs: 2 * 60 * 1000,
+    /** Cloud API fetch timeout (30s for DeepL, OpenAI, etc.) */
+    cloudApiMs: 30 * 1000,
   },
 
   /**

@@ -8,6 +8,7 @@ import { BaseProvider } from './base-provider';
 import { createTranslationError } from '../core/errors';
 import { handleProviderHttpError } from '../core/http-errors';
 import { toDeepLCode, getDeepLSupportedLanguages } from '../core/language-map';
+import { CONFIG } from '../config';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 // DeepL API endpoints
@@ -155,10 +156,11 @@ export class DeepLProvider extends BaseProvider {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
+        const errorText = await response.text().catch((e) => { console.warn('[DeepL] Failed to read error body:', e); return ''; });
         const httpError = handleProviderHttpError(
           response.status,
           'DeepL',
@@ -197,6 +199,7 @@ export class DeepLProvider extends BaseProvider {
           text: [text.slice(0, 100)], // Use small sample
           target_lang: 'EN',
         }),
+        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });
 
       if (response.ok) {
@@ -248,6 +251,7 @@ export class DeepLProvider extends BaseProvider {
         headers: {
           'Authorization': `DeepL-Auth-Key ${this.config.apiKey}`,
         },
+        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });
 
       if (response.ok) {

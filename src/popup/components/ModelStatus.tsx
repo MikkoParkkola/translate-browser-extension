@@ -31,7 +31,7 @@ function getEstimatedSize(): string {
 export const ModelStatus: Component<Props> = (props) => {
   return (
     <Show when={props.isLoading || props.isCached}>
-      <div class="model-status">
+      <div class="model-status" role="status" aria-live="polite">
         <Show when={props.isLoading}>
           <div class="model-loading">
             <div class="model-loading-header">
@@ -52,13 +52,20 @@ export const ModelStatus: Component<Props> = (props) => {
               </span>
             </div>
             <div class="model-progress-container">
-              <div class="model-progress-bar">
+              <div
+                class="model-progress-bar"
+                role="progressbar"
+                aria-valuenow={Math.round(props.progress)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`Model download progress: ${Math.round(props.progress)}%`}
+              >
                 <div
                   class="model-progress-fill"
                   style={{ width: `${props.progress}%` }}
                 />
               </div>
-              <span class="model-progress-percent">{Math.round(props.progress)}%</span>
+              <span class="model-progress-percent" aria-hidden="true">{Math.round(props.progress)}%</span>
             </div>
             <Show when={props.currentFile}>
               <div class="model-file-info">

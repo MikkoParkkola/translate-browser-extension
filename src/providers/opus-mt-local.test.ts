@@ -225,6 +225,124 @@ describe('OpusMTProvider', () => {
     });
   });
 
+  describe('dtype auto-detection', () => {
+    it('uses fp16 when WebGPU + shader-f16 is available', async () => {
+      const mockFactory = vi.fn().mockResolvedValue(
+        vi.fn().mockResolvedValue([{ translation_text: 'testi' }])
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).pipelineFactory = mockFactory;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).isInitialized = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).webgpuSupported = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).webgpuFp16 = true;
+
+      await provider.translate('test', 'en', 'fi');
+
+      expect(mockFactory).toHaveBeenCalledWith(
+        'translation',
+        expect.any(String),
+        expect.objectContaining({ device: 'webgpu', dtype: 'fp16' })
+      );
+    });
+
+    it('uses q8 when WebGPU is available but shader-f16 is not', async () => {
+      const mockFactory = vi.fn().mockResolvedValue(
+        vi.fn().mockResolvedValue([{ translation_text: 'testi' }])
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).pipelineFactory = mockFactory;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).isInitialized = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).pipelines.clear();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).webgpuSupported = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).webgpuFp16 = false;
+
+      await provider.translate('test', 'en', 'fi');
+
+      expect(mockFactory).toHaveBeenCalledWith(
+        'translation',
+        expect.any(String),
+        expect.objectContaining({ device: 'webgpu', dtype: 'q8' })
+      );
+    });
+
+    it('uses q8 when WASM fallback (no WebGPU)', async () => {
+      const mockFactory = vi.fn().mockResolvedValue(
+        vi.fn().mockResolvedValue([{ translation_text: 'testi' }])
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).pipelineFactory = mockFactory;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).isInitialized = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).pipelines.clear();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).webgpuSupported = false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).webgpuFp16 = false;
+
+      await provider.translate('test', 'en', 'fi');
+
+      expect(mockFactory).toHaveBeenCalledWith(
+        'translation',
+        expect.any(String),
+        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
+      );
+    });
+
+    it('never uses fp32 (wasteful ~170MB per model)', async () => {
+      const mockFactory = vi.fn().mockResolvedValue(
+        vi.fn().mockResolvedValue([{ translation_text: 'testi' }])
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).pipelineFactory = mockFactory;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).isInitialized = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).webgpuSupported = false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).webgpuFp16 = false;
+
+      await provider.translate('test', 'en', 'fi');
+
+      const calledDtype = mockFactory.mock.calls[0][2].dtype;
+      expect(calledDtype).not.toBe('fp32');
+    });
+
+    it('never uses q4/q4f16 (those are for TranslateGemma)', async () => {
+      const mockFactory = vi.fn().mockResolvedValue(
+        vi.fn().mockResolvedValue([{ translation_text: 'testi' }])
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).pipelineFactory = mockFactory;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).isInitialized = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).webgpuSupported = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).webgpuFp16 = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).pipelines.clear();
+
+      await provider.translate('test', 'en', 'fi');
+
+      const calledDtype = mockFactory.mock.calls[0][2].dtype;
+      expect(calledDtype).not.toBe('q4');
+      expect(calledDtype).not.toBe('q4f16');
+    });
+  });
+
   describe('getInfo', () => {
     it('returns extended info with device status', async () => {
       const info = provider.getInfo();

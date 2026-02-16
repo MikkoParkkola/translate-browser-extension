@@ -337,3 +337,112 @@ describe('prompt template validation', () => {
     expect(lines[lines.length - 2]).toBe('<start_of_turn>model');
   });
 });
+
+/**
+ * TranslateGemma dtype auto-detection tests.
+ *
+ * The model was exported from fp16 weights with q4 quantization.
+ * - q4f16: int4 quantized weights + fp16 compute (requires shader-f16)
+ * - q4:    int4 quantized weights + fp32 compute (fallback)
+ *
+ * Using the wrong dtype causes ONNX Mul node type mismatch:
+ * "Unexpected input data type. Actual: (tensor(float)), expected: (tensor(float16))"
+ *
+ * These tests verify the dtype selection logic matches GPU capabilities.
+ */
+describe('TranslateGemma dtype auto-detection', () => {
+  // Replicate the dtype selection logic from getTranslateGemmaPipeline
+  // to test it in isolation (the actual function requires WebGPU + model loading)
+  function selectDtype(gpuSupported: boolean, fp16: boolean): string {
+    if (!gpuSupported) {
+      throw new Error('TranslateGemma requires WebGPU');
+    }
+    return fp16 ? 'q4f16' : 'q4';
+  }
+
+  describe('dtype selection', () => {
+    it('selects q4f16 when GPU supports shader-f16', () => {
+      expect(selectDtype(true, true)).toBe('q4f16');
+    });
+
+    it('selects q4 when GPU does not support shader-f16', () => {
+      expect(selectDtype(true, false)).toBe('q4');
+    });
+
+    it('throws when WebGPU is not supported', () => {
+      expect(() => selectDtype(false, false)).toThrow('TranslateGemma requires WebGPU');
+    });
+
+    it('throws when WebGPU is not supported even with fp16 flag', () => {
+      expect(() => selectDtype(false, true)).toThrow('TranslateGemma requires WebGPU');
+    });
+  });
+
+  describe('dtype values are valid ONNX quantization types', () => {
+    it('q4f16 is the correct dtype for fp16 + 4-bit quantization', () => {
+      // q4f16 = int4 weights + fp16 compute = matches fp16 model export
+      const dtype = selectDtype(true, true);
+      expect(dtype).toBe('q4f16');
+      expect(dtype).not.toBe('q4'); // Must not fall back
+    });
+
+    it('q4 is the correct fallback for fp32 compute', () => {
+      // q4 = int4 weights + fp32 compute = safe for GPUs without shader-f16
+      const dtype = selectDtype(true, false);
+      expect(dtype).toBe('q4');
+      expect(dtype).not.toBe('q4f16'); // Must not use fp16 without support
+    });
+  });
+
+  describe('regression: ONNX float16/float32 mismatch', () => {
+    // Before the fix, dtype was hardcoded to 'q4' which caused:
+    // "Unexpected input data type. Actual: (tensor(float)), expected: (tensor(float16))"
+    // because the model's Constants were exported in float16 but computation used float32.
+
+    it('uses q4f16 on modern GPUs to match float16 Constants', () => {
+      // Modern GPUs with shader-f16 must use q4f16 to avoid type mismatch
+      const dtype = selectDtype(true, true);
+      expect(dtype).toBe('q4f16');
+    });
+
+    it('uses q4 on older GPUs that need float32 compute', () => {
+      // Older GPUs without shader-f16 use q4 which runs in float32
+      const dtype = selectDtype(true, false);
+      expect(dtype).toBe('q4');
+    });
+  });
+});
+
+describe('TRANSLATEGEMMA_MODEL constant', () => {
+  it('points to the correct ONNX quantized model repository', () => {
+    expect(TRANSLATEGEMMA_MODEL).toContain('translategemma');
+    expect(TRANSLATEGEMMA_MODEL).toContain('onnx');
+    expect(TRANSLATEGEMMA_MODEL).toContain('q4');
+    expect(TRANSLATEGEMMA_MODEL).toContain('webgpu');
+  });
+
+  it('is a valid HuggingFace model path', () => {
+    expect(TRANSLATEGEMMA_MODEL).toMatch(/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9._-]+$/);
+  });
+});
+
+describe('LANG_NAMES completeness', () => {
+  it('covers all OPUS-MT supported languages', () => {
+    // Languages that OPUS-MT supports should also be in LANG_NAMES
+    // so TranslateGemma can be used as a fallback for any pair
+    const opusMtLangs = ['en', 'fi', 'de', 'fr', 'es', 'it', 'nl', 'sv', 'da',
+      'ru', 'uk', 'cs', 'hu', 'ro', 'zh', 'ja', 'ko', 'vi', 'th', 'hi',
+      'id', 'ar', 'af', 'pl', 'tr', 'no', 'pt'];
+
+    for (const lang of opusMtLangs) {
+      expect(LANG_NAMES[lang]).toBeDefined();
+      expect(LANG_NAMES[lang].length).toBeGreaterThan(0);
+    }
+  });
+
+  it('has no duplicate language names', () => {
+    const names = Object.values(LANG_NAMES);
+    const uniqueNames = new Set(names);
+    expect(uniqueNames.size).toBe(names.length);
+  });
+});

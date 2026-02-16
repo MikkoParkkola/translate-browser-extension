@@ -41,6 +41,8 @@
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 
+  --color-surface: #ffffff;
+
   --transition-fast: 150ms ease;
   --transition-normal: 250ms ease;
 }
@@ -77,6 +79,8 @@
 
     --color-yellow-50: rgba(234, 179, 8, 0.15);
     --color-yellow-500: #fbbf24;
+
+    --color-surface: #1e293b;
 
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
@@ -177,7 +181,7 @@ html, body {
 
 /* ========== Header ========== */
 .options-header {
-  background: white;
+  background: var(--color-surface, white);
   border-bottom: 1px solid var(--color-gray-200);
   padding: 1rem 2rem;
   position: sticky;
@@ -276,7 +280,7 @@ html, body {
 
 /* ========== Footer ========== */
 .options-footer {
-  background: white;
+  background: var(--color-surface, white);
   border-top: 1px solid var(--color-gray-200);
   padding: 1rem 2rem;
   text-align: center;
@@ -300,7 +304,7 @@ html, body {
 
 /* ========== Section Card ========== */
 .settings-section {
-  background: white;
+  background: var(--color-surface, white);
   border-radius: var(--radius-xl);
   border: 1px solid var(--color-gray-200);
   padding: 1.5rem;
@@ -371,7 +375,7 @@ html, body {
   width: 100%;
   padding: 0.625rem 0.875rem;
   font-size: 0.875rem;
-  background: white;
+  background: var(--color-surface, white);
   border: 1px solid var(--color-gray-300);
   border-radius: var(--radius-md);
   color: var(--color-gray-900);
@@ -465,7 +469,7 @@ html, body {
   width: 18px;
   left: 3px;
   bottom: 3px;
-  background: white;
+  background: var(--color-surface, white);
   transition: var(--transition-fast);
   border-radius: 50%;
 }
@@ -870,7 +874,7 @@ input:checked + .toggle-slider:before {
 }
 
 .modal {
-  background: white;
+  background: var(--color-surface, white);
   border-radius: var(--radius-xl);
   width: 100%;
   max-width: 500px;

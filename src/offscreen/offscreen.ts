@@ -26,7 +26,13 @@ import { googleCloudProvider } from '../providers/google-cloud';
 // OCR service
 import { extractTextFromImage, terminateOCR, type OCRResult } from '../core/ocr-service';
 
+// Network status
+import { isOnline, isCloudProvider, initNetworkMonitoring } from '../core/network-status';
+
 const log = createLogger('Offscreen');
+
+// Initialize network monitoring in offscreen context
+initNetworkMonitoring();
 
 // Configure Transformers.js for Chrome extension environment
 env.allowRemoteModels = true;  // Models from HuggingFace Hub
@@ -57,16 +63,31 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 }
 
 /**
- * Check WebGPU support.
+ * Check WebGPU support and shader-f16 capability.
  */
-async function detectWebGPU(): Promise<boolean> {
-  if (!navigator.gpu) return false;
+async function detectWebGPU(): Promise<{ supported: boolean; fp16: boolean }> {
+  if (!navigator.gpu) return { supported: false, fp16: false };
   try {
     const adapter = await navigator.gpu.requestAdapter();
-    return adapter !== null;
+    if (!adapter) return { supported: false, fp16: false };
+    const fp16 = adapter.features.has('shader-f16');
+    return { supported: true, fp16 };
   } catch {
-    return false;
+    return { supported: false, fp16: false };
   }
+}
+
+/**
+ * Select optimal dtype for OPUS-MT models.
+ *
+ * Xenova/Helsinki-NLP ONNX models ship with _quantized (q8) and _fp16 variants.
+ * - WebGPU + shader-f16: 'fp16' (half size, native speed)
+ * - WebGPU without shader-f16: 'q8' (half size, good quality)
+ * - WASM fallback: 'q8' (Transformers.js default for WASM)
+ */
+function selectOpusMtDtype(webgpu: { supported: boolean; fp16: boolean }): string {
+  if (webgpu.supported && webgpu.fp16) return 'fp16';
+  return 'q8';
 }
 
 /**
@@ -95,14 +116,14 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   const loadStart = performance.now();
 
   const webgpu = await detectWebGPU();
-  const device = webgpu ? 'webgpu' : 'wasm';
-  // fp16 on WebGPU avoids the "unaligned accesses" ORT bug that fp32+WebGPU triggers.
-  // fp32 on WASM is safe and avoids q4f16 numeric errors noted previously.
-  const dtype = webgpu ? 'fp16' : 'fp32';
+  const device = webgpu.supported ? 'webgpu' : 'wasm';
+  // Auto-detect optimal dtype: fp16 (WebGPU+shader-f16), q8 (WebGPU or WASM)
+  // Xenova ONNX models ship with _quantized (q8) and _fp16 variants (~85MB vs ~170MB fp32).
+  const dtype = selectOpusMtDtype(webgpu);
   log.info(` Using device: ${device}, dtype: ${dtype}`);
 
-  // Use optimized timeout for OPUS-MT direct models (~170MB, typically loads in <60s)
-  // If WebGPU+fp16 fails (GPU incompatibility), fall back to WASM+fp32 automatically.
+  // Use optimized timeout for OPUS-MT direct models (~85MB quantized, typically loads in <30s)
+  // If WebGPU fails (GPU incompatibility), fall back to WASM+q8 automatically.
   let pipe;
   try {
     pipe = await withTimeout(
@@ -112,9 +133,9 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
     );
   } catch (err) {
     if (device === 'webgpu') {
-      log.warn(` WebGPU+fp16 failed, falling back to WASM: ${err instanceof Error ? err.message : err}`);
+      log.warn(` WebGPU failed, falling back to WASM+q8: ${err instanceof Error ? err.message : err}`);
       pipe = await withTimeout(
-        pipeline('translation', modelId, { device: 'wasm', dtype: 'fp32' } as Record<string, unknown>),
+        pipeline('translation', modelId, { device: 'wasm', dtype: 'q8' } as Record<string, unknown>),
         CONFIG.timeouts.opusMtDirectMs,
         `Loading model ${modelId} (WASM fallback)`
       );
@@ -153,11 +174,16 @@ async function translateDirect(
     if (text.length === 0) return [];
 
     const results = await Promise.all(
-      text.map(async (t) => {
+      text.map(async (t, i) => {
         if (!t || t.trim().length === 0) return t;
         try {
           const result = await pipe(t, { max_length: 512 });
-          return (result as Array<{ translation_text: string }>)[0].translation_text;
+          const translated = (result as Array<{ translation_text: string }>)[0].translation_text;
+          // Debug: log first 3 to verify model output
+          if (i < 3) {
+            console.log(`[Offscreen] Model #${i}: "${t.substring(0, 40)}" -> "${translated.substring(0, 40)}" (same=${t === translated})`);
+          }
+          return translated;
         } catch (err) {
           // Per-item error: return original text instead of crashing entire batch
           log.warn(` Translation failed for item (${t.substring(0, 30)}...):`, err);
@@ -236,7 +262,12 @@ async function translate(
 
       const cached = await cache.get(t, actualSourceLang, targetLang, provider);
       if (cached !== null) {
-        console.log(`[Offscreen] Cache hit for text ${i + 1}/${text.length}`);
+        // Identity translations (cached === original) are valid: OPUS-MT legitimately
+        // returns the original text for proper nouns, brand names, loanwords, etc.
+        // Serve them from cache to avoid repeated expensive model inference.
+        if (i < 3) {
+          console.log(`[Offscreen] Cache #${i}: "${t.substring(0, 30)}" -> "${cached.substring(0, 30)}"${cached === t ? ' (identity)' : ''}`);
+        }
         results[i] = cached;
       } else {
         uncachedItems.push({ index: i, text: t });
@@ -256,17 +287,32 @@ async function translate(
         pageContext
       );
 
-      // Store results and cache them
+      // Store results and cache them.
+      // Results are always returned to the user even if caching fails.
       const translationArray = Array.isArray(translations) ? translations : [translations];
+      let cacheFails = 0;
       for (let i = 0; i < uncachedItems.length; i++) {
         const { index, text: originalText } = uncachedItems[i];
         const translation = translationArray[i];
         results[index] = translation;
 
-        // Cache the translation (fire and forget)
-        cache.set(originalText, actualSourceLang, targetLang, provider, translation).catch((err) => {
-          log.warn(' Failed to cache translation:', err);
-        });
+        // Cache all translations including identity translations (output === input).
+        // OPUS-MT legitimately returns original text for proper nouns, brand names,
+        // loanwords, and short words. Caching these prevents repeated model inference.
+        try {
+          await cache.set(originalText, actualSourceLang, targetLang, provider, translation);
+        } catch (err) {
+          cacheFails++;
+          if (cacheFails <= 2) {
+            log.warn(`Failed to cache translation (${cacheFails}):`, err);
+          }
+        }
+        if (translation === originalText) {
+          log.debug(`Identity translation cached for "${originalText.substring(0, 30)}"`);
+        }
+      }
+      if (cacheFails > 2) {
+        log.warn(`Cache write failed for ${cacheFails}/${uncachedItems.length} items`);
       }
     }
 
@@ -288,29 +334,35 @@ async function translate(
   // Translate and cache
   const result = await translateWithProvider(text, actualSourceLang, targetLang, provider, sessionId, pageContext);
 
-  // Cache the translation (fire and forget)
+  // Cache the translation (best-effort, don't block response)
   const resultText = Array.isArray(result) ? result[0] : result;
-  cache.set(text, actualSourceLang, targetLang, provider, resultText).catch((err) => {
-    log.warn(' Failed to cache translation:', err);
-  });
+  try {
+    await cache.set(text, actualSourceLang, targetLang, provider, resultText);
+  } catch (err) {
+    log.warn('Failed to cache translation:', err);
+  }
 
   return result;
 }
 
 /**
- * Internal translation function that routes to the appropriate provider.
+ * Execute translation with a specific provider (no fallback).
  */
-async function translateWithProvider(
+async function executeProvider(
   text: string | string[],
   sourceLang: string,
   targetLang: string,
   provider: TranslationProviderId,
-  _sessionId?: string,
+  sessionId?: string,
   pageContext?: string
 ): Promise<string | string[]> {
+  // Fast-fail: reject cloud providers immediately when offline
+  if (isCloudProvider(provider) && !isOnline()) {
+    throw new Error(`${provider} unavailable: no network connection. Use a local model instead.`);
+  }
+
   // Chrome Built-in Translator (Chrome 138+)
   if (provider === 'chrome-builtin') {
-    console.log(`[Offscreen] Chrome Built-in translation: ${sourceLang} -> ${targetLang}`);
     const chromeTranslator = getChromeTranslator();
     if (!(await chromeTranslator.isAvailable())) {
       throw new Error('Chrome Translator API not available (requires Chrome 138+)');
@@ -320,13 +372,11 @@ async function translateWithProvider(
 
   // TranslateGemma: supports any-to-any translation with a single model
   if (provider === 'translategemma') {
-    console.log(`[Offscreen] TranslateGemma translation: ${sourceLang} -> ${targetLang}`);
     return translateWithGemma(text, sourceLang, targetLang, pageContext);
   }
 
   // DeepL Cloud Provider
   if (provider === 'deepl') {
-    console.log(`[Offscreen] DeepL translation: ${sourceLang} -> ${targetLang}`);
     await deeplProvider.initialize();
     if (!(await deeplProvider.isAvailable())) {
       throw new Error('DeepL API key not configured. Please configure in Settings.');
@@ -336,7 +386,6 @@ async function translateWithProvider(
 
   // OpenAI Cloud Provider
   if (provider === 'openai') {
-    console.log(`[Offscreen] OpenAI translation: ${sourceLang} -> ${targetLang}`);
     await openaiProvider.initialize();
     if (!(await openaiProvider.isAvailable())) {
       throw new Error('OpenAI API key not configured. Please configure in Settings.');
@@ -346,7 +395,6 @@ async function translateWithProvider(
 
   // Anthropic Cloud Provider
   if (provider === 'anthropic') {
-    console.log(`[Offscreen] Anthropic translation: ${sourceLang} -> ${targetLang}`);
     await anthropicProvider.initialize();
     if (!(await anthropicProvider.isAvailable())) {
       throw new Error('Anthropic API key not configured. Please configure in Settings.');
@@ -356,7 +404,6 @@ async function translateWithProvider(
 
   // Google Cloud Provider
   if (provider === 'google-cloud') {
-    console.log(`[Offscreen] Google Cloud translation: ${sourceLang} -> ${targetLang}`);
     await googleCloudProvider.initialize();
     if (!(await googleCloudProvider.isAvailable())) {
       throw new Error('Google Cloud API key not configured. Please configure in Settings.');
@@ -367,32 +414,110 @@ async function translateWithProvider(
   // OPUS-MT: check for direct model or pivot route
   const key = `${sourceLang}-${targetLang}`;
 
-  // Check if we have a direct model
   if (MODEL_MAP[key]) {
-    console.log(`[Offscreen] Direct translation: ${key}`);
-    return translateDirect(text, sourceLang, targetLang, _sessionId);
+    return translateDirect(text, sourceLang, targetLang, sessionId);
   }
 
-  // Check if we have a pivot route
   const pivotRoute = PIVOT_ROUTES[key];
   if (pivotRoute) {
     const [firstHop, secondHop] = pivotRoute;
     const [firstSrc, firstTgt] = firstHop.split('-');
     const [secondSrc, secondTgt] = secondHop.split('-');
 
-    console.log(`[Offscreen] Pivot translation: ${sourceLang} -> ${firstTgt} -> ${targetLang}`);
-
-    // First hop: source -> English
-    const intermediateResult = await translateDirect(text, firstSrc, firstTgt, _sessionId);
-
-    // Second hop: English -> target
-    const finalResult = await translateDirect(intermediateResult, secondSrc, secondTgt, _sessionId);
-
-    return finalResult;
+    log.info(`Pivot translation: ${sourceLang} -> ${firstTgt} -> ${targetLang}`);
+    const intermediateResult = await translateDirect(text, firstSrc, firstTgt, sessionId);
+    return translateDirect(intermediateResult, secondSrc, secondTgt, sessionId);
   }
 
-  // No route available
   throw new Error(`Unsupported language pair: ${key}`);
+}
+
+/**
+ * Determine fallback providers when the primary provider fails.
+ * Returns available fallback providers in priority order.
+ */
+async function getFallbackProviders(
+  primary: TranslationProviderId
+): Promise<TranslationProviderId[]> {
+  const fallbacks: TranslationProviderId[] = [];
+
+  // Local models as fallbacks (free, no API key needed)
+  if (primary !== 'opus-mt') fallbacks.push('opus-mt');
+  if (primary !== 'chrome-builtin') {
+    try {
+      if (await isChromeTranslatorAvailable()) fallbacks.push('chrome-builtin');
+    } catch { /* not available */ }
+  }
+
+  // Cloud providers as fallbacks (skip entirely when offline)
+  if (isOnline()) {
+    const cloudProviders: Array<{ id: TranslationProviderId; provider: typeof deeplProvider }> = [
+      { id: 'deepl', provider: deeplProvider },
+      { id: 'openai', provider: openaiProvider },
+      { id: 'anthropic', provider: anthropicProvider },
+      { id: 'google-cloud', provider: googleCloudProvider },
+    ];
+
+    for (const { id, provider } of cloudProviders) {
+      if (id !== primary) {
+        try {
+          await provider.initialize();
+          if (await provider.isAvailable()) fallbacks.push(id);
+        } catch { /* not available */ }
+      }
+    }
+  } else {
+    log.info('Offline: skipping cloud provider fallbacks');
+  }
+
+  return fallbacks;
+}
+
+/**
+ * Internal translation function that routes to the appropriate provider.
+ * On failure, attempts fallback providers before giving up.
+ */
+async function translateWithProvider(
+  text: string | string[],
+  sourceLang: string,
+  targetLang: string,
+  provider: TranslationProviderId,
+  _sessionId?: string,
+  pageContext?: string
+): Promise<string | string[]> {
+  log.info(`${provider} translation: ${sourceLang} -> ${targetLang}`);
+
+  try {
+    return await executeProvider(text, sourceLang, targetLang, provider, _sessionId, pageContext);
+  } catch (primaryError) {
+    const errorMsg = primaryError instanceof Error ? primaryError.message : String(primaryError);
+
+    // Don't fallback for configuration errors (user needs to fix settings)
+    if (errorMsg.includes('not configured') || errorMsg.includes('API key')) {
+      throw primaryError;
+    }
+
+    log.warn(`Primary provider ${provider} failed: ${errorMsg}. Trying fallbacks...`);
+
+    const fallbacks = await getFallbackProviders(provider);
+    if (fallbacks.length === 0) {
+      throw primaryError; // No fallbacks available
+    }
+
+    for (const fallback of fallbacks) {
+      try {
+        log.info(`Fallback attempt: ${fallback}`);
+        const result = await executeProvider(text, sourceLang, targetLang, fallback, _sessionId, pageContext);
+        log.info(`Fallback ${fallback} succeeded`);
+        return result;
+      } catch (fallbackError) {
+        log.warn(`Fallback ${fallback} also failed: ${fallbackError instanceof Error ? fallbackError.message : fallbackError}`);
+      }
+    }
+
+    // All fallbacks exhausted — throw original error with context
+    throw new Error(`Translation failed (${provider} + ${fallbacks.length} fallbacks): ${errorMsg}`);
+  }
 }
 
 /**

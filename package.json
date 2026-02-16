@@ -14,8 +14,8 @@
     "e2e": "npm run test:e2e",
     "postinstall": "bash scripts/fetch-wasm-assets.sh",
     "clean": "rimraf dist",
-    "build": "rimraf dist && copyfiles -u 1 \"src/**/*\" dist",
-    "build:fast": "rimraf dist && copyfiles -u 1 \"src/**/*\" dist",
+    "build": "vite build && vite build --config vite.pdfjs.config.ts && cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs dist/chunks/pdf.worker.min.mjs && vite build --config vite.content.config.ts",
+    "build:fast": "vite build && vite build --config vite.content.config.ts",
     "zip": "bestzip dist/translate-by-mikko-v$npm_package_version.zip dist/*",
     "build:zip": "npm run build && npm run zip",
     "serve": "http-server dist -p 8080",
@@ -108,12 +108,18 @@
     "prettier": "^3.3.2",
     "rimraf": "^6.0.1",
     "size-limit": "^11.1.5",
+    "vitest": "^4.0.18",
     "webpack": "^5.95.0",
     "webpack-bundle-analyzer": "^4.10.0"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
     "@wllama/wllama": "^2.3.7",
+    "franc-min": "^6.2.0",
     "mupdf": "^1.26.4",
-    "pdfjs-dist": "^5.4.54"
+    "pdfjs-dist": "^5.4.54",
+    "tesseract.js": "^7.0.0",
+    "vite": "^7.3.1",
+    "vite-plugin-solid": "^2.11.10"
   }
 }

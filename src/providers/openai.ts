@@ -8,6 +8,7 @@ import { BaseProvider } from './base-provider';
 import { createTranslationError } from '../core/errors';
 import { handleProviderHttpError } from '../core/http-errors';
 import { getLanguageName, getAllLanguageCodes } from '../core/language-map';
+import { CONFIG } from '../config';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 const OPENAI_API = 'https://api.openai.com/v1/chat/completions';
@@ -204,10 +205,11 @@ export class OpenAIProvider extends BaseProvider {
           temperature: this.config.temperature,
           max_tokens: Math.min(4096, texts.join('').length * 2 + 500),
         }),
+        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
+        const errorText = await response.text().catch((e) => { console.warn('[OpenAI] Failed to read error body:', e); return ''; });
         const httpError = handleProviderHttpError(
           response.status,
           'OpenAI',
@@ -222,7 +224,7 @@ export class OpenAIProvider extends BaseProvider {
       // Track token usage
       if (data.usage) {
         this.totalTokensUsed += data.usage.total_tokens;
-        chrome.storage.local.set({ openai_tokens_used: this.totalTokensUsed }).catch(() => {});
+        chrome.storage.local.set({ openai_tokens_used: this.totalTokensUsed }).catch((e) => console.warn('[OpenAI] Failed to persist token usage:', e));
       }
 
       const translated = data.choices[0]?.message?.content?.trim() || '';
@@ -271,6 +273,7 @@ export class OpenAIProvider extends BaseProvider {
           temperature: 0,
           max_tokens: 10,
         }),
+        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });
 
       if (response.ok) {

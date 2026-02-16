@@ -53,7 +53,27 @@ describe('createTranslationError', () => {
       const error = createTranslationError(new Error('operation timed out'));
       expect(error.category).toBe('timeout');
       expect(error.retryable).toBe(true);
-      expect(error.message).toBe('Translation took too long');
+      expect(error.message).toBe('Translation request timed out');
+    });
+
+    it('categorizes AbortError as timeout', () => {
+      const error = createTranslationError(new Error('AbortError: signal timed out'));
+      expect(error.category).toBe('timeout');
+      expect(error.retryable).toBe(true);
+    });
+
+    it('categorizes auth errors', () => {
+      const error = createTranslationError(new Error('401 Unauthorized'));
+      expect(error.category).toBe('auth');
+      expect(error.retryable).toBe(false);
+      expect(error.message).toBe('Authentication failed');
+    });
+
+    it('categorizes rate limit errors', () => {
+      const error = createTranslationError(new Error('429 Too Many Requests'));
+      expect(error.category).toBe('rate_limit');
+      expect(error.retryable).toBe(true);
+      expect(error.message).toBe('Too many requests');
     });
 
     it('categorizes input errors', () => {

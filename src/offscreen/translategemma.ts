@@ -56,15 +56,17 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 }
 
 /**
- * Check WebGPU support.
+ * Check WebGPU support and capabilities.
  */
-async function detectWebGPU(): Promise<boolean> {
-  if (!navigator.gpu) return false;
+async function detectWebGPU(): Promise<{ supported: boolean; fp16: boolean }> {
+  if (!navigator.gpu) return { supported: false, fp16: false };
   try {
     const adapter = await navigator.gpu.requestAdapter();
-    return adapter !== null;
+    if (!adapter) return { supported: false, fp16: false };
+    const fp16 = adapter.features.has('shader-f16');
+    return { supported: true, fp16 };
   } catch {
-    return false;
+    return { supported: false, fp16: false };
   }
 }
 
@@ -125,12 +127,19 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
   tgLoading = (async () => {
     log.info('Loading TranslateGemma model...');
 
-    const webgpu = await detectWebGPU();
-    if (!webgpu) {
+    const gpu = await detectWebGPU();
+    if (!gpu.supported) {
       throw new Error(
         'TranslateGemma requires WebGPU. Please use Chrome 113+ with WebGPU enabled.'
       );
     }
+
+    // Model was exported from fp16 weights with q4 quantization.
+    // q4f16 = int4 quantized weights + fp16 compute (requires shader-f16).
+    // q4    = int4 quantized weights + fp32 compute (fallback, no shader-f16).
+    // Using q4f16 avoids the mixed float16/float32 type mismatch in ONNX Mul nodes.
+    const dtype = gpu.fp16 ? 'q4f16' : 'q4';
+    log.info(`WebGPU shader-f16: ${gpu.fp16}, using dtype: ${dtype}`);
 
     try {
       const progressCallback = (progress: Record<string, unknown>) => {
@@ -150,8 +159,8 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
         Promise.all([
           Gemma3ForCausalLM.from_pretrained(TRANSLATEGEMMA_MODEL, {
             device: 'webgpu',
-            dtype: 'q4',
-            use_external_data_format: 3, // Split into 3 chunks (<2GB each) to avoid ArrayBuffer limit
+            dtype,
+            use_external_data_format: 2, // Split into 2 chunks (<2GB each) to avoid ArrayBuffer limit
             progress_callback: progressCallback,
           } as Record<string, unknown>),
           AutoTokenizer.from_pretrained(TRANSLATEGEMMA_MODEL, {
