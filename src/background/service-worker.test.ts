@@ -14,6 +14,7 @@ const mockAddStartupListener = vi.fn();
 const mockAddTabsUpdatedListener = vi.fn();
 const mockAddCommandListener = vi.fn();
 const mockStorageSet = vi.fn();
+const mockStorageRemove = vi.fn().mockResolvedValue(undefined);
 
 // Mock offscreen document response
 const mockSendMessage = vi.fn();
@@ -90,6 +91,7 @@ vi.stubGlobal('chrome', {
         }
         return Promise.resolve({});
       }),
+      remove: mockStorageRemove,
     },
   },
 });
@@ -464,6 +466,93 @@ describe('Service Worker Pure Functions', () => {
 
       // The handler should respond (success or error, not hang)
       expect(sendResponse).toHaveBeenCalled();
+    });
+  });
+
+  describe('P0: clearCache removes persistent storage entries', () => {
+    it('clearCache message removes entries from chrome.storage.local', async () => {
+      const messageHandler = mockAddMessageListener.mock.calls[0]?.[0] as (
+        message: unknown,
+        sender: unknown,
+        sendResponse: (response: unknown) => void
+      ) => boolean;
+      expect(messageHandler).toBeDefined();
+
+      mockStorageRemove.mockClear();
+      const sendResponse = vi.fn();
+
+      messageHandler({ type: 'clearCache' }, {}, sendResponse);
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
+      );
+
+      // Verify chrome.storage.local.remove was called with all cache keys
+      expect(mockStorageRemove).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          'translationMemory',
+          'cacheStats',
+          'translationCacheVersion',
+        ])
+      );
+    });
+
+    it('clearCache cancels pending debounced save timer', async () => {
+      const messageHandler = mockAddMessageListener.mock.calls[0]?.[0] as (
+        message: unknown,
+        sender: unknown,
+        sendResponse: (response: unknown) => void
+      ) => boolean;
+
+      mockStorageRemove.mockClear();
+      mockStorageSet.mockClear();
+
+      const sendResponse = vi.fn();
+
+      // Send clearCache
+      messageHandler({ type: 'clearCache' }, {}, sendResponse);
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
+      );
+
+      // Wait longer than the debounce interval (5000ms in config)
+      // to ensure no pending save timer re-writes cache data.
+      // We use fake timers to avoid actual 5s delay.
+      vi.useFakeTimers();
+      vi.advanceTimersByTime(6000);
+      vi.useRealTimers();
+
+      // After advancing past the debounce window, storage.local.set
+      // should NOT have been called to re-persist cleared cache.
+      const setCalls = mockStorageSet.mock.calls.filter(
+        (call) => call[0] && 'translationMemory' in call[0]
+      );
+      expect(setCalls).toHaveLength(0);
+    });
+
+    it('clearCache ensures next service worker restart loads empty cache', async () => {
+      const messageHandler = mockAddMessageListener.mock.calls[0]?.[0] as (
+        message: unknown,
+        sender: unknown,
+        sendResponse: (response: unknown) => void
+      ) => boolean;
+
+      mockStorageRemove.mockClear();
+      const sendResponse = vi.fn();
+
+      messageHandler({ type: 'clearCache' }, {}, sendResponse);
+      await new Promise((r) => setTimeout(r, 100));
+
+      // The remove call must include the version key so that on restart,
+      // loadPersistentCache sees no version and re-initializes cleanly
+      // instead of trying to load stale data.
+      const removeArgs = mockStorageRemove.mock.calls[0]?.[0] as string[];
+      expect(removeArgs).toContain('translationCacheVersion');
+      expect(removeArgs).toContain('translationMemory');
+      expect(removeArgs).toContain('cacheStats');
     });
   });
 });

@@ -318,13 +318,20 @@ function getCacheStats(): DetailedCacheStats {
  * Clear translation cache and reset statistics.
  */
 async function clearTranslationCache(): Promise<void> {
+  // Cancel any pending debounced save to prevent it from re-persisting
+  // stale entries after we clear storage.
+  if (saveCacheTimer) {
+    clearTimeout(saveCacheTimer);
+    saveCacheTimer = null;
+  }
+
   translationCache.clear();
   cacheHits = 0;
   cacheMisses = 0;
 
   try {
-    await chrome.storage.local.remove([CONFIG.cache.storageKey, 'cacheStats']);
-    log.info('Translation cache cleared');
+    await chrome.storage.local.remove([CONFIG.cache.storageKey, 'cacheStats', CACHE_VERSION_KEY]);
+    log.info('Translation cache cleared (memory + persistent storage)');
   } catch (error) {
     log.warn('Failed to clear persistent cache:', error);
   }
