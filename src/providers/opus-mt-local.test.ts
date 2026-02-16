@@ -225,8 +225,9 @@ describe('OpusMTProvider', () => {
     });
   });
 
-  describe('dtype auto-detection', () => {
-    it('uses fp16 when WebGPU + shader-f16 is available', async () => {
+  describe('dtype selection', () => {
+    it('always uses q8 for OPUS-MT even when WebGPU + shader-f16 is available', async () => {
+      // OPUS-MT models only ship q8 ONNX variants. fp16 causes mixed-precision crash.
       const mockFactory = vi.fn().mockResolvedValue(
         vi.fn().mockResolvedValue([{ translation_text: 'testi' }])
       );
@@ -237,19 +238,17 @@ describe('OpusMTProvider', () => {
       (provider as any).isInitialized = true;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (provider as any).webgpuSupported = true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (provider as any).webgpuFp16 = true;
 
       await provider.translate('test', 'en', 'fi');
 
       expect(mockFactory).toHaveBeenCalledWith(
         'translation',
         expect.any(String),
-        expect.objectContaining({ device: 'webgpu', dtype: 'fp16' })
+        expect.objectContaining({ device: 'webgpu', dtype: 'q8' })
       );
     });
 
-    it('uses q8 when WebGPU is available but shader-f16 is not', async () => {
+    it('uses q8 when WebGPU is available without shader-f16', async () => {
       const mockFactory = vi.fn().mockResolvedValue(
         vi.fn().mockResolvedValue([{ translation_text: 'testi' }])
       );
@@ -262,8 +261,6 @@ describe('OpusMTProvider', () => {
       (provider as any).pipelines.clear();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (provider as any).webgpuSupported = true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (provider as any).webgpuFp16 = false;
 
       await provider.translate('test', 'en', 'fi');
 

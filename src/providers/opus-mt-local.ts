@@ -62,7 +62,6 @@ const SUPPORTED_PAIRS: Record<string, string> = {
 export class OpusMTProvider extends BaseProvider {
   private pipelines = new Map<string, Pipeline>();
   private webgpuSupported = false;
-  private webgpuFp16 = false;
   private isInitialized = false;
   private pipelineFactory: ((task: string, model: string, options: Record<string, unknown>) => Promise<Pipeline>) | null = null;
 
@@ -88,24 +87,13 @@ export class OpusMTProvider extends BaseProvider {
       const transformers = await import('@huggingface/transformers');
       this.pipelineFactory = transformers.pipeline as unknown as typeof this.pipelineFactory;
 
-      // Check for WebGPU support and shader-f16 capability
+      // Check for WebGPU support
       await webgpuDetector.detect();
       this.webgpuSupported = webgpuDetector.supported;
 
       if (this.webgpuSupported) {
         console.log('[OPUS-MT] WebGPU support detected');
         await webgpuDetector.initialize();
-
-        // Detect shader-f16 for optimal dtype selection
-        try {
-          if (typeof navigator !== 'undefined' && navigator.gpu) {
-            const adapter = await navigator.gpu.requestAdapter();
-            this.webgpuFp16 = adapter?.features.has('shader-f16') ?? false;
-          }
-        } catch {
-          this.webgpuFp16 = false;
-        }
-        console.log(`[OPUS-MT] shader-f16: ${this.webgpuFp16}`);
       } else {
         console.log('[OPUS-MT] Using WASM acceleration');
       }
@@ -137,30 +125,45 @@ export class OpusMTProvider extends BaseProvider {
       throw new Error('[OPUS-MT] Pipeline factory not initialized');
     }
 
-    try {
-      console.log(`[OPUS-MT] Loading model: ${modelId}`);
+    console.log(`[OPUS-MT] Loading model: ${modelId}`);
 
-      const device = this.webgpuSupported ? 'webgpu' : 'wasm';
-      // Auto-detect optimal dtype: fp16 (WebGPU+shader-f16), q8 (WebGPU or WASM)
-      // Xenova ONNX models ship with _quantized (q8) and _fp16 variants (~85MB vs ~170MB fp32).
-      const dtype = (this.webgpuSupported && this.webgpuFp16) ? 'fp16' : 'q8';
+    // Build fallback chain: most optimal first, safest last
+    // OPUS-MT Xenova models reliably ship q8 (quantized) variants.
+    // fp16 variants may not exist or cause mixed-precision ONNX errors,
+    // so we always prefer q8 even when shader-f16 is available.
+    const attempts: Array<{ device: 'webgpu' | 'wasm'; dtype: string; label: string }> = [];
 
-      const pipe = await this.pipelineFactory('translation', modelId, {
-        device,
-        dtype,
-        progress_callback: (progress: unknown) => {
-          console.log('[OPUS-MT] Loading progress:', progress);
-        },
-      });
-
-      this.pipelines.set(modelId, pipe);
-      console.log(`[OPUS-MT] Model loaded: ${modelId}`);
-
-      return pipe;
-    } catch (error) {
-      console.error(`[OPUS-MT] Failed to load model ${modelId}:`, error);
-      throw error;
+    if (this.webgpuSupported) {
+      attempts.push({ device: 'webgpu', dtype: 'q8', label: 'WebGPU+q8' });
     }
+    // WASM fallback always available
+    attempts.push({ device: 'wasm', dtype: 'q8', label: 'WASM+q8' });
+
+    let lastError: Error | null = null;
+
+    for (const attempt of attempts) {
+      try {
+        console.log(`[OPUS-MT] Trying ${attempt.label} for ${modelId}`);
+        const pipe = await this.pipelineFactory('translation', modelId, {
+          device: attempt.device,
+          dtype: attempt.dtype,
+          progress_callback: (progress: unknown) => {
+            console.log('[OPUS-MT] Loading progress:', progress);
+          },
+        });
+
+        this.pipelines.set(modelId, pipe);
+        console.log(`[OPUS-MT] Model loaded: ${modelId} (${attempt.label})`);
+        return pipe;
+      } catch (error) {
+        const errMsg = error instanceof Error ? error.message : String(error);
+        console.warn(`[OPUS-MT] ${attempt.label} failed: ${errMsg}`);
+        lastError = error instanceof Error ? error : new Error(errMsg);
+      }
+    }
+
+    console.error(`[OPUS-MT] All attempts failed for ${modelId}`);
+    throw lastError ?? new Error(`Failed to load model ${modelId}`);
   }
 
   /**

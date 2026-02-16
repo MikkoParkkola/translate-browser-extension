@@ -570,18 +570,18 @@ describe('WebGPU Detection Logic', () => {
   });
 });
 
-describe('OPUS-MT dtype auto-detection', () => {
-  // Xenova/Helsinki-NLP ONNX models ship with _quantized (q8) and _fp16 variants.
-  // Auto-detect optimal dtype based on WebGPU + shader-f16 capability.
+describe('OPUS-MT dtype selection', () => {
+  // Xenova/Helsinki-NLP OPUS-MT models only ship _quantized (q8) ONNX variants.
+  // fp16 causes mixed-precision ONNX Runtime crash. Always use q8.
 
   // Replicate the selectOpusMtDtype logic from offscreen.ts
-  function selectOpusMtDtype(webgpu: { supported: boolean; fp16: boolean }): string {
-    if (webgpu.supported && webgpu.fp16) return 'fp16';
+  function selectOpusMtDtype(_webgpu: { supported: boolean; fp16: boolean }): string {
+    // Always q8 for OPUS-MT — fp16 causes mixed-precision crash
     return 'q8';
   }
 
-  it('uses fp16 when WebGPU + shader-f16 is available', () => {
-    expect(selectOpusMtDtype({ supported: true, fp16: true })).toBe('fp16');
+  it('always uses q8 even when WebGPU + shader-f16 is available', () => {
+    expect(selectOpusMtDtype({ supported: true, fp16: true })).toBe('q8');
   });
 
   it('uses q8 when WebGPU is available but shader-f16 is not', () => {
@@ -603,8 +603,9 @@ describe('OPUS-MT dtype auto-detection', () => {
     }
   });
 
-  it('does NOT use q4/q4f16 for OPUS-MT (those are for TranslateGemma)', () => {
+  it('does NOT use fp16/q4/q4f16 for OPUS-MT', () => {
     const dtype = selectOpusMtDtype({ supported: true, fp16: true });
+    expect(dtype).not.toBe('fp16');
     expect(dtype).not.toBe('q4');
     expect(dtype).not.toBe('q4f16');
   });
@@ -619,9 +620,8 @@ describe('OPUS-MT WebGPU fallback logic', () => {
     dtype: string;
   }
 
-  function selectOpusMtDtype(webgpu: { supported: boolean; fp16: boolean }): string {
-    if (webgpu.supported && webgpu.fp16) return 'fp16';
-    return 'q8';
+  function selectOpusMtDtype(_webgpu: { supported: boolean; fp16: boolean }): string {
+    return 'q8'; // Always q8 for OPUS-MT
   }
 
   function getPipelineConfig(webgpu: { supported: boolean; fp16: boolean }): PipelineConfig {
@@ -635,10 +635,10 @@ describe('OPUS-MT WebGPU fallback logic', () => {
     return { device: 'wasm', dtype: 'q8' };
   }
 
-  it('uses WebGPU+fp16 when shader-f16 supported', () => {
+  it('uses WebGPU+q8 even when shader-f16 supported', () => {
     const config = getPipelineConfig({ supported: true, fp16: true });
     expect(config.device).toBe('webgpu');
-    expect(config.dtype).toBe('fp16');
+    expect(config.dtype).toBe('q8');
   });
 
   it('uses WebGPU+q8 when no shader-f16', () => {
@@ -659,7 +659,7 @@ describe('OPUS-MT WebGPU fallback logic', () => {
     expect(fallback.dtype).toBe('q8');
   });
 
-  it('fallback uses q8 matching the WASM primary path', () => {
+  it('fallback matches primary WASM path', () => {
     const primary = getPipelineConfig({ supported: false, fp16: false });
     const fallback = getFallbackConfig();
     expect(primary.dtype).toBe(fallback.dtype);

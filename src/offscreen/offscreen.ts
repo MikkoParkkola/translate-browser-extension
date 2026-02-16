@@ -80,13 +80,16 @@ async function detectWebGPU(): Promise<{ supported: boolean; fp16: boolean }> {
 /**
  * Select optimal dtype for OPUS-MT models.
  *
- * Xenova/Helsinki-NLP ONNX models ship with _quantized (q8) and _fp16 variants.
- * - WebGPU + shader-f16: 'fp16' (half size, native speed)
- * - WebGPU without shader-f16: 'q8' (half size, good quality)
- * - WASM fallback: 'q8' (Transformers.js default for WASM)
+ * Xenova/Helsinki-NLP OPUS-MT models only ship _quantized (q8) ONNX variants.
+ * They do NOT have dedicated fp16 ONNX files. Requesting 'fp16' causes
+ * ONNX Runtime to attempt mixed-precision (float16 + float32) which crashes:
+ *   "Type parameter (T) of Optype (Mul) bound to different types"
+ *
+ * Always use 'q8' for OPUS-MT. fp16 dtype is only safe for models that
+ * ship explicit fp16 ONNX files (e.g., TranslateGemma).
  */
-function selectOpusMtDtype(webgpu: { supported: boolean; fp16: boolean }): string {
-  if (webgpu.supported && webgpu.fp16) return 'fp16';
+function selectOpusMtDtype(_webgpu: { supported: boolean; fp16: boolean }): string {
+  // Always q8 for OPUS-MT — fp16 causes mixed-precision crash
   return 'q8';
 }
 
