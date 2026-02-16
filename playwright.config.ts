@@ -1,8 +1,7 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig } from '@playwright/test';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// __dirname is provided by Playwright's TS transform (CJS context)
 const EXTENSION_PATH = path.resolve(__dirname, 'dist');
 
 // Background mode: run Chrome off-screen (no focus stealing)
@@ -28,8 +27,8 @@ export default defineConfig({
     {
       name: 'extension',
       use: {
-        // Chrome with extension loaded
-        channel: 'chrome',
+        // Use Playwright's bundled Chromium (NOT system Chrome)
+        // System Chrome 144+ silently ignores --load-extension on macOS
         headless: false, // Extensions require headed mode (Chrome limitation)
         launchOptions: {
           args: [
