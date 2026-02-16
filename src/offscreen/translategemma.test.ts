@@ -339,25 +339,25 @@ describe('prompt template validation', () => {
 });
 
 /**
- * TranslateGemma dtype auto-detection tests.
+ * TranslateGemma dtype selection tests.
  *
- * The model was exported from fp16 weights with q4 quantization.
- * - q4f16: int4 quantized weights + fp16 compute (requires shader-f16)
- * - q4:    int4 quantized weights + fp32 compute (fallback)
+ * The model repo (m1cc0z/translategemma-4b-it-onnx-q4-webgpu) only ships q4f16
+ * ONNX files. Requesting 'q4' loads the same q4f16 files but attempts fp32
+ * compute, causing mixed float16/float32 type errors:
+ *   "Type parameter (T) of Optype (Add) bound to different types"
  *
- * Using the wrong dtype causes ONNX Mul node type mismatch:
- * "Unexpected input data type. Actual: (tensor(float)), expected: (tensor(float16))"
- *
- * These tests verify the dtype selection logic matches GPU capabilities.
+ * TranslateGemma REQUIRES WebGPU with shader-f16. No fallback to q4.
  */
-describe('TranslateGemma dtype auto-detection', () => {
+describe('TranslateGemma dtype selection', () => {
   // Replicate the dtype selection logic from getTranslateGemmaPipeline
-  // to test it in isolation (the actual function requires WebGPU + model loading)
   function selectDtype(gpuSupported: boolean, fp16: boolean): string {
     if (!gpuSupported) {
       throw new Error('TranslateGemma requires WebGPU');
     }
-    return fp16 ? 'q4f16' : 'q4';
+    if (!fp16) {
+      throw new Error('TranslateGemma requires WebGPU with shader-f16 support');
+    }
+    return 'q4f16';
   }
 
   describe('dtype selection', () => {
@@ -365,8 +365,8 @@ describe('TranslateGemma dtype auto-detection', () => {
       expect(selectDtype(true, true)).toBe('q4f16');
     });
 
-    it('selects q4 when GPU does not support shader-f16', () => {
-      expect(selectDtype(true, false)).toBe('q4');
+    it('throws when GPU does not support shader-f16', () => {
+      expect(() => selectDtype(true, false)).toThrow('shader-f16');
     });
 
     it('throws when WebGPU is not supported', () => {
@@ -378,37 +378,31 @@ describe('TranslateGemma dtype auto-detection', () => {
     });
   });
 
-  describe('dtype values are valid ONNX quantization types', () => {
-    it('q4f16 is the correct dtype for fp16 + 4-bit quantization', () => {
-      // q4f16 = int4 weights + fp16 compute = matches fp16 model export
+  describe('dtype is always q4f16', () => {
+    it('q4f16 is the only valid dtype for this model', () => {
+      // Model repo only ships q4f16 ONNX files
       const dtype = selectDtype(true, true);
       expect(dtype).toBe('q4f16');
-      expect(dtype).not.toBe('q4'); // Must not fall back
+      expect(dtype).not.toBe('q4'); // q4 causes mixed-precision crash
     });
 
-    it('q4 is the correct fallback for fp32 compute', () => {
-      // q4 = int4 weights + fp32 compute = safe for GPUs without shader-f16
-      const dtype = selectDtype(true, false);
-      expect(dtype).toBe('q4');
-      expect(dtype).not.toBe('q4f16'); // Must not use fp16 without support
+    it('never returns q4 (causes ONNX type mismatch)', () => {
+      // q4 loads q4f16 files but attempts fp32 compute → crash
+      const dtype = selectDtype(true, true);
+      expect(dtype).not.toBe('q4');
     });
   });
 
   describe('regression: ONNX float16/float32 mismatch', () => {
-    // Before the fix, dtype was hardcoded to 'q4' which caused:
-    // "Unexpected input data type. Actual: (tensor(float)), expected: (tensor(float16))"
-    // because the model's Constants were exported in float16 but computation used float32.
-
-    it('uses q4f16 on modern GPUs to match float16 Constants', () => {
-      // Modern GPUs with shader-f16 must use q4f16 to avoid type mismatch
+    it('uses q4f16 to match float16 Constants in model', () => {
       const dtype = selectDtype(true, true);
       expect(dtype).toBe('q4f16');
     });
 
-    it('uses q4 on older GPUs that need float32 compute', () => {
-      // Older GPUs without shader-f16 use q4 which runs in float32
-      const dtype = selectDtype(true, false);
-      expect(dtype).toBe('q4');
+    it('rejects GPUs without shader-f16 instead of using broken q4', () => {
+      // Before fix: returned 'q4' which caused:
+      // "Type parameter (T) of Optype (Add) bound to different types (tensor(float) and tensor(float16))"
+      expect(() => selectDtype(true, false)).toThrow('shader-f16');
     });
   });
 });

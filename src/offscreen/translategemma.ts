@@ -134,11 +134,18 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       );
     }
 
-    // Model was exported from fp16 weights with q4 quantization.
-    // q4f16 = int4 quantized weights + fp16 compute (requires shader-f16).
-    // q4    = int4 quantized weights + fp32 compute (fallback, no shader-f16).
-    // Using q4f16 avoids the mixed float16/float32 type mismatch in ONNX Mul nodes.
-    const dtype = gpu.fp16 ? 'q4f16' : 'q4';
+    if (!gpu.fp16) {
+      throw new Error(
+        'TranslateGemma requires WebGPU with shader-f16 support. ' +
+        'Your GPU does not support shader-f16. Try OPUS-MT or Chrome Built-in instead.'
+      );
+    }
+
+    // Always use q4f16: the model repo (m1cc0z/translategemma-4b-it-onnx-q4-webgpu)
+    // only ships q4f16 ONNX files. Requesting 'q4' loads the same q4f16 files but
+    // attempts fp32 compute, causing mixed float16/float32 type errors:
+    //   "Type parameter (T) of Optype (Add) bound to different types"
+    const dtype = 'q4f16';
     log.info(`WebGPU shader-f16: ${gpu.fp16}, using dtype: ${dtype}`);
 
     try {
