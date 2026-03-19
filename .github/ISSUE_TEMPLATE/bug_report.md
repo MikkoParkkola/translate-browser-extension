@@ -8,7 +8,7 @@ assignees: ''
 
 **Browser & Version**: (e.g. Chrome 120, Safari 17, Firefox 121)
 
-**Extension Version**: (e.g. 2.1.0)
+**Extension Version**: (e.g. 2.1.3)
 
 **Translation Provider**: (e.g. DashScope, OpenAI, Local WASM)
 

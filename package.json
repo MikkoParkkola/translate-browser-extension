@@ -1,6 +1,6 @@
 {
   "name": "translate-by-mikko",
-  "version": "1.44.1",
+  "version": "2.1.3",
   "description": "Extension to translate web pages using multiple providers",
   "main": "index.js",
   "scripts": {
@@ -31,7 +31,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "AGPL-3.0-or-later",
+  "license": "GPL-3.0-or-later",
   "type": "commonjs",
   "size-limit": [
     {

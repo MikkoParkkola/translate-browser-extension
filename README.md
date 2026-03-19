@@ -1,7 +1,7 @@
 # TRANSLATE! by Mikko
 
-![Version](https://img.shields.io/badge/version-2.1.0-blue)
-![License](https://img.shields.io/badge/license-GPL--3.0-green)
+![Version](https://img.shields.io/badge/version-2.1.3-blue)
+![License](https://img.shields.io/badge/license-GPL--3.0--or--later-green)
 ![Chrome](https://img.shields.io/badge/Chrome-116%2B-brightgreen?logo=googlechrome&logoColor=white)
 ![Safari](https://img.shields.io/badge/Safari-macOS%20%7C%20iOS-blue?logo=safari&logoColor=white)
 ![Firefox](https://img.shields.io/badge/Firefox-supported-orange?logo=firefox&logoColor=white)
@@ -276,4 +276,4 @@ A scheduled workflow rebases open pull requests nightly to keep branches current
 
 ## License
 
-This project is licensed under the [GPL-3.0](LICENSE).
+This project is licensed under the [GPL-3.0-or-later](LICENSE).
