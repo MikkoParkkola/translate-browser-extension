@@ -568,3 +568,234 @@ describe('Edge cases', () => {
     expect(entry?.text).toBe(specialText);
   });
 });
+
+describe('LRU eviction', () => {
+  let cache: TranslationCache;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockEntries.clear();
+    mockCursorIndex = 0;
+    resetTranslationCache();
+  });
+
+  afterEach(() => {
+    cache?.close();
+  });
+
+  it('evicts oldest entries when cache exceeds capacity', async () => {
+    // Create a cache with a very small max size (500 bytes) so entries trigger eviction
+    cache = new TranslationCache(500);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // Pre-fill mockEntries to exceed the 80% target (400 bytes)
+    const oldEntry: CacheEntry = {
+      key: 'oldkey',
+      text: 'old',
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'opus-mt',
+      translation: 'vanha',
+      timestamp: 1000, // very old
+      size: 450, // already consuming 90% of capacity
+    };
+    mockEntries.set('oldkey', oldEntry);
+
+    // Provide put mock for the new entry
+    mockStore.put.mockReturnValue({
+      onerror: null,
+      onsuccess: null,
+    });
+
+    // Setup the index openCursor mock to simulate eviction traversal
+    let evictCursorCalled = false;
+    const evictRequest = {
+      onerror: null as ((ev: Event) => void) | null,
+      onsuccess: null as ((ev: Event) => void) | null,
+    };
+    mockIndex.openCursor.mockReturnValueOnce(evictRequest);
+
+    const setPromise = cache.set('new', 'en', 'fi', 'opus-mt', 'uusi');
+
+    // Allow getStats to run (openCursor for stats)
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // Trigger eviction cursor with the old entry, then end
+    if (evictRequest.onsuccess && !evictCursorCalled) {
+      evictCursorCalled = true;
+      // First call: cursor points at old entry (currentSize > targetSize)
+      const mockCursor = {
+        value: oldEntry,
+        delete: vi.fn(() => {
+          mockEntries.delete('oldkey');
+        }),
+        continue: vi.fn(() => {
+          // cursor exhausted - resolve eviction
+          evictRequest.onsuccess?.({ target: { result: null } } as unknown as Event);
+        }),
+      };
+      evictRequest.onsuccess({ target: { result: mockCursor } } as unknown as Event);
+    }
+
+    // Now trigger the actual put
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const putRequest = mockStore.put.mock.results[0]?.value;
+    if (putRequest) {
+      putRequest.onsuccess?.({});
+    }
+
+    await setPromise;
+
+    // Old entry should have been deleted from mockEntries
+    expect(mockEntries.has('oldkey')).toBe(false);
+  });
+
+  it('skips eviction when cache has enough space', async () => {
+    // Small cache but no existing entries
+    cache = new TranslationCache(100 * 1024 * 1024);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    mockStore.put.mockReturnValue({
+      onerror: null,
+      onsuccess: null,
+    });
+
+    const setPromise = cache.set('hello', 'en', 'fi', 'opus-mt', 'hei');
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // index.openCursor for eviction should NOT have been called since size is within limit
+    expect(mockIndex.openCursor).not.toHaveBeenCalled();
+
+    const putRequest = mockStore.put.mock.results[0]?.value;
+    if (putRequest) {
+      putRequest.onsuccess?.({});
+    }
+    await setPromise;
+  });
+});
+
+describe('error paths', () => {
+  let cache: TranslationCache;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockEntries.clear();
+    resetTranslationCache();
+    cache = new TranslationCache();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+
+  afterEach(() => {
+    cache?.close();
+  });
+
+  it('getStats returns fallback object when db is unavailable', async () => {
+    // Simulate a cache where the DB promise has rejected by creating a new instance
+    // and overriding dbReady to be a rejected promise
+    const brokenCache = new TranslationCache();
+    // Force dbReady to reject by reaching into the instance
+    (brokenCache as unknown as { dbReady: Promise<IDBDatabase> }).dbReady =
+      Promise.reject(new Error('DB unavailable'));
+
+    const stats = await brokenCache.getStats();
+
+    expect(stats.entries).toBe(0);
+    expect(stats.totalSize).toBe(0);
+    expect(stats.hits).toBe(0);
+    expect(stats.misses).toBe(0);
+    expect(stats.hitRate).toBe(0);
+    expect(stats.oldestTimestamp).toBeNull();
+    expect(stats.newestTimestamp).toBeNull();
+
+    brokenCache.close();
+  });
+
+  it('set silently absorbs error when db is unavailable', async () => {
+    const brokenCache = new TranslationCache();
+    (brokenCache as unknown as { dbReady: Promise<IDBDatabase> }).dbReady =
+      Promise.reject(new Error('DB unavailable'));
+
+    // Should not throw
+    await expect(brokenCache.set('hello', 'en', 'fi', 'opus-mt', 'hei')).resolves.toBeUndefined();
+
+    brokenCache.close();
+  });
+
+  it('get returns null when db is unavailable', async () => {
+    const brokenCache = new TranslationCache();
+    (brokenCache as unknown as { dbReady: Promise<IDBDatabase> }).dbReady =
+      Promise.reject(new Error('DB unavailable'));
+
+    const result = await brokenCache.get('hello', 'en', 'fi', 'opus-mt');
+    expect(result).toBeNull();
+
+    brokenCache.close();
+  });
+
+  it('get increments misses on transaction abort', async () => {
+    // Simulate transaction abort during get
+    const abortTransaction = {
+      objectStore: vi.fn(() => ({
+        get: vi.fn(() => ({
+          onerror: null,
+          onsuccess: null,
+        })),
+        put: vi.fn(() => ({ onerror: null, onsuccess: null })),
+      })),
+      onerror: null as ((ev: Event) => void) | null,
+      onabort: null as ((ev: Event) => void) | null,
+    };
+
+    mockDb.transaction.mockReturnValueOnce(abortTransaction);
+
+    const getPromise = cache.get('hello', 'en', 'fi', 'opus-mt');
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    // Trigger onabort
+    abortTransaction.onabort?.({} as Event);
+
+    await getPromise.catch(() => undefined);
+
+    const stats = await cache.getStats();
+    expect(stats.misses).toBeGreaterThan(0);
+  });
+
+  it('getStats oldest and newest timestamps are tracked correctly', async () => {
+    const now = Date.now();
+    const entry1: CacheEntry = {
+      key: 'key1',
+      text: 'a',
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'opus-mt',
+      translation: 'b',
+      timestamp: now - 5000,
+      size: 100,
+    };
+    const entry2: CacheEntry = {
+      key: 'key2',
+      text: 'c',
+      sourceLang: 'en',
+      targetLang: 'de',
+      provider: 'opus-mt',
+      translation: 'd',
+      timestamp: now,
+      size: 100,
+    };
+    mockEntries.set('key1', entry1);
+    mockEntries.set('key2', entry2);
+
+    const stats = await cache.getStats();
+
+    expect(stats.entries).toBe(2);
+    expect(stats.oldestTimestamp).toBe(now - 5000);
+    expect(stats.newestTimestamp).toBe(now);
+  });
+
+  it('close is idempotent when called twice', () => {
+    cache.close();
+    // Second close should not throw
+    expect(() => cache.close()).not.toThrow();
+  });
+});

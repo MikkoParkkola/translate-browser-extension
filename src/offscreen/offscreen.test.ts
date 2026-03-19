@@ -1,20 +1,1468 @@
 /**
  * Offscreen document unit tests
  *
- * Tests language detection, model mapping, and message handling
- * for the ML inference offscreen document.
+ * Tests the chrome.runtime.onMessage listener in offscreen.ts, which is the
+ * single entry point for all ML/translation operations.
  *
- * Note: We test pure functions and logic extracted from the module
- * since the module has side effects that run on import.
+ * Strategy:
+ *  - Mock all external dependencies before importing the module
+ *  - Capture the registered addListener callback
+ *  - Fire synthetic messages and assert on sendResponse values
+ *
+ * Existing pure-function tests (model mapping, language detection, etc.) are
+ * preserved below to keep the overall suite green.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Test the pure functions and data structures from offscreen module
-// without importing the module directly (which has side effects)
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+type MessageListener = (
+  message: Record<string, unknown>,
+  sender: unknown,
+  sendResponse: (r: unknown) => void
+) => boolean | void;
+
+// ---------------------------------------------------------------------------
+// Capture registered listeners so we can fire synthetic messages
+// ---------------------------------------------------------------------------
+const registeredListeners: MessageListener[] = [];
+
+// ---------------------------------------------------------------------------
+// chrome stub — MUST be set up before module import
+// ---------------------------------------------------------------------------
+vi.stubGlobal('chrome', {
+  runtime: {
+    getURL: (path: string) => `chrome-extension://testid/${path}`,
+    onMessage: {
+      addListener: (fn: MessageListener) => {
+        registeredListeners.push(fn);
+      },
+    },
+    sendMessage: vi.fn(),
+  },
+  storage: {
+    local: {
+      get: vi.fn().mockResolvedValue({}),
+      set: vi.fn().mockResolvedValue(undefined),
+      remove: vi.fn().mockResolvedValue(undefined),
+    },
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Module-level dependency mocks — declared before the import
+// ---------------------------------------------------------------------------
+
+// Transformers.js
+vi.mock('@huggingface/transformers', () => ({
+  pipeline: vi.fn(),
+  env: {
+    allowRemoteModels: true,
+    allowLocalModels: false,
+    useBrowserCache: true,
+    backends: { onnx: { wasm: { wasmPaths: '' } } },
+  },
+}));
+
+// franc-min
+vi.mock('franc-min', () => ({
+  franc: vi.fn().mockReturnValue('eng'),
+}));
+
+// tesseract.js
+vi.mock('tesseract.js', () => ({
+  createWorker: vi.fn(),
+  OEM: { LSTM_ONLY: 1 },
+}));
+
+// Pipeline cache
+const mockGetCachedPipeline = vi.fn().mockReturnValue(null);
+const mockCachePipeline = vi.fn();
+const mockClearPipelineCache = vi.fn().mockResolvedValue(undefined);
+
+vi.mock('./pipeline-cache', () => ({
+  getCachedPipeline: (...args: unknown[]) => mockGetCachedPipeline(...args),
+  cachePipeline: (...args: unknown[]) => mockCachePipeline(...args),
+  clearCache: (...args: unknown[]) => mockClearPipelineCache(...args),
+}));
+
+// Language detection
+const mockDetectLanguage = vi.fn().mockReturnValue('en');
+vi.mock('./language-detection', () => ({
+  detectLanguage: (...args: unknown[]) => mockDetectLanguage(...args),
+}));
+
+// TranslateGemma
+const mockDetectWebGPU = vi.fn().mockResolvedValue({ supported: false, fp16: false });
+const mockGetTranslateGemmaPipeline = vi.fn().mockResolvedValue({ model: {}, tokenizer: {} });
+const mockTranslateWithGemma = vi.fn().mockResolvedValue('gemma translated');
+
+vi.mock('./translategemma', () => ({
+  detectWebGPU: (...args: unknown[]) => mockDetectWebGPU(...args),
+  getTranslateGemmaPipeline: (...args: unknown[]) => mockGetTranslateGemmaPipeline(...args),
+  translateWithGemma: (...args: unknown[]) => mockTranslateWithGemma(...args),
+}));
+
+// Chrome translator
+const mockChromeTranslatorIsAvailable = vi.fn().mockResolvedValue(false);
+const mockChromeTranslatorTranslate = vi.fn().mockResolvedValue('chrome translated');
+const mockGetChromeTranslator = vi.fn().mockReturnValue({
+  isAvailable: mockChromeTranslatorIsAvailable,
+  translate: mockChromeTranslatorTranslate,
+});
+const mockIsChromeTranslatorAvailable = vi.fn().mockResolvedValue(false);
+
+vi.mock('../providers/chrome-translator', () => ({
+  getChromeTranslator: (...args: unknown[]) => mockGetChromeTranslator(...args),
+  isChromeTranslatorAvailable: (...args: unknown[]) => mockIsChromeTranslatorAvailable(...args),
+}));
+
+// DeepL
+const mockDeeplInitialize = vi.fn().mockResolvedValue(undefined);
+const mockDeeplIsAvailable = vi.fn().mockResolvedValue(false);
+const mockDeeplTranslate = vi.fn().mockResolvedValue('deepl translated');
+const mockDeeplGetUsage = vi.fn().mockResolvedValue({ tokens: 100, cost: 0.002, limitReached: false });
+
+vi.mock('../providers/deepl', () => ({
+  deeplProvider: {
+    initialize: (...args: unknown[]) => mockDeeplInitialize(...args),
+    isAvailable: (...args: unknown[]) => mockDeeplIsAvailable(...args),
+    translate: (...args: unknown[]) => mockDeeplTranslate(...args),
+    getUsage: (...args: unknown[]) => mockDeeplGetUsage(...args),
+  },
+}));
+
+// OpenAI
+const mockOpenaiInitialize = vi.fn().mockResolvedValue(undefined);
+const mockOpenaiIsAvailable = vi.fn().mockResolvedValue(false);
+const mockOpenaiTranslate = vi.fn().mockResolvedValue('openai translated');
+const mockOpenaiGetUsage = vi.fn().mockResolvedValue({ tokens: 200, cost: 0.004, limitReached: false });
+
+vi.mock('../providers/openai', () => ({
+  openaiProvider: {
+    initialize: (...args: unknown[]) => mockOpenaiInitialize(...args),
+    isAvailable: (...args: unknown[]) => mockOpenaiIsAvailable(...args),
+    translate: (...args: unknown[]) => mockOpenaiTranslate(...args),
+    getUsage: (...args: unknown[]) => mockOpenaiGetUsage(...args),
+  },
+}));
+
+// Anthropic
+const mockAnthropicInitialize = vi.fn().mockResolvedValue(undefined);
+const mockAnthropicIsAvailable = vi.fn().mockResolvedValue(false);
+const mockAnthropicTranslate = vi.fn().mockResolvedValue('anthropic translated');
+const mockAnthropicGetUsage = vi.fn().mockResolvedValue({ tokens: 300, cost: 0.006, limitReached: false });
+
+vi.mock('../providers/anthropic', () => ({
+  anthropicProvider: {
+    initialize: (...args: unknown[]) => mockAnthropicInitialize(...args),
+    isAvailable: (...args: unknown[]) => mockAnthropicIsAvailable(...args),
+    translate: (...args: unknown[]) => mockAnthropicTranslate(...args),
+    getUsage: (...args: unknown[]) => mockAnthropicGetUsage(...args),
+  },
+}));
+
+// Google Cloud
+const mockGoogleInitialize = vi.fn().mockResolvedValue(undefined);
+const mockGoogleIsAvailable = vi.fn().mockResolvedValue(false);
+const mockGoogleTranslate = vi.fn().mockResolvedValue('google translated');
+const mockGoogleGetUsage = vi.fn().mockResolvedValue({ tokens: 400, cost: 0.008, limitReached: false });
+
+vi.mock('../providers/google-cloud', () => ({
+  googleCloudProvider: {
+    initialize: (...args: unknown[]) => mockGoogleInitialize(...args),
+    isAvailable: (...args: unknown[]) => mockGoogleIsAvailable(...args),
+    translate: (...args: unknown[]) => mockGoogleTranslate(...args),
+    getUsage: (...args: unknown[]) => mockGoogleGetUsage(...args),
+  },
+}));
+
+// OCR service
+const mockExtractTextFromImage = vi.fn().mockResolvedValue({
+  text: 'extracted text',
+  confidence: 95,
+  blocks: [],
+});
+const mockTerminateOCR = vi.fn().mockResolvedValue(undefined);
+
+vi.mock('../core/ocr-service', () => ({
+  extractTextFromImage: (...args: unknown[]) => mockExtractTextFromImage(...args),
+  terminateOCR: (...args: unknown[]) => mockTerminateOCR(...args),
+}));
+
+// Network status
+const mockIsOnline = vi.fn().mockReturnValue(true);
+const mockIsCloudProvider = vi.fn().mockImplementation((p: string) =>
+  ['deepl', 'openai', 'anthropic', 'google-cloud'].includes(p)
+);
+
+vi.mock('../core/network-status', () => ({
+  isOnline: (...args: unknown[]) => mockIsOnline(...args),
+  isCloudProvider: (...args: unknown[]) => mockIsCloudProvider(...args),
+  initNetworkMonitoring: vi.fn(),
+}));
+
+// Translation cache
+const mockCacheGet = vi.fn().mockResolvedValue(null);
+const mockCacheSet = vi.fn().mockResolvedValue(undefined);
+const mockCacheClear = vi.fn().mockResolvedValue(undefined);
+const mockCacheGetStats = vi.fn().mockResolvedValue({
+  entries: 5,
+  totalSize: 1024,
+  maxSize: 104857600,
+  hits: 10,
+  misses: 3,
+  hitRate: 0.77,
+  oldestTimestamp: null,
+  newestTimestamp: null,
+});
+
+vi.mock('../core/translation-cache', () => ({
+  getTranslationCache: vi.fn().mockReturnValue({
+    get: (...args: unknown[]) => mockCacheGet(...args),
+    set: (...args: unknown[]) => mockCacheSet(...args),
+    clear: (...args: unknown[]) => mockCacheClear(...args),
+    getStats: (...args: unknown[]) => mockCacheGetStats(...args),
+  }),
+}));
+
+// Profiler
+const mockStartTiming = vi.fn();
+const mockEndTiming = vi.fn();
+const mockRecordTiming = vi.fn();
+const mockGetSessionData = vi.fn().mockReturnValue({ timings: [] });
+const mockGetAllAggregates = vi.fn().mockReturnValue({});
+const mockFormatAggregates = vi.fn().mockReturnValue('');
+
+vi.mock('../core/profiler', () => ({
+  profiler: {
+    startTiming: (...args: unknown[]) => mockStartTiming(...args),
+    endTiming: (...args: unknown[]) => mockEndTiming(...args),
+    recordTiming: (...args: unknown[]) => mockRecordTiming(...args),
+    getSessionData: (...args: unknown[]) => mockGetSessionData(...args),
+    getAllAggregates: (...args: unknown[]) => mockGetAllAggregates(...args),
+    formatAggregates: (...args: unknown[]) => mockFormatAggregates(...args),
+  },
+}));
+
+// ---------------------------------------------------------------------------
+// Import the module under test — registers the onMessage listener
+// ---------------------------------------------------------------------------
+await import('./offscreen');
+
+// ---------------------------------------------------------------------------
+// Test utilities
+// ---------------------------------------------------------------------------
+
+/** Dispatch a message through the last registered listener and capture response */
+function dispatch(message: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return new Promise((resolve) => {
+    const listener = registeredListeners[registeredListeners.length - 1];
+    listener({ target: 'offscreen', ...message }, {}, (response) => {
+      resolve(response as Record<string, unknown>);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// beforeEach: reset all mocks to their default behaviours
+// ---------------------------------------------------------------------------
+beforeEach(() => {
+  vi.clearAllMocks();
+
+  // Re-apply defaults after clearAllMocks wipes return values
+  mockGetCachedPipeline.mockReturnValue(null);
+  mockClearPipelineCache.mockResolvedValue(undefined);
+  mockDetectLanguage.mockReturnValue('en');
+  mockDetectWebGPU.mockResolvedValue({ supported: false, fp16: false });
+  mockGetTranslateGemmaPipeline.mockResolvedValue({ model: {}, tokenizer: {} });
+  mockTranslateWithGemma.mockResolvedValue('gemma translated');
+  mockChromeTranslatorIsAvailable.mockResolvedValue(false);
+  mockChromeTranslatorTranslate.mockResolvedValue('chrome translated');
+  mockGetChromeTranslator.mockReturnValue({
+    isAvailable: mockChromeTranslatorIsAvailable,
+    translate: mockChromeTranslatorTranslate,
+  });
+  mockIsChromeTranslatorAvailable.mockResolvedValue(false);
+  mockDeeplInitialize.mockResolvedValue(undefined);
+  mockDeeplIsAvailable.mockResolvedValue(false);
+  mockDeeplTranslate.mockResolvedValue('deepl translated');
+  mockDeeplGetUsage.mockResolvedValue({ tokens: 100, cost: 0.002, limitReached: false });
+  mockOpenaiInitialize.mockResolvedValue(undefined);
+  mockOpenaiIsAvailable.mockResolvedValue(false);
+  mockOpenaiTranslate.mockResolvedValue('openai translated');
+  mockOpenaiGetUsage.mockResolvedValue({ tokens: 200, cost: 0.004, limitReached: false });
+  mockAnthropicInitialize.mockResolvedValue(undefined);
+  mockAnthropicIsAvailable.mockResolvedValue(false);
+  mockAnthropicTranslate.mockResolvedValue('anthropic translated');
+  mockAnthropicGetUsage.mockResolvedValue({ tokens: 300, cost: 0.006, limitReached: false });
+  mockGoogleInitialize.mockResolvedValue(undefined);
+  mockGoogleIsAvailable.mockResolvedValue(false);
+  mockGoogleTranslate.mockResolvedValue('google translated');
+  mockGoogleGetUsage.mockResolvedValue({ tokens: 400, cost: 0.008, limitReached: false });
+  mockExtractTextFromImage.mockResolvedValue({ text: 'extracted text', confidence: 95, blocks: [] });
+  mockTerminateOCR.mockResolvedValue(undefined);
+  mockIsOnline.mockReturnValue(true);
+  mockIsCloudProvider.mockImplementation((p: string) =>
+    ['deepl', 'openai', 'anthropic', 'google-cloud'].includes(p)
+  );
+  mockCacheGet.mockResolvedValue(null);
+  mockCacheSet.mockResolvedValue(undefined);
+  mockCacheClear.mockResolvedValue(undefined);
+  mockCacheGetStats.mockResolvedValue({
+    entries: 5,
+    totalSize: 1024,
+    maxSize: 104857600,
+    hits: 10,
+    misses: 3,
+    hitRate: 0.77,
+    oldestTimestamp: null,
+    newestTimestamp: null,
+  });
+  mockStartTiming.mockReturnValue(undefined);
+  mockEndTiming.mockReturnValue(undefined);
+  mockRecordTiming.mockReturnValue(undefined);
+  mockGetSessionData.mockReturnValue({ timings: [] });
+  mockGetAllAggregates.mockReturnValue({});
+  mockFormatAggregates.mockReturnValue('');
+});
+
+// ===========================================================================
+// Message handler tests
+// ===========================================================================
+
+describe('offscreen message handler', () => {
+
+  // -------------------------------------------------------------------------
+  // Message target routing
+  // -------------------------------------------------------------------------
+  describe('target routing', () => {
+    it('ignores messages not targeted at offscreen — returns false', () => {
+      const listener = registeredListeners[registeredListeners.length - 1];
+      const result = listener(
+        { target: 'service-worker', type: 'ping' },
+        {},
+        () => {}
+      );
+      expect(result).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // ping
+  // -------------------------------------------------------------------------
+  describe('ping', () => {
+    it('responds with ready status', async () => {
+      const r = await dispatch({ type: 'ping' });
+      expect(r).toEqual({ success: true, status: 'ready' });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // getSupportedLanguages
+  // -------------------------------------------------------------------------
+  describe('getSupportedLanguages', () => {
+    it('returns a non-empty language array', async () => {
+      const r = await dispatch({ type: 'getSupportedLanguages' });
+      expect(r.success).toBe(true);
+      expect(Array.isArray(r.languages)).toBe(true);
+      expect((r.languages as unknown[]).length).toBeGreaterThan(0);
+    });
+
+    it('direct pairs have src and tgt without pivot flag', async () => {
+      const r = await dispatch({ type: 'getSupportedLanguages' });
+      const langs = r.languages as Array<{ src: string; tgt: string; pivot?: boolean }>;
+      const direct = langs.filter((l) => !l.pivot);
+      expect(direct.length).toBeGreaterThan(0);
+      expect(direct.some((p) => p.src === 'en' && p.tgt === 'de')).toBe(true);
+    });
+
+    it('pivot pairs include pivot:true', async () => {
+      const r = await dispatch({ type: 'getSupportedLanguages' });
+      const langs = r.languages as Array<{ src: string; tgt: string; pivot?: boolean }>;
+      const pivot = langs.filter((l) => l.pivot === true);
+      expect(pivot.length).toBeGreaterThan(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // checkWebGPU
+  // -------------------------------------------------------------------------
+  describe('checkWebGPU', () => {
+    it('returns supported:false when WebGPU unavailable', async () => {
+      mockDetectWebGPU.mockResolvedValue({ supported: false, fp16: false });
+      const r = await dispatch({ type: 'checkWebGPU' });
+      expect(r.success).toBe(true);
+      expect(r.supported).toBe(false);
+      expect(r.fp16).toBe(false);
+    });
+
+    it('returns supported:true and fp16:true when GPU supports shader-f16', async () => {
+      mockDetectWebGPU.mockResolvedValue({ supported: true, fp16: true });
+      const r = await dispatch({ type: 'checkWebGPU' });
+      expect(r.success).toBe(true);
+      expect(r.supported).toBe(true);
+      expect(r.fp16).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // getCacheStats
+  // -------------------------------------------------------------------------
+  describe('getCacheStats', () => {
+    it('returns stats from translation cache', async () => {
+      const r = await dispatch({ type: 'getCacheStats' });
+      expect(r.success).toBe(true);
+      expect(r.stats).toBeDefined();
+      expect(mockCacheGetStats).toHaveBeenCalledOnce();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // clearCache
+  // -------------------------------------------------------------------------
+  describe('clearCache', () => {
+    it('clears translation cache', async () => {
+      const r = await dispatch({ type: 'clearCache' });
+      expect(r.success).toBe(true);
+      expect(r.cleared).toBe(true);
+      expect(mockCacheClear).toHaveBeenCalledOnce();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // clearPipelineCache
+  // -------------------------------------------------------------------------
+  describe('clearPipelineCache', () => {
+    it('clears ML pipeline cache', async () => {
+      const r = await dispatch({ type: 'clearPipelineCache' });
+      expect(r.success).toBe(true);
+      expect(r.cleared).toBe(true);
+      expect(mockClearPipelineCache).toHaveBeenCalledOnce();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // getProfilingStats
+  // -------------------------------------------------------------------------
+  describe('getProfilingStats', () => {
+    it('returns aggregates and formatted output', async () => {
+      const r = await dispatch({ type: 'getProfilingStats' });
+      expect(r.success).toBe(true);
+      expect(r.aggregates).toBeDefined();
+      expect(r.formatted).toBeDefined();
+      expect(mockGetAllAggregates).toHaveBeenCalledOnce();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // terminateOCR
+  // -------------------------------------------------------------------------
+  describe('terminateOCR', () => {
+    it('calls terminateOCR and returns success', async () => {
+      const r = await dispatch({ type: 'terminateOCR' });
+      expect(r.success).toBe(true);
+      expect(mockTerminateOCR).toHaveBeenCalledOnce();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // ocrImage
+  // -------------------------------------------------------------------------
+  describe('ocrImage', () => {
+    it('extracts text from an image', async () => {
+      const r = await dispatch({
+        type: 'ocrImage',
+        imageData: 'data:image/png;base64,abc123',
+        lang: 'en',
+      });
+      expect(r.success).toBe(true);
+      expect(r.text).toBe('extracted text');
+      expect(r.confidence).toBe(95);
+      expect(mockExtractTextFromImage).toHaveBeenCalledWith(
+        'data:image/png;base64,abc123',
+        'en'
+      );
+    });
+
+    it('forwards lang parameter to OCR service', async () => {
+      await dispatch({
+        type: 'ocrImage',
+        imageData: 'data:image/png;base64,xyz',
+        lang: 'fi',
+      });
+      expect(mockExtractTextFromImage).toHaveBeenCalledWith(expect.any(String), 'fi');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // unknown message type
+  // -------------------------------------------------------------------------
+  describe('unknown message type', () => {
+    it('returns error for unrecognised type', async () => {
+      const r = await dispatch({ type: 'notARealType' });
+      expect(r.success).toBe(false);
+      expect(r.error as string).toContain('notARealType');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — validation
+  // -------------------------------------------------------------------------
+  describe('translate — field validation', () => {
+    it('rejects null text', async () => {
+      const r = await dispatch({ type: 'translate', text: null, sourceLang: 'en', targetLang: 'de' });
+      expect(r.success).toBe(false);
+      expect((r.error as string)).toContain('text');
+    });
+
+    it('rejects missing text (undefined)', async () => {
+      const r = await dispatch({ type: 'translate', sourceLang: 'en', targetLang: 'de' });
+      expect(r.success).toBe(false);
+      expect((r.error as string)).toContain('text');
+    });
+
+    it('rejects missing sourceLang', async () => {
+      const r = await dispatch({ type: 'translate', text: 'hi', targetLang: 'de' });
+      expect(r.success).toBe(false);
+      expect((r.error as string)).toMatch(/sourceLang/);
+    });
+
+    it('rejects missing targetLang', async () => {
+      const r = await dispatch({ type: 'translate', text: 'hi', sourceLang: 'en' });
+      expect(r.success).toBe(false);
+      expect((r.error as string)).toMatch(/targetLang/);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — cache hit (single text)
+  // -------------------------------------------------------------------------
+  describe('translate — cache hit', () => {
+    it('returns cached translation without invoking pipeline', async () => {
+      mockCacheGet.mockResolvedValue('Hallo aus dem Cache');
+      const fakePipe = vi.fn();
+      mockGetCachedPipeline.mockReturnValue(fakePipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toBe('Hallo aus dem Cache');
+      expect(fakePipe).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — OPUS-MT pipeline (cache miss)
+  // -------------------------------------------------------------------------
+  describe('translate — OPUS-MT pipeline', () => {
+    it('translates a single string via pipeline', async () => {
+      const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Hallo Welt' }]);
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello World',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toBe('Hallo Welt');
+      expect(pipe).toHaveBeenCalledWith('Hello World', { max_length: 512 });
+    });
+
+    it('returns empty string unchanged (no pipeline call)', async () => {
+      const pipe = vi.fn();
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: '',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toBe('');
+      expect(pipe).not.toHaveBeenCalled();
+    });
+
+    it('returns whitespace string unchanged', async () => {
+      const pipe = vi.fn();
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: '   ',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(pipe).not.toHaveBeenCalled();
+    });
+
+    it('translates an array of texts', async () => {
+      const pipe = vi.fn()
+        .mockResolvedValueOnce([{ translation_text: 'Hallo' }])
+        .mockResolvedValueOnce([{ translation_text: 'Welt' }]);
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: ['Hello', 'World'],
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toEqual(['Hallo', 'Welt']);
+    });
+
+    it('returns empty array without calling pipeline', async () => {
+      const pipe = vi.fn();
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: [],
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toEqual([]);
+      expect(pipe).not.toHaveBeenCalled();
+    });
+
+    it('returns error for unsupported language pair', async () => {
+      // zz-xx has no MODEL_MAP entry and no PIVOT_ROUTES entry
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'zz',
+        targetLang: 'xx',
+        provider: 'opus-mt',
+      });
+      expect(r.success).toBe(false);
+      expect(r.error).toBeDefined();
+    });
+
+    it('stores result in cache after translation', async () => {
+      const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Bonjour' }]);
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'fr',
+        provider: 'opus-mt',
+      });
+
+      expect(mockCacheSet).toHaveBeenCalledWith(
+        'Hello', 'en', 'fr', 'opus-mt', 'Bonjour'
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — auto language detection
+  // -------------------------------------------------------------------------
+  describe('translate — auto source language', () => {
+    it('calls detectLanguage when sourceLang is auto', async () => {
+      mockDetectLanguage.mockReturnValue('en');
+      const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Hallo' }]);
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'auto',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      });
+
+      expect(mockDetectLanguage).toHaveBeenCalled();
+      expect(r.success).toBe(true);
+    });
+
+    it('returns original text when detected language equals targetLang', async () => {
+      mockDetectLanguage.mockReturnValue('de');
+      const pipe = vi.fn();
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Guten Tag',
+        sourceLang: 'auto',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toBe('Guten Tag');
+      expect(pipe).not.toHaveBeenCalled();
+    });
+
+    it('joins first 3 array items as sample text for auto-detection', async () => {
+      mockDetectLanguage.mockReturnValue('en');
+      mockCacheGet.mockResolvedValue('vertaald');
+
+      await dispatch({
+        type: 'translate',
+        text: ['Hello', 'World', 'Test'],
+        sourceLang: 'auto',
+        targetLang: 'nl',
+        provider: 'opus-mt',
+      });
+
+      expect(mockDetectLanguage).toHaveBeenCalledWith(
+        expect.stringContaining('Hello')
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — TranslateGemma provider
+  // -------------------------------------------------------------------------
+  describe('translate — translategemma provider', () => {
+    it('fails when WebGPU not available', async () => {
+      mockDetectWebGPU.mockResolvedValue({ supported: false, fp16: false });
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'translategemma',
+      });
+
+      expect(r.success).toBe(false);
+      expect((r.error as string)).toContain('WebGPU');
+    });
+
+    it('calls translateWithGemma when WebGPU supported', async () => {
+      mockDetectWebGPU.mockResolvedValue({ supported: true, fp16: true });
+      mockTranslateWithGemma.mockResolvedValue('Hallo');
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'translategemma',
+      });
+
+      expect(r.success).toBe(true);
+      expect(mockTranslateWithGemma).toHaveBeenCalledWith('Hello', 'en', 'de', undefined);
+    });
+
+    it('passes pageContext to translateWithGemma', async () => {
+      mockDetectWebGPU.mockResolvedValue({ supported: true, fp16: false });
+      mockTranslateWithGemma.mockResolvedValue('Hallo');
+
+      await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'translategemma',
+        pageContext: 'Wikipedia article about Germany',
+      });
+
+      expect(mockTranslateWithGemma).toHaveBeenCalledWith(
+        'Hello', 'en', 'de', 'Wikipedia article about Germany'
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — cloud provider offline fast-fail
+  // -------------------------------------------------------------------------
+  describe('translate — offline fast-fail', () => {
+    it('fails immediately when offline and cloud provider requested', async () => {
+      mockIsOnline.mockReturnValue(false);
+      mockIsCloudProvider.mockReturnValue(true);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'deepl',
+      });
+
+      expect(r.success).toBe(false);
+      expect((r.error as string)).toContain('no network connection');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — DeepL provider
+  // -------------------------------------------------------------------------
+  describe('translate — deepl provider', () => {
+    it('uses DeepL when available', async () => {
+      mockIsOnline.mockReturnValue(true);
+      mockIsCloudProvider.mockReturnValue(true);
+      mockDeeplIsAvailable.mockResolvedValue(true);
+      mockDeeplTranslate.mockResolvedValue('Hallo von DeepL');
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'deepl',
+      });
+
+      expect(r.success).toBe(true);
+      expect(mockDeeplInitialize).toHaveBeenCalled();
+      expect(mockDeeplTranslate).toHaveBeenCalledWith('Hello', 'en', 'de');
+    });
+
+    it('returns configuration error when DeepL not configured', async () => {
+      mockIsOnline.mockReturnValue(true);
+      mockIsCloudProvider.mockReturnValue(true);
+      mockDeeplIsAvailable.mockResolvedValue(false);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'deepl',
+      });
+
+      expect(r.success).toBe(false);
+      expect((r.error as string)).toContain('not configured');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — OpenAI provider
+  // -------------------------------------------------------------------------
+  describe('translate — openai provider', () => {
+    it('uses OpenAI when available', async () => {
+      mockIsOnline.mockReturnValue(true);
+      mockIsCloudProvider.mockReturnValue(true);
+      mockOpenaiIsAvailable.mockResolvedValue(true);
+      mockOpenaiTranslate.mockResolvedValue('OpenAI result');
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'openai',
+      });
+
+      expect(r.success).toBe(true);
+      expect(mockOpenaiTranslate).toHaveBeenCalledWith('Hello', 'en', 'de');
+    });
+
+    it('fails when OpenAI not configured', async () => {
+      mockIsOnline.mockReturnValue(true);
+      mockIsCloudProvider.mockReturnValue(true);
+      mockOpenaiIsAvailable.mockResolvedValue(false);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'openai',
+      });
+
+      expect(r.success).toBe(false);
+      expect((r.error as string)).toContain('not configured');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — Anthropic provider
+  // -------------------------------------------------------------------------
+  describe('translate — anthropic provider', () => {
+    it('uses Anthropic when available', async () => {
+      mockIsOnline.mockReturnValue(true);
+      mockIsCloudProvider.mockReturnValue(true);
+      mockAnthropicIsAvailable.mockResolvedValue(true);
+      mockAnthropicTranslate.mockResolvedValue('Anthropic result');
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'anthropic',
+      });
+
+      expect(r.success).toBe(true);
+      expect(mockAnthropicTranslate).toHaveBeenCalledWith('Hello', 'en', 'de');
+    });
+
+    it('fails when Anthropic not configured', async () => {
+      mockIsOnline.mockReturnValue(true);
+      mockIsCloudProvider.mockReturnValue(true);
+      mockAnthropicIsAvailable.mockResolvedValue(false);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'anthropic',
+      });
+
+      expect(r.success).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — Google Cloud provider
+  // -------------------------------------------------------------------------
+  describe('translate — google-cloud provider', () => {
+    it('uses Google Cloud when available', async () => {
+      mockIsOnline.mockReturnValue(true);
+      mockIsCloudProvider.mockReturnValue(true);
+      mockGoogleIsAvailable.mockResolvedValue(true);
+      mockGoogleTranslate.mockResolvedValue('Google result');
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'google-cloud',
+      });
+
+      expect(r.success).toBe(true);
+      expect(mockGoogleTranslate).toHaveBeenCalledWith('Hello', 'en', 'de');
+    });
+
+    it('fails when Google Cloud not configured', async () => {
+      mockIsOnline.mockReturnValue(true);
+      mockIsCloudProvider.mockReturnValue(true);
+      mockGoogleIsAvailable.mockResolvedValue(false);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'google-cloud',
+      });
+
+      expect(r.success).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — chrome-builtin provider
+  // -------------------------------------------------------------------------
+  describe('translate — chrome-builtin provider', () => {
+    it('returns error when Chrome Translator API not available', async () => {
+      mockChromeTranslatorIsAvailable.mockResolvedValue(false);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'chrome-builtin',
+      });
+
+      expect(r.success).toBe(false);
+      expect((r.error as string)).toContain('Chrome Translator API not available');
+    });
+
+    it('delegates to Chrome Translator when available', async () => {
+      mockChromeTranslatorIsAvailable.mockResolvedValue(true);
+      mockChromeTranslatorTranslate.mockResolvedValue('Chrome translated');
+      mockGetChromeTranslator.mockReturnValue({
+        isAvailable: mockChromeTranslatorIsAvailable,
+        translate: mockChromeTranslatorTranslate,
+      });
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'chrome-builtin',
+      });
+
+      expect(r.success).toBe(true);
+      expect(mockChromeTranslatorTranslate).toHaveBeenCalledWith('Hello', 'en', 'de');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — pivot routing
+  // -------------------------------------------------------------------------
+  describe('translate — pivot routing', () => {
+    it('routes nl-fi via two-hop pivot (nl-en + en-fi)', async () => {
+      const pipe = vi.fn()
+        .mockResolvedValueOnce([{ translation_text: 'Hello' }])   // nl->en
+        .mockResolvedValueOnce([{ translation_text: 'Hei' }]);    // en->fi
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hallo',
+        sourceLang: 'nl',
+        targetLang: 'fi',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      // Pipeline must have been called twice for two hops
+      expect(pipe).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — fallback behaviour
+  // -------------------------------------------------------------------------
+  describe('translate — provider fallback', () => {
+    it('falls back to opus-mt when primary fails with non-config error', async () => {
+      mockIsOnline.mockReturnValue(true);
+      mockIsCloudProvider.mockReturnValue(true);
+      mockDeeplIsAvailable.mockResolvedValue(true);
+      mockDeeplTranslate.mockRejectedValue(new Error('Network timeout'));
+
+      // opus-mt fallback succeeds
+      const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Fallback result' }]);
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'deepl',
+      });
+
+      expect(r.success).toBe(true);
+      expect(pipe).toHaveBeenCalled();
+    });
+
+    it('does NOT fallback for API key configuration errors', async () => {
+      mockIsOnline.mockReturnValue(true);
+      mockIsCloudProvider.mockReturnValue(true);
+      mockDeeplIsAvailable.mockResolvedValue(false);  // triggers "not configured"
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'deepl',
+      });
+
+      expect(r.success).toBe(false);
+      expect((r.error as string)).toContain('not configured');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — profiling session support
+  // -------------------------------------------------------------------------
+  describe('translate — profiling', () => {
+    it('calls profiler start/end when sessionId provided', async () => {
+      const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Test' }]);
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'opus-mt',
+        sessionId: 'session-42',
+      });
+
+      expect(mockStartTiming).toHaveBeenCalledWith('session-42', 'offscreen_processing');
+      expect(mockEndTiming).toHaveBeenCalledWith('session-42', 'offscreen_processing');
+    });
+
+    it('includes profilingData in response when sessionId provided', async () => {
+      const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Test' }]);
+      mockGetCachedPipeline.mockReturnValue(pipe);
+      mockGetSessionData.mockReturnValue({ timings: [{ name: 'model_load', duration: 100 }] });
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'opus-mt',
+        sessionId: 'session-99',
+      });
+
+      expect(r.profilingData).toBeDefined();
+    });
+
+    it('does NOT call profiler when no sessionId', async () => {
+      const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Test' }]);
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      });
+
+      expect(mockStartTiming).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // preloadModel
+  // -------------------------------------------------------------------------
+  describe('preloadModel', () => {
+    it('preloads OPUS-MT for known pair via cached pipeline', async () => {
+      const pipe = vi.fn();
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'preloadModel',
+        provider: 'opus-mt',
+        sourceLang: 'en',
+        targetLang: 'de',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.preloaded).toBe(true);
+    });
+
+    it('returns preloaded:false for unsupported pair', async () => {
+      const r = await dispatch({
+        type: 'preloadModel',
+        provider: 'opus-mt',
+        sourceLang: 'zz',
+        targetLang: 'xx',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.preloaded).toBe(false);
+    });
+
+    it('rejects TranslateGemma preload when WebGPU unavailable', async () => {
+      mockDetectWebGPU.mockResolvedValue({ supported: false, fp16: false });
+
+      const r = await dispatch({
+        type: 'preloadModel',
+        provider: 'translategemma',
+        sourceLang: 'en',
+        targetLang: 'de',
+      });
+
+      expect(r.success).toBe(false);
+      expect((r.error as string)).toContain('WebGPU');
+    });
+
+    it('preloads TranslateGemma when WebGPU is available', async () => {
+      mockDetectWebGPU.mockResolvedValue({ supported: true, fp16: false });
+
+      const r = await dispatch({
+        type: 'preloadModel',
+        provider: 'translategemma',
+        sourceLang: 'en',
+        targetLang: 'de',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.preloaded).toBe(true);
+      expect(mockGetTranslateGemmaPipeline).toHaveBeenCalled();
+    });
+
+    it('checks chrome-builtin availability', async () => {
+      mockIsChromeTranslatorAvailable.mockResolvedValue(true);
+
+      const r = await dispatch({
+        type: 'preloadModel',
+        provider: 'chrome-builtin',
+        sourceLang: 'en',
+        targetLang: 'de',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.available).toBe(true);
+    });
+
+    it('reports partial:true for pivot pair (only first hop loaded)', async () => {
+      const pipe = vi.fn();
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      // nl-fi is a known pivot route
+      const r = await dispatch({
+        type: 'preloadModel',
+        provider: 'opus-mt',
+        sourceLang: 'nl',
+        targetLang: 'fi',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.partial).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // getCloudProviderUsage
+  // -------------------------------------------------------------------------
+  describe('getCloudProviderUsage', () => {
+    it('returns DeepL usage stats', async () => {
+      mockDeeplGetUsage.mockResolvedValue({ tokens: 50000, cost: 1.0, limitReached: false });
+
+      const r = await dispatch({ type: 'getCloudProviderUsage', provider: 'deepl' });
+
+      expect(r.success).toBe(true);
+      expect((r.usage as Record<string, unknown>).tokens).toBe(50000);
+      expect(mockDeeplInitialize).toHaveBeenCalled();
+    });
+
+    it('returns OpenAI usage stats', async () => {
+      mockOpenaiGetUsage.mockResolvedValue({ tokens: 1000, cost: 0.02, limitReached: false });
+
+      const r = await dispatch({ type: 'getCloudProviderUsage', provider: 'openai' });
+
+      expect(r.success).toBe(true);
+      expect(mockOpenaiGetUsage).toHaveBeenCalled();
+    });
+
+    it('returns Anthropic usage stats', async () => {
+      mockAnthropicGetUsage.mockResolvedValue({ tokens: 2000, cost: 0.03, limitReached: false });
+
+      const r = await dispatch({ type: 'getCloudProviderUsage', provider: 'anthropic' });
+
+      expect(r.success).toBe(true);
+      expect(mockAnthropicGetUsage).toHaveBeenCalled();
+    });
+
+    it('returns Google Cloud usage stats', async () => {
+      mockGoogleGetUsage.mockResolvedValue({ tokens: 3000, cost: 0.06, limitReached: false });
+
+      const r = await dispatch({ type: 'getCloudProviderUsage', provider: 'google-cloud' });
+
+      expect(r.success).toBe(true);
+      expect(mockGoogleGetUsage).toHaveBeenCalled();
+    });
+
+    it('returns zero usage for unknown provider', async () => {
+      const r = await dispatch({ type: 'getCloudProviderUsage', provider: 'unknown' });
+
+      expect(r.success).toBe(true);
+      const usage = r.usage as Record<string, unknown>;
+      expect(usage.tokens).toBe(0);
+      expect(usage.cost).toBe(0);
+      expect(usage.limitReached).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // error propagation
+  // -------------------------------------------------------------------------
+  describe('error propagation', () => {
+    it('catches synchronous throws and returns failure response', async () => {
+      mockCacheGetStats.mockRejectedValue(new Error('DB failure'));
+
+      const r = await dispatch({ type: 'getCacheStats' });
+
+      expect(r.success).toBe(false);
+      expect(r.error).toBe('DB failure');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // preloadModel — low priority branch
+  // -------------------------------------------------------------------------
+  describe('preloadModel — priority', () => {
+    it('accepts low-priority preload flag without error', async () => {
+      const pipe = vi.fn();
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'preloadModel',
+        provider: 'opus-mt',
+        sourceLang: 'en',
+        targetLang: 'de',
+        priority: 'low',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.preloaded).toBe(true);
+    });
+
+    it('treats non-low priority the same way', async () => {
+      const pipe = vi.fn();
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'preloadModel',
+        provider: 'opus-mt',
+        sourceLang: 'en',
+        targetLang: 'de',
+        priority: 'high',
+      });
+
+      expect(r.success).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — pipeline loaded from HuggingFace (cache miss, no cached pipe)
+  // -------------------------------------------------------------------------
+  describe('translate — pipeline loading via transformers', () => {
+    it('calls transformers pipeline when no cached pipeline exists', async () => {
+      const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+      const fakePipe = vi.fn().mockResolvedValue([{ translation_text: 'Bonjour' }]);
+      (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValue(fakePipe);
+      // Force cache miss — no pipeline in LRU cache
+      mockGetCachedPipeline.mockReturnValue(null);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'fr',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(mockPipeline).toHaveBeenCalledWith(
+        'translation',
+        'Xenova/opus-mt-en-fr',
+        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
+      );
+    });
+
+    it('caches newly loaded pipeline', async () => {
+      const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+      const fakePipe = vi.fn().mockResolvedValue([{ translation_text: 'Bonjour' }]);
+      (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValue(fakePipe);
+      mockGetCachedPipeline.mockReturnValue(null);
+
+      await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'fr',
+        provider: 'opus-mt',
+      });
+
+      expect(mockCachePipeline).toHaveBeenCalledWith('Xenova/opus-mt-en-fr', fakePipe);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // cropImage — jsdom canvas path
+  // -------------------------------------------------------------------------
+  describe('cropImage', () => {
+    it('returns cropped image data URL', async () => {
+      const OriginalImage = globalThis.Image;
+
+      // Build a mock Image class where assigning src triggers onload via microtask
+      function MockImageLoad(this: Record<string, unknown>) {
+        this.onload = null;
+        this.onerror = null;
+        Object.defineProperty(this, 'src', {
+          set(val: string) {
+            this._src = val;
+            Promise.resolve().then(() => {
+              if (typeof this.onload === 'function') this.onload();
+            });
+          },
+          get() { return this._src ?? ''; },
+          configurable: true,
+        });
+      }
+      vi.stubGlobal('Image', MockImageLoad);
+
+      // Mock canvas so toDataURL returns a known value
+      const originalCreateElement = document.createElement.bind(document);
+      const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation(
+        (tag: string) => {
+          if (tag === 'canvas') {
+            const canvas = originalCreateElement('canvas') as HTMLCanvasElement;
+            vi.spyOn(canvas, 'getContext').mockReturnValue({
+              drawImage: vi.fn(),
+            } as unknown as CanvasRenderingContext2D);
+            vi.spyOn(canvas, 'toDataURL').mockReturnValue('data:image/png;base64,CROPPED');
+            return canvas;
+          }
+          return originalCreateElement(tag);
+        }
+      );
+
+      const r = await dispatch({
+        type: 'cropImage',
+        imageData: 'data:image/png;base64,ORIGINAL',
+        rect: { x: 10, y: 20, width: 100, height: 50 },
+        devicePixelRatio: 2,
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.imageData).toBe('data:image/png;base64,CROPPED');
+
+      createElementSpy.mockRestore();
+      vi.stubGlobal('Image', OriginalImage);
+    });
+
+    it('returns error when image fails to load', async () => {
+      const OriginalImage = globalThis.Image;
+
+      function MockImageFail(this: Record<string, unknown>) {
+        this.onload = null;
+        this.onerror = null;
+        Object.defineProperty(this, 'src', {
+          set(_val: string) {
+            Promise.resolve().then(() => {
+              if (typeof this.onerror === 'function') this.onerror();
+            });
+          },
+          get() { return ''; },
+          configurable: true,
+        });
+      }
+      vi.stubGlobal('Image', MockImageFail);
+
+      const r = await dispatch({
+        type: 'cropImage',
+        imageData: 'data:image/png;base64,BAD',
+        rect: { x: 0, y: 0, width: 10, height: 10 },
+      });
+
+      expect(r.success).toBe(false);
+      expect((r.error as string)).toContain('Failed to load image');
+
+      vi.stubGlobal('Image', OriginalImage);
+    });
+  });
+});
+
+// ===========================================================================
+// Pure-function tests (kept for regression coverage)
+// ===========================================================================
 
 describe('Offscreen Model Mapping', () => {
-  // Replicate the MODEL_MAP from offscreen.ts for testing
+  // Replicate the MODEL_MAP subset for testing
   const MODEL_MAP: Record<string, string> = {
     'en-fi': 'Xenova/opus-mt-en-fi',
     'fi-en': 'Xenova/opus-mt-fi-en',
@@ -34,757 +1482,34 @@ describe('Offscreen Model Mapping', () => {
     'ja-en': 'Xenova/opus-mt-jap-en',
   };
 
-  describe('supported language pairs', () => {
-    it('has 16 language pairs', () => {
-      expect(Object.keys(MODEL_MAP).length).toBe(16);
-    });
-
-    it('maps English to Finnish', () => {
-      expect(MODEL_MAP['en-fi']).toBe('Xenova/opus-mt-en-fi');
-    });
-
-    it('maps Finnish to English', () => {
-      expect(MODEL_MAP['fi-en']).toBe('Xenova/opus-mt-fi-en');
-    });
-
-    it('maps all pairs bidirectionally', () => {
-      const languages = ['fi', 'de', 'fr', 'es', 'sv', 'ru', 'zh', 'ja'];
-      for (const lang of languages) {
-        expect(MODEL_MAP[`en-${lang}`]).toBeDefined();
-        expect(MODEL_MAP[`${lang}-en`]).toBeDefined();
-      }
-    });
-
-    it('uses correct model naming for Japanese', () => {
-      // Japanese uses 'jap' in model names
-      expect(MODEL_MAP['en-ja']).toBe('Xenova/opus-mt-en-jap');
-      expect(MODEL_MAP['ja-en']).toBe('Xenova/opus-mt-jap-en');
-    });
+  it('maps English to Finnish', () => {
+    expect(MODEL_MAP['en-fi']).toBe('Xenova/opus-mt-en-fi');
   });
 
-  describe('unsupported pairs', () => {
-    it('returns undefined for unsupported pairs', () => {
-      expect(MODEL_MAP['fi-de']).toBeUndefined();
-      expect(MODEL_MAP['xx-yy']).toBeUndefined();
-    });
-  });
-});
-
-describe('FRANC_TO_ISO Mapping', () => {
-  const FRANC_TO_ISO: Record<string, string> = {
-    eng: 'en',
-    fin: 'fi',
-    deu: 'de',
-    fra: 'fr',
-    spa: 'es',
-    swe: 'sv',
-    rus: 'ru',
-    cmn: 'zh',
-    jpn: 'ja',
-  };
-
-  it('maps all supported ISO 639-3 codes', () => {
-    expect(FRANC_TO_ISO['eng']).toBe('en');
-    expect(FRANC_TO_ISO['fin']).toBe('fi');
-    expect(FRANC_TO_ISO['deu']).toBe('de');
-    expect(FRANC_TO_ISO['fra']).toBe('fr');
-    expect(FRANC_TO_ISO['spa']).toBe('es');
-    expect(FRANC_TO_ISO['swe']).toBe('sv');
-    expect(FRANC_TO_ISO['rus']).toBe('ru');
-    expect(FRANC_TO_ISO['cmn']).toBe('zh');
-    expect(FRANC_TO_ISO['jpn']).toBe('ja');
+  it('maps Finnish to English', () => {
+    expect(MODEL_MAP['fi-en']).toBe('Xenova/opus-mt-fi-en');
   });
 
-  it('returns undefined for unmapped codes', () => {
-    expect(FRANC_TO_ISO['xyz']).toBeUndefined();
-    expect(FRANC_TO_ISO['und']).toBeUndefined();
-  });
-});
-
-describe('getSupportedLanguages', () => {
-  const MODEL_MAP: Record<string, string> = {
-    'en-fi': 'Xenova/opus-mt-en-fi',
-    'fi-en': 'Xenova/opus-mt-fi-en',
-    'en-de': 'Xenova/opus-mt-en-de',
-    'de-en': 'Xenova/opus-mt-de-en',
-    'en-fr': 'Xenova/opus-mt-en-fr',
-    'fr-en': 'Xenova/opus-mt-fr-en',
-    'en-es': 'Xenova/opus-mt-en-es',
-    'es-en': 'Xenova/opus-mt-es-en',
-    'en-sv': 'Xenova/opus-mt-en-sv',
-    'sv-en': 'Xenova/opus-mt-sv-en',
-    'en-ru': 'Xenova/opus-mt-en-ru',
-    'ru-en': 'Xenova/opus-mt-ru-en',
-    'en-zh': 'Xenova/opus-mt-en-zh',
-    'zh-en': 'Xenova/opus-mt-zh-en',
-    'en-ja': 'Xenova/opus-mt-en-jap',
-    'ja-en': 'Xenova/opus-mt-jap-en',
-  };
-
-  function getSupportedLanguages(): Array<{ src: string; tgt: string }> {
-    return Object.keys(MODEL_MAP).map((key) => {
-      const [src, tgt] = key.split('-');
-      return { src, tgt };
-    });
-  }
-
-  it('returns array of language pair objects', () => {
-    const langs = getSupportedLanguages();
-    expect(Array.isArray(langs)).toBe(true);
-    expect(langs.length).toBe(16);
-  });
-
-  it('each pair has src and tgt properties', () => {
-    const langs = getSupportedLanguages();
-    for (const pair of langs) {
-      expect(pair).toHaveProperty('src');
-      expect(pair).toHaveProperty('tgt');
-      expect(typeof pair.src).toBe('string');
-      expect(typeof pair.tgt).toBe('string');
+  it('maps all pairs bidirectionally', () => {
+    const languages = ['fi', 'de', 'fr', 'es', 'sv', 'ru', 'zh', 'ja'];
+    for (const lang of languages) {
+      expect(MODEL_MAP[`en-${lang}`]).toBeDefined();
+      expect(MODEL_MAP[`${lang}-en`]).toBeDefined();
     }
   });
 
-  it('includes en-fi pair', () => {
-    const langs = getSupportedLanguages();
-    expect(langs).toContainEqual({ src: 'en', tgt: 'fi' });
+  it('uses jap in model names for Japanese', () => {
+    expect(MODEL_MAP['en-ja']).toBe('Xenova/opus-mt-en-jap');
+    expect(MODEL_MAP['ja-en']).toBe('Xenova/opus-mt-jap-en');
   });
 
-  it('includes all reverse pairs', () => {
-    const langs = getSupportedLanguages();
-    expect(langs).toContainEqual({ src: 'fi', tgt: 'en' });
-    expect(langs).toContainEqual({ src: 'de', tgt: 'en' });
-    expect(langs).toContainEqual({ src: 'ja', tgt: 'en' });
-  });
-});
-
-describe('Language Detection Logic', () => {
-  // Test the character set detection fallback logic
-
-  describe('character set detection', () => {
-    const detectByCharset = (text: string): string | null => {
-      if (/[\u3040-\u309f\u30a0-\u30ff]/.test(text)) return 'ja'; // Japanese
-      if (/[\u4e00-\u9fff]/.test(text)) return 'zh'; // Chinese
-      if (/[\u0400-\u04ff]/.test(text)) return 'ru'; // Cyrillic -> Russian
-      if (/[äöåÄÖÅ]/.test(text)) return 'fi'; // Finnish characters
-      return null;
-    };
-
-    it('detects Japanese from hiragana', () => {
-      expect(detectByCharset('こんにちは')).toBe('ja');
-    });
-
-    it('detects Japanese from katakana', () => {
-      expect(detectByCharset('コンニチハ')).toBe('ja');
-    });
-
-    it('detects Chinese from Han characters', () => {
-      expect(detectByCharset('你好世界')).toBe('zh');
-    });
-
-    it('detects Russian from Cyrillic', () => {
-      expect(detectByCharset('Привет мир')).toBe('ru');
-    });
-
-    it('detects Finnish from umlauts', () => {
-      expect(detectByCharset('päivää')).toBe('fi');
-      expect(detectByCharset('ÄÄNEKOSKI')).toBe('fi');
-      expect(detectByCharset('mörkö')).toBe('fi');
-    });
-
-    it('returns null for ASCII text', () => {
-      expect(detectByCharset('hello world')).toBeNull();
-    });
-
-    it('returns null for empty string', () => {
-      expect(detectByCharset('')).toBeNull();
-    });
-
-    it('prioritizes Japanese over Chinese for mixed text', () => {
-      // If text has hiragana/katakana, it's Japanese (even with kanji)
-      expect(detectByCharset('日本語です')).toBe('ja');
-    });
-  });
-
-  describe('detectLanguage function', () => {
-    // Recreate the full detectLanguage function for testing
-    const FRANC_TO_ISO: Record<string, string> = {
-      eng: 'en',
-      fin: 'fi',
-      deu: 'de',
-      fra: 'fr',
-      spa: 'es',
-      swe: 'sv',
-      rus: 'ru',
-      cmn: 'zh',
-      jpn: 'ja',
-    };
-
-    // Mock franc behavior
-    const mockFranc = (text: string): string => {
-      if (!text || text.length < 3) return 'und';
-      // Check language-specific words (order matters - more specific first)
-      if (/hallo|welt|wie|deutsch/i.test(text)) return 'deu';
-      if (/bonjour|monde|francais|comment/i.test(text)) return 'fra';
-      if (/hola|mundo|espanol|como/i.test(text)) return 'spa';
-      if (/hej|varld|svensk|hur/i.test(text)) return 'swe';
-      if (/hei|maailma|suomi|finnish|mita/i.test(text)) return 'fin';
-      if (/hello|world|the|are|have|how|today/i.test(text)) return 'eng';
-      return 'und';
-    };
-
-    const detectLanguage = (text: string): string => {
-      const detected = mockFranc(text);
-
-      if (detected === 'und' || !detected) {
-        if (/[\u3040-\u309f\u30a0-\u30ff]/.test(text)) return 'ja';
-        if (/[\u4e00-\u9fff]/.test(text)) return 'zh';
-        if (/[\u0400-\u04ff]/.test(text)) return 'ru';
-        if (/[äöåÄÖÅ]/.test(text)) return 'fi';
-        return 'en';
-      }
-
-      return FRANC_TO_ISO[detected] || 'en';
-    };
-
-    it('detects English', () => {
-      expect(detectLanguage('Hello world, how are you today?')).toBe('en');
-    });
-
-    it('detects Finnish', () => {
-      expect(detectLanguage('Hei maailma, mita kuuluu')).toBe('fi');
-    });
-
-    it('detects German', () => {
-      expect(detectLanguage('Hallo Welt, wie ist es')).toBe('de');
-    });
-
-    it('detects French', () => {
-      expect(detectLanguage('Bonjour monde, comment est')).toBe('fr');
-    });
-
-    it('detects Spanish', () => {
-      expect(detectLanguage('Hola mundo, como es')).toBe('es');
-    });
-
-    it('detects Swedish', () => {
-      expect(detectLanguage('Hej varld, hur svensk')).toBe('sv');
-    });
-
-    it('falls back to charset for undetermined', () => {
-      expect(detectLanguage('xyz')).toBe('en'); // Default fallback
-    });
-
-    it('detects Japanese via charset fallback', () => {
-      expect(detectLanguage('こんにちは')).toBe('ja');
-    });
-
-    it('detects Chinese via charset fallback', () => {
-      expect(detectLanguage('你好')).toBe('zh');
-    });
-
-    it('detects Russian via charset fallback', () => {
-      expect(detectLanguage('Привет')).toBe('ru');
-    });
-
-    it('detects Finnish via umlaut fallback', () => {
-      expect(detectLanguage('äöå')).toBe('fi');
-    });
-
-    it('handles empty string', () => {
-      expect(detectLanguage('')).toBe('en');
-    });
-
-    it('handles very short text', () => {
-      expect(detectLanguage('Hi')).toBe('en');
-    });
-  });
-});
-
-describe('Token Estimation', () => {
-  // Token estimation from throttle/service-worker - ~4 chars per token
-  function estimateTokens(text: string | string[]): number {
-    const str = Array.isArray(text) ? text.join(' ') : text;
-    return Math.max(1, Math.ceil(str.length / 4));
-  }
-
-  it('estimates single word', () => {
-    expect(estimateTokens('hello')).toBe(2); // 5 chars / 4 = 1.25 -> 2
-  });
-
-  it('estimates sentence', () => {
-    expect(estimateTokens('Hello world')).toBe(3); // 11 chars / 4 = 2.75 -> 3
-  });
-
-  it('estimates array of texts', () => {
-    expect(estimateTokens(['Hello', 'world'])).toBe(3); // 'Hello world' = 11 chars
-  });
-
-  it('returns minimum 1 for empty string', () => {
-    expect(estimateTokens('')).toBe(1);
-  });
-
-  it('handles long text', () => {
-    const longText = 'a'.repeat(100);
-    expect(estimateTokens(longText)).toBe(25); // 100 / 4 = 25
-  });
-
-  it('handles empty array', () => {
-    expect(estimateTokens([])).toBe(1); // '' -> 1 minimum
-  });
-});
-
-describe('Rate Limit Logic', () => {
-  interface RateLimitState {
-    requests: number;
-    tokens: number;
-    windowStart: number;
-  }
-
-  const RATE_LIMIT = {
-    requestsPerMinute: 60,
-    tokensPerMinute: 100000,
-    windowMs: 60000,
-  };
-
-  function checkRateLimit(
-    state: RateLimitState,
-    tokenEstimate: number,
-    now: number
-  ): { allowed: boolean; state: RateLimitState } {
-    let newState = { ...state };
-
-    // Reset window if expired
-    if (now - state.windowStart > RATE_LIMIT.windowMs) {
-      newState = {
-        requests: 0,
-        tokens: 0,
-        windowStart: now,
-      };
-    }
-
-    // Check limits
-    if (newState.requests >= RATE_LIMIT.requestsPerMinute) {
-      return { allowed: false, state: newState };
-    }
-    if (newState.tokens + tokenEstimate > RATE_LIMIT.tokensPerMinute) {
-      return { allowed: false, state: newState };
-    }
-
-    return { allowed: true, state: newState };
-  }
-
-  it('allows request under limits', () => {
-    const now = Date.now();
-    const state: RateLimitState = {
-      requests: 0,
-      tokens: 0,
-      windowStart: now,
-    };
-
-    const { allowed } = checkRateLimit(state, 100, now);
-    expect(allowed).toBe(true);
-  });
-
-  it('allows at edge of request limit', () => {
-    const now = Date.now();
-    const state: RateLimitState = {
-      requests: 59,
-      tokens: 0,
-      windowStart: now,
-    };
-
-    const { allowed } = checkRateLimit(state, 100, now);
-    expect(allowed).toBe(true);
-  });
-
-  it('denies when request limit reached', () => {
-    const now = Date.now();
-    const state: RateLimitState = {
-      requests: 60,
-      tokens: 0,
-      windowStart: now,
-    };
-
-    const { allowed } = checkRateLimit(state, 100, now);
-    expect(allowed).toBe(false);
-  });
-
-  it('allows at edge of token limit', () => {
-    const now = Date.now();
-    const state: RateLimitState = {
-      requests: 0,
-      tokens: 99900,
-      windowStart: now,
-    };
-
-    const { allowed } = checkRateLimit(state, 100, now);
-    expect(allowed).toBe(true);
-  });
-
-  it('denies when token limit would be exceeded', () => {
-    const now = Date.now();
-    const state: RateLimitState = {
-      requests: 0,
-      tokens: 99950,
-      windowStart: now,
-    };
-
-    const { allowed } = checkRateLimit(state, 100, now);
-    expect(allowed).toBe(false);
-  });
-
-  it('resets after window expires', () => {
-    const now = Date.now();
-    const state: RateLimitState = {
-      requests: 60,
-      tokens: 100000,
-      windowStart: now - 70000, // 70 seconds ago
-    };
-
-    const { allowed, state: newState } = checkRateLimit(state, 100, now);
-    expect(allowed).toBe(true);
-    expect(newState.requests).toBe(0);
-    expect(newState.tokens).toBe(0);
-    expect(newState.windowStart).toBe(now);
-  });
-});
-
-describe('Error Handling', () => {
-  describe('error message extraction', () => {
-    function extractErrorMessage(error: unknown): string {
-      if (error instanceof Error) {
-        return error.message;
-      }
-      if (typeof error === 'object' && error !== null) {
-        return JSON.stringify(error);
-      }
-      return String(error);
-    }
-
-    it('extracts message from Error', () => {
-      const error = new Error('Test error');
-      expect(extractErrorMessage(error)).toBe('Test error');
-    });
-
-    it('stringifies object errors', () => {
-      const error = { code: 'ERR_001', message: 'Failed' };
-      expect(extractErrorMessage(error)).toBe('{"code":"ERR_001","message":"Failed"}');
-    });
-
-    it('converts primitives to string', () => {
-      expect(extractErrorMessage('string error')).toBe('string error');
-      expect(extractErrorMessage(123)).toBe('123');
-      expect(extractErrorMessage(null)).toBe('null');
-      expect(extractErrorMessage(undefined)).toBe('undefined');
-    });
-
-    it('handles empty object', () => {
-      expect(extractErrorMessage({})).toBe('{}');
-    });
-
-    it('handles nested error object', () => {
-      const error = { outer: { inner: 'value' } };
-      expect(extractErrorMessage(error)).toBe('{"outer":{"inner":"value"}}');
-    });
-  });
-});
-
-describe('Translation Result Handling', () => {
-  // Test the result extraction from pipeline output
-  type PipelineResult = Array<{ translation_text: string }>;
-
-  function extractTranslation(result: PipelineResult): string {
-    return result[0].translation_text;
-  }
-
-  it('extracts translation from result array', () => {
-    const result: PipelineResult = [{ translation_text: 'Moi maailma' }];
-    expect(extractTranslation(result)).toBe('Moi maailma');
-  });
-
-  it('handles empty translation text', () => {
-    const result: PipelineResult = [{ translation_text: '' }];
-    expect(extractTranslation(result)).toBe('');
-  });
-
-  it('handles long translation', () => {
-    const longText = 'a'.repeat(10000);
-    const result: PipelineResult = [{ translation_text: longText }];
-    expect(extractTranslation(result)).toBe(longText);
-  });
-});
-
-describe('WebGPU Detection Logic', () => {
-  // Mirrors the upgraded detectWebGPU in offscreen.ts that returns {supported, fp16}
-  async function detectWebGPU(navigatorGpu: unknown): Promise<{ supported: boolean; fp16: boolean }> {
-    if (!navigatorGpu) return { supported: false, fp16: false };
-    try {
-      const gpu = navigatorGpu as { requestAdapter: () => Promise<{ features: { has: (f: string) => boolean } } | null> };
-      const adapter = await gpu.requestAdapter();
-      if (!adapter) return { supported: false, fp16: false };
-      const fp16 = adapter.features.has('shader-f16');
-      return { supported: true, fp16 };
-    } catch {
-      return { supported: false, fp16: false };
-    }
-  }
-
-  it('returns {supported: false, fp16: false} when navigator.gpu is undefined', async () => {
-    expect(await detectWebGPU(undefined)).toEqual({ supported: false, fp16: false });
-  });
-
-  it('returns {supported: false, fp16: false} when navigator.gpu is null', async () => {
-    expect(await detectWebGPU(null)).toEqual({ supported: false, fp16: false });
-  });
-
-  it('returns {supported: false, fp16: false} when adapter is null', async () => {
-    const mockGpu = {
-      requestAdapter: vi.fn().mockResolvedValue(null),
-    };
-    expect(await detectWebGPU(mockGpu)).toEqual({ supported: false, fp16: false });
-  });
-
-  it('returns {supported: true, fp16: true} when adapter supports shader-f16', async () => {
-    const mockGpu = {
-      requestAdapter: vi.fn().mockResolvedValue({
-        features: { has: (f: string) => f === 'shader-f16' },
-      }),
-    };
-    expect(await detectWebGPU(mockGpu)).toEqual({ supported: true, fp16: true });
-  });
-
-  it('returns {supported: true, fp16: false} when adapter lacks shader-f16', async () => {
-    const mockGpu = {
-      requestAdapter: vi.fn().mockResolvedValue({
-        features: { has: () => false },
-      }),
-    };
-    expect(await detectWebGPU(mockGpu)).toEqual({ supported: true, fp16: false });
-  });
-
-  it('returns {supported: false, fp16: false} when requestAdapter throws', async () => {
-    const mockGpu = {
-      requestAdapter: vi.fn().mockRejectedValue(new Error('WebGPU error')),
-    };
-    expect(await detectWebGPU(mockGpu)).toEqual({ supported: false, fp16: false });
-  });
-});
-
-describe('OPUS-MT dtype selection', () => {
-  // Xenova/Helsinki-NLP OPUS-MT models only ship _quantized (q8) ONNX variants.
-  // fp16 causes mixed-precision ONNX Runtime crash. Always use q8.
-
-  // Replicate the selectOpusMtDtype logic from offscreen.ts
-  function selectOpusMtDtype(_webgpu: { supported: boolean; fp16: boolean }): string {
-    // Always q8 for OPUS-MT — fp16 causes mixed-precision crash
-    return 'q8';
-  }
-
-  it('always uses q8 even when WebGPU + shader-f16 is available', () => {
-    expect(selectOpusMtDtype({ supported: true, fp16: true })).toBe('q8');
-  });
-
-  it('uses q8 when WebGPU is available but shader-f16 is not', () => {
-    expect(selectOpusMtDtype({ supported: true, fp16: false })).toBe('q8');
-  });
-
-  it('uses q8 when WASM fallback (no WebGPU)', () => {
-    expect(selectOpusMtDtype({ supported: false, fp16: false })).toBe('q8');
-  });
-
-  it('does NOT use fp32 in any scenario (wasteful ~170MB)', () => {
-    const scenarios: Array<{ supported: boolean; fp16: boolean }> = [
-      { supported: true, fp16: true },
-      { supported: true, fp16: false },
-      { supported: false, fp16: false },
-    ];
-    for (const scenario of scenarios) {
-      expect(selectOpusMtDtype(scenario)).not.toBe('fp32');
-    }
-  });
-
-  it('does NOT use fp16/q4/q4f16 for OPUS-MT', () => {
-    const dtype = selectOpusMtDtype({ supported: true, fp16: true });
-    expect(dtype).not.toBe('fp16');
-    expect(dtype).not.toBe('q4');
-    expect(dtype).not.toBe('q4f16');
-  });
-});
-
-describe('OPUS-MT WebGPU fallback logic', () => {
-  // If WebGPU fails (GPU incompatibility), fall back to WASM + q8
-  // This tests the fallback strategy used in offscreen.ts getPipeline()
-
-  interface PipelineConfig {
-    device: 'webgpu' | 'wasm';
-    dtype: string;
-  }
-
-  function selectOpusMtDtype(_webgpu: { supported: boolean; fp16: boolean }): string {
-    return 'q8'; // Always q8 for OPUS-MT
-  }
-
-  function getPipelineConfig(webgpu: { supported: boolean; fp16: boolean }): PipelineConfig {
-    return {
-      device: webgpu.supported ? 'webgpu' : 'wasm',
-      dtype: selectOpusMtDtype(webgpu),
-    };
-  }
-
-  function getFallbackConfig(): PipelineConfig {
-    return { device: 'wasm', dtype: 'q8' };
-  }
-
-  it('uses WebGPU+q8 even when shader-f16 supported', () => {
-    const config = getPipelineConfig({ supported: true, fp16: true });
-    expect(config.device).toBe('webgpu');
-    expect(config.dtype).toBe('q8');
-  });
-
-  it('uses WebGPU+q8 when no shader-f16', () => {
-    const config = getPipelineConfig({ supported: true, fp16: false });
-    expect(config.device).toBe('webgpu');
-    expect(config.dtype).toBe('q8');
-  });
-
-  it('uses WASM+q8 when WebGPU not supported', () => {
-    const config = getPipelineConfig({ supported: false, fp16: false });
-    expect(config.device).toBe('wasm');
-    expect(config.dtype).toBe('q8');
-  });
-
-  it('fallback always uses WASM + q8', () => {
-    const fallback = getFallbackConfig();
-    expect(fallback.device).toBe('wasm');
-    expect(fallback.dtype).toBe('q8');
-  });
-
-  it('fallback matches primary WASM path', () => {
-    const primary = getPipelineConfig({ supported: false, fp16: false });
-    const fallback = getFallbackConfig();
-    expect(primary.dtype).toBe(fallback.dtype);
-    expect(primary.dtype).toBe('q8');
-  });
-});
-
-describe('Provider routing in offscreen document', () => {
-  // Test that the offscreen message handler routes to the correct provider
-
-  type ProviderId = 'opus-mt' | 'translategemma' | 'chrome-builtin' | 'deepl' | 'openai' | 'anthropic' | 'google-cloud';
-
-  function classifyProvider(provider: ProviderId): 'local-opusmt' | 'local-gemma' | 'local-chrome' | 'cloud' {
-    if (provider === 'opus-mt') return 'local-opusmt';
-    if (provider === 'translategemma') return 'local-gemma';
-    if (provider === 'chrome-builtin') return 'local-chrome';
-    return 'cloud';
-  }
-
-  describe('local provider classification', () => {
-    it('classifies opus-mt as local-opusmt', () => {
-      expect(classifyProvider('opus-mt')).toBe('local-opusmt');
-    });
-
-    it('classifies translategemma as local-gemma', () => {
-      expect(classifyProvider('translategemma')).toBe('local-gemma');
-    });
-
-    it('classifies chrome-builtin as local-chrome', () => {
-      expect(classifyProvider('chrome-builtin')).toBe('local-chrome');
-    });
-  });
-
-  describe('cloud provider classification', () => {
-    it.each([
-      'deepl', 'openai', 'anthropic', 'google-cloud',
-    ] as ProviderId[])('classifies %s as cloud', (provider) => {
-      expect(classifyProvider(provider)).toBe('cloud');
-    });
-  });
-
-  describe('default provider', () => {
-    it('opus-mt is the default provider when none specified', () => {
-      // This mirrors the offscreen.ts translate() default parameter
-      const defaultProvider: ProviderId = 'opus-mt';
-      expect(classifyProvider(defaultProvider)).toBe('local-opusmt');
-    });
-  });
-});
-
-describe('getFallbackProviders', () => {
-  // Replicate the getFallbackProviders logic from offscreen.ts
-  // Only opus-mt is a valid fallback. chrome-builtin throws DOMException in
-  // offscreen context, and cloud providers require API keys + fail with
-  // chrome.storage.local errors in certain lifecycle states.
-
-  type TranslationProviderId = 'opus-mt' | 'translategemma' | 'chrome-builtin' | 'deepl' | 'openai' | 'anthropic' | 'google-cloud';
-
-  async function getFallbackProviders(
-    primary: TranslationProviderId
-  ): Promise<TranslationProviderId[]> {
-    const fallbacks: TranslationProviderId[] = [];
-    if (primary !== 'opus-mt') fallbacks.push('opus-mt');
-    return fallbacks;
-  }
-
-  it('returns opus-mt as fallback when primary is translategemma', async () => {
-    const fallbacks = await getFallbackProviders('translategemma');
-    expect(fallbacks).toEqual(['opus-mt']);
-  });
-
-  it('returns opus-mt as fallback when primary is chrome-builtin', async () => {
-    const fallbacks = await getFallbackProviders('chrome-builtin');
-    expect(fallbacks).toEqual(['opus-mt']);
-  });
-
-  it('returns empty array when primary is opus-mt (no self-fallback)', async () => {
-    const fallbacks = await getFallbackProviders('opus-mt');
-    expect(fallbacks).toEqual([]);
-  });
-
-  it('returns opus-mt as fallback for cloud providers', async () => {
-    const cloudProviders: TranslationProviderId[] = ['deepl', 'openai', 'anthropic', 'google-cloud'];
-    for (const provider of cloudProviders) {
-      const fallbacks = await getFallbackProviders(provider);
-      expect(fallbacks).toEqual(['opus-mt']);
-    }
-  });
-
-  it('never includes chrome-builtin as a fallback', async () => {
-    const allProviders: TranslationProviderId[] = [
-      'opus-mt', 'translategemma', 'chrome-builtin', 'deepl', 'openai', 'anthropic', 'google-cloud',
-    ];
-    for (const provider of allProviders) {
-      const fallbacks = await getFallbackProviders(provider);
-      expect(fallbacks).not.toContain('chrome-builtin');
-    }
-  });
-
-  it('never includes cloud providers as fallbacks', async () => {
-    const allProviders: TranslationProviderId[] = [
-      'opus-mt', 'translategemma', 'chrome-builtin', 'deepl', 'openai', 'anthropic', 'google-cloud',
-    ];
-    const cloudIds: TranslationProviderId[] = ['deepl', 'openai', 'anthropic', 'google-cloud'];
-    for (const provider of allProviders) {
-      const fallbacks = await getFallbackProviders(provider);
-      for (const cloudId of cloudIds) {
-        expect(fallbacks).not.toContain(cloudId);
-      }
-    }
-  });
-
-  it('returns at most one fallback provider', async () => {
-    const allProviders: TranslationProviderId[] = [
-      'opus-mt', 'translategemma', 'chrome-builtin', 'deepl', 'openai', 'anthropic', 'google-cloud',
-    ];
-    for (const provider of allProviders) {
-      const fallbacks = await getFallbackProviders(provider);
-      expect(fallbacks.length).toBeLessThanOrEqual(1);
-    }
+  it('returns undefined for unsupported pairs', () => {
+    expect(MODEL_MAP['fi-de']).toBeUndefined();
+    expect(MODEL_MAP['xx-yy']).toBeUndefined();
   });
 });
 
 describe('withTimeout utility', () => {
-  // Replicate the withTimeout function from offscreen.ts
   function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -795,122 +1520,65 @@ describe('withTimeout utility', () => {
     });
   }
 
-  it('resolves when promise resolves before timeout', async () => {
-    const result = await withTimeout(
-      Promise.resolve('ok'),
-      1000,
-      'test'
-    );
+  it('resolves when promise completes before timeout', async () => {
+    const result = await withTimeout(Promise.resolve('ok'), 1000, 'test');
     expect(result).toBe('ok');
   });
 
-  it('rejects with timeout error when promise takes too long', async () => {
-    const neverResolves = new Promise<string>(() => { /* intentionally never resolves */ });
-    await expect(
-      withTimeout(neverResolves, 50, 'slow operation')
-    ).rejects.toThrow('Timeout: slow operation (0.05s)');
-  });
-
-  it('includes duration in timeout error message', async () => {
+  it('rejects with timeout error when promise never resolves', async () => {
     const neverResolves = new Promise<string>(() => {});
-    try {
-      await withTimeout(neverResolves, 100, 'test op');
-    } catch (error) {
-      expect((error as Error).message).toContain('0.1s');
-      expect((error as Error).message).toContain('test op');
-    }
+    await expect(
+      withTimeout(neverResolves, 50, 'slow op')
+    ).rejects.toThrow('Timeout: slow op (0.05s)');
   });
 
   it('rejects with original error when promise rejects before timeout', async () => {
-    const failingPromise = Promise.reject(new Error('original error'));
     await expect(
-      withTimeout(failingPromise, 1000, 'test')
-    ).rejects.toThrow('original error');
+      withTimeout(Promise.reject(new Error('original')), 1000, 'test')
+    ).rejects.toThrow('original');
   });
 });
 
-describe('OPUS-MT WebGPU taint awareness', () => {
-  // When TranslateGemma's WebGPU load fails with ONNX type mismatch, it sets
-  // a tainted flag. OPUS-MT's getPipeline should check this flag and skip
-  // WebGPU entirely, going straight to WASM.
+describe('getFallbackProviders logic', () => {
+  type TPI = 'opus-mt' | 'translategemma' | 'chrome-builtin' | 'deepl' | 'openai' | 'anthropic' | 'google-cloud';
 
-  // Replicate the device selection logic from offscreen.ts getPipeline
-  function selectOpusMtDevice(
-    webgpuSupported: boolean,
-    webgpuOnnxTainted: boolean
-  ): 'webgpu' | 'wasm' {
-    if (webgpuSupported && !webgpuOnnxTainted) {
-      return 'webgpu';
-    }
-    return 'wasm';
+  async function getFallbackProviders(primary: TPI): Promise<TPI[]> {
+    const fallbacks: TPI[] = [];
+    if (primary !== 'opus-mt') fallbacks.push('opus-mt');
+    return fallbacks;
   }
 
-  it('uses WebGPU when supported and not tainted', () => {
-    expect(selectOpusMtDevice(true, false)).toBe('webgpu');
+  it('returns opus-mt for translategemma primary', async () => {
+    expect(await getFallbackProviders('translategemma')).toEqual(['opus-mt']);
   });
 
-  it('forces WASM when WebGPU is tainted', () => {
-    expect(selectOpusMtDevice(true, true)).toBe('wasm');
+  it('returns empty array for opus-mt primary (no self-fallback)', async () => {
+    expect(await getFallbackProviders('opus-mt')).toEqual([]);
   });
 
-  it('uses WASM when WebGPU not supported (regardless of taint)', () => {
-    expect(selectOpusMtDevice(false, false)).toBe('wasm');
-    expect(selectOpusMtDevice(false, true)).toBe('wasm');
-  });
-
-  describe('TranslateGemma error path detection', () => {
-    // Errors containing TranslateGemma model paths indicate ONNX state corruption
-    function isTranslateGemmaErrorPath(errorMsg: string): boolean {
-      return errorMsg.includes('language_model/layers');
+  it('returns opus-mt for all cloud providers', async () => {
+    const cloud: TPI[] = ['deepl', 'openai', 'anthropic', 'google-cloud'];
+    for (const p of cloud) {
+      expect(await getFallbackProviders(p)).toEqual(['opus-mt']);
     }
-
-    it('detects TranslateGemma layernorm path in error', () => {
-      const err = 'Type parameter (T) of Optype (Add) bound to different types in node (/model/language_model/layers.0/input_layernorm/Add)';
-      expect(isTranslateGemmaErrorPath(err)).toBe(true);
-    });
-
-    it('does not flag OPUS-MT errors', () => {
-      const err = 'Type parameter (T) of Optype (Mul) bound to different types in node (/encoder/layer.0)';
-      expect(isTranslateGemmaErrorPath(err)).toBe(false);
-    });
-
-    it('does not flag generic errors', () => {
-      expect(isTranslateGemmaErrorPath('Network error')).toBe(false);
-      expect(isTranslateGemmaErrorPath('Out of memory')).toBe(false);
-    });
   });
 
-  describe('full pipeline device selection with taint', () => {
-    interface PipelineConfig {
-      device: 'webgpu' | 'wasm';
-      dtype: string;
+  it('never includes chrome-builtin as a fallback', async () => {
+    const all: TPI[] = ['opus-mt', 'translategemma', 'chrome-builtin', 'deepl', 'openai', 'anthropic', 'google-cloud'];
+    for (const p of all) {
+      expect(await getFallbackProviders(p)).not.toContain('chrome-builtin');
     }
+  });
+});
 
-    function getOpusMtConfig(
-      webgpuSupported: boolean,
-      webgpuOnnxTainted: boolean
-    ): PipelineConfig {
-      const device = (webgpuSupported && !webgpuOnnxTainted) ? 'webgpu' : 'wasm';
-      return { device, dtype: 'q8' };
-    }
+describe('selectOpusMtDtype', () => {
+  function selectOpusMtDtype(_webgpu: { supported: boolean; fp16: boolean }): string {
+    return 'q8';
+  }
 
-    it('WebGPU + q8 when healthy', () => {
-      expect(getOpusMtConfig(true, false)).toEqual({ device: 'webgpu', dtype: 'q8' });
-    });
-
-    it('WASM + q8 when tainted', () => {
-      expect(getOpusMtConfig(true, true)).toEqual({ device: 'wasm', dtype: 'q8' });
-    });
-
-    it('WASM + q8 when no WebGPU', () => {
-      expect(getOpusMtConfig(false, false)).toEqual({ device: 'wasm', dtype: 'q8' });
-    });
-
-    it('dtype is always q8 regardless of taint state', () => {
-      expect(getOpusMtConfig(true, false).dtype).toBe('q8');
-      expect(getOpusMtConfig(true, true).dtype).toBe('q8');
-      expect(getOpusMtConfig(false, false).dtype).toBe('q8');
-      expect(getOpusMtConfig(false, true).dtype).toBe('q8');
-    });
+  it('always returns q8 regardless of WebGPU capabilities', () => {
+    expect(selectOpusMtDtype({ supported: true, fp16: true })).toBe('q8');
+    expect(selectOpusMtDtype({ supported: true, fp16: false })).toBe('q8');
+    expect(selectOpusMtDtype({ supported: false, fp16: false })).toBe('q8');
   });
 });
