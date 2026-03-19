@@ -4,14 +4,18 @@ module.exports = [
   {
     ignores: [
       'dist/',
+      'dist-firefox/',
       'coverage/',
       'safari/',
+      '_legacy/',
+      'examples/',
       '**/*.min.js',
       'src/hb.js',
       'src/mupdf-wasm.js',
       'src/mupdf.engine.js',
       'src/qa/',
       'src/wasm/',
+      'src/wllama.bundle.js',
       'scripts/',
       'e2e/',
       '**/*.d.ts', // Skip type definition files

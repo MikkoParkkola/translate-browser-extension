@@ -76,16 +76,20 @@ describe('ConfirmDialog behavior', () => {
 
   describe('props defaults', () => {
     it('uses default button labels when not specified', () => {
-      const confirmLabel = undefined ?? 'Confirm';
-      const cancelLabel = undefined ?? 'Cancel';
+      const confirmInput: string | undefined = undefined;
+      const cancelInput: string | undefined = undefined;
+      const confirmLabel = confirmInput ?? 'Confirm';
+      const cancelLabel = cancelInput ?? 'Cancel';
 
       expect(confirmLabel).toBe('Confirm');
       expect(cancelLabel).toBe('Cancel');
     });
 
     it('uses custom button labels when specified', () => {
-      const confirmLabel = 'Remove' ?? 'Confirm';
-      const cancelLabel = 'Keep' ?? 'Cancel';
+      const confirmInput: string | undefined = 'Remove';
+      const cancelInput: string | undefined = 'Keep';
+      const confirmLabel = confirmInput ?? 'Confirm';
+      const cancelLabel = cancelInput ?? 'Cancel';
 
       expect(confirmLabel).toBe('Remove');
       expect(cancelLabel).toBe('Keep');

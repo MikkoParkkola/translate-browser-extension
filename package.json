@@ -4,7 +4,7 @@
   "description": "Extension to translate web pages using multiple providers",
   "main": "index.js",
   "scripts": {
-    "test": "jest",
+    "test": "vitest run",
     "build:safari": "bash scripts/convert-safari.sh",
     "test:e2e:web": "playwright test e2e/context-menu.spec.js e2e/dom-translate.spec.js e2e/translate-page.spec.js e2e/streaming-cancel.spec.js",
     "test:e2e:pdf": "playwright test e2e/pdf-compare.spec.js",

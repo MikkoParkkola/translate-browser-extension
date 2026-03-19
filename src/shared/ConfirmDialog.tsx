@@ -5,7 +5,7 @@
  * Features: focus trap, Escape to close, aria-modal, backdrop click to cancel.
  */
 
-import { Component, Show, onMount, onCleanup, createEffect } from 'solid-js';
+import { Component, Show, onCleanup, createEffect } from 'solid-js';
 import './confirm-dialog.css';
 
 export interface ConfirmDialogProps {

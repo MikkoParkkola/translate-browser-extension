@@ -3,7 +3,7 @@
  * Sections: General, Cloud Providers, Local Models, Glossary, Site Rules, Cache
  */
 
-import { createSignal, onMount, Show, For, createEffect } from 'solid-js';
+import { createSignal, onMount, Show, For } from 'solid-js';
 import { GeneralSettings } from './components/GeneralSettings';
 import { CloudProviders } from './components/CloudProviders';
 import { LocalModels } from './components/LocalModels';

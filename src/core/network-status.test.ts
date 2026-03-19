@@ -2,7 +2,7 @@
  * Network Status unit tests
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { isOnline, isCloudProvider, onNetworkChange, initNetworkMonitoring } from './network-status';
 
 describe('isCloudProvider', () => {

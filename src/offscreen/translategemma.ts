@@ -196,22 +196,8 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       return { model: tgModel, tokenizer: tgTokenizer };
     };
 
-    const loadWasmFallback = async () => {
-      log.info('TranslateGemma: falling back to WASM + q4');
-      try {
-        const result = await loadModel('wasm', 'q4');
-        log.info('TranslateGemma loaded successfully via WASM + q4');
-        return setResult(result);
-      } catch (wasmError) {
-        tgLoading = null;
-        log.error('TranslateGemma WASM fallback also failed:', wasmError);
-        sendProgress({
-          status: 'error',
-          error: wasmError instanceof Error ? wasmError.message : String(wasmError),
-        });
-        throw wasmError;
-      }
-    };
+    // WASM fallback removed: The 3.6GB model cannot fit in the 4GB WASM heap.
+    // Attempting to load it corrupts the ONNX Runtime and breaks all subsequent model loads.
 
     // If WebGPU is not available, reject immediately.
     // The 3.6GB model cannot fit in the 4GB WASM heap — attempting to load it

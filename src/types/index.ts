@@ -405,4 +405,7 @@ export type ExtensionMessage =
   | OCRImageMessage
   | CaptureScreenshotMessage
   | { type: 'getDownloadedModels'; target?: string }
+  | { type: 'checkWebGPU'; target?: string }
+  | { type: 'deleteModel'; modelId: string; target?: string }
+  | { type: 'clearAllModels'; target?: string }
   | { type: 'getSettings'; target?: string };
