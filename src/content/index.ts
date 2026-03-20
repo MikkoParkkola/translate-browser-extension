@@ -314,7 +314,7 @@ function showProgressToast(message: string): HTMLElement {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex-shrink: 0; animation: translate-spin 1s linear infinite;">
       <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-dasharray="31.4 31.4" stroke-linecap="round"/>
     </svg>
-    <span class="translate-progress-text">${message}</span>
+    <span class="translate-progress-text">${escapeHtml(message)}</span>
     <style>
       @keyframes translate-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     </style>

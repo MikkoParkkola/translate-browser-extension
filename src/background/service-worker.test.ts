@@ -578,7 +578,10 @@ describe('Service Worker Extended Handler Coverage', () => {
     const handler = getMessageHandler();
     const sendResponse = vi.fn();
     handler(message, {}, sendResponse);
-    await new Promise((r) => setTimeout(r, 150));
+    // Allow enough time for retry logic and async handlers
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalled();
+    }, { timeout: 5000 });
     return sendResponse.mock.calls[0]?.[0];
   }
 
@@ -1372,16 +1375,24 @@ describe('Service Worker Extended Handler Coverage', () => {
     it('returns error when offscreen reports failure', async () => {
       mockSendMessage.mockReturnValue({ success: false, error: 'Model not loaded' });
 
-      const response = await invoke({
+      const handler = getMessageHandler();
+      const sendResponse = vi.fn();
+      handler({
         type: 'translate',
         text: 'Fail please',
         sourceLang: 'en',
         targetLang: 'sv',
-      }) as { success: boolean; error?: string };
+      }, {}, sendResponse);
 
+      // Retry logic: 3 attempts × exponential backoff ≈ 8-10s
+      await vi.waitFor(() => {
+        expect(sendResponse).toHaveBeenCalled();
+      }, { timeout: 15000 });
+
+      const response = sendResponse.mock.calls[0]?.[0] as { success: boolean; error?: string };
       expect(response.success).toBe(false);
       expect(response.error).toBeDefined();
-    });
+    }, 20000);
   });
 
   // --------------------------------------------------------------------------

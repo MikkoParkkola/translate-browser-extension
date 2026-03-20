@@ -8,16 +8,117 @@
  * - No more single ArrayBuffer size warnings
  */
 
+import type {
+  DownloadProgressInfo,
+  HealthCheckResult,
+  HealthCheck,
+  ModelInfo,
+  PerformanceSummary,
+} from './lib/LocalModelManager.js';
+
+// Extend Window for the global model manager reference
+declare global {
+  interface Window {
+    localModelManager: LocalModelManagerForUI;
+    LocalModelUI: typeof LocalModelUI;
+  }
+}
+
+/** Minimal interface for the model manager methods used by this UI. */
+interface LocalModelManagerForUI {
+  getModelInfo(): ModelInfo;
+  downloadModel(onProgress: (info: DownloadProgressInfo) => void): Promise<void>;
+  getDownloadProgress(): { isDownloading: boolean; progress: number };
+  validateModel(onProgress?: (info: ValidationProgressInfo) => void): Promise<ValidationUIResult>;
+  deleteModel(): Promise<void>;
+  translate(text: string, source: string, target: string): Promise<TranslationUIResult>;
+  healthCheck(): Promise<HealthCheckResult>;
+  cancelModelDownload(): void;
+  resetPerformanceStats(): Promise<void>;
+  stopPerformanceMonitoring(): Promise<void>;
+  startPerformanceMonitoring(): Promise<void>;
+  switchOptimizationLevel(level: string): Promise<void>;
+  getPerformanceReport(): Promise<PerformanceReport>;
+  performanceStats?: { inferenceHistory?: number[] };
+}
+
+interface ValidationProgressInfo {
+  progress?: number;
+  step?: string;
+}
+
+interface ValidationCheck {
+  passed: boolean;
+  message: string;
+  details?: unknown;
+}
+
+interface ValidationUIResult {
+  valid: boolean;
+  duration: number;
+  checks: Record<string, ValidationCheck>;
+  details?: Record<string, unknown>;
+}
+
+interface TranslationUIResult {
+  text: string;
+  inferenceTime?: number;
+}
+
+interface PerformanceReport {
+  summary: {
+    totalTranslations: string | number;
+    successRate: string | number;
+    averageInferenceTime: string | number;
+    throughput: { tokensPerSecond: string | number };
+  };
+  performance: {
+    trend: string;
+    optimizationLevel: string;
+    lastOptimized: string | null;
+  };
+  memory: {
+    currentUsage: string;
+    peakUsage: string;
+    pressure: string;
+  };
+  recommendations: Recommendation[];
+}
+
+interface Recommendation {
+  type: string;
+  severity: string;
+  message: string;
+  action: string;
+}
+
+interface PerformanceStats {
+  totalTranslations: number;
+  successRate: number;
+  averageInferenceTime: number;
+  lastError?: { message: string };
+}
+
 class LocalModelUI {
-  constructor(containerId) {
+  private container: HTMLElement | null;
+  private progressInterval: ReturnType<typeof setInterval> | null;
+  private isInitialized: boolean;
+  private statusInterval: ReturnType<typeof setInterval> | null;
+  private _downloadStartTime: number | null;
+  private _lastProgressLoaded: number;
+
+  constructor(containerId: string) {
     this.container = document.getElementById(containerId);
     this.progressInterval = null;
     this.isInitialized = false;
+    this.statusInterval = null;
+    this._downloadStartTime = null;
+    this._lastProgressLoaded = 0;
 
     this.init();
   }
 
-  init() {
+  private init(): void {
     if (!this.container) {
       console.error('[LocalModelUI] Container element not found');
       return;
@@ -31,8 +132,8 @@ class LocalModelUI {
     this.updateStatus();
   }
 
-  createUI() {
-    this.container.innerHTML = `
+  private createUI(): void {
+    this.container!.innerHTML = `
       <div class="local-model-panel">
         <div class="local-model-header">
           <h3>Local Translation Model</h3>
@@ -134,7 +235,7 @@ class LocalModelUI {
     `;
   }
 
-  bindEvents() {
+  private bindEvents(): void {
     const downloadBtn = document.getElementById('download-model');
     const validateBtn = document.getElementById('validate-model');
     const deleteBtn = document.getElementById('delete-model');
@@ -172,82 +273,82 @@ class LocalModelUI {
     }
   }
 
-  async updateStatus() {
+  async updateStatus(): Promise<void> {
     if (!this.isInitialized || !window.localModelManager) return;
 
     try {
-      const modelInfo = window.localModelManager.getModelInfo();
+      const modelInfo: ModelInfo = window.localModelManager.getModelInfo();
       this.renderStatus(modelInfo);
 
       if (modelInfo.available) {
-        this.updatePerformanceStats(modelInfo.performanceStats);
+        this.updatePerformanceStats(modelInfo.performanceStats as PerformanceStats);
       }
 
     } catch (error) {
       console.error('[LocalModelUI] Status update failed:', error);
-      this.showError('Failed to update status', error.message);
+      this.showError('Failed to update status', (error as Error).message);
     }
   }
 
-  renderStatus(modelInfo) {
+  private renderStatus(modelInfo: ModelInfo): void {
     const statusIndicator = document.getElementById('local-model-status-indicator');
     const statusText = document.getElementById('local-model-status-text');
-    const downloadBtn = document.getElementById('download-model');
-    const validateBtn = document.getElementById('validate-model');
-    const deleteBtn = document.getElementById('delete-model');
-    const testBtn = document.getElementById('test-model');
+    const downloadBtn = document.getElementById('download-model') as HTMLElement | null;
+    const validateBtn = document.getElementById('validate-model') as HTMLElement | null;
+    const deleteBtn = document.getElementById('delete-model') as HTMLElement | null;
+    const testBtn = document.getElementById('test-model') as HTMLElement | null;
     const infoPanel = document.getElementById('local-model-info');
     const progressPanel = document.getElementById('local-model-progress');
     const validationPanel = document.getElementById('local-model-validation');
 
     if (modelInfo.downloading) {
-      statusIndicator.className = 'status-indicator downloading';
-      statusText.textContent = 'Downloading shards...';
+      statusIndicator!.className = 'status-indicator downloading';
+      statusText!.textContent = 'Downloading shards...';
       this.showProgress();
-      validationPanel.style.display = 'none';
+      validationPanel!.style.display = 'none';
     } else if (modelInfo.ready) {
-      statusIndicator.className = 'status-indicator ready';
-      statusText.textContent = `Ready (${  modelInfo.backend || 'wllama'  })`;
-      infoPanel.style.display = 'block';
-      progressPanel.style.display = 'none';
-      validationPanel.style.display = 'none';
+      statusIndicator!.className = 'status-indicator ready';
+      statusText!.textContent = `Ready (${modelInfo.backend || 'wllama'})`;
+      infoPanel!.style.display = 'block';
+      progressPanel!.style.display = 'none';
+      validationPanel!.style.display = 'none';
     } else if (modelInfo.available) {
-      statusIndicator.className = 'status-indicator available';
-      statusText.textContent = 'Available (Not Loaded)';
-      infoPanel.style.display = 'block';
-      progressPanel.style.display = 'none';
-      validationPanel.style.display = 'none';
+      statusIndicator!.className = 'status-indicator available';
+      statusText!.textContent = 'Available (Not Loaded)';
+      infoPanel!.style.display = 'block';
+      progressPanel!.style.display = 'none';
+      validationPanel!.style.display = 'none';
     } else {
-      statusIndicator.className = 'status-indicator unavailable';
-      statusText.textContent = 'Not Downloaded';
-      infoPanel.style.display = 'none';
-      progressPanel.style.display = 'none';
-      validationPanel.style.display = 'none';
+      statusIndicator!.className = 'status-indicator unavailable';
+      statusText!.textContent = 'Not Downloaded';
+      infoPanel!.style.display = 'none';
+      progressPanel!.style.display = 'none';
+      validationPanel!.style.display = 'none';
     }
 
-    downloadBtn.style.display = modelInfo.available ? 'none' : 'inline-block';
-    validateBtn.style.display = modelInfo.available ? 'inline-block' : 'none';
-    deleteBtn.style.display = modelInfo.available ? 'inline-block' : 'none';
-    testBtn.style.display = modelInfo.ready ? 'inline-block' : 'none';
+    downloadBtn!.style.display = modelInfo.available ? 'none' : 'inline-block';
+    validateBtn!.style.display = modelInfo.available ? 'inline-block' : 'none';
+    deleteBtn!.style.display = modelInfo.available ? 'inline-block' : 'none';
+    testBtn!.style.display = modelInfo.ready ? 'inline-block' : 'none';
 
-    if (modelInfo.performanceStats && modelInfo.performanceStats.lastError) {
-      this.showError('Recent Error', modelInfo.performanceStats.lastError.message);
+    if ((modelInfo.performanceStats as PerformanceStats)?.lastError) {
+      this.showError('Recent Error', (modelInfo.performanceStats as PerformanceStats).lastError!.message);
     } else {
       this.hideError();
     }
   }
 
-  updatePerformanceStats(stats) {
+  private updatePerformanceStats(stats: PerformanceStats | undefined): void {
     const perfElement = document.getElementById('performance-stats');
     const perfText = document.getElementById('performance-text');
 
     if (stats && stats.totalTranslations > 0) {
-      perfElement.style.display = 'block';
-      perfText.textContent = `${stats.totalTranslations} translations, ${stats.successRate}% success rate, ~${Math.round(stats.averageInferenceTime)}ms avg`;
+      perfElement!.style.display = 'block';
+      perfText!.textContent = `${stats.totalTranslations} translations, ${stats.successRate}% success rate, ~${Math.round(stats.averageInferenceTime)}ms avg`;
     }
   }
 
-  async startDownload() {
+  private async startDownload(): Promise<void> {
     if (!window.localModelManager) return;
 
     try {
@@ -255,21 +356,21 @@ class LocalModelUI {
       this._downloadStartTime = Date.now();
       this._lastProgressLoaded = 0;
 
-      await window.localModelManager.downloadModel((progressInfo) => {
+      await window.localModelManager.downloadModel((progressInfo: DownloadProgressInfo) => {
         this.updateProgressUI(progressInfo);
       });
 
       this.updateStatus();
     } catch (error) {
       console.error('[LocalModelUI] Download failed:', error);
-      this.showError('Download Failed', error.message);
+      this.showError('Download Failed', (error as Error).message);
       this.hideProgress();
     }
   }
 
-  showProgress() {
+  private showProgress(): void {
     const progressPanel = document.getElementById('local-model-progress');
-    progressPanel.style.display = 'block';
+    progressPanel!.style.display = 'block';
 
     if (!this.progressInterval) {
       this.progressInterval = setInterval(() => {
@@ -283,9 +384,9 @@ class LocalModelUI {
     }
   }
 
-  hideProgress() {
+  private hideProgress(): void {
     const progressPanel = document.getElementById('local-model-progress');
-    progressPanel.style.display = 'none';
+    progressPanel!.style.display = 'none';
 
     if (this.progressInterval) {
       clearInterval(this.progressInterval);
@@ -293,7 +394,7 @@ class LocalModelUI {
     }
   }
 
-  updateProgressUI(progressInfo) {
+  private updateProgressUI(progressInfo: DownloadProgressInfo): void {
     const progressFill = document.getElementById('progress-fill');
     const progressPercentage = document.getElementById('progress-percentage');
     const progressSpeed = document.getElementById('progress-speed');
@@ -303,8 +404,8 @@ class LocalModelUI {
     const shardText = document.getElementById('progress-shard-text');
 
     if (progressInfo.progress !== undefined) {
-      progressFill.style.width = `${progressInfo.progress}%`;
-      progressPercentage.textContent = `${Math.round(progressInfo.progress)}%`;
+      progressFill!.style.width = `${progressInfo.progress}%`;
+      progressPercentage!.textContent = `${Math.round(progressInfo.progress)}%`;
     }
 
     // Calculate speed
@@ -313,37 +414,37 @@ class LocalModelUI {
       if (elapsed > 0) {
         const speed = progressInfo.loaded / elapsed;
         const speedMBps = (speed / (1024 * 1024)).toFixed(1);
-        progressSpeed.textContent = `${speedMBps} MB/s`;
+        progressSpeed!.textContent = `${speedMBps} MB/s`;
 
         // Calculate ETA
         if (progressInfo.total > 0) {
           const remaining = progressInfo.total - progressInfo.loaded;
           const eta = Math.round(remaining / speed);
           if (eta > 60) {
-            progressETA.textContent = `ETA: ${Math.round(eta / 60)}m ${eta % 60}s`;
+            progressETA!.textContent = `ETA: ${Math.round(eta / 60)}m ${eta % 60}s`;
           } else {
-            progressETA.textContent = `ETA: ${eta}s`;
+            progressETA!.textContent = `ETA: ${eta}s`;
           }
         }
       }
     }
 
     if (progressInfo.status) {
-      progressStatus.textContent = progressInfo.status;
+      progressStatus!.textContent = progressInfo.status;
     }
 
     // Show shard info if available
     if (progressInfo.shardIndex !== undefined && progressInfo.shardCount !== undefined) {
-      shardInfo.style.display = 'block';
-      shardText.textContent = `Shard ${progressInfo.shardIndex + 1} of ${progressInfo.shardCount}`;
+      shardInfo!.style.display = 'block';
+      shardText!.textContent = `Shard ${progressInfo.shardIndex + 1} of ${progressInfo.shardCount}`;
     }
 
     if (progressInfo.complete) {
-      progressStatus.textContent = 'Download complete! Loading model...';
+      progressStatus!.textContent = 'Download complete! Loading model...';
     }
   }
 
-  async deleteModel() {
+  private async deleteModel(): Promise<void> {
     if (!window.localModelManager) return;
 
     const confirmed = await this._confirmAction(
@@ -358,58 +459,58 @@ class LocalModelUI {
       this.updateStatus();
     } catch (error) {
       console.error('[LocalModelUI] Delete failed:', error);
-      this.showError('Delete Failed', error.message);
+      this.showError('Delete Failed', (error as Error).message);
     }
   }
 
-  async startValidation() {
+  private async startValidation(): Promise<void> {
     if (!window.localModelManager) return;
 
     try {
       this.showValidation();
 
-      const validationResult = await window.localModelManager.validateModel((progressInfo) => {
+      const validationResult: ValidationUIResult = await window.localModelManager.validateModel((progressInfo: ValidationProgressInfo) => {
         this.updateValidationProgress(progressInfo);
       });
 
       this.showValidationResults(validationResult);
     } catch (error) {
       console.error('[LocalModelUI] Validation failed:', error);
-      this.showError('Model Validation Failed', error.message);
+      this.showError('Model Validation Failed', (error as Error).message);
       this.hideValidation();
     }
   }
 
-  showValidation() {
+  private showValidation(): void {
     const validationPanel = document.getElementById('local-model-validation');
     const validationResults = document.getElementById('validation-results');
 
-    validationPanel.style.display = 'block';
-    validationResults.style.display = 'none';
+    validationPanel!.style.display = 'block';
+    validationResults!.style.display = 'none';
 
     const progressFill = document.getElementById('validation-progress-fill');
-    progressFill.style.width = '0%';
+    progressFill!.style.width = '0%';
 
     const validationSteps = document.getElementById('validation-steps');
-    validationSteps.innerHTML = '';
+    validationSteps!.innerHTML = '';
   }
 
-  hideValidation() {
+  private hideValidation(): void {
     const validationPanel = document.getElementById('local-model-validation');
-    validationPanel.style.display = 'none';
+    validationPanel!.style.display = 'none';
   }
 
-  updateValidationProgress(progressInfo) {
+  private updateValidationProgress(progressInfo: ValidationProgressInfo): void {
     const progressFill = document.getElementById('validation-progress-fill');
     const validationStatus = document.getElementById('validation-status');
     const validationSteps = document.getElementById('validation-steps');
 
     if (progressInfo.progress !== undefined) {
-      progressFill.style.width = `${progressInfo.progress}%`;
+      progressFill!.style.width = `${progressInfo.progress}%`;
     }
 
     if (progressInfo.step) {
-      validationStatus.textContent = this.getValidationStepText(progressInfo.step);
+      validationStatus!.textContent = this.getValidationStepText(progressInfo.step);
 
       const stepElement = document.createElement('div');
       stepElement.className = 'validation-step';
@@ -417,12 +518,12 @@ class LocalModelUI {
         <span class="step-icon">...</span>
         <span class="step-text">${this.getValidationStepText(progressInfo.step)}</span>
       `;
-      validationSteps.appendChild(stepElement);
+      validationSteps!.appendChild(stepElement);
     }
   }
 
-  getValidationStepText(step) {
-    const stepTexts = {
+  private getValidationStepText(step: string): string {
+    const stepTexts: Record<string, string> = {
       'size': 'Validating shard sizes...',
       'data-retrieval': 'Checking cached shards...',
       'checksum': 'Verifying shard integrity...',
@@ -432,16 +533,16 @@ class LocalModelUI {
     return stepTexts[step] || `Validating ${step}...`;
   }
 
-  showValidationResults(result) {
+  private showValidationResults(result: ValidationUIResult): void {
     const validationResults = document.getElementById('validation-results');
     const validationSummary = document.getElementById('validation-summary');
     const validationDetails = document.getElementById('validation-details');
 
-    validationResults.style.display = 'block';
+    validationResults!.style.display = 'block';
 
     const statusClass = result.valid ? 'validation-success' : 'validation-failure';
-    validationSummary.className = `validation-summary ${statusClass}`;
-    validationSummary.innerHTML = `
+    validationSummary!.className = `validation-summary ${statusClass}`;
+    validationSummary!.innerHTML = `
       <div class="summary-status">
         <span class="summary-icon">${result.valid ? 'PASS' : 'FAIL'}</span>
         <span class="summary-text">
@@ -453,7 +554,7 @@ class LocalModelUI {
 
     let detailsHTML = '<div class="validation-checks">';
 
-    Object.entries(result.checks).forEach(([checkName, check]) => {
+    Object.entries(result.checks).forEach(([checkName, check]: [string, ValidationCheck]) => {
       const checkClass = check.passed ? 'check-passed' : 'check-failed';
       detailsHTML += `
         <div class="validation-check ${checkClass}">
@@ -478,27 +579,27 @@ class LocalModelUI {
       `;
     }
 
-    validationDetails.innerHTML = detailsHTML;
+    validationDetails!.innerHTML = detailsHTML;
 
     const stepElements = document.querySelectorAll('#validation-steps .validation-step');
     stepElements.forEach(step => {
       const icon = step.querySelector('.step-icon');
-      icon.textContent = 'OK';
+      if (icon) icon.textContent = 'OK';
       step.classList.add('step-complete');
     });
 
-    const validationStatus = document.getElementById('validation-status');
-    validationStatus.textContent = result.valid
+    const validationStatusEl = document.getElementById('validation-status');
+    validationStatusEl!.textContent = result.valid
       ? 'Validation completed successfully'
       : 'Validation completed with errors';
   }
 
-  async testTranslation() {
+  private async testTranslation(): Promise<void> {
     if (!window.localModelManager) return;
 
     try {
       const testText = 'Hello, this is a test translation.';
-      const result = await window.localModelManager.translate(testText, 'en', 'es');
+      const result: TranslationUIResult = await window.localModelManager.translate(testText, 'en', 'es');
 
       this.showMessage(
         `Test Translation Success!\n` +
@@ -510,29 +611,29 @@ class LocalModelUI {
       );
     } catch (error) {
       console.error('[LocalModelUI] Test failed:', error);
-      this.showError('Translation Test Failed', error.message);
+      this.showError('Translation Test Failed', (error as Error).message);
     }
   }
 
-  async showHealthCheck() {
+  private async showHealthCheck(): Promise<void> {
     if (!window.localModelManager) return;
 
     try {
-      const health = await window.localModelManager.healthCheck();
+      const health: HealthCheckResult = await window.localModelManager.healthCheck();
       this.renderHealthCheck(health);
     } catch (error) {
       console.error('[LocalModelUI] Health check failed:', error);
-      this.showError('Health Check Failed', error.message);
+      this.showError('Health Check Failed', (error as Error).message);
     }
   }
 
-  renderHealthCheck(health) {
+  private renderHealthCheck(health: HealthCheckResult): void {
     const healthPanel = document.getElementById('local-model-health');
     const healthTimestamp = document.getElementById('health-timestamp');
     const healthResults = document.getElementById('health-results');
 
-    healthPanel.style.display = 'block';
-    healthTimestamp.textContent = new Date(health.timestamp).toLocaleString();
+    healthPanel!.style.display = 'block';
+    healthTimestamp!.textContent = new Date(health.timestamp).toLocaleString();
 
     let resultsHTML = `
       <div class="health-summary ${health.status}">
@@ -542,7 +643,7 @@ class LocalModelUI {
       <div class="health-checks">
     `;
 
-    Object.entries(health.checks).forEach(([checkName, check]) => {
+    Object.entries(health.checks).forEach(([checkName, check]: [string, HealthCheck]) => {
       resultsHTML += `
         <div class="health-check-item ${check.status || (check.passed ? 'ok' : 'fail')}">
           <span class="check-name">${checkName}:</span>
@@ -558,35 +659,33 @@ class LocalModelUI {
       resultsHTML += `<div class="health-error">Error: ${health.error}</div>`;
     }
 
-    healthResults.innerHTML = resultsHTML;
+    healthResults!.innerHTML = resultsHTML;
   }
 
-  cancelDownload() {
+  private cancelDownload(): void {
     if (window.localModelManager) {
       window.localModelManager.cancelModelDownload();
       this.hideProgress();
     }
   }
 
-  retryLastAction() {
+  private retryLastAction(): void {
     this.updateStatus();
     this.hideError();
   }
 
-  showError(title, message) {
+  private showError(title: string, message: string): void {
     const errorPanel = document.getElementById('local-model-error');
     const errorMessage = document.getElementById('error-message');
 
-    errorPanel.style.display = 'block';
-    errorMessage.innerHTML = `<strong>${title}:</strong> ${message}`;
+    errorPanel!.style.display = 'block';
+    errorMessage!.innerHTML = `<strong>${title}:</strong> ${message}`;
   }
 
   /**
    * Show a non-blocking confirmation dialog, replacing native confirm().
-   * @param {string} message - The confirmation message to display.
-   * @returns {Promise<boolean>} Resolves true if confirmed, false if cancelled.
    */
-  _confirmAction(message) {
+  private _confirmAction(message: string): Promise<boolean> {
     return new Promise((resolve) => {
       const overlay = document.createElement('div');
       overlay.className = 'local-model-confirm-overlay';
@@ -614,7 +713,7 @@ class LocalModelUI {
       okBtn.style.cssText =
         'padding:8px 20px;cursor:pointer;background:#007bff;color:#fff;border:none;border-radius:4px';
 
-      const dismiss = (result) => {
+      const dismiss = (result: boolean): void => {
         overlay.remove();
         resolve(result);
       };
@@ -628,12 +727,12 @@ class LocalModelUI {
     });
   }
 
-  hideError() {
+  private hideError(): void {
     const errorPanel = document.getElementById('local-model-error');
-    errorPanel.style.display = 'none';
+    errorPanel!.style.display = 'none';
   }
 
-  startStatusUpdates() {
+  startStatusUpdates(): void {
     if (this.statusInterval) return;
 
     this.statusInterval = setInterval(() => {
@@ -641,7 +740,7 @@ class LocalModelUI {
     }, 5000);
   }
 
-  stopStatusUpdates() {
+  stopStatusUpdates(): void {
     if (this.statusInterval) {
       clearInterval(this.statusInterval);
       this.statusInterval = null;
@@ -652,8 +751,8 @@ class LocalModelUI {
   // Performance Monitoring UI
   // ================================
 
-  showPerformancePanel() {
-    const existingPanel = this.container.querySelector('.performance-panel');
+  showPerformancePanel(): void {
+    const existingPanel = this.container!.querySelector('.performance-panel') as HTMLElement | null;
     if (existingPanel) {
       existingPanel.style.display = 'block';
       return;
@@ -757,23 +856,23 @@ class LocalModelUI {
       </div>
     `;
 
-    this.container.appendChild(performancePanel);
+    this.container!.appendChild(performancePanel);
     this.setupPerformanceEventListeners();
     this.updatePerformanceDisplay();
   }
 
-  hidePerformancePanel() {
-    const performancePanel = this.container.querySelector('.performance-panel');
+  hidePerformancePanel(): void {
+    const performancePanel = this.container!.querySelector('.performance-panel') as HTMLElement | null;
     if (performancePanel) {
       performancePanel.style.display = 'none';
     }
   }
 
-  setupPerformanceEventListeners() {
-    const refreshBtn = this.container.querySelector('#refresh-performance');
-    const resetBtn = this.container.querySelector('#reset-stats');
-    const toggleBtn = this.container.querySelector('#toggle-monitoring');
-    const optimizationSelector = this.container.querySelector('#optimization-selector');
+  private setupPerformanceEventListeners(): void {
+    const refreshBtn = this.container!.querySelector('#refresh-performance');
+    const resetBtn = this.container!.querySelector('#reset-stats');
+    const toggleBtn = this.container!.querySelector('#toggle-monitoring') as HTMLElement | null;
+    const optimizationSelector = this.container!.querySelector('#optimization-selector') as HTMLSelectElement | null;
 
     if (refreshBtn) {
       refreshBtn.addEventListener('click', () => {
@@ -795,9 +894,9 @@ class LocalModelUI {
     }
 
     if (toggleBtn) {
-      const setBtnText = (text) => { toggleBtn.textContent = text; };
+      const setBtnText = (text: string): void => { toggleBtn.textContent = text; };
       toggleBtn.addEventListener('click', async () => {
-        const stopping = toggleBtn.textContent.includes('Stop');
+        const stopping = toggleBtn.textContent?.includes('Stop') ?? false;
         setBtnText(stopping ? 'Stopping\u2026' : 'Starting\u2026');
         if (stopping) {
           await window.localModelManager.stopPerformanceMonitoring();
@@ -812,29 +911,29 @@ class LocalModelUI {
     }
 
     if (optimizationSelector) {
-      optimizationSelector.addEventListener('change', async (e) => {
-        const level = e.target.value;
+      optimizationSelector.addEventListener('change', async (e: Event) => {
+        const level = (e.target as HTMLSelectElement).value;
         try {
           await window.localModelManager.switchOptimizationLevel(level);
           this.showMessage(`Switched to ${level} optimization level`, 'success');
           this.updatePerformanceDisplay();
         } catch (error) {
-          this.showMessage(`Failed to switch optimization level: ${error.message}`, 'error');
+          this.showMessage(`Failed to switch optimization level: ${(error as Error).message}`, 'error');
         }
       });
     }
   }
 
-  async updatePerformanceDisplay() {
+  private async updatePerformanceDisplay(): Promise<void> {
     try {
-      const performanceReport = await window.localModelManager.getPerformanceReport();
+      const performanceReport: PerformanceReport = await window.localModelManager.getPerformanceReport();
 
-      this.updateElement('#perf-total-translations', performanceReport.summary.totalTranslations);
-      this.updateElement('#perf-success-rate', performanceReport.summary.successRate);
-      this.updateElement('#perf-avg-time', performanceReport.summary.averageInferenceTime);
+      this.updateElement('#perf-total-translations', String(performanceReport.summary.totalTranslations));
+      this.updateElement('#perf-success-rate', String(performanceReport.summary.successRate));
+      this.updateElement('#perf-avg-time', String(performanceReport.summary.averageInferenceTime));
       this.updateElement('#perf-throughput', `${performanceReport.summary.throughput.tokensPerSecond} tokens/sec`);
 
-      const trendElement = this.container.querySelector('#trend-indicator');
+      const trendElement = this.container!.querySelector('#trend-indicator') as HTMLElement | null;
       if (trendElement) {
         trendElement.textContent = this.capitalizeFirst(performanceReport.performance.trend);
         trendElement.className = `trend-${performanceReport.performance.trend}`;
@@ -844,8 +943,8 @@ class LocalModelUI {
       this.updateElement('#memory-peak', performanceReport.memory.peakUsage);
 
       const memoryPressure = parseFloat(performanceReport.memory.pressure);
-      const memoryPressureElement = this.container.querySelector('#memory-pressure');
-      const memoryBarFill = this.container.querySelector('#memory-bar-fill');
+      const memoryPressureElement = this.container!.querySelector('#memory-pressure') as HTMLElement | null;
+      const memoryBarFill = this.container!.querySelector('#memory-bar-fill') as HTMLElement | null;
 
       if (memoryPressureElement && memoryBarFill) {
         memoryBarFill.style.width = performanceReport.memory.pressure;
@@ -881,15 +980,15 @@ class LocalModelUI {
     }
   }
 
-  updateRecommendations(recommendations) {
-    const recommendationsPanel = this.container.querySelector('#performance-recommendations');
-    const recommendationsList = this.container.querySelector('#recommendations-list');
+  private updateRecommendations(recommendations: Recommendation[]): void {
+    const recommendationsPanel = this.container!.querySelector('#performance-recommendations') as HTMLElement | null;
+    const recommendationsList = this.container!.querySelector('#recommendations-list') as HTMLElement | null;
 
     if (!recommendationsPanel || !recommendationsList) return;
 
     if (recommendations && recommendations.length > 0) {
       recommendationsPanel.style.display = 'block';
-      recommendationsList.innerHTML = recommendations.map(rec => `
+      recommendationsList.innerHTML = recommendations.map((rec: Recommendation) => `
         <div class="recommendation recommendation-${rec.severity}">
           <div class="recommendation-header">
             <span class="recommendation-type">${rec.type.toUpperCase()}</span>
@@ -904,14 +1003,14 @@ class LocalModelUI {
     }
   }
 
-  updatePerformanceChart() {
-    const canvas = this.container.querySelector('#performance-chart');
+  private updatePerformanceChart(): void {
+    const canvas = this.container!.querySelector('#performance-chart') as HTMLCanvasElement | null;
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    const inferenceHistory = window.localModelManager.performanceStats
-      ? window.localModelManager.performanceStats.inferenceHistory
-      : [];
+    if (!ctx) return;
+
+    const inferenceHistory: number[] = window.localModelManager.performanceStats?.inferenceHistory ?? [];
 
     if (inferenceHistory.length === 0) return;
 
@@ -925,7 +1024,7 @@ class LocalModelUI {
     ctx.lineWidth = 2;
     ctx.beginPath();
 
-    inferenceHistory.forEach((time, index) => {
+    inferenceHistory.forEach((time: number, index: number) => {
       const x = (index / (inferenceHistory.length - 1)) * (canvas.width - 20) + 10;
       const y = ((maxValue - time) / range) * (canvas.height - 20) + 10;
 
@@ -944,32 +1043,31 @@ class LocalModelUI {
     ctx.fillText(`${(maxValue / 1000).toFixed(1)}s`, 2, 12);
   }
 
-  updateElement(selector, content) {
-    const element = this.container.querySelector(selector);
+  private updateElement(selector: string, content: string): void {
+    const element = this.container!.querySelector(selector);
     if (element) {
       element.textContent = content;
     }
   }
 
-  capitalizeFirst(str) {
+  private capitalizeFirst(str: string): string {
     if (!str) return '';
     return str.charAt(0).toUpperCase() + str.slice(1);
   }
 
-  showMessage(text, type) {
-    // Simple message display (could be enhanced with toast notifications)
+  showMessage(text: string, type: string): void {
     console.log(`[LocalModelUI] ${type}: ${text}`);
   }
 
-  destroy() {
+  destroy(): void {
     this.stopStatusUpdates();
     this.hideProgress();
   }
 }
 
 // Export for use in other scripts
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = LocalModelUI;
-} else if (typeof window !== 'undefined') {
+export { LocalModelUI };
+
+if (typeof window !== 'undefined') {
   window.LocalModelUI = LocalModelUI;
 }

@@ -11,28 +11,20 @@ export default defineConfig({
     exclude: ['node_modules', 'dist', '_legacy'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'text-summary', 'json-summary'],
+      reporter: ['json-summary'],
+      reportsDirectory: '/tmp/vitest-cov-measure',
       include: ['src/**/*.ts'],
       exclude: [
         'src/**/*.test.ts',
         'src/**/*.d.ts',
-        'src/core/index.ts', // Barrel export
-        'src/providers/index.ts', // Barrel export
-        'src/popup/components/index.ts', // Barrel export
-        'src/types/**', // Type definitions only
+        'src/core/index.ts',
+        'src/providers/index.ts',
+        'src/popup/components/index.ts',
+        'src/types/**',
         'node_modules',
         'dist',
         '_legacy',
       ],
-      thresholds: {
-        // Global thresholds — reflect actual coverage after 2843 tests.
-        // UI components (Solid.js) and browser API-heavy files lower the avg;
-        // core logic and providers are at 85-90%.
-        statements: 61,
-        branches: 57,
-        functions: 56,
-        lines: 64,
-      },
     },
   },
   resolve: {

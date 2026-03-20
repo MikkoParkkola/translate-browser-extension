@@ -11,8 +11,33 @@
  * Key fix: Chunked/sharded model loading (no single large ArrayBuffer)
  */
 
-import { LocalModelManager as WllamaModelManager } from './lib/LocalModelManager.js';
+import {
+  LocalModelManager as WllamaModelManager,
+  type ModelStatus,
+  type HealthCheckResult,
+  type PerformanceSummary,
+  type ValidationResult,
+} from './lib/LocalModelManager.js';
 import { logger } from './lib/logger';
+
+// Re-export core types for consumers
+export type {
+  ModelStatus,
+  HealthCheckResult,
+  PerformanceSummary,
+  TranslationResult,
+  ModelInfo,
+  DownloadProgressInfo,
+  ModelConfig,
+} from './lib/LocalModelManager.js';
+
+// Augment global scope for backward compatibility
+declare global {
+  interface Window {
+    LocalModelManager: typeof LocalModelManager;
+    getModelManager: typeof getModelManager;
+  }
+}
 
 class LocalModelManager extends WllamaModelManager {
   constructor() {
@@ -21,58 +46,58 @@ class LocalModelManager extends WllamaModelManager {
   }
 
   // Legacy method names for backward compatibility
-  async getModelInfo() {
+  async getModelInfo(): ReturnType<WllamaModelManager['getModelInfo']> {
     return super.getModelInfo();
   }
 
-  async checkHealth() {
+  async checkHealth(): Promise<HealthCheckResult> {
     return this.performHealthCheck();
   }
 
-  async isModelReady() {
-    const status = await this.getModelStatus();
+  async isModelReady(): Promise<boolean> {
+    const status: ModelStatus = await this.getModelStatus();
     return status.downloaded && !status.error;
   }
 
-  async getModelSize() {
-    const status = await this.getModelStatus();
+  async getModelSize(): Promise<number> {
+    const status: ModelStatus = await this.getModelStatus();
     return status.size || 0;
   }
 
-  getPerformanceStats() {
+  getPerformanceStats(): PerformanceSummary {
     return this.getPerformanceSummary();
   }
 
-  async checkForUpdates() {
+  async checkForUpdates(): Promise<{ hasUpdate: boolean; version?: string; url?: string }> {
     return this.updater.checkForUpdates();
   }
 
-  async hasUpdate() {
+  async hasUpdate(): Promise<boolean> {
     const updateInfo = await this.checkForUpdates();
     return updateInfo.hasUpdate;
   }
 
-  async validateModel() {
-    const status = await this.getModelStatus();
+  async validateModel(): Promise<ValidationResult | { valid: false; message: string }> {
+    const status: ModelStatus = await this.getModelStatus();
     if (!status.downloaded) {
       return { valid: false, message: 'Model not downloaded' };
     }
     return this.validator.validateModelIntegrity(status, this.retrieveModel);
   }
 
-  formatBytes(bytes) {
+  formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))  } ${  sizes[i]}`;
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
   }
 }
 
 // Singleton instance
-let globalModelManager = null;
+let globalModelManager: LocalModelManager | null = null;
 
-function getModelManager() {
+function getModelManager(): LocalModelManager {
   if (!globalModelManager) {
     globalModelManager = new LocalModelManager();
   }
@@ -84,12 +109,8 @@ if (typeof window !== 'undefined') {
   window.LocalModelManager = LocalModelManager;
   window.getModelManager = getModelManager;
 } else if (typeof self !== 'undefined') {
-  self.LocalModelManager = LocalModelManager;
-  self.getModelManager = getModelManager;
+  (self as unknown as Window).LocalModelManager = LocalModelManager;
+  (self as unknown as Window).getModelManager = getModelManager;
 }
 
 export { LocalModelManager, getModelManager };
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { LocalModelManager, getModelManager };
-}

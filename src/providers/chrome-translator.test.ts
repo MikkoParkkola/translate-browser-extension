@@ -345,3 +345,191 @@ describe('Helper functions', () => {
     });
   });
 });
+
+// ============================================================================
+// Additional coverage tests
+// ============================================================================
+
+describe('ChromeTranslatorProvider additional coverage', () => {
+  let provider: ChromeTranslatorProvider;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockTranslate.mockResolvedValue('translated text');
+    mockDetect.mockResolvedValue([{ detectedLanguage: 'en', confidence: 0.95 }]);
+    mockTranslatorAPI.availability.mockResolvedValue({ available: 'readily' });
+    mockTranslatorAPI.create.mockResolvedValue(mockTranslatorInstance);
+    mockDetectorAPI.availability.mockResolvedValue({ available: 'readily' });
+    mockDetectorAPI.create.mockResolvedValue(mockDetectorInstance);
+    provider = new ChromeTranslatorProvider();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    provider.destroy();
+  });
+
+  describe('isAvailable', () => {
+    it('returns false when availability throws', async () => {
+      mockTranslatorAPI.availability.mockRejectedValue(new Error('API error'));
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+
+      const result = await provider.isAvailable();
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('getSupportedLanguages', () => {
+    it('returns an array of language pairs', () => {
+      const pairs = provider.getSupportedLanguages();
+      expect(Array.isArray(pairs)).toBe(true);
+      expect(pairs.length).toBeGreaterThan(0);
+      expect(pairs[0]).toHaveProperty('src');
+      expect(pairs[0]).toHaveProperty('tgt');
+    });
+
+    it('does not include pairs where src equals tgt', () => {
+      const pairs = provider.getSupportedLanguages();
+      const selfPairs = pairs.filter((p) => p.src === p.tgt);
+      expect(selfPairs.length).toBe(0);
+    });
+  });
+
+  describe('getSupportedLanguagesAsync', () => {
+    it('returns empty array when API unavailable', async () => {
+      // No Translator global
+      const result = await provider.getSupportedLanguagesAsync();
+      expect(result).toEqual([]);
+    });
+
+    it('returns supported languages when API available', async () => {
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+      // availability: 'readily' for all pairs (default mock)
+
+      const result = await provider.getSupportedLanguagesAsync();
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result.length).toBeGreaterThan(0);
+      // 'en' is always included
+      expect(result).toContain('en');
+    });
+
+    it('handles availability errors silently during language probe', async () => {
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+
+      // First call (isAvailable check) succeeds
+      // Subsequent calls for probing each language throw
+      mockTranslatorAPI.availability
+        .mockResolvedValueOnce({ available: 'readily' }) // isAvailable check
+        .mockRejectedValue(new Error('probe error')); // all probe calls throw
+
+      const result = await provider.getSupportedLanguagesAsync();
+
+      // Should still return 'en' (which is hardcoded as supported)
+      expect(result).toContain('en');
+      // Other languages are silently skipped when they throw
+    });
+  });
+
+  describe('isPairSupported', () => {
+    it('returns false when isAvailable is false', async () => {
+      // No Translator global
+      const result = await provider.isPairSupported('en', 'de');
+      expect(result).toBe(false);
+    });
+
+    it('returns cached result on second call', async () => {
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+
+      await provider.isPairSupported('en', 'fr');
+      const callsBefore = mockTranslatorAPI.availability.mock.calls.length;
+
+      await provider.isPairSupported('en', 'fr');
+      // No additional calls for the pair (cached)
+      expect(mockTranslatorAPI.availability.mock.calls.length).toBe(callsBefore);
+    });
+
+    it('handles availability API throwing for pair check', async () => {
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+
+      // First call for isAvailable succeeds
+      mockTranslatorAPI.availability
+        .mockResolvedValueOnce({ available: 'readily' }) // initial isAvailable
+        .mockRejectedValueOnce(new Error('pair check failed')); // pair check
+
+      const result = await provider.isPairSupported('en', 'zh');
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('getAvailabilityStatus', () => {
+    it('returns cached status on second call for same pair', async () => {
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+
+      await provider.getAvailabilityStatus('en', 'fr');
+      const callsBefore = mockTranslatorAPI.availability.mock.calls.length;
+
+      await provider.getAvailabilityStatus('en', 'fr');
+      // No new calls — cached
+      expect(mockTranslatorAPI.availability.mock.calls.length).toBe(callsBefore);
+    });
+
+    it('returns "no" when availability API throws for pair check', async () => {
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+
+      mockTranslatorAPI.availability
+        .mockResolvedValueOnce({ available: 'readily' }) // initial isAvailable
+        .mockRejectedValueOnce(new Error('error')); // pair check
+
+      const status = await provider.getAvailabilityStatus('xx', 'yy');
+
+      expect(status).toBe('no');
+    });
+  });
+
+  describe('detectLanguage', () => {
+    it('reuses existing detector instance', async () => {
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+      vi.stubGlobal('LanguageDetector', mockDetectorAPI);
+
+      await provider.detectLanguage('hello');
+      await provider.detectLanguage('world');
+
+      // create should only be called once (reuses detector)
+      expect(mockDetectorAPI.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns "en" when detection result is empty', async () => {
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+      vi.stubGlobal('LanguageDetector', mockDetectorAPI);
+      mockDetect.mockResolvedValue([]); // empty results
+
+      const result = await provider.detectLanguage('hello');
+
+      expect(result).toBe('en');
+    });
+
+    it('returns "en" when detector.detect throws', async () => {
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+      vi.stubGlobal('LanguageDetector', mockDetectorAPI);
+      mockDetect.mockRejectedValue(new Error('detection failed'));
+
+      const result = await provider.detectLanguage('hello');
+
+      expect(result).toBe('en');
+    });
+  });
+
+  describe('translate', () => {
+    it('handles whitespace-only text in array by preserving it', async () => {
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+
+      const result = await provider.translate(['hello', '   ', 'world'], 'en', 'de');
+
+      expect(result).toHaveLength(3);
+      expect((result as string[])[1]).toBe('   '); // whitespace preserved
+    });
+  });
+});

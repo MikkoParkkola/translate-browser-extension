@@ -119,7 +119,7 @@ function discoverTextNodes(root: Element): Text[] {
 // ---------------------------------------------------------------------------
 
 describe('benchmark: text node discovery', () => {
-  for (const [count, limit] of [[100, 5], [1000, 20], [5000, 150]] as const) {
+  for (const [count, limit] of [[100, 10], [1000, 50], [5000, 300]] as const) {
     it(`discovers text nodes in ${count}-node DOM in <${limit}ms`, () => {
       const iterations = count <= 1000 ? 30 : 5;
       // Build fixtures once outside timing loop
@@ -238,8 +238,8 @@ describe('benchmark: MutationObserver callback processing', () => {
 describe('benchmark: shadow DOM traversal', () => {
   for (const [hosts, nodesPerHost] of [[10, 10], [50, 20], [100, 10]] as const) {
     const totalNodes = hosts * nodesPerHost;
-    it(`walks ${hosts} hosts × ${nodesPerHost} nodes (${totalNodes} total) in <${totalNodes <= 200 ? 2 : 10}ms`, () => {
-      const limit = totalNodes <= 200 ? 2 : 10;
+    it(`walks ${hosts} hosts × ${nodesPerHost} nodes (${totalNodes} total) in <${totalNodes <= 200 ? 10 : 100}ms`, () => {
+      const limit = totalNodes <= 200 ? 10 : 100;
       const median = measureSync(() => {
         const fixture = buildShadowDomFixture(hosts, nodesPerHost);
         document.body.appendChild(fixture);

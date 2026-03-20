@@ -1,500 +1,676 @@
 /**
- * Screenshot OCR Translation unit tests
+ * Tests for src/content/screenshot-ocr.ts
  *
- * Tests screenshot mode state management, selection rectangle calculation,
- * minimum selection guard, result tooltip creation, and crop image logic.
+ * Tests the exported API: setGetCurrentSettings and enterScreenshotMode.
+ * Internal handlers (mousedown/mousemove/mouseup/keydown) are exercised
+ * by dispatching real DOM events after entering screenshot mode.
  *
- * Since enterScreenshotMode/exitScreenshotMode and related functions are
- * module-internal (not exported), we replicate and test the pure logic
- * following the established pattern in offscreen.test.ts.
+ * Module-level state (screenshotMode, selectionOverlay, selectionStart)
+ * persists between tests in the same module instance, so vi.resetModules()
+ * + vi.doMock() is used in beforeEach to get a clean state each test.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-// ============================================================================
-// Selection Rectangle Calculation (from onScreenshotMouseMove/MouseUp)
-// ============================================================================
+// ---------------------------------------------------------------------------
+// Shared mock fns — re-used across module resets
+// ---------------------------------------------------------------------------
+const mockShowInfoToast = vi.fn();
+const mockShowErrorToast = vi.fn();
+const mockSendMessage = vi.fn();
 
-describe('Screenshot Selection Rectangle', () => {
-  /**
-   * Replicates the rectangle calculation from onScreenshotMouseMove and
-   * onScreenshotMouseUp in content/index.ts.
-   * Handles drag in any direction (top-left to bottom-right, or vice versa).
-   */
-  function calculateSelectionRect(
-    start: { x: number; y: number },
-    end: { x: number; y: number }
-  ): { x: number; y: number; width: number; height: number } {
-    return {
-      x: Math.min(start.x, end.x),
-      y: Math.min(start.y, end.y),
-      width: Math.abs(end.x - start.x),
-      height: Math.abs(end.y - start.y),
-    };
+/** Flush all pending microtasks (async event handlers). */
+async function flushPromises(): Promise<void> {
+  for (let i = 0; i < 20; i++) {
+    await new Promise((r) => queueMicrotask(() => r(undefined)));
   }
+}
 
-  describe('drag direction handling', () => {
-    it('handles top-left to bottom-right drag', () => {
-      const rect = calculateSelectionRect({ x: 100, y: 100 }, { x: 300, y: 200 });
-      expect(rect).toEqual({ x: 100, y: 100, width: 200, height: 100 });
-    });
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-    it('handles bottom-right to top-left drag', () => {
-      const rect = calculateSelectionRect({ x: 300, y: 200 }, { x: 100, y: 100 });
-      expect(rect).toEqual({ x: 100, y: 100, width: 200, height: 100 });
-    });
+/** Reset module and re-import with fresh state. */
+async function freshModule() {
+  vi.resetModules();
+  vi.doMock('./toast', () => ({
+    showInfoToast: (...args: unknown[]) => mockShowInfoToast(...args),
+    showErrorToast: (...args: unknown[]) => mockShowErrorToast(...args),
+  }));
+  vi.doMock('../core/browser-api', () => ({
+    browserAPI: {
+      runtime: {
+        sendMessage: (...args: unknown[]) => mockSendMessage(...args),
+      },
+    },
+  }));
+  return import('./screenshot-ocr');
+}
 
-    it('handles top-right to bottom-left drag', () => {
-      const rect = calculateSelectionRect({ x: 300, y: 100 }, { x: 100, y: 200 });
-      expect(rect).toEqual({ x: 100, y: 100, width: 200, height: 100 });
-    });
+// ---------------------------------------------------------------------------
+// setGetCurrentSettings
+// ---------------------------------------------------------------------------
 
-    it('handles bottom-left to top-right drag', () => {
-      const rect = calculateSelectionRect({ x: 100, y: 200 }, { x: 300, y: 100 });
-      expect(rect).toEqual({ x: 100, y: 100, width: 200, height: 100 });
-    });
+describe('setGetCurrentSettings', () => {
+  let mod: Awaited<ReturnType<typeof freshModule>>;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+    mod = await freshModule();
   });
 
-  describe('edge cases', () => {
-    it('handles zero-size selection (click without drag)', () => {
-      const rect = calculateSelectionRect({ x: 150, y: 150 }, { x: 150, y: 150 });
-      expect(rect).toEqual({ x: 150, y: 150, width: 0, height: 0 });
-    });
-
-    it('handles horizontal-only drag', () => {
-      const rect = calculateSelectionRect({ x: 100, y: 150 }, { x: 300, y: 150 });
-      expect(rect).toEqual({ x: 100, y: 150, width: 200, height: 0 });
-    });
-
-    it('handles vertical-only drag', () => {
-      const rect = calculateSelectionRect({ x: 150, y: 100 }, { x: 150, y: 300 });
-      expect(rect).toEqual({ x: 150, y: 100, width: 0, height: 200 });
-    });
-
-    it('handles coordinates at origin', () => {
-      const rect = calculateSelectionRect({ x: 0, y: 0 }, { x: 50, y: 50 });
-      expect(rect).toEqual({ x: 0, y: 0, width: 50, height: 50 });
-    });
-
-    it('handles large coordinates', () => {
-      const rect = calculateSelectionRect({ x: 1920, y: 1080 }, { x: 0, y: 0 });
-      expect(rect).toEqual({ x: 0, y: 0, width: 1920, height: 1080 });
-    });
+  it('accepts a function returning null', () => {
+    expect(() => mod.setGetCurrentSettings(() => null)).not.toThrow();
   });
 
-  describe('minimum selection size guard', () => {
-    /**
-     * Replicates the minimum size check from onScreenshotMouseUp:
-     * if (rect.width < 20 || rect.height < 20) return;
-     */
-    function isSelectionLargeEnough(rect: { width: number; height: number }): boolean {
-      return rect.width >= 20 && rect.height >= 20;
-    }
-
-    it('rejects selection smaller than 20px width', () => {
-      expect(isSelectionLargeEnough({ width: 19, height: 100 })).toBe(false);
-    });
-
-    it('rejects selection smaller than 20px height', () => {
-      expect(isSelectionLargeEnough({ width: 100, height: 19 })).toBe(false);
-    });
-
-    it('rejects selection smaller than 20px in both dimensions', () => {
-      expect(isSelectionLargeEnough({ width: 10, height: 10 })).toBe(false);
-    });
-
-    it('accepts selection exactly 20px', () => {
-      expect(isSelectionLargeEnough({ width: 20, height: 20 })).toBe(true);
-    });
-
-    it('accepts large selection', () => {
-      expect(isSelectionLargeEnough({ width: 500, height: 300 })).toBe(true);
-    });
-
-    it('rejects zero-size selection', () => {
-      expect(isSelectionLargeEnough({ width: 0, height: 0 })).toBe(false);
-    });
+  it('accepts a function returning settings', () => {
+    expect(() =>
+      mod.setGetCurrentSettings(() => ({
+        enabled: true,
+        sourceLang: 'en',
+        targetLang: 'fi',
+        provider: 'opus-mt',
+        strategy: 'smart',
+        autoTranslate: false,
+        showBilingual: false,
+      }))
+    ).not.toThrow();
   });
 });
 
-// ============================================================================
-// Screenshot Mode State Management
-// ============================================================================
+// ---------------------------------------------------------------------------
+// enterScreenshotMode
+// ---------------------------------------------------------------------------
 
-describe('Screenshot Mode State Management', () => {
-  /**
-   * Replicates the state management from enterScreenshotMode/exitScreenshotMode.
-   */
-  interface ScreenshotState {
-    screenshotMode: boolean;
-    selectionOverlay: HTMLDivElement | null;
-    selectionStart: { x: number; y: number } | null;
-  }
+describe('enterScreenshotMode', () => {
+  let mod: Awaited<ReturnType<typeof freshModule>>;
 
-  function createState(): ScreenshotState {
-    return {
-      screenshotMode: false,
-      selectionOverlay: null,
-      selectionStart: null,
-    };
-  }
-
-  function enterMode(state: ScreenshotState): ScreenshotState {
-    if (state.screenshotMode) return state;
-    const overlay = document.createElement('div');
-    Object.assign(overlay.style, {
-      position: 'fixed',
-      border: '2px dashed #4A90D9',
-      backgroundColor: 'rgba(74, 144, 217, 0.1)',
-      zIndex: '2147483646',
-      display: 'none',
-      pointerEvents: 'none',
-    });
-    document.body.appendChild(overlay);
-
-    return {
-      screenshotMode: true,
-      selectionOverlay: overlay,
-      selectionStart: null,
-    };
-  }
-
-  function exitMode(state: ScreenshotState): ScreenshotState {
-    if (state.selectionOverlay) {
-      state.selectionOverlay.remove();
-    }
-    return {
-      screenshotMode: false,
-      selectionOverlay: null,
-      selectionStart: null,
-    };
-  }
-
-  beforeEach(() => {
+  beforeEach(async () => {
     document.body.innerHTML = '';
+    vi.clearAllMocks();
+    mod = await freshModule();
   });
 
-  afterEach(() => {
-    document.body.innerHTML = '';
+  it('sets cursor to crosshair', () => {
+    mod.enterScreenshotMode();
+    expect(document.body.style.cursor).toBe('crosshair');
   });
 
-  it('starts in non-screenshot mode', () => {
-    const state = createState();
-    expect(state.screenshotMode).toBe(false);
-    expect(state.selectionOverlay).toBeNull();
-    expect(state.selectionStart).toBeNull();
+  it('appends selection overlay to body', () => {
+    mod.enterScreenshotMode();
+    // overlay div should be in body
+    expect(document.body.children.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('enters screenshot mode and creates overlay', () => {
-    const state = enterMode(createState());
-    expect(state.screenshotMode).toBe(true);
-    expect(state.selectionOverlay).not.toBeNull();
-    expect(state.selectionOverlay?.style.position).toBe('fixed');
-    expect(state.selectionOverlay?.style.display).toBe('none');
+  it('shows info toast on enter', () => {
+    mod.enterScreenshotMode();
+    expect(mockShowInfoToast).toHaveBeenCalledWith(
+      expect.stringContaining('Draw a rectangle')
+    );
   });
 
-  it('overlay starts hidden', () => {
-    const state = enterMode(createState());
-    expect(state.selectionOverlay?.style.display).toBe('none');
-  });
-
-  it('overlay has correct visual properties', () => {
-    const state = enterMode(createState());
-    // jsdom converts hex colors to rgb format
-    expect(state.selectionOverlay?.style.border).toMatch(/2px dashed/);
-    expect(state.selectionOverlay?.style.zIndex).toBe('2147483646');
-    expect(state.selectionOverlay?.style.pointerEvents).toBe('none');
-  });
-
-  it('does not re-enter if already in screenshot mode', () => {
-    const state1 = enterMode(createState());
-    const state2 = enterMode(state1);
-    // Should return the same state reference (no-op)
-    expect(state2).toBe(state1);
-  });
-
-  it('exits screenshot mode and removes overlay', () => {
-    const state1 = enterMode(createState());
-    expect(document.body.children.length).toBe(1); // overlay appended
-
-    const state2 = exitMode(state1);
-    expect(state2.screenshotMode).toBe(false);
-    expect(state2.selectionOverlay).toBeNull();
-    expect(state2.selectionStart).toBeNull();
-    expect(document.body.children.length).toBe(0); // overlay removed
-  });
-
-  it('exit is safe when no overlay exists', () => {
-    const state = createState();
-    expect(() => exitMode(state)).not.toThrow();
-  });
-
-  it('clears selection start on exit', () => {
-    let state = enterMode(createState());
-    state.selectionStart = { x: 100, y: 200 };
-    state = exitMode(state);
-    expect(state.selectionStart).toBeNull();
+  it('is idempotent — second call is a no-op', () => {
+    mod.enterScreenshotMode();
+    const childCount = document.body.children.length;
+    mod.enterScreenshotMode();
+    // No extra overlay added
+    expect(document.body.children.length).toBe(childCount);
+    // showInfoToast called only once
+    expect(mockShowInfoToast).toHaveBeenCalledTimes(1);
   });
 });
 
-// ============================================================================
-// Screenshot Result Tooltip
-// ============================================================================
+// ---------------------------------------------------------------------------
+// Escape key exits screenshot mode
+// ---------------------------------------------------------------------------
 
-describe('Screenshot Result Tooltip', () => {
-  /**
-   * Replicates showScreenshotResult from content/index.ts.
-   */
-  function showScreenshotResult(
-    translation: string,
-    original: string,
-    rect: { x: number; y: number; width: number; height: number }
-  ): HTMLDivElement {
-    const tooltip = document.createElement('div');
-    Object.assign(tooltip.style, {
-      position: 'fixed',
-      left: `${rect.x}px`,
-      top: `${rect.y + rect.height + 8}px`,
-      maxWidth: `${Math.max(rect.width, 300)}px`,
-      padding: '12px 16px',
-      backgroundColor: 'rgba(30, 30, 30, 0.95)',
-      backdropFilter: 'blur(12px)',
-      color: '#fff',
-      borderRadius: '8px',
-      fontSize: '14px',
-      lineHeight: '1.5',
-      zIndex: '2147483647',
-      boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
-      border: '1px solid rgba(255,255,255,0.1)',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-    });
+describe('Escape key exits screenshot mode', () => {
+  let mod: Awaited<ReturnType<typeof freshModule>>;
 
-    const originalEl = document.createElement('div');
-    originalEl.textContent = original;
-    Object.assign(originalEl.style, {
-      color: 'rgba(255,255,255,0.5)',
-      fontSize: '12px',
-      marginBottom: '8px',
-      borderBottom: '1px solid rgba(255,255,255,0.1)',
-      paddingBottom: '8px',
-    });
-
-    const translationEl = document.createElement('div');
-    translationEl.textContent = translation;
-
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = '\u00D7';
-    closeBtn.onclick = () => tooltip.remove();
-
-    tooltip.appendChild(closeBtn);
-    tooltip.appendChild(originalEl);
-    tooltip.appendChild(translationEl);
-    document.body.appendChild(tooltip);
-
-    return tooltip;
-  }
-
-  beforeEach(() => {
+  beforeEach(async () => {
     document.body.innerHTML = '';
+    vi.clearAllMocks();
+    mod = await freshModule();
   });
 
-  afterEach(() => {
+  it('Escape restores cursor and removes overlay', () => {
+    mod.enterScreenshotMode();
+    expect(document.body.style.cursor).toBe('crosshair');
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(document.body.style.cursor).toBe('');
+    // Overlay should be gone
+    const overlays = document.querySelectorAll('div[style*="dashed"]');
+    expect(overlays.length).toBe(0);
+  });
+
+  it('non-Escape key does not exit', () => {
+    mod.enterScreenshotMode();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(document.body.style.cursor).toBe('crosshair');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mousedown — shows overlay at click position
+// ---------------------------------------------------------------------------
+
+describe('mousedown event', () => {
+  let mod: Awaited<ReturnType<typeof freshModule>>;
+
+  beforeEach(async () => {
     document.body.innerHTML = '';
+    vi.clearAllMocks();
+    mod = await freshModule();
   });
 
-  it('creates tooltip with translation and original text', () => {
-    const tooltip = showScreenshotResult('Hei maailma', 'Hello world', {
-      x: 100, y: 100, width: 400, height: 50,
-    });
+  it('shows selection overlay on mousedown', () => {
+    mod.enterScreenshotMode();
 
-    expect(tooltip.textContent).toContain('Hei maailma');
-    expect(tooltip.textContent).toContain('Hello world');
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 100, clientY: 150, bubbles: true })
+    );
+
+    // Find the selection overlay div (dashed border)
+    const overlay = document.body.querySelector('div');
+    expect(overlay).not.toBeNull();
+    expect(overlay!.style.display).toBe('block');
   });
 
-  it('positions tooltip below the selection rectangle', () => {
-    const tooltip = showScreenshotResult('Test', 'Original', {
-      x: 50, y: 200, width: 300, height: 100,
-    });
+  it('positions overlay at mouse coordinates', () => {
+    mod.enterScreenshotMode();
 
-    expect(tooltip.style.left).toBe('50px');
-    expect(tooltip.style.top).toBe('308px'); // 200 + 100 + 8
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 200, clientY: 300, bubbles: true })
+    );
+
+    const overlay = document.body.querySelector('div');
+    expect(overlay!.style.left).toBe('200px');
+    expect(overlay!.style.top).toBe('300px');
   });
 
-  it('uses minimum width of 300px for narrow selections', () => {
-    const tooltip = showScreenshotResult('Test', 'Original', {
-      x: 50, y: 50, width: 100, height: 50,
-    });
+  it('initializes overlay size to 0px', () => {
+    mod.enterScreenshotMode();
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 50, clientY: 50, bubbles: true })
+    );
 
-    expect(tooltip.style.maxWidth).toBe('300px');
+    const overlay = document.body.querySelector('div');
+    expect(overlay!.style.width).toBe('0px');
+    expect(overlay!.style.height).toBe('0px');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mousemove — updates overlay dimensions
+// ---------------------------------------------------------------------------
+
+describe('mousemove event', () => {
+  let mod: Awaited<ReturnType<typeof freshModule>>;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+    mod = await freshModule();
   });
 
-  it('uses selection width when wider than 300px', () => {
-    const tooltip = showScreenshotResult('Test', 'Original', {
-      x: 50, y: 50, width: 500, height: 50,
-    });
+  it('updates overlay dimensions during drag', () => {
+    mod.enterScreenshotMode();
 
-    expect(tooltip.style.maxWidth).toBe('500px');
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 100, clientY: 100, bubbles: true })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mousemove', { clientX: 300, clientY: 250, bubbles: true })
+    );
+
+    const overlay = document.body.querySelector('div');
+    expect(overlay!.style.width).toBe('200px');
+    expect(overlay!.style.height).toBe('150px');
   });
 
-  it('has close button that removes tooltip', () => {
-    const tooltip = showScreenshotResult('Test', 'Original', {
-      x: 0, y: 0, width: 300, height: 50,
+  it('handles reversed drag direction (right-to-left)', () => {
+    mod.enterScreenshotMode();
+
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 300, clientY: 300, bubbles: true })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mousemove', { clientX: 100, clientY: 100, bubbles: true })
+    );
+
+    const overlay = document.body.querySelector('div');
+    expect(overlay!.style.left).toBe('100px');
+    expect(overlay!.style.top).toBe('100px');
+    expect(overlay!.style.width).toBe('200px');
+    expect(overlay!.style.height).toBe('200px');
+  });
+
+  it('does nothing when no selection start', () => {
+    mod.enterScreenshotMode();
+    // mousemove without mousedown first
+    expect(() =>
+      document.dispatchEvent(
+        new MouseEvent('mousemove', { clientX: 100, clientY: 100, bubbles: true })
+      )
+    ).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mouseup — small selection ignored
+// ---------------------------------------------------------------------------
+
+describe('mouseup — small selection', () => {
+  let mod: Awaited<ReturnType<typeof freshModule>>;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+    mod = await freshModule();
+  });
+
+  it('ignores selection smaller than 20px', async () => {
+    mod.enterScreenshotMode();
+
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 100, clientY: 100, bubbles: true })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mouseup', { clientX: 110, clientY: 115, bubbles: true })
+    );
+
+    await flushPromises();
+
+    // No sendMessage call — selection too small
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('exits screenshot mode on mouseup regardless of selection size', async () => {
+    mod.enterScreenshotMode();
+    expect(document.body.style.cursor).toBe('crosshair');
+
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 100, clientY: 100, bubbles: true })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mouseup', { clientX: 105, clientY: 105, bubbles: true })
+    );
+
+    await flushPromises();
+
+    // Mode exited — cursor reset
+    expect(document.body.style.cursor).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mouseup — full flow: captureScreenshot success → OCR success → translate success
+// ---------------------------------------------------------------------------
+
+describe('mouseup — full success flow', () => {
+  let mod: Awaited<ReturnType<typeof freshModule>>;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+    mod = await freshModule();
+  });
+
+  it('shows extraction toast then result tooltip', async () => {
+    mockSendMessage
+      .mockResolvedValueOnce({ success: true, imageData: 'data:image/png;base64,TEST' })
+      .mockResolvedValueOnce({ success: true, text: 'Hello world' })
+      .mockResolvedValueOnce({ success: true, result: 'Hei maailma' });
+
+    mod.enterScreenshotMode();
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 100, clientY: 100, bubbles: true })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mouseup', { clientX: 400, clientY: 300, bubbles: true })
+    );
+
+    await flushPromises();
+
+    expect(mockShowInfoToast).toHaveBeenCalledWith(
+      expect.stringContaining('Extracting text')
+    );
+
+    // Result tooltip should exist in body
+    const bodyText = document.body.textContent;
+    expect(bodyText).toContain('Hei maailma');
+    expect(bodyText).toContain('Hello world');
+  });
+
+  it('sends captureScreenshot with rect and devicePixelRatio', async () => {
+    mockSendMessage
+      .mockResolvedValueOnce({ success: true, imageData: 'data:image/png;base64,TEST' })
+      .mockResolvedValueOnce({ success: true, text: 'Text' })
+      .mockResolvedValueOnce({ success: true, result: 'Teksti' });
+
+    mod.enterScreenshotMode();
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 50, clientY: 50, bubbles: true })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mouseup', { clientX: 250, clientY: 200, bubbles: true })
+    );
+
+    await flushPromises();
+
+    const captureCall = mockSendMessage.mock.calls[0][0];
+    expect(captureCall.type).toBe('captureScreenshot');
+    expect(captureCall.rect).toEqual({ x: 50, y: 50, width: 200, height: 150 });
+    expect(captureCall.devicePixelRatio).toBeGreaterThan(0);
+  });
+
+  it('uses settings sourceLang/targetLang for translate call', async () => {
+    mod.setGetCurrentSettings(() => ({
+      enabled: true,
+      sourceLang: 'de',
+      targetLang: 'sv',
+      provider: 'opus-mt',
+      strategy: 'smart',
+      autoTranslate: false,
+      showBilingual: false,
+    }));
+
+    mockSendMessage
+      .mockResolvedValueOnce({ success: true, imageData: 'data:image/png;base64,X' })
+      .mockResolvedValueOnce({ success: true, text: 'Hallo' })
+      .mockResolvedValueOnce({ success: true, result: 'Hej' });
+
+    mod.enterScreenshotMode();
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 0, clientY: 0, bubbles: true })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mouseup', { clientX: 100, clientY: 100, bubbles: true })
+    );
+
+    await flushPromises();
+
+    const translateCall = mockSendMessage.mock.calls[2][0];
+    expect(translateCall.type).toBe('translate');
+    expect(translateCall.sourceLang).toBe('de');
+    expect(translateCall.targetLang).toBe('sv');
+  });
+
+  it('uses auto sourceLang when settings is null', async () => {
+    mod.setGetCurrentSettings(() => null);
+
+    mockSendMessage
+      .mockResolvedValueOnce({ success: true, imageData: 'data:image/png;base64,X' })
+      .mockResolvedValueOnce({ success: true, text: 'Test' })
+      .mockResolvedValueOnce({ success: true, result: 'Testi' });
+
+    mod.enterScreenshotMode();
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 0, clientY: 0, bubbles: true })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mouseup', { clientX: 200, clientY: 200, bubbles: true })
+    );
+
+    await flushPromises();
+
+    const translateCall = mockSendMessage.mock.calls[2][0];
+    expect(translateCall.sourceLang).toBe('auto');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mouseup — error paths
+// ---------------------------------------------------------------------------
+
+describe('mouseup — screenshot capture failure', () => {
+  let mod: Awaited<ReturnType<typeof freshModule>>;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+    mod = await freshModule();
+  });
+
+  it('shows error toast when captureScreenshot returns success=false', async () => {
+    mockSendMessage.mockResolvedValueOnce({
+      success: false,
+      error: 'Permission denied',
     });
 
-    const closeBtn = tooltip.querySelector('button');
+    mod.enterScreenshotMode();
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 0, clientY: 0, bubbles: true })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mouseup', { clientX: 200, clientY: 200, bubbles: true })
+    );
+
+    await flushPromises();
+
+    expect(mockShowErrorToast).toHaveBeenCalledWith(
+      expect.stringContaining('Permission denied')
+    );
+  });
+
+  it('shows generic error when captureScreenshot returns no error message', async () => {
+    mockSendMessage.mockResolvedValueOnce({ success: false });
+
+    mod.enterScreenshotMode();
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 0, clientY: 0, bubbles: true })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mouseup', { clientX: 200, clientY: 200, bubbles: true })
+    );
+
+    await flushPromises();
+
+    expect(mockShowErrorToast).toHaveBeenCalledWith(
+      expect.stringContaining('Screenshot failed')
+    );
+  });
+});
+
+describe('mouseup — OCR failure', () => {
+  let mod: Awaited<ReturnType<typeof freshModule>>;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+    mod = await freshModule();
+  });
+
+  it('shows "No text found" when OCR returns success=false', async () => {
+    mockSendMessage
+      .mockResolvedValueOnce({ success: true, imageData: 'data:image/png;base64,X' })
+      .mockResolvedValueOnce({ success: false, text: '' });
+
+    mod.enterScreenshotMode();
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 0, clientY: 0, bubbles: true })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mouseup', { clientX: 200, clientY: 200, bubbles: true })
+    );
+
+    await flushPromises();
+
+    expect(mockShowInfoToast).toHaveBeenCalledWith(
+      expect.stringContaining('No text found')
+    );
+  });
+
+  it('shows "No text found" when OCR text is empty/whitespace', async () => {
+    mockSendMessage
+      .mockResolvedValueOnce({ success: true, imageData: 'data:image/png;base64,X' })
+      .mockResolvedValueOnce({ success: true, text: '   ' });
+
+    mod.enterScreenshotMode();
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 0, clientY: 0, bubbles: true })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mouseup', { clientX: 200, clientY: 200, bubbles: true })
+    );
+
+    await flushPromises();
+
+    expect(mockShowInfoToast).toHaveBeenCalledWith(
+      expect.stringContaining('No text found')
+    );
+  });
+});
+
+describe('mouseup — translation failure', () => {
+  let mod: Awaited<ReturnType<typeof freshModule>>;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+    mod = await freshModule();
+  });
+
+  it('shows error toast when translation fails', async () => {
+    mockSendMessage
+      .mockResolvedValueOnce({ success: true, imageData: 'data:image/png;base64,X' })
+      .mockResolvedValueOnce({ success: true, text: 'Hello' })
+      .mockResolvedValueOnce({ success: false, error: 'Model unavailable' });
+
+    mod.enterScreenshotMode();
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 0, clientY: 0, bubbles: true })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mouseup', { clientX: 200, clientY: 200, bubbles: true })
+    );
+
+    await flushPromises();
+
+    expect(mockShowErrorToast).toHaveBeenCalledWith(
+      expect.stringContaining('Model unavailable')
+    );
+  });
+
+  it('shows generic translation error when no error message', async () => {
+    mockSendMessage
+      .mockResolvedValueOnce({ success: true, imageData: 'data:image/png;base64,X' })
+      .mockResolvedValueOnce({ success: true, text: 'Hello' })
+      .mockResolvedValueOnce({ success: false });
+
+    mod.enterScreenshotMode();
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 0, clientY: 0, bubbles: true })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mouseup', { clientX: 200, clientY: 200, bubbles: true })
+    );
+
+    await flushPromises();
+
+    expect(mockShowErrorToast).toHaveBeenCalledWith(
+      expect.stringContaining('Translation failed')
+    );
+  });
+});
+
+describe('mouseup — sendMessage throws', () => {
+  let mod: Awaited<ReturnType<typeof freshModule>>;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+    mod = await freshModule();
+  });
+
+  it('shows error toast with exception message', async () => {
+    mockSendMessage.mockRejectedValueOnce(new Error('IPC disconnected'));
+
+    mod.enterScreenshotMode();
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 0, clientY: 0, bubbles: true })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mouseup', { clientX: 200, clientY: 200, bubbles: true })
+    );
+
+    await flushPromises();
+
+    expect(mockShowErrorToast).toHaveBeenCalledWith(
+      expect.stringContaining('IPC disconnected')
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Result tooltip close button and auto-remove
+// ---------------------------------------------------------------------------
+
+describe('result tooltip', () => {
+  let mod: Awaited<ReturnType<typeof freshModule>>;
+
+  beforeEach(async () => {
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+    mod = await freshModule();
+  });
+
+  it('close button removes tooltip', async () => {
+    mockSendMessage
+      .mockResolvedValueOnce({ success: true, imageData: 'data:image/png;base64,X' })
+      .mockResolvedValueOnce({ success: true, text: 'Hello' })
+      .mockResolvedValueOnce({ success: true, result: 'Hei' });
+
+    mod.enterScreenshotMode();
+    document.dispatchEvent(
+      new MouseEvent('mousedown', { clientX: 0, clientY: 0, bubbles: true })
+    );
+    document.dispatchEvent(
+      new MouseEvent('mouseup', { clientX: 200, clientY: 200, bubbles: true })
+    );
+
+    await flushPromises();
+
+    // Find close button
+    const closeBtn = document.querySelector('button');
     expect(closeBtn).not.toBeNull();
-    expect(closeBtn?.textContent).toBe('\u00D7');
+    closeBtn!.click();
 
-    closeBtn?.click();
-    expect(document.body.contains(tooltip)).toBe(false);
+    expect(document.querySelector('button')).toBeNull();
   });
 
-  it('has correct z-index for maximum overlay priority', () => {
-    const tooltip = showScreenshotResult('Test', 'Original', {
-      x: 0, y: 0, width: 300, height: 50,
-    });
+  it('tooltip auto-removes after 30 seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mockSendMessage
+        .mockResolvedValueOnce({ success: true, imageData: 'data:image/png;base64,X' })
+        .mockResolvedValueOnce({ success: true, text: 'Hello' })
+        .mockResolvedValueOnce({ success: true, result: 'Hei' });
 
-    expect(tooltip.style.zIndex).toBe('2147483647');
-  });
+      mod.enterScreenshotMode();
+      document.dispatchEvent(
+        new MouseEvent('mousedown', { clientX: 0, clientY: 0, bubbles: true })
+      );
+      document.dispatchEvent(
+        new MouseEvent('mouseup', { clientX: 200, clientY: 200, bubbles: true })
+      );
 
-  it('shows original text with subdued styling', () => {
-    const tooltip = showScreenshotResult('Kaannetty', 'Original text', {
-      x: 0, y: 0, width: 300, height: 50,
-    });
+      // Flush promises while fake timers advance real time
+      await flushPromises();
 
-    const divs = tooltip.querySelectorAll('div');
-    // First div is original, second is translation
-    expect(divs[0].textContent).toBe('Original text');
-    expect(divs[0].style.fontSize).toBe('12px');
-    expect(divs[1].textContent).toBe('Kaannetty');
-  });
+      // Tooltip exists before 30s
+      expect(document.body.textContent).toContain('Hei');
 
-  describe('auto-dismiss', () => {
-    it('tooltip is appended to document body', () => {
-      showScreenshotResult('Test', 'Original', {
-        x: 0, y: 0, width: 300, height: 50,
-      });
+      // 30 seconds pass
+      vi.advanceTimersByTime(30001);
 
-      expect(document.body.children.length).toBe(1);
-    });
-  });
-});
-
-// ============================================================================
-// Crop Image Canvas Logic
-// ============================================================================
-
-describe('Crop Image Logic', () => {
-  /**
-   * Replicates the cropImage handler from offscreen.ts.
-   * Tests the canvas dimension calculation with devicePixelRatio.
-   */
-
-  interface CropParams {
-    rect: { x: number; y: number; width: number; height: number };
-    devicePixelRatio: number;
-  }
-
-  function calculateCropDimensions(params: CropParams): {
-    canvasWidth: number;
-    canvasHeight: number;
-    srcX: number;
-    srcY: number;
-    srcWidth: number;
-    srcHeight: number;
-  } {
-    const dpr = params.devicePixelRatio;
-    return {
-      canvasWidth: params.rect.width * dpr,
-      canvasHeight: params.rect.height * dpr,
-      srcX: params.rect.x * dpr,
-      srcY: params.rect.y * dpr,
-      srcWidth: params.rect.width * dpr,
-      srcHeight: params.rect.height * dpr,
-    };
-  }
-
-  describe('with devicePixelRatio = 1', () => {
-    it('canvas dimensions match rect dimensions', () => {
-      const result = calculateCropDimensions({
-        rect: { x: 100, y: 50, width: 400, height: 200 },
-        devicePixelRatio: 1,
-      });
-
-      expect(result.canvasWidth).toBe(400);
-      expect(result.canvasHeight).toBe(200);
-      expect(result.srcX).toBe(100);
-      expect(result.srcY).toBe(50);
-      expect(result.srcWidth).toBe(400);
-      expect(result.srcHeight).toBe(200);
-    });
-  });
-
-  describe('with devicePixelRatio = 2 (Retina)', () => {
-    it('doubles all dimensions for Retina displays', () => {
-      const result = calculateCropDimensions({
-        rect: { x: 100, y: 50, width: 400, height: 200 },
-        devicePixelRatio: 2,
-      });
-
-      expect(result.canvasWidth).toBe(800);
-      expect(result.canvasHeight).toBe(400);
-      expect(result.srcX).toBe(200);
-      expect(result.srcY).toBe(100);
-      expect(result.srcWidth).toBe(800);
-      expect(result.srcHeight).toBe(400);
-    });
-  });
-
-  describe('with devicePixelRatio = 3', () => {
-    it('triples all dimensions for 3x displays', () => {
-      const result = calculateCropDimensions({
-        rect: { x: 50, y: 25, width: 200, height: 100 },
-        devicePixelRatio: 3,
-      });
-
-      expect(result.canvasWidth).toBe(600);
-      expect(result.canvasHeight).toBe(300);
-      expect(result.srcX).toBe(150);
-      expect(result.srcY).toBe(75);
-    });
-  });
-
-  describe('with fractional devicePixelRatio', () => {
-    it('handles 1.5x scaling', () => {
-      const result = calculateCropDimensions({
-        rect: { x: 100, y: 100, width: 200, height: 200 },
-        devicePixelRatio: 1.5,
-      });
-
-      expect(result.canvasWidth).toBe(300);
-      expect(result.canvasHeight).toBe(300);
-      expect(result.srcX).toBe(150);
-      expect(result.srcY).toBe(150);
-    });
-  });
-
-  describe('edge cases', () => {
-    it('handles rect at origin', () => {
-      const result = calculateCropDimensions({
-        rect: { x: 0, y: 0, width: 100, height: 100 },
-        devicePixelRatio: 2,
-      });
-
-      expect(result.srcX).toBe(0);
-      expect(result.srcY).toBe(0);
-      expect(result.canvasWidth).toBe(200);
-      expect(result.canvasHeight).toBe(200);
-    });
-
-    it('handles very small rect', () => {
-      const result = calculateCropDimensions({
-        rect: { x: 10, y: 10, width: 20, height: 20 },
-        devicePixelRatio: 2,
-      });
-
-      expect(result.canvasWidth).toBe(40);
-      expect(result.canvasHeight).toBe(40);
-    });
+      // Tooltip removed
+      expect(document.querySelector('button')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

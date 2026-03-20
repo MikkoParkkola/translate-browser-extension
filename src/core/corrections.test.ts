@@ -246,5 +246,87 @@ describe('Corrections Module', () => {
     it('should reject non-array JSON', async () => {
       await expect(correctionsModule.importCorrections('{}')).rejects.toThrow('expected array');
     });
+
+    it('should reject entries missing required fields', async () => {
+      const json = JSON.stringify([{ original: 'hello' }]); // missing userCorrection, sourceLang, targetLang
+      await expect(correctionsModule.importCorrections(json)).rejects.toThrow('missing required fields');
+    });
+
+    it('should use defaults for missing machineTranslation, timestamp, useCount', async () => {
+      const json = JSON.stringify([
+        {
+          original: 'test',
+          userCorrection: 'testi',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          // no machineTranslation, timestamp, useCount
+        },
+      ]);
+      const count = await correctionsModule.importCorrections(json);
+      expect(count).toBe(1);
+
+      const corrections = await correctionsModule.getAllCorrections();
+      expect(corrections[0].machineTranslation).toBe('');
+      expect(corrections[0].useCount).toBe(1);
+      expect(corrections[0].timestamp).toBeGreaterThan(0);
+    });
+  });
+
+  describe('loadCorrections legacy format', () => {
+    it('handles legacy object format stored in chrome.storage', async () => {
+      // Simulate legacy object format (not array of entries)
+      const legacyData = {
+        'en:fi:hello': {
+          original: 'hello',
+          machineTranslation: 'hei',
+          userCorrection: 'moi',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          timestamp: Date.now(),
+          useCount: 1,
+        },
+      };
+      mockStorage.set('translationCorrections', legacyData);
+
+      const corrections = await correctionsModule.loadCorrections();
+      expect(corrections.size).toBe(1);
+      expect(corrections.get('en:fi:hello')).toBeDefined();
+    });
+  });
+
+  describe('addCorrection LRU eviction', () => {
+    it('evicts oldest entry when at max capacity (500)', async () => {
+      // Mock MAX_CORRECTIONS by filling 500 entries
+      // We do this by directly seeding the storage
+      const entries: [string, object][] = [];
+      const base = Date.now();
+      for (let i = 0; i < 500; i++) {
+        entries.push([
+          `en:fi:word${i}`,
+          {
+            original: `word${i}`,
+            machineTranslation: `trans${i}`,
+            userCorrection: `corr${i}`,
+            sourceLang: 'en',
+            targetLang: 'fi',
+            timestamp: base - (500 - i) * 1000, // oldest = word0
+            useCount: 1,
+          },
+        ]);
+      }
+      mockStorage.set('translationCorrections', entries);
+
+      // Add one more — should evict oldest
+      await correctionsModule.addCorrection('newword', 'newtrans', 'newcorr', 'en', 'fi');
+
+      const corrections = await correctionsModule.getAllCorrections();
+      expect(corrections.length).toBe(500); // still at 500 (evicted 1, added 1)
+      // 'word0' (oldest) should be evicted
+      const result = await correctionsModule.getCorrection('word0', 'en', 'fi');
+      expect(result).toBeNull();
+      // new entry should exist
+      const newResult = await correctionsModule.getCorrection('newword', 'en', 'fi');
+      expect(newResult).toBe('newcorr');
+    });
   });
 });

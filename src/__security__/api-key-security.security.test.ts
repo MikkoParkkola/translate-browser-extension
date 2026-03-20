@@ -15,11 +15,16 @@ import * as path from 'node:path';
 const SRC_ROOT = path.resolve(__dirname, '..');
 const STORAGE_TS = path.join(SRC_ROOT, 'core', 'storage.ts');
 const SERVICE_WORKER_TS = path.join(SRC_ROOT, 'background', 'service-worker.ts');
+const SHARED_HANDLERS_TS = path.join(SRC_ROOT, 'background', 'shared', 'message-handlers.ts');
 const CONTENT_INDEX_TS = path.join(SRC_ROOT, 'content', 'index.ts');
 
-// Read sources once for static analysis
+// Read sources once for static analysis (include shared module where handlers were extracted)
 const storageSource = fs.readFileSync(STORAGE_TS, 'utf-8');
 const serviceWorkerSource = fs.readFileSync(SERVICE_WORKER_TS, 'utf-8');
+const sharedHandlersSource = fs.existsSync(SHARED_HANDLERS_TS)
+  ? fs.readFileSync(SHARED_HANDLERS_TS, 'utf-8')
+  : '';
+const backgroundSource = serviceWorkerSource + '\n' + sharedHandlersSource;
 const contentSource = fs.readFileSync(CONTENT_INDEX_TS, 'utf-8');
 
 // Provider key names as declared in service-worker.ts
@@ -104,8 +109,8 @@ describe('API Key Storage Security', () => {
     });
 
     it('handleGetCloudProviderStatus returns boolean status, not key values', () => {
-      // Extract the handler function source
-      const handlerMatch = serviceWorkerSource.match(
+      // Extract the handler function source (may be in service-worker or shared module)
+      const handlerMatch = backgroundSource.match(
         /async function handleGetCloudProviderStatus[\s\S]*?^}/m
       );
       expect(handlerMatch).not.toBeNull();
@@ -117,8 +122,8 @@ describe('API Key Storage Security', () => {
 
   describe('message handler security', () => {
     it('message handler ignores messages with offscreen target', () => {
-      // Verify the guard clause exists
-      expect(serviceWorkerSource).toContain(
+      // Verify the guard clause exists (may be in service-worker or shared module)
+      expect(backgroundSource).toContain(
         "'target' in message && message.target === 'offscreen'"
       );
     });
@@ -126,9 +131,9 @@ describe('API Key Storage Security', () => {
     it('setCloudApiKey handler validates provider name against allow-list', () => {
       // The handler looks up CLOUD_PROVIDER_KEYS[provider] and returns an
       // error if the provider is unknown, preventing arbitrary storage writes.
-      expect(serviceWorkerSource).toContain('CLOUD_PROVIDER_KEYS[message.provider]');
+      expect(backgroundSource).toContain('CLOUD_PROVIDER_KEYS[message.provider]');
       // It also checks for a missing key and returns early
-      expect(serviceWorkerSource).toContain("if (!storageKey)");
+      expect(backgroundSource).toContain("if (!storageKey)");
     });
   });
 });

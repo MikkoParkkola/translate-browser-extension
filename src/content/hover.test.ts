@@ -215,3 +215,149 @@ describe('mousemove debouncing', () => {
     expect(document.getElementById('translate-hover-tooltip')).toBeNull();
   });
 });
+
+// ============================================================================
+// handleHoverTranslation — full async path via mocked caretRangeFromPoint
+// ============================================================================
+
+describe('handleHoverTranslation via mousemove with text node', () => {
+  // Helper: create a text node and mock caretRangeFromPoint to return a Range on it.
+  // Also patches Range.prototype.getBoundingClientRect so the wordRange in hover.ts works.
+  function setupTextNodeAndRange(text: string): { textNode: Text; restoreCaretRange: () => void } {
+    // Add a real text node in a plain element (shouldSkip returns false by default from mock)
+    const p = document.createElement('p');
+    const textNode = document.createTextNode(text);
+    p.appendChild(textNode);
+    document.body.appendChild(p);
+
+    // Create a real Range on the text node (returned by caretRangeFromPoint)
+    const range = document.createRange();
+    range.setStart(textNode, Math.floor(text.length / 2));
+    range.setEnd(textNode, Math.floor(text.length / 2));
+
+    // Patch getBoundingClientRect on Range.prototype so ALL ranges work
+    const origGetBBR = Range.prototype.getBoundingClientRect;
+    Range.prototype.getBoundingClientRect = () => ({
+      top: 100, bottom: 120, left: 200, right: 250,
+      width: 50, height: 20, x: 200, y: 100, toJSON: () => ({}),
+    } as DOMRect);
+
+    const origCaretRange = document.caretRangeFromPoint;
+    document.caretRangeFromPoint = () => range;
+
+    return {
+      textNode,
+      restoreCaretRange: () => {
+        document.caretRangeFromPoint = origCaretRange;
+        Range.prototype.getBoundingClientRect = origGetBBR;
+      },
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    document.body.innerHTML = '';
+    Object.defineProperty(window, 'innerWidth', { value: 1200, writable: true });
+    Object.defineProperty(window, 'innerHeight', { value: 800, writable: true });
+    mockSafeStorageGet.mockResolvedValue({ targetLang: 'fi', provider: 'opus-mt' });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+  });
+
+  it('shows loading tooltip then hover tooltip on successful translate', async () => {
+    mockSendMessage.mockResolvedValue({ success: true, result: 'käännetty' });
+
+    const { initHoverListeners, setResolveSourceLang } = await import('./hover');
+    setResolveSourceLang((lang) => lang);
+    initHoverListeners();
+
+    const { restoreCaretRange } = setupTextNodeAndRange('hello world');
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+
+    // Wait for debounce (150ms) + async translation
+    await new Promise((r) => setTimeout(r, 200));
+
+    restoreCaretRange();
+
+    // Hover tooltip should exist with translated content
+    const tooltip = document.getElementById('translate-hover-tooltip');
+    expect(tooltip).not.toBeNull();
+    expect(tooltip!.textContent).toContain('käännetty');
+  });
+
+  it('removes loading tooltip when translate response is unsuccessful', async () => {
+    mockSendMessage.mockResolvedValue({ success: false });
+
+    const { initHoverListeners, setResolveSourceLang } = await import('./hover');
+    setResolveSourceLang((lang) => lang);
+    initHoverListeners();
+
+    const { restoreCaretRange } = setupTextNodeAndRange('hello world');
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+
+    await new Promise((r) => setTimeout(r, 200));
+    restoreCaretRange();
+
+    // No tooltip since translation was not successful
+    expect(document.getElementById('translate-hover-tooltip')).toBeNull();
+  });
+
+  it('removes tooltip on error', async () => {
+    mockSendMessage.mockRejectedValue(new Error('network failure'));
+
+    const { initHoverListeners, setResolveSourceLang } = await import('./hover');
+    setResolveSourceLang((lang) => lang);
+    initHoverListeners();
+
+    const { restoreCaretRange } = setupTextNodeAndRange('hello world');
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+
+    await new Promise((r) => setTimeout(r, 200));
+    restoreCaretRange();
+
+    expect(document.getElementById('translate-hover-tooltip')).toBeNull();
+  });
+
+  it('uses hover cache on repeated hover over same word', async () => {
+    mockSendMessage.mockResolvedValue({ success: true, result: 'käännetty' });
+
+    const { initHoverListeners, setResolveSourceLang } = await import('./hover');
+    setResolveSourceLang((lang) => lang);
+    initHoverListeners();
+
+    const { restoreCaretRange } = setupTextNodeAndRange('hello world');
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+
+    // First hover
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+    await new Promise((r) => setTimeout(r, 200));
+
+    const callsAfterFirst = mockSendMessage.mock.calls.length;
+
+    // Alt keyup then re-press to reset lastHoveredText so second hover fires
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+
+    // Second hover over same word — should use cache
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+    await new Promise((r) => setTimeout(r, 200));
+
+    restoreCaretRange();
+
+    // No additional sendMessage calls (served from cache)
+    expect(mockSendMessage.mock.calls.length).toBe(callsAfterFirst);
+    const tooltip = document.getElementById('translate-hover-tooltip');
+    expect(tooltip).not.toBeNull();
+  });
+});

@@ -14,17 +14,154 @@
 import { logger } from './logger.js';
 import { standardErrorHandler } from './standardErrorHandler.js';
 import { ModelValidator } from './ModelValidator.js';
+import type { ValidationResult } from './ModelValidator.js';
 import { ModelUpdater } from './ModelUpdater.js';
+import type { UpdateCheckResult } from './ModelUpdater.js';
 import { ModelPerformanceMonitor } from './ModelPerformanceMonitor.js';
+import type { PerformanceSummary } from './ModelPerformanceMonitor.js';
+
+// ── Interfaces ──────────────────────────────────────────────────────
+
+export interface InferenceConfig {
+  n_ctx: number;
+  n_batch: number;
+  cache_type_k: string;
+  cache_type_v: string;
+}
+
+export interface ModelConfig {
+  modelUrls: string[];
+  inference: InferenceConfig;
+  totalSize: number;
+  displayName: string;
+}
+
+export interface DownloadProgressInfo {
+  loaded: number;
+  total: number;
+  progress: number;
+  status?: string;
+  shardIndex?: number;
+  shardCount?: number;
+  complete?: boolean;
+}
+
+export interface TranslationResult {
+  text: string;
+  translatedText: string;
+  inferenceTime: number;
+  confidence: number;
+  tokensGenerated: number;
+}
+
+export interface ModelStatus {
+  downloaded: boolean;
+  loaded: boolean;
+  size: number;
+  downloadDate: string | null;
+  lastValidated: string | null;
+  version: string | null;
+  integrity: string;
+  backend: string;
+  error?: string;
+  performance?: PerformanceSummary;
+  updateInfo?: ReturnType<ModelUpdater['getUpdateInfo']>;
+}
+
+export interface HealthCheckResult {
+  status: 'healthy' | 'degraded' | 'unhealthy' | 'error';
+  checks: Record<string, HealthCheck>;
+  timestamp: string;
+  summary: string;
+  error?: string;
+}
+
+export interface HealthCheck {
+  passed: boolean;
+  message: string;
+  status?: string;
+}
+
+export interface ModelInfo {
+  available: boolean;
+  ready: boolean;
+  downloading: boolean;
+  name: string;
+  backend: string;
+  performanceStats: PerformanceSummary;
+}
+
+export interface ModelDownloadProgress {
+  isDownloading: boolean;
+  progress: number;
+}
+
+interface ModelVersionEntry {
+  size: number;
+  checksums: Record<string, string>;
+  urls: string[];
+  features: string[];
+  deprecated: boolean;
+}
+
+interface ModelRegistryEntry {
+  versions: Record<string, ModelVersionEntry>;
+  latest: string;
+}
+
+type ModelRegistry = Record<string, ModelRegistryEntry>;
+
+/** Messages sent to the wllama worker. */
+interface WorkerLoadMessage {
+  type: 'loadModel';
+  modelUrls: string[];
+  config: InferenceConfig;
+}
+
+interface WorkerTranslateMessage {
+  type: 'translate';
+  prompt: string;
+  maxTokens: number;
+  temperature: number;
+  requestId: string;
+}
+
+interface WorkerControlMessage {
+  type: 'abort' | 'cleanup';
+}
+
+type WorkerOutboundMessage = WorkerLoadMessage | WorkerTranslateMessage | WorkerControlMessage;
+
+/** Messages received from the wllama worker. */
+interface WorkerProgressMessage {
+  type: 'progress' | 'status';
+  loaded?: number;
+  total?: number;
+  progress?: number;
+  [key: string]: unknown;
+}
+
+interface WorkerErrorMessage {
+  type: 'error';
+  message: string;
+}
+
+interface WorkerResultMessage {
+  type: 'result' | 'loaded';
+  translatedText?: string;
+  tokensGenerated?: number;
+  [key: string]: unknown;
+}
+
+type WorkerInboundMessage = WorkerProgressMessage | WorkerErrorMessage | WorkerResultMessage;
+
+// ── Default config ──────────────────────────────────────────────────
 
 /**
  * Default model configuration.
  * Sharded URLs split the model into <500MB chunks to avoid ArrayBuffer limits.
  */
-const DEFAULT_MODEL_CONFIG = {
-  // Model shard URLs -- wllama downloads and caches each shard separately.
-  // For a ~2.3GB Q4_K_M model, split into 6 shards of ~500MB each.
-  // Update these URLs to point to your actual model hosting.
+const DEFAULT_MODEL_CONFIG: ModelConfig = {
   modelUrls: [
     'https://huggingface.co/m1cc0z/translategemma-4b-q4km-sharded/resolve/main/translategemma-4b-q4km-00001-of-00006.gguf',
     'https://huggingface.co/m1cc0z/translategemma-4b-q4km-sharded/resolve/main/translategemma-4b-q4km-00002-of-00006.gguf',
@@ -33,20 +170,50 @@ const DEFAULT_MODEL_CONFIG = {
     'https://huggingface.co/m1cc0z/translategemma-4b-q4km-sharded/resolve/main/translategemma-4b-q4km-00005-of-00006.gguf',
     'https://huggingface.co/m1cc0z/translategemma-4b-q4km-sharded/resolve/main/translategemma-4b-q4km-00006-of-00006.gguf',
   ],
-  // Inference config passed to wllama
   inference: {
     n_ctx: 2048,
     n_batch: 512,
     cache_type_k: 'q8_0',
     cache_type_v: 'q8_0',
   },
-  // Total expected size (for progress UI)
   totalSize: 2489909952, // 2.32 GB (6 shards)
-  // Model name for display
   displayName: 'TranslateGemma 4B Q4_K_M',
 };
 
+// ── Class ───────────────────────────────────────────────────────────
+
 export class LocalModelManager {
+  isInitialized: boolean;
+  modelLoaded: boolean;
+  modelWorker: Worker | null;
+  modelConfig: ModelConfig;
+
+  downloadProgress: number;
+  isDownloading: boolean;
+  private downloadCancelled: boolean;
+
+  private requestQueue: unknown[];
+  private isProcessing: boolean;
+  private pendingRequests: Map<string, unknown>;
+
+  private lastUsed: number;
+  private unloadTimeout: number;
+  private unloadTimer: ReturnType<typeof setTimeout> | null;
+
+  private maxRetries: number;
+  private retryDelayMs: number;
+  private maxRetryDelayMs: number;
+  consecutiveFailures: number;
+  lastError: Error | null;
+  private isInRecovery: boolean;
+  private modelCorrupted: boolean;
+
+  private modelRegistry: ModelRegistry;
+
+  validator: ModelValidator;
+  updater: ModelUpdater;
+  performanceMonitor: ModelPerformanceMonitor;
+
   constructor() {
     this.isInitialized = false;
     this.modelLoaded = false;
@@ -98,7 +265,7 @@ export class LocalModelManager {
     // Initialize specialized modules
     this.validator = new ModelValidator(this.modelRegistry, {
       enableSizeValidation: true,
-      enableChecksumValidation: false, // Checksums checked per-shard by wllama
+      enableChecksumValidation: false,
       enableStructuralValidation: true,
       sizeTolerance: 0.05,
       checksumAlgorithm: 'sha256',
@@ -126,7 +293,7 @@ export class LocalModelManager {
   /**
    * Initialize the model manager.
    */
-  async init() {
+  async init(): Promise<{ success: boolean; message: string }> {
     if (this.isInitialized) {
       return { success: true, message: 'Already initialized' };
     }
@@ -134,18 +301,14 @@ export class LocalModelManager {
     try {
       logger.info('LocalModelManager', 'Initializing Local Model Manager (wllama backend)...');
 
-      // Check if model is cached (wllama uses Cache API internally)
       const modelStatus = await this.getModelStatus();
 
       if (modelStatus.downloaded) {
-        const updateInfo = await this.updater.checkForUpdates();
+        const updateInfo: UpdateCheckResult = await this.updater.checkForUpdates();
         logger.info('LocalModelManager', 'Model cached. Update info:', updateInfo);
       }
 
-      // Schedule periodic update checks
       this.updater.scheduleUpdateCheck();
-
-      // Start performance monitoring
       this.performanceMonitor.startPerformanceMonitoring();
 
       this.isInitialized = true;
@@ -154,7 +317,7 @@ export class LocalModelManager {
       return { success: true, message: 'Initialized successfully' };
 
     } catch (error) {
-      const handledError = standardErrorHandler.handleError(error, {
+      const handledError = standardErrorHandler.handleError(error as Error, {
         operation: 'init',
         component: 'LocalModelManager',
         recoverable: false,
@@ -167,12 +330,11 @@ export class LocalModelManager {
   /**
    * Download (cache) the model shards.
    * wllama's loadModelFromUrl downloads and caches each shard via Cache API.
-   * This method triggers that download by loading the model in a worker.
-   *
-   * @param {function} [onProgress] - Progress callback ({loaded, total, progress, shardIndex, shardCount})
-   * @param {number} [retryAttempt=0]
    */
-  async downloadModel(onProgress = null, retryAttempt = 0) {
+  async downloadModel(
+    onProgress: ((info: DownloadProgressInfo) => void) | null = null,
+    retryAttempt = 0,
+  ): Promise<{ success: boolean }> {
     if (this.isDownloading) {
       throw new Error('Download already in progress');
     }
@@ -184,22 +346,21 @@ export class LocalModelManager {
     try {
       logger.info('LocalModelManager', 'Starting model download (sharded, wllama)...');
 
-      // Create worker and load model -- wllama downloads and caches shards
       await this._ensureWorker();
 
       await this._sendWorkerMessage({
         type: 'loadModel',
         modelUrls: this.modelConfig.modelUrls,
         config: this.modelConfig.inference,
-      }, (message) => {
-        // Handle progress messages from worker
+      }, (message: WorkerInboundMessage) => {
         if (message.type === 'progress') {
-          this.downloadProgress = message.progress;
+          const msg = message as WorkerProgressMessage;
+          this.downloadProgress = msg.progress ?? 0;
           if (onProgress) {
             onProgress({
-              loaded: message.loaded,
-              total: message.total,
-              progress: message.progress,
+              loaded: msg.loaded ?? 0,
+              total: msg.total ?? 0,
+              progress: msg.progress ?? 0,
               status: 'Downloading model shards...',
             });
           }
@@ -221,7 +382,6 @@ export class LocalModelManager {
       this.consecutiveFailures = 0;
       this.lastError = null;
 
-      // Update model status
       await this.updateModelStatus({
         downloaded: true,
         downloadDate: new Date().toISOString(),
@@ -240,8 +400,7 @@ export class LocalModelManager {
         throw new Error('Download cancelled by user');
       }
 
-      // Retry with exponential backoff
-      if (retryAttempt < this.maxRetries && this._shouldRetryDownload(error)) {
+      if (retryAttempt < this.maxRetries && this._shouldRetryDownload(error as Error)) {
         const delay = Math.min(
           this.retryDelayMs * Math.pow(2, retryAttempt),
           this.maxRetryDelayMs,
@@ -253,7 +412,7 @@ export class LocalModelManager {
         return this.downloadModel(onProgress, retryAttempt + 1);
       }
 
-      throw this._handleError(error, 'download', true);
+      throw this._handleError(error as Error, 'download', true);
 
     } finally {
       this.isDownloading = false;
@@ -263,10 +422,10 @@ export class LocalModelManager {
   /**
    * Cancel an in-progress download.
    */
-  cancelModelDownload() {
+  cancelModelDownload(): void {
     this.downloadCancelled = true;
     if (this.modelWorker) {
-      this.modelWorker.postMessage({ type: 'abort' });
+      this.modelWorker.postMessage({ type: 'abort' } satisfies WorkerControlMessage);
     }
     logger.info('LocalModelManager', 'Download cancellation requested');
   }
@@ -274,7 +433,7 @@ export class LocalModelManager {
   /**
    * Load model into memory (if already cached).
    */
-  async loadModel() {
+  async loadModel(): Promise<{ success: boolean; message?: string }> {
     if (this.modelLoaded) {
       return { success: true, message: 'Model already loaded' };
     }
@@ -284,7 +443,6 @@ export class LocalModelManager {
 
       await this._ensureWorker();
 
-      // Load from URL(s) -- wllama will use cached shards if available
       await this._sendWorkerMessage({
         type: 'loadModel',
         modelUrls: this.modelConfig.modelUrls,
@@ -299,25 +457,24 @@ export class LocalModelManager {
       return { success: true };
 
     } catch (error) {
-      throw this._handleError(error, 'load', true);
+      throw this._handleError(error as Error, 'load', true);
     }
   }
 
   /**
    * Translate text using the loaded model.
-   *
-   * @param {string} text - Source text
-   * @param {string} sourceLanguage - Source language code
-   * @param {string} targetLanguage - Target language code
-   * @returns {Promise<{text: string, translatedText: string, inferenceTime: number, confidence: number}>}
    */
-  async translateText(text, sourceLanguage, targetLanguage) {
+  async translateText(
+    text: string,
+    sourceLanguage: string,
+    targetLanguage: string,
+  ): Promise<TranslationResult> {
     if (!this.modelLoaded) {
       await this.loadModel();
     }
 
     const startTime = Date.now();
-    const requestId = `tr_${  Date.now()  }_${  Math.random().toString(36).slice(2, 8)}`;
+    const requestId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     try {
       const prompt = this._createTranslationPrompt(text, sourceLanguage, targetLanguage);
@@ -328,11 +485,10 @@ export class LocalModelManager {
         maxTokens: 512,
         temperature: 0.1,
         requestId,
-      });
+      }) as WorkerResultMessage;
 
       const inferenceTime = Date.now() - startTime;
 
-      // Update performance stats
       this.performanceMonitor.updatePerformanceStats(inferenceTime, true, text.length);
 
       this.lastUsed = Date.now();
@@ -341,21 +497,21 @@ export class LocalModelManager {
       logger.debug('LocalModelManager', `Translation completed in ${inferenceTime}ms`);
 
       return {
-        text: result.translatedText,
-        translatedText: result.translatedText,
+        text: result.translatedText ?? '',
+        translatedText: result.translatedText ?? '',
         inferenceTime,
         confidence: 0.8,
-        tokensGenerated: result.tokensGenerated || 0,
+        tokensGenerated: (result.tokensGenerated as number) ?? 0,
       };
 
     } catch (error) {
       const inferenceTime = Date.now() - startTime;
       this.performanceMonitor.updatePerformanceStats(inferenceTime, false, text.length);
 
-      if (this._shouldRetryTranslation(error) && this.consecutiveFailures < this.maxRetries) {
-        logger.warn('LocalModelManager', 'Retrying translation after error:', error.message);
+      if (this._shouldRetryTranslation(error as Error) && this.consecutiveFailures < this.maxRetries) {
+        logger.warn('LocalModelManager', 'Retrying translation after error:', (error as Error).message);
 
-        if (error.message.includes('worker') || error.message.includes('not loaded')) {
+        if ((error as Error).message.includes('worker') || (error as Error).message.includes('not loaded')) {
           this.modelLoaded = false;
           await this.loadModel();
         }
@@ -363,24 +519,28 @@ export class LocalModelManager {
         return this.translateText(text, sourceLanguage, targetLanguage);
       }
 
-      throw this._handleError(error, 'translate', true);
+      throw this._handleError(error as Error, 'translate', true);
     }
   }
 
   /**
    * Convenience alias for translateText (used by UI).
    */
-  async translate(text, sourceLanguage, targetLanguage) {
+  async translate(
+    text: string,
+    sourceLanguage: string,
+    targetLanguage: string,
+  ): Promise<TranslationResult> {
     return this.translateText(text, sourceLanguage, targetLanguage);
   }
 
   /**
    * Get model status.
    */
-  async getModelStatus() {
+  async getModelStatus(): Promise<ModelStatus> {
     try {
-      const stored = await this._getStoredData('model_status');
-      const defaultStatus = {
+      const stored = await this._getStoredData('model_status') as Partial<ModelStatus> | null;
+      const defaultStatus: ModelStatus = {
         downloaded: false,
         loaded: this.modelLoaded,
         size: 0,
@@ -391,7 +551,7 @@ export class LocalModelManager {
         backend: 'wllama',
       };
 
-      const status = { ...defaultStatus, ...stored, loaded: this.modelLoaded };
+      const status: ModelStatus = { ...defaultStatus, ...stored, loaded: this.modelLoaded };
       status.performance = this.performanceMonitor.getPerformanceSummary();
       status.updateInfo = this.updater.getUpdateInfo();
 
@@ -399,14 +559,14 @@ export class LocalModelManager {
 
     } catch (error) {
       logger.error('LocalModelManager', 'Failed to get model status:', error);
-      return { downloaded: false, loaded: false, error: error.message };
+      return { downloaded: false, loaded: false, size: 0, downloadDate: null, lastValidated: null, version: null, integrity: 'unknown', backend: 'wllama', error: (error as Error).message };
     }
   }
 
   /**
    * Get model info (legacy compatibility).
    */
-  getModelInfo() {
+  getModelInfo(): ModelInfo {
     return {
       available: this.modelLoaded || this.isDownloading,
       ready: this.modelLoaded,
@@ -420,7 +580,7 @@ export class LocalModelManager {
   /**
    * Get download progress (for UI polling).
    */
-  getDownloadProgress() {
+  getDownloadProgress(): ModelDownloadProgress {
     return {
       isDownloading: this.isDownloading,
       progress: this.downloadProgress,
@@ -430,8 +590,8 @@ export class LocalModelManager {
   /**
    * Perform health check.
    */
-  async performHealthCheck() {
-    const health = {
+  async performHealthCheck(): Promise<HealthCheckResult> {
+    const health: HealthCheckResult = {
       status: 'healthy',
       checks: {},
       timestamp: new Date().toISOString(),
@@ -474,7 +634,7 @@ export class LocalModelManager {
 
     } catch (error) {
       health.status = 'error';
-      health.error = error.message;
+      health.error = (error as Error).message;
     }
 
     return health;
@@ -483,28 +643,25 @@ export class LocalModelManager {
   /**
    * Aliases for legacy API compatibility.
    */
-  async healthCheck() {
+  async healthCheck(): Promise<HealthCheckResult> {
     return this.performHealthCheck();
   }
 
-  async deleteModel() {
+  async deleteModel(): Promise<void> {
     try {
-      // Terminate worker
       if (this.modelWorker) {
-        this.modelWorker.postMessage({ type: 'cleanup' });
+        this.modelWorker.postMessage({ type: 'cleanup' } satisfies WorkerControlMessage);
         this.modelWorker.terminate();
         this.modelWorker = null;
       }
       this.modelLoaded = false;
 
-      // Clear wllama cache via Cache API
       if (typeof caches !== 'undefined') {
         const cacheKeys = await caches.keys();
         const wllamaKeys = cacheKeys.filter((key) => key.includes('wllama') || key.includes('gguf'));
         await Promise.all(wllamaKeys.map((key) => caches.delete(key)));
       }
 
-      // Clear status from storage
       await this._storeData('model_status', { downloaded: false });
 
       logger.info('LocalModelManager', 'Model deleted and cache cleared');
@@ -517,7 +674,7 @@ export class LocalModelManager {
   /**
    * Set custom model URLs (for different models or self-hosted shards).
    */
-  setModelUrls(urls) {
+  setModelUrls(urls: string[]): void {
     if (!Array.isArray(urls) || urls.length === 0) {
       throw new Error('modelUrls must be a non-empty array');
     }
@@ -528,14 +685,16 @@ export class LocalModelManager {
   /**
    * Get performance summary.
    */
-  getPerformanceSummary() {
+  getPerformanceSummary(): PerformanceSummary {
     return this.performanceMonitor.getPerformanceSummary();
   }
 
   /**
    * Update model to latest version.
    */
-  async updateModel(progressCallback = null) {
+  async updateModel(
+    progressCallback: ((info: DownloadProgressInfo) => void) | null = null,
+  ): Promise<unknown> {
     return this.updater.updateModelToVersion(
       null,
       progressCallback,
@@ -546,7 +705,7 @@ export class LocalModelManager {
   /**
    * Clean up all resources.
    */
-  async destroy() {
+  async destroy(): Promise<void> {
     try {
       logger.info('LocalModelManager', 'Cleaning up LocalModelManager...');
 
@@ -559,7 +718,7 @@ export class LocalModelManager {
 
       if (this.modelWorker) {
         try {
-          this.modelWorker.postMessage({ type: 'cleanup' });
+          this.modelWorker.postMessage({ type: 'cleanup' } satisfies WorkerControlMessage);
         } catch { /* ignore */ }
         this.modelWorker.terminate();
         this.modelWorker = null;
@@ -579,11 +738,15 @@ export class LocalModelManager {
   // Private helper methods
   // ================================
 
-  _createTranslationPrompt(text, sourceLanguage, targetLanguage) {
+  private _createTranslationPrompt(
+    text: string,
+    sourceLanguage: string,
+    targetLanguage: string,
+  ): string {
     return `Translate the following text from ${sourceLanguage} to ${targetLanguage}:\n\n${text}\n\nTranslation:`;
   }
 
-  async _ensureWorker() {
+  private async _ensureWorker(): Promise<void> {
     if (this.modelWorker) return;
 
     const workerUrl = (typeof chrome !== 'undefined' && chrome.runtime)
@@ -598,40 +761,41 @@ export class LocalModelManager {
    * Send a message to the worker and wait for a typed response.
    * Handles 'progress' messages via an optional callback.
    */
-  _sendWorkerMessage(message, onIntermediateMessage = null) {
+  private _sendWorkerMessage(
+    message: WorkerOutboundMessage,
+    onIntermediateMessage: ((msg: WorkerInboundMessage) => void) | null = null,
+  ): Promise<WorkerResultMessage> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Worker communication timeout'));
-      }, 5 * 60 * 1000); // 5 minute timeout (model download can be slow)
+      }, 5 * 60 * 1000); // 5 minute timeout
 
-      const handler = (event) => {
+      const handler = (event: MessageEvent<WorkerInboundMessage>): void => {
         const data = event.data;
 
-        // Handle intermediate messages (progress, status)
         if (data.type === 'progress' || data.type === 'status') {
           if (onIntermediateMessage) {
             onIntermediateMessage(data);
           }
-          return; // Don't resolve yet
+          return;
         }
 
-        // Terminal messages
         clearTimeout(timeout);
-        this.modelWorker.removeEventListener('message', handler);
+        this.modelWorker!.removeEventListener('message', handler);
 
         if (data.type === 'error') {
-          reject(new Error(data.message));
+          reject(new Error((data as WorkerErrorMessage).message));
         } else {
-          resolve(data);
+          resolve(data as WorkerResultMessage);
         }
       };
 
-      this.modelWorker.addEventListener('message', handler);
-      this.modelWorker.postMessage(message);
+      this.modelWorker!.addEventListener('message', handler);
+      this.modelWorker!.postMessage(message);
     });
   }
 
-  _handleError(error, context, retryable = true) {
+  private _handleError(error: Error, context: string, retryable = true): Error {
     logger.error('LocalModelManager', `Error in ${context}:`, error);
 
     this.lastError = error;
@@ -651,7 +815,7 @@ export class LocalModelManager {
     return handledError;
   }
 
-  _shouldRetryDownload(error) {
+  private _shouldRetryDownload(error: Error): boolean {
     const msg = error.message || '';
     return msg.includes('network') ||
            msg.includes('timeout') ||
@@ -659,12 +823,12 @@ export class LocalModelManager {
            msg.includes('Failed to fetch');
   }
 
-  _shouldRetryTranslation(error) {
+  private _shouldRetryTranslation(error: Error): boolean {
     const msg = error.message || '';
     return !msg.includes('memory') && !msg.includes('corrupted');
   }
 
-  _scheduleUnload() {
+  private _scheduleUnload(): void {
     if (this.unloadTimer) {
       clearTimeout(this.unloadTimer);
     }
@@ -675,10 +839,10 @@ export class LocalModelManager {
     }, this.unloadTimeout);
   }
 
-  async _unloadModel() {
+  private async _unloadModel(): Promise<void> {
     if (this.modelWorker) {
       try {
-        this.modelWorker.postMessage({ type: 'cleanup' });
+        this.modelWorker.postMessage({ type: 'cleanup' } satisfies WorkerControlMessage);
       } catch { /* ignore */ }
       this.modelWorker.terminate();
       this.modelWorker = null;
@@ -687,7 +851,7 @@ export class LocalModelManager {
     logger.info('LocalModelManager', 'Model unloaded due to inactivity');
   }
 
-  async _triggerRecovery() {
+  private async _triggerRecovery(): Promise<void> {
     this.isInRecovery = true;
     try {
       logger.warn('LocalModelManager', 'Triggering recovery mode');
@@ -703,33 +867,31 @@ export class LocalModelManager {
     }
   }
 
-  async retrieveModel() {
-    // wllama manages its own cache -- return status only
+  async retrieveModel(): Promise<{ cached: boolean } | null> {
     const status = await this.getModelStatus();
     return status.downloaded ? { cached: true } : null;
   }
 
-  async updateModelStatus(updates) {
-    const current = await this._getStoredData('model_status') || {};
+  async updateModelStatus(updates: Partial<ModelStatus>): Promise<void> {
+    const current = (await this._getStoredData('model_status') as Partial<ModelStatus>) || {};
     const updated = { ...current, ...updates };
     await this._storeData('model_status', updated);
   }
 
-  _sleep(ms) {
+  private _sleep(ms: number): Promise<void> {
     return new Promise((resolve) => { setTimeout(resolve, ms); });
   }
 
-  // IndexedDB storage helpers
-  async _getStoredData(key) {
+  // Storage helpers
+  private async _getStoredData(key: string): Promise<unknown> {
     return new Promise((resolve) => {
       try {
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-          chrome.storage.local.get([key], (result) => {
+          chrome.storage.local.get([key], (result: Record<string, unknown>) => {
             resolve(result[key] || null);
           });
         } else {
-          // Fallback to localStorage for testing
-          const data = localStorage.getItem(`lmm_${  key}`);
+          const data = localStorage.getItem(`lmm_${key}`);
           resolve(data ? JSON.parse(data) : null);
         }
       } catch {
@@ -738,13 +900,13 @@ export class LocalModelManager {
     });
   }
 
-  async _storeData(key, data) {
+  private async _storeData(key: string, data: unknown): Promise<void> {
     return new Promise((resolve) => {
       try {
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
           chrome.storage.local.set({ [key]: data }, () => resolve());
         } else {
-          localStorage.setItem(`lmm_${  key}`, JSON.stringify(data));
+          localStorage.setItem(`lmm_${key}`, JSON.stringify(data));
           resolve();
         }
       } catch {

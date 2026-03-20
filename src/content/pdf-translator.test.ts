@@ -955,4 +955,196 @@ describe('PDF Translator', () => {
       expect(textDiv.style.width).toBe(`${expectedWidth}px`);
     });
   });
+
+  // =========================================================================
+  // initPdfTranslation success path (with full mock of pdfjs)
+  // =========================================================================
+
+  describe('initPdfTranslation success path', () => {
+    it('creates overlay and toggle button after successful load', async () => {
+      // Build a mock pdf.js library with one page
+      const textItems = [
+        makeTextItem({ str: 'Hello PDF world', transform: [12, 0, 0, 12, 72, 700], width: 80, height: 14 }),
+        makeTextItem({ str: 'Second sentence here', transform: [12, 0, 0, 12, 72, 685], width: 100, height: 14 }),
+      ];
+
+      const mockPage = {
+        getViewport: vi.fn(() => ({ width: 612, height: 792 })),
+        getTextContent: vi.fn().mockResolvedValue({
+          items: textItems,
+        }),
+      };
+
+      const mockPdf = {
+        numPages: 1,
+        getPage: vi.fn().mockResolvedValue(mockPage),
+      };
+
+      mockSendMessage.mockResolvedValue({ success: true, result: 'Hei PDF maailma' });
+
+      mockLoadPdfjs.mockResolvedValue({
+        getDocument: vi.fn(() => ({
+          promise: Promise.resolve(mockPdf),
+        })),
+      });
+
+      await initPdfTranslation('fi');
+
+      // Overlay and toggle button should be in the DOM
+      expect(document.getElementById('translate-pdf-overlay')).not.toBeNull();
+      expect(document.getElementById('translate-pdf-toggle')).not.toBeNull();
+    });
+
+    it('returns early when document lang equals target lang', async () => {
+      // detectLanguage is mocked to return { lang: 'en', confidence: 0.95 }
+      // If targetLang is 'en', translation should be skipped
+      const textItems = [
+        makeTextItem({ str: 'English content', transform: [12, 0, 0, 12, 72, 700], width: 80, height: 14 }),
+      ];
+
+      const mockPage = {
+        getViewport: vi.fn(() => ({ width: 612, height: 792 })),
+        getTextContent: vi.fn().mockResolvedValue({ items: textItems }),
+      };
+
+      const mockPdf = {
+        numPages: 1,
+        getPage: vi.fn().mockResolvedValue(mockPage),
+      };
+
+      mockLoadPdfjs.mockResolvedValue({
+        getDocument: vi.fn(() => ({ promise: Promise.resolve(mockPdf) })),
+      });
+
+      // targetLang = 'en' matches detected lang 'en' → should return early
+      await initPdfTranslation('en');
+
+      // No overlay should be created (early return before overlay creation)
+      expect(document.getElementById('translate-pdf-overlay')).toBeNull();
+    });
+
+    it('prevents double initialization when already active', async () => {
+      // Set up a successful init
+      const mockPage = {
+        getViewport: vi.fn(() => ({ width: 612, height: 792 })),
+        getTextContent: vi.fn().mockResolvedValue({ items: [] }),
+      };
+
+      mockLoadPdfjs.mockResolvedValue({
+        getDocument: vi.fn(() => ({
+          promise: Promise.resolve({ numPages: 1, getPage: vi.fn().mockResolvedValue(mockPage) }),
+        })),
+      });
+
+      // First call succeeds and sets state.active = true
+      await initPdfTranslation('en'); // early return (detected lang == target)
+
+      // Actually, 'en' == 'en' so it returns early without setting active permanently
+      // Use 'fi' to get past the lang check
+      mockSendMessage.mockResolvedValue({ success: true, result: 'translated' });
+      mockLoadPdfjs.mockResolvedValue({
+        getDocument: vi.fn(() => ({
+          promise: Promise.resolve({
+            numPages: 0,
+            getPage: vi.fn(),
+          }),
+        })),
+      });
+
+      await initPdfTranslation('fi');
+      const callCount = mockLoadPdfjs.mock.calls.length;
+
+      // Second call should be blocked since state.active = true
+      // (state is set at start of initPdfTranslation before loading)
+      // Reset: call again — if active flag is set, load won't be called again
+      await initPdfTranslation('fi');
+      expect(mockLoadPdfjs.mock.calls.length).toBe(callCount);
+    });
+  });
+
+  // =========================================================================
+  // togglePdfTranslation with active state
+  // =========================================================================
+
+  describe('togglePdfTranslation with active state', () => {
+    it('toggles overlay visibility and button text', async () => {
+      // Initialize with full mock to have active state
+      const mockPage = {
+        getViewport: vi.fn(() => ({ width: 612, height: 792 })),
+        getTextContent: vi.fn().mockResolvedValue({ items: [
+          makeTextItem({ str: 'Content', transform: [12, 0, 0, 12, 72, 700], width: 50, height: 14 }),
+        ]}),
+      };
+      mockSendMessage.mockResolvedValue({ success: true, result: 'Sisalto' });
+      mockLoadPdfjs.mockResolvedValue({
+        getDocument: vi.fn(() => ({
+          promise: Promise.resolve({ numPages: 1, getPage: vi.fn().mockResolvedValue(mockPage) }),
+        })),
+      });
+
+      await initPdfTranslation('fi');
+
+      // After init, translation is not showing yet
+      expect(isShowingTranslation()).toBe(false);
+
+      // Toggle on
+      togglePdfTranslation();
+      expect(isShowingTranslation()).toBe(true);
+
+      const overlay = document.getElementById('translate-pdf-overlay');
+      expect(overlay?.style.display).toBe('block');
+
+      const toggleBtn = document.getElementById('translate-pdf-toggle');
+      expect(toggleBtn?.textContent).toBe('Show Original');
+
+      // Toggle off
+      togglePdfTranslation();
+      expect(isShowingTranslation()).toBe(false);
+      expect(overlay?.style.display).toBe('none');
+      expect(toggleBtn?.textContent).toBe('Show Translation');
+    });
+
+    it('isShowingTranslation returns correct state after toggles', async () => {
+      const mockPage = {
+        getViewport: vi.fn(() => ({ width: 612, height: 792 })),
+        getTextContent: vi.fn().mockResolvedValue({ items: [] }),
+      };
+      mockSendMessage.mockResolvedValue({ success: true, result: 'ok' });
+      mockLoadPdfjs.mockResolvedValue({
+        getDocument: vi.fn(() => ({
+          promise: Promise.resolve({ numPages: 1, getPage: vi.fn().mockResolvedValue(mockPage) }),
+        })),
+      });
+
+      await initPdfTranslation('fi');
+
+      expect(isShowingTranslation()).toBe(false);
+      togglePdfTranslation();
+      expect(isShowingTranslation()).toBe(true);
+      togglePdfTranslation();
+      expect(isShowingTranslation()).toBe(false);
+    });
+  });
+
+  // =========================================================================
+  // createToggleButton mouseenter/mouseleave hover effects
+  // =========================================================================
+
+  describe('createToggleButton hover effects', () => {
+    it('changes background on mouseenter and mouseleave', () => {
+      const onClick = vi.fn();
+      const button = createToggleButton(onClick);
+
+      const enterBg = 'rgba(51, 65, 85, 0.95)';
+      const leaveBg = 'rgba(30, 41, 59, 0.9)';
+
+      button.dispatchEvent(new MouseEvent('mouseenter'));
+      expect(button.style.backgroundColor).toBe(enterBg);
+
+      button.dispatchEvent(new MouseEvent('mouseleave'));
+      expect(button.style.backgroundColor).toBe(leaveBg);
+
+      button.remove();
+    });
+  });
 });

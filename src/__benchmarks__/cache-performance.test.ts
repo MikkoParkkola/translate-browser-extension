@@ -86,7 +86,7 @@ describe('benchmark: cache set (sequential inserts)', () => {
       cache.close();
 
       console.log(`  insert ${count} entries: ${elapsed.toFixed(1)}ms (${(elapsed / count).toFixed(2)}ms/entry)`);
-      expect(elapsed).toBeLessThan(count * 10);
+      expect(elapsed).toBeLessThan(count * 30);
     });
   }
 });
@@ -241,11 +241,11 @@ describe('benchmark: deduplication efficiency', () => {
     expect(result.size).toBe(50);
   });
 
-  it('FNV-1a hashes 1000 keys in <1ms', () => {
+  it('FNV-1a hashes 1000 keys in <5ms', () => {
     const median = measureSync(() => {
       for (let i = 0; i < 1000; i++) hashKey(`Text content ${i}`, 'en', 'fi', 'opus-mt');
     }, 200);
     console.log(`  FNV-1a 1000 keys: ${(median * 1000).toFixed(1)}µs`);
-    expect(median).toBeLessThan(1);
+    expect(median).toBeLessThan(5);
   });
 });

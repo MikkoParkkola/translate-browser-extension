@@ -560,4 +560,196 @@ describe('Subtitle Translator', () => {
       expect(translateCalls[0][0].text).toBe('Bold text');
     });
   });
+
+  // ============================================================================
+  // onCueChange coverage — trigger the stored cuechange listener
+  // ============================================================================
+
+  describe('onCueChange', () => {
+    // Helper: returns { video, track, fireCueChange }
+    function setupWithCueChange(cueText: string, startTime = 1.0) {
+      const cueChangeListeners: Array<() => void> = [];
+      const mockCue = { startTime, endTime: startTime + 2, text: cueText };
+
+      const track = {
+        kind: 'subtitles',
+        addEventListener: vi.fn((event: string, handler: () => void) => {
+          if (event === 'cuechange') cueChangeListeners.push(handler);
+        }),
+        removeEventListener: vi.fn(),
+        activeCues: null as unknown,
+        cues: {
+          length: 1,
+          [Symbol.iterator]: function* () { yield mockCue; },
+          0: mockCue,
+        },
+        _cueChangeListeners: cueChangeListeners,
+      };
+
+      const video = document.createElement('video');
+      Object.defineProperty(video, 'textTracks', {
+        value: {
+          length: 1,
+          [Symbol.iterator]: function* () { yield track; },
+          0: track,
+        },
+        writable: false,
+      });
+
+      const container = document.createElement('div');
+      container.appendChild(video);
+      document.body.appendChild(container);
+
+      initSubtitleTranslation('fi');
+
+      return {
+        video,
+        track,
+        fireCueChange: (activeCues: unknown) => {
+          track.activeCues = activeCues;
+          cueChangeListeners.forEach((fn) => fn());
+        },
+      };
+    }
+
+    it('hides overlay when activeCues is empty', async () => {
+      const { fireCueChange } = setupWithCueChange('Hello');
+
+      const overlay = document.querySelector('.translate-subtitle-overlay') as HTMLDivElement;
+      overlay.style.display = 'block'; // pre-set to visible
+
+      fireCueChange({ length: 0 });
+      await new Promise((r) => setTimeout(r, 10));
+
+      expect(overlay.style.display).toBe('none');
+    });
+
+    it('hides overlay when activeCues is null', async () => {
+      const { fireCueChange } = setupWithCueChange('Hello');
+
+      const overlay = document.querySelector('.translate-subtitle-overlay') as HTMLDivElement;
+      overlay.style.display = 'block';
+
+      fireCueChange(null);
+      await new Promise((r) => setTimeout(r, 10));
+
+      expect(overlay.style.display).toBe('none');
+    });
+
+    it('shows original text while translation is in progress', async () => {
+      mockSendMessage.mockImplementation(() => new Promise(() => {})); // never resolves
+
+      const { fireCueChange } = setupWithCueChange('Subtitle text');
+
+      const overlay = document.querySelector('.translate-subtitle-overlay') as HTMLDivElement;
+      const cue = { startTime: 1.0, endTime: 3.0, text: 'Subtitle text' };
+
+      fireCueChange({ length: 1, 0: cue });
+      // Synchronously — before await — the overlay should show original text
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(overlay.textContent).toBe('Subtitle text');
+      expect(overlay.style.display).toBe('block');
+    });
+
+    it('updates overlay with translated text on success', async () => {
+      mockSendMessage.mockResolvedValue({ success: true, result: 'Tekstitys' });
+
+      const { fireCueChange } = setupWithCueChange('Subtitle text', 2.0);
+      const cue = { startTime: 2.0, endTime: 4.0, text: 'Subtitle text' };
+      const overlay = document.querySelector('.translate-subtitle-overlay') as HTMLDivElement;
+
+      fireCueChange({ length: 1, 0: cue });
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(overlay.textContent).toBe('Tekstitys');
+    });
+
+    it('handles array result from translate response', async () => {
+      mockSendMessage.mockResolvedValue({ success: true, result: ['Kaannettu'] });
+
+      const { fireCueChange } = setupWithCueChange('Array result', 3.0);
+      const cue = { startTime: 3.0, endTime: 5.0, text: 'Array result' };
+      const overlay = document.querySelector('.translate-subtitle-overlay') as HTMLDivElement;
+
+      fireCueChange({ length: 1, 0: cue });
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(overlay.textContent).toBe('Kaannettu');
+    });
+
+    it('uses cached translation on second cuechange for same cue', async () => {
+      mockSendMessage.mockResolvedValue({ success: true, result: 'Cached result' });
+
+      const { fireCueChange } = setupWithCueChange('Cached cue', 4.0);
+      const cue = { startTime: 4.0, endTime: 6.0, text: 'Cached cue' };
+      const overlay = document.querySelector('.translate-subtitle-overlay') as HTMLDivElement;
+
+      // First fire — translates and caches
+      fireCueChange({ length: 1, 0: cue });
+      await new Promise((r) => setTimeout(r, 50));
+
+      const callsBefore = mockSendMessage.mock.calls.length;
+
+      // Second fire — should use cache, no new sendMessage call
+      fireCueChange({ length: 1, 0: cue });
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(mockSendMessage.mock.calls.length).toBe(callsBefore);
+      expect(overlay.textContent).toBe('Cached result');
+      expect(overlay.style.display).toBe('block');
+    });
+
+    it('keeps original text showing when translate response has no result', async () => {
+      mockSendMessage.mockResolvedValue({ success: false });
+
+      const { fireCueChange } = setupWithCueChange('No result cue', 5.0);
+      const cue = { startTime: 5.0, endTime: 7.0, text: 'No result cue' };
+      const overlay = document.querySelector('.translate-subtitle-overlay') as HTMLDivElement;
+
+      fireCueChange({ length: 1, 0: cue });
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Original text remains, overlay stays visible
+      expect(overlay.textContent).toBe('No result cue');
+      expect(overlay.style.display).toBe('block');
+    });
+
+    it('keeps original text when sendMessage throws', async () => {
+      mockSendMessage.mockRejectedValue(new Error('Network error'));
+
+      const { fireCueChange } = setupWithCueChange('Error cue', 6.0);
+      const cue = { startTime: 6.0, endTime: 8.0, text: 'Error cue' };
+      const overlay = document.querySelector('.translate-subtitle-overlay') as HTMLDivElement;
+
+      fireCueChange({ length: 1, 0: cue });
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Error path: original text stays, overlay still visible
+      expect(overlay.textContent).toBe('Error cue');
+    });
+
+    it('strips html tags from cue text before translation', async () => {
+      mockSendMessage.mockResolvedValue({ success: true, result: 'Stripped' });
+
+      const { fireCueChange } = setupWithCueChange('<b>Bold</b>', 7.0);
+      const cue = { startTime: 7.0, endTime: 9.0, text: '<b>Bold</b>' };
+
+      fireCueChange({ length: 1, 0: cue });
+      await new Promise((r) => setTimeout(r, 50));
+
+      const sendArgs = mockSendMessage.mock.calls[0]?.[0];
+      expect(sendArgs?.text).toBe('Bold');
+    });
+
+    it('skips cue with empty or whitespace text', async () => {
+      const { fireCueChange } = setupWithCueChange('   ');
+      const cue = { startTime: 1.0, endTime: 3.0, text: '   ' };
+
+      fireCueChange({ length: 1, 0: cue });
+      await new Promise((r) => setTimeout(r, 10));
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+  });
 });

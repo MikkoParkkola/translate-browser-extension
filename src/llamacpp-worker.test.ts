@@ -24,7 +24,7 @@ const { mockEngine } = vi.hoisted(() => {
 });
 
 vi.mock('./llama.cpp', () => ({
-  InferenceEngine: vi.fn(() => mockEngine),
+  InferenceEngine: vi.fn(function () { return mockEngine; }),
 }));
 
 // Set up worker globals before any imports
