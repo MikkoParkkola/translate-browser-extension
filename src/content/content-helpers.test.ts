@@ -710,3 +710,180 @@ describe('showCorrectionHint', () => {
     expect(vi.mocked(safeStorageGet)).not.toHaveBeenCalled();
   });
 });
+
+// ============================================================================
+// correction.ts — enableCorrectionEditing (triggered via click)
+// ============================================================================
+
+describe('enableCorrectionEditing (via element click)', () => {
+  function makeEditableElement() {
+    const el = document.createElement('div');
+    el.setAttribute('data-original-text', 'hello');
+    el.setAttribute('data-machine-translation', 'machine translation');
+    el.setAttribute('data-source-lang', 'en');
+    el.setAttribute('data-target-lang', 'fi');
+    el.textContent = 'machine translation';
+    document.body.appendChild(el);
+    return el;
+  }
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+  });
+
+  it('makes element contenteditable on click', async () => {
+    const { makeTranslatedElementEditable } = await import('./correction');
+    const el = makeEditableElement();
+    makeTranslatedElementEditable(el);
+
+    // Simulate click — should enable editing
+    el.click();
+
+    expect(el.getAttribute('contenteditable')).toBe('true');
+  });
+
+  it('does not re-enter editing if already contenteditable', async () => {
+    const { makeTranslatedElementEditable } = await import('./correction');
+    const el = makeEditableElement();
+    makeTranslatedElementEditable(el);
+
+    el.click();
+    // Already in editing mode — second click should be no-op
+    el.setAttribute('contenteditable', 'true');
+    const spy = vi.spyOn(el, 'focus');
+    el.click();
+    // Should not call focus again (already editing)
+    spy.mockRestore();
+  });
+
+  it('aborts editing when required attributes are missing', async () => {
+    const { makeTranslatedElementEditable } = await import('./correction');
+    const el = document.createElement('div');
+    el.textContent = 'translated';
+    document.body.appendChild(el);
+    makeTranslatedElementEditable(el);
+
+    el.click(); // missing all data-* attrs
+
+    // Should NOT have become contenteditable
+    expect(el.getAttribute('contenteditable')).toBeNull();
+  });
+
+  it('ignores click if target is an anchor link', async () => {
+    const { makeTranslatedElementEditable } = await import('./correction');
+    const el = makeEditableElement();
+    const link = document.createElement('a');
+    link.href = '#';
+    link.textContent = 'link text';
+    el.textContent = '';
+    el.appendChild(link);
+    makeTranslatedElementEditable(el);
+
+    // Click on the link — should not enable editing
+    link.click();
+    expect(el.getAttribute('contenteditable')).toBeNull();
+  });
+
+  it('saves correction via sendMessage when text changes on blur', async () => {
+    const { browserAPI } = await import('../core/browser-api');
+    const { makeTranslatedElementEditable } = await import('./correction');
+
+    const el = makeEditableElement();
+    makeTranslatedElementEditable(el);
+    el.click();
+
+    // Change the text
+    el.textContent = 'user corrected text';
+    el.dispatchEvent(new Event('blur'));
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(vi.mocked(browserAPI.runtime.sendMessage)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'addCorrection',
+        original: 'hello',
+        userCorrection: 'user corrected text',
+        sourceLang: 'en',
+        targetLang: 'fi',
+      })
+    );
+  });
+
+  it('restores original text when user clears the element on blur', async () => {
+    const { makeTranslatedElementEditable } = await import('./correction');
+    const el = makeEditableElement();
+    makeTranslatedElementEditable(el);
+    el.click();
+
+    const originalText = el.textContent || '';
+    el.textContent = ''; // clear
+    el.dispatchEvent(new Event('blur'));
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(el.textContent).toBe(originalText);
+  });
+
+  it('restores text when user reverts to machine translation on blur', async () => {
+    const { makeTranslatedElementEditable } = await import('./correction');
+    const el = makeEditableElement();
+    makeTranslatedElementEditable(el);
+    el.click();
+
+    // Set text back to the machine translation value
+    el.textContent = 'machine translation'; // same as data-machine-translation
+    el.dispatchEvent(new Event('blur'));
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    // No correction sent
+    const { browserAPI } = await import('../core/browser-api');
+    expect(vi.mocked(browserAPI.runtime.sendMessage)).not.toHaveBeenCalled();
+  });
+
+  it('Enter key blurs the element', async () => {
+    const { makeTranslatedElementEditable } = await import('./correction');
+    const el = makeEditableElement();
+    document.body.appendChild(el);
+    makeTranslatedElementEditable(el);
+    el.click();
+
+    const blurSpy = vi.spyOn(el, 'blur');
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(blurSpy).toHaveBeenCalled();
+    blurSpy.mockRestore();
+  });
+
+  it('Escape key restores text and blurs', async () => {
+    const { makeTranslatedElementEditable } = await import('./correction');
+    const el = makeEditableElement();
+    makeTranslatedElementEditable(el);
+    el.click();
+
+    el.textContent = 'modified text';
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Text should be restored to what it was before editing
+    expect(el.textContent).toBe('machine translation');
+  });
+
+  it('handles sendMessage error gracefully', async () => {
+    const { browserAPI } = await import('../core/browser-api');
+    vi.mocked(browserAPI.runtime.sendMessage).mockRejectedValue(new Error('network error'));
+
+    const { makeTranslatedElementEditable } = await import('./correction');
+    const el = makeEditableElement();
+    makeTranslatedElementEditable(el);
+    el.click();
+
+    el.textContent = 'corrected text';
+    el.dispatchEvent(new Event('blur'));
+
+    // Should not throw
+    await expect(new Promise((r) => setTimeout(r, 20))).resolves.toBeUndefined();
+  });
+});
