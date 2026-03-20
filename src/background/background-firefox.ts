@@ -7,7 +7,7 @@
  */
 
 import { pipeline, env } from '@huggingface/transformers';
-import type { ExtensionMessage, TranslateResponse, Strategy, TranslationProviderId } from '../types';
+import type { ExtensionMessage, TranslateResponse, Strategy, TranslationProviderId, TranslationPipeline } from '../types';
 import {
   createTranslationError,
   validateInput,
@@ -277,8 +277,7 @@ async function detectWebGPU(): Promise<boolean> {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getPipeline(sourceLang: string, targetLang: string): Promise<any> {
+async function getPipeline(sourceLang: string, targetLang: string): Promise<TranslationPipeline> {
   const key = `${sourceLang}-${targetLang}`;
   const modelId = MODEL_MAP[key];
 

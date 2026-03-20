@@ -8,29 +8,123 @@
  * Provides a high-level API consumed by LocalModelManager and llamacpp-worker.
  */
 
+// ---------------------------------------------------------------------------
+// Interfaces
+// ---------------------------------------------------------------------------
+
+/** Options passed to InferenceEngine.init() */
+interface InitOptions {
+  suppressNativeLog?: boolean;
+  parallelDownloads?: number;
+}
+
+/** Config overrides forwarded to wllama's loadModel / loadModelFromUrl */
+interface LoadModelConfig {
+  n_ctx?: number;
+  n_batch?: number;
+  n_threads?: number;
+  cache_type_k?: string;
+  cache_type_v?: string;
+  [key: string]: unknown;
+}
+
+/** Options for text completion */
+interface CompleteOptions {
+  maxTokens?: number;
+  temperature?: number;
+  abortSignal?: AbortSignal;
+}
+
+/** Options for chat completion */
+interface ChatCompleteOptions {
+  maxTokens?: number;
+  temperature?: number;
+  abortSignal?: AbortSignal;
+}
+
+/** Progress info emitted during model download */
+interface ProgressInfo {
+  loaded: number;
+  total: number;
+  progress: number;
+  elapsed: number;
+}
+
+/** Value returned from complete() and chatComplete() */
+interface CompletionResult {
+  text: string;
+  tokensGenerated: number;
+}
+
+/** Opaque context info returned by wllama */
+interface ModelInfo {
+  [key: string]: unknown;
+}
+
+/** A single chat message */
+interface ChatMessage {
+  role: string;
+  content: string;
+}
+
+/** Subset of the wllama instance API that InferenceEngine actually uses */
+interface WllamaInstance {
+  loadModelFromUrl(
+    urls: string[],
+    config: Record<string, unknown>,
+  ): Promise<void>;
+  loadModel(blobs: Blob[], config: Record<string, unknown>): Promise<void>;
+  createCompletion(
+    prompt: string,
+    opts: Record<string, unknown>,
+  ): Promise<string>;
+  createChatCompletion(
+    messages: ChatMessage[],
+    opts: Record<string, unknown>,
+  ): Promise<string>;
+  tokenize(text: string): Promise<number[]>;
+  getLoadedContextInfo(): ModelInfo;
+  exit(): Promise<void>;
+}
+
+/** Shape of the dynamically-imported wllama bundle */
+interface WllamaModule {
+  Wllama: new (...args: unknown[]) => WllamaInstance;
+}
+
+/** Chrome-only Performance.memory (non-standard) */
+interface PerformanceMemory {
+  usedJSHeapSize: number;
+  totalJSHeapSize: number;
+  jsHeapSizeLimit: number;
+}
+
+// ---------------------------------------------------------------------------
+// Module-level helpers
+// ---------------------------------------------------------------------------
+
 // We dynamically import the wllama bundle so this file works in both
 // module (service-worker) and classic-script (web-page) contexts.
-let _WllamaModule = null;
+// Cache the import promise (not the result) to avoid race conditions
+// when multiple callers invoke getWllamaModule() concurrently.
+let _wllamaPromise: Promise<WllamaModule> | null = null;
 
-async function getWllamaModule() {
-  if (_WllamaModule) return _WllamaModule;
-
-  // In extension context, import from the bundled copy
-  try {
-    const mod = await import('./wllama.bundle.js');
-    _WllamaModule = mod;
-    return mod;
-  } catch (err) {
-    console.error('[InferenceEngine] Failed to import wllama bundle:', err);
-    throw new Error(`Failed to load inference engine: ${  err.message}`);
+async function getWllamaModule(): Promise<WllamaModule> {
+  if (!_wllamaPromise) {
+    // @ts-expect-error -- bundled JS without type declarations
+    _wllamaPromise = (import('./wllama.bundle.js') as Promise<WllamaModule>).catch((err: Error) => {
+      _wllamaPromise = null;
+      console.error('[InferenceEngine] Failed to import wllama bundle:', err);
+      throw new Error(`Failed to load inference engine: ${err.message}`);
+    });
   }
+  return _wllamaPromise;
 }
 
 /**
  * Detect WebGPU availability in the current environment.
- * @returns {Promise<boolean>}
  */
-async function detectWebGPU() {
+async function detectWebGPU(): Promise<boolean> {
   try {
     if (typeof navigator === 'undefined') return false;
     if (!navigator.gpu) return false;
@@ -43,12 +137,11 @@ async function detectWebGPU() {
 
 /**
  * Log memory usage if performance.memory is available (Chrome only).
- * @param {string} label - Context label for the log entry
  */
-function logMemoryUsage(label) {
+function logMemoryUsage(label: string): void {
   try {
-    if (typeof performance !== 'undefined' && performance.memory) {
-      const mem = performance.memory;
+    const mem = (performance as unknown as { memory?: PerformanceMemory }).memory;
+    if (typeof performance !== 'undefined' && mem) {
       const usedMB = (mem.usedJSHeapSize / (1024 * 1024)).toFixed(1);
       const totalMB = (mem.totalJSHeapSize / (1024 * 1024)).toFixed(1);
       const limitMB = (mem.jsHeapSizeLimit / (1024 * 1024)).toFixed(1);
@@ -59,28 +152,26 @@ function logMemoryUsage(label) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// InferenceEngine
+// ---------------------------------------------------------------------------
+
 /**
  * High-level inference engine wrapping wllama.
  * Handles model loading (with sharding support), inference, and cleanup.
  */
 class InferenceEngine {
-  constructor() {
-    /** @type {import('@wllama/wllama').Wllama | null} */
-    this.wllama = null;
-    this.isModelLoaded = false;
-    this.hasWebGPU = false;
-    this.modelInfo = null;
-    this._abortController = null;
-  }
+  wllama: WllamaInstance | null = null;
+  isModelLoaded = false;
+  hasWebGPU = false;
+  modelInfo: ModelInfo | null = null;
+  private _abortController: AbortController | null = null;
 
   /**
    * Initialize the engine (creates the Wllama instance).
    * Call this once before loadModel().
-   * @param {object} [options]
-   * @param {boolean} [options.suppressNativeLog=false]
-   * @param {number}  [options.parallelDownloads=3]
    */
-  async init(options = {}) {
+  async init(options: InitOptions = {}): Promise<{ success: boolean; hasWebGPU: boolean }> {
     const mod = await getWllamaModule();
     const { Wllama } = mod;
 
@@ -93,9 +184,9 @@ class InferenceEngine {
       ? chrome.runtime.getURL('')
       : './';
 
-    const wasmPaths = {
-      'single-thread/wllama.wasm': `${extensionBase  }wllama-single.wasm`,
-      'multi-thread/wllama.wasm': `${extensionBase  }wllama-multi.wasm`,
+    const wasmPaths: Record<string, string> = {
+      'single-thread/wllama.wasm': `${extensionBase}wllama-single.wasm`,
+      'multi-thread/wllama.wasm': `${extensionBase}wllama-multi.wasm`,
     };
 
     this.wllama = new Wllama(wasmPaths, {
@@ -103,12 +194,12 @@ class InferenceEngine {
       parallelDownloads: options.parallelDownloads || 3,
       allowOffline: true,
       logger: {
-        debug: (...args) => console.debug('[wllama]', ...args),
-        log: (...args) => console.log('[wllama]', ...args),
-        warn: (...args) => console.warn('[wllama]', ...args),
-        error: (...args) => console.error('[wllama]', ...args),
+        debug: (...args: unknown[]) => console.debug('[wllama]', ...args),
+        log: (...args: unknown[]) => console.log('[wllama]', ...args),
+        warn: (...args: unknown[]) => console.warn('[wllama]', ...args),
+        error: (...args: unknown[]) => console.error('[wllama]', ...args),
       },
-    });
+    }) as WllamaInstance;
 
     console.log('[InferenceEngine] Engine initialized');
     return { success: true, hasWebGPU: this.hasWebGPU };
@@ -120,13 +211,12 @@ class InferenceEngine {
    * For sharded models, pass an array of URLs for each shard.
    * wllama handles downloading, caching, and reassembling them internally --
    * no single large ArrayBuffer is ever created.
-   *
-   * @param {string|string[]} modelUrls  Single URL or array of shard URLs
-   * @param {object} [config]            LoadModelConfig overrides
-   * @param {function} [onProgress]      Progress callback: ({loaded, total, progress})
-   * @returns {Promise<{success: boolean}>}
    */
-  async loadModel(modelUrls, config = {}, onProgress = null) {
+  async loadModel(
+    modelUrls: string | string[],
+    config: LoadModelConfig = {},
+    onProgress: ((info: ProgressInfo) => void) | null = null,
+  ): Promise<{ success: boolean; modelInfo: ModelInfo }> {
     if (!this.wllama) {
       throw new Error('Engine not initialized. Call init() first.');
     }
@@ -144,7 +234,7 @@ class InferenceEngine {
     const loadStartTime = Date.now();
     let lastProgressTime = loadStartTime;
 
-    const loadConfig = {
+    const loadConfig: Record<string, unknown> = {
       n_ctx: config.n_ctx || 2048,
       n_batch: config.n_batch || 512,
       n_threads: config.n_threads || Math.min(navigator.hardwareConcurrency || 4, 4),
@@ -154,13 +244,9 @@ class InferenceEngine {
     };
 
     try {
-      // wllama.loadModelFromUrl handles:
-      // - Parallel chunked downloads
-      // - Browser cache (Cache API or IndexedDB)
-      // - No single large ArrayBuffer
       await this.wllama.loadModelFromUrl(urls, {
         ...loadConfig,
-        progressCallback: onProgress ? ({ loaded, total }) => {
+        progressCallback: onProgress ? ({ loaded, total }: { loaded: number; total: number }) => {
           const now = Date.now();
           const progress = total > 0 ? (loaded / total) * 100 : 0;
           const elapsed = now - lastProgressTime;
@@ -190,12 +276,11 @@ class InferenceEngine {
 
   /**
    * Load a model from local Blob(s) (for pre-downloaded models stored in IndexedDB).
-   *
-   * @param {Blob[]} blobs   Array of Blob objects (one per shard)
-   * @param {object} [config]  LoadModelConfig overrides
-   * @returns {Promise<{success: boolean}>}
    */
-  async loadModelFromBlobs(blobs, config = {}) {
+  async loadModelFromBlobs(
+    blobs: Blob[],
+    config: LoadModelConfig = {},
+  ): Promise<{ success: boolean; modelInfo: ModelInfo }> {
     if (!this.wllama) {
       throw new Error('Engine not initialized. Call init() first.');
     }
@@ -204,7 +289,7 @@ class InferenceEngine {
       await this.unloadModel();
     }
 
-    const loadConfig = {
+    const loadConfig: Record<string, unknown> = {
       n_ctx: config.n_ctx || 2048,
       n_batch: config.n_batch || 512,
       n_threads: config.n_threads || Math.min(navigator.hardwareConcurrency || 4, 4),
@@ -237,15 +322,8 @@ class InferenceEngine {
 
   /**
    * Translate text by running completion on a translation prompt.
-   *
-   * @param {string} prompt       Full formatted prompt (with instruction template)
-   * @param {object} [options]
-   * @param {number} [options.maxTokens=512]
-   * @param {number} [options.temperature=0.1]
-   * @param {AbortSignal} [options.abortSignal]
-   * @returns {Promise<{text: string, tokensGenerated: number}>}
    */
-  async complete(prompt, options = {}) {
+  async complete(prompt: string, options: CompleteOptions = {}): Promise<CompletionResult> {
     if (!this.isModelLoaded || !this.wllama) {
       throw new Error('Model not loaded');
     }
@@ -253,7 +331,6 @@ class InferenceEngine {
     const maxTokens = options.maxTokens || 512;
     const temperature = options.temperature || 0.1;
 
-    // Use createCompletion for raw prompt completion
     const result = await this.wllama.createCompletion(prompt, {
       nPredict: maxTokens,
       sampling: {
@@ -265,7 +342,6 @@ class InferenceEngine {
       abortSignal: options.abortSignal,
     });
 
-    // Count tokens in result (approximate via wllama tokenize)
     let tokensGenerated = 0;
     try {
       const tokens = await this.wllama.tokenize(result);
@@ -283,12 +359,8 @@ class InferenceEngine {
 
   /**
    * Run chat completion using the model's chat template.
-   *
-   * @param {Array<{role: string, content: string}>} messages
-   * @param {object} [options]
-   * @returns {Promise<{text: string, tokensGenerated: number}>}
    */
-  async chatComplete(messages, options = {}) {
+  async chatComplete(messages: ChatMessage[], options: ChatCompleteOptions = {}): Promise<CompletionResult> {
     if (!this.isModelLoaded || !this.wllama) {
       throw new Error('Model not loaded');
     }
@@ -321,20 +393,16 @@ class InferenceEngine {
     };
   }
 
-  /**
-   * Abort the current generation.
-   */
-  abort() {
+  /** Abort the current generation. */
+  abort(): void {
     if (this._abortController) {
       this._abortController.abort();
       this._abortController = null;
     }
   }
 
-  /**
-   * Unload the model and free memory.
-   */
-  async unloadModel() {
+  /** Unload the model and free memory. */
+  async unloadModel(): Promise<void> {
     if (this.wllama) {
       try {
         await this.wllama.exit();
@@ -347,37 +415,34 @@ class InferenceEngine {
     console.log('[InferenceEngine] Model unloaded');
   }
 
-  /**
-   * Full cleanup -- destroys the wllama instance.
-   */
-  async destroy() {
+  /** Full cleanup -- destroys the wllama instance. */
+  async destroy(): Promise<void> {
     await this.unloadModel();
     this.wllama = null;
     console.log('[InferenceEngine] Engine destroyed');
   }
 
-  /**
-   * Get model context info if loaded.
-   */
-  getContextInfo() {
+  /** Get model context info if loaded. */
+  getContextInfo(): ModelInfo | null {
     if (!this.isModelLoaded || !this.wllama) return null;
     return this.wllama.getLoadedContextInfo();
   }
 
-  /**
-   * Check if engine is ready for inference.
-   */
-  isReady() {
+  /** Check if engine is ready for inference. */
+  isReady(): boolean {
     return this.isModelLoaded && this.wllama !== null;
   }
 }
 
-// Export for ES module and classic script contexts
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { InferenceEngine, detectWebGPU };
-} else if (typeof self !== 'undefined') {
-  self.InferenceEngine = InferenceEngine;
-  self.detectWebGPU = detectWebGPU;
-}
-
 export { InferenceEngine, detectWebGPU };
+export type {
+  InitOptions,
+  LoadModelConfig,
+  CompleteOptions,
+  ChatCompleteOptions,
+  ProgressInfo,
+  CompletionResult,
+  ModelInfo,
+  ChatMessage,
+  WllamaInstance,
+};

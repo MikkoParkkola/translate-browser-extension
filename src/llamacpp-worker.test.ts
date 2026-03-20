@@ -1,5 +1,5 @@
 /**
- * Tests for llamacpp-worker.js (Web Worker message handler)
+ * Tests for llamacpp-worker.ts (Web Worker message handler)
  *
  * Tests the InferenceWorker class and self.onmessage handler
  * that dispatches messages to load models, run translations, and cleanup.
@@ -7,34 +7,36 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+// vi.hoisted ensures mockEngine is defined before the hoisted vi.mock runs
+const { mockEngine } = vi.hoisted(() => {
+  const mockEngine = {
+    init: vi.fn().mockResolvedValue({ success: true, hasWebGPU: true }),
+    loadModel: vi.fn().mockResolvedValue({ success: true, modelInfo: { n_ctx: 2048 } }),
+    loadModelFromBlobs: vi.fn().mockResolvedValue({ success: true, modelInfo: { n_ctx: 2048 } }),
+    complete: vi.fn().mockResolvedValue({ text: 'translated', tokensGenerated: 5 }),
+    chatComplete: vi.fn().mockResolvedValue({ text: 'chat translated', tokensGenerated: 4 }),
+    abort: vi.fn(),
+    destroy: vi.fn().mockResolvedValue(undefined),
+    exit: vi.fn().mockResolvedValue(undefined),
+    isReady: vi.fn().mockReturnValue(true),
+  };
+  return { mockEngine };
+});
+
+vi.mock('./llama.cpp', () => ({
+  InferenceEngine: vi.fn(() => mockEngine),
+}));
+
 // Set up worker globals before any imports
 // @ts-expect-error - Mock worker self
 globalThis.self = globalThis;
-// @ts-expect-error - Mock importScripts
-globalThis.importScripts = vi.fn();
-
-// Mock InferenceEngine before the worker imports it
-const mockEngine = {
-  init: vi.fn().mockResolvedValue({ success: true, hasWebGPU: true }),
-  loadModel: vi.fn().mockResolvedValue({ success: true, modelInfo: { n_ctx: 2048 } }),
-  loadModelFromBlobs: vi.fn().mockResolvedValue({ success: true, modelInfo: { n_ctx: 2048 } }),
-  complete: vi.fn().mockResolvedValue({ text: 'translated', tokensGenerated: 5 }),
-  chatComplete: vi.fn().mockResolvedValue({ text: 'chat translated', tokensGenerated: 4 }),
-  abort: vi.fn(),
-  destroy: vi.fn().mockResolvedValue(undefined),
-  exit: vi.fn().mockResolvedValue(undefined),
-  isReady: vi.fn().mockReturnValue(true),
-};
-
-// @ts-expect-error - Mock InferenceEngine in global scope (regular function, not arrow — must be constructable)
-globalThis.InferenceEngine = vi.fn(function () { return mockEngine; });
 
 // Capture postMessage calls
 const postMessageCalls: Record<string, unknown>[] = [];
 globalThis.postMessage = vi.fn((msg: Record<string, unknown>) => { postMessageCalls.push(msg); });
 
 // Load the worker module (side-effectful — sets self.onmessage)
-await import('./llamacpp-worker.js');
+await import('./llamacpp-worker');
 
 describe('llamacpp-worker', () => {
   let onmessage: (event: { data: Record<string, unknown> }) => Promise<void>;

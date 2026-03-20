@@ -500,11 +500,8 @@ export class LocalModelManager {
       // Clear wllama cache via Cache API
       if (typeof caches !== 'undefined') {
         const cacheKeys = await caches.keys();
-        for (const key of cacheKeys) {
-          if (key.includes('wllama') || key.includes('gguf')) {
-            await caches.delete(key);
-          }
-        }
+        const wllamaKeys = cacheKeys.filter((key) => key.includes('wllama') || key.includes('gguf'));
+        await Promise.all(wllamaKeys.map((key) => caches.delete(key)));
       }
 
       // Clear status from storage

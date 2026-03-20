@@ -346,7 +346,7 @@ class LocalModelUI {
   async deleteModel() {
     if (!window.localModelManager) return;
 
-    const confirmed = confirm(
+    const confirmed = await this._confirmAction(
       'Are you sure you want to delete the local model? ' +
       'This will clear all cached shards (~2.5 GB) and you will need to download them again.',
     );
@@ -500,12 +500,13 @@ class LocalModelUI {
       const testText = 'Hello, this is a test translation.';
       const result = await window.localModelManager.translate(testText, 'en', 'es');
 
-      alert(
-        `Test Translation Success!\n\n` +
+      this.showMessage(
+        `Test Translation Success!\n` +
         `Original: ${testText}\n` +
         `Translated: ${result.text}\n` +
         `Time: ${result.inferenceTime || 'N/A'}ms\n` +
         `Backend: wllama`,
+        'success',
       );
     } catch (error) {
       console.error('[LocalModelUI] Test failed:', error);
@@ -578,6 +579,53 @@ class LocalModelUI {
 
     errorPanel.style.display = 'block';
     errorMessage.innerHTML = `<strong>${title}:</strong> ${message}`;
+  }
+
+  /**
+   * Show a non-blocking confirmation dialog, replacing native confirm().
+   * @param {string} message - The confirmation message to display.
+   * @returns {Promise<boolean>} Resolves true if confirmed, false if cancelled.
+   */
+  _confirmAction(message) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'local-model-confirm-overlay';
+      overlay.style.cssText =
+        'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center';
+
+      const dialog = document.createElement('div');
+      dialog.style.cssText =
+        'background:#fff;padding:24px;border-radius:8px;max-width:400px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.2)';
+
+      const msg = document.createElement('p');
+      msg.style.cssText = 'margin:0 0 16px;line-height:1.4';
+      msg.textContent = message;
+      dialog.appendChild(msg);
+
+      const btnRow = document.createElement('div');
+      btnRow.style.cssText = 'display:flex;gap:12px;justify-content:center';
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.style.cssText = 'padding:8px 20px;cursor:pointer;border-radius:4px;border:1px solid #ccc';
+
+      const okBtn = document.createElement('button');
+      okBtn.textContent = 'Confirm';
+      okBtn.style.cssText =
+        'padding:8px 20px;cursor:pointer;background:#007bff;color:#fff;border:none;border-radius:4px';
+
+      const dismiss = (result) => {
+        overlay.remove();
+        resolve(result);
+      };
+      cancelBtn.addEventListener('click', () => dismiss(false));
+      okBtn.addEventListener('click', () => dismiss(true));
+
+      btnRow.append(cancelBtn, okBtn);
+      dialog.appendChild(btnRow);
+      overlay.appendChild(dialog);
+      document.body.appendChild(overlay);
+    });
   }
 
   hideError() {
@@ -735,7 +783,10 @@ class LocalModelUI {
 
     if (resetBtn) {
       resetBtn.addEventListener('click', async () => {
-        if (confirm('Are you sure you want to reset all performance statistics?')) {
+        const confirmed = await this._confirmAction(
+          'Are you sure you want to reset all performance statistics?',
+        );
+        if (confirmed) {
           await window.localModelManager.resetPerformanceStats();
           this.updatePerformanceDisplay();
           this.showMessage('Performance statistics reset', 'success');
@@ -744,15 +795,17 @@ class LocalModelUI {
     }
 
     if (toggleBtn) {
+      const setBtnText = (text) => { toggleBtn.textContent = text; };
       toggleBtn.addEventListener('click', async () => {
-        const isMonitoring = toggleBtn.textContent.includes('Stop');
-        if (isMonitoring) {
+        const stopping = toggleBtn.textContent.includes('Stop');
+        setBtnText(stopping ? 'Stopping\u2026' : 'Starting\u2026');
+        if (stopping) {
           await window.localModelManager.stopPerformanceMonitoring();
-          toggleBtn.textContent = 'Start Monitoring';
+          setBtnText('Start Monitoring');
           this.showMessage('Performance monitoring stopped', 'info');
         } else {
           await window.localModelManager.startPerformanceMonitoring();
-          toggleBtn.textContent = 'Stop Monitoring';
+          setBtnText('Stop Monitoring');
           this.showMessage('Performance monitoring started', 'success');
         }
       });

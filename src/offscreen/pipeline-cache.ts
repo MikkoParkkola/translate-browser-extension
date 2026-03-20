@@ -6,6 +6,7 @@
  */
 
 import { createLogger } from '../core/logger';
+import type { TranslationPipeline } from '../types';
 
 const log = createLogger('PipelineCache');
 
@@ -13,8 +14,7 @@ const log = createLogger('PipelineCache');
 export const MAX_CACHED_PIPELINES = 3;
 
 export interface PipelineCacheEntry {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  pipeline: any;
+  pipeline: TranslationPipeline;
   lastUsed: number;
   modelId: string;
 }
@@ -28,8 +28,7 @@ const pipelineCache = new Map<string, PipelineCacheEntry>();
  * Transformers.js pipelines hold WebGPU resources that won't be GC'd
  * without explicit disposal.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function disposePipeline(pipeline: any, modelId: string): Promise<void> {
+async function disposePipeline(pipeline: TranslationPipeline, modelId: string): Promise<void> {
   try {
     // Transformers.js pipelines have .dispose() method
     if (typeof pipeline?.dispose === 'function') {
@@ -75,8 +74,7 @@ export function evictLRUPipelines(): void {
 /**
  * Get pipeline from cache and update LRU timestamp.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function getCachedPipeline(modelId: string): any | null {
+export function getCachedPipeline(modelId: string): TranslationPipeline | null {
   const entry = pipelineCache.get(modelId);
   if (entry) {
     entry.lastUsed = Date.now();
@@ -88,8 +86,7 @@ export function getCachedPipeline(modelId: string): any | null {
 /**
  * Store pipeline in cache with LRU eviction.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function cachePipeline(modelId: string, pipeline: any): void {
+export function cachePipeline(modelId: string, pipeline: TranslationPipeline): void {
   evictLRUPipelines();
   pipelineCache.set(modelId, {
     pipeline,

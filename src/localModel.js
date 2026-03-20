@@ -12,7 +12,7 @@
  */
 
 import { LocalModelManager as WllamaModelManager } from './lib/LocalModelManager.js';
-import { logger } from './lib/logger.js';
+import { logger } from './lib/logger';
 
 class LocalModelManager extends WllamaModelManager {
   constructor() {

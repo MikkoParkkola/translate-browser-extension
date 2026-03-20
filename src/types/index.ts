@@ -2,6 +2,14 @@
  * Core type definitions for the translation extension
  */
 
+// ML translation pipeline (Transformers.js OPUS-MT / TranslateGemma)
+export interface TranslationPipeline {
+  (text: string, options?: { max_length?: number }): Promise<
+    Array<{ translation_text: string }>
+  >;
+  dispose?(): Promise<void>;
+}
+
 // Provider types
 export type ProviderType = 'local' | 'cloud' | 'hybrid';
 export type QualityTier = 'basic' | 'standard' | 'premium';

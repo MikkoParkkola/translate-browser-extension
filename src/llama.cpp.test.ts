@@ -29,7 +29,7 @@ vi.mock('./wllama.bundle.js', () => ({
 }));
 
 // Vitest hoists vi.mock() above this import automatically
-import { InferenceEngine, detectWebGPU } from './llama.cpp.js';
+import { InferenceEngine, detectWebGPU } from './llama.cpp';
 
 describe('detectWebGPU', () => {
   const originalNavigator = globalThis.navigator;
