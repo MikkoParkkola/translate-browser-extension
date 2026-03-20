@@ -2033,4 +2033,81 @@ describe('Content Script', () => {
       );
     });
   });
+
+  // ============================================================
+  // Missing message type coverage
+  // ============================================================
+  describe('translatePdf message handler', () => {
+    it('responds with started and returns true', async () => {
+      const sendResponse = vi.fn();
+      const result = messageHandler(
+        { type: 'translatePdf', targetLang: 'fi' } as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      expect(result).toBe(true);
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+    });
+  });
+
+  describe('translateImage message handler', () => {
+    it('responds with started and returns true', async () => {
+      mockSendMessage.mockResolvedValue({ success: true, result: 'Translated alt text' });
+      const sendResponse = vi.fn();
+      const result = messageHandler(
+        {
+          type: 'translateImage',
+          imageUrl: 'data:image/png;base64,abc',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          provider: 'opus-mt',
+        } as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      expect(result).toBe(true);
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+    });
+  });
+
+  describe('enterScreenshotMode message handler', () => {
+    it('responds with true and returns true', () => {
+      const sendResponse = vi.fn();
+      const result = messageHandler(
+        { type: 'enterScreenshotMode' } as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      expect(result).toBe(true);
+      expect(sendResponse).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('unknown message type', () => {
+    it('returns false for unrecognised type', () => {
+      const sendResponse = vi.fn();
+      const result = messageHandler(
+        { type: 'notARealMessage' } as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      expect(result).toBe(false);
+      expect(sendResponse).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('translatePage on PDF page', () => {
+    it('uses PDF translation path when isPdfPage returns true', async () => {
+      // Simulate a PDF page by injecting an embed element
+      document.body.innerHTML = '<embed type="application/pdf" src="doc.pdf">';
+      const sendResponse = vi.fn();
+      const result = messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' } as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      expect(result).toBe(true);
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+    });
+  });
 });
