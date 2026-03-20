@@ -7,8 +7,12 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    pool: 'forks',
+    poolOptions: { forks: { singleFork: true } },
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     exclude: ['node_modules', 'dist', '_legacy'],
+    testTimeout: 30000, // 30s default — coverage instrumentation adds overhead
+    hookTimeout: 30000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'json-summary'],
@@ -25,13 +29,13 @@ export default defineConfig({
         '_legacy',
       ],
       thresholds: {
-        // Global thresholds — reflect actual coverage after 2843 tests.
-        // UI components (Solid.js) and browser API-heavy files lower the avg;
-        // core logic and providers are at 85-90%.
-        statements: 61,
-        branches: 57,
-        functions: 56,
-        lines: 64,
+        // Global thresholds — reflect actual coverage after 3131 tests.
+        // UI components (Solid.js TDZ) and browser API-heavy files lower the avg;
+        // core logic and providers are at 85-95%.
+        statements: 70,
+        branches: 65,
+        functions: 64,
+        lines: 74,
       },
     },
   },

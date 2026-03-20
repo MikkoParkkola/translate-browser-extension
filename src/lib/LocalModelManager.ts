@@ -781,7 +781,7 @@ export class LocalModelManager {
         }
 
         clearTimeout(timeout);
-        this.modelWorker!.removeEventListener('message', handler);
+        this.modelWorker?.removeEventListener('message', handler);
 
         if (data.type === 'error') {
           reject(new Error((data as WorkerErrorMessage).message));

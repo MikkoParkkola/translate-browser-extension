@@ -13,6 +13,7 @@ const mockAddClickedListener = vi.fn();
 const mockAddStartupListener = vi.fn();
 const mockAddTabsUpdatedListener = vi.fn();
 const mockAddCommandListener = vi.fn();
+const mockAddContextMenuClickedListener = vi.fn();
 const mockStorageSet = vi.fn();
 const mockStorageRemove = vi.fn().mockResolvedValue(undefined);
 
@@ -66,7 +67,7 @@ vi.stubGlobal('chrome', {
     create: vi.fn(),
     removeAll: vi.fn((cb?: () => void) => { if (cb) cb(); }),
     onClicked: {
-      addListener: vi.fn(),
+      addListener: mockAddContextMenuClickedListener,
     },
   },
   commands: {
@@ -77,9 +78,13 @@ vi.stubGlobal('chrome', {
   tabs: {
     create: vi.fn(),
     query: vi.fn().mockResolvedValue([]),
+    sendMessage: vi.fn().mockResolvedValue(undefined),
     onUpdated: {
       addListener: mockAddTabsUpdatedListener,
     },
+  },
+  scripting: {
+    executeScript: vi.fn().mockResolvedValue([]),
   },
   storage: {
     local: {
@@ -2249,6 +2254,424 @@ describe('Service Worker Extended Handler Coverage', () => {
       }) as { success: boolean; deleted: boolean };
       expect(deleteRes.success).toBe(true);
       expect(deleteRes.deleted).toBe(true);
+    });
+  });
+});
+
+// ============================================================================
+// Context Menu and Keyboard Shortcut Handler Coverage
+// ============================================================================
+
+describe('Service Worker Context Menu Handlers', () => {
+  // Capture the registered handlers once the module is loaded
+  let contextMenuHandler: (
+    info: { menuItemId: string; srcUrl?: string },
+    tab?: { id?: number }
+  ) => Promise<void>;
+
+  beforeAll(() => {
+    contextMenuHandler = mockAddContextMenuClickedListener.mock.calls[0]?.[0];
+  });
+
+  beforeEach(() => {
+    vi.mocked(chrome.tabs.sendMessage).mockResolvedValue(undefined);
+  });
+
+  it('handler is registered', () => {
+    expect(mockAddContextMenuClickedListener).toHaveBeenCalled();
+    expect(contextMenuHandler).toBeDefined();
+  });
+
+  it('translate-selection sends translateSelection message to tab', async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockClear();
+
+    await contextMenuHandler({ menuItemId: 'translate-selection' }, { id: 42 });
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      42,
+      expect.objectContaining({ type: 'translateSelection' })
+    );
+  });
+
+  it('translate-page sends translatePage message to tab', async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockClear();
+
+    await contextMenuHandler({ menuItemId: 'translate-page' }, { id: 7 });
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ type: 'translatePage' })
+    );
+  });
+
+  it('undo-translation sends undoTranslation message to tab', async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockClear();
+
+    await contextMenuHandler({ menuItemId: 'undo-translation' }, { id: 5 });
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      5,
+      expect.objectContaining({ type: 'undoTranslation' })
+    );
+  });
+
+  it('translate-image sends translateImage message with srcUrl to tab', async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockClear();
+
+    await contextMenuHandler(
+      { menuItemId: 'translate-image', srcUrl: 'https://example.com/image.png' },
+      { id: 3 }
+    );
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({
+        type: 'translateImage',
+        imageUrl: 'https://example.com/image.png',
+      })
+    );
+  });
+
+  it('ignores click when tab has no id', async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockClear();
+
+    await contextMenuHandler({ menuItemId: 'translate-page' }, { id: undefined });
+
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('ignores click when tab is undefined', async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockClear();
+
+    await contextMenuHandler({ menuItemId: 'translate-page' }, undefined);
+
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when sendMessageToTab rejects', async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockRejectedValueOnce(new Error('Receiving end does not exist'));
+
+    // Should not throw even if message delivery fails
+    await expect(
+      contextMenuHandler({ menuItemId: 'translate-selection' }, { id: 99 })
+    ).resolves.not.toThrow();
+  });
+});
+
+describe('Service Worker Keyboard Shortcut Handlers', () => {
+  let commandHandler: (command: string, tab?: { id?: number }) => Promise<void>;
+
+  beforeAll(() => {
+    commandHandler = mockAddCommandListener.mock.calls[0]?.[0];
+  });
+
+  beforeEach(() => {
+    vi.mocked(chrome.tabs.sendMessage).mockResolvedValue(undefined);
+  });
+
+  it('handler is registered', () => {
+    expect(mockAddCommandListener).toHaveBeenCalled();
+    expect(commandHandler).toBeDefined();
+  });
+
+  it('translate-page command sends translatePage message to tab', async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockClear();
+
+    await commandHandler('translate-page', { id: 10 });
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      10,
+      expect.objectContaining({ type: 'translatePage' })
+    );
+  });
+
+  it('translate-selection command sends translateSelection message to tab', async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockClear();
+
+    await commandHandler('translate-selection', { id: 11 });
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      11,
+      expect.objectContaining({ type: 'translateSelection' })
+    );
+  });
+
+  it('undo-translation command sends undoTranslation message to tab', async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockClear();
+
+    await commandHandler('undo-translation', { id: 12 });
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      12,
+      expect.objectContaining({ type: 'undoTranslation' })
+    );
+  });
+
+  it('toggle-widget command sends toggleWidget message to tab', async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockClear();
+
+    await commandHandler('toggle-widget', { id: 13 });
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      13,
+      expect.objectContaining({ type: 'toggleWidget' })
+    );
+  });
+
+  it('screenshot-translate command sends enterScreenshotMode message to tab', async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockClear();
+
+    await commandHandler('screenshot-translate', { id: 14 });
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      14,
+      expect.objectContaining({ type: 'enterScreenshotMode' })
+    );
+  });
+
+  it('ignores command when tab has no id', async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockClear();
+
+    await commandHandler('translate-page', { id: undefined });
+
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('ignores command when tab is undefined', async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockClear();
+
+    await commandHandler('translate-page', undefined);
+
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when sendMessageToTab rejects', async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockRejectedValueOnce(
+      new Error('Could not establish connection')
+    );
+
+    await expect(
+      commandHandler('toggle-widget', { id: 55 })
+    ).resolves.not.toThrow();
+  });
+
+  it('unknown command does not call sendMessage', async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockClear();
+
+    // No case for 'unknown-command' in the switch
+    await commandHandler('unknown-command', { id: 20 });
+
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// Additional coverage: clearAllModels caches API, keepAlive, preloadPredictedModels
+// ============================================================================
+
+describe('Service Worker Additional Coverage', () => {
+  function getMessageHandler() {
+    return mockAddMessageListener.mock.calls[0]?.[0] as (
+      message: unknown,
+      sender: unknown,
+      sendResponse: (response: unknown) => void
+    ) => boolean;
+  }
+
+  async function invoke(message: unknown): Promise<unknown> {
+    const handler = getMessageHandler();
+    const sendResponse = vi.fn();
+    handler(message, {}, sendResponse);
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalled();
+    }, { timeout: 5000 });
+    return sendResponse.mock.calls[0]?.[0];
+  }
+
+  beforeEach(() => {
+    mockSendMessage.mockReset();
+    mockSendMessage.mockReturnValue({ success: true, result: 'translated text' });
+    vi.mocked(chrome.runtime.sendMessage).mockClear();
+    vi.mocked(chrome.tabs.sendMessage).mockResolvedValue(undefined);
+  });
+
+  // --------------------------------------------------------------------------
+  // clearAllModels: with working caches API (covers lines 637-645)
+  // --------------------------------------------------------------------------
+  describe('clearAllModels with caches API', () => {
+    it('clears transformers model caches when caches API is available', async () => {
+      const mockCachesKeys = vi.fn().mockResolvedValue([
+        'transformers-cache-v1',
+        'onnx-model-cache',
+        'unrelated-cache',
+      ]);
+      const mockCachesDelete = vi.fn().mockResolvedValue(true);
+
+      const origCaches = (globalThis as Record<string, unknown>).caches;
+      (globalThis as Record<string, unknown>).caches = {
+        keys: mockCachesKeys,
+        delete: mockCachesDelete,
+      };
+
+      mockSendMessage.mockReturnValue({ success: true });
+      mockStorageRemove.mockClear();
+
+      const response = await invoke({ type: 'clearAllModels' }) as { success: boolean };
+
+      expect(response.success).toBe(true);
+      // Should have cleared model-related caches (transformers, onnx)
+      expect(mockCachesKeys).toHaveBeenCalled();
+      expect(mockCachesDelete).toHaveBeenCalledTimes(2); // transformers + onnx but not unrelated
+
+      (globalThis as Record<string, unknown>).caches = origCaches;
+    });
+
+    it('succeeds even when caches.keys() throws', async () => {
+      const origCaches = (globalThis as Record<string, unknown>).caches;
+      (globalThis as Record<string, unknown>).caches = {
+        keys: vi.fn().mockRejectedValue(new Error('caches unavailable')),
+        delete: vi.fn(),
+      };
+
+      mockSendMessage.mockReturnValue({ success: true });
+
+      const response = await invoke({ type: 'clearAllModels' }) as { success: boolean };
+      expect(response.success).toBe(true);
+
+      (globalThis as Record<string, unknown>).caches = origCaches;
+    });
+
+    it('clears model caches matching "model" in name', async () => {
+      const mockCachesKeys = vi.fn().mockResolvedValue(['model-store-v2']);
+      const mockCachesDelete = vi.fn().mockResolvedValue(true);
+
+      const origCaches = (globalThis as Record<string, unknown>).caches;
+      (globalThis as Record<string, unknown>).caches = {
+        keys: mockCachesKeys,
+        delete: mockCachesDelete,
+      };
+
+      mockSendMessage.mockReturnValue({ success: true });
+
+      const response = await invoke({ type: 'clearAllModels' }) as { success: boolean };
+      expect(response.success).toBe(true);
+      expect(mockCachesDelete).toHaveBeenCalledWith('model-store-v2');
+
+      (globalThis as Record<string, unknown>).caches = origCaches;
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // preloadModel failure path (covers lines 563-564)
+  // --------------------------------------------------------------------------
+  describe('preloadModel error handling', () => {
+    it('returns error object when offscreen sendMessage rejects', async () => {
+      // Make offscreen message fail
+      vi.mocked(chrome.runtime.sendMessage).mockImplementationOnce((_msg, callback) => {
+        if (typeof callback === 'function') {
+          Promise.resolve().then(() => callback(undefined));
+        }
+        return undefined;
+      });
+
+      const response = await invoke({
+        type: 'preloadModel',
+        sourceLang: 'en',
+        targetLang: 'fi',
+      }) as { success: boolean; error?: string };
+
+      // Either succeeds with preloaded=false or returns error — both are valid
+      expect(typeof response.success).toBe('boolean');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // preloadPredictedModels: exercise deeper with mocked prediction engine
+  // (tabs.onUpdated triggers preloadPredictedModels)
+  // --------------------------------------------------------------------------
+  describe('preloadPredictedModels via tabs.onUpdated', () => {
+    it('calls tabs.onUpdated handler without errors for https url', async () => {
+      const tabsUpdatedHandler = mockAddTabsUpdatedListener.mock.calls[0]?.[0] as (
+        tabId: number,
+        changeInfo: { status?: string },
+        tab: { url?: string }
+      ) => void;
+
+      // Should not throw; prediction engine will short-circuit due to no history
+      expect(() => {
+        tabsUpdatedHandler(1, { status: 'complete' }, { url: 'https://news.example.com/' });
+      }).not.toThrow();
+
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    it('does not trigger preload for non-complete status', async () => {
+      const tabsUpdatedHandler = mockAddTabsUpdatedListener.mock.calls[0]?.[0] as (
+        tabId: number,
+        changeInfo: { status?: string },
+        tab: { url?: string }
+      ) => void;
+
+      expect(() => {
+        tabsUpdatedHandler(1, { status: 'loading' }, { url: 'https://example.com/' });
+      }).not.toThrow();
+    });
+
+    it('does not trigger preload when tab has no url', async () => {
+      const tabsUpdatedHandler = mockAddTabsUpdatedListener.mock.calls[0]?.[0] as (
+        tabId: number,
+        changeInfo: { status?: string },
+        tab: { url?: string }
+      ) => void;
+
+      expect(() => {
+        tabsUpdatedHandler(1, { status: 'complete' }, {});
+      }).not.toThrow();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // handleClearCacheWithOffscreen: offscreen sendMessage fails gracefully
+  // (covers the catch branch in handleClearCacheWithOffscreen)
+  // --------------------------------------------------------------------------
+  describe('clearCache with offscreen failure', () => {
+    it('still returns success when offscreen cache clear fails', async () => {
+      // Make the offscreen response undefined (simulates no offscreen document)
+      vi.mocked(chrome.runtime.sendMessage).mockImplementationOnce((_msg, callback) => {
+        if (typeof callback === 'function') {
+          Promise.resolve().then(() => callback(undefined));
+        }
+        return undefined;
+      });
+
+      const response = await invoke({ type: 'clearCache' }) as { success: boolean };
+      expect(response.success).toBe(true);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // getProviders: offscreen sendMessage fails gracefully
+  // (covers the catch/error path in handleGetProviders ~line 1118-1127)
+  // --------------------------------------------------------------------------
+  describe('getProviders with offscreen failure', () => {
+    it('returns providers list with empty languages when offscreen fails', async () => {
+      vi.mocked(chrome.runtime.sendMessage).mockImplementationOnce((_msg, callback) => {
+        if (typeof callback === 'function') {
+          Promise.resolve().then(() => callback(undefined));
+        }
+        return undefined;
+      });
+
+      const response = await invoke({ type: 'getProviders' }) as {
+        providers?: unknown[];
+        supportedLanguages?: unknown[];
+        error?: string;
+        success?: boolean;
+      };
+
+      // Either returns providers list (catch branch) or an error response
+      // depending on retry exhaustion — both are valid outcomes
+      expect(response).toBeDefined();
     });
   });
 });

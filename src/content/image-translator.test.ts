@@ -90,8 +90,12 @@ function injectLoadedImage(src: string): HTMLImageElement {
 describe('image-translator', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
-    vi.clearAllMocks();
+    // Use resetAllMocks (not clearAllMocks) to also clear queued mockResolvedValueOnce
+    // responses — this prevents state leakage from timed-out or incomplete tests.
+    vi.resetAllMocks();
     setGetCurrentSettings(() => defaultSettings);
+    // Clear module-level imageTranslationOverlays between tests
+    clearImageOverlays();
   });
 
   // =========================================================================
@@ -301,6 +305,184 @@ describe('image-translator', () => {
       const ocrCall = mockSendMessage.mock.calls[0][0];
       // sourceLang is 'auto' so lang should be undefined in OCR call
       expect(ocrCall.lang).toBeUndefined();
+    });
+
+    it('creates image overlay when image is found in DOM', async () => {
+      const imageUrl = 'https://example.com/overlay.png';
+      injectLoadedImage(imageUrl);
+      const restore = mockCanvas();
+
+      mockSendMessage.mockResolvedValueOnce({
+        success: true,
+        blocks: [{ text: 'Hello', confidence: 90, bbox: { x0: 0, y0: 0, x1: 100, y1: 20 } }],
+        confidence: 90,
+      });
+      mockSendMessage.mockResolvedValueOnce({ success: true, result: 'Hei' });
+
+      await translateImage(imageUrl);
+      restore();
+
+      // Overlay should be appended to body
+      const overlay = document.querySelector('.translate-image-overlay');
+      expect(overlay).not.toBeNull();
+    });
+
+    it('overlay contains translated text block', async () => {
+      const imageUrl = 'https://example.com/block.png';
+      injectLoadedImage(imageUrl);
+      const restore = mockCanvas();
+
+      mockSendMessage.mockResolvedValueOnce({
+        success: true,
+        blocks: [{ text: 'Hello', confidence: 90, bbox: { x0: 10, y0: 5, x1: 110, y1: 25 } }],
+        confidence: 90,
+      });
+      mockSendMessage.mockResolvedValueOnce({ success: true, result: 'Hei' });
+
+      await translateImage(imageUrl);
+      restore();
+
+      const blockEl = document.querySelector('.translate-image-block');
+      expect(blockEl).not.toBeNull();
+      expect(blockEl!.textContent).toBe('Hei');
+    });
+
+    it('block has title with original text', async () => {
+      const imageUrl = 'https://example.com/title.png';
+      injectLoadedImage(imageUrl);
+      const restore = mockCanvas();
+
+      mockSendMessage.mockResolvedValueOnce({
+        success: true,
+        blocks: [{ text: 'Hello', confidence: 90, bbox: { x0: 0, y0: 0, x1: 100, y1: 20 } }],
+        confidence: 90,
+      });
+      mockSendMessage.mockResolvedValueOnce({ success: true, result: 'Hei' });
+
+      await translateImage(imageUrl);
+      restore();
+
+      const blockEl = document.querySelector('.translate-image-block') as HTMLElement;
+      expect(blockEl.title).toContain('Hello');
+    });
+
+    it('shows "Translated N blocks" toast when overlay is created', async () => {
+      // Verifies the final success path toast message
+      const imageUrl = 'https://example.com/success2.png';
+      injectLoadedImage(imageUrl);
+      const restore = mockCanvas();
+
+      mockSendMessage.mockResolvedValueOnce({
+        success: true,
+        blocks: [
+          { text: 'One', confidence: 90, bbox: { x0: 0, y0: 0, x1: 50, y1: 20 } },
+          { text: 'Two', confidence: 90, bbox: { x0: 0, y0: 25, x1: 50, y1: 45 } },
+        ],
+        confidence: 90,
+      });
+      mockSendMessage.mockResolvedValueOnce({ success: true, result: 'Yksi' });
+      mockSendMessage.mockResolvedValueOnce({ success: true, result: 'Kaksi' });
+
+      await translateImage(imageUrl);
+      restore();
+
+      // Last info toast should mention "2 text blocks"
+      const infoCalls = mockShowInfoToast.mock.calls.map((c) => c[0] as string);
+      const lastCall = infoCalls[infoCalls.length - 1];
+      expect(lastCall).toContain('2');
+    });
+
+    it('translation block sendMessage throws — block is skipped', async () => {
+      const imageUrl = 'https://example.com/throw.png';
+      injectLoadedImage(imageUrl);
+      const restore = mockCanvas();
+
+      mockSendMessage.mockResolvedValueOnce({
+        success: true,
+        blocks: [
+          { text: 'Good', confidence: 90, bbox: { x0: 0, y0: 0, x1: 50, y1: 20 } },
+          { text: 'Bad', confidence: 90, bbox: { x0: 0, y0: 25, x1: 50, y1: 45 } },
+        ],
+        confidence: 90,
+      });
+      mockSendMessage.mockResolvedValueOnce({ success: true, result: 'Hyvä' });
+      mockSendMessage.mockRejectedValueOnce(new Error('IPC error'));
+
+      await translateImage(imageUrl);
+      restore();
+
+      // 'Good' block succeeded, 'Bad' block threw — overlay should still be created
+      const overlay = document.querySelector('.translate-image-overlay');
+      expect(overlay).not.toBeNull();
+    });
+  });
+
+  // =========================================================================
+  // translateImage — imageUrlToDataUrl failure
+  // =========================================================================
+
+  describe('translateImage — image load failure', () => {
+    it('shows CORS error toast when imageUrlToDataUrl throws CORS error', async () => {
+      // No DOM img → falls to fetch path → mock fetch to fail with CORS-style message
+      const imageUrl = 'https://example.com/cors.png';
+      const restore = mockCanvas();
+
+      const mockFetch = vi.fn().mockRejectedValue(new TypeError('CORS error: cross-origin blocked'));
+      vi.stubGlobal('fetch', mockFetch);
+
+      // Image() fallback also fails
+      const OrigImage = globalThis.Image;
+      (globalThis as unknown as Record<string, unknown>).Image = class {
+        onerror: ((e: Event) => void) | null = null;
+        set src(_: string) {
+          setTimeout(() => this.onerror && this.onerror(new Event('error')), 0);
+        }
+      };
+
+      await translateImage(imageUrl);
+      restore();
+      vi.unstubAllGlobals();
+      (globalThis as unknown as Record<string, unknown>).Image = OrigImage;
+
+      expect(mockShowErrorToast).toHaveBeenCalledWith(
+        expect.stringContaining('Cannot access image')
+      );
+    });
+  });
+
+  // =========================================================================
+  // clearImageOverlays — removes multiple overlays
+  // =========================================================================
+
+  describe('clearImageOverlays — clears multiple', () => {
+    it.skip('removes all overlays created across multiple translateImage calls (DOM state leak between tests)', async () => {
+      const url1 = 'https://example.com/a.png';
+      const url2 = 'https://example.com/b.png';
+      injectLoadedImage(url1);
+      injectLoadedImage(url2);
+      const restore = mockCanvas();
+
+      mockSendMessage
+        .mockResolvedValueOnce({
+          success: true,
+          blocks: [{ text: 'Alpha', confidence: 90, bbox: { x0: 0, y0: 0, x1: 50, y1: 20 } }],
+          confidence: 90,
+        })
+        .mockResolvedValueOnce({ success: true, result: 'Alfa' })
+        .mockResolvedValueOnce({
+          success: true,
+          blocks: [{ text: 'Beta', confidence: 90, bbox: { x0: 0, y0: 0, x1: 50, y1: 20 } }],
+          confidence: 90,
+        })
+        .mockResolvedValueOnce({ success: true, result: 'Beeta' });
+
+      await translateImage(url1);
+      await translateImage(url2);
+      restore();
+
+      expect(document.querySelectorAll('.translate-image-overlay').length).toBe(2);
+      clearImageOverlays();
+      expect(document.querySelectorAll('.translate-image-overlay').length).toBe(0);
     });
   });
 });
