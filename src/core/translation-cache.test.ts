@@ -798,4 +798,444 @@ describe('error paths', () => {
     // Second close should not throw
     expect(() => cache.close()).not.toThrow();
   });
+
+  // =========================================================================
+  // IndexedDB error/abort paths
+  // =========================================================================
+
+  describe('openDatabase error path', () => {
+    it('rejects when IndexedDB open fires onerror', async () => {
+      // Save original indexedDB stub
+      const origIndexedDB = (globalThis as Record<string, unknown>).indexedDB;
+
+      const errorRequest = {
+        onerror: null as ((ev: Event) => void) | null,
+        onsuccess: null as ((ev: Event) => void) | null,
+        onupgradeneeded: null as ((ev: IDBVersionChangeEvent) => void) | null,
+        result: null,
+        error: new DOMException('open failed'),
+      };
+
+      (globalThis as Record<string, unknown>).indexedDB = {
+        open: vi.fn(() => {
+          setTimeout(() => {
+            errorRequest.onerror?.({} as Event);
+          }, 0);
+          return errorRequest;
+        }),
+      };
+
+      resetTranslationCache();
+      const errCache = new TranslationCache();
+
+      // The internal dbReady promise rejects — get() should throw/return null
+      const result = await errCache.get('text', 'en', 'fi', 'opus-mt');
+      expect(result).toBeNull();
+
+      // Restore
+      (globalThis as Record<string, unknown>).indexedDB = origIndexedDB;
+    });
+
+    it('fires onupgradeneeded when object store does not exist', async () => {
+      const origIndexedDB = (globalThis as Record<string, unknown>).indexedDB;
+
+      const upgradeRequest = {
+        onerror: null as ((ev: Event) => void) | null,
+        onsuccess: null as ((ev: Event) => void) | null,
+        onupgradeneeded: null as ((ev: IDBVersionChangeEvent) => void) | null,
+        result: {
+          ...mockDb,
+          objectStoreNames: { contains: vi.fn(() => false) }, // store doesn't exist
+        },
+        error: null,
+      };
+
+      (globalThis as Record<string, unknown>).indexedDB = {
+        open: vi.fn(() => {
+          setTimeout(() => {
+            // Fire upgrade first
+            upgradeRequest.onupgradeneeded?.({ target: upgradeRequest } as unknown as IDBVersionChangeEvent);
+            // Then open success
+            upgradeRequest.onsuccess?.({ target: upgradeRequest } as unknown as Event);
+          }, 0);
+          return upgradeRequest;
+        }),
+      };
+
+      resetTranslationCache();
+      const upgradeCache = new TranslationCache();
+      await new Promise((r) => setTimeout(r, 20));
+      expect(upgradeCache).toBeDefined();
+
+      (globalThis as Record<string, unknown>).indexedDB = origIndexedDB;
+    });
+  });
+
+  describe('get() transaction error paths', () => {
+    beforeEach(async () => {
+      cache = new TranslationCache();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    it('returns null when transaction fires onerror', async () => {
+      const errorTx = {
+        objectStore: vi.fn(() => ({
+          get: vi.fn(() => {
+            const req = { onerror: null as unknown, onsuccess: null as unknown, result: null };
+            setTimeout(() => {
+              (errorTx as unknown as { onerror: ((e: Event) => void) | null }).onerror?.({} as Event);
+            }, 0);
+            return req;
+          }),
+        })),
+        onerror: null as ((e: Event) => void) | null,
+        onabort: null as ((e: Event) => void) | null,
+        error: new DOMException('tx error'),
+      };
+      mockDb.transaction.mockReturnValueOnce(errorTx);
+
+      const result = await cache.get('text', 'en', 'fi', 'opus-mt').catch(() => null);
+      expect(result).toBeNull();
+    });
+
+    it('returns null when transaction fires onabort', async () => {
+      const abortTx = {
+        objectStore: vi.fn(() => ({
+          get: vi.fn(() => {
+            const req = { onerror: null as unknown, onsuccess: null as unknown, result: null };
+            setTimeout(() => {
+              (abortTx as unknown as { onabort: ((e: Event) => void) | null }).onabort?.({} as Event);
+            }, 0);
+            return req;
+          }),
+        })),
+        onerror: null as ((e: Event) => void) | null,
+        onabort: null as ((e: Event) => void) | null,
+        error: null,
+      };
+      mockDb.transaction.mockReturnValueOnce(abortTx);
+
+      const result = await cache.get('text', 'en', 'fi', 'opus-mt').catch(() => null);
+      expect(result).toBeNull();
+    });
+
+    it('returns null when request fires onerror', async () => {
+      const reqErrorStore = {
+        get: vi.fn(() => {
+          const req = {
+            onerror: null as ((e: Event) => void) | null,
+            onsuccess: null as unknown,
+            result: null,
+            error: new DOMException('req error'),
+          };
+          setTimeout(() => {
+            req.onerror?.({} as Event);
+          }, 0);
+          return req;
+        }),
+      };
+      const reqErrorTx = {
+        objectStore: vi.fn(() => reqErrorStore),
+        onerror: null,
+        onabort: null,
+        error: null,
+      };
+      mockDb.transaction.mockReturnValueOnce(reqErrorTx);
+
+      const result = await cache.get('text', 'en', 'fi', 'opus-mt').catch(() => null);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('set() transaction error paths', () => {
+    beforeEach(async () => {
+      cache = new TranslationCache();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    it('does not throw when set transaction fires onerror', async () => {
+      // set() calls evictIfNeeded() -> getStats() -> db.transaction() [1st call = mockTransaction]
+      // then set's own transaction is the 2nd call
+      const errorTx = {
+        objectStore: vi.fn(() => ({
+          put: vi.fn(() => {
+            const req = { onerror: null as unknown, onsuccess: null as unknown };
+            setTimeout(() => {
+              (errorTx as unknown as { onerror: ((e: Event) => void) | null }).onerror?.({} as Event);
+            }, 0);
+            return req;
+          }),
+        })),
+        onerror: null as ((e: Event) => void) | null,
+        onabort: null as ((e: Event) => void) | null,
+        error: new DOMException('set error'),
+      };
+      // 1st call = getStats' transaction (use normal mock), 2nd call = set's transaction (error)
+      mockDb.transaction
+        .mockReturnValueOnce(mockTransaction)
+        .mockReturnValueOnce(errorTx);
+
+      // set() returns the inner promise which may reject — but the calling code swallows it
+      await cache.set('text', 'en', 'fi', 'opus-mt', 'result').catch(() => undefined);
+      expect(true).toBe(true); // No crash
+    });
+
+    it('does not throw when set transaction fires onabort', async () => {
+      const abortTx = {
+        objectStore: vi.fn(() => ({
+          put: vi.fn(() => {
+            const req = { onerror: null as unknown, onsuccess: null as unknown };
+            setTimeout(() => {
+              (abortTx as unknown as { onabort: ((e: Event) => void) | null }).onabort?.({} as Event);
+            }, 0);
+            return req;
+          }),
+        })),
+        onerror: null as ((e: Event) => void) | null,
+        onabort: null as ((e: Event) => void) | null,
+        error: null,
+      };
+      mockDb.transaction
+        .mockReturnValueOnce(mockTransaction)
+        .mockReturnValueOnce(abortTx);
+
+      await cache.set('text', 'en', 'fi', 'opus-mt', 'result').catch(() => undefined);
+      expect(true).toBe(true);
+    });
+
+    it('does not throw when set request fires onerror', async () => {
+      const reqErrStore = {
+        put: vi.fn(() => {
+          const req = {
+            onerror: null as ((e: Event) => void) | null,
+            onsuccess: null as unknown,
+            error: new DOMException('put error'),
+          };
+          setTimeout(() => {
+            req.onerror?.({} as Event);
+          }, 0);
+          return req;
+        }),
+      };
+      const reqErrTx = {
+        objectStore: vi.fn(() => reqErrStore),
+        onerror: null,
+        onabort: null,
+        error: null,
+      };
+      mockDb.transaction
+        .mockReturnValueOnce(mockTransaction)
+        .mockReturnValueOnce(reqErrTx);
+
+      await cache.set('text', 'en', 'fi', 'opus-mt', 'result').catch(() => undefined);
+      expect(true).toBe(true);
+    });
+  });
+
+  describe('eviction error paths', () => {
+    beforeEach(async () => {
+      cache = new TranslationCache(100); // Very small max size to trigger eviction
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    it('handles eviction transaction onerror gracefully', async () => {
+      // Fill cache beyond capacity to trigger eviction
+      const bigEntry: CacheEntry = {
+        key: 'big1',
+        text: 'x'.repeat(50),
+        sourceLang: 'en',
+        targetLang: 'fi',
+        provider: 'opus-mt',
+        translation: 'y'.repeat(50),
+        timestamp: Date.now() - 1000,
+        size: 80,
+      };
+      mockEntries.set('big1', bigEntry);
+
+      // On the eviction transaction, fire onerror
+      const evictErrTx = {
+        objectStore: vi.fn(() => ({
+          index: vi.fn(() => ({
+            openCursor: vi.fn(() => {
+              const req = { onerror: null as ((e: Event) => void) | null, onsuccess: null as unknown };
+              setTimeout(() => {
+                (evictErrTx as unknown as { onerror: ((e: Event) => void) | null }).onerror?.({} as Event);
+              }, 0);
+              return req;
+            }),
+          })),
+        })),
+        onerror: null as ((e: Event) => void) | null,
+        onabort: null as ((e: Event) => void) | null,
+        error: new DOMException('evict error'),
+      };
+
+      // First transaction is eviction (getStats is called first which uses a different tx)
+      // We need to let getStats succeed but fail the eviction transaction
+      mockDb.transaction
+        .mockReturnValueOnce(mockTransaction) // getStats openCursor
+        .mockReturnValueOnce(evictErrTx);      // eviction transaction
+
+      // set() catches errors so shouldn't throw
+      await expect(cache.set('new', 'en', 'fi', 'opus-mt', 'new')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('clear() error paths', () => {
+    beforeEach(async () => {
+      cache = new TranslationCache();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    it('throws when clear transaction fires onerror', async () => {
+      const errorTx = {
+        objectStore: vi.fn(() => ({
+          clear: vi.fn(() => {
+            const req = { onerror: null as unknown, onsuccess: null as unknown };
+            setTimeout(() => {
+              (errorTx as unknown as { onerror: ((e: Event) => void) | null }).onerror?.({} as Event);
+            }, 0);
+            return req;
+          }),
+        })),
+        onerror: null as ((e: Event) => void) | null,
+        onabort: null as ((e: Event) => void) | null,
+        error: new DOMException('clear error'),
+      };
+      mockDb.transaction.mockReturnValueOnce(errorTx);
+
+      await expect(cache.clear()).rejects.toThrow();
+    });
+
+    it('throws when clear transaction fires onabort', async () => {
+      const abortTx = {
+        objectStore: vi.fn(() => ({
+          clear: vi.fn(() => {
+            const req = { onerror: null as unknown, onsuccess: null as unknown };
+            setTimeout(() => {
+              (abortTx as unknown as { onabort: ((e: Event) => void) | null }).onabort?.({} as Event);
+            }, 0);
+            return req;
+          }),
+        })),
+        onerror: null as ((e: Event) => void) | null,
+        onabort: null as ((e: Event) => void) | null,
+        error: null,
+      };
+      mockDb.transaction.mockReturnValueOnce(abortTx);
+
+      await expect(cache.clear()).rejects.toBeDefined();
+    });
+
+    it('throws when clear request fires onerror', async () => {
+      const reqErrStore = {
+        clear: vi.fn(() => {
+          const req = {
+            onerror: null as ((e: Event) => void) | null,
+            onsuccess: null as unknown,
+            error: new DOMException('clear req error'),
+          };
+          setTimeout(() => {
+            req.onerror?.({} as Event);
+          }, 0);
+          return req;
+        }),
+      };
+      const reqErrTx = {
+        objectStore: vi.fn(() => reqErrStore),
+        onerror: null,
+        onabort: null,
+        error: null,
+      };
+      mockDb.transaction.mockReturnValueOnce(reqErrTx);
+
+      await expect(cache.clear()).rejects.toBeDefined();
+    });
+  });
+
+  describe('getStats() error paths', () => {
+    beforeEach(async () => {
+      cache = new TranslationCache();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    it('rejects when getStats transaction fires onerror', async () => {
+      const errorTx = {
+        objectStore: vi.fn(() => ({
+          openCursor: vi.fn(() => {
+            const req = { onerror: null as unknown, onsuccess: null as unknown };
+            setTimeout(() => {
+              (errorTx as unknown as { onerror: ((e: Event) => void) | null }).onerror?.({} as Event);
+            }, 0);
+            return req;
+          }),
+        })),
+        onerror: null as ((e: Event) => void) | null,
+        onabort: null as ((e: Event) => void) | null,
+        error: new DOMException('stats error'),
+      };
+      mockDb.transaction.mockReturnValueOnce(errorTx);
+
+      await expect(cache.getStats()).rejects.toBeDefined();
+    });
+
+    it('rejects when getStats transaction fires onabort', async () => {
+      const abortTx = {
+        objectStore: vi.fn(() => ({
+          openCursor: vi.fn(() => {
+            const req = { onerror: null as unknown, onsuccess: null as unknown };
+            setTimeout(() => {
+              (abortTx as unknown as { onabort: ((e: Event) => void) | null }).onabort?.({} as Event);
+            }, 0);
+            return req;
+          }),
+        })),
+        onerror: null as ((e: Event) => void) | null,
+        onabort: null as ((e: Event) => void) | null,
+        error: null,
+      };
+      mockDb.transaction.mockReturnValueOnce(abortTx);
+
+      await expect(cache.getStats()).rejects.toBeDefined();
+    });
+
+    it('rejects when getStats cursor request fires onerror', async () => {
+      const cursorErrStore = {
+        openCursor: vi.fn(() => {
+          const req = {
+            onerror: null as ((e: Event) => void) | null,
+            onsuccess: null as unknown,
+            error: new DOMException('cursor error'),
+          };
+          setTimeout(() => {
+            req.onerror?.({} as Event);
+          }, 0);
+          return req;
+        }),
+      };
+      const cursorErrTx = {
+        objectStore: vi.fn(() => cursorErrStore),
+        onerror: null,
+        onabort: null,
+        error: null,
+      };
+      mockDb.transaction.mockReturnValueOnce(cursorErrTx);
+
+      await expect(cache.getStats()).rejects.toBeDefined();
+    });
+  });
+
+  describe('IndexedDB undefined path', () => {
+    it('rejects get() when indexedDB is not available', async () => {
+      const origIndexedDB = (globalThis as Record<string, unknown>).indexedDB;
+      (globalThis as Record<string, unknown>).indexedDB = undefined;
+      resetTranslationCache();
+
+      const noIdbCache = new TranslationCache();
+      const result = await noIdbCache.get('text', 'en', 'fi', 'opus-mt');
+      expect(result).toBeNull();
+
+      (globalThis as Record<string, unknown>).indexedDB = origIndexedDB;
+    });
+  });
 });

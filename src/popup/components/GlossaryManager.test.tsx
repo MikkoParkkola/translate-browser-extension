@@ -371,4 +371,242 @@ describe('GlossaryManager', () => {
       expect(glossary.removeTerm).toHaveBeenCalledWith('API');
     });
   });
+
+  // -----------------------------------------------------------------------
+  // Edit mode
+  // -----------------------------------------------------------------------
+
+  it('clicking a term info row enters edit mode', async () => {
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('API')).toBeTruthy();
+    });
+
+    // Click on the term info row to start editing
+    const termInfo = screen.getByText('API').closest('.term-info') as HTMLElement;
+    fireEvent.click(termInfo);
+
+    await vi.waitFor(() => {
+      // Edit mode shows Save and Cancel buttons
+      expect(screen.getByText('Save')).toBeTruthy();
+      expect(screen.getByText('Cancel')).toBeTruthy();
+    });
+  });
+
+  it('cancel button exits edit mode', async () => {
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('API')).toBeTruthy();
+    });
+
+    const termInfo = screen.getByText('API').closest('.term-info') as HTMLElement;
+    fireEvent.click(termInfo);
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('Cancel')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText('Cancel'));
+
+    await vi.waitFor(() => {
+      expect(screen.queryByText('Cancel')).toBeNull();
+    });
+  });
+
+  it('save button with valid replacement calls glossary.addTerm and reloads', async () => {
+    (glossary.getGlossary as ReturnType<typeof vi.fn>)
+      .mockResolvedValue(MOCK_TERMS);
+    (glossary.addTerm as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+    const { container } = render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('API')).toBeTruthy();
+    });
+
+    // Click on API term to edit
+    const termInfo = screen.getByText('API').closest('.term-info') as HTMLElement;
+    fireEvent.click(termInfo);
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('Save')).toBeTruthy();
+    });
+
+    // Update the replacement field in edit form
+    const editInputs = container.querySelectorAll('.term-edit-form input[type="text"]');
+    // editInputs[1] is the replacement field
+    fireEvent.input(editInputs[1], { target: { value: 'new-replacement' } });
+
+    fireEvent.click(screen.getByText('Save'));
+
+    await vi.waitFor(() => {
+      expect(glossary.addTerm).toHaveBeenCalled();
+    });
+  });
+
+  it('save button with empty replacement shows error', async () => {
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+
+    const { container } = render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('API')).toBeTruthy();
+    });
+
+    const termInfo = screen.getByText('API').closest('.term-info') as HTMLElement;
+    fireEvent.click(termInfo);
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('Save')).toBeTruthy();
+    });
+
+    // Clear the replacement field
+    const editInputs = container.querySelectorAll('.term-edit-form input[type="text"]');
+    fireEvent.input(editInputs[1], { target: { value: '' } });
+
+    fireEvent.click(screen.getByText('Save'));
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('Replacement is required')).toBeTruthy();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Export button
+  // -----------------------------------------------------------------------
+
+  it('export button calls glossary.exportGlossary', async () => {
+    // Mock Blob and URL APIs used in handleExport
+    const mockCreateObjectURL = vi.fn().mockReturnValue('blob:mock-url');
+    const mockRevokeObjectURL = vi.fn();
+    Object.defineProperty(globalThis, 'URL', {
+      value: { createObjectURL: mockCreateObjectURL, revokeObjectURL: mockRevokeObjectURL },
+      writable: true,
+      configurable: true,
+    });
+
+    (glossary.exportGlossary as ReturnType<typeof vi.fn>).mockResolvedValue('{}');
+
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('Export')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText('Export'));
+
+    await vi.waitFor(() => {
+      expect(glossary.exportGlossary).toHaveBeenCalled();
+    });
+  });
+
+  it('export button shows error on failure', async () => {
+    (glossary.exportGlossary as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('export fail'));
+
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('Export')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText('Export'));
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('Failed to export glossary')).toBeTruthy();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Load error
+  // -----------------------------------------------------------------------
+
+  it('shows error message when glossary fails to load', async () => {
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('load failed'));
+
+    render(() => <GlossaryManager />);
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('Failed to load glossary')).toBeTruthy();
+    });
+  });
+
+  it('delete error shows error message', async () => {
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+    (glossary.removeTerm as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('delete fail'));
+
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('API')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByLabelText('Delete term API'));
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('Failed to delete term')).toBeTruthy();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Case sensitive badge
+  // -----------------------------------------------------------------------
+
+  it('case sensitive term shows "Aa" badge', async () => {
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue({
+      API: { replacement: 'rajapinta', caseSensitive: true },
+    });
+
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('Aa')).toBeTruthy();
+    });
+  });
+
+  it('non-case-sensitive term does not show "Aa" badge', async () => {
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue({
+      cloud: { replacement: 'pilvi', caseSensitive: false },
+    });
+
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('cloud')).toBeTruthy();
+    });
+    expect(screen.queryByText('Aa')).toBeNull();
+  });
+
+  // -----------------------------------------------------------------------
+  // Description display
+  // -----------------------------------------------------------------------
+
+  it('term with description shows the description', async () => {
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue({
+      API: { replacement: 'rajapinta', caseSensitive: true, description: 'Technical term' },
+    });
+
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('Technical term')).toBeTruthy();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Search filtering by description
+  // -----------------------------------------------------------------------
+
+  it('search filters by description field', async () => {
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue({
+      API: { replacement: 'rajapinta', caseSensitive: true, description: 'Technical term' },
+      cloud: { replacement: 'pilvi', caseSensitive: false, description: 'Cloud computing' },
+    });
+
+    const { container } = render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('API')).toBeTruthy();
+    });
+
+    const searchInput = container.querySelector('input[placeholder="Search terms..."]') as HTMLInputElement;
+    fireEvent.input(searchInput, { target: { value: 'Technical' } });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('API')).toBeTruthy();
+      expect(screen.queryByText('cloud')).toBeNull();
+    });
+  });
 });

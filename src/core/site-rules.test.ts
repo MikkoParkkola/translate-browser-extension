@@ -330,4 +330,40 @@ describe('site-rules', () => {
       await expect(importRules(json)).rejects.toThrow('Invalid rules');
     });
   });
+
+  describe('storage error paths', () => {
+    it('getRules returns null when storage throws', async () => {
+      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('get error'));
+      const result = await getRules('example.com');
+      expect(result).toBeNull();
+    });
+
+    it('setRules throws when storage throws', async () => {
+      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('set error'));
+      await expect(setRules('example.com', { autoTranslate: true })).rejects.toThrow('set error');
+    });
+
+    it('clearRules throws when storage throws', async () => {
+      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('clear error'));
+      await expect(clearRules('example.com')).rejects.toThrow('clear error');
+    });
+
+    it('getAllRules returns empty object when storage throws', async () => {
+      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('getall error'));
+      const result = await getAllRules();
+      expect(result).toEqual({});
+    });
+
+    it('clearAllRules throws when storage remove throws', async () => {
+      (chrome.storage.local.remove as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('remove error'));
+      await expect(clearAllRules()).rejects.toThrow('remove error');
+    });
+
+    it('importRules throws when storage set throws', async () => {
+      const json = JSON.stringify({ 'test.com': { autoTranslate: true } });
+      // getAllRules succeeds but then chrome.storage.local.set fails
+      (chrome.storage.local.set as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('import set error'));
+      await expect(importRules(json)).rejects.toThrow('import set error');
+    });
+  });
 });

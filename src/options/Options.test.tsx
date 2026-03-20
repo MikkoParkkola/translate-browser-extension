@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@solidjs/testing-library';
 
 // ---------------------------------------------------------------------------
 // Chrome API mock
@@ -920,5 +921,181 @@ describe('Options component invocation', () => {
     // onMount references loadRules via const declared after — TDZ would throw on call
     const { SiteRulesSettings } = await import('./components/SiteRulesSettings');
     expect(typeof SiteRulesSettings).toBe('function');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Options render-based tests — exercise reactive JSX, renderIcon, tab navigation
+// ---------------------------------------------------------------------------
+
+describe('Options render — basic', () => {
+  afterEach(cleanup);
+
+  it('renders the settings page heading', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    expect(screen.getByText('TRANSLATE! Settings')).toBeTruthy();
+  });
+
+  it('renders all six tab navigation buttons', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.length).toBe(6);
+  });
+
+  it('renders General tab as active by default', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    const generalTab = screen.getByRole('tab', { name: /General/ });
+    expect(generalTab.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('renders footer with version info', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    expect(screen.getByText(/TRANSLATE! v2.0/)).toBeTruthy();
+  });
+
+  it('renders navigation with tablist role', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    expect(screen.getByRole('tablist')).toBeTruthy();
+  });
+
+  it('renders all six tab labels', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    expect(screen.getByText('General')).toBeTruthy();
+    expect(screen.getByText('Cloud Providers')).toBeTruthy();
+    expect(screen.getByText('Local Models')).toBeTruthy();
+    expect(screen.getByText('Glossary')).toBeTruthy();
+    expect(screen.getByText('Site Rules')).toBeTruthy();
+    expect(screen.getByText('Cache')).toBeTruthy();
+  });
+});
+
+describe('Options render — tab switching', () => {
+  afterEach(cleanup);
+
+  it('clicking Cloud Providers tab makes it active', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    const cloudTab = screen.getByRole('tab', { name: /Cloud Providers/ });
+    fireEvent.click(cloudTab);
+    expect(cloudTab.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('clicking Local Models tab makes it active', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    const localTab = screen.getByRole('tab', { name: /Local Models/ });
+    fireEvent.click(localTab);
+    expect(localTab.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('clicking Glossary tab makes it active', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    const glossaryTab = screen.getByRole('tab', { name: /Glossary/ });
+    fireEvent.click(glossaryTab);
+    expect(glossaryTab.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('clicking Site Rules tab makes it active', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    const sitesTab = screen.getByRole('tab', { name: /Site Rules/ });
+    fireEvent.click(sitesTab);
+    expect(sitesTab.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('clicking Cache tab makes it active', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    const cacheTab = screen.getByRole('tab', { name: /Cache/ });
+    fireEvent.click(cacheTab);
+    expect(cacheTab.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('previously active tab becomes inactive on switch', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    const generalTab = screen.getByRole('tab', { name: /General/ });
+    const cloudTab = screen.getByRole('tab', { name: /Cloud Providers/ });
+    fireEvent.click(cloudTab);
+    expect(generalTab.getAttribute('aria-selected')).toBe('false');
+  });
+});
+
+describe('Options render — keyboard navigation', () => {
+  afterEach(cleanup);
+
+  it('ArrowDown advances tab selection', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    const nav = screen.getByRole('tablist');
+    fireEvent.keyDown(nav, { key: 'ArrowDown' });
+    // After ArrowDown from 'general', 'cloud' should be active
+    const cloudTab = screen.getByRole('tab', { name: /Cloud Providers/ });
+    expect(cloudTab.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('ArrowRight advances tab selection', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    const nav = screen.getByRole('tablist');
+    fireEvent.keyDown(nav, { key: 'ArrowRight' });
+    const cloudTab = screen.getByRole('tab', { name: /Cloud Providers/ });
+    expect(cloudTab.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('ArrowUp from General wraps to Cache', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    const nav = screen.getByRole('tablist');
+    fireEvent.keyDown(nav, { key: 'ArrowUp' });
+    const cacheTab = screen.getByRole('tab', { name: /Cache/ });
+    expect(cacheTab.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('End key jumps to Cache tab', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    const nav = screen.getByRole('tablist');
+    fireEvent.keyDown(nav, { key: 'End' });
+    const cacheTab = screen.getByRole('tab', { name: /Cache/ });
+    expect(cacheTab.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('Home key jumps to General tab from any position', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    const nav = screen.getByRole('tablist');
+    // First go to End (Cache)
+    fireEvent.keyDown(nav, { key: 'End' });
+    // Then Home → back to General
+    fireEvent.keyDown(nav, { key: 'Home' });
+    const generalTab = screen.getByRole('tab', { name: /General/ });
+    expect(generalTab.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('ArrowLeft from Cloud goes back to General', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    const nav = screen.getByRole('tablist');
+    fireEvent.keyDown(nav, { key: 'ArrowRight' }); // → Cloud
+    fireEvent.keyDown(nav, { key: 'ArrowLeft' });  // ← back to General
+    const generalTab = screen.getByRole('tab', { name: /General/ });
+    expect(generalTab.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('unhandled keys do not change active tab', async () => {
+    const { default: Options } = await import('./Options');
+    render(() => <Options />);
+    const nav = screen.getByRole('tablist');
+    fireEvent.keyDown(nav, { key: 'Tab' });
+    const generalTab = screen.getByRole('tab', { name: /General/ });
+    expect(generalTab.getAttribute('aria-selected')).toBe('true');
   });
 });

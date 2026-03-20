@@ -1,0 +1,365 @@
+/**
+ * SiteRulesSettings component unit tests
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@solidjs/testing-library';
+
+vi.stubGlobal('chrome', {
+  runtime: {
+    sendMessage: vi.fn().mockResolvedValue({}),
+    onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
+  },
+  storage: {
+    local: {
+      get: vi.fn().mockResolvedValue({}),
+      set: vi.fn().mockResolvedValue(undefined),
+      remove: vi.fn().mockResolvedValue(undefined),
+    },
+  },
+});
+
+vi.mock('../../core/site-rules', () => ({
+  siteRules: {
+    getAllRules: vi.fn().mockResolvedValue({}),
+    setRules: vi.fn().mockResolvedValue(undefined),
+    clearRules: vi.fn().mockResolvedValue(undefined),
+    exportRules: vi.fn().mockResolvedValue('{}'),
+    importRules: vi.fn().mockResolvedValue(0),
+  },
+}));
+
+import { SiteRulesSettings } from './SiteRulesSettings';
+import { siteRules } from '../../core/site-rules';
+
+const MOCK_RULES = {
+  'example.com': {
+    autoTranslate: true,
+    preferredProvider: 'deepl' as const,
+    sourceLang: 'en',
+    targetLang: 'fi',
+    strategy: 'quality' as const,
+  },
+  'test.org': {
+    autoTranslate: false,
+  },
+};
+
+describe('SiteRulesSettings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (siteRules.getAllRules as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  });
+
+  afterEach(cleanup);
+
+  describe('initial render — empty state', () => {
+    it('renders the section title', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => {
+        // "Site Rules" appears in both h2 and inner h3
+        expect(screen.getAllByText('Site Rules').length).toBeGreaterThanOrEqual(1);
+      });
+    });
+
+    it('shows "0 site rules configured" when empty', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => {
+        expect(screen.getByText(/0 site rules configured/)).toBeTruthy();
+      });
+    });
+
+    it('shows empty state message when no rules', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => {
+        expect(screen.getByText('No site rules configured')).toBeTruthy();
+      });
+    });
+
+    it('shows Add Site Rule button', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => {
+        expect(screen.getByText('+ Add Site Rule')).toBeTruthy();
+      });
+    });
+
+    it('shows Import/Export section', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => {
+        expect(screen.getByText('Import / Export')).toBeTruthy();
+      });
+    });
+  });
+
+  describe('initial render — with rules', () => {
+    beforeEach(() => {
+      (siteRules.getAllRules as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_RULES);
+    });
+
+    it('shows rule count correctly', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => {
+        expect(screen.getByText(/2 site rules configured/)).toBeTruthy();
+      });
+    });
+
+    it('renders domain patterns', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => {
+        expect(screen.getByText('example.com')).toBeTruthy();
+        expect(screen.getByText('test.org')).toBeTruthy();
+      });
+    });
+
+    it('shows Auto badge for autoTranslate=true', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => {
+        expect(screen.getByText('Auto')).toBeTruthy();
+      });
+    });
+
+    it('shows Manual badge for autoTranslate=false', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => {
+        expect(screen.getByText('Manual')).toBeTruthy();
+      });
+    });
+
+    it('shows Edit and Delete buttons per rule', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => {
+        const editBtns = screen.getAllByText('Edit');
+        expect(editBtns.length).toBe(2);
+        const deleteBtns = screen.getAllByText('Delete');
+        expect(deleteBtns.length).toBe(2);
+      });
+    });
+
+    it('shows provider name when set', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => {
+        expect(screen.getByText('DeepL')).toBeTruthy();
+      });
+    });
+
+    it('shows target language arrow when set', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => {
+        expect(screen.getByText(/-> fi/)).toBeTruthy();
+      });
+    });
+
+    it('shows singular "rule" for count of 1', async () => {
+      (siteRules.getAllRules as ReturnType<typeof vi.fn>).mockResolvedValue({
+        'single.com': { autoTranslate: true },
+      });
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => {
+        expect(screen.getByText(/1 site rule configured/)).toBeTruthy();
+      });
+    });
+  });
+
+  describe('add form', () => {
+    it('opens add form on button click', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Site Rule')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Site Rule'));
+      expect(screen.getByText('Add Site Rule')).toBeTruthy();
+      expect(screen.getByPlaceholderText('example.com or *.example.com')).toBeTruthy();
+    });
+
+    it('button label changes to Cancel when form open', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Site Rule')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Site Rule'));
+      // Multiple Cancel buttons appear: the toggle button + the form's own Cancel
+      expect(screen.getAllByText('Cancel').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('closes form when Cancel clicked', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Site Rule')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Site Rule'));
+      expect(screen.getByPlaceholderText('example.com or *.example.com')).toBeTruthy();
+      // The form's own Cancel button (btn-secondary) closes it
+      const cancelBtns = screen.getAllByText('Cancel');
+      // Click the last Cancel (form's own Cancel button)
+      fireEvent.click(cancelBtns[cancelBtns.length - 1]);
+      expect(screen.queryByPlaceholderText('example.com or *.example.com')).toBeNull();
+    });
+
+    it('shows error for empty pattern', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Site Rule')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Site Rule'));
+      fireEvent.click(screen.getByText('Add Rule'));
+      await vi.waitFor(() => {
+        expect(screen.getByText('Domain pattern is required')).toBeTruthy();
+      });
+    });
+
+    it('shows error for invalid domain pattern', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Site Rule')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Site Rule'));
+      const input = screen.getByPlaceholderText('example.com or *.example.com');
+      fireEvent.input(input, { target: { value: 'not-a-valid-domain!' } });
+      fireEvent.click(screen.getByText('Add Rule'));
+      await vi.waitFor(() => {
+        expect(screen.getByText(/Invalid domain pattern/)).toBeTruthy();
+      });
+    });
+
+    it('calls setRules and reloads on valid submission', async () => {
+      (siteRules.setRules as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (siteRules.getAllRules as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({})
+        .mockResolvedValue({ 'example.com': { autoTranslate: true } });
+
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Site Rule')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Site Rule'));
+
+      const input = screen.getByPlaceholderText('example.com or *.example.com');
+      fireEvent.input(input, { target: { value: 'example.com' } });
+      fireEvent.click(screen.getByText('Add Rule'));
+
+      await vi.waitFor(() => {
+        expect(siteRules.setRules).toHaveBeenCalledWith('example.com', expect.objectContaining({ autoTranslate: true }));
+      });
+    });
+
+    it('shows error when setRules throws', async () => {
+      (siteRules.setRules as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Storage full'));
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Site Rule')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Site Rule'));
+      const input = screen.getByPlaceholderText('example.com or *.example.com');
+      fireEvent.input(input, { target: { value: 'example.com' } });
+      fireEvent.click(screen.getByText('Add Rule'));
+      await vi.waitFor(() => {
+        expect(screen.getByText('Failed to add rule')).toBeTruthy();
+      });
+    });
+  });
+
+  describe('edit mode', () => {
+    beforeEach(() => {
+      (siteRules.getAllRules as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_RULES);
+    });
+
+    it('clicking Edit enters edit mode for that rule', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getAllByText('Edit').length).toBe(2));
+      fireEvent.click(screen.getAllByText('Edit')[0]);
+      await vi.waitFor(() => {
+        expect(screen.getByText('Save')).toBeTruthy();
+        expect(screen.getAllByText('Cancel').length).toBeGreaterThan(0);
+      });
+    });
+
+    it('clicking Cancel in edit mode exits edit mode', async () => {
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getAllByText('Edit').length).toBe(2));
+      fireEvent.click(screen.getAllByText('Edit')[0]);
+      await vi.waitFor(() => expect(screen.getByText('Save')).toBeTruthy());
+      // The Cancel button in edit mode
+      const cancelBtns = screen.getAllByText('Cancel');
+      fireEvent.click(cancelBtns[cancelBtns.length - 1]);
+      await vi.waitFor(() => {
+        expect(screen.queryByText('Save')).toBeNull();
+      });
+    });
+
+    it('clicking Save calls setRules with updated values', async () => {
+      (siteRules.setRules as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getAllByText('Edit').length).toBe(2));
+      fireEvent.click(screen.getAllByText('Edit')[0]);
+      await vi.waitFor(() => expect(screen.getByText('Save')).toBeTruthy());
+      fireEvent.click(screen.getByText('Save'));
+      await vi.waitFor(() => {
+        expect(siteRules.setRules).toHaveBeenCalled();
+      });
+    });
+
+    it('shows error when save fails', async () => {
+      (siteRules.setRules as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('fail'));
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getAllByText('Edit').length).toBe(2));
+      fireEvent.click(screen.getAllByText('Edit')[0]);
+      await vi.waitFor(() => expect(screen.getByText('Save')).toBeTruthy());
+      fireEvent.click(screen.getByText('Save'));
+      await vi.waitFor(() => {
+        expect(screen.getByText('Failed to update rule')).toBeTruthy();
+      });
+    });
+  });
+
+  describe('delete rule', () => {
+    beforeEach(() => {
+      (siteRules.getAllRules as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_RULES);
+    });
+
+    it('calls clearRules when confirmed', async () => {
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+      (siteRules.clearRules as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getAllByText('Delete').length).toBe(2));
+      fireEvent.click(screen.getAllByText('Delete')[0]);
+      await vi.waitFor(() => {
+        expect(siteRules.clearRules).toHaveBeenCalled();
+      });
+    });
+
+    it('does not call clearRules when confirm cancelled', async () => {
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(false));
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getAllByText('Delete').length).toBe(2));
+      fireEvent.click(screen.getAllByText('Delete')[0]);
+      expect(siteRules.clearRules).not.toHaveBeenCalled();
+    });
+
+    it('shows error when clearRules throws', async () => {
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+      (siteRules.clearRules as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('fail'));
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getAllByText('Delete').length).toBe(2));
+      fireEvent.click(screen.getAllByText('Delete')[0]);
+      await vi.waitFor(() => {
+        expect(screen.getByText('Failed to delete rule')).toBeTruthy();
+      });
+    });
+  });
+
+  describe('export / import', () => {
+    it('calls exportRules on Export JSON click', async () => {
+      vi.stubGlobal('URL', { createObjectURL: vi.fn().mockReturnValue('blob:url'), revokeObjectURL: vi.fn() });
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('Export JSON')).toBeTruthy());
+      fireEvent.click(screen.getByText('Export JSON'));
+      await vi.waitFor(() => {
+        expect(siteRules.exportRules).toHaveBeenCalled();
+      });
+    });
+
+    it('shows error when exportRules throws', async () => {
+      (siteRules.exportRules as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('export fail'));
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('Export JSON')).toBeTruthy());
+      fireEvent.click(screen.getByText('Export JSON'));
+      await vi.waitFor(() => {
+        expect(screen.getByText('Failed to export rules')).toBeTruthy();
+      });
+    });
+
+    it('load error shows error alert', async () => {
+      (siteRules.getAllRules as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('load fail'));
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => {
+        expect(screen.getByText('Failed to load site rules')).toBeTruthy();
+      });
+    });
+  });
+});

@@ -72,7 +72,8 @@ vi.mock('../core/logger', () => ({
 // ---------------------------------------------------------------------------
 import App from './App';
 import { browserAPI } from '../core/browser-api';
-import { safeStorageGet } from '../core/storage';
+import { safeStorageGet, safeStorageSet } from '../core/storage';
+import { checkVersion, isUpdateDismissed } from '../core/version';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -341,6 +342,552 @@ describe('App initialization', () => {
       expect(browserAPI.runtime.sendMessage).toHaveBeenCalledWith({
         type: 'checkChromeTranslator',
       });
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('App handleError branches', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 1, url: 'https://example.com' },
+    ]);
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  });
+
+  afterEach(cleanup);
+
+  it('shows "Cannot access" error for restricted page errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Cannot access this page'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('Cannot translate this page');
+    });
+  });
+
+  it('shows settings action for "not configured" errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('API key not configured'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByLabelText('Open Settings')).toBeTruthy();
+    });
+  });
+
+  it('shows settings action for "api key" errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Invalid api key provided'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByLabelText('Open Settings')).toBeTruthy();
+    });
+  });
+
+  it('shows OPUS-MT action for "no network" errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('No network available'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByLabelText('Use OPUS-MT')).toBeTruthy();
+    });
+  });
+
+  it('shows OPUS-MT action for "offline" errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('You are offline'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByLabelText('Use OPUS-MT')).toBeTruthy();
+    });
+  });
+
+  it('shows error for "language pair" errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Language pair en-xx not supported'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('Language pair');
+    });
+  });
+
+  it('shows error for "not available" errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Translation not available for this language'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('not available');
+    });
+  });
+
+  it('shows error for "unsupported" errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('unsupported language direction'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('unsupported');
+    });
+  });
+
+  it('shows retry action for "network" errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('network request failed'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByLabelText('Retry')).toBeTruthy();
+      expect(screen.getByRole('alert').textContent).toContain('Connection error');
+    });
+  });
+
+  it('shows retry action for "connection" errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('connection refused'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByLabelText('Retry')).toBeTruthy();
+    });
+  });
+
+  it('shows retry action for fetch errors (not model)', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('fetch failed'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByLabelText('Retry')).toBeTruthy();
+      expect(screen.getByRole('alert').textContent).toContain('Connection error');
+    });
+  });
+
+  it('shows retry action for rate limit errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Rate limit exceeded'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('Rate limited');
+    });
+  });
+
+  it('shows retry action for timeout errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Request timed out'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('timed out');
+    });
+  });
+
+  it('shows retry action for "timeout" errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('timeout after 30s'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('timeout');
+    });
+  });
+
+  it('shows switch provider action for model errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('model not loaded yet'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByLabelText('Switch Provider')).toBeTruthy();
+    });
+  });
+
+  it('shows switch provider action for pipeline errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('pipeline initialization failed'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByLabelText('Switch Provider')).toBeTruthy();
+    });
+  });
+
+  it('shows switch provider action for load errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Failed to load weights'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByLabelText('Switch Provider')).toBeTruthy();
+    });
+  });
+
+  it('shows memory error without action button', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Out of memory'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('Out of memory');
+    });
+  });
+
+  it('shows OOM error without action button', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('OOM: allocation failed'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('OOM');
+    });
+  });
+
+  it('shows generic error with retry for unknown errors', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Some totally unknown error'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('Some totally unknown error');
+    });
+  });
+
+  it('handles non-Error thrown values', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue('string error');
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert')).toBeTruthy();
+    });
+  });
+
+  it('handles structured error response from content script', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: false,
+      error: 'Content script error',
+    });
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert')).toBeTruthy();
+    });
+  });
+
+  it('dismiss button clears the error', async () => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Some error'),
+    );
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByLabelText('Dismiss error'));
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('App onMount branches', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 1, url: 'https://example.com' },
+    ]);
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+  });
+
+  afterEach(cleanup);
+
+  it('loads stored preferences when present', async () => {
+    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({
+      sourceLang: 'fi',
+      targetLang: 'en',
+      strategy: 'quality',
+      autoTranslate: true,
+      provider: 'deepl',
+    });
+    render(() => <App />);
+    await flush();
+    // Just verify the component renders successfully after loading prefs
+    expect(screen.getByText('TRANSLATE!')).toBeTruthy();
+  });
+
+  it('checks WebGPU availability on mount', async () => {
+    render(() => <App />);
+    await flush();
+    await vi.waitFor(() => {
+      expect(browserAPI.runtime.sendMessage).toHaveBeenCalledWith({ type: 'checkWebGPU' });
+    });
+  });
+
+  it('sets webGpuAvailable=true when supported=true', async () => {
+    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>)
+      .mockImplementation((msg: { type: string }) => {
+        if (msg.type === 'checkWebGPU') return Promise.resolve({ supported: true });
+        return Promise.resolve({});
+      });
+    render(() => <App />);
+    await flush();
+    expect(screen.getByText('TRANSLATE!')).toBeTruthy();
+  });
+
+  it('handles WebGPU check failure gracefully', async () => {
+    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>)
+      .mockImplementation((msg: { type: string }) => {
+        if (msg.type === 'checkWebGPU') return Promise.reject(new Error('GPU unavailable'));
+        return Promise.resolve({});
+      });
+    render(() => <App />);
+    await flush();
+    expect(screen.getByText('TRANSLATE!')).toBeTruthy();
+  });
+
+  it('handles chrome translator available=true response', async () => {
+    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>)
+      .mockImplementation((msg: { type: string }) => {
+        if (msg.type === 'checkChromeTranslator') return Promise.resolve({ available: true });
+        return Promise.resolve({});
+      });
+    render(() => <App />);
+    await flush();
+    expect(screen.getByText('TRANSLATE!')).toBeTruthy();
+  });
+
+  it('handles chrome translator check failure', async () => {
+    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>)
+      .mockImplementation((msg: { type: string }) => {
+        if (msg.type === 'checkChromeTranslator') return Promise.reject(new Error('blocked'));
+        return Promise.resolve({});
+      });
+    render(() => <App />);
+    await flush();
+    expect(screen.getByText('TRANSLATE!')).toBeTruthy();
+  });
+
+  it('shows update badge when version update detected', async () => {
+    (checkVersion as ReturnType<typeof vi.fn>).mockResolvedValue({
+      isUpdate: true,
+      current: '2.0.0',
+    });
+    (isUpdateDismissed as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+    render(() => <App />);
+    await flush();
+    await vi.waitFor(() => {
+      expect(screen.getByText('v2.0.0')).toBeTruthy();
+    });
+  });
+
+  it('does not show update badge when dismissed', async () => {
+    (checkVersion as ReturnType<typeof vi.fn>).mockResolvedValue({
+      isUpdate: true,
+      current: '2.0.0',
+    });
+    (isUpdateDismissed as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    render(() => <App />);
+    await flush();
+    expect(screen.queryByText('v2.0.0')).toBeNull();
+  });
+
+  it('does not show update badge when no update', async () => {
+    (checkVersion as ReturnType<typeof vi.fn>).mockResolvedValue({
+      isUpdate: false,
+      current: '1.0.0',
+    });
+    render(() => <App />);
+    await flush();
+    expect(screen.queryByText('v1.0.0')).toBeNull();
+  });
+
+  it('handles version check failure gracefully', async () => {
+    (checkVersion as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('version check failed'));
+    render(() => <App />);
+    await flush();
+    expect(screen.getByText('TRANSLATE!')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('App restricted URL handling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  });
+
+  afterEach(cleanup);
+
+  it('shows error for chrome:// URLs on translate page', async () => {
+    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 1, url: 'chrome://settings' },
+    ]);
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('Cannot translate browser pages');
+    });
+  });
+
+  it('shows error for about: URLs on translate page', async () => {
+    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 1, url: 'about:blank' },
+    ]);
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('Cannot translate browser pages');
+    });
+  });
+
+  it('shows error when no tab id on translate page', async () => {
+    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([{ url: 'https://x.com' }]);
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('No active tab');
+    });
+  });
+
+  it('shows error when no tab id on translate selection', async () => {
+    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([{ url: 'https://x.com' }]);
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate selected text'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('No active tab');
+    });
+  });
+
+  it('shows error for restricted URL on translate selection', async () => {
+    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 1, url: 'chrome://extensions' },
+    ]);
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate selected text'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('Cannot translate browser pages');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('App provider management', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 1, url: 'https://example.com' },
+    ]);
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+  });
+
+  afterEach(cleanup);
+
+  it('toggles auto-translate and persists to storage', async () => {
+    render(() => <App />);
+    await flush();
+    const toggle = screen.getByLabelText('Auto-translate pages');
+    fireEvent.click(toggle);
+    await vi.waitFor(() => {
+      expect(safeStorageSet).toHaveBeenCalled();
+    });
+  });
+
+  it('update badge click dismisses it', async () => {
+    (checkVersion as ReturnType<typeof vi.fn>).mockResolvedValue({
+      isUpdate: true,
+      current: '2.0.0',
+    });
+    (isUpdateDismissed as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+    render(() => <App />);
+    await flush();
+    await vi.waitFor(() => {
+      expect(screen.getByText('v2.0.0')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText('v2.0.0'));
+    await vi.waitFor(() => {
+      expect(screen.queryByText('v2.0.0')).toBeNull();
+    });
+  });
+
+  it('handleTranslatePage handles inject failure', async () => {
+    // First sendMessage (ping) rejects, then executeScript also rejects
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('not loaded'));
+    (browserAPI.scripting.executeScript as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('cannot inject'));
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate entire page'));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('Cannot access');
     });
   });
 });

@@ -95,4 +95,25 @@ describe('version detection', () => {
       expect(result).toBe(true);
     });
   });
+
+  describe('error catch paths', () => {
+    it('checkVersion returns safe defaults when storage throws', async () => {
+      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('storage error'));
+      const info = await checkVersion();
+      // Falls back to the catch block: isFirstRun=true, isUpdate=false
+      expect(info.isFirstRun).toBe(true);
+      expect(info.isUpdate).toBe(false);
+    });
+
+    it('dismissUpdateNotice does not throw when storage.set throws', async () => {
+      (chrome.storage.local.set as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('set error'));
+      await expect(dismissUpdateNotice()).resolves.toBeUndefined();
+    });
+
+    it('isUpdateDismissed returns true when storage.get throws', async () => {
+      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('get error'));
+      const result = await isUpdateDismissed();
+      expect(result).toBe(true);
+    });
+  });
 });
