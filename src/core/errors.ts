@@ -4,6 +4,10 @@
  */
 
 // Error categories for routing to appropriate handlers
+import { createLogger } from './logger';
+
+const log = createLogger('Errors');
+
 export type ErrorCategory =
   | 'network'
   | 'model'
@@ -273,8 +277,8 @@ export async function withRetry<T>(
       }
 
       const delay = calculateRetryDelay(attempt, fullConfig);
-      console.log(
-        `[Retry] Attempt ${attempt + 1}/${fullConfig.maxRetries} failed: ${lastError.message}. ` +
+      log.info(
+        `Attempt ${attempt + 1}/${fullConfig.maxRetries} failed: ${lastError.message}. ` +
         `Retrying in ${delay}ms...`
       );
 

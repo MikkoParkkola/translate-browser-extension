@@ -239,7 +239,8 @@ describe('Service Worker', () => {
       actionHandler({ id: 123 });
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Extension icon clicked'),
+        '[Background]',
+        'Extension icon clicked for tab:',
         123
       );
     });
@@ -254,7 +255,7 @@ describe('Service Worker', () => {
       // The log with tab ID should not have been called
       const clickLogs = consoleSpy.mock.calls.filter(
         (call) =>
-          typeof call[0] === 'string' && call[0].includes('Extension icon clicked')
+          typeof call[1] === 'string' && call[1].includes('Extension icon clicked')
       );
       expect(clickLogs.length).toBe(0);
     });

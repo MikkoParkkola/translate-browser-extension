@@ -8,7 +8,10 @@
 
 import { BaseProvider } from './base-provider';
 import { webgpuDetector } from '../core/webgpu-detector';
+import { createLogger } from '../core/logger';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
+
+const log = createLogger('OPUS-MT');
 
 // Dynamic imports for Transformers.js
 type Pipeline = (text: string, options?: Record<string, unknown>) => Promise<Array<{ translation_text: string }>>;
@@ -92,10 +95,10 @@ export class OpusMTProvider extends BaseProvider {
       this.webgpuSupported = webgpuDetector.supported;
 
       if (this.webgpuSupported) {
-        console.log('[OPUS-MT] WebGPU support detected');
+        log.info('WebGPU support detected');
         await webgpuDetector.initialize();
       } else {
-        console.log('[OPUS-MT] Using WASM acceleration');
+        log.info('Using WASM acceleration');
       }
 
       this.isInitialized = true;
@@ -125,7 +128,7 @@ export class OpusMTProvider extends BaseProvider {
       throw new Error('[OPUS-MT] Pipeline factory not initialized');
     }
 
-    console.log(`[OPUS-MT] Loading model: ${modelId}`);
+    log.info(`Loading model: ${modelId}`);
 
     // Build fallback chain: most optimal first, safest last
     // OPUS-MT Xenova models reliably ship q8 (quantized) variants.
@@ -143,21 +146,21 @@ export class OpusMTProvider extends BaseProvider {
 
     for (const attempt of attempts) {
       try {
-        console.log(`[OPUS-MT] Trying ${attempt.label} for ${modelId}`);
+        log.info(`Trying ${attempt.label} for ${modelId}`);
         const pipe = await this.pipelineFactory('translation', modelId, {
           device: attempt.device,
           dtype: attempt.dtype,
           progress_callback: (progress: unknown) => {
-            console.log('[OPUS-MT] Loading progress:', progress);
+            log.info('Loading progress:', progress);
           },
         });
 
         this.pipelines.set(modelId, pipe);
-        console.log(`[OPUS-MT] Model loaded: ${modelId} (${attempt.label})`);
+        log.info(`Model loaded: ${modelId} (${attempt.label})`);
         return pipe;
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
-        console.warn(`[OPUS-MT] ${attempt.label} failed: ${errMsg}`);
+        log.warn(`${attempt.label} failed: ${errMsg}`);
         lastError = error instanceof Error ? error : new Error(errMsg);
       }
     }
@@ -284,7 +287,7 @@ export class OpusMTProvider extends BaseProvider {
 
       const result = await this.translate('Hello, how are you?', 'en', 'fi');
 
-      console.log('[OPUS-MT] Test result:', result);
+      log.info('Test result:', result);
       return typeof result === 'string' && result.length > 0;
     } catch (error) {
       console.error('[OPUS-MT] Test failed:', error);

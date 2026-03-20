@@ -8,8 +8,11 @@ import { BaseProvider } from './base-provider';
 import { createTranslationError } from '../core/errors';
 import { handleProviderHttpError } from '../core/http-errors';
 import { toDeepLCode, getDeepLSupportedLanguages } from '../core/language-map';
+import { createLogger } from '../core/logger';
 import { CONFIG } from '../config';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
+
+const log = createLogger('DeepL');
 
 // DeepL API endpoints
 const DEEPL_FREE_API = 'https://api-free.deepl.com/v2';
@@ -69,7 +72,7 @@ export class DeepLProvider extends BaseProvider {
           isPro: stored.deepl_is_pro ?? false,
           formality: stored.deepl_formality ?? 'default',
         };
-        console.log('[DeepL] Initialized with', this.config.isPro ? 'Pro' : 'Free', 'tier');
+        log.info('Initialized with', this.config.isPro ? 'Pro' : 'Free', 'tier');
       }
     } catch (error) {
       console.error('[DeepL] Failed to load config:', error);
@@ -160,7 +163,7 @@ export class DeepLProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch((e) => { console.warn('[DeepL] Failed to read error body:', e); return ''; });
+        const errorText = await response.text().catch((e) => { log.warn('Failed to read error body:', e); return ''; });
         const httpError = handleProviderHttpError(
           response.status,
           'DeepL',

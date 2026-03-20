@@ -277,7 +277,7 @@ export class TranslationCache {
           const entry = cursor.value as CacheEntry;
           currentSize -= entry.size;
           cursor.delete();
-          console.log(`[TranslationCache] Evicted entry, new size: ${currentSize}`);
+          log.info(`Evicted entry, new size: ${currentSize}`);
           cursor.continue();
         } else {
           resolve();

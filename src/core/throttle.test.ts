@@ -180,7 +180,7 @@ describe('Throttle', () => {
 
       await throttle.runWithRetry(fn, 'test', 1, true);
 
-      expect(consoleSpy).toHaveBeenCalledWith('[Throttle] attempt', 1);
+      expect(consoleSpy).toHaveBeenCalledWith('[Throttle]', 'attempt', 1);
       vi.useFakeTimers();
     });
 
@@ -233,11 +233,12 @@ describe('Throttle', () => {
 
       await throttle.runWithRetry(fn, 'test', 3, true);
 
-      expect(consoleSpy).toHaveBeenCalledWith('[Throttle] attempt', 1);
+      expect(consoleSpy).toHaveBeenCalledWith('[Throttle]', 'attempt', 1);
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[Throttle] retrying'),
+        '[Throttle]',
+        expect.stringContaining('retrying after error'),
         expect.any(String),
-        expect.stringContaining('in'),
+        'in',
         expect.any(Number),
         'ms'
       );

@@ -4,7 +4,7 @@
  */
 
 import { pipeline, env } from '@huggingface/transformers';
-import type { TranslationProviderId } from '../types';
+import type { TranslationProviderId, TranslationPipeline } from '../types';
 import { getTranslationCache, type TranslationCacheStats } from '../core/translation-cache';
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
@@ -82,8 +82,7 @@ function selectOpusMtDtype(_webgpu: { supported: boolean; fp16: boolean }): stri
 /**
  * Get or create pipeline for a language pair with LRU caching.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getPipeline(sourceLang: string, targetLang: string, sessionId?: string): Promise<any> {
+async function getPipeline(sourceLang: string, targetLang: string, sessionId?: string): Promise<TranslationPipeline> {
   const key = `${sourceLang}-${targetLang}`;
   const modelId = MODEL_MAP[key];
 
@@ -162,7 +161,7 @@ async function translateDirect(
           const translated = (result as Array<{ translation_text: string }>)[0].translation_text;
           // Debug: log first 3 to verify model output
           if (i < 3) {
-            console.log(`[Offscreen] Model #${i}: "${t.substring(0, 40)}" -> "${translated.substring(0, 40)}" (same=${t === translated})`);
+            log.debug(`Model #${i}: "${t.substring(0, 40)}" -> "${translated.substring(0, 40)}" (same=${t === translated})`);
           }
           return translated;
         } catch (err) {
@@ -217,7 +216,7 @@ async function translate(
     if (sessionId) {
       profiler.recordTiming(sessionId, 'language_detect', performance.now() - detectStart);
     }
-    console.log(`[Offscreen] Auto-detected source: ${actualSourceLang}`);
+    log.info(`Auto-detected source: ${actualSourceLang}`);
 
     // Don't translate if source equals target
     if (actualSourceLang === targetLang) {
@@ -247,7 +246,7 @@ async function translate(
         // returns the original text for proper nouns, brand names, loanwords, etc.
         // Serve them from cache to avoid repeated expensive model inference.
         if (i < 3) {
-          console.log(`[Offscreen] Cache #${i}: "${t.substring(0, 30)}" -> "${cached.substring(0, 30)}"${cached === t ? ' (identity)' : ''}`);
+          log.debug(`Cache #${i}: "${t.substring(0, 30)}" -> "${cached.substring(0, 30)}"${cached === t ? ' (identity)' : ''}`);
         }
         results[i] = cached;
       } else {
@@ -257,7 +256,7 @@ async function translate(
 
     // Translate uncached items
     if (uncachedItems.length > 0) {
-      console.log(`[Offscreen] Translating ${uncachedItems.length} uncached items`);
+      log.info(`Translating ${uncachedItems.length} uncached items`);
       const uncachedTexts = uncachedItems.map((item) => item.text);
       const translations = await translateWithProvider(
         uncachedTexts,

@@ -6,6 +6,9 @@
 /// <reference types="@webgpu/types" />
 
 import type { WebGPUInfo } from '../types';
+import { createLogger } from './logger';
+
+const log = createLogger('WebGPU');
 
 class WebGPUDetector {
   private _supported = false;
@@ -26,7 +29,7 @@ class WebGPUDetector {
    */
   async detect(): Promise<boolean> {
     if (typeof navigator === 'undefined' || !('gpu' in navigator) || !navigator.gpu) {
-      console.log('[WebGPU] Not supported in this browser');
+      log.info('Not supported in this browser');
       return false;
     }
 
@@ -37,23 +40,23 @@ class WebGPUDetector {
       });
 
       if (!adapter) {
-        console.log('[WebGPU] No GPU adapter available');
+        log.info('No GPU adapter available');
         return false;
       }
 
       this._adapter = adapter;
       this._supported = true;
-      console.log('[WebGPU] Detected and supported');
+      log.info('Detected and supported');
 
       // Log GPU info if available (requestAdapterInfo may not exist in older implementations)
       if ('requestAdapterInfo' in adapter) {
         const info = await (adapter as GPUAdapter & { requestAdapterInfo(): Promise<GPUAdapterInfo> }).requestAdapterInfo();
-        console.log('[WebGPU] GPU:', info.device || 'Unknown');
+        log.info('GPU:', info.device || 'Unknown');
       }
 
       return true;
     } catch (error) {
-      console.log('[WebGPU] Detection error:', (error as Error).message);
+      log.info('Detection error:', (error as Error).message);
       return false;
     }
   }
@@ -77,11 +80,11 @@ class WebGPUDetector {
       });
 
       this._initialized = true;
-      console.log('[WebGPU] Device initialized');
+      log.info('Device initialized');
 
       // Monitor device loss
       this._device.lost.then(() => {
-        console.warn('[WebGPU] Device lost');
+        log.warn('Device lost');
         this._initialized = false;
       });
 

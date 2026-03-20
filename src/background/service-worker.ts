@@ -553,7 +553,7 @@ async function ensureOffscreenDocument(): Promise<void> {
       return;
     }
 
-    console.log('[Background] Creating offscreen document...');
+    log.info('Creating offscreen document...');
 
     // Set the lock synchronously BEFORE the async creation call.
     // This closes the TOCTOU window: any call entering after this point
@@ -568,7 +568,7 @@ async function ensureOffscreenDocument(): Promise<void> {
     await createPromise;
     creatingOffscreen = null;
     offscreenFailureCount = 0;
-    console.log('[Background] Offscreen document created successfully');
+    log.info('Offscreen document created successfully');
   } catch (error) {
     creatingOffscreen = null;
     offscreenFailureCount++;
@@ -627,7 +627,7 @@ async function resetOffscreenDocument(): Promise<void> {
 
     if (contexts.length > 0) {
       await chrome.offscreen.closeDocument();
-      console.log('[Background] Closed existing offscreen document');
+      log.info('Closed existing offscreen document');
     }
   } catch (error) {
     log.warn(' Error closing offscreen document:', error);
@@ -696,7 +696,7 @@ async function sendToOffscreen<T>(
 
       // For offscreen errors, try resetting the document
       if (error.technicalDetails.includes('offscreen')) {
-        console.log('[Background] Attempting offscreen document reset...');
+        log.info('Attempting offscreen document reset...');
         resetOffscreenDocument().catch((resetError) => {
           // Circuit breaker tripped — propagate actionable message
           log.error('Offscreen reset failed:', resetError instanceof Error ? resetError.message : String(resetError));
@@ -905,7 +905,7 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
         return { success: false, error: 'Failed to get settings' };
       }
     default:
-      console.warn(`[Background] Unknown message type: ${(message as { type: string }).type}`);
+      log.warn(`Unknown message type: ${(message as { type: string }).type}`);
       return { success: false, error: `Unknown message type: ${(message as { type: string }).type}` };
   }
 }
@@ -1091,8 +1091,7 @@ async function handleCheckChromeTranslator(): Promise<unknown> {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       world: 'MAIN' as chrome.scripting.ExecutionWorld,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      func: () => typeof (self as any).Translator !== 'undefined',
+      func: () => typeof self.Translator !== 'undefined',
     });
     return { success: true, available: results[0]?.result === true };
   } catch (error) {
@@ -1485,7 +1484,7 @@ async function handleTranslateInner(message: {
       };
     }
 
-    console.log('[Background] Translating:', message.sourceLang, '->', message.targetLang);
+    log.info('Translating:', message.sourceLang, '->', message.targetLang);
 
     // Chrome Built-in Translator: runs in tab's main world (not offscreen)
     // because the Translator API is only available in page contexts.
@@ -1498,14 +1497,12 @@ async function handleTranslateInner(message: {
 
         const texts = Array.isArray(text) ? text : [text];
         // The func runs in the page's main world where Chrome AI APIs exist
-        // on globalThis. TypeScript doesn't know about them here, so we use
-        // (self as any) to access Translator which Chrome 138+ injects.
+        // on globalThis. The Translator type is declared in src/types/chrome-translator.d.ts.
         const results = await chrome.scripting.executeScript({
           target: { tabId },
           world: 'MAIN' as chrome.scripting.ExecutionWorld,
           func: async (textsToTranslate: string[], srcLang: string, tgtLang: string) => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const TranslatorAPI = (self as any).Translator;
+            const TranslatorAPI = self.Translator;
             if (!TranslatorAPI) {
               throw new Error('Chrome Translator API not available (requires Chrome 138+)');
             }
@@ -1596,7 +1593,7 @@ async function handleTranslateInner(message: {
       }
     }
 
-    console.log('[Background] Translation complete');
+    log.info('Translation complete');
     recordUsage(tokenEstimate);
 
     // Cache the result (use actual source lang if auto-detected)
@@ -1633,7 +1630,7 @@ async function handleTranslateInner(message: {
       const report = profiler.getReport(sessionId);
       if (report) {
         profilingReport = report;
-        console.log(profiler.formatReport(sessionId));
+        log.info(profiler.formatReport(sessionId));
       }
     }
 
@@ -2015,7 +2012,7 @@ async function handleGetProviders(): Promise<unknown> {
 // Extension icon click handler
 chrome.action.onClicked.addListener(async (tab) => {
   if (tab.id) {
-    console.log('[Background] Extension icon clicked for tab:', tab.id);
+    log.info('Extension icon clicked for tab:', tab.id);
   }
 });
 
@@ -2262,7 +2259,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 // ============================================================================
 
 chrome.commands.onCommand.addListener(async (command, tab) => {
-  console.log('[Background] Command received:', command);
+  log.info('Command received:', command);
 
   if (!tab?.id) return;
 
@@ -2342,19 +2339,19 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   setupContextMenus();
 
   if (details.reason === 'install') {
-    console.log('[Background] Extension installed');
+    log.info('Extension installed');
 
     // Check if onboarding was already completed (shouldn't happen on fresh install)
     const { onboardingComplete } = await chrome.storage.local.get('onboardingComplete');
     if (!onboardingComplete) {
       // Open onboarding page in a new tab
-      console.log('[Background] Opening onboarding page');
+      log.info('Opening onboarding page');
       chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/index.html') });
     }
 
     // Set default settings (will be overwritten by onboarding if user completes it)
     const browserLang = chrome.i18n.getUILanguage().split('-')[0]; // e.g., 'en-US' -> 'en'
-    console.log('[Background] Browser language detected:', browserLang);
+    log.info('Browser language detected:', browserLang);
     safeStorageSet({
       sourceLang: 'auto',
       targetLang: browserLang || 'en', // Use browser language, fallback to English
@@ -2362,7 +2359,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
       provider: 'opus-mt',
     });
   } else if (details.reason === 'update') {
-    console.log('[Background] Extension updated from', details.previousVersion);
+    log.info('Extension updated from', details.previousVersion);
 
     // Clear cached ML models on update to prevent dtype/format mismatches.
     // Transformers.js caches models in Cache Storage and IndexedDB.
@@ -2378,7 +2375,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
         }
       }
       if (cleared > 0) {
-        console.log(`[Background] Cleared ${cleared} model caches on update`);
+        log.info(`Cleared ${cleared} model caches on update`);
       }
 
       // Also clear IndexedDB model caches
@@ -2386,11 +2383,11 @@ chrome.runtime.onInstalled.addListener(async (details) => {
       for (const db of databases) {
         if (db.name && (db.name.includes('transformers') || db.name.includes('onnx') || db.name.includes('huggingface'))) {
           indexedDB.deleteDatabase(db.name);
-          console.log(`[Background] Cleared IndexedDB: ${db.name}`);
+          log.info(`Cleared IndexedDB: ${db.name}`);
         }
       }
     } catch (e) {
-      console.warn('[Background] Cache clearing on update failed:', e);
+      log.warn('Cache clearing on update failed:', e);
     }
   }
 });
@@ -2400,7 +2397,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   const result = await safeStorageGet<{ provider?: TranslationProviderId }>(['provider']);
   if (result.provider) {
     currentProvider = result.provider;
-    console.log('[Background] Restored provider:', currentProvider);
+    log.info('Restored provider:', currentProvider);
   }
 
   // Auto-detect Chrome Built-in Translator on startup
@@ -2415,15 +2412,14 @@ chrome.runtime.onInstalled.addListener(async (details) => {
           target: { tabId },
           world: 'MAIN' as chrome.scripting.ExecutionWorld,
           func: () => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return typeof (self as any).Translator !== 'undefined';
+            return typeof self.Translator !== 'undefined';
           },
         });
         const chromeBuiltinAvailable = detection[0]?.result === true;
         if (chromeBuiltinAvailable) {
           currentProvider = 'chrome-builtin';
           await safeStorageSet({ provider: 'chrome-builtin' });
-          console.log('[Background] Auto-detected Chrome Built-in Translator, setting as default');
+          log.info('Auto-detected Chrome Built-in Translator, setting as default');
         }
       }
     }
@@ -2435,7 +2431,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
 // Handle extension startup - pre-warm the offscreen document
 chrome.runtime.onStartup.addListener(() => {
-  console.log('[Background] Extension startup, pre-warming offscreen document...');
+  log.info('Extension startup, pre-warming offscreen document...');
   ensureOffscreenDocument().catch((error) => {
     log.warn(' Pre-warm failed (will retry on first use):', error);
   });
@@ -2445,7 +2441,7 @@ chrome.runtime.onStartup.addListener(() => {
 (async () => {
   try {
     await predictionEngine.load();
-    console.log('[Background] Prediction engine initialized');
+    log.info('Prediction engine initialized');
   } catch (error) {
     log.warn('Failed to initialize prediction engine:', error);
   }
@@ -2456,9 +2452,9 @@ chrome.runtime.onStartup.addListener(() => {
 // In MV2 (Firefox), chrome.runtime.onSuspend also applies.
 if (chrome.runtime.onSuspend) {
   chrome.runtime.onSuspend.addListener(() => {
-    console.log('[Background] Service worker suspending, flushing cache...');
+    log.info('Service worker suspending, flushing cache...');
     flushCacheSave();
   });
 }
 
-console.log('[Background] Service worker initialized v2.3 with predictive model preloading');
+log.info('Service worker initialized v2.3 with predictive model preloading');

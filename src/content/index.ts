@@ -1856,7 +1856,7 @@ async function translateBatchWithRetry(
       if (attempt > 0) {
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
         await new Promise((r) => setTimeout(r, delay));
-        console.log(`[Content] Retry attempt ${attempt} for batch`);
+        log.info(`Retry attempt ${attempt} for batch`);
       }
 
       // Extract page context from the first node in the batch for disambiguation
@@ -1896,7 +1896,7 @@ async function translateBatchWithRetry(
 
               // Debug: log first 3 replacements to verify translation is actually different
               if (idx < 3) {
-                console.log(`[Content] DOM Replace #${idx}: "${original.trim().substring(0, 40)}" -> "${finalText.substring(0, 40)}" (same=${original.trim() === finalText})`);
+                log.debug(`DOM Replace #${idx}: "${original.trim().substring(0, 40)}" -> "${finalText.substring(0, 40)}" (same=${original.trim() === finalText})`);
               }
 
               if (!node.parentElement.hasAttribute(ORIGINAL_TEXT_ATTR)) {
@@ -1939,7 +1939,7 @@ async function translateBatchWithRetry(
       lastError = error;
       // Extension context invalidated = service worker restarted, not retryable
       if (error instanceof Error && error.message.includes('Extension context invalidated')) {
-        console.warn('[Content] Extension context invalidated — stopping translation. Reload the page.');
+        log.warn('Extension context invalidated — stopping translation. Reload the page.');
         stopMutationObserver();
         currentSettings = null;
         return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime: 0, domUpdateTime: 0 };
@@ -2006,7 +2006,7 @@ async function translatePage(
     const textNodes = getTextNodes(document.body);
     const scanDuration = performance.now() - scanStart;
     recordContentTiming('domScan', scanDuration);
-    console.log(`[Content] Found ${textNodes.length} text nodes in ${scanDuration.toFixed(2)}ms`);
+    log.info(`Found ${textNodes.length} text nodes in ${scanDuration.toFixed(2)}ms`);
 
     if (textNodes.length === 0) {
       log.info(' No translatable text found');
@@ -2039,7 +2039,7 @@ async function translatePage(
     belowFoldWithPos.sort((a, b) => a.top - b.top);
     const belowFoldNodes = belowFoldWithPos.map(item => item.node);
 
-    console.log(`[Content] Viewport: ${viewportNodes.length} nodes, below fold: ${belowFoldNodes.length} nodes`);
+    log.info(`Viewport: ${viewportNodes.length} nodes, below fold: ${belowFoldNodes.length} nodes`);
 
     // Time glossary loading
     const glossaryStart = performance.now();
@@ -2139,8 +2139,8 @@ async function translatePage(
     initSubtitleTranslation(targetLang);
 
     const totalTime = performance.now() - pageStart;
-    console.log(
-      `[Content] Page translation complete: ${translatedCount} translated, ${errorCount} errors\n` +
+    log.info(
+      `Page translation complete: ${translatedCount} translated, ${errorCount} errors\n` +
       `  Total: ${totalTime.toFixed(2)}ms\n` +
       `  DOM Scan: ${scanDuration.toFixed(2)}ms (${((scanDuration / totalTime) * 100).toFixed(1)}%)\n` +
       `  IPC Total: ${totalIpcTime.toFixed(2)}ms (${((totalIpcTime / totalTime) * 100).toFixed(1)}%)\n` +
@@ -2160,7 +2160,7 @@ async function translatePage(
 
     // Log content timing stats
     if (enableProfiling) {
-      console.log('[Content] Timing Stats:', getContentTimingStats());
+      log.info('Timing Stats:', getContentTimingStats());
     }
   } finally {
     isTranslatingPage = false;
@@ -2221,7 +2221,7 @@ function setupScrollAwareTranslation(
     chunks.push(deferredNodes.slice(i, i + chunkSize));
   }
 
-  console.log(`[Content] Deferring ${deferredNodes.length} nodes in ${chunks.length} scroll-triggered chunks`);
+  log.info(`Deferring ${deferredNodes.length} nodes in ${chunks.length} scroll-triggered chunks`);
 
   const translatedChunks = new Set<number>();
 
@@ -2247,7 +2247,7 @@ function setupScrollAwareTranslation(
         );
         if (validNodes.length === 0) return;
 
-        console.log(`[Content] Scroll-triggered: translating chunk ${chunkIndex + 1}/${chunks.length} (${validNodes.length} nodes)`);
+        log.info(`Scroll-triggered: translating chunk ${chunkIndex + 1}/${chunks.length} (${validNodes.length} nodes)`);
 
         try {
           const batches = await createBatches(validNodes, g);
@@ -2299,7 +2299,7 @@ async function translateDynamicContent(nodes: Node[]): Promise<void> {
       return; // finally block handles cleanup
     }
 
-    console.log(`[Content] Translating ${textNodes.length} dynamic text nodes`);
+    log.info(`Translating ${textNodes.length} dynamic text nodes`);
 
     const g = await loadGlossary();
     const batches = await createBatches(textNodes, g);

@@ -12,6 +12,10 @@
  * - ECGCQ-16: Entropy-coded + block-16 (3.2x compression, ~0.57% error) - BREAKTHROUGH
  */
 
+import { createLogger } from '../core/logger';
+
+const log = createLogger('GCQ');
+
 // Format constants
 const GCQ_MAGIC = 0x34514347; // "GCQ4" little-endian
 const BLOCK_SIZE_DEFAULT = 32;
@@ -214,7 +218,7 @@ export class GCQRuntime {
     });
 
     this.initialized = true;
-    console.log('[GCQ] WebGPU initialized');
+    log.info('WebGPU initialized');
     return true;
   }
 
@@ -226,7 +230,7 @@ export class GCQRuntime {
       throw new Error('GCQRuntime not initialized');
     }
 
-    console.log(`[GCQ] Loading: ${url}`);
+    log.info(`Loading: ${url}`);
     const response = await fetch(url);
     const buffer = await response.arrayBuffer();
 
@@ -267,8 +271,8 @@ export class GCQRuntime {
       codebook[i] = this.fp16ToF32(codebookU16[i]);
     }
 
-    console.log(`[GCQ] Loaded ${manifest.format} v${version}`);
-    console.log(`[GCQ] Codebook: [${Array.from(codebook.slice(0, 4)).map(v => v.toFixed(2)).join(', ')}...]`);
+    log.info(`Loaded ${manifest.format} v${version}`);
+    log.info(`Codebook: [${Array.from(codebook.slice(0, 4)).map(v => v.toFixed(2)).join(', ')}...]`);
 
     const pipeline = manifest.with_residual ? this.gcq4rPipeline! : this.gcq4Pipeline!;
 

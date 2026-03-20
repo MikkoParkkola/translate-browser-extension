@@ -8,8 +8,11 @@ import { BaseProvider } from './base-provider';
 import { createTranslationError } from '../core/errors';
 import { handleProviderHttpError } from '../core/http-errors';
 import { getAllLanguageCodes } from '../core/language-map';
+import { createLogger } from '../core/logger';
 import { CONFIG } from '../config';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
+
+const log = createLogger('GoogleCloud');
 
 const GOOGLE_TRANSLATE_API = 'https://translation.googleapis.com/language/translate/v2';
 
@@ -61,7 +64,7 @@ export class GoogleCloudProvider extends BaseProvider {
           apiKey: stored.google_cloud_api_key,
         };
         this.charactersUsed = stored.google_cloud_chars_used ?? 0;
-        console.log('[GoogleCloud] Initialized');
+        log.info('Initialized');
       }
     } catch (error) {
       console.error('[GoogleCloud] Failed to load config:', error);
@@ -128,7 +131,7 @@ export class GoogleCloudProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch((e) => { console.warn('[GoogleCloud] Failed to read error body:', e); return ''; });
+        const errorText = await response.text().catch((e) => { log.warn('Failed to read error body:', e); return ''; });
         const httpError = handleProviderHttpError(
           response.status,
           'Google Cloud',
@@ -143,7 +146,7 @@ export class GoogleCloudProvider extends BaseProvider {
       // Track character usage
       const charsUsed = texts.reduce((sum, t) => sum + t.length, 0);
       this.charactersUsed += charsUsed;
-      chrome.storage.local.set({ google_cloud_chars_used: this.charactersUsed }).catch((e) => console.warn('[GoogleCloud] Failed to persist char usage:', e));
+      chrome.storage.local.set({ google_cloud_chars_used: this.charactersUsed }).catch((e) => log.warn('Failed to persist char usage:', e));
 
       const results = data.data.translations.map(t => t.translatedText);
       return isArray ? results : results[0];

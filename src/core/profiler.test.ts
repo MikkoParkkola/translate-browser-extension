@@ -761,8 +761,8 @@ describe('measureTime', () => {
     measureTime('my-operation', () => {});
 
     expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[Profiler] my-operation:'),
-      // Has a duration string like "0.01ms"
+      '[Profiler]',
+      expect.stringContaining('my-operation:'),
     );
   });
 
@@ -799,7 +799,8 @@ describe('measureTimeAsync', () => {
     await measureTimeAsync('async-op', async () => 42);
 
     expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[Profiler] async-op:'),
+      '[Profiler]',
+      expect.stringContaining('async-op:'),
     );
   });
 

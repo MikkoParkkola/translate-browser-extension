@@ -11,6 +11,9 @@
 
 import type { ThrottleConfig, ThrottleUsage } from '../types';
 import { CONFIG } from '../config';
+import { createLogger } from './logger';
+
+const log = createLogger('Throttle');
 
 interface QueueItem<T> {
   fn: () => Promise<T>;
@@ -199,7 +202,7 @@ export class Throttle {
 
     for (let i = 0; i < attempts; i++) {
       try {
-        if (debug) console.log('[Throttle] attempt', i + 1);
+        if (debug) log.debug('attempt', i + 1);
         return await this.runWithRateLimit(fn, tokens, { immediate: true });
       } catch (err) {
         const error = err as RetryableError;
@@ -207,7 +210,7 @@ export class Throttle {
         const base = error.retryAfter || wait;
         const jitter = 0.9 + Math.random() * 0.2;
         const delayMs = Math.round(base * jitter);
-        if (debug) console.log('[Throttle] retrying after error', error.message, 'in', delayMs, 'ms');
+        if (debug) log.debug('retrying after error', error.message, 'in', delayMs, 'ms');
         await this.delay(delayMs);
         wait = Math.min(base * 2, 60000);
       }

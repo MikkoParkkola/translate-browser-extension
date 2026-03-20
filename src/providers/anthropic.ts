@@ -8,8 +8,11 @@ import { BaseProvider } from './base-provider';
 import { createTranslationError } from '../core/errors';
 import { handleProviderHttpError } from '../core/http-errors';
 import { getLanguageName, getAllLanguageCodes } from '../core/language-map';
+import { createLogger } from '../core/logger';
 import { CONFIG } from '../config';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
+
+const log = createLogger('Anthropic');
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 
@@ -71,7 +74,7 @@ export class AnthropicProvider extends BaseProvider {
           formality: stored.anthropic_formality ?? 'neutral',
         };
         this.totalTokensUsed = stored.anthropic_tokens_used ?? 0;
-        console.log('[Anthropic] Initialized with model:', this.config.model);
+        log.info('Initialized with model:', this.config.model);
       }
     } catch (error) {
       console.error('[Anthropic] Failed to load config:', error);
@@ -211,7 +214,7 @@ Rules:
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch((e) => { console.warn('[Anthropic] Failed to read error body:', e); return ''; });
+        const errorText = await response.text().catch((e) => { log.warn('Failed to read error body:', e); return ''; });
         const httpError = handleProviderHttpError(
           response.status,
           'Anthropic',
@@ -226,7 +229,7 @@ Rules:
       // Track token usage
       if (data.usage) {
         this.totalTokensUsed += data.usage.input_tokens + data.usage.output_tokens;
-        chrome.storage.local.set({ anthropic_tokens_used: this.totalTokensUsed }).catch((e) => console.warn('[Anthropic] Failed to persist token usage:', e));
+        chrome.storage.local.set({ anthropic_tokens_used: this.totalTokensUsed }).catch((e) => log.warn('Failed to persist token usage:', e));
       }
 
       const translated = data.content[0]?.text?.trim() || '';

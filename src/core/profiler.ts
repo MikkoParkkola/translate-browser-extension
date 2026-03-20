@@ -5,6 +5,10 @@
  * Uses performance.now() for sub-millisecond accuracy.
  */
 
+import { createLogger } from './logger';
+
+const log = createLogger('Profiler');
+
 export interface TimingEntry {
   name: string;
   startTime: number;
@@ -442,7 +446,7 @@ export function measureTime(label: string, fn: () => void): number {
   const start = performance.now();
   fn();
   const duration = performance.now() - start;
-  console.log(`[Profiler] ${label}: ${duration.toFixed(2)}ms`);
+  log.info(`${label}: ${duration.toFixed(2)}ms`);
   return duration;
 }
 
@@ -453,6 +457,6 @@ export async function measureTimeAsync<T>(label: string, fn: () => Promise<T>): 
   const start = performance.now();
   const result = await fn();
   const duration = performance.now() - start;
-  console.log(`[Profiler] ${label}: ${duration.toFixed(2)}ms`);
+  log.info(`${label}: ${duration.toFixed(2)}ms`);
   return { result, duration };
 }

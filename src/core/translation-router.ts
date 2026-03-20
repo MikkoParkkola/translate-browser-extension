@@ -18,6 +18,9 @@ import type {
   ProviderConfig,
   Strategy,
 } from '../types';
+import { createLogger } from './logger';
+
+const log = createLogger('Router');
 
 interface ProviderCandidate {
   provider: TranslationProvider;
@@ -63,7 +66,7 @@ export class TranslationRouter {
     try {
       // Check if chrome.storage is available (may not be in tests or non-extension context)
       if (typeof chrome === 'undefined' || !chrome.storage?.local) {
-        console.log('[Router] chrome.storage not available, using defaults');
+        log.info('chrome.storage not available, using defaults');
         return { ...DEFAULT_PREFERENCES };
       }
 
@@ -71,12 +74,12 @@ export class TranslationRouter {
       const stored = result[STORAGE_KEY] as RouterPreferences | undefined;
 
       if (stored) {
-        console.log('[Router] Loaded preferences from storage:', stored);
+        log.info('Loaded preferences from storage:', stored);
         // Merge with defaults to handle any new fields added in updates
         return { ...DEFAULT_PREFERENCES, ...stored };
       }
 
-      console.log('[Router] No stored preferences, using defaults');
+      log.info('No stored preferences, using defaults');
       return { ...DEFAULT_PREFERENCES };
     } catch (error) {
       console.error('[Router] Failed to load preferences:', error);
@@ -93,12 +96,12 @@ export class TranslationRouter {
     try {
       // Check if chrome.storage is available
       if (typeof chrome === 'undefined' || !chrome.storage?.local) {
-        console.log('[Router] chrome.storage not available, preferences saved in memory only');
+        log.info('chrome.storage not available, preferences saved in memory only');
         return;
       }
 
       await chrome.storage.local.set({ [STORAGE_KEY]: this.preferences });
-      console.log('[Router] Saved preferences to storage:', this.preferences);
+      log.info('Saved preferences to storage:', this.preferences);
     } catch (error) {
       console.error('[Router] Failed to save preferences:', error);
       throw error;
@@ -111,7 +114,7 @@ export class TranslationRouter {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    console.log('[Router] Initializing...');
+    log.info('Initializing...');
 
     // Load preferences from storage (only once)
     if (!this.preferencesLoaded) {
@@ -121,7 +124,7 @@ export class TranslationRouter {
 
     // Detect WebGPU support
     await webgpuDetector.detect();
-    console.log('[Router] WebGPU detection:', webgpuDetector.getInfo());
+    log.info('WebGPU detection:', webgpuDetector.getInfo());
 
     // Initialize providers
     for (const provider of this.providers.values()) {
@@ -133,7 +136,7 @@ export class TranslationRouter {
     }
 
     this.initialized = true;
-    console.log('[Router] Initialized');
+    log.info('Initialized');
   }
 
   /**
@@ -145,7 +148,7 @@ export class TranslationRouter {
       return;
     }
     this.providers.set(provider.id, provider);
-    console.log(`[Router] Registered provider: ${provider.name}`);
+    log.info(`Registered provider: ${provider.name}`);
   }
 
   /**
@@ -165,19 +168,19 @@ export class TranslationRouter {
 
       // Check circuit breaker before attempting provider
       if (!this.circuitBreaker.isAvailable(provider.id)) {
-        console.log(`[Router] Provider ${provider.name} circuit is open, skipping`);
+        log.info(`Provider ${provider.name} circuit is open, skipping`);
         continue;
       }
 
       const isAvailable = await provider.isAvailable();
       if (!isAvailable) {
-        console.log(`[Router] Provider ${provider.name} not available`);
+        log.info(`Provider ${provider.name} not available`);
         continue;
       }
 
       const supportsLanguages = this.supportsLanguagePair(provider, sourceLang, targetLang);
       if (!supportsLanguages) {
-        console.log(`[Router] ${provider.name} doesn't support ${sourceLang}->${targetLang}`);
+        log.info(`${provider.name} doesn't support ${sourceLang}->${targetLang}`);
         continue;
       }
 
@@ -195,7 +198,7 @@ export class TranslationRouter {
     candidates.sort((a, b) => b.score - a.score);
     const selected = candidates[0].provider;
 
-    console.log(`[Router] Selected ${selected.name} (score: ${candidates[0].score})`);
+    log.info(`Selected ${selected.name} (score: ${candidates[0].score})`);
 
     return selected;
   }
@@ -277,7 +280,7 @@ export class TranslationRouter {
       const usage = (this.stats.get(provider.id) || 0) + 1;
       this.stats.set(provider.id, usage);
 
-      console.log(`[Router] Translating with ${provider.name}: ${sourceLang}->${targetLang}`);
+      log.info(`Translating with ${provider.name}: ${sourceLang}->${targetLang}`);
 
       try {
         const result = await provider.translate(text, sourceLang, targetLang, options);
@@ -327,7 +330,7 @@ export class TranslationRouter {
    * Test providers
    */
   async testProviders(): Promise<Record<string, { name: string; passed: boolean; status: string }>> {
-    console.log('[Router] Testing providers...');
+    log.info('Testing providers...');
     const results: Record<string, { name: string; passed: boolean; status: string }> = {};
 
     for (const [id, provider] of this.providers) {
@@ -347,7 +350,7 @@ export class TranslationRouter {
       }
     }
 
-    console.log('[Router] Test results:', results);
+    log.info('Test results:', results);
     return results;
   }
 

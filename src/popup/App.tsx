@@ -8,6 +8,9 @@ import type { Strategy, ModelProgressMessage, TranslationProviderId } from '../t
 import { safeStorageGet, safeStorageSet } from '../core/storage';
 import { browserAPI } from '../core/browser-api';
 import { checkVersion, dismissUpdateNotice, isUpdateDismissed } from '../core/version';
+import { createLogger } from '../core/logger';
+
+const log = createLogger('Popup');
 
 // Detect browser's preferred language, fallback to 'en'
 const getBrowserLanguage = () => {
@@ -70,7 +73,7 @@ export default function App() {
   const setTargetLang = (lang: string) => {
     setTargetLangInternal(lang);
     safeStorageSet({ targetLang: lang });
-    console.log('[Popup] Target language saved:', lang);
+    log.info('Target language saved:', lang);
   };
 
   const setStrategy = (s: Strategy) => {
@@ -100,7 +103,7 @@ export default function App() {
   const handleModelProgress = (message: ModelProgressMessage) => {
     if (message.type !== 'modelProgress') return;
 
-    console.log('[Popup] Model progress:', message.status, message.progress);
+    log.info('Model progress:', message.status, message.progress);
     setCurrentModelId(message.modelId);
 
     // Determine which provider this model belongs to
@@ -205,20 +208,20 @@ export default function App() {
     if (stored.strategy) setStrategyInternal(stored.strategy);
     if (stored.autoTranslate !== undefined) setAutoTranslate(stored.autoTranslate);
     if (stored.provider) setActiveProvider(stored.provider);
-    console.log('[Popup] Loaded preferences:', { source: stored.sourceLang, target: stored.targetLang });
+    log.info('Loaded preferences:', { source: stored.sourceLang, target: stored.targetLang });
 
     // Check Chrome Translator API availability (Chrome 138+)
     try {
       const response = await browserAPI.runtime.sendMessage({ type: 'checkChromeTranslator' });
       if (response?.available) {
-        console.log('[Popup] Chrome Translator API available');
+        log.info('Chrome Translator API available');
         updateModelStatus('chrome-builtin', { isDownloaded: true, error: null });
       } else {
-        console.log('[Popup] Chrome Translator API not available (Chrome 138+ required)');
+        log.info('Chrome Translator API not available (Chrome 138+ required)');
         updateModelStatus('chrome-builtin', { isDownloaded: false, error: 'Chrome 138+ required' });
       }
     } catch (e) {
-      console.log('[Popup] Chrome Translator check failed:', e);
+      log.info('Chrome Translator check failed:', e);
       updateModelStatus('chrome-builtin', { isDownloaded: false, error: 'Not available' });
     }
 
@@ -227,7 +230,7 @@ export default function App() {
       const gpuResponse = await browserAPI.runtime.sendMessage({ type: 'checkWebGPU' });
       const available = gpuResponse?.supported === true;
       setWebGpuAvailable(available);
-      console.log('[Popup] WebGPU available:', available, gpuResponse?.fp16 ? '(fp16)' : '');
+      log.info('WebGPU available:', available, gpuResponse?.fp16 ? '(fp16)' : '');
       if (!available) {
         updateModelStatus('translategemma', {
           isDownloaded: false,
@@ -235,14 +238,14 @@ export default function App() {
         });
         // Auto-switch away from TranslateGemma if it was saved from a previous session
         if (activeProvider() === 'translategemma') {
-          console.log('[Popup] WebGPU unavailable, switching from TranslateGemma to OPUS-MT');
+          log.info('WebGPU unavailable, switching from TranslateGemma to OPUS-MT');
           handleProviderChange('opus-mt');
           setError('TranslateGemma requires WebGPU. Switched to OPUS-MT.');
           setTimeout(() => clearError(), 8000);
         }
       }
     } catch (e) {
-      console.log('[Popup] WebGPU check failed:', e);
+      log.info('WebGPU check failed:', e);
       setWebGpuAvailable(false);
     }
 
@@ -271,7 +274,7 @@ export default function App() {
       strategy: strategy(),
     });
     if (saved) {
-      console.log('[Popup] Auto-translate:', newValue);
+      log.info('Auto-translate:', newValue);
     }
   };
 
@@ -291,7 +294,7 @@ export default function App() {
     try {
       // Notify background service worker
       await browserAPI.runtime.sendMessage({ type: 'setProvider', provider });
-      console.log('[Popup] Provider changed to:', provider);
+      log.info('Provider changed to:', provider);
     } catch (e) {
       console.error('[Popup] Failed to set provider:', e);
     }
@@ -305,7 +308,7 @@ export default function App() {
       return true;
     } catch {
       // Content script not loaded, inject it
-      console.log('[Popup] Injecting content script...');
+      log.info('Injecting content script...');
       try {
         await browserAPI.scripting.executeScript({
           target: { tabId },
@@ -336,7 +339,7 @@ export default function App() {
       const response = await browserAPI.tabs.sendMessage(tab.id, { type: 'toggleBilingualMode' }) as { enabled: boolean } | undefined;
       if (response) {
         setBilingualMode(response.enabled);
-        console.log('[Popup] Bilingual mode:', response.enabled);
+        log.info('Bilingual mode:', response.enabled);
       }
     } catch (e) {
       console.error('[Popup] Toggle bilingual mode failed:', e);

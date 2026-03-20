@@ -99,7 +99,7 @@ export function detectLanguage(text: string): string {
   // minLength=20 prevents false positives on short fragments that
   // would trigger loading many different OPUS-MT models
   const detected = franc(text, { minLength: 20 });
-  console.log(`[LanguageDetection] franc raw detection: "${detected}" for text: "${text.slice(0, 50)}..."`);
+  log.debug(`franc raw detection: "${detected}" for text: "${text.slice(0, 50)}..."`);
 
   if (detected === 'und' || !detected) {
     // Try to guess from character sets
@@ -112,6 +112,6 @@ export function detectLanguage(text: string): string {
   }
 
   const lang = FRANC_TO_ISO[detected];
-  console.log(`[LanguageDetection] Detected language: ${detected} -> ${lang || 'en'}`);
+  log.info(`Detected language: ${detected} -> ${lang || 'en'}`);
   return lang || 'en'; // Default to English if unknown
 }
