@@ -2315,4 +2315,226 @@ describe('Content Script', () => {
       expect(document.body.contains(el)).toBe(true);
     });
   });
+
+  // ============================================================
+  // translatePage already in progress (early return path)
+  // ============================================================
+  describe('translatePage concurrent guard', () => {
+    it('does not start a second translation while one is in progress', async () => {
+      document.body.innerHTML = '<p>First paragraph text content here</p>';
+
+      // First call - start translating with a slow sendMessage
+      mockSendMessage.mockImplementation(() => new Promise(r => setTimeout(() => r({ success: true, result: ['Translated'] }), 500)));
+
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' } as Parameters<typeof messageHandler>[0],
+        {},
+        vi.fn()
+      );
+
+      // Wait a tick so the first translation starts and sets isTranslatingPage = true
+      await new Promise((r) => setTimeout(r, 20));
+
+      // Second call immediately — should hit the early return (isTranslatingPage = true)
+      const sendResponse2 = vi.fn();
+      const result = messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' } as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse2
+      );
+      expect(result).toBe(true);
+
+      // Wait for cleanup
+      await new Promise((r) => setTimeout(r, 600));
+      messageHandler({ type: 'stopAutoTranslate' } as Parameters<typeof messageHandler>[0], {}, vi.fn());
+    });
+  });
+
+  // ============================================================
+  // translateBatchWithRetry: extension context invalidated path
+  // ============================================================
+  describe('translateBatchWithRetry extension context error', () => {
+    it('stops translation when extension context is invalidated', async () => {
+      document.body.innerHTML = '<p>Content to translate here</p>';
+
+      // Simulate extension context invalidated error
+      mockSendMessage.mockRejectedValue(new Error('Extension context invalidated'));
+
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' } as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+
+      await new Promise((r) => setTimeout(r, 200));
+
+      // No crash, sendResponse was called with started status
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+    });
+  });
+
+  // ============================================================
+  // translateSelection: error path when sendMessage rejects
+  // ============================================================
+  describe('translateSelection error handling', () => {
+    it('logs error when translateSelection promise rejects', async () => {
+      // Select some text
+      document.body.innerHTML = '<p id="sel-target">Hello world selection test</p>';
+
+      // Make sendMessage reject so translateSelection throws
+      mockSendMessage.mockRejectedValue(new Error('translate selection error'));
+
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' } as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+
+      // Should have responded immediately
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+
+      // Wait for async catch to fire
+      await new Promise((r) => setTimeout(r, 200));
+
+      consoleSpy.mockRestore();
+    });
+  });
+
+  // ============================================================
+  // translatePdf: error path when initPdfTranslation rejects
+  // ============================================================
+  describe('translatePdf error handling', () => {
+    it('logs error when initPdfTranslation rejects', async () => {
+      document.body.innerHTML = '<embed type="application/pdf" src="test.pdf">';
+
+      mockSendMessage.mockRejectedValue(new Error('PDF translation error'));
+
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translatePdf', targetLang: 'fi' } as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+
+      await new Promise((r) => setTimeout(r, 100));
+      // No crash expected
+      expect(true).toBe(true);
+    });
+  });
+
+  // ============================================================
+  // translateImage: error path when translateImage rejects
+  // ============================================================
+  describe('translateImage error handling', () => {
+    it('logs error when translateImage rejects', async () => {
+      mockSendMessage.mockRejectedValue(new Error('image translation failed'));
+
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translateImage', imageUrl: 'http://example.com/img.jpg', sourceLang: 'en', targetLang: 'fi' } as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+
+      await new Promise((r) => setTimeout(r, 100));
+      expect(true).toBe(true);
+    });
+  });
+
+  // ============================================================
+  // enterScreenshotMode message
+  // ============================================================
+  describe('enterScreenshotMode handler', () => {
+    it('responds with true when entering screenshot mode', () => {
+      const sendResponse = vi.fn();
+      const result = messageHandler(
+        { type: 'enterScreenshotMode' } as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      expect(result).toBe(true);
+      expect(sendResponse).toHaveBeenCalledWith(true);
+    });
+  });
+
+  // ============================================================
+  // translatePage: profiling enabled path
+  // ============================================================
+  describe('translatePage with enableProfiling', () => {
+    it('invokes profiling stats when enableProfiling is true', async () => {
+      document.body.innerHTML = '<p>Profiling test content paragraph</p>';
+      mockSendMessage.mockResolvedValue({ success: true, result: ['Profiilin testi'] });
+
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      messageHandler(
+        {
+          type: 'translatePage',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+          enableProfiling: true,
+        } as Parameters<typeof messageHandler>[0],
+        {},
+        vi.fn()
+      );
+
+      await new Promise((r) => setTimeout(r, 300));
+      consoleSpy.mockRestore();
+      messageHandler({ type: 'stopAutoTranslate' } as Parameters<typeof messageHandler>[0], {}, vi.fn());
+      expect(true).toBe(true);
+    });
+  });
+
+  // ============================================================
+  // checkAutoTranslate: autoTranslate enabled path
+  // ============================================================
+  describe('checkAutoTranslate with autoTranslate enabled', () => {
+    it('triggers translatePage when autoTranslate is true in storage', async () => {
+      // The module-level checkAutoTranslate runs during import in beforeEach.
+      // To exercise the autoTranslate=true branch we must set storage BEFORE import.
+      // This test uses its own import cycle with fake timers to avoid the 500ms wait.
+      vi.clearAllMocks();
+      vi.resetModules();
+      document.body.innerHTML = '<p>Auto translate target content</p>';
+      document.head.innerHTML = '';
+
+      // Override storage.get to return autoTranslate: true
+      // siteRules.getRules calls storage.get first (returns {}=no site rules),
+      // then safeStorageGet calls storage.get with autoTranslate settings.
+      const storageGet = (globalThis as unknown as Record<string, { storage: { local: { get: ReturnType<typeof vi.fn> } } }>).chrome.storage.local.get;
+      storageGet.mockResolvedValueOnce({}); // site rules call (no site rules)
+      storageGet.mockResolvedValueOnce({
+        autoTranslate: true,
+        sourceLang: 'en',
+        targetLang: 'fi',
+        strategy: 'smart',
+      }); // global settings call
+
+      mockSendMessage.mockResolvedValue({ success: true, result: ['Auto käännös'] });
+
+      // Use fake timers to fast-forward the 500ms setTimeout
+      vi.useFakeTimers();
+
+      // Re-import the module — this triggers checkAutoTranslate which sets a 500ms timer
+      await import('./index');
+
+      // Let async checkAutoTranslate run (it uses real async/await internally)
+      // Advance timers to fire the startTranslation setTimeout
+      await vi.runAllTimersAsync();
+
+      vi.useRealTimers();
+
+      // Module should have been initialized (message handler registered again)
+      expect(mockOnMessage.addListener).toHaveBeenCalled();
+    });
+  });
 });

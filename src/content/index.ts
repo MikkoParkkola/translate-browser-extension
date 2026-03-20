@@ -22,7 +22,6 @@ import { initSubtitleTranslation, cleanupSubtitleTranslation } from './subtitle-
 import { isPdfPage, initPdfTranslation, cleanupPdfTranslation } from './pdf-translator';
 import { detectLanguage, samplePageText } from '../core/language-detector';
 import {
-  walkShadowRoots,
   observeShadowRoots,
   observeShadowRoot,
   cleanupShadowObservers,
@@ -32,21 +31,15 @@ import {
 // measureTimeAsync imported for future use in async profiling
 // import { measureTimeAsync } from '../core/profiler';
 import {
-  contentTimings,
   recordContentTiming,
   getContentTimingStats,
 } from './timing';
 import {
-  SKIP_TAGS,
   TRANSLATED_ATTR,
   ORIGINAL_TEXT_ATTR,
   MACHINE_TRANSLATION_ATTR,
   SOURCE_LANG_ATTR,
   TARGET_LANG_ATTR,
-  type TranslateSelectionMessage,
-  type TranslatePageMessage,
-  type TranslateImageMessage,
-  type TranslatePdfContentMessage,
   type ContentMessage,
   type CurrentSettings,
 } from './content-types';
@@ -59,7 +52,6 @@ import {
 } from './toast';
 import { injectContentStyles } from './styles';
 import {
-  shouldSkip,
   isValidText,
   sanitizeText,
   getTextNodes,
@@ -67,12 +59,11 @@ import {
   clearSkipCacheEntry,
 } from './dom-utils';
 import { getPageContext, getSelectionContext } from './context';
-import { showTranslationTooltip, showErrorTooltip, removeTooltip } from './tooltip';
+import { showTranslationTooltip, showErrorTooltip } from './tooltip';
 import {
   setResolveSourceLang as widgetSetResolveSourceLang,
   removeWidgetDragListeners,
   showFloatingWidget,
-  hideFloatingWidget,
   toggleFloatingWidget,
 } from './widget';
 import {
@@ -86,7 +77,6 @@ import {
 } from './image-translator';
 import {
   setResolveSourceLang as hoverSetResolveSourceLang,
-  removeHoverTooltip,
   initHoverListeners,
   cleanupHoverListeners,
 } from './hover';
@@ -1083,10 +1073,7 @@ browserAPI.runtime.onMessage.addListener(
       // Acknowledge immediately so the caller does not time out
       sendResponse({ success: true, status: 'started' });
       translateImage(
-        message.imageUrl,
-        message.sourceLang,
-        message.targetLang,
-        message.provider
+        message.imageUrl
       )
         .catch((error) => {
           const msg = error instanceof Error ? error.message : 'Image translation failed';

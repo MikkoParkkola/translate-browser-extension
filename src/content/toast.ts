@@ -2,8 +2,6 @@
  * Toast notification UI for the content script
  */
 
-import { escapeHtml } from './sanitize';
-
 /** Active progress toast reference (for live updates during translation) */
 let activeProgressToast: HTMLElement | null = null;
 

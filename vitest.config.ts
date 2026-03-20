@@ -29,13 +29,13 @@ export default defineConfig({
         '_legacy',
       ],
       thresholds: {
-        // Global thresholds — reflect actual coverage after 3131 tests.
-        // UI components (Solid.js TDZ) and browser API-heavy files lower the avg;
+        // Global thresholds — reflect actual coverage after 3170 tests.
+        // UI components (Solid.js) and browser API-heavy files lower the avg;
         // core logic and providers are at 85-95%.
-        statements: 70,
-        branches: 65,
-        functions: 64,
-        lines: 74,
+        statements: 74,
+        branches: 70,
+        functions: 66,
+        lines: 78,
       },
     },
   },

@@ -2,7 +2,6 @@
  * Context extraction for improved translation
  */
 
-import { shouldSkip } from './dom-utils';
 import { getDeepSelection } from './shadow-dom-walker';
 
 /**

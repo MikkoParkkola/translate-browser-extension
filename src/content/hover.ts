@@ -5,7 +5,6 @@
 import type { TranslateResponse } from '../types';
 import { escapeHtml } from './sanitize';
 import { shouldSkip } from './dom-utils';
-import { showInfoToast } from './toast';
 import { browserAPI } from '../core/browser-api';
 import { safeStorageGet } from '../core/storage';
 import { createLogger } from '../core/logger';
