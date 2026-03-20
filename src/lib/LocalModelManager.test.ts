@@ -5,112 +5,137 @@
  * model status, health checks, and cleanup.
  */
 
-// Mock all dependencies that LocalModelManager imports from sibling files
-jest.mock('../src/lib/logger.js', () => ({
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
+
+// Hoist mock instances AND constructor mocks so vi.mock factories can reference them
+const {
+  mockValidatorInstance,
+  mockUpdaterInstance,
+  mockPerformanceMonitorInstance,
+  MockModelValidator,
+  MockModelUpdater,
+  MockModelPerformanceMonitor,
+} = vi.hoisted(() => {
+  const validatorInst = {
+    validateModelIntegrity: vi.fn().mockResolvedValue({ valid: true }),
+  };
+  const updaterInst = {
+    checkForUpdates: vi.fn().mockResolvedValue({ hasUpdate: false }),
+    scheduleUpdateCheck: vi.fn(),
+    getUpdateInfo: vi.fn().mockReturnValue({ hasUpdate: false }),
+    destroy: vi.fn(),
+  };
+  const perfMonInst = {
+    startPerformanceMonitoring: vi.fn(),
+    updatePerformanceStats: vi.fn(),
+    getPerformanceSummary: vi.fn().mockReturnValue({
+      avgInferenceTime: 100,
+      totalTranslations: 10,
+    }),
+    destroy: vi.fn(),
+  };
+  return {
+    mockValidatorInstance: validatorInst,
+    mockUpdaterInstance: updaterInst,
+    mockPerformanceMonitorInstance: perfMonInst,
+    // NOTE: Must use regular functions, not arrows — arrows can't be constructors
+    MockModelValidator: vi.fn(function () { return validatorInst; }),
+    MockModelUpdater: vi.fn(function () { return updaterInst; }),
+    MockModelPerformanceMonitor: vi.fn(function () { return perfMonInst; }),
+  };
+});
+
+// Mock all dependencies — paths relative to THIS file (src/lib/)
+vi.mock('./logger.js', () => ({
   logger: {
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
-jest.mock('../src/lib/standardErrorHandler.js', () => ({
+vi.mock('./standardErrorHandler.js', () => ({
   standardErrorHandler: {
-    handleError: jest.fn(function(error) {
-      var handled = new Error(error.message || 'handled error');
-      handled.context = arguments[1];
+    handleError: vi.fn((error: Error, context?: string) => {
+      const handled = new Error(error.message || 'handled error') as Error & { context?: string };
+      handled.context = context;
       return handled;
     }),
   },
 }));
 
-var mockValidatorInstance = {
-  validateModelIntegrity: jest.fn().mockResolvedValue({ valid: true }),
-};
-jest.mock('../src/lib/ModelValidator.js', () => ({
-  ModelValidator: jest.fn().mockImplementation(() => mockValidatorInstance),
+vi.mock('./ModelValidator.js', () => ({
+  ModelValidator: MockModelValidator,
 }));
 
-var mockUpdaterInstance = {
-  checkForUpdates: jest.fn().mockResolvedValue({ hasUpdate: false }),
-  scheduleUpdateCheck: jest.fn(),
-  getUpdateInfo: jest.fn().mockReturnValue({ hasUpdate: false }),
-  destroy: jest.fn(),
-};
-jest.mock('../src/lib/ModelUpdater.js', () => ({
-  ModelUpdater: jest.fn().mockImplementation(() => mockUpdaterInstance),
+vi.mock('./ModelUpdater.js', () => ({
+  ModelUpdater: MockModelUpdater,
 }));
 
-var mockPerformanceMonitorInstance = {
-  startPerformanceMonitoring: jest.fn(),
-  updatePerformanceStats: jest.fn(),
-  getPerformanceSummary: jest.fn().mockReturnValue({
-    avgInferenceTime: 100,
-    totalTranslations: 10,
-  }),
-  destroy: jest.fn(),
-};
-jest.mock('../src/lib/ModelPerformanceMonitor.js', () => ({
-  ModelPerformanceMonitor: jest.fn().mockImplementation(() => mockPerformanceMonitorInstance),
+vi.mock('./ModelPerformanceMonitor.js', () => ({
+  ModelPerformanceMonitor: MockModelPerformanceMonitor,
 }));
 
 // Mock Worker
-var mockWorkerPostMessage = jest.fn();
-var mockWorkerTerminate = jest.fn();
-var workerMessageHandler = null;
+const mockWorkerPostMessage = vi.fn();
+const mockWorkerTerminate = vi.fn();
+let workerMessageHandler: ((event: { data: Record<string, unknown> }) => void) | null = null;
 
 class MockWorker {
-  constructor() {
-    this.postMessage = mockWorkerPostMessage;
-    this.terminate = mockWorkerTerminate;
-    this._listeners = {};
-  }
+  postMessage = mockWorkerPostMessage;
+  terminate = mockWorkerTerminate;
+  _listeners: Record<string, Array<(event: { data: Record<string, unknown> }) => void>> = {};
 
-  addEventListener(event, handler) {
+  addEventListener(event: string, handler: (event: { data: Record<string, unknown> }) => void) {
     this._listeners[event] = this._listeners[event] || [];
     this._listeners[event].push(handler);
     workerMessageHandler = handler;
   }
 
-  removeEventListener(event, handler) {
+  removeEventListener(event: string, handler: (event: { data: Record<string, unknown> }) => void) {
     if (this._listeners[event]) {
-      this._listeners[event] = this._listeners[event].filter(function(h) { return h !== handler; });
+      this._listeners[event] = this._listeners[event].filter((h) => h !== handler);
     }
   }
 }
 
-global.Worker = MockWorker;
+// @ts-expect-error - Mock Worker in global scope
+globalThis.Worker = MockWorker;
 
 // Mock chrome storage
-global.chrome = {
-  runtime: { getURL: jest.fn(function(path) { return 'chrome-extension://test/' + path; }) },
+// @ts-expect-error - Mock chrome in global scope
+globalThis.chrome = {
+  runtime: { getURL: vi.fn((path: string) => 'chrome-extension://test/' + path) },
   storage: {
     local: {
-      get: jest.fn(function(keys, cb) { cb({}); }),
-      set: jest.fn(function(data, cb) { cb(); }),
+      get: vi.fn((keys: unknown, cb: (result: Record<string, unknown>) => void) => { cb({}); }),
+      set: vi.fn((data: unknown, cb: () => void) => { cb(); }),
     },
   },
 };
 
 // Mock caches API
-global.caches = {
-  keys: jest.fn().mockResolvedValue([]),
-  delete: jest.fn().mockResolvedValue(true),
+// @ts-expect-error - Mock caches in global scope
+globalThis.caches = {
+  keys: vi.fn().mockResolvedValue([]),
+  delete: vi.fn().mockResolvedValue(true),
 };
 
-var { LocalModelManager } = require('../src/lib/LocalModelManager.js');
+// Vitest hoists vi.mock() above this import automatically
+import { LocalModelManager } from './LocalModelManager.js';
 
 describe('LocalModelManager', () => {
-  var manager;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let manager: InstanceType<typeof LocalModelManager> & Record<string, any>;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     manager = new LocalModelManager();
 
     // Make postMessage simulate immediate worker response via microtask
-    mockWorkerPostMessage.mockImplementation(function(msg) {
-      Promise.resolve().then(function() {
+    mockWorkerPostMessage.mockImplementation((msg: Record<string, unknown>) => {
+      Promise.resolve().then(() => {
         if (workerMessageHandler) {
           if (msg.type === 'loadModel') {
             workerMessageHandler({
@@ -152,10 +177,10 @@ describe('LocalModelManager', () => {
       expect(manager.modelConfig.displayName).toBe('TranslateGemma 4B Q4_K_M');
     });
 
-    it('initializes validator, updater, and performance monitor', () => {
-      var { ModelValidator } = require('../src/lib/ModelValidator.js');
-      var { ModelUpdater } = require('../src/lib/ModelUpdater.js');
-      var { ModelPerformanceMonitor } = require('../src/lib/ModelPerformanceMonitor.js');
+    it('initializes validator, updater, and performance monitor', async () => {
+      const { ModelValidator } = await import('./ModelValidator.js');
+      const { ModelUpdater } = await import('./ModelUpdater.js');
+      const { ModelPerformanceMonitor } = await import('./ModelPerformanceMonitor.js');
 
       expect(ModelValidator).toHaveBeenCalled();
       expect(ModelUpdater).toHaveBeenCalled();
@@ -165,7 +190,7 @@ describe('LocalModelManager', () => {
 
   describe('init', () => {
     it('initializes successfully', async () => {
-      var result = await manager.init();
+      const result = await manager.init();
 
       expect(result.success).toBe(true);
       expect(manager.isInitialized).toBe(true);
@@ -173,7 +198,7 @@ describe('LocalModelManager', () => {
 
     it('returns early if already initialized', async () => {
       await manager.init();
-      var result = await manager.init();
+      const result = await manager.init();
 
       expect(result.message).toBe('Already initialized');
     });
@@ -188,16 +213,16 @@ describe('LocalModelManager', () => {
 
   describe('getModelConfig (via modelConfig)', () => {
     it('returns correct shard URLs', () => {
-      var urls = manager.modelConfig.modelUrls;
+      const urls: string[] = manager.modelConfig.modelUrls;
       expect(urls).toHaveLength(6);
-      urls.forEach(function(url, i) {
-        var shardNum = String(i + 1).padStart(5, '0');
+      urls.forEach((url, i) => {
+        const shardNum = String(i + 1).padStart(5, '0');
         expect(url).toContain(shardNum + '-of-00006');
       });
     });
 
     it('returns correct inference config', () => {
-      var config = manager.modelConfig.inference;
+      const config = manager.modelConfig.inference;
       expect(config.n_ctx).toBe(2048);
       expect(config.n_batch).toBe(512);
       expect(config.cache_type_k).toBe('q8_0');
@@ -217,7 +242,7 @@ describe('LocalModelManager', () => {
     it('sets downloading state correctly', async () => {
       expect(manager.isDownloading).toBe(false);
 
-      var downloadPromise = manager.downloadModel();
+      const downloadPromise = manager.downloadModel();
       expect(manager.isDownloading).toBe(true);
 
       await downloadPromise;
@@ -232,10 +257,10 @@ describe('LocalModelManager', () => {
     });
 
     it('calls onProgress callback', async () => {
-      var onProgress = jest.fn();
+      const onProgress = vi.fn();
 
-      mockWorkerPostMessage.mockImplementation(function(msg) {
-        Promise.resolve().then(function() {
+      mockWorkerPostMessage.mockImplementation((msg: Record<string, unknown>) => {
+        Promise.resolve().then(() => {
           if (workerMessageHandler && msg.type === 'loadModel') {
             workerMessageHandler({
               data: { type: 'progress', loaded: 500, total: 1000, progress: 50 },
@@ -250,7 +275,7 @@ describe('LocalModelManager', () => {
       await manager.downloadModel(onProgress);
 
       expect(onProgress).toHaveBeenCalled();
-      var lastCall = onProgress.mock.calls[onProgress.mock.calls.length - 1][0];
+      const lastCall = (onProgress.mock.calls[onProgress.mock.calls.length - 1] as unknown[])[0] as Record<string, unknown>;
       expect(lastCall.complete).toBe(true);
       expect(lastCall.progress).toBe(100);
     });
@@ -267,7 +292,7 @@ describe('LocalModelManager', () => {
 
   describe('cancelModelDownload', () => {
     it('sets downloadCancelled flag', () => {
-      manager.modelWorker = { postMessage: jest.fn() };
+      manager.modelWorker = { postMessage: vi.fn() };
       manager.cancelModelDownload();
 
       expect(manager.downloadCancelled).toBe(true);
@@ -277,7 +302,7 @@ describe('LocalModelManager', () => {
 
   describe('getModelStatus', () => {
     it('returns default status when no stored data', async () => {
-      var status = await manager.getModelStatus();
+      const status = await manager.getModelStatus();
 
       expect(status.downloaded).toBe(false);
       expect(status.loaded).toBe(false);
@@ -285,14 +310,14 @@ describe('LocalModelManager', () => {
     });
 
     it('includes performance summary', async () => {
-      var status = await manager.getModelStatus();
+      const status = await manager.getModelStatus();
 
       expect(status.performance).toBeDefined();
       expect(status.performance.avgInferenceTime).toBe(100);
     });
 
     it('includes update info', async () => {
-      var status = await manager.getModelStatus();
+      const status = await manager.getModelStatus();
 
       expect(status.updateInfo).toBeDefined();
       expect(status.updateInfo.hasUpdate).toBe(false);
@@ -301,7 +326,7 @@ describe('LocalModelManager', () => {
 
   describe('getModelInfo', () => {
     it('returns model info object', () => {
-      var info = manager.getModelInfo();
+      const info = manager.getModelInfo();
 
       expect(info.name).toBe('TranslateGemma 4B Q4_K_M');
       expect(info.backend).toBe('wllama');
@@ -311,7 +336,7 @@ describe('LocalModelManager', () => {
 
     it('reflects loaded state', () => {
       manager.modelLoaded = true;
-      var info = manager.getModelInfo();
+      const info = manager.getModelInfo();
       expect(info.ready).toBe(true);
       expect(info.available).toBe(true);
     });
@@ -319,7 +344,7 @@ describe('LocalModelManager', () => {
 
   describe('getDownloadProgress', () => {
     it('returns current download state', () => {
-      var progress = manager.getDownloadProgress();
+      const progress = manager.getDownloadProgress();
       expect(progress.isDownloading).toBe(false);
       expect(progress.progress).toBe(0);
     });
@@ -327,7 +352,7 @@ describe('LocalModelManager', () => {
 
   describe('performHealthCheck', () => {
     it('returns unhealthy when not initialized', async () => {
-      var health = await manager.performHealthCheck();
+      const health = await manager.performHealthCheck();
 
       expect(health.status).toBe('unhealthy');
       expect(health.checks.initialized.passed).toBe(false);
@@ -335,7 +360,7 @@ describe('LocalModelManager', () => {
 
     it('returns with backend check passing for wllama', async () => {
       await manager.init();
-      var health = await manager.performHealthCheck();
+      const health = await manager.performHealthCheck();
 
       expect(health.checks.initialized.passed).toBe(true);
       expect(health.checks.backend.passed).toBe(true);
@@ -345,26 +370,26 @@ describe('LocalModelManager', () => {
 
   describe('setModelUrls', () => {
     it('updates model URLs', () => {
-      var newUrls = ['http://example.com/shard-1.gguf', 'http://example.com/shard-2.gguf'];
+      const newUrls = ['http://example.com/shard-1.gguf', 'http://example.com/shard-2.gguf'];
       manager.setModelUrls(newUrls);
 
       expect(manager.modelConfig.modelUrls).toEqual(newUrls);
     });
 
     it('throws for empty array', () => {
-      expect(function() { manager.setModelUrls([]); }).toThrow('non-empty array');
+      expect(() => { manager.setModelUrls([]); }).toThrow('non-empty array');
     });
 
     it('throws for non-array', () => {
-      expect(function() { manager.setModelUrls('not-an-array'); }).toThrow('non-empty array');
+      expect(() => { manager.setModelUrls('not-an-array'); }).toThrow('non-empty array');
     });
   });
 
   describe('deleteModel', () => {
     it('terminates worker and clears cache', async () => {
       manager.modelWorker = {
-        postMessage: jest.fn(),
-        terminate: jest.fn(),
+        postMessage: vi.fn(),
+        terminate: vi.fn(),
       };
       manager.modelLoaded = true;
 
@@ -375,13 +400,13 @@ describe('LocalModelManager', () => {
     });
 
     it('cleans wllama caches', async () => {
-      global.caches.keys.mockResolvedValue(['wllama-cache', 'other-cache', 'gguf-data']);
+      (globalThis.caches.keys as Mock).mockResolvedValue(['wllama-cache', 'other-cache', 'gguf-data']);
 
       await manager.deleteModel();
 
-      expect(global.caches.delete).toHaveBeenCalledWith('wllama-cache');
-      expect(global.caches.delete).toHaveBeenCalledWith('gguf-data');
-      expect(global.caches.delete).not.toHaveBeenCalledWith('other-cache');
+      expect(globalThis.caches.delete).toHaveBeenCalledWith('wllama-cache');
+      expect(globalThis.caches.delete).toHaveBeenCalledWith('gguf-data');
+      expect(globalThis.caches.delete).not.toHaveBeenCalledWith('other-cache');
     });
   });
 
@@ -400,7 +425,7 @@ describe('LocalModelManager', () => {
 
   describe('_createTranslationPrompt', () => {
     it('formats translation prompt correctly', () => {
-      var prompt = manager._createTranslationPrompt('hello', 'English', 'Finnish');
+      const prompt: string = manager._createTranslationPrompt('hello', 'English', 'Finnish');
 
       expect(prompt).toContain('English');
       expect(prompt).toContain('Finnish');
@@ -434,20 +459,24 @@ describe('LocalModelManager', () => {
 
   describe('retrieveModel', () => {
     it('returns cached status when model downloaded', async () => {
-      global.chrome.storage.local.get.mockImplementation(function(keys, cb) {
-        cb({ model_status: { downloaded: true } });
-      });
+      (globalThis.chrome.storage.local.get as Mock).mockImplementation(
+        (keys: unknown, cb: (result: Record<string, unknown>) => void) => {
+          cb({ model_status: { downloaded: true } });
+        },
+      );
 
-      var result = await manager.retrieveModel();
+      const result = await manager.retrieveModel();
       expect(result).toEqual({ cached: true });
     });
 
     it('returns null when model not downloaded', async () => {
-      global.chrome.storage.local.get.mockImplementation(function(keys, cb) {
-        cb({});
-      });
+      (globalThis.chrome.storage.local.get as Mock).mockImplementation(
+        (keys: unknown, cb: (result: Record<string, unknown>) => void) => {
+          cb({});
+        },
+      );
 
-      var result = await manager.retrieveModel();
+      const result = await manager.retrieveModel();
       expect(result).toBeNull();
     });
   });

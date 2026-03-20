@@ -5,39 +5,45 @@
  * that dispatches messages to load models, run translations, and cleanup.
  */
 
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
 // Set up worker globals before any imports
-global.self = global;
-global.importScripts = jest.fn();
+// @ts-expect-error - Mock worker self
+globalThis.self = globalThis;
+// @ts-expect-error - Mock importScripts
+globalThis.importScripts = vi.fn();
 
 // Mock InferenceEngine before the worker imports it
 const mockEngine = {
-  init: jest.fn().mockResolvedValue({ success: true, hasWebGPU: true }),
-  loadModel: jest.fn().mockResolvedValue({ success: true, modelInfo: { n_ctx: 2048 } }),
-  loadModelFromBlobs: jest.fn().mockResolvedValue({ success: true, modelInfo: { n_ctx: 2048 } }),
-  complete: jest.fn().mockResolvedValue({ text: 'translated', tokensGenerated: 5 }),
-  chatComplete: jest.fn().mockResolvedValue({ text: 'chat translated', tokensGenerated: 4 }),
-  abort: jest.fn(),
-  destroy: jest.fn().mockResolvedValue(undefined),
-  exit: jest.fn().mockResolvedValue(undefined),
-  isReady: jest.fn().mockReturnValue(true),
+  init: vi.fn().mockResolvedValue({ success: true, hasWebGPU: true }),
+  loadModel: vi.fn().mockResolvedValue({ success: true, modelInfo: { n_ctx: 2048 } }),
+  loadModelFromBlobs: vi.fn().mockResolvedValue({ success: true, modelInfo: { n_ctx: 2048 } }),
+  complete: vi.fn().mockResolvedValue({ text: 'translated', tokensGenerated: 5 }),
+  chatComplete: vi.fn().mockResolvedValue({ text: 'chat translated', tokensGenerated: 4 }),
+  abort: vi.fn(),
+  destroy: vi.fn().mockResolvedValue(undefined),
+  exit: vi.fn().mockResolvedValue(undefined),
+  isReady: vi.fn().mockReturnValue(true),
 };
 
-global.InferenceEngine = jest.fn().mockImplementation(() => mockEngine);
+// @ts-expect-error - Mock InferenceEngine in global scope (regular function, not arrow — must be constructable)
+globalThis.InferenceEngine = vi.fn(function () { return mockEngine; });
 
 // Capture postMessage calls
-const postMessageCalls = [];
-global.postMessage = jest.fn(function() { postMessageCalls.push(arguments[0]); });
+const postMessageCalls: Record<string, unknown>[] = [];
+globalThis.postMessage = vi.fn((msg: Record<string, unknown>) => { postMessageCalls.push(msg); });
 
-// Load the worker module
-require('../src/llamacpp-worker.js');
+// Load the worker module (side-effectful — sets self.onmessage)
+await import('./llamacpp-worker.js');
 
 describe('llamacpp-worker', () => {
-  let onmessage;
+  let onmessage: (event: { data: Record<string, unknown> }) => Promise<void>;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     postMessageCalls.length = 0;
-    onmessage = global.self.onmessage;
+    // @ts-expect-error - accessing worker onmessage
+    onmessage = globalThis.self.onmessage;
 
     // Reset engine mock state
     mockEngine.init.mockResolvedValue({ success: true, hasWebGPU: true });
@@ -47,13 +53,13 @@ describe('llamacpp-worker', () => {
     mockEngine.isReady.mockReturnValue(true);
   });
 
-  function sendMessage(data) {
-    return onmessage({ data: data });
+  function sendMessage(data: Record<string, unknown>) {
+    return onmessage({ data });
   }
 
   describe('loadModel message', () => {
     it('initializes engine and loads model from URLs', async () => {
-      var urls = [
+      const urls = [
         'http://example.com/shard-001.gguf',
         'http://example.com/shard-002.gguf',
       ];
@@ -71,26 +77,28 @@ describe('llamacpp-worker', () => {
         expect.any(Function),
       );
 
-      var loadedMsg = postMessageCalls.find(function(m) { return m.type === 'modelLoaded'; });
+      const loadedMsg = postMessageCalls.find((m) => m.type === 'modelLoaded');
       expect(loadedMsg).toBeDefined();
-      expect(loadedMsg.modelInfo).toEqual({ n_ctx: 2048 });
+      expect(loadedMsg!.modelInfo).toEqual({ n_ctx: 2048 });
     });
 
     it('posts progress updates during model loading', async () => {
-      mockEngine.loadModel.mockImplementation(function(urls, config, onProgress) {
-        if (onProgress) {
-          onProgress({ loaded: 500, total: 1000, progress: 50 });
-          onProgress({ loaded: 1000, total: 1000, progress: 100 });
-        }
-        return Promise.resolve({ success: true, modelInfo: { n_ctx: 2048 } });
-      });
+      mockEngine.loadModel.mockImplementation(
+        (urls: string[], config: unknown, onProgress?: (p: Record<string, number>) => void) => {
+          if (onProgress) {
+            onProgress({ loaded: 500, total: 1000, progress: 50 });
+            onProgress({ loaded: 1000, total: 1000, progress: 100 });
+          }
+          return Promise.resolve({ success: true, modelInfo: { n_ctx: 2048 } });
+        },
+      );
 
       await sendMessage({
         type: 'loadModel',
         modelUrls: ['http://example.com/model.gguf'],
       });
 
-      var progressMsgs = postMessageCalls.filter(function(m) { return m.type === 'progress'; });
+      const progressMsgs = postMessageCalls.filter((m) => m.type === 'progress');
       expect(progressMsgs.length).toBe(2);
       expect(progressMsgs[0].progress).toBe(50);
       expect(progressMsgs[1].progress).toBe(100);
@@ -104,24 +112,24 @@ describe('llamacpp-worker', () => {
         modelUrls: ['http://example.com/model.gguf'],
       });
 
-      var errorMsg = postMessageCalls.find(function(m) { return m.type === 'error'; });
+      const errorMsg = postMessageCalls.find((m) => m.type === 'error');
       expect(errorMsg).toBeDefined();
-      expect(errorMsg.message).toContain('Failed to load model');
+      expect(errorMsg!.message).toContain('Failed to load model');
     });
   });
 
   describe('loadModelFromBlobs message', () => {
     it('loads model from blobs', async () => {
-      var blobs = [new Blob(['data'])];
+      const blobs = [new Blob(['data'])];
 
       await sendMessage({
         type: 'loadModelFromBlobs',
-        blobs: blobs,
+        blobs,
         config: {},
       });
 
       expect(mockEngine.loadModelFromBlobs).toHaveBeenCalledWith(blobs, {});
-      var loadedMsg = postMessageCalls.find(function(m) { return m.type === 'modelLoaded'; });
+      const loadedMsg = postMessageCalls.find((m) => m.type === 'modelLoaded');
       expect(loadedMsg).toBeDefined();
     });
   });
@@ -139,11 +147,11 @@ describe('llamacpp-worker', () => {
         requestId: 'req-1',
       });
 
-      var resultMsg = postMessageCalls.find(function(m) { return m.type === 'translationComplete'; });
+      const resultMsg = postMessageCalls.find((m) => m.type === 'translationComplete');
       expect(resultMsg).toBeDefined();
-      expect(resultMsg.requestId).toBe('req-1');
-      expect(resultMsg.translatedText).toBe('translated');
-      expect(resultMsg.tokensGenerated).toBe(5);
+      expect(resultMsg!.requestId).toBe('req-1');
+      expect(resultMsg!.translatedText).toBe('translated');
+      expect(resultMsg!.tokensGenerated).toBe(5);
     });
 
     it('posts error when model not loaded', async () => {
@@ -155,11 +163,11 @@ describe('llamacpp-worker', () => {
         requestId: 'req-err',
       });
 
-      var errorMsg = postMessageCalls.find(function(m) {
-        return m.type === 'error' && m.requestId === 'req-err';
-      });
+      const errorMsg = postMessageCalls.find(
+        (m) => m.type === 'error' && m.requestId === 'req-err',
+      );
       expect(errorMsg).toBeDefined();
-      expect(errorMsg.message).toContain('not loaded');
+      expect(errorMsg!.message).toContain('not loaded');
     });
 
     it('handles translation errors', async () => {
@@ -174,17 +182,17 @@ describe('llamacpp-worker', () => {
         requestId: 'req-fail',
       });
 
-      var errorMsg = postMessageCalls.find(function(m) {
-        return m.type === 'error' && m.requestId === 'req-fail';
-      });
+      const errorMsg = postMessageCalls.find(
+        (m) => m.type === 'error' && m.requestId === 'req-fail',
+      );
       expect(errorMsg).toBeDefined();
-      expect(errorMsg.message).toContain('Translation failed');
+      expect(errorMsg!.message).toContain('Translation failed');
     });
 
     it('handles abort by posting translationCancelled', async () => {
       await sendMessage({ type: 'loadModel', modelUrls: ['http://example.com/m.gguf'] });
       mockEngine.isReady.mockReturnValue(true);
-      var abortError = new Error('Aborted');
+      const abortError = new Error('Aborted');
       abortError.name = 'AbortError';
       mockEngine.complete.mockRejectedValueOnce(abortError);
       postMessageCalls.length = 0;
@@ -195,9 +203,9 @@ describe('llamacpp-worker', () => {
         requestId: 'req-abort',
       });
 
-      var cancelMsg = postMessageCalls.find(function(m) {
-        return m.type === 'translationCancelled' && m.requestId === 'req-abort';
-      });
+      const cancelMsg = postMessageCalls.find(
+        (m) => m.type === 'translationCancelled' && m.requestId === 'req-abort',
+      );
       expect(cancelMsg).toBeDefined();
     });
   });
@@ -208,20 +216,20 @@ describe('llamacpp-worker', () => {
       mockEngine.isReady.mockReturnValue(true);
       postMessageCalls.length = 0;
 
-      var messages = [{ role: 'user', content: 'Translate: hello' }];
+      const messages = [{ role: 'user', content: 'Translate: hello' }];
 
       await sendMessage({
         type: 'chatTranslate',
-        messages: messages,
+        messages,
         maxTokens: 128,
         temperature: 0.3,
         requestId: 'chat-1',
       });
 
-      var resultMsg = postMessageCalls.find(function(m) { return m.type === 'translationComplete'; });
+      const resultMsg = postMessageCalls.find((m) => m.type === 'translationComplete');
       expect(resultMsg).toBeDefined();
-      expect(resultMsg.requestId).toBe('chat-1');
-      expect(resultMsg.translatedText).toBe('chat translated');
+      expect(resultMsg!.requestId).toBe('chat-1');
+      expect(resultMsg!.translatedText).toBe('chat translated');
     });
   });
 
@@ -243,9 +251,9 @@ describe('llamacpp-worker', () => {
       await sendMessage({ type: 'cleanup', requestId: 'cleanup-1' });
 
       expect(mockEngine.destroy).toHaveBeenCalled();
-      var completeMsg = postMessageCalls.find(function(m) { return m.type === 'cleanupComplete'; });
+      const completeMsg = postMessageCalls.find((m) => m.type === 'cleanupComplete');
       expect(completeMsg).toBeDefined();
-      expect(completeMsg.requestId).toBe('cleanup-1');
+      expect(completeMsg!.requestId).toBe('cleanup-1');
     });
   });
 
@@ -253,11 +261,11 @@ describe('llamacpp-worker', () => {
     it('posts error for unknown type', async () => {
       await sendMessage({ type: 'unknownType', requestId: 'unk-1' });
 
-      var errorMsg = postMessageCalls.find(function(m) {
-        return m.type === 'error' && m.requestId === 'unk-1';
-      });
+      const errorMsg = postMessageCalls.find(
+        (m) => m.type === 'error' && m.requestId === 'unk-1',
+      );
       expect(errorMsg).toBeDefined();
-      expect(errorMsg.message).toContain('Unknown message type');
+      expect(errorMsg!.message).toContain('Unknown message type');
     });
   });
 
@@ -275,11 +283,11 @@ describe('llamacpp-worker', () => {
     it('posts error when legacy load without modelUrls', async () => {
       await sendMessage({ type: 'load', requestId: 'legacy-1' });
 
-      var errorMsg = postMessageCalls.find(function(m) {
-        return m.type === 'error' && m.requestId === 'legacy-1';
-      });
+      const errorMsg = postMessageCalls.find(
+        (m) => m.type === 'error' && m.requestId === 'legacy-1',
+      );
       expect(errorMsg).toBeDefined();
-      expect(errorMsg.message).toContain('no longer supported');
+      expect(errorMsg!.message).toContain('no longer supported');
     });
   });
 });

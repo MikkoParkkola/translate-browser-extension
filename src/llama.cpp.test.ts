@@ -5,30 +5,37 @@
  * completion, chat completion, and cleanup.
  */
 
-// Mock the wllama bundle before importing the module under test
-const mockWllamaInstance = {
-  loadModelFromUrl: jest.fn().mockResolvedValue(undefined),
-  loadModel: jest.fn().mockResolvedValue(undefined),
-  getLoadedContextInfo: jest.fn().mockReturnValue({ n_ctx: 2048, model: 'test-model' }),
-  createCompletion: jest.fn().mockResolvedValue('translated text'),
-  createChatCompletion: jest.fn().mockResolvedValue('chat translated text'),
-  tokenize: jest.fn().mockResolvedValue([1, 2, 3, 4]),
-  exit: jest.fn().mockResolvedValue(undefined),
-};
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-const MockWllama = jest.fn().mockImplementation(() => mockWllamaInstance);
+// Hoist mock instances + constructor (vi.fn arrow functions can't be constructors inside hoisted)
+const { mockWllamaInstance, MockWllama } = vi.hoisted(() => {
+  const inst = {
+    loadModelFromUrl: vi.fn().mockResolvedValue(undefined),
+    loadModel: vi.fn().mockResolvedValue(undefined),
+    getLoadedContextInfo: vi.fn().mockReturnValue({ n_ctx: 2048, model: 'test-model' }),
+    createCompletion: vi.fn().mockResolvedValue('translated text'),
+    createChatCompletion: vi.fn().mockResolvedValue('chat translated text'),
+    tokenize: vi.fn().mockResolvedValue([1, 2, 3, 4]),
+    exit: vi.fn().mockResolvedValue(undefined),
+  };
+  return {
+    mockWllamaInstance: inst,
+    MockWllama: vi.fn(function () { return inst; }),
+  };
+});
 
-jest.mock('../src/wllama.bundle.js', () => ({
+vi.mock('./wllama.bundle.js', () => ({
   Wllama: MockWllama,
 }));
 
-const { InferenceEngine, detectWebGPU } = require('../src/llama.cpp.js');
+// Vitest hoists vi.mock() above this import automatically
+import { InferenceEngine, detectWebGPU } from './llama.cpp.js';
 
 describe('detectWebGPU', () => {
-  const originalNavigator = global.navigator;
+  const originalNavigator = globalThis.navigator;
 
   afterEach(() => {
-    Object.defineProperty(global, 'navigator', {
+    Object.defineProperty(globalThis, 'navigator', {
       value: originalNavigator,
       writable: true,
       configurable: true,
@@ -36,7 +43,7 @@ describe('detectWebGPU', () => {
   });
 
   it('returns false when navigator is undefined', async () => {
-    Object.defineProperty(global, 'navigator', {
+    Object.defineProperty(globalThis, 'navigator', {
       value: undefined,
       writable: true,
       configurable: true,
@@ -45,7 +52,7 @@ describe('detectWebGPU', () => {
   });
 
   it('returns false when navigator.gpu is missing', async () => {
-    Object.defineProperty(global, 'navigator', {
+    Object.defineProperty(globalThis, 'navigator', {
       value: {},
       writable: true,
       configurable: true,
@@ -54,8 +61,8 @@ describe('detectWebGPU', () => {
   });
 
   it('returns false when requestAdapter returns null', async () => {
-    Object.defineProperty(global, 'navigator', {
-      value: { gpu: { requestAdapter: jest.fn().mockResolvedValue(null) } },
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { gpu: { requestAdapter: vi.fn().mockResolvedValue(null) } },
       writable: true,
       configurable: true,
     });
@@ -63,8 +70,8 @@ describe('detectWebGPU', () => {
   });
 
   it('returns true when adapter is available', async () => {
-    Object.defineProperty(global, 'navigator', {
-      value: { gpu: { requestAdapter: jest.fn().mockResolvedValue({ name: 'test' }) } },
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { gpu: { requestAdapter: vi.fn().mockResolvedValue({ name: 'test' }) } },
       writable: true,
       configurable: true,
     });
@@ -72,8 +79,8 @@ describe('detectWebGPU', () => {
   });
 
   it('returns false when requestAdapter throws', async () => {
-    Object.defineProperty(global, 'navigator', {
-      value: { gpu: { requestAdapter: jest.fn().mockRejectedValue(new Error('GPU error')) } },
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { gpu: { requestAdapter: vi.fn().mockRejectedValue(new Error('GPU error')) } },
       writable: true,
       configurable: true,
     });
@@ -82,16 +89,17 @@ describe('detectWebGPU', () => {
 });
 
 describe('InferenceEngine', () => {
-  let engine;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let engine: any;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     engine = new InferenceEngine();
 
     // Set up navigator.gpu for WebGPU detection
-    Object.defineProperty(global, 'navigator', {
+    Object.defineProperty(globalThis, 'navigator', {
       value: {
-        gpu: { requestAdapter: jest.fn().mockResolvedValue({ name: 'test' }) },
+        gpu: { requestAdapter: vi.fn().mockResolvedValue({ name: 'test' }) },
         hardwareConcurrency: 8,
       },
       writable: true,
@@ -99,13 +107,15 @@ describe('InferenceEngine', () => {
     });
 
     // Mock chrome.runtime for extension URL resolution
-    global.chrome = {
-      runtime: { getURL: jest.fn(function(path) { return 'chrome-extension://test-id/' + path; }) },
+    // @ts-expect-error - Mock chrome in global scope
+    globalThis.chrome = {
+      runtime: { getURL: vi.fn((path: string) => 'chrome-extension://test-id/' + path) },
     };
   });
 
   afterEach(() => {
-    delete global.chrome;
+    // @ts-expect-error - Clean up chrome mock
+    delete globalThis.chrome;
   });
 
   describe('constructor', () => {
@@ -131,7 +141,7 @@ describe('InferenceEngine', () => {
     it('passes WASM paths using chrome.runtime.getURL', async () => {
       await engine.init();
 
-      const [wasmPaths] = MockWllama.mock.calls[0];
+      const [wasmPaths] = MockWllama.mock.calls[0] as [Record<string, string>];
       expect(wasmPaths['single-thread/wllama.wasm']).toMatch(/chrome-extension:\/\//);
       expect(wasmPaths['multi-thread/wllama.wasm']).toMatch(/chrome-extension:\/\//);
     });
@@ -139,19 +149,19 @@ describe('InferenceEngine', () => {
     it('respects suppressNativeLog option', async () => {
       await engine.init({ suppressNativeLog: true });
 
-      const [, options] = MockWllama.mock.calls[0];
+      const [, options] = MockWllama.mock.calls[0] as [unknown, Record<string, unknown>];
       expect(options.suppressNativeLog).toBe(true);
     });
 
     it('respects parallelDownloads option', async () => {
       await engine.init({ parallelDownloads: 5 });
 
-      const [, options] = MockWllama.mock.calls[0];
+      const [, options] = MockWllama.mock.calls[0] as [unknown, Record<string, unknown>];
       expect(options.parallelDownloads).toBe(5);
     });
 
     it('detects WebGPU as false when not available', async () => {
-      Object.defineProperty(global, 'navigator', {
+      Object.defineProperty(globalThis, 'navigator', {
         value: {},
         writable: true,
         configurable: true,
@@ -181,7 +191,7 @@ describe('InferenceEngine', () => {
       expect(engine.isModelLoaded).toBe(true);
       expect(mockWllamaInstance.loadModelFromUrl).toHaveBeenCalledTimes(1);
 
-      const [urls] = mockWllamaInstance.loadModelFromUrl.mock.calls[0];
+      const [urls] = mockWllamaInstance.loadModelFromUrl.mock.calls[0] as [string[]];
       expect(urls).toEqual(['http://example.com/model.gguf']);
     });
 
@@ -195,14 +205,14 @@ describe('InferenceEngine', () => {
       const result = await engine.loadModel(shardUrls);
 
       expect(result.success).toBe(true);
-      const [urls] = mockWllamaInstance.loadModelFromUrl.mock.calls[0];
+      const [urls] = mockWllamaInstance.loadModelFromUrl.mock.calls[0] as [string[]];
       expect(urls).toEqual(shardUrls);
     });
 
     it('passes config defaults', async () => {
       await engine.loadModel('http://example.com/model.gguf');
 
-      const [, config] = mockWllamaInstance.loadModelFromUrl.mock.calls[0];
+      const [, config] = mockWllamaInstance.loadModelFromUrl.mock.calls[0] as [unknown, Record<string, unknown>];
       expect(config.n_ctx).toBe(2048);
       expect(config.n_batch).toBe(512);
       expect(config.cache_type_k).toBe('q8_0');
@@ -212,21 +222,24 @@ describe('InferenceEngine', () => {
     it('passes config overrides', async () => {
       await engine.loadModel('http://example.com/model.gguf', { n_ctx: 4096, n_batch: 1024 });
 
-      const [, config] = mockWllamaInstance.loadModelFromUrl.mock.calls[0];
+      const [, config] = mockWllamaInstance.loadModelFromUrl.mock.calls[0] as [unknown, Record<string, unknown>];
       expect(config.n_ctx).toBe(4096);
       expect(config.n_batch).toBe(1024);
     });
 
     it('calls onProgress callback during loading', async () => {
-      mockWllamaInstance.loadModelFromUrl.mockImplementation((urls, config) => {
-        if (config.progressCallback) {
-          config.progressCallback({ loaded: 500, total: 1000 });
-          config.progressCallback({ loaded: 1000, total: 1000 });
-        }
-        return Promise.resolve();
-      });
+      mockWllamaInstance.loadModelFromUrl.mockImplementation(
+        (urls: string[], config: Record<string, unknown>) => {
+          const progressCallback = config.progressCallback as ((p: Record<string, number>) => void) | undefined;
+          if (progressCallback) {
+            progressCallback({ loaded: 500, total: 1000 });
+            progressCallback({ loaded: 1000, total: 1000 });
+          }
+          return Promise.resolve();
+        },
+      );
 
-      const onProgress = jest.fn();
+      const onProgress = vi.fn();
       await engine.loadModel('http://example.com/model.gguf', {}, onProgress);
 
       expect(onProgress).toHaveBeenCalledTimes(2);
@@ -314,9 +327,9 @@ describe('InferenceEngine', () => {
     it('respects maxTokens and temperature options', async () => {
       await engine.complete('prompt', { maxTokens: 256, temperature: 0.7 });
 
-      const [, options] = mockWllamaInstance.createCompletion.mock.calls[0];
+      const [, options] = mockWllamaInstance.createCompletion.mock.calls[0] as [unknown, Record<string, unknown>];
       expect(options.nPredict).toBe(256);
-      expect(options.sampling.temp).toBe(0.7);
+      expect((options.sampling as Record<string, unknown>).temp).toBe(0.7);
     });
 
     it('falls back to approximate token count when tokenize fails', async () => {
