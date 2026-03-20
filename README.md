@@ -1,51 +1,59 @@
-# TRANSLATE! by Mikko
+# TRANSLATE!
 
-![Version](https://img.shields.io/badge/version-2.1.3-blue)
-![License](https://img.shields.io/badge/license-GPL--3.0--or--later-green)
+[![CI](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/ci.yml/badge.svg)](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/codeql.yml/badge.svg)](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/codeql.yml)
+![Tests](https://img.shields.io/badge/tests-3%2C154%20passed-brightgreen)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue?logo=typescript&logoColor=white)
+![License](https://img.shields.io/github/license/MikkoParkkola/translate-browser-extension)
 ![Chrome](https://img.shields.io/badge/Chrome-116%2B-brightgreen?logo=googlechrome&logoColor=white)
 ![Safari](https://img.shields.io/badge/Safari-macOS%20%7C%20iOS-blue?logo=safari&logoColor=white)
 ![Firefox](https://img.shields.io/badge/Firefox-supported-orange?logo=firefox&logoColor=white)
 
-*Formerly known as Qwen Translator Extension.*
+Browser extension that translates web pages, PDFs, and selected text. Works where built-in browser translation falls short.
 
-AI-powered browser extension that translates entire web pages, PDFs, and selected text using multiple translation providers -- including local, offline models that run directly in your browser.
+## Why use this instead of built-in translation?
 
-## Key Features
+Built-in browser translation (Chrome, Safari, Firefox) works well for many pages. But if you've run into any of these, TRANSLATE! is for you:
 
-- **Multi-provider translation** -- connect DashScope (Qwen-MT-Turbo), OpenAI, Anthropic, Mistral, Gemini, DeepL, Google Cloud, OpenRouter, or Ollama. Switch providers on the fly and load-balance across them.
-- **Local offline translation** -- run OPUS-MT models in-browser via WebAssembly and WebGPU. No API key, no network, no data leaves your device.
-- **Full-page translation** -- translates all visible text on a page, including dynamically loaded content, Shadow DOM, and iframes.
-- **PDF translation** -- built-in PDF viewer with layout-preserving translation. Supports provider document APIs (Google Cloud, DeepL) and a local WASM pipeline.
-- **Smart batching and caching** -- identical strings are translated once and reused. Hidden or off-screen elements are skipped to save tokens. Session cache minimizes repeat API calls.
-- **Rate limiting and failover** -- per-provider request/token limits, automatic retry on 429 errors, and configurable failover chains across providers.
-- **Auto-translate** -- optionally translate pages on load without clicking anything.
+**The translate bar never shows up.** Browsers decide whether to offer translation based on the page's language tag. If the tag is missing, wrong, or matches your browser language, the translate bar silently doesn't appear -- even when the page is clearly in another language. TRANSLATE! lets you translate any page on demand, regardless of what the page declares.
+
+**You need to translate a PDF.** Chrome's built-in translation does not work on PDFs. TRANSLATE! includes a PDF viewer that translates documents while preserving layout, and lets you save the translated version.
+
+**You use Safari or iOS.** Safari has Apple's own translation (added in Safari 15 / macOS Monterey), but it supports fewer languages and isn't available on all pages. On iOS, options are even more limited. TRANSLATE! works across Chrome, Safari, Firefox, Edge, and Brave with the same feature set.
+
+**You work with less common languages.** Translation quality for major pairs like English-Spanish or English-French is good across most services. For less common pairs -- Finnish-Thai, Estonian-Korean, Latvian-Vietnamese -- quality varies significantly between providers. TRANSLATE! lets you route through whichever provider handles your language pair best, whether that's DeepL, a specialized LLM, or a dedicated translation API like Qwen-MT.
+
+**Pages with mixed languages don't translate correctly.** When a page contains text in multiple languages (e.g., a German forum on an English-tagged site), built-in translation often either skips it entirely or translates everything as if it were one language. TRANSLATE! detects language per text node using trigram analysis.
+
+**You want control over where your text goes.** Built-in translation sends your page text to Google (Chrome), Apple (Safari), or Mozilla's servers (Firefox). TRANSLATE! lets you choose: use your own API keys with any provider, run OPUS-MT models locally in the browser via WebAssembly, or self-host with Ollama. Your text, your choice.
+
+## What it does
+
+- **Full-page translation** -- translates visible text on a page, including dynamically loaded content and iframes. A MutationObserver watches for DOM changes so content added after page load is caught.
+- **PDF translation** -- built-in PDF viewer with layout-preserving translation. Supports provider document APIs (Google Cloud, DeepL) and a local WASM pipeline. Save translated PDFs.
+- **10 translation providers** -- DashScope (Qwen-MT), OpenAI, Anthropic, Mistral, Gemini, DeepL, Google Cloud, OpenRouter, Ollama, and in-browser OPUS-MT. Switch on the fly.
+- **Failover and load balancing** -- if your primary provider hits a rate limit or fails, requests automatically route to the next provider in your chain.
+- **Smart batching and caching** -- identical strings translated once and reused. Hidden elements skipped. Session cache minimizes repeat API calls.
+- **Auto-translate** -- optionally translate pages on load.
 - **100+ languages** -- source language auto-detection with trigram-based fallback.
 - **Keyboard shortcuts** -- `Ctrl+Shift+P` translate page, `Ctrl+Shift+T` translate selection, `Ctrl+Shift+U` undo.
-- **Diagnostics dashboard** -- live usage metrics, cost tracking, latency histogram, and connectivity checks.
+- **Diagnostics dashboard** -- live usage metrics, cost tracking, latency histogram.
 
-## Screenshots
+## Honest trade-offs
 
-<p align="center">
-  <img src="pics/Screenshot 2025-09-20 at 19.43.13.png" alt="Extension popup showing translation controls" width="600">
-</p>
+TRANSLATE! is not a drop-in replacement for built-in translation in every scenario:
 
-<p align="center">
-  <img src="pics/Screenshot 2025-09-20 at 19.43.43.png" alt="Settings page with provider configuration" width="600">
-</p>
+- **Setup required.** Most providers need an API key. Built-in translation works with zero configuration.
+- **API costs.** Providers charge per character or token. Built-in translation is free. (The local OPUS-MT option is free but lower quality for most pairs.)
+- **Not instant.** Built-in translation is tightly integrated with the browser engine. TRANSLATE! works as a content script, which means a short delay on large pages.
 
-<p align="center">
-  <img src="pics/Screenshot 2025-09-20 at 20.11.12.png" alt="Diagnostics dashboard with usage metrics" width="600">
-</p>
+If built-in translation works reliably for your languages and pages, you probably don't need this. TRANSLATE! is for the cases where it doesn't.
 
-## How It Works
-
-TRANSLATE! started as a Qwen-MT-Turbo translation extension and evolved into a multi-provider translation platform. The architecture routes translation requests through a background service worker that manages provider selection, rate limiting, and caching.
-
-**Provider routing**: When you translate a page, text nodes are batched and sent to your configured providers. If the primary provider hits a rate limit or fails, requests automatically fail over to the next provider in your chain. Per-provider weights control how parallel batches are distributed.
-
-**Local-first option**: For privacy-sensitive use or offline scenarios, the extension bundles OPUS-MT models that run entirely in your browser via WebAssembly. WebGPU acceleration is used when available. No API key needed, no data transmitted.
-
-**Dynamic page support**: A MutationObserver watches for DOM changes, so single-page apps, infinite scrolls, and dynamically inserted content are translated as they appear. Shadow DOM and same-origin iframes are supported.
+<!-- Screenshots: TODO — take fresh marketing screenshots showing:
+  1. Popup translating a real page (before/after)
+  2. PDF translation with layout preserved
+  3. Provider settings with multiple providers configured
+  Place in pics/ and uncomment when ready. -->
 
 ## Browser Support
 
@@ -153,126 +161,69 @@ See also: [docs/PROVIDERS.md](docs/PROVIDERS.md)
 ## Usage
 
 1. Click the toolbar icon to open the popup.
-2. Use **Translate page** to translate the current tab or enable **Auto-translate** for pages on load.
-3. Click the gear button to manage providers or adjust settings.
+2. Press **Translate page** or use `Ctrl+Shift+P`.
+3. Enable **Auto-translate** to translate pages on load without clicking.
 
-Translations apply to dynamically added content as well as embedded frames or third-party widgets whenever the browser grants access. If translation fails the affected text is kept in a queue and retried until the API succeeds. When the translated text matches the original the node is marked as untranslatable and skipped. Translations are cached for the current session to minimise API calls.
-Identical strings are translated only once and reused across matching nodes, and hidden or off-screen elements are ignored so tokens are spent only on visible text.
-Translated nodes keep their original leading and trailing whitespace. Nodes are batched to minimise API requests and maximise throughput. While translations are running the extension's toolbar icon shows an activity badge and a temporary status box in the bottom-right corner of the page reports current work or errors. The box disappears automatically when the extension is idle.
+The extension translates visible text, watches for new content via MutationObserver, and caches translations for the session. Failed translations are queued and retried automatically. A status indicator appears in the bottom-right corner while work is in progress.
 
-### PDF Translation
+### PDF translation
 
-Top-level PDF navigations are opened in a custom viewer. The viewer can translate PDFs in two ways:
+PDFs open in a built-in viewer. Two translation modes:
 
-- **Provider document translation** -- if Google Cloud or DeepL Pro credentials are present the entire file is sent to the provider's `translateDocument` API and the returned PDF is displayed.
-- **WASM pipeline** -- otherwise the viewer extracts text, translates page segments through the normal text API and renders a new PDF locally.
-  Translated PDFs can be saved via the viewer's **Save translated PDF** action.
+- **Document API** -- sends the file to Google Cloud or DeepL's document translation endpoint (if configured). Returns a fully translated PDF.
+- **Text extraction** -- extracts text, translates via your configured providers, renders a new PDF locally. Works with any provider.
 
-### Rate Limiting
+Translated PDFs can be saved from the viewer.
 
-The extension and CLI queue translation requests to stay within the provider limits.
-The background worker maintains a single queue so multiple page nodes are translated sequentially rather than all at once, preventing bursts that would trigger HTTP 429 errors. Nodes are batched into combined translation requests to reduce the overall query count. If the provider still returns a 429 response the request is retried automatically.
-You can adjust the limits under **Requests per minute** and **Tokens per minute** in the extension popup or via `--requests` and `--tokens` on the CLI. Defaults are 60 requests and 100,000 tokens every 60 seconds.
-The popup displays live usage for the last minute and colour-coded bars turn yellow or red as limits are approached. Usage statistics refresh every second and also show total requests, total tokens and the current queue length.
+### Rate limiting and costs
 
-### Pricing & Load Balancing
+Requests are queued to stay within provider limits (default: 60 req/min, 100K tokens/min). The popup shows live usage bars that turn yellow/red as limits approach. If a provider returns 429, the request retries automatically or fails over to the next provider.
 
-Each provider entry stores an approximate monthly character limit and a cost-per-token estimate. Defaults assume roughly 500k free characters for Google and DeepL. The popup reports 24-hour and 7-day spend based on these rates.
-Translations can be distributed across multiple providers. `providerOrder` defines the failover chain and per-provider weights bias how parallel batches are split. The background service checks remaining quotas and skips providers that drop below the `requestThreshold`, effectively load-balancing work across those with capacity.
+Cost tracking is built in -- the popup shows 24-hour and 7-day spend per provider.
 
-### Troubleshooting
+## Troubleshooting
 
-- Console logs: enable **Debug logging** in the popup. Both provider calls and content-script steps log structured events. Copy any on-page error and look for matching console entries.
-- Test Settings timeout: often CSP/CORS. The background may fall back to `XMLHttpRequest`, but strict environments can still block. Try a simple page like `https://example.com` and re-run.
-- Active tab check: the test must run on a normal web page (not `chrome://` or extension pages).
-- Page unchanged: confirm source/target languages. With debug on, the console warns if the translation equals the original (already target language).
-- CSP/DOM restrictions: some sites block script execution/DOM updates. Translation may be limited on such pages.
-- Frames and Shadow DOM: same-origin iframes and open Shadow DOM are supported. Cross-origin frames require host permissions; otherwise skipped.
-- Common HTTP errors:
-  - 401/403 unauthorized/forbidden: missing/invalid API key. Check provider config and key format. Example: OpenAI uses `Bearer <key>`, DeepL uses `DeepL-Auth-Key <key>`.
-  - 429 rate limit: requests are retried automatically respecting `Retry-After`. Lower requests/tokens per minute in provider settings or wait.
-  - 5xx provider outage: transient; automatic retries apply. If persistent, switch provider or model.
-- Multi-provider failover: ensure your `providerOrder`, `endpoints`, and (optional) `detector` are set. Content flows pass these values to translation, enabling fallback beyond the popup.
-- Diagnostics: use the popup **Diagnostics** panel. It shows usage, cache/TM stats, configured providers, cost summary, and a latency histogram. Use **Copy Report** to share details when filing issues.
+<details>
+<summary>Common issues (click to expand)</summary>
+
+- **Page not translating**: Check source/target language settings. Enable **Debug logging** in the popup and check the browser console.
+- **Translate bar doesn't appear on some sites**: This is a browser limitation, not a TRANSLATE! issue. Use `Ctrl+Shift+P` or the popup button instead.
+- **401/403 errors**: Invalid API key. Check provider config -- OpenAI uses `Bearer <key>`, DeepL uses `DeepL-Auth-Key <key>`.
+- **429 rate limit**: Requests retry automatically. Lower requests/tokens per minute in settings, or wait.
+- **CSP-restricted sites**: Some sites block content script DOM changes. Translation may be limited.
+- **Frames**: Same-origin iframes and open Shadow DOM are supported. Cross-origin frames require host permissions.
+
+Use the **Diagnostics** panel (popup home page) for cache stats, connectivity checks, and a latency histogram. **Copy Report** generates a shareable summary for bug reports.
+</details>
+
+## CLI
+
+A command-line translator is included:
+
+```sh
+node cli/translate.js -k <API_KEY> -s <source_lang> -t <target_lang>
+```
+
+Streams translations by default. Use `--no-stream` for batch mode, `-d` for debug output. See `cli/translate.js --help`.
 
 ## Development
 
-Run the unit tests with:
-
 ```sh
-npm install
-npm test
+npm install          # Install dependencies
+npm test             # Run 3,100+ unit tests
+npm run test:e2e     # Playwright PDF visual comparison tests
+npm run build        # Chrome production build (dist/)
+npm run build:firefox # Firefox build (dist-firefox/)
+npm run build:safari  # Safari via Xcode converter
 ```
 
-Run the end-to-end PDF visual comparison tests (headless) with:
-
-```sh
-npm install
-npm run test:e2e
-```
-
-These tests launch a headless browser to open `src/qa/compare.html`, render two PDFs via `pdf.js`, and compute a visual diff score. The page also supports automation via query params: `?src1=/path/A.pdf&src2=/path/B.pdf&diff=1&autoload=1`, and exposes `window.diffScore` (0..1, lower is better).
-
-### Building the extension
-
-`dist/` is no longer tracked in git. Run `npm run build` whenever you need to regenerate the unpacked extension bundle before loading it in Chrome or Safari development environments.
-
-### Provider registry & throttling
-
-Built-in providers (DashScope, OpenAI, Mistral, OpenRouter, Gemini, Anthropic, DeepL, Google, Qwen and Local WASM) are registered through `qwenProviders.initProviders()`. This initializer is no longer invoked automatically; call it before translating if you rely on the default set. `qwenProviders.isInitialized()` reports whether defaults have been loaded. Tests or host applications may create isolated registries with `qwenProviders.createRegistry()` and pre-register custom providers before calling `initProviders()` to avoid overrides. Each provider may expose a `throttle` config and receives its own rate-limit queue created via `createThrottle`, with optional per-context limits (for example, separate queues for streaming vs. standard requests) to tune burst behavior.
-
-#### Quick start
-
-```js
-import { initProviders } from './providers';
-import { qwenTranslate } from './translator';
-
-initProviders(); // or qwenProviders.ensureProviders();
-
-const res = await qwenTranslate({ text: 'Hello', target: 'es' });
-```
-
-`qwenTranslate` also accepts `autoInit: true` to invoke `initProviders()` on-demand:
-
-```js
-await qwenTranslate({ text: 'Hello', target: 'es', autoInit: true });
-```
-
-`qwenFetchStrategy.choose()` decides whether requests go directly or through the background proxy; override the selection via `qwenFetchStrategy.setChooser(fn)` for testing or custom routing.
-
-Structured logging is available through `qwenLogger`. Log levels (`error`, `warn`, `info`, `debug`) respect a global `logLevel` config and logs can be captured in tests via `addCollector`. If translation is attempted before `qwenProviders.initProviders()` is called, the translator emits a warning reminding you to initialize the default providers.
-
-Privacy and test PDFs
-
-- Do not commit personal or private PDFs to the repository. Root-level `*.pdf` files are ignored by `.gitignore` and CI checks will fail if any are present.
-- E2E tests use synthetic PDFs generated at runtime (via `pdf-lib`) to avoid storing files.
-- For local testing with private PDFs, open the viewer (`src/pdfViewer.html`) using `file:` or temporary `blob:` URLs; do not upload such files to the repo or CI.
-
-## Command Line Utility
-
-A simple translator CLI is included in `cli/translate.js`. It streams translations as you type by default. Use `--no-stream` for request/response mode.
-
-### Usage
-
-```sh
-node cli/translate.js -k <API_KEY> [-e endpoint] [-m model] [--requests N] [--tokens M] [-d] [--no-stream] -s <source_lang> -t <target_lang>
-```
-
-If no endpoint is specified the tool defaults to `https://dashscope-intl.aliyuncs.com/api/v1`.
-Use `-d` to print detailed request and response logs.
-Press `Ctrl+C` or `Ctrl+D` to exit.
-
-### Development
-
-Basic type definitions for the translator APIs ship in `types/index.d.ts` and are referenced via the package `types` field.
+`dist/` is not tracked in git. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for architecture details, provider internals, and the throttle/registry system.
 
 ## Contributing
 
-Use [Changesets](https://github.com/changesets/changesets) for all substantive updates. Documentation-only changes should set the release type to `none` so the package version remains the same. These entries are skipped in the published changelog.
+Use [Changesets](https://github.com/changesets/changesets) for all updates. Documentation-only changes should use release type `none`.
 
-## Nightly Rebase
-
-A scheduled workflow rebases open pull requests nightly to keep branches current with `main`. Pull requests with merge conflicts are skipped and the workflow tags the author, who must resolve conflicts promptly so their branch can re-enter the merge queue. See [AGENTS.md#nightly-rebase](AGENTS.md#nightly-rebase) for full details.
+A nightly workflow rebases open PRs to keep branches current with `main`. See [AGENTS.md](AGENTS.md) for details.
 
 ## License
 

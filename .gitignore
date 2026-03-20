@@ -41,6 +41,7 @@ tools/icu4x-segmenter/pkg/
 # AI assistant artifacts
 .aider*
 .claude/agent-memory/
+.serena/
 
 # Backup files
 *.bak
@@ -52,6 +53,25 @@ tools/icu4x-segmenter/pkg/
 coverage/
 cov-*/
 _legacy/
+
+# Screenshots and store assets (binary, not source)
+pics/
+store-assets/
+
+# Internal dev docs (not for public consumption)
+docs/internal/
+
+# Local-only directories
+.ruff_cache/
+.tiers/
+metrics/
+data/
+retros/
+
+# Root-level dev planning docs
+/WEBGPU_MIGRATION.md
+/STORE_LISTING.md
+/STORE_SUBMISSION_CHECKLIST.md
 
 # Sensitive research documentation (stored in private repo)
 docs/GCQ_TECHNICAL_SPECIFICATION.md
