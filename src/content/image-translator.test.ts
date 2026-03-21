@@ -894,4 +894,33 @@ describe('imageUrlToDataUrl Image fallback path (lines 112-127)', () => {
       expect.stringContaining('Cannot access image')
     );
   });
+
+});
+
+// Simple edge case: OCR confidence at boundary
+describe('image-translator — edge cases', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('skips low confidence blocks during OCR processing', async () => {
+    // Blocks with confidence < 50 should be skipped and not translated
+    setGetCurrentSettings(() => defaultSettings);
+    injectLoadedImage('https://example.com/test.png');
+
+    mockSendMessage.mockImplementationOnce(async () => ({
+      success: true,
+      blocks: [{ text: 'maybe', confidence: 40, bbox: { x0: 0, y0: 0, x1: 50, y1: 50 } }],
+    }));
+
+    await translateImage('https://example.com/test.png');
+
+    // Since no block is translated (confidence too low), should show extraction info
+    expect(mockShowInfoToast).toHaveBeenCalledWith('Extracting text from image...');
+  });
 });

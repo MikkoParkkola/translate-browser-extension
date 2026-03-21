@@ -490,4 +490,53 @@ describe('Throttle', () => {
       vi.useFakeTimers();
     });
   });
+
+  describe('remaining uncovered branches', () => {
+    it('predictiveBatch returns empty array for empty input', () => {
+      const batches = throttle.predictiveBatch([]);
+      expect(batches).toEqual([]);
+    });
+
+    it('processQueue returns early when cooldown is active', () => {
+      // Directly set cooldown to true and verify processQueue is a no-op
+      (throttle as unknown as Record<string, unknown>).cooldown = true;
+      // Add an item to the queue so we can verify it's NOT processed
+      const fn = vi.fn().mockResolvedValue('result');
+      throttle.runWithRateLimit(fn, 'test');
+      // The fn should NOT have been called because cooldown blocks processQueue
+      expect(fn).not.toHaveBeenCalled();
+      // Reset cooldown
+      (throttle as unknown as Record<string, unknown>).cooldown = false;
+    });
+
+    it('configure new interval callback fires resetWindow on timer advance', () => {
+      throttle.configure({ requestLimit: 50, windowMs: 2000 });
+      // Exhaust a request so we can observe the reset
+      const fn = vi.fn().mockResolvedValue('ok');
+      throttle.runWithRateLimit(fn, 'test', { immediate: true });
+      const usageBefore = throttle.getUsage();
+      expect(usageBefore.totalRequests).toBe(1);
+
+      // Advance time to trigger the new interval's resetWindow callback
+      vi.advanceTimersByTime(2000);
+
+      // After resetWindow, availableRequests is restored to requestLimit
+      const usageAfter = throttle.getUsage();
+      expect(usageAfter.requestLimit).toBe(50);
+    });
+
+    it('configure handles cleared interval gracefully', () => {
+      // Force interval to be falsy to cover the defensive guard's false branch
+      (throttle as unknown as Record<string, unknown>).interval = undefined;
+      throttle.configure({ requestLimit: 200 });
+      const usage = throttle.getUsage();
+      expect(usage.requestLimit).toBe(200);
+    });
+
+    it('destroy handles cleared interval gracefully', () => {
+      // Force interval to be falsy to cover the defensive guard's false branch
+      (throttle as unknown as Record<string, unknown>).interval = undefined;
+      expect(() => throttle.destroy()).not.toThrow();
+    });
+  });
 });

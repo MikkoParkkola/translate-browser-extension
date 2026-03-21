@@ -374,6 +374,14 @@ describe('getTextNodesFromNodes', () => {
     const result = getTextNodesFromNodes([shadowRoot]);
     expect(result).not.toContain(shadowText);
   });
+
+  it('ignores nodes that are not TEXT, ELEMENT, or DOCUMENT_FRAGMENT (line 160 false branch)', () => {
+    const comment = document.createComment('this is a comment');
+    document.body.appendChild(comment);
+
+    const result = getTextNodesFromNodes([comment]);
+    expect(result).toHaveLength(0);
+  });
 });
 
 // ============================================================================
