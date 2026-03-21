@@ -1641,4 +1641,97 @@ describe('GCQ Runtime', () => {
       expect(result).toBeInstanceOf(Float32Array);
     });
   });
+
+  // =========================================================================
+  // Additional branch coverage
+  // =========================================================================
+  describe('uncovered branch coverage', () => {
+    it('handles negative denormal codebook entry (line 289, sign=1 branch)', async () => {
+      const gcqBuf = buildGCQBuffer({ codebookValues: [], components: [] });
+      const codebookOffset = 24;
+      const u16View = new Uint16Array(gcqBuf, codebookOffset, 16);
+      // 0x8001 = sign=1, exp=0, frac=1 → negative denormal
+      u16View[0] = 0x8001;
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(gcqBuf),
+      }));
+
+      const runtime = await GCQRuntime.create();
+      const model = await runtime.loadModel('http://x/neg_denorm_cb.gcq');
+      expect(model).toBeDefined();
+    });
+
+    it('falls back to manifest block_size when tensor block_size is 0 (line 369)', async () => {
+      const tensorSize = 32;
+      const gcqBuf = buildGCQBuffer({
+        components: [{
+          name: 'fb',
+          tensors: [{
+            name: 'w',
+            originalSize: tensorSize,
+          }],
+        }],
+      });
+
+      // Patch the manifest JSON: set tensor block_size to 0 so the runtime
+      // falls back to manifest.block_size (which remains 32).
+      const dv = new DataView(gcqBuf);
+      const mOff = Number(dv.getBigUint64(8, true));
+      const mSize = Number(dv.getBigUint64(16, true));
+      const manifest = JSON.parse(new TextDecoder().decode(new Uint8Array(gcqBuf, mOff, mSize)));
+      manifest.components[0].tensors[0].block_size = 0;
+      const newManifestBytes = new TextEncoder().encode(JSON.stringify(manifest));
+      const newBuf = new ArrayBuffer(mOff + newManifestBytes.byteLength);
+      new Uint8Array(newBuf).set(new Uint8Array(gcqBuf, 0, mOff));
+      new Uint8Array(newBuf, mOff).set(newManifestBytes);
+      const newDv = new DataView(newBuf);
+      newDv.setBigUint64(16, BigInt(newManifestBytes.byteLength), true);
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(newBuf),
+      }));
+
+      const runtime = await GCQRuntime.create();
+      const model = await runtime.loadModel('http://x/fallback_bs.gcq');
+      const result = await model.getTensor('fb', 'w');
+      expect(result).toBeInstanceOf(Float32Array);
+    });
+
+    it('falls back to BLOCK_SIZE_DEFAULT when both tensor and manifest block_size are 0 (line 369)', async () => {
+      const tensorSize = 32;
+      const gcqBuf = buildGCQBuffer({
+        components: [{
+          name: 'fb2',
+          tensors: [{
+            name: 'w',
+            originalSize: tensorSize,
+          }],
+        }],
+      });
+
+      // Patch manifest: zero out both tensor-level and manifest-level block_size
+      const dv = new DataView(gcqBuf);
+      const mOff = Number(dv.getBigUint64(8, true));
+      const mSize = Number(dv.getBigUint64(16, true));
+      const manifest = JSON.parse(new TextDecoder().decode(new Uint8Array(gcqBuf, mOff, mSize)));
+      manifest.components[0].tensors[0].block_size = 0;
+      manifest.block_size = 0;
+      const newManifestBytes = new TextEncoder().encode(JSON.stringify(manifest));
+      const newBuf = new ArrayBuffer(mOff + newManifestBytes.byteLength);
+      new Uint8Array(newBuf).set(new Uint8Array(gcqBuf, 0, mOff));
+      new Uint8Array(newBuf, mOff).set(newManifestBytes);
+      const newDv = new DataView(newBuf);
+      newDv.setBigUint64(16, BigInt(newManifestBytes.byteLength), true);
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(newBuf),
+      }));
+
+      const runtime = await GCQRuntime.create();
+      const model = await runtime.loadModel('http://x/fallback_default.gcq');
+      const result = await model.getTensor('fb2', 'w');
+      expect(result).toBeInstanceOf(Float32Array);
+    });
+  });
 });

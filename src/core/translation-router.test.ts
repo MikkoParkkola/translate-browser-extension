@@ -806,3 +806,90 @@ describe('TranslationRouter uncovered branches', () => {
     });
   });
 });
+
+describe('TranslationRouter — targeted branch coverage', () => {
+  /**
+   * Helper: create a mock provider with given traits.
+   */
+  function mockProvider(overrides: {
+    id: string;
+    name: string;
+    type: 'local' | 'cloud';
+    qualityTier: 'standard' | 'premium';
+    costPerMillion: number;
+  }) {
+    return {
+      ...overrides,
+      icon: '',
+      initialize: vi.fn().mockResolvedValue(undefined),
+      isAvailable: vi.fn().mockResolvedValue(true),
+      getSupportedLanguages: vi.fn().mockReturnValue([{ src: 'en', tgt: 'fi' }]),
+      translate: vi.fn().mockResolvedValue(`${overrides.name} translation`),
+      test: vi.fn().mockResolvedValue(true),
+      getInfo: vi.fn().mockReturnValue({ ...overrides, icon: '' }),
+    };
+  }
+
+  describe('scoreProvider — fast strategy (lines 240-242)', () => {
+    it('gives +50 to local provider and +0 to cloud provider under fast strategy', async () => {
+      const router = new TranslationRouter();
+      await router.initialize(); // must initialize first to avoid loadPreferences overwriting
+
+      const cloud = mockProvider({ id: 'fast-cloud', name: 'FastCloud', type: 'cloud', qualityTier: 'standard', costPerMillion: 10 });
+      router.registerProvider(cloud);
+
+      await router.savePreferences({ enabledProviders: ['opus-mt-local', 'fast-cloud'], prioritize: 'fast', preferLocal: false });
+
+      // local provider should win because of +50 fast bonus
+      const selected = await router.selectProvider('en', 'fi');
+      expect(selected.type).toBe('local');
+    });
+  });
+
+  describe('scoreProvider — cost strategy (lines 245-247)', () => {
+    it('gives +50 to free provider and +0 to paid provider under cost strategy', async () => {
+      const router = new TranslationRouter();
+      await router.initialize();
+
+      const paid = mockProvider({ id: 'cost-paid', name: 'CostPaid', type: 'cloud', qualityTier: 'standard', costPerMillion: 20 });
+      router.registerProvider(paid);
+
+      await router.savePreferences({ enabledProviders: ['opus-mt-local', 'cost-paid'], prioritize: 'cost', preferLocal: false });
+
+      // free local provider (costPerMillion=0) should win
+      const selected = await router.selectProvider('en', 'fi');
+      expect(selected.costPerMillion).toBe(0);
+    });
+  });
+
+  describe('scoreProvider — balanced + premium (line 252)', () => {
+    it('gives +20 to premium provider under balanced strategy', async () => {
+      const router = new TranslationRouter();
+      await router.initialize();
+
+      const premium = mockProvider({ id: 'bal-prem', name: 'BalPrem', type: 'cloud', qualityTier: 'premium', costPerMillion: 10 });
+      router.registerProvider(premium);
+
+      // balanced + preferLocal=false → local gets 100+40=140, premium gets 100+20=120 → local still wins
+      // but both branches of the if are exercised (local type and premium qualityTier)
+      await router.savePreferences({ enabledProviders: ['opus-mt-local', 'bal-prem'], prioritize: 'balanced', preferLocal: false });
+
+      const selected = await router.selectProvider('en', 'fi');
+      // local still wins on balanced (40 > 20) but both branches are now exercised
+      expect(selected).toBeDefined();
+    });
+  });
+
+  describe('getStats — orphaned stats entry (line 364 false branch)', () => {
+    it('skips stats entries whose provider is no longer registered', async () => {
+      const router = new TranslationRouter();
+      // Inject an orphaned stats entry for a provider ID that doesn't exist
+      (router as unknown as { stats: Map<string, number> }).stats.set('removed-provider', 42);
+
+      const stats = router.getStats();
+      // The orphaned entry should NOT appear in the output
+      expect(stats).not.toHaveProperty('removed-provider');
+      expect(Object.keys(stats)).toHaveLength(0);
+    });
+  });
+});

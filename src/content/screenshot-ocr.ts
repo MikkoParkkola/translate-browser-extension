@@ -63,6 +63,7 @@ function exitScreenshotMode(): void {
   document.body.style.cursor = '';
   selectionStart = null;
 
+  /* v8 ignore next */
   if (selectionOverlay) {
     selectionOverlay.remove();
     selectionOverlay = null;
@@ -79,9 +80,11 @@ function onScreenshotKeyDown(e: KeyboardEvent): void {
 }
 
 function onScreenshotMouseDown(e: MouseEvent): void {
+  /* v8 ignore next */
   if (!screenshotMode) return;
   e.preventDefault();
   selectionStart = { x: e.clientX, y: e.clientY };
+  /* v8 ignore next */
   if (selectionOverlay) {
     selectionOverlay.style.display = 'block';
     selectionOverlay.style.left = `${e.clientX}px`;

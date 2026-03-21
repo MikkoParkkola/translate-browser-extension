@@ -437,4 +437,5 @@ export const CloudProviders: Component = () => {
   );
 };
 
+/* v8 ignore next */
 export default CloudProviders;

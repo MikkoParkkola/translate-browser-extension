@@ -706,4 +706,76 @@ describe('shadow-dom-walker — branch coverage', () => {
 
     Object.defineProperty(document, 'activeElement', { value: document.body, configurable: true });
   });
+
+  it('MutationObserver callback scans added element nodes for shadow roots (lines 183-187)', async () => {
+    // Create host with shadow root BEFORE interceptor is installed so it
+    // bypasses the synchronous onShadowRootDiscovered path.
+    const host = document.createElement('div');
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = '<span>mutation observed</span>';
+
+    const discovered: ShadowRoot[] = [];
+    const cleanup = observeShadowRoots(document, (sr) => {
+      discovered.push(sr);
+    });
+
+    // Nothing discovered yet (host is detached)
+    const beforeCount = discovered.length;
+
+    // Append to DOM — triggers MutationObserver which calls
+    // scanForExistingShadowRoots on the added element node
+    document.body.appendChild(host);
+
+    await flushObservers();
+
+    // The MutationObserver callback should have found the shadow root
+    expect(discovered.length).toBeGreaterThan(beforeCount);
+    expect(discovered).toContain(shadow);
+
+    cleanup();
+  });
+
+  it('MutationObserver callback ignores non-element added nodes (text nodes)', async () => {
+    const discovered: ShadowRoot[] = [];
+    const cleanup = observeShadowRoots(document, (sr) => {
+      discovered.push(sr);
+    });
+
+    const beforeCount = discovered.length;
+
+    // Add a text node — exercises the nodeType !== ELEMENT_NODE branch
+    document.body.appendChild(document.createTextNode('just text'));
+
+    await flushObservers();
+
+    // No new shadow roots discovered from a text node
+    expect(discovered.length).toBe(beforeCount);
+
+    cleanup();
+  });
+
+  it('scanForExistingShadowRoots handles DocumentFragment with shadow host children', () => {
+    const frag = document.createDocumentFragment();
+    const host = document.createElement('div');
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = '<span>frag shadow</span>';
+    frag.appendChild(host);
+
+    const discoveredRoots: ShadowRoot[] = [];
+    _testing.scanForExistingShadowRoots(frag, (sr: ShadowRoot) => {
+      discoveredRoots.push(sr);
+    });
+
+    expect(discoveredRoots).toContain(shadow);
+  });
+
+  it('scanForExistingShadowRoots skips non-element nodes (e.g. comment)', () => {
+    const comment = document.createComment('skip me');
+    const discoveredRoots: ShadowRoot[] = [];
+    _testing.scanForExistingShadowRoots(comment, (sr: ShadowRoot) => {
+      discoveredRoots.push(sr);
+    });
+    expect(discoveredRoots).toHaveLength(0);
+  });
+
 });

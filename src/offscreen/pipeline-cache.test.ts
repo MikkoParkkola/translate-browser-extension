@@ -312,4 +312,35 @@ describe('Pipeline Cache', () => {
       expect(getCachedPipeline('throw-4')).not.toBeNull();
     });
   });
+
+  // ------------------------------------------------------------------
+  // Additional coverage: falsy branches for evicted?.pipeline and
+  // entry.pipeline when pipeline is null/undefined (defensive guards)
+  // ------------------------------------------------------------------
+  describe('null pipeline defensive guards', () => {
+    it('evicts entry whose pipeline is null without calling dispose', async () => {
+      // Cache a null pipeline as the oldest entry
+      cachePipeline('null-pipe', null as unknown as TranslationPipeline);
+      await new Promise((r) => setTimeout(r, 10));
+      cachePipeline('real-2', { id: 2 } as unknown as TranslationPipeline);
+      await new Promise((r) => setTimeout(r, 10));
+      cachePipeline('real-3', { id: 3 } as unknown as TranslationPipeline);
+      await new Promise((r) => setTimeout(r, 10));
+
+      // 4th entry evicts null-pipe — evicted.pipeline is null → falsy branch
+      cachePipeline('real-4', { id: 4 } as unknown as TranslationPipeline);
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(getCacheSize()).toBe(3);
+      expect(getCachedPipeline('null-pipe')).toBeNull();
+    });
+
+    it('clearCache skips dispose for entries with null pipeline', async () => {
+      cachePipeline('null-clear', null as unknown as TranslationPipeline);
+
+      await clearCache();
+
+      expect(getCacheSize()).toBe(0);
+    });
+  });
 });

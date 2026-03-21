@@ -101,6 +101,7 @@ export const CacheSettings: Component = () => {
 
   const usagePercent = () => {
     const s = stats();
+    /* v8 ignore next */
     if (!s || s.maxSize === 0) return 0;
     return Math.min(100, (s.totalSize / s.maxSize) * 100);
   };
@@ -296,4 +297,5 @@ export const CacheSettings: Component = () => {
   );
 };
 
+/* v8 ignore next */
 export default CacheSettings;

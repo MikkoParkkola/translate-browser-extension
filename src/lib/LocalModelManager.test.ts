@@ -1800,4 +1800,124 @@ describe('LocalModelManager - Targeted Missing Coverage', () => {
       expect(onProgressMock).toHaveBeenCalled();
     });
   });
+
+  // =========================================================================
+  // Branch coverage: 12 remaining uncovered branches
+  // =========================================================================
+
+  describe('branch coverage: nullish coalescing fallbacks in download progress (L353-355)', () => {
+    it('uses fallback 0 when progress message omits loaded and total', async () => {
+      const onProgress = vi.fn();
+
+      mockWorkerPostMessage.mockImplementation((msg: Record<string, unknown>) => {
+        Promise.resolve().then(() => {
+          if (workerMessageHandler && msg.type === 'loadModel') {
+            // Send progress WITHOUT loaded/total fields → hits ?? 0 fallbacks (bid=8[1], bid=9[1])
+            workerMessageHandler({ data: { type: 'progress', progress: 30 } });
+            workerMessageHandler({ data: { type: 'modelLoaded' } });
+          }
+        });
+      });
+
+      await manager.downloadModel(onProgress);
+
+      expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({
+        loaded: 0,
+        total: 0,
+        progress: 30,
+      }));
+    });
+  });
+
+  describe('branch coverage: nullish coalescing fallbacks in translateText result (L492-496)', () => {
+    it('returns empty defaults when worker result lacks translatedText and tokensGenerated', async () => {
+      manager.modelLoaded = true;
+      manager.modelWorker = {
+        postMessage: vi.fn(),
+        terminate: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as Worker;
+
+      // Return a result with no translatedText or tokensGenerated → hits ?? fallbacks (bid=18[1], bid=19[1], bid=20[1])
+      const sendSpy = vi.spyOn(manager as any, '_sendWorkerMessage')
+        .mockResolvedValueOnce({ type: 'result' });
+
+      const result = await manager.translateText('hello', 'en', 'fi');
+
+      expect(result.text).toBe('');
+      expect(result.translatedText).toBe('');
+      expect(result.tokensGenerated).toBe(0);
+
+      sendSpy.mockRestore();
+    });
+  });
+
+  describe('branch coverage: translation retry without model reload (L506 else branch)', () => {
+    it('retries translation without reloading model when error is retryable but not worker/not-loaded', async () => {
+      manager.modelLoaded = true;
+      manager.consecutiveFailures = 0;
+      manager.modelWorker = {
+        postMessage: vi.fn(),
+        terminate: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as Worker;
+
+      // "timeout" is retryable (_shouldRetryTranslation returns true) but
+      // does NOT include 'worker' or 'not loaded' → hits bid=23[1] (else branch)
+      const sendSpy = vi.spyOn(manager as any, '_sendWorkerMessage')
+        .mockRejectedValueOnce(new Error('timeout'))
+        .mockResolvedValueOnce({ type: 'result', translatedText: 'retried', tokensGenerated: 1 });
+
+      const result = await manager.translateText('test', 'en', 'fi');
+
+      expect(result.translatedText).toBe('retried');
+      // modelLoaded should still be true since we didn't reload
+      expect(manager.modelLoaded).toBe(true);
+
+      sendSpy.mockRestore();
+    });
+  });
+
+  describe('branch coverage: healthy health check with all checks passing (L602, L606-607, L617)', () => {
+    it('returns healthy status when model is downloaded, loaded, and worker exists', async () => {
+      await manager.init();
+
+      // Make stored status show downloaded → bid=27[0]: downloaded ? 'Model cached'
+      (globalThis.chrome.storage.local.get as Mock).mockImplementation(
+        (_keys: unknown, cb: (result: Record<string, unknown>) => void) => {
+          cb({ model_status: { downloaded: true } });
+        },
+      );
+
+      // Set worker and modelLoaded → bid=28[1]: modelWorker !== null && modelLoaded evaluates right operand
+      // → bid=29[0]: modelLoaded ? 'Worker operational'
+      manager.modelLoaded = true;
+      manager.modelWorker = { postMessage: vi.fn() } as unknown as Worker;
+
+      const health = await manager.performHealthCheck();
+
+      // All 4 checks pass → bid=30[0]: failedChecks.length === 0 → 'healthy'
+      expect(health.status).toBe('healthy');
+      expect(health.checks.modelAvailable.message).toBe('Model cached');
+      expect(health.checks.worker.passed).toBe(true);
+      expect(health.checks.worker.message).toBe('Worker operational');
+      expect(health.summary).toBe('4/4 checks passed');
+    });
+  });
+
+  describe('branch coverage: error.message || "" fallback in retry helpers (L811, L819)', () => {
+    it('_shouldRetryDownload handles error with falsy message', () => {
+      // bid=51[1]: error.message || '' — right side taken when message is falsy
+      const err = { message: undefined } as unknown as Error;
+      expect((manager as any)._shouldRetryDownload(err)).toBe(false);
+    });
+
+    it('_shouldRetryTranslation handles error with falsy message', () => {
+      // bid=53[1]: error.message || '' — right side taken when message is falsy
+      const err = { message: undefined } as unknown as Error;
+      expect((manager as any)._shouldRetryTranslation(err)).toBe(true);
+    });
+  });
 });

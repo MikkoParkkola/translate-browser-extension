@@ -864,6 +864,36 @@ describe('DeepLProvider', () => {
     });
   });
 
+  describe('getUsage when response is not ok (line 260 false branch)', () => {
+    it('returns default usage when usage endpoint returns non-ok response', async () => {
+      await provider.setApiKey('test-key');
+      (provider as any).usageCache = null;
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      });
+
+      const result = await provider.getUsage();
+      expect(result).toEqual({ requests: 0, tokens: 0, cost: 0, limitReached: false });
+    });
+  });
+
+  describe('translate when response.text() rejects (line 166 catch)', () => {
+    it('still throws when reading error body fails', async () => {
+      await provider.setApiKey('test-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: () => Promise.reject(new Error('body stream already read')),
+        headers: { get: () => null },
+      });
+
+      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+    });
+  });
+
   describe('initialize error handling (line 78)', () => {
     it('catches and logs error when chrome.storage.local.get throws', async () => {
       const consoleSpy = vi.spyOn(console, 'error');
