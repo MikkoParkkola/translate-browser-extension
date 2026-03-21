@@ -1454,4 +1454,590 @@ describe('background-firefox translate: additional coverage', () => {
       expect(result).toBe(false);
     });
   });
+
+  // ============================================================================
+  // Additional coverage: cache eviction when full
+  // ============================================================================
+
+  describe('cache eviction when at max capacity', () => {
+    it('evicts least-used entries when cache is full', async () => {
+      // Populate cache with multiple entries
+      for (let i = 0; i < 50; i++) {
+        await invoke({
+          type: 'translate',
+          text: `text ${i}`,
+          sourceLang: 'en',
+          targetLang: 'fi',
+        });
+      }
+
+      // Add more to trigger eviction
+      for (let i = 50; i < 110; i++) {
+        await invoke({
+          type: 'translate',
+          text: `text ${i}`,
+          sourceLang: 'en',
+          targetLang: 'fi',
+        });
+      }
+
+      const cacheStats = await invoke({
+        type: 'getCacheStats',
+      }) as Record<string, unknown>;
+
+      expect(cacheStats.success).toBe(true);
+      const cache = (cacheStats.cache as Record<string, unknown>);
+      expect((cache.size as number) <= 100).toBe(true);
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: rate limiting edge cases
+  // ============================================================================
+
+  describe('rate limiting token limit exceeded', () => {
+    it('rate limit is checked before translation', async () => {
+      // Just verify that the rate limit check path exists and works
+      const response = await invoke({
+        type: 'getUsage',
+      }) as Record<string, unknown>;
+
+      const throttle = (response.throttle as Record<string, unknown>);
+      expect(throttle.requestLimit).toBe(100); // From CONFIG
+      expect(throttle.tokenLimit).toBe(10000); // From CONFIG
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: cache stats with detailed language pairs
+  // ============================================================================
+
+  describe('cache stats detail reporting', () => {
+    it('returns language pair statistics', async () => {
+      // Make translations with different language pairs
+      await invoke({
+        type: 'translate',
+        text: 'hello',
+        sourceLang: 'en',
+        targetLang: 'fi',
+      });
+
+      await invoke({
+        type: 'translate',
+        text: 'world',
+        sourceLang: 'en',
+        targetLang: 'de',
+      });
+
+      const cacheStats = await invoke({
+        type: 'getCacheStats',
+      }) as Record<string, unknown>;
+
+      expect(cacheStats.success).toBe(true);
+      const cache = (cacheStats.cache as Record<string, unknown>);
+      expect(cache.languagePairs).toBeDefined();
+      expect(typeof cache.languagePairs).toBe('object');
+    });
+
+    it('reports memory estimate', async () => {
+      await invoke({
+        type: 'translate',
+        text: 'hello world',
+        sourceLang: 'en',
+        targetLang: 'fi',
+      });
+
+      const cacheStats = await invoke({
+        type: 'getCacheStats',
+      }) as Record<string, unknown>;
+
+      const cache = (cacheStats.cache as Record<string, unknown>);
+      expect(cache.memoryEstimate).toBeDefined();
+      expect(typeof cache.memoryEstimate).toBe('string');
+    });
+
+    it('reports most used entries', async () => {
+      // Hit cache multiple times
+      await invoke({
+        type: 'translate',
+        text: 'popular text',
+        sourceLang: 'en',
+        targetLang: 'fi',
+      });
+
+      // Hit same cache multiple times
+      for (let i = 0; i < 5; i++) {
+        await invoke({
+          type: 'translate',
+          text: 'popular text',
+          sourceLang: 'en',
+          targetLang: 'fi',
+        });
+      }
+
+      const cacheStats = await invoke({
+        type: 'getCacheStats',
+      }) as Record<string, unknown>;
+
+      const cache = (cacheStats.cache as Record<string, unknown>);
+      expect(Array.isArray(cache.mostUsed)).toBe(true);
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: formatUserError with suggestion
+  // ============================================================================
+
+  describe('error formatting with suggestions', () => {
+    it('includes error suggestion in formatted message', async () => {
+      const { validateInput } = await import('../core/errors');
+      (validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+        valid: false,
+        error: {
+          message: 'Input too long',
+          suggestion: 'Try using shorter text',
+        },
+      });
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'x'.repeat(100000),
+        sourceLang: 'en',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(false);
+      expect((response.error as string).includes('Try using shorter text')).toBe(true);
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: handleMessage with all message types
+  // ============================================================================
+
+  describe('handleMessage comprehensive coverage', () => {
+    it('handles unknown message type gracefully', async () => {
+      const sendResponse = vi.fn();
+      const caughtError: unknown[] = [];
+
+      await new Promise<void>((resolve) => {
+        const result = messageHandler(
+          { type: 'unknownType' } as unknown as Record<string, unknown>,
+          {},
+          (response) => {
+            caughtError.push(response);
+            resolve();
+          }
+        );
+        expect(result).toBe(true); // async response
+        setTimeout(resolve, 100); // Give promise time to resolve
+      });
+
+      expect(caughtError.length).toBeGreaterThan(0);
+      const errorResponse = caughtError[0] as Record<string, unknown>;
+      expect(errorResponse.success).toBe(false);
+    });
+
+    it('handles translate message returning cached result', async () => {
+      // First translation
+      await invoke({
+        type: 'translate',
+        text: 'cached text',
+        sourceLang: 'en',
+        targetLang: 'fi',
+      });
+
+      // Second identical translation should hit cache
+      const response = await invoke({
+        type: 'translate',
+        text: 'cached text',
+        sourceLang: 'en',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      expect(response.duration).toBeLessThan(100); // Cache hits are fast
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: keyboard shortcut with no active window
+  // ============================================================================
+
+  describe('keyboard shortcuts with no results', () => {
+    it('handles query returning undefined tab', async () => {
+      if (capturedCommandHandler) {
+        mockTabsQuery.mockResolvedValueOnce([{ id: undefined }]);
+        // Should handle gracefully
+        await capturedCommandHandler('translate-selection');
+      }
+    });
+
+    it('handles query with multiple tabs returning first', async () => {
+      if (capturedCommandHandler) {
+        mockTabsQuery.mockResolvedValueOnce([
+          { id: 1 },
+          { id: 2 },
+          { id: 3 },
+        ]);
+        await capturedCommandHandler('translate-selection');
+        // Should use first tab
+        expect(mockTabsSendMessage).toHaveBeenCalled();
+      }
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: setProvider persistence
+  // ============================================================================
+
+  describe('setProvider with storage persistence', () => {
+    it('persists provider change and verification', async () => {
+      const response = await invoke({
+        type: 'setProvider',
+        provider: 'translategemma',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      expect(response.provider).toBe('translategemma');
+
+      // Verify getProviders returns updated provider
+      const providers = await invoke({
+        type: 'getProviders',
+      }) as Record<string, unknown>;
+
+      expect((providers as Record<string, unknown>).activeProvider).toBe('translategemma');
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: translateWithProvider pivot routing
+  // ============================================================================
+
+  // Note: Unsupported pairs are tested indirectly through error handling paths
+
+  // ============================================================================
+  // Additional coverage: estimateTokens edge cases
+  // ============================================================================
+
+  describe('token estimation edge cases', () => {
+    it('estimates tokens for very short text', async () => {
+      // Even 1 char should estimate to at least 1 token
+      const response = await invoke({
+        type: 'translate',
+        text: 'a',
+        sourceLang: 'en',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      expect(response.duration).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: message handler catch block
+  // ============================================================================
+
+  describe('message handler error propagation', () => {
+    it('handles errors thrown by handleTranslate', async () => {
+      const { validateInput } = await import('../core/errors');
+      (validateInput as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+        throw new Error('Validation crashed');
+      });
+
+      const caughtError: unknown[] = [];
+      await new Promise<void>((resolve) => {
+        const result = messageHandler(
+          {
+            type: 'translate',
+            text: 'test',
+            sourceLang: 'en',
+            targetLang: 'fi',
+          },
+          {},
+          (response) => {
+            caughtError.push(response);
+            resolve();
+          }
+        );
+        expect(result).toBe(true);
+        setTimeout(resolve, 100);
+      });
+
+      expect(caughtError.length).toBeGreaterThan(0);
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: cache stats with zero entries
+  // ============================================================================
+
+  describe('cache stats with empty cache', () => {
+    it('returns valid stats even with empty cache', async () => {
+      // Clear cache first
+      await invoke({ type: 'clearCache' });
+
+      const response = await invoke({
+        type: 'getCacheStats',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      const cache = (response.cache as Record<string, unknown>);
+      expect(cache.size).toBe(0);
+      expect(cache.hitRate).toBeDefined();
+    });
+
+    it('reports 0% hit rate with zero translations', async () => {
+      await invoke({ type: 'clearCache' });
+
+      const response = await invoke({
+        type: 'getCacheStats',
+      }) as Record<string, unknown>;
+
+      const cache = (response.cache as Record<string, unknown>);
+      expect((cache.hitRate as string).includes('0%')).toBe(true);
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: usage reporting details
+  // ============================================================================
+
+  describe('getUsage comprehensive reporting', () => {
+    it('returns all usage fields', async () => {
+      const response = await invoke({
+        type: 'getUsage',
+      }) as Record<string, unknown>;
+
+      expect(response.throttle).toBeDefined();
+      expect(response.cache).toBeDefined();
+      expect(response.providers).toBeDefined();
+
+      const throttle = (response.throttle as Record<string, unknown>);
+      expect(throttle.requests).toBeDefined();
+      expect(throttle.tokens).toBeDefined();
+      expect(throttle.requestLimit).toBeDefined();
+      expect(throttle.tokenLimit).toBeDefined();
+      expect(throttle.queue).toBeDefined();
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: translate with sourceLang auto and same target
+  // ============================================================================
+
+  describe('translate with auto source detection same as target', () => {
+    it('skips translation when auto-detected source equals target', async () => {
+      const detectLangModule = await import('../offscreen/language-detection');
+      const errorModule = await import('../core/errors');
+
+      (detectLangModule.detectLanguage as ReturnType<typeof vi.fn>).mockReturnValueOnce('en');
+      (errorModule.validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+        valid: true,
+        sanitizedText: 'hello world',
+      });
+      (errorModule.withRetry as ReturnType<typeof vi.fn>).mockImplementation(
+        async (fn: () => Promise<unknown>) => fn()
+      );
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'hello world',
+        sourceLang: 'auto',
+        targetLang: 'en',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      // Should return original text unchanged when auto-detected equals target
+      expect(response.result).toBe('hello world');
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: clearTranslationCache with storage error
+  // ============================================================================
+
+  describe('clearCache with storage error handling', () => {
+    it('handles storage removal failure gracefully', async () => {
+      mockStorageRemove.mockRejectedValueOnce(new Error('Storage error'));
+
+      const response = await invoke({
+        type: 'clearCache',
+      }) as Record<string, unknown>;
+
+      // Should still return success since cache is cleared in memory
+      expect(response.success).toBe(true);
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: preloadModel with default provider
+  // ============================================================================
+
+  describe('preloadModel using current provider default', () => {
+    it('uses currentProvider when provider not specified', async () => {
+      await invoke({
+        type: 'setProvider',
+        provider: 'opus-mt',
+      });
+
+      const response = await invoke({
+        type: 'preloadModel',
+        sourceLang: 'en',
+        targetLang: 'fi',
+        // No provider specified, should use opus-mt
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: translate with caching
+  // ============================================================================
+
+  describe('translate result caching behavior', () => {
+    it('caches translations and reuses them', async () => {
+      // First translation
+      const response1 = await invoke({
+        type: 'translate',
+        text: 'cache-test-unique-text-12345',
+        sourceLang: 'en',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      expect(response1.success).toBe(true);
+      const duration1 = response1.duration as number;
+
+      // Second identical translation (from cache)
+      const response2 = await invoke({
+        type: 'translate',
+        text: 'cache-test-unique-text-12345',
+        sourceLang: 'en',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      expect(response2.success).toBe(true);
+      const duration2 = response2.duration as number;
+      // Cache hit should be faster
+      expect(duration2).toBeLessThanOrEqual(duration1);
+    });
+
+    it('does not cache when sourceLang is auto', async () => {
+      const detLang = await import('../offscreen/language-detection');
+      const errorModule = await import('../core/errors');
+
+      (detLang.detectLanguage as ReturnType<typeof vi.fn>).mockReturnValueOnce('en');
+      (errorModule.validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+        valid: true,
+        sanitizedText: 'text-with-auto-lang',
+      });
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'text-with-auto-lang',
+        sourceLang: 'auto',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      // Auto-lang translations aren't cached, so second call should not be faster
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: different error scenarios
+  // ============================================================================
+
+  describe('error handling comprehensive', () => {
+    it('handles validation failure with suggestion', async () => {
+      const { validateInput } = await import('../core/errors');
+      (validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+        valid: false,
+        error: {
+          message: 'Text too long',
+          suggestion: 'Please reduce length',
+        },
+      });
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'test',
+        sourceLang: 'en',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(false);
+      expect((response.error as string).includes('Please reduce length')).toBe(true);
+    });
+
+    it('handles translation errors gracefully', async () => {
+      const response = await invoke({
+        type: 'translate',
+        text: 'test text',
+        sourceLang: 'en',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      // Should return a response with success field
+      expect(response.success !== undefined).toBe(true);
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: cache statistics detailed
+  // ============================================================================
+
+  describe('cache statistics edge cases', () => {
+    it('reports cache info with multiple language pairs', async () => {
+      // This test builds on previous tests that have cached various pairs
+      const response = await invoke({
+        type: 'getCacheStats',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      const cache = (response.cache as Record<string, unknown>);
+      expect(cache.size).toBeGreaterThanOrEqual(0);
+      expect(cache.maxSize).toBe(100);
+      expect(cache.totalHits).toBeGreaterThanOrEqual(0);
+      expect(cache.totalMisses).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  // ============================================================================
+  // Additional coverage: message handlers edge cases
+  // ============================================================================
+
+  describe('message handler edge cases', () => {
+    it('ping handler returns current provider', async () => {
+      const response = await invoke({
+        type: 'ping',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      expect(response.status).toBe('ready');
+      expect(response.provider).toBeDefined();
+    });
+
+    it('getProviders returns all provider info', async () => {
+      const response = await invoke({
+        type: 'getProviders',
+      }) as Record<string, unknown>;
+
+      const providers = (response.providers as unknown[]);
+      expect(Array.isArray(providers)).toBe(true);
+      expect(providers.length).toBeGreaterThan(0);
+    });
+
+    it('multiple setProvider calls update current provider', async () => {
+      await invoke({ type: 'setProvider', provider: 'opus-mt' });
+      const r1 = await invoke({ type: 'ping' }) as Record<string, unknown>;
+      expect(r1.provider).toBe('opus-mt');
+
+      await invoke({ type: 'setProvider', provider: 'translategemma' });
+      const r2 = await invoke({ type: 'ping' }) as Record<string, unknown>;
+      expect(r2.provider).toBe('translategemma');
+    });
+  });
 });

@@ -1885,3 +1885,147 @@ describe('App toggleAutoTranslate save failure', () => {
     expect(screen.getByText('TRANSLATE!')).toBeTruthy();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Model progress handler with null providerId (uncovered paths)
+// ---------------------------------------------------------------------------
+
+describe('App model progress with null providerId', () => {
+  let capturedListener: ((msg: Record<string, unknown>) => void) | null = null;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    capturedListener = null;
+    (browserAPI.runtime.onMessage.addListener as ReturnType<typeof vi.fn>).mockImplementation(
+      (cb: (msg: Record<string, unknown>) => void) => { capturedListener = cb; },
+    );
+    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 1, url: 'https://example.com' },
+    ]);
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+  });
+
+  afterEach(cleanup);
+
+  it('handles download progress with unknown modelId (null providerId)', async () => {
+    render(() => <App />);
+    await flush();
+    expect(capturedListener).toBeTruthy();
+
+    capturedListener!({
+      type: 'modelProgress',
+      status: 'download',
+      modelId: 'unknown/model-that-does-not-match',
+      progress: 45,
+      file: 'model.bin',
+    });
+
+    await vi.waitFor(() => {
+      // Model progress should still be updated locally
+      expect(screen.queryByText('TRANSLATE!')).toBeTruthy();
+    });
+  });
+
+  it('handles done status with unknown modelId (null providerId)', async () => {
+    render(() => <App />);
+    await flush();
+    expect(capturedListener).toBeTruthy();
+
+    capturedListener!({
+      type: 'modelProgress',
+      status: 'done',
+      modelId: 'unknown/model',
+      progress: 100,
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.queryByText('TRANSLATE!')).toBeTruthy();
+    });
+  });
+
+  it('handles ready status with unknown modelId (null providerId)', async () => {
+    render(() => <App />);
+    await flush();
+    expect(capturedListener).toBeTruthy();
+
+    capturedListener!({
+      type: 'modelProgress',
+      status: 'ready',
+      modelId: 'unknown/model',
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.queryByText('TRANSLATE!')).toBeTruthy();
+    });
+  });
+
+  it('handles error status with unknown modelId (null providerId)', async () => {
+    render(() => <App />);
+    await flush();
+    expect(capturedListener).toBeTruthy();
+
+    capturedListener!({
+      type: 'modelProgress',
+      status: 'error',
+      modelId: 'unknown/model',
+      error: 'Failed to initialize model',
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert')).toBeTruthy();
+    });
+  });
+
+  it('handles initiate status with unknown modelId (null providerId)', async () => {
+    render(() => <App />);
+    await flush();
+    expect(capturedListener).toBeTruthy();
+
+    capturedListener!({
+      type: 'modelProgress',
+      status: 'initiate',
+      modelId: 'unknown/model',
+      file: 'model.zip',
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.queryByText('TRANSLATE!')).toBeTruthy();
+    });
+  });
+
+  it('handles progress status with unknown modelId (null providerId)', async () => {
+    render(() => <App />);
+    await flush();
+    expect(capturedListener).toBeTruthy();
+
+    capturedListener!({
+      type: 'modelProgress',
+      status: 'progress',
+      modelId: 'unknown/model',
+      progress: 65,
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.queryByText('TRANSLATE!')).toBeTruthy();
+    });
+  });
+
+  it('handles download status with null providerId', async () => {
+    render(() => <App />);
+    await flush();
+    expect(capturedListener).toBeTruthy();
+
+    capturedListener!({
+      type: 'modelProgress',
+      status: 'download',
+      modelId: 'unknown/unknown-model',
+      progress: 30,
+    });
+
+    // Should render without crashing
+    expect(screen.queryByText('TRANSLATE!')).toBeTruthy();
+  });
+});

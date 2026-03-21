@@ -545,4 +545,50 @@ describe('site-rules', () => {
       });
     });
   });
+
+  describe('importRules validation', () => {
+    it('importRules validates hostname type', async () => {
+      const json = JSON.stringify({
+        'example.com': { autoTranslate: true },
+        'example.fi': { autoTranslate: false },
+      });
+
+      const count = await importRules(json);
+      expect(count).toBe(2);
+    });
+
+    it('importRules validates rules is object', async () => {
+      const json = JSON.stringify({
+        'example.com': null,
+      });
+
+      await expect(importRules(json)).rejects.toThrow('Invalid rules');
+    });
+
+    it('importRules validates autoTranslate boolean', async () => {
+      const json = JSON.stringify({
+        'example.com': { autoTranslate: 'true' },
+      });
+
+      await expect(importRules(json)).rejects.toThrow('Invalid autoTranslate');
+    });
+
+    it('throws on non-boolean autoTranslate (number)', async () => {
+      const json = JSON.stringify({
+        'example.com': { autoTranslate: 1 },
+      });
+
+      await expect(importRules(json)).rejects.toThrow('Invalid autoTranslate for example.com');
+    });
+
+    it('throws on array rules value', async () => {
+      const json = JSON.stringify({
+        'example.com': [{ autoTranslate: true }],
+      });
+
+      // Arrays are typeof 'object' and not null, so they pass the object check
+      // but fail on autoTranslate since array[0].autoTranslate is undefined via rules.autoTranslate
+      await expect(importRules(json)).rejects.toThrow('Invalid autoTranslate');
+    });
+  });
 });

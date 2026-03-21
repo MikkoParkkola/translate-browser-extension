@@ -385,6 +385,13 @@ function isTransientError(errorMsg: string): boolean {
   return TRANSIENT_ERROR_RE.test(errorMsg);
 }
 
+/**
+ * Extract error message from any value, handling both Error and non-Error rejections
+ */
+function extractErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
 /** Active IntersectionObserver for scroll-aware below-fold translation */
 let belowFoldObserver: IntersectionObserver | null = null;
 
@@ -1015,7 +1022,7 @@ browserAPI.runtime.onMessage.addListener(
       sendResponse({ success: true, status: 'started' });
       translateSelection(selSourceLang, message.targetLang, message.strategy, message.provider)
         .catch((error) => {
-          const msg = error instanceof Error ? error.message : 'Translation failed';
+          const msg = extractErrorMessage(error, 'Translation failed');
           log.error('translateSelection failed:', msg);
         });
       return true;
@@ -1028,7 +1035,7 @@ browserAPI.runtime.onMessage.addListener(
         sendResponse({ success: true, status: 'started' });
         initPdfTranslation(message.targetLang)
           .catch((error) => {
-            const msg = error instanceof Error ? error.message : 'PDF translation failed';
+            const msg = extractErrorMessage(error, 'PDF translation failed');
             log.error('initPdfTranslation failed:', msg);
           });
         return true;
@@ -1052,7 +1059,7 @@ browserAPI.runtime.onMessage.addListener(
           startMutationObserver();
         })
         .catch((error) => {
-          const msg = error instanceof Error ? error.message : 'Page translation failed';
+          const msg = extractErrorMessage(error, 'Page translation failed');
           log.error('translatePage failed:', msg);
         });
       return true;
@@ -1063,7 +1070,7 @@ browserAPI.runtime.onMessage.addListener(
       sendResponse({ success: true, status: 'started' });
       initPdfTranslation(message.targetLang)
         .catch((error) => {
-          const msg = error instanceof Error ? error.message : 'PDF translation failed';
+          const msg = extractErrorMessage(error, 'PDF translation failed');
           log.error('translatePdf failed:', msg);
         });
       return true;
@@ -1076,7 +1083,7 @@ browserAPI.runtime.onMessage.addListener(
         message.imageUrl
       )
         .catch((error) => {
-          const msg = error instanceof Error ? error.message : 'Image translation failed';
+          const msg = extractErrorMessage(error, 'Image translation failed');
           log.error('translateImage failed:', msg);
         });
       return true;

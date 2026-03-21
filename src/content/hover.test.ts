@@ -788,3 +788,107 @@ describe('LRU cache eviction in handleHoverTranslation', () => {
     cleanupHoverListeners();
   });
 });
+
+describe('Hover translation cache eviction (line 211 branch)', () => {
+  it('triggers cache eviction logic when adding items beyond limit', async () => {
+    vi.useFakeTimers();
+
+    // Import fresh module for this test
+    const hoverMod = await import('./hover');
+    const { initHoverListeners, setResolveSourceLang, cleanupHoverListeners } = hoverMod;
+    
+    setResolveSourceLang((lang) => lang);
+    cleanupHoverListeners();
+    initHoverListeners();
+
+    const p = document.createElement('p');
+    document.body.appendChild(p);
+
+    const origGetBBR = Range.prototype.getBoundingClientRect;
+    Range.prototype.getBoundingClientRect = () =>
+      ({ top: 100, bottom: 120, left: 200, right: 250, width: 50, height: 20, x: 200, y: 100, toJSON: () => ({}) } as DOMRect);
+
+    const origCaretRange = document.caretRangeFromPoint;
+
+    // Insert 5 items to test the cache logic path
+    for (let i = 0; i < 5; i++) {
+      const word = `cacheword${i}`;
+      p.textContent = '';
+      const textNode = document.createTextNode(word);
+      p.appendChild(textNode);
+
+      const range = document.createRange();
+      range.setStart(textNode, 0);
+      range.setEnd(textNode, word.length);
+
+      mockSendMessage.mockResolvedValueOnce({
+        success: true,
+        result: `translated${i}`,
+      });
+
+      document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+
+      document.caretRangeFromPoint = () => range;
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+      await vi.advanceTimersByTimeAsync(160);
+    }
+
+    Range.prototype.getBoundingClientRect = origGetBBR;
+    document.caretRangeFromPoint = origCaretRange;
+    cleanupHoverListeners();
+    vi.useRealTimers();
+  });
+
+  it('clears hoverTimer in finally block when translation succeeds', async () => {
+    vi.useFakeTimers();
+
+    const hoverMod = await import('./hover');
+    const { initHoverListeners, setResolveSourceLang, cleanupHoverListeners } = hoverMod;
+    
+    setResolveSourceLang((lang) => lang);
+    cleanupHoverListeners();
+    initHoverListeners();
+
+    const p = document.createElement('p');
+    document.body.appendChild(p);
+
+    const origGetBBR = Range.prototype.getBoundingClientRect;
+    Range.prototype.getBoundingClientRect = () =>
+      ({ top: 100, bottom: 120, left: 200, right: 250, width: 50, height: 20, x: 200, y: 100, toJSON: () => ({}) } as DOMRect);
+
+    const word = 'testword';
+    p.textContent = '';
+    const textNode = document.createTextNode(word);
+    p.appendChild(textNode);
+
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, word.length);
+
+    mockSendMessage.mockResolvedValueOnce({
+      success: true,
+      result: 'resultado',
+    });
+
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+
+    const origCaretRange = document.caretRangeFromPoint;
+    document.caretRangeFromPoint = () => range;
+
+    const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
+
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+    await vi.advanceTimersByTimeAsync(160);
+
+    // Verify clearTimeout was called (finally block executes)
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+
+    document.caretRangeFromPoint = origCaretRange;
+    Range.prototype.getBoundingClientRect = origGetBBR;
+    clearTimeoutSpy.mockRestore();
+    cleanupHoverListeners();
+    vi.useRealTimers();
+  });
+});

@@ -601,5 +601,71 @@ describe('glossary', () => {
       expect(callArgs.glossary['API'].caseSensitive).toBe(true);
       expect(callArgs.glossary['url'].caseSensitive).toBe(false);
     });
+
+    it('importGlossary validates entry is object', async () => {
+      const json = JSON.stringify({
+        term: null,
+      });
+
+      await expect(importGlossary(json)).rejects.toThrow('Invalid entry');
+    });
+
+    it('importGlossary validates replacement string', async () => {
+      const json = JSON.stringify({
+        term: { replacement: 123, caseSensitive: false },
+      });
+
+      await expect(importGlossary(json)).rejects.toThrow('Invalid replacement');
+    });
+
+    it('importGlossary validates caseSensitive boolean', async () => {
+      const json = JSON.stringify({
+        term: { replacement: 'test', caseSensitive: 'true' },
+      });
+
+      await expect(importGlossary(json)).rejects.toThrow('Invalid caseSensitive');
+    });
+
+    it('throws on non-object entry value (number)', async () => {
+      const json = JSON.stringify({
+        API: 42,
+      });
+
+      await expect(importGlossary(json)).rejects.toThrow('Invalid entry for term: API');
+    });
+
+    it('throws on non-object entry value (string)', async () => {
+      const json = JSON.stringify({
+        API: 'not an object',
+      });
+
+      await expect(importGlossary(json)).rejects.toThrow('Invalid entry for term: API');
+    });
+
+    it('throws on non-object entry value (array)', async () => {
+      const json = JSON.stringify({
+        API: ['not', 'an', 'object'],
+      });
+
+      // Arrays have typeof 'object' and are not null, so they pass the entry check
+      // but fail on replacement check since entry.replacement is undefined
+      await expect(importGlossary(json)).rejects.toThrow('Invalid replacement for term: API');
+    });
+
+    it('throws on non-string replacement value', async () => {
+      const json = JSON.stringify({
+        API: { replacement: 123, caseSensitive: true },
+      });
+
+      await expect(importGlossary(json)).rejects.toThrow('Invalid replacement for term: API');
+    });
+
+    it('throws on non-boolean caseSensitive value (string)', async () => {
+      const json = JSON.stringify({
+        API: { replacement: 'rajapinta', caseSensitive: 'yes' },
+      });
+
+      await expect(importGlossary(json)).rejects.toThrow('Invalid caseSensitive for term: API');
+    });
   });
 });

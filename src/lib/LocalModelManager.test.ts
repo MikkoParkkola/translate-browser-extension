@@ -1207,4 +1207,540 @@ describe('LocalModelManager Extended Coverage', () => {
       expect(mockWorkerPostMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'abort' }));
     });
   });
+
+  describe('translate alias', () => {
+    it('delegates to translateText', async () => {
+      await manager.init();
+      await manager.downloadModel();
+      await manager.loadModel();
+      const spy = vi.spyOn(manager, 'translateText');
+      const result = await manager.translate('Hello', 'en', 'fi');
+      expect(spy).toHaveBeenCalledWith('Hello', 'en', 'fi');
+      expect(result.translatedText).toBe('translated text');
+    });
+  });
+
+  describe('getModelInfo when downloading', () => {
+    it('shows available=true when isDownloading is true', () => {
+      manager.modelLoaded = false;
+      manager.isDownloading = true;
+      const info = manager.getModelInfo();
+      expect(info.available).toBe(true);
+      expect(info.ready).toBe(false);
+      expect(info.downloading).toBe(true);
+    });
+  });
+
+  describe('destroy error handling', () => {
+    it('catches errors thrown during cleanup', async () => {
+      await manager.init();
+      // Force performanceMonitor.destroy to throw
+      (manager as any).performanceMonitor.destroy = () => { throw new Error('monitor cleanup fail'); };
+
+      // Should not throw — error is caught internally
+      await expect(manager.destroy()).resolves.toBeUndefined();
+    });
+  });
+
+  describe('_sendWorkerMessage timeout', () => {
+    it('rejects when worker does not respond within timeout', async () => {
+      vi.useFakeTimers();
+      try {
+        await manager.init();
+        // Create a worker that never responds
+        const silentWorker = {
+          postMessage: vi.fn(),
+          terminate: vi.fn(),
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        };
+        manager.modelWorker = silentWorker as unknown as Worker;
+
+        const promise = (manager as any)._sendWorkerMessage({ type: 'translate', text: 'x', sourceLanguage: 'en', targetLanguage: 'fi', requestId: 'r1' });
+
+        // Advance past the 5-minute timeout
+        vi.advanceTimersByTime(5 * 60 * 1000 + 100);
+
+        await expect(promise).rejects.toThrow('Worker communication timeout');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe('_scheduleUnload fires and unloads', () => {
+    it('calls _unloadModel when enough time has passed', async () => {
+      vi.useFakeTimers();
+      try {
+        manager.modelWorker = { postMessage: vi.fn(), terminate: vi.fn() } as unknown as Worker;
+        manager.modelLoaded = true;
+        (manager as any).lastUsed = Date.now() - 999999;
+
+        (manager as any)._scheduleUnload();
+
+        // Advance timers past the unload timeout
+        vi.advanceTimersByTime((manager as any).unloadTimeout + 100);
+
+        expect(manager.modelLoaded).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not unload when model was recently used', async () => {
+      vi.useFakeTimers();
+      try {
+        manager.modelWorker = { postMessage: vi.fn(), terminate: vi.fn() } as unknown as Worker;
+        manager.modelLoaded = true;
+
+        (manager as any)._scheduleUnload();
+
+        // Advance half the timeout — then update lastUsed to "now" so it appears recent
+        vi.advanceTimersByTime((manager as any).unloadTimeout / 2);
+        (manager as any).lastUsed = Date.now();
+
+        // Advance the remaining half + extra — callback fires but Date.now()-lastUsed < unloadTimeout
+        vi.advanceTimersByTime((manager as any).unloadTimeout / 2 + 100);
+
+        // Model should still be loaded because lastUsed was updated midway
+        expect(manager.modelLoaded).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+});
+
+// ============================================================================
+// Targeted coverage for missing statements, branches, and functions
+// ============================================================================
+
+describe('LocalModelManager - Targeted Missing Coverage', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let manager: InstanceType<typeof LocalModelManager> & Record<string, any>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    workerMessageHandler = null;
+
+    globalThis.chrome = {
+      runtime: { getURL: vi.fn((path: string) => 'chrome-extension://test/' + path) },
+      storage: {
+        local: {
+          get: vi.fn((_keys: unknown, cb: (result: Record<string, unknown>) => void) => { cb({}); }),
+          set: vi.fn((_data: unknown, cb: () => void) => { cb(); }),
+        },
+      },
+    } as unknown as typeof chrome;
+
+    // @ts-expect-error - Mock caches in global scope
+    globalThis.caches = {
+      keys: vi.fn().mockResolvedValue([]),
+      delete: vi.fn().mockResolvedValue(true),
+    };
+
+    manager = new LocalModelManager();
+
+    mockWorkerPostMessage.mockImplementation((msg: Record<string, unknown>) => {
+      Promise.resolve().then(() => {
+        if (workerMessageHandler) {
+          if (msg.type === 'loadModel') {
+            workerMessageHandler({
+              data: { type: 'modelLoaded', modelInfo: { n_ctx: 2048 } },
+            });
+          } else if (msg.type === 'translate') {
+            workerMessageHandler({
+              data: {
+                type: 'translationComplete',
+                requestId: msg.requestId,
+                translatedText: 'translated text',
+                tokensGenerated: 5,
+              },
+            });
+          }
+        }
+      });
+    });
+  });
+
+  // ── Init with downloaded model (update check path) ──────────────────
+  describe('init with already-downloaded model', () => {
+    it('calls checkForUpdates when stored status shows downloaded', async () => {
+      (globalThis.chrome.storage.local.get as Mock).mockImplementation(
+        (_keys: unknown, cb: (result: Record<string, unknown>) => void) => {
+          cb({ model_status: { downloaded: true } });
+        },
+      );
+      mockUpdaterInstance.checkForUpdates.mockResolvedValue({ hasUpdate: false });
+
+      const result = await manager.init();
+
+      expect(result.success).toBe(true);
+      expect(mockUpdaterInstance.checkForUpdates).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── Download retry with exponential backoff ─────────────────────────
+  describe('download retry with exponential backoff', () => {
+    it('retries once with correct delay on network timeout', async () => {
+      let attempt = 0;
+      mockWorkerPostMessage.mockImplementation((msg: Record<string, unknown>) => {
+        Promise.resolve().then(() => {
+          if (workerMessageHandler && msg.type === 'loadModel') {
+            attempt++;
+            if (attempt <= 1) {
+              workerMessageHandler({ data: { type: 'error', message: 'network timeout' } });
+            } else {
+              workerMessageHandler({ data: { type: 'modelLoaded' } });
+            }
+          }
+        });
+      });
+
+      const sleepSpy = vi.spyOn(manager as any, '_sleep').mockImplementation(async () => {
+        manager.isDownloading = false;
+      });
+
+      const result = await manager.downloadModel();
+
+      expect(result.success).toBe(true);
+      expect(sleepSpy).toHaveBeenCalledTimes(1);
+      expect(sleepSpy).toHaveBeenCalledWith(1000);
+      sleepSpy.mockRestore();
+    });
+
+    it('applies increasing backoff delays on subsequent retries', async () => {
+      let attempt = 0;
+      mockWorkerPostMessage.mockImplementation((msg: Record<string, unknown>) => {
+        Promise.resolve().then(() => {
+          if (workerMessageHandler && msg.type === 'loadModel') {
+            attempt++;
+            if (attempt <= 2) {
+              workerMessageHandler({ data: { type: 'error', message: 'Failed to fetch' } });
+            } else {
+              workerMessageHandler({ data: { type: 'modelLoaded' } });
+            }
+          }
+        });
+      });
+
+      const sleepSpy = vi.spyOn(manager as any, '_sleep').mockImplementation(async () => {
+        manager.isDownloading = false;
+      });
+
+      const result = await manager.downloadModel();
+
+      expect(result.success).toBe(true);
+      expect(sleepSpy).toHaveBeenNthCalledWith(1, 1000);
+      expect(sleepSpy).toHaveBeenNthCalledWith(2, 2000);
+      sleepSpy.mockRestore();
+    });
+  });
+
+  // ── Max retry exhaustion ────────────────────────────────────────────
+  describe('download max retry exhaustion', () => {
+    it('throws after all retry attempts are exhausted', async () => {
+      mockWorkerPostMessage.mockImplementation((msg: Record<string, unknown>) => {
+        Promise.resolve().then(() => {
+          if (workerMessageHandler && msg.type === 'loadModel') {
+            workerMessageHandler({ data: { type: 'error', message: 'fetch timeout' } });
+          }
+        });
+      });
+
+      const sleepSpy = vi.spyOn(manager as any, '_sleep').mockImplementation(async () => {
+        manager.isDownloading = false;
+      });
+
+      await expect(manager.downloadModel()).rejects.toThrow();
+
+      expect(sleepSpy).toHaveBeenCalledTimes(3);
+      expect(sleepSpy).toHaveBeenNthCalledWith(1, 1000);
+      expect(sleepSpy).toHaveBeenNthCalledWith(2, 2000);
+      expect(sleepSpy).toHaveBeenNthCalledWith(3, 4000);
+      sleepSpy.mockRestore();
+    });
+  });
+
+  // ── Health check degraded status (partial failures) ─────────────────
+  describe('health check degraded status', () => {
+    it('returns degraded when exactly half of checks fail', async () => {
+      await manager.init();
+      // initialized=true (pass), backend=true (pass),
+      // modelAvailable=false (fail), worker=false (fail) → 2/4 fail → degraded
+      const health = await manager.performHealthCheck();
+
+      expect(health.status).toBe('degraded');
+      expect(health.summary).toBe('2/4 checks passed');
+    });
+  });
+
+  // ── Health check unhealthy status (majority failures) ───────────────
+  describe('health check unhealthy status', () => {
+    it('returns unhealthy when majority of checks fail', async () => {
+      // Not initialized → 3/4 fail (initialized, modelAvailable, worker) → unhealthy
+      const health = await manager.performHealthCheck();
+
+      expect(health.status).toBe('unhealthy');
+      expect(health.summary).toBe('1/4 checks passed');
+    });
+  });
+
+  // ── Worker message: status type vs progress type ────────────────────
+  describe('worker status-type message handling', () => {
+    it('forwards status messages through _sendWorkerMessage without calling onProgress', async () => {
+      const onProgress = vi.fn();
+
+      mockWorkerPostMessage.mockImplementation((msg: Record<string, unknown>) => {
+        Promise.resolve().then(() => {
+          if (workerMessageHandler && msg.type === 'loadModel') {
+            // Send status type (not progress) — exercises the data.type === 'status' branch
+            workerMessageHandler({ data: { type: 'status', status: 'initializing' } });
+            // Send progress type — exercises the data.type === 'progress' branch
+            workerMessageHandler({ data: { type: 'progress', loaded: 500, total: 1000, progress: 50 } });
+            workerMessageHandler({ data: { type: 'modelLoaded' } });
+          }
+        });
+      });
+
+      await manager.downloadModel(onProgress);
+
+      // onProgress called: once for 'progress' msg, once for final complete notification
+      // 'status' reaches the intermediate callback but downloadModel's callback
+      // only acts on type==='progress', so status is a no-op
+      expect(onProgress).toHaveBeenCalledTimes(2);
+    });
+
+    it('silently ignores progress/status when no intermediate callback is provided', async () => {
+      mockWorkerPostMessage.mockImplementation((msg: Record<string, unknown>) => {
+        Promise.resolve().then(() => {
+          if (workerMessageHandler && msg.type === 'loadModel') {
+            // Both progress and status messages with no intermediate callback (null)
+            workerMessageHandler({ data: { type: 'progress', progress: 25 } });
+            workerMessageHandler({ data: { type: 'status', status: 'loading' } });
+            workerMessageHandler({ data: { type: 'modelLoaded' } });
+          }
+        });
+      });
+
+      // loadModel calls _sendWorkerMessage without onIntermediateMessage → null branch
+      const result = await manager.loadModel();
+      expect(result.success).toBe(true);
+    });
+  });
+
+  // ── Cache deletion / deleteModel without caches API ─────────────────
+  describe('deleteModel without caches API', () => {
+    it('skips cache cleanup when caches is undefined', async () => {
+      const savedCaches = globalThis.caches;
+      // @ts-expect-error - remove caches API to hit typeof caches === 'undefined' branch
+      delete globalThis.caches;
+
+      manager.modelWorker = { postMessage: vi.fn(), terminate: vi.fn() } as unknown as Worker;
+      manager.modelLoaded = true;
+
+      await manager.deleteModel();
+
+      expect(manager.modelLoaded).toBe(false);
+      expect(manager.modelWorker).toBeNull();
+
+      // @ts-expect-error - restore caches
+      globalThis.caches = savedCaches;
+    });
+  });
+
+  // ── downloadModel with null onProgress ──────────────────────────────
+  describe('downloadModel with null onProgress', () => {
+    it('updates internal progress but skips onProgress callbacks', async () => {
+      mockWorkerPostMessage.mockImplementation((msg: Record<string, unknown>) => {
+        Promise.resolve().then(() => {
+          if (workerMessageHandler && msg.type === 'loadModel') {
+            workerMessageHandler({ data: { type: 'progress', loaded: 500, total: 1000, progress: 50 } });
+            workerMessageHandler({ data: { type: 'modelLoaded' } });
+          }
+        });
+      });
+
+      const result = await manager.downloadModel(null);
+
+      expect(result.success).toBe(true);
+      expect(manager.downloadProgress).toBe(100);
+    });
+  });
+
+  // ── performHealthCheck error catch block ────────────────────────────
+  describe('performHealthCheck catch block', () => {
+    it('returns error status on internal exception', async () => {
+      vi.spyOn(manager as any, 'getModelStatus').mockRejectedValue(new Error('Corrupt DB'));
+
+      const health = await manager.performHealthCheck();
+
+      expect(health.status).toBe('error');
+      expect(health.error).toBe('Corrupt DB');
+    });
+  });
+
+  // ── Worker error message parsing ────────────────────────────────────
+  describe('worker error message parsing', () => {
+    it('rejects with the exact error message string from the worker', async () => {
+      mockWorkerPostMessage.mockImplementation((msg: Record<string, unknown>) => {
+        Promise.resolve().then(() => {
+          if (workerMessageHandler && msg.type === 'loadModel') {
+            workerMessageHandler({ data: { type: 'error', message: 'WASM OOM at 0x4f2a' } });
+          }
+        });
+      });
+
+      await expect(manager.loadModel()).rejects.toThrow('WASM OOM at 0x4f2a');
+    });
+  });
+
+  // ── Lines 528-529: translate() method ─────────────────────────────────
+  describe('translate() method', () => {
+    it('calls translateText with provided parameters (line 526)', async () => {
+      const spy = vi.spyOn(manager as any, 'translateText').mockResolvedValue({
+        text: 'translated',
+        sourceLang: 'en',
+        targetLang: 'es',
+      });
+
+      const result = await manager.translate('Hello', 'en', 'es');
+
+      expect(spy).toHaveBeenCalledWith('Hello', 'en', 'es');
+      expect(result.text).toBe('translated');
+
+      spy.mockRestore();
+    });
+  });
+
+  // ── Lines 561-562: getModelInfo() method ──────────────────────────────
+  describe('getModelInfo() method', () => {
+    it('returns correct ModelInfo structure with model loaded', () => {
+      vi.spyOn(manager, 'modelLoaded', 'get').mockReturnValue(true);
+      vi.spyOn(manager, 'isDownloading', 'get').mockReturnValue(false);
+
+      const info = manager.getModelInfo();
+
+      expect(info).toEqual({
+        available: true,
+        ready: true,
+        downloading: false,
+        name: expect.any(String),
+        backend: 'wllama',
+        performanceStats: expect.any(Object),
+      });
+    });
+
+    it('returns correct ModelInfo with model downloading', () => {
+      vi.spyOn(manager, 'modelLoaded', 'get').mockReturnValue(false);
+      vi.spyOn(manager, 'isDownloading', 'get').mockReturnValue(true);
+
+      const info = manager.getModelInfo();
+
+      expect(info.available).toBe(true);
+      expect(info.ready).toBe(false);
+      expect(info.downloading).toBe(true);
+    });
+
+    it('returns correct ModelInfo with model not available', () => {
+      vi.spyOn(manager, 'modelLoaded', 'get').mockReturnValue(false);
+      vi.spyOn(manager, 'isDownloading', 'get').mockReturnValue(false);
+
+      const info = manager.getModelInfo();
+
+      expect(info.available).toBe(false);
+      expect(info.ready).toBe(false);
+      expect(info.downloading).toBe(false);
+    });
+  });
+
+  // ── Lines 628-629: performHealthCheck() error handling ─────────────────
+  describe('performHealthCheck error handling', () => {
+    it('catches and returns error status when getModelStatus throws (lines 628-629)', async () => {
+      const testError = new Error('Database corruption detected');
+      
+      // Mock getModelStatus to throw, which will be caught by performHealthCheck
+      vi.spyOn(manager as any, 'getModelStatus').mockRejectedValue(testError);
+
+      const health = await manager.performHealthCheck();
+
+      expect(health.status).toBe('error');
+      expect(health.error).toBe('Database corruption detected');
+    });
+
+    it('handles different error types in health check', async () => {
+      const testError = new TypeError('Invalid state');
+      
+      vi.spyOn(manager as any, 'getModelStatus').mockRejectedValue(testError);
+
+      const health = await manager.performHealthCheck();
+
+      expect(health.status).toBe('error');
+      expect(health.error).toBe('Invalid state');
+    });
+
+    it('handles error with empty message', async () => {
+      const testError = new Error('');
+      
+      vi.spyOn(manager as any, 'getModelStatus').mockRejectedValue(testError);
+
+      const health = await manager.performHealthCheck();
+
+      expect(health.status).toBe('error');
+      expect(health.error).toBe('');
+    });
+  });
+
+  // ── Lines 661-662: deleteModel() error handling ──────────────────────
+  describe('deleteModel error handling', () => {
+    it('throws and logs error when caches.delete fails (lines 661-662)', async () => {
+      const deleteError = new Error('Cache deletion failed');
+      
+      // Mock caches.delete to fail
+      vi.stubGlobal('caches', {
+        keys: vi.fn().mockResolvedValue(['wllama-cache-1']),
+        delete: vi.fn().mockRejectedValue(deleteError),
+      });
+
+      await expect(manager.deleteModel()).rejects.toThrow('Cache deletion failed');
+      
+      // Verify that logger.error was called
+      const { logger } = await import('./logger.js');
+      expect(logger.error).toHaveBeenCalledWith(
+        'LocalModelManager',
+        'Delete failed:',
+        expect.any(Error)
+      );
+    });
+
+    it('logs error when _storeData fails during delete', async () => {
+      const storeError = new Error('Storage write failed');
+      
+      vi.spyOn(manager as any, '_storeData').mockRejectedValue(storeError);
+      vi.stubGlobal('caches', {
+        keys: vi.fn().mockResolvedValue([]),
+        delete: vi.fn(),
+      });
+
+      await expect(manager.deleteModel()).rejects.toThrow('Storage write failed');
+      
+      const { logger } = await import('./logger.js');
+      expect(logger.error).toHaveBeenCalledWith(
+        'LocalModelManager',
+        'Delete failed:',
+        expect.any(Error)
+      );
+    });
+
+    it('handles DOM exceptions during delete', async () => {
+      const domError = new DOMException('QuotaExceededError');
+      
+      vi.stubGlobal('caches', {
+        keys: vi.fn().mockRejectedValue(domError),
+        delete: vi.fn(),
+      });
+
+      await expect(manager.deleteModel()).rejects.toThrow('QuotaExceededError');
+    });
+  });
 });

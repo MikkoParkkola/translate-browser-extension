@@ -512,6 +512,72 @@ describe('CloudProviders', () => {
         }
       });
     });
+
+    it('removes model field for OpenAI when removeApiKey is called (line 188)', async () => {
+      mockStorageGet.mockResolvedValue({
+        openai_api_key: 'sk-test-key',
+        openai_enabled: true,
+        openai_model: 'gpt-4o',
+      });
+      mockStorageRemove.mockResolvedValue(undefined);
+
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => {
+        // Look for a button that indicates OpenAI is configured
+        expect(mockStorageGet).toHaveBeenCalled();
+      });
+
+      // Find and click the Remove button for OpenAI (first provider with a key)
+      // The Remove button should be visible since openai_api_key is configured
+      const removeButtons = screen.getAllByText('Remove');
+      expect(removeButtons.length).toBeGreaterThan(0);
+
+      // Click the Remove button (first one is likely DeepL or another provider)
+      // We're testing that the modelField gets included in removal
+      fireEvent.click(removeButtons[1] || removeButtons[0]);
+
+      await vi.waitFor(() => expect(screen.getByText('Remove API Key')).toBeTruthy());
+      const confirmBtn = document.querySelector('.confirm-dialog__btn--confirm') as HTMLElement;
+      if (confirmBtn) fireEvent.click(confirmBtn);
+
+      await vi.waitFor(() => {
+        // Verify that modelField (openai_model) is included in removal
+        expect(mockStorageRemove).toHaveBeenCalledWith(
+          expect.arrayContaining(['openai_api_key', 'openai_enabled', 'openai_model'])
+        );
+      });
+    });
+
+    it('handles removeApiKey error gracefully (line 198)', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      mockStorageGet.mockResolvedValue({
+        openai_api_key: 'sk-test-key',
+        openai_enabled: true,
+      });
+      mockStorageRemove.mockRejectedValue(new Error('Storage error'));
+
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => {
+        expect(mockStorageGet).toHaveBeenCalled();
+      });
+
+      // Find and click a Remove button
+      const removeButtons = screen.getAllByText('Remove');
+      if (removeButtons.length > 0) {
+        fireEvent.click(removeButtons[0]);
+
+        await vi.waitFor(() => expect(screen.getByText('Remove API Key')).toBeTruthy());
+        const confirmBtn = document.querySelector('.confirm-dialog__btn--confirm') as HTMLElement;
+        if (confirmBtn) fireEvent.click(confirmBtn);
+
+        // Error is caught and logged
+        await vi.waitFor(() => {
+          expect(mockStorageRemove).toHaveBeenCalled();
+        });
+      }
+
+      consoleErrorSpy.mockRestore();
+    });
   });
 
   describe('provider status on mount', () => {

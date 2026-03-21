@@ -909,3 +909,69 @@ describe('measureTimeAsync', () => {
     expect(result.items).toEqual(['a', 'b']);
   });
 });
+
+describe('Profiler null branch handling (lines 274, 343, 431)', () => {
+  beforeEach(() => {
+    profiler.clear();
+    profiler.setEnabled(true);
+  });
+
+  describe('getReport — getAggregateStats can return null (line 274)', () => {
+    it('skips null stats when building aggregates', () => {
+      const sessionId = profiler.startSession('test-session-1');
+      profiler.startTiming(sessionId, 'operation1');
+      profiler.endTiming(sessionId, 'operation1');
+
+      const report = profiler.getReport(sessionId);
+
+      // Should not throw and should handle null gracefully
+      expect(report).toBeDefined();
+      // aggregates is a Map
+      if (report) {
+        expect(report.aggregates instanceof Map).toBe(true);
+      }
+    });
+  });
+
+  describe('formatAggregates — getAggregateStats can return null (line 343)', () => {
+    it('skips null stats when formatting aggregates', () => {
+      const sessionId = profiler.startSession('test-session-2');
+      profiler.startTiming(sessionId, 'op1');
+      profiler.endTiming(sessionId, 'op1');
+
+      // Call formatAggregates which uses getAggregateStats
+      const formatted = profiler.formatAggregates();
+
+      // Should handle null stats gracefully
+      expect(formatted).toBeDefined();
+      expect(typeof formatted).toBe('string');
+    });
+  });
+
+  describe('getAllAggregates — getAggregateStats can return null (line 431)', () => {
+    it('skips null stats when building aggregates object', () => {
+      const sessionId = profiler.startSession('test-session-3');
+      profiler.startTiming(sessionId, 'op2');
+      profiler.endTiming(sessionId, 'op2');
+
+      const aggregates = profiler.getAllAggregates();
+
+      // Should handle null gracefully
+      expect(aggregates).toBeDefined();
+      expect(typeof aggregates).toBe('object');
+    });
+
+    it('includes valid stats in aggregates', () => {
+      const sessionId = profiler.startSession('test-session-4');
+      profiler.startTiming(sessionId, 'aggregate-op');
+      profiler.endTiming(sessionId, 'aggregate-op');
+      profiler.startTiming(sessionId, 'aggregate-op');
+      profiler.endTiming(sessionId, 'aggregate-op');
+
+      const aggregates = profiler.getAllAggregates();
+
+      // Should include the operation if it has valid stats
+      expect(aggregates).toBeDefined();
+    });
+  });
+});

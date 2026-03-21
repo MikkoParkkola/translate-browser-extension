@@ -1639,5 +1639,93 @@ describe('LocalModelUI', () => {
 
       ui.destroy();
     });
+
+    it('handles maxValue === minValue (range would be 0)', () => {
+      const ui = new LocalModelUI('local-model-container');
+
+      const canvas = document.getElementById('local-model-container')?.querySelector('#performance-chart') as HTMLCanvasElement | null;
+      if (canvas) {
+        const mockCtx = {
+          clearRect: vi.fn(),
+          beginPath: vi.fn(),
+          moveTo: vi.fn(),
+          lineTo: vi.fn(),
+          stroke: vi.fn(),
+          fillText: vi.fn(),
+          strokeStyle: '',
+          lineWidth: 0,
+          fillStyle: '',
+          font: '',
+        };
+        vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as unknown as CanvasRenderingContext2D);
+
+        // All same values: maxValue === minValue, so range = 0 || 1 = 1
+        window.localModelManager.performanceStats = { inferenceHistory: [100, 100, 100] };
+
+        // @ts-expect-error - accessing private method
+        ui.updatePerformanceChart();
+
+        // Should use fallback range = 1
+        expect(mockCtx.moveTo).toHaveBeenCalled();
+        expect(mockCtx.lineTo).toHaveBeenCalled();
+        expect(mockCtx.stroke).toHaveBeenCalled();
+      }
+
+      ui.destroy();
+    });
+
+    it('handles null performanceStats (returns early with ?? [])', () => {
+      const ui = new LocalModelUI('local-model-container');
+
+      const canvas = document.getElementById('local-model-container')?.querySelector('#performance-chart') as HTMLCanvasElement | null;
+      if (canvas) {
+        const mockCtx = {
+          clearRect: vi.fn(),
+          beginPath: vi.fn(),
+          moveTo: vi.fn(),
+          lineTo: vi.fn(),
+          stroke: vi.fn(),
+          fillText: vi.fn(),
+          strokeStyle: '',
+          lineWidth: 0,
+          fillStyle: '',
+          font: '',
+        };
+        vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as unknown as CanvasRenderingContext2D);
+
+        // performanceStats is undefined
+        window.localModelManager.performanceStats = undefined;
+
+        // @ts-expect-error - accessing private method
+        ui.updatePerformanceChart();
+
+        // Should return early when inferenceHistory.length === 0
+        expect(mockCtx.clearRect).not.toHaveBeenCalled();
+      }
+
+      ui.destroy();
+    });
+  });
+});
+
+describe('LocalModelUI global export', () => {
+  beforeEach(async () => {
+    vi.resetModules();
+    document.body.innerHTML = '<div id="local-model-container"></div>';
+    (window as unknown as Record<string, unknown>).localModelManager = createMockModelManager();
+    const mod = await import('./localModelUI');
+    LocalModelUI = mod.LocalModelUI;
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+    delete (window as unknown as Record<string, unknown>).localModelManager;
+    vi.restoreAllMocks();
+  });
+
+  it('exports LocalModelUI to window when window is defined', () => {
+    // The module code checks: if (typeof window !== 'undefined') { window.LocalModelUI = ... }
+    // This test verifies that the export was executed
+    expect((window as unknown as Record<string, unknown>).LocalModelUI).toBe(LocalModelUI);
   });
 });

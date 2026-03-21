@@ -599,4 +599,63 @@ describe('GlossarySettings', () => {
       });
     });
   });
+
+  describe('import glossary error handling', () => {
+    it('shows error when import throws Error instance (line 175 Error case)', async () => {
+      const errorMsg = 'Invalid JSON format';
+      (glossary.importGlossary as ReturnType<typeof vi.fn>).mockRejectedValue(new Error(errorMsg));
+      (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+      const { container } = render(() => <GlossarySettings />);
+      await vi.waitFor(() => expect(screen.getByText('Import JSON')).toBeTruthy());
+
+      const fileInput = container.querySelector('input[type="file"][accept=".json"]') as HTMLInputElement;
+      const file = new File(['{}'], 'glossary.json', { type: 'application/json' });
+      Object.defineProperty(fileInput, 'files', { value: [file], writable: false });
+      
+      fireEvent.change(fileInput);
+
+      await vi.waitFor(() => {
+        expect(screen.getByText(`Failed to import: ${errorMsg}`)).toBeTruthy();
+      });
+    });
+
+    it('shows "Invalid file" when import throws non-Error object (line 175 non-Error case)', async () => {
+      // This exercises the `e instanceof Error ? e.message : 'Invalid file'` branch
+      (glossary.importGlossary as ReturnType<typeof vi.fn>).mockRejectedValue('Some string error');
+      (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+      const { container } = render(() => <GlossarySettings />);
+      await vi.waitFor(() => expect(screen.getByText('Import JSON')).toBeTruthy());
+
+      const fileInput = container.querySelector('input[type="file"][accept=".json"]') as HTMLInputElement;
+      const file = new File(['not valid'], 'glossary.txt', { type: 'text/plain' });
+      Object.defineProperty(fileInput, 'files', { value: [file], writable: false });
+      
+      fireEvent.change(fileInput);
+
+      await vi.waitFor(() => {
+        expect(screen.getByText('Failed to import: Invalid file')).toBeTruthy();
+      });
+    });
+
+    it('shows "Invalid file" when import throws unknown object (line 175 non-Error edge case)', async () => {
+      // Test with object that is not Error instance
+      (glossary.importGlossary as ReturnType<typeof vi.fn>).mockRejectedValue({ custom: 'error' });
+      (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+      const { container } = render(() => <GlossarySettings />);
+      await vi.waitFor(() => expect(screen.getByText('Import JSON')).toBeTruthy());
+
+      const fileInput = container.querySelector('input[type="file"][accept=".json"]') as HTMLInputElement;
+      const file = new File(['{}'], 'glossary.json', { type: 'application/json' });
+      Object.defineProperty(fileInput, 'files', { value: [file], writable: false });
+      
+      fireEvent.change(fileInput);
+
+      await vi.waitFor(() => {
+        expect(screen.getByText('Failed to import: Invalid file')).toBeTruthy();
+      });
+    });
+  });
 });

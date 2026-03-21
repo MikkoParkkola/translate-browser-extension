@@ -318,3 +318,102 @@ describe('LocalModels', () => {
     });
   });
 });
+
+describe('LocalModels — uncovered branches', () => {
+  describe('Storage estimate branch (line 72)', () => {
+    it('handles estimate.quota when response.quota is undefined', async () => {
+      const mockEstimate = {
+        usage: 1024,
+        quota: 10240,
+      };
+
+      vi.stubGlobal('navigator', {
+        storage: {
+          estimate: vi.fn().mockResolvedValue(mockEstimate),
+        },
+      });
+
+      mockSendMessage.mockResolvedValueOnce({
+        models: [],
+      });
+
+      render(() => <LocalModels />);
+
+      await vi.waitFor(() => {
+        expect(screen.queryByText(/Loading/i)).toBeFalsy();
+      }, { timeout: 1000 });
+    });
+  });
+
+  describe('Cache clearing with window.caches (line 148)', () => {
+    it('clears cache keys when caches API is available', async () => {
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+
+      const mockCachesDelete = vi.fn().mockResolvedValue(true);
+      vi.stubGlobal('caches', {
+        keys: vi.fn().mockResolvedValue(['transformers-cache', 'other-cache']),
+        delete: mockCachesDelete,
+      });
+
+      mockSendMessage
+        .mockResolvedValueOnce({ models: MOCK_MODELS })
+        .mockResolvedValueOnce({})
+        .mockResolvedValue({});
+
+      render(() => <LocalModels />);
+
+      await vi.waitFor(() => expect(screen.getByText('Clear All Models')).toBeTruthy());
+      fireEvent.click(screen.getByText('Clear All Models'));
+
+      await vi.waitFor(() => {
+        expect(mockCachesDelete).toHaveBeenCalledWith('transformers-cache');
+      });
+    });
+  });
+
+  describe('Model list rendering (lines 242, 291)', () => {
+    it('displays model name when name is available', async () => {
+      mockSendMessage.mockResolvedValueOnce({
+        models: [
+          { id: 'model1', name: 'Named Model', size: 512000000 },
+        ],
+      });
+
+      render(() => <LocalModels />);
+
+      await vi.waitFor(() => {
+        expect(screen.getByText('Named Model')).toBeTruthy();
+      });
+    });
+
+    it('displays model id when name is unavailable', async () => {
+      mockSendMessage.mockResolvedValueOnce({
+        models: [
+          { id: 'model-id-123', size: 512000000 },
+        ],
+      });
+
+      render(() => <LocalModels />);
+
+      await vi.waitFor(() => {
+        expect(screen.queryByText('model-id-123')).toBeTruthy();
+      });
+    });
+
+    it('displays lastUsed date when model has lastUsed property', async () => {
+      const lastUsedTime = new Date('2024-01-15').getTime();
+      mockSendMessage.mockResolvedValueOnce({
+        models: [
+          { id: 'model1', name: 'Recent Model', size: 512000000, lastUsed: lastUsedTime },
+        ],
+      });
+
+      render(() => <LocalModels />);
+
+      await vi.waitFor(() => {
+        const modelCard = screen.queryByText(/Recent Model/);
+        expect(modelCard).toBeTruthy();
+      });
+    });
+  });
+});

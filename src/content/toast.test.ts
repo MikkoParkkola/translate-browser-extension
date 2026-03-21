@@ -221,3 +221,46 @@ describe('toast', () => {
     });
   });
 });
+
+describe('updateProgressToast — line 132 branch (when textEl exists)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '';
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = '';
+  });
+
+  it('updates text content of progress toast when element exists', () => {
+    showProgressToast('Initial message');
+    updateProgressToast('Updated message');
+
+    const textEl = document.querySelector('.translate-progress-text');
+    expect(textEl?.textContent).toBe('Updated message');
+  });
+
+  it('does nothing when textEl does not exist', () => {
+    showProgressToast('Initial message');
+
+    // Remove the text element
+    const textEl = document.querySelector('.translate-progress-text');
+    if (textEl) {
+      textEl.remove();
+    }
+
+    // Should not throw
+    expect(() => updateProgressToast('New message')).not.toThrow();
+  });
+
+  it('updates text multiple times', () => {
+    showProgressToast('Start');
+    updateProgressToast('Step 1');
+    updateProgressToast('Step 2');
+    updateProgressToast('Complete');
+
+    const textEl = document.querySelector('.translate-progress-text');
+    expect(textEl?.textContent).toBe('Complete');
+  });
+});

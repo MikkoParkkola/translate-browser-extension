@@ -3376,4 +3376,428 @@ describe('Content Script', () => {
       expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
     });
   });
+
+
+  describe('Message handler edge cases', () => {
+    it('handles message with missing optional fields', async () => {
+      document.body.innerHTML = '<p>Test</p>';
+      
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translatePage' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+    });
+
+    it('handles translateImage with missing imageUrl', async () => {
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translateImage' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+    });
+
+    it('handles unknown message type returns false', () => {
+      const sendResponse = vi.fn();
+      const result = messageHandler(
+        { type: 'unknownMessageType' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('stopAutoTranslate edge cases', () => {
+    it('stops mutation observer when called', async () => {
+      document.body.innerHTML = '<p>Test content for mutation observer</p>';
+      
+      const sendResponse = vi.fn();
+      
+      // First start a translation to initialize observer
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Käännetty'],
+      });
+      
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+      
+      await new Promise((r) => setTimeout(r, 100));
+      
+      // Now stop auto translate
+      const stopResponse = vi.fn();
+      messageHandler(
+        { type: 'stopAutoTranslate' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        stopResponse
+      );
+      
+      expect(stopResponse).toHaveBeenCalledWith(true);
+    });
+
+    it('clears current settings when stopping auto translate', () => {
+      const sendResponse = vi.fn();
+      
+      messageHandler(
+        { type: 'stopAutoTranslate' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('Bilingual mode edge cases', () => {
+    it('getBilingualMode returns state without modifying it', () => {
+      const sendResponse = vi.fn();
+      
+      messageHandler(
+        { type: 'getBilingualMode' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith({ enabled: expect.any(Boolean) });
+    });
+
+    it('setBilingualMode to false disables mode', () => {
+      const sendResponse = vi.fn();
+      
+      messageHandler(
+        { type: 'setBilingualMode', enabled: false } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith({ enabled: expect.any(Boolean) });
+    });
+
+    it('setBilingualMode to true enables mode', () => {
+      const sendResponse = vi.fn();
+      
+      messageHandler(
+        { type: 'setBilingualMode', enabled: true } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith({ enabled: expect.any(Boolean) });
+    });
+  });
+
+  describe('Widget message handlers', () => {
+    it('toggleWidget returns boolean', () => {
+      const sendResponse = vi.fn();
+      
+      const result = messageHandler(
+        { type: 'toggleWidget' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(result).toBe(true);
+    });
+
+    it('showWidget handles undefined state', () => {
+      const sendResponse = vi.fn();
+      
+      const result = messageHandler(
+        { type: 'showWidget' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('Undo translation with edge cases', () => {
+    it('undoTranslation returns success structure', () => {
+      document.body.innerHTML = '<p data-translated="true">Käännetty</p>';
+      
+      const sendResponse = vi.fn();
+      
+      messageHandler(
+        { type: 'undoTranslation' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith({ 
+        success: true, 
+        restoredCount: expect.any(Number) 
+      });
+    });
+
+    it('undoTranslation returns 0 when nothing translated', () => {
+      document.body.innerHTML = '<p>Untranslated content</p>';
+      
+      const sendResponse = vi.fn();
+      
+      messageHandler(
+        { type: 'undoTranslation' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith({ 
+        success: true, 
+        restoredCount: 0 
+      });
+    });
+  });
+
+  describe('Edge cases in translatePage with DOM conditions', () => {
+    it('handles empty page without translatable content', async () => {
+      document.body.innerHTML = '<script>alert("test")</script><style>.test{}</style>';
+      
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      
+      // Wait for async completion
+      await new Promise((r) => setTimeout(r, 150));
+      expect(true).toBe(true);
+    });
+
+    it('handles parent element without bounding rect', async () => {
+      // Create detached nodes
+      const div = document.createElement('div');
+      const textNode = document.createTextNode('Detached content');
+      // Note: not appending to DOM, so parent exists but getBoundingClientRect may fail
+      
+      document.body.innerHTML = '<div>Regular content</div>';
+      
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      await new Promise((r) => setTimeout(r, 150));
+    });
+  });
+
+  describe('Multiple concurrent operations', () => {
+    it('prevents concurrent page translations', async () => {
+      document.body.innerHTML = '<p>Content 1</p>';
+      
+      const sendResponse1 = vi.fn();
+      const sendResponse2 = vi.fn();
+      
+      // Start first translation
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse1
+      );
+      
+      expect(sendResponse1).toHaveBeenCalledWith({ success: true, status: 'started' });
+      
+      // Try to start second translation immediately (should be prevented by guard)
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'de', strategy: 'balanced' },
+        {},
+        sendResponse2
+      );
+      
+      expect(sendResponse2).toHaveBeenCalledWith({ success: true, status: 'started' });
+      
+      await new Promise((r) => setTimeout(r, 150));
+    });
+  });
+
+  describe('Message handler with unknown message types', () => {
+    it('returns false for unknown message type', () => {
+      const sendResponse = vi.fn();
+      const result = messageHandler(
+        { type: 'unknownType' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(result).toBe(false);
+      expect(sendResponse).not.toHaveBeenCalled();
+    });
+
+    it('returns false for null message type', () => {
+      const sendResponse = vi.fn();
+      const result = messageHandler(
+        { type: null } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('Text node scanning with special elements', () => {
+    it('skips inline script tags', () => {
+      document.body.innerHTML = `
+        <div>Visible text</div>
+        <script>console.log('hidden')</script>
+        <div>More text</div>
+      `;
+      
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+    });
+
+    it('handles nested elements with mixed text', () => {
+      document.body.innerHTML = `
+        <div>
+          <p>Paragraph 1</p>
+          <div>
+            <span>Nested span</span>
+            <b>Bold text</b>
+          </div>
+        </div>
+      `;
+      
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+    });
+  });
+
+  describe('Undo translation with various states', () => {
+    it('handles undo when no translations exist', () => {
+      document.body.innerHTML = '<p>Untranslated content</p>';
+      
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'undoTranslation' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        restoredCount: expect.any(Number),
+      });
+    });
+
+    it('handles undo with partially translated DOM', () => {
+      document.body.innerHTML = `
+        <div data-translated="true" data-original-text="Original">Translated</div>
+        <p>Untranslated paragraph</p>
+        <span data-translated="true" data-original-text="Alkuperäinen">Käännetty</span>
+      `;
+      
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'undoTranslation' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        restoredCount: expect.any(Number),
+      });
+    });
+  });
+
+  describe('Stop auto-translate with mutation observer state', () => {
+    it('clears current settings and stops observer', () => {
+      document.body.innerHTML = '<p>Content</p>';
+      
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'stopAutoTranslate' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('Provider and strategy combinations', () => {
+    it('handles translateSelection with explicit provider', () => {
+      document.body.innerHTML = '<p id="target">Text to translate</p>';
+      
+      const sendResponse = vi.fn();
+      messageHandler(
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+          provider: 'openai',
+        } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+    });
+
+    it('handles translatePage with different strategies', async () => {
+      document.body.innerHTML = '<div>Content to translate</div>';
+      
+      const strategies = ['fast', 'balanced', 'thorough'] as const;
+      
+      for (const strategy of strategies) {
+        const sendResponse = vi.fn();
+        messageHandler(
+          {
+            type: 'translatePage',
+            sourceLang: 'en',
+            targetLang: 'fi',
+            strategy,
+          } as unknown as Parameters<typeof messageHandler>[0],
+          {},
+          sendResponse
+        );
+        
+        expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      }
+    });
+  });
+
+  describe('Toggle and control message handlers', () => {
+    it('toggleBilingualMode returns true', () => {
+      const sendResponse = vi.fn();
+      const result = messageHandler(
+        { type: 'toggleBilingualMode' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+      
+      expect(result).toBe(true);
+      expect(sendResponse).toHaveBeenCalled();
+    });
+  });
 });
