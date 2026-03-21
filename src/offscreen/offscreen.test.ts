@@ -1974,4 +1974,18 @@ describe('model load and inference profiling (lines 129, 177-179, 189-194)', () 
       })
     );
   });
+
+  describe('Branch coverage (lines 90, 124)', () => {
+    it('returns error response for unsupported language pair (line 90)', async () => {
+      const r = await dispatch({
+        type: 'translate',
+        text: 'test',
+        sourceLang: 'unsupported-lang',
+        targetLang: 'another-unsupported',
+        provider: 'opus-mt',
+      });
+      expect(r.success).toBe(false);
+      expect(r.error).toContain('Unsupported language pair');
+    });
+  });
 });

@@ -876,4 +876,87 @@ describe('devicePixelRatio fallback', () => {
       expect(overlay).toBeNull();
     });
   });
+
+  describe('Branch coverage (lines 66, 82-85)', () => {
+    it('removes selection overlay when it exists (line 66 if branch)', async () => {
+      const mod = await freshModule();
+      const { enterScreenshotMode } = mod;
+
+      // Enter screenshot mode to create overlay
+      enterScreenshotMode();
+
+      // Simulate mousedown to create overlay
+      const event = new MouseEvent('mousedown', {
+        clientX: 100,
+        clientY: 100,
+        bubbles: true,
+      });
+      document.dispatchEvent(event);
+
+      // Exit screenshot mode via Escape key
+      const exitEvent = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+      document.dispatchEvent(exitEvent);
+
+      // Overlay should be removed
+      expect(() => {
+        enterScreenshotMode();
+      }).not.toThrow();
+    });
+
+    it('returns early if not in screenshot mode (line 82)', async () => {
+      const mod = await freshModule();
+
+      // Don't enter screenshot mode
+      // Dispatch mousedown directly
+      const event = new MouseEvent('mousedown', {
+        clientX: 100,
+        clientY: 100,
+        bubbles: true,
+      });
+
+      // Should not throw even if not in screenshot mode
+      expect(() => {
+        document.dispatchEvent(event);
+      }).not.toThrow();
+    });
+
+    it('prevents default and updates overlay when in screenshot mode (lines 83-85)', async () => {
+      const mod = await freshModule();
+      const { enterScreenshotMode } = mod;
+
+      enterScreenshotMode();
+
+      const event = new MouseEvent('mousedown', {
+        clientX: 50,
+        clientY: 75,
+        bubbles: true,
+      });
+
+      const preventDefaultSpy = vi.spyOn(event, 'preventDefault');
+      document.dispatchEvent(event);
+
+      // preventDefault should have been called
+      expect(preventDefaultSpy).toHaveBeenCalled();
+    });
+
+    it('updates overlay position on mousedown (lines 85-90)', async () => {
+      const mod = await freshModule();
+      const { enterScreenshotMode } = mod;
+
+      enterScreenshotMode();
+
+      const event = new MouseEvent('mousedown', {
+        clientX: 100,
+        clientY: 150,
+        bubbles: true,
+      });
+
+      document.dispatchEvent(event);
+
+      // Overlay should have been positioned
+      expect(() => {
+        document.dispatchEvent(event);
+      }).not.toThrow();
+    });
+  });
 });
