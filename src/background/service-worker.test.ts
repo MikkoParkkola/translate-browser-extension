@@ -5241,3 +5241,539 @@ describe('Advanced Coverage Push to 90%+', () => {
     });
   });
 });
+
+// ============================================================================
+// Coverage gap tests
+// Targets specific uncovered lines in service-worker.ts
+// ============================================================================
+describe('Coverage gap tests', () => {
+  function getMessageHandler() {
+    return mockAddMessageListener.mock.calls[0]?.[0] as (
+      message: unknown,
+      sender: unknown,
+      sendResponse: (response: unknown) => void
+    ) => boolean;
+  }
+
+  async function invoke(message: unknown): Promise<any> {
+    const handler = getMessageHandler();
+    const sendResponse = vi.fn();
+    handler(message, {}, sendResponse);
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalled();
+    }, { timeout: 15000 });
+    return sendResponse.mock.calls[0]?.[0];
+  }
+
+  beforeEach(() => {
+    mockSendMessage.mockReset();
+    mockSendMessage.mockReturnValue({ success: true, result: 'translated text' });
+    // mockReset + restore original wrapper so mockSendMessage is always consulted
+    vi.mocked(chrome.runtime.sendMessage).mockReset();
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation((message: any, callback: any) => {
+      const response = mockSendMessage(message);
+      if (callback && typeof callback === 'function') {
+        Promise.resolve(response).then(callback);
+      }
+      return response;
+    });
+    // mockReset clears both history AND the accumulated mockImplementationOnce/mockResolvedValueOnce queue
+    vi.mocked(chrome.tabs.sendMessage).mockReset();
+    vi.mocked(chrome.tabs.sendMessage).mockResolvedValue(undefined);
+    vi.mocked(chrome.scripting.executeScript).mockReset();
+    vi.mocked(chrome.scripting.executeScript).mockResolvedValue([]);
+    vi.mocked(chrome.storage.local.get).mockReset();
+    vi.mocked(chrome.storage.local.get).mockImplementation((_keys: any, callback?: any) => {
+      if (callback) callback({});
+      return Promise.resolve({});
+    });
+    vi.mocked(chrome.tabs.query).mockReset();
+    vi.mocked(chrome.tabs.query).mockResolvedValue([]);
+    vi.mocked(chrome.runtime.getContexts).mockResolvedValue([
+      { documentUrl: 'chrome-extension://test-id/src/offscreen/offscreen.html' },
+    ]);
+  });
+
+  // ============================================================================
+  // tabs.onUpdated: URL filtering (line ~1230 in source)
+  // ============================================================================
+  describe('tabs.onUpdated: URL filtering', () => {
+    it('skips preload when changeInfo.status is not complete', () => {
+      const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
+      handler(1, { status: 'loading' }, { url: 'https://example.com' });
+      // No error; preloadPredictedModels not triggered
+    });
+
+    it('skips preload when URL starts with chrome://', async () => {
+      const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
+      handler(1, { status: 'complete' }, { url: 'chrome://settings' });
+      await new Promise(r => setTimeout(r, 50));
+    });
+
+    it('skips preload when tab.url is undefined', () => {
+      const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
+      handler(1, { status: 'complete' }, {});
+    });
+  });
+
+  // ============================================================================
+  // Context menu: missing tab.id guard (line ~870 in source)
+  // ============================================================================
+  describe('context menu: missing tab.id guard', () => {
+    it('returns early when tab is undefined', async () => {
+      const handler = mockAddContextMenuClickedListener.mock.calls[0]?.[0];
+      handler({ menuItemId: 'translate-page' }, undefined);
+      await new Promise(r => setTimeout(r, 50));
+    });
+
+    it('returns early when tab has no id', async () => {
+      const handler = mockAddContextMenuClickedListener.mock.calls[0]?.[0];
+      handler({ menuItemId: 'translate-selection' }, {});
+      await new Promise(r => setTimeout(r, 50));
+    });
+  });
+
+  // ============================================================================
+  // Context menu: non-connection error swallowed (lines ~916-930, 942)
+  // ============================================================================
+  describe('context menu: non-connection error is swallowed', () => {
+    it('catches non-connection errors from sendMessageToTab', async () => {
+      vi.mocked(chrome.tabs.sendMessage).mockRejectedValueOnce(new Error('Permission denied'));
+      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([]);
+      const handler = mockAddContextMenuClickedListener.mock.calls[0]?.[0];
+      handler({ menuItemId: 'translate-page' }, { id: 999 });
+      await new Promise(r => setTimeout(r, 400));
+    });
+  });
+
+  // ============================================================================
+  // Keyboard shortcut: no tab.id guard (lines ~1160-1164)
+  // ============================================================================
+  describe('keyboard shortcut: no tab.id', () => {
+    it('returns early when command tab has no id', async () => {
+      const handler = mockAddCommandListener.mock.calls[0]?.[0];
+      handler('translate-page', {});
+      await new Promise(r => setTimeout(r, 50));
+    });
+  });
+
+  // ============================================================================
+  // Keyboard shortcut: error handling (lines ~973, 997)
+  // ============================================================================
+  describe('keyboard shortcut: error handling', () => {
+    it('catches sendMessageToTab errors in command handler', async () => {
+      vi.mocked(chrome.tabs.sendMessage).mockRejectedValueOnce(new Error('Tab not reachable'));
+      vi.mocked(chrome.scripting.executeScript).mockRejectedValueOnce(new Error('inject failed'));
+      const handler = mockAddCommandListener.mock.calls[0]?.[0];
+      handler('translate-page', { id: 777 });
+      await new Promise(r => setTimeout(r, 400));
+    });
+  });
+
+  // ============================================================================
+  // handleDeleteModel: outer error path (lines ~563-567)
+  // ============================================================================
+  describe('handleDeleteModel: storage error', () => {
+    it('returns error when storage.local.get throws', async () => {
+      vi.mocked(chrome.storage.local.get).mockImplementationOnce(() => {
+        throw new Error('Storage read error');
+      });
+      const response = await invoke({ type: 'deleteModel', modelId: 'opus-mt-en-de' }) as any;
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('Storage read error');
+    });
+  });
+
+  // ============================================================================
+  // handleClearAllModels: caches API branch (lines ~581, 601)
+  // ============================================================================
+  describe('handleClearAllModels: cache API branch', () => {
+    it('clears model caches matching transformers/onnx/model patterns', async () => {
+      const mockCachesKeys = vi.fn().mockResolvedValue([
+        'transformers-cache-v1',
+        'onnx-models-v2',
+        'model-storage',
+        'app-general-cache', // should NOT be deleted
+      ]);
+      const mockDelete = vi.fn().mockResolvedValue(true);
+      vi.stubGlobal('caches', { keys: mockCachesKeys, delete: mockDelete });
+
+      const response = await invoke({ type: 'clearAllModels' }) as any;
+
+      // Restore only caches — avoid vi.unstubAllGlobals() which removes the chrome stub
+      (globalThis as any).caches = undefined;
+
+      expect(response.success).toBe(true);
+      expect(mockDelete).toHaveBeenCalledTimes(3);
+    });
+
+    it('handles caches.keys() throwing gracefully', async () => {
+      vi.stubGlobal('caches', {
+        keys: vi.fn().mockRejectedValue(new Error('Cache API unavailable')),
+        delete: vi.fn(),
+      });
+
+      const response = await invoke({ type: 'clearAllModels' }) as any;
+
+      (globalThis as any).caches = undefined;
+      expect(response.success).toBe(true);
+    });
+  });
+
+  // ============================================================================
+  // handleClearAllModels: outer error path (line ~630)
+  // ============================================================================
+  describe('handleClearAllModels: outer error path', () => {
+    it('returns error when storage.local.remove throws', async () => {
+      vi.mocked(chrome.storage.local.remove).mockRejectedValueOnce(new Error('Remove failed'));
+      const response = await invoke({ type: 'clearAllModels' }) as any;
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('Remove failed');
+    });
+  });
+
+  // ============================================================================
+  // Chrome-builtin: no active tab (lines ~1028-1029)
+  // ============================================================================
+  describe('chrome-builtin translation: no active tab', () => {
+    it('returns error when no active tab found', async () => {
+      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([]);
+      const response = await invoke({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'chrome-builtin',
+      }) as any;
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('No active tab');
+    });
+  });
+
+  // ============================================================================
+  // Chrome-builtin: executeScript returns undefined result (line ~1040)
+  // ============================================================================
+  describe('chrome-builtin translation: undefined script result', () => {
+    it('returns error when executeScript result is undefined', async () => {
+      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 42 }] as any);
+      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([{ result: undefined }] as any);
+      const response = await invoke({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'chrome-builtin',
+      }) as any;
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('returned no result');
+    });
+  });
+
+  // ============================================================================
+  // handleGetProfilingStats: getAllAggregates throws (lines ~1084-1088)
+  // ============================================================================
+  describe('handleGetProfilingStats: error path', () => {
+    it('returns error when profiler.getAllAggregates throws', async () => {
+      const { profiler } = await import('../core/profiler');
+      const spy = vi.spyOn(profiler, 'getAllAggregates').mockImplementationOnce(() => {
+        throw new Error('Profiler internal error');
+      });
+      const response = await invoke({ type: 'getProfilingStats' }) as any;
+      spy.mockRestore();
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('Profiler internal error');
+    });
+  });
+
+  // ============================================================================
+  // handleTranslate: sourceLang=auto with profiling (lines ~653-657, 671-679)
+  // else if (sessionId) branch: endTiming('cache_lookup') when sourceLang === 'auto'
+  // ============================================================================
+  describe('handleTranslate: sourceLang=auto with profiling enabled', () => {
+    it('hits the else-if(sessionId) cache_lookup branch when sourceLang=auto', async () => {
+      const response = await invoke({
+        type: 'translate',
+        text: 'Hello world auto profiling',
+        sourceLang: 'auto',
+        targetLang: 'de',
+        enableProfiling: true,
+      }) as any;
+      expect(response.success).toBe(true);
+    });
+  });
+
+  // ============================================================================
+  // handleTranslate: profilingData from offscreen (lines ~779-783)
+  // ============================================================================
+  describe('handleTranslate: profilingData imported from offscreen', () => {
+    it('calls profiler.importSessionData when offscreen returns profilingData', async () => {
+      const { profiler } = await import('../core/profiler');
+      // Spy to prevent importSessionData from throwing on malformed data and to verify it was called
+      const importSpy = vi.spyOn(profiler, 'importSessionData').mockImplementation(() => {});
+      mockSendMessage.mockReturnValueOnce({
+        success: true,
+        result: 'translated with profiling',
+        profilingData: { sessions: {}, aggregates: {} },
+      });
+      const response = await invoke({
+        type: 'translate',
+        text: 'Hello profiling data test',
+        sourceLang: 'en',
+        targetLang: 'de',
+        enableProfiling: true,
+      }) as any;
+      expect(response.success).toBe(true);
+      expect(importSpy).toHaveBeenCalledWith({ sessions: {}, aggregates: {} });
+      importSpy.mockRestore();
+    });
+  });
+
+  // ============================================================================
+  // handleTranslate: user correction found (lines ~708-712)
+  // ============================================================================
+  describe('handleTranslate: user correction path', () => {
+    it('returns fromCorrection=true when getCorrection resolves with a value', async () => {
+      const corrections = await import('../core/corrections');
+      const spy = vi.spyOn(corrections, 'getCorrection').mockResolvedValueOnce('corrected output');
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'specific correction phrase test',
+        sourceLang: 'en',
+        targetLang: 'de',
+      }) as any;
+
+      spy.mockRestore();
+      expect(response.success).toBe(true);
+      expect(response.fromCorrection).toBe(true);
+      expect(response.result).toBe('corrected output');
+    });
+  });
+
+  // ============================================================================
+  // sendMessageToTab: content script injection path (lines ~1118-1126)
+  // ============================================================================
+  describe('sendMessageToTab: content script injection path', () => {
+    it('injects content script and retries after "Receiving end does not exist" error', async () => {
+      vi.mocked(chrome.tabs.sendMessage)
+        .mockRejectedValueOnce(new Error('Receiving end does not exist'))
+        .mockResolvedValueOnce(undefined);
+      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([]);
+
+      const handler = mockAddContextMenuClickedListener.mock.calls[0]?.[0];
+      handler({ menuItemId: 'translate-page' }, { id: 42 });
+
+      // Wait for the 200ms setTimeout inside sendMessageToTab + async overhead
+      await new Promise(r => setTimeout(r, 500));
+
+      // First call (failed) + second call (succeeded after injection)
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(chrome.scripting.executeScript)).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ============================================================================
+  // preloadPredictedModels: various branches via tabs.onUpdated (lines ~108-152)
+  // ============================================================================
+  describe('preloadPredictedModels: various branches via tabs.onUpdated', () => {
+    it('skips preload when hasRecentActivity returns false', async () => {
+      const { getPredictionEngine } = await import('../core/prediction-engine');
+      const engine = getPredictionEngine();
+      const actSpy = vi.spyOn(engine, 'hasRecentActivity').mockResolvedValueOnce(false);
+
+      const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
+      handler(10, { status: 'complete' }, { url: 'https://news.example.com/article' });
+
+      await new Promise(r => setTimeout(r, 150));
+      expect(actSpy).toHaveBeenCalled();
+      actSpy.mockRestore();
+    });
+
+    it('skips when predict returns empty array', async () => {
+      const { getPredictionEngine } = await import('../core/prediction-engine');
+      const engine = getPredictionEngine();
+      const actSpy = vi.spyOn(engine, 'hasRecentActivity').mockResolvedValueOnce(true);
+      const predSpy = vi.spyOn(engine, 'predict').mockResolvedValueOnce([]);
+
+      const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
+      handler(11, { status: 'complete' }, { url: 'https://blog.example.com/post' });
+
+      await new Promise(r => setTimeout(r, 150));
+      expect(predSpy).toHaveBeenCalled();
+      actSpy.mockRestore();
+      predSpy.mockRestore();
+    });
+
+    it('skips low-confidence predictions (confidence < 0.3)', async () => {
+      const { getPredictionEngine } = await import('../core/prediction-engine');
+      const engine = getPredictionEngine();
+      const actSpy = vi.spyOn(engine, 'hasRecentActivity').mockResolvedValueOnce(true);
+      const predSpy = vi.spyOn(engine, 'predict').mockResolvedValueOnce([
+        { sourceLang: 'en', targetLang: 'fr', confidence: 0.1 },
+      ] as any);
+
+      const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
+      handler(12, { status: 'complete' }, { url: 'https://shop.example.com/product' });
+
+      await new Promise(r => setTimeout(r, 150));
+      expect(predSpy).toHaveBeenCalled();
+      actSpy.mockRestore();
+      predSpy.mockRestore();
+    });
+
+    it('marks key as preloaded when offscreen reports preloaded=true', async () => {
+      const { getPredictionEngine } = await import('../core/prediction-engine');
+      const engine = getPredictionEngine();
+      const actSpy = vi.spyOn(engine, 'hasRecentActivity').mockResolvedValueOnce(true);
+      const predSpy = vi.spyOn(engine, 'predict').mockResolvedValueOnce([
+        { sourceLang: 'en', targetLang: 'ja', confidence: 0.8 },
+      ] as any);
+      mockSendMessage.mockReturnValueOnce({ success: true, preloaded: true });
+
+      const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
+      handler(13, { status: 'complete' }, { url: 'https://tech.example.com/article' });
+
+      await new Promise(r => setTimeout(r, 200));
+      expect(predSpy).toHaveBeenCalled();
+      actSpy.mockRestore();
+      predSpy.mockRestore();
+    });
+  });
+
+  // ============================================================================
+  // recordLanguageDetection: error path (line ~163)
+  // ============================================================================
+  describe('recordLanguageDetection: error path', () => {
+    it('silently handles error from predictionEngine.recordDetection', async () => {
+      const { getPredictionEngine } = await import('../core/prediction-engine');
+      const engine = getPredictionEngine();
+      const spy = vi.spyOn(engine, 'recordDetection').mockRejectedValueOnce(
+        new Error('DB write failed')
+      );
+
+      const response = await invoke({
+        type: 'recordLanguageDetection',
+        url: 'https://example.com',
+        language: 'fr',
+      }) as any;
+
+      spy.mockRestore();
+      expect(response.success).toBe(true);
+    });
+  });
+
+  // ============================================================================
+  // recordTranslation: error path (line ~174)
+  // ============================================================================
+  describe('recordTranslation: error path', () => {
+    it('silently handles error from predictionEngine.recordTranslation', async () => {
+      const { getPredictionEngine } = await import('../core/prediction-engine');
+      const engine = getPredictionEngine();
+      const spy = vi.spyOn(engine, 'recordTranslation').mockRejectedValueOnce(
+        new Error('Prediction store failed')
+      );
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'record translation error test unique',
+        sourceLang: 'en',
+        targetLang: 'de',
+      }) as any;
+
+      await new Promise(r => setTimeout(r, 100));
+      spy.mockRestore();
+      expect(response.success).toBe(true);
+    });
+  });
+
+  // ============================================================================
+  // acquireKeepAlive: interval fires during translation (lines ~215-219)
+  // ============================================================================
+  describe('acquireKeepAlive: interval callback during in-flight translation', () => {
+    it('calls getPlatformInfo on interval tick while translation is in flight', async () => {
+      const mockGetPlatformInfo = vi.fn();
+      (chrome.runtime as any).getPlatformInfo = mockGetPlatformInfo;
+      vi.useFakeTimers();
+
+      try {
+        // Block sendMessage callback so translation stays in-flight
+        vi.mocked(chrome.runtime.sendMessage).mockImplementation(
+          (_msg: unknown, _callback: unknown) => undefined as any
+        );
+
+        const handler = getMessageHandler();
+        // Fire-and-forget — do NOT await; we advance timers manually
+        handler(
+          {
+            type: 'translate',
+            text: 'keepalive-interval-unique-test-string',
+            sourceLang: 'en',
+            targetLang: 'de',
+          },
+          {},
+          vi.fn()
+        );
+
+        // Advance past the 25 000 ms setInterval tick
+        await vi.advanceTimersByTimeAsync(26000);
+
+        expect(mockGetPlatformInfo).toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+        // Restore the sendMessage mock to the default implementation
+        vi.mocked(chrome.runtime.sendMessage).mockImplementation(
+          (message: unknown, callback: unknown) => {
+            const resp = mockSendMessage(message);
+            if (callback && typeof callback === 'function') {
+              Promise.resolve(resp).then(callback as (v: unknown) => void);
+            }
+            return resp;
+          }
+        );
+        delete (chrome.runtime as any).getPlatformInfo;
+      }
+    });
+  });
+
+  // ============================================================================
+  // scheduleCircuitBreakerReset: timer fires and resets counters (lines ~192-200)
+  // ============================================================================
+  describe('scheduleCircuitBreakerReset: timer callback resets counters', () => {
+    it('resets offscreenFailureCount after cooldown period', async () => {
+      vi.useFakeTimers();
+
+      try {
+        // Force offscreen creation failure so scheduleCircuitBreakerReset is called
+        vi.mocked(chrome.runtime.getContexts).mockResolvedValue([]);
+        vi.mocked(chrome.offscreen.createDocument).mockRejectedValue(
+          new Error('Circuit breaker test failure')
+        );
+
+        const handler = getMessageHandler();
+        handler(
+          {
+            type: 'translate',
+            text: 'circuit-breaker-test-unique-text',
+            sourceLang: 'en',
+            targetLang: 'de',
+          },
+          {},
+          vi.fn()
+        );
+
+        // Let async code progress until it hits the offscreen failure
+        await vi.advanceTimersByTimeAsync(5000);
+
+        // Advance past the 60 000 ms circuit breaker cooldown timer
+        await vi.advanceTimersByTimeAsync(61000);
+        // Timer callback has run: offscreenFailureCount/offscreenResetCount reset to 0
+      } finally {
+        vi.useRealTimers();
+        vi.mocked(chrome.runtime.getContexts).mockResolvedValue([
+          { documentUrl: 'chrome-extension://test-id/src/offscreen/offscreen.html' },
+        ]);
+        vi.mocked(chrome.offscreen.createDocument).mockResolvedValue(undefined);
+      }
+    });
+  });
+});
