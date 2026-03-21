@@ -327,4 +327,50 @@ describe('getSelectionContext', () => {
     const result = getSelectionContext();
     expect(result).toBeNull();
   });
+
+  it('handles selection where commonAncestorContainer is an Element (not Text)', () => {
+    const p = document.createElement('p');
+    p.textContent = 'Hello world this is a test';
+    document.body.appendChild(p);
+
+    // When selectNodeContents is called on the <p> element itself,
+    // commonAncestorContainer is the <p> Element, not a Text node
+    const mockSel = {
+      rangeCount: 1,
+      getRangeAt: () => {
+        const r = document.createRange();
+        r.selectNodeContents(p);
+        return r;
+      },
+      toString: () => 'world',
+      isCollapsed: false,
+    } as unknown as Selection;
+    mockGetDeepSelection.mockReturnValue(mockSel);
+
+    const result = getSelectionContext();
+    expect(result).not.toBeNull();
+    expect(result!.before).toContain('Hello');
+    expect(result!.after).toContain('this is a test');
+  });
+
+  it('returns null when blockElement textContent is empty', () => {
+    const div = document.createElement('div');
+    document.body.appendChild(div);
+
+    const mockSel = {
+      rangeCount: 1,
+      getRangeAt: () => {
+        const r = document.createRange();
+        r.selectNodeContents(div);
+        return r;
+      },
+      toString: () => 'something',
+      isCollapsed: false,
+    } as unknown as Selection;
+    mockGetDeepSelection.mockReturnValue(mockSel);
+
+    // textContent is '' → selectedText 'something' not found → returns null
+    const result = getSelectionContext();
+    expect(result).toBeNull();
+  });
 });

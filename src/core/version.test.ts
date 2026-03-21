@@ -116,4 +116,37 @@ describe('version detection', () => {
       expect(result).toBe(true);
     });
   });
+
+  describe('getManifestVersion fallbacks', () => {
+    it('returns 0.0.0 when chrome.runtime.getManifest is undefined', async () => {
+      const origGetManifest = chrome.runtime.getManifest;
+      (chrome.runtime as Record<string, unknown>).getManifest = undefined;
+
+      const info = await checkVersion();
+      expect(info.current).toBe('0.0.0');
+
+      (chrome.runtime as Record<string, unknown>).getManifest = origGetManifest;
+    });
+
+    it('returns 0.0.0 when chrome.runtime.getManifest throws', async () => {
+      (chrome.runtime.getManifest as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+        throw new Error('manifest error');
+      });
+
+      const info = await checkVersion();
+      expect(info.current).toBe('0.0.0');
+    });
+  });
+
+  describe('checkVersion does not persist when versions match', () => {
+    it('skips storage.set when previous === current', async () => {
+      mockStorage['extension_version'] = '2.1.3'; // Same as manifest version
+      vi.clearAllMocks();
+
+      await checkVersion();
+
+      // storage.local.set should NOT have been called since versions match
+      expect(chrome.storage.local.set).not.toHaveBeenCalled();
+    });
+  });
 });

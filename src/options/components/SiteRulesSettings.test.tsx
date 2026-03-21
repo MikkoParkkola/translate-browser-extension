@@ -361,5 +361,181 @@ describe('SiteRulesSettings', () => {
         expect(screen.getByText('Failed to load site rules')).toBeTruthy();
       });
     });
+
+    it('calls importRules on Import JSON file change', async () => {
+      (siteRules.importRules as ReturnType<typeof vi.fn>).mockResolvedValue(2);
+      (siteRules.getAllRules as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({})
+        .mockResolvedValue({ 'imported.com': { autoTranslate: true } });
+      
+      const { container } = render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('Import JSON')).toBeTruthy());
+      
+      const fileInput = container.querySelector('input[type="file"][accept=".json"]') as HTMLInputElement;
+      const file = new File(['{}'], 'rules.json', { type: 'application/json' });
+      Object.defineProperty(fileInput, 'files', { value: [file], writable: false });
+      
+      fireEvent.change(fileInput);
+      
+      await vi.waitFor(() => {
+        expect(siteRules.importRules).toHaveBeenCalled();
+        expect(screen.getByText(/Imported 2 rules/)).toBeTruthy();
+      });
+    });
+
+    it('shows error when import file read fails', async () => {
+      (siteRules.importRules as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('invalid JSON'));
+      
+      const { container } = render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('Import JSON')).toBeTruthy());
+      
+      const fileInput = container.querySelector('input[type="file"][accept=".json"]') as HTMLInputElement;
+      const file = new File(['invalid'], 'rules.json', { type: 'application/json' });
+      Object.defineProperty(fileInput, 'files', { value: [file], writable: false });
+      
+      fireEvent.change(fileInput);
+      
+      await vi.waitFor(() => {
+        expect(screen.getByText(/Failed to import: invalid JSON/)).toBeTruthy();
+      });
+    });
+
+    it('shows "Invalid file" error when import throws non-Error object', async () => {
+      (siteRules.importRules as ReturnType<typeof vi.fn>).mockRejectedValue('unknown error');
+      
+      const { container } = render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('Import JSON')).toBeTruthy());
+      
+      const fileInput = container.querySelector('input[type="file"][accept=".json"]') as HTMLInputElement;
+      const file = new File(['bad'], 'rules.json', { type: 'application/json' });
+      Object.defineProperty(fileInput, 'files', { value: [file], writable: false });
+      
+      fireEvent.change(fileInput);
+      
+      await vi.waitFor(() => {
+        expect(screen.getByText(/Failed to import: Invalid file/)).toBeTruthy();
+      });
+    });
+
+    it('does not import when no file is selected', async () => {
+      const { container } = render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('Import JSON')).toBeTruthy());
+      
+      const fileInput = container.querySelector('input[type="file"][accept=".json"]') as HTMLInputElement;
+      Object.defineProperty(fileInput, 'files', { value: [], writable: false });
+      
+      fireEvent.change(fileInput);
+      
+      expect(siteRules.importRules).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('success message timeout', () => {
+    it('success message auto-dismisses after 3 seconds', async () => {
+      (siteRules.setRules as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (siteRules.getAllRules as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({})
+        .mockResolvedValue({ 'example.com': { autoTranslate: true } });
+
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Site Rule')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Site Rule'));
+
+      const input = screen.getByPlaceholderText('example.com or *.example.com');
+      fireEvent.input(input, { target: { value: 'example.com' } });
+      fireEvent.click(screen.getByText('Add Rule'));
+
+      await vi.waitFor(() => {
+        expect(screen.getByText('Site rule added')).toBeTruthy();
+      });
+
+      // Wait for the setTimeout to clear it
+      await new Promise(r => setTimeout(r, 3100));
+      await vi.waitFor(() => {
+        expect(screen.queryByText('Site rule added')).toBeNull();
+      });
+    });
+
+    it('success message shows after edit save', async () => {
+      (siteRules.getAllRules as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_RULES);
+      (siteRules.setRules as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getAllByText('Edit').length).toBe(2));
+      fireEvent.click(screen.getAllByText('Edit')[0]);
+      await vi.waitFor(() => expect(screen.getByText('Save')).toBeTruthy());
+      fireEvent.click(screen.getByText('Save'));
+
+      await vi.waitFor(() => {
+        expect(screen.getByText('Site rule updated')).toBeTruthy();
+      });
+    });
+
+    it('success message shows after delete', async () => {
+      (siteRules.getAllRules as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_RULES);
+      (siteRules.clearRules as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getAllByText('Delete').length).toBe(2));
+      fireEvent.click(screen.getAllByText('Delete')[0]);
+
+      await vi.waitFor(() => {
+        expect(screen.getByText('Rule deleted')).toBeTruthy();
+      });
+    });
+
+    it('success message shows after export', async () => {
+      vi.stubGlobal('URL', { createObjectURL: vi.fn().mockReturnValue('blob:url'), revokeObjectURL: vi.fn() });
+      (siteRules.exportRules as ReturnType<typeof vi.fn>).mockResolvedValue('{}');
+
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('Export JSON')).toBeTruthy());
+      fireEvent.click(screen.getByText('Export JSON'));
+
+      await vi.waitFor(() => {
+        expect(screen.getByText('Rules exported')).toBeTruthy();
+      });
+    });
+  });
+
+  describe('edge cases — pattern validation', () => {
+    it('accepts pattern with uppercase letters (will be lowercased)', async () => {
+      (siteRules.setRules as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (siteRules.getAllRules as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({})
+        .mockResolvedValue({ 'example.com': { autoTranslate: true } });
+
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Site Rule')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Site Rule'));
+
+      const input = screen.getByPlaceholderText('example.com or *.example.com');
+      fireEvent.input(input, { target: { value: 'Example.COM' } });
+      fireEvent.click(screen.getByText('Add Rule'));
+
+      await vi.waitFor(() => {
+        expect(siteRules.setRules).toHaveBeenCalledWith('example.com', expect.any(Object));
+      });
+    });
+
+    it('trims whitespace from pattern', async () => {
+      (siteRules.setRules as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (siteRules.getAllRules as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({})
+        .mockResolvedValue({ 'example.com': { autoTranslate: true } });
+
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Site Rule')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Site Rule'));
+
+      const input = screen.getByPlaceholderText('example.com or *.example.com');
+      fireEvent.input(input, { target: { value: '  example.com  ' } });
+      fireEvent.click(screen.getByText('Add Rule'));
+
+      await vi.waitFor(() => {
+        expect(siteRules.setRules).toHaveBeenCalledWith('example.com', expect.any(Object));
+      });
+    });
   });
 });

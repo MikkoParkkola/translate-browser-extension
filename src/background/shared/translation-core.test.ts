@@ -112,8 +112,8 @@ describe('handleTranslateCore', () => {
     );
 
     expect(result.success).toBe(true);
-    expect((result as Record<string, unknown>).result).toBe('translated text');
-    expect(typeof (result as Record<string, unknown>).duration).toBe('number');
+    expect((result as unknown as Record<string, unknown>).result).toBe('translated text');
+    expect(typeof (result as unknown as Record<string, unknown>).duration).toBe('number');
   });
 
   it('returns error when validation fails', async () => {
@@ -145,7 +145,7 @@ describe('handleTranslateCore', () => {
     );
 
     expect(result.success).toBe(true);
-    expect((result as Record<string, unknown>).result).toBe('cached translation');
+    expect((result as unknown as Record<string, unknown>).result).toBe('cached translation');
     expect(translateFn).not.toHaveBeenCalled();
   });
 
@@ -174,7 +174,7 @@ describe('handleTranslateCore', () => {
     );
 
     expect(result.success).toBe(false);
-    expect((result as Record<string, unknown>).error).toContain('Too many requests');
+    expect((result as unknown as Record<string, unknown>).error).toContain('Too many requests');
     expect(translateFn).not.toHaveBeenCalled();
   });
 
@@ -190,7 +190,7 @@ describe('handleTranslateCore', () => {
     );
 
     expect(result.success).toBe(true);
-    expect((result as Record<string, unknown>).result).toBe('user corrected text');
+    expect((result as unknown as Record<string, unknown>).result).toBe('user corrected text');
     expect(translateFn).not.toHaveBeenCalled(); // Should not call translate when correction exists
   });
 
@@ -274,7 +274,7 @@ describe('handleTranslateCore', () => {
     );
 
     expect(result.success).toBe(false);
-    expect((result as Record<string, unknown>).error).toBeDefined();
+    expect((result as unknown as Record<string, unknown>).error).toBeDefined();
   });
 
   it('logs context debug info when context provided', async () => {
@@ -305,5 +305,32 @@ describe('handleTranslateCore', () => {
     );
 
     expect(vi.mocked(recordUsage)).toHaveBeenCalled();
+  });
+
+  it('calls the retry predicate via withRetry', async () => {
+    const { withRetry, isNetworkError } = await import('../../core/errors');
+    
+    // Capture the retry predicate
+    let capturedPredicate: ((error: unknown) => boolean) | null = null;
+    vi.mocked(withRetry).mockImplementation(async (fn: () => Promise<unknown>, _config: unknown, predicate?: (error: unknown) => boolean) => {
+      capturedPredicate = predicate || null;
+      return fn();
+    });
+    vi.mocked(isNetworkError).mockReturnValue(true);
+
+    const { handleTranslateCore } = await import('./translation-core');
+    await handleTranslateCore(
+      { text: 'hello', sourceLang: 'en', targetLang: 'fi' },
+      cache as never,
+      translateFn,
+    );
+
+    // Verify the retry predicate was captured
+    expect(capturedPredicate).not.toBeNull();
+
+    // Call the predicate to cover line 179
+    const result = capturedPredicate!({ technicalDetails: 'network timeout' });
+    expect(result).toBe(true);
+    expect(vi.mocked(isNetworkError)).toHaveBeenCalledWith('network timeout');
   });
 });

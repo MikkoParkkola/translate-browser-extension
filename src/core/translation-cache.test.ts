@@ -613,7 +613,7 @@ describe('LRU eviction', () => {
       onerror: null as ((ev: Event) => void) | null,
       onsuccess: null as ((ev: Event) => void) | null,
     };
-    mockIndex.openCursor.mockReturnValueOnce(evictRequest);
+    mockIndex.openCursor.mockReturnValueOnce(evictRequest as any);
 
     const setPromise = cache.set('new', 'en', 'fi', 'opus-mt', 'uusi');
 
@@ -747,7 +747,7 @@ describe('error paths', () => {
       onabort: null as ((ev: Event) => void) | null,
     };
 
-    mockDb.transaction.mockReturnValueOnce(abortTransaction);
+    mockDb.transaction.mockReturnValueOnce(abortTransaction as any);
 
     const getPromise = cache.get('hello', 'en', 'fi', 'opus-mt');
 
@@ -892,7 +892,7 @@ describe('error paths', () => {
         onabort: null as ((e: Event) => void) | null,
         error: new DOMException('tx error'),
       };
-      mockDb.transaction.mockReturnValueOnce(errorTx);
+      mockDb.transaction.mockReturnValueOnce(errorTx as any);
 
       const result = await cache.get('text', 'en', 'fi', 'opus-mt').catch(() => null);
       expect(result).toBeNull();
@@ -913,7 +913,7 @@ describe('error paths', () => {
         onabort: null as ((e: Event) => void) | null,
         error: null,
       };
-      mockDb.transaction.mockReturnValueOnce(abortTx);
+      mockDb.transaction.mockReturnValueOnce(abortTx as any);
 
       const result = await cache.get('text', 'en', 'fi', 'opus-mt').catch(() => null);
       expect(result).toBeNull();
@@ -940,7 +940,7 @@ describe('error paths', () => {
         onabort: null,
         error: null,
       };
-      mockDb.transaction.mockReturnValueOnce(reqErrorTx);
+      mockDb.transaction.mockReturnValueOnce(reqErrorTx as any);
 
       const result = await cache.get('text', 'en', 'fi', 'opus-mt').catch(() => null);
       expect(result).toBeNull();
@@ -973,7 +973,7 @@ describe('error paths', () => {
       // 1st call = getStats' transaction (use normal mock), 2nd call = set's transaction (error)
       mockDb.transaction
         .mockReturnValueOnce(mockTransaction)
-        .mockReturnValueOnce(errorTx);
+        .mockReturnValueOnce(errorTx as any);
 
       // set() returns the inner promise which may reject — but the calling code swallows it
       await cache.set('text', 'en', 'fi', 'opus-mt', 'result').catch(() => undefined);
@@ -997,7 +997,7 @@ describe('error paths', () => {
       };
       mockDb.transaction
         .mockReturnValueOnce(mockTransaction)
-        .mockReturnValueOnce(abortTx);
+        .mockReturnValueOnce(abortTx as any);
 
       await cache.set('text', 'en', 'fi', 'opus-mt', 'result').catch(() => undefined);
       expect(true).toBe(true);
@@ -1025,7 +1025,7 @@ describe('error paths', () => {
       };
       mockDb.transaction
         .mockReturnValueOnce(mockTransaction)
-        .mockReturnValueOnce(reqErrTx);
+        .mockReturnValueOnce(reqErrTx as any);
 
       await cache.set('text', 'en', 'fi', 'opus-mt', 'result').catch(() => undefined);
       expect(true).toBe(true);
@@ -1074,7 +1074,7 @@ describe('error paths', () => {
       // We need to let getStats succeed but fail the eviction transaction
       mockDb.transaction
         .mockReturnValueOnce(mockTransaction) // getStats openCursor
-        .mockReturnValueOnce(evictErrTx);      // eviction transaction
+        .mockReturnValueOnce(evictErrTx as any);      // eviction transaction
 
       // set() catches errors so shouldn't throw
       await expect(cache.set('new', 'en', 'fi', 'opus-mt', 'new')).resolves.toBeUndefined();
@@ -1102,7 +1102,7 @@ describe('error paths', () => {
         onabort: null as ((e: Event) => void) | null,
         error: new DOMException('clear error'),
       };
-      mockDb.transaction.mockReturnValueOnce(errorTx);
+      mockDb.transaction.mockReturnValueOnce(errorTx as any);
 
       await expect(cache.clear()).rejects.toThrow();
     });
@@ -1122,7 +1122,7 @@ describe('error paths', () => {
         onabort: null as ((e: Event) => void) | null,
         error: null,
       };
-      mockDb.transaction.mockReturnValueOnce(abortTx);
+      mockDb.transaction.mockReturnValueOnce(abortTx as any);
 
       await expect(cache.clear()).rejects.toBeDefined();
     });
@@ -1147,7 +1147,7 @@ describe('error paths', () => {
         onabort: null,
         error: null,
       };
-      mockDb.transaction.mockReturnValueOnce(reqErrTx);
+      mockDb.transaction.mockReturnValueOnce(reqErrTx as any);
 
       await expect(cache.clear()).rejects.toBeDefined();
     });
@@ -1174,7 +1174,7 @@ describe('error paths', () => {
         onabort: null as ((e: Event) => void) | null,
         error: new DOMException('stats error'),
       };
-      mockDb.transaction.mockReturnValueOnce(errorTx);
+      mockDb.transaction.mockReturnValueOnce(errorTx as any);
 
       await expect(cache.getStats()).rejects.toBeDefined();
     });
@@ -1194,7 +1194,7 @@ describe('error paths', () => {
         onabort: null as ((e: Event) => void) | null,
         error: null,
       };
-      mockDb.transaction.mockReturnValueOnce(abortTx);
+      mockDb.transaction.mockReturnValueOnce(abortTx as any);
 
       await expect(cache.getStats()).rejects.toBeDefined();
     });
@@ -1219,7 +1219,7 @@ describe('error paths', () => {
         onabort: null,
         error: null,
       };
-      mockDb.transaction.mockReturnValueOnce(cursorErrTx);
+      mockDb.transaction.mockReturnValueOnce(cursorErrTx as any);
 
       await expect(cache.getStats()).rejects.toBeDefined();
     });
@@ -1236,6 +1236,99 @@ describe('error paths', () => {
       expect(result).toBeNull();
 
       (globalThis as Record<string, unknown>).indexedDB = origIndexedDB;
+    });
+  });
+
+  describe('get() outer catch path', () => {
+    beforeEach(async () => {
+      cache = new TranslationCache();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    it('returns null when dbReady rejects', async () => {
+      const failCache = new TranslationCache();
+      (failCache as unknown as Record<string, unknown>).dbReady = Promise.reject(new Error('db fail'));
+
+      const result = await failCache.get('text', 'en', 'fi', 'opus-mt');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('set() outer catch path', () => {
+    beforeEach(async () => {
+      cache = new TranslationCache();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    it('silently catches when dbReady rejects in set()', async () => {
+      const failCache = new TranslationCache();
+      (failCache as unknown as Record<string, unknown>).dbReady = Promise.reject(new Error('db fail'));
+
+      await expect(
+        failCache.set('text', 'en', 'fi', 'opus-mt', 'translation')
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('transaction abort handlers', () => {
+    beforeEach(async () => {
+      cache = new TranslationCache();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    it('rejects on get() transaction abort', async () => {
+      const abortTx = {
+        objectStore: vi.fn(() => ({
+          get: vi.fn(() => {
+            const req = { onerror: null as unknown, onsuccess: null as unknown, result: null };
+            setTimeout(() => {
+              (abortTx as unknown as { onabort: ((e: Event) => void) | null }).onabort?.({} as Event);
+            }, 0);
+            return req;
+          }),
+          put: vi.fn(),
+        })),
+        onerror: null as ((e: Event) => void) | null,
+        onabort: null as ((e: Event) => void) | null,
+        error: null,
+      };
+      mockDb.transaction.mockReturnValueOnce(abortTx as any);
+
+      const result = await cache.get('text', 'en', 'fi', 'opus-mt').catch(() => null);
+      // The outer catch converts the rejection to null
+      expect(result).toBeNull();
+    });
+
+    it('rejects on set() transaction abort', async () => {
+      const abortTx = {
+        objectStore: vi.fn(() => ({
+          put: vi.fn(() => {
+            const req = { onerror: null as unknown, onsuccess: null as unknown };
+            setTimeout(() => {
+              (abortTx as unknown as { onabort: ((e: Event) => void) | null }).onabort?.({} as Event);
+            }, 0);
+            return req;
+          }),
+        })),
+        onerror: null as ((e: Event) => void) | null,
+        onabort: null as ((e: Event) => void) | null,
+        error: new DOMException('set abort'),
+      };
+      mockDb.transaction.mockReturnValueOnce(abortTx as any);
+
+      await cache.set('text', 'en', 'fi', 'opus-mt', 'trans');
+    });
+  });
+
+  describe('clear() error paths', () => {
+    it('throws when dbReady rejects in clear()', async () => {
+      const failCache = new TranslationCache();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Replace dbReady with a rejected promise to trigger the catch block
+      (failCache as unknown as Record<string, unknown>).dbReady = Promise.reject(new Error('clear db fail'));
+
+      await expect(failCache.clear()).rejects.toThrow('clear db fail');
     });
   });
 });

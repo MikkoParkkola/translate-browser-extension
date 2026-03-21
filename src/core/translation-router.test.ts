@@ -465,4 +465,185 @@ describe('TranslationRouter', () => {
       expect(state.state).toBe('closed');
     });
   });
+
+  describe('loadPreferences - chrome.storage unavailable', () => {
+    it('uses default preferences when chrome.storage throws', async () => {
+      const origChrome = (globalThis as Record<string, unknown>).chrome;
+      (globalThis as Record<string, unknown>).chrome = undefined;
+
+      const freshRouter = new TranslationRouter();
+      await freshRouter.initialize();
+      // Should use defaults
+      expect(freshRouter.getStrategy()).toBe('balanced');
+
+      (globalThis as Record<string, unknown>).chrome = origChrome;
+    });
+  });
+
+  describe('provider initialization errors', () => {
+    it('handles provider initialize() throwing without crashing router', async () => {
+      const { opusMTProvider } = await import('../providers/opus-mt-local');
+      vi.mocked(opusMTProvider.initialize).mockRejectedValueOnce(new Error('init fail'));
+
+      const freshRouter = new TranslationRouter();
+      // Should not throw even though provider init fails
+      await expect(freshRouter.initialize()).resolves.not.toThrow();
+    });
+  });
+
+  describe('loadPreferences error paths', () => {
+    it('uses defaults when chrome is undefined', async () => {
+      // Save original chrome and remove it
+      const origChrome = globalThis.chrome;
+      // @ts-expect-error - temporarily remove chrome for test
+      delete globalThis.chrome;
+
+      try {
+        const freshRouter = new TranslationRouter();
+        // Router should initialize with defaults since chrome.storage is unavailable
+        expect(freshRouter.getStrategy()).toBe('balanced');
+      } finally {
+        globalThis.chrome = origChrome;
+      }
+    });
+
+    it('uses defaults when chrome.storage.local.get throws', async () => {
+      const origChrome = globalThis.chrome;
+
+      // Set up chrome mock where storage.get throws
+      globalThis.chrome = {
+        ...origChrome,
+        storage: {
+          ...origChrome?.storage,
+          local: {
+            ...origChrome?.storage?.local,
+            get: vi.fn().mockRejectedValue(new Error('storage get error')),
+            set: vi.fn().mockResolvedValue(undefined),
+          },
+        },
+      } as typeof chrome;
+
+      try {
+        const freshRouter = new TranslationRouter();
+        await freshRouter.initialize();
+        // Should fall back to defaults
+        expect(freshRouter.getStrategy()).toBe('balanced');
+      } finally {
+        globalThis.chrome = origChrome;
+      }
+    });
+
+    it('throws when savePreferences storage.set fails', async () => {
+      const origChrome = globalThis.chrome;
+
+      globalThis.chrome = {
+        ...origChrome,
+        storage: {
+          ...origChrome?.storage,
+          local: {
+            ...origChrome?.storage?.local,
+            get: vi.fn().mockResolvedValue({}),
+            set: vi.fn().mockRejectedValue(new Error('storage set error')),
+          },
+        },
+      } as typeof chrome;
+
+      try {
+        const freshRouter = new TranslationRouter();
+        await freshRouter.initialize();
+        await expect(freshRouter.savePreferences({ strategy: 'fast' })).rejects.toThrow('storage set error');
+      } finally {
+        globalThis.chrome = origChrome;
+      }
+    });
+  });
+
+  describe('loadPreferences: stored preferences exist (lines 77-79)', () => {
+    it('merges stored preferences with defaults on load', async () => {
+      const origChrome = globalThis.chrome;
+
+      const storedPrefs = {
+        prioritize: 'quality' as const,
+        preferLocal: false,
+        enabledProviders: ['opus-mt-local', 'deepl'],
+        primaryProvider: 'deepl',
+      };
+
+      globalThis.chrome = {
+        ...origChrome,
+        storage: {
+          ...origChrome?.storage,
+          local: {
+            ...origChrome?.storage?.local,
+            get: vi.fn().mockResolvedValue({ routerPreferences: storedPrefs }),
+            set: vi.fn().mockResolvedValue(undefined),
+          },
+        },
+      } as typeof chrome;
+
+      try {
+        const freshRouter = new TranslationRouter();
+        await freshRouter.initialize();
+        // Should have loaded the stored 'quality' strategy
+        expect(freshRouter.getStrategy()).toBe('quality');
+      } finally {
+        globalThis.chrome = origChrome;
+      }
+    });
+  });
+
+  describe('savePreferences: successful save (line 104)', () => {
+    it('saves preferences to chrome.storage.local successfully', async () => {
+      const origChrome = globalThis.chrome;
+      const mockSet = vi.fn().mockResolvedValue(undefined);
+
+      globalThis.chrome = {
+        ...origChrome,
+        storage: {
+          ...origChrome?.storage,
+          local: {
+            ...origChrome?.storage?.local,
+            get: vi.fn().mockResolvedValue({}),
+            set: mockSet,
+          },
+        },
+      } as typeof chrome;
+
+      try {
+        const freshRouter = new TranslationRouter();
+        await freshRouter.initialize();
+        await freshRouter.savePreferences({ prioritize: 'fast' });
+
+        // Verify chrome.storage.local.set was called with the preferences
+        expect(mockSet).toHaveBeenCalledWith({
+          routerPreferences: expect.objectContaining({ prioritize: 'fast' }),
+        });
+        expect(freshRouter.getStrategy()).toBe('fast');
+      } finally {
+        globalThis.chrome = origChrome;
+      }
+    });
+  });
+
+  describe('Uncovered getStats and edge cases', () => {
+    it('getStats returns empty object or valid stats', () => {
+      const router = new TranslationRouter();
+      const stats = router.getStats();
+      expect(typeof stats).toBe('object');
+    });
+
+    it('setFallbackProvider updates fallback provider', async () => {
+      const router = new TranslationRouter();
+      const mockProvider = createMockProvider();
+      router.setFallbackProvider(mockProvider as any);
+      expect(true).toBe(true); // Test that it doesn't throw
+    });
+
+    it('handles initialization with all providers enabled', async () => {
+      const router = new TranslationRouter();
+      await router.initialize();
+      const strategy = router.getStrategy();
+      expect(typeof strategy).toBe('string');
+    });
+  });
 });

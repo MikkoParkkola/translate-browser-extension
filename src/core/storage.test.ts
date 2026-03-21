@@ -192,3 +192,41 @@ describe('lastStorageError', () => {
     expect(lastStorageError).toBeNull();
   });
 });
+
+describe('safeStorageGet - branch coverage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  it('handles non-Error thrown values (string)', async () => {
+    mockStorage.local.get.mockRejectedValue('string error');
+    const result = await safeStorageGet('key');
+    expect(result).toEqual({});
+    expect(lastStorageError).toContain('string error');
+  });
+
+  it('formats array keys in error messages', async () => {
+    mockStorage.local.get.mockRejectedValue(new Error('fail'));
+    await safeStorageGet(['key1', 'key2']);
+    expect(lastStorageError).toContain('key1, key2');
+  });
+});
+
+describe('safeStorageSet - branch coverage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  it('handles non-Error thrown values (string) in set', async () => {
+    mockStorage.local.set.mockRejectedValue('raw string error');
+    const result = await safeStorageSet({ key: 'val' });
+    expect(result).toBe(false);
+    expect(lastStorageError).toContain('raw string error');
+  });
+});

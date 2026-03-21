@@ -190,4 +190,51 @@ describe('detectLanguage', () => {
       }
     });
   });
+
+  // ------------------------------------------------------------------
+  // Additional coverage: Finnish character fallback (line 109)
+  // ------------------------------------------------------------------
+  describe('Finnish character set fallback', () => {
+    it('detects Finnish from short text with ä', () => {
+      // < 20 chars so franc returns 'und', Finnish regex matches
+      expect(detectLanguage('pöytä')).toBe('fi');
+    });
+
+    it('detects Finnish from short text with ö', () => {
+      expect(detectLanguage('öljy')).toBe('fi');
+    });
+
+    it('detects Finnish from short text with å', () => {
+      expect(detectLanguage('Åbo')).toBe('fi');
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // Additional coverage: franc successful detection (lines 114-115)
+  // When text >= 20 chars franc returns a real ISO 639-3 code,
+  // exercising the FRANC_TO_ISO lookup + fallback.
+  // ------------------------------------------------------------------
+  describe('franc successful detection path', () => {
+    it('maps franc detection to ISO 639-1 for long English text', () => {
+      // 60+ chars → franc detects 'eng' → FRANC_TO_ISO['eng'] = 'en'
+      const result = detectLanguage(
+        'The quick brown fox jumps over the lazy dog and runs around the big beautiful park'
+      );
+      expect(result).toBe('en');
+    });
+
+    it('maps franc detection for long German text', () => {
+      const result = detectLanguage(
+        'Dies ist ein ausreichend langer deutscher Satz für die automatische Spracherkennung'
+      );
+      expect(result).toBe('de');
+    });
+
+    it('maps franc detection for long French text', () => {
+      const result = detectLanguage(
+        'Ceci est une phrase suffisamment longue en français pour que la détection fonctionne'
+      );
+      expect(result).toBe('fr');
+    });
+  });
 });

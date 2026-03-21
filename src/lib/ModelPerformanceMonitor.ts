@@ -4,6 +4,10 @@ export interface PerformanceMonitorConfig {
   enabled?: boolean;
   sampleInterval?: number;
   maxSamples?: number;
+  enableMemoryMonitoring?: boolean;
+  enableInferenceTracking?: boolean;
+  enableAdaptiveOptimization?: boolean;
+  memoryThreshold?: number;
 }
 
 export interface PerformanceSummary {
@@ -15,7 +19,7 @@ export class ModelPerformanceMonitor {
 
   startPerformanceMonitoring(): void {}
 
-  updatePerformanceStats(_stats?: Record<string, unknown>): void {}
+  updatePerformanceStats(_inferenceTime?: number, _success?: boolean, _textLength?: number): void {}
 
   getPerformanceSummary(): PerformanceSummary {
     return {};

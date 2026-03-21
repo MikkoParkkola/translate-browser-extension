@@ -362,4 +362,24 @@ describe('showCorrectionHint', () => {
 
     expect(document.getElementById('translate-correction-hint')).toBeNull();
   });
+
+  it('handles storage error gracefully and marks hint as shown', async () => {
+    mockSafeStorageGet.mockRejectedValue(new Error('Storage not available'));
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+
+    showCorrectionHint(el);
+
+    // Let the rejected promise and catch handler settle
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Hint should not be created (catch just marks correctionHintShown = true)
+    expect(document.getElementById('translate-correction-hint')).toBeNull();
+
+    // Second call should be a no-op since correctionHintShown is true
+    showCorrectionHint(el);
+    expect(document.getElementById('translate-correction-hint')).toBeNull();
+  });
 });

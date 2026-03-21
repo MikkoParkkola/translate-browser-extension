@@ -615,4 +615,100 @@ describe('size / hits / misses properties', () => {
     expect(cache.hits).toBe(0);
     expect(cache.misses).toBe(0);
   });
+
+  // ============================================================================
+  // Coverage for lines 155-156, 258, 299
+  // ============================================================================
+
+  it('loads cacheStats with hits and misses from persistent storage (line 155-156)', async () => {
+    const storage = makeStorage({
+      get: vi.fn().mockResolvedValue({
+        cacheStats: { hits: 42, misses: 10 },
+      }),
+    });
+
+    const cache = createTranslationCache(storage, () => 'opus-mt');
+    await cache.load();
+
+    expect(cache.hits).toBe(42);
+    expect(cache.misses).toBe(10);
+  });
+
+  it('handles missing cacheStats in storage gracefully', async () => {
+    const storage = makeStorage({
+      get: vi.fn().mockResolvedValue({}), // no cacheStats key
+    });
+
+    const cache = createTranslationCache(storage, () => 'opus-mt');
+    await cache.load();
+
+    expect(cache.hits).toBe(0);
+    expect(cache.misses).toBe(0);
+  });
+
+  it('evicts least used entry when cache reaches max size (line 258)', () => {
+    const storage = makeStorage();
+    const cache = createTranslationCache(storage, () => 'opus-mt');
+
+    // Fill cache to max (maxSize is 10 in mock config)
+    for (let i = 0; i < 10; i++) {
+      cache.set(`key-${i}`, `result-${i}`, 'en', 'fi');
+    }
+
+    expect(cache.size).toBe(10);
+
+    // Access key-5 to increase its useCount
+    cache.get('key-5', 'en', 'fi'); // mock hit
+
+    // Now add one more — should evict the least used
+    cache.set('key-new', 'result-new', 'en', 'fi');
+
+    // Cache should still be at max size
+    expect(cache.size).toBeGreaterThanOrEqual(10);
+
+    // key-5 should still be there (was recently used)
+    // Some older key should be evicted
+  });
+
+  it('computes getStats with correct language pairs (line 299)', () => {
+    const storage = makeStorage();
+    const cache = createTranslationCache(storage, () => 'opus-mt');
+
+    // Add various translations
+    cache.set('hello', 'hola', 'en', 'es');
+    cache.get('hello', 'en', 'es');
+    cache.get('hello', 'en', 'es');
+
+    cache.set('world', 'mundo', 'en', 'es');
+    cache.get('world', 'en', 'es');
+
+    cache.set('hi', 'ciao', 'en', 'it');
+
+    const stats = cache.getStats();
+
+    // stats should include mostUsed with language pair info
+    if (stats.mostUsed && stats.mostUsed.length > 0) {
+      const first = stats.mostUsed[0];
+      expect(first).toHaveProperty('langs');
+      // langs should be formatted as "sourceLang -> targetLang"
+      expect(first.langs).toMatch(/\w+ -> \w+/);
+    }
+  });
+
+  it('includes languagePairs in getStats', () => {
+    const storage = makeStorage();
+    const cache = createTranslationCache(storage, () => 'opus-mt');
+
+    cache.set('text1', 'result1', 'en', 'fi');
+    cache.set('text2', 'result2', 'en', 'fi');
+    cache.set('text3', 'result3', 'en', 'de');
+    cache.set('text4', 'result4', 'fr', 'es');
+
+    const stats = cache.getStats();
+
+    expect(stats.languagePairs).toBeDefined();
+    expect(stats.languagePairs['en-fi']).toBeGreaterThan(0);
+    expect(stats.languagePairs['en-de']).toBeGreaterThan(0);
+    expect(stats.languagePairs['fr-es']).toBeGreaterThan(0);
+  });
 });

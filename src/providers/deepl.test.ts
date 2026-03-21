@@ -450,4 +450,432 @@ describe('DeepLProvider', () => {
       expect(info.id).toBe('deepl');
     });
   });
+
+  describe('detectLanguage network error', () => {
+    it('returns auto when fetch throws during detectLanguage', async () => {
+      await provider.setApiKey('test-key');
+
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+      const result = await provider.detectLanguage('Bonjour');
+      expect(result).toBe('auto');
+    });
+  });
+
+  describe('getUsage network error', () => {
+    it('returns default usage when fetch throws', async () => {
+      await provider.setApiKey('test-key');
+
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+      const result = await provider.getUsage();
+      expect(result).toEqual({ requests: 0, tokens: 0, cost: 0, limitReached: false });
+    });
+  });
+
+  describe('initialize with missing isPro and formality', () => {
+    it('defaults isPro to false when deepl_is_pro is undefined', async () => {
+      // Only set the API key, omit isPro and formality
+      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        deepl_api_key: 'test-key-free',
+        // deepl_is_pro is deliberately omitted → ?? false
+        // deepl_formality is deliberately omitted → ?? 'default'
+      });
+
+      const freshProvider = new DeepLProvider();
+      await freshProvider.initialize();
+
+      const info = freshProvider.getInfo();
+      expect(info.tier).toBe('Free');
+      expect(info.formality).toBe('default');
+    });
+  });
+
+  describe('setFormality when config is null', () => {
+    it('stores formality in storage but does not crash when config is null', async () => {
+      const freshProvider = new DeepLProvider();
+      // Do NOT initialize — config remains null/undefined
+
+      await freshProvider.setFormality('more');
+
+      // Verify chrome.storage.local.set was called
+      expect(chrome.storage.local.set).toHaveBeenCalledWith({ deepl_formality: 'more' });
+    });
+  });
+
+  describe('translate with formality unsupported for target language', () => {
+    it('does not include formality for unsupported target language like Finnish', async () => {
+      await provider.setApiKey('test-key');
+      await provider.setFormality('more');
+
+      // FI is not in the formalitySupported list
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          translations: [{ text: 'Hei maailma', detected_source_language: 'EN' }],
+        }),
+      });
+
+      await provider.translate('Hello world', 'en', 'fi');
+
+      const fetchCall = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
+      const body = JSON.parse(fetchCall[1].body);
+      // formality should NOT be in the body for Finnish
+      expect(body.formality).toBeUndefined();
+    });
+
+    it('includes formality for supported target language like German', async () => {
+      await provider.setApiKey('test-key');
+      await provider.setFormality('more');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          translations: [{ text: 'Hallo Welt', detected_source_language: 'EN' }],
+        }),
+      });
+
+      await provider.translate('Hello world', 'en', 'de');
+
+      const fetchCall = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
+      const body = JSON.parse(fetchCall[1].body);
+      expect(body.formality).toBe('more');
+    });
+  });
+
+  describe('detectLanguage success path', () => {
+    it('returns detected language when response is ok', async () => {
+      await provider.setApiKey('test-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          translations: [{ text: 'Hello', detected_source_language: 'FR' }],
+        }),
+      });
+
+      const result = await provider.detectLanguage('Bonjour le monde');
+      expect(result).toBe('fr');
+    });
+  });
+
+  describe('getUsage success path', () => {
+    it('returns usage data when response is ok', async () => {
+      await provider.setApiKey('test-key');
+      // Clear any cached usage
+      (provider as any).usageCache = null;
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          character_count: 50000,
+          character_limit: 500000,
+        }),
+      });
+
+      const result = await provider.getUsage();
+      expect(result.tokens).toBe(50000);
+      expect(result.limitReached).toBe(false);
+    });
+  });
+
+  describe('translate edge cases (line 208, 260)', () => {
+    beforeEach(async () => {
+      await provider.setApiKey('test-key');
+    });
+
+    it('handles response with no translations array', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          translations: undefined,  // Missing translations
+        }),
+      });
+
+      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+    });
+
+    it('handles response with empty translations array', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          translations: [],  // Empty array
+        }),
+      });
+
+      const result = await provider.translate('Hello', 'en', 'fi');
+      // When empty, results[0] is undefined
+      expect(result).toBeUndefined();
+    });
+
+    it('handles API error response gracefully', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        text: () => Promise.resolve('Unauthorized'),
+        headers: { get: () => null },
+      });
+
+      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+    });
+
+    it('handles fetch network error', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+    });
+  });
+
+  describe('detectLanguage edge cases', () => {
+    beforeEach(async () => {
+      await provider.setApiKey('test-key');
+    });
+
+    it('returns auto when no API key', async () => {
+      const noKeyProvider = new DeepLProvider();
+      const result = await noKeyProvider.detectLanguage('Hello');
+      expect(result).toBe('auto');
+    });
+
+    it('returns auto when translations is undefined', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          translations: undefined,
+        }),
+      });
+
+      const result = await provider.detectLanguage('Hello');
+      expect(result).toBe('auto');
+    });
+
+    it('returns auto when detected language is missing', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          translations: [{ text: 'Hei' }],  // No detected_source_language
+        }),
+      });
+
+      const result = await provider.detectLanguage('Hello');
+      expect(result).toBe('auto');
+    });
+
+    it('handles response.ok=false gracefully', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      });
+
+      const result = await provider.detectLanguage('Hello');
+      expect(result).toBe('auto');
+    });
+
+    it('handles fetch error during detection', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network timeout'));
+
+      const result = await provider.detectLanguage('Hello');
+      expect(result).toBe('auto');
+    });
+  });
+
+  describe('setApiKey creates config when null', () => {
+    it('initializes config if not already set', async () => {
+      const newProvider = new DeepLProvider();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((newProvider as any).config).toBeNull();
+
+      await newProvider.setApiKey('new-key-123');
+
+      expect(await newProvider.isAvailable()).toBe(true);
+    });
+  });
+
+  describe('translate single vs batch', () => {
+    beforeEach(async () => {
+      await provider.setApiKey('test-key');
+    });
+
+    it('handles single string translation', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          translations: [{ text: 'Hei' }],
+        }),
+      });
+
+      const result = await provider.translate('Hello', 'en', 'fi');
+      expect(typeof result).toBe('string');
+      expect(result).toBe('Hei');
+    });
+
+    it('handles array translation', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          translations: [
+            { text: 'Hei' },
+            { text: 'Maailma' },
+          ],
+        }),
+      });
+
+      const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toEqual(['Hei', 'Maailma']);
+    });
+  });
+
+  describe('test method', () => {
+    it('returns true on successful translation', async () => {
+      await provider.setApiKey('test-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          translations: [{ text: 'Hei' }],
+        }),
+      });
+
+      const result = await provider.test();
+      expect(result).toBe(true);
+    });
+
+    it('returns false on translation error', async () => {
+      await provider.setApiKey('test-key');
+
+      mockFetch.mockRejectedValueOnce(new Error('API error'));
+
+      const result = await provider.test();
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('getSupportedLanguages', () => {
+    it('returns multiple language pairs', () => {
+      const pairs = provider.getSupportedLanguages();
+
+      expect(Array.isArray(pairs)).toBe(true);
+      expect(pairs.length).toBeGreaterThan(20);
+
+      // Verify no reflexive pairs
+      for (const pair of pairs) {
+        expect(pair.src).not.toBe(pair.tgt);
+      }
+    });
+
+    it('includes common language pairs', () => {
+      const pairs = provider.getSupportedLanguages();
+
+      expect(pairs).toContainEqual({ src: 'en', tgt: 'fi' });
+      expect(pairs).toContainEqual({ src: 'fi', tgt: 'en' });
+      expect(pairs).toContainEqual({ src: 'en', tgt: 'de' });
+    });
+  });
+
+  describe('initialize and isAvailable', () => {
+    it('isAvailable returns true when configured', async () => {
+      const freshProvider = new DeepLProvider();
+      // Mock storage to have a key
+      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        deepl_api_key: 'test-key',
+      });
+
+      const available = await freshProvider.isAvailable();
+      expect(available).toBe(true);
+    });
+
+    it('isAvailable returns false when not configured', async () => {
+      const freshProvider = new DeepLProvider();
+      // Mock storage with no key
+      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({});
+
+      const available = await freshProvider.isAvailable();
+      expect(available).toBe(false);
+    });
+  });
+
+  describe('getUsage with different scenarios', () => {
+    beforeEach(async () => {
+      await provider.setApiKey('test-key');
+      // Clear cache
+      (provider as any).usageCache = null;
+    });
+
+    it('caches usage results', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            character_count: 1000,
+            character_limit: 500000,
+          }),
+        });
+
+      await provider.getUsage();
+      const cachedUsage = (provider as any).usageCache;
+
+      expect(cachedUsage).toBeDefined();
+      expect(cachedUsage.count).toBe(1000);
+      expect(cachedUsage.limit).toBe(500000);
+    });
+
+    it('returns cached usage on second call', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          character_count: 2000,
+          character_limit: 500000,
+        }),
+      });
+
+      const usage1 = await provider.getUsage();
+      // Don't clear cache, call again
+      const usage2 = await provider.getUsage();
+
+      // Should only call fetch once due to caching
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(usage2.tokens).toBe(2000);
+    });
+
+    it('handles limit reached', async () => {
+      (provider as any).usageCache = null;
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          character_count: 490000,
+          character_limit: 500000,
+        }),
+      });
+
+      const usage = await provider.getUsage();
+      expect(usage.limitReached).toBe(false);
+
+      // Update cache to simulate limit reached (need timestamp field)
+      (provider as any).usageCache = {
+        count: 500000,
+        limit: 500000,
+        timestamp: Date.now(),
+      };
+
+      const usage2 = await provider.getUsage();
+      expect(usage2.limitReached).toBe(true);
+    });
+  });
+
+  describe('initialize error handling (line 78)', () => {
+    it('catches and logs error when chrome.storage.local.get throws', async () => {
+      const consoleSpy = vi.spyOn(console, 'error');
+      const freshProvider = new DeepLProvider();
+
+      // Mock chrome.storage to throw an error
+      const mockGetError = new Error('Storage access denied');
+      vi.mocked(chrome.storage.local.get as any).mockRejectedValueOnce(mockGetError);
+
+      // Should not throw, just log error
+      await expect(freshProvider.initialize()).resolves.not.toThrow();
+      expect(consoleSpy).toHaveBeenCalledWith('[DeepL] Failed to load config:', mockGetError);
+    });
+  });
 });

@@ -16,8 +16,9 @@ import {
   type ModelStatus,
   type HealthCheckResult,
   type PerformanceSummary,
-  type ValidationResult,
+  type ModelInfo,
 } from './lib/LocalModelManager.js';
+import type { ValidationResult } from './lib/ModelValidator.js';
 import { logger } from './lib/logger';
 
 // Re-export core types for consumers
@@ -46,7 +47,7 @@ class LocalModelManager extends WllamaModelManager {
   }
 
   // Legacy method names for backward compatibility
-  async getModelInfo(): ReturnType<WllamaModelManager['getModelInfo']> {
+  getModelInfo(): ModelInfo {
     return super.getModelInfo();
   }
 

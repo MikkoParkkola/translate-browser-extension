@@ -13,7 +13,6 @@ import type {
   HealthCheckResult,
   HealthCheck,
   ModelInfo,
-  PerformanceSummary,
 } from './lib/LocalModelManager.js';
 
 // Extend Window for the global model manager reference
@@ -105,7 +104,6 @@ class LocalModelUI {
   private isInitialized: boolean;
   private statusInterval: ReturnType<typeof setInterval> | null;
   private _downloadStartTime: number | null;
-  private _lastProgressLoaded: number;
 
   constructor(containerId: string) {
     this.container = document.getElementById(containerId);
@@ -113,7 +111,6 @@ class LocalModelUI {
     this.isInitialized = false;
     this.statusInterval = null;
     this._downloadStartTime = null;
-    this._lastProgressLoaded = 0;
 
     this.init();
   }
@@ -281,7 +278,7 @@ class LocalModelUI {
       this.renderStatus(modelInfo);
 
       if (modelInfo.available) {
-        this.updatePerformanceStats(modelInfo.performanceStats as PerformanceStats);
+        this.updatePerformanceStats(modelInfo.performanceStats as unknown as PerformanceStats);
       }
 
     } catch (error) {
@@ -331,8 +328,8 @@ class LocalModelUI {
     deleteBtn!.style.display = modelInfo.available ? 'inline-block' : 'none';
     testBtn!.style.display = modelInfo.ready ? 'inline-block' : 'none';
 
-    if ((modelInfo.performanceStats as PerformanceStats)?.lastError) {
-      this.showError('Recent Error', (modelInfo.performanceStats as PerformanceStats).lastError!.message);
+    if ((modelInfo.performanceStats as unknown as PerformanceStats)?.lastError) {
+      this.showError('Recent Error', (modelInfo.performanceStats as unknown as PerformanceStats).lastError!.message);
     } else {
       this.hideError();
     }
@@ -354,7 +351,6 @@ class LocalModelUI {
     try {
       this.showProgress();
       this._downloadStartTime = Date.now();
-      this._lastProgressLoaded = 0;
 
       await window.localModelManager.downloadModel((progressInfo: DownloadProgressInfo) => {
         this.updateProgressUI(progressInfo);

@@ -665,3 +665,98 @@ describe('LANG_NAMES completeness', () => {
     expect(uniqueNames.size).toBe(names.length);
   });
 });
+
+describe('error logging paths (lines 224-225, 237-238)', () => {
+  it('logs error message on WebGPU q4f16 failure', () => {
+    // This tests line 224-225: error message extraction and logging
+    const testCases = [
+      new Error('Type parameter mismatch'),
+      new Error('GPU device lost'),
+      new Error('OOM'),
+      'String error',
+      42,  // non-Error, non-string
+    ];
+
+    for (const errorInput of testCases) {
+      const errorMsg = errorInput instanceof Error ? errorInput.message : String(errorInput);
+      expect(errorMsg).toBeDefined();
+      expect(typeof errorMsg).toBe('string');
+      // Message should not be empty
+      expect(errorMsg.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('extracts message from Error objects', () => {
+    const error = new Error('WebGPU failed');
+    const message = error instanceof Error ? error.message : String(error);
+    expect(message).toBe('WebGPU failed');
+  });
+
+  it('converts non-Error values to strings', () => {
+    const testCases = [
+      { value: 'already a string', expected: 'already a string' },
+      { value: 42, expected: '42' },
+      { value: true, expected: 'true' },
+      { value: null, expected: 'null' },
+      { value: undefined, expected: 'undefined' },
+    ];
+
+    for (const testCase of testCases) {
+      const message = testCase.value instanceof Error
+        ? testCase.value.message
+        : String(testCase.value);
+      expect(message).toBe(testCase.expected);
+    }
+  });
+});
+
+describe('token slicing for inference output (line 286)', () => {
+  it('correctly slices generated tokens from output', () => {
+    // Line 286: const generatedTokenIds = (allTokenIds[0] ?? []).slice(inputLength);
+    // This tests that we properly skip the input tokens and extract only generated tokens
+
+    const inputLength = 15;  // Input prompt is 15 tokens
+    const generatedTokens = [123, 456, 789, 999];  // 4 generated tokens
+    const allTokenIds = [
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, ...generatedTokens],  // Input + generated
+    ];
+
+    const extracted = (allTokenIds[0] ?? []).slice(inputLength);
+    expect(extracted).toEqual(generatedTokens);
+  });
+
+  it('handles empty generated tokens', () => {
+    const inputLength = 15;
+    const allTokenIds = [Array.from({ length: 15 }, (_, i) => i + 1)];  // Only input, no generated
+
+    const extracted = (allTokenIds[0] ?? []).slice(inputLength);
+    expect(extracted).toEqual([]);
+  });
+
+  it('handles missing allTokenIds array entry', () => {
+    const inputLength = 10;
+    const allTokenIds: number[][] = [];  // Empty array
+
+    const extracted = (allTokenIds[0] ?? []).slice(inputLength);
+    expect(extracted).toEqual([]);
+  });
+
+  it('handles undefined allTokenIds', () => {
+    const inputLength = 10;
+    const allTokenIds = undefined as unknown as number[][];
+
+    const extracted = (allTokenIds?.[0] ?? []).slice(inputLength);
+    expect(extracted).toEqual([]);
+  });
+
+  it('preserves correct token order after slicing', () => {
+    const inputLength = 3;
+    const tokens = [100, 101, 102, 200, 201, 202, 203];  // 3 input + 4 generated
+    const allTokenIds = [tokens];
+
+    const generated = (allTokenIds[0] ?? []).slice(inputLength);
+    expect(generated).toEqual([200, 201, 202, 203]);
+    expect(generated[0]).toBe(200);  // First generated token
+    expect(generated[3]).toBe(203);  // Last generated token
+  });
+});

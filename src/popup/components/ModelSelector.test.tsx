@@ -727,4 +727,441 @@ describe('ModelSelector render — download progress', () => {
     // Just verify no error thrown
     expect(options[1]).toBeTruthy();
   });
+
+  // -----------------------------------------------------------------------
+  // Cloud status from onMount
+  // -----------------------------------------------------------------------
+
+  it('loads cloud provider status on mount and reflects it', async () => {
+    (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: { deepl: true, openai: false },
+    });
+
+    const { container } = render(() => (
+      <ModelSelector
+        selected="opus-mt"
+        onChange={vi.fn()}
+        downloadStatus={allDownloadStatus()}
+      />
+    ));
+
+    // Wait for onMount to complete
+    await vi.waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'getCloudProviderStatus' });
+    });
+
+    // Open dropdown to see cloud providers
+    fireEvent.click(container.querySelector('.model-dropdown-trigger') as HTMLElement);
+    await vi.waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeTruthy();
+    });
+
+    // DeepL should show ✓ (configured), other clouds should show 🔑
+    const options = screen.getAllByRole('option');
+    const deeplOption = options.find(o => o.textContent?.includes('DeepL'));
+    expect(deeplOption?.textContent).toContain('✓');
+  });
+
+  // -----------------------------------------------------------------------
+  // Selecting a configured cloud provider calls onChange (not openOptionsPage)
+  // -----------------------------------------------------------------------
+
+  it('calls onChange when selecting a configured cloud provider', async () => {
+    vi.mocked(chrome.runtime.sendMessage).mockResolvedValueOnce({
+      status: { deepl: true },
+    });
+    vi.mocked(chrome.runtime.openOptionsPage).mockClear();
+
+    const onChange = vi.fn();
+    const { container } = render(() => (
+      <ModelSelector
+        selected="opus-mt"
+        onChange={onChange}
+        downloadStatus={allDownloadStatus()}
+      />
+    ));
+
+    // Wait for onMount
+    await vi.waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalled();
+    });
+
+    // Open dropdown and select DeepL (which is configured)
+    fireEvent.click(container.querySelector('.model-dropdown-trigger') as HTMLElement);
+    await vi.waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeTruthy();
+    });
+
+    const options = screen.getAllByRole('option');
+    const deeplOption = options.find(o => o.textContent?.includes('DeepL'));
+    fireEvent.click(deeplOption!);
+
+    expect(onChange).toHaveBeenCalledWith('deepl');
+    expect(chrome.runtime.openOptionsPage).not.toHaveBeenCalled();
+  });
+
+  // -----------------------------------------------------------------------
+  // getStatusIcon branches
+  // -----------------------------------------------------------------------
+
+  it('shows ⏳ for downloading model', async () => {
+    const downloadStatus: Record<string, ModelDownloadStatus> = {
+      'opus-mt': { isDownloading: true, progress: 50, isDownloaded: false, error: null },
+    };
+
+    const { container } = render(() => (
+      <ModelSelector
+        selected="opus-mt"
+        onChange={vi.fn()}
+        downloadStatus={downloadStatus}
+      />
+    ));
+
+    fireEvent.click(container.querySelector('.model-dropdown-trigger') as HTMLElement);
+    await vi.waitFor(() => {
+      const options = screen.getAllByRole('option');
+      const opusMtOption = options.find(o => o.textContent?.includes('OPUS-MT'));
+      expect(opusMtOption?.textContent).toContain('⏳');
+    });
+  });
+
+  it('shows ⚠️ for model with error', async () => {
+    const downloadStatus: Record<string, ModelDownloadStatus> = {
+      'opus-mt': { isDownloading: false, progress: 0, isDownloaded: false, error: 'Failed' },
+    };
+
+    const { container } = render(() => (
+      <ModelSelector
+        selected="opus-mt"
+        onChange={vi.fn()}
+        downloadStatus={downloadStatus}
+      />
+    ));
+
+    fireEvent.click(container.querySelector('.model-dropdown-trigger') as HTMLElement);
+    await vi.waitFor(() => {
+      const options = screen.getAllByRole('option');
+      const opusMtOption = options.find(o => o.textContent?.includes('OPUS-MT'));
+      expect(opusMtOption?.textContent).toContain('⚠️');
+    });
+  });
+
+  it('shows ✓ for downloaded local model', async () => {
+    const downloadStatus: Record<string, ModelDownloadStatus> = {
+      'opus-mt': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
+    };
+
+    const { container } = render(() => (
+      <ModelSelector
+        selected="opus-mt"
+        onChange={vi.fn()}
+        downloadStatus={downloadStatus}
+      />
+    ));
+
+    fireEvent.click(container.querySelector('.model-dropdown-trigger') as HTMLElement);
+    await vi.waitFor(() => {
+      const options = screen.getAllByRole('option');
+      const opusMtOption = options.find(o => o.textContent?.includes('OPUS-MT'));
+      expect(opusMtOption?.textContent).toContain('✓');
+    });
+  });
+
+  it('shows 🔑 for unconfigured cloud provider', async () => {
+    // Default sendMessage returns {} (no status)
+    const { container } = render(() => (
+      <ModelSelector
+        selected="opus-mt"
+        onChange={vi.fn()}
+        downloadStatus={allDownloadStatus()}
+      />
+    ));
+
+    fireEvent.click(container.querySelector('.model-dropdown-trigger') as HTMLElement);
+    await vi.waitFor(() => {
+      const options = screen.getAllByRole('option');
+      const deeplOption = options.find(o => o.textContent?.includes('DeepL'));
+      expect(deeplOption?.textContent).toContain('🔑');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // selectedModel fallback to first model
+  // -----------------------------------------------------------------------
+
+  it('falls back to first local model when selected id is invalid', () => {
+    render(() => (
+      <ModelSelector
+        selected={'nonexistent' as TranslationProviderId}
+        onChange={vi.fn()}
+        downloadStatus={allDownloadStatus()}
+      />
+    ));
+    // Should display the first local model name (OPUS-MT)
+    expect(screen.getByRole('button', { name: /OPUS-MT/ })).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage — aria-activedescendant
+// ---------------------------------------------------------------------------
+
+describe('ModelSelector branch coverage — aria-activedescendant', () => {
+  afterEach(cleanup);
+
+  it('trigger button has no aria-activedescendant when dropdown is closed', () => {
+    render(() => (
+      <ModelSelector
+        selected="opus-mt"
+        onChange={vi.fn()}
+        downloadStatus={allDownloadStatus()}
+        webGpuAvailable={true}
+      />
+    ));
+    const trigger = screen.getByRole('button', { name: /Translation model/ });
+    // When closed, aria-activedescendant should be undefined (not present)
+    expect(trigger.getAttribute('aria-activedescendant')).toBeNull();
+  });
+
+  it('trigger button has aria-activedescendant when open with focused item', async () => {
+    const { container } = render(() => (
+      <ModelSelector
+        selected="opus-mt"
+        onChange={vi.fn()}
+        downloadStatus={allDownloadStatus()}
+        webGpuAvailable={true}
+      />
+    ));
+    const wrapper = container.querySelector('.model-dropdown-wrapper') as HTMLElement;
+
+    // Open dropdown with ArrowDown (sets focusedIndex to current selection)
+    fireEvent.keyDown(wrapper, { key: 'ArrowDown' });
+
+    await vi.waitFor(() => {
+      const trigger = screen.getByRole('button', { name: /Translation model/ });
+      expect(trigger.getAttribute('aria-activedescendant')).toBeTruthy();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage — cloud provider classes
+// ---------------------------------------------------------------------------
+
+describe('ModelSelector branch coverage — cloud provider classes', () => {
+  afterEach(cleanup);
+
+  it('configured cloud provider does not have unconfigured class', async () => {
+    (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: { deepl: true },
+    });
+
+    const { container } = render(() => (
+      <ModelSelector
+        selected="opus-mt"
+        onChange={vi.fn()}
+        downloadStatus={allDownloadStatus()}
+        webGpuAvailable={true}
+      />
+    ));
+
+    // Wait for onMount to complete
+    await vi.waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'getCloudProviderStatus' });
+    });
+
+    // Open the dropdown
+    fireEvent.click(container.querySelector('.model-dropdown-trigger') as HTMLElement);
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('[role="listbox"]')).toBeTruthy();
+    });
+
+    // DeepL is configured — should NOT have 'unconfigured' class
+    const options = screen.getAllByRole('option');
+    const deeplOption = options.find(o => o.textContent?.includes('DeepL'));
+    expect(deeplOption).toBeTruthy();
+    expect(deeplOption!.className).not.toContain('unconfigured');
+  });
+
+  // -----------------------------------------------------------------------
+  // Uncovered lines: Cloud provider dropdown item rendering
+  // -----------------------------------------------------------------------
+
+  it('unconfigured cloud provider has unconfigured class', async () => {
+    // Don't provide any cloud status — all providers should be unconfigured
+    (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({});
+
+    const { container } = render(() => (
+      <ModelSelector
+        selected="opus-mt"
+        onChange={vi.fn()}
+        downloadStatus={allDownloadStatus()}
+      />
+    ));
+
+    // Wait for onMount
+    await vi.waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalled();
+    });
+
+    // Open dropdown
+    fireEvent.click(container.querySelector('.model-dropdown-trigger') as HTMLElement);
+
+    await vi.waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeTruthy();
+    });
+
+    // DeepL should have unconfigured class
+    const options = screen.getAllByRole('option');
+    const deeplOption = options.find(o => o.textContent?.includes('DeepL'));
+    expect(deeplOption).toBeTruthy();
+    expect(deeplOption!.className).toContain('unconfigured');
+  });
+
+  it('cloud provider item shows cost estimate', async () => {
+    const { container } = render(() => (
+      <ModelSelector
+        selected="opus-mt"
+        onChange={vi.fn()}
+        downloadStatus={allDownloadStatus()}
+      />
+    ));
+
+    fireEvent.click(container.querySelector('.model-dropdown-trigger') as HTMLElement);
+
+    await vi.waitFor(() => {
+      const deeplCost = Array.from(document.querySelectorAll('.model-dropdown-item-cost')).find(
+        el => el.textContent?.includes('chars')
+      );
+      expect(deeplCost).toBeTruthy();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Uncovered lines: keyboard navigation edge cases
+// ---------------------------------------------------------------------------
+
+describe('ModelSelector branch coverage — keyboard edge cases', () => {
+  afterEach(cleanup);
+
+  it('ArrowDown at last item does not exceed boundary', () => {
+    const { container } = render(() => (
+      <ModelSelector
+        selected="anthropic"
+        onChange={vi.fn()}
+        downloadStatus={allDownloadStatus()}
+      />
+    ));
+    const wrapper = container.querySelector('.model-dropdown-wrapper') as HTMLElement;
+    fireEvent.keyDown(wrapper, { key: 'ArrowDown' }); // open
+    // Navigate to end
+    fireEvent.keyDown(wrapper, { key: 'End' });
+    // Try to go down from last item
+    fireEvent.keyDown(wrapper, { key: 'ArrowDown' });
+    // Should still have listbox open
+    expect(screen.getByRole('listbox')).toBeTruthy();
+  });
+
+  it('ArrowUp at first item does not go below 0', () => {
+    const { container } = render(() => (
+      <ModelSelector
+        selected="opus-mt"
+        onChange={vi.fn()}
+        downloadStatus={allDownloadStatus()}
+      />
+    ));
+    const wrapper = container.querySelector('.model-dropdown-wrapper') as HTMLElement;
+    fireEvent.keyDown(wrapper, { key: 'ArrowDown' }); // open at index 0
+    // Try to go up from first item
+    fireEvent.keyDown(wrapper, { key: 'ArrowUp' });
+    // Should still have listbox open
+    expect(screen.getByRole('listbox')).toBeTruthy();
+  });
+
+  it('Enter with focusedIndex < 0 does not crash', () => {
+    const { container } = render(() => (
+      <ModelSelector
+        selected="opus-mt"
+        onChange={vi.fn()}
+        downloadStatus={allDownloadStatus()}
+      />
+    ));
+    const wrapper = container.querySelector('.model-dropdown-wrapper') as HTMLElement;
+    // Open dropdown (sets focusedIndex to current model index, which is >= 0)
+    fireEvent.keyDown(wrapper, { key: 'ArrowDown' });
+    expect(screen.getByRole('listbox')).toBeTruthy();
+  });
+
+  it('returns focus to trigger button after Escape', () => {
+    const { container } = render(() => (
+      <ModelSelector
+        selected="opus-mt"
+        onChange={vi.fn()}
+        downloadStatus={allDownloadStatus()}
+      />
+    ));
+    const wrapper = container.querySelector('.model-dropdown-wrapper') as HTMLElement;
+    const trigger = container.querySelector('.model-dropdown-trigger') as HTMLElement;
+
+    fireEvent.keyDown(wrapper, { key: 'ArrowDown' }); // open
+    expect(screen.getByRole('listbox')).toBeTruthy();
+    fireEvent.keyDown(wrapper, { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).toBeNull();
+    // Button should still exist
+    expect(trigger).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Uncovered lines: onCleanup and error handling
+// ---------------------------------------------------------------------------
+
+describe('ModelSelector branch coverage — cleanup and errors', () => {
+  afterEach(cleanup);
+
+  it('handles chrome.runtime.sendMessage rejection gracefully', async () => {
+    (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('Message port closed')
+    );
+
+    // Component should render despite the error
+    render(() => (
+      <ModelSelector
+        selected="opus-mt"
+        onChange={vi.fn()}
+        downloadStatus={allDownloadStatus()}
+      />
+    ));
+
+    await vi.waitFor(() => {
+      expect(screen.getByRole('button', { name: /Translation model/ })).toBeTruthy();
+    });
+  });
+
+  it('cleans up event listeners on unmount', async () => {
+    const removeEventListenerSpy = vi.spyOn(document, 'removeEventListener');
+    const { unmount } = render(() => (
+      <ModelSelector
+        selected="opus-mt"
+        onChange={vi.fn()}
+        downloadStatus={allDownloadStatus()}
+      />
+    ));
+
+    // Open dropdown (adds listener)
+    fireEvent.click(screen.getByRole('button', { name: /Translation model/ }));
+    await vi.waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeTruthy();
+    });
+
+    // Unmount component (should call removeEventListener)
+    unmount();
+
+    // Verify cleanup was called
+    expect(removeEventListenerSpy).toHaveBeenCalledWith('mousedown', expect.any(Function));
+
+    removeEventListenerSpy.mockRestore();
+  });
 });

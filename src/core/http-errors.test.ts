@@ -244,3 +244,20 @@ describe('handleProviderHttpError', () => {
     });
   });
 });
+
+describe('truncateMessage edge cases', () => {
+  it('falls through to raw text when JSON has neither error.message nor message', () => {
+    const jsonBody = JSON.stringify({ code: 'INVALID', details: 'some info' });
+    const result = handleProviderHttpError(400, 'TestProvider', jsonBody);
+    // Should use the raw JSON string since no error.message or message field found
+    expect(result.message).toContain('TestProvider bad request:');
+    expect(result.message).toContain('INVALID');
+  });
+
+  it('handles JSON with error object but no message property', () => {
+    const jsonBody = JSON.stringify({ error: { code: 123, type: 'validation' } });
+    const result = handleProviderHttpError(400, 'TestProvider', jsonBody);
+    expect(result.message).toContain('TestProvider bad request:');
+    expect(result.message).toContain('validation');
+  });
+});

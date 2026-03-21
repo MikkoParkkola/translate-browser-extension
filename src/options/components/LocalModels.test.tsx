@@ -269,5 +269,52 @@ describe('LocalModels', () => {
         expect(dangerBar).toBeTruthy();
       });
     });
+
+    it('shows warning class for medium usage (50-80%)', async () => {
+      mockEstimate.mockResolvedValueOnce({
+        usage: 65 * 1024 * 1024,
+        quota: 100 * 1024 * 1024,
+      });
+      mockSendMessage.mockResolvedValue({});
+
+      render(() => <LocalModels />);
+      await vi.waitFor(() => {
+        const warningBar = document.querySelector('.progress-fill.warning');
+        expect(warningBar).toBeTruthy();
+      });
+    });
+  });
+
+  describe('clearAllModels — cache key filtering', () => {
+    it('deletes only cache keys containing transformers or model', async () => {
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+
+      const mockCachesDelete = vi.fn().mockResolvedValue(true);
+      vi.stubGlobal('caches', {
+        keys: vi.fn().mockResolvedValue([
+          'transformers-v4-cache',
+          'model-opus-mt',
+          'unrelated-cache',
+          'my-transformers-data',
+        ]),
+        delete: mockCachesDelete,
+      });
+
+      mockSendMessage
+        .mockResolvedValueOnce({ models: MOCK_MODELS })
+        .mockResolvedValueOnce({})
+        .mockResolvedValue({});
+
+      render(() => <LocalModels />);
+      await vi.waitFor(() => expect(screen.getByText('Clear All Models')).toBeTruthy());
+      fireEvent.click(screen.getByText('Clear All Models'));
+
+      await vi.waitFor(() => {
+        expect(mockCachesDelete).toHaveBeenCalledWith('transformers-v4-cache');
+        expect(mockCachesDelete).toHaveBeenCalledWith('model-opus-mt');
+        expect(mockCachesDelete).toHaveBeenCalledWith('my-transformers-data');
+        expect(mockCachesDelete).not.toHaveBeenCalledWith('unrelated-cache');
+      });
+    });
   });
 });

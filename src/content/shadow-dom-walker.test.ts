@@ -550,5 +550,160 @@ describe('shadow-dom-walker', () => {
       });
       document.body.removeChild(host);
     });
+
+    it('returns shadow selection when active element has shadow with selection', () => {
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      const shadow = host.attachShadow({ mode: 'open' });
+      shadow.innerHTML = '<span>Selected text in shadow</span>';
+
+      // Remove main document selection
+      window.getSelection()?.removeAllRanges();
+
+      // Mock activeElement to point into shadow host
+      Object.defineProperty(document, 'activeElement', {
+        value: host,
+        configurable: true,
+      });
+
+      // Mock getSelection on the shadow root to return a non-collapsed selection
+      const mockSelection = {
+        isCollapsed: false,
+        toString: () => 'Selected text in shadow',
+      };
+      (shadow as unknown as Record<string, unknown>).getSelection = () => mockSelection;
+
+      const result = getDeepSelection();
+      // Should return the shadow selection
+      expect(result).toBe(mockSelection);
+
+      // Cleanup
+      Object.defineProperty(document, 'activeElement', {
+        value: document.body,
+        configurable: true,
+      });
+      document.body.removeChild(host);
+    });
+  });
+
+  // ========================================================================
+  // scanForExistingShadowRoots — already-known shadow root rescanning
+  // ========================================================================
+
+  describe('scanForExistingShadowRoots — known shadow root children', () => {
+    it('scans children of already-known shadow roots for nested hosts', () => {
+      // Create outer host with shadow
+      const outerHost = document.createElement('div');
+      document.body.appendChild(outerHost);
+      const outerShadow = outerHost.attachShadow({ mode: 'open' });
+
+      // Create inner host inside the outer shadow
+      const innerHost = document.createElement('div');
+      outerShadow.appendChild(innerHost);
+      const innerShadow = innerHost.attachShadow({ mode: 'open' });
+      innerShadow.innerHTML = '<span>Deep shadow content</span>';
+
+      // Pre-add outer shadow to knownShadowRoots — simulating it's already known
+      _testing.knownShadowRoots.add(outerShadow);
+
+      const discoveredRoots: ShadowRoot[] = [];
+      _testing.scanForExistingShadowRoots(outerHost, (sr: ShadowRoot) => {
+        discoveredRoots.push(sr);
+      });
+
+      // The inner shadow root should be discovered (not the outer since it's already known)
+      expect(discoveredRoots).toContain(innerShadow);
+      // Outer was already known — it should NOT appear in discoveredRoots
+      expect(discoveredRoots).not.toContain(outerShadow);
+
+      document.body.removeChild(outerHost);
+    });
+  });
+});
+
+// =========================================================================
+// Additional branch coverage tests — appended
+// =========================================================================
+
+describe('shadow-dom-walker — branch coverage', () => {
+  beforeEach(() => {
+    _testing.reset();
+    document.body.innerHTML = '';
+  });
+
+  afterEach(() => {
+    _testing.reset();
+    document.body.innerHTML = '';
+  });
+
+  it('getShadowRoot returns open shadow root via element.shadowRoot', () => {
+    const host = document.createElement('div');
+    const shadow = host.attachShadow({ mode: 'open' });
+    expect(_testing.getShadowRoot(host)).toBe(shadow);
+  });
+
+  it('walkShadowRoots rejects comment node as root (non-element/non-fragment)', () => {
+    const comment = document.createComment('skip');
+    const callback = vi.fn();
+    walkShadowRoots(comment, callback);
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it('walkShadowRoots walks DocumentFragment without shadow root lookup', () => {
+    const frag = document.createDocumentFragment();
+    const span = document.createElement('span');
+    span.textContent = 'fragment text';
+    frag.appendChild(span);
+    const texts = collectTexts(frag);
+    expect(texts).toContain('fragment text');
+  });
+
+  it('observeShadowRoots uses element root directly (non-Document branch)', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const discovered: ShadowRoot[] = [];
+    const cleanup = observeShadowRoots(container, (sr) => discovered.push(sr));
+
+    const host = document.createElement('div');
+    const shadow = host.attachShadow({ mode: 'open' });
+    container.appendChild(host);
+
+    expect(discovered).toContain(shadow);
+    cleanup();
+  });
+
+  it('getDeepSelection handles getSelection returning null', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = '<span>text</span>';
+
+    (shadow as unknown as Record<string, unknown>).getSelection = () => null;
+
+    window.getSelection()?.removeAllRanges();
+    Object.defineProperty(document, 'activeElement', { value: host, configurable: true });
+
+    const result = getDeepSelection();
+    expect(result).not.toBeNull();
+
+    Object.defineProperty(document, 'activeElement', { value: document.body, configurable: true });
+  });
+
+  it('getDeepSelection falls through when getSelection property is absent (optional chaining)', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = '<span>text</span>';
+
+    // jsdom ShadowRoot has no getSelection — optional chaining ?.() returns undefined
+    window.getSelection()?.removeAllRanges();
+    Object.defineProperty(document, 'activeElement', { value: host, configurable: true });
+
+    const result = getDeepSelection();
+    expect(result).not.toBeNull();
+    expect(result!.isCollapsed).toBe(true);
+
+    Object.defineProperty(document, 'activeElement', { value: document.body, configurable: true });
   });
 });

@@ -107,10 +107,9 @@ describe('InferenceEngine', () => {
     });
 
     // Mock chrome.runtime for extension URL resolution
-    // @ts-expect-error - Mock chrome in global scope
     globalThis.chrome = {
-      runtime: { getURL: vi.fn((path: string) => 'chrome-extension://test-id/' + path) },
-    };
+      runtime: { getURL: vi.fn((path: string) => 'chrome-extension://test-id/' + path) } as unknown as typeof chrome.runtime,
+    } as unknown as typeof chrome;
   });
 
   afterEach(() => {
@@ -141,7 +140,7 @@ describe('InferenceEngine', () => {
     it('passes WASM paths using chrome.runtime.getURL', async () => {
       await engine.init();
 
-      const [wasmPaths] = MockWllama.mock.calls[0] as [Record<string, string>];
+      const [wasmPaths] = MockWllama.mock.calls[0] as unknown as [Record<string, string>];
       expect(wasmPaths['single-thread/wllama.wasm']).toMatch(/chrome-extension:\/\//);
       expect(wasmPaths['multi-thread/wllama.wasm']).toMatch(/chrome-extension:\/\//);
     });
@@ -149,14 +148,14 @@ describe('InferenceEngine', () => {
     it('respects suppressNativeLog option', async () => {
       await engine.init({ suppressNativeLog: true });
 
-      const [, options] = MockWllama.mock.calls[0] as [unknown, Record<string, unknown>];
+      const [, options] = MockWllama.mock.calls[0] as unknown as [unknown, Record<string, unknown>];
       expect(options.suppressNativeLog).toBe(true);
     });
 
     it('respects parallelDownloads option', async () => {
       await engine.init({ parallelDownloads: 5 });
 
-      const [, options] = MockWllama.mock.calls[0] as [unknown, Record<string, unknown>];
+      const [, options] = MockWllama.mock.calls[0] as unknown as [unknown, Record<string, unknown>];
       expect(options.parallelDownloads).toBe(5);
     });
 
@@ -229,7 +228,7 @@ describe('InferenceEngine', () => {
 
     it('calls onProgress callback during loading', async () => {
       mockWllamaInstance.loadModelFromUrl.mockImplementation(
-        (urls: string[], config: Record<string, unknown>) => {
+        (_urls: string[], config: Record<string, unknown>) => {
           const progressCallback = config.progressCallback as ((p: Record<string, number>) => void) | undefined;
           if (progressCallback) {
             progressCallback({ loaded: 500, total: 1000 });
@@ -432,5 +431,291 @@ describe('InferenceEngine', () => {
       const info = engine.getContextInfo();
       expect(info).toEqual({ n_ctx: 2048, model: 'test-model' });
     });
+  });
+
+  describe('abort', () => {
+    it('aborts when _abortController is set', async () => {
+      await engine.init();
+      await engine.loadModel('http://example.com/model.gguf');
+
+      // Simulate having an active abort controller
+      const controller = new AbortController();
+      engine._abortController = controller;
+      const abortSpy = vi.spyOn(controller, 'abort');
+
+      engine.abort();
+
+      expect(abortSpy).toHaveBeenCalled();
+      expect(engine._abortController).toBeNull();
+    });
+
+    it('is a no-op when _abortController is null', () => {
+      engine.abort();
+      expect(engine._abortController).toBeNull();
+    });
+  });
+
+  describe('chatComplete (tokenize fallback)', () => {
+    beforeEach(async () => {
+      await engine.init();
+      await engine.loadModel('http://example.com/model.gguf');
+    });
+
+    it('falls back to approximate token count when tokenize fails', async () => {
+      mockWllamaInstance.tokenize.mockRejectedValueOnce(new Error('tokenize error'));
+      mockWllamaInstance.createChatCompletion.mockResolvedValueOnce('a short text');
+
+      const result = await engine.chatComplete([{ role: 'user', content: 'hi' }]);
+      // 'a short text' is 12 chars => ceil(12/4) = 3
+      expect(result.tokensGenerated).toBe(3);
+    });
+
+    it('respects maxTokens and temperature options', async () => {
+      await engine.chatComplete(
+        [{ role: 'user', content: 'hi' }],
+        { maxTokens: 256, temperature: 0.7 },
+      );
+
+      const [, options] = mockWllamaInstance.createChatCompletion.mock.calls[0] as [unknown, Record<string, unknown>];
+      expect(options.nPredict).toBe(256);
+      expect((options.sampling as Record<string, unknown>).temp).toBe(0.7);
+    });
+  });
+
+  describe('init without chrome.runtime', () => {
+    it('uses ./ as extension base when chrome is undefined', async () => {
+      // @ts-expect-error - remove chrome mock
+      delete globalThis.chrome;
+
+      const freshEngine = new InferenceEngine();
+      await freshEngine.init();
+
+      const [wasmPaths] = MockWllama.mock.calls[MockWllama.mock.calls.length - 1] as unknown as [Record<string, string>];
+      expect(wasmPaths['single-thread/wllama.wasm']).toBe('./wllama-single.wasm');
+      expect(wasmPaths['multi-thread/wllama.wasm']).toBe('./wllama-multi.wasm');
+    });
+  });
+
+  describe('init logger callbacks', () => {
+    it('logger.debug forwards to console.debug', async () => {
+      const spy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+      await engine.init();
+
+      // Get the logger passed to the Wllama constructor
+      const [, options] = MockWllama.mock.calls[MockWllama.mock.calls.length - 1] as unknown as [unknown, Record<string, Record<string, (...args: unknown[]) => void>>];
+      options.logger.debug('test debug message');
+
+      expect(spy).toHaveBeenCalledWith('[wllama]', 'test debug message');
+    });
+
+    it('logger.log forwards to console.log', async () => {
+      const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      await engine.init();
+
+      const [, options] = MockWllama.mock.calls[MockWllama.mock.calls.length - 1] as unknown as [unknown, Record<string, Record<string, (...args: unknown[]) => void>>];
+      options.logger.log('test log message');
+
+      expect(spy).toHaveBeenCalledWith('[wllama]', 'test log message');
+    });
+
+    it('logger.warn forwards to console.warn', async () => {
+      const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      await engine.init();
+
+      const [, options] = MockWllama.mock.calls[MockWllama.mock.calls.length - 1] as unknown as [unknown, Record<string, Record<string, (...args: unknown[]) => void>>];
+      options.logger.warn('test warn message');
+
+      expect(spy).toHaveBeenCalledWith('[wllama]', 'test warn message');
+    });
+
+    it('logger.error forwards to console.error', async () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      await engine.init();
+
+      const [, options] = MockWllama.mock.calls[MockWllama.mock.calls.length - 1] as unknown as [unknown, Record<string, Record<string, (...args: unknown[]) => void>>];
+      options.logger.error('test error message');
+
+      expect(spy).toHaveBeenCalledWith('[wllama]', 'test error message');
+    });
+  });
+
+  describe('loadModelFromBlobs (additional paths)', () => {
+    beforeEach(async () => {
+      await engine.init();
+    });
+
+    it('unloads previous model before loading blobs', async () => {
+      // First load a model via URL
+      await engine.loadModel('http://example.com/model.gguf');
+      expect(engine.isModelLoaded).toBe(true);
+
+      // Now load from blobs — should unload first
+      const blobs = [new Blob(['data'])];
+      await engine.loadModelFromBlobs(blobs);
+
+      expect(mockWllamaInstance.exit).toHaveBeenCalled();
+      expect(engine.isModelLoaded).toBe(true);
+    });
+
+    it('sets isModelLoaded false on blob load failure', async () => {
+      mockWllamaInstance.loadModel.mockRejectedValueOnce(new Error('Blob read error'));
+
+      await expect(engine.loadModelFromBlobs([new Blob(['bad'])]))
+        .rejects.toThrow('Blob read error');
+
+      expect(engine.isModelLoaded).toBe(false);
+    });
+
+    it('passes config defaults for blob loading', async () => {
+      await engine.loadModelFromBlobs([new Blob(['data'])]);
+
+      const [, config] = mockWllamaInstance.loadModel.mock.calls[0] as [unknown, Record<string, unknown>];
+      expect(config.n_ctx).toBe(2048);
+      expect(config.n_batch).toBe(512);
+      expect(config.cache_type_k).toBe('q8_0');
+    });
+  });
+
+  describe('loadModel (additional paths)', () => {
+    beforeEach(async () => {
+      await engine.init();
+    });
+
+    it('handles progress with total=0', async () => {
+      mockWllamaInstance.loadModelFromUrl.mockImplementation(
+        (_urls: string[], config: Record<string, unknown>) => {
+          const progressCallback = config.progressCallback as ((p: Record<string, number>) => void) | undefined;
+          if (progressCallback) {
+            progressCallback({ loaded: 100, total: 0 });
+          }
+          return Promise.resolve();
+        },
+      );
+
+      const onProgress = vi.fn();
+      await engine.loadModel('http://example.com/model.gguf', {}, onProgress);
+
+      expect(onProgress).toHaveBeenCalledWith(
+        expect.objectContaining({ loaded: 100, total: 0, progress: 0 }),
+      );
+    });
+
+    it('skips progressCallback when onProgress is null', async () => {
+      await engine.loadModel('http://example.com/model.gguf', {}, null);
+
+      const [, config] = mockWllamaInstance.loadModelFromUrl.mock.calls[0] as [unknown, Record<string, unknown>];
+      expect(config.progressCallback).toBeUndefined();
+    });
+  });
+
+  describe('logMemoryUsage', () => {
+    it('logs memory when performance.memory is available', async () => {
+      // Set up performance.memory mock
+      const mockPerformance = {
+        ...performance,
+        memory: {
+          usedJSHeapSize: 100 * 1024 * 1024,
+          totalJSHeapSize: 200 * 1024 * 1024,
+          jsHeapSizeLimit: 400 * 1024 * 1024,
+        },
+      };
+      vi.stubGlobal('performance', mockPerformance);
+
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      // loadModel calls logMemoryUsage('pre-load') and logMemoryUsage('post-load')
+      await engine.init();
+      await engine.loadModel('http://example.com/model.gguf');
+
+      const memLogs = logSpy.mock.calls.filter(
+        (c) => typeof c[0] === 'string' && c[0].includes('[InferenceEngine:memory]'),
+      );
+      expect(memLogs.length).toBeGreaterThanOrEqual(2);
+      expect(memLogs[0][0]).toContain('pre-load');
+      expect(memLogs[1][0]).toContain('post-load');
+
+      vi.unstubAllGlobals();
+    });
+
+    it('logs memory during blob load', async () => {
+      const mockPerformance = {
+        ...performance,
+        memory: {
+          usedJSHeapSize: 50 * 1024 * 1024,
+          totalJSHeapSize: 100 * 1024 * 1024,
+          jsHeapSizeLimit: 200 * 1024 * 1024,
+        },
+      };
+      vi.stubGlobal('performance', mockPerformance);
+
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await engine.init();
+      await engine.loadModelFromBlobs([new Blob(['data'])]);
+
+      const memLogs = logSpy.mock.calls.filter(
+        (c) => typeof c[0] === 'string' && c[0].includes('[InferenceEngine:memory]'),
+      );
+      expect(memLogs.some(l => l[0].includes('post-blob-load'))).toBe(true);
+
+      vi.unstubAllGlobals();
+    });
+  });
+
+  describe('complete (abortSignal)', () => {
+    beforeEach(async () => {
+      await engine.init();
+      await engine.loadModel('http://example.com/model.gguf');
+    });
+
+    it('passes abortSignal to createCompletion', async () => {
+      const controller = new AbortController();
+      await engine.complete('prompt', { abortSignal: controller.signal });
+
+      const [, opts] = mockWllamaInstance.createCompletion.mock.calls[0] as [unknown, Record<string, unknown>];
+      expect(opts.abortSignal).toBe(controller.signal);
+    });
+  });
+
+  describe('unloadModel when wllama is null', () => {
+    it('handles unload gracefully when wllama is null', async () => {
+      engine.wllama = null;
+      await engine.unloadModel();
+      expect(engine.isModelLoaded).toBe(false);
+      expect(engine.modelInfo).toBeNull();
+    });
+  });
+});
+
+// Separate test to cover the getWllamaModule() catch path.
+// Must use resetModules to get a fresh _wllamaPromise = null.
+describe('getWllamaModule error path', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.resetModules();
+  });
+
+  it('throws wrapped error when wllama bundle import fails', async () => {
+    // Mock the bundle to throw synchronously (vi.doMock + throw makes the import() reject)
+    vi.doMock('./wllama.bundle.js', () => {
+      throw new Error('WASM load failed');
+    });
+
+    // Fresh import so _wllamaPromise starts as null
+    const mod = await import('./llama.cpp');
+    const freshEngine = new mod.InferenceEngine();
+
+    globalThis.chrome = {
+      runtime: { getURL: vi.fn((p: string) => `chrome-extension://test/${p}`) },
+      storage: { local: { get: vi.fn(), set: vi.fn() } },
+    } as unknown as typeof chrome;
+
+    // init() calls getWllamaModule() which does import('./wllama.bundle.js')
+    // The dynamic import should reject because the factory throws
+    await expect(freshEngine.init()).rejects.toThrow('Failed to load inference engine');
   });
 });

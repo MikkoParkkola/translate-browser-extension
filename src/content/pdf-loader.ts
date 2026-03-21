@@ -55,15 +55,19 @@ let cachedPdfjs: PdfjsLib | null = null;
 let loadingPromise: Promise<PdfjsLib> | null = null;
 
 /**
- * Dynamic import wrapper.
+ * Internal dependencies exposed for test mocking.
  *
  * The @vite-ignore comment tells Vite/Rollup to leave this import()
  * as-is in the output. Chrome content scripts support native import()
  * for URLs in web_accessible_resources (Chrome 89+).
+ *
+ * @internal
  */
-function dynamicImport(url: string): Promise<Record<string, unknown>> {
-  return import(/* @vite-ignore */ url);
-}
+export const _deps = {
+  dynamicImport(url: string): Promise<Record<string, unknown>> {
+    return import(/* @vite-ignore */ url);
+  },
+};
 
 /**
  * Inject a script tag pointing to the extension-bundled pdfjs chunk
@@ -116,7 +120,7 @@ export async function loadPdfjs(): Promise<PdfjsLib> {
     // for URLs listed in web_accessible_resources.
     let module: Record<string, unknown>;
     try {
-      module = await dynamicImport(chunkUrl);
+      module = await _deps.dynamicImport(chunkUrl);
     } catch (importError) {
       log.error('Dynamic import of pdfjs chunk failed:', importError);
       throw new Error(

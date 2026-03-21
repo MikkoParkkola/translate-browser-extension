@@ -14,11 +14,12 @@
 import { logger } from './logger.js';
 import { standardErrorHandler } from './standardErrorHandler.js';
 import { ModelValidator } from './ModelValidator.js';
-import type { ValidationResult } from './ModelValidator.js';
+export type { ValidationResult } from './ModelValidator.js';
 import { ModelUpdater } from './ModelUpdater.js';
 import type { UpdateCheckResult } from './ModelUpdater.js';
 import { ModelPerformanceMonitor } from './ModelPerformanceMonitor.js';
 import type { PerformanceSummary } from './ModelPerformanceMonitor.js';
+export type { PerformanceSummary } from './ModelPerformanceMonitor.js';
 
 // ── Interfaces ──────────────────────────────────────────────────────
 
@@ -192,10 +193,6 @@ export class LocalModelManager {
   isDownloading: boolean;
   private downloadCancelled: boolean;
 
-  private requestQueue: unknown[];
-  private isProcessing: boolean;
-  private pendingRequests: Map<string, unknown>;
-
   private lastUsed: number;
   private unloadTimeout: number;
   private unloadTimer: ReturnType<typeof setTimeout> | null;
@@ -206,7 +203,7 @@ export class LocalModelManager {
   consecutiveFailures: number;
   lastError: Error | null;
   private isInRecovery: boolean;
-  private modelCorrupted: boolean;
+  modelCorrupted: boolean;
 
   private modelRegistry: ModelRegistry;
 
@@ -224,11 +221,6 @@ export class LocalModelManager {
     this.downloadProgress = 0;
     this.isDownloading = false;
     this.downloadCancelled = false;
-
-    // Request management
-    this.requestQueue = [];
-    this.isProcessing = false;
-    this.pendingRequests = new Map();
 
     // Memory management
     this.lastUsed = Date.now();
@@ -697,8 +689,8 @@ export class LocalModelManager {
   ): Promise<unknown> {
     return this.updater.updateModelToVersion(
       null,
-      progressCallback,
-      this.downloadModel.bind(this),
+      progressCallback as ((info: unknown) => void) | null,
+      this.downloadModel.bind(this) as (...args: unknown[]) => unknown,
     );
   }
 

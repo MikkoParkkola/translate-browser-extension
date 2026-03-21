@@ -137,4 +137,65 @@ describe('LanguageSelector', () => {
     const section = container.querySelector('section');
     expect(section).toHaveAttribute('aria-label', 'Language selection');
   });
+
+  // -----------------------------------------------------------------------
+  // Target language filter excludes "auto"
+  // -----------------------------------------------------------------------
+
+  it('target language select does not include "Auto Detect" option', () => {
+    render(() => <LanguageSelector {...defaultProps()} />);
+    const targetSelect = screen.getByLabelText('Target language');
+    const options = targetSelect.querySelectorAll('option');
+    const autoOption = Array.from(options).find(o => o.value === 'auto');
+    expect(autoOption).toBeUndefined();
+  });
+
+  it('source language select includes "Auto Detect" option', () => {
+    render(() => <LanguageSelector {...defaultProps()} />);
+    const sourceSelect = screen.getByLabelText('Source language');
+    const options = sourceSelect.querySelectorAll('option');
+    const autoOption = Array.from(options).find(o => o.value === 'auto');
+    expect(autoOption).toBeDefined();
+  });
+
+  describe('target language filter coverage', () => {
+    it('target select includes all non-auto languages from source', () => {
+      render(() => <LanguageSelector {...defaultProps()} />);
+      const sourceSelect = screen.getByLabelText('Source language') as HTMLSelectElement;
+      const targetSelect = screen.getByLabelText('Target language') as HTMLSelectElement;
+      const sourceOptions = Array.from(sourceSelect.options).map(o => o.value);
+      const targetOptions = Array.from(targetSelect.options).map(o => o.value);
+      // Every non-auto source option should be in target
+      for (const code of sourceOptions) {
+        if (code === 'auto') {
+          expect(targetOptions).not.toContain('auto');
+        } else {
+          expect(targetOptions).toContain(code);
+        }
+      }
+    });
+
+    it('target select has exactly one fewer option than source (auto excluded)', () => {
+      render(() => <LanguageSelector {...defaultProps()} />);
+      const sourceSelect = screen.getByLabelText('Source language') as HTMLSelectElement;
+      const targetSelect = screen.getByLabelText('Target language') as HTMLSelectElement;
+      expect(targetSelect.options.length).toBe(sourceSelect.options.length - 1);
+    });
+
+    it('changing target language fires onTargetChange with selected value', () => {
+      const props = defaultProps();
+      render(() => <LanguageSelector {...props} />);
+      const targetSelect = screen.getByLabelText('Target language') as HTMLSelectElement;
+      fireEvent.change(targetSelect, { target: { value: 'de' } });
+      expect(props.onTargetChange).toHaveBeenCalledWith('de');
+    });
+
+    it('source select onChange fires callback with new value', () => {
+      const props = defaultProps();
+      render(() => <LanguageSelector {...props} />);
+      const sourceSelect = screen.getByLabelText('Source language') as HTMLSelectElement;
+      fireEvent.change(sourceSelect, { target: { value: 'fr' } });
+      expect(props.onSourceChange).toHaveBeenCalledWith('fr');
+    });
+  });
 });

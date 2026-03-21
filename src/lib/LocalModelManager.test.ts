@@ -9,7 +9,6 @@ import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 
 // Hoist mock instances AND constructor mocks so vi.mock factories can reference them
 const {
-  mockValidatorInstance,
   mockUpdaterInstance,
   mockPerformanceMonitorInstance,
   MockModelValidator,
@@ -35,7 +34,6 @@ const {
     destroy: vi.fn(),
   };
   return {
-    mockValidatorInstance: validatorInst,
     mockUpdaterInstance: updaterInst,
     mockPerformanceMonitorInstance: perfMonInst,
     // NOTE: Must use regular functions, not arrows — arrows can't be constructors
@@ -104,16 +102,15 @@ class MockWorker {
 globalThis.Worker = MockWorker;
 
 // Mock chrome storage
-// @ts-expect-error - Mock chrome in global scope
 globalThis.chrome = {
   runtime: { getURL: vi.fn((path: string) => 'chrome-extension://test/' + path) },
   storage: {
     local: {
-      get: vi.fn((keys: unknown, cb: (result: Record<string, unknown>) => void) => { cb({}); }),
-      set: vi.fn((data: unknown, cb: () => void) => { cb(); }),
+      get: vi.fn((_keys: unknown, cb: (result: Record<string, unknown>) => void) => { cb({}); }),
+      set: vi.fn((_data: unknown, cb: () => void) => { cb(); }),
     },
   },
-};
+} as unknown as typeof chrome;
 
 // Mock caches API
 // @ts-expect-error - Mock caches in global scope
@@ -166,7 +163,7 @@ describe('LocalModelManager', () => {
       expect(manager.modelLoaded).toBe(false);
       expect(manager.isDownloading).toBe(false);
       expect(manager.downloadProgress).toBe(0);
-      expect(manager.maxRetries).toBe(3);
+      expect((manager as any).maxRetries).toBe(3);
       expect(manager.consecutiveFailures).toBe(0);
     });
 
@@ -292,11 +289,11 @@ describe('LocalModelManager', () => {
 
   describe('cancelModelDownload', () => {
     it('sets downloadCancelled flag', () => {
-      manager.modelWorker = { postMessage: vi.fn() };
+      manager.modelWorker = { postMessage: vi.fn() } as unknown as Worker;
       manager.cancelModelDownload();
 
-      expect(manager.downloadCancelled).toBe(true);
-      expect(manager.modelWorker.postMessage).toHaveBeenCalledWith({ type: 'abort' });
+      expect((manager as any).downloadCancelled).toBe(true);
+      expect(manager.modelWorker!.postMessage).toHaveBeenCalledWith({ type: 'abort' });
     });
   });
 
@@ -313,14 +310,14 @@ describe('LocalModelManager', () => {
       const status = await manager.getModelStatus();
 
       expect(status.performance).toBeDefined();
-      expect(status.performance.avgInferenceTime).toBe(100);
+      expect(status.performance!.avgInferenceTime).toBe(100);
     });
 
     it('includes update info', async () => {
       const status = await manager.getModelStatus();
 
       expect(status.updateInfo).toBeDefined();
-      expect(status.updateInfo.hasUpdate).toBe(false);
+      expect(status.updateInfo!.hasUpdate).toBe(false);
     });
   });
 
@@ -381,7 +378,7 @@ describe('LocalModelManager', () => {
     });
 
     it('throws for non-array', () => {
-      expect(() => { manager.setModelUrls('not-an-array'); }).toThrow('non-empty array');
+      expect(() => { manager.setModelUrls('not-an-array' as any); }).toThrow('non-empty array');
     });
   });
 
@@ -390,7 +387,7 @@ describe('LocalModelManager', () => {
       manager.modelWorker = {
         postMessage: vi.fn(),
         terminate: vi.fn(),
-      };
+      } as unknown as Worker;
       manager.modelLoaded = true;
 
       await manager.deleteModel();
@@ -425,7 +422,7 @@ describe('LocalModelManager', () => {
 
   describe('_createTranslationPrompt', () => {
     it('formats translation prompt correctly', () => {
-      const prompt: string = manager._createTranslationPrompt('hello', 'English', 'Finnish');
+      const prompt: string = (manager as any)._createTranslationPrompt('hello', 'English', 'Finnish');
 
       expect(prompt).toContain('English');
       expect(prompt).toContain('Finnish');
@@ -436,31 +433,31 @@ describe('LocalModelManager', () => {
 
   describe('_shouldRetryDownload', () => {
     it('returns true for network errors', () => {
-      expect(manager._shouldRetryDownload(new Error('network error'))).toBe(true);
-      expect(manager._shouldRetryDownload(new Error('timeout'))).toBe(true);
-      expect(manager._shouldRetryDownload(new Error('Failed to fetch'))).toBe(true);
+      expect((manager as any)._shouldRetryDownload(new Error('network error'))).toBe(true);
+      expect((manager as any)._shouldRetryDownload(new Error('timeout'))).toBe(true);
+      expect((manager as any)._shouldRetryDownload(new Error('Failed to fetch'))).toBe(true);
     });
 
     it('returns false for non-network errors', () => {
-      expect(manager._shouldRetryDownload(new Error('memory error'))).toBe(false);
+      expect((manager as any)._shouldRetryDownload(new Error('memory error'))).toBe(false);
     });
   });
 
   describe('_shouldRetryTranslation', () => {
     it('returns false for memory/corruption errors', () => {
-      expect(manager._shouldRetryTranslation(new Error('out of memory'))).toBe(false);
-      expect(manager._shouldRetryTranslation(new Error('corrupted data'))).toBe(false);
+      expect((manager as any)._shouldRetryTranslation(new Error('out of memory'))).toBe(false);
+      expect((manager as any)._shouldRetryTranslation(new Error('corrupted data'))).toBe(false);
     });
 
     it('returns true for other errors', () => {
-      expect(manager._shouldRetryTranslation(new Error('timeout'))).toBe(true);
+      expect((manager as any)._shouldRetryTranslation(new Error('timeout'))).toBe(true);
     });
   });
 
   describe('retrieveModel', () => {
     it('returns cached status when model downloaded', async () => {
       (globalThis.chrome.storage.local.get as Mock).mockImplementation(
-        (keys: unknown, cb: (result: Record<string, unknown>) => void) => {
+        (_keys: unknown, cb: (result: Record<string, unknown>) => void) => {
           cb({ model_status: { downloaded: true } });
         },
       );
@@ -471,7 +468,7 @@ describe('LocalModelManager', () => {
 
     it('returns null when model not downloaded', async () => {
       (globalThis.chrome.storage.local.get as Mock).mockImplementation(
-        (keys: unknown, cb: (result: Record<string, unknown>) => void) => {
+        (_keys: unknown, cb: (result: Record<string, unknown>) => void) => {
           cb({});
         },
       );
@@ -492,6 +489,18 @@ describe('LocalModelManager Extended Coverage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Restore chrome mock — earlier tests may set globalThis.chrome = undefined
+    globalThis.chrome = {
+      runtime: { getURL: vi.fn((path: string) => 'chrome-extension://test/' + path) },
+      storage: {
+        local: {
+          get: vi.fn((_keys: unknown, cb: (result: Record<string, unknown>) => void) => { cb({}); }),
+          set: vi.fn((_data: unknown, cb: () => void) => { cb(); }),
+        },
+      },
+    } as unknown as typeof chrome;
+
     manager = new LocalModelManager();
 
     // Default: simulate successful worker responses
@@ -689,7 +698,7 @@ describe('LocalModelManager Extended Coverage', () => {
   describe('destroy with active unload timer', () => {
     it('clears unload timer during destroy', async () => {
       await manager.init();
-      manager.unloadTimer = setTimeout(() => {}, 60000);
+      (manager as any).unloadTimer = setTimeout(() => {}, 60000);
       const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
 
       await manager.destroy();
@@ -716,18 +725,18 @@ describe('LocalModelManager Extended Coverage', () => {
   // -------------------------------------------------------------------------
   describe('_scheduleUnload and _unloadModel', () => {
     it('_scheduleUnload sets a timer', () => {
-      manager._scheduleUnload();
-      expect(manager.unloadTimer).not.toBeNull();
-      clearTimeout(manager.unloadTimer);
+      (manager as any)._scheduleUnload();
+      expect((manager as any).unloadTimer).not.toBeNull();
+      clearTimeout((manager as any).unloadTimer);
     });
 
     it('_scheduleUnload clears previous timer', () => {
       const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
-      manager.unloadTimer = setTimeout(() => {}, 60000);
-      manager._scheduleUnload();
+      (manager as any).unloadTimer = setTimeout(() => {}, 60000);
+      (manager as any)._scheduleUnload();
       expect(clearTimeoutSpy).toHaveBeenCalled();
       clearTimeoutSpy.mockRestore();
-      clearTimeout(manager.unloadTimer);
+      clearTimeout((manager as any).unloadTimer);
     });
 
     it('_unloadModel sets modelLoaded to false', async () => {
@@ -735,7 +744,7 @@ describe('LocalModelManager Extended Coverage', () => {
       manager.modelWorker = { postMessage: vi.fn(), terminate: vi.fn() } as unknown as Worker;
       manager.modelLoaded = true;
 
-      await manager._unloadModel();
+      await (manager as any)._unloadModel();
 
       expect(manager.modelLoaded).toBe(false);
       expect(manager.modelWorker).toBeNull();
@@ -750,12 +759,12 @@ describe('LocalModelManager Extended Coverage', () => {
       await manager.downloadModel();
       manager.consecutiveFailures = 5;
 
-      await manager._triggerRecovery();
+      await (manager as any)._triggerRecovery();
 
       expect(manager.modelCorrupted).toBe(true);
       expect(manager.consecutiveFailures).toBe(0);
       expect(manager.lastError).toBeNull();
-      expect(manager.isInRecovery).toBe(false);
+      expect((manager as any).isInRecovery).toBe(false);
     });
   });
 
@@ -782,7 +791,7 @@ describe('LocalModelManager Extended Coverage', () => {
       mockWorkerPostMessage.mockImplementationOnce((msg: Record<string, unknown>) => {
         Promise.resolve().then(() => {
           if (workerMessageHandler && msg.type === 'loadModel') {
-            manager.downloadCancelled = true;
+            (manager as any).downloadCancelled = true;
             workerMessageHandler({
               data: { type: 'error', message: 'aborted' },
             });
@@ -868,6 +877,334 @@ describe('LocalModelManager Extended Coverage', () => {
       await expect(
         manager.translateText('hello', 'English', 'Finnish')
       ).rejects.toThrow();
+    });
+  });
+
+  // =========================================================================
+  // Coverage: localStorage fallback, catch blocks, recovery, retry paths
+  // =========================================================================
+  describe('storage fallback — localStorage paths', () => {
+    // vitest jsdom exposes localStorage as a plain object without Storage
+    // prototype methods; provide a working in-memory shim for these tests.
+    const _store: Record<string, string> = {};
+    let savedLocalStorage: Storage;
+
+    beforeEach(() => {
+      savedLocalStorage = globalThis.localStorage;
+      for (const k of Object.keys(_store)) delete _store[k];
+      Object.defineProperty(globalThis, 'localStorage', {
+        value: {
+          getItem: (k: string) => (k in _store ? _store[k] : null),
+          setItem: (k: string, v: string) => { _store[k] = String(v); },
+          removeItem: (k: string) => { delete _store[k]; },
+          clear: () => { for (const k of Object.keys(_store)) delete _store[k]; },
+          get length() { return Object.keys(_store).length; },
+          key: (i: number) => Object.keys(_store)[i] ?? null,
+        },
+        writable: true,
+        configurable: true,
+      });
+    });
+
+    afterEach(() => {
+      Object.defineProperty(globalThis, 'localStorage', {
+        value: savedLocalStorage,
+        writable: true,
+        configurable: true,
+      });
+    });
+
+    it('_getStoredData uses localStorage when chrome.storage is unavailable', async () => {
+      const savedChrome = globalThis.chrome;
+      // @ts-expect-error - remove chrome to trigger localStorage fallback
+      globalThis.chrome = undefined;
+
+      localStorage.setItem('lmm_fb_key', JSON.stringify({ val: 42 }));
+      const result = await manager._getStoredData('fb_key');
+      expect(result).toEqual({ val: 42 });
+
+      localStorage.removeItem('lmm_fb_key');
+      globalThis.chrome = savedChrome;
+    });
+
+    it('_getStoredData returns null from localStorage when key missing', async () => {
+      const savedChrome = globalThis.chrome;
+      // @ts-expect-error - remove chrome
+      globalThis.chrome = undefined;
+
+      localStorage.removeItem('lmm_missing');
+      const result = await manager._getStoredData('missing');
+      expect(result).toBeNull();
+
+      globalThis.chrome = savedChrome;
+    });
+
+    it('_storeData uses localStorage when chrome.storage is unavailable', async () => {
+      const savedChrome = globalThis.chrome;
+      // @ts-expect-error - remove chrome
+      globalThis.chrome = undefined;
+
+      await manager._storeData('fb_store', { x: 1 });
+      const raw = localStorage.getItem('lmm_fb_store');
+      expect(raw).toBe(JSON.stringify({ x: 1 }));
+
+      localStorage.removeItem('lmm_fb_store');
+      globalThis.chrome = savedChrome;
+    });
+
+    it('_getStoredData returns null when localStorage throws', async () => {
+      const savedChrome = globalThis.chrome;
+      // @ts-expect-error - remove chrome
+      globalThis.chrome = undefined;
+
+      const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('QuotaExceeded');
+      });
+      const result = await manager._getStoredData('throw_key');
+      expect(result).toBeNull();
+
+      spy.mockRestore();
+      globalThis.chrome = savedChrome;
+    });
+
+    it('_storeData resolves when localStorage throws', async () => {
+      const savedChrome = globalThis.chrome;
+      // @ts-expect-error - remove chrome
+      globalThis.chrome = undefined;
+
+      const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('QuotaExceeded');
+      });
+      await expect(manager._storeData('throw_key', {})).resolves.toBeUndefined();
+
+      spy.mockRestore();
+      globalThis.chrome = savedChrome;
+    });
+  });
+
+  describe('storage fallback — chrome.storage.local error paths', () => {
+    it('_getStoredData returns null when chrome.storage.local.get throws synchronously', async () => {
+      const savedGet = (globalThis.chrome as any).storage.local.get;
+      (globalThis.chrome as any).storage.local.get = () => { throw new Error('Storage corrupt'); };
+
+      const result = await manager._getStoredData('corrupt_key');
+      expect(result).toBeNull();
+
+      (globalThis.chrome as any).storage.local.get = savedGet;
+    });
+
+    it('_storeData resolves when chrome.storage.local.set throws synchronously', async () => {
+      const savedSet = (globalThis.chrome as any).storage.local.set;
+      (globalThis.chrome as any).storage.local.set = () => { throw new Error('Storage corrupt'); };
+
+      await expect(manager._storeData('corrupt_key', {})).resolves.toBeUndefined();
+
+      (globalThis.chrome as any).storage.local.set = savedSet;
+    });
+  });
+
+  describe('_handleError triggers recovery at threshold', () => {
+    it('triggers _triggerRecovery when consecutiveFailures reaches 3', async () => {
+      manager.consecutiveFailures = 2;
+      manager.modelCorrupted = false;
+
+      manager._handleError(new Error('repeated failure'), 'test-trigger');
+
+      // _triggerRecovery is async fire-and-forget; wait for it
+      await vi.waitFor(() => {
+        expect(manager.modelCorrupted).toBe(true);
+      });
+      expect(manager.consecutiveFailures).toBe(0);
+    });
+
+    it('does not trigger recovery when already in recovery', async () => {
+      manager.consecutiveFailures = 2;
+      manager.isInRecovery = true;
+      manager.modelCorrupted = false;
+
+      manager._handleError(new Error('repeated failure'), 'test-no-double');
+
+      await new Promise(r => setTimeout(r, 50));
+      expect(manager.modelCorrupted).toBe(false);
+      expect(manager.consecutiveFailures).toBe(3);
+    });
+  });
+
+  describe('translateText retry with model reload', () => {
+    it('retries translation and reloads model on retryable worker error', async () => {
+      manager.modelLoaded = true;
+      manager.consecutiveFailures = 0;
+      manager.modelWorker = {
+        postMessage: vi.fn(),
+        terminate: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as Worker;
+
+      const sendSpy = vi.spyOn(manager as any, '_sendWorkerMessage')
+        .mockRejectedValueOnce(new Error('worker disconnected'))
+        .mockResolvedValueOnce({ type: 'loaded' })
+        .mockResolvedValueOnce({ type: 'result', translatedText: 'hei', tokensGenerated: 1 });
+
+      const result = await manager.translateText('hello', 'English', 'Finnish');
+      expect(result.translatedText).toBe('hei');
+      expect(sendSpy).toHaveBeenCalledTimes(3);
+
+      sendSpy.mockRestore();
+    });
+
+    it('retries on "not loaded" error and reloads model', async () => {
+      manager.modelLoaded = true;
+      manager.consecutiveFailures = 0;
+      manager.modelWorker = {
+        postMessage: vi.fn(),
+        terminate: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as Worker;
+
+      const sendSpy = vi.spyOn(manager as any, '_sendWorkerMessage')
+        .mockRejectedValueOnce(new Error('model not loaded'))
+        .mockResolvedValueOnce({ type: 'loaded' })
+        .mockResolvedValueOnce({ type: 'result', translatedText: 'ok', tokensGenerated: 2 });
+
+      const result = await manager.translateText('test', 'English', 'Finnish');
+      expect(result.translatedText).toBe('ok');
+
+      sendSpy.mockRestore();
+    });
+  });
+
+  describe('_ensureWorker without chrome.runtime', () => {
+    it('creates worker with plain URL when chrome.runtime is absent', async () => {
+      const savedChrome = globalThis.chrome;
+      // @ts-expect-error - remove chrome
+      globalThis.chrome = undefined;
+      manager.modelWorker = null;
+
+      await manager._ensureWorker();
+      expect(manager.modelWorker).toBeTruthy();
+
+      globalThis.chrome = savedChrome;
+    });
+  });
+
+  describe('getModelStatus error path', () => {
+    it('returns error status when _getStoredData throws', async () => {
+      // Mock _getStoredData to reject — the internal chrome.storage throw is
+      // caught inside _getStoredData (returns null), so we need to mock at
+      // this level to exercise getModelStatus's own catch block.
+      vi.spyOn(manager, '_getStoredData').mockRejectedValue(new Error('Corrupt'));
+
+      const status = await manager.getModelStatus();
+      expect(status.downloaded).toBe(false);
+      expect(status.error).toContain('Corrupt');
+    });
+  });
+
+  describe('_scheduleUnload with recent usage', () => {
+    it('does not unload model when it was used recently', async () => {
+      vi.useFakeTimers();
+      try {
+        await manager.loadModel();
+        const unloadSpy = vi.spyOn(manager, '_unloadModel');
+
+        // Schedule unload — timer set for unloadTimeout ms from now
+        manager._scheduleUnload();
+
+        // Simulate usage halfway through the timeout
+        vi.advanceTimersByTime(manager.unloadTimeout / 2);
+        manager.lastUsed = Date.now(); // Touch — model was used recently
+
+        // Fire the timer (remaining half of timeout)
+        vi.advanceTimersByTime(manager.unloadTimeout / 2);
+
+        // The callback checks Date.now() - lastUsed >= unloadTimeout
+        // Date.now() = unloadTimeout, lastUsed = unloadTimeout/2
+        // diff = unloadTimeout/2 < unloadTimeout → should NOT unload
+        expect(unloadSpy).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe('_triggerRecovery failure', () => {
+    it('logs error when _unloadModel throws during recovery', async () => {
+      vi.spyOn(manager, '_unloadModel').mockRejectedValue(new Error('Unload failed'));
+
+      await manager._triggerRecovery();
+
+      // Should complete without throwing — isInRecovery reset in finally block
+      expect(manager.isInRecovery).toBe(false);
+    });
+  });
+
+  describe('_sleep', () => {
+    it('resolves after specified delay', async () => {
+      vi.useFakeTimers();
+      try {
+        const sleepPromise = manager._sleep(1000);
+        vi.advanceTimersByTime(1000);
+        await expect(sleepPromise).resolves.toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe('Uncovered branches and error paths', () => {
+    it('getModelInfo - not loaded, not downloading', () => {
+      manager.modelLoaded = false;
+      manager.isDownloading = false;
+      const info = manager.getModelInfo();
+      expect(info.available).toBe(false);
+      expect(info.ready).toBe(false);
+    });
+
+    it('getModelInfo - loaded', () => {
+      manager.modelLoaded = true;
+      manager.isDownloading = false;
+      const info = manager.getModelInfo();
+      expect(info.available).toBe(true);
+      expect(info.ready).toBe(true);
+    });
+
+    it('getModelInfo - downloading', () => {
+      manager.modelLoaded = false;
+      manager.isDownloading = true;
+      const info = manager.getModelInfo();
+      expect(info.available).toBe(true);
+      expect(info.downloading).toBe(true);
+    });
+
+    it('getDownloadProgress returns structure', () => {
+      const progress = manager.getDownloadProgress();
+      expect(progress).toHaveProperty('isDownloading');
+      expect(progress).toHaveProperty('progress');
+    });
+
+    it('getPerformanceSummary works', () => {
+      const summary = manager.getPerformanceSummary();
+      expect(summary).toBeDefined();
+    });
+
+    it('setModelUrls updates URLs', () => {
+      const newUrls = ['http://example.com/model1'];
+      manager.setModelUrls(newUrls);
+      expect(manager.modelConfig.modelUrls).toEqual(newUrls);
+    });
+
+    it('cancelModelDownload sets downloadCancelled flag', () => {
+      manager.downloadCancelled = false;
+      manager.cancelModelDownload();
+      expect(manager.downloadCancelled).toBe(true);
+    });
+
+    it('cancelModelDownload sends abort message to worker if available', () => {
+      manager.modelWorker = new (globalThis as any).Worker();
+      manager.cancelModelDownload();
+      expect(mockWorkerPostMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'abort' }));
     });
   });
 });

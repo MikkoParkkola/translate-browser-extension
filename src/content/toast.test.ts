@@ -61,6 +61,17 @@ describe('toast', () => {
       const toast = document.getElementById('translate-ext-toast')!;
       expect(toast.style.position).toBe('fixed');
     });
+
+    it('does not remove existing toast if it is the active progress toast', () => {
+      const progressToast = showProgressToast('Loading...');
+      // Reassign the progress toast's id so getElementById('translate-ext-toast') finds it
+      progressToast.id = 'translate-ext-toast';
+
+      showInfoToast('New info');
+
+      // The progress toast element should still be in the DOM (guarded by the !== check)
+      expect(document.body.contains(progressToast)).toBe(true);
+    });
   });
 
   // =========================================================================

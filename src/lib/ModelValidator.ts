@@ -2,6 +2,11 @@
 
 export interface ModelValidatorConfig {
   strictMode?: boolean;
+  enableSizeValidation?: boolean;
+  enableChecksumValidation?: boolean;
+  enableStructuralValidation?: boolean;
+  sizeTolerance?: number;
+  checksumAlgorithm?: string;
 }
 
 export interface ValidationResult {
@@ -10,9 +15,9 @@ export interface ValidationResult {
 }
 
 export class ModelValidator {
-  constructor(_config?: ModelValidatorConfig) {}
+  constructor(_registryOrConfig?: unknown, _config?: ModelValidatorConfig) {}
 
-  validateModelIntegrity(_modelPath?: string): Promise<ValidationResult> {
+  validateModelIntegrity(..._args: unknown[]): Promise<ValidationResult> {
     return Promise.resolve({ valid: true });
   }
 }

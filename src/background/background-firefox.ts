@@ -303,10 +303,10 @@ async function getPipeline(sourceLang: string, targetLang: string): Promise<Tran
     `Loading model ${modelId}`
   );
 
-  cachePipeline(modelId, pipe);
+  cachePipeline(modelId, pipe as unknown as TranslationPipeline);
   log.info(`Model loaded: ${modelId}`);
 
-  return pipe;
+  return pipe as unknown as TranslationPipeline;
 }
 
 async function translateDirect(

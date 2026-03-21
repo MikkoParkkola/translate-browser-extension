@@ -986,7 +986,7 @@ async function handleTranslateInner(message: {
       },
       NETWORK_RETRY_CONFIG,
       (error: TranslationError) => {
-        return error.retryable !== false && (error.technicalDetails ? true : false) && import('../core/errors').then(m => m.isNetworkError(error.technicalDetails)).catch(() => false) ? true : false;
+        return error.retryable !== false && !!(error.technicalDetails);
       }
     );
 

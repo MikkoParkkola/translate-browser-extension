@@ -154,4 +154,30 @@ describe('BaseProvider', () => {
       expect(result).toEqual(['translated: hello', 'translated: world']);
     });
   });
+
+  describe('default getSupportedLanguages', () => {
+    it('returns empty array when not overridden', () => {
+      class MinimalProvider extends BaseProvider {
+        async translate(
+          text: string | string[],
+          _sourceLang: string,
+          _targetLang: string,
+          _options?: TranslationOptions
+        ): Promise<string | string[]> {
+          return Array.isArray(text) ? text : text;
+        }
+      }
+
+      const provider = new MinimalProvider({
+        id: 'minimal',
+        name: 'Minimal',
+        type: 'local',
+        qualityTier: 'standard',
+        costPerMillion: 0,
+        icon: '',
+      });
+
+      expect(provider.getSupportedLanguages()).toEqual([]);
+    });
+  });
 });

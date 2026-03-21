@@ -527,4 +527,515 @@ describe('OpenAIProvider', () => {
       expect(info.name).toBe('OpenAI');
     });
   });
+
+  describe('initialize error', () => {
+    it('does not crash when chrome.storage.local.get throws', async () => {
+      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error('Storage error')
+      );
+
+      await expect(provider.initialize()).resolves.not.toThrow();
+    });
+  });
+
+  describe('setApiKey when config is null', () => {
+    it('creates config with defaults when config is null', async () => {
+      // Fresh provider, never initialized — config is null
+      const freshProvider = new OpenAIProvider();
+
+      await freshProvider.setApiKey('sk-new-key');
+
+      const info = freshProvider.getInfo();
+      expect(info.model).toBe('gpt-4o-mini');
+      expect(info.formality).toBe('neutral');
+    });
+  });
+
+  describe('setApiKey when config already exists', () => {
+    it('updates existing config apiKey without resetting other fields', async () => {
+      // Initialize provider so config is set
+      mockStorage['openai_api_key'] = 'sk-original';
+      mockStorage['openai_model'] = 'gpt-4o';
+      const freshProvider = new OpenAIProvider();
+      await freshProvider.initialize();
+
+      // Now call setApiKey — should update existing config, not create new one
+      await freshProvider.setApiKey('sk-updated');
+
+      // Verify storage was updated and provider remains available
+      expect(mockStorage['openai_api_key']).toBe('sk-updated');
+      expect(await freshProvider.isAvailable()).toBe(true);
+    });
+  });
+
+  describe('buildPrompt formality branches (lines 151-156)', () => {
+    it('includes formal instruction for formal tone', async () => {
+      const freshProvider = new OpenAIProvider();
+      mockStorage['openai_api_key'] = 'sk-key';
+      mockStorage['openai_formality'] = 'formal';
+
+      await freshProvider.initialize();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [{ message: { content: 'Formal translation' } }],
+            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
+          }),
+      });
+
+      await freshProvider.translate('hello', 'en', 'fi');
+
+      const call = mockFetch.mock.calls[0];
+      const body = JSON.parse(call[1].body);
+      expect(body.messages[0].content).toContain('formal');
+    });
+
+    it('includes informal instruction for informal tone', async () => {
+      const freshProvider = new OpenAIProvider();
+      mockStorage['openai_api_key'] = 'sk-key';
+      mockStorage['openai_formality'] = 'informal';
+
+      await freshProvider.initialize();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [{ message: { content: 'Informal translation' } }],
+            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
+          }),
+      });
+
+      await freshProvider.translate('hello', 'en', 'fi');
+
+      const call = mockFetch.mock.calls[0];
+      const body = JSON.parse(call[1].body);
+      expect(body.messages[0].content).toContain('informal');
+    });
+
+    it('omits formality instruction for neutral tone', async () => {
+      const freshProvider = new OpenAIProvider();
+      mockStorage['openai_api_key'] = 'sk-key';
+      mockStorage['openai_formality'] = 'neutral';
+
+      await freshProvider.initialize();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [{ message: { content: 'Neutral translation' } }],
+            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
+          }),
+      });
+
+      await freshProvider.translate('hello', 'en', 'fi');
+
+      const call = mockFetch.mock.calls[0];
+      const body = JSON.parse(call[1].body);
+      const systemMsg = body.messages[0].content;
+      // Should not add formality instruction for neutral
+      expect(systemMsg).not.toContain('formal language');
+      expect(systemMsg).not.toContain('casual');
+    });
+  });
+
+  describe('translate batch handling (lines 236-242)', () => {
+    it('splits results on batch separator marker', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [
+              {
+                message: {
+                  content: 'Hei\n---TRANSLATE_SEPARATOR---\nMaailma',
+                },
+              },
+            ],
+            usage: { total_tokens: 20, prompt_tokens: 10, completion_tokens: 10 },
+          }),
+      });
+
+      const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toEqual(['Hei', 'Maailma']);
+    });
+
+    it('pads results when batch returns fewer translations than input', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [
+              {
+                message: {
+                  content: 'Hei',  // Only one translation
+                },
+              },
+            ],
+            usage: { total_tokens: 20, prompt_tokens: 10, completion_tokens: 10 },
+          }),
+      });
+
+      const result = await provider.translate(['Hello', 'World', 'Test'], 'en', 'fi');
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result.length).toBe(3);
+      expect(result[0]).toBe('Hei');
+      expect(result[1]).toBe('');  // Padded
+      expect(result[2]).toBe('');  // Padded
+    });
+
+    it('truncates results when batch returns more translations than input', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [
+              {
+                message: {
+                  content:
+                    'Hei\n---TRANSLATE_SEPARATOR---\nMaailma\n---TRANSLATE_SEPARATOR---\nExtra',
+                },
+              },
+            ],
+            usage: { total_tokens: 20, prompt_tokens: 10, completion_tokens: 10 },
+          }),
+      });
+
+      const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result.length).toBe(2);
+      expect(result).toEqual(['Hei', 'Maailma']);
+    });
+  });
+
+  describe('translate with missing usage data (line 228)', () => {
+    it('handles missing usage field gracefully', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [{ message: { content: 'Hei' } }],
+            // No usage field
+          }),
+      });
+
+      const result = await provider.translate('Hello', 'en', 'fi');
+      expect(result).toBe('Hei');
+
+      // Should not crash, tokens should remain unchanged
+      const usage = await provider.getUsage();
+      expect(usage.tokens).toBe(0);
+    });
+  });
+
+  describe('translate missing content (line 233)', () => {
+    it('handles null message content', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [{ message: { content: null } }],
+            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
+          }),
+      });
+
+      const result = await provider.translate('Hello', 'en', 'fi');
+      expect(result).toBe('');
+    });
+
+    it('handles missing message field', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [{ message: undefined }],
+            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
+          }),
+      });
+
+      const result = await provider.translate('Hello', 'en', 'fi');
+      expect(result).toBe('');
+    });
+
+    it('handles missing choices array', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [],
+            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
+          }),
+      });
+
+      const result = await provider.translate('Hello', 'en', 'fi');
+      expect(result).toBe('');
+    });
+  });
+
+  describe('detectLanguage response handling (lines 282-287)', () => {
+    it('returns auto when detected language is empty string', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [{ message: { content: '' } }],
+            usage: { total_tokens: 5, prompt_tokens: 3, completion_tokens: 2 },
+          }),
+      });
+
+      const result = await provider.detectLanguage('text');
+      expect(result).toBe('auto');
+    });
+
+    it('returns detected language when response is 2-letter code', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [{ message: { content: 'FI' } }],  // Uppercase
+            usage: { total_tokens: 5, prompt_tokens: 3, completion_tokens: 2 },
+          }),
+      });
+
+      const result = await provider.detectLanguage('Terve');
+      expect(result).toBe('fi');  // Should be lowercased
+    });
+
+    it('returns auto when detected language is longer than 2 chars', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [{ message: { content: 'English' } }],
+            usage: { total_tokens: 5, prompt_tokens: 3, completion_tokens: 2 },
+          }),
+      });
+
+      const result = await provider.detectLanguage('Hello');
+      expect(result).toBe('auto');
+    });
+  });
+
+  describe('setFormality when config exists', () => {
+    it('updates existing config formality', async () => {
+      const freshProvider = new OpenAIProvider();
+      mockStorage['openai_api_key'] = 'sk-key';
+      mockStorage['openai_formality'] = 'neutral';
+
+      await freshProvider.initialize();
+      await freshProvider.setFormality('formal');
+
+      expect(mockStorage['openai_formality']).toBe('formal');
+    });
+
+    it('creates config if null before setFormality', async () => {
+      const freshProvider = new OpenAIProvider();
+      // No API key, so config won't initialize
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (freshProvider as any).config = null;
+
+      await freshProvider.setFormality('informal');
+
+      // setFormality doesn't create config, only updates it
+      // So this should not create config
+      expect(await freshProvider.isAvailable()).toBe(false);
+    });
+  });
+
+  describe('setModel when config exists', () => {
+    it('updates existing config model', async () => {
+      const freshProvider = new OpenAIProvider();
+      mockStorage['openai_api_key'] = 'sk-key';
+      mockStorage['openai_model'] = 'gpt-4o-mini';
+
+      await freshProvider.initialize();
+      await freshProvider.setModel('gpt-4o');
+
+      expect(mockStorage['openai_model']).toBe('gpt-4o');
+    });
+  });
+
+  describe('clearApiKey fully resets state', () => {
+    it('removes all config keys from storage', async () => {
+      mockStorage['openai_api_key'] = 'key';
+      mockStorage['openai_model'] = 'gpt-4o';
+      mockStorage['openai_formality'] = 'formal';
+      mockStorage['openai_temperature'] = 0.5;
+
+      await provider.clearApiKey();
+
+      expect(mockStorage['openai_api_key']).toBeUndefined();
+      expect(mockStorage['openai_model']).toBeUndefined();
+      expect(mockStorage['openai_formality']).toBeUndefined();
+      expect(mockStorage['openai_temperature']).toBeUndefined();
+      expect(await provider.isAvailable()).toBe(false);
+    });
+  });
+
+  describe('getUsage with different models', () => {
+    it('calculates cost correctly for gpt-4o', async () => {
+      const freshProvider = new OpenAIProvider();
+      mockStorage['openai_api_key'] = 'sk-key';
+      mockStorage['openai_model'] = 'gpt-4o';
+      mockStorage['openai_tokens_used'] = 1000;
+
+      await freshProvider.initialize();
+
+      const usage = await freshProvider.getUsage();
+      // gpt-4o: $0.005 per 1K tokens
+      expect(usage.cost).toBeCloseTo(0.005);
+    });
+
+    it('calculates cost for gpt-3.5-turbo', async () => {
+      const freshProvider = new OpenAIProvider();
+      mockStorage['openai_api_key'] = 'sk-key';
+      mockStorage['openai_model'] = 'gpt-3.5-turbo';
+      mockStorage['openai_tokens_used'] = 1000;
+
+      await freshProvider.initialize();
+
+      const usage = await freshProvider.getUsage();
+      // gpt-3.5-turbo: $0.0005 per 1K tokens
+      expect(usage.cost).toBeCloseTo(0.0005);
+    });
+  });
+
+  describe('translate with source language hint', () => {
+    it('includes source language in prompt for known languages', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [{ message: { content: 'Hei' } }],
+            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
+          }),
+      });
+
+      await provider.translate('Hello', 'en', 'fi');
+
+      const call = mockFetch.mock.calls[0];
+      const body = JSON.parse(call[1].body);
+      expect(body.messages[1].content).toContain('[Source: English]');
+    });
+
+    it('omits source hint for auto-detection', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [{ message: { content: 'Translated' } }],
+            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
+          }),
+      });
+
+      await provider.translate('Hello', 'auto', 'fi');
+
+      const call = mockFetch.mock.calls[0];
+      const body = JSON.parse(call[1].body);
+      expect(body.messages[1].content).not.toContain('[Source:');
+    });
+  });
+
+  describe('setModel when config exists (line 108)', () => {
+    it('updates model in existing config', async () => {
+      await provider.setApiKey('sk-key');
+      expect(provider.getInfo().model).toBe('gpt-4o-mini');
+
+      await provider.setModel('gpt-4-turbo');
+      expect(provider.getInfo().model).toBe('gpt-4-turbo');
+    });
+
+    it('initializes config when config is null before setModel', async () => {
+      // Create fresh provider without config
+      const freshProvider = new OpenAIProvider();
+      expect((freshProvider as any).config).toBeNull();
+
+      // setModel stores to storage but config remains null if not set via setApiKey
+      await freshProvider.setModel('gpt-4-turbo');
+
+      // Config should still be null (only apiKey creation initializes config)
+      expect((freshProvider as any).config).toBeNull();
+    });
+  });
+
+  describe('translate single text wrapped in array (line 245)', () => {
+    it('returns single translated text wrapped in array when input is array of length 1', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [{ message: { content: 'Hei' } }],
+            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
+          }),
+      });
+
+      const result = await provider.translate(['Hello'], 'en', 'fi');
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toEqual(['Hei']);
+    });
+  });
+
+  describe('detectLanguage response not ok (line 282)', () => {
+    it('returns auto when detectLanguage response is not ok', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      });
+
+      const result = await provider.detectLanguage('Hello');
+      expect(result).toBe('auto');
+    });
+
+    it('returns auto when detectLanguage detects invalid response', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [{ message: { content: 'invalid' } }],
+            usage: { total_tokens: 5, prompt_tokens: 3, completion_tokens: 2 },
+          }),
+      });
+
+      const result = await provider.detectLanguage('Hello');
+      expect(result).toBe('auto');
+    });
+  });
 });

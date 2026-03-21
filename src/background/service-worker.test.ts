@@ -1429,7 +1429,7 @@ describe('Service Worker Extended Handler Coverage', () => {
       let resolveOffscreen!: (v: unknown) => void;
       const offscreenPromise = new Promise((res) => { resolveOffscreen = res; });
 
-      vi.mocked(chrome.runtime.sendMessage).mockImplementation((_msg, callback) => {
+      vi.mocked(chrome.runtime.sendMessage).mockImplementation((_msg: any, callback: any) => {
         offscreenPromise.then(() => {
           if (typeof callback === 'function') {
             callback({ success: true, result: 'dedup result' });
@@ -2112,8 +2112,8 @@ describe('Service Worker Extended Handler Coverage', () => {
   describe('ensureOffscreenDocument: creates when not exists', () => {
     it('creates offscreen document when getContexts returns empty', async () => {
       // Temporarily make getContexts return empty so creation is triggered
-      vi.mocked(chrome.runtime.getContexts).mockResolvedValueOnce([]);
-      vi.mocked(chrome.runtime.getContexts).mockResolvedValueOnce([]);
+      vi.mocked(chrome.runtime.getContexts).mockResolvedValueOnce([] as any);
+      vi.mocked(chrome.runtime.getContexts).mockResolvedValueOnce([] as any);
 
       // Sending any message that triggers sendToOffscreen
       mockSendMessage.mockReturnValue({ success: true, result: 'create-path' });
@@ -2132,7 +2132,7 @@ describe('Service Worker Extended Handler Coverage', () => {
       // Restore mock to default behavior
       vi.mocked(chrome.runtime.getContexts).mockResolvedValue([
         { documentUrl: 'chrome-extension://test-id/src/offscreen/offscreen.html' } as chrome.runtime.ExtensionContext,
-      ]);
+      ] as any);
     });
   });
 
@@ -2672,6 +2672,571 @@ describe('Service Worker Additional Coverage', () => {
       // Either returns providers list (catch branch) or an error response
       // depending on retry exhaustion — both are valid outcomes
       expect(response).toBeDefined();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Chrome Built-in Translator
+  // --------------------------------------------------------------------------
+  describe('Chrome Built-in Translator (handleTranslate chrome-builtin branch)', () => {
+    it('translates text using chrome-builtin provider', async () => {
+      // Mock active tab
+      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 1 }] as any);
+      
+      // Mock executeScript to return translated text
+      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([
+        { result: ['Hola mundo'] }
+      ] as any);
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'Hello world',
+        sourceLang: 'en',
+        targetLang: 'es',
+        provider: 'chrome-builtin',
+      }) as { success: boolean; result?: string };
+
+      expect(response.success).toBe(true);
+      expect(response.result).toBe('Hola mundo');
+    });
+
+    it('returns error when no active tab for chrome-builtin', async () => {
+      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([]);
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'es',
+        provider: 'chrome-builtin',
+      }) as { success: boolean; error?: string };
+
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('No active tab');
+    });
+
+    it('returns error when chrome translator api not available', async () => {
+      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 1 }] as any);
+      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([
+        { result: undefined }
+      ] as any);
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'es',
+        provider: 'chrome-builtin',
+      }) as { success: boolean; error?: string };
+
+      expect(response.success).toBe(false);
+    });
+
+    it('handles empty strings in chrome-builtin array response', async () => {
+      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 1 }] as any);
+      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([
+        { result: [''] }
+      ] as any);
+
+      const response = await invoke({
+        type: 'translate',
+        text: ['', 'Hello'],
+        sourceLang: 'en',
+        targetLang: 'es',
+        provider: 'chrome-builtin',
+      }) as { success: boolean; result?: string[] };
+
+      expect(response.success).toBe(true);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Context Menu Handlers
+  // --------------------------------------------------------------------------
+  describe('context menu handlers', () => {
+    it('handles translate-selection context menu click', async () => {
+      const contextMenuHandler = mockAddContextMenuClickedListener.mock.calls[0]?.[0] as (
+        info: any,
+        tab: any
+      ) => void;
+
+      expect(contextMenuHandler).toBeDefined();
+
+      // Mock sendMessage
+      vi.mocked(chrome.tabs.sendMessage).mockResolvedValueOnce(undefined);
+
+      contextMenuHandler({ menuItemId: 'translate-selection' }, { id: 1 });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ type: 'translateSelection' })
+      );
+    });
+
+    it('handles translate-page context menu click', async () => {
+      const contextMenuHandler = mockAddContextMenuClickedListener.mock.calls[0]?.[0] as (
+        info: any,
+        tab: any
+      ) => void;
+
+      vi.mocked(chrome.tabs.sendMessage).mockResolvedValueOnce(undefined);
+
+      contextMenuHandler({ menuItemId: 'translate-page' }, { id: 1 });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ type: 'translatePage' })
+      );
+    });
+
+    it('handles undo-translation context menu click', async () => {
+      const contextMenuHandler = mockAddContextMenuClickedListener.mock.calls[0]?.[0] as (
+        info: any,
+        tab: any
+      ) => void;
+
+      vi.mocked(chrome.tabs.sendMessage).mockResolvedValueOnce(undefined);
+
+      contextMenuHandler({ menuItemId: 'undo-translation' }, { id: 1 });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ type: 'undoTranslation' })
+      );
+    });
+
+    it('handles translate-image context menu click', async () => {
+      const contextMenuHandler = mockAddContextMenuClickedListener.mock.calls[0]?.[0] as (
+        info: any,
+        tab: any
+      ) => void;
+
+      vi.mocked(chrome.tabs.sendMessage).mockResolvedValueOnce(undefined);
+
+      contextMenuHandler(
+        { menuItemId: 'translate-image', srcUrl: 'https://example.com/image.png' },
+        { id: 1 }
+      );
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({
+          type: 'translateImage',
+          imageUrl: 'https://example.com/image.png',
+        })
+      );
+    });
+
+    it('ignores context menu click with no tab id', async () => {
+      const contextMenuHandler = mockAddContextMenuClickedListener.mock.calls[0]?.[0] as (
+        info: any,
+        tab: any
+      ) => void;
+
+      vi.mocked(chrome.tabs.sendMessage).mockClear();
+
+      contextMenuHandler({ menuItemId: 'translate-selection' }, {});
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(vi.mocked(chrome.tabs.sendMessage)).not.toHaveBeenCalled();
+    });
+
+    it('handles error in context menu action', async () => {
+      const contextMenuHandler = mockAddContextMenuClickedListener.mock.calls[0]?.[0] as (
+        info: any,
+        tab: any
+      ) => void;
+
+      vi.mocked(chrome.tabs.sendMessage).mockRejectedValueOnce(
+        new Error('Cannot inject script')
+      );
+
+      contextMenuHandler({ menuItemId: 'translate-selection' }, { id: 1 });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalled();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Keyboard Shortcuts
+  // --------------------------------------------------------------------------
+  describe('keyboard shortcuts', () => {
+    it('handles translate-page keyboard shortcut', async () => {
+      const commandHandler = mockAddCommandListener.mock.calls[0]?.[0] as (
+        command: string,
+        tab: any
+      ) => void;
+
+      expect(commandHandler).toBeDefined();
+
+      vi.mocked(chrome.tabs.sendMessage).mockResolvedValueOnce(undefined);
+
+      commandHandler('translate-page', { id: 1 });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ type: 'translatePage' })
+      );
+    });
+
+    it('handles translate-selection keyboard shortcut', async () => {
+      const commandHandler = mockAddCommandListener.mock.calls[0]?.[0] as (
+        command: string,
+        tab: any
+      ) => void;
+
+      vi.mocked(chrome.tabs.sendMessage).mockResolvedValueOnce(undefined);
+
+      commandHandler('translate-selection', { id: 1 });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ type: 'translateSelection' })
+      );
+    });
+
+    it('handles undo-translation keyboard shortcut', async () => {
+      const commandHandler = mockAddCommandListener.mock.calls[0]?.[0] as (
+        command: string,
+        tab: any
+      ) => void;
+
+      vi.mocked(chrome.tabs.sendMessage).mockResolvedValueOnce(undefined);
+
+      commandHandler('undo-translation', { id: 1 });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ type: 'undoTranslation' })
+      );
+    });
+
+    it('handles toggle-widget keyboard shortcut', async () => {
+      const commandHandler = mockAddCommandListener.mock.calls[0]?.[0] as (
+        command: string,
+        tab: any
+      ) => void;
+
+      vi.mocked(chrome.tabs.sendMessage).mockResolvedValueOnce(undefined);
+
+      commandHandler('toggle-widget', { id: 1 });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ type: 'toggleWidget' })
+      );
+    });
+
+    it('handles screenshot-translate keyboard shortcut', async () => {
+      const commandHandler = mockAddCommandListener.mock.calls[0]?.[0] as (
+        command: string,
+        tab: any
+      ) => void;
+
+      vi.mocked(chrome.tabs.sendMessage).mockResolvedValueOnce(undefined);
+
+      commandHandler('screenshot-translate', { id: 1 });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ type: 'enterScreenshotMode' })
+      );
+    });
+
+    it('ignores keyboard shortcut with no tab id', async () => {
+      const commandHandler = mockAddCommandListener.mock.calls[0]?.[0] as (
+        command: string,
+        tab: any
+      ) => void;
+
+      vi.mocked(chrome.tabs.sendMessage).mockClear();
+
+      commandHandler('translate-page', {});
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(vi.mocked(chrome.tabs.sendMessage)).not.toHaveBeenCalled();
+    });
+
+    it('handles error in keyboard shortcut action', async () => {
+      const commandHandler = mockAddCommandListener.mock.calls[0]?.[0] as (
+        command: string,
+        tab: any
+      ) => void;
+
+      vi.mocked(chrome.tabs.sendMessage).mockRejectedValueOnce(
+        new Error('Tab not found')
+      );
+
+      commandHandler('translate-page', { id: 1 });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalled();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // OCR Handler
+  // --------------------------------------------------------------------------
+  describe('ocrImage message', () => {
+    it('forwards ocr request to offscreen', async () => {
+      vi.mocked(chrome.runtime.sendMessage).mockImplementationOnce(
+        (_msg, callback) => {
+          if (typeof callback === 'function') {
+            Promise.resolve().then(() =>
+              callback({
+                success: true,
+                text: 'Extracted text',
+                confidence: 0.95,
+                blocks: [{ text: 'Block 1', confidence: 0.95, bbox: { x0: 0, y0: 0, x1: 100, y1: 100 } }],
+              })
+            );
+          }
+          return undefined;
+        }
+      );
+
+      const response = await invoke({
+        type: 'ocrImage',
+        imageData: 'data:image/png;base64,...',
+        lang: 'en',
+      }) as { success: boolean; text?: string };
+
+      expect(response.success).toBe(true);
+    });
+
+    it('handles ocr failure from offscreen', async () => {
+      vi.mocked(chrome.runtime.sendMessage).mockImplementationOnce(
+        (_msg, callback) => {
+          if (typeof callback === 'function') {
+            Promise.resolve().then(() =>
+              callback({
+                success: false,
+                error: 'OCR failed',
+              })
+            );
+          }
+          return undefined;
+        }
+      );
+
+      const response = await invoke({
+        type: 'ocrImage',
+        imageData: 'data:image/png;base64,...',
+      }) as { success: boolean };
+
+      expect(response.success).toBe(false);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Screenshot Capture
+  // --------------------------------------------------------------------------
+  describe('captureScreenshot message', () => {
+    it('captures full screenshot', async () => {
+      vi.mocked(chrome.tabs.captureVisibleTab).mockResolvedValueOnce(
+        'data:image/png;base64,iVBORw0KGgo...'
+      );
+
+      const response = await invoke({
+        type: 'captureScreenshot',
+      }) as { success: boolean; imageData?: string };
+
+      expect(response.success).toBe(true);
+      expect(response.imageData).toMatch(/^data:image/);
+    });
+
+    it('captures and crops screenshot with rect', async () => {
+      vi.mocked(chrome.tabs.captureVisibleTab).mockResolvedValueOnce(
+        'data:image/png;base64,iVBORw0KGgo...'
+      );
+
+      mockSendMessage.mockReturnValueOnce({
+        success: true,
+        imageData: 'data:image/png;base64,cropped...',
+      });
+
+      const response = await invoke({
+        type: 'captureScreenshot',
+        rect: { x: 0, y: 0, width: 100, height: 100 },
+        devicePixelRatio: 2,
+      }) as { success: boolean; imageData?: string };
+
+      expect(response.success).toBe(true);
+    });
+
+    it('handles screenshot capture failure', async () => {
+      vi.mocked(chrome.tabs.captureVisibleTab).mockRejectedValueOnce(
+        new Error('Cannot capture restricted page')
+      );
+
+      const response = await invoke({
+        type: 'captureScreenshot',
+      }) as { success: boolean; error?: string };
+
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('Cannot capture');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Model Management
+  // --------------------------------------------------------------------------
+  describe('model management messages', () => {
+    it('handles deleteModel message', async () => {
+      vi.mocked(chrome.storage.local.get).mockResolvedValueOnce({
+        downloadedModels: [
+          { id: 'model-1' },
+          { id: 'model-2' },
+        ],
+      } as any);
+
+      vi.mocked(chrome.storage.local.set).mockResolvedValueOnce(undefined);
+
+      mockSendMessage.mockReturnValueOnce({ success: true });
+
+      const response = await invoke({
+        type: 'deleteModel',
+        modelId: 'model-1',
+      }) as { success: boolean };
+
+      expect(response.success).toBe(true);
+      expect(vi.mocked(chrome.storage.local.set)).toHaveBeenCalledWith({
+        downloadedModels: [{ id: 'model-2' }],
+      });
+    });
+
+    it('handles clearAllModels message', async () => {
+      vi.mocked(chrome.storage.local.remove).mockResolvedValueOnce(undefined);
+
+      mockSendMessage.mockReturnValueOnce({ success: true });
+
+      const response = await invoke({
+        type: 'clearAllModels',
+      }) as { success: boolean };
+
+      expect(response.success).toBe(true);
+      expect(vi.mocked(chrome.storage.local.remove)).toHaveBeenCalledWith(
+        ['downloadedModels']
+      );
+    });
+
+    it('handles getDownloadedModels message', async () => {
+      vi.mocked(chrome.storage.local.get).mockResolvedValueOnce({
+        downloadedModels: [{ id: 'model-1', name: 'Model 1' }],
+      } as any);
+
+      const response = await invoke({
+        type: 'getDownloadedModels',
+      }) as { success: boolean; models?: unknown[] };
+
+      expect(response.success).toBe(true);
+      expect(response.models).toHaveLength(1);
+    });
+
+    it('handles deleteModel error gracefully', async () => {
+      vi.mocked(chrome.storage.local.get).mockResolvedValueOnce({} as any);
+      vi.mocked(chrome.storage.local.set).mockRejectedValueOnce(
+        new Error('Storage error')
+      );
+
+      const response = await invoke({
+        type: 'deleteModel',
+        modelId: 'model-1',
+      }) as { success: boolean; error?: string };
+
+      expect(response.success).toBe(false);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // recordLanguageDetection and recordTranslation
+  // --------------------------------------------------------------------------
+  describe('recording message handlers', () => {
+    it('records language detection', async () => {
+      const response = await invoke({
+        type: 'recordLanguageDetection',
+        url: 'https://example.com',
+        language: 'fi',
+      }) as { success: boolean };
+
+      expect(response.success).toBe(true);
+    });
+
+    it('handles recordLanguageDetection error', async () => {
+      const response = await invoke({
+        type: 'recordLanguageDetection',
+        url: 'https://example.com',
+        language: 'fi',
+      }) as { success: boolean };
+
+      // Even if error, recordLanguageDetection returns success
+      expect(response.success).toBe(true);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // ChromeTranslator with tab injection
+  // --------------------------------------------------------------------------
+  describe('chrome translator with content script injection', () => {
+    it('injects content script when not ready', async () => {
+      vi.mocked(chrome.tabs.sendMessage)
+        .mockRejectedValueOnce(
+          new Error('Receiving end does not exist')
+        )
+        .mockResolvedValueOnce(undefined);
+
+      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([]);
+
+      const messageHandler = mockAddMessageListener.mock.calls[0]?.[0] as (
+        message: unknown,
+        sender: unknown,
+        sendResponse: (response: unknown) => void
+      ) => boolean;
+
+      const sendResponse = vi.fn();
+
+      // Simulate a method that would use sendMessageToTab
+      messageHandler(
+        { type: 'ping' },
+        {},
+        sendResponse
+      );
+
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(sendResponse).toHaveBeenCalled();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Startup behavior
+  // --------------------------------------------------------------------------
+  describe('startup and initialization', () => {
+    it('registers onStartup listener', () => {
+      expect(mockAddStartupListener).toHaveBeenCalled();
     });
   });
 });

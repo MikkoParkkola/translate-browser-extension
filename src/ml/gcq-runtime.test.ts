@@ -1063,6 +1063,73 @@ describe('GCQ Runtime', () => {
       expect(result).toBeInstanceOf(Float32Array);
       expect(result.length).toBe(expectedCount);
     });
+
+    it('handles RLE byte at end of data without length byte (fallback to 0)', async () => {
+      // RLE marker at last byte — data[i+1] doesn't exist so runLen = 0 + 1 = 1
+      const rleData = new Uint8Array([0x01, 0x85]); // raw 1, then RLE symbol 5 with no length byte
+      const expectedCount = 2; // 1 raw + 1 from RLE (runLen defaults to 1)
+
+      const gcqBuf = buildGCQBuffer({
+        withEntropy: true,
+        components: [
+          {
+            name: 'c',
+            tensors: [
+              {
+                name: 't',
+                originalSize: expectedCount,
+                entropyCoded: true,
+                entropyCount: expectedCount,
+                indicesBytes: rleData,
+              },
+            ],
+          },
+        ],
+      });
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(gcqBuf),
+      }));
+
+      const runtime = await GCQRuntime.create();
+      const model = await runtime.loadModel('http://x/rle_edge.gcq');
+      const result = await model.getTensor('c', 't');
+      expect(result).toBeInstanceOf(Float32Array);
+      expect(result.length).toBe(expectedCount);
+    });
+
+    it('handles empty data (returns empty output)', async () => {
+      // Empty entropy-coded data — output should be all zeros from packed indices
+      const emptyData = new Uint8Array([]);
+      const expectedCount = 4;
+
+      const gcqBuf = buildGCQBuffer({
+        withEntropy: true,
+        components: [
+          {
+            name: 'c',
+            tensors: [
+              {
+                name: 't',
+                originalSize: expectedCount,
+                entropyCoded: true,
+                entropyCount: expectedCount,
+                indicesBytes: emptyData,
+              },
+            ],
+          },
+        ],
+      });
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(gcqBuf),
+      }));
+
+      const runtime = await GCQRuntime.create();
+      const model = await runtime.loadModel('http://x/empty_ent.gcq');
+      const result = await model.getTensor('c', 't');
+      expect(result).toBeInstanceOf(Float32Array);
+    });
   });
 
   // =========================================================================
@@ -1313,6 +1380,265 @@ describe('GCQ Runtime', () => {
 
       const runtime = new GCQRuntime();
       await expect(runtime.init()).rejects.toThrow('GPU OOM');
+    });
+  });
+
+  // =========================================================================
+  // GCQModel.fp16ToF32 — denormal & special values via scales in dequantize
+  // =========================================================================
+  describe('GCQModel fp16ToF32 via scale conversion in dequantize', () => {
+    beforeEach(async () => {
+      mockDevice = createMockDevice();
+      mockAdapter = createMockAdapter(mockDevice);
+      vi.stubGlobal('navigator', {
+        gpu: { requestAdapter: vi.fn().mockResolvedValue(mockAdapter) },
+      });
+      createdBuffers.length = 0;
+      await importModule();
+    });
+
+    it('handles positive denormal fp16 scales (exp=0, frac≠0)', async () => {
+      const tensorSize = 32;
+      const gcqBuf = buildGCQBuffer({
+        components: [{
+          name: 'denorm_comp',
+          tensors: [{
+            name: 'w',
+            originalSize: tensorSize,
+            scalesFp16: [1e-6],
+          }],
+        }],
+      });
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(gcqBuf),
+      }));
+
+      const runtime = await GCQRuntime.create();
+      const model = await runtime.loadModel('http://x/denorm.gcq');
+      const result = await model.getTensor('denorm_comp', 'w');
+      expect(result).toBeInstanceOf(Float32Array);
+    });
+
+    it('handles negative denormal fp16 scales (exp=0, frac≠0, sign=1)', async () => {
+      const tensorSize = 32;
+      const gcqBuf = buildGCQBuffer({
+        components: [{
+          name: 'neg_denorm',
+          tensors: [{
+            name: 'w',
+            originalSize: tensorSize,
+            scalesFp16: [-1e-6],
+          }],
+        }],
+      });
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(gcqBuf),
+      }));
+
+      const runtime = await GCQRuntime.create();
+      const model = await runtime.loadModel('http://x/neg_denorm.gcq');
+      const result = await model.getTensor('neg_denorm', 'w');
+      expect(result).toBeInstanceOf(Float32Array);
+    });
+
+    it('handles Infinity fp16 scales (exp=31, frac=0)', async () => {
+      const tensorSize = 32;
+      const gcqBuf = buildGCQBuffer({
+        components: [{
+          name: 'inf_comp',
+          tensors: [{
+            name: 'w',
+            originalSize: tensorSize,
+            scalesFp16: [1e10],
+          }],
+        }],
+      });
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(gcqBuf),
+      }));
+
+      const runtime = await GCQRuntime.create();
+      const model = await runtime.loadModel('http://x/inf.gcq');
+      const result = await model.getTensor('inf_comp', 'w');
+      expect(result).toBeInstanceOf(Float32Array);
+    });
+
+    it('handles negative Infinity fp16 scales (sign=1, exp=31, frac=0)', async () => {
+      const tensorSize = 32;
+      const gcqBuf = buildGCQBuffer({
+        components: [{
+          name: 'ninf_comp',
+          tensors: [{
+            name: 'w',
+            originalSize: tensorSize,
+            scalesFp16: [-1e10],
+          }],
+        }],
+      });
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(gcqBuf),
+      }));
+
+      const runtime = await GCQRuntime.create();
+      const model = await runtime.loadModel('http://x/ninf.gcq');
+      const result = await model.getTensor('ninf_comp', 'w');
+      expect(result).toBeInstanceOf(Float32Array);
+    });
+
+    it('handles NaN fp16 scales (exp=31, frac≠0) via manual buffer override', async () => {
+      const tensorSize = 32;
+      const gcqBuf = buildGCQBuffer({
+        components: [{
+          name: 'nan_comp',
+          tensors: [{
+            name: 'w',
+            originalSize: tensorSize,
+            scalesFp16: [1.0],
+          }],
+        }],
+      });
+
+      // Parse manifest to locate scales_offset, then overwrite with NaN fp16
+      const dv = new DataView(gcqBuf);
+      const mOff = Number(dv.getBigUint64(8, true));
+      const mSize = Number(dv.getBigUint64(16, true));
+      const manifest = JSON.parse(new TextDecoder().decode(new Uint8Array(gcqBuf, mOff, mSize)));
+      const scalesOffset = manifest.components[0].tensors[0].scales_offset;
+      new Uint16Array(gcqBuf, scalesOffset, 1)[0] = 0x7e00; // NaN in fp16
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(gcqBuf),
+      }));
+
+      const runtime = await GCQRuntime.create();
+      const model = await runtime.loadModel('http://x/nan.gcq');
+      const result = await model.getTensor('nan_comp', 'w');
+      expect(result).toBeInstanceOf(Float32Array);
+    });
+
+    it('handles negative zero fp16 scales (sign=1, exp=0, frac=0) via manual override', async () => {
+      const tensorSize = 32;
+      const gcqBuf = buildGCQBuffer({
+        components: [{
+          name: 'nz_comp',
+          tensors: [{
+            name: 'w',
+            originalSize: tensorSize,
+            scalesFp16: [1.0],
+          }],
+        }],
+      });
+
+      const dv = new DataView(gcqBuf);
+      const mOff = Number(dv.getBigUint64(8, true));
+      const mSize = Number(dv.getBigUint64(16, true));
+      const manifest = JSON.parse(new TextDecoder().decode(new Uint8Array(gcqBuf, mOff, mSize)));
+      const scalesOffset = manifest.components[0].tensors[0].scales_offset;
+      new Uint16Array(gcqBuf, scalesOffset, 1)[0] = 0x8000; // Negative zero
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(gcqBuf),
+      }));
+
+      const runtime = await GCQRuntime.create();
+      const model = await runtime.loadModel('http://x/nz.gcq');
+      const result = await model.getTensor('nz_comp', 'w');
+      expect(result).toBeInstanceOf(Float32Array);
+    });
+
+    it('handles denormal + special scales in residual path (GCQ4R)', async () => {
+      const tensorSize = 64;
+      const numBlocks = Math.ceil(tensorSize / 32);
+
+      const gcqBuf = buildGCQBuffer({
+        format: 'GCQ4R',
+        withResidual: true,
+        components: [{
+          name: 'res_denorm',
+          tensors: [{
+            name: 'weight',
+            originalSize: tensorSize,
+            scalesFp16: [1e-6, 1e10], // denormal + infinity
+            residualBytes: new Uint8Array(Math.ceil(tensorSize / 4)),
+            residualScalesFp16: [1e-6, 1e10],
+          }],
+        }],
+      });
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(gcqBuf),
+      }));
+
+      const runtime = await GCQRuntime.create();
+      const model = await runtime.loadModel('http://x/res_denorm.gcq');
+      const result = await model.getTensor('res_denorm', 'weight');
+      expect(result).toBeInstanceOf(Float32Array);
+    });
+
+    it('handles positive zero fp16 scale (sign=0, exp=0, frac=0) via manual override', async () => {
+      const tensorSize = 32;
+      const gcqBuf = buildGCQBuffer({
+        components: [{
+          name: 'zero_scale',
+          tensors: [{
+            name: 'w',
+            originalSize: tensorSize,
+            scalesFp16: [1.0],
+          }],
+        }],
+      });
+
+      // Overwrite scale with exact positive zero (0x0000)
+      const dv = new DataView(gcqBuf);
+      const mOff = Number(dv.getBigUint64(8, true));
+      const mSize = Number(dv.getBigUint64(16, true));
+      const manifest = JSON.parse(new TextDecoder().decode(new Uint8Array(gcqBuf, mOff, mSize)));
+      const scalesOffset = manifest.components[0].tensors[0].scales_offset;
+      new Uint16Array(gcqBuf, scalesOffset, 1)[0] = 0x0000; // Positive zero
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(gcqBuf),
+      }));
+
+      const runtime = await GCQRuntime.create();
+      const model = await runtime.loadModel('http://x/zero_scale.gcq');
+      const result = await model.getTensor('zero_scale', 'w');
+      expect(result).toBeInstanceOf(Float32Array);
+    });
+
+    it('handles normal negative fp16 scale via manual override', async () => {
+      const tensorSize = 32;
+      const gcqBuf = buildGCQBuffer({
+        components: [{
+          name: 'neg_norm',
+          tensors: [{
+            name: 'w',
+            originalSize: tensorSize,
+            scalesFp16: [1.0],
+          }],
+        }],
+      });
+
+      // Overwrite scale with -2.0 in fp16 (sign=1, exp=16, frac=0 → 0xC000)
+      const dv = new DataView(gcqBuf);
+      const mOff = Number(dv.getBigUint64(8, true));
+      const mSize = Number(dv.getBigUint64(16, true));
+      const manifest = JSON.parse(new TextDecoder().decode(new Uint8Array(gcqBuf, mOff, mSize)));
+      const scalesOffset = manifest.components[0].tensors[0].scales_offset;
+      new Uint16Array(gcqBuf, scalesOffset, 1)[0] = 0xC000; // -2.0 fp16
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        arrayBuffer: () => Promise.resolve(gcqBuf),
+      }));
+
+      const runtime = await GCQRuntime.create();
+      const model = await runtime.loadModel('http://x/neg_norm.gcq');
+      const result = await model.getTensor('neg_norm', 'w');
+      expect(result).toBeInstanceOf(Float32Array);
     });
   });
 });

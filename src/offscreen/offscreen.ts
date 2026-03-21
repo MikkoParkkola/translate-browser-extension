@@ -131,9 +131,9 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   log.info(` Model loaded: ${modelId} in ${loadDuration.toFixed(0)}ms`);
 
   // Store in LRU cache (may evict old models)
-  cachePipeline(modelId, pipe);
+  cachePipeline(modelId, pipe as unknown as TranslationPipeline);
 
-  return pipe;
+  return pipe as unknown as TranslationPipeline;
 }
 
 /**

@@ -179,4 +179,136 @@ describe('GeneralSettings', () => {
       });
     });
   });
+
+  describe('branch coverage — partial storage data', () => {
+    it('keeps defaults when storage returns empty object', async () => {
+      (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
+      render(() => <GeneralSettings />);
+      await vi.waitFor(() => expect(screen.getByText('Save Settings')).toBeTruthy());
+      // Source lang should default to 'Auto Detect', target to 'English'
+      expect(screen.getByDisplayValue('Auto Detect')).toBeTruthy();
+      expect(screen.getByDisplayValue('English')).toBeTruthy();
+    });
+
+    it('applies only sourceLang when only sourceLang is stored', async () => {
+      (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({
+        sourceLang: 'de',
+      });
+      render(() => <GeneralSettings />);
+      await vi.waitFor(() => {
+        expect(screen.getByDisplayValue('German')).toBeTruthy();
+      });
+      // Target should remain default 'English'
+      expect(screen.getByDisplayValue('English')).toBeTruthy();
+    });
+
+    it('applies only targetLang when only targetLang is stored', async () => {
+      (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({
+        targetLang: 'fi',
+      });
+      render(() => <GeneralSettings />);
+      await vi.waitFor(() => {
+        expect(screen.getByDisplayValue('Finnish')).toBeTruthy();
+      });
+      // Source should remain default 'Auto Detect'
+      expect(screen.getByDisplayValue('Auto Detect')).toBeTruthy();
+    });
+
+    it('applies only strategy when only strategy is stored', async () => {
+      (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({
+        strategy: 'quality',
+      });
+      render(() => <GeneralSettings />);
+      await vi.waitFor(() => expect(screen.getByText('Save Settings')).toBeTruthy());
+      fireEvent.click(screen.getByText('Save Settings'));
+      await vi.waitFor(() => {
+        expect(safeStorageSet).toHaveBeenCalledWith(
+          expect.objectContaining({ strategy: 'quality' })
+        );
+      });
+    });
+
+    it('does not set autoTranslate when it is absent from storage', async () => {
+      (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({
+        sourceLang: 'en',
+      });
+      render(() => <GeneralSettings />);
+      await vi.waitFor(() => expect(screen.getByText('Save Settings')).toBeTruthy());
+      const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
+      // Default is false (unchecked)
+      expect(checkbox.checked).toBe(false);
+    });
+  });
+
+  describe('branch coverage — button text states', () => {
+    it('shows "Save Settings" before any interaction', async () => {
+      render(() => <GeneralSettings />);
+      await vi.waitFor(() => {
+        expect(screen.getByText('Save Settings')).toBeTruthy();
+      });
+    });
+
+    it('shows "Saving..." while save is in progress', async () => {
+      // Make safeStorageSet hang so we can observe the saving state
+      let resolveSave!: (value: boolean) => void;
+      (safeStorageSet as ReturnType<typeof vi.fn>).mockImplementation(
+        () => new Promise<boolean>((resolve) => { resolveSave = resolve; })
+      );
+      render(() => <GeneralSettings />);
+      await vi.waitFor(() => expect(screen.getByText('Save Settings')).toBeTruthy());
+      fireEvent.click(screen.getByText('Save Settings'));
+      await vi.waitFor(() => {
+        expect(screen.getByText('Saving...')).toBeTruthy();
+      });
+      // Resolve to clean up
+      resolveSave(true);
+      await vi.waitFor(() => {
+        expect(screen.getByText('Saved!')).toBeTruthy();
+      });
+    });
+
+    it('shows "Saved!" after successful save then reverts', async () => {
+      vi.useFakeTimers();
+      render(() => <GeneralSettings />);
+      await vi.waitFor(() => expect(screen.getByText('Save Settings')).toBeTruthy());
+      fireEvent.click(screen.getByText('Save Settings'));
+      await vi.waitFor(() => {
+        expect(screen.getByText('Saved!')).toBeTruthy();
+      });
+      // After 2 seconds, it should revert to "Save Settings"
+      vi.advanceTimersByTime(2100);
+      await vi.waitFor(() => {
+        expect(screen.getByText('Save Settings')).toBeTruthy();
+      });
+      vi.useRealTimers();
+    });
+
+    it('shows error text when save fails', async () => {
+      (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+      render(() => <GeneralSettings />);
+      await vi.waitFor(() => expect(screen.getByText('Save Settings')).toBeTruthy());
+      fireEvent.click(screen.getByText('Save Settings'));
+      await vi.waitFor(() => {
+        const errorEl = document.querySelector('[style*="#dc2626"]') ||
+          document.querySelector('[style*="color: rgb(220, 38, 38)"]');
+        expect(errorEl).toBeTruthy();
+      });
+    });
+
+    it('button is disabled during save', async () => {
+      let resolveSave!: (value: boolean) => void;
+      (safeStorageSet as ReturnType<typeof vi.fn>).mockImplementation(
+        () => new Promise<boolean>((resolve) => { resolveSave = resolve; })
+      );
+      render(() => <GeneralSettings />);
+      await vi.waitFor(() => expect(screen.getByText('Save Settings')).toBeTruthy());
+      const btn = screen.getByText('Save Settings') as HTMLButtonElement;
+      fireEvent.click(btn);
+      await vi.waitFor(() => {
+        const savingBtn = screen.getByText('Saving...').closest('button') as HTMLButtonElement;
+        expect(savingBtn.disabled).toBe(true);
+      });
+      resolveSave(true);
+    });
+  });
 });

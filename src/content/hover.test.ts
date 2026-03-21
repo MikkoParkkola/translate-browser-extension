@@ -361,3 +361,430 @@ describe('handleHoverTranslation via mousemove with text node', () => {
     expect(tooltip).not.toBeNull();
   });
 });
+
+// ============================================================================
+// Coverage: catch / finally paths in handleHoverTranslation (lines 218, 222-223)
+// ============================================================================
+
+describe('handleHoverTranslation error handling', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+  });
+
+  it('catches sendMessage rejection and removes tooltip in finally block', async () => {
+    vi.useFakeTimers();
+    mockSafeStorageGet.mockResolvedValue({ targetLang: 'fi', provider: 'opus-mt' });
+    mockSendMessage.mockRejectedValue(new Error('network failure'));
+
+    const { initHoverListeners, setResolveSourceLang, cleanupHoverListeners } = await import('./hover');
+    cleanupHoverListeners();
+    initHoverListeners();
+    setResolveSourceLang((lang) => lang);
+
+    // Reset lastHoveredText via Alt cycle
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+
+    const p = document.createElement('p');
+    const textNode = document.createTextNode('errortestword');
+    p.appendChild(textNode);
+    document.body.appendChild(p);
+
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, 0);
+
+    const origGetBBR = Range.prototype.getBoundingClientRect;
+    Range.prototype.getBoundingClientRect = () =>
+      ({ top: 100, bottom: 120, left: 200, right: 250, width: 50, height: 20, x: 200, y: 100, toJSON: () => ({}) } as DOMRect);
+
+    const origCaretRange = document.caretRangeFromPoint;
+    document.caretRangeFromPoint = () => range;
+
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+    await vi.advanceTimersByTimeAsync(160);
+
+    expect(mockSendMessage).toHaveBeenCalled();
+    // Tooltip removed by finally block when tooltipReplaced is false (lines 222-223)
+    expect(document.getElementById('translate-hover-tooltip')).toBeNull();
+
+    document.caretRangeFromPoint = origCaretRange;
+    Range.prototype.getBoundingClientRect = origGetBBR;
+    cleanupHoverListeners();
+  });
+
+  it('handles translation timeout when sendMessage never resolves', async () => {
+    vi.useFakeTimers();
+    mockSafeStorageGet.mockResolvedValue({ targetLang: 'fi', provider: 'opus-mt' });
+    mockSendMessage.mockImplementation(() => new Promise(() => {})); // never resolves
+
+    const { initHoverListeners, setResolveSourceLang, cleanupHoverListeners } = await import('./hover');
+    cleanupHoverListeners();
+    initHoverListeners();
+    setResolveSourceLang((lang) => lang);
+
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+
+    const p = document.createElement('p');
+    const textNode = document.createTextNode('timeoutword');
+    p.appendChild(textNode);
+    document.body.appendChild(p);
+
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, 0);
+
+    const origGetBBR = Range.prototype.getBoundingClientRect;
+    Range.prototype.getBoundingClientRect = () =>
+      ({ top: 100, bottom: 120, left: 200, right: 250, width: 50, height: 20, x: 200, y: 100, toJSON: () => ({}) } as DOMRect);
+
+    const origCaretRange = document.caretRangeFromPoint;
+    document.caretRangeFromPoint = () => range;
+
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+    await vi.advanceTimersByTimeAsync(160); // debounce fires, async chain starts
+    await vi.advanceTimersByTimeAsync(10001); // timeout fires after 10s
+
+    expect(document.getElementById('translate-hover-tooltip')).toBeNull();
+
+    document.caretRangeFromPoint = origCaretRange;
+    Range.prototype.getBoundingClientRect = origGetBBR;
+    cleanupHoverListeners();
+  });
+});
+
+// ============================================================================
+// Coverage: additional branches in handleHoverTranslation
+// ============================================================================
+
+describe('handleHoverTranslation branch coverage', () => {
+  /** Helper: set up a text node with mocked caretRangeFromPoint + getBoundingClientRect */
+  function setupHoverWord(word: string): { restore: () => void } {
+    const p = document.createElement('p');
+    const textNode = document.createTextNode(word);
+    p.appendChild(textNode);
+    document.body.appendChild(p);
+
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, 0);
+
+    const origGetBBR = Range.prototype.getBoundingClientRect;
+    Range.prototype.getBoundingClientRect = () =>
+      ({ top: 100, bottom: 120, left: 200, right: 250, width: 50, height: 20, x: 200, y: 100, toJSON: () => ({}) } as DOMRect);
+
+    const origCaretRange = document.caretRangeFromPoint;
+    document.caretRangeFromPoint = () => range;
+
+    return {
+      restore: () => {
+        document.caretRangeFromPoint = origCaretRange;
+        Range.prototype.getBoundingClientRect = origGetBBR;
+      },
+    };
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+  });
+
+  it('uses default resolveSourceLangFn when setResolveSourceLang is not called', async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+
+    mockSafeStorageGet.mockResolvedValue({ targetLang: 'fi', provider: 'opus-mt' });
+    mockSendMessage.mockResolvedValue({ success: true, result: 'translated' });
+
+    const { initHoverListeners, cleanupHoverListeners } = await import('./hover');
+    // Deliberately NOT calling setResolveSourceLang — exercises default (l) => l
+    initHoverListeners();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+
+    const { restore } = setupHoverWord('defaultresolverword');
+
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+    await vi.advanceTimersByTimeAsync(160);
+
+    // Default resolver passes 'auto' through unchanged
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceLang: 'auto' }),
+    );
+
+    restore();
+    cleanupHoverListeners();
+  });
+
+  it('uses default targetLang and provider when storage returns empty', async () => {
+    vi.useFakeTimers();
+    mockSafeStorageGet.mockResolvedValue({});
+    mockSendMessage.mockResolvedValue({ success: true, result: 'translated' });
+
+    const { initHoverListeners, setResolveSourceLang, cleanupHoverListeners } = await import('./hover');
+    cleanupHoverListeners();
+    initHoverListeners();
+    setResolveSourceLang((lang) => lang);
+
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+
+    const { restore } = setupHoverWord('defaultsettingsword');
+
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+    await vi.advanceTimersByTimeAsync(160);
+
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ targetLang: 'en', provider: 'opus-mt' }),
+    );
+
+    restore();
+    cleanupHoverListeners();
+  });
+
+  it('removes tooltip when response.success is true but result is falsy', async () => {
+    vi.useFakeTimers();
+    mockSafeStorageGet.mockResolvedValue({ targetLang: 'fi', provider: 'opus-mt' });
+    mockSendMessage.mockResolvedValue({ success: true, result: '' });
+
+    const { initHoverListeners, setResolveSourceLang, cleanupHoverListeners } = await import('./hover');
+    cleanupHoverListeners();
+    initHoverListeners();
+    setResolveSourceLang((lang) => lang);
+
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+
+    const { restore } = setupHoverWord('falsyresultword');
+
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+    await vi.advanceTimersByTimeAsync(160);
+
+    // Finally block removes tooltip since tooltipReplaced stays false
+    expect(document.getElementById('translate-hover-tooltip')).toBeNull();
+
+    restore();
+    cleanupHoverListeners();
+  });
+
+  it('returns null from getTextAtPoint when range lands on non-TEXT_NODE', async () => {
+    vi.useFakeTimers();
+
+    const { initHoverListeners, cleanupHoverListeners } = await import('./hover');
+    cleanupHoverListeners();
+    initHoverListeners();
+
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+
+    const div = document.createElement('div');
+    document.body.appendChild(div);
+
+    // caretRangeFromPoint returns a range whose startContainer is an element, not text
+    const range = document.createRange();
+    range.setStart(div, 0);
+    range.setEnd(div, 0);
+
+    const origCaretRange = document.caretRangeFromPoint;
+    document.caretRangeFromPoint = () => range;
+
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+    await vi.advanceTimersByTimeAsync(160);
+
+    // No tooltip — getTextAtPoint returned null, which removes any existing tooltip
+    expect(document.getElementById('translate-hover-tooltip')).toBeNull();
+    expect(mockSendMessage).not.toHaveBeenCalled();
+
+    document.caretRangeFromPoint = origCaretRange;
+    cleanupHoverListeners();
+  });
+
+  it('returns null from getTextAtPoint when shouldSkip returns true', async () => {
+    vi.useFakeTimers();
+    const { shouldSkip } = await import('./dom-utils');
+    (shouldSkip as ReturnType<typeof vi.fn>).mockReturnValue(true);
+
+    const { initHoverListeners, cleanupHoverListeners } = await import('./hover');
+    cleanupHoverListeners();
+    initHoverListeners();
+
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+
+    const p = document.createElement('p');
+    const textNode = document.createTextNode('shouldskipword');
+    p.appendChild(textNode);
+    document.body.appendChild(p);
+
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, 0);
+
+    const origCaretRange = document.caretRangeFromPoint;
+    document.caretRangeFromPoint = () => range;
+
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+    await vi.advanceTimersByTimeAsync(160);
+
+    expect(mockSendMessage).not.toHaveBeenCalled();
+
+    document.caretRangeFromPoint = origCaretRange;
+    (shouldSkip as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    cleanupHoverListeners();
+  });
+
+  it('returns null from getTextAtPoint when word is too short', async () => {
+    vi.useFakeTimers();
+
+    const { initHoverListeners, cleanupHoverListeners } = await import('./hover');
+    cleanupHoverListeners();
+    initHoverListeners();
+
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+
+    // Single character word — too short (< 2 chars)
+    const p = document.createElement('p');
+    const textNode = document.createTextNode('x');
+    p.appendChild(textNode);
+    document.body.appendChild(p);
+
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, 0);
+
+    const origCaretRange = document.caretRangeFromPoint;
+    document.caretRangeFromPoint = () => range;
+
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+    await vi.advanceTimersByTimeAsync(160);
+
+    expect(mockSendMessage).not.toHaveBeenCalled();
+
+    document.caretRangeFromPoint = origCaretRange;
+    cleanupHoverListeners();
+  });
+
+  it('returns early when Alt is released during debounce window', async () => {
+    vi.useFakeTimers();
+
+    const { initHoverListeners, cleanupHoverListeners } = await import('./hover');
+    cleanupHoverListeners();
+    initHoverListeners();
+
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+
+    const { restore } = setupHoverWord('altreleasedword');
+
+    // mousemove sets debounce timer while Alt is held
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+
+    // Release Alt BEFORE debounce fires (< 150ms)
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+
+    // Debounce fires — handleHoverTranslation checks isAltKeyDown which is now false
+    await vi.advanceTimersByTimeAsync(160);
+
+    expect(mockSendMessage).not.toHaveBeenCalled();
+
+    restore();
+    cleanupHoverListeners();
+  });
+
+  it('returns null from getTextAtPoint when textContent is null', async () => {
+    vi.useFakeTimers();
+
+    const { initHoverListeners, cleanupHoverListeners } = await import('./hover');
+    cleanupHoverListeners();
+    initHoverListeners();
+
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+
+    const p = document.createElement('p');
+    const textNode = document.createTextNode('');
+    p.appendChild(textNode);
+    document.body.appendChild(p);
+
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, 0);
+
+    const origCaretRange = document.caretRangeFromPoint;
+    document.caretRangeFromPoint = () => range;
+
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+    await vi.advanceTimersByTimeAsync(160);
+
+    expect(mockSendMessage).not.toHaveBeenCalled();
+
+    document.caretRangeFromPoint = origCaretRange;
+    cleanupHoverListeners();
+  });
+});
+
+// ============================================================================
+// Coverage: LRU cache eviction (lines 209-211)
+// ============================================================================
+
+describe('LRU cache eviction in handleHoverTranslation', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = '';
+    vi.clearAllMocks();
+  });
+
+  it('evicts oldest cache entry when cache exceeds 100 items', async () => {
+    vi.useFakeTimers();
+    mockSafeStorageGet.mockResolvedValue({ targetLang: 'fi', provider: 'opus-mt' });
+
+    let callCount = 0;
+    mockSendMessage.mockImplementation(() => {
+      callCount++;
+      return Promise.resolve({ success: true, result: `t-${callCount}` });
+    });
+
+    const { initHoverListeners, setResolveSourceLang, cleanupHoverListeners } = await import('./hover');
+    cleanupHoverListeners();
+    initHoverListeners();
+    setResolveSourceLang((lang) => lang);
+
+    const p = document.createElement('p');
+    document.body.appendChild(p);
+
+    const origGetBBR = Range.prototype.getBoundingClientRect;
+    Range.prototype.getBoundingClientRect = () =>
+      ({ top: 100, bottom: 120, left: 200, right: 250, width: 50, height: 20, x: 200, y: 100, toJSON: () => ({}) } as DOMRect);
+
+    const origCaretRange = document.caretRangeFromPoint;
+
+    for (let i = 0; i < 101; i++) {
+      document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+
+      const word = `lruword${String(i).padStart(4, '0')}`;
+      p.textContent = '';
+      const textNode = document.createTextNode(word);
+      p.appendChild(textNode);
+
+      const range = document.createRange();
+      range.setStart(textNode, 0);
+      range.setEnd(textNode, 0);
+      document.caretRangeFromPoint = () => range;
+
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
+      await vi.advanceTimersByTimeAsync(160);
+    }
+
+    expect(mockSendMessage).toHaveBeenCalledTimes(101);
+
+    document.caretRangeFromPoint = origCaretRange;
+    Range.prototype.getBoundingClientRect = origGetBBR;
+    cleanupHoverListeners();
+  });
+});

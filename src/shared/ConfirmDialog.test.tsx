@@ -864,4 +864,239 @@ describe('ConfirmDialog render — keyboard events via document listener', () =>
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onCancel).not.toHaveBeenCalled();
   });
+
+  // =========================================================================
+  // Focus trap: Tab / Shift+Tab wrapping
+  // =========================================================================
+  it('Shift+Tab on first focusable element wraps focus to last', () => {
+    render(() => (
+      <ConfirmDialog
+        open={true}
+        title="Focus Trap"
+        message="Test Shift+Tab wrap"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    ));
+
+    const cancelBtn = screen.getByText('Cancel');
+    const confirmBtn = screen.getByText('Confirm');
+
+    // Focus the first focusable element (Cancel)
+    cancelBtn.focus();
+    expect(document.activeElement).toBe(cancelBtn);
+
+    // Shift+Tab should wrap to the last element (Confirm)
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(confirmBtn);
+  });
+
+  it('Tab on last focusable element wraps focus to first', () => {
+    render(() => (
+      <ConfirmDialog
+        open={true}
+        title="Focus Trap"
+        message="Test Tab wrap"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    ));
+
+    const cancelBtn = screen.getByText('Cancel');
+    const confirmBtn = screen.getByText('Confirm');
+
+    // Focus the last focusable element (Confirm)
+    confirmBtn.focus();
+    expect(document.activeElement).toBe(confirmBtn);
+
+    // Tab should wrap to the first element (Cancel)
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: false });
+    expect(document.activeElement).toBe(cancelBtn);
+  });
+
+  // =========================================================================
+  // requestAnimationFrame focus on open
+  // =========================================================================
+  it('focuses confirm button via requestAnimationFrame when dialog opens', async () => {
+    render(() => (
+      <ConfirmDialog
+        open={true}
+        title="RAF Focus"
+        message="Testing RAF sets focus"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    ));
+
+    const confirmBtn = screen.getByText('Confirm');
+
+    // requestAnimationFrame schedules focus; wait for it
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(confirmBtn);
+    }, { timeout: 1000 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage — handleKeyDown guard paths
+// ---------------------------------------------------------------------------
+
+describe('branch coverage — handleKeyDown guard paths', () => {
+  afterEach(cleanup);
+
+  it('does not call onCancel when Escape pressed and dialog is closed', () => {
+    const onCancel = vi.fn();
+    render(() => (
+      <ConfirmDialog
+        open={false}
+        title="Test"
+        message="msg"
+        onConfirm={vi.fn()}
+        onCancel={onCancel}
+      />
+    ));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it('non-Escape, non-Tab key does not trigger cancel when open', async () => {
+    const onCancel = vi.fn();
+    render(() => (
+      <ConfirmDialog
+        open={true}
+        title="Test"
+        message="msg"
+        onConfirm={vi.fn()}
+        onCancel={onCancel}
+      />
+    ));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it('Tab key when dialog is open does not trigger cancel', () => {
+    const onCancel = vi.fn();
+    render(() => (
+      <ConfirmDialog
+        open={true}
+        title="Test"
+        message="msg"
+        onConfirm={vi.fn()}
+        onCancel={onCancel}
+      />
+    ));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage — backdrop click target check
+// ---------------------------------------------------------------------------
+
+describe('branch coverage — backdrop click target check', () => {
+  afterEach(cleanup);
+
+  it('clicking inside the dialog (not backdrop) does NOT call onCancel', () => {
+    const onCancel = vi.fn();
+    render(() => (
+      <ConfirmDialog
+        open={true}
+        title="Test Title"
+        message="Test message"
+        onConfirm={vi.fn()}
+        onCancel={onCancel}
+      />
+    ));
+    const title = screen.getByText('Test Title');
+    fireEvent.click(title);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage — custom labels via nullish coalescing
+// ---------------------------------------------------------------------------
+
+describe('branch coverage — custom labels via nullish coalescing', () => {
+  afterEach(cleanup);
+
+  it('renders custom cancelLabel when provided', () => {
+    render(() => (
+      <ConfirmDialog
+        open={true}
+        title="Test"
+        message="msg"
+        cancelLabel="Nope"
+        confirmLabel="Yes!"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    ));
+    expect(screen.getByText('Nope')).toBeInTheDocument();
+    expect(screen.getByText('Yes!')).toBeInTheDocument();
+  });
+
+  it('renders default labels when cancelLabel and confirmLabel are undefined', () => {
+    render(() => (
+      <ConfirmDialog
+        open={true}
+        title="Test"
+        message="msg"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    ));
+    expect(screen.getByText('Cancel')).toBeInTheDocument();
+    expect(screen.getByText('Confirm')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage — variant switch fallthrough
+// ---------------------------------------------------------------------------
+
+describe('branch coverage — variant switch fallthrough', () => {
+  afterEach(cleanup);
+
+  it('warning variant applies correct class', () => {
+    const { container } = render(() => (
+      <ConfirmDialog
+        open={true}
+        title="Warn"
+        message="msg"
+        variant="warning"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    ));
+    expect(container.querySelector('.confirm-dialog--warning')).toBeTruthy();
+  });
+
+  it('info variant applies correct class', () => {
+    const { container } = render(() => (
+      <ConfirmDialog
+        open={true}
+        title="Info"
+        message="msg"
+        variant="info"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    ));
+    expect(container.querySelector('.confirm-dialog--info')).toBeTruthy();
+  });
+
+  it('defaults to danger variant when variant prop is omitted', () => {
+    const { container } = render(() => (
+      <ConfirmDialog
+        open={true}
+        title="Default"
+        message="msg"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    ));
+    expect(container.querySelector('.confirm-dialog--danger')).toBeTruthy();
+  });
 });

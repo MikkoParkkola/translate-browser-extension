@@ -412,4 +412,214 @@ describe('GoogleCloudProvider', () => {
       expect(info.id).toBe('google-cloud');
     });
   });
+
+  describe('initialize error', () => {
+    it('does not crash when chrome.storage.local.get throws', async () => {
+      const originalGet = chrome.storage.local.get;
+      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error('Storage error')
+      );
+
+      await expect(provider.initialize()).resolves.not.toThrow();
+
+      // Restore so subsequent tests work
+      chrome.storage.local.get = originalGet;
+    });
+  });
+
+  describe('detectLanguage network error', () => {
+    it('returns auto when fetch throws during detectLanguage', async () => {
+      await provider.setApiKey('test-key');
+
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+      const result = await provider.detectLanguage('Bonjour');
+      expect(result).toBe('auto');
+    });
+  });
+
+  describe('initialize with missing chars_used', () => {
+    it('defaults charactersUsed to 0 when google_cloud_chars_used is undefined', async () => {
+      // Only set api key, omit chars_used to exercise nullish coalescing
+      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        google_cloud_api_key: 'test-key',
+        // google_cloud_chars_used is deliberately omitted → ?? 0
+      });
+
+      const freshProvider = new GoogleCloudProvider();
+      await freshProvider.initialize();
+
+      const info = freshProvider.getInfo();
+      expect(info.charactersUsed).toBe(0);
+    });
+  });
+
+  describe('detectLanguage with falsy detection result', () => {
+    it('returns auto when API returns empty detection', async () => {
+      await provider.setApiKey('test-key');
+
+      // Simulate response.ok=true but detection is empty/null
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          data: { detections: [[{ language: '' }]] },
+        }),
+      });
+
+      const result = await provider.detectLanguage('Some text here');
+      expect(result).toBe('auto');
+    });
+
+    it('returns auto when API returns null detection', async () => {
+      await provider.setApiKey('test-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          data: { detections: [[{ language: null }]] },
+        }),
+      });
+
+      const result = await provider.detectLanguage('Some text here');
+      expect(result).toBe('auto');
+    });
+  });
+
+  describe('setTemperature and setApiKey edge cases', () => {
+    it('setApiKey creates config when config is null', async () => {
+      const newProvider = new GoogleCloudProvider();
+      // Ensure config is null
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (newProvider as any).config = null;
+
+      await newProvider.setApiKey('new-key-123');
+
+      expect(await newProvider.isAvailable()).toBe(true);
+      const info = newProvider.getInfo();
+      expect(info.id).toBe('google-cloud');
+    });
+
+    it('persistChar usage failure does not crash translate', async () => {
+      await provider.setApiKey('AIza-test-key');
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      // Make storage.set fail
+      (chrome.storage.local.set as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error('Storage failed')
+      );
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: {
+              translations: [{ translatedText: 'Hei' }],
+            },
+          }),
+      });
+
+      // Should still succeed despite storage error
+      const result = await provider.translate('Hello', 'en', 'fi');
+      expect(result).toBe('Hei');
+    });
+  });
+
+  describe('error handling in translate', () => {
+    it('handles malformed response json gracefully', async () => {
+      await provider.setApiKey('key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.reject(new Error('Invalid JSON')),
+      });
+
+      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+    });
+
+    it('handles response.text() error when response is not ok', async () => {
+      await provider.setApiKey('key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: () => Promise.reject(new Error('Cannot read text')),
+        headers: { get: () => null },
+      });
+
+      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+    });
+  });
+
+  describe('detectLanguage edge cases', () => {
+    it('handles missing language in detection response', async () => {
+      await provider.setApiKey('key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: {
+              detections: [[]],  // Empty detection array
+            },
+          }),
+      });
+
+      const result = await provider.detectLanguage('text');
+      expect(result).toBe('auto');
+    });
+
+    it('handles response.ok=false during detectLanguage silently', async () => {
+      await provider.setApiKey('key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+      });
+
+      const result = await provider.detectLanguage('text');
+      expect(result).toBe('auto');
+    });
+  });
+
+  describe('initialize and isAvailable interaction', () => {
+    it('isAvailable calls initialize when config is null', async () => {
+      const freshProvider = new GoogleCloudProvider();
+      mockStorage['google_cloud_api_key'] = 'fresh-key';
+
+      const result = await freshProvider.isAvailable();
+      // Should return true because initialize loads it from storage
+      expect(result).toBe(true);
+    });
+
+    it('clearApiKey fully resets provider state', async () => {
+      mockStorage['google_cloud_api_key'] = 'key';
+      mockStorage['google_cloud_chars_used'] = 5000;
+
+      await provider.setApiKey('key');
+      await provider.clearApiKey();
+
+      const info = provider.getInfo();
+      expect(info.charactersUsed).toBe(0);
+      expect(await provider.isAvailable()).toBe(false);
+    });
+  });
+
+  describe('getSupportedLanguages coverage', () => {
+    it('returns non-reflexive pairs only', () => {
+      const pairs = provider.getSupportedLanguages();
+
+      // Verify no src === tgt
+      for (const pair of pairs) {
+        expect(pair.src).not.toBe(pair.tgt);
+      }
+    });
+
+    it('supports translation from each language to many others', () => {
+      const pairs = provider.getSupportedLanguages();
+      const pairsFromEn = pairs.filter((p) => p.src === 'en');
+
+      // English should support translations to multiple targets
+      expect(pairsFromEn.length).toBeGreaterThan(5);
+    });
+  });
 });

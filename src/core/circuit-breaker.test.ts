@@ -230,4 +230,34 @@ describe('CircuitBreaker', () => {
       expect(breaker.getState('test-provider').consecutiveFailures).toBe(1);
     });
   });
+
+  describe('half_open probe passthrough', () => {
+    it('allows repeated calls in half_open state without re-transitioning', () => {
+      const failTime = 1000;
+      // Trip the breaker to open
+      for (let i = 0; i < 5; i++) {
+        breaker.recordFailure('test-provider', failTime);
+      }
+
+      // Transition open → half_open
+      expect(breaker.isAvailable('test-provider', failTime + 30_000)).toBe(true);
+      expect(breaker.getState('test-provider').state).toBe('half_open');
+
+      // Second call while still in half_open — should hit the `return true` on line 85
+      expect(breaker.isAvailable('test-provider', failTime + 30_001)).toBe(true);
+      expect(breaker.getState('test-provider').state).toBe('half_open');
+    });
+  });
+
+  describe('recordSuccess edge cases', () => {
+    it('returns silently when no circuit exists for provider', () => {
+      // recordSuccess on a provider with no prior failures/state
+      // Should hit the if (!circuit) return branch
+      expect(() => breaker.recordSuccess('never-seen-provider')).not.toThrow();
+
+      // Provider should still not have a circuit entry
+      const summary = breaker.getSummary();
+      expect(summary['never-seen-provider']).toBeUndefined();
+    });
+  });
 });

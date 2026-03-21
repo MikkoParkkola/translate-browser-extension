@@ -389,4 +389,105 @@ describe('Throttle', () => {
       vi.useFakeTimers();
     });
   });
+
+  describe('splitSentences edge cases', () => {
+    it('handles null input via fallback to empty string', () => {
+      const result = throttle.splitSentences(null as unknown as string);
+      expect(result).toEqual(['']);
+    });
+
+    it('handles undefined input via String coercion', () => {
+      const result = throttle.splitSentences(undefined as unknown as string);
+      expect(result).toEqual(['']);
+    });
+
+    it('handles numeric input via String coercion', () => {
+      const result = throttle.splitSentences(12345 as unknown as string);
+      expect(result).toEqual(['12345']);
+    });
+  });
+
+  describe('runWithRetry edge cases', () => {
+    it('uses default wait when error has no retryAfter', async () => {
+      vi.useRealTimers();
+      const retryableError = new Error('Server error') as Error & { retryable: boolean };
+      retryableError.retryable = true;
+      // No retryAfter property set
+
+      const fn = vi
+        .fn()
+        .mockRejectedValueOnce(retryableError)
+        .mockResolvedValue('success');
+
+      const result = await throttle.runWithRetry(fn, 'test', 3);
+      expect(result).toBe('success');
+      expect(fn).toHaveBeenCalledTimes(2);
+      vi.useFakeTimers();
+    });
+
+    it('caps backoff at 60000ms', async () => {
+      vi.useRealTimers();
+      const retryableError = new Error('err') as Error & { retryable: boolean; retryAfter: number };
+      retryableError.retryable = true;
+      retryableError.retryAfter = 40000; // High base → base * 2 = 80000, capped to 60000
+
+      const fn = vi
+        .fn()
+        .mockRejectedValueOnce(retryableError) // attempt 1 fails
+        .mockRejectedValueOnce(retryableError) // attempt 2 fails (wait should be capped)
+        .mockResolvedValue('ok'); // attempt 3 succeeds
+
+      // Use very short retryAfter for first error, then test the cap on second
+      const shortError = new Error('err') as Error & { retryable: boolean; retryAfter: number };
+      shortError.retryable = true;
+      shortError.retryAfter = 1; // Very short to not slow down test
+
+      fn.mockReset();
+      fn.mockRejectedValueOnce(shortError)
+        .mockRejectedValueOnce(shortError)
+        .mockResolvedValue('ok');
+
+      const result = await throttle.runWithRetry(fn, 'test', 4);
+      expect(result).toBe('ok');
+      expect(fn).toHaveBeenCalledTimes(3);
+      vi.useFakeTimers();
+    });
+  });
+
+  describe('runWithRateLimit - number tokens parameter', () => {
+    it('accepts token count as number (not string)', async () => {
+      vi.useRealTimers();
+      const fn = vi.fn().mockResolvedValue('result');
+      const result = await throttle.runWithRateLimit(fn, 50, { immediate: true });
+      expect(result).toBe('result');
+      vi.useFakeTimers();
+    });
+  });
+
+  describe('runWithRetry - single attempt', () => {
+    it('throws immediately on retryable error with attempts=1', async () => {
+      vi.useRealTimers();
+      const retryableError = new Error('Single attempt') as Error & { retryable: boolean };
+      retryableError.retryable = true;
+
+      const fn = vi.fn().mockRejectedValue(retryableError);
+
+      // With attempts=1, the first failure should throw (i === attempts - 1 on first iteration)
+      await expect(throttle.runWithRetry(fn, 'test', 1)).rejects.toThrow('Single attempt');
+      expect(fn).toHaveBeenCalledTimes(1);
+      vi.useFakeTimers();
+    });
+
+    it('throws non-retryable error immediately without retrying', async () => {
+      vi.useRealTimers();
+      const nonRetryableError = new Error('Fatal');
+      // Note: no retryable property — treated as non-retryable
+
+      const fn = vi.fn().mockRejectedValue(nonRetryableError);
+
+      await expect(throttle.runWithRetry(fn, 'test', 5)).rejects.toThrow('Fatal');
+      expect(fn).toHaveBeenCalledTimes(1);
+      vi.useFakeTimers();
+    });
+  });
 });

@@ -166,4 +166,81 @@ describe('ModelStatus', () => {
     ));
     expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite');
   });
+
+  // -----------------------------------------------------------------------
+  // isLoading + isCached both true — cached section should NOT render
+  // -----------------------------------------------------------------------
+
+  it('does not show cached section when both isLoading and isCached are true', () => {
+    const { container } = render(() => (
+      <ModelStatus {...baseProps} isLoading={true} isCached={true} progress={50} modelId="Xenova/opus-mt-en-fi" />
+    ));
+    expect(container.querySelector('.model-loading')).toBeInTheDocument();
+    expect(container.querySelector('.model-cached')).not.toBeInTheDocument();
+  });
+
+  // -----------------------------------------------------------------------
+  // Non-opus-mt modelId in getShortModelName returns modelId directly
+  // -----------------------------------------------------------------------
+
+  it('shows raw modelId in cached state for non-opus-mt models', () => {
+    render(() => (
+      <ModelStatus {...baseProps} isCached={true} modelId="some-other-model" />
+    ));
+    expect(screen.getByText('some-other-model ready')).toBeInTheDocument();
+  });
+
+  it('shows file info with simple filename (no slashes)', () => {
+    render(() => (
+      <ModelStatus {...baseProps} isLoading={true} progress={50} modelId="test" currentFile="model.onnx" />
+    ));
+    expect(screen.getByText('model.onnx')).toBeInTheDocument();
+  });
+
+  describe('getShortFileName edge cases', () => {
+    it('shows only the filename part from a nested path', () => {
+      render(() => (
+        <ModelStatus {...baseProps} isLoading={true} progress={50} modelId="test" currentFile="onnx/quantized/model.onnx" />
+      ));
+      expect(screen.getByText('model.onnx')).toBeInTheDocument();
+    });
+
+    it('does not render file info section when currentFile is null during loading', () => {
+      const { container } = render(() => (
+        <ModelStatus {...baseProps} isLoading={true} progress={50} modelId="test" currentFile={null} />
+      ));
+      expect(container.querySelector('.model-file-info')).toBeNull();
+    });
+  });
+
+  describe('outer Show condition edge cases', () => {
+    it('renders nothing when isLoading=false and isCached=false', () => {
+      const { container } = render(() => (
+        <ModelStatus isLoading={false} progress={0} isCached={false} modelId={null} currentFile={null} />
+      ));
+      expect(container.querySelector('.model-status')).toBeNull();
+    });
+
+    it('renders when only isCached=true (not loading)', () => {
+      const { container } = render(() => (
+        <ModelStatus isLoading={false} progress={0} isCached={true} modelId="Xenova/opus-mt-en-fi" currentFile={null} />
+      ));
+      expect(container.querySelector('.model-cached')).toBeTruthy();
+    });
+
+    it('shows loading section but not cached section when both isLoading and isCached are true', () => {
+      const { container } = render(() => (
+        <ModelStatus isLoading={true} progress={50} isCached={true} modelId="Xenova/opus-mt-en-fi" currentFile={null} />
+      ));
+      expect(container.querySelector('.model-loading')).toBeTruthy();
+      expect(container.querySelector('.model-cached')).toBeNull();
+    });
+
+    it('getShortModelName returns full modelId for non-opus-mt model in loading state', () => {
+      render(() => (
+        <ModelStatus isLoading={true} progress={50} isCached={false} modelId="some-custom-model" currentFile={null} />
+      ));
+      expect(screen.getByText(/Downloading some-custom-model/)).toBeInTheDocument();
+    });
+  });
 });

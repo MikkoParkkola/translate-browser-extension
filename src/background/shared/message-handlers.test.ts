@@ -246,6 +246,54 @@ describe('handleSetCloudApiKey', () => {
       expect.objectContaining({ anthropic_model: 'claude-3-5-sonnet' })
     );
   });
+
+  it('stores deepl key without optional isPro or formality', async () => {
+    const { handleSetCloudApiKey } = await import('./message-handlers');
+    const { safeStorageSet } = await import('../../core/storage');
+    const result = await handleSetCloudApiKey({
+      type: 'setCloudApiKey',
+      provider: 'deepl',
+      apiKey: 'test-key',
+      options: {},
+    }) as Record<string, unknown>;
+
+    expect(result.success).toBe(true);
+    const callArg = vi.mocked(safeStorageSet).mock.lastCall![0] as Record<string, unknown>;
+    expect(callArg).not.toHaveProperty('deepl_is_pro');
+    expect(callArg).not.toHaveProperty('deepl_formality');
+  });
+
+  it('stores openai key with model but without formality', async () => {
+    const { handleSetCloudApiKey } = await import('./message-handlers');
+    const { safeStorageSet } = await import('../../core/storage');
+    const result = await handleSetCloudApiKey({
+      type: 'setCloudApiKey',
+      provider: 'openai',
+      apiKey: 'test-key',
+      options: { model: 'gpt-4o' },
+    }) as Record<string, unknown>;
+
+    expect(result.success).toBe(true);
+    const callArg = vi.mocked(safeStorageSet).mock.lastCall![0] as Record<string, unknown>;
+    expect(callArg).toHaveProperty('openai_model', 'gpt-4o');
+    expect(callArg).not.toHaveProperty('openai_formality');
+  });
+
+  it('stores anthropic key with formality but without model', async () => {
+    const { handleSetCloudApiKey } = await import('./message-handlers');
+    const { safeStorageSet } = await import('../../core/storage');
+    const result = await handleSetCloudApiKey({
+      type: 'setCloudApiKey',
+      provider: 'anthropic',
+      apiKey: 'test-key',
+      options: { formality: 'formal' },
+    }) as Record<string, unknown>;
+
+    expect(result.success).toBe(true);
+    const callArg = vi.mocked(safeStorageSet).mock.lastCall![0] as Record<string, unknown>;
+    expect(callArg).not.toHaveProperty('anthropic_model');
+    expect(callArg).toHaveProperty('anthropic_formality', 'formal');
+  });
 });
 
 // ============================================================================
@@ -307,6 +355,27 @@ describe('handleClearCloudApiKey', () => {
 
     expect(result.success).toBe(false);
     expect(mockRemove).not.toHaveBeenCalled();
+  });
+
+  it('removes only base key for provider without extra cleanup rules', async () => {
+    const { CLOUD_PROVIDER_KEYS } = await import('./provider-management');
+    const keys = CLOUD_PROVIDER_KEYS as Record<string, string>;
+    keys['custom-provider'] = 'custom_api_key';
+
+    try {
+      const { handleClearCloudApiKey } = await import('./message-handlers');
+      const mockRemove = vi.fn().mockResolvedValue(undefined);
+
+      const result = await handleClearCloudApiKey(
+        { type: 'clearCloudApiKey', provider: 'custom-provider' },
+        mockRemove
+      ) as Record<string, unknown>;
+
+      expect(result.success).toBe(true);
+      expect(mockRemove).toHaveBeenCalledWith(['custom_api_key']);
+    } finally {
+      delete keys['custom-provider'];
+    }
   });
 });
 
@@ -582,5 +651,355 @@ describe('getActionSettings', () => {
 
     expect(result.sourceLang).toBe('fi');
     expect(result.targetLang).toBe('sv');
+  });
+});
+
+// ============================================================================
+// Error branch coverage: correction handlers
+// ============================================================================
+
+describe('handleGetCorrection error path', () => {
+  it('handles error gracefully', async () => {
+    const { getCorrection } = await import('../../core/corrections');
+    vi.mocked(getCorrection).mockRejectedValueOnce(new Error('DB error'));
+
+    const { handleGetCorrection } = await import('./message-handlers');
+    const result = await handleGetCorrection({
+      type: 'getCorrection',
+      original: 'hello',
+      sourceLang: 'en',
+      targetLang: 'fi',
+    }) as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.correction).toBeNull();
+    expect(result.hasCorrection).toBe(false);
+  });
+
+  it('handles non-Error thrown', async () => {
+    const { getCorrection } = await import('../../core/corrections');
+    vi.mocked(getCorrection).mockRejectedValueOnce('string error');
+
+    const { handleGetCorrection } = await import('./message-handlers');
+    const result = await handleGetCorrection({
+      type: 'getCorrection',
+      original: 'hello',
+      sourceLang: 'en',
+      targetLang: 'fi',
+    }) as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('string error');
+  });
+});
+
+describe('handleGetAllCorrections error path', () => {
+  it('handles error gracefully', async () => {
+    const { getAllCorrections } = await import('../../core/corrections');
+    vi.mocked(getAllCorrections).mockRejectedValueOnce(new Error('DB error'));
+
+    const { handleGetAllCorrections } = await import('./message-handlers');
+    const result = await handleGetAllCorrections() as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.corrections).toEqual([]);
+  });
+
+  it('handles non-Error thrown', async () => {
+    const { getAllCorrections } = await import('../../core/corrections');
+    vi.mocked(getAllCorrections).mockRejectedValueOnce(42);
+
+    const { handleGetAllCorrections } = await import('./message-handlers');
+    const result = await handleGetAllCorrections() as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('42');
+  });
+});
+
+describe('handleGetCorrectionStats error path', () => {
+  it('handles error gracefully', async () => {
+    const { getCorrectionStats } = await import('../../core/corrections');
+    vi.mocked(getCorrectionStats).mockRejectedValueOnce(new Error('DB error'));
+
+    const { handleGetCorrectionStats } = await import('./message-handlers');
+    const result = await handleGetCorrectionStats() as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.stats).toEqual({ total: 0, totalUses: 0, topCorrections: [] });
+  });
+
+  it('handles non-Error thrown', async () => {
+    const { getCorrectionStats } = await import('../../core/corrections');
+    vi.mocked(getCorrectionStats).mockRejectedValueOnce('boom');
+
+    const { handleGetCorrectionStats } = await import('./message-handlers');
+    const result = await handleGetCorrectionStats() as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('boom');
+  });
+});
+
+describe('handleClearCorrections error path', () => {
+  it('handles error gracefully', async () => {
+    const { clearCorrections } = await import('../../core/corrections');
+    vi.mocked(clearCorrections).mockRejectedValueOnce(new Error('DB error'));
+
+    const { handleClearCorrections } = await import('./message-handlers');
+    const result = await handleClearCorrections() as Record<string, unknown>;
+    expect(result.success).toBe(false);
+  });
+
+  it('handles non-Error thrown', async () => {
+    const { clearCorrections } = await import('../../core/corrections');
+    vi.mocked(clearCorrections).mockRejectedValueOnce(null);
+
+    const { handleClearCorrections } = await import('./message-handlers');
+    const result = await handleClearCorrections() as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('null');
+  });
+});
+
+describe('handleDeleteCorrection error path', () => {
+  it('handles error gracefully', async () => {
+    const { deleteCorrection } = await import('../../core/corrections');
+    vi.mocked(deleteCorrection).mockRejectedValueOnce(new Error('DB error'));
+
+    const { handleDeleteCorrection } = await import('./message-handlers');
+    const result = await handleDeleteCorrection({
+      type: 'deleteCorrection',
+      original: 'hello',
+      sourceLang: 'en',
+      targetLang: 'fi',
+    }) as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.deleted).toBe(false);
+  });
+
+  it('handles non-Error thrown', async () => {
+    const { deleteCorrection } = await import('../../core/corrections');
+    vi.mocked(deleteCorrection).mockRejectedValueOnce(undefined);
+
+    const { handleDeleteCorrection } = await import('./message-handlers');
+    const result = await handleDeleteCorrection({
+      type: 'deleteCorrection',
+      original: 'hello',
+      sourceLang: 'en',
+      targetLang: 'fi',
+    }) as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('undefined');
+  });
+});
+
+describe('handleExportCorrections error path', () => {
+  it('handles error gracefully', async () => {
+    const { exportCorrections } = await import('../../core/corrections');
+    vi.mocked(exportCorrections).mockRejectedValueOnce(new Error('Export failed'));
+
+    const { handleExportCorrections } = await import('./message-handlers');
+    const result = await handleExportCorrections() as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Export failed');
+  });
+
+  it('handles non-Error thrown', async () => {
+    const { exportCorrections } = await import('../../core/corrections');
+    vi.mocked(exportCorrections).mockRejectedValueOnce(999);
+
+    const { handleExportCorrections } = await import('./message-handlers');
+    const result = await handleExportCorrections() as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('999');
+  });
+});
+
+// ============================================================================
+// Additional cloud API key error branches
+// ============================================================================
+
+describe('handleSetCloudApiKey error path', () => {
+  it('handles safeStorageSet failure', async () => {
+    const { safeStorageSet } = await import('../../core/storage');
+    vi.mocked(safeStorageSet).mockRejectedValueOnce(new Error('Storage full'));
+
+    const { handleSetCloudApiKey } = await import('./message-handlers');
+    const result = await handleSetCloudApiKey({
+      type: 'setCloudApiKey',
+      provider: 'deepl',
+      apiKey: 'test-key',
+    }) as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Storage full');
+  });
+
+  it('handles non-Error storage failure', async () => {
+    const { safeStorageSet } = await import('../../core/storage');
+    vi.mocked(safeStorageSet).mockRejectedValueOnce('quota exceeded');
+
+    const { handleSetCloudApiKey } = await import('./message-handlers');
+    const result = await handleSetCloudApiKey({
+      type: 'setCloudApiKey',
+      provider: 'openai',
+      apiKey: 'test-key',
+    }) as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('quota exceeded');
+  });
+
+  it('stores anthropic-specific formality option', async () => {
+    const { safeStorageSet } = await import('../../core/storage');
+    vi.mocked(safeStorageSet).mockResolvedValueOnce(undefined);
+
+    const { handleSetCloudApiKey } = await import('./message-handlers');
+    const result = await handleSetCloudApiKey({
+      type: 'setCloudApiKey',
+      provider: 'anthropic',
+      apiKey: 'ak',
+      options: { model: 'claude-3-5-sonnet', formality: 'formal' },
+    }) as Record<string, unknown>;
+    expect(result.success).toBe(true);
+    expect(vi.mocked(safeStorageSet)).toHaveBeenCalledWith(
+      expect.objectContaining({ anthropic_formality: 'formal' })
+    );
+  });
+
+  it('stores openai-specific formality option', async () => {
+    const { safeStorageSet } = await import('../../core/storage');
+    vi.mocked(safeStorageSet).mockResolvedValueOnce(undefined);
+
+    const { handleSetCloudApiKey } = await import('./message-handlers');
+    const result = await handleSetCloudApiKey({
+      type: 'setCloudApiKey',
+      provider: 'openai',
+      apiKey: 'ok',
+      options: { formality: 'informal' },
+    }) as Record<string, unknown>;
+    expect(result.success).toBe(true);
+    expect(vi.mocked(safeStorageSet)).toHaveBeenCalledWith(
+      expect.objectContaining({ openai_formality: 'informal' })
+    );
+  });
+});
+
+describe('handleClearCloudApiKey error path', () => {
+  it('handles storageRemove failure', async () => {
+    const { handleClearCloudApiKey } = await import('./message-handlers');
+    const mockRemove = vi.fn().mockRejectedValue(new Error('Remove failed'));
+
+    const result = await handleClearCloudApiKey(
+      { type: 'clearCloudApiKey', provider: 'deepl' },
+      mockRemove
+    ) as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Remove failed');
+  });
+
+  it('handles non-Error storageRemove failure', async () => {
+    const { handleClearCloudApiKey } = await import('./message-handlers');
+    const mockRemove = vi.fn().mockRejectedValue('unknown error');
+
+    const result = await handleClearCloudApiKey(
+      { type: 'clearCloudApiKey', provider: 'openai' },
+      mockRemove
+    ) as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('unknown error');
+  });
+
+  it('removes extra keys for anthropic', async () => {
+    const { handleClearCloudApiKey } = await import('./message-handlers');
+    const mockRemove = vi.fn().mockResolvedValue(undefined);
+
+    await handleClearCloudApiKey(
+      { type: 'clearCloudApiKey', provider: 'anthropic' },
+      mockRemove
+    );
+
+    expect(mockRemove).toHaveBeenCalledWith(
+      expect.arrayContaining(['anthropic_api_key', 'anthropic_model', 'anthropic_formality', 'anthropic_tokens_used'])
+    );
+  });
+});
+
+// ============================================================================
+// Additional: non-Error branches for all handlers  
+// ============================================================================
+
+describe('handleGetCloudProviderStatus non-Error path', () => {
+  it('handles non-Error thrown', async () => {
+    const { safeStorageGet } = await import('../../core/storage');
+    vi.mocked(safeStorageGet).mockRejectedValueOnce('storage boom');
+
+    const { handleGetCloudProviderStatus } = await import('./message-handlers');
+    const result = await handleGetCloudProviderStatus() as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('storage boom');
+  });
+});
+
+describe('handleGetHistory non-Error path', () => {
+  it('handles non-Error thrown', async () => {
+    const { getHistory } = await import('../../core/history');
+    vi.mocked(getHistory).mockRejectedValueOnce(123);
+
+    const { handleGetHistory } = await import('./message-handlers');
+    const result = await handleGetHistory() as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('123');
+  });
+});
+
+describe('handleClearHistory non-Error path', () => {
+  it('handles non-Error thrown', async () => {
+    const { clearHistory } = await import('../../core/history');
+    vi.mocked(clearHistory).mockRejectedValueOnce(false);
+
+    const { handleClearHistory } = await import('./message-handlers');
+    const result = await handleClearHistory() as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('false');
+  });
+});
+
+describe('handleAddCorrection non-Error path', () => {
+  it('handles non-Error thrown', async () => {
+    const { addCorrection } = await import('../../core/corrections');
+    vi.mocked(addCorrection).mockRejectedValueOnce('add failed');
+
+    const { handleAddCorrection } = await import('./message-handlers');
+    const result = await handleAddCorrection({
+      type: 'addCorrection',
+      original: 'hi',
+      machineTranslation: 'hei',
+      userCorrection: 'moi',
+      sourceLang: 'en',
+      targetLang: 'fi',
+    }) as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('add failed');
+  });
+});
+
+describe('handleImportCorrections non-Error path', () => {
+  it('handles non-Error thrown', async () => {
+    const { importCorrections } = await import('../../core/corrections');
+    vi.mocked(importCorrections).mockRejectedValueOnce({ code: 'PARSE_ERROR' });
+
+    const { handleImportCorrections } = await import('./message-handlers');
+    const result = await handleImportCorrections({
+      type: 'importCorrections',
+      json: 'bad json',
+    }) as Record<string, unknown>;
+    expect(result.success).toBe(false);
+    expect(result.importedCount).toBe(0);
+  });
+});
+
+describe('recordTranslationToHistory error suppression', () => {
+  it('swallows addToHistory rejection silently', async () => {
+    const { addToHistory } = await import('../../core/history');
+    vi.mocked(addToHistory).mockRejectedValueOnce(new Error('History DB locked'));
+
+    const { recordTranslationToHistory } = await import('./message-handlers');
+    // Should not throw
+    expect(() => recordTranslationToHistory('hello', 'hei', 'en', 'fi')).not.toThrow();
+    await new Promise((r) => setTimeout(r, 10));
   });
 });

@@ -441,5 +441,162 @@ describe('GlossarySettings', () => {
         expect(screen.getByText('Failed to load glossary')).toBeTruthy();
       });
     });
+
+    it('success message auto-dismisses after 3 seconds', async () => {
+      (glossary.addTerm as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (glossary.getGlossary as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({})
+        .mockResolvedValue({ API: { replacement: 'rajapinta', caseSensitive: false } });
+
+      render(() => <GlossarySettings />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Term')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Term'));
+
+      const sourceInput = screen.getByPlaceholderText('e.g., API');
+      const targetInput = screen.getByPlaceholderText('e.g., rajapinta');
+      fireEvent.input(sourceInput, { target: { value: 'API' } });
+      fireEvent.input(targetInput, { target: { value: 'rajapinta' } });
+      fireEvent.click(screen.getByText('Add Term'));
+
+      await vi.waitFor(() => {
+        expect(screen.getByText('Term added successfully')).toBeTruthy();
+      });
+
+      await new Promise(r => setTimeout(r, 3100));
+
+      await vi.waitFor(() => {
+        expect(screen.queryByText('Term added successfully')).not.toBeInTheDocument();
+      });
+    });
+
+    it('success message shows after delete', async () => {
+      (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+      (glossary.removeTerm as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+
+      render(() => <GlossarySettings />);
+      await vi.waitFor(() => {
+        const deleteButtons = screen.queryAllByText('Delete');
+        expect(deleteButtons.length).toBeGreaterThan(0);
+      });
+      fireEvent.click(screen.getAllByText('Delete')[0]);
+
+      await vi.waitFor(() => {
+        expect(screen.getByText('Term deleted')).toBeTruthy();
+      });
+    });
+
+    it('success message shows after export', async () => {
+      vi.stubGlobal('URL', { createObjectURL: vi.fn().mockReturnValue('blob:url'), revokeObjectURL: vi.fn() });
+      (glossary.exportGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+      render(() => <GlossarySettings />);
+      await vi.waitFor(() => expect(screen.getByText('Export JSON')).toBeTruthy());
+      fireEvent.click(screen.getByText('Export JSON'));
+
+      await vi.waitFor(() => {
+        expect(screen.getByText('Glossary exported')).toBeTruthy();
+      });
+    });
+
+    it('success message shows after import', async () => {
+      (glossary.importGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(3);
+      (glossary.getGlossary as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({})
+        .mockResolvedValue({ API: { replacement: 'rajapinta', caseSensitive: false } });
+
+      const { container } = render(() => <GlossarySettings />);
+      await vi.waitFor(() => expect(screen.getByText('Import JSON')).toBeTruthy());
+
+      const fileInput = container.querySelector('input[type="file"][accept=".json"]') as HTMLInputElement;
+      const file = new File(['{}'], 'glossary.json', { type: 'application/json' });
+      Object.defineProperty(fileInput, 'files', { value: [file], writable: false });
+
+      fireEvent.change(fileInput);
+
+      await vi.waitFor(() => {
+        expect(screen.getByText('Imported 3 terms')).toBeTruthy();
+      });
+    });
+
+    it('success message shows after clear all', async () => {
+      (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+      (glossary.clearGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+
+      render(() => <GlossarySettings />);
+      await vi.waitFor(() => expect(screen.getByText('Clear All')).toBeTruthy());
+      fireEvent.click(screen.getByText('Clear All'));
+
+      await vi.waitFor(() => {
+        expect(screen.getByText('Glossary cleared')).toBeTruthy();
+      });
+    });
+  });
+
+  describe('form validation edge cases', () => {
+    it('validates source and target are both required', async () => {
+      render(() => <GlossarySettings />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Term')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Term'));
+
+      const sourceInput = screen.getByPlaceholderText('e.g., API');
+      fireEvent.input(sourceInput, { target: { value: 'API' } });
+      fireEvent.click(screen.getByText('Add Term'));
+
+      await vi.waitFor(() => {
+        expect(screen.getByText('Source and target terms are required')).toBeTruthy();
+      });
+    });
+
+    it('trims whitespace from source and target', async () => {
+      (glossary.addTerm as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (glossary.getGlossary as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({})
+        .mockResolvedValue({ API: { replacement: 'rajapinta', caseSensitive: false } });
+
+      render(() => <GlossarySettings />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Term')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Term'));
+
+      const sourceInput = screen.getByPlaceholderText('e.g., API');
+      const targetInput = screen.getByPlaceholderText('e.g., rajapinta');
+      fireEvent.input(sourceInput, { target: { value: '  API  ' } });
+      fireEvent.input(targetInput, { target: { value: '  rajapinta  ' } });
+      fireEvent.click(screen.getByText('Add Term'));
+
+      await vi.waitFor(() => {
+        expect(glossary.addTerm).toHaveBeenCalledWith('API', 'rajapinta', false, undefined);
+      });
+    });
+
+    it('includes language tag with custom description', async () => {
+      (glossary.addTerm as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (glossary.getGlossary as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({})
+        .mockResolvedValue({ API: { replacement: 'rajapinta', caseSensitive: false } });
+
+      render(() => <GlossarySettings />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Term')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Term'));
+
+      const sourceInput = screen.getByPlaceholderText('e.g., API');
+      const targetInput = screen.getByPlaceholderText('e.g., rajapinta');
+      const descInput = screen.getByPlaceholderText('e.g., Technical term');
+
+      fireEvent.input(sourceInput, { target: { value: 'API' } });
+      fireEvent.input(targetInput, { target: { value: 'rajapinta' } });
+      fireEvent.input(descInput, { target: { value: 'My description' } });
+
+      const langSelects = screen.getAllByDisplayValue('All Languages');
+      const formLangSelect = langSelects[langSelects.length - 1];
+      fireEvent.change(formLangSelect, { target: { value: 'de' } });
+
+      fireEvent.click(screen.getByText('Add Term'));
+
+      await vi.waitFor(() => {
+        expect(glossary.addTerm).toHaveBeenCalledWith('API', 'rajapinta', false, '[de] My description');
+      });
+    });
   });
 });

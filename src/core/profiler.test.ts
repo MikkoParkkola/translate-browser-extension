@@ -739,6 +739,102 @@ describe('Profiler', () => {
       expect(stats).not.toBeNull();
     });
   });
+
+  describe('disabled profiler - additional methods', () => {
+    beforeEach(() => {
+      profiler.clear();
+      profiler.setEnabled(false);
+    });
+
+    afterEach(() => {
+      profiler.setEnabled(true);
+    });
+
+    it('startTiming is no-op when disabled', () => {
+      profiler.startTiming('any-session', 'model_load');
+      // No error, no effect
+    });
+
+    it('endTiming returns 0 when disabled', () => {
+      const duration = profiler.endTiming('any-session', 'model_load');
+      expect(duration).toBe(0);
+    });
+
+    it('recordTiming is no-op when disabled', () => {
+      profiler.recordTiming('any-session', 'model_load', 100);
+      // No error, no stats recorded
+      expect(profiler.getAggregateStats('model_load')).toBeNull();
+    });
+
+    it('timeAsync still executes fn and returns result when disabled', async () => {
+      const result = await profiler.timeAsync('no-session', 'test', async () => 'hello');
+      expect(result).toBe('hello');
+    });
+
+    it('timeSync still executes fn and returns result when disabled', () => {
+      const result = profiler.timeSync('no-session', 'test', () => 42);
+      expect(result).toBe(42);
+    });
+  });
+
+  describe('missing session/timing edge cases', () => {
+    it('startTiming with non-existent session is no-op', () => {
+      profiler.startTiming('nonexistent-session', 'model_load');
+      // No error, no effect
+    });
+
+    it('endTiming with non-existent session returns 0', () => {
+      const duration = profiler.endTiming('nonexistent-session', 'model_load');
+      expect(duration).toBe(0);
+    });
+
+    it('endTiming with non-existent timing name returns 0', () => {
+      const id = profiler.startSession('timing-miss-test');
+      // Don't call startTiming for 'missing_name'
+      const duration = profiler.endTiming(id, 'missing_name');
+      expect(duration).toBe(0);
+    });
+
+    it('recordTiming with non-existent session is no-op', () => {
+      profiler.recordTiming('nonexistent-session', 'model_load', 100);
+      // Should not throw, but stats should not be recorded for this session
+    });
+  });
+
+  describe('formatReport - no IPC categories', () => {
+    it('omits IPC overhead section when no IPC timings exist', () => {
+      const id = profiler.startSession('no-ipc');
+      profiler.recordTiming(id, 'model_load', 100);
+      profiler.recordTiming(id, 'dom_scan', 50);
+      profiler.endSession(id);
+
+      const report = profiler.formatReport(id);
+      expect(report).not.toContain('IPC Overhead');
+      expect(report).toContain('model_load');
+      expect(report).toContain('dom_scan');
+    });
+  });
+
+  describe('timeAsync/timeSync error propagation', () => {
+    it('timeAsync propagates errors from fn', async () => {
+      const id = profiler.startSession('async-error');
+      await expect(
+        profiler.timeAsync(id, 'failing_op', async () => {
+          throw new Error('async failure');
+        })
+      ).rejects.toThrow('async failure');
+      // endTiming should still have been called (finally block)
+    });
+
+    it('timeSync propagates errors from fn', () => {
+      const id = profiler.startSession('sync-error');
+      expect(() =>
+        profiler.timeSync(id, 'failing_op', () => {
+          throw new Error('sync failure');
+        })
+      ).toThrow('sync failure');
+    });
+  });
 });
 
 describe('measureTime', () => {

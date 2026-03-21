@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { Worker as TesseractWorker } from 'tesseract.js';
 
 // Mock Tesseract.js
 vi.mock('tesseract.js', () => ({
@@ -78,7 +79,7 @@ describe('OCR Service', () => {
         }),
         terminate: vi.fn().mockResolvedValue(undefined),
         reinitialize: vi.fn().mockResolvedValue(undefined),
-      } as ReturnType<typeof vi.fn>);
+      } as unknown as TesseractWorker);
 
       const result = await extractTextFromImage('data:image/png;base64,abc123');
       expect(result.text).toBe('hello world');
@@ -93,7 +94,7 @@ describe('OCR Service', () => {
         terminate: vi.fn().mockResolvedValue(undefined),
         reinitialize: vi.fn().mockResolvedValue(undefined),
       };
-      vi.mocked(createWorker).mockResolvedValueOnce(mockWorker as ReturnType<typeof vi.fn>);
+      vi.mocked(createWorker).mockResolvedValueOnce(mockWorker as unknown as TesseractWorker);
 
       // 'ru' maps to 'rus' which is NOT in DEFAULT_LANGS so reinitialize should be called
       await extractTextFromImage('data:image/png;base64,abc123', 'ru');
@@ -110,7 +111,7 @@ describe('OCR Service', () => {
         terminate: vi.fn().mockResolvedValue(undefined),
         reinitialize: vi.fn().mockResolvedValue(undefined),
       };
-      vi.mocked(createWorker).mockResolvedValueOnce(mockWorker as ReturnType<typeof vi.fn>);
+      vi.mocked(createWorker).mockResolvedValueOnce(mockWorker as unknown as TesseractWorker);
 
       // 'en' maps to 'eng' which IS in DEFAULT_LANGS — reinitialize should NOT be called
       await extractTextFromImage('data:image/png;base64,abc123', 'en');
@@ -127,7 +128,7 @@ describe('OCR Service', () => {
         terminate: vi.fn().mockResolvedValue(undefined),
         reinitialize: vi.fn().mockResolvedValue(undefined),
       };
-      vi.mocked(createWorker).mockResolvedValueOnce(mockWorker as ReturnType<typeof vi.fn>);
+      vi.mocked(createWorker).mockResolvedValueOnce(mockWorker as unknown as TesseractWorker);
 
       // 'xx' has no mapping in TESSERACT_LANG_MAP — reinitialize should NOT be called
       await extractTextFromImage('data:image/png;base64,abc123', 'xx');
@@ -141,7 +142,7 @@ describe('OCR Service', () => {
         recognize: vi.fn().mockRejectedValue(new Error('Tesseract recognize failed')),
         terminate: vi.fn().mockResolvedValue(undefined),
         reinitialize: vi.fn().mockResolvedValue(undefined),
-      } as ReturnType<typeof vi.fn>);
+      } as unknown as TesseractWorker);
 
       await expect(
         extractTextFromImage('data:image/png;base64,bad')
@@ -173,7 +174,7 @@ describe('OCR Service', () => {
         }),
         terminate: vi.fn().mockResolvedValue(undefined),
         reinitialize: vi.fn().mockResolvedValue(undefined),
-      } as ReturnType<typeof vi.fn>);
+      } as unknown as TesseractWorker);
 
       const result = await extractTextFromImage('data:image/png;base64,abc123');
 
@@ -214,7 +215,7 @@ describe('OCR Service', () => {
         }),
         terminate: vi.fn().mockResolvedValue(undefined),
         reinitialize: vi.fn().mockResolvedValue(undefined),
-      } as ReturnType<typeof vi.fn>);
+      } as unknown as TesseractWorker);
 
       const result = await extractTextFromImage('data:image/png;base64,abc123');
 
@@ -245,7 +246,7 @@ describe('OCR Service', () => {
         }),
         terminate: vi.fn().mockResolvedValue(undefined),
         reinitialize: vi.fn().mockResolvedValue(undefined),
-      } as ReturnType<typeof vi.fn>);
+      } as unknown as TesseractWorker);
 
       const result = await extractTextFromImage('data:image/png;base64,abc123');
 
@@ -273,7 +274,7 @@ describe('OCR Service', () => {
         }),
         terminate: vi.fn().mockResolvedValue(undefined),
         reinitialize: vi.fn().mockResolvedValue(undefined),
-      } as ReturnType<typeof vi.fn>);
+      } as unknown as TesseractWorker);
 
       const result = await extractTextFromImage('data:image/png;base64,abc123');
       expect(result.blocks).toEqual([]);
@@ -303,12 +304,12 @@ describe('OCR Service', () => {
       // We test this by calling terminateOCR while initialization is pending
       const { createWorker } = await import('tesseract.js');
 
-      let resolveWorker!: (w: ReturnType<typeof vi.fn>) => void;
-      const workerPromise = new Promise<ReturnType<typeof vi.fn>>((res) => {
+      let resolveWorker!: (w: TesseractWorker) => void;
+      const workerPromise = new Promise<TesseractWorker>((res) => {
         resolveWorker = res;
       });
 
-      vi.mocked(createWorker).mockReturnValueOnce(workerPromise as ReturnType<typeof vi.fn>);
+      vi.mocked(createWorker).mockReturnValueOnce(workerPromise as unknown as Promise<TesseractWorker>);
 
       // Start extraction (but don't await — leaves initializationPromise set)
       const extractionPromise = extractTextFromImage('data:image/png;base64,abc123');
@@ -325,7 +326,7 @@ describe('OCR Service', () => {
         terminate: vi.fn().mockResolvedValue(undefined),
         reinitialize: vi.fn().mockResolvedValue(undefined),
       };
-      resolveWorker(mockWorker as ReturnType<typeof vi.fn>);
+      resolveWorker(mockWorker as unknown as TesseractWorker);
       await extractionPromise.catch(() => undefined);
     });
   });
@@ -381,6 +382,229 @@ describe('OCR Service', () => {
 
       // Worker should only be created once
       expect(createWorker).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('extractTextFromImage - additional branch coverage', () => {
+    it('handles blocks being undefined (not null)', async () => {
+      const { createWorker } = await import('tesseract.js');
+      vi.mocked(createWorker).mockResolvedValueOnce({
+        recognize: vi.fn().mockResolvedValue({
+          data: {
+            text: 'Some text',
+            confidence: 60,
+            blocks: undefined,
+          },
+        }),
+        terminate: vi.fn().mockResolvedValue(undefined),
+        reinitialize: vi.fn().mockResolvedValue(undefined),
+      } as unknown as TesseractWorker);
+
+      const result = await extractTextFromImage('data:image/png;base64,abc123');
+      expect(result.blocks).toEqual([]);
+    });
+
+    it('handles block with null paragraphs', async () => {
+      const { createWorker } = await import('tesseract.js');
+      vi.mocked(createWorker).mockResolvedValueOnce({
+        recognize: vi.fn().mockResolvedValue({
+          data: {
+            text: 'Text',
+            confidence: 75,
+            blocks: [
+              {
+                text: '',
+                confidence: 75,
+                bbox: { x0: 0, y0: 0, x1: 100, y1: 50 },
+                paragraphs: null,
+              },
+            ],
+          },
+        }),
+        terminate: vi.fn().mockResolvedValue(undefined),
+        reinitialize: vi.fn().mockResolvedValue(undefined),
+      } as unknown as TesseractWorker);
+
+      const result = await extractTextFromImage('data:image/png;base64,abc123');
+      // Empty block text with no paragraphs - should be filtered out
+      expect(result.blocks).toEqual([]);
+    });
+
+    it('handles paragraph with null lines', async () => {
+      const { createWorker } = await import('tesseract.js');
+      vi.mocked(createWorker).mockResolvedValueOnce({
+        recognize: vi.fn().mockResolvedValue({
+          data: {
+            text: 'Text',
+            confidence: 70,
+            blocks: [
+              {
+                text: '',
+                confidence: 70,
+                bbox: { x0: 0, y0: 0, x1: 100, y1: 50 },
+                paragraphs: [
+                  {
+                    text: '',
+                    confidence: 70,
+                    bbox: { x0: 0, y0: 0, x1: 100, y1: 50 },
+                    lines: null,
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+        terminate: vi.fn().mockResolvedValue(undefined),
+        reinitialize: vi.fn().mockResolvedValue(undefined),
+      } as unknown as TesseractWorker);
+
+      const result = await extractTextFromImage('data:image/png;base64,abc123');
+      // Empty everything - should be filtered
+      expect(result.blocks).toEqual([]);
+    });
+
+    it('handles block with paragraphs that have empty text but lines with text', async () => {
+      const { createWorker } = await import('tesseract.js');
+      vi.mocked(createWorker).mockResolvedValueOnce({
+        recognize: vi.fn().mockResolvedValue({
+          data: {
+            text: 'Line text',
+            confidence: 65,
+            blocks: [
+              {
+                text: '',
+                confidence: 65,
+                bbox: { x0: 0, y0: 0, x1: 200, y1: 100 },
+                paragraphs: [
+                  {
+                    text: '',
+                    confidence: 65,
+                    bbox: { x0: 0, y0: 0, x1: 200, y1: 50 },
+                    lines: [
+                      {
+                        text: '',
+                        confidence: 65,
+                        bbox: { x0: 0, y0: 0, x1: 200, y1: 25 },
+                      },
+                      {
+                        text: 'Actual line content',
+                        confidence: 65,
+                        bbox: { x0: 0, y0: 25, x1: 200, y1: 50 },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+        terminate: vi.fn().mockResolvedValue(undefined),
+        reinitialize: vi.fn().mockResolvedValue(undefined),
+      } as unknown as TesseractWorker);
+
+      const result = await extractTextFromImage('data:image/png;base64,abc123');
+      // Should find text from the second line
+      expect(result.blocks.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('handles multiple paragraphs in a single block', async () => {
+      const { createWorker } = await import('tesseract.js');
+      vi.mocked(createWorker).mockResolvedValueOnce({
+        recognize: vi.fn().mockResolvedValue({
+          data: {
+            text: 'Para text',
+            confidence: 80,
+            blocks: [
+              {
+                text: '',
+                confidence: 80,
+                bbox: { x0: 0, y0: 0, x1: 200, y1: 100 },
+                paragraphs: [
+                  {
+                    text: 'First paragraph',
+                    confidence: 80,
+                    bbox: { x0: 0, y0: 0, x1: 200, y1: 50 },
+                  },
+                  {
+                    text: 'Second paragraph',
+                    confidence: 80,
+                    bbox: { x0: 0, y0: 50, x1: 200, y1: 100 },
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+        terminate: vi.fn().mockResolvedValue(undefined),
+        reinitialize: vi.fn().mockResolvedValue(undefined),
+      } as unknown as TesseractWorker);
+
+      const result = await extractTextFromImage('data:image/png;base64,abc123');
+      expect(result.blocks.length).toBe(2);
+      expect(result.blocks[0].text).toBe('First paragraph');
+      expect(result.blocks[1].text).toBe('Second paragraph');
+    });
+  });
+
+  describe('concurrent initialization', () => {
+    it('returns same promise for concurrent getWorker calls', async () => {
+      const { createWorker } = await import('tesseract.js');
+      let resolveWorker: (w: unknown) => void;
+      const workerPromise = new Promise((resolve) => { resolveWorker = resolve; });
+
+      const mockWorker = {
+        recognize: vi.fn().mockResolvedValue({
+          data: { text: 'result', confidence: 90, blocks: [] },
+        }),
+        terminate: vi.fn().mockResolvedValue(undefined),
+        reinitialize: vi.fn().mockResolvedValue(undefined),
+      };
+
+      // Make createWorker delay so both calls overlap
+      vi.mocked(createWorker).mockReturnValueOnce(workerPromise as ReturnType<typeof createWorker>);
+
+      // Launch two concurrent extractions
+      const p1 = extractTextFromImage('data:image/png;base64,abc');
+      const p2 = extractTextFromImage('data:image/png;base64,def');
+
+      // Both should be waiting on the same initialization
+      resolveWorker!(mockWorker);
+
+      const [r1, r2] = await Promise.all([p1, p2]);
+      expect(r1.text).toBe('result');
+      expect(r2.text).toBe('result');
+
+      // createWorker should have been called only once (singleton)
+      expect(createWorker).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('logger callback', () => {
+    it('invokes logger with recognizing text status during worker creation', async () => {
+      const { createWorker } = await import('tesseract.js');
+
+      let loggerFn: ((m: { status: string; progress?: number }) => void) | null = null;
+
+      vi.mocked(createWorker).mockImplementationOnce((_langs, _oem, options) => {
+        // Capture the logger callback
+        loggerFn = options?.logger as typeof loggerFn;
+        return Promise.resolve({
+          recognize: vi.fn().mockResolvedValue({
+            data: { text: 'test', confidence: 90, blocks: [] },
+          }),
+          terminate: vi.fn().mockResolvedValue(undefined),
+          reinitialize: vi.fn().mockResolvedValue(undefined),
+        } as unknown as TesseractWorker);
+      });
+
+      await extractTextFromImage('data:image/png;base64,abc');
+
+      // Verify the logger callback was passed and handles 'recognizing text'
+      expect(loggerFn).not.toBeNull();
+      // Should not throw when called with recognizing text status
+      expect(() => loggerFn!({ status: 'recognizing text', progress: 0.5 })).not.toThrow();
+      // Should not throw for other statuses either
+      expect(() => loggerFn!({ status: 'loading model', progress: 0.1 })).not.toThrow();
     });
   });
 });

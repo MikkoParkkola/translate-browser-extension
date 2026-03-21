@@ -183,6 +183,14 @@ describe('onNetworkChange', () => {
 
     addSpy.mockRestore();
   });
+
+  it('handles double unsubscribe gracefully (idx < 0 branch)', () => {
+    const listener = vi.fn();
+    const unsub = onNetworkChange(listener);
+    unsub(); // first unsubscribe
+    unsub(); // second unsubscribe - idx will be -1, splice should NOT be called
+    // No error should be thrown
+  });
 });
 
 describe('initNetworkMonitoring', () => {

@@ -87,4 +87,24 @@ describe('ProviderSelector', () => {
     render(() => <ProviderSelector selected="opus-mt" onChange={vi.fn()} />);
     expect(screen.getByText('Model')).toBeInTheDocument();
   });
+
+  // -----------------------------------------------------------------------
+  // Verify non-selected button gets empty active class
+  // -----------------------------------------------------------------------
+
+  it('non-selected provider button does not have "active" class', () => {
+    const { container } = render(() => <ProviderSelector selected="opus-mt" onChange={vi.fn()} />);
+    const buttons = container.querySelectorAll('.provider-button');
+    // Second button is TranslateGemma, which is not selected
+    expect(buttons[1].className).not.toContain('active');
+  });
+
+  it('selected provider button has "active" class', () => {
+    const { container } = render(() => <ProviderSelector selected="translategemma" onChange={vi.fn()} />);
+    const buttons = container.querySelectorAll('.provider-button');
+    // Second button is TranslateGemma, which IS selected
+    expect(buttons[1].className).toContain('active');
+    // First button is OPUS-MT, not selected
+    expect(buttons[0].className).not.toContain('active');
+  });
 });

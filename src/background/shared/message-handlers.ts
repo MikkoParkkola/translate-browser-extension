@@ -22,11 +22,9 @@ import {
 import { addToHistory, getHistory, clearHistory as clearTranslationHistory } from '../../core/history';
 import type { TranslationCache } from './storage-ops';
 import {
-  getStrategy,
   getProvider,
   getRateLimitState,
   CLOUD_PROVIDER_KEYS,
-  PROVIDER_LIST,
 } from './provider-management';
 
 const log = createLogger('SharedHandlers');

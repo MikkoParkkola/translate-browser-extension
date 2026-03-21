@@ -1455,6 +1455,159 @@ describe('offscreen message handler', () => {
       vi.stubGlobal('Image', OriginalImage);
     });
   });
+
+  // -----------------------------------------------------------------
+  // Additional coverage: cache write failures & identity translation
+  // -----------------------------------------------------------------
+  describe('batch cache write failures', () => {
+    it('logs warning for first two cache write failures (line 287)', async () => {
+      const pipe = vi.fn()
+        .mockResolvedValueOnce([{ translation_text: 'Hallo' }])
+        .mockResolvedValueOnce([{ translation_text: 'Welt' }]);
+      mockGetCachedPipeline.mockReturnValue(pipe);
+      mockCacheSet.mockRejectedValue(new Error('IDB full'));
+
+      const r = await dispatch({
+        type: 'translate',
+        text: ['Hello', 'World'],
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toEqual(['Hallo', 'Welt']);
+    });
+
+    it('logs summary when cache write fails for more than 2 items (line 295)', async () => {
+      const pipe = vi.fn()
+        .mockResolvedValueOnce([{ translation_text: 'A1' }])
+        .mockResolvedValueOnce([{ translation_text: 'B1' }])
+        .mockResolvedValueOnce([{ translation_text: 'C1' }]);
+      mockGetCachedPipeline.mockReturnValue(pipe);
+      mockCacheSet.mockRejectedValue(new Error('IDB full'));
+
+      const r = await dispatch({
+        type: 'translate',
+        text: ['A', 'B', 'C'],
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toEqual(['A1', 'B1', 'C1']);
+    });
+
+    it('logs identity translation when output equals input (line 291)', async () => {
+      // OPUS-MT returns the same text for proper nouns / brand names
+      const pipe = vi.fn()
+        .mockResolvedValueOnce([{ translation_text: 'Google' }])
+        .mockResolvedValueOnce([{ translation_text: 'Welt' }]);
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: ['Google', 'World'],
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toEqual(['Google', 'Welt']);
+    });
+  });
+
+  describe('single text cache write failure', () => {
+    it('handles cache.set failure gracefully (line 322)', async () => {
+      const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Bonjour' }]);
+      mockGetCachedPipeline.mockReturnValue(pipe);
+      mockCacheSet.mockRejectedValue(new Error('Quota exceeded'));
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'fr',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toBe('Bonjour');
+    });
+  });
+
+  describe('batch per-item translation error', () => {
+    it('returns original text when pipe rejects for one item (line 169)', async () => {
+      const pipe = vi.fn()
+        .mockResolvedValueOnce([{ translation_text: 'Hallo' }])
+        .mockRejectedValueOnce(new Error('ONNX runtime error'))
+        .mockResolvedValueOnce([{ translation_text: 'Gut' }]);
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: ['Hello', 'Broken', 'Good'],
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      // Failed item returns original text
+      expect(r.result).toEqual(['Hallo', 'Broken', 'Gut']);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — array with empty/whitespace items
+  // -------------------------------------------------------------------------
+  describe('translate — array with empty/whitespace items', () => {
+    it('preserves empty and whitespace-only strings without calling pipeline', async () => {
+      const pipe = vi.fn()
+        .mockResolvedValueOnce([{ translation_text: 'Hallo' }])
+        .mockResolvedValueOnce([{ translation_text: 'Welt' }]);
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: ['Hello', '', '  ', 'World'],
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      if (Array.isArray(r.result)) {
+        // Empty/whitespace items should be preserved as-is
+        expect(r.result[1]).toBe('');
+        expect(r.result[2]).toBe('  ');
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // translate — sessionId triggers profiling during auto-detection
+  // -------------------------------------------------------------------------
+  describe('translate — sessionId with auto-detect', () => {
+    it('passes sessionId for profiling during auto-detection', async () => {
+      const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Hello world' }]);
+      mockGetCachedPipeline.mockReturnValue(pipe);
+      mockDetectLanguage.mockReturnValue('fr');
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Bonjour le monde, comment allez-vous',
+        sourceLang: 'auto',
+        targetLang: 'en',
+        provider: 'opus-mt',
+        sessionId: 'test-session-123',
+      });
+
+      expect(r.success).toBe(true);
+    });
+  });
 });
 
 // ===========================================================================
@@ -1580,5 +1733,245 @@ describe('selectOpusMtDtype', () => {
     expect(selectOpusMtDtype({ supported: true, fp16: true })).toBe('q8');
     expect(selectOpusMtDtype({ supported: true, fp16: false })).toBe('q8');
     expect(selectOpusMtDtype({ supported: false, fp16: false })).toBe('q8');
+  });
+});
+
+describe('model load and inference profiling (lines 129, 177-179, 189-194)', () => {
+  it('records model_load timing when pipeline not cached and sessionId provided', async () => {
+    const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+    const fakePipe = vi.fn().mockResolvedValue([{ translation_text: 'Test' }]);
+    (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValue(fakePipe);
+    mockGetCachedPipeline.mockReturnValue(null);
+
+    await dispatch({
+      type: 'translate',
+      text: 'Hello',
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'opus-mt',
+      sessionId: 'test-session-1',
+    });
+
+    // Should call recordTiming for model_load with cached:false
+    expect(mockRecordTiming).toHaveBeenCalledWith(
+      'test-session-1',
+      'model_load',
+      expect.any(Number),
+      expect.objectContaining({
+        cached: false,
+        modelId: 'Xenova/opus-mt-en-fi',
+        device: 'wasm',
+      })
+    );
+  });
+
+  it('records model_load timing with cached:true when pipeline is cached', async () => {
+    const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Test' }]);
+    mockGetCachedPipeline.mockReturnValue(pipe);
+
+    await dispatch({
+      type: 'translate',
+      text: 'Hello',
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'opus-mt',
+      sessionId: 'test-session-2',
+    });
+
+    // Should call recordTiming for model_load with cached:true
+    expect(mockRecordTiming).toHaveBeenCalledWith(
+      'test-session-2',
+      'model_load',
+      0,
+      expect.objectContaining({
+        cached: true,
+        modelId: 'Xenova/opus-mt-en-fi',
+      })
+    );
+  });
+
+  it('records model_inference timing for single string translation', async () => {
+    const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Hola' }]);
+    mockGetCachedPipeline.mockReturnValue(pipe);
+
+    await dispatch({
+      type: 'translate',
+      text: 'Hello',
+      sourceLang: 'en',
+      targetLang: 'es',
+      provider: 'opus-mt',
+      sessionId: 'test-session-3',
+    });
+
+    // Should call recordTiming for model_inference with batchSize:1
+    expect(mockRecordTiming).toHaveBeenCalledWith(
+      'test-session-3',
+      'model_inference',
+      expect.any(Number),
+      expect.objectContaining({
+        batchSize: 1,
+        totalChars: expect.any(Number),
+      })
+    );
+  });
+
+  it('records model_inference timing for batch translation', async () => {
+    const pipe = vi.fn().mockResolvedValue([
+      { translation_text: 'Hola' },
+      { translation_text: 'Mundo' },
+    ]);
+    mockGetCachedPipeline.mockReturnValue(pipe);
+
+    await dispatch({
+      type: 'translate',
+      text: ['Hello', 'World'],
+      sourceLang: 'en',
+      targetLang: 'es',
+      provider: 'opus-mt',
+      sessionId: 'test-session-4',
+    });
+
+    // Should call recordTiming for model_inference with batchSize:2
+    expect(mockRecordTiming).toHaveBeenCalledWith(
+      'test-session-4',
+      'model_inference',
+      expect.any(Number),
+      expect.objectContaining({
+        batchSize: 2,
+        totalChars: expect.any(Number),
+      })
+    );
+  });
+
+  it('does not record model_load timing when sessionId not provided', async () => {
+    const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+    const fakePipe = vi.fn().mockResolvedValue([{ translation_text: 'Test' }]);
+    (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValue(fakePipe);
+    mockGetCachedPipeline.mockReturnValue(null);
+
+    await dispatch({
+      type: 'translate',
+      text: 'Hello',
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'opus-mt',
+      // No sessionId
+    });
+
+    // recordTiming should not be called for model_load (only startTiming/endTiming for overall timing)
+    const modelLoadCalls = (mockRecordTiming as ReturnType<typeof vi.fn>).mock.calls.filter(
+      call => call[1] === 'model_load'
+    );
+    expect(modelLoadCalls).toHaveLength(0);
+  });
+
+  it('handles empty array translation without calling pipeline', async () => {
+    const pipe = vi.fn().mockResolvedValue([]);
+    mockGetCachedPipeline.mockReturnValue(pipe);
+
+    const r = await dispatch({
+      type: 'translate',
+      text: [],
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'opus-mt',
+      sessionId: 'test-session-5',
+    });
+
+    expect(r.success).toBe(true);
+    expect(r.result).toEqual([]);
+    // Pipeline should not be called for empty array
+    expect(pipe).not.toHaveBeenCalled();
+  });
+
+  it('returns empty string unchanged for single empty string', async () => {
+    const pipe = vi.fn().mockResolvedValue([]);
+    mockGetCachedPipeline.mockReturnValue(pipe);
+
+    const r = await dispatch({
+      type: 'translate',
+      text: '',
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'opus-mt',
+    });
+
+    expect(r.success).toBe(true);
+    expect(r.result).toBe('');
+    // Pipeline should not be called
+    expect(pipe).not.toHaveBeenCalled();
+  });
+
+  it('returns whitespace string unchanged', async () => {
+    const pipe = vi.fn().mockResolvedValue([]);
+    mockGetCachedPipeline.mockReturnValue(pipe);
+
+    const r = await dispatch({
+      type: 'translate',
+      text: '   \n\t  ',
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'opus-mt',
+    });
+
+    expect(r.success).toBe(true);
+    expect(r.result).toBe('   \n\t  ');
+    // Pipeline should not be called
+    expect(pipe).not.toHaveBeenCalled();
+  });
+
+  it('includes totalChars in inference timing matching text length', async () => {
+    const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Resultado' }]);
+    mockGetCachedPipeline.mockReturnValue(pipe);
+
+    const testText = 'Hello World';  // 11 characters
+
+    await dispatch({
+      type: 'translate',
+      text: testText,
+      sourceLang: 'en',
+      targetLang: 'es',
+      provider: 'opus-mt',
+      sessionId: 'test-session-6',
+    });
+
+    expect(mockRecordTiming).toHaveBeenCalledWith(
+      'test-session-6',
+      'model_inference',
+      expect.any(Number),
+      expect.objectContaining({
+        totalChars: testText.length,
+      })
+    );
+  });
+
+  it('calculates batch totalChars correctly from array items', async () => {
+    const pipe = vi.fn().mockResolvedValue([
+      { translation_text: 'Hola' },
+      { translation_text: 'Mundo' },
+      { translation_text: 'Test' },
+    ]);
+    mockGetCachedPipeline.mockReturnValue(pipe);
+
+    const textArray = ['Hello', 'World', 'Test'];  // 5 + 5 + 4 = 14 chars
+    const expectedTotalChars = textArray.reduce((sum, t) => sum + t.length, 0);
+
+    await dispatch({
+      type: 'translate',
+      text: textArray,
+      sourceLang: 'en',
+      targetLang: 'es',
+      provider: 'opus-mt',
+      sessionId: 'test-session-7',
+    });
+
+    expect(mockRecordTiming).toHaveBeenCalledWith(
+      'test-session-7',
+      'model_inference',
+      expect.any(Number),
+      expect.objectContaining({
+        totalChars: expectedTotalChars,
+      })
+    );
   });
 });

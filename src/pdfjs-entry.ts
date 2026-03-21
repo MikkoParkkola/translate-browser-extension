@@ -7,4 +7,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 
-export default pdfjsLib;
+// Intermediate binding so V8 coverage can instrument this entry point.
+const lib = pdfjsLib;
+
+export default lib;

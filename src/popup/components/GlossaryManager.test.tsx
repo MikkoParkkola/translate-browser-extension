@@ -609,4 +609,269 @@ describe('GlossaryManager', () => {
       expect(screen.queryByText('cloud')).toBeNull();
     });
   });
+
+  // -----------------------------------------------------------------------
+  // Clear all terms
+  // -----------------------------------------------------------------------
+
+  it('clearAllTerms clears glossary when confirm returns true', async () => {
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue({
+      hello: { replacement: 'hei', caseSensitive: false },
+    });
+
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('hello')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText('Clear All'));
+    await vi.waitFor(() => {
+      expect(glossary.clearGlossary).toHaveBeenCalled();
+    });
+  });
+
+  it('clearAllTerms does nothing when confirm returns false', async () => {
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(false));
+
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue({
+      hello: { replacement: 'hei', caseSensitive: false },
+    });
+
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('hello')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText('Clear All'));
+    expect(glossary.clearGlossary).not.toHaveBeenCalled();
+  });
+
+  it('clearAllTerms shows error when clearGlossary rejects', async () => {
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+    (glossary.clearGlossary as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('clear failed'));
+
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue({
+      hello: { replacement: 'hei', caseSensitive: false },
+    });
+
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('hello')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText('Clear All'));
+    await vi.waitFor(() => {
+      expect(screen.getByText('Failed to clear glossary')).toBeTruthy();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Import
+  // -----------------------------------------------------------------------
+
+  it('handleImport reads file and imports terms', async () => {
+    vi.stubGlobal('alert', vi.fn());
+    (glossary.importGlossary as ReturnType<typeof vi.fn>).mockResolvedValueOnce(5);
+
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('Import')).toBeTruthy();
+    });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['{"hello":"world"}'], 'glossary.json', { type: 'application/json' });
+    Object.defineProperty(fileInput, 'files', { value: [file], writable: false });
+    fireEvent.change(fileInput);
+
+    await vi.waitFor(() => {
+      expect(glossary.importGlossary).toHaveBeenCalledWith('{"hello":"world"}');
+    });
+    expect(window.alert).toHaveBeenCalledWith('Imported 5 glossary terms');
+  });
+
+  it('handleImport shows error message for Error instance', async () => {
+    (glossary.importGlossary as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('bad format'));
+
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('Import')).toBeTruthy();
+    });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['invalid'], 'glossary.json', { type: 'application/json' });
+    Object.defineProperty(fileInput, 'files', { value: [file], writable: false });
+    fireEvent.change(fileInput);
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('Failed to import glossary: bad format')).toBeTruthy();
+    });
+  });
+
+  it('handleImport shows Unknown error for non-Error throw', async () => {
+    (glossary.importGlossary as ReturnType<typeof vi.fn>).mockRejectedValueOnce('string error');
+
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('Import')).toBeTruthy();
+    });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['bad'], 'glossary.json', { type: 'application/json' });
+    Object.defineProperty(fileInput, 'files', { value: [file], writable: false });
+    fireEvent.change(fileInput);
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('Failed to import glossary: Unknown error')).toBeTruthy();
+    });
+  });
+
+  it('handleImport does nothing when no file is selected', async () => {
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('Import')).toBeTruthy();
+    });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(fileInput, 'files', { value: [], writable: false });
+    fireEvent.change(fileInput);
+
+    expect(glossary.importGlossary).not.toHaveBeenCalled();
+  });
+
+  // -----------------------------------------------------------------------
+  // Export
+  // -----------------------------------------------------------------------
+
+  it('handleExport creates a download link', async () => {
+    const clickSpy = vi.fn();
+    const createElementOriginal = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      const el = createElementOriginal(tag);
+      if (tag === 'a') {
+        vi.spyOn(el as HTMLAnchorElement, 'click').mockImplementation(clickSpy);
+      }
+      return el;
+    });
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-url');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    (glossary.exportGlossary as ReturnType<typeof vi.fn>).mockResolvedValueOnce('{"hello":"world"}');
+
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('Export')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText('Export'));
+    await vi.waitFor(() => {
+      expect(glossary.exportGlossary).toHaveBeenCalled();
+    });
+    await vi.waitFor(() => {
+      expect(clickSpy).toHaveBeenCalled();
+    });
+
+    vi.restoreAllMocks();
+  });
+
+  // -----------------------------------------------------------------------
+  // addTerm error
+  // -----------------------------------------------------------------------
+
+  it('shows error when addTerm rejects', async () => {
+    (glossary.addTerm as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('add failed'));
+
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('+ Add Term')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText('+ Add Term'));
+    await vi.waitFor(() => {
+      expect(screen.getByPlaceholderText('e.g., API')).toBeTruthy();
+    });
+
+    fireEvent.input(screen.getByPlaceholderText('e.g., API'), { target: { value: 'test' } });
+    fireEvent.input(screen.getByPlaceholderText('e.g., rajapinta'), { target: { value: 'testi' } });
+    fireEvent.click(screen.getByText('Add Term'));
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('Failed to add term')).toBeTruthy();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // saveEdit error
+  // -----------------------------------------------------------------------
+
+  it('shows error when saveEdit rejects', async () => {
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue({
+      hello: { replacement: 'hei', caseSensitive: false },
+    });
+    (glossary.addTerm as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('edit failed'));
+
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('hello')).toBeTruthy();
+    });
+
+    // Click the term-info to start editing
+    const termInfo = screen.getByText('hello').closest('.term-info') as HTMLElement;
+    fireEvent.click(termInfo);
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('Save')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText('Save'));
+    await vi.waitFor(() => {
+      expect(screen.getByText('Failed to update term')).toBeTruthy();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // addNewTerm with description
+  // -----------------------------------------------------------------------
+
+  it('passes description to addTerm when provided', async () => {
+    render(() => <GlossaryManager />);
+    await vi.waitFor(() => {
+      expect(screen.getByText('+ Add Term')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText('+ Add Term'));
+    await vi.waitFor(() => {
+      expect(screen.getByPlaceholderText('e.g., API')).toBeTruthy();
+    });
+
+    fireEvent.input(screen.getByPlaceholderText('e.g., API'), { target: { value: 'test' } });
+    fireEvent.input(screen.getByPlaceholderText('e.g., rajapinta'), { target: { value: 'testi' } });
+    fireEvent.input(screen.getByPlaceholderText(/Technical term/), { target: { value: 'My description' } });
+    fireEvent.click(screen.getByText('Add Term'));
+
+    await vi.waitFor(() => {
+      expect(glossary.addTerm).toHaveBeenCalledWith('test', 'testi', false, 'My description');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Branch coverage — saveEdit without editing term
+  // -----------------------------------------------------------------------
+
+  describe('branch coverage — saveEdit without editing term', () => {
+    it('no edit form is showing when editingTerm is null', async () => {
+      (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+
+      render(() => <GlossaryManager />);
+
+      // Wait for terms to load
+      await vi.waitFor(() => {
+        expect(screen.getByText('3 terms defined')).toBeTruthy();
+      });
+
+      // editingTerm() is null — no Save button from edit form should be present
+      expect(screen.queryByText('Save')).toBeNull();
+      expect(screen.queryByText('Cancel')).toBeNull();
+    });
+  });
 });

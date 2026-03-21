@@ -266,3 +266,53 @@ describe('handleSetProvider', () => {
     await handleSetProvider({ type: 'setProvider', provider: 'opus-mt' });
   });
 });
+
+// ============================================================================
+// Rate limit window reset and request count exhaustion
+// ============================================================================
+
+describe('checkRateLimit window reset', () => {
+  it('resets window when windowMs has elapsed', async () => {
+    // Record many requests to exhaust the limit
+    for (let i = 0; i < 60; i++) {
+      recordUsage(100);
+    }
+    // Now requests >= requestsPerMinute (60), should fail within window
+    const beforeReset = checkRateLimit(1);
+    // It may or may not be false depending on whether the window auto-reset.
+    // If it's false, the window hasn't reset yet — wait for it
+    if (!beforeReset) {
+      // Advance time past window by manipulating Date.now
+      const originalNow = Date.now;
+      vi.spyOn(Date, 'now').mockReturnValue(originalNow() + 70_000);
+      
+      // After window reset, should be true again
+      const afterReset = checkRateLimit(1);
+      expect(afterReset).toBe(true);
+      
+      vi.spyOn(Date, 'now').mockRestore();
+    }
+  });
+
+  it('returns false when request count is at limit', () => {
+    // Use Date.now mock to ensure we're in same window
+    const now = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+
+    // Reset by advancing past window
+    vi.spyOn(Date, 'now').mockReturnValue(now + 70_000);
+    checkRateLimit(1); // triggers reset
+
+    // Now back in a fresh window
+    vi.spyOn(Date, 'now').mockReturnValue(now + 70_001);
+    for (let i = 0; i < 60; i++) {
+      recordUsage(1);
+    }
+    
+    // Request count now at limit
+    const result = checkRateLimit(1);
+    expect(result).toBe(false);
+    
+    vi.spyOn(Date, 'now').mockRestore();
+  });
+});

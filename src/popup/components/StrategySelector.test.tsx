@@ -83,4 +83,61 @@ describe('StrategySelector', () => {
     const group = screen.getByRole('group');
     expect(group).toHaveAttribute('aria-label', 'Strategy selection');
   });
+
+  // -----------------------------------------------------------------------
+  // Verify non-selected buttons don't have active class
+  // -----------------------------------------------------------------------
+
+  it('non-selected buttons do not have "active" class', () => {
+    const { container } = render(() => <StrategySelector selected="fast" onChange={vi.fn()} />);
+    const buttons = container.querySelectorAll('.strategy-button');
+    const smartBtn = Array.from(buttons).find(b => b.textContent === 'Smart');
+    const qualityBtn = Array.from(buttons).find(b => b.textContent === 'Quality');
+    expect(smartBtn?.className).not.toContain('active');
+    expect(qualityBtn?.className).not.toContain('active');
+  });
+
+  it('sets aria-pressed=false on non-selected strategies', () => {
+    render(() => <StrategySelector selected="quality" onChange={vi.fn()} />);
+    const smartBtn = screen.getByText('Smart');
+    const fastBtn = screen.getByText('Fast');
+    expect(smartBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(fastBtn).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  describe('branch coverage for each selected strategy', () => {
+    it('with fast selected, only Fast has active class', () => {
+      render(() => <StrategySelector selected="fast" onChange={vi.fn()} />);
+      const smart = screen.getByText('Smart');
+      const fast = screen.getByText('Fast');
+      const quality = screen.getByText('Quality');
+      expect(fast.className).toContain('active');
+      expect(smart.className).not.toContain('active');
+      expect(quality.className).not.toContain('active');
+    });
+
+    it('with quality selected, only Quality has active class', () => {
+      render(() => <StrategySelector selected="quality" onChange={vi.fn()} />);
+      const smart = screen.getByText('Smart');
+      const fast = screen.getByText('Fast');
+      const quality = screen.getByText('Quality');
+      expect(quality.className).toContain('active');
+      expect(smart.className).not.toContain('active');
+      expect(fast.className).not.toContain('active');
+    });
+
+    it('with fast selected, aria-pressed is true only for Fast', () => {
+      render(() => <StrategySelector selected="fast" onChange={vi.fn()} />);
+      expect(screen.getByText('Fast')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByText('Smart')).toHaveAttribute('aria-pressed', 'false');
+      expect(screen.getByText('Quality')).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('with quality selected, aria-pressed is true only for Quality', () => {
+      render(() => <StrategySelector selected="quality" onChange={vi.fn()} />);
+      expect(screen.getByText('Quality')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByText('Smart')).toHaveAttribute('aria-pressed', 'false');
+      expect(screen.getByText('Fast')).toHaveAttribute('aria-pressed', 'false');
+    });
+  });
 });

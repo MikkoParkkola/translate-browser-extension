@@ -117,4 +117,60 @@ describe('CostMonitor', () => {
     const costEl = container.querySelector('.cost-today');
     expect(costEl).toHaveTextContent('$3.10');
   });
+
+  // -----------------------------------------------------------------------
+  // Budget percent capping at 100
+  // -----------------------------------------------------------------------
+
+  it('caps budget bar at 100% when used exceeds monthly', () => {
+    const { container } = render(() => (
+      <CostMonitor usage={makeUsage({ monthly: 5, used: 15 })} />
+    ));
+    const fill = container.querySelector('.budget-bar-fill') as HTMLElement;
+    expect(fill.style.width).toBe('100%');
+  });
+
+  it('shows budget percent proportionally when under budget', () => {
+    const { container } = render(() => (
+      <CostMonitor usage={makeUsage({ monthly: 100, used: 25 })} />
+    ));
+    const fill = container.querySelector('.budget-bar-fill') as HTMLElement;
+    expect(fill.style.width).toBe('25%');
+  });
+
+  describe('budget zero edge cases', () => {
+    it('budget bar fill is 0% when monthly budget is 0 and used is 0', () => {
+      const { container } = render(() => (
+        <CostMonitor usage={makeUsage({ monthly: 0, used: 0 })} />
+      ));
+      const fill = container.querySelector('.budget-bar-fill') as HTMLElement;
+      expect(fill.style.width).toBe('0%');
+    });
+
+    it('budget-label does not have over-budget class when used equals monthly', () => {
+      const { container } = render(() => (
+        <CostMonitor usage={makeUsage({ monthly: 5, used: 5 })} />
+      ));
+      const label = container.querySelector('.budget-label');
+      expect(label?.className).not.toContain('over-budget');
+    });
+
+    it('budget-bar-fill does not have over-budget class when within budget', () => {
+      const { container } = render(() => (
+        <CostMonitor usage={makeUsage({ monthly: 10, used: 3 })} />
+      ));
+      const fill = container.querySelector('.budget-bar-fill');
+      expect(fill?.className).not.toContain('over-budget');
+    });
+
+    it('both budget-label and budget-bar-fill have over-budget class when over', () => {
+      const { container } = render(() => (
+        <CostMonitor usage={makeUsage({ monthly: 5, used: 10 })} />
+      ));
+      const label = container.querySelector('.budget-label');
+      const fill = container.querySelector('.budget-bar-fill');
+      expect(label?.className).toContain('over-budget');
+      expect(fill?.className).toContain('over-budget');
+    });
+  });
 });

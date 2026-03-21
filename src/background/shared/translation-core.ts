@@ -22,7 +22,6 @@ import { createLogger } from '../../core/logger';
 import { CONFIG } from '../../config';
 import type { TranslationCache } from './storage-ops';
 import {
-  getStrategy,
   setStrategy,
   getProvider,
   checkRateLimit,

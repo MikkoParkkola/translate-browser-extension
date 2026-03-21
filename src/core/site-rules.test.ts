@@ -366,4 +366,183 @@ describe('site-rules', () => {
       await expect(importRules(json)).rejects.toThrow('import set error');
     });
   });
+
+  describe('importRules additional validation', () => {
+    it('throws on non-object rules value (string)', async () => {
+      const json = JSON.stringify({
+        'example.com': 'not an object',
+      });
+      await expect(importRules(json)).rejects.toThrow('Invalid rules');
+    });
+
+    it('throws on non-object rules value (number)', async () => {
+      const json = JSON.stringify({
+        'example.com': 42,
+      });
+      await expect(importRules(json)).rejects.toThrow('Invalid rules');
+    });
+  });
+
+  describe('storage error paths - set failures', () => {
+    it('setRules throws when storage.set throws (after successful get)', async () => {
+      mockStorage['siteRules'] = {};
+      (chrome.storage.local.set as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('set write error'));
+      await expect(setRules('example.com', { autoTranslate: true })).rejects.toThrow('set write error');
+    });
+
+    it('clearRules throws when storage.set throws (after successful get)', async () => {
+      mockStorage['siteRules'] = { 'example.com': { autoTranslate: true } };
+      (chrome.storage.local.set as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('set write error'));
+      await expect(clearRules('example.com')).rejects.toThrow('set write error');
+    });
+  });
+
+  describe('Additional site-rules functionality coverage', () => {
+    it('setRules supports additional language and strategy fields', async () => {
+      await setRules('example.com', {
+        autoTranslate: true,
+        sourceLang: 'en',
+        targetLang: 'fr',
+        preferredProvider: 'deepl',
+        strategy: 'quality',
+      });
+
+      expect(chrome.storage.local.set).toHaveBeenCalledWith({
+        siteRules: {
+          'example.com': {
+            autoTranslate: true,
+            sourceLang: 'en',
+            targetLang: 'fr',
+            preferredProvider: 'deepl',
+            strategy: 'quality',
+          },
+        },
+      });
+    });
+
+    it('getRules returns null when hostname does not match any pattern', async () => {
+      mockStorage['siteRules'] = {
+        'google.com': { autoTranslate: false },
+        '*.github.com': { autoTranslate: true },
+      };
+
+      const result = await getRules('facebook.com');
+      expect(result).toBeNull();
+    });
+
+    it('findMatchingRule prioritizes specificity for overlapping wildcards', () => {
+      const rules: SiteRulesStore = {
+        '*.example.com': { autoTranslate: false },
+        '*.sub.example.com': { autoTranslate: true },
+      };
+
+      const result = findMatchingRule('www.sub.example.com', rules);
+      expect(result).not.toBeNull();
+      expect(result!.pattern).toBe('*.sub.example.com');
+    });
+
+    it('matchesPattern does not match partial domains', () => {
+      expect(matchesPattern('notexample.com', '*.example.com')).toBe(false);
+      expect(matchesPattern('subexample.com', '*.example.com')).toBe(false);
+    });
+
+    it('getRules handles storage.get returning undefined key', async () => {
+      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ siteRules: undefined });
+
+      const result = await getRules('example.com');
+      expect(result).toBeNull();
+    });
+
+    it('importRules counts imported rules correctly', async () => {
+      const json = JSON.stringify({
+        'site1.com': { autoTranslate: true },
+        'site2.com': { autoTranslate: false },
+        '*.site3.com': { autoTranslate: true },
+      });
+
+      const count = await importRules(json);
+      expect(count).toBe(3);
+    });
+
+    it('importRules preserves existing rules when importing new ones', async () => {
+      mockStorage['siteRules'] = {
+        'existing.com': { autoTranslate: true, sourceLang: 'en' },
+      };
+
+      const json = JSON.stringify({
+        'new.com': { autoTranslate: false, targetLang: 'de' },
+      });
+
+      await importRules(json);
+
+      expect(chrome.storage.local.set).toHaveBeenCalledWith({
+        siteRules: {
+          'existing.com': { autoTranslate: true, sourceLang: 'en' },
+          'new.com': { autoTranslate: false, targetLang: 'de' },
+        },
+      });
+    });
+
+    it('importRules throws on invalid hostname type', async () => {
+      const json = JSON.stringify({
+        '': { autoTranslate: true },
+      });
+
+      // Empty string is a valid key in JSON, but let's test with actual invalid type
+      const jsonWithNumber = JSON.stringify([
+        ['example.com', { autoTranslate: true }],
+      ]);
+
+      // This should parse but we can test the string validation
+      await expect(importRules('{"example.com": {"autoTranslate": "not boolean"}}')).rejects.toThrow();
+    });
+
+    it('clearAllRules handles storage with existing rules', async () => {
+      mockStorage['siteRules'] = {
+        'site1.com': { autoTranslate: true },
+        'site2.com': { autoTranslate: false },
+      };
+
+      await clearAllRules();
+
+      expect(chrome.storage.local.remove).toHaveBeenCalledWith('siteRules');
+    });
+
+    it('exportRules returns JSON with full rules structure', async () => {
+      mockStorage['siteRules'] = {
+        'example.com': {
+          autoTranslate: true,
+          sourceLang: 'en',
+          targetLang: 'fi',
+          preferredProvider: 'opus-mt-local',
+          strategy: 'fast',
+        },
+      };
+
+      const result = await exportRules();
+      const parsed = JSON.parse(result);
+
+      expect(parsed['example.com']).toEqual({
+        autoTranslate: true,
+        sourceLang: 'en',
+        targetLang: 'fi',
+        preferredProvider: 'opus-mt-local',
+        strategy: 'fast',
+      });
+    });
+
+    it('setRules overwrites existing rules for same hostname', async () => {
+      mockStorage['siteRules'] = {
+        'example.com': { autoTranslate: false, sourceLang: 'en' },
+      };
+
+      await setRules('example.com', { autoTranslate: true, targetLang: 'de' });
+
+      expect(chrome.storage.local.set).toHaveBeenCalledWith({
+        siteRules: {
+          'example.com': { autoTranslate: true, targetLang: 'de' },
+        },
+      });
+    });
+  });
 });

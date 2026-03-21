@@ -434,4 +434,212 @@ describe('PredictionEngine', () => {
       expect(stats.topDomains[0].detections).toBe(2);
     });
   });
+
+  describe('load() error handling', () => {
+    it('falls back to default data when storage throws', async () => {
+      const { safeStorageGet } = await import('./storage');
+      vi.mocked(safeStorageGet).mockRejectedValueOnce(new Error('storage corrupted'));
+
+      const engine = new PredictionEngine();
+      await engine.load();
+
+      // Should still work — using default data
+      await engine.recordDetection('https://example.com/page', 'fi');
+      const predictions = await engine.predict('https://example.com/page2');
+      // Engine should function normally after error fallback
+      expect(predictions).toBeInstanceOf(Array);
+    });
+  });
+
+  describe('global predictions sort', () => {
+    it('sorts global predictions by score when multiple languages exist', async () => {
+      vi.useFakeTimers();
+      const engine = new PredictionEngine();
+      await engine.load();
+      await engine.recordTranslation('en'); // target = 'en'
+
+      // Record multiple different languages on different domains
+      // These will contribute to global predictions for a new domain
+      await engine.recordDetection('https://french.com/page1', 'fr');
+      await engine.recordDetection('https://french.com/page2', 'fr');
+      await engine.recordDetection('https://french.com/page3', 'fr');
+      await engine.recordDetection('https://german.com/page1', 'de');
+      await engine.recordDetection('https://spanish.com/page1', 'es');
+
+      vi.advanceTimersByTime(2000);
+
+      // Predict for a brand new domain — should use global predictions
+      const predictions = await engine.predict('https://newdomain.com/page');
+
+      // Should include global predictions from other domains
+      expect(predictions.length).toBeGreaterThan(0);
+
+      // Verify that predictions are ordered (highest confidence first)
+      for (let i = 1; i < predictions.length; i++) {
+        expect(predictions[i - 1].confidence).toBeGreaterThanOrEqual(predictions[i].confidence);
+      }
+
+      vi.useRealTimers();
+    });
+  });
+});
+
+describe('createDefaultData (line 89)', () => {
+  it('creates default data when storage returns empty on load', async () => {
+    // Clear storage completely so createDefaultData() is called
+    Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
+
+    const engine = new PredictionEngine();
+    await engine.load();
+
+    const stats = await engine.getStats();
+    expect(stats.domainCount).toBe(0);
+    expect(stats.totalTranslations).toBe(0);
+    expect(stats.preferredTarget).toBe('en');
+    expect(stats.recentTranslations).toBe(0);
+  });
+});
+
+describe('predict: maxScore fallback || 1 (line 340)', () => {
+  it('handles domain entry where all language scores are zero', async () => {
+    vi.useFakeTimers();
+
+    // Directly set up storage with a domain entry that has count: 0
+    mockStorage['predictionData'] = {
+      domains: {
+        'zero-score.com': {
+          domain: 'zero-score.com',
+          languages: [{ language: 'fi', count: 0, lastSeen: Date.now() }],
+          totalDetections: 1,
+          firstSeen: Date.now(),
+          lastSeen: Date.now(),
+        },
+      },
+      preferredTarget: 'en',
+      totalTranslations: 5,
+      lastTranslation: Date.now(),
+      recentTranslations: 3,
+      recentWindowStart: Date.now(),
+    } as PredictionData;
+
+    const engine = new PredictionEngine();
+    await engine.load();
+
+    const predictions = await engine.predict('https://zero-score.com/page');
+    // With count: 0, score is 0, maxScore falls back to || 1
+    // fi !== 'en' (target), so it should produce a prediction with confidence 0
+    expect(predictions).toBeInstanceOf(Array);
+    if (predictions.length > 0) {
+      expect(predictions[0].confidence).toBe(0);
+    }
+
+    vi.useRealTimers();
+  });
+});
+
+describe('predict: skip target lang in global predictions (line 360)', () => {
+  it('skips language records matching targetLang in global predictions', async () => {
+    vi.useFakeTimers();
+
+    // Set up: target is 'en'. Other domains have 'en' language records.
+    // The global prediction loop should skip 'en' records.
+    mockStorage['predictionData'] = {
+      domains: {
+        'other-domain.com': {
+          domain: 'other-domain.com',
+          languages: [
+            { language: 'en', count: 10, lastSeen: Date.now() }, // should be skipped (matches target)
+            { language: 'fr', count: 5, lastSeen: Date.now() },
+          ],
+          totalDetections: 15,
+          firstSeen: Date.now() - 1000,
+          lastSeen: Date.now(),
+        },
+      },
+      preferredTarget: 'en',
+      totalTranslations: 5,
+      lastTranslation: Date.now(),
+      recentTranslations: 3,
+      recentWindowStart: Date.now(),
+    } as PredictionData;
+
+    const engine = new PredictionEngine();
+    await engine.load();
+
+    // Predict for a NEW domain — triggers global predictions from 'other-domain.com'
+    const predictions = await engine.predict('https://brand-new-domain.com/page');
+
+    // 'en' records should be skipped; only 'fr' should appear
+    expect(predictions.every((p) => p.sourceLang !== 'en')).toBe(true);
+    if (predictions.length > 0) {
+      expect(predictions[0].sourceLang).toBe('fr');
+    }
+
+    vi.useRealTimers();
+  });
+});
+
+describe('getPredictionEngine singleton (line 435)', () => {
+  it('returns a PredictionEngine instance on first call', async () => {
+    const { getPredictionEngine } = await import('./prediction-engine');
+    const instance = getPredictionEngine();
+    expect(instance).toBeInstanceOf(PredictionEngine);
+  });
+
+  it('returns the same instance on subsequent calls', async () => {
+    const { getPredictionEngine } = await import('./prediction-engine');
+    const instance1 = getPredictionEngine();
+    const instance2 = getPredictionEngine();
+    expect(instance1).toBe(instance2);
+  });
+});
+
+describe('Uncovered branches in predict', () => {
+  it('handles confidence normalization with default maxScore', async () => {
+    const engine = new PredictionEngine();
+    await engine.load();
+
+    // Record some activity
+    await engine.recordDetection('https://test-domain.com', 'es');
+    await engine.recordTranslation('en');
+
+    // Predict - should execute confidence normalization code
+    const predictions = await engine.predict('https://test-domain.com');
+    
+    expect(Array.isArray(predictions)).toBe(true);
+    if (predictions.length > 0) {
+      // Verify confidence is normalized to 0-1 range
+      predictions.forEach(p => {
+        expect(p.confidence).toBeGreaterThanOrEqual(0);
+        expect(p.confidence).toBeLessThanOrEqual(1);
+      });
+    }
+  });
+
+  it('predict returns valid predictions for existing domain', async () => {
+    const engine = new PredictionEngine();
+    await engine.load();
+
+    // Record detection for a domain
+    await engine.recordDetection('https://spanish-site.com', 'es');
+
+    // Predict should work and return predictions
+    const predictions = await engine.predict('https://spanish-site.com');
+
+    expect(Array.isArray(predictions)).toBe(true);
+  });
+
+  it('predict returns predictions for unknown domain using global history', async () => {
+    const engine = new PredictionEngine();
+    await engine.load();
+
+    // Record activity for one domain
+    await engine.recordDetection('https://domain1.com', 'es');
+    await engine.recordTranslation('en');
+
+    // Predict for completely different domain (should use global history)
+    const predictions = await engine.predict('https://completely-new-domain.com/page');
+
+    expect(Array.isArray(predictions)).toBe(true);
+  });
 });

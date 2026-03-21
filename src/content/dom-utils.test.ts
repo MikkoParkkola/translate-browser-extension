@@ -375,3 +375,101 @@ describe('getTextNodesFromNodes', () => {
     expect(result).not.toContain(shadowText);
   });
 });
+
+// ============================================================================
+// shouldSkip — getComputedStyle error path
+// ============================================================================
+
+describe('shouldSkip getComputedStyle error path', () => {
+  it('returns true when getComputedStyle throws for detached element', () => {
+    const el = document.createElement('div');
+    el.textContent = 'Test content';
+    // Do NOT append to document — element is detached
+
+    const origGetComputedStyle = window.getComputedStyle;
+    // Mock getComputedStyle to throw for detached elements (as real browsers do)
+    window.getComputedStyle = () => {
+      throw new Error('Failed to execute getComputedStyle on detached node');
+    };
+
+    try {
+      expect(shouldSkip(el)).toBe(true);
+    } finally {
+      window.getComputedStyle = origGetComputedStyle;
+    }
+  });
+
+  it('skips elements with isContentEditable = true (line 41 coverage)', () => {
+    const div = document.createElement('div');
+    document.body.appendChild(div);
+
+    // Mock isContentEditable property
+    Object.defineProperty(div, 'isContentEditable', {
+      value: true,
+      writable: false,
+    });
+
+    // When contentEditable is true, isContentEditable is true, so shouldSkip returns true
+    expect(shouldSkip(div)).toBe(true);
+
+    document.body.removeChild(div);
+  });
+});
+
+// ============================================================================
+// isValidText
+// ============================================================================
+
+describe('isValidText', () => {
+  it('returns false for null', () => {
+    expect(isValidText(null)).toBe(false);
+  });
+
+  it('returns false for text shorter than minTextLength', () => {
+    expect(isValidText('a')).toBe(false);
+  });
+
+  it('returns false for text longer than maxTextLength', () => {
+    const longText = 'a'.repeat(10001);
+    expect(isValidText(longText)).toBe(false);
+  });
+
+  it('returns false for whitespace-only text', () => {
+    expect(isValidText('   ')).toBe(false);
+  });
+
+  it('returns false for numbers-only text', () => {
+    expect(isValidText('12345')).toBe(false);
+  });
+
+  it('returns false for punctuation-only text', () => {
+    expect(isValidText('.,;!?')).toBe(false);
+  });
+
+  it('returns false for price/measure patterns (line 81 coverage)', () => {
+    // Test PRICE_OR_MEASURE_RE pattern matching
+    expect(isValidText('€29,99')).toBe(false);
+    expect(isValidText('$10.50')).toBe(false);
+    expect(isValidText('30%')).toBe(false);
+    expect(isValidText('1,5')).toBe(false);
+    expect(isValidText('£100')).toBe(false);
+    expect(isValidText('¥5000')).toBe(false);
+  });
+
+  it('returns false for code/URL patterns', () => {
+    expect(isValidText('https://example.com')).toBe(false);
+    expect(isValidText('www.example.com')).toBe(false);
+    expect(isValidText('//cdn.example.com')).toBe(false);
+    expect(isValidText('function test() {}')).toBe(false);
+    expect(isValidText('const x = 5')).toBe(false);
+  });
+
+  it('returns true for valid translatable text', () => {
+    expect(isValidText('Hello world')).toBe(true);
+    expect(isValidText('This is a sentence with multiple words')).toBe(true);
+  });
+
+  it('trims whitespace before validation', () => {
+    expect(isValidText('  hello world  ')).toBe(true);
+  });
+});

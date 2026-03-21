@@ -329,4 +329,50 @@ describe('Corrections Module', () => {
       expect(newResult).toBe('newcorr');
     });
   });
+
+  describe('saveCorrections error handling', () => {
+    it('handles storage.set failure in saveCorrections gracefully', async () => {
+      // Add a correction first (succeeds)
+      await correctionsModule.addCorrection('hello', 'hei', 'moi', 'en', 'fi');
+
+      // Now make storage.set fail
+      mockChrome.storage.local.set.mockRejectedValueOnce(new Error('save failed'));
+
+      // getCorrection calls saveCorrections in background (non-blocking)
+      const correction = await correctionsModule.getCorrection('hello', 'en', 'fi');
+      expect(correction).toBe('moi');
+
+      // Wait for the async save to complete/fail
+      await new Promise((r) => setTimeout(r, 50));
+      // Should not have thrown - error is caught and logged
+    });
+  });
+
+  describe('addCorrection edge cases', () => {
+    it('skips whitespace-only original', async () => {
+      await correctionsModule.addCorrection('   ', 'hei', 'moi', 'en', 'fi');
+      const corrections = await correctionsModule.getAllCorrections();
+      expect(corrections).toHaveLength(0);
+    });
+
+    it('skips whitespace-only userCorrection', async () => {
+      await correctionsModule.addCorrection('hello', 'hei', '   ', 'en', 'fi');
+      const corrections = await correctionsModule.getAllCorrections();
+      expect(corrections).toHaveLength(0);
+    });
+
+    it('skips null original', async () => {
+      await correctionsModule.addCorrection(null as unknown as string, 'hei', 'moi', 'en', 'fi');
+      const corrections = await correctionsModule.getAllCorrections();
+      expect(corrections).toHaveLength(0);
+    });
+  });
+
+  describe('loadCorrections error handling', () => {
+    it('returns empty map when storage.get throws', async () => {
+      mockChrome.storage.local.get.mockRejectedValueOnce(new Error('get error'));
+      const corrections = await correctionsModule.loadCorrections();
+      expect(corrections.size).toBe(0);
+    });
+  });
 });

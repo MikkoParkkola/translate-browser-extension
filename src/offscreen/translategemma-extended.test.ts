@@ -444,3 +444,88 @@ describe('getTranslateGemmaPipeline — concurrent load deduplication', () => {
     }
   });
 });
+
+// ============================================================================
+// Additional coverage: progress callback (line 159) and sendProgress catch
+// ============================================================================
+
+describe('getTranslateGemmaPipeline — progress callback coverage', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    mockSendMessage.mockReset();
+    mockGemmaFromPretrained.mockReset();
+    mockTokenizerFromPretrained.mockReset();
+    mockTokenizerFromPretrained.mockResolvedValue(mockTokenizerFn);
+    vi.stubGlobal('navigator', {
+      gpu: {
+        requestAdapter: vi.fn().mockResolvedValue({
+          features: new Set<string>([]),
+        }),
+      },
+    });
+  });
+
+  it('invokes progress callback with all fields populated', async () => {
+    mockGemmaFromPretrained.mockImplementation((_model: string, opts: Record<string, unknown>) => {
+      const cb = opts.progress_callback as (p: Record<string, unknown>) => void;
+      if (cb) {
+        cb({ status: 'downloading', progress: 50, file: 'model.onnx', loaded: 100, total: 200 });
+      }
+      return Promise.resolve(mockModel);
+    });
+
+    const { getTranslateGemmaPipeline } = await import('./translategemma');
+    await getTranslateGemmaPipeline();
+
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'modelProgress',
+        status: 'downloading',
+        progress: 50,
+        file: 'model.onnx',
+        loaded: 100,
+        total: 200,
+      })
+    );
+  });
+
+  it('uses default values when progress fields are missing', async () => {
+    mockGemmaFromPretrained.mockImplementation((_model: string, opts: Record<string, unknown>) => {
+      const cb = opts.progress_callback as (p: Record<string, unknown>) => void;
+      if (cb) {
+        // Empty object — all || and ?? defaults kick in
+        cb({});
+      }
+      return Promise.resolve(mockModel);
+    });
+
+    const { getTranslateGemmaPipeline } = await import('./translategemma');
+    await getTranslateGemmaPipeline();
+
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'modelProgress',
+        status: 'progress',  // default from || 'progress'
+        progress: 0,         // default from ?? 0
+        file: null,          // default from || null
+        loaded: null,        // default from || null
+        total: null,         // default from || null
+      })
+    );
+  });
+
+  it('handles sendMessage throwing in sendProgress (popup closed)', async () => {
+    mockSendMessage.mockImplementation(() => {
+      throw new Error('Could not establish connection');
+    });
+    mockGemmaFromPretrained.mockImplementation((_model: string, opts: Record<string, unknown>) => {
+      const cb = opts.progress_callback as (p: Record<string, unknown>) => void;
+      if (cb) cb({ status: 'downloading', progress: 25 });
+      return Promise.resolve(mockModel);
+    });
+
+    const { getTranslateGemmaPipeline } = await import('./translategemma');
+    // Should not throw even though sendMessage throws — sendProgress catches
+    await expect(getTranslateGemmaPipeline()).resolves.toBeDefined();
+  });
+});

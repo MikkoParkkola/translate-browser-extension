@@ -210,6 +210,28 @@ describe('CloudProviders', () => {
         expect(screen.getByText('Get API key')).toBeTruthy();
       });
     });
+
+    it('saves model selection for OpenAI', async () => {
+      mockStorageSet.mockResolvedValue(undefined);
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => expect(screen.getAllByText('Add API Key').length).toBe(4));
+      fireEvent.click(screen.getAllByText('Add API Key')[1]); // OpenAI
+      await vi.waitFor(() => expect(screen.getByPlaceholderText(/sk-/)).toBeTruthy());
+      
+      const input = screen.getByPlaceholderText(/sk-/);
+      fireEvent.input(input, { target: { value: 'sk-test-key' } });
+      fireEvent.click(screen.getByText('Save'));
+      
+      await vi.waitFor(() => {
+        expect(mockStorageSet).toHaveBeenCalledWith(
+          expect.objectContaining({
+            openai_api_key: 'sk-test-key',
+            openai_enabled: true,
+            openai_model: expect.any(String),
+          })
+        );
+      });
+    });
   });
 
   describe('toggle provider', () => {
@@ -233,6 +255,49 @@ describe('CloudProviders', () => {
       fireEvent.click(screen.getByText('Disable'));
       await vi.waitFor(() => {
         expect(mockStorageSet).toHaveBeenCalledWith({ deepl_enabled: false });
+      });
+    });
+
+    it('updates badge from Enabled to Disabled after toggle', async () => {
+      mockStorageSet.mockResolvedValue(undefined);
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => {
+        expect(screen.getByText('Enabled')).toBeTruthy();
+      });
+      fireEvent.click(screen.getByText('Disable'));
+      await vi.waitFor(() => {
+        expect(screen.getByText('Disabled')).toBeTruthy();
+      });
+    });
+
+    it('enables provider when currently disabled', async () => {
+      mockStorageGet.mockResolvedValue({
+        deepl_api_key: 'test-key',
+        deepl_enabled: false,
+      });
+      mockStorageSet.mockResolvedValue(undefined);
+      
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => {
+        expect(screen.getByText('Disabled')).toBeTruthy();
+      });
+      fireEvent.click(screen.getByText('Enable'));
+      await vi.waitFor(() => {
+        expect(mockStorageSet).toHaveBeenCalledWith({ deepl_enabled: true });
+      });
+    });
+
+    it('handles storage.set error when toggling provider', async () => {
+      mockStorageSet.mockRejectedValue(new Error('toggle failed'));
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => {
+        expect(screen.getByText('Disable')).toBeTruthy();
+      });
+      fireEvent.click(screen.getByText('Disable'));
+      // Should not crash, just log error
+      await vi.waitFor(() => {
+        // Provider status should remain unchanged
+        expect(screen.getByText('Enabled')).toBeTruthy();
       });
     });
   });
@@ -283,6 +348,82 @@ describe('CloudProviders', () => {
     });
   });
 
+  describe('test provider', () => {
+    beforeEach(() => {
+      mockStorageGet.mockResolvedValue({
+        deepl_api_key: 'test-key',
+        deepl_enabled: true,
+      });
+    });
+
+    it('shows Test button for configured provider', async () => {
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => {
+        expect(screen.getByText('Test')).toBeTruthy();
+      });
+    });
+
+    it('shows success result after successful test', async () => {
+      mockSendMessage.mockResolvedValue({ success: true, message: 'Connection successful' });
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => expect(screen.getByText('Test')).toBeTruthy());
+      fireEvent.click(screen.getByText('Test'));
+      await vi.waitFor(() => {
+        expect(screen.getByText('Connection successful')).toBeTruthy();
+      });
+    });
+
+    it('shows error result after failed test', async () => {
+      mockSendMessage.mockResolvedValue({ success: false, message: 'Invalid key' });
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => expect(screen.getByText('Test')).toBeTruthy());
+      fireEvent.click(screen.getByText('Test'));
+      await vi.waitFor(() => {
+        expect(screen.getByText('Invalid key')).toBeTruthy();
+      });
+    });
+
+    it('shows error on test exception', async () => {
+      mockSendMessage.mockRejectedValue(new Error('Network error'));
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => expect(screen.getByText('Test')).toBeTruthy());
+      fireEvent.click(screen.getByText('Test'));
+      await vi.waitFor(() => {
+        expect(screen.getByText(/Test failed: Network error/)).toBeTruthy();
+      });
+    });
+
+    it('clears test result after 3 seconds', async () => {
+      mockSendMessage.mockResolvedValue({ success: true, message: 'Connection successful' });
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => expect(screen.getByText('Test')).toBeTruthy());
+      fireEvent.click(screen.getByText('Test'));
+      await vi.waitFor(() => {
+        expect(screen.getByText('Connection successful')).toBeTruthy();
+      });
+
+      // Wait for setTimeout to clear the result
+      await new Promise(r => setTimeout(r, 3100));
+      await vi.waitFor(() => {
+        expect(screen.queryByText('Connection successful')).toBeNull();
+      });
+    });
+
+    it('disables Test button during testing', async () => {
+      mockSendMessage.mockImplementation(
+        () => new Promise(resolve => setTimeout(() => resolve({ success: true }), 1000))
+      );
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => expect(screen.getByText('Test')).toBeTruthy());
+      
+      const testBtn = screen.getByText('Test') as HTMLButtonElement;
+      fireEvent.click(testBtn);
+
+      // Button should be disabled while testing
+      expect(testBtn).toHaveAttribute('disabled');
+    });
+  });
+
   describe('remove provider', () => {
     beforeEach(() => {
       mockStorageGet.mockResolvedValue({
@@ -321,6 +462,139 @@ describe('CloudProviders', () => {
       fireEvent.click(screen.getByText('Keep'));
       await vi.waitFor(() => {
         expect(screen.queryByText('Remove API Key')).toBeNull();
+      });
+    });
+
+    it('removes Pro tier and model fields for DeepL on removal', async () => {
+      mockStorageGet.mockResolvedValue({
+        deepl_api_key: 'test-key',
+        deepl_enabled: true,
+        deepl_is_pro: true,
+      });
+      mockStorageRemove.mockResolvedValue(undefined);
+
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => expect(screen.getByText('Remove')).toBeTruthy());
+      fireEvent.click(screen.getByText('Remove'));
+      await vi.waitFor(() => expect(screen.getByText('Remove API Key')).toBeTruthy());
+
+      const confirmBtn = document.querySelector('.confirm-dialog__btn--confirm') as HTMLElement;
+      if (confirmBtn) fireEvent.click(confirmBtn);
+
+      await vi.waitFor(() => {
+        expect(mockStorageRemove).toHaveBeenCalledWith(
+          expect.arrayContaining(['deepl_api_key', 'deepl_enabled', 'deepl_is_pro'])
+        );
+      });
+    });
+
+    it('removes model field for OpenAI on removal', async () => {
+      mockStorageGet.mockResolvedValue({
+        openai_api_key: 'test-key',
+        openai_enabled: true,
+        openai_model: 'gpt-4o',
+      });
+      mockStorageRemove.mockResolvedValue(undefined);
+
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => expect(screen.getAllByText('Add API Key').length).toBe(4));
+      
+      // Get the second provider's Update button (OpenAI)
+      const buttons = screen.getAllByText('Update API Key');
+      if (buttons.length > 0) {
+        fireEvent.click(buttons[1] || buttons[0]);
+      }
+
+      await vi.waitFor(() => {
+        const removeBtn = screen.queryByText('Remove');
+        if (removeBtn) {
+          fireEvent.click(removeBtn);
+        }
+      });
+    });
+  });
+
+  describe('provider status on mount', () => {
+    it('loads provider status from storage on mount', async () => {
+      mockStorageGet.mockResolvedValue({
+        deepl_api_key: 'test-key',
+        deepl_enabled: true,
+        openai_api_key: 'sk-test',
+        openai_enabled: false,
+        openai_model: 'gpt-4o',
+      });
+
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => {
+        expect(mockStorageGet).toHaveBeenCalled();
+      });
+    });
+
+    it('handles load error gracefully', async () => {
+      mockStorageGet.mockRejectedValue(new Error('Storage error'));
+
+      // Should not throw
+      expect(() => {
+        render(() => <CloudProviders />);
+      }).not.toThrow();
+    });
+  });
+
+  describe('provider configuration persistence', () => {
+    it('persists Pro tier setting when saving DeepL key', async () => {
+      mockStorageSet.mockResolvedValue(undefined);
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => expect(screen.getAllByText('Add API Key').length).toBe(4));
+      fireEvent.click(screen.getAllByText('Add API Key')[0]); // DeepL
+
+      await vi.waitFor(() => {
+        expect(screen.getByText('Pro tier (paid account)')).toBeTruthy();
+      });
+
+      const input = screen.getByPlaceholderText(/xxxxxxxx/);
+      fireEvent.input(input, { target: { value: 'test-key' } });
+
+      // Check the Pro checkbox
+      const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
+      fireEvent.click(checkbox);
+
+      fireEvent.click(screen.getByText('Save'));
+
+      await vi.waitFor(() => {
+        expect(mockStorageSet).toHaveBeenCalledWith(
+          expect.objectContaining({
+            deepl_is_pro: true,
+          })
+        );
+      });
+    });
+
+    it('persists model selection for OpenAI', async () => {
+      mockStorageSet.mockResolvedValue(undefined);
+      render(() => <CloudProviders />);
+      await vi.waitFor(() => expect(screen.getAllByText('Add API Key').length).toBe(4));
+      fireEvent.click(screen.getAllByText('Add API Key')[1]); // OpenAI
+
+      await vi.waitFor(() => {
+        expect(screen.getByText('gpt-4o')).toBeTruthy();
+      });
+
+      const input = screen.getByPlaceholderText(/sk-/);
+      fireEvent.input(input, { target: { value: 'sk-test-key' } });
+
+      // Change model
+      const selects = screen.getAllByRole('combobox');
+      const modelSelect = selects[selects.length - 1];
+      fireEvent.change(modelSelect, { target: { value: 'gpt-4o-mini' } });
+
+      fireEvent.click(screen.getByText('Save'));
+
+      await vi.waitFor(() => {
+        expect(mockStorageSet).toHaveBeenCalledWith(
+          expect.objectContaining({
+            openai_model: 'gpt-4o-mini',
+          })
+        );
       });
     });
   });

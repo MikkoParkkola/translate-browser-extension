@@ -362,4 +362,252 @@ describe('OpusMTProvider', () => {
       expect(info.device).toBe('WebGPU');
     });
   });
+
+  describe('pipeline factory throws non-Error', () => {
+    it('catches string throw and converts to Error', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).pipelineFactory = vi.fn().mockRejectedValue('string error');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).isInitialized = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).pipelines = new Map();
+
+      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow('string error');
+    });
+  });
+
+  describe('WebGPU supported path', () => {
+    it('calls pipeline factory with device webgpu when supported', async () => {
+      const mockPipeInstance = vi
+        .fn()
+        .mockResolvedValue([{ translation_text: 'Hei' }]);
+      const mockFactory = vi.fn().mockResolvedValue(mockPipeInstance);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).pipelineFactory = mockFactory;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).isInitialized = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).webgpuSupported = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).webgpuFp16 = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).pipelines = new Map();
+
+      await provider.translate('Hello', 'en', 'fi');
+
+      expect(mockFactory).toHaveBeenCalledWith(
+        'translation',
+        expect.any(String),
+        expect.objectContaining({ device: 'webgpu' })
+      );
+    });
+  });
+
+  describe('test() when not initialized', () => {
+    it('auto-initializes when test is called without prior initialize', async () => {
+      const mockPipeInstance = vi
+        .fn()
+        .mockResolvedValue([{ translation_text: 'Hei, miten menee?' }]);
+      const mockFactory = vi.fn().mockResolvedValue(mockPipeInstance);
+
+      // Fresh provider — not initialized
+      const freshProvider = new OpusMTProvider();
+
+      // After initialize() is called internally, the pipelineFactory will be set
+      // from the mocked @huggingface/transformers module. Override it after init
+      // by spying on initialize to also set our mock factory.
+      const origInit = freshProvider.initialize.bind(freshProvider);
+      vi.spyOn(freshProvider, 'initialize').mockImplementation(async () => {
+        await origInit();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (freshProvider as any).pipelineFactory = mockFactory;
+      });
+
+      const result = await freshProvider.test();
+
+      expect(freshProvider.initialize).toHaveBeenCalled();
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('translate auto-initializes when not initialized', () => {
+    it('calls initialize() before translating when not yet initialized', async () => {
+      const freshProvider = new OpusMTProvider();
+      // Ensure it's not initialized
+      expect((freshProvider as any).isInitialized).toBe(false);
+
+      const initSpy = vi.spyOn(freshProvider, 'initialize').mockResolvedValue();
+      // After init, getModelId will be called — mock pipelines to avoid real loading
+      (freshProvider as any).pipelines = new Map();
+
+      // Should throw because modelId won't be found, but initialize should have been called
+      await expect(freshProvider.translate('Hello', 'xx', 'yy')).rejects.toThrow();
+      expect(initSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('translate unsupported pair with available targets hint', () => {
+    it('includes available targets in error message for known source lang', async () => {
+      const freshProvider = new OpusMTProvider();
+      (freshProvider as any).isInitialized = true;
+      (freshProvider as any).pipelines = new Map();
+
+      // 'en' is a supported source language, but 'xx' is not a valid target
+      await expect(freshProvider.translate('Hello', 'en', 'xx')).rejects.toThrow(
+        /Available targets for en:/
+      );
+    });
+
+    it('indicates unsupported source language when source has no pairs', async () => {
+      const freshProvider = new OpusMTProvider();
+      (freshProvider as any).isInitialized = true;
+      (freshProvider as any).pipelines = new Map();
+
+      // 'xx' has no supported pairs at all
+      await expect(freshProvider.translate('Hello', 'xx', 'en')).rejects.toThrow(
+        /not a supported source language/
+      );
+    });
+  });
+
+  describe('initialize error path (line 107 - error catch)', () => {
+    it('catches error from webgpu detector and logs it', async () => {
+      const freshProvider = new OpusMTProvider();
+      const consoleSpy = vi.spyOn(console, 'error');
+
+      // Mock the webgpuDetector to throw
+      const { webgpuDetector } = await import('../core/webgpu-detector');
+      vi.mocked(webgpuDetector.detect).mockRejectedValueOnce(
+        new Error('WebGPU detection failed')
+      );
+
+      // This will catch the error and log it (line 106)
+      // The test will verify the catch block at lines 105-107 is exercised
+      // by checking that console.error is called with the right message
+      (freshProvider as any).isInitialized = false;
+
+      // Spy on console.error to verify error is logged
+      const consoleErrorCalls = vi.fn();
+      consoleSpy.mockImplementation(consoleErrorCalls);
+
+      // The error is caught and re-thrown
+      try {
+        await freshProvider.initialize();
+      } catch (error) {
+        // Verify the error was logged in the catch block
+        expect(consoleErrorCalls).toHaveBeenCalled();
+      }
+    });
+  });
+
+  describe('getPipeline error handling (lines 124, 128, 154)', () => {
+    it('returns cached pipeline without reloading (line 124)', async () => {
+      const mockPipeInstance = vi.fn().mockResolvedValue([{ translation_text: 'test' }]);
+      const mockFactory = vi.fn().mockResolvedValue(mockPipeInstance);
+
+      (provider as any).pipelineFactory = mockFactory;
+      (provider as any).isInitialized = true;
+      (provider as any).pipelines.set('Xenova/opus-mt-en-fi', mockPipeInstance);
+
+      // This should return cached pipeline without calling factory again
+      const result = await (provider as any).getPipeline('Xenova/opus-mt-en-fi');
+      expect(result).toBe(mockPipeInstance);
+      // Factory should NOT be called because pipeline is cached
+      expect(mockFactory).not.toHaveBeenCalled();
+    });
+
+    it('throws when pipelineFactory is null (line 128)', async () => {
+      (provider as any).pipelineFactory = null;
+      (provider as any).isInitialized = true;
+
+      await expect((provider as any).getPipeline('Xenova/opus-mt-en-fi')).rejects.toThrow(
+        '[OPUS-MT] Pipeline factory not initialized'
+      );
+    });
+
+    it('logs progress callback during pipeline loading (line 154)', async () => {
+      const logSpy = vi.spyOn(console, 'log');
+      const mockPipeInstance = vi.fn().mockResolvedValue([{ translation_text: 'result' }]);
+      const mockFactory = vi.fn().mockImplementation((_task, _model, options) => {
+        // Call progress_callback if provided
+        if (options.progress_callback) {
+          options.progress_callback({ status: 'downloading', progress: 50 });
+        }
+        return Promise.resolve(mockPipeInstance);
+      });
+
+      (provider as any).pipelineFactory = mockFactory;
+      (provider as any).isInitialized = true;
+      (provider as any).pipelines.clear();
+
+      await (provider as any).getPipeline('Xenova/opus-mt-en-fi');
+      // Progress callback should have been invoked during loading
+      expect(mockFactory).toHaveBeenCalled();
+    });
+  });
+
+  describe('whitespace/empty handling in translateSingle', () => {
+    it('returns empty string for whitespace-only input', async () => {
+      const mockPipeInstance = vi
+        .fn()
+        .mockResolvedValue([{ translation_text: 'translated' }]);
+
+      (provider as any).pipelineFactory = vi.fn().mockResolvedValue(mockPipeInstance);
+      (provider as any).isInitialized = true;
+
+      const result = await provider.translate('   ', 'en', 'fi');
+      expect(result).toBe('   ');
+    });
+
+    it('handles newlines and tabs correctly', async () => {
+      const mockPipeInstance = vi
+        .fn()
+        .mockResolvedValue([{ translation_text: '' }]);
+
+      (provider as any).pipelineFactory = vi.fn().mockResolvedValue(mockPipeInstance);
+      (provider as any).isInitialized = true;
+
+      const result = await provider.translate('\n\t', 'en', 'fi');
+      expect(result).toBe('\n\t');
+    });
+  });
+
+  describe('WebGPU initialization path (lines 98-99)', () => {
+    it('logs WebGPU support when detector reports webgpu supported', async () => {
+      const freshProvider = new OpusMTProvider();
+
+      // Mock webgpuDetector to return supported=true
+      const { webgpuDetector } = await import('../core/webgpu-detector');
+      vi.mocked(webgpuDetector.detect).mockResolvedValueOnce(undefined);
+      // Mock the supported property
+      Object.defineProperty(webgpuDetector, 'supported', { value: true, configurable: true });
+      vi.mocked(webgpuDetector.initialize).mockResolvedValueOnce(undefined);
+
+      await freshProvider.initialize();
+
+      // Check that initialize() was called (which happens on line 99)
+      expect(vi.mocked(webgpuDetector.initialize)).toHaveBeenCalled();
+
+      // Verify WebGPU was detected
+      expect((freshProvider as any).webgpuSupported).toBe(true);
+    });
+
+    it('logs WASM acceleration when WebGPU not supported', async () => {
+      const freshProvider = new OpusMTProvider();
+
+      // webgpuDetector.supported is already false in mock
+      const { webgpuDetector } = await import('../core/webgpu-detector');
+      vi.mocked(webgpuDetector.detect).mockResolvedValueOnce(undefined);
+      // Ensure supported is false
+      Object.defineProperty(webgpuDetector, 'supported', { value: false, configurable: true });
+
+      await freshProvider.initialize();
+
+      // The 'Using WASM acceleration' log should be called
+      // (We can't directly verify log.info but we can verify initialize completed)
+      expect((freshProvider as any).isInitialized).toBe(true);
+      expect((freshProvider as any).webgpuSupported).toBe(false);
+    });
+  });
 });

@@ -418,7 +418,38 @@ describe('image-translator', () => {
   });
 
   // =========================================================================
-  // translateImage — imageUrlToDataUrl failure
+  // translateImage — canvas getContext returns null
+  // =========================================================================
+
+  describe('translateImage — canvas context unavailable', () => {
+    it('shows error toast when canvas getContext returns null for loaded DOM image', async () => {
+      const imageUrl = 'https://example.com/no-ctx.png';
+      injectLoadedImage(imageUrl);
+
+      // Mock canvas to return null context
+      const realCreateElement = document.createElement.bind(document);
+      const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+        if (tag === 'canvas') {
+          return {
+            getContext: () => null,
+            width: 0,
+            height: 0,
+          } as unknown as HTMLElement;
+        }
+        return realCreateElement(tag);
+      });
+
+      await translateImage(imageUrl);
+      spy.mockRestore();
+
+      expect(mockShowErrorToast).toHaveBeenCalledWith(
+        expect.stringContaining('Cannot access image')
+      );
+    });
+  });
+
+  // =========================================================================
+  // translateImage — image load failure
   // =========================================================================
 
   describe('translateImage — image load failure', () => {
@@ -451,8 +482,153 @@ describe('image-translator', () => {
   });
 
   // =========================================================================
-  // clearImageOverlays — removes multiple overlays
+  // Canvas error handling (lines 113-126, 290-302)
   // =========================================================================
+
+  describe('canvas toDataURL error handling (line 123-125)', () => {
+    it('handles toDataURL throwing CORS error', async () => {
+      const imageUrl = 'https://example.com/cors-data-url.png';
+      injectLoadedImage(imageUrl);
+
+      // Mock canvas toDataURL to throw CORS error
+      const realCreateElement = document.createElement.bind(document);
+      const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+        if (tag === 'canvas') {
+          return {
+            getContext: () => ({ drawImage: vi.fn() }),
+            toDataURL: () => {
+              throw new Error('Cannot access image due to CORS policy');
+            },
+            width: 0,
+            height: 0,
+          } as unknown as HTMLElement;
+        }
+        return realCreateElement(tag);
+      });
+
+      await translateImage(imageUrl);
+      spy.mockRestore();
+
+      expect(mockShowErrorToast).toHaveBeenCalledWith(
+        expect.stringContaining('Cannot access image')
+      );
+    });
+
+    it('handles canvas getContext throwing (security restriction)', async () => {
+      const imageUrl = 'https://example.com/canvas-ctx-throw.png';
+      injectLoadedImage(imageUrl);
+
+      const realCreateElement = document.createElement.bind(document);
+      const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+        if (tag === 'canvas') {
+          return {
+            getContext: () => {
+              throw new Error('Canvas access denied');
+            },
+            width: 0,
+            height: 0,
+          } as unknown as HTMLElement;
+        }
+        return realCreateElement(tag);
+      });
+
+      await translateImage(imageUrl);
+      spy.mockRestore();
+
+      expect(mockShowErrorToast).toHaveBeenCalled();
+    });
+  });
+
+  describe('error message classification (lines 290-302)', () => {
+    it('shows CORS error message for CORS-related translation errors', async () => {
+      const imageUrl = 'https://example.com/cors-error.png';
+      injectLoadedImage(imageUrl);
+      const restore = mockCanvas();
+
+      // Create an error during OCR that contains CORS
+      mockSendMessage.mockRejectedValueOnce(new Error('Request failed: CORS policy blocks this'));
+
+      await translateImage(imageUrl);
+      restore();
+
+      expect(mockShowErrorToast).toHaveBeenCalledWith(
+        expect.stringContaining('Cannot translate: Image is from another website')
+      );
+    });
+
+    it('shows Canvas security error message for Canvas/tainted errors from OCR', async () => {
+      const imageUrl = 'https://example.com/tainted-canvas.png';
+      injectLoadedImage(imageUrl);
+      const restore = mockCanvas();
+
+      mockSendMessage.mockRejectedValueOnce(new Error('Canvas tainted - security policy prevents export'));
+
+      await translateImage(imageUrl);
+      restore();
+
+      expect(mockShowErrorToast).toHaveBeenCalledWith(
+        expect.stringContaining('Cannot translate: Browser security prevents accessing this image')
+      );
+    });
+
+    it('shows timeout error message for timeout errors', async () => {
+      const imageUrl = 'https://example.com/timeout.png';
+      injectLoadedImage(imageUrl);
+      const restore = mockCanvas();
+
+      mockSendMessage.mockRejectedValueOnce(new Error('Timeout: OCR took too long (30s)'));
+
+      await translateImage(imageUrl);
+      restore();
+
+      expect(mockShowErrorToast).toHaveBeenCalledWith(
+        expect.stringContaining('Image translation timed out')
+      );
+    });
+
+    it('shows truncated generic error message for unknown errors', async () => {
+      const imageUrl = 'https://example.com/unknown-error.png';
+      injectLoadedImage(imageUrl);
+      const restore = mockCanvas();
+
+      const longErrorMsg = 'This is a very long error message that should be truncated to 50 characters for display';
+      mockSendMessage.mockRejectedValueOnce(new Error(longErrorMsg));
+
+      await translateImage(imageUrl);
+      restore();
+
+      expect(mockShowErrorToast).toHaveBeenCalledWith(
+        expect.stringContaining('Image translation failed')
+      );
+    });
+  });
+
+  describe('error handling with canvas context null + translation (lines 113-126)', () => {
+    it('shows "Cannot access image" when canvas context is null', async () => {
+      const imageUrl = 'https://example.com/null-ctx.png';
+      injectLoadedImage(imageUrl);
+
+      const realCreateElement = document.createElement.bind(document);
+      const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+        if (tag === 'canvas') {
+          return {
+            getContext: () => null,  // Line 117 condition
+            toDataURL: () => 'data:image/png;base64,TEST',
+            width: 200,
+            height: 200,
+          } as unknown as HTMLElement;
+        }
+        return realCreateElement(tag);
+      });
+
+      await translateImage(imageUrl);
+      spy.mockRestore();
+
+      expect(mockShowErrorToast).toHaveBeenCalledWith(
+        expect.stringContaining('Cannot access image')
+      );
+    });
+  });
 
   describe('clearImageOverlays — clears multiple', () => {
     it.skip('removes all overlays created across multiple translateImage calls (DOM state leak between tests)', async () => {

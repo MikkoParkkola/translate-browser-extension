@@ -5,7 +5,8 @@
  * and the resetPdfjsLoader cleanup function.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
+
 
 // Mock the logger
 vi.mock('../core/logger', () => ({
@@ -127,6 +128,15 @@ describe('pdf-loader', () => {
       await expect(loadPdfjs()).rejects.toThrow();
       // No hang — loadingPromise properly nulled after failure
     });
+
+    it('reuses loadingPromise for concurrent calls (lines 106-107)', async () => {
+      // Start both calls synchronously — second sees loadingPromise still pending
+      const p1 = loadPdfjs();
+      const p2 = loadPdfjs();
+      // Both reject because dynamic import is unavailable in test env
+      await expect(p1).rejects.toThrow();
+      await expect(p2).rejects.toThrow();
+    });
   });
 
   // =========================================================================
@@ -195,6 +205,105 @@ describe('pdf-loader', () => {
         injectScript('chrome-extension://test/chunks/bad.js')
       ).rejects.toThrow();
       expect(removeSpy).toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
+  // loadPdfjs – success & branch coverage via mocked dynamic import
+  // =========================================================================
+
+  describe('loadPdfjs – mocked dynamic import', () => {
+    /**
+     * Re-import pdf-loader with _deps.dynamicImport spied to return mockModule.
+     * Uses vi.spyOn on the exported _deps object so the real dynamic import()
+     * (which has @vite-ignore and can't be intercepted by vi.doMock) is bypassed.
+     */
+    async function freshImport(mockModule: Record<string, unknown>) {
+      vi.resetModules();
+
+      vi.doMock('../core/logger', () => ({
+        createLogger: () => ({
+          info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(),
+        }),
+      }));
+      vi.doMock('../core/browser-api', () => ({
+        browserAPI: {
+          runtime: {
+            getURL: (path: string) => `chrome-extension://test-id/${path}`,
+          },
+        },
+      }));
+
+      const mod = await import('./pdf-loader');
+      vi.spyOn(mod._deps, 'dynamicImport').mockResolvedValue(mockModule);
+      return mod;
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('sets workerSrc, caches result, and returns pdfjs (lines 138-143)', async () => {
+      const mockPdfjs = {
+        getDocument: vi.fn(),
+        GlobalWorkerOptions: { workerSrc: '' },
+      };
+      const { loadPdfjs: load, isPdfjsLoaded: isLoaded } = await freshImport({
+        default: mockPdfjs,
+      });
+
+      const result = await load();
+      expect(result).toBe(mockPdfjs);
+      expect(result.GlobalWorkerOptions.workerSrc).toBe(
+        'chrome-extension://test-id/chunks/pdf.worker.min.mjs'
+      );
+      expect(isLoaded()).toBe(true);
+    });
+
+    it('returns cached pdfjs on subsequent call (line 102)', async () => {
+      const mockPdfjs = {
+        getDocument: vi.fn(),
+        GlobalWorkerOptions: { workerSrc: '' },
+      };
+      const { loadPdfjs: load } = await freshImport({ default: mockPdfjs });
+
+      const first = await load();
+      const second = await load();
+      expect(second).toBe(first);
+    });
+
+    it('concurrent successful calls return same pdfjs (lines 106-107)', async () => {
+      const mockPdfjs = {
+        getDocument: vi.fn(),
+        GlobalWorkerOptions: { workerSrc: '' },
+      };
+      const { loadPdfjs: load } = await freshImport({ default: mockPdfjs });
+
+      const [r1, r2] = await Promise.all([load(), load()]);
+      expect(r1).toBe(r2);
+      expect(r1).toBe(mockPdfjs);
+    });
+
+    it('falls back to module itself when no default export (line 128)', async () => {
+      const mockModule = {
+        getDocument: vi.fn(),
+        GlobalWorkerOptions: { workerSrc: '' },
+      };
+      // Factory returns object without "default" key
+      const { loadPdfjs: load } = await freshImport(mockModule);
+
+      const result = await load();
+      expect(typeof result.getDocument).toBe('function');
+    });
+
+    it('throws on invalid exports without getDocument (lines 130-134)', async () => {
+      const { loadPdfjs: load } = await freshImport({
+        default: { notPdfjs: true },
+      });
+
+      await expect(load()).rejects.toThrow(
+        'pdfjs chunk loaded but exports are invalid'
+      );
     });
   });
 });
