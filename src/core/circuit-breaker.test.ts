@@ -261,3 +261,55 @@ describe('CircuitBreaker', () => {
     });
   });
 });
+
+// =========================================================================
+// Edge case: State transitions and timing
+// =========================================================================
+
+describe('CircuitBreaker — advanced state transitions', () => {
+  it('transitions OPEN → HALF_OPEN → CLOSED on successful probe', () => {
+    const breaker = new CircuitBreaker({ failureThreshold: 2, recoveryTimeoutMs: 100 });
+    
+    // Open the circuit with 2 failures
+    expect(breaker.isAvailable('provider1')).toBe(true);
+    breaker.recordFailure('provider1');
+    breaker.recordFailure('provider1');
+    expect(breaker.getState('provider1').state).toBe('open');
+
+    // Wait for recovery timeout
+    vi.useFakeTimers();
+    vi.advanceTimersByTime(150);
+
+    // Should transition to HALF_OPEN on next check
+    expect(breaker.isAvailable('provider1')).toBe(true);
+    expect(breaker.getState('provider1').state).toBe('half_open');
+
+    // Success should close the circuit
+    breaker.recordSuccess('provider1');
+    expect(breaker.getState('provider1').state).toBe('closed');
+    expect(breaker.getState('provider1').consecutiveFailures).toBe(0);
+
+    vi.useRealTimers();
+  });
+
+  it('immediately reopens circuit on failure during HALF_OPEN', () => {
+    const breaker = new CircuitBreaker({ failureThreshold: 1, recoveryTimeoutMs: 50 });
+
+    // Open circuit
+    breaker.recordFailure('provider1');
+    expect(breaker.getState('provider1').state).toBe('open');
+
+    // Transition to HALF_OPEN
+    vi.useFakeTimers();
+    vi.advanceTimersByTime(100);
+    expect(breaker.isAvailable('provider1')).toBe(true);
+    expect(breaker.getState('provider1').state).toBe('half_open');
+
+    // Failure in HALF_OPEN should immediately reopen without waiting
+    breaker.recordFailure('provider1');
+    expect(breaker.getState('provider1').state).toBe('open');
+    expect(breaker.getState('provider1').consecutiveFailures).toBe(2);
+
+    vi.useRealTimers();
+  });
+});
