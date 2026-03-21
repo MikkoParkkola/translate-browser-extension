@@ -58,7 +58,7 @@ interface Step {
   icon: string;
 }
 
-function OnboardingApp() {
+export function OnboardingApp() {
   const [step, setStep] = createSignal(0);
   const [targetLang, setTargetLang] = createSignal('en');
   const [model, setModel] = createSignal('opus-mt');
@@ -494,4 +494,7 @@ function OnboardingApp() {
   );
 }
 
-render(() => <OnboardingApp />, document.getElementById('root')!);
+const rootEl = document.getElementById('root');
+if (rootEl) {
+  render(() => <OnboardingApp />, rootEl);
+}
