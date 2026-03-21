@@ -502,7 +502,10 @@ describe('history', () => {
   it('hides history element when widgetHistory is cleared (lines 304-305)', async () => {
     mockSendMessage.mockResolvedValue({ success: true, result: 'translated!' });
     vi.useFakeTimers();
-    const { showFloatingWidget } = await freshWidget();
+    const module = await freshWidget();
+    const { showFloatingWidget, __testExports } = module;
+    const testExports = __testExports();
+
     showFloatingWidget();
     vi.runAllTimers();
 
@@ -516,17 +519,13 @@ describe('history', () => {
 
     const history = document.querySelector('.widget-history') as HTMLElement;
     expect(history.style.display).toBe('block');
+    expect(history.innerHTML).toContain('hello');
 
-    // Clear by getting the internal state via fresh module (can't clear directly)
-    // Instead, test by triggering updateWidgetHistory when widgetHistory is empty
-    // This is done by clearing the input and translating an empty string repeatedly
-    // to simulate the case where history becomes empty
-    input.value = '';
-    translateBtn.click();
-    await vi.runAllTimersAsync();
+    // Now clear history and verify it hides (lines 304-305)
+    testExports.clearWidgetHistory();
+    testExports.updateWidgetHistory();
 
-    // After translation fails or empty, history should still be there
-    // Now manually verify that empty history hides by checking the logic path
-    // History is hidden when widgetHistory.length === 0, which occurs in updateWidgetHistory
+    // History should be hidden when empty
+    expect(history.style.display).toBe('none');
   });
 });

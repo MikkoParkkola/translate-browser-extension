@@ -306,6 +306,17 @@ describe('OpenAIProvider', () => {
       await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
     });
 
+    it('handles API errors when response.text() fails (line 215)', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: () => Promise.reject(new Error('Failed to read error body')),
+        headers: { get: () => null },
+      });
+
+      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+    });
+
     it('handles rate limits', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,

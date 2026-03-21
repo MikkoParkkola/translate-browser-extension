@@ -361,3 +361,13 @@ export function toggleFloatingWidget(): boolean {
   }
   return widgetVisible;
 }
+
+// Test exports (for testing uncovered branches)
+export function __testExports() {
+  return {
+    addToWidgetHistory,
+    updateWidgetHistory,
+    getWidgetHistory: () => [...widgetHistory],
+    clearWidgetHistory: () => widgetHistory.splice(0),
+  };
+}

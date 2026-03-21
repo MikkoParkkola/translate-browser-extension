@@ -295,6 +295,59 @@ describe('SiteRulesSettings', () => {
         expect(screen.getByText('Failed to update rule')).toBeTruthy();
       });
     });
+
+    it('loads all optional fields when editing rule with full config (lines 128-131)', async () => {
+      (siteRules.setRules as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (siteRules.getAllRules as ReturnType<typeof vi.fn>).mockResolvedValueOnce(MOCK_RULES);
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getAllByText('Edit').length).toBe(2));
+
+      // Edit the first rule which has all fields set
+      fireEvent.click(screen.getAllByText('Edit')[0]);
+
+      await vi.waitFor(() => {
+        // Verify Provider field is loaded
+        const providerSelects = screen.getAllByDisplayValue('DeepL') as HTMLSelectElement[];
+        expect(providerSelects.length).toBeGreaterThan(0);
+
+        // Verify Strategy field is loaded
+        const strategySelects = screen.getAllByDisplayValue('Quality') as HTMLSelectElement[];
+        expect(strategySelects.length).toBeGreaterThan(0);
+
+        // Verify Source Language is loaded
+        const sourceLangSelects = screen.getAllByDisplayValue('English') as HTMLSelectElement[];
+        expect(sourceLangSelects.length).toBeGreaterThan(0);
+
+        // Verify Target Language is loaded
+        const targetLangSelects = screen.getAllByDisplayValue('Finnish') as HTMLSelectElement[];
+        expect(targetLangSelects.length).toBeGreaterThan(0);
+      });
+    });
+
+    it('initializes optional fields to empty string when not provided (lines 128-131)', async () => {
+      (siteRules.setRules as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (siteRules.getAllRules as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        'minimal.org': {
+          autoTranslate: false,
+          // No preferredProvider, sourceLang, targetLang, or strategy
+        },
+      });
+      render(() => <SiteRulesSettings />);
+      await vi.waitFor(() => expect(screen.getByText('minimal.org')).toBeTruthy());
+
+      // Edit the rule which has minimal config
+      const editBtn = screen.getByText('Edit');
+      fireEvent.click(editBtn);
+
+      await vi.waitFor(() => {
+        // All optional fields should have "Use default" option selected
+        const selects = screen.getAllByRole('combobox') as HTMLSelectElement[];
+        expect(selects.length).toBeGreaterThan(0);
+        // The Provider, Strategy, Source Lang, and Target Lang selects should show "Use default"
+        const defaultOptions = screen.getAllByText('Use default');
+        expect(defaultOptions.length).toBeGreaterThan(0);
+      });
+    });
   });
 
   describe('delete rule', () => {
