@@ -265,4 +265,40 @@ describe('CacheSettings', () => {
       });
     });
   });
+
+  describe('progress bar styling', () => {
+    it('shows danger class for high usage >80%', async () => {
+      mockSendMessage.mockResolvedValue({
+        stats: { ...MOCK_STATS, totalSize: 90 * 1024 * 1024, maxSize: 100 * 1024 * 1024 },
+      });
+      render(() => <CacheSettings />);
+      await vi.waitFor(() => {
+        const progressFill = document.querySelector('.progress-fill');
+        expect(progressFill?.className).toContain('danger');
+      });
+    });
+
+    it('shows warning class for medium usage 50-80%', async () => {
+      mockSendMessage.mockResolvedValue({
+        stats: { ...MOCK_STATS, totalSize: 60 * 1024 * 1024, maxSize: 100 * 1024 * 1024 },
+      });
+      render(() => <CacheSettings />);
+      await vi.waitFor(() => {
+        const progressFill = document.querySelector('.progress-fill');
+        expect(progressFill?.className).toContain('warning');
+      });
+    });
+
+    it('shows no class for low usage <50%', async () => {
+      mockSendMessage.mockResolvedValue({
+        stats: { ...MOCK_STATS, totalSize: 30 * 1024 * 1024, maxSize: 100 * 1024 * 1024 },
+      });
+      render(() => <CacheSettings />);
+      await vi.waitFor(() => {
+        const progressFill = document.querySelector('.progress-fill');
+        expect(progressFill?.className).not.toContain('danger');
+        expect(progressFill?.className).not.toContain('warning');
+      });
+    });
+  });
 });
