@@ -539,4 +539,37 @@ describe('Throttle', () => {
       expect(() => throttle.destroy()).not.toThrow();
     });
   });
+
+  describe('runWithRateLimit options', () => {
+    it('immediate mode executes function without queuing', async () => {
+      const throttle = new Throttle();
+      const fn = vi.fn(async () => 'immediate');
+
+      const result = await throttle.runWithRateLimit(fn, 'test', { immediate: true });
+
+      expect(result).toBe('immediate');
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('executes queued functions after rate limit allows', async () => {
+      const throttle = new Throttle({ requestLimit: 2, windowMs: 1000 });
+      vi.useFakeTimers();
+
+      const fn1 = vi.fn(async () => 'fn1');
+      const fn2 = vi.fn(async () => 'fn2');
+      const fn3 = vi.fn(async () => 'fn3');
+
+      throttle.runWithRateLimit(fn1, 'test', { immediate: true });
+      throttle.runWithRateLimit(fn2, 'test', { immediate: true });
+      throttle.runWithRateLimit(fn3, 'test');
+
+      // After 1000ms, window resets and fn3 can execute
+      vi.advanceTimersByTime(1000);
+      
+      expect(fn1).toHaveBeenCalled();
+      expect(fn2).toHaveBeenCalled();
+      
+      vi.useRealTimers();
+    });
+  });
 });

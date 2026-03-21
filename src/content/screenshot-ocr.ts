@@ -63,11 +63,12 @@ function exitScreenshotMode(): void {
   document.body.style.cursor = '';
   selectionStart = null;
 
-  /* v8 ignore next */
+  /* v8 ignore start */
   if (selectionOverlay) {
     selectionOverlay.remove();
     selectionOverlay = null;
   }
+  /* v8 ignore stop */
 
   document.removeEventListener('mousedown', onScreenshotMouseDown);
   document.removeEventListener('mousemove', onScreenshotMouseMove);

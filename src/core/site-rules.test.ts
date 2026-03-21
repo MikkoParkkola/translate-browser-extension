@@ -592,3 +592,25 @@ describe('site-rules', () => {
     });
   });
 });
+
+describe('matchesPattern — wildcard matching', () => {
+  it('matches exact domain', () => {
+    const result = matchesPattern('example.com', 'example.com');
+    expect(result).toBe(true);
+  });
+
+  it('matches subdomain with wildcard pattern', () => {
+    const result = matchesPattern('sub.example.com', '*.example.com');
+    expect(result).toBe(true);
+  });
+
+  it('does not match different domain', () => {
+    const result = matchesPattern('other.com', 'example.com');
+    expect(result).toBe(false);
+  });
+
+  it('matches double subdomain with wildcard', () => {
+    const result = matchesPattern('a.b.example.com', '*.example.com');
+    expect(result).toBe(true);
+  });
+});

@@ -642,4 +642,26 @@ describe('Uncovered branches in predict', () => {
 
     expect(Array.isArray(predictions)).toBe(true);
   });
+
+  it('recordTranslation increments translation tracking', async () => {
+    const engine = new PredictionEngine();
+    await engine.load();
+
+    // Record a translation
+    await engine.recordTranslation('en');
+
+    // Should succeed without throwing
+    const preferredTarget = await engine.getPreferredTarget();
+    expect(typeof preferredTarget).toBe('string');
+  });
+
+  it('getStats returns statistics object', async () => {
+    const engine = new PredictionEngine();
+    await engine.load();
+
+    const stats = await engine.getStats();
+
+    expect(typeof stats).toBe('object');
+    expect(typeof stats.domainCount).toBe('number');
+  });
 });
