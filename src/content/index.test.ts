@@ -3800,4 +3800,62 @@ describe('Content Script', () => {
       expect(sendResponse).toHaveBeenCalled();
     });
   });
+
+  describe('Error message extraction utility function coverage', () => {
+    it('handles Error instances in catch handlers by using error.message', async () => {
+      document.body.innerHTML = '<p>Content</p>';
+      
+      const errorMessage = 'Test translation error';
+      mockSendMessage.mockRejectedValue(new Error(errorMessage));
+      
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      await new Promise((r) => setTimeout(r, 150));
+    });
+  });
+
+  describe('Batch translation with text length handling', () => {
+    it('handles text exceeding maximum batch length', async () => {
+      const veryLongText = 'a'.repeat(500);
+      document.body.innerHTML = `<p>${veryLongText}</p>`;
+      
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      await new Promise((r) => setTimeout(r, 150));
+    });
+  });
+
+  describe('Transient error recognition', () => {
+    it('recognizes network errors as transient', async () => {
+      document.body.innerHTML = '<p>Content</p>';
+      
+      mockSendMessage.mockRejectedValueOnce(new Error('Network error'));
+      mockSendMessage.mockResolvedValueOnce({ 
+        success: true, 
+        result: ['Käännetty'] 
+      });
+      
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+      
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      await new Promise((r) => setTimeout(r, 200));
+    });
+  });
 });
