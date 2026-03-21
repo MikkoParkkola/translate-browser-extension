@@ -198,4 +198,30 @@ describe('LanguageSelector', () => {
       expect(props.onSourceChange).toHaveBeenCalledWith('fr');
     });
   });
+
+  describe('filter branch coverage for target language exclusion', () => {
+    it('target language select excludes auto but source includes it', () => {
+      const props = defaultProps();
+      const { container } = render(() => <LanguageSelector {...props} />);
+      const sourceSelect = container.querySelector('[aria-label="Source language"]') as HTMLSelectElement;
+      const targetSelect = container.querySelector('[aria-label="Target language"]') as HTMLSelectElement;
+
+      const sourceHasAuto = Array.from(sourceSelect.options).some((o) => o.value === 'auto');
+      const targetHasAuto = Array.from(targetSelect.options).some((o) => o.value === 'auto');
+
+      expect(sourceHasAuto).toBe(true);
+      expect(targetHasAuto).toBe(false);
+    });
+
+    it('target language has exactly 11 options (12 - 1 auto)', () => {
+      render(() => <LanguageSelector {...defaultProps()} />);
+      const targetSelect = screen.getByLabelText('Target language') as HTMLSelectElement;
+      // Count non-auto options
+      const options = Array.from(targetSelect.options);
+      expect(options).toHaveLength(11);
+      options.forEach((opt) => {
+        expect(opt.value).not.toBe('auto');
+      });
+    });
+  });
 });

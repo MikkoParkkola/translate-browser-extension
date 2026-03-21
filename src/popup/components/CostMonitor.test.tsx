@@ -173,4 +173,22 @@ describe('CostMonitor', () => {
       expect(fill?.className).toContain('over-budget');
     });
   });
+
+  describe('budgetPercent ternary branch coverage', () => {
+    it('budgetPercent returns 0 when monthly is 0', () => {
+      const { container } = render(() => (
+        <CostMonitor usage={makeUsage({ monthly: 0, used: 5 })} />
+      ));
+      const fill = container.querySelector('.budget-bar-fill') as HTMLElement;
+      expect(fill.style.width).toBe('0%');
+    });
+
+    it('budgetPercent min caps at 100 when usage exceeds monthly', () => {
+      const { container } = render(() => (
+        <CostMonitor usage={makeUsage({ monthly: 1, used: 100 })} />
+      ));
+      const fill = container.querySelector('.budget-bar-fill') as HTMLElement;
+      expect(fill.style.width).toBe('100%');
+    });
+  });
 });

@@ -416,4 +416,56 @@ describe('LocalModels — uncovered branches', () => {
       });
     });
   });
+
+  describe('conditional rendering branches', () => {
+    it('shows loading state while data is being fetched', async () => {
+      let resolveEstimate: any;
+      const estimatePromise = new Promise((resolve) => {
+        resolveEstimate = resolve;
+      });
+
+      vi.stubGlobal('navigator', {
+        storage: {
+          estimate: vi.fn().mockReturnValue(estimatePromise),
+        },
+      });
+
+      mockSendMessage.mockImplementation(() => new Promise(() => {})); // Never resolves
+
+      render(() => <LocalModels />);
+
+      // Should show loading initially
+      await vi.waitFor(() => {
+        expect(screen.queryByText(/Loading/i) || screen.queryByText(/Local Models/i)).toBeTruthy();
+      });
+    });
+
+    it('shows "No models downloaded yet" when models array is empty', async () => {
+      mockSendMessage.mockResolvedValue({ models: [] });
+      vi.stubGlobal('navigator', {
+        storage: {
+          estimate: vi.fn().mockResolvedValue({ usage: 0, quota: 1000000 }),
+        },
+      });
+
+      render(() => <LocalModels />);
+      await vi.waitFor(() => {
+        expect(screen.getByText('No models downloaded yet')).toBeTruthy();
+      });
+    });
+
+    it('renders model list when models are available', async () => {
+      mockSendMessage.mockResolvedValue({ models: MOCK_MODELS });
+      vi.stubGlobal('navigator', {
+        storage: {
+          estimate: vi.fn().mockResolvedValue({ usage: 0, quota: 1000000 }),
+        },
+      });
+
+      render(() => <LocalModels />);
+      await vi.waitFor(() => {
+        expect(screen.getByText('OPUS-MT English-Finnish')).toBeTruthy();
+      });
+    });
+  });
 });

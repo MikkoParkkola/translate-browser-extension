@@ -140,4 +140,29 @@ describe('StrategySelector', () => {
       expect(screen.getByText('Fast')).toHaveAttribute('aria-pressed', 'false');
     });
   });
+
+  describe('ternary class branch coverage', () => {
+    it('non-selected strategies have empty class string in ternary', () => {
+      const { container } = render(() => (
+        <StrategySelector selected="smart" onChange={vi.fn()} />
+      ));
+      const buttons = container.querySelectorAll('.strategy-button');
+      // Smart should have 'active', others should not
+      expect(buttons[0].className).toContain('active');
+      expect(buttons[1].className).not.toContain('active');
+      expect(buttons[2].className).not.toContain('active');
+    });
+
+    it('selected and non-selected strategies are mutually exclusive', () => {
+      const { container } = render(() => (
+        <StrategySelector selected="fast" onChange={vi.fn()} />
+      ));
+      const buttons = container.querySelectorAll('.strategy-button');
+      const activeButtons = Array.from(buttons).filter((b) =>
+        b.className.includes('active')
+      );
+      expect(activeButtons).toHaveLength(1);
+      expect(activeButtons[0].textContent).toContain('Fast');
+    });
+  });
 });

@@ -450,7 +450,6 @@ describe('Corrections Module', () => {
     it('deletes the single oldest correction when at exactly MAX_CORRECTIONS', async () => {
       // Seed storage with exactly 500 entries so the next add triggers eviction
       const entries: [string, unknown][] = [];
-      const base = Date.now();
       for (let i = 0; i < 500; i++) {
         entries.push([
           `en:fi:evict${i}`,

@@ -190,4 +190,37 @@ describe('ProviderStatus', () => {
       expect(el.getAttribute('aria-label')).toMatch('Error');
     });
   });
+
+  describe('switch statement branch exhaustion', () => {
+    it('switch covers all three status cases: ready, loading, error', () => {
+      const statuses: Array<'ready' | 'loading' | 'error'> = ['ready', 'loading', 'error'];
+      const results = statuses.map((status) => {
+        const { container } = render(() => <ProviderStatus name="Test" status={status} />);
+        const indicator = container.querySelector('.status-indicator');
+        return {
+          status,
+          hasClass: (cls: string) => indicator?.className.includes(cls),
+        };
+      });
+
+      expect(results[0].hasClass('status--ready')).toBe(true);
+      expect(results[1].hasClass('status--loading')).toBe(true);
+      expect(results[2].hasClass('status--error')).toBe(true);
+    });
+
+    it('each branch returns distinct status text', () => {
+      const { container: c1 } = render(() => <ProviderStatus name="A" status="ready" />);
+      const { container: c2 } = render(() => <ProviderStatus name="B" status="loading" />);
+      const { container: c3 } = render(() => <ProviderStatus name="C" status="error" />);
+
+      const text1 = c1.querySelector('.status-text')?.textContent;
+      const text2 = c2.querySelector('.status-text')?.textContent;
+      const text3 = c3.querySelector('.status-text')?.textContent;
+
+      expect(text1).toBe('Ready');
+      expect(text2).toBe('Loading...');
+      expect(text3).toBe('Error');
+      expect(new Set([text1, text2, text3]).size).toBe(3);
+    });
+  });
 });

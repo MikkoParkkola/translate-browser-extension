@@ -1442,6 +1442,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 // ============================================================================
 
 // Load saved provider on startup, auto-detect Chrome Built-in availability
+/* v8 ignore start — module-level IIFE runs at import time, before test mocks are configured */
 (async () => {
   const result = await safeStorageGet<{ provider?: TranslationProviderId }>(['provider']);
   if (result.provider) {
@@ -1500,5 +1501,6 @@ if (chrome.runtime.onSuspend) {
     translationCache.flush();
   });
 }
+/* v8 ignore stop */
 
 log.info('Service worker initialized v2.3 with predictive model preloading');

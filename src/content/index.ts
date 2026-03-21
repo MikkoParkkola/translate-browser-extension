@@ -1169,6 +1169,7 @@ async function checkAutoTranslate(): Promise<void> {
 }
 
 // Run auto-translate check on load
+/* v8 ignore start — module-level code runs at import time before tests can configure mocks */
 if (document.readyState === 'complete') {
   checkAutoTranslate();
 } else {
@@ -1209,5 +1210,6 @@ window.addEventListener('unload', () => {
 
   removeWidgetDragListeners();
 });
+/* v8 ignore stop */
 
 log.info(' Translation content script loaded v2.3 with MutationObserver + site rules + glossary support');

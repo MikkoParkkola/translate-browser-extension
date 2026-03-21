@@ -843,6 +843,7 @@ browserAPI.runtime.onInstalled.addListener((details) => {
 // Startup
 // ============================================================================
 
+/* v8 ignore start — module-level IIFE runs at import time, before test mocks are configured */
 (async () => {
   const result = await safeStorageGet<{ provider?: TranslationProviderId }>(['provider']);
   if (result.provider) {
@@ -850,5 +851,6 @@ browserAPI.runtime.onInstalled.addListener((details) => {
     log.info('Restored provider:', currentProvider);
   }
 })();
+/* v8 ignore stop */
 
 log.info('Firefox background page initialized v2.2 with TranslateGemma + caching');

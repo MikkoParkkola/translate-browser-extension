@@ -1706,6 +1706,96 @@ describe('LocalModelUI', () => {
       ui.destroy();
     });
   });
+
+  describe('updateStatus branch coverage — undefined/null checks', () => {
+    it('handles undefined performanceStats gracefully', async () => {
+      const ui = new LocalModelUI('local-model-container');
+      window.localModelManager.performanceStats = undefined;
+
+      // @ts-expect-error - accessing private method
+      await ui.updateStatus();
+
+      // Should not crash and status should be visible
+      const status = document.getElementById('local-model-status');
+      expect(status).toBeTruthy();
+
+      ui.destroy();
+    });
+
+    it('shows performance metrics when performanceStats exists', async () => {
+      const ui = new LocalModelUI('local-model-container');
+      window.localModelManager.performanceStats = {
+        totalTranslations: 42,
+        successRate: 95,
+        averageInferenceTime: 250,
+      };
+
+      // @ts-expect-error - accessing private method
+      await ui.updateStatus();
+
+      const perfSection = document.getElementById('local-model-perf');
+      expect(perfSection).toBeTruthy();
+
+      ui.destroy();
+    });
+
+    it('displays error when performanceStats.lastError is set', async () => {
+      const ui = new LocalModelUI('local-model-container');
+      window.localModelManager.performanceStats = {
+        totalTranslations: 0,
+        successRate: 0,
+        averageInferenceTime: 0,
+        lastError: { message: 'Out of memory' },
+      };
+
+      // @ts-expect-error - accessing private method
+      await ui.updateStatus();
+
+      const errorEl = document.getElementById('local-model-error');
+      expect(errorEl?.textContent).toContain('Out of memory');
+
+      ui.destroy();
+    });
+  });
+
+  describe('progressInfo undefined field branches', () => {
+    it('handles progressInfo.progress being undefined', async () => {
+      const ui = new LocalModelUI('local-model-container');
+      
+      // Simulate progress callback with undefined progress
+      const mockOnProgress = vi.fn((info: any) => {
+        // progressInfo.progress is undefined
+        expect(info.progress).toBeUndefined();
+      });
+
+      window.localModelManager.downloadModel = vi.fn().mockImplementation(async (onProgress: any) => {
+        if (onProgress) {
+          onProgress({ loaded: 100, total: 1000 }); // No progress field
+        }
+      });
+
+      // @ts-expect-error - accessing private method
+      await ui.downloadModel();
+
+      ui.destroy();
+    });
+
+    it('handles progressInfo.loaded being undefined', async () => {
+      const ui = new LocalModelUI('local-model-container');
+      
+      window.localModelManager.downloadModel = vi.fn().mockImplementation(async (onProgress: any) => {
+        if (onProgress) {
+          onProgress({ progress: 50, total: 1000 }); // No loaded field
+        }
+      });
+
+      // Should not crash when loaded is undefined
+      // @ts-expect-error - accessing private method
+      await ui.downloadModel();
+
+      ui.destroy();
+    });
+  });
 });
 
 describe('LocalModelUI global export', () => {

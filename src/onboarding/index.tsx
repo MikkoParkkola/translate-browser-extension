@@ -494,7 +494,9 @@ export function OnboardingApp() {
   );
 }
 
+/* v8 ignore start — module-level render, tested via component tests */
 const rootEl = document.getElementById('root');
 if (rootEl) {
   render(() => <OnboardingApp />, rootEl);
 }
+/* v8 ignore stop */

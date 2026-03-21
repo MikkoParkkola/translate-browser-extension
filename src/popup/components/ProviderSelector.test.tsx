@@ -107,4 +107,36 @@ describe('ProviderSelector', () => {
     // First button is OPUS-MT, not selected
     expect(buttons[0].className).not.toContain('active');
   });
+
+  describe('ternary operator branch coverage for class conditional', () => {
+    it('non-selected button does not include "active" string (empty string branch)', () => {
+      const { container } = render(() => (
+        <ProviderSelector selected="opus-mt" onChange={vi.fn()} />
+      ));
+      const buttons = container.querySelectorAll('.provider-button');
+      const gemmaBtn = buttons[1]; // TranslateGemma is not selected
+      const classNames = gemmaBtn.className.split(' ').filter((c) => c.length > 0);
+      expect(classNames).toEqual(['provider-button']);
+      expect(classNames).not.toContain('active');
+    });
+
+    it('ternary evaluates to empty string when condition is false', () => {
+      const { container } = render(() => (
+        <ProviderSelector selected="translategemma" onChange={vi.fn()} />
+      ));
+      const buttons = container.querySelectorAll('.provider-button');
+      const opusMtBtn = buttons[0]; // OPUS-MT is not selected
+      // Should have class="provider-button " with empty string from false ternary
+      expect(opusMtBtn.getAttribute('class')).toBe('provider-button ');
+    });
+
+    it('ternary evaluates to "active" when condition is true', () => {
+      const { container } = render(() => (
+        <ProviderSelector selected="opus-mt" onChange={vi.fn()} />
+      ));
+      const buttons = container.querySelectorAll('.provider-button');
+      const opusMtBtn = buttons[0]; // OPUS-MT IS selected
+      expect(opusMtBtn.getAttribute('class')).toBe('provider-button active');
+    });
+  });
 });

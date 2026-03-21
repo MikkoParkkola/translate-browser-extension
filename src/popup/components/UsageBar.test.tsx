@@ -250,4 +250,25 @@ describe('UsageBar', () => {
       expect(charFill).toBeTruthy();
     });
   });
+
+  describe('Math.min capping at 100%', () => {
+    it('request bar maxes at 100% when exceeding limit', () => {
+      const { container } = render(() => <UsageBar usage={makeUsage(150, 0)} />);
+      const requestFill = container.querySelector('[data-type="requests"]') as HTMLElement;
+      expect(requestFill.style.width).toBe('100%');
+    });
+
+    it('character bar maxes at 100% when exceeding limit', () => {
+      const { container } = render(() => <UsageBar usage={makeUsage(0, 75000)} />);
+      const charFill = container.querySelector('[data-type="chars"]') as HTMLElement;
+      expect(charFill.style.width).toBe('100%');
+    });
+
+    it('both bars at 100% when both exceed their limits', () => {
+      const { container } = render(() => <UsageBar usage={makeUsage(200, 100000)} />);
+      const fills = container.querySelectorAll('.usage-bar-fill');
+      expect((fills[0] as HTMLElement).style.width).toBe('100%');
+      expect((fills[1] as HTMLElement).style.width).toBe('100%');
+    });
+  });
 });
