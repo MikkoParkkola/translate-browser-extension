@@ -798,4 +798,287 @@ describe('Subtitle Translator', () => {
       expect(overlays.length).toBe(2);
     });
   });
+
+  describe('Error handling and edge cases', () => {
+    it('handles translation timeout errors gracefully', async () => {
+      mockSendMessage.mockImplementationOnce(
+        () =>
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout')), 10)
+          )
+      );
+
+      const cueChangeListeners: Array<() => void> = [];
+      const mockCue = { startTime: 0, endTime: 1, text: 'Test text' };
+
+      const track = {
+        kind: 'subtitles',
+        addEventListener: vi.fn((event: string, handler: () => void) => {
+          if (event === 'cuechange') cueChangeListeners.push(handler);
+        }),
+        removeEventListener: vi.fn(),
+        activeCues: [mockCue],
+        cues: {
+          length: 1,
+          [Symbol.iterator]: function* () { yield mockCue; },
+          0: mockCue,
+        },
+      };
+
+      const video = document.createElement('video');
+      Object.defineProperty(video, 'textTracks', {
+        value: {
+          length: 1,
+          [Symbol.iterator]: function* () { yield track; },
+          0: track,
+        },
+        writable: false,
+      });
+
+      const container = document.createElement('div');
+      container.appendChild(video);
+      document.body.appendChild(container);
+
+      initSubtitleTranslation('fi');
+
+      const overlay = document.querySelector('.translate-subtitle-overlay') as HTMLElement;
+      const initialText = overlay.textContent;
+
+      // Trigger cuechange
+      cueChangeListeners[0]?.();
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Overlay should still exist (shows original text or stays visible)
+      expect(overlay).toBeTruthy();
+    });
+
+    it('handles empty activeCues array', async () => {
+      mockSendMessage.mockResolvedValue({ success: true, result: 'Translated' });
+
+      const cueChangeListeners: Array<() => void> = [];
+      const mockCue = { startTime: 0, endTime: 1, text: 'Text' };
+
+      const track = {
+        kind: 'subtitles',
+        addEventListener: vi.fn((event: string, handler: () => void) => {
+          if (event === 'cuechange') cueChangeListeners.push(handler);
+        }),
+        removeEventListener: vi.fn(),
+        activeCues: [] as Array<unknown>, // empty array
+        cues: {
+          length: 1,
+          [Symbol.iterator]: function* () { yield mockCue; },
+          0: mockCue,
+        },
+      };
+
+      const video = document.createElement('video');
+      Object.defineProperty(video, 'textTracks', {
+        value: {
+          length: 1,
+          [Symbol.iterator]: function* () { yield track; },
+          0: track,
+        },
+        writable: false,
+      });
+
+      const container = document.createElement('div');
+      container.appendChild(video);
+      document.body.appendChild(container);
+
+      initSubtitleTranslation('fi');
+
+      // Trigger cuechange with empty activeCues
+      cueChangeListeners[0]?.();
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Overlay should be hidden when no active cues
+      const overlay = document.querySelector(
+        '.translate-subtitle-overlay'
+      ) as HTMLElement;
+      expect(overlay.style.display).toBe('none');
+    });
+
+    it('handles null activeCues', async () => {
+      mockSendMessage.mockResolvedValue({ success: true, result: 'Translated' });
+
+      const cueChangeListeners: Array<() => void> = [];
+      const mockCue = { startTime: 0, endTime: 1, text: 'Text' };
+
+      const track = {
+        kind: 'subtitles',
+        addEventListener: vi.fn((event: string, handler: () => void) => {
+          if (event === 'cuechange') cueChangeListeners.push(handler);
+        }),
+        removeEventListener: vi.fn(),
+        activeCues: null as unknown, // null
+        cues: {
+          length: 1,
+          [Symbol.iterator]: function* () { yield mockCue; },
+          0: mockCue,
+        },
+      };
+
+      const video = document.createElement('video');
+      Object.defineProperty(video, 'textTracks', {
+        value: {
+          length: 1,
+          [Symbol.iterator]: function* () { yield track; },
+          0: track,
+        },
+        writable: false,
+      });
+
+      const container = document.createElement('div');
+      container.appendChild(video);
+      document.body.appendChild(container);
+
+      initSubtitleTranslation('fi');
+
+      // Trigger cuechange with null activeCues
+      cueChangeListeners[0]?.();
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Overlay should be hidden when activeCues is null
+      const overlay = document.querySelector(
+        '.translate-subtitle-overlay'
+      ) as HTMLElement;
+      expect(overlay.style.display).toBe('none');
+    });
+
+    it('handles non-Error rejection objects gracefully', async () => {
+      mockSendMessage.mockImplementationOnce(() =>
+        Promise.reject('String error, not Error object')
+      );
+
+      const cueChangeListeners: Array<() => void> = [];
+      const mockCue = { startTime: 0, endTime: 1, text: 'Error test' };
+
+      const track = {
+        kind: 'subtitles',
+        addEventListener: vi.fn((event: string, handler: () => void) => {
+          if (event === 'cuechange') cueChangeListeners.push(handler);
+        }),
+        removeEventListener: vi.fn(),
+        activeCues: [mockCue],
+        cues: {
+          length: 1,
+          [Symbol.iterator]: function* () { yield mockCue; },
+          0: mockCue,
+        },
+      };
+
+      const video = document.createElement('video');
+      Object.defineProperty(video, 'textTracks', {
+        value: {
+          length: 1,
+          [Symbol.iterator]: function* () { yield track; },
+          0: track,
+        },
+        writable: false,
+      });
+
+      const container = document.createElement('div');
+      container.appendChild(video);
+      document.body.appendChild(container);
+
+      initSubtitleTranslation('fi');
+
+      // Trigger cuechange
+      cueChangeListeners[0]?.();
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Should not crash, overlay should still exist
+      expect(document.querySelector('.translate-subtitle-overlay')).toBeTruthy();
+    });
+
+    it('strips HTML tags from cue text with special characters', async () => {
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: 'Test bold & italic text translated'
+      });
+
+      const cueChangeListeners: Array<() => void> = [];
+      const mockCue = { startTime: 0, endTime: 1, text: 'Test <b>bold</b> & <i>italic</i> text' };
+
+      const track = {
+        kind: 'subtitles',
+        addEventListener: vi.fn((event: string, handler: () => void) => {
+          if (event === 'cuechange') cueChangeListeners.push(handler);
+        }),
+        removeEventListener: vi.fn(),
+        activeCues: [mockCue],
+        cues: {
+          length: 1,
+          [Symbol.iterator]: function* () { yield mockCue; },
+          0: mockCue,
+        },
+      };
+
+      const video = document.createElement('video');
+      Object.defineProperty(video, 'textTracks', {
+        value: {
+          length: 1,
+          [Symbol.iterator]: function* () { yield track; },
+          0: track,
+        },
+        writable: false,
+      });
+
+      const container = document.createElement('div');
+      container.appendChild(video);
+      document.body.appendChild(container);
+
+      initSubtitleTranslation('fi');
+
+      cueChangeListeners[0]?.();
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const overlay = document.querySelector('.translate-subtitle-overlay');
+      expect(overlay?.textContent).toContain('Test bold & italic text translated');
+    });
+
+    it('handles whitespace-only text in cues', async () => {
+      mockSendMessage.mockResolvedValue({ success: true, result: 'Translated' });
+
+      const cueChangeListeners: Array<() => void> = [];
+      const mockCue = { startTime: 0, endTime: 1, text: '   \n\t  ' };
+
+      const track = {
+        kind: 'subtitles',
+        addEventListener: vi.fn((event: string, handler: () => void) => {
+          if (event === 'cuechange') cueChangeListeners.push(handler);
+        }),
+        removeEventListener: vi.fn(),
+        activeCues: [mockCue],
+        cues: {
+          length: 1,
+          [Symbol.iterator]: function* () { yield mockCue; },
+          0: mockCue,
+        },
+      };
+
+      const video = document.createElement('video');
+      Object.defineProperty(video, 'textTracks', {
+        value: {
+          length: 1,
+          [Symbol.iterator]: function* () { yield track; },
+          0: track,
+        },
+        writable: false,
+      });
+
+      const container = document.createElement('div');
+      container.appendChild(video);
+      document.body.appendChild(container);
+
+      initSubtitleTranslation('fi');
+
+      cueChangeListeners[0]?.();
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Should not attempt to translate whitespace-only text
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+  });
 });

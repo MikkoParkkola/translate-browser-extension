@@ -1332,3 +1332,216 @@ describe('error paths', () => {
     });
   });
 });
+
+describe('remaining uncovered branches', () => {
+  let cache: TranslationCache;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockEntries.clear();
+    mockCursorIndex = 0;
+    resetTranslationCache();
+  });
+
+  afterEach(() => {
+    cache?.close();
+  });
+
+  it('onupgradeneeded skips store creation when store already exists', async () => {
+    const origIndexedDB = (globalThis as Record<string, unknown>).indexedDB;
+
+    const createObjectStoreSpy = vi.fn();
+    const upgradeRequest = {
+      onerror: null as ((ev: Event) => void) | null,
+      onsuccess: null as ((ev: Event) => void) | null,
+      onupgradeneeded: null as ((ev: IDBVersionChangeEvent) => void) | null,
+      result: {
+        ...mockDb,
+        objectStoreNames: { contains: vi.fn(() => true) }, // store already exists
+        createObjectStore: createObjectStoreSpy,
+      },
+      error: null,
+    };
+
+    (globalThis as Record<string, unknown>).indexedDB = {
+      open: vi.fn(() => {
+        setTimeout(() => {
+          upgradeRequest.onupgradeneeded?.({ target: upgradeRequest } as unknown as IDBVersionChangeEvent);
+          upgradeRequest.onsuccess?.({ target: upgradeRequest } as unknown as Event);
+        }, 0);
+        return upgradeRequest;
+      }),
+    };
+
+    resetTranslationCache();
+    cache = new TranslationCache();
+    await new Promise((r) => setTimeout(r, 20));
+
+    // createObjectStore should NOT have been called since the store already exists
+    expect(createObjectStoreSpy).not.toHaveBeenCalled();
+
+    (globalThis as Record<string, unknown>).indexedDB = origIndexedDB;
+  });
+
+  it('eviction transaction onabort rejects with transaction.error', async () => {
+    cache = new TranslationCache(100);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const bigEntry: CacheEntry = {
+      key: 'big1',
+      text: 'x'.repeat(50),
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'opus-mt',
+      translation: 'y'.repeat(50),
+      timestamp: Date.now() - 1000,
+      size: 80,
+    };
+    mockEntries.set('big1', bigEntry);
+
+    mockStore.put.mockReturnValue({ onerror: null, onsuccess: null });
+
+    const evictAbortTx = {
+      objectStore: vi.fn(() => ({
+        index: vi.fn(() => ({
+          openCursor: vi.fn(() => {
+            const req = { onerror: null as unknown, onsuccess: null as unknown };
+            setTimeout(() => {
+              (evictAbortTx as unknown as { onabort: ((e: Event) => void) | null }).onabort?.({} as Event);
+            }, 0);
+            return req;
+          }),
+        })),
+      })),
+      onerror: null as ((e: Event) => void) | null,
+      onabort: null as ((e: Event) => void) | null,
+      error: new DOMException('evict abort with error'),
+    };
+
+    // 1st transaction = getStats, 2nd = eviction (abort)
+    mockDb.transaction
+      .mockReturnValueOnce(mockTransaction)
+      .mockReturnValueOnce(evictAbortTx as any);
+
+    // set() swallows errors, so it should not throw
+    await expect(cache.set('new', 'en', 'fi', 'opus-mt', 'uusi')).resolves.toBeUndefined();
+  });
+
+  it('eviction transaction onabort uses fallback Error when transaction.error is null', async () => {
+    cache = new TranslationCache(100);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const bigEntry: CacheEntry = {
+      key: 'big1',
+      text: 'x'.repeat(50),
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'opus-mt',
+      translation: 'y'.repeat(50),
+      timestamp: Date.now() - 1000,
+      size: 80,
+    };
+    mockEntries.set('big1', bigEntry);
+
+    mockStore.put.mockReturnValue({ onerror: null, onsuccess: null });
+
+    const evictAbortTx = {
+      objectStore: vi.fn(() => ({
+        index: vi.fn(() => ({
+          openCursor: vi.fn(() => {
+            const req = { onerror: null as unknown, onsuccess: null as unknown };
+            setTimeout(() => {
+              (evictAbortTx as unknown as { onabort: ((e: Event) => void) | null }).onabort?.({} as Event);
+            }, 0);
+            return req;
+          }),
+        })),
+      })),
+      onerror: null as ((e: Event) => void) | null,
+      onabort: null as ((e: Event) => void) | null,
+      error: null, // null error triggers the || fallback
+    };
+
+    mockDb.transaction
+      .mockReturnValueOnce(mockTransaction)
+      .mockReturnValueOnce(evictAbortTx as any);
+
+    await expect(cache.set('new', 'en', 'fi', 'opus-mt', 'uusi')).resolves.toBeUndefined();
+  });
+
+  it('eviction cursor request onerror rejects', async () => {
+    cache = new TranslationCache(100);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const bigEntry: CacheEntry = {
+      key: 'big1',
+      text: 'x'.repeat(50),
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'opus-mt',
+      translation: 'y'.repeat(50),
+      timestamp: Date.now() - 1000,
+      size: 80,
+    };
+    mockEntries.set('big1', bigEntry);
+
+    mockStore.put.mockReturnValue({ onerror: null, onsuccess: null });
+
+    const evictCursorErrTx = {
+      objectStore: vi.fn(() => ({
+        index: vi.fn(() => ({
+          openCursor: vi.fn(() => {
+            const req = {
+              onerror: null as ((e: Event) => void) | null,
+              onsuccess: null as unknown,
+              error: new DOMException('cursor open failed'),
+            };
+            setTimeout(() => {
+              req.onerror?.({} as Event);
+            }, 0);
+            return req;
+          }),
+        })),
+      })),
+      onerror: null as ((e: Event) => void) | null,
+      onabort: null as ((e: Event) => void) | null,
+      error: null,
+    };
+
+    mockDb.transaction
+      .mockReturnValueOnce(mockTransaction)
+      .mockReturnValueOnce(evictCursorErrTx as any);
+
+    await expect(cache.set('new', 'en', 'fi', 'opus-mt', 'uusi')).resolves.toBeUndefined();
+  });
+
+  it('getStats newestTimestamp else branch when later entry has older timestamp', async () => {
+    cache = new TranslationCache();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const now = Date.now();
+    // Insert entries so iteration order produces a non-ascending timestamp sequence
+    // Map preserves insertion order, so entry order = iteration order
+    const entry1: CacheEntry = {
+      key: 'k1', text: 'a', sourceLang: 'en', targetLang: 'fi',
+      provider: 'opus-mt', translation: 'b', timestamp: now - 1000, size: 50,
+    };
+    const entry2: CacheEntry = {
+      key: 'k2', text: 'c', sourceLang: 'en', targetLang: 'fi',
+      provider: 'opus-mt', translation: 'd', timestamp: now, size: 50,
+    };
+    const entry3: CacheEntry = {
+      key: 'k3', text: 'e', sourceLang: 'en', targetLang: 'fi',
+      provider: 'opus-mt', translation: 'f', timestamp: now - 500, size: 50,
+    };
+    mockEntries.set('k1', entry1);
+    mockEntries.set('k2', entry2);
+    mockEntries.set('k3', entry3); // iterated last, but ts < newestTimestamp (now)
+
+    const stats = await cache.getStats();
+
+    expect(stats.entries).toBe(3);
+    expect(stats.newestTimestamp).toBe(now);
+    expect(stats.oldestTimestamp).toBe(now - 1000);
+  });
+});

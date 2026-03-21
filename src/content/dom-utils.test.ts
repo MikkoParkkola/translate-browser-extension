@@ -472,4 +472,10 @@ describe('isValidText', () => {
   it('trims whitespace before validation', () => {
     expect(isValidText('  hello world  ')).toBe(true);
   });
+
+  it('returns false for dimension-like text with x (PRICE_OR_MEASURE_RE true branch)', () => {
+    // "10x20" passes NON_TRANSLATABLE_RE (has letter 'x') but matches PRICE_OR_MEASURE_RE
+    expect(isValidText('10x20')).toBe(false);
+    expect(isValidText('100x200')).toBe(false);
+  });
 });

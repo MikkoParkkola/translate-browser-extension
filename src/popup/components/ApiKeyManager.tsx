@@ -111,7 +111,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
 
   const saveApiKey = async (providerId: string) => {
     const provider = CLOUD_PROVIDERS.find(p => p.id === providerId);
-    /* v8 ignore next */
+    /* c8 ignore next */
     if (!provider) return;
 
     const key = apiKeyInput().trim();
@@ -151,7 +151,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
 
   const removeApiKey = async (providerId: string) => {
     const provider = CLOUD_PROVIDERS.find(p => p.id === providerId);
-    /* v8 ignore next */
+    /* c8 ignore next */
     if (!provider) return;
 
     try {
@@ -310,5 +310,5 @@ export const ApiKeyManager: Component<Props> = (props) => {
   );
 };
 
-/* v8 ignore next */
+/* c8 ignore next */
 export default ApiKeyManager;
