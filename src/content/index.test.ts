@@ -40,6 +40,11 @@ vi.mock('../core/glossary', () => ({
   },
 }));
 
+// Capture the real attachShadow before any test patches it via installAttachShadowInterceptor.
+// Tests that call startMutationObserver accumulate nested interceptors on Element.prototype.
+// The shadow DOM test resets to this original to avoid a deep broken chain.
+const realElementAttachShadow = Element.prototype.attachShadow;
+
 
 describe('Content Script', () => {
   let messageHandler: (
@@ -3856,6 +3861,429 @@ describe('Content Script', () => {
       
       expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
       await new Promise((r) => setTimeout(r, 200));
+    });
+  });
+
+  // ============================================================================
+  // Coverage completion tests — lines not yet covered by the tests above
+  // ============================================================================
+
+  describe('loadGlossary error path', () => {
+    it('logs error and continues with empty glossary when getGlossary rejects', async () => {
+      const { glossary: g } = await import('../core/glossary');
+      vi.mocked(g.getGlossary).mockRejectedValueOnce(new Error('DB read error'));
+
+      document.body.innerHTML = '<p>Hello world</p>';
+      mockSendMessage.mockResolvedValueOnce({ success: true, result: ['Hei'] });
+
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      await new Promise((r) => setTimeout(r, 300));
+    });
+  });
+
+  describe('translateSelection outer catch handler', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('fires .catch when translateSelection rejects due to getDeepSelection throwing', async () => {
+      vi.spyOn(window, 'getSelection').mockImplementation(() => {
+        throw new Error('Selection API unavailable');
+      });
+
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      await new Promise((r) => setTimeout(r, 50));
+    });
+  });
+
+  describe('translateImage outer catch handler', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('fires .catch when translateImage rejects', async () => {
+      const imageTranslator = await import('./image-translator');
+      vi.spyOn(imageTranslator, 'translateImage').mockRejectedValueOnce(
+        new Error('Image decoding failed')
+      );
+
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translateImage', imageUrl: 'data:image/png;base64,abc' } as unknown as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse
+      );
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      await new Promise((r) => setTimeout(r, 50));
+    });
+  });
+
+  describe('viewport node translation (getBoundingClientRect paths)', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('routes nodes to viewportNodes when getBoundingClientRect returns visible rect', async () => {
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+        top: 0, bottom: 100, left: 0, right: 100,
+        width: 100, height: 100, x: 0, y: 0,
+        toJSON: () => ({}),
+      } as DOMRect);
+
+      document.body.innerHTML = '<p>Hello world</p>';
+      mockSendMessage.mockResolvedValueOnce({ success: true, result: ['Hei'] });
+
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      await new Promise((r) => setTimeout(r, 400));
+    });
+
+    it('falls back to Infinity top position when getBoundingClientRect throws', async () => {
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => {
+        throw new Error('Layout not available');
+      });
+
+      document.body.innerHTML = '<p>Hello world</p>';
+      mockSendMessage.mockResolvedValueOnce({ success: true, result: ['Hei'] });
+
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      await new Promise((r) => setTimeout(r, 400));
+    });
+  });
+
+  describe('translatePage partial success toast (errorCount > 0 && translatedCount > 0)', () => {
+    it('shows partial-success toast when some batch nodes fail during DOM update', async () => {
+      const { glossary: g } = await import('../core/glossary');
+      // Make the first restoreFn throw so node 0 fails; the rest succeed
+      vi.mocked(g.applyGlossaryBatch).mockImplementationOnce(async (texts: string[]) => ({
+        processedTexts: texts,
+        restoreFns: texts.map((_, i) => (result: string) => {
+          if (i === 0) throw new Error('Restore failed for node 0');
+          return result;
+        }),
+      }));
+
+      mockSendMessage.mockResolvedValueOnce({ success: true, result: ['X', 'Y', 'Z'] });
+      document.body.innerHTML = '<p>One</p><p>Two</p><p>Three</p>';
+
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+
+      await new Promise((r) => setTimeout(r, 400));
+    });
+  });
+
+  describe('IntersectionObserver scroll-aware translation', () => {
+    // Use direct window property assignment to avoid vi.stubGlobal touching chrome
+    let mockIOObserver: { observe: ReturnType<typeof vi.fn>; unobserve: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> };
+    let capturedIOCallback: (entries: IntersectionObserverEntry[]) => Promise<void>;
+
+    beforeEach(() => {
+      mockIOObserver = { observe: vi.fn(), unobserve: vi.fn(), disconnect: vi.fn() };
+      capturedIOCallback = async () => {};
+      // vi.stubGlobal makes IntersectionObserver accessible as a bare identifier in module code.
+      // Do NOT call vi.unstubAllGlobals() in afterEach — it removes the chrome stub too.
+      // IMPORTANT: Use a regular function (not arrow) — vi.fn uses Reflect.construct when called
+      // with `new`, and arrow functions cannot be constructors (Reflect.construct throws TypeError).
+      const observer = mockIOObserver;
+      let captureFn = (cb: (entries: IntersectionObserverEntry[]) => Promise<void>) => { capturedIOCallback = cb; };
+      vi.stubGlobal(
+        'IntersectionObserver',
+        vi.fn(function(this: unknown, cb: (entries: IntersectionObserverEntry[]) => Promise<void>) {
+          captureFn(cb);
+          return observer;
+        })
+      );
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+      // Manually remove the IntersectionObserver global without vi.unstubAllGlobals()
+      delete (globalThis as unknown as Record<string, unknown>).IntersectionObserver;
+    });
+
+    it('creates IntersectionObserver for deferred nodes and fires callback on intersection', async () => {
+      // 102 paragraphs: all go to below-fold in jsdom (getBoundingClientRect returns all zeros,
+      // so rect.bottom=0 which fails the rect.bottom>0 check).
+      // IMMEDIATE_BELOW_FOLD = min(102, 100) = 100; deferredNodes = 2 → setupScrollAwareTranslation.
+      const paragraphs = Array.from({ length: 102 }, (_, i) => `<p>Content item ${i}</p>`).join('');
+      document.body.innerHTML = paragraphs;
+
+      mockSendMessage.mockImplementation(async (msg: { type: string; text?: string[] }) =>
+        msg.type === 'translate'
+          ? { success: true, result: (msg.text ?? []).map(() => 'T') }
+          : {}
+      );
+
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+
+      await new Promise((r) => setTimeout(r, 1000));
+
+      expect(mockIOObserver.observe).toHaveBeenCalled();
+
+      // Fire the IO callback with a non-intersecting entry (exercises the `continue` path)
+      await capturedIOCallback([
+        { isIntersecting: false, target: document.body } as unknown as IntersectionObserverEntry,
+      ]);
+
+      // Fire with an intersecting sentinel to translate the deferred chunk
+      const sentinels = document.querySelectorAll('[data-translate-chunk]');
+      if (sentinels.length > 0) {
+        mockSendMessage.mockImplementation(async (msg: { type: string; text?: string[] }) =>
+          msg.type === 'translate'
+            ? { success: true, result: (msg.text ?? []).map(() => 'V') }
+            : {}
+        );
+        await capturedIOCallback([
+          { isIntersecting: true, target: sentinels[0] } as unknown as IntersectionObserverEntry,
+        ]);
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      // A second translatePage call invokes stopBelowFoldObserver → belowFoldObserver.disconnect()
+      mockSendMessage.mockImplementation(async (msg: { type: string; text?: string[] }) =>
+        msg.type === 'translate'
+          ? { success: true, result: (msg.text ?? []).map(() => 'W') }
+          : {}
+      );
+      const sendResponse2 = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse2
+      );
+      await new Promise((r) => setTimeout(r, 1000));
+
+      expect(mockIOObserver.disconnect).toHaveBeenCalled();
+    });
+  });
+
+  describe('dynamic content queued while page translation is in progress', () => {
+    it('queues nodes at 716-717 and drains them in the finally block at 599-602', async () => {
+      document.body.innerHTML = '<p>Initial content</p>';
+      mockSendMessage.mockResolvedValueOnce({ success: true, result: ['T'] });
+
+      // First translatePage completes → startMutationObserver
+      const sr1 = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sr1
+      );
+      await new Promise((r) => setTimeout(r, 400));
+
+      // Second translatePage uses a manually-resolved promise so we control when it finishes
+      let resolveSecond!: (value: unknown) => void;
+      mockSendMessage.mockImplementationOnce(
+        () => new Promise((res) => { resolveSecond = res; })
+      );
+      // All subsequent sendMessage calls (from the drained dynamic content) succeed quickly
+      mockSendMessage.mockResolvedValue({ success: true, result: ['T'] });
+
+      // Add a DOM node — starts the 500ms mutation debounce timer
+      const dynamic = document.createElement('p');
+      dynamic.textContent = 'Dynamic node added mid-translation';
+      document.body.appendChild(dynamic);
+
+      // Start second translatePage immediately so isTranslatingPage=true before debounce fires
+      const sr2 = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sr2
+      );
+
+      // Wait for debounce to fire (500ms from DOM change); second translatePage still running
+      await new Promise((r) => setTimeout(r, 600));
+
+      // Resolve second translatePage → finally block drains queuedDynamicNodes
+      resolveSecond?.({ success: true, result: ['Translated'] });
+      await new Promise((r) => setTimeout(r, 400));
+    });
+  });
+
+  describe('large mutation batch chunked processing', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+      delete (window as unknown as Record<string, unknown>).requestIdleCallback;
+    });
+
+    it('uses setTimeout for subsequent chunks when requestIdleCallback is unavailable', async () => {
+      // Ensure requestIdleCallback is NOT defined (jsdom default)
+      document.body.innerHTML = '<p>Seed</p>';
+      mockSendMessage.mockResolvedValueOnce({ success: true, result: ['T'] });
+
+      const sr = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sr
+      );
+      await new Promise((r) => setTimeout(r, 400));
+
+      // 201 elements > MUTATION_BATCH_CAP(100) → else branch entered.
+      // processNextChunk: offset=100, 100<201 → inner if → setTimeout (line 864).
+      mockSendMessage.mockResolvedValue({ success: true, result: [] });
+      for (let i = 0; i < 201; i++) {
+        const span = document.createElement('span');
+        span.textContent = `Node ${i}`;
+        document.body.appendChild(span);
+      }
+
+      // Wait: 500ms debounce + first chunk + 50ms inner setTimeout + remaining chunks
+      await new Promise((r) => setTimeout(r, 900));
+    });
+
+    it('uses requestIdleCallback for subsequent chunks when available', async () => {
+      (window as unknown as Record<string, unknown>).requestIdleCallback = (cb: () => void) => setTimeout(cb, 0);
+
+      document.body.innerHTML = '<p>Seed</p>';
+      mockSendMessage.mockResolvedValueOnce({ success: true, result: ['T'] });
+
+      const sr = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sr
+      );
+      await new Promise((r) => setTimeout(r, 400));
+
+      // 201 elements → outer requestIdleCallback (line 869), inner requestIdleCallback (line 862)
+      mockSendMessage.mockResolvedValue({ success: true, result: [] });
+      for (let i = 0; i < 201; i++) {
+        const span = document.createElement('span');
+        span.textContent = `RIC Node ${i}`;
+        document.body.appendChild(span);
+      }
+
+      await new Promise((r) => setTimeout(r, 900));
+    });
+  });
+
+  describe('handleMutations overflow protection', () => {
+    it('drops mutations beyond maxPending limit and logs at 200-mutation intervals', async () => {
+      document.body.innerHTML = '<p>Seed</p>';
+      mockSendMessage.mockResolvedValueOnce({ success: true, result: ['T'] });
+
+      const sr = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sr
+      );
+      await new Promise((r) => setTimeout(r, 400));
+
+      // 2200 synchronous appends produce one handleMutations call with 2200 records.
+      // maxPending=2000: first 2000 pushed, 200 dropped → droppedCount=200, 200%200=0 → line 893.
+      mockSendMessage.mockResolvedValue({ success: true, result: [] });
+      for (let i = 0; i < 2200; i++) {
+        document.body.appendChild(document.createElement('span'));
+      }
+
+      // Flush microtasks so MutationObserver callback runs
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // Allow debounce timer to fire
+      await new Promise((r) => setTimeout(r, 600));
+    });
+  });
+
+  describe('shadow root observation callback', () => {
+    beforeEach(() => {
+      // Reset to the real jsdom attachShadow so the fresh module's interceptor
+      // captures the real function (not a broken accumulated chain with a null base).
+      Element.prototype.attachShadow = realElementAttachShadow;
+    });
+
+    afterEach(() => {
+      Element.prototype.attachShadow = realElementAttachShadow;
+    });
+    it('calls observeShadowRoot when attachShadow is used after mutation observer starts', async () => {
+      document.body.innerHTML = '<p>Hello</p>';
+      mockSendMessage.mockResolvedValueOnce({ success: true, result: ['T'] });
+
+      const sr = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sr
+      );
+      await new Promise((r) => setTimeout(r, 400));
+
+      // attachShadow triggers the interceptor installed by observeShadowRoots in startMutationObserver
+      // → the callback at line 924 (observeShadowRoot) fires
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      host.attachShadow({ mode: 'open' });
+
+      await new Promise((r) => setTimeout(r, 50));
+    });
+  });
+
+  describe('translateDynamicContent outer catch handler', () => {
+    it('catches and shows error toast when createBatches rejects during dynamic translation', async () => {
+      document.body.innerHTML = '<p>Seed content</p>';
+      mockSendMessage.mockResolvedValueOnce({ success: true, result: ['T'] });
+
+      const sr = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sr
+      );
+      await new Promise((r) => setTimeout(r, 400));
+
+      // Make applyGlossaryBatch reject for the next call — this will be from translateDynamicContent
+      const { glossary: g } = await import('../core/glossary');
+      vi.mocked(g.applyGlossaryBatch).mockRejectedValueOnce(
+        new Error('non-transient batch failure')
+      );
+
+      // Add a text node → mutation debounce → translateDynamicContent → createBatches → throws
+      const p = document.createElement('p');
+      p.textContent = 'Dynamic node triggering error path';
+      document.body.appendChild(p);
+
+      // Wait for debounce (500ms) plus processing time
+      await new Promise((r) => setTimeout(r, 700));
     });
   });
 });

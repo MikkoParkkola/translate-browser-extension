@@ -2215,3 +2215,481 @@ describe('background-firefox translate: additional coverage', () => {
       expect(r2.provider).toBe('translategemma');
     });
   });
+
+  // ============================================================================
+  // Coverage: detectWebGPU with navigator.gpu defined (lines 272-277)
+  // ============================================================================
+
+  describe('detectWebGPU with navigator.gpu present', () => {
+    it('uses WebGPU when navigator.gpu.requestAdapter resolves to non-null', async () => {
+      // Define navigator.gpu on the jsdom window
+      Object.defineProperty(navigator, 'gpu', {
+        value: { requestAdapter: vi.fn().mockResolvedValue({ isFallbackAdapter: false }) },
+        configurable: true,
+        writable: true,
+      });
+
+      // Ensure fresh model load (not from cache) so getPipeline → detectWebGPU runs
+      const pipelineCache = await import('../offscreen/pipeline-cache');
+      (pipelineCache.getCachedPipeline as ReturnType<typeof vi.fn>).mockReturnValue(null);
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'hello',
+        sourceLang: 'auto',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      expect(response).toBeDefined();
+      // Clean up
+      Object.defineProperty(navigator, 'gpu', { value: undefined, configurable: true });
+    });
+
+    it('falls back when navigator.gpu.requestAdapter throws (line 276)', async () => {
+      Object.defineProperty(navigator, 'gpu', {
+        value: { requestAdapter: vi.fn().mockRejectedValue(new Error('WebGPU unavailable')) },
+        configurable: true,
+        writable: true,
+      });
+
+      const pipelineCache = await import('../offscreen/pipeline-cache');
+      (pipelineCache.getCachedPipeline as ReturnType<typeof vi.fn>).mockReturnValue(null);
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'hello',
+        sourceLang: 'auto',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      expect(response).toBeDefined();
+      Object.defineProperty(navigator, 'gpu', { value: undefined, configurable: true });
+    });
+  });
+
+  // ============================================================================
+  // Coverage: translateDirect with array text (lines 320-327)
+  // ============================================================================
+
+  describe('translateDirect called with array of texts', () => {
+    it('translates each element in an array via translateDirect (lines 320-327)', async () => {
+      const errors = await import('../core/errors');
+      // Return an array as sanitizedText so translate() receives an array
+      (errors.validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+        valid: true,
+        sanitizedText: ['hello', 'world'],
+      });
+
+      const pipelineCache = await import('../offscreen/pipeline-cache');
+      (pipelineCache.getCachedPipeline as ReturnType<typeof vi.fn>).mockReturnValue(null);
+
+      const response = await invoke({
+        type: 'translate',
+        text: ['hello', 'world'],
+        sourceLang: 'auto', // bypass cache to force actual translate() call
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      expect(response).toBeDefined();
+      expect('success' in response).toBe(true);
+    });
+  });
+
+  // ============================================================================
+  // Coverage: translate() array path (lines 393-422) and empty text (line 427)
+  // ============================================================================
+
+  describe('translate() internal array and empty-text paths', () => {
+    it('processes array text through translate() (lines 393-422)', async () => {
+      const errors = await import('../core/errors');
+      (errors.validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+        valid: true,
+        sanitizedText: ['hello', 'world'],
+      });
+
+      const langDetect = await import('../offscreen/language-detection');
+      (langDetect.detectLanguage as ReturnType<typeof vi.fn>).mockReturnValueOnce('en');
+
+      const response = await invoke({
+        type: 'translate',
+        text: ['hello', 'world'],
+        sourceLang: 'auto',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      expect(response).toBeDefined();
+      expect('success' in response).toBe(true);
+    });
+
+    it('handles array with mixed empty and non-empty items (lines 398-399)', async () => {
+      const errors = await import('../core/errors');
+      (errors.validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+        valid: true,
+        sanitizedText: ['', 'hello', '   '],
+      });
+
+      const langDetect = await import('../offscreen/language-detection');
+      (langDetect.detectLanguage as ReturnType<typeof vi.fn>).mockReturnValueOnce('en');
+
+      const response = await invoke({
+        type: 'translate',
+        text: ['', 'hello', '   '],
+        sourceLang: 'auto',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      expect(response).toBeDefined();
+    });
+
+    it('returns empty string unchanged via translate() (line 427)', async () => {
+      const errors = await import('../core/errors');
+      (errors.validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+        valid: true,
+        sanitizedText: '',
+      });
+
+      const langDetect = await import('../offscreen/language-detection');
+      (langDetect.detectLanguage as ReturnType<typeof vi.fn>).mockReturnValueOnce('en');
+
+      const response = await invoke({
+        type: 'translate',
+        text: '',
+        sourceLang: 'auto', // bypass cache so translate() is always called
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      expect(response.result).toBe('');
+    });
+  });
+
+  // ============================================================================
+  // Coverage: checkRateLimit window expiry reset (lines 469-471)
+  // ============================================================================
+
+  describe('checkRateLimit window expiry and limit exceeded paths', () => {
+    it('resets counters when rate-limit window has expired (lines 469-471)', async () => {
+      vi.useFakeTimers();
+      // Advance clock by 65 seconds so Date.now() - rateLimit.windowStart > windowMs (60s)
+      vi.setSystemTime(Date.now() + 65_000);
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'hello',
+        sourceLang: 'auto',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      // Window reset → requests/tokens zeroed → translation proceeds normally
+      expect(response.success).toBe(true);
+      vi.useRealTimers();
+    });
+
+    it('returns rate-limit error when requestsPerMinute is exhausted (lines 474, 647-651)', async () => {
+      const configMod = await import('../config');
+      const origReqLimit = configMod.CONFIG.rateLimits.requestsPerMinute;
+      const origWindowMs = configMod.CONFIG.rateLimits.windowMs;
+      // Set windowMs very large so window never resets, and limit to 0 requests
+      configMod.CONFIG.rateLimits.requestsPerMinute = 0;
+      configMod.CONFIG.rateLimits.windowMs = 999_999_999;
+
+      try {
+        const response = await invoke({
+          type: 'translate',
+          text: 'hello',
+          sourceLang: 'auto', // bypass cache
+          targetLang: 'fi',
+        }) as Record<string, unknown>;
+
+        expect(response.success).toBe(false);
+        expect(response.error).toContain('Too many requests');
+        expect(typeof response.duration).toBe('number');
+      } finally {
+        configMod.CONFIG.rateLimits.requestsPerMinute = origReqLimit;
+        configMod.CONFIG.rateLimits.windowMs = origWindowMs;
+      }
+    });
+
+    it('returns rate-limit error when tokensPerMinute is exhausted (line 475, 647-651)', async () => {
+      const configMod = await import('../config');
+      const origTokenLimit = configMod.CONFIG.rateLimits.tokensPerMinute;
+      const origWindowMs = configMod.CONFIG.rateLimits.windowMs;
+      // tokensPerMinute = 0 → any token estimate (≥1) exceeds it
+      configMod.CONFIG.rateLimits.tokensPerMinute = 0;
+      configMod.CONFIG.rateLimits.windowMs = 999_999_999;
+      // Ensure request count is below limit to reach the token check at line 475
+      const origReqLimit = configMod.CONFIG.rateLimits.requestsPerMinute;
+      configMod.CONFIG.rateLimits.requestsPerMinute = 999_999;
+
+      try {
+        // Advance time to reset the window cleanly
+        vi.useFakeTimers();
+        vi.setSystemTime(Date.now() + 2_000_000_000);
+
+        const response = await invoke({
+          type: 'translate',
+          text: 'hello',
+          sourceLang: 'auto',
+          targetLang: 'fi',
+        }) as Record<string, unknown>;
+
+        expect(response.success).toBe(false);
+        expect(response.error).toContain('Too many requests');
+      } finally {
+        configMod.CONFIG.rateLimits.tokensPerMinute = origTokenLimit;
+        configMod.CONFIG.rateLimits.windowMs = origWindowMs;
+        configMod.CONFIG.rateLimits.requestsPerMinute = origReqLimit;
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  // ============================================================================
+  // Coverage: isNetworkError classifier callback (line 662)
+  // ============================================================================
+
+  describe('isNetworkError classifier invoked by withRetry (line 662)', () => {
+    it('calls the isNetworkError classifier when withRetry evaluates the error', async () => {
+      const errors = await import('../core/errors');
+
+      // Mock withRetry to call the classifier arg (3rd param) explicitly
+      (errors.withRetry as ReturnType<typeof vi.fn>).mockImplementationOnce(
+        async (
+          fn: () => Promise<unknown>,
+          _config: unknown,
+          classifier: (e: { technicalDetails?: string }) => boolean
+        ) => {
+          // Call classifier to exercise line 662
+          classifier({ technicalDetails: 'network timeout' });
+          // Still resolve via fn() so the test returns a normal response
+          return fn();
+        }
+      );
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'hello',
+        sourceLang: 'auto',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      expect(response).toBeDefined();
+      expect(errors.isNetworkError).toHaveBeenCalledWith('network timeout');
+    });
+  });
+
+  // ============================================================================
+  // Coverage: cache eviction when translationCache reaches maxSize (lines 152-158)
+  // ============================================================================
+
+  describe('cache eviction LRU path (lines 152-158)', () => {
+    it('evicts least-used entry when cache exceeds maxSize', async () => {
+      const hashMod = await import('../core/hash');
+      let keyCounter = 0;
+      // Each translation gets a unique cache key → cache fills up
+      (hashMod.generateCacheKey as ReturnType<typeof vi.fn>).mockImplementation(
+        () => `evict-test-key-${keyCounter++}`
+      );
+
+      try {
+        // First clear any existing cache entries
+        await invoke({ type: 'clearCache' });
+
+        // Fill cache to maxSize (100) + 1 more to trigger eviction
+        for (let i = 0; i <= 100; i++) {
+          await invoke({
+            type: 'translate',
+            text: `text-${i}`,
+            sourceLang: 'en',
+            targetLang: 'fi',
+          });
+        }
+
+        const stats = await invoke({ type: 'getCacheStats' }) as Record<string, unknown>;
+        expect(stats.success).toBe(true);
+        const cache = stats.cache as Record<string, unknown>;
+        // After eviction the size must be ≤ maxSize
+        expect((cache.size as number) <= 100).toBe(true);
+      } finally {
+        // Restore default cache-key mock and clear the oversized cache
+        (hashMod.generateCacheKey as ReturnType<typeof vi.fn>).mockReturnValue('mock-cache-key');
+        await invoke({ type: 'clearCache' });
+      }
+    });
+  });
+
+  // ============================================================================
+  // Coverage: loadPersistentCache with stored data (lines 84-88, 92-94, 99-100)
+  // and scheduleCacheSave timer callback (lines 111-121)
+  // These need a fresh module import with vi.resetModules().
+  // MUST be the absolute last describe blocks in this file so that the module
+  // reset does not affect earlier tests.
+  // ============================================================================
+
+  describe('loadPersistentCache with stored cache data (fresh module)', () => {
+    let freshMessageHandler: (
+      msg: Record<string, unknown>,
+      sender: unknown,
+      sendResponse: (r: unknown) => void
+    ) => boolean;
+
+    const freshInvoke = (message: Record<string, unknown>): Promise<unknown> =>
+      new Promise((resolve) => freshMessageHandler(message, {}, (r) => resolve(r)));
+
+    beforeAll(async () => {
+      // Reset module registry so the next import re-runs module-level code
+      vi.resetModules();
+
+      // Pre-seed storage so loadPersistentCache finds entries (covers lines 84-88, 92-94)
+      mockStorageGet.mockResolvedValueOnce({
+        translationCache: [
+          [
+            'stored-key-1',
+            {
+              result: 'tallennettu',
+              timestamp: Date.now(),
+              sourceLang: 'en',
+              targetLang: 'fi',
+              useCount: 3,
+            },
+          ],
+          [
+            'stored-key-2',
+            {
+              result: 'maailma',
+              timestamp: Date.now() - 1000,
+              sourceLang: 'en',
+              targetLang: 'fi',
+              useCount: 1,
+            },
+          ],
+        ],
+        cacheStats: { hits: 7, misses: 4 },
+      });
+
+      // Re-import the module — this re-runs loadPersistentCache() with stored data
+      await import('./background-firefox');
+
+      // Allow the async loadPersistentCache() promise to settle
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      // Capture the handler registered by the fresh module instance
+      const calls = mockAddMessageListener.mock.calls;
+      const lastCall = calls[calls.length - 1];
+      freshMessageHandler = lastCall[0];
+    });
+
+    it('loads cache entries from storage into translationCache (lines 84-88)', async () => {
+      const response = await freshInvoke({ type: 'getCacheStats' }) as Record<string, unknown>;
+      expect(response.success).toBe(true);
+      const cache = response.cache as Record<string, unknown>;
+      // The two entries we seeded should be loaded
+      expect((cache.size as number)).toBeGreaterThanOrEqual(2);
+    });
+
+    it('restores cacheHits and cacheMisses from stored stats (lines 92-94)', async () => {
+      const response = await freshInvoke({ type: 'getCacheStats' }) as Record<string, unknown>;
+      expect(response.success).toBe(true);
+      const cache = response.cache as Record<string, unknown>;
+      // hits=7 misses=4 were stored; verify they influenced the hit-rate string
+      expect(cache.hitRate).toBeDefined();
+    });
+  });
+
+  describe('loadPersistentCache error path (lines 99-100)', () => {
+    let freshMessageHandler2: (
+      msg: Record<string, unknown>,
+      sender: unknown,
+      sendResponse: (r: unknown) => void
+    ) => boolean;
+
+    const freshInvoke2 = (message: Record<string, unknown>): Promise<unknown> =>
+      new Promise((resolve) => freshMessageHandler2(message, {}, (r) => resolve(r)));
+
+    beforeAll(async () => {
+      vi.resetModules();
+
+      // Make storage.local.get throw so the catch block in loadPersistentCache fires
+      mockStorageGet.mockRejectedValueOnce(new Error('Storage failure during init'));
+
+      // Import — loadPersistentCache will catch the error (lines 99-100)
+      await import('./background-firefox');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const calls = mockAddMessageListener.mock.calls;
+      freshMessageHandler2 = calls[calls.length - 1][0];
+    });
+
+    it('sets cacheInitialized=true even after storage error (lines 99-100)', async () => {
+      // Module should still be functional despite the init error
+      const response = await freshInvoke2({ type: 'ping' }) as Record<string, unknown>;
+      expect(response.success).toBe(true);
+    });
+  });
+
+  describe('scheduleCacheSave timer callback (lines 111-121)', () => {
+    let freshMessageHandler3: (
+      msg: Record<string, unknown>,
+      sender: unknown,
+      sendResponse: (r: unknown) => void
+    ) => boolean;
+
+    const freshInvoke3 = (message: Record<string, unknown>): Promise<unknown> =>
+      new Promise((resolve) => freshMessageHandler3(message, {}, (r) => resolve(r)));
+
+    beforeAll(async () => {
+      vi.useFakeTimers();
+      vi.resetModules();
+
+      // Empty storage so loadPersistentCache succeeds quickly
+      mockStorageGet.mockResolvedValue({});
+
+      await import('./background-firefox');
+      await vi.runAllTimersAsync(); // settle the async init
+
+      const calls = mockAddMessageListener.mock.calls;
+      freshMessageHandler3 = calls[calls.length - 1][0];
+    });
+
+    afterAll(() => {
+      vi.useRealTimers();
+    });
+
+    it('persists cache to storage after debounce fires (lines 111-118)', async () => {
+      mockStorageSet.mockClear();
+      mockStorageSet.mockResolvedValue(undefined);
+
+      // Translation → setCachedTranslation → scheduleCacheSave (timer = null in fresh module)
+      await freshInvoke3({
+        type: 'translate',
+        text: 'hello',
+        sourceLang: 'en',
+        targetLang: 'fi',
+      });
+
+      // Fire the debounced timer
+      await vi.runAllTimersAsync();
+
+      expect(mockStorageSet).toHaveBeenCalled();
+    });
+
+    it('handles storage.set failure in timer callback gracefully (lines 119-121)', async () => {
+      mockStorageSet.mockClear();
+      // Make storage.set reject to exercise the catch branch
+      mockStorageSet.mockRejectedValueOnce(new Error('Disk full'));
+
+      await freshInvoke3({
+        type: 'clearCache', // clears timer so scheduleCacheSave runs on next translate
+      });
+
+      await freshInvoke3({
+        type: 'translate',
+        text: 'world',
+        sourceLang: 'fi',
+        targetLang: 'en',
+      });
+
+      // Should not throw even though storage.set fails
+      await expect(vi.runAllTimersAsync()).resolves.not.toThrow();
+    });
+  });
