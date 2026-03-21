@@ -1743,4 +1743,61 @@ describe('LocalModelManager - Targeted Missing Coverage', () => {
       await expect(manager.deleteModel()).rejects.toThrow('QuotaExceededError');
     });
   });
+
+  describe('downloadModel onProgress null/undefined callback handling', () => {
+    it('skips onProgress callback when onProgress is null', async () => {
+      mockWorkerPostMessage.mockImplementation((msg: Record<string, unknown>) => {
+        Promise.resolve().then(() => {
+          if (workerMessageHandler && msg.type === 'loadModel') {
+            // Send progress events
+            workerMessageHandler({ data: { type: 'progress', loaded: 500, total: 1000, progress: 50 } });
+            workerMessageHandler({ data: { type: 'modelLoaded' } });
+          }
+        });
+      });
+
+      // Pass null for onProgress
+      const result = await manager.downloadModel(null);
+
+      expect(result.success).toBe(true);
+      expect(manager.downloadProgress).toBe(100);
+    });
+
+    it('calls onProgress callback when provided', async () => {
+      const onProgressMock = vi.fn();
+
+      mockWorkerPostMessage.mockImplementation((msg: Record<string, unknown>) => {
+        Promise.resolve().then(() => {
+          if (workerMessageHandler && msg.type === 'loadModel') {
+            workerMessageHandler({ data: { type: 'progress', loaded: 500, total: 1000, progress: 50 } });
+            workerMessageHandler({ data: { type: 'modelLoaded' } });
+          }
+        });
+      });
+
+      const result = await manager.downloadModel(onProgressMock);
+
+      expect(result.success).toBe(true);
+      expect(onProgressMock).toHaveBeenCalledWith(expect.objectContaining({ progress: 50 }));
+    });
+
+    it('handles undefined progressInfo.progress field', async () => {
+      const onProgressMock = vi.fn();
+
+      mockWorkerPostMessage.mockImplementation((msg: Record<string, unknown>) => {
+        Promise.resolve().then(() => {
+          if (workerMessageHandler && msg.type === 'loadModel') {
+            // Send progress without progress field
+            workerMessageHandler({ data: { type: 'progress', loaded: 500, total: 1000 } });
+            workerMessageHandler({ data: { type: 'modelLoaded' } });
+          }
+        });
+      });
+
+      const result = await manager.downloadModel(onProgressMock);
+
+      expect(result.success).toBe(true);
+      expect(onProgressMock).toHaveBeenCalled();
+    });
+  });
 });

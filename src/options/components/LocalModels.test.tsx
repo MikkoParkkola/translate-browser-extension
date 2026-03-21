@@ -434,9 +434,10 @@ describe('LocalModels — uncovered branches', () => {
 
       render(() => <LocalModels />);
 
-      // Should show loading initially
+      // Should show loading initially — check for spinner/loading element
       await vi.waitFor(() => {
-        expect(screen.queryByText(/Loading/i) || screen.queryByText(/Local Models/i)).toBeTruthy();
+        const spinner = document.querySelector('.spinner');
+        expect(spinner).toBeTruthy();
       });
     });
 
