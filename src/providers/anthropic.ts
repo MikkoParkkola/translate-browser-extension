@@ -4,18 +4,21 @@
  * https://docs.anthropic.com/en/api/messages
  */
 
-import { BaseProvider } from './base-provider';
+import { CloudProvider } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
 import { handleProviderHttpError } from '../core/http-errors';
 import { getLanguageName } from '../core/language-map';
-import { createLogger } from '../core/logger';
 import { CONFIG } from '../config';
 import { readErrorBody, estimateMaxTokens, generateAllLanguagePairs } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
-const log = createLogger('Anthropic');
-
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_STORAGE_KEYS = [
+  'anthropic_api_key',
+  'anthropic_model',
+  'anthropic_formality',
+  'anthropic_tokens_used',
+] as const;
 
 export type ClaudeFormality = 'formal' | 'informal' | 'neutral';
 export type ClaudeModel = 'claude-sonnet-4-20250514' | 'claude-3-5-haiku-20241022' | 'claude-3-5-sonnet-20241022';
@@ -42,7 +45,7 @@ interface AnthropicMessageResponse {
   };
 }
 
-export class AnthropicProvider extends BaseProvider {
+export class AnthropicProvider extends CloudProvider {
   private config: AnthropicConfig | null = null;
   private totalTokensUsed = 0;
 
@@ -57,36 +60,33 @@ export class AnthropicProvider extends BaseProvider {
     });
   }
 
-  /**
-   * Initialize the provider by loading API key from storage
-   */
-  async initialize(): Promise<void> {
-    try {
-      const stored = await chrome.storage.local.get([
-        'anthropic_api_key',
-        'anthropic_model',
-        'anthropic_formality',
-        'anthropic_tokens_used',
-      ]);
-      if (stored.anthropic_api_key) {
-        this.config = {
-          apiKey: stored.anthropic_api_key,
-          model: stored.anthropic_model ?? 'claude-3-5-haiku-20241022',
-          formality: stored.anthropic_formality ?? 'neutral',
-        };
-        this.totalTokensUsed = stored.anthropic_tokens_used ?? 0;
-        log.info('Initialized with model:', this.config.model);
-      }
-    } catch (error) {
-      console.error('[Anthropic] Failed to load config:', error);
+  protected getStorageKeys(): string[] {
+    return [...ANTHROPIC_STORAGE_KEYS];
+  }
+
+  protected applyStoredConfig(stored: Record<string, unknown>): void {
+    if (stored.anthropic_api_key) {
+      this.config = {
+        apiKey: stored.anthropic_api_key as string,
+        model: (stored.anthropic_model as ClaudeModel) ?? 'claude-3-5-haiku-20241022',
+        formality: (stored.anthropic_formality as ClaudeFormality) ?? 'neutral',
+      };
+      this.totalTokensUsed = (stored.anthropic_tokens_used as number) ?? 0;
+      this.log.info('Initialized with model:', this.config.model);
     }
   }
 
-  /**
-   * Store API key in chrome.storage
-   */
+  protected hasConfig(): boolean {
+    return !!this.config?.apiKey;
+  }
+
+  protected resetConfig(): void {
+    this.config = null;
+  }
+
+  /** Store API key in storage */
   async setApiKey(apiKey: string): Promise<void> {
-    await chrome.storage.local.set({ anthropic_api_key: apiKey });
+    await this.persist({ anthropic_api_key: apiKey });
     if (this.config) {
       this.config.apiKey = apiKey;
     } else {
@@ -98,51 +98,24 @@ export class AnthropicProvider extends BaseProvider {
     }
   }
 
-  /**
-   * Set model preference
-   */
+  /** Set model preference */
   async setModel(model: ClaudeModel): Promise<void> {
-    await chrome.storage.local.set({ anthropic_model: model });
+    await this.persist({ anthropic_model: model });
     if (this.config) {
       this.config.model = model;
     }
   }
 
-  /**
-   * Set formality preference
-   */
+  /** Set formality preference */
   async setFormality(formality: ClaudeFormality): Promise<void> {
-    await chrome.storage.local.set({ anthropic_formality: formality });
+    await this.persist({ anthropic_formality: formality });
     if (this.config) {
       this.config.formality = formality;
     }
   }
 
-  /**
-   * Remove API key
-   */
-  async clearApiKey(): Promise<void> {
-    await chrome.storage.local.remove([
-      'anthropic_api_key',
-      'anthropic_model',
-      'anthropic_formality',
-      'anthropic_tokens_used',
-    ]);
-    this.config = null;
-  }
-
-  /**
-   * Get language name for prompts
-   */
-  private getLangName(code: string): string {
-    return getLanguageName(code);
-  }
-
-  /**
-   * Build translation system prompt with formality
-   */
   private buildSystemPrompt(targetLang: string, formality: ClaudeFormality): string {
-    const langName = this.getLangName(targetLang);
+    const langName = getLanguageName(targetLang);
     let formalityInst = '';
 
     switch (formality) {
@@ -190,7 +163,7 @@ Rules:
 
     // Add source language hint if known
     if (sourceLang !== 'auto') {
-      userContent = `[Source language: ${this.getLangName(sourceLang)}]\n\n${userContent}`;
+      userContent = `[Source language: ${getLanguageName(sourceLang)}]\n\n${userContent}`;
     }
 
     const systemPrompt = this.buildSystemPrompt(targetLang, this.config.formality);
@@ -230,7 +203,9 @@ Rules:
       // Track token usage
       if (data.usage) {
         this.totalTokensUsed += data.usage.input_tokens + data.usage.output_tokens;
-        chrome.storage.local.set({ anthropic_tokens_used: this.totalTokensUsed }).catch((e) => log.warn('Failed to persist token usage:', e));
+        /* v8 ignore start -- fire-and-forget persist */
+        this.persist({ anthropic_tokens_used: this.totalTokensUsed }).catch((e) => this.log.warn('Failed to persist token usage:', e));
+        /* v8 ignore stop */
       }
 
       const translated = data.content[0]?.text?.trim() || '';
@@ -262,7 +237,7 @@ Rules:
 
         // Fallback: if model returned plain text without tags, try newline splitting
         if (!matched && translated.length > 0) {
-          log.warn('XML tag parsing failed, falling back to newline splitting');
+          this.log.warn('XML tag parsing failed, falling back to newline splitting');
           const lines = translated.split('\n').map(l => l.trim()).filter(l => l.length > 0);
           for (let i = 0; i < Math.min(lines.length, texts.length); i++) {
             results[i] = lines[i];
@@ -281,7 +256,7 @@ Rules:
 
       return isArray ? [translated] : translated;
     } catch (error) {
-      log.error('Translation error:', error);
+      this.log.error('Translation error:', error);
       throw createTranslationError(error);
     }
   }
@@ -321,32 +296,18 @@ Rules:
         }
       }
     } catch (error) {
-      log.error('Language detection error:', error);
+      this.log.error('Language detection error:', error);
     }
 
     return 'auto';
   }
 
-  /**
-   * Check if provider is available (has API key)
-   */
-  async isAvailable(): Promise<boolean> {
-    if (!this.config) {
-      await this.initialize();
-    }
-    return !!this.config?.apiKey;
-  }
-
-  /**
-   * Get usage statistics
-   */
   async getUsage(): Promise<{
     requests: number;
     tokens: number;
     cost: number;
     limitReached: boolean;
   }> {
-    // Estimate cost based on model
     const costPer1K: Record<ClaudeModel, number> = {
       'claude-sonnet-4-20250514': 0.003,
       'claude-3-5-haiku-20241022': 0.00025,
@@ -364,17 +325,10 @@ Rules:
     };
   }
 
-  /**
-   * Get supported language pairs
-   * Claude supports translation between most languages
-   */
   getSupportedLanguages(): LanguagePair[] {
     return generateAllLanguagePairs();
   }
 
-  /**
-   * Get provider info with model information
-   */
   getInfo(): ProviderConfig & { model: string; formality: string } {
     return {
       ...super.getInfo(),
@@ -388,3 +342,4 @@ Rules:
 export const anthropicProvider = new AnthropicProvider();
 
 export default anthropicProvider;
+

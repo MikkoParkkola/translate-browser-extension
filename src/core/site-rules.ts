@@ -10,6 +10,7 @@
 
 import type { TranslationProviderId, Strategy } from '../types';
 import { createLogger } from './logger';
+import { browserAPI } from './browser-api';
 
 const log = createLogger('SiteRules');
 
@@ -79,7 +80,7 @@ export function findMatchingRule(
  */
 export async function getRules(hostname: string): Promise<SiteRules | null> {
   try {
-    const data = await chrome.storage.local.get(STORAGE_KEY);
+    const data = await browserAPI.storage.local.get(STORAGE_KEY);
     const allRules: SiteRulesStore = data[STORAGE_KEY] || {};
 
     const match = findMatchingRule(hostname, allRules);
@@ -95,12 +96,12 @@ export async function getRules(hostname: string): Promise<SiteRules | null> {
  */
 export async function setRules(hostnameOrPattern: string, rules: SiteRules): Promise<void> {
   try {
-    const data = await chrome.storage.local.get(STORAGE_KEY);
+    const data = await browserAPI.storage.local.get(STORAGE_KEY);
     const allRules: SiteRulesStore = data[STORAGE_KEY] || {};
 
     allRules[hostnameOrPattern] = rules;
 
-    await chrome.storage.local.set({ [STORAGE_KEY]: allRules });
+    await browserAPI.storage.local.set({ [STORAGE_KEY]: allRules });
     log.info(' Updated rules for:', hostnameOrPattern, rules);
   } catch (e) {
     log.error(' Failed to set rules:', e);
@@ -113,12 +114,12 @@ export async function setRules(hostnameOrPattern: string, rules: SiteRules): Pro
  */
 export async function clearRules(hostnameOrPattern: string): Promise<void> {
   try {
-    const data = await chrome.storage.local.get(STORAGE_KEY);
+    const data = await browserAPI.storage.local.get(STORAGE_KEY);
     const allRules: SiteRulesStore = data[STORAGE_KEY] || {};
 
     delete allRules[hostnameOrPattern];
 
-    await chrome.storage.local.set({ [STORAGE_KEY]: allRules });
+    await browserAPI.storage.local.set({ [STORAGE_KEY]: allRules });
     log.info(' Cleared rules for:', hostnameOrPattern);
   } catch (e) {
     log.error(' Failed to clear rules:', e);
@@ -131,7 +132,7 @@ export async function clearRules(hostnameOrPattern: string): Promise<void> {
  */
 export async function getAllRules(): Promise<SiteRulesStore> {
   try {
-    const data = await chrome.storage.local.get(STORAGE_KEY);
+    const data = await browserAPI.storage.local.get(STORAGE_KEY);
     return data[STORAGE_KEY] || {};
   } catch (e) {
     log.error(' Failed to get all rules:', e);
@@ -144,7 +145,7 @@ export async function getAllRules(): Promise<SiteRulesStore> {
  */
 export async function clearAllRules(): Promise<void> {
   try {
-    await chrome.storage.local.remove(STORAGE_KEY);
+    await browserAPI.storage.local.remove(STORAGE_KEY);
     log.info(' Cleared all rules');
   } catch (e) {
     log.error(' Failed to clear all rules:', e);
@@ -194,7 +195,7 @@ export async function importRules(json: string): Promise<number> {
     const existing = await getAllRules();
     const merged = { ...existing, ...imported };
 
-    await chrome.storage.local.set({ [STORAGE_KEY]: merged });
+    await browserAPI.storage.local.set({ [STORAGE_KEY]: merged });
     log.info(' Imported', Object.keys(imported).length, 'rules');
 
     return Object.keys(imported).length;

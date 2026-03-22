@@ -17,6 +17,7 @@ import {
 } from '@huggingface/transformers';
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
+import { withTimeout } from '../core/async-utils';
 
 const log = createLogger('TranslateGemma');
 
@@ -54,20 +55,6 @@ let _webGpuOnnxTainted = false;
  */
 export function isWebGpuOnnxTainted(): boolean {
   return _webGpuOnnxTainted;
-}
-
-/**
- * Wrap a promise with a timeout.
- */
-function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      /* v8 ignore start -- timeout callback */
-      setTimeout(() => reject(new Error(`Timeout: ${message} (${ms / 1000}s)`)), ms)
-      /* v8 ignore stop */
-    ),
-  ]);
 }
 
 /**

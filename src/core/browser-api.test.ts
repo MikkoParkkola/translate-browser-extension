@@ -64,8 +64,10 @@ describe('browserAPI', () => {
   });
 
   it('uses chrome when browser global is not defined', () => {
-    // In test environment, browser is undefined, so it should fall back to chrome
-    expect(browserAPI).toBe(chromeRuntime);
+    // In test environment, browser is undefined, so browserAPI should delegate to chrome.
+    // With lazy proxy, check behavioral equivalence rather than strict identity.
+    expect(browserAPI.runtime).toBe(chromeRuntime.runtime);
+    expect(browserAPI.storage).toBe(chromeRuntime.storage);
   });
 });
 
@@ -224,7 +226,7 @@ describe('browser-api - Firefox/browser global paths', () => {
 
     const mod = await import('./browser-api');
 
-    expect(mod.browserAPI).toBe(mockBrowser);
+    expect(mod.browserAPI.runtime).toBe(mockBrowser.runtime);
     expect(mod.isFirefox()).toBe(true);
     expect(mod.isChrome()).toBe(false);
 

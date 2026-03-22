@@ -1,5 +1,3 @@
-// StandardErrorHandler stub for LocalModelManager
-
 export interface ErrorContext {
   source?: string;
   operation?: string;

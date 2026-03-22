@@ -17,8 +17,13 @@ declare const browser: typeof chrome | undefined;
  * Modern Chrome also supports `chrome` with Promises, so we prefer `browser` if available
  * as it's guaranteed to be Promise-based.
  */
-export const browserAPI: typeof chrome =
-  typeof browser !== 'undefined' ? browser : chrome;
+export const browserAPI: typeof chrome = new Proxy({} as typeof chrome, {
+  get(_target, prop: string | symbol) {
+    const api = typeof browser !== 'undefined' ? (browser as typeof chrome) : chrome;
+    const val = (api as unknown as Record<string | symbol, unknown>)[prop];
+    return typeof val === 'function' ? val.bind(api) : val;
+  },
+});
 
 /**
  * Check if running in Firefox

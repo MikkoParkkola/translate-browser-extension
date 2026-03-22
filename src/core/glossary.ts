@@ -9,6 +9,7 @@
  */
 
 import { createLogger } from './logger';
+import { browserAPI } from './browser-api';
 
 const log = createLogger('Glossary');
 
@@ -33,7 +34,7 @@ const STORAGE_KEY = 'glossary';
  */
 export async function getGlossary(): Promise<GlossaryStore> {
   try {
-    const data = await chrome.storage.local.get(STORAGE_KEY);
+    const data = await browserAPI.storage.local.get(STORAGE_KEY);
     return data[STORAGE_KEY] || {};
   } catch (e) {
     log.error(' Failed to get glossary:', e);
@@ -57,7 +58,7 @@ export async function addTerm(
   try {
     const glossary = await getGlossary();
     glossary[term] = { replacement, caseSensitive, description };
-    await chrome.storage.local.set({ [STORAGE_KEY]: glossary });
+    await browserAPI.storage.local.set({ [STORAGE_KEY]: glossary });
     log.info(' Added term:', term, '->', replacement);
   } catch (e) {
     log.error(' Failed to add term:', e);
@@ -72,7 +73,7 @@ export async function removeTerm(term: string): Promise<void> {
   try {
     const glossary = await getGlossary();
     delete glossary[term];
-    await chrome.storage.local.set({ [STORAGE_KEY]: glossary });
+    await browserAPI.storage.local.set({ [STORAGE_KEY]: glossary });
     log.info(' Removed term:', term);
   } catch (e) {
     log.error(' Failed to remove term:', e);
@@ -85,7 +86,7 @@ export async function removeTerm(term: string): Promise<void> {
  */
 export async function clearGlossary(): Promise<void> {
   try {
-    await chrome.storage.local.remove(STORAGE_KEY);
+    await browserAPI.storage.local.remove(STORAGE_KEY);
     log.info(' Cleared glossary');
   } catch (e) {
     log.error(' Failed to clear glossary:', e);
@@ -268,7 +269,7 @@ export async function importGlossary(json: string): Promise<number> {
     const existing = await getGlossary();
     const merged = { ...existing, ...imported };
 
-    await chrome.storage.local.set({ [STORAGE_KEY]: merged });
+    await browserAPI.storage.local.set({ [STORAGE_KEY]: merged });
     log.info(' Imported', Object.keys(imported).length, 'terms');
 
     return Object.keys(imported).length;

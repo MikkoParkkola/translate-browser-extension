@@ -4,18 +4,22 @@
  * https://platform.openai.com/docs/api-reference/chat
  */
 
-import { BaseProvider } from './base-provider';
+import { CloudProvider } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
 import { handleProviderHttpError } from '../core/http-errors';
 import { getLanguageName } from '../core/language-map';
-import { createLogger } from '../core/logger';
 import { CONFIG } from '../config';
 import { readErrorBody, estimateMaxTokens, generateAllLanguagePairs } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
-const log = createLogger('OpenAI');
-
 const OPENAI_API = 'https://api.openai.com/v1/chat/completions';
+const OPENAI_STORAGE_KEYS = [
+  'openai_api_key',
+  'openai_model',
+  'openai_formality',
+  'openai_temperature',
+  'openai_tokens_used',
+] as const;
 
 export type OpenAIFormality = 'formal' | 'informal' | 'neutral';
 export type OpenAIModel = 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4-turbo' | 'gpt-3.5-turbo';
@@ -42,7 +46,7 @@ interface OpenAIChatResponse {
   };
 }
 
-export class OpenAIProvider extends BaseProvider {
+export class OpenAIProvider extends CloudProvider {
   private config: OpenAIConfig | null = null;
   private totalTokensUsed = 0;
 
@@ -57,38 +61,36 @@ export class OpenAIProvider extends BaseProvider {
     });
   }
 
-  /**
-   * Initialize the provider by loading API key from storage
-   */
-  async initialize(): Promise<void> {
-    try {
-      const stored = await chrome.storage.local.get([
-        'openai_api_key',
-        'openai_model',
-        'openai_formality',
-        'openai_temperature',
-        'openai_tokens_used',
-      ]);
-      if (stored.openai_api_key) {
-        this.config = {
-          apiKey: stored.openai_api_key,
-          model: stored.openai_model ?? 'gpt-4o-mini',
-          formality: stored.openai_formality ?? 'neutral',
-          temperature: stored.openai_temperature ?? 0.3,
-        };
-        this.totalTokensUsed = stored.openai_tokens_used ?? 0;
-        log.info('Initialized with model:', this.config.model);
-      }
-    } catch (error) {
-      log.error('Failed to load config:', error);
+  protected getStorageKeys(): string[] {
+    return [...OPENAI_STORAGE_KEYS];
+  }
+
+  protected applyStoredConfig(stored: Record<string, unknown>): void {
+    if (stored.openai_api_key) {
+      this.config = {
+        apiKey: stored.openai_api_key as string,
+        model: (stored.openai_model as OpenAIModel) ?? 'gpt-4o-mini',
+        formality: (stored.openai_formality as OpenAIFormality) ?? 'neutral',
+        temperature: (stored.openai_temperature as number) ?? 0.3,
+      };
+      this.totalTokensUsed = (stored.openai_tokens_used as number) ?? 0;
+      this.log.info('Initialized with model:', this.config.model);
     }
   }
 
+  protected hasConfig(): boolean {
+    return !!this.config?.apiKey;
+  }
+
+  protected resetConfig(): void {
+    this.config = null;
+  }
+
   /**
-   * Store API key and settings in chrome.storage
+   * Store API key and settings in storage
    */
   async setApiKey(apiKey: string): Promise<void> {
-    await chrome.storage.local.set({ openai_api_key: apiKey });
+    await this.persist({ openai_api_key: apiKey });
     if (this.config) {
       this.config.apiKey = apiKey;
     } else {
@@ -101,51 +103,24 @@ export class OpenAIProvider extends BaseProvider {
     }
   }
 
-  /**
-   * Set model preference
-   */
+  /** Set model preference */
   async setModel(model: OpenAIModel): Promise<void> {
-    await chrome.storage.local.set({ openai_model: model });
+    await this.persist({ openai_model: model });
     if (this.config) {
       this.config.model = model;
     }
   }
 
-  /**
-   * Set formality preference
-   */
+  /** Set formality preference */
   async setFormality(formality: OpenAIFormality): Promise<void> {
-    await chrome.storage.local.set({ openai_formality: formality });
+    await this.persist({ openai_formality: formality });
     if (this.config) {
       this.config.formality = formality;
     }
   }
 
-  /**
-   * Remove API key
-   */
-  async clearApiKey(): Promise<void> {
-    await chrome.storage.local.remove([
-      'openai_api_key',
-      'openai_model',
-      'openai_formality',
-      'openai_temperature',
-    ]);
-    this.config = null;
-  }
-
-  /**
-   * Get language name for prompts
-   */
-  private getLangName(code: string): string {
-    return getLanguageName(code);
-  }
-
-  /**
-   * Build translation prompt with formality
-   */
   private buildPrompt(targetLang: string, formality: OpenAIFormality): string {
-    const langName = this.getLangName(targetLang);
+    const langName = getLanguageName(targetLang);
     let formalityInst = '';
 
     switch (formality) {
@@ -189,7 +164,7 @@ export class OpenAIProvider extends BaseProvider {
 
     // Add source language hint if known
     if (sourceLang !== 'auto') {
-      userPrompt = `[Source: ${this.getLangName(sourceLang)}]\n${inputText}`;
+      userPrompt = `[Source: ${getLanguageName(sourceLang)}]\n${inputText}`;
     }
 
     // For batch, add instruction
@@ -233,7 +208,7 @@ export class OpenAIProvider extends BaseProvider {
       if (data.usage) {
         this.totalTokensUsed += data.usage.total_tokens;
         /* v8 ignore start -- fire-and-forget persist */
-        chrome.storage.local.set({ openai_tokens_used: this.totalTokensUsed }).catch((e) => log.warn('Failed to persist token usage:', e));
+        this.persist({ openai_tokens_used: this.totalTokensUsed }).catch((e) => this.log.warn('Failed to persist token usage:', e));
         /* v8 ignore stop */
       }
 
@@ -270,7 +245,7 @@ export class OpenAIProvider extends BaseProvider {
 
       return isArray ? [translated] : translated;
     } catch (error) {
-      log.error('Translation error:', error);
+      this.log.error('Translation error:', error);
       throw createTranslationError(error);
     }
   }
@@ -313,25 +288,12 @@ export class OpenAIProvider extends BaseProvider {
         }
       }
     } catch (error) {
-      log.error('Language detection error:', error);
+      this.log.error('Language detection error:', error);
     }
 
     return 'auto';
   }
 
-  /**
-   * Check if provider is available (has API key)
-   */
-  async isAvailable(): Promise<boolean> {
-    if (!this.config) {
-      await this.initialize();
-    }
-    return !!this.config?.apiKey;
-  }
-
-  /**
-   * Get usage statistics
-   */
   async getUsage(): Promise<{
     requests: number;
     tokens: number;
@@ -357,17 +319,10 @@ export class OpenAIProvider extends BaseProvider {
     };
   }
 
-  /**
-   * Get supported language pairs
-   * OpenAI supports translation between most languages
-   */
   getSupportedLanguages(): LanguagePair[] {
     return generateAllLanguagePairs();
   }
 
-  /**
-   * Get provider info with model information
-   */
   getInfo(): ProviderConfig & { model: string; formality: string } {
     return {
       ...super.getInfo(),
@@ -381,3 +336,4 @@ export class OpenAIProvider extends BaseProvider {
 export const openaiProvider = new OpenAIProvider();
 
 export default openaiProvider;
+

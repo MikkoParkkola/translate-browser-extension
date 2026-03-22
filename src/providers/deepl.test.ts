@@ -897,16 +897,16 @@ describe('DeepLProvider', () => {
 
   describe('initialize error handling (line 78)', () => {
     it('catches and logs error when chrome.storage.local.get throws', async () => {
-      const consoleSpy = vi.spyOn(console, 'error');
       const freshProvider = new DeepLProvider();
 
       // Mock chrome.storage to throw an error
       const mockGetError = new Error('Storage access denied');
       vi.mocked(chrome.storage.local.get as any).mockRejectedValueOnce(mockGetError);
 
-      // Should not throw, just log error
+      // Should not throw — safeStorageGet handles the error at the storage layer
       await expect(freshProvider.initialize()).resolves.not.toThrow();
-      expect(consoleSpy).toHaveBeenCalledWith('[DeepL] Failed to load config:', mockGetError);
+      // Provider remains uninitialised (no API key in empty result)
+      expect(await freshProvider.isAvailable()).toBe(false);
     });
   });
 });

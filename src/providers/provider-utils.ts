@@ -29,10 +29,16 @@ export function estimateMaxTokens(texts: string[]): number {
 }
 
 /**
- * Generate all possible language pairs from available language codes
- * Used by OpenAI, Anthropic, and Google Cloud providers
+ * Generate all possible language pairs from available language codes.
+ * Used by OpenAI, Anthropic, and Google Cloud providers.
+ * Result is memoized since language codes are static at runtime.
  */
+let _cachedLanguagePairs: LanguagePair[] | null = null;
+
 export function generateAllLanguagePairs(): LanguagePair[] {
+  if (_cachedLanguagePairs) {
+    return _cachedLanguagePairs;
+  }
   const languages = getAllLanguageCodes();
   const pairs: LanguagePair[] = [];
   for (const src of languages) {
@@ -42,5 +48,6 @@ export function generateAllLanguagePairs(): LanguagePair[] {
       }
     }
   }
+  _cachedLanguagePairs = pairs;
   return pairs;
 }

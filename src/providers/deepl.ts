@@ -4,20 +4,18 @@
  * https://www.deepl.com/docs-api
  */
 
-import { BaseProvider } from './base-provider';
+import { CloudProvider } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
 import { handleProviderHttpError } from '../core/http-errors';
 import { toDeepLCode, getDeepLSupportedLanguages } from '../core/language-map';
-import { createLogger } from '../core/logger';
 import { CONFIG } from '../config';
 import { readErrorBody } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
-const log = createLogger('DeepL');
-
 // DeepL API endpoints
 const DEEPL_FREE_API = 'https://api-free.deepl.com/v2';
 const DEEPL_PRO_API = 'https://api.deepl.com/v2';
+const DEEPL_STORAGE_KEYS = ['deepl_api_key', 'deepl_is_pro', 'deepl_formality'] as const;
 
 export type DeepLFormality = 'default' | 'more' | 'less' | 'prefer_more' | 'prefer_less';
 
@@ -39,7 +37,7 @@ interface DeepLUsageResponse {
   character_limit: number;
 }
 
-export class DeepLProvider extends BaseProvider {
+export class DeepLProvider extends CloudProvider {
   private config: DeepLConfig | null = null;
   private usageCache: { count: number; limit: number; timestamp: number } | null = null;
 
@@ -54,66 +52,45 @@ export class DeepLProvider extends BaseProvider {
     });
   }
 
-  /**
-   * Get API base URL based on tier
-   */
   private get apiBase(): string {
     return this.config?.isPro ? DEEPL_PRO_API : DEEPL_FREE_API;
   }
 
-  /**
-   * Initialize the provider by loading API key from storage
-   */
-  async initialize(): Promise<void> {
-    try {
-      const stored = await chrome.storage.local.get(['deepl_api_key', 'deepl_is_pro', 'deepl_formality']);
-      if (stored.deepl_api_key) {
-        this.config = {
-          apiKey: stored.deepl_api_key,
-          isPro: stored.deepl_is_pro ?? false,
-          formality: stored.deepl_formality ?? 'default',
-        };
-        log.info('Initialized with', this.config.isPro ? 'Pro' : 'Free', 'tier');
-      }
-    } catch (error) {
-      console.error('[DeepL] Failed to load config:', error);
+  protected getStorageKeys(): string[] {
+    return [...DEEPL_STORAGE_KEYS];
+  }
+
+  protected applyStoredConfig(stored: Record<string, unknown>): void {
+    if (stored.deepl_api_key) {
+      this.config = {
+        apiKey: stored.deepl_api_key as string,
+        isPro: (stored.deepl_is_pro as boolean) ?? false,
+        formality: (stored.deepl_formality as DeepLFormality) ?? 'default',
+      };
+      this.log.info('Initialized with', this.config.isPro ? 'Pro' : 'Free', 'tier');
     }
   }
 
-  /**
-   * Store API key in chrome.storage
-   */
-  async setApiKey(apiKey: string, isPro: boolean = false): Promise<void> {
-    await chrome.storage.local.set({
-      deepl_api_key: apiKey,
-      deepl_is_pro: isPro,
-    });
-    this.config = { apiKey, isPro, formality: this.config?.formality ?? 'default' };
+  protected hasConfig(): boolean {
+    return !!this.config?.apiKey;
   }
 
-  /**
-   * Set formality preference
-   */
-  async setFormality(formality: DeepLFormality): Promise<void> {
-    await chrome.storage.local.set({ deepl_formality: formality });
-    if (this.config) {
-      this.config.formality = formality;
-    }
-  }
-
-  /**
-   * Remove API key
-   */
-  async clearApiKey(): Promise<void> {
-    await chrome.storage.local.remove(['deepl_api_key', 'deepl_is_pro', 'deepl_formality']);
+  protected resetConfig(): void {
     this.config = null;
   }
 
-  /**
-   * Convert language code to DeepL format
-   */
-  private toDeepLLang(lang: string): string {
-    return toDeepLCode(lang);
+  /** Store API key in storage */
+  async setApiKey(apiKey: string, isPro: boolean = false): Promise<void> {
+    await this.persist({ deepl_api_key: apiKey, deepl_is_pro: isPro });
+    this.config = { apiKey, isPro, formality: this.config?.formality ?? 'default' };
+  }
+
+  /** Set formality preference */
+  async setFormality(formality: DeepLFormality): Promise<void> {
+    await this.persist({ deepl_formality: formality });
+    if (this.config) {
+      this.config.formality = formality;
+    }
   }
 
   /**
@@ -130,7 +107,7 @@ export class DeepLProvider extends BaseProvider {
     }
 
     const texts = Array.isArray(text) ? text : [text];
-    const targetLangCode = this.toDeepLLang(targetLang);
+    const targetLangCode = toDeepLCode(targetLang);
 
     // Build request body
     const body: Record<string, unknown> = {
@@ -140,11 +117,10 @@ export class DeepLProvider extends BaseProvider {
 
     // Add source language if not auto-detect
     if (sourceLang !== 'auto') {
-      body.source_lang = this.toDeepLLang(sourceLang);
+      body.source_lang = toDeepLCode(sourceLang);
     }
 
     // Add formality if supported for target language
-    // (only some languages support formality)
     if (this.config.formality && this.config.formality !== 'default') {
       const formalitySupported = ['DE', 'FR', 'IT', 'ES', 'NL', 'PL', 'PT', 'RU', 'JA'];
       if (formalitySupported.includes(targetLangCode)) {
@@ -183,12 +159,12 @@ export class DeepLProvider extends BaseProvider {
       const results = data.translations.map(t => t.text);
 
       if (!Array.isArray(text) && results.length === 0) {
-        log.warn('DeepL returned empty translations array');
+        this.log.warn('DeepL returned empty translations array');
       }
 
       return Array.isArray(text) ? results : results[0];
     } catch (error) {
-      log.error('Translation error:', error);
+      this.log.error('Translation error:', error);
       throw createTranslationError(error);
     }
   }
@@ -223,25 +199,12 @@ export class DeepLProvider extends BaseProvider {
         }
       }
     } catch (error) {
-      log.error('Language detection error:', error);
+      this.log.error('Language detection error:', error);
     }
 
     return 'auto';
   }
 
-  /**
-   * Check if provider is available (has API key)
-   */
-  async isAvailable(): Promise<boolean> {
-    if (!this.config) {
-      await this.initialize();
-    }
-    return !!this.config?.apiKey;
-  }
-
-  /**
-   * Get usage statistics from DeepL
-   */
   async getUsage(): Promise<{
     requests: number;
     tokens: number;
@@ -286,16 +249,12 @@ export class DeepLProvider extends BaseProvider {
         };
       }
     } catch (error) {
-      log.error('Usage check error:', error);
+      this.log.error('Usage check error:', error);
     }
 
     return { requests: 0, tokens: 0, cost: 0, limitReached: false };
   }
 
-  /**
-   * Get supported language pairs
-   * DeepL supports translation between most language pairs
-   */
   getSupportedLanguages(): LanguagePair[] {
     const supportedLanguages = getDeepLSupportedLanguages();
     const pairs: LanguagePair[] = [];
@@ -309,9 +268,6 @@ export class DeepLProvider extends BaseProvider {
     return pairs;
   }
 
-  /**
-   * Get provider info with tier information
-   */
   getInfo(): ProviderConfig & { tier: string; formality: string } {
     return {
       ...super.getInfo(),

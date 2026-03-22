@@ -137,6 +137,9 @@ export interface TranslateResponse {
   error?: string;
   provider?: string;
   duration?: number;
+  cached?: boolean;
+  fromCorrection?: boolean;
+  profilingReport?: object;
 }
 
 // Model progress types

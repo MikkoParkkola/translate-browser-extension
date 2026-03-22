@@ -18,6 +18,8 @@ import {
 } from '../core/errors';
 import { createLogger } from '../core/logger';
 import { safeStorageGet, safeStorageSet } from '../core/storage';
+import { validateInput } from '../core/errors';
+import { getCorrection } from '../core/corrections';
 import { getPredictionEngine } from '../core/prediction-engine';
 import { CONFIG } from '../config';
 import { profiler, type AggregateStats } from '../core/profiler';
@@ -444,7 +446,7 @@ chrome.runtime.onMessage.addListener(
     
     // For translation messages, validate text/sourceLang/targetLang are strings
     if (message.type === 'translate') {
-      const translationMessage = message as any;
+      const translationMessage = message as unknown as { text?: unknown; sourceLang?: unknown; targetLang?: unknown };
       if (typeof translationMessage.text !== 'string' && !Array.isArray(translationMessage.text) ||
           typeof translationMessage.sourceLang !== 'string' ||
           typeof translationMessage.targetLang !== 'string') {
@@ -918,7 +920,6 @@ async function handleTranslateInner(message: {
 
   try {
     // Validate input
-    const { validateInput } = await import('../core/errors');
     const validation = validateInput(
       message.text,
       message.sourceLang,
@@ -958,7 +959,7 @@ async function handleTranslateInner(message: {
           result: cached.result,
           duration,
           cached: true,
-        } as TranslateResponse & { cached: boolean };
+        } as TranslateResponse;
       }
     } else if (sessionId) {
       profiler.endTiming(sessionId, 'cache_lookup');
@@ -966,7 +967,6 @@ async function handleTranslateInner(message: {
 
     // Check for user corrections
     if (typeof text === 'string' && message.sourceLang !== 'auto') {
-      const { getCorrection } = await import('../core/corrections');
       const userCorrection = await getCorrection(text, message.sourceLang, message.targetLang);
       if (userCorrection) {
         const duration = Date.now() - startTime;
@@ -978,7 +978,7 @@ async function handleTranslateInner(message: {
           result: userCorrection,
           duration,
           fromCorrection: true,
-        } as TranslateResponse & { fromCorrection: boolean };
+        } as TranslateResponse;
       }
     }
 
@@ -1139,7 +1139,7 @@ async function handleTranslateInner(message: {
       result: response.result,
       duration: Date.now() - startTime,
       profilingReport,
-    } as TranslateResponse & { profilingReport?: object };
+    } as TranslateResponse;
   } catch (error) {
     /* v8 ignore start -- profiler cleanup in error path */
     if (sessionId) profiler.endTiming(sessionId, 'total');

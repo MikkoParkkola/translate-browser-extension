@@ -9,6 +9,7 @@ import { getTranslationCache, type TranslationCacheStats } from '../core/transla
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
 import { profiler } from '../core/profiler';
+import { withTimeout } from '../core/async-utils';
 
 // Extracted modules
 import { MODEL_MAP, PIVOT_ROUTES } from './model-maps';
@@ -49,24 +50,6 @@ if (env.backends?.onnx?.wasm) {
 /* v8 ignore stop */
 
 log.info(' WASM path configured:', wasmBasePath);
-
-/**
- * Wrap a promise with a timeout.
- * Properly clears the timer when the promise resolves/rejects to prevent timer leaks.
- */
-function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    /* v8 ignore start -- timeout callback */
-    timer = setTimeout(() => reject(new Error(`Timeout: ${message} (${ms / 1000}s)`)), ms);
-    /* v8 ignore stop */
-  });
-  return Promise.race([promise, timeoutPromise]).finally(() => {
-    /* v8 ignore start -- timer null guard */
-    if (timer !== undefined) clearTimeout(timer);
-    /* v8 ignore stop */
-  });
-}
 
 
 /**

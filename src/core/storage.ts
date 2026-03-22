@@ -33,3 +33,17 @@ export async function safeStorageSet(items: Record<string, unknown>): Promise<bo
     return false;
   }
 }
+
+export async function safeStorageRemove(keys: string | string[]): Promise<boolean> {
+  try {
+    await browserAPI.storage.local.remove(keys);
+    lastStorageError = null;
+    return true;
+  } catch (error) {
+    const keyStr = Array.isArray(keys) ? keys.join(', ') : keys;
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    lastStorageError = `Failed to remove settings (${keyStr}): ${errorMsg}`;
+    log.error(`Storage remove failed for keys [${keyStr}]:`, errorMsg);
+    return false;
+  }
+}

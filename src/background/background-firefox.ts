@@ -18,6 +18,7 @@ import {
 } from '../core/errors';
 import { createLogger } from '../core/logger';
 import { safeStorageGet, safeStorageSet } from '../core/storage';
+import { withTimeout } from '../core/async-utils';
 import { generateCacheKey } from '../core/hash';
 import { CONFIG } from '../config';
 import { browserAPI, getURL } from '../core/browser-api';
@@ -274,15 +275,6 @@ loadPersistentCache();
 // ============================================================================
 // ML Pipeline Management (Direct - no offscreen needed)
 // ============================================================================
-
-function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`Timeout: ${message} (${ms / 1000}s)`)), ms)
-    ),
-  ]);
-}
 
 async function detectWebGPU(): Promise<boolean> {
   if (!navigator.gpu) return false;
@@ -747,11 +739,22 @@ async function handleGetProviders(): Promise<unknown> {
 browserAPI.runtime.onMessage.addListener(
   (
     message: ExtensionMessage,
-    _sender: chrome.runtime.MessageSender,
+    sender: chrome.runtime.MessageSender,
     sendResponse: (response: TranslateResponse | unknown) => void
   ) => {
     // Ignore messages meant for offscreen (Chrome compatibility)
     if ('target' in message && (message as { target?: string }).target === 'offscreen') return false;
+
+    // Validate sender for sensitive operations — only allow from extension pages (popup/options),
+    // not content scripts running on arbitrary web pages.
+    const sensitiveTypes: string[] = [
+      'setCloudApiKey', 'clearCloudApiKey', 'importCorrections', 'clearCache',
+      'clearCorrections', 'clearHistory', 'clearAllModels', 'clearProfilingStats',
+    ];
+    if (sensitiveTypes.includes(message.type) && sender.url && !sender.url.startsWith('moz-extension://')) {
+      sendResponse({ success: false, error: 'Unauthorized sender' });
+      return true;
+    }
 
     handleMessage(message)
       .then(sendResponse)

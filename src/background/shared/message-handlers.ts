@@ -6,8 +6,8 @@
  * — they depend only on the shared TranslationCache and ProviderState.
  */
 
-import type { TranslationProviderId, Strategy } from '../../types';
-import { safeStorageGet } from '../../core/storage';
+import type { TranslationProviderId, Strategy, DetailedCacheStats, ThrottleUsage } from '../../types';
+import { safeStorageGet, safeStorageSet } from '../../core/storage';
 import { createLogger } from '../../core/logger';
 import {
   addCorrection,
@@ -18,8 +18,10 @@ import {
   getCorrectionStats,
   exportCorrections,
   importCorrections,
+  type Correction,
+  type CorrectionStats,
 } from '../../core/corrections';
-import { addToHistory, getHistory, clearHistory as clearTranslationHistory } from '../../core/history';
+import { addToHistory, getHistory, clearHistory as clearTranslationHistory, type HistoryEntry } from '../../core/history';
 import type { TranslationCache } from './storage-ops';
 import {
   getProvider,
@@ -33,7 +35,7 @@ const log = createLogger('SharedHandlers');
 // Cache Handlers
 // ============================================================================
 
-export async function handleGetCacheStats(cache: TranslationCache): Promise<{ success: boolean; cache: any }> {
+export async function handleGetCacheStats(cache: TranslationCache): Promise<{ success: boolean; cache: DetailedCacheStats }> {
   await cache.load();
   return {
     success: true,
@@ -54,7 +56,7 @@ export async function handleClearCache(cache: TranslationCache): Promise<{ succe
 // Usage / Providers
 // ============================================================================
 
-export function handleGetUsage(cache: TranslationCache): { throttle: any; cache: any; providers: Record<string, unknown> } {
+export function handleGetUsage(cache: TranslationCache): { throttle: ThrottleUsage; cache: DetailedCacheStats; providers: Record<string, unknown> } {
   const rl = getRateLimitState();
   return {
     throttle: {
@@ -110,7 +112,6 @@ export async function handleSetCloudApiKey(message: {
   }
 
   try {
-    const { safeStorageSet } = await import('../../core/storage');
     const dataToStore: Record<string, unknown> = {
       [storageKey]: message.apiKey,
     };
@@ -170,7 +171,7 @@ export async function handleClearCloudApiKey(
 // History Handlers
 // ============================================================================
 
-export async function handleGetHistory(): Promise<{ success: boolean; history: any[]; error?: string }> {
+export async function handleGetHistory(): Promise<{ success: boolean; history: HistoryEntry[]; error?: string }> {
   try {
     const historyEntries = await getHistory();
     return { success: true, history: historyEntries };
@@ -255,7 +256,7 @@ export async function handleGetCorrection(message: {
   }
 }
 
-export async function handleGetAllCorrections(): Promise<{ success: boolean; corrections: any[]; error?: string }> {
+export async function handleGetAllCorrections(): Promise<{ success: boolean; corrections: Correction[]; error?: string }> {
   try {
     const corrections = await getAllCorrections();
     return { success: true, corrections };
@@ -269,7 +270,7 @@ export async function handleGetAllCorrections(): Promise<{ success: boolean; cor
   }
 }
 
-export async function handleGetCorrectionStats(): Promise<{ success: boolean; stats: any; error?: string }> {
+export async function handleGetCorrectionStats(): Promise<{ success: boolean; stats: CorrectionStats; error?: string }> {
   try {
     const stats = await getCorrectionStats();
     return { success: true, stats };
