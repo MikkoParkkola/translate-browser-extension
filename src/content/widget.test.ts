@@ -529,91 +529,114 @@ describe('history', () => {
     expect(history.style.display).toBe('none');
   });
 
-  it('handles very long text in translation', async () => {
-    mockSendMessage.mockResolvedValue({ success: true, result: 'translated short result' });
-
+  it('pops oldest entry when history exceeds 5 items (line 292)', async () => {
     vi.useFakeTimers();
-    const { showFloatingWidget } = await freshWidget();
+    const { showFloatingWidget, __testExports } = await freshWidget();
+    const { addToWidgetHistory, getWidgetHistory, clearWidgetHistory } = __testExports();
+
     showFloatingWidget();
     vi.runAllTimers();
 
-    const input = document.querySelector('.widget-input') as HTMLTextAreaElement;
-    if (input) {
-      // Widget exists, test is OK
-      expect(input).toBeTruthy();
+    // Add exactly 6 items — the 6th should trigger widgetHistory.pop()
+    for (let i = 1; i <= 6; i++) {
+      addToWidgetHistory(`original${i}`, `translated${i}`);
     }
+
+    const history = getWidgetHistory();
+    expect(history).toHaveLength(5);
+    // Most recent should be first (unshift)
+    expect(history[0].original).toBe('original6');
+    // The very first entry (original1) should have been popped
+    expect(history.every((h: { original: string }) => h.original !== 'original1')).toBe(true);
   });
 
-  it('handles rapid widget visibility toggles', async () => {
-    mockSendMessage.mockResolvedValue({ success: true, result: 'translated' });
-
+  it('updateWidgetHistory returns early when floatingWidget is null (line 298)', async () => {
     vi.useFakeTimers();
-    const { showFloatingWidget, hideFloatingWidget } = await freshWidget();
+    const { __testExports } = await freshWidget();
+    const { updateWidgetHistory, addToWidgetHistory } = __testExports();
 
-    showFloatingWidget();
-    vi.runAllTimers();
-
-    // Just test that we can call hide/show without errors
-    hideFloatingWidget();
-    showFloatingWidget();
-    vi.runAllTimers();
-
-    // If we get here without error, test passes
+    // Don't call showFloatingWidget — floatingWidget is null
+    // This should hit the early return at line 298
+    addToWidgetHistory('test', 'translated');
+    // If it doesn't crash, the early return was hit
+    updateWidgetHistory();
     expect(true).toBe(true);
   });
 
-  it('handles history truncation at boundary', async () => {
-    mockSendMessage.mockResolvedValue({ success: true, result: 'translated' });
-
+  it('updateWidgetHistory returns early when .widget-history element is missing (line 301)', async () => {
     vi.useFakeTimers();
-    const { showFloatingWidget } = await freshWidget();
+    const { showFloatingWidget, __testExports } = await freshWidget();
+    const { updateWidgetHistory, addToWidgetHistory } = __testExports();
 
     showFloatingWidget();
     vi.runAllTimers();
 
-    const input = document.querySelector('.widget-input') as HTMLTextAreaElement;
-    const translateBtn = document.querySelector('.widget-translate-btn') as HTMLButtonElement;
+    // Remove the .widget-history element from the widget
+    const historyEl = document.querySelector('.widget-history');
+    historyEl?.remove();
 
-    if (input && translateBtn) {
-      // Add multiple translations to test history
-      for (let i = 0; i < 3; i++) {
-        input.value = 'text ' + i;
-        translateBtn.click();
-        vi.runAllTimers();
-      }
-
-      await vi.runAllTimersAsync();
-
-      const history = document.querySelector('.widget-history') as HTMLElement;
-      // History should exist and contain some entries
-      expect(history).toBeTruthy();
-      expect(history.innerHTML.length).toBeGreaterThan(0);
-    }
+    // Now updateWidgetHistory should hit the early return at line 301
+    addToWidgetHistory('test', 'translated');
+    updateWidgetHistory();
+    expect(document.querySelector('.widget-history')).toBeNull();
   });
 
-  it('exports getWidgetHistory for testing uncovered branches (line 370)', async () => {
-    mockSendMessage.mockResolvedValue({ success: true, result: 'translated!' });
+  it('renders ellipsis for text longer than 30 characters (lines 313-314)', async () => {
     vi.useFakeTimers();
-    const module = await freshWidget();
-    const { showFloatingWidget, __testExports } = module;
-    const testExports = __testExports();
+    const { showFloatingWidget, __testExports } = await freshWidget();
+    const { addToWidgetHistory } = __testExports();
 
     showFloatingWidget();
     vi.runAllTimers();
 
-    // Add a translation
-    const input = document.querySelector('.widget-input') as HTMLTextAreaElement;
-    input.value = 'test';
-    const translateBtn = document.querySelector('.widget-translate-btn') as HTMLButtonElement;
-    translateBtn.click();
+    const longOriginal = 'This is a very long original text that exceeds thirty characters';
+    const longTranslated = 'This is a very long translated text that exceeds thirty chars';
+    addToWidgetHistory(longOriginal, longTranslated);
 
-    await vi.runAllTimersAsync();
+    const historyEl = document.querySelector('.widget-history') as HTMLElement;
+    expect(historyEl.style.display).toBe('block');
+    // Both original and translated should be truncated with ...
+    expect(historyEl.innerHTML).toContain('...');
+    // Should contain the first 30 chars of original
+    expect(historyEl.innerHTML).toContain(longOriginal.substring(0, 30));
+    // But not the full text
+    expect(historyEl.innerHTML).not.toContain(longOriginal);
+  });
 
-    // Test getWidgetHistory — it should return a copy of history
-    const history = testExports.getWidgetHistory();
-    expect(Array.isArray(history)).toBe(true);
-    expect(history.length).toBeGreaterThan(0);
-    expect(history[0]).toHaveProperty('original');
-    expect(history[0]).toHaveProperty('translated');
+  it('does not add ellipsis for text of exactly 30 characters (lines 313-314 false branch)', async () => {
+    vi.useFakeTimers();
+    const { showFloatingWidget, __testExports } = await freshWidget();
+    const { addToWidgetHistory, clearWidgetHistory } = __testExports();
+
+    showFloatingWidget();
+    vi.runAllTimers();
+
+    const exact30 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ1234'; // exactly 30 chars
+    addToWidgetHistory(exact30, exact30);
+
+    const historyEl = document.querySelector('.widget-history') as HTMLElement;
+    expect(historyEl.style.display).toBe('block');
+    // Text is exactly 30 chars — no ellipsis
+    expect(historyEl.innerHTML).toContain(exact30);
+    // Count occurrences of '...' — should be zero for this entry
+    clearWidgetHistory();
+    addToWidgetHistory(exact30, exact30);
+    const html = historyEl.innerHTML;
+    expect(html).not.toContain('...');
+  });
+
+  it('getWidgetHistory returns a copy of the history array (line 376)', async () => {
+    vi.useFakeTimers();
+    const { __testExports } = await freshWidget();
+    const { addToWidgetHistory, getWidgetHistory } = __testExports();
+
+    addToWidgetHistory('hello', 'world');
+    const history = getWidgetHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0]).toEqual({ original: 'hello', translated: 'world' });
+
+    // Verify it's a copy — mutating returned array shouldn't affect internal state
+    history.push({ original: 'extra', translated: 'extra' });
+    expect(getWidgetHistory()).toHaveLength(1);
   });
 });

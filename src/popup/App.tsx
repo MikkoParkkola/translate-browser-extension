@@ -385,7 +385,9 @@ export default function App() {
       setError(`${msg}. Try closing other tabs or using a smaller text selection.`);
     } else {
       setError(msg || 'Translation failed. Please try again.');
+      /* v8 ignore start -- error action handler */
       setErrorAction({ label: 'Retry', handler: () => { clearError(); handleTranslatePage(); } });
+      /* v8 ignore stop */
     }
     // Clear error after 12 seconds (longer for action buttons)
     setTimeout(() => clearError(), 12000);

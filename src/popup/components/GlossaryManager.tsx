@@ -76,8 +76,9 @@ export const GlossaryManager: Component<Props> = (props) => {
 
   const saveEdit = async () => {
     const term = editingTerm();
-    /* v8 ignore next -- guard: saveEdit only callable when editingTerm is set */
+    /* v8 ignore start -- guard: saveEdit only callable when editingTerm is set */
     if (!term) return;
+    /* v8 ignore stop */
 
     const replacement = editReplacement().trim();
     if (!replacement) {

@@ -133,8 +133,9 @@ export const SiteRulesSettings: Component = () => {
 
   const saveEdit = async () => {
     const pattern = editingPattern();
-    /* c8 ignore next */
+    /* v8 ignore start -- guard */
     if (!pattern) return;
+    /* v8 ignore stop */
 
     try {
       const rules: SiteRules = {
@@ -503,5 +504,5 @@ export const SiteRulesSettings: Component = () => {
   );
 };
 
-/* c8 ignore next */
+/* v8 ignore next */
 export default SiteRulesSettings;

@@ -657,3 +657,69 @@ describe('SiteRulesSettings — uncovered branches', () => {
     });
   });
 });
+
+describe('SiteRulesSettings — onChange handler coverage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (siteRules.getAllRules as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  });
+
+  afterEach(cleanup);
+
+  it('fires onChange on all controls in the add form', async () => {
+    render(() => <SiteRulesSettings />);
+    await vi.waitFor(() => expect(screen.getByText('+ Add Site Rule')).toBeTruthy());
+    fireEvent.click(screen.getByText('+ Add Site Rule'));
+
+    // L266: autoTranslate checkbox
+    const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
+    fireEvent.change(checkbox, { target: { checked: false } });
+
+    const selects = screen.getAllByRole('combobox') as HTMLSelectElement[];
+    // L278: provider select
+    fireEvent.change(selects[0], { target: { value: 'deepl' } });
+    // L290: strategy select
+    fireEvent.change(selects[1], { target: { value: 'quality' } });
+    // L305: source language select
+    fireEvent.change(selects[2], { target: { value: 'en' } });
+    // L317: target language select
+    fireEvent.change(selects[3], { target: { value: 'fi' } });
+
+    // Form is still rendered — handlers ran without error
+    expect(screen.getByPlaceholderText('example.com or *.example.com')).toBeTruthy();
+  });
+
+  it('fires onChange on all controls in the edit form', async () => {
+    (siteRules.getAllRules as ReturnType<typeof vi.fn>).mockResolvedValue({
+      'example.com': {
+        autoTranslate: true,
+        preferredProvider: 'deepl' as const,
+        sourceLang: 'en',
+        targetLang: 'fi',
+        strategy: 'quality' as const,
+      },
+    });
+
+    render(() => <SiteRulesSettings />);
+    await vi.waitFor(() => expect(screen.getByText('Edit')).toBeTruthy());
+    fireEvent.click(screen.getByText('Edit'));
+    await vi.waitFor(() => expect(screen.getByText('Save')).toBeTruthy());
+
+    // L406: autoTranslate checkbox in edit form
+    const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
+    fireEvent.change(checkbox, { target: { checked: false } });
+
+    const selects = screen.getAllByRole('combobox') as HTMLSelectElement[];
+    // L418: provider select
+    fireEvent.change(selects[0], { target: { value: 'openai' } });
+    // L430: strategy select
+    fireEvent.change(selects[1], { target: { value: 'fast' } });
+    // L445: source language select
+    fireEvent.change(selects[2], { target: { value: 'de' } });
+    // L457: target language select
+    fireEvent.change(selects[3], { target: { value: 'en' } });
+
+    // Edit form is still rendered — handlers ran without error
+    expect(screen.getByText('Save')).toBeTruthy();
+  });
+});

@@ -600,6 +600,101 @@ describe('GlossarySettings', () => {
     });
   });
 
+  describe('add form — case sensitive onChange handler', () => {
+    it('toggling case sensitive checkbox passes caseSensitive:true to addTerm', async () => {
+      (glossary.addTerm as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (glossary.getGlossary as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({})
+        .mockResolvedValue({ API: { replacement: 'rajapinta', caseSensitive: true } });
+
+      render(() => <GlossarySettings />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Term')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Term'));
+      await vi.waitFor(() => expect(screen.getByText('Add New Term')).toBeTruthy());
+
+      fireEvent.input(screen.getByPlaceholderText('e.g., API'), { target: { value: 'API' } });
+      fireEvent.input(screen.getByPlaceholderText('e.g., rajapinta'), { target: { value: 'rajapinta' } });
+
+      // Trigger the onChange handler on the case sensitive checkbox
+      const [checkbox] = screen.getAllByRole('checkbox');
+      fireEvent.change(checkbox, { target: { checked: true } });
+
+      fireEvent.click(screen.getByText('Add Term'));
+      await vi.waitFor(() => {
+        expect(glossary.addTerm).toHaveBeenCalledWith('API', 'rajapinta', true, undefined);
+      });
+    });
+
+    it('language select onChange in add form updates language state', async () => {
+      (glossary.addTerm as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      render(() => <GlossarySettings />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Term')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Term'));
+      await vi.waitFor(() => expect(screen.getByText('Add New Term')).toBeTruthy());
+
+      fireEvent.input(screen.getByPlaceholderText('e.g., API'), { target: { value: 'word' } });
+      fireEvent.input(screen.getByPlaceholderText('e.g., rajapinta'), { target: { value: 'sana' } });
+
+      // Trigger the onChange handler on the add form language select
+      const allLangSelects = screen.getAllByDisplayValue('All Languages');
+      const formLangSelect = allLangSelects[allLangSelects.length - 1];
+      fireEvent.change(formLangSelect, { target: { value: 'fi' } });
+
+      fireEvent.click(screen.getByText('Add Term'));
+      await vi.waitFor(() => {
+        expect(glossary.addTerm).toHaveBeenCalledWith('word', 'sana', false, '[fi] ');
+      });
+    });
+  });
+
+  describe('edit form — description and case sensitive handlers', () => {
+    beforeEach(() => {
+      (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+    });
+
+    it('updating description in edit form passes new description to addTerm', async () => {
+      (glossary.addTerm as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      render(() => <GlossarySettings />);
+      await vi.waitFor(() => expect(screen.getAllByText('Edit').length).toBe(3));
+
+      fireEvent.click(screen.getAllByText('Edit')[0]); // API term
+      await vi.waitFor(() => expect(screen.getByText('Save')).toBeTruthy());
+
+      // Find editable textboxes; description input has value 'Technical term'
+      const editableInputs = screen.getAllByRole('textbox').filter(
+        (el) => !(el as HTMLInputElement).disabled
+      );
+      const descInput = editableInputs.find(
+        (el) => (el as HTMLInputElement).value === 'Technical term'
+      ) as HTMLInputElement;
+      fireEvent.input(descInput, { target: { value: 'Updated description' } });
+
+      fireEvent.click(screen.getByText('Save'));
+      await vi.waitFor(() => {
+        expect(glossary.addTerm).toHaveBeenCalledWith('API', 'rajapinta', true, 'Updated description');
+      });
+    });
+
+    it('toggling case sensitive in edit form passes updated value to addTerm', async () => {
+      (glossary.addTerm as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      render(() => <GlossarySettings />);
+      await vi.waitFor(() => expect(screen.getAllByText('Edit').length).toBe(3));
+
+      // Edit the third term (server, caseSensitive: false, no description)
+      fireEvent.click(screen.getAllByText('Edit')[2]);
+      await vi.waitFor(() => expect(screen.getByText('Save')).toBeTruthy());
+
+      // Trigger the onChange handler on the edit case sensitive checkbox
+      const [checkbox] = screen.getAllByRole('checkbox');
+      fireEvent.change(checkbox, { target: { checked: true } });
+
+      fireEvent.click(screen.getByText('Save'));
+      await vi.waitFor(() => {
+        expect(glossary.addTerm).toHaveBeenCalledWith('server', 'palvelin', true, undefined);
+      });
+    });
+  });
+
   describe('import glossary error handling', () => {
     it('shows error when import throws Error instance (line 175 Error case)', async () => {
       const errorMsg = 'Invalid JSON format';

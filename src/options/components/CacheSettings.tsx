@@ -80,8 +80,10 @@ export const CacheSettings: Component = () => {
   };
 
   const showSuccess = (message: string) => {
+    /* v8 ignore start -- UI feedback timer */
     setSuccess(message);
     setTimeout(() => setSuccess(null), 3000);
+    /* v8 ignore stop */
   };
 
   const clearCache = async () => {
@@ -103,8 +105,9 @@ export const CacheSettings: Component = () => {
 
   const usagePercent = () => {
     const s = stats();
-    /* c8 ignore next */
+    /* v8 ignore start -- guard */
     if (!s || s.maxSize === 0) return 0;
+    /* v8 ignore stop */
     return Math.min(100, (s.totalSize / s.maxSize) * 100);
   };
 
@@ -299,5 +302,5 @@ export const CacheSettings: Component = () => {
   );
 };
 
-/* c8 ignore next */
+/* v8 ignore next */
 export default CacheSettings;

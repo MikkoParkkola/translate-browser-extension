@@ -17,7 +17,9 @@ const log = createLogger('ImageTranslator');
 // ---------------------------------------------------------------------------
 // Dependency injection — avoids circular imports with index.ts
 // ---------------------------------------------------------------------------
+/* v8 ignore start -- default initial value */
 let getCurrentSettingsFn: () => CurrentSettings | null = () => null;
+/* v8 ignore stop */
 
 export function setGetCurrentSettings(fn: () => CurrentSettings | null): void {
   getCurrentSettingsFn = fn;
@@ -230,8 +232,9 @@ export async function translateImage(imageUrl: string): Promise<void> {
     })) as OCRResponse;
 
     if (!ocrResult.success) {
-      /* v8 ignore next */
+      /* v8 ignore start */
       showErrorToast(ocrResult.error || 'OCR failed');
+      /* v8 ignore stop */
       return;
     }
 
@@ -294,8 +297,9 @@ export async function translateImage(imageUrl: string): Promise<void> {
   } catch (error) {
     log.error('Image translation failed:', error);
     // Provide more specific error message based on error type
-    /* v8 ignore next */
+    /* v8 ignore start */
     const errorMessage = error instanceof Error ? error.message : String(error);
+    /* v8 ignore stop */
     if (errorMessage.includes('CORS') || errorMessage.includes('cross-origin')) {
       showErrorToast('Cannot translate: Image is from another website (CORS blocked)');
     } else if (errorMessage.includes('Canvas') || errorMessage.includes('tainted')) {

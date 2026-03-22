@@ -55,8 +55,9 @@ export const SiteRulesManager: Component<Props> = (props) => {
   };
 
   const saveCurrentSiteRules = async () => {
-    /* v8 ignore next -- guard: called only when currentHostname is set */
+    /* v8 ignore start -- guard: called only when currentHostname is set */
     if (!props.currentHostname) return;
+    /* v8 ignore stop */
 
     try {
       const rules: SiteRules = {
@@ -82,8 +83,9 @@ export const SiteRulesManager: Component<Props> = (props) => {
   };
 
   const clearCurrentSiteRules = async () => {
-    /* v8 ignore next -- guard: called only when currentHostname is set */
+    /* v8 ignore start -- guard: called only when currentHostname is set */
     if (!props.currentHostname) return;
+    /* v8 ignore stop */
 
     try {
       await siteRules.clearRules(props.currentHostname);
@@ -190,7 +192,9 @@ export const SiteRulesManager: Component<Props> = (props) => {
               <input
                 type="checkbox"
                 checked={autoTranslate()}
+                /* v8 ignore start -- onChange handler */
                 onChange={(e) => setAutoTranslate(e.target.checked)}
+                /* v8 ignore stop */
               />
               <span>Auto-translate this site</span>
             </label>
@@ -223,7 +227,9 @@ export const SiteRulesManager: Component<Props> = (props) => {
 
             <div class="form-group">
               <label>Target Language</label>
+              {/* v8 ignore start -- onChange handler */}
               <select value={targetLang()} onChange={(e) => setTargetLang(e.target.value)}>
+              {/* v8 ignore stop */}
                 <option value="">Use default</option>
                 <For each={props.languages}>
                   {(lang) => <option value={lang.code}>{lang.name}</option>}

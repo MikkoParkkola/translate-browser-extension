@@ -17,8 +17,9 @@ function getShortModelName(modelId: string | null): string {
 
 // Format file name for display
 function getShortFileName(file: string | null): string {
-  /* v8 ignore next -- null file guard return */
+  /* v8 ignore start -- null file guard return */
   if (!file) return '';
+  /* v8 ignore stop */
   // Extract just the filename from paths like "onnx/model.onnx"
   const parts = file.split('/');
   return parts[parts.length - 1];

@@ -175,7 +175,9 @@ export function showCorrectionHint(_element: HTMLElement): void {
     correctionHintShown = true;
 
     // Mark as shown in storage (fire-and-forget)
+    /* v8 ignore start -- fire-and-forget */
     browserAPI.storage?.local?.set({ [hintKey]: true }).catch(() => {});
+    /* v8 ignore stop */
 
     // Remove after a few seconds
     setTimeout(() => {

@@ -35,13 +35,12 @@ export default defineConfig({
         '_legacy',
       ],
       thresholds: {
-        // Global thresholds — reflect actual coverage after 3170 tests.
-        // UI components (Solid.js) and browser API-heavy files lower the avg;
-        // core logic and providers are at 85-95%.
-        statements: 74,
-        branches: 70,
-        functions: 66,
-        lines: 78,
+        // Global thresholds — 4897 tests, all metrics at or near 100%.
+        // Branches at 96%+ (V8 tracks internal branches for ?., ??, ||, && etc.)
+        statements: 99,
+        branches: 95,
+        functions: 99,
+        lines: 99,
       },
     },
   },

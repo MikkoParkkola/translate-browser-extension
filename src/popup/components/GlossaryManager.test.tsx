@@ -858,6 +858,79 @@ describe('GlossaryManager', () => {
   // Branch coverage — saveEdit without editing term
   // -----------------------------------------------------------------------
 
+  describe('add form — case sensitive onChange handler', () => {
+    it('toggling case sensitive checkbox passes caseSensitive:true to addTerm', async () => {
+      (glossary.addTerm as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (glossary.getGlossary as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ hello: { replacement: 'hei', caseSensitive: true } });
+
+      render(() => <GlossaryManager />);
+      await vi.waitFor(() => expect(screen.getByText('+ Add Term')).toBeTruthy());
+      fireEvent.click(screen.getByText('+ Add Term'));
+      await vi.waitFor(() => expect(screen.getByPlaceholderText('e.g., API')).toBeTruthy());
+
+      fireEvent.input(screen.getByPlaceholderText('e.g., API'), { target: { value: 'hello' } });
+      fireEvent.input(screen.getByPlaceholderText('e.g., rajapinta'), { target: { value: 'hei' } });
+
+      // Trigger the onChange handler on the case sensitive checkbox
+      const [checkbox] = screen.getAllByRole('checkbox');
+      fireEvent.change(checkbox, { target: { checked: true } });
+
+      fireEvent.click(screen.getByText('Add Term'));
+      await vi.waitFor(() => {
+        expect(glossary.addTerm).toHaveBeenCalledWith('hello', 'hei', true, undefined);
+      });
+    });
+  });
+
+  describe('edit form — description and case sensitive handlers', () => {
+    it('updating description in edit form passes new description to addTerm', async () => {
+      (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+      (glossary.addTerm as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+      const { container } = render(() => <GlossaryManager />);
+      await vi.waitFor(() => expect(screen.getByText('API')).toBeTruthy());
+
+      const termInfo = screen.getByText('API').closest('.term-info') as HTMLElement;
+      fireEvent.click(termInfo);
+      await vi.waitFor(() => expect(screen.getByText('Save')).toBeTruthy());
+
+      // Description input is the third text input in the edit form (after term/disabled and replacement)
+      const editInputs = container.querySelectorAll('.term-edit-form input[type="text"]');
+      const descInput = editInputs[2] as HTMLInputElement;
+      fireEvent.input(descInput, { target: { value: 'New description' } });
+
+      fireEvent.click(screen.getByText('Save'));
+      await vi.waitFor(() => {
+        expect(glossary.addTerm).toHaveBeenCalledWith('API', 'rajapinta', true, 'New description');
+      });
+    });
+
+    it('toggling case sensitive in edit form passes updated value to addTerm', async () => {
+      (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue({
+        cloud: { replacement: 'pilvi', caseSensitive: false },
+      });
+      (glossary.addTerm as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+      const { container } = render(() => <GlossaryManager />);
+      await vi.waitFor(() => expect(screen.getByText('cloud')).toBeTruthy());
+
+      const termInfo = screen.getByText('cloud').closest('.term-info') as HTMLElement;
+      fireEvent.click(termInfo);
+      await vi.waitFor(() => expect(screen.getByText('Save')).toBeTruthy());
+
+      // Trigger the onChange handler on the edit case sensitive checkbox
+      const editCheckbox = container.querySelector('.term-edit-form input[type="checkbox"]') as HTMLInputElement;
+      fireEvent.change(editCheckbox, { target: { checked: true } });
+
+      fireEvent.click(screen.getByText('Save'));
+      await vi.waitFor(() => {
+        expect(glossary.addTerm).toHaveBeenCalledWith('cloud', 'pilvi', true, undefined);
+      });
+    });
+  });
+
   describe('branch coverage — saveEdit without editing term', () => {
     it('no edit form is showing when editingTerm is null', async () => {
       (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);

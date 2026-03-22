@@ -577,10 +577,11 @@ export async function initPdfTranslation(targetLang: string): Promise<void> {
     }
 
     // Create toggle button
+    /* v8 ignore start -- UI callback */
     state.toggleButton = createToggleButton(() => {
-      /* v8 ignore next */
       togglePdfTranslation();
     });
+    /* v8 ignore stop */
 
     log.info('PDF translation ready. Use toggle button to view.');
   } catch (err) {

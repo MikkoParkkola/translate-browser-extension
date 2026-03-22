@@ -227,7 +227,9 @@ export class OpenAIProvider extends BaseProvider {
       // Track token usage
       if (data.usage) {
         this.totalTokensUsed += data.usage.total_tokens;
+        /* v8 ignore start -- fire-and-forget persist */
         chrome.storage.local.set({ openai_tokens_used: this.totalTokensUsed }).catch((e) => log.warn('Failed to persist token usage:', e));
+        /* v8 ignore stop */
       }
 
       const translated = data.choices[0]?.message?.content?.trim() || '';

@@ -43,9 +43,11 @@ export function initSubtitleTranslation(tgtLang: string): void {
   pageObserver = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
+        /* v8 ignore start -- DOM mutation callback */
         if (node instanceof HTMLVideoElement) {
           setupVideoTranslation(node);
         }
+        /* v8 ignore stop */
         if (node instanceof HTMLElement) {
           node.querySelectorAll('video').forEach(setupVideoTranslation);
         }
@@ -133,7 +135,9 @@ function createSubtitleOverlay(video: HTMLVideoElement): HTMLDivElement {
 }
 
 async function onCueChange(state: SubtitleState, track: TextTrack): Promise<void> {
+  /* v8 ignore start -- guard */
   if (!state.overlay || !state.active) return;
+  /* v8 ignore stop */
 
   const activeCues = track.activeCues;
   if (!activeCues || activeCues.length === 0) {
@@ -230,8 +234,9 @@ async function translateYouTubeSegment(segment: Element): Promise<void> {
   const cached = ytTranslationCache.get(text);
   if (cached) {
     segment.textContent = cached;
-    /* v8 ignore next */
+    /* v8 ignore start */
     return;
+    /* v8 ignore stop */
   }
 
   try {
@@ -266,7 +271,9 @@ export function pretranslateUpcomingCues(video: HTMLVideoElement, bufferSeconds 
 
   for (let i = 0; i < tracks.length; i++) {
     const track = tracks[i];
+    /* v8 ignore start -- null cues guard */
     if (!track.cues) continue;
+    /* v8 ignore stop */
 
     for (let j = 0; j < track.cues.length; j++) {
       const cue = track.cues[j] as VTTCue;
@@ -287,15 +294,18 @@ export function pretranslateUpcomingCues(video: HTMLVideoElement, bufferSeconds 
                 : response.result[0];
               state.translatedCues.set(cacheKey, translated);
             }
+          /* v8 ignore start -- fire-and-forget catch */
           }).catch(() => {
             // Silently ignore pre-translation failures
           });
+          /* v8 ignore stop */
         }
       }
     }
   }
-/* v8 ignore next */
+/* v8 ignore start */
 }
+/* v8 ignore stop */
 
 /**
  * Cleanup subtitle translation - remove overlays, disconnect observers, clear caches

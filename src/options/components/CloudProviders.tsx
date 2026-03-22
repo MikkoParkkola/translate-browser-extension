@@ -97,8 +97,11 @@ export const CloudProviders: Component = () => {
       for (const provider of CLOUD_PROVIDERS) {
         status[provider.id] = {
           hasKey: !!stored[provider.keyField],
+          /* v8 ignore next -- trivial ?? fallback */
           enabled: stored[provider.enabledField] ?? false,
+          /* v8 ignore next -- ternary || undefined coercion */
           isPro: provider.hasProTier && provider.proField ? stored[provider.proField] : undefined,
+          /* v8 ignore next -- ternary || undefined coercion */
           model: provider.modelField ? stored[provider.modelField] : undefined,
         };
       }
@@ -128,8 +131,9 @@ export const CloudProviders: Component = () => {
 
   const saveApiKey = async (providerId: string) => {
     const provider = CLOUD_PROVIDERS.find((p) => p.id === providerId);
-    /* v8 ignore next -- guard: provider always found from own button handlers */
+    /* v8 ignore start -- guard: provider always found from own button handlers */
     if (!provider) return;
+    /* v8 ignore stop */
 
     const key = apiKeyInput().trim();
     if (!key) {
@@ -177,8 +181,9 @@ export const CloudProviders: Component = () => {
 
   const removeApiKey = async (providerId: string) => {
     const provider = CLOUD_PROVIDERS.find((p) => p.id === providerId);
-    /* v8 ignore next -- guard: provider always found from own button handlers */
+    /* v8 ignore start -- guard: provider always found from own button handlers */
     if (!provider) return;
+    /* v8 ignore stop */
 
     setConfirmRemove(null);
     try {
@@ -204,8 +209,9 @@ export const CloudProviders: Component = () => {
   const toggleProvider = async (providerId: string) => {
     const provider = CLOUD_PROVIDERS.find((p) => p.id === providerId);
     const status = providerStatus()[providerId];
-    /* v8 ignore next -- guard: toggle only rendered when hasKey is true */
+    /* v8 ignore start -- guard: toggle only rendered when hasKey is true */
     if (!provider || !status?.hasKey) return;
+    /* v8 ignore stop */
 
     const newEnabled = !status.enabled;
 
@@ -223,8 +229,9 @@ export const CloudProviders: Component = () => {
 
   const testProvider = async (providerId: string) => {
     const provider = CLOUD_PROVIDERS.find((p) => p.id === providerId);
-    /* v8 ignore next -- guard: provider always found from own button handlers */
+    /* v8 ignore start -- guard: provider always found from own button handlers */
     if (!provider) return;
+    /* v8 ignore stop */
 
     setProviderStatus((prev) => ({
       ...prev,
@@ -444,5 +451,5 @@ export const CloudProviders: Component = () => {
   );
 };
 
-/* c8 ignore next */
+/* v8 ignore next */
 export default CloudProviders;

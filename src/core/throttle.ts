@@ -218,8 +218,9 @@ export class Throttle {
     }
     // Note: This is unreachable - loop throws on last attempt (i === attempts - 1)
     // TypeScript requires a return/throw here for type safety
-    /* v8 ignore next */
+    /* v8 ignore start */
     throw new Error('Max retries exceeded');
+    /* v8 ignore stop */
   }
 
   /**

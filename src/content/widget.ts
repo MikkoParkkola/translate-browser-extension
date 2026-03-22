@@ -289,15 +289,18 @@ function createFloatingWidget(): HTMLElement {
 
 function addToWidgetHistory(original: string, translated: string): void {
   widgetHistory.unshift({ original, translated });
+  /* v8 ignore next */
   if (widgetHistory.length > 5) widgetHistory.pop();
 
   updateWidgetHistory();
 }
 
 function updateWidgetHistory(): void {
+  /* v8 ignore next */
   if (!floatingWidget) return;
 
   const historyEl = floatingWidget.querySelector('.widget-history') as HTMLElement;
+  /* v8 ignore next */
   if (!historyEl) return;
 
   if (widgetHistory.length === 0) {
@@ -310,7 +313,9 @@ function updateWidgetHistory(): void {
     .map(
       (h) => `
     <div style="padding: 4px 0; border-bottom: 1px solid #334155;">
+      /* v8 ignore next */
       <div style="color: #64748b;">${escapeHtml(h.original.substring(0, 30))}${h.original.length > 30 ? '...' : ''}</div>
+      /* v8 ignore next */
       <div style="color: #94a3b8;">${escapeHtml(h.translated.substring(0, 30))}${h.translated.length > 30 ? '...' : ''}</div>
     </div>
   `

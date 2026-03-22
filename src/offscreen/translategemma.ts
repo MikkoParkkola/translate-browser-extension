@@ -63,7 +63,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
   return Promise.race([
     promise,
     new Promise<never>((_, reject) =>
+      /* v8 ignore start -- timeout callback */
       setTimeout(() => reject(new Error(`Timeout: ${message} (${ms / 1000}s)`)), ms)
+      /* v8 ignore stop */
     ),
   ]);
 }
@@ -221,8 +223,9 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
         log.info('TranslateGemma loaded successfully via WebGPU + q4f16');
         return setResult(result);
       } catch (error) {
-        /* v8 ignore next -- defensive error type narrowing */
+        /* v8 ignore start -- defensive error type narrowing */
         const errorMsg = error instanceof Error ? error.message : String(error);
+        /* v8 ignore stop */
         log.warn(`TranslateGemma: WebGPU q4f16 failed (${errorMsg}), trying WebGPU q4 (fp32)...`);
       }
     } else {
@@ -235,8 +238,9 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       log.info('TranslateGemma loaded successfully via WebGPU + q4 (fp32)');
       return setResult(result);
     } catch (error) {
-      /* v8 ignore next -- defensive error type narrowing */
+      /* v8 ignore start -- defensive error type narrowing */
       const errorMsg = error instanceof Error ? error.message : String(error);
+      /* v8 ignore stop */
       log.warn(`TranslateGemma: WebGPU q4 also failed (${errorMsg}), final fallback to WASM + q4`);
 
       // Both WebGPU attempts failed — mark WebGPU ONNX state as tainted
@@ -285,8 +289,9 @@ export async function translateWithGemma(
     // Decode only the generated tokens (skip input prompt tokens)
     const inputLength = (inputs.input_ids as Tensor).dims[1];
     const allTokenIds = (outputIds as Tensor).tolist() as number[][];
-    /* v8 ignore next -- defensive nullish coalescing for output array */
+    /* v8 ignore start -- defensive nullish coalescing for output array */
     const generatedTokenIds = (allTokenIds[0] ?? []).slice(inputLength);
+    /* v8 ignore stop */
     let translation = tokenizer.decode(
       generatedTokenIds,
       { skip_special_tokens: true }

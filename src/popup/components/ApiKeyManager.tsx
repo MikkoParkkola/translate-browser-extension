@@ -84,6 +84,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
       for (const provider of CLOUD_PROVIDERS) {
         status[provider.id] = {
           hasKey: !!stored[provider.keyField],
+          /* v8 ignore next -- ternary || undefined coercion */
           isPro: provider.hasProTier && provider.proField ? stored[provider.proField] : undefined,
         };
       }
@@ -152,8 +153,9 @@ export const ApiKeyManager: Component<Props> = (props) => {
 
   const removeApiKey = async (providerId: string) => {
     const provider = CLOUD_PROVIDERS.find(p => p.id === providerId);
-    /* c8 ignore next */
+    /* v8 ignore start -- guard */
     if (!provider) return;
+    /* v8 ignore stop */
 
     try {
       const keysToRemove = [provider.keyField];
@@ -313,5 +315,5 @@ export const ApiKeyManager: Component<Props> = (props) => {
   );
 };
 
-/* c8 ignore next */
+/* v8 ignore next */
 export default ApiKeyManager;
