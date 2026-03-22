@@ -55,8 +55,9 @@ export const LocalModels: Component = () => {
     try {
       // Get storage estimate
       let estimate = { usage: 0, quota: 0 };
-      /* v8 ignore next */
+      /* v8 ignore start */
       if ('storage' in navigator && 'estimate' in navigator.storage) {
+      /* v8 ignore stop */
         estimate = await navigator.storage.estimate() as { usage: number; quota: number };
       }
 
@@ -70,8 +71,9 @@ export const LocalModels: Component = () => {
         if (response?.models) {
           setStats({
             totalUsed: estimate.usage || 0,
-            /* v8 ignore next */
+            /* v8 ignore start */
             quota: estimate.quota || 0,
+            /* v8 ignore stop */
             models: response.models,
           });
           setLoading(false);
@@ -147,8 +149,9 @@ export const LocalModels: Component = () => {
       await chrome.runtime.sendMessage({ type: 'clearAllModels' });
 
       // Clear Cache API if available
-      /* v8 ignore next */
+      /* v8 ignore start */
       if ('caches' in window) {
+      /* v8 ignore stop */
         const keys = await caches.keys();
         for (const key of keys) {
           if (key.includes('transformers') || key.includes('model')) {
@@ -291,5 +294,6 @@ export const LocalModels: Component = () => {
   );
 };
 
-/* v8 ignore next */
+/* v8 ignore start */
 export default LocalModels;
+/* v8 ignore stop */

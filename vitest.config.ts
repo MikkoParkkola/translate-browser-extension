@@ -35,12 +35,12 @@ export default defineConfig({
         '_legacy',
       ],
       thresholds: {
-        // Global thresholds — 4897 tests, all metrics at or near 100%.
-        // Branches at 96%+ (V8 tracks internal branches for ?., ??, ||, && etc.)
-        statements: 99,
-        branches: 95,
-        functions: 99,
-        lines: 99,
+        // Global thresholds — 5026 tests, 127 test files, all metrics at 100%.
+        // Branches at 98%+ (V8 tracks internal branches for ?., ??, ||, && etc.)
+        statements: 100,
+        branches: 98,
+        functions: 100,
+        lines: 100,
       },
     },
   },

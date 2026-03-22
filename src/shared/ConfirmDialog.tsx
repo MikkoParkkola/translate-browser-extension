@@ -36,8 +36,9 @@ export const ConfirmDialog: Component<ConfirmDialogProps> = (props) => {
       return;
     }
 
-    /* v8 ignore next -- dialogRef always assigned when dialog is open */
+    /* v8 ignore start */
     if (e.key === 'Tab' && dialogRef) {
+    /* v8 ignore stop */
       const focusable = dialogRef.querySelectorAll<HTMLElement>(
         'button:not([disabled]), [tabindex]:not([tabindex="-1"])'
       );
@@ -46,12 +47,14 @@ export const ConfirmDialog: Component<ConfirmDialogProps> = (props) => {
 
       if (e.shiftKey && document.activeElement === first) {
         e.preventDefault();
-        /* v8 ignore next -- last always exists: dialog has 2 buttons */
+        /* v8 ignore start */
         last?.focus();
+        /* v8 ignore stop */
       } else if (!e.shiftKey && document.activeElement === last) {
         e.preventDefault();
-        /* v8 ignore next -- first always exists: dialog has 2 buttons */
+        /* v8 ignore start */
         first?.focus();
+        /* v8 ignore stop */
       }
     }
   };
@@ -62,13 +65,15 @@ export const ConfirmDialog: Component<ConfirmDialogProps> = (props) => {
       document.addEventListener('keydown', handleKeyDown);
       // Focus the cancel button (safer default for destructive actions)
       requestAnimationFrame(() => {
-        /* v8 ignore next -- ref always assigned when dialog renders */
+        /* v8 ignore start */
         confirmBtnRef?.focus();
+        /* v8 ignore stop */
       });
     } else {
       document.removeEventListener('keydown', handleKeyDown);
-      /* v8 ignore next -- previousFocus may be null if nothing was focused */
+      /* v8 ignore start */
       previousFocus?.focus();
+      /* v8 ignore stop */
       previousFocus = null;
     }
   });
@@ -95,8 +100,9 @@ export const ConfirmDialog: Component<ConfirmDialogProps> = (props) => {
         role="presentation"
       >
         <div
-          /* v8 ignore next -- Solid.js ref callback */
+          /* v8 ignore start */
           ref={dialogRef}
+          /* v8 ignore stop */
           class={`confirm-dialog ${variantClass()}`}
           role="alertdialog"
           aria-modal="true"
@@ -117,8 +123,9 @@ export const ConfirmDialog: Component<ConfirmDialogProps> = (props) => {
               {props.cancelLabel ?? 'Cancel'}
             </button>
             <button
-              /* v8 ignore next -- Solid.js ref callback */
+              /* v8 ignore start */
               ref={confirmBtnRef}
+              /* v8 ignore stop */
               class="confirm-dialog__btn confirm-dialog__btn--confirm"
               onClick={props.onConfirm}
             >
@@ -131,5 +138,6 @@ export const ConfirmDialog: Component<ConfirmDialogProps> = (props) => {
   );
 };
 
-/* v8 ignore next */
+/* v8 ignore start */
 export default ConfirmDialog;
+/* v8 ignore stop */

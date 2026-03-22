@@ -237,8 +237,9 @@ class InferenceEngine {
     const loadConfig: Record<string, unknown> = {
       n_ctx: config.n_ctx || 2048,
       n_batch: config.n_batch || 512,
-      /* v8 ignore next -- navigator.hardwareConcurrency fallback */
+      /* v8 ignore start */
       n_threads: config.n_threads || Math.min(navigator.hardwareConcurrency || 4, 4),
+      /* v8 ignore stop */
       cache_type_k: config.cache_type_k || 'q8_0',
       cache_type_v: config.cache_type_v || 'q8_0',
       ...config,
@@ -293,8 +294,9 @@ class InferenceEngine {
     const loadConfig: Record<string, unknown> = {
       n_ctx: config.n_ctx || 2048,
       n_batch: config.n_batch || 512,
-      /* v8 ignore next -- navigator.hardwareConcurrency fallback */
+      /* v8 ignore start */
       n_threads: config.n_threads || Math.min(navigator.hardwareConcurrency || 4, 4),
+      /* v8 ignore stop */
       cache_type_k: config.cache_type_k || 'q8_0',
       cache_type_v: config.cache_type_v || 'q8_0',
       ...config,

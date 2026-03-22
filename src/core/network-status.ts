@@ -9,7 +9,9 @@ import { createLogger } from './logger';
 const log = createLogger('Network');
 
 /** Current network status */
-let _isOnline = typeof navigator !== 'undefined' ? navigator.onLine : /* v8 ignore next */ true;
+/* v8 ignore start */
+let _isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+/* v8 ignore stop */
 
 /** Listeners for network status changes */
 type NetworkListener = (online: boolean) => void;

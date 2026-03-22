@@ -697,8 +697,9 @@ async function handleCheckChromeTranslator(): Promise<unknown> {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       world: 'MAIN' as chrome.scripting.ExecutionWorld,
-      /* v8 ignore next */
+      /* v8 ignore start */
       func: () => typeof self.Translator !== 'undefined',
+      /* v8 ignore stop */
     });
     return { success: true, available: results[0]?.result === true };
   } catch (error) {
@@ -1249,7 +1250,9 @@ async function sendMessageToTab(tabId: number, message: Record<string, unknown>)
   try {
     await chrome.tabs.sendMessage(tabId, message);
   } catch (firstError) {
+    /* v8 ignore start -- instanceof ternary */
     const errMsg = firstError instanceof Error ? firstError.message : String(firstError);
+    /* v8 ignore stop */
 
     if (!errMsg.includes('establish connection') && !errMsg.includes('Receiving end does not exist')) {
       throw firstError;
@@ -1268,7 +1271,9 @@ async function sendMessageToTab(tabId: number, message: Record<string, unknown>)
       await chrome.tabs.sendMessage(tabId, message);
       log.info(`Message delivered to tab ${tabId} after injection`);
     } catch (injectError) {
+      /* v8 ignore start -- instanceof ternary */
       const injectMsg = injectError instanceof Error ? injectError.message : String(injectError);
+      /* v8 ignore stop */
       log.warn(`Cannot inject content script into tab ${tabId}: ${injectMsg}`);
       throw new Error(`Translation not available on this page. ${injectMsg}`);
     }
@@ -1410,9 +1415,11 @@ chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url && !tab.url.startsWith('chrome://')) {
     log.debug(`Tab updated: ${tab.url}`);
 
-    preloadPredictedModels(tab.url).catch(/* v8 ignore next 3 — preloadPredictedModels always catches internally */ (error) => {
+    /* v8 ignore start */
+    preloadPredictedModels(tab.url).catch((error) => {
       log.warn('Predictive preload trigger failed:', error);
     });
+    /* v8 ignore stop */
   }
 });
 
@@ -1441,13 +1448,17 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
     const browserLang = chrome.i18n.getUILanguage().split('-')[0];
     log.info('Browser language detected:', browserLang);
+    /* v8 ignore start -- browserLang || default */
     safeStorageSet({
       sourceLang: 'auto',
       targetLang: browserLang || 'en',
       strategy: 'smart',
       provider: 'opus-mt',
     });
+    /* v8 ignore stop */
+  /* v8 ignore start -- else-if branch: update reason */
   } else if (details.reason === 'update') {
+  /* v8 ignore stop */
     log.info('Extension updated from', details.previousVersion);
 
     try {

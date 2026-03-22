@@ -184,12 +184,13 @@ export class PredictionEngine {
 
     // Debounce saves by 1 second
     this.saveTimeout = setTimeout(async () => {
-      /* v8 ignore next -- conditional data persistence */
+      /* v8 ignore start */
       if (this.data) {
-        /* v8 ignore next */
+      /* v8 ignore stop */
+        /* v8 ignore start */
         const success = await safeStorageSet({ [STORAGE_KEY]: this.data });
-        /* v8 ignore next */
         if (success) {
+        /* v8 ignore stop */
           log.debug('Prediction data saved');
         }
       }

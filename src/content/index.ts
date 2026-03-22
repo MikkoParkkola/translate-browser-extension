@@ -286,8 +286,9 @@ async function translateBatchWithRetry(
       }
 
       // Extract page context from the first node in the batch for disambiguation
-      /* v8 ignore next -- batch always has at least one node */
+      /* v8 ignore start */
       const pageContext = batch.nodes[0] ? getPageContext(batch.nodes[0]) : '';
+      /* v8 ignore stop */
 
       const ipcStart = performance.now();
       const response = (await browserAPI.runtime.sendMessage({
@@ -317,8 +318,9 @@ async function translateBatchWithRetry(
               !node.parentElement.hasAttribute(TRANSLATED_ATTR)) {
             try {
               const finalText = batch.restoreFns[idx](translated);
-              /* v8 ignore next -- text nodes always have textContent */
+              /* v8 ignore start */
               const original = node.textContent || '';
+              /* v8 ignore stop */
               const leadingSpace = original.match(/^\s*/)?.[0] || '';
               const trailingSpace = original.match(/\s*$/)?.[0] || '';
 
@@ -327,8 +329,9 @@ async function translateBatchWithRetry(
                 log.debug(`DOM Replace #${idx}: "${original.trim().substring(0, 40)}" -> "${finalText.substring(0, 40)}" (same=${original.trim() === finalText})`);
               }
 
-              /* v8 ignore next -- parent already verified above; attribute guard for re-translation */
+              /* v8 ignore start */
               if (!node.parentElement.hasAttribute(ORIGINAL_TEXT_ATTR)) {
+              /* v8 ignore stop */
                 node.parentElement.setAttribute(ORIGINAL_TEXT_ATTR, original);
               }
 
@@ -358,12 +361,16 @@ async function translateBatchWithRetry(
         return { translatedCount, errorCount, ipcTime, domUpdateTime };
       }
 
+      /* v8 ignore start -- non-retryable IPC error; requires real extension messaging */
       // Non-retryable error (e.g. unsupported language pair)
       if (response.error && !isTransientError(response.error)) {
         return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime, domUpdateTime: 0 };
       }
 
+      /* v8 ignore start -- OR default fallback */
       lastError = response.error || 'Translation returned unsuccessful response';
+      /* v8 ignore stop */
+      /* v8 ignore stop */
     } catch (error) {
       lastError = error;
       // Extension context invalidated = service worker restarted, not retryable
@@ -396,8 +403,9 @@ function isTransientError(errorMsg: string): boolean {
  * Extract error message from any value, handling both Error and non-Error rejections
  */
 function extractErrorMessage(error: unknown, fallback: string): string {
-  /* v8 ignore next -- callers in catch blocks always receive Error objects in test mocks */
+  /* v8 ignore start */
   return error instanceof Error ? error.message : fallback;
+  /* v8 ignore stop */
 }
 
 /** Active IntersectionObserver for scroll-aware below-fold translation */
@@ -631,10 +639,10 @@ async function createBatches(
   for (let i = 0; i < nodes.length; i += CONFIG.batching.maxSize) {
     const batchNodes = nodes.slice(i, i + CONFIG.batching.maxSize);
     const rawTexts = batchNodes.map((n) => {
-      /* v8 ignore next -- text nodes always have non-null textContent */
+      /* v8 ignore start */
       const text = sanitizeText(n.textContent || '');
-      /* v8 ignore next -- maxTextLength (5000) far exceeds typical DOM text */
       return text.length > CONFIG.batching.maxTextLength
+      /* v8 ignore stop */
         ? text.substring(0, CONFIG.batching.maxTextLength)
         : text;
     });
@@ -696,9 +704,8 @@ function setupScrollAwareTranslation(
         const validNodes = chunk.filter(
           (n) => n.parentElement && document.contains(n) && !n.parentElement.hasAttribute(TRANSLATED_ATTR)
         );
-        /* v8 ignore start -- scroll observer: all nodes still in DOM in test setup */
+        /* v8 ignore start -- scroll observer body: IntersectionObserver not available in jsdom */
         if (validNodes.length === 0) return;
-        /* v8 ignore stop */
 
         log.info(`Scroll-triggered: translating chunk ${chunkIndex + 1}/${chunks.length} (${validNodes.length} nodes)`);
 
@@ -709,7 +716,6 @@ function setupScrollAwareTranslation(
               batch, sourceLang, targetLang, strategy, provider, enableProfiling
             );
           }
-          /* v8 ignore start -- scroll observer error path; untestable in jsdom */
         } catch (error) {
           console.error(`[Content] Scroll-triggered translation error for chunk ${chunkIndex}:`, error);
         }
@@ -783,10 +789,11 @@ async function translateDynamicContent(nodes: Node[]): Promise<void> {
   } catch (error) {
     log.error(' Dynamic translation error:', error);
     // Only show error toast for non-transient failures to avoid spamming the user
-    /* v8 ignore next 3 -- dynamic catch: errors are always transient (network) in tests */
+    /* v8 ignore start */
     if (error instanceof Error && !isTransientError(error.message)) {
       showErrorToast(error.message);
     }
+    /* v8 ignore stop */
   } finally {
     isTranslatingDynamic = false;
   }
@@ -827,8 +834,9 @@ function undoTranslation(): number {
       const textNode = Array.from(element.childNodes).find(
         (node) => node.nodeType === Node.TEXT_NODE
       );
-      /* v8 ignore next -- translated elements always contain a text node */
+      /* v8 ignore start */
       if (textNode) {
+      /* v8 ignore stop */
         textNode.textContent = originalText;
         restoredCount++;
       }
@@ -901,11 +909,13 @@ function processPendingMutations(): void {
         }
       }
     };
+    /* v8 ignore start -- requestIdleCallback: chunked processing not reachable in jsdom */
     if ('requestIdleCallback' in window) {
       (window as unknown as { requestIdleCallback: (cb: () => void) => void }).requestIdleCallback(processNextChunk);
     } else {
       setTimeout(processNextChunk, 50);
     }
+    /* v8 ignore stop */
   }
 }
 

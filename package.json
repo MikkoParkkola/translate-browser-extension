@@ -29,7 +29,9 @@
     "secrets": "gitleaks detect --no-git",
     "changeset": "changeset",
     "release": "changeset publish",
-    "pr": "bash scripts/pr.sh"
+    "pr": "bash scripts/pr.sh",
+    "test:mutation": "stryker run",
+    "test:mutation:core": "stryker run --mutate \"src/core/**/*.ts\" --mutate \"!src/core/**/*.test.ts\" --mutate \"!src/core/index.ts\""
   },
   "keywords": [],
   "author": "",
@@ -87,6 +89,8 @@
     "@size-limit/file": "^11.1.5",
     "@size-limit/webpack": "^11.1.5",
     "@solidjs/testing-library": "^0.8.10",
+    "@stryker-mutator/core": "^9.6.0",
+    "@stryker-mutator/vitest-runner": "^9.6.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@types/chrome": "^0.0.268",
     "@types/node": "^22.0.0",
@@ -108,6 +112,7 @@
     "prettier": "^3.3.2",
     "rimraf": "^6.0.1",
     "size-limit": "^11.1.5",
+    "typescript": "^5.9.3",
     "vitest": "^4.1.0",
     "webpack": "^5.95.0",
     "webpack-bundle-analyzer": "^4.10.0"

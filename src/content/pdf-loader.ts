@@ -90,8 +90,9 @@ export function injectScript(url: string): Promise<void> {
       script.remove();
       reject(new Error(`Failed to load pdfjs chunk from ${url}`));
     };
-    /* v8 ignore next -- document.head fallback to documentElement */
+    /* v8 ignore start */
     (document.head || document.documentElement).appendChild(script);
+    /* v8 ignore stop */
   });
 }
 
@@ -125,8 +126,9 @@ export async function loadPdfjs(): Promise<PdfjsLib> {
     } catch (importError) {
       log.error('Dynamic import of pdfjs chunk failed:', importError);
       throw new Error(
-        /* v8 ignore next -- instanceof Error ternary in catch */
+        /* v8 ignore start */
         `Failed to import pdfjs chunk: ${importError instanceof Error ? importError.message : String(importError)}`
+        /* v8 ignore stop */
       );
     }
 

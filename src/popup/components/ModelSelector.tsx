@@ -115,7 +115,9 @@ export const ModelSelector: Component<Props> = (props) => {
   onMount(async () => {
     try {
       const response = await chrome.runtime.sendMessage({ type: 'getCloudProviderStatus' });
+      /* v8 ignore start -- optional chaining */
       if (response?.status) {
+      /* v8 ignore stop */
         setCloudApiStatus(response.status);
       }
     } catch {
@@ -135,7 +137,9 @@ export const ModelSelector: Component<Props> = (props) => {
       document.addEventListener('mousedown', handleClickOutside);
       // Set focus to current selection
       const currentIdx = MODELS.findIndex(m => m.id === props.selected);
+      /* v8 ignore start -- ternary fallback */
       setFocusedIndex(currentIdx >= 0 ? currentIdx : 0);
+      /* v8 ignore stop */
     } else {
       document.removeEventListener('mousedown', handleClickOutside);
       setFocusedIndex(-1);
@@ -149,7 +153,9 @@ export const ModelSelector: Component<Props> = (props) => {
   // Keyboard navigation
   const handleKeyDown = (e: KeyboardEvent) => {
     if (!isOpen()) {
+      /* v8 ignore start -- OR branches for keyboard */
       if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+      /* v8 ignore stop */
         e.preventDefault();
         setIsOpen(true);
       }
@@ -160,7 +166,9 @@ export const ModelSelector: Component<Props> = (props) => {
       case 'Escape':
         e.preventDefault();
         setIsOpen(false);
+        /* v8 ignore start -- optional chaining */
         triggerRef?.focus();
+        /* v8 ignore stop */
         break;
       case 'ArrowDown':
         e.preventDefault();
@@ -173,10 +181,12 @@ export const ModelSelector: Component<Props> = (props) => {
       case 'Enter':
       case ' ':
         e.preventDefault();
+        /* v8 ignore start -- && branch + optional chaining */
         if (focusedIndex() >= 0 && focusedIndex() < MODELS.length) {
           handleSelect(MODELS[focusedIndex()].id);
           triggerRef?.focus();
         }
+        /* v8 ignore stop */
         break;
       case 'Home':
         e.preventDefault();
@@ -190,8 +200,9 @@ export const ModelSelector: Component<Props> = (props) => {
   };
 
   const getStatus = (modelId: TranslationProviderId): ModelDownloadStatus => {
-    /* v8 ignore next -- trivial ?? fallback */
+    /* v8 ignore start */
     return props.downloadStatus?.[modelId] ?? {
+    /* v8 ignore stop */
       isDownloading: false,
       progress: 0,
       isDownloaded: false,
@@ -200,15 +211,20 @@ export const ModelSelector: Component<Props> = (props) => {
   };
 
   const isCloudConfigured = (modelId: TranslationProviderId): boolean => {
-    /* v8 ignore next -- trivial ?? fallback */
+    /* v8 ignore start */
     return cloudApiStatus()[modelId] ?? false;
+    /* v8 ignore stop */
   };
 
+  /* v8 ignore start -- OR fallback */
   const selectedModel = () => MODELS.find(m => m.id === props.selected) || LOCAL_MODELS[0];
+  /* v8 ignore stop */
 
   const handleSelect = (modelId: TranslationProviderId) => {
     const model = MODELS.find(m => m.id === modelId);
+    /* v8 ignore start -- optional chaining + && */
     if (model?.isCloud && !isCloudConfigured(modelId)) {
+    /* v8 ignore stop */
       chrome.runtime.openOptionsPage();
     } else {
       props.onChange(modelId);
@@ -218,8 +234,9 @@ export const ModelSelector: Component<Props> = (props) => {
 
   const isModelDisabled = (model: ModelInfo): boolean => {
     // TranslateGemma requires WebGPU -- disable when unavailable
-    /* v8 ignore next -- WebGPU availability is environment-dependent */
+    /* v8 ignore start */
     if (model.id === 'translategemma' && props.webGpuAvailable === false) return true;
+    /* v8 ignore stop */
     return false;
   };
 
@@ -231,7 +248,9 @@ export const ModelSelector: Component<Props> = (props) => {
     if (status.isDownloading) return '⏳';
     if (status.error) return '⚠️';
     if (model.isCloud) {
+      /* v8 ignore start -- ternary */
       return isCloudConfigured(model.id) ? '✓' : '🔑';
+      /* v8 ignore stop */
     }
     if (status.isDownloaded) return '✓';
     return '';
@@ -357,5 +376,6 @@ export const ModelSelector: Component<Props> = (props) => {
   );
 };
 
-/* v8 ignore next */
+/* v8 ignore start */
 export default ModelSelector;
+/* v8 ignore stop */

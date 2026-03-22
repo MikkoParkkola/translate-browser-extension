@@ -105,8 +105,9 @@ export class Throttle {
     Object.assign(this.config, newOpts);
     this.availableRequests = this.config.requestLimit;
     this.availableTokens = this.config.tokenLimit;
-    /* v8 ignore next */
+    /* v8 ignore start */
     if (this.interval) clearInterval(this.interval);
+    /* v8 ignore stop */
     this.interval = setInterval(() => this.resetWindow(), this.config.windowMs);
   }
 
@@ -259,8 +260,9 @@ export class Throttle {
    * Cleanup interval on destroy
    */
   destroy(): void {
-    /* v8 ignore next */
+    /* v8 ignore start */
     if (this.interval) clearInterval(this.interval);
+    /* v8 ignore stop */
   }
 }
 

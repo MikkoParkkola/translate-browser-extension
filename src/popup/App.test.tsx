@@ -2029,3 +2029,27 @@ describe('App model progress with null providerId', () => {
     expect(screen.queryByText('TRANSLATE!')).toBeTruthy();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Snapshot tests
+// ---------------------------------------------------------------------------
+
+describe('App Snapshot', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 1, url: 'https://example.com' },
+    ]);
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  });
+
+  afterEach(cleanup);
+
+  it('renders default state correctly', async () => {
+    const { container } = render(() => <App />);
+    await flush();
+    expect(container.innerHTML).toMatchSnapshot();
+  });
+});

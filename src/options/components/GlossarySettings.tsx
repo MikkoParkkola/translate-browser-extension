@@ -109,8 +109,9 @@ export const GlossarySettings: Component = () => {
     }
 
     try {
-      /* v8 ignore next -- trivial || undefined coercion */
+      /* v8 ignore start */
       await glossary.addTerm(term, target, editCaseSensitive(), editDescription().trim() || undefined);
+      /* v8 ignore stop */
       setEditingTerm(null);
       await loadGlossary();
       showSuccess('Term updated');
@@ -186,8 +187,9 @@ export const GlossarySettings: Component = () => {
   const getTermLanguage = (description?: string): string => {
     if (!description) return 'all';
     const match = description.match(/^\[([a-z]{2})\]/);
-    /* v8 ignore next -- ternary || fallback */
+    /* v8 ignore start */
     return match ? match[1] : 'all';
+    /* v8 ignore stop */
   };
 
   // Filter terms by language and search
@@ -486,5 +488,6 @@ export const GlossarySettings: Component = () => {
   );
 };
 
-/* v8 ignore next */
+/* v8 ignore start */
 export default GlossarySettings;
+/* v8 ignore stop */

@@ -1100,3 +1100,68 @@ describe('branch coverage — variant switch fallthrough', () => {
     expect(container.querySelector('.confirm-dialog--danger')).toBeTruthy();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Snapshot tests
+// ---------------------------------------------------------------------------
+
+describe('ConfirmDialog Snapshot', () => {
+  afterEach(cleanup);
+
+  it('renders open danger dialog correctly', () => {
+    const { container } = render(() => (
+      <ConfirmDialog
+        open={true}
+        title="Delete item"
+        message="This action cannot be undone."
+        variant="danger"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    ));
+    expect(container.innerHTML).toMatchSnapshot();
+  });
+
+  it('renders open warning dialog correctly', () => {
+    const { container } = render(() => (
+      <ConfirmDialog
+        open={true}
+        title="Warning"
+        message="Are you sure you want to proceed?"
+        variant="warning"
+        confirmLabel="Yes, proceed"
+        cancelLabel="Go back"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    ));
+    expect(container.innerHTML).toMatchSnapshot();
+  });
+
+  it('renders open info dialog correctly', () => {
+    const { container } = render(() => (
+      <ConfirmDialog
+        open={true}
+        title="Information"
+        message="Please confirm your choice."
+        variant="info"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    ));
+    expect(container.innerHTML).toMatchSnapshot();
+  });
+
+  it('renders nothing when closed', () => {
+    const { container } = render(() => (
+      <ConfirmDialog
+        open={false}
+        title="Hidden"
+        message="Should not render"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    ));
+    expect(container.innerHTML).toMatchSnapshot();
+  });
+});

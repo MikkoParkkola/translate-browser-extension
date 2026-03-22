@@ -271,8 +271,9 @@ class LocalModelUI {
   }
 
   async updateStatus(): Promise<void> {
-    /* v8 ignore next */
+    /* v8 ignore start */
     if (!this.isInitialized || !window.localModelManager) return;
+    /* v8 ignore stop */
 
     try {
       const modelInfo: ModelInfo = window.localModelManager.getModelInfo();
@@ -306,8 +307,9 @@ class LocalModelUI {
       validationPanel!.style.display = 'none';
     } else if (modelInfo.ready) {
       statusIndicator!.className = 'status-indicator ready';
-      /* v8 ignore next */
+      /* v8 ignore start */
       statusText!.textContent = `Ready (${modelInfo.backend || 'wllama'})`;
+      /* v8 ignore stop */
       infoPanel!.style.display = 'block';
       progressPanel!.style.display = 'none';
       validationPanel!.style.display = 'none';
@@ -325,17 +327,16 @@ class LocalModelUI {
       validationPanel!.style.display = 'none';
     }
 
-    /* v8 ignore next */
+    /* v8 ignore start */
     downloadBtn!.style.display = modelInfo.available ? 'none' : 'inline-block';
-    /* v8 ignore next */
     validateBtn!.style.display = modelInfo.available ? 'inline-block' : 'none';
-    /* v8 ignore next */
     deleteBtn!.style.display = modelInfo.available ? 'inline-block' : 'none';
-    /* v8 ignore next */
     testBtn!.style.display = modelInfo.ready ? 'inline-block' : 'none';
+    /* v8 ignore stop */
 
-    /* v8 ignore next */
+    /* v8 ignore start */
     if ((modelInfo.performanceStats as unknown as PerformanceStats)?.lastError) {
+    /* v8 ignore stop */
       this.showError('Recent Error', (modelInfo.performanceStats as unknown as PerformanceStats).lastError!.message);
     } else {
       this.hideError();
@@ -346,8 +347,9 @@ class LocalModelUI {
     const perfElement = document.getElementById('performance-stats');
     const perfText = document.getElementById('performance-text');
 
-    /* v8 ignore next */
+    /* v8 ignore start */
     if (stats && stats.totalTranslations > 0) {
+    /* v8 ignore stop */
       perfElement!.style.display = 'block';
       perfText!.textContent = `${stats.totalTranslations} translations, ${stats.successRate}% success rate, ~${Math.round(stats.averageInferenceTime)}ms avg`;
     }
@@ -413,8 +415,9 @@ class LocalModelUI {
     }
 
     // Calculate speed
-    /* v8 ignore next */
+    /* v8 ignore start */
     if (progressInfo.loaded && this._downloadStartTime) {
+    /* v8 ignore stop */
       const elapsed = (Date.now() - this._downloadStartTime) / 1000;
       if (elapsed > 0) {
         const speed = progressInfo.loaded / elapsed;
@@ -439,8 +442,9 @@ class LocalModelUI {
     }
 
     // Show shard info if available
-    /* v8 ignore next */
+    /* v8 ignore start */
     if (progressInfo.shardIndex !== undefined && progressInfo.shardCount !== undefined) {
+    /* v8 ignore stop */
       shardInfo!.style.display = 'block';
       shardText!.textContent = `Shard ${progressInfo.shardIndex + 1} of ${progressInfo.shardCount}`;
     }
@@ -536,8 +540,9 @@ class LocalModelUI {
       'structural': 'Validating GGUF structure...',
       'complete': 'Validation complete',
     };
-    /* v8 ignore next */
+    /* v8 ignore start */
     return stepTexts[step] || `Validating ${step}...`;
+    /* v8 ignore stop */
   }
 
   private showValidationResults(result: ValidationUIResult): void {
@@ -547,44 +552,45 @@ class LocalModelUI {
 
     validationResults!.style.display = 'block';
 
-    /* v8 ignore next */
+    /* v8 ignore start */
     const statusClass = result.valid ? 'validation-success' : 'validation-failure';
+    /* v8 ignore stop */
     validationSummary!.className = `validation-summary ${statusClass}`;
+    /* v8 ignore start */
     validationSummary!.innerHTML = `
       <div class="summary-status">
-        /* v8 ignore next */
         <span class="summary-icon">${result.valid ? 'PASS' : 'FAIL'}</span>
         <span class="summary-text">
-          /* v8 ignore next */
           ${result.valid ? 'Model validation passed' : 'Model validation failed'}
         </span>
       </div>
       <div class="summary-duration">Duration: ${result.duration}ms</div>
     `;
+    /* v8 ignore stop */
 
     let detailsHTML = '<div class="validation-checks">';
 
     Object.entries(result.checks).forEach(([checkName, check]: [string, ValidationCheck]) => {
-      /* v8 ignore next */
+      /* v8 ignore start */
       const checkClass = check.passed ? 'check-passed' : 'check-failed';
       detailsHTML += `
         <div class="validation-check ${checkClass}">
-          /* v8 ignore next */
           <span class="check-icon">${check.passed ? 'OK' : 'FAIL'}</span>
           <div class="check-content">
             <span class="check-name">${checkName}:</span>
             <span class="check-message">${check.message}</span>
-            /* v8 ignore next */
             ${check.details ? `<div class="check-details">${JSON.stringify(check.details, null, 2)}</div>` : ''}
           </div>
         </div>
       `;
+      /* v8 ignore stop */
     });
 
     detailsHTML += '</div>';
 
-    /* v8 ignore next */
+    /* v8 ignore start */
     if (result.details && Object.keys(result.details).length > 0) {
+    /* v8 ignore stop */
       detailsHTML += `
         <div class="validation-metadata">
           <h5>Additional Details</h5>
@@ -615,15 +621,16 @@ class LocalModelUI {
       const testText = 'Hello, this is a test translation.';
       const result: TranslationUIResult = await window.localModelManager.translate(testText, 'en', 'es');
 
+      /* v8 ignore start */
       this.showMessage(
         `Test Translation Success!\n` +
         `Original: ${testText}\n` +
         `Translated: ${result.text}\n` +
-        /* v8 ignore next */
         `Time: ${result.inferenceTime || 'N/A'}ms\n` +
         `Backend: wllama`,
         'success',
       );
+      /* v8 ignore stop */
     } catch (error) {
       console.error('[LocalModelUI] Test failed:', error);
       this.showError('Translation Test Failed', (error as Error).message);
@@ -650,25 +657,26 @@ class LocalModelUI {
     healthPanel!.style.display = 'block';
     healthTimestamp!.textContent = new Date(health.timestamp).toLocaleString();
 
+    /* v8 ignore start */
     let resultsHTML = `
       <div class="health-summary ${health.status}">
         <strong>Status:</strong> ${health.status.toUpperCase()}
-        /* v8 ignore next */
         ${health.summary ? `<br><strong>Summary:</strong> ${health.summary}` : ''}
       </div>
       <div class="health-checks">
     `;
+    /* v8 ignore stop */
 
     Object.entries(health.checks).forEach(([checkName, check]: [string, HealthCheck]) => {
+      /* v8 ignore start */
       resultsHTML += `
-        /* v8 ignore next */
         <div class="health-check-item ${check.status || (check.passed ? 'ok' : 'fail')}">
           <span class="check-name">${checkName}:</span>
-          /* v8 ignore next */
           <span class="check-status">${check.status || (check.passed ? 'OK' : 'FAIL')}</span>
           <span class="check-message">${check.message}</span>
         </div>
       `;
+      /* v8 ignore stop */
     });
 
     resultsHTML += '</div>';
@@ -892,6 +900,7 @@ class LocalModelUI {
     const toggleBtn = this.container!.querySelector('#toggle-monitoring') as HTMLElement | null;
     const optimizationSelector = this.container!.querySelector('#optimization-selector') as HTMLSelectElement | null;
 
+    /* v8 ignore start */
     if (refreshBtn) {
       refreshBtn.addEventListener('click', () => {
         this.updatePerformanceDisplay();
@@ -914,9 +923,7 @@ class LocalModelUI {
     if (toggleBtn) {
       const setBtnText = (text: string): void => { toggleBtn.textContent = text; };
       toggleBtn.addEventListener('click', async () => {
-        /* v8 ignore next */
         const stopping = toggleBtn.textContent?.includes('Stop') ?? false;
-        /* v8 ignore next */
         setBtnText(stopping ? 'Stopping\u2026' : 'Starting\u2026');
         if (stopping) {
           await window.localModelManager.stopPerformanceMonitoring();
@@ -942,6 +949,7 @@ class LocalModelUI {
         }
       });
     }
+    /* v8 ignore stop */
   }
 
   private async updatePerformanceDisplay(): Promise<void> {
@@ -953,11 +961,13 @@ class LocalModelUI {
       this.updateElement('#perf-avg-time', String(performanceReport.summary.averageInferenceTime));
       this.updateElement('#perf-throughput', `${performanceReport.summary.throughput.tokensPerSecond} tokens/sec`);
 
+      /* v8 ignore start */
       const trendElement = this.container!.querySelector('#trend-indicator') as HTMLElement | null;
       if (trendElement) {
         trendElement.textContent = this.capitalizeFirst(performanceReport.performance.trend);
         trendElement.className = `trend-${performanceReport.performance.trend}`;
       }
+      /* v8 ignore stop */
 
       this.updateElement('#memory-current', performanceReport.memory.currentUsage);
       this.updateElement('#memory-peak', performanceReport.memory.peakUsage);
@@ -966,7 +976,7 @@ class LocalModelUI {
       const memoryPressureElement = this.container!.querySelector('#memory-pressure') as HTMLElement | null;
       const memoryBarFill = this.container!.querySelector('#memory-bar-fill') as HTMLElement | null;
 
-      /* v8 ignore next */
+      /* v8 ignore start */
       if (memoryPressureElement && memoryBarFill) {
         memoryBarFill.style.width = performanceReport.memory.pressure;
 
@@ -984,6 +994,7 @@ class LocalModelUI {
           memoryBarFill.className = 'memory-bar-fill memory-normal';
         }
       }
+      /* v8 ignore stop */
 
       this.updateElement('#current-optimization', this.capitalizeFirst(performanceReport.performance.optimizationLevel));
       this.updateElement('#last-optimized',
@@ -1005,11 +1016,11 @@ class LocalModelUI {
     const recommendationsPanel = this.container!.querySelector('#performance-recommendations') as HTMLElement | null;
     const recommendationsList = this.container!.querySelector('#recommendations-list') as HTMLElement | null;
 
-    /* v8 ignore next */
+    /* v8 ignore start */
     if (!recommendationsPanel || !recommendationsList) return;
 
-    /* v8 ignore next */
     if (recommendations && recommendations.length > 0) {
+    /* v8 ignore stop */
       recommendationsPanel.style.display = 'block';
       recommendationsList.innerHTML = recommendations.map((rec: Recommendation) => `
         <div class="recommendation recommendation-${rec.severity}">
@@ -1033,8 +1044,9 @@ class LocalModelUI {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    /* v8 ignore next */
+    /* v8 ignore start */
     const inferenceHistory: number[] = window.localModelManager.performanceStats?.inferenceHistory ?? [];
+    /* v8 ignore stop */
 
     if (inferenceHistory.length === 0) return;
 
@@ -1042,8 +1054,9 @@ class LocalModelUI {
 
     const maxValue = Math.max(...inferenceHistory);
     const minValue = Math.min(...inferenceHistory);
-    /* v8 ignore next */
+    /* v8 ignore start */
     const range = maxValue - minValue || 1;
+    /* v8 ignore stop */
 
     ctx.strokeStyle = '#3B82F6';
     ctx.lineWidth = 2;

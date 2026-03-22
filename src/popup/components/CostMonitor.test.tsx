@@ -191,4 +191,29 @@ describe('CostMonitor', () => {
       expect(fill.style.width).toBe('100%');
     });
   });
+
+  // -----------------------------------------------------------------------
+  // Snapshot tests
+  // -----------------------------------------------------------------------
+
+  describe('Snapshot', () => {
+    it('renders default state correctly', () => {
+      const { container } = render(() => <CostMonitor usage={makeUsage()} />);
+      expect(container.innerHTML).toMatchSnapshot();
+    });
+
+    it('renders over-budget state correctly', () => {
+      const { container } = render(() => (
+        <CostMonitor usage={makeUsage({ monthly: 5, used: 10, cost: 3.50 })} />
+      ));
+      expect(container.innerHTML).toMatchSnapshot();
+    });
+
+    it('renders zero usage state correctly', () => {
+      const { container } = render(() => (
+        <CostMonitor usage={makeUsage({ cost: 0, monthly: 0, used: 0, requests: 0, characters: 0 })} />
+      ));
+      expect(container.innerHTML).toMatchSnapshot();
+    });
+  });
 });

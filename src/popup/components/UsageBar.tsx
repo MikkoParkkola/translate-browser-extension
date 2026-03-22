@@ -46,5 +46,6 @@ export const UsageBar: Component<Props> = (props) => {
       </div>
     </section>
   );
-/* v8 ignore next -- V8 tracks component function boundary */
+/* v8 ignore start */
 };
+/* v8 ignore stop */

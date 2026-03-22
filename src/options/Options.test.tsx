@@ -1189,3 +1189,17 @@ describe('Options render — renderIcon default branch', () => {
     expect(container.querySelector('.options-container')).toBeTruthy();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Snapshot tests
+// ---------------------------------------------------------------------------
+
+describe('Options Snapshot', () => {
+  afterEach(cleanup);
+
+  it('renders default state correctly', async () => {
+    const { default: Options } = await import('./Options');
+    const { container } = render(() => <Options />);
+    expect(container.innerHTML).toMatchSnapshot();
+  });
+});

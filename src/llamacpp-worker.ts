@@ -390,8 +390,9 @@ self.onmessage = async function (event: MessageEvent<WorkerMessage>): Promise<vo
       case 'loadModelFromBlobs':
         await worker.loadModelFromBlobs(
           (event.data as LoadModelFromBlobsMessage).blobs,
-          /* v8 ignore next -- config fallback to empty object */
+          /* v8 ignore start */
           (event.data as LoadModelFromBlobsMessage).config || {},
+          /* v8 ignore stop */
         );
         break;
 
@@ -426,8 +427,9 @@ self.onmessage = async function (event: MessageEvent<WorkerMessage>): Promise<vo
         if ((event.data as LegacyLoadMessage).modelUrls) {
           await worker.loadModel(
             (event.data as LegacyLoadMessage).modelUrls!,
-            /* v8 ignore next -- config fallback to empty object */
+            /* v8 ignore start */
             (event.data as LegacyLoadMessage).config || {},
+            /* v8 ignore stop */
           );
         } else {
           post({

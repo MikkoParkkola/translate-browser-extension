@@ -97,12 +97,11 @@ export const CloudProviders: Component = () => {
       for (const provider of CLOUD_PROVIDERS) {
         status[provider.id] = {
           hasKey: !!stored[provider.keyField],
-          /* v8 ignore next -- trivial ?? fallback */
+          /* v8 ignore start */
           enabled: stored[provider.enabledField] ?? false,
-          /* v8 ignore next -- ternary || undefined coercion */
           isPro: provider.hasProTier && provider.proField ? stored[provider.proField] : undefined,
-          /* v8 ignore next -- ternary || undefined coercion */
           model: provider.modelField ? stored[provider.modelField] : undefined,
+          /* v8 ignore stop */
         };
       }
     } catch (e) {
@@ -272,8 +271,9 @@ export const CloudProviders: Component = () => {
           ...prev[providerId],
           testing: false,
           testResult: 'error',
-          /* v8 ignore next -- non-Error exception path */
+          /* v8 ignore start */
           testMessage: 'Test failed: ' + (e instanceof Error ? e.message : 'Unknown error'),
+          /* v8 ignore stop */
         },
       }));
     }
@@ -437,7 +437,9 @@ export const CloudProviders: Component = () => {
       <ConfirmDialog
         open={!!confirmRemove()}
         title="Remove API Key"
+        {/* v8 ignore start -- optional chaining + nullish coalescing */}
         message={`Remove ${CLOUD_PROVIDERS.find(p => p.id === confirmRemove())?.name ?? ''} API key? You will need to re-enter it to use this provider.`}
+        {/* v8 ignore stop */}
         confirmLabel="Remove"
         cancelLabel="Keep"
         variant="danger"
@@ -451,5 +453,6 @@ export const CloudProviders: Component = () => {
   );
 };
 
-/* v8 ignore next */
+/* v8 ignore start */
 export default CloudProviders;
+/* v8 ignore stop */

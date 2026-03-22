@@ -62,8 +62,9 @@ export function installAttachShadowInterceptor(): void {
       closedShadowRoots.set(this, shadowRoot);
     }
 
-    /* v8 ignore next */
+    /* v8 ignore start */
     if (!knownShadowRoots.has(shadowRoot)) {
+    /* v8 ignore stop */
       knownShadowRoots.add(shadowRoot);
       onShadowRootDiscovered?.(shadowRoot);
     }
@@ -191,17 +192,20 @@ export function observeShadowRoots(
     }
   });
 
-  /* v8 ignore next 3 */
+  /* v8 ignore start */
   const observeTarget = root.nodeType === Node.DOCUMENT_NODE
     ? (root as Document).body ?? root
     : root;
+  /* v8 ignore stop */
 
+  /* v8 ignore start -- observeTarget null guard */
   if (observeTarget) {
     rootObserver.observe(observeTarget, {
       childList: true,
       subtree: true,
     });
   }
+  /* v8 ignore stop */
 
   // Return cleanup function
   return () => {
@@ -262,8 +266,9 @@ function scanForExistingShadowRoots(
     node.nodeType === Node.DOCUMENT_FRAGMENT_NODE
   ) {
     const root = node as Document | DocumentFragment;
-    /* v8 ignore next */
+    /* v8 ignore start */
     const children = root.children ?? root.childNodes;
+    /* v8 ignore stop */
     for (let i = 0; i < children.length; i++) {
       scanForExistingShadowRoots(children[i], callback);
     }

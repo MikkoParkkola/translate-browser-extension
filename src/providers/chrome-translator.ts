@@ -204,8 +204,9 @@ export class ChromeTranslatorProvider extends BaseProvider {
           sourceLanguage: lang,
           targetLanguage: 'en',
         });
-        /* v8 ignore next -- conditional availability check */
+        /* v8 ignore start */
         if (avail.available !== 'no') {
+        /* v8 ignore stop */
           supported.push(lang);
         }
       } catch {
@@ -232,8 +233,9 @@ export class ChromeTranslatorProvider extends BaseProvider {
     let actualSourceLang = sourceLang;
     if (sourceLang === 'auto') {
       actualSourceLang = await this.detectLanguage(
-        /* v8 ignore next -- Array.isArray ternary */
+        /* v8 ignore start */
         Array.isArray(text) ? text[0] : text
+        /* v8 ignore stop */
       );
     }
 

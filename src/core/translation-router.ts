@@ -117,8 +117,9 @@ export class TranslationRouter {
     log.info('Initializing...');
 
     // Load preferences from storage (only once)
-    /* v8 ignore next -- preferencesLoaded is only set inside this block, so the else branch is unreachable */
+    /* v8 ignore start */
     if (!this.preferencesLoaded) {
+    /* v8 ignore stop */
       this.preferences = await this.loadPreferences();
       this.preferencesLoaded = true;
     }

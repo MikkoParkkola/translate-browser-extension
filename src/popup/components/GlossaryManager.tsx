@@ -53,8 +53,9 @@ export const GlossaryManager: Component<Props> = (props) => {
     }
 
     try {
-      /* v8 ignore next -- trivial || undefined coercion */
+      /* v8 ignore start */
       await glossary.addTerm(term, replacement, newCaseSensitive(), newDescription().trim() || undefined);
+      /* v8 ignore stop */
       setNewTerm('');
       setNewReplacement('');
       setNewCaseSensitive(false);
@@ -87,8 +88,9 @@ export const GlossaryManager: Component<Props> = (props) => {
     }
 
     try {
-      /* v8 ignore next -- trivial || undefined coercion */
+      /* v8 ignore start */
       await glossary.addTerm(term, replacement, editCaseSensitive(), editDescription().trim() || undefined);
+      /* v8 ignore stop */
       setEditingTerm(null);
       await loadGlossary();
     } catch (e) {
@@ -144,8 +146,9 @@ export const GlossaryManager: Component<Props> = (props) => {
   const handleImport = async (event: Event) => {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
-    /* v8 ignore next -- guard: no-file case */
+    /* v8 ignore start */
     if (!file) return;
+    /* v8 ignore stop */
 
     try {
       const text = await file.text();
@@ -366,5 +369,6 @@ export const GlossaryManager: Component<Props> = (props) => {
   );
 };
 
-/* v8 ignore next */
+/* v8 ignore start */
 export default GlossaryManager;
+/* v8 ignore stop */

@@ -109,10 +109,11 @@ function getModelManager(): LocalModelManager {
 if (typeof window !== 'undefined') {
   window.LocalModelManager = LocalModelManager;
   window.getModelManager = getModelManager;
-/* v8 ignore next -- typeof self environment check - always window in tests */
+/* v8 ignore start */
 } else if (typeof self !== 'undefined') {
   (self as unknown as Window).LocalModelManager = LocalModelManager;
   (self as unknown as Window).getModelManager = getModelManager;
 }
+/* v8 ignore stop */
 
 export { LocalModelManager, getModelManager };

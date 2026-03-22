@@ -163,8 +163,9 @@ function setCachedTranslation(
     const oldestCount = Math.max(10, Math.floor(entries.length * 0.1));
     const oldestEntries = entries.slice(0, oldestCount);
     const leastUsed = oldestEntries.reduce((min, curr) =>
-      /* v8 ignore next */
+      /* v8 ignore start */
       curr[1].useCount < min[1].useCount ? curr : min
+      /* v8 ignore stop */
     );
     translationCache.delete(leastUsed[0]);
   }
@@ -210,8 +211,9 @@ function getCacheStats(): DetailedCacheStats {
     .sort((a, b) => b[1].useCount - a[1].useCount)
     .slice(0, 5)
     .map(([key, value]) => ({
-      /* v8 ignore next */
+      /* v8 ignore start */
       text: key.substring(0, 50) + (key.length > 50 ? '...' : ''),
+      /* v8 ignore stop */
       useCount: value.useCount,
       langs: `${value.sourceLang} -> ${value.targetLang}`,
     }));
@@ -417,8 +419,9 @@ async function translate(
 
     for (let i = 0; i < text.length; i++) {
       const t = text[i];
-      /* v8 ignore next */
+      /* v8 ignore start */
       if (!t || t.trim().length === 0) {
+      /* v8 ignore stop */
         results[i] = t;
         continue;
       }

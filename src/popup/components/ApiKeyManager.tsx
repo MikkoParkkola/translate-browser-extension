@@ -84,8 +84,9 @@ export const ApiKeyManager: Component<Props> = (props) => {
       for (const provider of CLOUD_PROVIDERS) {
         status[provider.id] = {
           hasKey: !!stored[provider.keyField],
-          /* v8 ignore next -- ternary || undefined coercion */
+          /* v8 ignore start */
           isPro: provider.hasProTier && provider.proField ? stored[provider.proField] : undefined,
+          /* v8 ignore stop */
         };
       }
     } catch (e) {
@@ -298,7 +299,9 @@ export const ApiKeyManager: Component<Props> = (props) => {
       <ConfirmDialog
         open={!!confirmRemove()}
         title="Remove API Key"
+        {/* v8 ignore start -- optional chaining + nullish coalescing */}
         message={`Remove ${CLOUD_PROVIDERS.find(p => p.id === confirmRemove())?.name ?? ''} API key? You will need to re-enter it to use this provider.`}
+        {/* v8 ignore stop */}
         confirmLabel="Remove"
         cancelLabel="Keep"
         variant="danger"
@@ -315,5 +318,6 @@ export const ApiKeyManager: Component<Props> = (props) => {
   );
 };
 
-/* v8 ignore next */
+/* v8 ignore start */
 export default ApiKeyManager;
+/* v8 ignore stop */

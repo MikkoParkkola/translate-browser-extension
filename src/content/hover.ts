@@ -197,8 +197,9 @@ async function handleHoverTranslation(e: MouseEvent): Promise<void> {
       new Promise<never>((_, reject) => {
         hoverTimer = setTimeout(() => reject(new Error('Hover translation timed out')), HOVER_TIMEOUT_MS);
       }),
-    /* v8 ignore next -- finally block timer cleanup */
+    /* v8 ignore start */
     ]).finally(() => { if (hoverTimer) clearTimeout(hoverTimer); })) as TranslateResponse;
+    /* v8 ignore stop */
 
     if (response.success && response.result) {
       const translated = response.result as string;
@@ -209,8 +210,9 @@ async function handleHoverTranslation(e: MouseEvent): Promise<void> {
       // Evict oldest (first) entry when over limit — Map preserves insertion order
       if (hoverTranslationCache.size > 100) {
         const firstKey = hoverTranslationCache.keys().next().value;
-        /* v8 ignore next -- conditional cache eviction */
+        /* v8 ignore start */
         if (firstKey) hoverTranslationCache.delete(firstKey);
+        /* v8 ignore stop */
       }
 
       showHoverTooltip(text, translated, rect);

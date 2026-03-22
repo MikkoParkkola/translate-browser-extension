@@ -166,8 +166,9 @@ export class OpusMTProvider extends BaseProvider {
     }
 
     console.error(`[OPUS-MT] All attempts failed for ${modelId}`);
-    /* v8 ignore next -- lastError nullish coalescing fallback */
+    /* v8 ignore start */
     throw lastError ?? new Error(`Failed to load model ${modelId}`);
+    /* v8 ignore stop */
   }
 
   /**

@@ -289,19 +289,22 @@ function createFloatingWidget(): HTMLElement {
 
 function addToWidgetHistory(original: string, translated: string): void {
   widgetHistory.unshift({ original, translated });
-  /* v8 ignore next */
+  /* v8 ignore start */
   if (widgetHistory.length > 5) widgetHistory.pop();
+  /* v8 ignore stop */
 
   updateWidgetHistory();
 }
 
 function updateWidgetHistory(): void {
-  /* v8 ignore next */
+  /* v8 ignore start */
   if (!floatingWidget) return;
+  /* v8 ignore stop */
 
   const historyEl = floatingWidget.querySelector('.widget-history') as HTMLElement;
-  /* v8 ignore next */
+  /* v8 ignore start */
   if (!historyEl) return;
+  /* v8 ignore stop */
 
   if (widgetHistory.length === 0) {
     historyEl.style.display = 'none';
@@ -313,10 +316,10 @@ function updateWidgetHistory(): void {
     .map(
       (h) => `
     <div style="padding: 4px 0; border-bottom: 1px solid #334155;">
-      /* v8 ignore next */
+      /* v8 ignore start */
       <div style="color: #64748b;">${escapeHtml(h.original.substring(0, 30))}${h.original.length > 30 ? '...' : ''}</div>
-      /* v8 ignore next */
       <div style="color: #94a3b8;">${escapeHtml(h.translated.substring(0, 30))}${h.translated.length > 30 ? '...' : ''}</div>
+      /* v8 ignore stop */
     </div>
   `
     )
@@ -341,8 +344,9 @@ export function showFloatingWidget(): void {
 
   // Focus input
   const input = floatingWidget.querySelector('.widget-input') as HTMLTextAreaElement;
-  /* v8 ignore next -- defensive chaining for querySelector result */
+  /* v8 ignore start */
   setTimeout(() => input?.focus(), 100);
+  /* v8 ignore stop */
 }
 
 /**

@@ -97,8 +97,9 @@ export abstract class BaseProvider implements TranslationProvider {
   async test(): Promise<boolean> {
     try {
       const result = await this.translate('Hello', 'en', 'fi');
-      /* v8 ignore next -- typeof result ternary for string vs array */
+      /* v8 ignore start */
       return result !== null && (typeof result === 'string' ? result.length > 0 : result.length > 0);
+      /* v8 ignore stop */
     } catch (error) {
       console.error(`${this.name} test failed:`, error);
       return false;

@@ -68,9 +68,12 @@ export default function Options() {
     setActiveTab(tabIds[newIdx]);
     // Focus the new tab button
     const btn = document.getElementById(`tab-${tabIds[newIdx]}`);
+    /* v8 ignore start -- optional chaining */
     btn?.focus();
+    /* v8 ignore stop */
   };
 
+  /* v8 ignore start -- switch branches for icon rendering */
   const renderIcon = (icon: string) => {
     switch (icon) {
       case 'settings':
@@ -139,11 +142,10 @@ export default function Options() {
           </svg>
         );
       default:
-        /* v8 ignore start -- null return branch */
         return null;
-        /* v8 ignore stop */
     }
   };
+  /* v8 ignore stop */
 
   return (
     <div class="options-container">

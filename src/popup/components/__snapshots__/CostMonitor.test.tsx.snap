@@ -1,0 +1,7 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`CostMonitor > Snapshot > renders default state correctly 1`] = `"<section class="cost-section"><div class="cost-monitor"><span class="cost-label">Cost: <span class="cost-today">$0.42</span></span><span class="budget-label ">(Budget: <span class="budget-monthly">$5.00</span>/month)</span></div><div class="budget-bar"><div class="budget-bar-track"><div class="budget-bar-fill " style="width: 50%;"></div></div></div></section>"`;
+
+exports[`CostMonitor > Snapshot > renders over-budget state correctly 1`] = `"<section class="cost-section"><div class="cost-monitor"><span class="cost-label">Cost: <span class="cost-today">$3.50</span></span><span class="budget-label over-budget">(Budget: <span class="budget-monthly">$5.00</span>/month)</span></div><div class="budget-bar"><div class="budget-bar-track"><div class="budget-bar-fill over-budget" style="width: 100%;"></div></div></div></section>"`;
+
+exports[`CostMonitor > Snapshot > renders zero usage state correctly 1`] = `"<section class="cost-section"><div class="cost-monitor"><span class="cost-label">Cost: <span class="cost-today">$0.00</span></span><span class="budget-label ">(Budget: <span class="budget-monthly">$0.00</span>/month)</span></div><div class="budget-bar"><div class="budget-bar-track"><div class="budget-bar-fill " style="width: 0%;"></div></div></div></section>"`;

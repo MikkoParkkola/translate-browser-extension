@@ -302,5 +302,6 @@ export const CacheSettings: Component = () => {
   );
 };
 
-/* v8 ignore next */
+/* v8 ignore start */
 export default CacheSettings;
+/* v8 ignore stop */

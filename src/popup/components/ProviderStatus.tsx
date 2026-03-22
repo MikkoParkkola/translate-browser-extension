@@ -28,5 +28,6 @@ export const ProviderStatus: Component<Props> = (props) => {
       </div>
     </div>
   );
-/* v8 ignore next -- V8 tracks component function boundary */
+/* v8 ignore start */
 };
+/* v8 ignore stop */

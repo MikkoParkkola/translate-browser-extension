@@ -62,14 +62,12 @@ export const SiteRulesManager: Component<Props> = (props) => {
     try {
       const rules: SiteRules = {
         autoTranslate: autoTranslate(),
-        /* v8 ignore next -- trivial || undefined coercion */
+        /* v8 ignore start */
         preferredProvider: preferredProvider() || undefined,
-        /* v8 ignore next -- trivial || undefined coercion */
         sourceLang: sourceLang() || undefined,
-        /* v8 ignore next -- trivial || undefined coercion */
         targetLang: targetLang() || undefined,
-        /* v8 ignore next -- trivial || undefined coercion */
         strategy: strategy() || undefined,
+        /* v8 ignore stop */
       };
 
       await siteRules.setRules(props.currentHostname, rules);
@@ -152,8 +150,9 @@ export const SiteRulesManager: Component<Props> = (props) => {
   const handleImport = async (event: Event) => {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
-    /* v8 ignore next -- guard: no-file case */
+    /* v8 ignore start */
     if (!file) return;
+    /* v8 ignore stop */
 
     try {
       const text = await file.text();
@@ -333,5 +332,6 @@ export const SiteRulesManager: Component<Props> = (props) => {
   );
 };
 
-/* v8 ignore next */
+/* v8 ignore start */
 export default SiteRulesManager;
+/* v8 ignore stop */

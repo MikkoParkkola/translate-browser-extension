@@ -172,8 +172,9 @@ export async function importRules(json: string): Promise<number> {
     for (const [hostname, rules] of Object.entries(imported)) {
       /* v8 ignore start — Object.entries() always yields string keys */
       if (typeof hostname !== 'string') {
-        /* v8 ignore next -- error throw for invalid hostname */
+        /* v8 ignore start */
         throw new Error(`Invalid hostname: ${hostname}`);
+        /* v8 ignore stop */
       }
       /* v8 ignore stop */
       if (typeof rules !== 'object' || rules === null) {

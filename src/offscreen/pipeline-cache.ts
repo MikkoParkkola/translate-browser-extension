@@ -57,8 +57,9 @@ export function evictLRUPipelines(): void {
       }
     }
 
-    /* v8 ignore next */
+    /* v8 ignore start */
     if (oldestKey) {
+    /* v8 ignore stop */
       const evicted = pipelineCache.get(oldestKey);
       pipelineCache.delete(oldestKey);
 

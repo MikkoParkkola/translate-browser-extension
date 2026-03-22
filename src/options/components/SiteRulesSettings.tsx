@@ -504,5 +504,6 @@ export const SiteRulesSettings: Component = () => {
   );
 };
 
-/* v8 ignore next */
+/* v8 ignore start */
 export default SiteRulesSettings;
+/* v8 ignore stop */
