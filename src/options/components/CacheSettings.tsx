@@ -4,8 +4,11 @@
  */
 
 import { Component, createSignal, onMount, Show } from 'solid-js';
+import { createLogger } from '../../core/logger';
 import type { TranslationCacheStats } from '../../core/translation-cache';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
+
+const log = createLogger('CacheSettings');
 
 // Format bytes to human-readable
 function formatBytes(bytes: number): string {
@@ -72,7 +75,7 @@ export const CacheSettings: Component = () => {
         });
       }
     } catch (e) {
-      console.error('[CacheSettings] Failed to load stats:', e);
+      log.error('Failed to load stats:', e);
       setError('Failed to load cache statistics');
     } finally {
       setLoading(false);
@@ -96,7 +99,7 @@ export const CacheSettings: Component = () => {
       await loadStats();
       showSuccess('Cache cleared successfully');
     } catch (e) {
-      console.error('[CacheSettings] Failed to clear cache:', e);
+      log.error('Failed to clear cache:', e);
       setError('Failed to clear cache');
     } finally {
       setClearing(false);

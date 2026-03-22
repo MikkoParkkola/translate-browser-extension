@@ -4,7 +4,10 @@
  */
 
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
+import { createLogger } from '../../core/logger';
 import { glossary, type GlossaryStore, type GlossaryTerm } from '../../core/glossary';
+
+const log = createLogger('GlossaryManager');
 
 interface Props {
   onClose?: () => void;
@@ -39,7 +42,7 @@ export const GlossaryManager: Component<Props> = (props) => {
       setError(null);
     } catch (e) {
       setError('Failed to load glossary');
-      console.error('[GlossaryManager] Load error:', e);
+      log.error('Load error:', e);
     }
   };
 
@@ -64,7 +67,7 @@ export const GlossaryManager: Component<Props> = (props) => {
       await loadGlossary();
     } catch (e) {
       setError('Failed to add term');
-      console.error('[GlossaryManager] Add error:', e);
+      log.error('Add error:', e);
     }
   };
 
@@ -95,7 +98,7 @@ export const GlossaryManager: Component<Props> = (props) => {
       await loadGlossary();
     } catch (e) {
       setError('Failed to update term');
-      console.error('[GlossaryManager] Update error:', e);
+      log.error('Update error:', e);
     }
   };
 
@@ -109,7 +112,7 @@ export const GlossaryManager: Component<Props> = (props) => {
       await loadGlossary();
     } catch (e) {
       setError('Failed to delete term');
-      console.error('[GlossaryManager] Delete error:', e);
+      log.error('Delete error:', e);
     }
   };
 
@@ -123,7 +126,7 @@ export const GlossaryManager: Component<Props> = (props) => {
       await loadGlossary();
     } catch (e) {
       setError('Failed to clear glossary');
-      console.error('[GlossaryManager] Clear error:', e);
+      log.error('Clear error:', e);
     }
   };
 
@@ -139,7 +142,7 @@ export const GlossaryManager: Component<Props> = (props) => {
       URL.revokeObjectURL(url);
     } catch (e) {
       setError('Failed to export glossary');
-      console.error('[GlossaryManager] Export error:', e);
+      log.error('Export error:', e);
     }
   };
 
@@ -158,7 +161,7 @@ export const GlossaryManager: Component<Props> = (props) => {
       alert(`Imported ${count} glossary terms`);
     } catch (e) {
       setError('Failed to import glossary: ' + (e instanceof Error ? e.message : 'Unknown error'));
-      console.error('[GlossaryManager] Import error:', e);
+      log.error('Import error:', e);
     }
   };
 

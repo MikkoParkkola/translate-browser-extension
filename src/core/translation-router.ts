@@ -9,8 +9,11 @@ import { deeplProvider } from '../providers/deepl';
 import { openaiProvider } from '../providers/openai';
 import { googleCloudProvider } from '../providers/google-cloud';
 import { anthropicProvider } from '../providers/anthropic';
+import { chromeTranslatorProvider } from '../providers/chrome-translator';
+import { nllb200Provider } from '../providers/nllb-200';
 import { webgpuDetector } from './webgpu-detector';
 import { CircuitBreaker } from './circuit-breaker';
+import { safeStorageGet } from './storage';
 import type {
   TranslationProvider,
   TranslationOptions,
@@ -50,9 +53,13 @@ export class TranslationRouter {
     this.circuitBreaker = circuitBreaker ?? new CircuitBreaker();
     // Start with defaults, will be overwritten by loadPreferences()
     this.preferences = { ...DEFAULT_PREFERENCES };
-    // Register default providers
+    // Chrome built-in translator (zero-cost, on-device, Chrome 138+) — highest priority when available
+    this.registerProvider(chromeTranslatorProvider);
+    // OPUS-MT local model
     this.registerProvider(opusMTProvider);
-    // Register cloud providers
+    // NLLB-200-distilled-600M: single model covering 200 language pairs
+    this.registerProvider(nllb200Provider);
+    // Cloud providers
     this.registerProvider(deeplProvider);
     this.registerProvider(openaiProvider);
     this.registerProvider(googleCloudProvider);
@@ -63,28 +70,14 @@ export class TranslationRouter {
    * Load user preferences from chrome.storage.local
    */
   private async loadPreferences(): Promise<RouterPreferences> {
-    try {
-      // Check if chrome.storage is available (may not be in tests or non-extension context)
-      if (typeof chrome === 'undefined' || !chrome.storage?.local) {
-        log.info('chrome.storage not available, using defaults');
-        return { ...DEFAULT_PREFERENCES };
-      }
-
-      const result = await chrome.storage.local.get(STORAGE_KEY);
-      const stored = result[STORAGE_KEY] as RouterPreferences | undefined;
-
-      if (stored) {
-        log.info('Loaded preferences from storage:', stored);
-        // Merge with defaults to handle any new fields added in updates
-        return { ...DEFAULT_PREFERENCES, ...stored };
-      }
-
-      log.info('No stored preferences, using defaults');
-      return { ...DEFAULT_PREFERENCES };
-    } catch (error) {
-      console.error('[Router] Failed to load preferences:', error);
-      return { ...DEFAULT_PREFERENCES };
+    const stored = await safeStorageGet<Record<string, RouterPreferences>>(STORAGE_KEY);
+    const preferences = stored[STORAGE_KEY];
+    if (preferences) {
+      log.info('Loaded preferences from storage:', preferences);
+      return { ...DEFAULT_PREFERENCES, ...preferences };
     }
+    log.info('No stored preferences, using defaults');
+    return { ...DEFAULT_PREFERENCES };
   }
 
   /**
@@ -94,16 +87,14 @@ export class TranslationRouter {
     this.preferences = { ...this.preferences, ...prefs };
 
     try {
-      // Check if chrome.storage is available
       if (typeof chrome === 'undefined' || !chrome.storage?.local) {
         log.info('chrome.storage not available, preferences saved in memory only');
         return;
       }
-
       await chrome.storage.local.set({ [STORAGE_KEY]: this.preferences });
       log.info('Saved preferences to storage:', this.preferences);
     } catch (error) {
-      console.error('[Router] Failed to save preferences:', error);
+      log.error('Failed to save preferences:', error);
       throw error;
     }
   }
@@ -232,6 +223,12 @@ export class TranslationRouter {
     _targetLang: string
   ): number {
     let score = 100; // Base score
+
+    // Chrome built-in: free, on-device, maintained by Google — always preferred when available
+    // User can override by setting preferLocal: false + primaryProvider to something else
+    if (provider.id === 'chrome-translator') {
+      score += 60; // Highest base bonus
+    }
 
     // Quality preference
     if (this.preferences.prioritize === 'quality') {

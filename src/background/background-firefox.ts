@@ -81,7 +81,7 @@ async function loadPersistentCache(): Promise<void> {
   try {
     const stored = await browserAPI.storage.local.get([
       CONFIG.cache.storageKey,
-      'cacheStats',
+      CONFIG.cache.cacheStatsKey,
     ]);
 
     if (stored[CONFIG.cache.storageKey]) {
@@ -262,7 +262,7 @@ async function clearTranslationCache(): Promise<void> {
   cacheMisses = 0;
 
   try {
-    await browserAPI.storage.local.remove([CONFIG.cache.storageKey, 'cacheStats']);
+    await browserAPI.storage.local.remove([CONFIG.cache.storageKey, CONFIG.cache.cacheStatsKey]);
     log.info('Translation cache cleared');
   } catch (error) {
     log.warn('Failed to clear persistent cache:', error);
@@ -396,7 +396,7 @@ async function translate(
   let actualSourceLang = sourceLang;
   if (sourceLang === 'auto') {
     const sampleText = Array.isArray(text) ? text.slice(0, 3).join(' ') : text;
-    actualSourceLang = detectLanguage(sampleText);
+    actualSourceLang = await detectLanguage(sampleText);
     log.info(`Auto-detected source: ${actualSourceLang}`);
 
     if (actualSourceLang === targetLang) {

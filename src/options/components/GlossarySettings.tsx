@@ -4,7 +4,10 @@
  */
 
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
+import { createLogger } from '../../core/logger';
 import { glossary, type GlossaryStore, type GlossaryTerm } from '../../core/glossary';
+
+const log = createLogger('GlossarySettings');
 
 const LANGUAGES = [
   { code: 'all', name: 'All Languages' },
@@ -48,7 +51,7 @@ export const GlossarySettings: Component = () => {
       setError(null);
     } catch (e) {
       setError('Failed to load glossary');
-      console.error('[GlossarySettings] Load error:', e);
+      log.error('Load error:', e);
     }
   };
 
@@ -85,7 +88,7 @@ export const GlossarySettings: Component = () => {
       showSuccess('Term added successfully');
     } catch (e) {
       setError('Failed to add term');
-      console.error('[GlossarySettings] Add error:', e);
+      log.error('Add error:', e);
     }
   };
 
@@ -117,7 +120,7 @@ export const GlossarySettings: Component = () => {
       showSuccess('Term updated');
     } catch (e) {
       setError('Failed to update term');
-      console.error('[GlossarySettings] Update error:', e);
+      log.error('Update error:', e);
     }
   };
 
@@ -130,7 +133,7 @@ export const GlossarySettings: Component = () => {
       showSuccess('Term deleted');
     } catch (e) {
       setError('Failed to delete term');
-      console.error('[GlossarySettings] Delete error:', e);
+      log.error('Delete error:', e);
     }
   };
 
@@ -143,7 +146,7 @@ export const GlossarySettings: Component = () => {
       showSuccess('Glossary cleared');
     } catch (e) {
       setError('Failed to clear glossary');
-      console.error('[GlossarySettings] Clear error:', e);
+      log.error('Clear error:', e);
     }
   };
 
@@ -160,7 +163,7 @@ export const GlossarySettings: Component = () => {
       showSuccess('Glossary exported');
     } catch (e) {
       setError('Failed to export glossary');
-      console.error('[GlossarySettings] Export error:', e);
+      log.error('Export error:', e);
     }
   };
 
@@ -179,7 +182,7 @@ export const GlossarySettings: Component = () => {
       input.value = '';
     } catch (e) {
       setError('Failed to import: ' + (e instanceof Error ? e.message : 'Invalid file'));
-      console.error('[GlossarySettings] Import error:', e);
+      log.error('Import error:', e);
     }
   };
 

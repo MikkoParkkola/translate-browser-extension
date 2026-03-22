@@ -1,13 +1,22 @@
 /**
  * Language Detection
  *
- * Uses franc-min for language detection with ISO 639-3 to ISO 639-1 mapping.
+ * Detection priority:
+ *   1. Chrome's built-in LanguageDetector API (Chrome 138+) — ML-based, no bundle cost
+ *   2. Firefox browser.i18n.detectLanguage — built-in, works on short text
+ *   3. franc-min trigram model — offline fallback, needs ≥20 chars
  */
 
 import { franc } from 'franc-min';
 import { createLogger } from '../core/logger';
 
 const log = createLogger('LanguageDetection');
+
+// Chrome 138+ LanguageDetector global (not yet in TS lib defs)
+declare const LanguageDetector: {
+  availability(): Promise<'unavailable' | 'downloadable' | 'downloading' | 'available'>;
+  create(): Promise<{ detect(text: string): Promise<Array<{ detectedLanguage: string; confidence: number }>> }>;
+} | undefined;
 
 // Map franc ISO 639-3 codes to our ISO 639-1 codes
 // See: https://iso639-3.sil.org/code_tables/639/data
@@ -87,31 +96,58 @@ export const FRANC_TO_ISO: Record<string, string> = {
 };
 
 /**
- * Detect language from text using franc.
- * Falls back to character set detection and English as default.
+ * Detect language from text.
  *
- * Uses minLength=20 to avoid false positives on short text fragments
- * (e.g., PDF references, author names, mathematical terms).
- * franc needs at least ~20 chars to produce reliable results.
+ * Tries the best available detector in priority order:
+ *   Chrome LanguageDetector API → Firefox i18n API → franc → character heuristics → 'en'
  */
-export function detectLanguage(text: string): string {
-  // franc returns 'und' (undetermined) if it can't detect
-  // minLength=20 prevents false positives on short fragments that
-  // would trigger loading many different OPUS-MT models
+export async function detectLanguage(text: string): Promise<string> {
+  // 1. Chrome 138+ built-in LanguageDetector (ML model, works on short text)
+  if (typeof LanguageDetector !== 'undefined') {
+    try {
+      const availability = await LanguageDetector.availability();
+      if (availability === 'available') {
+        const detector = await LanguageDetector.create();
+        const results = await detector.detect(text.substring(0, 500));
+        if (results.length > 0 && results[0].confidence >= 0.7) {
+          log.debug(`Chrome LanguageDetector: "${results[0].detectedLanguage}" (${(results[0].confidence * 100).toFixed(0)}%)`);
+          return results[0].detectedLanguage;
+        }
+      }
+    } catch (e) {
+      log.debug('Chrome LanguageDetector failed, trying next method:', e);
+    }
+  }
+
+  // 2. Firefox built-in i18n language detection
+  if (typeof browser !== 'undefined' && browser.i18n?.detectLanguage) {
+    try {
+      const result = await browser.i18n.detectLanguage(text);
+      if (result.isReliable && result.languages.length > 0) {
+        const lang = result.languages[0].language.split('-')[0]; // strip region
+        log.debug(`Firefox i18n.detectLanguage: "${lang}"`);
+        return lang;
+      }
+    } catch (e) {
+      log.debug('Firefox i18n.detectLanguage failed:', e);
+    }
+  }
+
+  // 3. franc trigram model (needs ≥20 chars for reliable results)
   const detected = franc(text, { minLength: 20 });
   log.debug(`franc raw detection: "${detected}" for text: "${text.slice(0, 50)}..."`);
 
   if (detected === 'und' || !detected) {
-    // Try to guess from character sets
-    if (/[\u3040-\u309f\u30a0-\u30ff]/.test(text)) return 'ja'; // Japanese
-    if (/[\u4e00-\u9fff]/.test(text)) return 'zh'; // Chinese
-    if (/[\u0400-\u04ff]/.test(text)) return 'ru'; // Cyrillic -> Russian
-    if (/[äöåÄÖÅ]/.test(text)) return 'fi'; // Finnish characters
-    log.info(' Could not detect language, defaulting to English');
+    // 4. Unicode character-set heuristics for scripts franc often misses
+    if (/[\u3040-\u309f\u30a0-\u30ff]/.test(text)) return 'ja'; // Japanese kana
+    if (/[\u4e00-\u9fff]/.test(text)) return 'zh';               // CJK unified
+    if (/[\u0400-\u04ff]/.test(text)) return 'ru';               // Cyrillic → Russian
+    if (/[äöåÄÖÅ]/.test(text)) return 'fi';                     // Finnish diacritics
+    log.info('Could not detect language, defaulting to English');
     return 'en';
   }
 
   const lang = FRANC_TO_ISO[detected];
   log.info(`Detected language: ${detected} -> ${lang || 'en'}`);
-  return lang || 'en'; // Default to English if unknown
+  return lang || 'en';
 }

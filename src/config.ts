@@ -12,6 +12,8 @@ export const CONFIG = {
     maxSize: 1000,
     /** Storage key for persistent cache */
     storageKey: 'translationMemory',
+    /** Storage key for cache hit/miss statistics */
+    cacheStatsKey: 'cacheStats',
     /** Debounce delay for saving cache to storage (ms) */
     saveDebounceMs: 5000,
   },

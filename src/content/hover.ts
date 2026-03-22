@@ -14,6 +14,7 @@ const log = createLogger('Content');
 let hoverDebounceTimer: number | null = null;
 let lastHoveredText: string = '';
 let isAltKeyDown = false;
+const HOVER_CACHE_MAX_SIZE = 100;
 const hoverTranslationCache = new Map<string, string>();
 
 /** Provided by index.ts to resolve 'auto' source language */
@@ -208,7 +209,7 @@ async function handleHoverTranslation(e: MouseEvent): Promise<void> {
       hoverTranslationCache.set(cacheKey, translated);
 
       // Evict oldest (first) entry when over limit — Map preserves insertion order
-      if (hoverTranslationCache.size > 100) {
+      if (hoverTranslationCache.size > HOVER_CACHE_MAX_SIZE) {
         const firstKey = hoverTranslationCache.keys().next().value;
         /* v8 ignore start */
         if (firstKey) hoverTranslationCache.delete(firstKey);

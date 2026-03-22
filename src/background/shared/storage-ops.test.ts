@@ -26,6 +26,7 @@ vi.mock('../../config', () => ({
   CONFIG: {
     cache: {
       storageKey: 'translationCache',
+      cacheStatsKey: 'cacheStats',
       maxSize: 10,
       saveDebounceMs: 100,
     },

@@ -5,6 +5,9 @@
  * Provides hooks for first-run-after-update experiences.
  */
 
+import { safeStorageGet, safeStorageSet, safeStorageRemove } from './storage';
+import { browserAPI } from './browser-api';
+
 export interface VersionInfo {
   current: string;
   previous: string | null;
@@ -19,35 +22,25 @@ export interface VersionInfo {
 export async function checkVersion(): Promise<VersionInfo> {
   const current = getManifestVersion();
 
-  try {
-    const stored = await chrome.storage.local.get(['extension_version', 'extension_first_run']);
-    const previous = (stored.extension_version as string) ?? null;
-    const isFirstRun = !previous;
-    const isUpdate = !!previous && previous !== current;
+  const stored = await safeStorageGet<{ extension_version?: string; extension_first_run?: boolean }>(
+    ['extension_version', 'extension_first_run'],
+  );
+  const previous = stored.extension_version ?? null;
+  const isFirstRun = !previous;
+  const isUpdate = !!previous && previous !== current;
 
-    // Persist current version
-    if (previous !== current) {
-      await chrome.storage.local.set({
-        extension_version: current,
-        extension_updated_at: Date.now(),
-      });
-    }
-
-    return { current, previous, isFirstRun, isUpdate };
-  } catch {
-    return { current, previous: null, isFirstRun: true, isUpdate: false };
+  if (previous !== current) {
+    await safeStorageSet({ extension_version: current, extension_updated_at: Date.now() });
   }
+
+  return { current, previous, isFirstRun, isUpdate };
 }
 
 /**
  * Mark the "updated" notification as dismissed.
  */
 export async function dismissUpdateNotice(): Promise<void> {
-  try {
-    await chrome.storage.local.set({ extension_update_dismissed: true });
-  } catch {
-    // Ignore storage errors
-  }
+  await safeStorageSet({ extension_update_dismissed: true });
 }
 
 /**
@@ -55,10 +48,10 @@ export async function dismissUpdateNotice(): Promise<void> {
  */
 export async function isUpdateDismissed(): Promise<boolean> {
   try {
-    const stored = await chrome.storage.local.get(['extension_update_dismissed']);
+    const stored = await browserAPI.storage.local.get(['extension_update_dismissed']) as { extension_update_dismissed?: boolean };
     return !!stored.extension_update_dismissed;
   } catch {
-    return true;
+    return true; // assume dismissed on storage error
   }
 }
 

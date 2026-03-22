@@ -276,8 +276,25 @@ export class ChromeTranslatorProvider extends BaseProvider {
       }
 
       try {
-        const translated = await this.translator.translate(t);
-        results.push(translated);
+        // Use streaming if available and text is long enough to benefit
+        if (this.translator.translateStreaming && t.length > 200) {
+          const stream = this.translator.translateStreaming(t);
+          const chunks: string[] = [];
+          const reader = stream.getReader();
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              chunks.push(value);
+            }
+          } finally {
+            reader.releaseLock();
+          }
+          results.push(chunks.join(''));
+        } else {
+          const translated = await this.translator.translate(t);
+          results.push(translated);
+        }
       } catch (error) {
         log.error(`Translation failed for text: ${t.substring(0, 50)}...`, error);
         results.push(t); // Return original on error
@@ -285,6 +302,60 @@ export class ChromeTranslatorProvider extends BaseProvider {
     }
 
     return Array.isArray(text) ? results : results[0];
+  }
+
+  /**
+   * Translate a single long text with streaming, yielding partial results via callback.
+   * Useful for page translation to show progressive updates to the user.
+   * Falls back to regular translate() if streaming is unavailable.
+   */
+  async translateStreaming(
+    text: string,
+    sourceLang: string,
+    targetLang: string,
+    onChunk: (partial: string) => void,
+  ): Promise<string> {
+    if (!(await this.isAvailable())) {
+      throw new Error('Chrome Translator API not available');
+    }
+
+    const actualSourceLang = sourceLang === 'auto'
+      ? await this.detectLanguage(text)
+      : sourceLang;
+
+    if (!(await this.isPairSupported(actualSourceLang, targetLang))) {
+      throw new Error(`Language pair not supported: ${actualSourceLang}-${targetLang}`);
+    }
+
+    if (!this.translator || this.currentPair?.source !== actualSourceLang || this.currentPair?.target !== targetLang) {
+      if (this.translator) this.translator.destroy();
+      this.translator = await Translator!.create({ sourceLanguage: actualSourceLang, targetLanguage: targetLang });
+      this.currentPair = { source: actualSourceLang, target: targetLang };
+    }
+
+    if (!this.translator.translateStreaming) {
+      // Streaming not available in this Chrome version — fall back to batch
+      const result = await this.translator.translate(text);
+      onChunk(result);
+      return result;
+    }
+
+    const stream = this.translator.translateStreaming(text);
+    const reader = stream.getReader();
+    const chunks: string[] = [];
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        onChunk(chunks.join(''));
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return chunks.join('');
   }
 
   /**
@@ -377,3 +448,6 @@ export function getChromeTranslator(): ChromeTranslatorProvider {
 export async function isChromeTranslatorAvailable(): Promise<boolean> {
   return getChromeTranslator().isAvailable();
 }
+
+/** Named singleton for use in TranslationRouter (mirrors pattern used by other providers). */
+export const chromeTranslatorProvider = getChromeTranslator();

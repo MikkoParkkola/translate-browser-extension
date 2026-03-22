@@ -4,8 +4,11 @@
  */
 
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
+import { createLogger } from '../../core/logger';
 import { siteRules, type SiteRules, type SiteRulesStore } from '../../core/site-rules';
 import type { TranslationProviderId, Strategy } from '../../types';
+
+const log = createLogger('SiteRulesSettings');
 
 const LANGUAGES = [
   { code: '', name: 'Use default' },
@@ -71,7 +74,7 @@ export const SiteRulesSettings: Component = () => {
       setError(null);
     } catch (e) {
       setError('Failed to load site rules');
-      console.error('[SiteRulesSettings] Load error:', e);
+      log.error('Load error:', e);
     }
   };
 
@@ -118,7 +121,7 @@ export const SiteRulesSettings: Component = () => {
       showSuccess('Site rule added');
     } catch (e) {
       setError('Failed to add rule');
-      console.error('[SiteRulesSettings] Add error:', e);
+      log.error('Add error:', e);
     }
   };
 
@@ -154,7 +157,7 @@ export const SiteRulesSettings: Component = () => {
       showSuccess('Site rule updated');
     } catch (e) {
       setError('Failed to update rule');
-      console.error('[SiteRulesSettings] Update error:', e);
+      log.error('Update error:', e);
     }
   };
 
@@ -167,7 +170,7 @@ export const SiteRulesSettings: Component = () => {
       showSuccess('Rule deleted');
     } catch (e) {
       setError('Failed to delete rule');
-      console.error('[SiteRulesSettings] Delete error:', e);
+      log.error('Delete error:', e);
     }
   };
 
@@ -184,7 +187,7 @@ export const SiteRulesSettings: Component = () => {
       showSuccess('Rules exported');
     } catch (e) {
       setError('Failed to export rules');
-      console.error('[SiteRulesSettings] Export error:', e);
+      log.error('Export error:', e);
     }
   };
 
@@ -201,7 +204,7 @@ export const SiteRulesSettings: Component = () => {
       input.value = '';
     } catch (e) {
       setError('Failed to import: ' + (e instanceof Error ? e.message : 'Invalid file'));
-      console.error('[SiteRulesSettings] Import error:', e);
+      log.error('Import error:', e);
     }
   };
 

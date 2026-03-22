@@ -186,7 +186,7 @@ export default function App() {
       try {
         handleModelProgress(message);
       } catch (error) {
-        console.error('[Popup] Error handling model progress message:', error);
+        log.error('Error handling model progress message:', error);
       }
     };
     browserAPI.runtime.onMessage.addListener(messageListener);
@@ -298,7 +298,7 @@ export default function App() {
       await browserAPI.runtime.sendMessage({ type: 'setProvider', provider });
       log.info('Provider changed to:', provider);
     } catch (e) {
-      console.error('[Popup] Failed to set provider:', e);
+      log.error('Failed to set provider:', e);
     }
   };
 
@@ -320,7 +320,7 @@ export default function App() {
         await new Promise((resolve) => setTimeout(resolve, 100));
         return true;
       } catch (injectError) {
-        console.error('[Popup] Failed to inject content script:', injectError);
+        log.error('Failed to inject content script:', injectError);
         return false;
       }
     }
@@ -344,7 +344,7 @@ export default function App() {
         log.info('Bilingual mode:', response.enabled);
       }
     } catch (e) {
-      console.error('[Popup] Toggle bilingual mode failed:', e);
+      log.error('Toggle bilingual mode failed:', e);
     }
   };
 
@@ -430,7 +430,7 @@ export default function App() {
         handleError(new Error(response.error || 'Translation failed'));
       }
     } catch (e) {
-      console.error('[Popup] Translation failed:', e);
+      log.error('Translation failed:', e);
       handleError(e);
     } finally {
       setIsTranslating(false);
@@ -473,7 +473,7 @@ export default function App() {
         handleError(new Error(response.error || 'Page translation failed'));
       }
     } catch (e) {
-      console.error('[Popup] Page translation failed:', e);
+      log.error('Page translation failed:', e);
       handleError(e);
     } finally {
       setIsTranslating(false);
@@ -498,7 +498,7 @@ export default function App() {
 
       await browserAPI.tabs.sendMessage(tab.id, { type: 'undoTranslation' });
     } catch (e) {
-      console.error('[Popup] Undo failed:', e);
+      log.error('Undo failed:', e);
     }
   };
 

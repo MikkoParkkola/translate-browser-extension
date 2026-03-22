@@ -58,6 +58,24 @@ export function isWebGpuOnnxTainted(): boolean {
 }
 
 /**
+ * Check WebNN (Web Neural Network API) support — Chrome 122+, Firefox 131+.
+ * WebNN delegates to the device NPU (Apple Silicon, Qualcomm, Intel Core Ultra).
+ * Transformers.js 3.x recognises the 'webnn' device string automatically.
+ */
+export async function detectWebNN(): Promise<boolean> {
+  try {
+    // navigator.ml is the WebNN entry point; not yet in TS lib defs
+    const ml = (navigator as unknown as { ml?: { createContext(opts: object): Promise<unknown> } }).ml;
+    if (!ml) return false;
+    // Request a GPU-backed context; falls back to CPU if GPU unavailable
+    const ctx = await ml.createContext({ deviceType: 'gpu' });
+    return !!ctx;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Check WebGPU support and capabilities.
  */
 export async function detectWebGPU(): Promise<{ supported: boolean; fp16: boolean }> {
@@ -143,6 +161,7 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
     log.info('Loading TranslateGemma model...');
 
     const gpu = await detectWebGPU();
+    const webnn = await detectWebNN();
 
     const progressCallback = (progress: Record<string, unknown>) => {
       sendProgress({
@@ -154,7 +173,7 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       });
     };
 
-    const loadModel = async (device: 'webgpu' | 'wasm', dtype: string) => {
+    const loadModel = async (device: 'webnn' | 'webgpu' | 'wasm', dtype: string) => {
       log.info(`Loading TranslateGemma with device: ${device}, dtype: ${dtype}`);
       // Load model and tokenizer in parallel for faster startup.
       // Gemma3ForCausalLM is used directly to avoid pipeline model_type
@@ -185,23 +204,33 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       return { model: tgModel, tokenizer: tgTokenizer };
     };
 
-    // WASM fallback removed: The 3.6GB model cannot fit in the 4GB WASM heap.
-    // Attempting to load it corrupts the ONNX Runtime and breaks all subsequent model loads.
-
-    // If WebGPU is not available, reject immediately.
+    // If neither WebNN nor WebGPU is available, reject immediately.
     // The 3.6GB model cannot fit in the 4GB WASM heap — attempting to load it
     // corrupts the ONNX Runtime and breaks all subsequent model loads.
-    if (!gpu.supported) {
+    if (!webnn && !gpu.supported) {
       tgLoading = null;
-      const msg = 'TranslateGemma requires WebGPU. The 3.6GB model cannot run without GPU acceleration.';
+      const msg = 'TranslateGemma requires WebNN or WebGPU. The 3.6GB model cannot run without GPU acceleration.';
       log.error(msg);
       sendProgress({ status: 'error', error: msg });
       throw new Error(msg);
     }
 
-    // Strategy: webgpu+q4f16 -> webgpu+q4 -> wasm+q4
-    // q4f16 = int4 weights + fp16 compute (fastest, requires shader-f16)
-    // q4    = int4 weights + fp32 compute (still GPU-accelerated, no fp16 needed)
+    // Strategy: webnn → webgpu+q4f16 → webgpu+q4
+    // WebNN: delegates to NPU/GPU via OS ML runtime (best on Apple Silicon, Snapdragon, Intel Core Ultra)
+    // q4f16: int4 weights + fp16 compute (fastest GPU path, requires shader-f16)
+    // q4:    int4 weights + fp32 compute (still GPU-accelerated, broader compatibility)
+
+    // Step 0: Try WebNN (NPU offloading — best on modern hardware)
+    if (webnn) {
+      try {
+        const result = await loadModel('webnn', 'q4f16');
+        log.info('TranslateGemma loaded successfully via WebNN (NPU)');
+        return setResult(result);
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        log.warn(`TranslateGemma: WebNN failed (${errorMsg}), falling back to WebGPU...`);
+      }
+    }
 
     // Step 1: Try WebGPU + q4f16 if GPU supports fp16 shaders
     if (gpu.fp16) {

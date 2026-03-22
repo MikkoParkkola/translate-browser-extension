@@ -10,6 +10,7 @@
  */
 
 import { createLogger } from './logger';
+import { safeStorageGet, safeStorageSet, safeStorageRemove } from './storage';
 
 const log = createLogger('Corrections');
 
@@ -54,8 +55,7 @@ function getCorrectionKey(original: string, sourceLang: string, targetLang: stri
 export async function loadCorrections(): Promise<Map<string, Correction>> {
   if (correctionsCache) return correctionsCache;
 
-  try {
-    const result = await chrome.storage.local.get(CORRECTIONS_KEY);
+  const result = await safeStorageGet<Record<string, unknown>>(CORRECTIONS_KEY);
     if (result[CORRECTIONS_KEY]) {
       // Handle both array and object formats for backwards compatibility
       const stored = result[CORRECTIONS_KEY];
@@ -63,16 +63,12 @@ export async function loadCorrections(): Promise<Map<string, Correction>> {
         correctionsCache = new Map(stored);
       } else {
         // Legacy object format - convert to Map
-        correctionsCache = new Map(Object.entries(stored));
+        correctionsCache = new Map(Object.entries(stored as Record<string, Correction>));
       }
       log.info(`Loaded ${correctionsCache.size} corrections`);
     } else {
       correctionsCache = new Map();
     }
-  } catch (error) {
-    log.error('Failed to load corrections:', error);
-    correctionsCache = new Map();
-  }
 
   return correctionsCache;
 }
@@ -85,13 +81,9 @@ async function saveCorrections(): Promise<void> {
   if (!correctionsCache) return;
   /* v8 ignore stop */
 
-  try {
-    const entries = Array.from(correctionsCache.entries());
-    await chrome.storage.local.set({ [CORRECTIONS_KEY]: entries });
-    log.debug(`Saved ${entries.length} corrections`);
-  } catch (error) {
-    log.error('Failed to save corrections:', error);
-  }
+  const entries = Array.from(correctionsCache.entries());
+  await safeStorageSet({ [CORRECTIONS_KEY]: entries });
+  log.debug(`Saved ${entries.length} corrections`);
 }
 
 /**
@@ -206,7 +198,7 @@ export async function getAllCorrections(): Promise<Correction[]> {
  */
 export async function clearCorrections(): Promise<void> {
   correctionsCache = new Map();
-  await chrome.storage.local.remove(CORRECTIONS_KEY);
+  await safeStorageRemove(CORRECTIONS_KEY);
   log.info('Corrections cleared');
 }
 

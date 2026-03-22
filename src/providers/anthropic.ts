@@ -9,7 +9,7 @@ import { createTranslationError } from '../core/errors';
 import { handleProviderHttpError } from '../core/http-errors';
 import { getLanguageName } from '../core/language-map';
 import { CONFIG } from '../config';
-import { readErrorBody, estimateMaxTokens, generateAllLanguagePairs } from './provider-utils';
+import { readErrorBody, estimateMaxTokens, generateAllLanguagePairs, parseBatchResponse } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
@@ -212,45 +212,14 @@ Rules:
 
       // Parse XML response for batch
       if (isArray && texts.length > 1) {
-        const results: string[] = [];
-        let matched = false;
-
-        // Try numbered tag format first (preferred)
-        const numberedRegex = /<t(\d+)>([\s\S]*?)<\/t\1>/g;
-        let match;
-
-        while ((match = numberedRegex.exec(translated)) !== null) {
-          const idx = parseInt(match[1], 10);
-          results[idx] = match[2].trim();
-          matched = true;
+        const results = parseBatchResponse(translated, texts.length, {
+          legacyXmlFallback: true,
+          newlineFallback: true,
+          allowExtras: true,
+        });
+        if (results.every(r => !r) && translated.length > 0) {
+          this.log.warn('XML tag parsing produced no results, fell back to newline splitting');
         }
-
-        // Fallback: try legacy <text id="N"> format
-        if (!matched) {
-          const legacyRegex = /<text id="(\d+)">([\s\S]*?)<\/text>/g;
-          while ((match = legacyRegex.exec(translated)) !== null) {
-            const idx = parseInt(match[1], 10);
-            results[idx] = match[2].trim();
-            matched = true;
-          }
-        }
-
-        // Fallback: if model returned plain text without tags, try newline splitting
-        if (!matched && translated.length > 0) {
-          this.log.warn('XML tag parsing failed, falling back to newline splitting');
-          const lines = translated.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-          for (let i = 0; i < Math.min(lines.length, texts.length); i++) {
-            results[i] = lines[i];
-          }
-        }
-
-        // Fill any missing results
-        for (let i = 0; i < texts.length; i++) {
-          if (!results[i]) {
-            results[i] = '';
-          }
-        }
-
         return results;
       }
 

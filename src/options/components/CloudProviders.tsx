@@ -6,6 +6,10 @@
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import type { TranslationProviderId } from '../../types';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
+import { createLogger } from '../../core/logger';
+import { safeStorageGet, safeStorageSet, safeStorageRemove } from '../../core/storage';
+
+const log = createLogger('CloudProviders');
 
 // Cloud provider definitions
 const CLOUD_PROVIDERS = [
@@ -105,7 +109,7 @@ export const CloudProviders: Component = () => {
         };
       }
     } catch (e) {
-      console.error('[CloudProviders] Failed to load status:', e);
+      log.error('Failed to load status:', e);
     }
 
     setProviderStatus(status);
@@ -157,7 +161,11 @@ export const CloudProviders: Component = () => {
         data[provider.modelField] = selectedModel();
       }
 
-      await chrome.storage.local.set(data);
+      const ok = await safeStorageSet(data);
+      if (!ok) {
+        setError('Failed to save API key');
+        return;
+      }
 
       setProviderStatus((prev) => ({
         ...prev,
@@ -171,7 +179,7 @@ export const CloudProviders: Component = () => {
 
       setEditingProvider(null);
     } catch (e) {
-      console.error('[CloudProviders] Failed to save key:', e);
+      log.error('Failed to save key:', e);
       setError('Failed to save API key');
     } finally {
       setSaving(false);
@@ -194,14 +202,18 @@ export const CloudProviders: Component = () => {
         keysToRemove.push(provider.modelField);
       }
 
-      await chrome.storage.local.remove(keysToRemove);
+      const ok = await safeStorageRemove(keysToRemove);
+      if (!ok) {
+        log.error('Failed to remove key');
+        return;
+      }
 
       setProviderStatus((prev) => ({
         ...prev,
         [providerId]: { hasKey: false, enabled: false },
       }));
     } catch (e) {
-      console.error('[CloudProviders] Failed to remove key:', e);
+      log.error('Failed to remove key:', e);
     }
   };
 
@@ -215,14 +227,14 @@ export const CloudProviders: Component = () => {
     const newEnabled = !status.enabled;
 
     try {
-      await chrome.storage.local.set({ [provider.enabledField]: newEnabled });
+      await safeStorageSet({ [provider.enabledField]: newEnabled });
 
       setProviderStatus((prev) => ({
         ...prev,
         [providerId]: { ...prev[providerId], enabled: newEnabled },
       }));
     } catch (e) {
-      console.error('[CloudProviders] Failed to toggle provider:', e);
+      log.error('Failed to toggle provider:', e);
     }
   };
 
@@ -264,7 +276,7 @@ export const CloudProviders: Component = () => {
         }));
       }, 3000);
     } catch (e) {
-      console.error('[CloudProviders] Test failed:', e);
+      log.error('Test failed:', e);
       setProviderStatus((prev) => ({
         ...prev,
         [providerId]: {

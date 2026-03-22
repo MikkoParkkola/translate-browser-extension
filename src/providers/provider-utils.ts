@@ -51,3 +51,74 @@ export function generateAllLanguagePairs(): LanguagePair[] {
   _cachedLanguagePairs = pairs;
   return pairs;
 }
+/**
+ * Parse a batch translation response that uses numbered XML tags.
+ *
+ * Supports multiple response formats in priority order:
+ *   1. `<t0>…</t0> <t1>…</t1>` — preferred format used by OpenAI & Anthropic
+ *   2. `<text id="0">…</text>` — legacy Anthropic format
+ *   3. `---TRANSLATE_SEPARATOR---` — legacy OpenAI separator fallback
+ *   4. Newline splitting — last-resort fallback
+ *
+ * @param translated  Raw LLM response text
+ * @param count       Number of source texts (used to size / pad result)
+ * @param options     Enable/disable individual fallback strategies
+ */
+export function parseBatchResponse(
+  translated: string,
+  count: number,
+  options: {
+    separatorFallback?: boolean;  // enable ---TRANSLATE_SEPARATOR--- split (OpenAI)
+    legacyXmlFallback?: boolean;  // enable <text id="N"> format (Anthropic)
+    newlineFallback?: boolean;    // enable plain-newline split as last resort
+    allowExtras?: boolean;        // include results beyond count (Anthropic)
+  } = {},
+): string[] {
+  const results: string[] = new Array(count).fill('');
+
+  // 1. Primary: <tN>…</tN>
+  const xmlRegex = /<t(\d+)>([\s\S]*?)<\/t\1>/g;
+  let match: RegExpExecArray | null;
+  let found = false;
+
+  while ((match = xmlRegex.exec(translated)) !== null) {
+    const idx = parseInt(match[1], 10);
+    if (idx < count) {
+      results[idx] = match[2].trim();
+    } else if (options.allowExtras) {
+      results[idx] = match[2].trim();
+    }
+    found = true;
+  }
+  if (found) return results;
+
+  // 2. Legacy Anthropic: <text id="N">…</text>
+  if (options.legacyXmlFallback) {
+    const legacyRegex = /<text id="(\d+)">([\s\S]*?)<\/text>/g;
+    while ((match = legacyRegex.exec(translated)) !== null) {
+      const idx = parseInt(match[1], 10);
+      if (idx < count) {
+        results[idx] = match[2].trim();
+      } else if (options.allowExtras) {
+        results[idx] = match[2].trim();
+      }
+      found = true;
+    }
+    if (found) return results;
+  }
+
+  // 3. Legacy OpenAI: ---TRANSLATE_SEPARATOR--- (or single result with no separator)
+  if (options.separatorFallback) {
+    const parts = translated.split(/---TRANSLATE_SEPARATOR---/i).map(s => s.trim());
+    for (let i = 0; i < Math.min(parts.length, count); i++) results[i] = parts[i];
+    return results;
+  }
+
+  // 4. Newline split (last resort — only useful for short batches)
+  if (options.newlineFallback) {
+    const lines = translated.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    for (let i = 0; i < Math.min(lines.length, count); i++) results[i] = lines[i];
+  }
+
+  return results;
+}

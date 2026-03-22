@@ -9,7 +9,7 @@ import { createTranslationError } from '../core/errors';
 import { handleProviderHttpError } from '../core/http-errors';
 import { getLanguageName } from '../core/language-map';
 import { CONFIG } from '../config';
-import { readErrorBody, estimateMaxTokens, generateAllLanguagePairs } from './provider-utils';
+import { readErrorBody, estimateMaxTokens, generateAllLanguagePairs, parseBatchResponse } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 const OPENAI_API = 'https://api.openai.com/v1/chat/completions';
@@ -216,31 +216,7 @@ export class OpenAIProvider extends CloudProvider {
 
       // Split back if batch
       if (isArray && texts.length > 1) {
-        // Try XML-tagged format first (preferred)
-        const xmlRegex = /<t(\d+)>([\s\S]*?)<\/t\1>/g;
-        const results: string[] = [];
-        let match;
-        let xmlFound = false;
-
-        while ((match = xmlRegex.exec(translated)) !== null) {
-          const idx = parseInt(match[1], 10);
-          results[idx] = match[2].trim();
-          xmlFound = true;
-        }
-
-        if (!xmlFound) {
-          // Fallback: split on separator pattern for backward compatibility
-          const splitResults = translated.split(/---TRANSLATE_SEPARATOR---/i).map(s => s.trim());
-          for (let i = 0; i < splitResults.length; i++) {
-            results[i] = splitResults[i];
-          }
-        }
-
-        // Ensure we have the right number of results
-        while (results.length < texts.length) {
-          results.push('');
-        }
-        return results.slice(0, texts.length);
+        return parseBatchResponse(translated, texts.length, { separatorFallback: true });
       }
 
       return isArray ? [translated] : translated;

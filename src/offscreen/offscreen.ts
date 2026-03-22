@@ -215,7 +215,7 @@ async function translate(
   if (sourceLang === 'auto') {
     const detectStart = performance.now();
     const sampleText = Array.isArray(text) ? text.slice(0, 3).join(' ') : text;
-    actualSourceLang = detectLanguage(sampleText);
+    actualSourceLang = await detectLanguage(sampleText);
     if (sessionId) {
       profiler.recordTiming(sessionId, 'language_detect', performance.now() - detectStart);
     }

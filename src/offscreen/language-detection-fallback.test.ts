@@ -21,10 +21,10 @@ vi.mock('../core/logger', () => ({
 import { detectLanguage } from './language-detection';
 
 describe('detectLanguage unmapped franc code', () => {
-  it('returns en when franc returns a code not in FRANC_TO_ISO', () => {
+  it('returns en when franc returns a code not in FRANC_TO_ISO', async () => {
     // franc is mocked to return 'xho' which is not in our FRANC_TO_ISO mapping
     // Need text long enough (>= 20 chars) to bypass the short-text heuristics
-    const result = detectLanguage(
+    const result = await detectLanguage(
       'This is a sufficiently long text for franc detection to actually run the franc library'
     );
     expect(result).toBe('en');

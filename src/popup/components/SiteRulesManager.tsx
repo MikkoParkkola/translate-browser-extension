@@ -4,8 +4,11 @@
  */
 
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
+import { createLogger } from '../../core/logger';
 import { siteRules, type SiteRules, type SiteRulesStore } from '../../core/site-rules';
 import type { TranslationProviderId, Strategy } from '../../types';
+
+const log = createLogger('SiteRulesManager');
 
 interface Props {
   currentHostname?: string;
@@ -50,7 +53,7 @@ export const SiteRulesManager: Component<Props> = (props) => {
       }
     } catch (e) {
       setError('Failed to load site rules');
-      console.error('[SiteRulesManager] Load error:', e);
+      log.error('Load error:', e);
     }
   };
 
@@ -76,7 +79,7 @@ export const SiteRulesManager: Component<Props> = (props) => {
       setError(null);
     } catch (e) {
       setError('Failed to save rules');
-      console.error('[SiteRulesManager] Save error:', e);
+      log.error('Save error:', e);
     }
   };
 
@@ -97,7 +100,7 @@ export const SiteRulesManager: Component<Props> = (props) => {
       setError(null);
     } catch (e) {
       setError('Failed to clear rules');
-      console.error('[SiteRulesManager] Clear error:', e);
+      log.error('Clear error:', e);
     }
   };
 
@@ -108,7 +111,7 @@ export const SiteRulesManager: Component<Props> = (props) => {
       setError(null);
     } catch (e) {
       setError('Failed to delete rule');
-      console.error('[SiteRulesManager] Delete error:', e);
+      log.error('Delete error:', e);
     }
   };
 
@@ -127,7 +130,7 @@ export const SiteRulesManager: Component<Props> = (props) => {
       setError(null);
     } catch (e) {
       setError('Failed to add rule');
-      console.error('[SiteRulesManager] Add error:', e);
+      log.error('Add error:', e);
     }
   };
 
@@ -143,7 +146,7 @@ export const SiteRulesManager: Component<Props> = (props) => {
       URL.revokeObjectURL(url);
     } catch (e) {
       setError('Failed to export rules');
-      console.error('[SiteRulesManager] Export error:', e);
+      log.error('Export error:', e);
     }
   };
 
@@ -162,7 +165,7 @@ export const SiteRulesManager: Component<Props> = (props) => {
       alert(`Imported ${count} site rules`);
     } catch (e) {
       setError('Failed to import rules: ' + (e instanceof Error ? e.message : 'Unknown error'));
-      console.error('[SiteRulesManager] Import error:', e);
+      log.error('Import error:', e);
     }
   };
 

@@ -6,6 +6,10 @@
 import { Component, createSignal, For, Show, onMount } from 'solid-js';
 import type { TranslationProviderId } from '../../types';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
+import { createLogger } from '../../core/logger';
+import { safeStorageGet, safeStorageSet, safeStorageRemove } from '../../core/storage';
+
+const log = createLogger('ApiKeyManager');
 
 // Cloud provider definitions
 const CLOUD_PROVIDERS = [
@@ -79,7 +83,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
       const keys = CLOUD_PROVIDERS.flatMap(p =>
         p.hasProTier && p.proField ? [p.keyField, p.proField] : [p.keyField]
       );
-      const stored = await chrome.storage.local.get(keys);
+      const stored = await safeStorageGet(keys);
 
       for (const provider of CLOUD_PROVIDERS) {
         status[provider.id] = {
@@ -90,7 +94,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
         };
       }
     } catch (e) {
-      console.error('[ApiKeyManager] Failed to load status:', e);
+      log.error('Failed to load status:', e);
     }
 
     setProviderStatus(status);
@@ -132,7 +136,12 @@ export const ApiKeyManager: Component<Props> = (props) => {
         data[provider.proField] = isProTier();
       }
 
-      await chrome.storage.local.set(data);
+      const ok = await safeStorageSet(data);
+
+      if (!ok) {
+        setError('Failed to save API key');
+        return;
+      }
 
       setProviderStatus(prev => ({
         ...prev,
@@ -145,7 +154,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
         setEditingProvider(null);
       }, 1500);
     } catch (e) {
-      console.error('[ApiKeyManager] Failed to save key:', e);
+      log.error('Failed to save key:', e);
       setError('Failed to save API key');
     } finally {
       setSaving(false);
@@ -164,7 +173,11 @@ export const ApiKeyManager: Component<Props> = (props) => {
         keysToRemove.push(provider.proField);
       }
 
-      await chrome.storage.local.remove(keysToRemove);
+      const ok = await safeStorageRemove(keysToRemove);
+      if (!ok) {
+        setError('Failed to remove API key');
+        return;
+      }
 
       setProviderStatus(prev => ({
         ...prev,
@@ -174,7 +187,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
       setSuccess(`${provider.name} API key removed`);
       setTimeout(() => setSuccess(null), 1500);
     } catch (e) {
-      console.error('[ApiKeyManager] Failed to remove key:', e);
+      log.error('Failed to remove key:', e);
       setError('Failed to remove API key');
     }
   };

@@ -1,5 +1,6 @@
 import { render } from 'solid-js/web';
 import { createSignal, Show, For, onMount } from 'solid-js';
+import { safeStorageSet } from '../core/storage';
 import './styles.css';
 
 const LANGUAGES = [
@@ -94,7 +95,7 @@ export function OnboardingApp() {
   };
 
   const saveSettings = async () => {
-    await chrome.storage.local.set({
+    await safeStorageSet({
       targetLang: targetLang(),
       provider: model(),
       sourceLang: 'auto',

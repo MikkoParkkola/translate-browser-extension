@@ -4,6 +4,10 @@
  */
 
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
+import { createLogger } from '../../core/logger';
+import { safeStorageGet } from '../../core/storage';
+
+const log = createLogger('LocalModels');
 
 interface ModelInfo {
   id: string;
@@ -62,7 +66,7 @@ export const LocalModels: Component = () => {
       }
 
       // Get cached model info from storage
-      const stored = await chrome.storage.local.get(['downloadedModels']);
+      const stored = await safeStorageGet(['downloadedModels']);
       const models: ModelInfo[] = stored.downloadedModels || [];
 
       // Try to get model list from background
@@ -103,7 +107,7 @@ export const LocalModels: Component = () => {
         models: mergedModels,
       });
     } catch (e) {
-      console.error('[LocalModels] Failed to load stats:', e);
+      log.error('Failed to load stats:', e);
     } finally {
       setLoading(false);
     }
@@ -132,7 +136,7 @@ export const LocalModels: Component = () => {
       // Refresh stats
       await loadModelStats();
     } catch (e) {
-      console.error('[LocalModels] Failed to delete model:', e);
+      log.error('Failed to delete model:', e);
       alert('Failed to delete model. It may be in use.');
     } finally {
       setDeleting(null);
@@ -163,7 +167,7 @@ export const LocalModels: Component = () => {
       // Refresh stats
       await loadModelStats();
     } catch (e) {
-      console.error('[LocalModels] Failed to clear models:', e);
+      log.error('Failed to clear models:', e);
       alert('Failed to clear models. Some models may still be cached.');
     }
   };

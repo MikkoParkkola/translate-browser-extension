@@ -13,6 +13,7 @@
 
 import { logger } from './logger.js';
 import { standardErrorHandler } from './standardErrorHandler.js';
+import { safeStorageGet, safeStorageSet } from '../core/storage';
 import { ModelValidator } from './ModelValidator.js';
 export type { ValidationResult } from './ModelValidator.js';
 import { ModelUpdater } from './ModelUpdater.js';
@@ -874,7 +875,7 @@ export class LocalModelManager {
     return new Promise((resolve) => { setTimeout(resolve, ms); });
   }
 
-  // Storage helpers
+  // Storage helpers — kept as callback-style for localStorage fallback in non-extension contexts
   private async _getStoredData(key: string): Promise<unknown> {
     return new Promise((resolve) => {
       try {

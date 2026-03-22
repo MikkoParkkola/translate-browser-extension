@@ -17,7 +17,7 @@ import {
   type RetryConfig,
 } from '../core/errors';
 import { createLogger } from '../core/logger';
-import { safeStorageGet, safeStorageSet } from '../core/storage';
+import { safeStorageGet, safeStorageSet, safeStorageRemove } from '../core/storage';
 import { validateInput } from '../core/errors';
 import { getCorrection } from '../core/corrections';
 import { getPredictionEngine } from '../core/prediction-engine';
@@ -516,7 +516,7 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
     case 'clearCloudApiKey':
       return handleClearCloudApiKey(
         message as { type: 'clearCloudApiKey'; provider: string },
-        (keys) => chrome.storage.local.remove(keys),
+        (keys) => safeStorageRemove(keys).then(() => undefined),
       );
     case 'getCloudProviderUsage':
       return handleGetCloudProviderUsage(message as { type: 'getCloudProviderUsage'; provider: string });
@@ -576,19 +576,16 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
         rect?: { x: number; y: number; width: number; height: number };
         devicePixelRatio?: number;
       });
-    case 'getDownloadedModels':
-      try {
-        const stored = await chrome.storage.local.get(['downloadedModels']);
-        return { success: true, models: stored.downloadedModels || [] };
-      } catch {
-        return { success: true, models: [] };
-      }
+    case 'getDownloadedModels': {
+      const stored = await safeStorageGet<{ downloadedModels?: unknown[] }>(['downloadedModels']);
+      return { success: true, models: stored.downloadedModels || [] };
+    }
     case 'deleteModel':
       return handleDeleteModel(message as { type: 'deleteModel'; modelId: string });
     case 'clearAllModels':
       return handleClearAllModels();
     case 'getSettings':
-      return handleGetSettings((keys) => chrome.storage.local.get(keys));
+      return handleGetSettings((keys) => safeStorageGet(keys));
     default:
       log.warn(`Unknown message type: ${(message as { type: string }).type}`);
       return { success: false, error: `Unknown message type: ${(message as { type: string }).type}` };
@@ -1514,8 +1511,8 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
     log.info('Extension installed');
 
-    const { onboardingComplete } = await chrome.storage.local.get('onboardingComplete');
-    if (!onboardingComplete) {
+    const stored = await safeStorageGet<{ onboardingComplete?: boolean }>('onboardingComplete');
+    if (!stored.onboardingComplete) {
       log.info('Opening onboarding page');
       chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/index.html') });
     }
