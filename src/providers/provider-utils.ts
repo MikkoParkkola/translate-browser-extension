@@ -5,6 +5,7 @@
 
 import { getAllLanguageCodes } from '../core/language-map';
 import { createLogger } from '../core/logger';
+import { handleProviderHttpError } from '../core/http-errors';
 import type { LanguagePair } from '../types';
 
 const log = createLogger('ProviderUtils');
@@ -18,6 +19,29 @@ export async function readErrorBody(response: Response): Promise<string> {
     log.warn('Failed to read error body:', e);
     return '';
   });
+}
+
+/**
+ * Fetch JSON from a provider API endpoint, throwing on non-2xx responses.
+ * Centralises the fetch → error-check → json-parse pattern across all providers.
+ */
+export async function fetchProviderJson<T>(
+  providerName: string,
+  url: string,
+  options: RequestInit,
+): Promise<T> {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    const errorText = await readErrorBody(response);
+    const httpError = handleProviderHttpError(
+      response.status,
+      providerName,
+      errorText,
+      response.headers.get('Retry-After'),
+    );
+    throw new Error(httpError.message);
+  }
+  return response.json() as Promise<T>;
 }
 
 /**

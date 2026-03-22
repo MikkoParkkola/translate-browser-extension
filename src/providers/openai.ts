@@ -6,10 +6,9 @@
 
 import { CloudProvider } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
-import { handleProviderHttpError } from '../core/http-errors';
 import { getLanguageName } from '../core/language-map';
 import { CONFIG } from '../config';
-import { readErrorBody, estimateMaxTokens, generateAllLanguagePairs, parseBatchResponse } from './provider-utils';
+import { fetchProviderJson, estimateMaxTokens, generateAllLanguagePairs, parseBatchResponse } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 const OPENAI_API = 'https://api.openai.com/v1/chat/completions';
@@ -173,7 +172,7 @@ export class OpenAIProvider extends CloudProvider {
     }
 
     try {
-      const response = await fetch(OPENAI_API, {
+      const data = await fetchProviderJson<OpenAIChatResponse>('OpenAI', OPENAI_API, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.config.apiKey}`,
@@ -190,19 +189,6 @@ export class OpenAIProvider extends CloudProvider {
         }),
         signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });
-
-      if (!response.ok) {
-        const errorText = await readErrorBody(response);
-        const httpError = handleProviderHttpError(
-          response.status,
-          'OpenAI',
-          errorText,
-          response.headers.get('Retry-After')
-        );
-        throw new Error(httpError.message);
-      }
-
-      const data: OpenAIChatResponse = await response.json();
 
       // Track token usage
       if (data.usage) {

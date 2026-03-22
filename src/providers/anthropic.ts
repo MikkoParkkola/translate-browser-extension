@@ -6,10 +6,9 @@
 
 import { CloudProvider } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
-import { handleProviderHttpError } from '../core/http-errors';
 import { getLanguageName } from '../core/language-map';
 import { CONFIG } from '../config';
-import { readErrorBody, estimateMaxTokens, generateAllLanguagePairs, parseBatchResponse } from './provider-utils';
+import { fetchProviderJson, estimateMaxTokens, generateAllLanguagePairs, parseBatchResponse } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
@@ -169,7 +168,7 @@ Rules:
     const systemPrompt = this.buildSystemPrompt(targetLang, this.config.formality);
 
     try {
-      const response = await fetch(ANTHROPIC_API, {
+      const data = await fetchProviderJson<AnthropicMessageResponse>('Anthropic', ANTHROPIC_API, {
         method: 'POST',
         headers: {
           'x-api-key': this.config.apiKey,
@@ -186,19 +185,6 @@ Rules:
         }),
         signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });
-
-      if (!response.ok) {
-        const errorText = await readErrorBody(response);
-        const httpError = handleProviderHttpError(
-          response.status,
-          'Anthropic',
-          errorText,
-          response.headers.get('Retry-After')
-        );
-        throw new Error(httpError.message);
-      }
-
-      const data: AnthropicMessageResponse = await response.json();
 
       // Track token usage
       if (data.usage) {

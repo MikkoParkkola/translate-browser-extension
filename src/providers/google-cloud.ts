@@ -6,9 +6,8 @@
 
 import { CloudProvider } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
-import { handleProviderHttpError } from '../core/http-errors';
 import { CONFIG } from '../config';
-import { readErrorBody, generateAllLanguagePairs } from './provider-utils';
+import { fetchProviderJson, generateAllLanguagePairs } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 const GOOGLE_TRANSLATE_API = 'https://translation.googleapis.com/language/translate/v2';
@@ -109,7 +108,7 @@ export class GoogleCloudProvider extends CloudProvider {
     }
 
     try {
-      const response = await fetch(url.toString(), {
+      const data = await fetchProviderJson<GoogleTranslateResponse>('Google Cloud', url.toString(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -117,19 +116,6 @@ export class GoogleCloudProvider extends CloudProvider {
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });
-
-      if (!response.ok) {
-        const errorText = await readErrorBody(response);
-        const httpError = handleProviderHttpError(
-          response.status,
-          'Google Cloud',
-          errorText,
-          response.headers.get('Retry-After')
-        );
-        throw new Error(httpError.message);
-      }
-
-      const data: GoogleTranslateResponse = await response.json();
 
       // Track character usage
       const charsUsed = texts.reduce((sum, t) => sum + t.length, 0);

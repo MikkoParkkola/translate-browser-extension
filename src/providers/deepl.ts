@@ -6,10 +6,9 @@
 
 import { CloudProvider } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
-import { handleProviderHttpError } from '../core/http-errors';
+import { fetchProviderJson } from './provider-utils';
 import { toDeepLCode, getDeepLSupportedLanguages } from '../core/language-map';
 import { CONFIG } from '../config';
-import { readErrorBody } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 // DeepL API endpoints
@@ -129,7 +128,7 @@ export class DeepLProvider extends CloudProvider {
     }
 
     try {
-      const response = await fetch(`${this.apiBase}/translate`, {
+      const data = await fetchProviderJson<DeepLTranslateResponse>('DeepL', `${this.apiBase}/translate`, {
         method: 'POST',
         headers: {
           'Authorization': `DeepL-Auth-Key ${this.config.apiKey}`,
@@ -138,19 +137,6 @@ export class DeepLProvider extends CloudProvider {
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });
-
-      if (!response.ok) {
-        const errorText = await readErrorBody(response);
-        const httpError = handleProviderHttpError(
-          response.status,
-          'DeepL',
-          errorText,
-          response.headers.get('Retry-After')
-        );
-        throw new Error(httpError.message);
-      }
-
-      const data: DeepLTranslateResponse = await response.json();
 
       if (!data.translations) {
         throw new Error('DeepL returned invalid response: no translations field');
