@@ -5,7 +5,7 @@
  * Provides hooks for first-run-after-update experiences.
  */
 
-import { safeStorageGet, safeStorageSet, safeStorageRemove } from './storage';
+import { safeStorageGet, safeStorageSet } from './storage';
 import { browserAPI } from './browser-api';
 
 export interface VersionInfo {

@@ -7,7 +7,7 @@ import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import type { TranslationProviderId } from '../../types';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
 import { createLogger } from '../../core/logger';
-import { safeStorageGet, safeStorageSet, safeStorageRemove } from '../../core/storage';
+import { safeStorageSet, safeStorageRemove } from '../../core/storage';
 
 const log = createLogger('CloudProviders');
 
