@@ -17,12 +17,21 @@ let _isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
 type NetworkListener = (online: boolean) => void;
 const listeners: NetworkListener[] = [];
 
+let _networkMonitoringInitialized = false;
+
+/** Reset monitoring state — for testing only. */
+export function _resetNetworkMonitoring(): void {
+  _networkMonitoringInitialized = false;
+}
+
 /**
  * Initialize network status monitoring.
- * Call once from service worker or offscreen document.
+ * Call once from service worker or offscreen document. Safe to call multiple times.
  */
 export function initNetworkMonitoring(): void {
   if (typeof globalThis.addEventListener !== 'function') return;
+  if (_networkMonitoringInitialized) return;
+  _networkMonitoringInitialized = true;
 
   globalThis.addEventListener('online', () => {
     _isOnline = true;

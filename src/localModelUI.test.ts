@@ -87,7 +87,7 @@ describe('LocalModelUI', () => {
       // Don't call destroy() — UI was never initialized (container missing),
       // and destroy() would NPE on DOM elements that don't exist.
       new LocalModelUI('nonexistent-container');
-      expect(spy).toHaveBeenCalledWith(expect.stringContaining('Container element not found'));
+      expect(spy).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('Container element not found'));
     });
 
     it('creates expected buttons', () => {
@@ -205,7 +205,7 @@ describe('LocalModelUI', () => {
       const ui = new LocalModelUI('local-model-container');
       await ui.updateStatus();
 
-      expect(spy).toHaveBeenCalledWith(expect.stringContaining('Status update failed'), expect.any(Error));
+      expect(spy).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('Status update failed'), expect.any(Error));
       ui.destroy();
     });
 
@@ -282,7 +282,7 @@ describe('LocalModelUI', () => {
       validateBtn.click();
 
       await vi.waitFor(() => {
-        expect(spy).toHaveBeenCalledWith(expect.stringContaining('Validation failed'), expect.any(Error));
+        expect(spy).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('Validation failed'), expect.any(Error));
       });
       ui.destroy();
     });
@@ -319,7 +319,7 @@ describe('LocalModelUI', () => {
       testBtn.click();
 
       await vi.waitFor(() => {
-        expect(spy).toHaveBeenCalledWith(expect.stringContaining('Test failed'), expect.any(Error));
+        expect(spy).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('Test failed'), expect.any(Error));
       });
       ui.destroy();
     });
@@ -378,7 +378,7 @@ describe('LocalModelUI', () => {
       healthBtn.click();
 
       await vi.waitFor(() => {
-        expect(spy).toHaveBeenCalledWith(expect.stringContaining('Health check failed'), expect.any(Error));
+        expect(spy).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('Health check failed'), expect.any(Error));
       });
       ui.destroy();
     });
@@ -614,7 +614,7 @@ describe('LocalModelUI', () => {
       const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
       const ui = new LocalModelUI('local-model-container');
       ui.showMessage('Test message', 'info');
-      expect(spy).toHaveBeenCalledWith('[LocalModelUI] info: Test message');
+      expect(spy).toHaveBeenCalledWith('[LocalModelUI]', 'info: Test message');
       ui.destroy();
     });
   });
@@ -1122,6 +1122,7 @@ describe('LocalModelUI', () => {
 
       await vi.waitFor(() => {
         expect(consoleSpy).toHaveBeenCalledWith(
+          expect.anything(),
           expect.stringContaining('Download failed'),
           expect.any(Error),
         );
@@ -1159,6 +1160,7 @@ describe('LocalModelUI', () => {
 
       await vi.waitFor(() => {
         expect(consoleSpy).toHaveBeenCalledWith(
+          expect.anything(),
           expect.stringContaining('Delete failed'),
           expect.any(Error),
         );

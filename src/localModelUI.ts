@@ -16,6 +16,9 @@ import type {
 } from './lib/LocalModelManager.js';
 
 import { escapeHtml } from './content/sanitize.js';
+import { createLogger } from './core/logger';
+
+const log = createLogger('LocalModelUI');
 
 // Extend Window for the global model manager reference
 declare global {
@@ -121,7 +124,7 @@ class LocalModelUI {
 
   private init(): void {
     if (!this.container) {
-      console.error('[LocalModelUI] Container element not found');
+      log.error('Container element not found');
       return;
     }
 
@@ -291,7 +294,7 @@ class LocalModelUI {
       }
 
     } catch (error) {
-      console.error('[LocalModelUI] Status update failed:', error);
+      log.error('Status update failed:', error);
       this.showError('Failed to update status', (error as Error).message);
     }
   }
@@ -375,7 +378,7 @@ class LocalModelUI {
 
       this.updateStatus();
     } catch (error) {
-      console.error('[LocalModelUI] Download failed:', error);
+      log.error('Download failed:', error);
       this.showError('Download Failed', (error as Error).message);
       this.hideProgress();
     }
@@ -475,7 +478,7 @@ class LocalModelUI {
       await window.localModelManager.deleteModel();
       this.updateStatus();
     } catch (error) {
-      console.error('[LocalModelUI] Delete failed:', error);
+      log.error('Delete failed:', error);
       this.showError('Delete Failed', (error as Error).message);
     }
   }
@@ -492,7 +495,7 @@ class LocalModelUI {
 
       this.showValidationResults(validationResult);
     } catch (error) {
-      console.error('[LocalModelUI] Validation failed:', error);
+      log.error('Validation failed:', error);
       this.showError('Model Validation Failed', (error as Error).message);
       this.hideValidation();
     }
@@ -635,7 +638,7 @@ class LocalModelUI {
       );
       /* v8 ignore stop */
     } catch (error) {
-      console.error('[LocalModelUI] Test failed:', error);
+      log.error('Test failed:', error);
       this.showError('Translation Test Failed', (error as Error).message);
     }
   }
@@ -647,7 +650,7 @@ class LocalModelUI {
       const health: HealthCheckResult = await window.localModelManager.healthCheck();
       this.renderHealthCheck(health);
     } catch (error) {
-      console.error('[LocalModelUI] Health check failed:', error);
+      log.error('Health check failed:', error);
       this.showError('Health Check Failed', (error as Error).message);
     }
   }
@@ -1013,7 +1016,7 @@ class LocalModelUI {
       this.updatePerformanceChart();
 
     } catch (error) {
-      console.error('Failed to update performance display:', error);
+      log.error('Failed to update performance display:', error);
       this.showMessage('Failed to load performance data', 'error');
     }
   }
@@ -1098,7 +1101,7 @@ class LocalModelUI {
   }
 
   showMessage(text: string, type: string): void {
-    console.log(`[LocalModelUI] ${type}: ${text}`);
+    log.info(`${type}: ${text}`);
   }
 
   destroy(): void {

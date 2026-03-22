@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { isOnline, isCloudProvider, onNetworkChange, initNetworkMonitoring } from './network-status';
+import { isOnline, isCloudProvider, onNetworkChange, initNetworkMonitoring, _resetNetworkMonitoring } from './network-status';
 
 describe('isCloudProvider', () => {
   it('identifies cloud providers', () => {
@@ -91,6 +91,9 @@ describe('onNetworkChange', () => {
       }
     );
 
+    _resetNetworkMonitoring();
+
+
     initNetworkMonitoring();
 
     const onlineHandler = handlers.find(([type]) => type === 'online');
@@ -115,6 +118,9 @@ describe('onNetworkChange', () => {
         origAdd(type, handler);
       }
     );
+
+    _resetNetworkMonitoring();
+
 
     initNetworkMonitoring();
 
@@ -144,6 +150,9 @@ describe('onNetworkChange', () => {
       }
     );
 
+    _resetNetworkMonitoring();
+
+
     initNetworkMonitoring();
 
     const onlineHandler = handlers.find(([type]) => type === 'online');
@@ -171,6 +180,9 @@ describe('onNetworkChange', () => {
       }
     );
 
+    _resetNetworkMonitoring();
+
+
     initNetworkMonitoring();
 
     const offlineHandler = handlers.find(([type]) => type === 'offline');
@@ -196,6 +208,8 @@ describe('onNetworkChange', () => {
 describe('initNetworkMonitoring', () => {
   it('registers event listeners', () => {
     const addSpy = vi.spyOn(globalThis, 'addEventListener');
+    _resetNetworkMonitoring();
+
     initNetworkMonitoring();
     expect(addSpy).toHaveBeenCalledWith('online', expect.any(Function));
     expect(addSpy).toHaveBeenCalledWith('offline', expect.any(Function));

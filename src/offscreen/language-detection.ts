@@ -7,7 +7,6 @@
  *   3. franc-min trigram model — offline fallback, needs ≥20 chars
  */
 
-import { franc } from 'franc-min';
 import { createLogger } from '../core/logger';
 
 const log = createLogger('LanguageDetection');
@@ -133,7 +132,8 @@ export async function detectLanguage(text: string): Promise<string> {
     }
   }
 
-  // 3. franc trigram model (needs ≥20 chars for reliable results)
+  // 3. franc trigram model (needs ≥20 chars for reliable results) — lazy-loaded
+  const { franc } = await import('franc-min');
   const detected = franc(text, { minLength: 20 });
   log.debug(`franc raw detection: "${detected}" for text: "${text.slice(0, 50)}..."`);
 

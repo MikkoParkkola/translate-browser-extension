@@ -92,7 +92,7 @@ class WebGPUDetector {
 
       return this._device;
     } catch (error) {
-      console.error('[WebGPU] Initialization failed:', error);
+      log.error('Initialization failed:', error);
       return null;
     }
   }

@@ -358,7 +358,7 @@ export class LocalModelManager {
             });
           }
         }
-      });
+      }, 20 * 60_000); // 20 min — large model downloads can take time
 
       this.downloadProgress = 100;
       if (onProgress) {
@@ -440,7 +440,7 @@ export class LocalModelManager {
         type: 'loadModel',
         modelUrls: this.modelConfig.modelUrls,
         config: this.modelConfig.inference,
-      });
+      }, null, 5 * 60_000); // 5 min — model init from cache is slower on low-end hardware
 
       this.modelLoaded = true;
       this.lastUsed = Date.now();
@@ -757,11 +757,12 @@ export class LocalModelManager {
   private _sendWorkerMessage(
     message: WorkerOutboundMessage,
     onIntermediateMessage: ((msg: WorkerInboundMessage) => void) | null = null,
+    timeoutMs = 60_000,
   ): Promise<WorkerResultMessage> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Worker communication timeout'));
-      }, 5 * 60 * 1000); // 5 minute timeout
+      }, timeoutMs);
 
       const handler = (event: MessageEvent<WorkerInboundMessage>): void => {
         const data = event.data;

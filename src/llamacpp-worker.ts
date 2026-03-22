@@ -24,6 +24,9 @@
  */
 
 import { InferenceEngine } from './llama.cpp';
+import { createLogger } from './core/logger';
+
+const log = createLogger('Worker');
 
 // Worker global scope — not included in tsconfig lib (DOM-only), so declare locally
 declare const self: {
@@ -193,7 +196,7 @@ class InferenceWorker {
 
     } catch (error) {
       const err = error as Error;
-      console.error('[Worker] Model loading failed:', err);
+      log.error('Model loading failed:', err);
       this.isReady = false;
       post({
         type: 'error',
@@ -218,7 +221,7 @@ class InferenceWorker {
 
     } catch (error) {
       const err = error as Error;
-      console.error('[Worker] Model loading from blobs failed:', err);
+      log.error('Model loading from blobs failed:', err);
       this.isReady = false;
       post({
         type: 'error',
@@ -265,7 +268,7 @@ class InferenceWorker {
           message: 'Translation was cancelled',
         });
       } else {
-        console.error('[Worker] Translation failed:', err);
+        log.error('Translation failed:', err);
         post({
           type: 'error',
           requestId,
@@ -320,7 +323,7 @@ class InferenceWorker {
           message: 'Translation was cancelled',
         });
       } else {
-        console.error('[Worker] Chat translation failed:', err);
+        log.error('Chat translation failed:', err);
         post({
           type: 'error',
           requestId,
@@ -362,7 +365,7 @@ class InferenceWorker {
 
     } catch (error) {
       const err = error as Error;
-      console.error('[Worker] Cleanup error:', err);
+      log.error('Cleanup error:', err);
       post({
         type: 'error',
         requestId,
@@ -449,7 +452,7 @@ self.onmessage = async function (event: MessageEvent<WorkerMessage>): Promise<vo
     }
   } catch (error) {
     const err = error as Error;
-    console.error('[Worker] Error handling message:', err);
+    log.error('Error handling message:', err);
     post({
       type: 'error',
       requestId,

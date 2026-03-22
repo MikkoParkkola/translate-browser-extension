@@ -124,7 +124,7 @@ export class TranslationRouter {
       try {
         await provider.initialize();
       } catch (error) {
-        console.error(`[Router] Failed to initialize ${provider.name}:`, error);
+        log.error(`Failed to initialize ${provider.name}:`, error);
       }
     }
 
@@ -137,7 +137,7 @@ export class TranslationRouter {
    */
   registerProvider(provider: TranslationProvider): void {
     if (!provider.id) {
-      console.error('[Router] Provider must have id property');
+      log.error('Provider must have id property');
       return;
     }
     this.providers.set(provider.id, provider);
@@ -290,7 +290,7 @@ export class TranslationRouter {
         throw providerError;
       }
     } catch (error) {
-      console.error('[Router] Translation error:', error);
+      log.error('Translation error:', error);
       throw error;
     }
   }
