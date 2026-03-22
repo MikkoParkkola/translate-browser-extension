@@ -6,6 +6,7 @@
 import { getAllLanguageCodes } from '../core/language-map';
 import { createLogger } from '../core/logger';
 import { handleProviderHttpError } from '../core/http-errors';
+import { CONFIG } from '../config';
 import type { LanguagePair } from '../types';
 
 const log = createLogger('ProviderUtils');
@@ -24,13 +25,15 @@ export async function readErrorBody(response: Response): Promise<string> {
 /**
  * Fetch JSON from a provider API endpoint, throwing on non-2xx responses.
  * Centralises the fetch → error-check → json-parse pattern across all providers.
+ * Automatically applies CONFIG.timeouts.cloudApiMs unless the caller overrides signal.
  */
 export async function fetchProviderJson<T>(
   providerName: string,
   url: string,
   options: RequestInit,
 ): Promise<T> {
-  const response = await fetch(url, options);
+  const signal = options.signal ?? AbortSignal.timeout(CONFIG.timeouts.cloudApiMs);
+  const response = await fetch(url, { ...options, signal });
   if (!response.ok) {
     const errorText = await readErrorBody(response);
     const httpError = handleProviderHttpError(

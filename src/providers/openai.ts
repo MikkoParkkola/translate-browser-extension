@@ -187,7 +187,6 @@ export class OpenAIProvider extends CloudProvider {
           temperature: this.config.temperature,
           max_tokens: estimateMaxTokens(texts),
         }),
-        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });
 
       // Track token usage

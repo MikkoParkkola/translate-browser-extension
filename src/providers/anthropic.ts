@@ -183,7 +183,6 @@ Rules:
             { role: 'user', content: userContent },
           ],
         }),
-        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });
 
       // Track token usage
