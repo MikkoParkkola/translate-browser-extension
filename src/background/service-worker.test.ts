@@ -5777,3 +5777,729 @@ describe('Coverage gap tests', () => {
     });
   });
 });
+
+// ============================================================================
+// Coverage gap tests — second wave
+// Targets the remaining uncovered lines after the first two rounds.
+// ============================================================================
+describe('Coverage gap tests — second wave', () => {
+  function getMessageHandler() {
+    return mockAddMessageListener.mock.calls[0]?.[0] as (
+      message: unknown,
+      sender: unknown,
+      sendResponse: (response: unknown) => void
+    ) => boolean;
+  }
+
+  async function invoke(message: unknown): Promise<any> {
+    const handler = getMessageHandler();
+    const sendResponse = vi.fn();
+    handler(message, {}, sendResponse);
+    await vi.waitFor(() => expect(sendResponse).toHaveBeenCalled(), { timeout: 15000 });
+    return sendResponse.mock.calls[0]?.[0];
+  }
+
+  /** Force sendToOffscreen to fail for all calls (used by error-path tests). */
+  function forceOffscreenFailure() {
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation((_msg: any, callback: any) => {
+      if (callback && typeof callback === 'function') callback(undefined);
+      return undefined;
+    });
+  }
+
+  beforeEach(() => {
+    mockSendMessage.mockReset();
+    mockSendMessage.mockReturnValue({ success: true, result: 'translated text' });
+    vi.mocked(chrome.runtime.sendMessage).mockReset();
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation((message: any, callback: any) => {
+      const response = mockSendMessage(message);
+      if (callback && typeof callback === 'function') {
+        Promise.resolve(response).then(callback);
+      }
+      return response;
+    });
+    vi.mocked(chrome.tabs.sendMessage).mockReset();
+    vi.mocked(chrome.tabs.sendMessage).mockResolvedValue(undefined);
+    vi.mocked(chrome.scripting.executeScript).mockReset();
+    vi.mocked(chrome.scripting.executeScript).mockResolvedValue([]);
+    vi.mocked(chrome.storage.local.get).mockReset();
+    vi.mocked(chrome.storage.local.get).mockImplementation((_keys: any, callback?: any) => {
+      if (callback) callback({});
+      return Promise.resolve({});
+    });
+    vi.mocked(chrome.tabs.query).mockReset();
+    vi.mocked(chrome.tabs.query).mockResolvedValue([]);
+    vi.mocked(chrome.runtime.getContexts).mockResolvedValue([
+      { documentUrl: 'chrome-extension://test-id/src/offscreen/offscreen.html' },
+    ]);
+    vi.mocked(chrome.offscreen.createDocument).mockResolvedValue(undefined);
+  });
+
+  // -----------------------------------------------------------------------
+  // handleCheckChromeTranslator: tab exists → executeScript runs (lines 671, 674)
+  // -----------------------------------------------------------------------
+  describe('handleCheckChromeTranslator: tab exists paths', () => {
+    it('returns available: true when executeScript result is true', async () => {
+      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 42 }] as any);
+      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([{ result: true }] as any);
+      const response = await invoke({ type: 'checkChromeTranslator' }) as any;
+      expect(response.success).toBe(true);
+      expect(response.available).toBe(true);
+    });
+
+    it('returns available: false when executeScript result is false', async () => {
+      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 42 }] as any);
+      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([{ result: false }] as any);
+      const response = await invoke({ type: 'checkChromeTranslator' }) as any;
+      expect(response.success).toBe(true);
+      expect(response.available).toBe(false);
+    });
+
+    it('returns available: false when executeScript throws (catch block, lines 676-679)', async () => {
+      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 42 }] as any);
+      vi.mocked(chrome.scripting.executeScript).mockRejectedValueOnce(new Error('Cannot access restricted page'));
+      const response = await invoke({ type: 'checkChromeTranslator' }) as any;
+      expect(response.success).toBe(true);
+      expect(response.available).toBe(false);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // handleCheckWebGPU: catch block (lines 695-696)
+  // -----------------------------------------------------------------------
+  describe('handleCheckWebGPU: error path', () => {
+    it('returns supported: false when sendToOffscreen fails', async () => {
+      forceOffscreenFailure();
+      const response = await invoke({ type: 'checkWebGPU' }) as any;
+      expect(response.success).toBe(true);
+      expect(response.supported).toBe(false);
+      expect(response.fp16).toBe(false);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // handleGetPredictionStats: getStats throws (lines 708-709)
+  // -----------------------------------------------------------------------
+  describe('handleGetPredictionStats: error path', () => {
+    it('returns error when predictionEngine.getStats rejects', async () => {
+      const { getPredictionEngine } = await import('../core/prediction-engine');
+      const engine = getPredictionEngine();
+      const spy = vi.spyOn(engine, 'getStats').mockRejectedValueOnce(new Error('Stats DB error'));
+      const response = await invoke({ type: 'getPredictionStats' }) as any;
+      spy.mockRestore();
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('Stats DB error');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // handleGetCloudProviderUsage: catch block (lines 746-747)
+  // -----------------------------------------------------------------------
+  describe('handleGetCloudProviderUsage: error path', () => {
+    it('returns error when sendToOffscreen fails', async () => {
+      forceOffscreenFailure();
+      const response = await invoke({ type: 'getCloudProviderUsage', provider: 'openai' }) as any;
+      expect(response.success).toBe(false);
+      expect(response.error).toBeDefined();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // captureScreenshot (lines 1180-1201)
+  // -----------------------------------------------------------------------
+  describe('captureScreenshot', () => {
+    it('returns imageData when no rect specified (line 1195)', async () => {
+      (chrome.tabs as any).captureVisibleTab = vi.fn().mockResolvedValue('data:image/png;base64,abc');
+      const response = await invoke({ type: 'captureScreenshot' }) as any;
+      delete (chrome.tabs as any).captureVisibleTab;
+      expect(response.success).toBe(true);
+      expect(response.imageData).toBe('data:image/png;base64,abc');
+    });
+
+    it('returns cropped imageData when rect is specified (lines 1181-1192)', async () => {
+      (chrome.tabs as any).captureVisibleTab = vi.fn().mockResolvedValue('data:image/png;base64,full');
+      mockSendMessage.mockReturnValueOnce({ success: true, imageData: 'data:image/png;base64,crop' });
+      const response = await invoke({
+        type: 'captureScreenshot',
+        rect: { x: 10, y: 20, width: 100, height: 80 },
+        devicePixelRatio: 2,
+      }) as any;
+      delete (chrome.tabs as any).captureVisibleTab;
+      expect(response.success).toBe(true);
+      expect(response.imageData).toBe('data:image/png;base64,crop');
+    });
+
+    it('uses devicePixelRatio=1 as default when not specified', async () => {
+      (chrome.tabs as any).captureVisibleTab = vi.fn().mockResolvedValue('data:image/png;base64,full2');
+      mockSendMessage.mockReturnValueOnce({ success: true, imageData: 'data:image/png;base64,crop2' });
+      const response = await invoke({
+        type: 'captureScreenshot',
+        rect: { x: 0, y: 0, width: 200, height: 150 },
+      }) as any;
+      delete (chrome.tabs as any).captureVisibleTab;
+      expect(response.success).toBe(true);
+    });
+
+    it('returns error when captureVisibleTab throws (lines 1196-1201)', async () => {
+      (chrome.tabs as any).captureVisibleTab = vi.fn().mockRejectedValue(new Error('No visible tab'));
+      const response = await invoke({ type: 'captureScreenshot' }) as any;
+      delete (chrome.tabs as any).captureVisibleTab;
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('No visible tab');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // ocrImage: catch block (lines 1159-1164)
+  // -----------------------------------------------------------------------
+  describe('ocrImage: error path', () => {
+    it('returns error when sendToOffscreen fails', async () => {
+      forceOffscreenFailure();
+      const response = await invoke({
+        type: 'ocrImage',
+        imageData: 'data:image/png;base64,testimage',
+      }) as any;
+      expect(response.success).toBe(false);
+      expect(response.error).toBeDefined();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // handleGetProfilingStats: offscreen returns aggregates (lines 1069-1070)
+  // and offscreen fails gracefully (lines 1072-1074)
+  // -----------------------------------------------------------------------
+  describe('handleGetProfilingStats: offscreen response paths', () => {
+    it('merges local and offscreen aggregates when offscreen responds (lines 1069-1070)', async () => {
+      mockSendMessage.mockReturnValueOnce({
+        success: true,
+        aggregates: { ipc_translate: { count: 3, avg: 200, min: 100, max: 400, total: 600 } },
+      });
+      const response = await invoke({ type: 'getProfilingStats' }) as any;
+      expect(response.success).toBe(true);
+      expect(response.aggregates).toBeDefined();
+    });
+
+    it('handles offscreen returning success:false gracefully (lines 1072-1074)', async () => {
+      mockSendMessage.mockReturnValueOnce({ success: false });
+      const response = await invoke({ type: 'getProfilingStats' }) as any;
+      expect(response.success).toBe(true);
+    });
+
+    it('handles offscreen failing (sendToOffscreen throws) gracefully', async () => {
+      // Make only the getProfilingStats offscreen call fail by making callback return undefined
+      let callCount = 0;
+      vi.mocked(chrome.runtime.sendMessage).mockImplementation((msg: any, callback: any) => {
+        callCount++;
+        if (callCount === 1 && (msg as any).type === 'getProfilingStats') {
+          if (callback) callback(undefined);
+          return undefined;
+        }
+        const resp = mockSendMessage(msg);
+        if (callback) Promise.resolve(resp).then(callback);
+        return resp;
+      });
+      const response = await invoke({ type: 'getProfilingStats' }) as any;
+      expect(response.success).toBe(true);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // clearProfilingStats
+  // -----------------------------------------------------------------------
+  describe('clearProfilingStats', () => {
+    it('clears profiling stats and returns success', async () => {
+      const response = await invoke({ type: 'clearProfilingStats' }) as any;
+      expect(response.success).toBe(true);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // chrome-builtin with profiling (lines 905, 935, 942)
+  // -----------------------------------------------------------------------
+  describe('chrome-builtin translation: profiling paths', () => {
+    it('covers profiler.startTiming/endTiming for chrome-builtin (line 905, 935, 942)', async () => {
+      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 42 }] as any);
+      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([{ result: ['translated'] }] as any);
+      const response = await invoke({
+        type: 'translate',
+        text: 'Hello chrome-builtin with profiling unique',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'chrome-builtin',
+        enableProfiling: true,
+      }) as any;
+      expect(response.success).toBe(true);
+      expect(response.provider).toBe('chrome-builtin');
+    });
+
+    it('covers profiler.endTiming in catch when chrome-builtin throws with profiling (line 945)', async () => {
+      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 42 }] as any);
+      vi.mocked(chrome.scripting.executeScript).mockRejectedValueOnce(new Error('Script failed'));
+      const response = await invoke({
+        type: 'translate',
+        text: 'Hello chrome-builtin error with profiling unique 2222',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'chrome-builtin',
+        enableProfiling: true,
+      }) as any;
+      expect(response.success).toBe(false);
+    });
+
+    it('handles array text with chrome-builtin (Array.isArray branch, line 939)', async () => {
+      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 42 }] as any);
+      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([
+        { result: ['hola', 'mundo'] },
+      ] as any);
+      const response = await invoke({
+        type: 'translate',
+        text: ['hello', 'world'],
+        sourceLang: 'en',
+        targetLang: 'es',
+        provider: 'chrome-builtin',
+      }) as any;
+      expect(response.success).toBe(true);
+      expect(Array.isArray(response.result)).toBe(true);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // handleTranslateInner: profiling report present (lines 1027-1029)
+  // -----------------------------------------------------------------------
+  describe('handleTranslateInner: profiling report in response', () => {
+    it('includes profilingReport when profiler.getReport returns data (lines 1027-1029)', async () => {
+      const { profiler } = await import('../core/profiler');
+      const reportSpy = vi.spyOn(profiler, 'getReport').mockReturnValueOnce({
+        sessionId: 'test-session',
+        timings: { total: { start: 0, end: 100, duration: 100 } },
+      } as any);
+      const response = await invoke({
+        type: 'translate',
+        text: 'Hello profiling report unique text 3333',
+        sourceLang: 'en',
+        targetLang: 'de',
+        enableProfiling: true,
+      }) as any;
+      reportSpy.mockRestore();
+      expect(response.success).toBe(true);
+      expect(response.profilingReport).toBeDefined();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // handleTranslateInner: profiling + catch block (line 1040)
+  // -----------------------------------------------------------------------
+  describe('handleTranslateInner: profiling session in catch block', () => {
+    it('calls profiler.endTiming in catch when enableProfiling=true (line 1040)', async () => {
+      forceOffscreenFailure();
+      const response = await invoke({
+        type: 'translate',
+        text: 'Hello profiling catch path unique 4444',
+        sourceLang: 'en',
+        targetLang: 'de',
+        enableProfiling: true,
+      }) as any;
+      expect(response.success).toBe(false);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // handleTranslateInner: user correction + profiling (line 880)
+  // -----------------------------------------------------------------------
+  describe('handleTranslateInner: user correction with profiling', () => {
+    it('endTiming(total) in correction path when profiling enabled (line 880)', async () => {
+      const corrections = await import('../core/corrections');
+      const spy = vi.spyOn(corrections, 'getCorrection').mockResolvedValueOnce('corrected profiling result');
+      const response = await invoke({
+        type: 'translate',
+        text: 'correction with profiling unique 5555',
+        sourceLang: 'en',
+        targetLang: 'de',
+        enableProfiling: true,
+      }) as any;
+      spy.mockRestore();
+      expect(response.success).toBe(true);
+      expect(response.fromCorrection).toBe(true);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // handleTranslateInner: offscreen result error types (lines 977-981)
+  // -----------------------------------------------------------------------
+  describe('handleTranslateInner: offscreen result.error formats', () => {
+    it('handles result.error as Error object (lines 979-980)', async () => {
+      mockSendMessage.mockReturnValueOnce({
+        success: false,
+        error: new Error('Model loading failed'),
+      });
+      const response = await invoke({
+        type: 'translate',
+        text: 'Error object test unique 6666',
+        sourceLang: 'en',
+        targetLang: 'de',
+      }) as any;
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('Model loading');
+    });
+
+    it('handles result.error as non-string non-Error (JSON.stringify path, line 981)', async () => {
+      mockSendMessage.mockReturnValueOnce({
+        success: false,
+        error: { code: 'UNKNOWN_ERROR', details: 'something went wrong' },
+      });
+      const response = await invoke({
+        type: 'translate',
+        text: 'Object error test unique 7777',
+        sourceLang: 'en',
+        targetLang: 'de',
+      }) as any;
+      expect(response.success).toBe(false);
+    });
+
+    it('handles null/falsy result from sendToOffscreen (line 972)', async () => {
+      // Return null so the `if (!result)` branch fires
+      mockSendMessage.mockReturnValueOnce(null);
+      const response = await invoke({
+        type: 'translate',
+        text: 'Null result test unique 8888',
+        sourceLang: 'en',
+        targetLang: 'de',
+      }) as any;
+      expect(response.success).toBe(false);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Keyboard shortcut commands (all variants)
+  // -----------------------------------------------------------------------
+  describe('keyboard shortcut: all command variants', () => {
+    it('translate-selection sends translateSelection to tab', async () => {
+      const handler = mockAddCommandListener.mock.calls[0]?.[0];
+      handler('translate-selection', { id: 42 });
+      await new Promise(r => setTimeout(r, 300));
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
+        42,
+        expect.objectContaining({ type: 'translateSelection' })
+      );
+    });
+
+    it('undo-translation sends undoTranslation to tab', async () => {
+      const handler = mockAddCommandListener.mock.calls[0]?.[0];
+      handler('undo-translation', { id: 42 });
+      await new Promise(r => setTimeout(r, 300));
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
+        42,
+        expect.objectContaining({ type: 'undoTranslation' })
+      );
+    });
+
+    it('toggle-widget sends toggleWidget to tab', async () => {
+      const handler = mockAddCommandListener.mock.calls[0]?.[0];
+      handler('toggle-widget', { id: 42 });
+      await new Promise(r => setTimeout(r, 300));
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
+        42,
+        expect.objectContaining({ type: 'toggleWidget' })
+      );
+    });
+
+    it('screenshot-translate sends enterScreenshotMode to tab', async () => {
+      const handler = mockAddCommandListener.mock.calls[0]?.[0];
+      handler('screenshot-translate', { id: 42 });
+      await new Promise(r => setTimeout(r, 300));
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
+        42,
+        expect.objectContaining({ type: 'enterScreenshotMode' })
+      );
+    });
+
+    it('unknown command does not send any message', async () => {
+      vi.mocked(chrome.tabs.sendMessage).mockClear();
+      const handler = mockAddCommandListener.mock.calls[0]?.[0];
+      handler('nonexistent-command', { id: 42 });
+      await new Promise(r => setTimeout(r, 100));
+      expect(vi.mocked(chrome.tabs.sendMessage)).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Context menu: undo-translation, translate-image
+  // -----------------------------------------------------------------------
+  describe('context menu: additional action items', () => {
+    it('undo-translation sends undoTranslation to tab', async () => {
+      const handler = mockAddContextMenuClickedListener.mock.calls[0]?.[0];
+      handler({ menuItemId: 'undo-translation' }, { id: 42 });
+      await new Promise(r => setTimeout(r, 300));
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
+        42,
+        expect.objectContaining({ type: 'undoTranslation' })
+      );
+    });
+
+    it('translate-image sends translateImage with imageUrl to tab', async () => {
+      const handler = mockAddContextMenuClickedListener.mock.calls[0]?.[0];
+      handler({ menuItemId: 'translate-image', srcUrl: 'https://example.com/img.png' }, { id: 42 });
+      await new Promise(r => setTimeout(r, 300));
+      expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
+        42,
+        expect.objectContaining({ type: 'translateImage', imageUrl: 'https://example.com/img.png' })
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // sendMessageToTab: injection failure → wrapped error thrown, caught by context menu
+  // (lines 1231-1234)
+  // -----------------------------------------------------------------------
+  describe('sendMessageToTab: injection fails', () => {
+    it('context menu handler catches error when injection also fails (lines 1231-1234)', async () => {
+      vi.mocked(chrome.tabs.sendMessage)
+        .mockRejectedValueOnce(new Error('Receiving end does not exist'))
+        .mockRejectedValueOnce(new Error('Second attempt failed'));
+      vi.mocked(chrome.scripting.executeScript).mockRejectedValueOnce(new Error('Cannot inject into this page'));
+
+      const handler = mockAddContextMenuClickedListener.mock.calls[0]?.[0];
+      handler({ menuItemId: 'translate-page' }, { id: 99 });
+      await new Promise(r => setTimeout(r, 600));
+      // The context menu handler swallows all errors — no throw expected
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // preloadPredictedModels: model already in set (lines 122-124)
+  // -----------------------------------------------------------------------
+  describe('preloadPredictedModels: already-preloaded key branch', () => {
+    it('skips model when key is already in preloadedModels set (lines 122-124)', async () => {
+      const { getPredictionEngine } = await import('../core/prediction-engine');
+      const engine = getPredictionEngine();
+      const actSpy = vi.spyOn(engine, 'hasRecentActivity').mockResolvedValue(true);
+      const predSpy = vi.spyOn(engine, 'predict').mockResolvedValue([
+        { sourceLang: 'en', targetLang: 'zh', confidence: 0.9 },
+      ] as any);
+      // First invocation: successfully preloads and adds key to set
+      mockSendMessage.mockReturnValue({ success: true, preloaded: true });
+      const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
+      handler(50, { status: 'complete' }, { url: 'https://zh-test.example.com/first' });
+      await new Promise(r => setTimeout(r, 400));
+
+      // Second invocation: same key — should hit the already-preloaded branch
+      handler(51, { status: 'complete' }, { url: 'https://zh-test.example.com/second' });
+      await new Promise(r => setTimeout(r, 300));
+
+      actSpy.mockRestore();
+      predSpy.mockRestore();
+      // Verify predict was called both times but the second preload was skipped
+      expect(predSpy).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // preloadPredictedModels: outer catch (line 152) — hasRecentActivity throws
+  // -----------------------------------------------------------------------
+  describe('preloadPredictedModels: error thrown from engine', () => {
+    it('outer catch logs warning when hasRecentActivity throws (line 152)', async () => {
+      const { getPredictionEngine } = await import('../core/prediction-engine');
+      const engine = getPredictionEngine();
+      const spy = vi.spyOn(engine, 'hasRecentActivity').mockRejectedValueOnce(new Error('DB unavailable'));
+      const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
+      handler(60, { status: 'complete' }, { url: 'https://error-outer.example.com/' });
+      await new Promise(r => setTimeout(r, 200));
+      spy.mockRestore();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // preloadPredictedModels: inner .catch for failed preload (line 148)
+  // -----------------------------------------------------------------------
+  describe('preloadPredictedModels: offscreen preload fails', () => {
+    it('inner .catch handles sendToOffscreen failure (line 148)', async () => {
+      const { getPredictionEngine } = await import('../core/prediction-engine');
+      const engine = getPredictionEngine();
+      const actSpy = vi.spyOn(engine, 'hasRecentActivity').mockResolvedValueOnce(true);
+      const predSpy = vi.spyOn(engine, 'predict').mockResolvedValueOnce([
+        { sourceLang: 'it', targetLang: 'fr', confidence: 0.85 },
+      ] as any);
+      // Make the sendToOffscreen call fail by returning undefined from callback
+      const origImpl = vi.mocked(chrome.runtime.sendMessage).getMockImplementation();
+      vi.mocked(chrome.runtime.sendMessage).mockImplementationOnce((_msg: any, callback: any) => {
+        if (callback) callback(undefined); // triggers "No response" rejection
+        return undefined;
+      });
+      const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
+      handler(61, { status: 'complete' }, { url: 'https://preload-fail.example.com/' });
+      await new Promise(r => setTimeout(r, 600));
+      actSpy.mockRestore();
+      predSpy.mockRestore();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Install handler: update path with caches / indexedDB cleanup (lines 1414-1437)
+  // -----------------------------------------------------------------------
+  describe('install handler: update reason', () => {
+    it('clears matching caches on update (lines 1415-1425)', async () => {
+      vi.stubGlobal('caches', {
+        keys: vi.fn().mockResolvedValue(['transformers-v1', 'onnx-models', 'app-cache']),
+        delete: vi.fn().mockResolvedValue(true),
+      });
+      vi.stubGlobal('indexedDB', {
+        databases: vi.fn().mockResolvedValue([]),
+        deleteDatabase: vi.fn(),
+      });
+
+      const installHandler = mockAddInstalledListener.mock.calls[0]?.[0];
+      await installHandler({ reason: 'update', previousVersion: '1.0.0' });
+
+      expect(vi.mocked((globalThis as any).caches.delete)).toHaveBeenCalledWith('transformers-v1');
+      expect(vi.mocked((globalThis as any).caches.delete)).toHaveBeenCalledWith('onnx-models');
+      expect(vi.mocked((globalThis as any).caches.delete)).not.toHaveBeenCalledWith('app-cache');
+
+      (globalThis as any).caches = undefined;
+      (globalThis as any).indexedDB = undefined;
+    });
+
+    it('logs cleared count when matched caches are deleted (line 1423)', async () => {
+      vi.stubGlobal('caches', {
+        keys: vi.fn().mockResolvedValue(['huggingface-cache']),
+        delete: vi.fn().mockResolvedValue(true),
+      });
+      vi.stubGlobal('indexedDB', {
+        databases: vi.fn().mockResolvedValue([]),
+        deleteDatabase: vi.fn(),
+      });
+
+      const installHandler = mockAddInstalledListener.mock.calls[0]?.[0];
+      await installHandler({ reason: 'update', previousVersion: '2.0.0' });
+
+      expect(vi.mocked((globalThis as any).caches.delete)).toHaveBeenCalledTimes(1);
+
+      (globalThis as any).caches = undefined;
+      (globalThis as any).indexedDB = undefined;
+    });
+
+    it('clears matching indexedDB databases on update (lines 1427-1432)', async () => {
+      vi.stubGlobal('caches', {
+        keys: vi.fn().mockResolvedValue([]),
+        delete: vi.fn(),
+      });
+      const mockDeleteDatabase = vi.fn();
+      vi.stubGlobal('indexedDB', {
+        databases: vi.fn().mockResolvedValue([
+          { name: 'transformers-model-cache', version: 1 },
+          { name: 'unrelated-store', version: 1 },
+        ]),
+        deleteDatabase: mockDeleteDatabase,
+      });
+
+      const installHandler = mockAddInstalledListener.mock.calls[0]?.[0];
+      await installHandler({ reason: 'update', previousVersion: '1.5.0' });
+
+      expect(mockDeleteDatabase).toHaveBeenCalledWith('transformers-model-cache');
+      expect(mockDeleteDatabase).not.toHaveBeenCalledWith('unrelated-store');
+
+      (globalThis as any).caches = undefined;
+      (globalThis as any).indexedDB = undefined;
+    });
+
+    it('handles caches.keys() throwing on update (catch block, lines 1434-1436)', async () => {
+      vi.stubGlobal('caches', {
+        keys: vi.fn().mockRejectedValue(new Error('Cache API unavailable')),
+        delete: vi.fn(),
+      });
+
+      const installHandler = mockAddInstalledListener.mock.calls[0]?.[0];
+      await installHandler({ reason: 'update', previousVersion: '1.0.0' });
+      // Should not throw; error is caught internally
+
+      (globalThis as any).caches = undefined;
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Install handler: onboarding already complete (skips tabs.create)
+  // -----------------------------------------------------------------------
+  describe('install handler: onboarding complete', () => {
+    it('does not open onboarding when onboardingComplete is true (line 1398-1400)', async () => {
+      vi.mocked(chrome.storage.local.get).mockResolvedValueOnce({ onboardingComplete: true });
+      vi.mocked(chrome.tabs.create).mockClear();
+
+      const installHandler = mockAddInstalledListener.mock.calls[0]?.[0];
+      await installHandler({ reason: 'install' });
+
+      expect(vi.mocked(chrome.tabs.create)).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Install handler: empty browser language fallback to 'en' (line 1407)
+  // -----------------------------------------------------------------------
+  describe('install handler: empty browser language fallback', () => {
+    it('uses "en" when getUILanguage returns empty string (line 1407 || branch)', async () => {
+      vi.mocked(chrome.i18n.getUILanguage).mockReturnValueOnce('');
+      vi.mocked(chrome.storage.local.get).mockResolvedValueOnce({});
+      mockStorageSet.mockClear();
+
+      const installHandler = mockAddInstalledListener.mock.calls[0]?.[0];
+      await installHandler({ reason: 'install' });
+
+      expect(mockStorageSet).toHaveBeenCalledWith(
+        expect.objectContaining({ targetLang: 'en' })
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // sendToOffscreen: chrome.runtime.lastError set in callback (lines 363-365)
+  // -----------------------------------------------------------------------
+  describe('sendToOffscreen: chrome.runtime.lastError path', () => {
+    it('rejects with lastError.message when lastError is set in callback (lines 363-365)', async () => {
+      // First sendMessage call fires callback with lastError set
+      vi.mocked(chrome.runtime.sendMessage).mockImplementationOnce((_msg: any, callback: any) => {
+        (chrome.runtime as any).lastError = { message: 'Extension context invalidated.' };
+        if (callback) callback(undefined);
+        (chrome.runtime as any).lastError = null;
+        return undefined;
+      });
+      // Subsequent retries succeed
+      vi.mocked(chrome.runtime.sendMessage).mockImplementation((msg: any, callback: any) => {
+        const resp = mockSendMessage(msg);
+        if (callback) Promise.resolve(resp).then(callback);
+        return resp;
+      });
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'lastError test unique string 9001',
+        sourceLang: 'en',
+        targetLang: 'de',
+      }) as any;
+      // Either succeeds on retry or returns error — either way, no crash
+      expect(response).toBeDefined();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // sendToOffscreen: sendMessage throws synchronously (lines 376-378)
+  // -----------------------------------------------------------------------
+  describe('sendToOffscreen: sendMessage throws synchronously', () => {
+    it('rejects promise via catch block when sendMessage throws (lines 376-378)', async () => {
+      // First call throws synchronously; subsequent retries succeed
+      vi.mocked(chrome.runtime.sendMessage).mockImplementationOnce(() => {
+        throw new Error('Extension context unavailable');
+      });
+      vi.mocked(chrome.runtime.sendMessage).mockImplementation((msg: any, callback: any) => {
+        const resp = mockSendMessage(msg);
+        if (callback) Promise.resolve(resp).then(callback);
+        return resp;
+      });
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'sync throw test unique 9002',
+        sourceLang: 'en',
+        targetLang: 'de',
+      }) as any;
+      expect(response).toBeDefined();
+    });
+  });
+});

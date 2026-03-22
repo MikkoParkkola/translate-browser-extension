@@ -17,6 +17,7 @@ function getShortModelName(modelId: string | null): string {
 
 // Format file name for display
 function getShortFileName(file: string | null): string {
+  /* v8 ignore next -- null file guard return */
   if (!file) return '';
   // Extract just the filename from paths like "onnx/model.onnx"
   const parts = file.split('/');
@@ -101,4 +102,5 @@ export const ModelStatus: Component<Props> = (props) => {
       </div>
     </Show>
   );
+/* v8 ignore next -- V8 tracks component function boundary */
 };

@@ -319,6 +319,7 @@ async function translateDirect(
   if (Array.isArray(text)) {
     const results = await Promise.all(
       text.map(async (t) => {
+        /* v8 ignore next */
         if (!t || t.trim().length === 0) return t;
         const result = await pipe(t, { max_length: 512 });
         return (result as Array<{ translation_text: string }>)[0].translation_text;

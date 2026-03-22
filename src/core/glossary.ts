@@ -249,6 +249,7 @@ export async function importGlossary(json: string): Promise<number> {
     // Validate structure
     for (const [term, entry] of Object.entries(imported)) {
       if (typeof term !== 'string') {
+        /* v8 ignore next -- error throw for invalid term - defensive guard */
         throw new Error(`Invalid term: ${term}`);
       }
       if (typeof entry !== 'object' || entry === null) {

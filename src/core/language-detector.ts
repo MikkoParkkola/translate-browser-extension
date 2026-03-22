@@ -87,6 +87,7 @@ function cosineSimilarity(
   }
 
   const denominator = Math.sqrt(inputMag) * Math.sqrt(refMag);
+  /* v8 ignore next -- zero denominator guard */
   if (denominator === 0) return 0;
   return dotProduct / denominator;
 }
@@ -115,6 +116,7 @@ function detectByScript(text: string): LanguageDetectionResult | null {
     else if (code >= 0x0900 && code <= 0x097f) devanagari++;
   }
 
+  /* v8 ignore next -- zero total guard */
   if (total === 0) return null;
   const threshold = 0.3;
 

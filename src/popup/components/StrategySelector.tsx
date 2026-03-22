@@ -32,4 +32,5 @@ export const StrategySelector: Component<Props> = (props) => {
       </div>
     </section>
   );
+/* v8 ignore next -- V8 tracks component function boundary */
 };

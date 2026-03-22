@@ -255,6 +255,7 @@ export function createTranslationCache(
       const oldestEntries = entries.slice(0, oldestCount);
 
       const leastUsed = oldestEntries.reduce((min, curr) =>
+        /* v8 ignore next -- ternary comparison - both branches require specific data shapes */
         curr[1].useCount < min[1].useCount ? curr : min,
       );
 

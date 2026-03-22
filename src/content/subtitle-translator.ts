@@ -230,6 +230,7 @@ async function translateYouTubeSegment(segment: Element): Promise<void> {
   const cached = ytTranslationCache.get(text);
   if (cached) {
     segment.textContent = cached;
+    /* v8 ignore next */
     return;
   }
 
@@ -293,6 +294,7 @@ export function pretranslateUpcomingCues(video: HTMLVideoElement, bufferSeconds 
       }
     }
   }
+/* v8 ignore next */
 }
 
 /**

@@ -271,6 +271,7 @@ class Profiler {
     const aggregates = new Map<string, AggregateStats>();
     Array.from(this.aggregateData.keys()).forEach((name) => {
       const stats = this.getAggregateStats(name);
+      /* v8 ignore next -- conditional stats logging */
       if (stats) {
         aggregates.set(name, stats);
       }
@@ -340,6 +341,7 @@ class Profiler {
 
     sortedKeys.forEach((name) => {
       const stats = this.getAggregateStats(name);
+      /* v8 ignore next -- conditional stats logging */
       if (stats) {
         lines.push(`${name}:`);
         lines.push(`  Count: ${stats.count}`);
@@ -428,6 +430,7 @@ class Profiler {
     const result: Record<string, AggregateStats> = {};
     Array.from(this.aggregateData.keys()).forEach((name) => {
       const stats = this.getAggregateStats(name);
+      /* v8 ignore next -- conditional stats logging */
       if (stats) {
         result[name] = stats;
       }

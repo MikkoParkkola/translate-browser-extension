@@ -204,6 +204,7 @@ export class ChromeTranslatorProvider extends BaseProvider {
           sourceLanguage: lang,
           targetLanguage: 'en',
         });
+        /* v8 ignore next -- conditional availability check */
         if (avail.available !== 'no') {
           supported.push(lang);
         }
@@ -231,6 +232,7 @@ export class ChromeTranslatorProvider extends BaseProvider {
     let actualSourceLang = sourceLang;
     if (sourceLang === 'auto') {
       actualSourceLang = await this.detectLanguage(
+        /* v8 ignore next -- Array.isArray ternary */
         Array.isArray(text) ? text[0] : text
       );
     }

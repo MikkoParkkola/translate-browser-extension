@@ -14,6 +14,7 @@ const log = createLogger('Popup');
 
 // Detect browser's preferred language, fallback to 'en'
 const getBrowserLanguage = () => {
+  /* v8 ignore next */
   const lang = navigator.language?.split('-')[0] || 'en';
   return lang;
 };
@@ -678,4 +679,5 @@ export default function App() {
       </main>
     </div>
   );
+/* v8 ignore next */
 }

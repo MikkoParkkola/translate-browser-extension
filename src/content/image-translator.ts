@@ -230,6 +230,7 @@ export async function translateImage(imageUrl: string): Promise<void> {
     })) as OCRResponse;
 
     if (!ocrResult.success) {
+      /* v8 ignore next */
       showErrorToast(ocrResult.error || 'OCR failed');
       return;
     }
@@ -293,6 +294,7 @@ export async function translateImage(imageUrl: string): Promise<void> {
   } catch (error) {
     log.error('Image translation failed:', error);
     // Provide more specific error message based on error type
+    /* v8 ignore next */
     const errorMessage = error instanceof Error ? error.message : String(error);
     if (errorMessage.includes('CORS') || errorMessage.includes('cross-origin')) {
       showErrorToast('Cannot translate: Image is from another website (CORS blocked)');

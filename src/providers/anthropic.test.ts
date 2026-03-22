@@ -968,4 +968,118 @@ describe('AnthropicProvider', () => {
       expect(usage.tokens).toBe(38);  // 10+5+15+8
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Coverage: setModel/setFormality when config is null (branches at lines 105, 115)
+  // ---------------------------------------------------------------------------
+
+  describe('setModel and setFormality without config', () => {
+    it('setModel is a no-op on config when config is null', async () => {
+      const freshProvider = new AnthropicProvider();
+      // Do NOT call initialize or setApiKey — config remains null
+      await freshProvider.setModel('claude-sonnet-4-20250514');
+
+      // Storage was updated
+      expect(mockStorage['anthropic_model']).toBe('claude-sonnet-4-20250514');
+      // But getInfo still shows default since config is null
+      const info = freshProvider.getInfo();
+      expect(info.model).toBe('claude-3-5-haiku-20241022');
+    });
+
+    it('setFormality is a no-op on config when config is null', async () => {
+      const freshProvider = new AnthropicProvider();
+      // Do NOT call initialize or setApiKey — config remains null
+      await freshProvider.setFormality('formal');
+
+      // Storage was updated
+      expect(mockStorage['anthropic_formality']).toBe('formal');
+      // But getInfo still shows default since config is null
+      const info = freshProvider.getInfo();
+      expect(info.formality).toBe('neutral');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Coverage: response without usage field (branch at line 230)
+  // ---------------------------------------------------------------------------
+
+  describe('translate response missing usage field', () => {
+    it('handles response without usage object', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            content: [{ type: 'text', text: 'Hei' }],
+            // No usage field
+          }),
+      });
+
+      const result = await provider.translate('Hello', 'en', 'fi');
+      expect(result).toBe('Hei');
+
+      // Token count should remain at 0
+      const usage = await provider.getUsage();
+      expect(usage.tokens).toBe(0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Coverage: single-element array returns [translated] (branch at line 258)
+  // ---------------------------------------------------------------------------
+
+  describe('translate with single-element array', () => {
+    it('wraps result in array when input is single-element array', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            content: [{ type: 'text', text: 'Hei' }],
+            usage: { input_tokens: 10, output_tokens: 5 },
+          }),
+      });
+
+      const result = await provider.translate(['Hello'], 'en', 'fi');
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toEqual(['Hei']);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Coverage: chrome.storage.local.set catch in token tracking (stmt at line 232)
+  // ---------------------------------------------------------------------------
+
+  describe('token tracking storage failure', () => {
+    it('continues without throwing when storage.set fails during token tracking', async () => {
+      await provider.setApiKey('sk-key');
+
+      // Make storage.set reject for the token usage write
+      const originalSet = chrome.storage.local.set;
+      vi.mocked(chrome.storage.local.set as any).mockImplementationOnce((items: Record<string, unknown>) => {
+        // Allow the setApiKey call to succeed, but fail on token tracking
+        if ('anthropic_tokens_used' in items) {
+          return Promise.reject(new Error('Storage quota exceeded'));
+        }
+        Object.assign(mockStorage, items);
+        return Promise.resolve();
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            content: [{ type: 'text', text: 'Hei' }],
+            usage: { input_tokens: 10, output_tokens: 5 },
+          }),
+      });
+
+      // Should not throw despite storage failure
+      const result = await provider.translate('Hello', 'en', 'fi');
+      expect(result).toBe('Hei');
+    });
+  });
 });

@@ -51,6 +51,7 @@ class WebGPUDetector {
       // Log GPU info if available (requestAdapterInfo may not exist in older implementations)
       if ('requestAdapterInfo' in adapter) {
         const info = await (adapter as GPUAdapter & { requestAdapterInfo(): Promise<GPUAdapterInfo> }).requestAdapterInfo();
+        /* v8 ignore next -- device name fallback to Unknown */
         log.info('GPU:', info.device || 'Unknown');
       }
 

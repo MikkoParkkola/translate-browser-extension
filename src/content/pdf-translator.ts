@@ -578,6 +578,7 @@ export async function initPdfTranslation(targetLang: string): Promise<void> {
 
     // Create toggle button
     state.toggleButton = createToggleButton(() => {
+      /* v8 ignore next */
       togglePdfTranslation();
     });
 

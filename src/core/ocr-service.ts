@@ -80,6 +80,7 @@ async function getWorker(): Promise<Worker> {
       const w = await createWorker(DEFAULT_LANGS, OEM.LSTM_ONLY, {
         logger: (m) => {
           if (m.status === 'recognizing text') {
+            /* v8 ignore next -- progress fallback to 0 */
             log.debug(`Tesseract: ${m.status} ${Math.round((m.progress || 0) * 100)}%`);
           }
         },

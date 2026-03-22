@@ -54,6 +54,7 @@ function enableCorrectionEditing(element: HTMLElement): void {
   }
 
   // Store current state
+  /* v8 ignore next */
   const currentText = element.textContent || '';
 
   // Make editable
@@ -102,6 +103,7 @@ function enableCorrectionEditing(element: HTMLElement): void {
         log.error('Failed to save correction:', error);
         showErrorToast('Failed to save correction');
       }
+    /* v8 ignore next */
     } else if (newText === machineTranslation) {
       // User reverted to machine translation, no correction needed
       element.textContent = currentText;

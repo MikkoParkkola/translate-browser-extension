@@ -287,6 +287,54 @@ describe('getTextNodes', () => {
     const count = nodes.filter((n) => n === text).length;
     expect(count).toBe(1);
   });
+
+  it('filters out text nodes with invalid content via TreeWalker acceptNode', () => {
+    const div = document.createElement('div');
+    // Put invalid text directly as child of div (parent=div won't be skipped)
+    const invalidText = document.createTextNode('x');
+    div.appendChild(invalidText);
+    // Also add valid text to confirm the walker runs
+    const validP = document.createElement('p');
+    validP.textContent = 'Hello world valid text';
+    div.appendChild(validP);
+    document.body.appendChild(div);
+
+    const nodes = getTextNodes(div);
+    expect(nodes).not.toContain(invalidText);
+    expect(nodes.some((n) => n.textContent === 'Hello world valid text')).toBe(true);
+  });
+
+  it('skips shadow text with no valid parent in getTextNodes', () => {
+    const div = document.createElement('div');
+    document.body.appendChild(div);
+
+    const orphanText = document.createTextNode('orphan text here');
+    // parentElement is null because orphanText is not attached to any element
+
+    mockWalkShadowRoots.mockImplementation((_root: Element, cb: (n: Text) => void) => {
+      cb(orphanText);
+    });
+
+    const nodes = getTextNodes(div);
+    expect(nodes).not.toContain(orphanText);
+  });
+
+  it('skips shadow text with invalid content in getTextNodes', () => {
+    const div = document.createElement('div');
+    document.body.appendChild(div);
+
+    const shadowSpan = document.createElement('span');
+    document.body.appendChild(shadowSpan);
+    const shortText = document.createTextNode('z');
+    shadowSpan.appendChild(shortText);
+
+    mockWalkShadowRoots.mockImplementation((_root: Element, cb: (n: Text) => void) => {
+      cb(shortText);
+    });
+
+    const nodes = getTextNodes(div);
+    expect(nodes).not.toContain(shortText);
+  });
 });
 
 // ============================================================================

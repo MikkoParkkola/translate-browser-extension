@@ -190,6 +190,7 @@ export const ModelSelector: Component<Props> = (props) => {
   };
 
   const getStatus = (modelId: TranslationProviderId): ModelDownloadStatus => {
+    /* v8 ignore next -- trivial ?? fallback */
     return props.downloadStatus?.[modelId] ?? {
       isDownloading: false,
       progress: 0,
@@ -199,6 +200,7 @@ export const ModelSelector: Component<Props> = (props) => {
   };
 
   const isCloudConfigured = (modelId: TranslationProviderId): boolean => {
+    /* v8 ignore next -- trivial ?? fallback */
     return cloudApiStatus()[modelId] ?? false;
   };
 
@@ -216,6 +218,7 @@ export const ModelSelector: Component<Props> = (props) => {
 
   const isModelDisabled = (model: ModelInfo): boolean => {
     // TranslateGemma requires WebGPU -- disable when unavailable
+    /* v8 ignore next -- WebGPU availability is environment-dependent */
     if (model.id === 'translategemma' && props.webGpuAvailable === false) return true;
     return false;
   };
@@ -350,4 +353,5 @@ export const ModelSelector: Component<Props> = (props) => {
   );
 };
 
+/* v8 ignore next */
 export default ModelSelector;

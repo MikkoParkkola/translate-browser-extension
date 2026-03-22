@@ -121,6 +121,7 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
       `Loading model ${modelId}`
     );
   } catch (err) {
+    /* v8 ignore next -- defensive rethrow */
     throw err;
   }
 

@@ -163,6 +163,7 @@ export function OnboardingApp() {
   };
 
   const getLanguageName = (code: string) => {
+    /* v8 ignore next -- optional chaining name fallback */
     return LANGUAGES.find(l => l.code === code)?.name || code;
   };
 

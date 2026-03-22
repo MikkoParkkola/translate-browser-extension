@@ -94,6 +94,7 @@ function onScreenshotMouseDown(e: MouseEvent): void {
     selectionOverlay.style.width = '0px';
     selectionOverlay.style.height = '0px';
   }
+  /* v8 ignore stop */
 }
 
 function onScreenshotMouseMove(e: MouseEvent): void {

@@ -590,4 +590,30 @@ describe('history', () => {
       expect(history.innerHTML.length).toBeGreaterThan(0);
     }
   });
+
+  it('exports getWidgetHistory for testing uncovered branches (line 370)', async () => {
+    mockSendMessage.mockResolvedValue({ success: true, result: 'translated!' });
+    vi.useFakeTimers();
+    const module = await freshWidget();
+    const { showFloatingWidget, __testExports } = module;
+    const testExports = __testExports();
+
+    showFloatingWidget();
+    vi.runAllTimers();
+
+    // Add a translation
+    const input = document.querySelector('.widget-input') as HTMLTextAreaElement;
+    input.value = 'test';
+    const translateBtn = document.querySelector('.widget-translate-btn') as HTMLButtonElement;
+    translateBtn.click();
+
+    await vi.runAllTimersAsync();
+
+    // Test getWidgetHistory — it should return a copy of history
+    const history = testExports.getWidgetHistory();
+    expect(Array.isArray(history)).toBe(true);
+    expect(history.length).toBeGreaterThan(0);
+    expect(history[0]).toHaveProperty('original');
+    expect(history[0]).toHaveProperty('translated');
+  });
 });

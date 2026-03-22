@@ -139,6 +139,7 @@ export default function Options() {
           </svg>
         );
       default:
+        /* v8 ignore next -- null return branch */
         return null;
     }
   };

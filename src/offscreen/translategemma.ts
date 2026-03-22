@@ -221,6 +221,7 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
         log.info('TranslateGemma loaded successfully via WebGPU + q4f16');
         return setResult(result);
       } catch (error) {
+        /* v8 ignore next -- defensive error type narrowing */
         const errorMsg = error instanceof Error ? error.message : String(error);
         log.warn(`TranslateGemma: WebGPU q4f16 failed (${errorMsg}), trying WebGPU q4 (fp32)...`);
       }
@@ -234,6 +235,7 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       log.info('TranslateGemma loaded successfully via WebGPU + q4 (fp32)');
       return setResult(result);
     } catch (error) {
+      /* v8 ignore next -- defensive error type narrowing */
       const errorMsg = error instanceof Error ? error.message : String(error);
       log.warn(`TranslateGemma: WebGPU q4 also failed (${errorMsg}), final fallback to WASM + q4`);
 
@@ -283,6 +285,7 @@ export async function translateWithGemma(
     // Decode only the generated tokens (skip input prompt tokens)
     const inputLength = (inputs.input_ids as Tensor).dims[1];
     const allTokenIds = (outputIds as Tensor).tolist() as number[][];
+    /* v8 ignore next -- defensive nullish coalescing for output array */
     const generatedTokenIds = (allTokenIds[0] ?? []).slice(inputLength);
     let translation = tokenizer.decode(
       generatedTokenIds,

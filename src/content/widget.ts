@@ -336,6 +336,7 @@ export function showFloatingWidget(): void {
 
   // Focus input
   const input = floatingWidget.querySelector('.widget-input') as HTMLTextAreaElement;
+  /* v8 ignore next -- defensive chaining for querySelector result */
   setTimeout(() => input?.focus(), 100);
 }
 

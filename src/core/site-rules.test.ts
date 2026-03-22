@@ -591,6 +591,20 @@ describe('site-rules', () => {
       await expect(importRules(json)).rejects.toThrow('Invalid autoTranslate');
     });
   });
+
+  describe('clearRules when storage has no siteRules key', () => {
+    it('uses empty object fallback when data[STORAGE_KEY] is undefined', async () => {
+      // Ensure siteRules key does NOT exist in storage
+      delete mockStorage['siteRules'];
+
+      await clearRules('example.com');
+
+      // Should still call set with an empty object (the fallback {} was used)
+      expect(chrome.storage.local.set).toHaveBeenCalledWith({
+        siteRules: {},
+      });
+    });
+  });
 });
 
 describe('matchesPattern — wildcard matching', () => {

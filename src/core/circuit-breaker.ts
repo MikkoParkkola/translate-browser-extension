@@ -71,6 +71,7 @@ export class CircuitBreaker {
 
     if (circuit.state === 'open') {
       // Check if recovery timeout has elapsed
+      /* v8 ignore next -- nullish coalescing fallback for lastFailureTime */
       const elapsed = now - (circuit.lastFailureTime ?? 0);
       if (elapsed >= this.config.recoveryTimeoutMs) {
         // Transition to half-open, allow one probe

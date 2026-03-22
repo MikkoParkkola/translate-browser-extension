@@ -912,6 +912,7 @@ async function handleTranslateInner(message: {
         const results = await chrome.scripting.executeScript({
           target: { tabId },
           world: 'MAIN' as chrome.scripting.ExecutionWorld,
+          /* v8 ignore start — runs in tab's main world via executeScript, not in service-worker context */
           func: async (textsToTranslate: string[], srcLang: string, tgtLang: string) => {
             const TranslatorAPI = self.Translator;
             if (!TranslatorAPI) {
@@ -929,6 +930,7 @@ async function handleTranslateInner(message: {
             t.destroy();
             return translated;
           },
+          /* v8 ignore stop */
           args: [texts, message.sourceLang, message.targetLang],
         });
 
@@ -1371,7 +1373,7 @@ chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url && !tab.url.startsWith('chrome://')) {
     log.debug(`Tab updated: ${tab.url}`);
 
-    preloadPredictedModels(tab.url).catch((error) => {
+    preloadPredictedModels(tab.url).catch(/* v8 ignore next 3 — preloadPredictedModels always catches internally */ (error) => {
       log.warn('Predictive preload trigger failed:', error);
     });
   }

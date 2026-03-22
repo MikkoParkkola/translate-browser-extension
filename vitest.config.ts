@@ -16,6 +16,7 @@ export default defineConfig({
     hookTimeout: 30000,
     coverage: {
       provider: 'v8',
+      reportsDirectory: './coverage',
       reporter: ['text', 'text-summary', 'json-summary', 'json'],
       include: ['src/**/*.ts', 'src/**/*.tsx'],
       exclude: [
