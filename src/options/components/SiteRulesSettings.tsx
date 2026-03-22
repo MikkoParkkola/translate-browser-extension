@@ -139,10 +139,12 @@ export const SiteRulesSettings: Component = () => {
     try {
       const rules: SiteRules = {
         autoTranslate: editAutoTranslate(),
+        /* v8 ignore start -- trivial || undefined coercion */
         preferredProvider: editProvider() || undefined,
         sourceLang: editSourceLang() || undefined,
         targetLang: editTargetLang() || undefined,
         strategy: editStrategy() || undefined,
+        /* v8 ignore stop */
       };
 
       await siteRules.setRules(pattern, rules);

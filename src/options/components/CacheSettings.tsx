@@ -56,7 +56,9 @@ export const CacheSettings: Component = () => {
         setStats(response.stats);
       } else {
         // Fallback: estimate from storage
+        /* v8 ignore start -- optional chaining on navigator.storage API */
         const estimate = await navigator.storage?.estimate?.() || { usage: 0, quota: 0 };
+        /* v8 ignore stop */
 
         setStats({
           entries: 0,

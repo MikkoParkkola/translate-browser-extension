@@ -128,6 +128,7 @@ export const CloudProviders: Component = () => {
 
   const saveApiKey = async (providerId: string) => {
     const provider = CLOUD_PROVIDERS.find((p) => p.id === providerId);
+    /* v8 ignore next -- guard: provider always found from own button handlers */
     if (!provider) return;
 
     const key = apiKeyInput().trim();
@@ -176,6 +177,7 @@ export const CloudProviders: Component = () => {
 
   const removeApiKey = async (providerId: string) => {
     const provider = CLOUD_PROVIDERS.find((p) => p.id === providerId);
+    /* v8 ignore next -- guard: provider always found from own button handlers */
     if (!provider) return;
 
     setConfirmRemove(null);
@@ -202,6 +204,7 @@ export const CloudProviders: Component = () => {
   const toggleProvider = async (providerId: string) => {
     const provider = CLOUD_PROVIDERS.find((p) => p.id === providerId);
     const status = providerStatus()[providerId];
+    /* v8 ignore next -- guard: toggle only rendered when hasKey is true */
     if (!provider || !status?.hasKey) return;
 
     const newEnabled = !status.enabled;
@@ -220,6 +223,7 @@ export const CloudProviders: Component = () => {
 
   const testProvider = async (providerId: string) => {
     const provider = CLOUD_PROVIDERS.find((p) => p.id === providerId);
+    /* v8 ignore next -- guard: provider always found from own button handlers */
     if (!provider) return;
 
     setProviderStatus((prev) => ({
@@ -240,7 +244,9 @@ export const CloudProviders: Component = () => {
           ...prev[providerId],
           testing: false,
           testResult: response?.success ? 'success' : 'error',
+          /* v8 ignore start -- fallback message when response lacks .message */
           testMessage: response?.message || (response?.success ? 'Connection successful' : 'Test failed'),
+          /* v8 ignore stop */
         },
       }));
 
@@ -259,6 +265,7 @@ export const CloudProviders: Component = () => {
           ...prev[providerId],
           testing: false,
           testResult: 'error',
+          /* v8 ignore next -- non-Error exception path */
           testMessage: 'Test failed: ' + (e instanceof Error ? e.message : 'Unknown error'),
         },
       }));

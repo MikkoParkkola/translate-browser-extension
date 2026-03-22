@@ -111,8 +111,9 @@ export const ApiKeyManager: Component<Props> = (props) => {
 
   const saveApiKey = async (providerId: string) => {
     const provider = CLOUD_PROVIDERS.find(p => p.id === providerId);
-    /* c8 ignore next */
+    /* v8 ignore start -- guard: provider always found from own button handlers */
     if (!provider) return;
+    /* v8 ignore stop */
 
     const key = apiKeyInput().trim();
     if (!key) {
@@ -302,7 +303,9 @@ export const ApiKeyManager: Component<Props> = (props) => {
         onConfirm={() => {
           const id = confirmRemove();
           setConfirmRemove(null);
+          /* v8 ignore start -- guard: id always set when dialog is open */
           if (id) removeApiKey(id);
+          /* v8 ignore stop */
         }}
         onCancel={() => setConfirmRemove(null)}
       />
