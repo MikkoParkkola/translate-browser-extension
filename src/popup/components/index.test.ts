@@ -70,47 +70,47 @@ describe('popup/components barrel exports', () => {
   // -----------------------------------------------------------------------
 
   it('exports ProviderStatus', () => {
-    expect(ProviderStatus).toBeDefined();
+    expect(ProviderStatus).toBeTypeOf('function');
   });
 
   it('exports LanguageSelector', () => {
-    expect(LanguageSelector).toBeDefined();
+    expect(LanguageSelector).toBeTypeOf('function');
   });
 
   it('exports StrategySelector', () => {
-    expect(StrategySelector).toBeDefined();
+    expect(StrategySelector).toBeTypeOf('function');
   });
 
   it('exports UsageBar', () => {
-    expect(UsageBar).toBeDefined();
+    expect(UsageBar).toBeTypeOf('function');
   });
 
   it('exports CostMonitor', () => {
-    expect(CostMonitor).toBeDefined();
+    expect(CostMonitor).toBeTypeOf('function');
   });
 
   it('exports ModelSelector', () => {
-    expect(ModelSelector).toBeDefined();
+    expect(ModelSelector).toBeTypeOf('function');
   });
 
   it('exports MODELS', () => {
-    expect(MODELS).toBeDefined();
+    expect(Array.isArray(MODELS)).toBe(true);
   });
 
   it('exports ProviderSelector', () => {
-    expect(ProviderSelector).toBeDefined();
+    expect(ProviderSelector).toBeTypeOf('function');
   });
 
   it('exports SiteRulesManager', () => {
-    expect(SiteRulesManager).toBeDefined();
+    expect(SiteRulesManager).toBeTypeOf('function');
   });
 
   it('exports GlossaryManager', () => {
-    expect(GlossaryManager).toBeDefined();
+    expect(GlossaryManager).toBeTypeOf('function');
   });
 
   it('exports ApiKeyManager', () => {
-    expect(ApiKeyManager).toBeDefined();
+    expect(ApiKeyManager).toBeTypeOf('function');
   });
 
   // -----------------------------------------------------------------------
@@ -171,10 +171,8 @@ describe('popup/components barrel exports', () => {
 
   it('each MODELS entry has id and name', () => {
     for (const model of MODELS) {
-      expect(model.id).toBeDefined();
-      expect(typeof model.id).toBe('string');
-      expect(model.name).toBeDefined();
-      expect(typeof model.name).toBe('string');
+      expect(model.id).toBeTypeOf('string');
+      expect(model.name).toBeTypeOf('string');
     }
   });
 });

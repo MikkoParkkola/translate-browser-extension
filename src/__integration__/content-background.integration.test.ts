@@ -157,7 +157,7 @@ describe('Content ↔ Background messaging integration', () => {
       await import('../background/service-worker');
     }
     messageHandler = messageListeners[0] as typeof messageHandler;
-    expect(messageHandler).toBeDefined();
+    expect(messageHandler).toBeTypeOf('function');
   });
 
   // -----------------------------------------------------------------------
@@ -234,7 +234,7 @@ describe('Content ↔ Background messaging integration', () => {
     const res = (await sendToBg({ type: 'getCacheStats' })) as Record<string, unknown>;
     expect(res.success).toBe(true);
     // Response shape: { success, cache: { size, ... } }
-    expect(res.cache).toBeDefined();
+    expect(res.cache).toBeTypeOf('object');
   });
 
   // -----------------------------------------------------------------------
@@ -259,7 +259,7 @@ describe('Content ↔ Background messaging integration', () => {
   it('returns error for unknown message type', async () => {
     const res = (await sendToBg({ type: 'nonExistentAction' })) as Record<string, unknown>;
     // Should either return success:false or not crash
-    expect(res).toBeDefined();
+    expect(res).not.toBeNull();
   });
 
   // -----------------------------------------------------------------------

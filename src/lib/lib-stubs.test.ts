@@ -23,12 +23,12 @@ import { standardErrorHandler, HandledError } from './standardErrorHandler';
 describe('ModelPerformanceMonitor', () => {
   it('can be constructed with no config', () => {
     const monitor = new ModelPerformanceMonitor();
-    expect(monitor).toBeDefined();
+    expect(monitor).toBeInstanceOf(ModelPerformanceMonitor);
   });
 
   it('can be constructed with config', () => {
     const monitor = new ModelPerformanceMonitor({ enabled: true, sampleInterval: 100, maxSamples: 50 });
-    expect(monitor).toBeDefined();
+    expect(monitor).toBeInstanceOf(ModelPerformanceMonitor);
   });
 
   it('startPerformanceMonitoring does not throw', () => {
@@ -64,12 +64,12 @@ describe('ModelPerformanceMonitor', () => {
 describe('ModelUpdater', () => {
   it('can be constructed with no config', () => {
     const updater = new ModelUpdater();
-    expect(updater).toBeDefined();
+    expect(updater).toBeInstanceOf(ModelUpdater);
   });
 
   it('can be constructed with config', () => {
     const updater = new ModelUpdater({ checkInterval: 3600, autoUpdate: false });
-    expect(updater).toBeDefined();
+    expect(updater).toBeInstanceOf(ModelUpdater);
   });
 
   it('checkForUpdates returns hasUpdate=false', async () => {
@@ -107,12 +107,12 @@ describe('ModelUpdater', () => {
 describe('ModelValidator', () => {
   it('can be constructed with no config', () => {
     const validator = new ModelValidator();
-    expect(validator).toBeDefined();
+    expect(validator).toBeInstanceOf(ModelValidator);
   });
 
   it('can be constructed with strictMode', () => {
     const validator = new ModelValidator({ strictMode: true });
-    expect(validator).toBeDefined();
+    expect(validator).toBeInstanceOf(ModelValidator);
   });
 
   it('validateModelIntegrity returns valid=true', async () => {
@@ -187,7 +187,7 @@ describe('standardErrorHandler', () => {
   it('handleError works with no context', () => {
     const err = new Error('no context');
     const result = standardErrorHandler.handleError(err);
-    expect(result.context).toBeDefined();
+    expect(typeof result.context).toBe('object');
   });
 
   it('handleError with empty message uses fallback', () => {

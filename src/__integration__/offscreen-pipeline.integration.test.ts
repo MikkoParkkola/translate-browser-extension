@@ -100,7 +100,7 @@ describe('Offscreen pipeline cache lifecycle', () => {
   // 5. Dispose is called on evicted pipelines
   // -----------------------------------------------------------------------
   it('calls dispose() on evicted pipeline', async () => {
-    const pipelines = [];
+    const pipelines: ReturnType<typeof makeFakePipeline>[] = [];
     for (let i = 0; i < MAX_CACHED_PIPELINES; i++) {
       const p = makeFakePipeline(`model-${i}`);
       cachePipeline(`model-${i}`, p);
@@ -112,10 +112,7 @@ describe('Offscreen pipeline cache lifecycle', () => {
     cachePipeline('overflow', makeFakePipeline('overflow'));
 
     // Wait for async disposal
-    await new Promise((r) => setTimeout(r, 50));
-
-    // The oldest pipeline should have been disposed
-    expect(pipelines[0].dispose).toHaveBeenCalled();
+    await vi.waitFor(() => expect(pipelines[0].dispose).toHaveBeenCalled());
   });
 
   // -----------------------------------------------------------------------

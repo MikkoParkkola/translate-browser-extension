@@ -184,7 +184,7 @@ describe('ChromeTranslatorProvider', () => {
 
       await provider.translate('Bonjour', 'auto', 'en');
 
-      expect(mockDetect).toHaveBeenCalled();
+      expect(mockDetect).toHaveBeenCalledWith('Bonjour');
       expect(mockTranslatorAPI.create).toHaveBeenCalledWith({
         sourceLanguage: 'fr',
         targetLanguage: 'en',
@@ -321,7 +321,10 @@ describe('ChromeTranslatorProvider', () => {
       mockTranslatorAPI.availability.mockClear();
       await provider.isPairSupported('en', 'de');
 
-      expect(mockTranslatorAPI.availability).toHaveBeenCalled();
+      expect(mockTranslatorAPI.availability).toHaveBeenCalledWith({
+        sourceLanguage: 'en',
+        targetLanguage: 'de',
+      });
     });
   });
 });

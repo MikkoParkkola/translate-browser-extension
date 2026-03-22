@@ -11,12 +11,12 @@ describe('ModelUpdater', () => {
   describe('constructor', () => {
     it('creates instance without arguments', () => {
       const updater = new ModelUpdater();
-      expect(updater).toBeDefined();
+      expect(updater).toBeInstanceOf(ModelUpdater);
     });
 
     it('creates instance with registry and config', () => {
       const updater = new ModelUpdater({}, { checkInterval: 5000, autoUpdate: true });
-      expect(updater).toBeDefined();
+      expect(updater).toBeInstanceOf(ModelUpdater);
     });
   });
 

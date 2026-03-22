@@ -179,9 +179,9 @@ describe('LocalModelManager', () => {
       const { ModelUpdater } = await import('./ModelUpdater.js');
       const { ModelPerformanceMonitor } = await import('./ModelPerformanceMonitor.js');
 
-      expect(ModelValidator).toHaveBeenCalled();
-      expect(ModelUpdater).toHaveBeenCalled();
-      expect(ModelPerformanceMonitor).toHaveBeenCalled();
+      expect(ModelValidator).toHaveBeenCalledTimes(1);
+      expect(ModelUpdater).toHaveBeenCalledTimes(1);
+      expect(ModelPerformanceMonitor).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -203,8 +203,8 @@ describe('LocalModelManager', () => {
     it('schedules update check and starts monitoring', async () => {
       await manager.init();
 
-      expect(mockUpdaterInstance.scheduleUpdateCheck).toHaveBeenCalled();
-      expect(mockPerformanceMonitorInstance.startPerformanceMonitoring).toHaveBeenCalled();
+      expect(mockUpdaterInstance.scheduleUpdateCheck).toHaveBeenCalledTimes(1);
+      expect(mockPerformanceMonitorInstance.startPerformanceMonitoring).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -271,7 +271,7 @@ describe('LocalModelManager', () => {
 
       await manager.downloadModel(onProgress);
 
-      expect(onProgress).toHaveBeenCalled();
+      expect(onProgress).toHaveBeenCalledTimes(2);
       const lastCall = (onProgress.mock.calls[onProgress.mock.calls.length - 1] as unknown[])[0] as Record<string, unknown>;
       expect(lastCall.complete).toBe(true);
       expect(lastCall.progress).toBe(100);
@@ -309,14 +309,14 @@ describe('LocalModelManager', () => {
     it('includes performance summary', async () => {
       const status = await manager.getModelStatus();
 
-      expect(status.performance).toBeDefined();
+      expect(status.performance).not.toBeNull();
       expect(status.performance!.avgInferenceTime).toBe(100);
     });
 
     it('includes update info', async () => {
       const status = await manager.getModelStatus();
 
-      expect(status.updateInfo).toBeDefined();
+      expect(status.updateInfo).not.toBeNull();
       expect(status.updateInfo!.hasUpdate).toBe(false);
     });
   });
@@ -413,8 +413,8 @@ describe('LocalModelManager', () => {
 
       await manager.destroy();
 
-      expect(mockPerformanceMonitorInstance.destroy).toHaveBeenCalled();
-      expect(mockUpdaterInstance.destroy).toHaveBeenCalled();
+      expect(mockPerformanceMonitorInstance.destroy).toHaveBeenCalledTimes(1);
+      expect(mockUpdaterInstance.destroy).toHaveBeenCalledTimes(1);
       expect(manager.isInitialized).toBe(false);
       expect(manager.modelLoaded).toBe(false);
     });
@@ -615,7 +615,7 @@ describe('LocalModelManager Extended Coverage', () => {
 
     it('updates performance stats on success', async () => {
       await manager.translateText('Hello', 'English', 'Finnish');
-      expect(mockPerformanceMonitorInstance.updatePerformanceStats).toHaveBeenCalled();
+      expect(mockPerformanceMonitorInstance.updatePerformanceStats).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -625,7 +625,7 @@ describe('LocalModelManager Extended Coverage', () => {
   describe('getPerformanceSummary', () => {
     it('returns performance summary from monitor', () => {
       const summary = manager.getPerformanceSummary();
-      expect(summary).toBeDefined();
+      expect(summary).toEqual(expect.objectContaining({ avgInferenceTime: 100 }));
       expect(summary.avgInferenceTime).toBe(100);
     });
   });
@@ -636,8 +636,8 @@ describe('LocalModelManager Extended Coverage', () => {
   describe('healthCheck', () => {
     it('delegates to performHealthCheck', async () => {
       const result = await manager.healthCheck();
-      expect(result.status).toBeDefined();
-      expect(result.checks).toBeDefined();
+      expect(typeof result.status).toBe('string');
+      expect(typeof result.checks).toBe('object');
     });
   });
 
@@ -687,7 +687,7 @@ describe('LocalModelManager Extended Coverage', () => {
 
       const result = await manager.updateModel(null);
 
-      expect((mockUpdaterInstance as Record<string, unknown>).updateModelToVersion).toHaveBeenCalled();
+      expect((mockUpdaterInstance as Record<string, unknown>).updateModelToVersion).toHaveBeenCalledTimes(1);
       expect((result as { success: boolean }).success).toBe(true);
     });
   });
@@ -703,7 +703,7 @@ describe('LocalModelManager Extended Coverage', () => {
 
       await manager.destroy();
 
-      expect(clearTimeoutSpy).toHaveBeenCalled();
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
       clearTimeoutSpy.mockRestore();
     });
 
@@ -734,7 +734,7 @@ describe('LocalModelManager Extended Coverage', () => {
       const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
       (manager as any).unloadTimer = setTimeout(() => {}, 60000);
       (manager as any)._scheduleUnload();
-      expect(clearTimeoutSpy).toHaveBeenCalled();
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
       clearTimeoutSpy.mockRestore();
       clearTimeout((manager as any).unloadTimer);
     });
@@ -1186,7 +1186,7 @@ describe('LocalModelManager Extended Coverage', () => {
 
     it('getPerformanceSummary works', () => {
       const summary = manager.getPerformanceSummary();
-      expect(summary).toBeDefined();
+      expect(summary).toEqual(expect.objectContaining({ avgInferenceTime: 100 }));
     });
 
     it('setModelUrls updates URLs', () => {
@@ -1797,7 +1797,7 @@ describe('LocalModelManager - Targeted Missing Coverage', () => {
       const result = await manager.downloadModel(onProgressMock);
 
       expect(result.success).toBe(true);
-      expect(onProgressMock).toHaveBeenCalled();
+      expect(onProgressMock).toHaveBeenCalledTimes(2);
     });
   });
 

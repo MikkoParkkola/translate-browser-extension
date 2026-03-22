@@ -72,7 +72,7 @@ describe('llamacpp-worker', () => {
         config: { n_ctx: 4096 },
       });
 
-      expect(mockEngine.init).toHaveBeenCalled();
+      expect(mockEngine.init).toHaveBeenCalledWith({ suppressNativeLog: false, parallelDownloads: 3 });
       expect(mockEngine.loadModel).toHaveBeenCalledWith(
         urls,
         { n_ctx: 4096 },
@@ -80,8 +80,7 @@ describe('llamacpp-worker', () => {
       );
 
       const loadedMsg = postMessageCalls.find((m) => m.type === 'modelLoaded');
-      expect(loadedMsg).toBeDefined();
-      expect(loadedMsg!.modelInfo).toEqual({ n_ctx: 2048 });
+      expect(loadedMsg).toMatchObject({ type: 'modelLoaded', modelInfo: { n_ctx: 2048 } });
     });
 
     it('posts progress updates during model loading', async () => {
@@ -115,8 +114,7 @@ describe('llamacpp-worker', () => {
       });
 
       const errorMsg = postMessageCalls.find((m) => m.type === 'error');
-      expect(errorMsg).toBeDefined();
-      expect(errorMsg!.message).toContain('Failed to load model');
+      expect(errorMsg).toMatchObject({ type: 'error', message: expect.stringContaining('Failed to load model') });
     });
   });
 
@@ -132,7 +130,7 @@ describe('llamacpp-worker', () => {
 
       expect(mockEngine.loadModelFromBlobs).toHaveBeenCalledWith(blobs, {});
       const loadedMsg = postMessageCalls.find((m) => m.type === 'modelLoaded');
-      expect(loadedMsg).toBeDefined();
+      expect(loadedMsg).toMatchObject({ type: 'modelLoaded' });
     });
   });
 
@@ -150,10 +148,12 @@ describe('llamacpp-worker', () => {
       });
 
       const resultMsg = postMessageCalls.find((m) => m.type === 'translationComplete');
-      expect(resultMsg).toBeDefined();
-      expect(resultMsg!.requestId).toBe('req-1');
-      expect(resultMsg!.translatedText).toBe('translated');
-      expect(resultMsg!.tokensGenerated).toBe(5);
+      expect(resultMsg).toMatchObject({
+        type: 'translationComplete',
+        requestId: 'req-1',
+        translatedText: 'translated',
+        tokensGenerated: 5,
+      });
     });
 
     it('posts error when model not loaded', async () => {
@@ -168,8 +168,7 @@ describe('llamacpp-worker', () => {
       const errorMsg = postMessageCalls.find(
         (m) => m.type === 'error' && m.requestId === 'req-err',
       );
-      expect(errorMsg).toBeDefined();
-      expect(errorMsg!.message).toContain('not loaded');
+      expect(errorMsg).toMatchObject({ type: 'error', requestId: 'req-err', message: expect.stringContaining('not loaded') });
     });
 
     it('handles translation errors', async () => {
@@ -187,8 +186,7 @@ describe('llamacpp-worker', () => {
       const errorMsg = postMessageCalls.find(
         (m) => m.type === 'error' && m.requestId === 'req-fail',
       );
-      expect(errorMsg).toBeDefined();
-      expect(errorMsg!.message).toContain('Translation failed');
+      expect(errorMsg).toMatchObject({ type: 'error', requestId: 'req-fail', message: expect.stringContaining('Translation failed') });
     });
 
     it('handles abort by posting translationCancelled', async () => {
@@ -208,7 +206,7 @@ describe('llamacpp-worker', () => {
       const cancelMsg = postMessageCalls.find(
         (m) => m.type === 'translationCancelled' && m.requestId === 'req-abort',
       );
-      expect(cancelMsg).toBeDefined();
+      expect(cancelMsg).toMatchObject({ type: 'translationCancelled', requestId: 'req-abort' });
     });
   });
 
@@ -229,9 +227,11 @@ describe('llamacpp-worker', () => {
       });
 
       const resultMsg = postMessageCalls.find((m) => m.type === 'translationComplete');
-      expect(resultMsg).toBeDefined();
-      expect(resultMsg!.requestId).toBe('chat-1');
-      expect(resultMsg!.translatedText).toBe('chat translated');
+      expect(resultMsg).toMatchObject({
+        type: 'translationComplete',
+        requestId: 'chat-1',
+        translatedText: 'chat translated',
+      });
     });
   });
 
@@ -254,8 +254,7 @@ describe('llamacpp-worker', () => {
 
       expect(mockEngine.destroy).toHaveBeenCalled();
       const completeMsg = postMessageCalls.find((m) => m.type === 'cleanupComplete');
-      expect(completeMsg).toBeDefined();
-      expect(completeMsg!.requestId).toBe('cleanup-1');
+      expect(completeMsg).toMatchObject({ type: 'cleanupComplete', requestId: 'cleanup-1' });
     });
   });
 
@@ -266,8 +265,7 @@ describe('llamacpp-worker', () => {
       const errorMsg = postMessageCalls.find(
         (m) => m.type === 'error' && m.requestId === 'unk-1',
       );
-      expect(errorMsg).toBeDefined();
-      expect(errorMsg!.message).toContain('Unknown message type');
+      expect(errorMsg).toMatchObject({ type: 'error', requestId: 'unk-1', message: expect.stringContaining('Unknown message type') });
     });
   });
 
@@ -279,7 +277,11 @@ describe('llamacpp-worker', () => {
         config: {},
       });
 
-      expect(mockEngine.loadModel).toHaveBeenCalled();
+      expect(mockEngine.loadModel).toHaveBeenCalledWith(
+        ['http://example.com/model.gguf'],
+        {},
+        expect.any(Function),
+      );
     });
 
     it('posts error when legacy load without modelUrls', async () => {
@@ -288,8 +290,7 @@ describe('llamacpp-worker', () => {
       const errorMsg = postMessageCalls.find(
         (m) => m.type === 'error' && m.requestId === 'legacy-1',
       );
-      expect(errorMsg).toBeDefined();
-      expect(errorMsg!.message).toContain('no longer supported');
+      expect(errorMsg).toMatchObject({ type: 'error', requestId: 'legacy-1', message: expect.stringContaining('no longer supported') });
     });
   });
 
@@ -306,8 +307,7 @@ describe('llamacpp-worker', () => {
       const errorMsg = postMessageCalls.find(
         (m) => m.type === 'error' && m.requestId === 'chat-nolm',
       );
-      expect(errorMsg).toBeDefined();
-      expect(errorMsg!.message).toContain('not loaded');
+      expect(errorMsg).toMatchObject({ type: 'error', requestId: 'chat-nolm', message: expect.stringContaining('not loaded') });
     });
 
     it('handles abort by posting translationCancelled', async () => {
@@ -327,7 +327,7 @@ describe('llamacpp-worker', () => {
       const cancelMsg = postMessageCalls.find(
         (m) => m.type === 'translationCancelled' && m.requestId === 'chat-abort',
       );
-      expect(cancelMsg).toBeDefined();
+      expect(cancelMsg).toMatchObject({ type: 'translationCancelled', requestId: 'chat-abort' });
     });
 
     it('handles generic error', async () => {
@@ -345,8 +345,7 @@ describe('llamacpp-worker', () => {
       const errorMsg = postMessageCalls.find(
         (m) => m.type === 'error' && m.requestId === 'chat-err',
       );
-      expect(errorMsg).toBeDefined();
-      expect(errorMsg!.message).toContain('Chat translation failed');
+      expect(errorMsg).toMatchObject({ type: 'error', requestId: 'chat-err', message: expect.stringContaining('Chat translation failed') });
     });
   });
 
@@ -361,8 +360,7 @@ describe('llamacpp-worker', () => {
       });
 
       const errorMsg = postMessageCalls.find((m) => m.type === 'error');
-      expect(errorMsg).toBeDefined();
-      expect(errorMsg!.message).toContain('Failed to load model from cache');
+      expect(errorMsg).toMatchObject({ type: 'error', message: expect.stringContaining('Failed to load model from cache') });
     });
   });
 
@@ -377,8 +375,7 @@ describe('llamacpp-worker', () => {
       const errorMsg = postMessageCalls.find(
         (m) => m.type === 'error' && m.requestId === 'clean-err',
       );
-      expect(errorMsg).toBeDefined();
-      expect(errorMsg!.message).toContain('Cleanup failed');
+      expect(errorMsg).toMatchObject({ type: 'error', requestId: 'clean-err', message: expect.stringContaining('Cleanup failed') });
     });
   });
 
@@ -479,7 +476,7 @@ describe('llamacpp-worker', () => {
 
       // The error should be caught by the top-level try/catch or inner handler
       const errorMsg = postMessageCalls.find((m) => m.type === 'error');
-      expect(errorMsg).toBeDefined();
+      expect(errorMsg).toMatchObject({ type: 'error' });
     });
 
     it('catches uncaught errors that escape inner handlers via abort', async () => {
@@ -500,8 +497,7 @@ describe('llamacpp-worker', () => {
       const errorMsg = postMessageCalls.find(
         (m) => m.type === 'error' && m.requestId === 'abort-err',
       );
-      expect(errorMsg).toBeDefined();
-      expect(errorMsg!.message).toBe('Abort explosion');
+      expect(errorMsg).toMatchObject({ type: 'error', requestId: 'abort-err', message: 'Abort explosion' });
     });
   });
 
@@ -535,8 +531,7 @@ describe('llamacpp-worker', () => {
       const errorMsg = postMessageCalls.find(
         (m) => m.type === 'error' && m.requestId === 'not-loaded-1',
       );
-      expect(errorMsg).toBeDefined();
-      expect(errorMsg!.message).toContain('not loaded');
+      expect(errorMsg).toMatchObject({ type: 'error', requestId: 'not-loaded-1', message: expect.stringContaining('not loaded') });
     });
   });
 
@@ -561,7 +556,7 @@ describe('llamacpp-worker', () => {
       });
 
       // Give microtask a tick so translate sets up the controller
-      await new Promise((r) => setTimeout(r, 0));
+      await Promise.resolve();
 
       // Now abort
       await sendMessage({ type: 'abort', requestId: 'abort-test-1' });

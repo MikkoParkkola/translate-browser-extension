@@ -206,7 +206,10 @@ describe('sendMessageToTab retry pattern', () => {
     mockExecuteScript.mockResolvedValue(undefined);
 
     await sendMessageToTab(1, { type: 'translatePage' });
-    expect(mockExecuteScript).toHaveBeenCalled();
+    expect(mockExecuteScript).toHaveBeenCalledWith({
+      target: { tabId: 1 },
+      files: ['src/content/index.js'],
+    });
   });
 
   it('does not inject on other errors', async () => {

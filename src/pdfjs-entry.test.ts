@@ -33,7 +33,7 @@ describe('pdfjs-entry', () => {
   // Default export exists
   // ------------------------------------------------------------------
   it('has a default export', () => {
-    expect(mod.default).toBeDefined();
+    expect(mod.default).not.toBeNull();
   });
 
   it('default export is an object (namespace)', () => {
@@ -49,8 +49,7 @@ describe('pdfjs-entry', () => {
   });
 
   it('exposes GlobalWorkerOptions', () => {
-    expect(mod.default.GlobalWorkerOptions).toBeDefined();
-    expect(mod.default.GlobalWorkerOptions).toHaveProperty('workerSrc');
+    expect(mod.default.GlobalWorkerOptions).toMatchObject({ workerSrc: '' });
   });
 
   it('exposes version string', () => {
@@ -63,8 +62,7 @@ describe('pdfjs-entry', () => {
   });
 
   it('exposes OPS enumeration', () => {
-    expect(mod.default.OPS).toBeDefined();
-    expect(typeof mod.default.OPS).toBe('object');
+    expect(mod.default.OPS).toEqual({ dependency: 1, setLineWidth: 2 });
   });
 
   // ------------------------------------------------------------------

@@ -831,7 +831,7 @@ describe('offscreen message handler', () => {
       });
 
       expect(r.success).toBe(true);
-      expect(mockDeeplInitialize).toHaveBeenCalled();
+      expect(mockDeeplInitialize).toHaveBeenCalledWith();
       expect(mockDeeplTranslate).toHaveBeenCalledWith('Hello', 'en', 'de');
     });
 
@@ -1235,7 +1235,7 @@ describe('offscreen message handler', () => {
 
       expect(r.success).toBe(true);
       expect((r.usage as Record<string, unknown>).tokens).toBe(50000);
-      expect(mockDeeplInitialize).toHaveBeenCalled();
+      expect(mockDeeplInitialize).toHaveBeenCalledWith();
     });
 
     it('returns OpenAI usage stats', async () => {

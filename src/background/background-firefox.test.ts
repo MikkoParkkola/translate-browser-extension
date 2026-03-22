@@ -223,30 +223,28 @@ describe('background-firefox message handler', () => {
   describe('ping', () => {
     it('returns success:true and status:ready', async () => {
       const response = await invoke({ type: 'ping' }) as Record<string, unknown>;
-      expect(response).toBeDefined();
       expect(response.success).toBe(true);
       expect(response.status).toBe('ready');
     });
 
     it('returns current provider', async () => {
       const response = await invoke({ type: 'ping' }) as Record<string, unknown>;
-      expect(response.provider).toBeDefined();
+      expect(response.provider).toEqual(expect.any(String));
     });
   });
 
   describe('getUsage', () => {
     it('returns throttle and cache stats', async () => {
       const response = await invoke({ type: 'getUsage' }) as Record<string, unknown>;
-      expect(response).toBeDefined();
-      expect(response.throttle).toBeDefined();
-      expect(response.cache).toBeDefined();
+      expect(response.throttle).toEqual(expect.any(Object));
+      expect(response.cache).toEqual(expect.any(Object));
     });
 
     it('throttle stats include requests and tokens', async () => {
       const response = await invoke({ type: 'getUsage' }) as Record<string, unknown>;
       const throttle = response.throttle as Record<string, unknown>;
-      expect(throttle.requests).toBeDefined();
-      expect(throttle.tokens).toBeDefined();
+      expect(throttle.requests).toEqual(expect.any(Number));
+      expect(throttle.tokens).toEqual(expect.any(Number));
     });
   });
 
@@ -270,7 +268,7 @@ describe('background-firefox message handler', () => {
 
     it('returns activeProvider', async () => {
       const response = await invoke({ type: 'getProviders' }) as Record<string, unknown>;
-      expect(response.activeProvider).toBeDefined();
+      expect(response.activeProvider).toEqual(expect.any(String));
     });
 
     it('returns supportedLanguages', async () => {
@@ -313,14 +311,14 @@ describe('background-firefox message handler', () => {
     it('returns success:true with cache stats', async () => {
       const response = await invoke({ type: 'getCacheStats' }) as Record<string, unknown>;
       expect(response.success).toBe(true);
-      expect(response.cache).toBeDefined();
+      expect(response.cache).toEqual(expect.any(Object));
     });
 
     it('cache stats include size and hitRate', async () => {
       const response = await invoke({ type: 'getCacheStats' }) as Record<string, unknown>;
       const cache = response.cache as Record<string, unknown>;
-      expect(cache.size).toBeDefined();
-      expect(cache.hitRate).toBeDefined();
+      expect(cache.size).toEqual(expect.any(Number));
+      expect(cache.hitRate).toEqual(expect.any(String));
     });
   });
 
@@ -337,7 +335,7 @@ describe('background-firefox message handler', () => {
 
     it('calls storage.local.remove', async () => {
       await invoke({ type: 'clearCache' });
-      expect(mockStorageRemove).toHaveBeenCalled();
+      expect(mockStorageRemove).toHaveBeenCalledWith(expect.arrayContaining(['translationCache']));
     });
   });
 
@@ -382,7 +380,7 @@ describe('background-firefox message handler', () => {
         targetLang: 'fi',
       }) as Record<string, unknown>;
       expect(response.success).toBe(false);
-      expect(response.error).toBeDefined();
+      expect(response.error).toEqual(expect.any(String));
     });
 
     it('handles translation errors gracefully when withRetry is called', async () => {
@@ -396,8 +394,7 @@ describe('background-firefox message handler', () => {
         targetLang: 'fi',
       }) as Record<string, unknown>;
       // Response should always be defined — either success or error
-      expect(response).toBeDefined();
-      expect('success' in response).toBe(true);
+      expect(response).toMatchObject({ success: expect.any(Boolean) });
     });
 
     it('accepts strategy in options', async () => {
@@ -411,7 +408,7 @@ describe('background-firefox message handler', () => {
         targetLang: 'fi',
         options: { strategy: 'quality' },
       }) as Record<string, unknown>;
-      expect(response).toBeDefined();
+      expect(response).toMatchObject({ success: expect.any(Boolean) });
     });
   });
 
@@ -468,15 +465,14 @@ describe('background-firefox message handler', () => {
         provider: 'translategemma',
       }) as Record<string, unknown>;
       expect(response.success).toBe(false);
-      expect(response.error).toBeDefined();
+      expect(response.error).toEqual(expect.any(String));
     });
   });
 
   describe('unknown message type', () => {
     it('sends error response for unknown type', async () => {
       const response = await invoke({ type: 'unknownType' }) as Record<string, unknown>;
-      // Either throws (caught) or returns error
-      expect(response).toBeDefined();
+      expect(response).toMatchObject({ success: expect.any(Boolean) });
     });
   });
 
@@ -500,14 +496,14 @@ describe('background-firefox cache stats', () => {
   it('returns stats with all expected fields', async () => {
     const response = await invoke({ type: 'getCacheStats' }) as Record<string, unknown>;
     const stats = response.cache as Record<string, unknown>;
-    expect(stats.size).toBeDefined();
-    expect(stats.maxSize).toBeDefined();
-    expect(stats.hitRate).toBeDefined();
-    expect(stats.totalHits).toBeDefined();
-    expect(stats.totalMisses).toBeDefined();
-    expect(stats.languagePairs).toBeDefined();
-    expect(stats.memoryEstimate).toBeDefined();
-    expect(stats.mostUsed).toBeDefined();
+    expect(stats.size).toEqual(expect.any(Number));
+    expect(stats.maxSize).toEqual(expect.any(Number));
+    expect(stats.hitRate).toEqual(expect.any(String));
+    expect(stats.totalHits).toEqual(expect.any(Number));
+    expect(stats.totalMisses).toEqual(expect.any(Number));
+    expect(stats.languagePairs).toEqual(expect.any(Object));
+    expect(stats.memoryEstimate).toMatch(/~\d+KB/);
+    expect(stats.mostUsed).toEqual(expect.any(Array));
   });
 });
 
@@ -525,7 +521,7 @@ describe('background-firefox installation handler', () => {
   it('onInstalled handler sets default settings on fresh install', async () => {
     if (!capturedInstalledHandler) {
       // Handler not registered — skip
-      expect(mockAddInstalledListener).toBeDefined();
+      expect(mockAddInstalledListener).toEqual(expect.any(Function));
       return;
     }
     mockGetUILanguage.mockReturnValue('fi-FI');
@@ -542,7 +538,7 @@ describe('background-firefox installation handler', () => {
 
   it('onInstalled handler handles update reason without error', async () => {
     if (!capturedInstalledHandler) {
-      expect(mockAddInstalledListener).toBeDefined();
+      expect(mockAddInstalledListener).toEqual(expect.any(Function));
       return;
     }
     expect(() => capturedInstalledHandler!({ reason: 'update', previousVersion: '1.0.0' })).not.toThrow();
@@ -550,7 +546,7 @@ describe('background-firefox installation handler', () => {
 
   it('onInstalled uses "en" fallback when browser language is empty (line 840 || branch)', async () => {
     if (!capturedInstalledHandler) {
-      expect(mockAddInstalledListener).toBeDefined();
+      expect(mockAddInstalledListener).toEqual(expect.any(Function));
       return;
     }
     mockGetUILanguage.mockReturnValue(''); // '' → split('-')[0] = '' → browserLang || 'en' = 'en'
@@ -562,7 +558,7 @@ describe('background-firefox installation handler', () => {
 
   it('onInstalled silently ignores unknown reason (line 844 else-if false branch)', async () => {
     if (!capturedInstalledHandler) {
-      expect(mockAddInstalledListener).toBeDefined();
+      expect(mockAddInstalledListener).toEqual(expect.any(Function));
       return;
     }
     // reason is neither 'install' nor 'update' → both if/else-if conditions are false
@@ -673,7 +669,12 @@ describe('background-firefox getCacheKey', () => {
       targetLang: 'fi',
     });
 
-    expect(generateCacheKey).toHaveBeenCalled();
+    expect(generateCacheKey).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      expect.any(String)
+    );
   });
 });
 
@@ -848,8 +849,7 @@ describe('background-firefox translate: additional coverage', () => {
       provider: 'translategemma',
     }) as Record<string, unknown>;
 
-    expect(response).toBeDefined();
-    expect('success' in response).toBe(true);
+    expect(response).toMatchObject({ success: expect.any(Boolean) });
   });
 
   it('handles translate with array text input', async () => {
@@ -863,8 +863,7 @@ describe('background-firefox translate: additional coverage', () => {
       targetLang: 'fi',
     }) as Record<string, unknown>;
 
-    expect(response).toBeDefined();
-    expect('success' in response).toBe(true);
+    expect(response).toMatchObject({ success: expect.any(Boolean) });
   });
 
   it('handles translate with sourceLang=auto', async () => {
@@ -884,7 +883,7 @@ describe('background-firefox translate: additional coverage', () => {
       targetLang: 'fi',
     }) as Record<string, unknown>;
 
-    expect(response).toBeDefined();
+    expect(response).toMatchObject({ success: expect.any(Boolean) });
     // auto detect does not use cache, result should be success or error
     expect('success' in response).toBe(true);
   });
@@ -920,7 +919,7 @@ describe('background-firefox translate: additional coverage', () => {
       targetLang: 'fi',
     }) as Record<string, unknown>;
 
-    expect(response).toBeDefined();
+    expect(response).toMatchObject({ success: expect.any(Boolean) });
     expect('success' in response).toBe(true);
     expect(typeof response.duration).toBe('number');
   });
@@ -934,7 +933,7 @@ describe('background-firefox translate: additional coverage', () => {
       targetLang: 'fi',
     }) as Record<string, unknown>;
 
-    expect(response).toBeDefined();
+    expect(response).toMatchObject({ success: expect.any(Boolean) });
     expect('success' in response).toBe(true);
   });
 
@@ -977,16 +976,14 @@ describe('background-firefox translate: additional coverage', () => {
 
   it('handleGetProviders returns strategy field', async () => {
     const response = await invoke({ type: 'getProviders' }) as Record<string, unknown>;
-    expect(response.strategy).toBeDefined();
+    expect(response.strategy).toEqual(expect.any(String));
   });
 
   it('unknown message type triggers error response via catch path', async () => {
     // The unknown type falls through to throw in handleMessage, which is caught
     // by the outer .catch in the message listener
     const response = await invoke({ type: 'nonexistentCommand' }) as Record<string, unknown>;
-    expect(response).toBeDefined();
-    // Either throws (leading to error response) or has success:false
-    expect('success' in response || response.error !== undefined).toBe(true);
+    expect(response).toMatchObject({ success: expect.any(Boolean) });
   });
 
   it('getUsage returns cache stats object', async () => {
@@ -1015,8 +1012,8 @@ describe('background-firefox translate: additional coverage', () => {
       const response = await invoke({ type: 'getCacheStats' }) as Record<string, unknown>;
       expect(response.success).toBe(true);
       const cache = response.cache as Record<string, unknown>;
-      expect(cache).toBeDefined();
-      expect(cache.size).toBeDefined();
+      expect(cache).toEqual(expect.any(Object));
+      expect(cache.size).toEqual(expect.any(Number));
     });
   });
 
@@ -1063,8 +1060,7 @@ describe('background-firefox translate: additional coverage', () => {
 
       // validateInput mock returns { valid: true, sanitizedText: 'hello' }
       // so empty string is passed through via the sanitized text
-      expect(response).toBeDefined();
-      expect('success' in response).toBe(true);
+      expect(response).toMatchObject({ success: expect.any(Boolean) });
     });
 
     it('handles array with empty items', async () => {
@@ -1081,8 +1077,7 @@ describe('background-firefox translate: additional coverage', () => {
         targetLang: 'fi',
       }) as Record<string, unknown>;
 
-      expect(response).toBeDefined();
-      expect('success' in response).toBe(true);
+      expect(response).toMatchObject({ success: expect.any(Boolean) });
     });
   });
 
@@ -1114,7 +1109,11 @@ describe('background-firefox translate: additional coverage', () => {
       }) as Record<string, unknown>;
 
       expect(response.success).toBe(true);
-      expect(translateWithGemma).toHaveBeenCalled();
+      expect(translateWithGemma).toHaveBeenCalledWith(
+        'hello',
+        'en',
+        'fi'
+      );
     });
 
     it('uses pivot route for fi-de', async () => {
@@ -1138,7 +1137,7 @@ describe('background-firefox translate: additional coverage', () => {
       }) as Record<string, unknown>;
 
       // withRetry passes through the error
-      expect(response).toBeDefined();
+      expect(response).toMatchObject({ success: expect.any(Boolean) });
       // The error should propagate through the retry/catch chain
     });
   });
@@ -1176,7 +1175,7 @@ describe('background-firefox translate: additional coverage', () => {
       }) as Record<string, unknown>;
 
       // Either rate limit hit or token limit hit
-      expect(response).toBeDefined();
+      expect(response).toMatchObject({ success: expect.any(Boolean) });
 
       vi.useRealTimers();
     });
@@ -1206,7 +1205,7 @@ describe('background-firefox translate: additional coverage', () => {
       }) as Record<string, unknown>;
 
       expect(response.success).toBe(false);
-      expect(response.error).toBeDefined();
+      expect(response.error).toEqual(expect.any(String));
       expect(typeof response.duration).toBe('number');
     });
   });
@@ -1231,7 +1230,7 @@ describe('background-firefox translate: additional coverage', () => {
       }) as Record<string, unknown>;
 
       expect(response.success).toBe(false);
-      expect(response.error).toBeDefined();
+      expect(response.error).toEqual(expect.any(String));
     });
   });
 
@@ -1291,7 +1290,7 @@ describe('background-firefox translate: additional coverage', () => {
 
   describe('onInstalled handler', () => {
     it('fires install handler with default language', async () => {
-      expect(capturedInstalledHandler).toBeDefined();
+      expect(capturedInstalledHandler).toEqual(expect.any(Function));
       if (capturedInstalledHandler) {
         mockGetUILanguage.mockReturnValueOnce('fi-FI');
         capturedInstalledHandler({ reason: 'install' });
@@ -1316,7 +1315,7 @@ describe('background-firefox translate: additional coverage', () => {
 
   describe('keyboard shortcuts', () => {
     it('handles translate-selection command', async () => {
-      expect(capturedCommandHandler).toBeDefined();
+      expect(capturedCommandHandler).toEqual(expect.any(Function));
       if (capturedCommandHandler) {
         mockTabsQuery.mockResolvedValueOnce([{ id: 42 }]);
         await capturedCommandHandler('translate-selection');
@@ -1362,7 +1361,7 @@ describe('background-firefox translate: additional coverage', () => {
 
   describe('browserAction handler', () => {
     it('fires browser action handler for tab with id', async () => {
-      expect(capturedBrowserActionHandler).toBeDefined();
+      expect(capturedBrowserActionHandler).toEqual(expect.any(Function));
       if (capturedBrowserActionHandler) {
         // Should not throw
         await capturedBrowserActionHandler({ id: 55 });
@@ -1419,7 +1418,7 @@ describe('background-firefox translate: additional coverage', () => {
     it('clears cache and storage', async () => {
       const response = await invoke({ type: 'clearCache' }) as Record<string, unknown>;
       expect(response.success).toBe(true);
-      expect(response.clearedEntries).toBeDefined();
+      expect(response.clearedEntries).toEqual(expect.any(Number));
     });
 
     it('handles storage removal error', async () => {
@@ -1439,10 +1438,10 @@ describe('background-firefox translate: additional coverage', () => {
       const response = await invoke({ type: 'getCacheStats' }) as Record<string, unknown>;
       expect(response.success).toBe(true);
       const cache = response.cache as Record<string, unknown>;
-      expect(cache.languagePairs).toBeDefined();
-      expect(cache.memoryEstimate).toBeDefined();
-      expect(cache.hitRate).toBeDefined();
-      expect(cache.mostUsed).toBeDefined();
+      expect(cache.languagePairs).toEqual(expect.any(Object));
+      expect(cache.memoryEstimate).toMatch(/~\d+KB/);
+      expect(cache.hitRate).toEqual(expect.any(String));
+      expect(cache.mostUsed).toEqual(expect.any(Array));
     });
   });
 
@@ -1454,7 +1453,6 @@ describe('background-firefox translate: additional coverage', () => {
     it('sends error response when handleMessage throws', async () => {
       // The unknown message type causes handleMessage to throw
       const response = await invoke({ type: '__crash_test__' }) as Record<string, unknown>;
-      expect(response).toBeDefined();
       expect(response.success).toBe(false);
     });
   });
@@ -1486,7 +1484,7 @@ describe('background-firefox translate: additional coverage', () => {
       expect(response.success).toBe(true);
       
       // The cache stats call itself exercises the cache logic
-      expect(response.cache).toBeDefined();
+      expect(response.cache).toEqual(expect.any(Object));
     });
   });
 
@@ -1730,8 +1728,7 @@ describe('background-firefox translate: additional coverage', () => {
 
       expect(cacheStats.success).toBe(true);
       const cache = (cacheStats.cache as Record<string, unknown>);
-      expect(cache.languagePairs).toBeDefined();
-      expect(typeof cache.languagePairs).toBe('object');
+      expect(cache.languagePairs).toEqual(expect.any(Object));
     });
 
     it('reports memory estimate', async () => {
@@ -1747,8 +1744,7 @@ describe('background-firefox translate: additional coverage', () => {
       }) as Record<string, unknown>;
 
       const cache = (cacheStats.cache as Record<string, unknown>);
-      expect(cache.memoryEstimate).toBeDefined();
-      expect(typeof cache.memoryEstimate).toBe('string');
+      expect(cache.memoryEstimate).toMatch(/~\d+KB/);
     });
 
     it('reports most used entries', async () => {
@@ -1876,7 +1872,10 @@ describe('background-firefox translate: additional coverage', () => {
         ]);
         await capturedCommandHandler('translate-selection');
         // Should use first tab
-        expect(mockTabsSendMessage).toHaveBeenCalled();
+        expect(mockTabsSendMessage).toHaveBeenCalledWith(
+          expect.any(Number),
+          expect.objectContaining({ type: expect.any(String) })
+        );
       }
     });
   });
@@ -1979,7 +1978,7 @@ describe('background-firefox translate: additional coverage', () => {
       expect(response.success).toBe(true);
       const cache = (response.cache as Record<string, unknown>);
       expect(cache.size).toBe(0);
-      expect(cache.hitRate).toBeDefined();
+      expect(cache.hitRate).toEqual(expect.any(String));
     });
 
     it('reports 0% hit rate with zero translations', async () => {
@@ -2004,16 +2003,16 @@ describe('background-firefox translate: additional coverage', () => {
         type: 'getUsage',
       }) as Record<string, unknown>;
 
-      expect(response.throttle).toBeDefined();
-      expect(response.cache).toBeDefined();
-      expect(response.providers).toBeDefined();
+      expect(response.throttle).toEqual(expect.any(Object));
+      expect(response.cache).toEqual(expect.any(Object));
+      expect(response.providers).toEqual(expect.any(Object));
 
       const throttle = (response.throttle as Record<string, unknown>);
-      expect(throttle.requests).toBeDefined();
-      expect(throttle.tokens).toBeDefined();
-      expect(throttle.requestLimit).toBeDefined();
-      expect(throttle.tokenLimit).toBeDefined();
-      expect(throttle.queue).toBeDefined();
+      expect(throttle.requests).toEqual(expect.any(Number));
+      expect(throttle.tokens).toEqual(expect.any(Number));
+      expect(throttle.requestLimit).toEqual(expect.any(Number));
+      expect(throttle.tokenLimit).toEqual(expect.any(Number));
+      expect(throttle.queue).toEqual(expect.any(Number));
     });
   });
 
@@ -2211,7 +2210,7 @@ describe('background-firefox translate: additional coverage', () => {
 
       expect(response.success).toBe(true);
       expect(response.status).toBe('ready');
-      expect(response.provider).toBeDefined();
+      expect(response.provider).toEqual(expect.any(String));
     });
 
     it('getProviders returns all provider info', async () => {
@@ -2259,7 +2258,7 @@ describe('background-firefox translate: additional coverage', () => {
         targetLang: 'fi',
       }) as Record<string, unknown>;
 
-      expect(response).toBeDefined();
+      expect(response).toMatchObject({ success: expect.any(Boolean) });
       // Clean up
       Object.defineProperty(navigator, 'gpu', { value: undefined, configurable: true });
     });
@@ -2281,7 +2280,7 @@ describe('background-firefox translate: additional coverage', () => {
         targetLang: 'fi',
       }) as Record<string, unknown>;
 
-      expect(response).toBeDefined();
+      expect(response).toMatchObject({ success: expect.any(Boolean) });
       Object.defineProperty(navigator, 'gpu', { value: undefined, configurable: true });
     });
   });
@@ -2309,7 +2308,7 @@ describe('background-firefox translate: additional coverage', () => {
         targetLang: 'fi',
       }) as Record<string, unknown>;
 
-      expect(response).toBeDefined();
+      expect(response).toMatchObject({ success: expect.any(Boolean) });
       expect('success' in response).toBe(true);
     });
   });
@@ -2336,7 +2335,7 @@ describe('background-firefox translate: additional coverage', () => {
         targetLang: 'fi',
       }) as Record<string, unknown>;
 
-      expect(response).toBeDefined();
+      expect(response).toMatchObject({ success: expect.any(Boolean) });
       expect('success' in response).toBe(true);
     });
 
@@ -2357,7 +2356,7 @@ describe('background-firefox translate: additional coverage', () => {
         targetLang: 'fi',
       }) as Record<string, unknown>;
 
-      expect(response).toBeDefined();
+      expect(response).toMatchObject({ success: expect.any(Boolean) });
     });
 
     it('returns empty string unchanged via translate() (line 427)', async () => {
@@ -2492,13 +2491,10 @@ describe('background-firefox translate: additional coverage', () => {
         targetLang: 'fi',
       }) as Record<string, unknown>;
 
-      expect(response).toBeDefined();
+      expect(response).toMatchObject({ success: expect.any(Boolean) });
       expect(errors.isNetworkError).toHaveBeenCalledWith('network timeout');
     });
   });
-
-  // ============================================================================
-  // Coverage: cache eviction when translationCache reaches maxSize (lines 152-158)
   // ============================================================================
 
   describe('cache eviction LRU path (lines 152-158)', () => {
@@ -2611,7 +2607,7 @@ describe('background-firefox translate: additional coverage', () => {
       expect(response.success).toBe(true);
       const cache = response.cache as Record<string, unknown>;
       // hits=7 misses=4 were stored; verify they influenced the hit-rate string
-      expect(cache.hitRate).toBeDefined();
+      expect(cache.hitRate).toEqual(expect.any(String));
     });
   });
 
@@ -2689,7 +2685,9 @@ describe('background-firefox translate: additional coverage', () => {
       // Fire the debounced timer
       await vi.runAllTimersAsync();
 
-      expect(mockStorageSet).toHaveBeenCalled();
+      expect(mockStorageSet).toHaveBeenCalledWith(expect.objectContaining({
+        translationCache: expect.any(Array),
+      }));
     });
 
     it('handles storage.set failure in timer callback gracefully (lines 119-121)', async () => {
@@ -2864,7 +2862,7 @@ describe('background-firefox translate: additional coverage', () => {
 
       expect(response.success).toBe(true);
       expect(response.result).toBe('cached-result');
-      expect(pipeCache.getCachedPipeline).toHaveBeenCalled();
+      expect(pipeCache.getCachedPipeline).toHaveBeenCalledWith(expect.any(String));
     });
 
     // -------------------------------------------------------------------------

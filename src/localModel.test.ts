@@ -82,7 +82,7 @@ describe('localModel singleton', () => {
     const mod = await import('./localModel.js');
     const manager = mod.getModelManager();
 
-    expect(manager).toBeDefined();
+    expect(manager).toBeInstanceOf(mod.LocalModelManager);
     expect(manager.modelLoaded).toBe(false);
     expect(manager.isInitialized).toBe(false);
   });
@@ -115,7 +115,7 @@ describe('LocalModelManager (subclass)', () => {
 
   it('can be instantiated directly', () => {
     const manager = new LocalModelManagerClass();
-    expect(manager).toBeDefined();
+    expect(manager).toBeInstanceOf(LocalModelManagerClass);
     expect(manager.modelLoaded).toBe(false);
   });
 
@@ -156,7 +156,7 @@ describe('LocalModelManager (subclass)', () => {
 
     it('getPerformanceStats returns summary', () => {
       const stats = manager.getPerformanceStats();
-      expect(stats).toBeDefined();
+      expect(stats).toEqual({});
     });
 
     it('checkForUpdates delegates to updater', async () => {
@@ -265,8 +265,8 @@ describe('LocalModelManager (subclass)', () => {
     it('registers on window when window is defined', async () => {
       vi.resetModules();
       await import('./localModel.js');
-      expect(window.LocalModelManager).toBeDefined();
-      expect(window.getModelManager).toBeDefined();
+      expect(window.LocalModelManager).toBeTypeOf('function');
+      expect(window.getModelManager).toBeTypeOf('function');
     });
 
     it('registers on self when window is undefined', async () => {
@@ -275,7 +275,7 @@ describe('LocalModelManager (subclass)', () => {
       delete (globalThis as any).window;
 
       const mod = await import('./localModel.js');
-      expect(mod.LocalModelManager).toBeDefined();
+      expect(mod.LocalModelManager).toBeTypeOf('function');
       // Restore window for other tests
       globalThis.window = origWindow;
     });
