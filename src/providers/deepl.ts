@@ -10,6 +10,7 @@ import { handleProviderHttpError } from '../core/http-errors';
 import { toDeepLCode, getDeepLSupportedLanguages } from '../core/language-map';
 import { createLogger } from '../core/logger';
 import { CONFIG } from '../config';
+import { readErrorBody } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 const log = createLogger('DeepL');
@@ -163,7 +164,7 @@ export class DeepLProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch((e) => { log.warn('Failed to read error body:', e); return ''; });
+        const errorText = await readErrorBody(response);
         const httpError = handleProviderHttpError(
           response.status,
           'DeepL',
@@ -306,19 +307,6 @@ export class DeepLProvider extends BaseProvider {
       }
     }
     return pairs;
-  }
-
-  /**
-   * Test the provider
-   */
-  async test(): Promise<boolean> {
-    try {
-      const result = await this.translate('Hello', 'en', 'fi');
-      return typeof result === 'string' && result.length > 0;
-    } catch (error) {
-      log.error('Test failed:', error);
-      return false;
-    }
   }
 
   /**

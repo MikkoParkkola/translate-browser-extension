@@ -553,6 +553,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             return;
           }
 
+          // Validate sourceLang/targetLang: non-empty strings, max length 20 chars
+          if (typeof message.sourceLang !== 'string' || message.sourceLang.trim().length === 0 || message.sourceLang.length > 20) {
+            sendResponse({ success: false, error: 'Invalid sourceLang: must be non-empty string, max 20 characters' });
+            return;
+          }
+          if (typeof message.targetLang !== 'string' || message.targetLang.trim().length === 0 || message.targetLang.length > 20) {
+            sendResponse({ success: false, error: 'Invalid targetLang: must be non-empty string, max 20 characters' });
+            return;
+          }
+
           // Support profiling sessions passed from background
           const sessionId = message.sessionId;
           if (sessionId) {

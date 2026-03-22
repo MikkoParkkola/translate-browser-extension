@@ -106,6 +106,7 @@ class LocalModelUI {
   private isInitialized: boolean;
   private statusInterval: ReturnType<typeof setInterval> | null;
   private _downloadStartTime: number | null;
+  private abortController: AbortController;
 
   constructor(containerId: string) {
     this.container = document.getElementById(containerId);
@@ -113,6 +114,7 @@ class LocalModelUI {
     this.isInitialized = false;
     this.statusInterval = null;
     this._downloadStartTime = null;
+    this.abortController = new AbortController();
 
     this.init();
   }
@@ -242,34 +244,35 @@ class LocalModelUI {
     const healthBtn = document.getElementById('view-health');
     const cancelBtn = document.getElementById('cancel-download');
     const retryBtn = document.getElementById('retry-action');
+    const opts = { signal: this.abortController.signal };
 
     /* v8 ignore start -- DOM element null guards */
     if (downloadBtn) {
-      downloadBtn.addEventListener('click', () => this.startDownload());
+      downloadBtn.addEventListener('click', () => this.startDownload(), opts);
     }
 
     if (validateBtn) {
-      validateBtn.addEventListener('click', () => this.startValidation());
+      validateBtn.addEventListener('click', () => this.startValidation(), opts);
     }
 
     if (deleteBtn) {
-      deleteBtn.addEventListener('click', () => this.deleteModel());
+      deleteBtn.addEventListener('click', () => this.deleteModel(), opts);
     }
 
     if (testBtn) {
-      testBtn.addEventListener('click', () => this.testTranslation());
+      testBtn.addEventListener('click', () => this.testTranslation(), opts);
     }
 
     if (healthBtn) {
-      healthBtn.addEventListener('click', () => this.showHealthCheck());
+      healthBtn.addEventListener('click', () => this.showHealthCheck(), opts);
     }
 
     if (cancelBtn) {
-      cancelBtn.addEventListener('click', () => this.cancelDownload());
+      cancelBtn.addEventListener('click', () => this.cancelDownload(), opts);
     }
 
     if (retryBtn) {
-      retryBtn.addEventListener('click', () => this.retryLastAction());
+      retryBtn.addEventListener('click', () => this.retryLastAction(), opts);
     }
     /* v8 ignore stop */
   }
@@ -901,12 +904,13 @@ class LocalModelUI {
     const resetBtn = this.container!.querySelector('#reset-stats');
     const toggleBtn = this.container!.querySelector('#toggle-monitoring') as HTMLElement | null;
     const optimizationSelector = this.container!.querySelector('#optimization-selector') as HTMLSelectElement | null;
+    const opts = { signal: this.abortController.signal };
 
     /* v8 ignore start */
     if (refreshBtn) {
       refreshBtn.addEventListener('click', () => {
         this.updatePerformanceDisplay();
-      });
+      }, opts);
     }
 
     if (resetBtn) {
@@ -919,7 +923,7 @@ class LocalModelUI {
           this.updatePerformanceDisplay();
           this.showMessage('Performance statistics reset', 'success');
         }
-      });
+      }, opts);
     }
 
     if (toggleBtn) {
@@ -936,7 +940,7 @@ class LocalModelUI {
           setBtnText('Stop Monitoring');
           this.showMessage('Performance monitoring started', 'success');
         }
-      });
+      }, opts);
     }
 
     if (optimizationSelector) {
@@ -949,7 +953,7 @@ class LocalModelUI {
         } catch (error) {
           this.showMessage(`Failed to switch optimization level: ${(error as Error).message}`, 'error');
         }
-      });
+      }, opts);
     }
     /* v8 ignore stop */
   }
@@ -1098,6 +1102,7 @@ class LocalModelUI {
   }
 
   destroy(): void {
+    this.abortController.abort();
     this.stopStatusUpdates();
     this.hideProgress();
   }

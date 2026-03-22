@@ -27,6 +27,7 @@ import { MODEL_MAP, PIVOT_ROUTES } from '../offscreen/model-maps';
 import { getCachedPipeline, cachePipeline } from '../offscreen/pipeline-cache';
 import { detectLanguage } from '../offscreen/language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline } from '../offscreen/translategemma';
+import { estimateTokens, formatUserError } from './shared/provider-management';
 
 const log = createLogger('Background-FF');
 
@@ -512,11 +513,6 @@ function recordUsage(tokens: number): void {
   rateLimit.tokens += tokens;
 }
 
-function estimateTokens(text: string | string[]): number {
-  const str = Array.isArray(text) ? text.join(' ') : text;
-  return Math.max(1, Math.ceil(str.length / 4));
-}
-
 // ============================================================================
 // Retry Configuration
 // ============================================================================
@@ -526,18 +522,6 @@ const NETWORK_RETRY_CONFIG: Partial<RetryConfig> = {
   baseDelayMs: CONFIG.retry.network.baseDelayMs,
   maxDelayMs: CONFIG.retry.network.maxDelayMs,
 };
-
-// ============================================================================
-// Error Formatting
-// ============================================================================
-
-function formatUserError(error: TranslationError): string {
-  let message = error.message;
-  if (error.suggestion) {
-    message += `. ${error.suggestion}`;
-  }
-  return message;
-}
 
 // ============================================================================
 // Message Handlers

@@ -229,7 +229,8 @@ export function createTranslationCache(
   function get(key: string): PersistentCacheEntry | undefined {
     const entry = cache.get(key);
     if (entry) {
-      // Update usage count and move to end for LRU
+      // Move to end for LRU ordering: delete+set are synchronous Map ops
+      // with no await in between, so no other microtask can interleave.
       entry.useCount++;
       cache.delete(key);
       cache.set(key, entry);
@@ -248,7 +249,9 @@ export function createTranslationCache(
     sourceLang: string,
     targetLang: string,
   ): void {
-    // Evict entries if at capacity using smart eviction
+    // Evict entries if at capacity using smart eviction.
+    // The entire eviction loop + insertion below is synchronous (no await),
+    // so no concurrent set() can interleave and corrupt ordering.
     while (cache.size >= CONFIG.cache.maxSize) {
       const entries = Array.from(cache.entries());
       const oldestCount = Math.max(10, Math.floor(entries.length * 0.1));

@@ -33,7 +33,7 @@ const log = createLogger('SharedHandlers');
 // Cache Handlers
 // ============================================================================
 
-export async function handleGetCacheStats(cache: TranslationCache): Promise<unknown> {
+export async function handleGetCacheStats(cache: TranslationCache): Promise<{ success: boolean; cache: any }> {
   await cache.load();
   return {
     success: true,
@@ -54,7 +54,7 @@ export async function handleClearCache(cache: TranslationCache): Promise<{ succe
 // Usage / Providers
 // ============================================================================
 
-export function handleGetUsage(cache: TranslationCache): unknown {
+export function handleGetUsage(cache: TranslationCache): { throttle: any; cache: any; providers: Record<string, unknown> } {
   const rl = getRateLimitState();
   return {
     throttle: {
@@ -77,7 +77,7 @@ const CONFIG_RL = CONFIG.rateLimits;
 // Cloud Provider Handlers
 // ============================================================================
 
-export async function handleGetCloudProviderStatus(): Promise<unknown> {
+export async function handleGetCloudProviderStatus(): Promise<{ success: boolean; status: Record<string, boolean>; error?: string }> {
   try {
     const keys = Object.values(CLOUD_PROVIDER_KEYS);
     const stored = await safeStorageGet<Record<string, string>>(keys);
@@ -103,7 +103,7 @@ export async function handleSetCloudApiKey(message: {
   provider: string;
   apiKey: string;
   options?: Record<string, unknown>;
-}): Promise<unknown> {
+}): Promise<{ success: boolean; provider?: string; error?: string }> {
   const storageKey = CLOUD_PROVIDER_KEYS[message.provider];
   if (!storageKey) {
     return { success: false, error: `Unknown provider: ${message.provider}` };
@@ -139,7 +139,7 @@ export async function handleSetCloudApiKey(message: {
 export async function handleClearCloudApiKey(
   message: { type: 'clearCloudApiKey'; provider: string },
   storageRemove: (keys: string[]) => Promise<void>,
-): Promise<unknown> {
+): Promise<{ success: boolean; provider?: string; error?: string }> {
   const storageKey = CLOUD_PROVIDER_KEYS[message.provider];
   if (!storageKey) {
     return { success: false, error: `Unknown provider: ${message.provider}` };
@@ -170,7 +170,7 @@ export async function handleClearCloudApiKey(
 // History Handlers
 // ============================================================================
 
-export async function handleGetHistory(): Promise<unknown> {
+export async function handleGetHistory(): Promise<{ success: boolean; history: any[]; error?: string }> {
   try {
     const historyEntries = await getHistory();
     return { success: true, history: historyEntries };
@@ -184,7 +184,7 @@ export async function handleGetHistory(): Promise<unknown> {
   }
 }
 
-export async function handleClearHistory(): Promise<unknown> {
+export async function handleClearHistory(): Promise<{ success: boolean; error?: string }> {
   try {
     await clearTranslationHistory();
     return { success: true };
@@ -219,7 +219,7 @@ export async function handleAddCorrection(message: {
   userCorrection: string;
   sourceLang: string;
   targetLang: string;
-}): Promise<unknown> {
+}): Promise<{ success: boolean; error?: string }> {
   try {
     await addCorrection(
       message.original,
@@ -255,7 +255,7 @@ export async function handleGetCorrection(message: {
   }
 }
 
-export async function handleGetAllCorrections(): Promise<unknown> {
+export async function handleGetAllCorrections(): Promise<{ success: boolean; corrections: any[]; error?: string }> {
   try {
     const corrections = await getAllCorrections();
     return { success: true, corrections };
@@ -269,7 +269,7 @@ export async function handleGetAllCorrections(): Promise<unknown> {
   }
 }
 
-export async function handleGetCorrectionStats(): Promise<unknown> {
+export async function handleGetCorrectionStats(): Promise<{ success: boolean; stats: any; error?: string }> {
   try {
     const stats = await getCorrectionStats();
     return { success: true, stats };
@@ -283,7 +283,7 @@ export async function handleGetCorrectionStats(): Promise<unknown> {
   }
 }
 
-export async function handleClearCorrections(): Promise<unknown> {
+export async function handleClearCorrections(): Promise<{ success: boolean; error?: string }> {
   try {
     await clearCorrections();
     return { success: true };
@@ -312,7 +312,7 @@ export async function handleDeleteCorrection(message: {
   }
 }
 
-export async function handleExportCorrections(): Promise<unknown> {
+export async function handleExportCorrections(): Promise<{ success: boolean; json?: string; error?: string }> {
   try {
     const json = await exportCorrections();
     return { success: true, json };

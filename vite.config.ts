@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 import { resolve } from 'path';
 import { copyFileSync, mkdirSync, existsSync, cpSync } from 'fs';
+import { sharedManualChunks } from './vite.shared';
 
 // Plugin to copy manifest.json and ONNX Runtime files to dist
 function copyExtensionFiles() {
@@ -133,21 +134,8 @@ export default defineConfig({
           }
           return 'assets/[name]-[hash][extname]';
         },
-        // Manual chunks for better code splitting
-        manualChunks: (id) => {
-          // Transformers.js core - shared by all ML providers
-          if (id.includes('@huggingface/transformers')) {
-            return 'transformers';
-          }
-          // ONNX Runtime - separate chunk for WASM-based inference
-          if (id.includes('onnxruntime')) {
-            return 'onnx-runtime';
-          }
-          // Solid.js - UI framework (popup/options only)
-          if (id.includes('solid-js') || id.includes('solid-refresh')) {
-            return 'solid';
-          }
-        },
+        // Manual chunks for better code splitting - shared with Firefox build
+        manualChunks: sharedManualChunks,
       },
     },
   },

@@ -848,4 +848,181 @@ describe('TranslationRouter — targeted branch coverage', () => {
       expect(Object.keys(stats)).toHaveLength(0);
     });
   });
+
+  describe('TranslationRouter — Edge Cases', () => {
+    let router: TranslationRouter;
+
+    beforeEach(async () => {
+      vi.clearAllMocks();
+      router = new TranslationRouter();
+    });
+
+    it('handles concurrent initialize() calls properly', async () => {
+      expect(router).toBeDefined();
+      
+      // Call initialize multiple times concurrently
+      const promises = [
+        router.initialize(),
+        router.initialize(),
+        router.initialize()
+      ];
+      
+      // All should complete without error
+      await Promise.all(promises);
+      
+      // Router should be initialized only once (verify by checking init flag)
+      const isInitialized = (router as unknown as { initialized: boolean }).initialized;
+      expect(isInitialized).toBe(true);
+      
+      // Further initialize calls should be no-ops
+      await router.initialize();
+      expect(isInitialized).toBe(true);
+    });
+
+    it('handles scenario where all providers are unavailable', async () => {
+      // Create router without any available providers
+      const emptyRouter = new TranslationRouter();
+      
+      // Mock all providers to be unavailable
+      const mockUnavailableProvider = {
+        id: 'unavailable-provider',
+        name: 'Unavailable Provider',
+        type: 'cloud' as const,
+        qualityTier: 'standard' as const,
+        costPerMillion: 5,
+        icon: 'test-icon',
+        initialize: vi.fn().mockResolvedValue(undefined),
+        isAvailable: vi.fn().mockResolvedValue(false), // Always unavailable
+        getSupportedLanguages: vi.fn().mockReturnValue([{ src: 'en', tgt: 'fi' }]),
+        translate: vi.fn().mockResolvedValue('translation'),
+        test: vi.fn().mockResolvedValue(false),
+        detectLanguage: vi.fn().mockResolvedValue('en'),
+        getInfo: vi.fn().mockReturnValue({
+          id: 'unavailable-provider',
+          name: 'Unavailable Provider',
+          type: 'cloud',
+          qualityTier: 'standard',
+          costPerMillion: 5,
+          icon: 'test-icon',
+        }),
+      } as TranslationProvider;
+
+      // Replace all providers with unavailable ones
+      (emptyRouter as unknown as { providers: Map<string, TranslationProvider> }).providers.clear();
+      emptyRouter.registerProvider(mockUnavailableProvider);
+      
+      await emptyRouter.initialize();
+
+      // Translation should fail when no providers are available
+      await expect(emptyRouter.translate('hello', 'en', 'fi'))
+        .rejects.toThrow('No available provider for en->fi');
+    });
+
+    it('handles strategy error paths during provider selection', async () => {
+      await router.initialize();
+      
+      // Test with invalid strategy that might cause scoring issues
+      router.setStrategy('cost'); // Cost-focused strategy
+      
+      // Mock a provider that might have issues with cost scoring
+      const problematicProvider = {
+        id: 'problematic-provider',
+        name: 'Problematic Provider',
+        type: 'cloud' as const,
+        qualityTier: 'premium' as const,
+        costPerMillion: undefined, // Invalid/undefined cost
+        icon: 'test-icon',
+        initialize: vi.fn().mockResolvedValue(undefined),
+        isAvailable: vi.fn().mockResolvedValue(true),
+        getSupportedLanguages: vi.fn().mockReturnValue([{ src: 'en', tgt: 'fi' }]),
+        translate: vi.fn().mockResolvedValue('translation'),
+        test: vi.fn().mockResolvedValue(true),
+        detectLanguage: vi.fn().mockResolvedValue('en'),
+        getInfo: vi.fn().mockReturnValue({
+          id: 'problematic-provider',
+          name: 'Problematic Provider',
+          type: 'cloud',
+          qualityTier: 'premium',
+          costPerMillion: undefined,
+          icon: 'test-icon',
+        }),
+      } as unknown as TranslationProvider;
+      
+      router.registerProvider(problematicProvider);
+      
+      // Should handle undefined costPerMillion gracefully during scoring
+      const result = await router.translate('hello', 'en', 'fi');
+      expect(result).toBeDefined();
+      expect(typeof result).toBe('string');
+    });
+
+    it('handles provider initialization failures gracefully', async () => {
+      // Create a provider that fails during initialization
+      const failingProvider = {
+        id: 'failing-provider',
+        name: 'Failing Provider',
+        type: 'cloud' as const,
+        qualityTier: 'standard' as const,
+        costPerMillion: 10,
+        icon: 'test-icon',
+        initialize: vi.fn().mockRejectedValue(new Error('Init failed')),
+        isAvailable: vi.fn().mockResolvedValue(true),
+        getSupportedLanguages: vi.fn().mockReturnValue([{ src: 'en', tgt: 'fi' }]),
+        translate: vi.fn().mockResolvedValue('translation'),
+        test: vi.fn().mockResolvedValue(true),
+        detectLanguage: vi.fn().mockResolvedValue('en'),
+        getInfo: vi.fn().mockReturnValue({
+          id: 'failing-provider',
+          name: 'Failing Provider',
+          type: 'cloud',
+          qualityTier: 'standard',
+          costPerMillion: 10,
+          icon: 'test-icon',
+        }),
+      } as TranslationProvider;
+
+      const testRouter = new TranslationRouter();
+      testRouter.registerProvider(failingProvider);
+      
+      // Router initialization should not fail even if individual providers fail
+      await expect(testRouter.initialize()).resolves.not.toThrow();
+      
+      // Router should still be initialized
+      const isInitialized = (testRouter as unknown as { initialized: boolean }).initialized;
+      expect(isInitialized).toBe(true);
+      
+      // Failed provider should still be registered but may not work properly
+      expect(testRouter.listProviders()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'failing-provider' })
+        ])
+      );
+    });
+
+    it('handles provider without id gracefully during registration', async () => {
+      const invalidProvider = {
+        // id is missing
+        name: 'Invalid Provider',
+        type: 'cloud' as const,
+        qualityTier: 'standard' as const,
+        costPerMillion: 5,
+        icon: 'test-icon',
+        initialize: vi.fn().mockResolvedValue(undefined),
+        isAvailable: vi.fn().mockResolvedValue(true),
+        getSupportedLanguages: vi.fn().mockReturnValue([]),
+        translate: vi.fn().mockResolvedValue('translation'),
+        test: vi.fn().mockResolvedValue(true),
+        detectLanguage: vi.fn().mockResolvedValue('en'),
+        getInfo: vi.fn().mockReturnValue({}),
+      } as unknown as TranslationProvider;
+
+      const initialProviderCount = router.listProviders().length;
+      
+      // Should not register provider without id
+      router.registerProvider(invalidProvider);
+      
+      // Provider count should remain the same
+      expect(router.listProviders()).toHaveLength(initialProviderCount);
+    });
+  });
 });

@@ -106,7 +106,7 @@ describe('OpusMTProvider', () => {
       (provider as any).isInitialized = true;
 
       await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow('Translation failed');
-      expect(consoleSpy).toHaveBeenCalledWith('[OPUS-MT] Single translation error:', translationError);
+      expect(consoleSpy).toHaveBeenCalledWith('[OPUS-MT]', 'Single translation error:', translationError);
     });
 
     it('translates single text', async () => {

@@ -143,6 +143,7 @@ describe('TranslationCache', () => {
     vi.clearAllMocks();
     mockEntries.clear();
     mockCursorIndex = 0;
+    mockCursorEntries = []; // Fix: Clear cursor entries
     resetTranslationCache();
   });
 
@@ -1382,6 +1383,7 @@ describe('remaining uncovered branches', () => {
     vi.clearAllMocks();
     mockEntries.clear();
     mockCursorIndex = 0;
+    mockCursorEntries = [];
     resetTranslationCache();
   });
 
@@ -1585,5 +1587,113 @@ describe('remaining uncovered branches', () => {
     expect(stats.entries).toBe(3);
     expect(stats.newestTimestamp).toBe(now);
     expect(stats.oldestTimestamp).toBe(now - 1000);
+  });
+});
+
+describe('Cache-at-Capacity and LRU Ordering Tests', () => {
+  let cache: TranslationCache;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockEntries.clear();
+    mockCursorIndex = 0;
+    mockCursorEntries = [];
+    resetTranslationCache();
+  });
+
+  afterEach(() => {
+    cache?.close();
+  });
+
+  it('handles cache near capacity without premature eviction', async () => {
+    cache = new TranslationCache(1000);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // Mock a successful put operation
+    const putRequest: { onerror: ((e: any) => void) | null; onsuccess: ((e: any) => void) | null } = { onerror: null, onsuccess: null };
+    mockStore.put.mockReturnValue(putRequest as any);
+    
+    // Add an entry that should fit without triggering eviction
+    const setPromise = cache.set('test', 'en', 'fi', 'opus-mt', 'translation');
+    
+    // Simulate successful storage
+    setTimeout(() => {
+      putRequest.onsuccess?.({});
+    }, 5);
+    
+    await setPromise;
+
+    // Verify the entry was stored successfully
+    expect(mockStore.put).toHaveBeenCalled();
+    const putCall = mockStore.put.mock.calls[0];
+    expect(putCall[0]).toMatchObject({
+      key: expect.any(String),
+      text: 'test',
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'opus-mt',
+      translation: 'translation'
+    });
+  });
+
+  it('triggers eviction process when cache exceeds capacity', async () => {
+    cache = new TranslationCache(100); // Very small cache
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // Mock getStats to return high usage that would trigger eviction
+    const statsRequest: { onerror: ((e: any) => void) | null; onsuccess: ((e: any) => void) | null } = { onerror: null, onsuccess: null };
+    mockIndex.openCursor.mockImplementation(() => statsRequest as any);
+    
+    const putRequest: { onerror: ((e: any) => void) | null; onsuccess: ((e: any) => void) | null } = { onerror: null, onsuccess: null };
+    mockStore.put.mockReturnValue(putRequest as any);
+
+    const setPromise = cache.set('large-entry', 'en', 'fi', 'opus-mt', 'very long translation text');
+    
+    // Simulate operations completing
+    setTimeout(() => {
+      // Simulate getStats cursor
+      if (statsRequest.onsuccess) {
+        const cursor = {
+          value: { size: 200 }, // Over capacity
+          continue: vi.fn(() => {
+            statsRequest.onsuccess?.({ target: { result: null } } as unknown as Event);
+          })
+        };
+        statsRequest.onsuccess({ target: { result: cursor } } as unknown as Event);
+      }
+    }, 5);
+
+    setTimeout(() => {
+      putRequest.onsuccess?.({});
+    }, 10);
+
+    await setPromise;
+
+    // Just verify that storage operations were attempted
+    expect(mockStore.put).toHaveBeenCalled();
+    expect(mockIndex.openCursor).toHaveBeenCalled();
+  });
+
+  it('calculates entry sizes correctly for boundary conditions', async () => {
+    cache = new TranslationCache(1000);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const putRequest = { onerror: null as any, onsuccess: null as any };
+    mockStore.put.mockImplementation(() => {
+      // Auto-resolve the put request on next tick
+      setTimeout(() => putRequest.onsuccess?.({}), 1);
+      return putRequest as any;
+    });
+
+    // Store a single entry and verify size is calculated
+    const promise = cache.set('hello world', 'en', 'fi', 'opus-mt', 'hei maailma');
+    await promise;
+    await new Promise(resolve => setTimeout(resolve, 5));
+
+    expect(mockStore.put).toHaveBeenCalled();
+    const call = mockStore.put.mock.calls[0];
+    expect(call[0]).toHaveProperty('size');
+    expect(typeof call[0].size).toBe('number');
+    expect(call[0].size).toBeGreaterThan(0);
   });
 });

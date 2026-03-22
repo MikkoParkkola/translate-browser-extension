@@ -7,9 +7,10 @@
 import { BaseProvider } from './base-provider';
 import { createTranslationError } from '../core/errors';
 import { handleProviderHttpError } from '../core/http-errors';
-import { getLanguageName, getAllLanguageCodes } from '../core/language-map';
+import { getLanguageName } from '../core/language-map';
 import { createLogger } from '../core/logger';
 import { CONFIG } from '../config';
+import { readErrorBody, estimateMaxTokens, generateAllLanguagePairs } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 const log = createLogger('Anthropic');
@@ -204,7 +205,7 @@ Rules:
         },
         body: JSON.stringify({
           model: this.config.model,
-          max_tokens: Math.min(4096, texts.join('').length * 2 + 500),
+          max_tokens: estimateMaxTokens(texts),
           system: systemPrompt,
           messages: [
             { role: 'user', content: userContent },
@@ -214,7 +215,7 @@ Rules:
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch((e) => { log.warn('Failed to read error body:', e); return ''; });
+        const errorText = await readErrorBody(response);
         const httpError = handleProviderHttpError(
           response.status,
           'Anthropic',
@@ -368,29 +369,7 @@ Rules:
    * Claude supports translation between most languages
    */
   getSupportedLanguages(): LanguagePair[] {
-    const languages = getAllLanguageCodes();
-    const pairs: LanguagePair[] = [];
-    for (const src of languages) {
-      for (const tgt of languages) {
-        if (src !== tgt) {
-          pairs.push({ src, tgt });
-        }
-      }
-    }
-    return pairs;
-  }
-
-  /**
-   * Test the provider
-   */
-  async test(): Promise<boolean> {
-    try {
-      const result = await this.translate('Hello', 'en', 'fi');
-      return typeof result === 'string' && result.length > 0;
-    } catch (error) {
-      log.error('Test failed:', error);
-      return false;
-    }
+    return generateAllLanguagePairs();
   }
 
   /**

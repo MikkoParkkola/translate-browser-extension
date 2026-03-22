@@ -24,6 +24,9 @@ module.exports = [
   // JavaScript configuration
   {
     files: ['**/*.js', '**/*.mjs'],
+    plugins: {
+      import: require('eslint-plugin-import'),
+    },
     languageOptions: {
       ecmaVersion: 2021,
       sourceType: 'module',
@@ -141,6 +144,22 @@ module.exports = [
       'no-undef': 'error', // Catch undefined variables
 
       // === Module & Import Rules ===
+      'import/order': ['warn', {
+        'groups': ['builtin', 'external', 'internal', ['parent', 'sibling'], 'index'],
+        'pathGroups': [
+          {
+            'pattern': '@/**',
+            'group': 'internal',
+            'position': 'before',
+          },
+        ],
+        'pathGroupsExcludedImportTypes': ['builtin'],
+        'alphabetize': {
+          'order': 'asc',
+          'caseInsensitive': true,
+        },
+        'newlines-between': 'never',
+      }],
 
       // === Error Prevention ===
       'no-cond-assign': ['error', 'except-parens'],

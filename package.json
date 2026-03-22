@@ -89,7 +89,6 @@
     "@webgpu/types": "^0.1.69",
     "bestzip": "^2.2.1",
     "copyfiles": "^2.4.1",
-    "cross-fetch": "^4.1.0",
     "electron": "^37.3.1",
     "eslint": "^8.57.0",
     "eslint-plugin-import": "^2.29.0",
@@ -97,8 +96,7 @@
     "globals": "^16.3.0",
     "http-server": "^14.1.1",
     "jsdom": "^29.0.0",
-    "lz-string": "^1.5.0",
-    "pdf-lib": "^1.17.1",
+
     "prettier": "^3.3.2",
     "rimraf": "^6.0.1",
     "size-limit": "^11.1.5",

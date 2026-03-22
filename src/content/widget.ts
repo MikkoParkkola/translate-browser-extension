@@ -14,6 +14,9 @@ let isDragging = false;
 let dragOffset = { x: 0, y: 0 };
 let widgetDragListenersAdded = false;
 
+/** AbortController for widget lifecycle event listeners */
+let widgetAbortController: AbortController | null = null;
+
 const widgetHistory: Array<{ original: string; translated: string }> = [];
 
 /** Provided by index.ts to resolve 'auto' source language */
@@ -49,15 +52,26 @@ function handleWidgetMouseUp(): void {
 
 function addWidgetDragListeners(): void {
   if (widgetDragListenersAdded) return;
-  document.addEventListener('mousemove', handleWidgetMouseMove);
-  document.addEventListener('mouseup', handleWidgetMouseUp);
+  
+  // Create new AbortController for widget listeners if needed
+  if (!widgetAbortController) {
+    widgetAbortController = new AbortController();
+  }
+  
+  document.addEventListener('mousemove', handleWidgetMouseMove, { signal: widgetAbortController.signal });
+  document.addEventListener('mouseup', handleWidgetMouseUp, { signal: widgetAbortController.signal });
   widgetDragListenersAdded = true;
 }
 
 export function removeWidgetDragListeners(): void {
   if (!widgetDragListenersAdded) return;
-  document.removeEventListener('mousemove', handleWidgetMouseMove);
-  document.removeEventListener('mouseup', handleWidgetMouseUp);
+  
+  // Abort all widget event listeners
+  if (widgetAbortController) {
+    widgetAbortController.abort();
+    widgetAbortController = null;
+  }
+  
   widgetDragListenersAdded = false;
 }
 
@@ -223,8 +237,10 @@ function createFloatingWidget(): HTMLElement {
     color: '#94a3b8',
   });
 
-  // Event handlers
-  closeBtn.addEventListener('click', () => hideFloatingWidget());
+  // Event handlers - use AbortController signal for cleanup
+  const signal = widgetAbortController?.signal;
+  
+  closeBtn.addEventListener('click', () => hideFloatingWidget(), { signal });
 
   translateBtn.addEventListener('click', async () => {
     const text = input.value.trim();
@@ -259,7 +275,7 @@ function createFloatingWidget(): HTMLElement {
 
     translateBtn.textContent = 'Translate';
     translateBtn.disabled = false;
-  });
+  }, { signal });
 
   // Enter to translate
   input.addEventListener('keydown', (e) => {
@@ -267,7 +283,7 @@ function createFloatingWidget(): HTMLElement {
       e.preventDefault();
       translateBtn.click();
     }
-  });
+  }, { signal });
 
   // Dragging - only attach mousedown to header, document listeners managed separately
   header.addEventListener('mousedown', (e) => {
@@ -278,7 +294,7 @@ function createFloatingWidget(): HTMLElement {
       y: e.clientY - rect.top,
     };
     widget.style.transition = 'none';
-  });
+  }, { signal });
 
   // Load saved target language
   safeStorageGet<{ targetLang?: string }>(['targetLang']).then((settings) => {
@@ -340,6 +356,12 @@ export function showFloatingWidget(): void {
     return;
   }
 
+  // Create new AbortController for this widget lifecycle
+  if (widgetAbortController) {
+    widgetAbortController.abort();
+  }
+  widgetAbortController = new AbortController();
+
   floatingWidget = createFloatingWidget();
   document.body.appendChild(floatingWidget);
   widgetVisible = true;
@@ -360,6 +382,12 @@ export function hideFloatingWidget(): void {
     floatingWidget.style.display = 'none';
     widgetVisible = false;
     removeWidgetDragListeners();
+    
+    // Clean up the widget DOM element and abort listeners
+    if (widgetAbortController) {
+      widgetAbortController.abort();
+      widgetAbortController = null;
+    }
   }
 }
 

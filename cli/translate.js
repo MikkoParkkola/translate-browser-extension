@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 const readline = require('readline');
-const { configure } = require('../src/throttle');
 const { modelTokenLimits } = require('../src/config');
+const { configure } = require('../src/throttle');
 const { qwenTranslateStream, qwenTranslate } = require('../src/translator');
 
 // eslint-disable-next-line complexity

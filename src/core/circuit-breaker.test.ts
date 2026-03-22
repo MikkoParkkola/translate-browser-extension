@@ -313,3 +313,64 @@ describe('CircuitBreaker — advanced state transitions', () => {
     vi.useRealTimers();
   });
 });
+
+describe('CircuitBreaker — Boundary Tests', () => {
+  it('opens circuit at exact failure threshold', () => {
+    const breaker = new CircuitBreaker({ failureThreshold: 3, recoveryTimeoutMs: 1000 });
+    
+    // Record failures up to threshold - 1
+    breaker.recordFailure('test-provider');
+    breaker.recordFailure('test-provider');
+    expect(breaker.getState('test-provider').state).toBe('closed');
+    expect(breaker.isAvailable('test-provider')).toBe(true);
+    
+    // One more failure should open the circuit exactly at threshold
+    breaker.recordFailure('test-provider');
+    expect(breaker.getState('test-provider').state).toBe('open');
+    expect(breaker.getState('test-provider').consecutiveFailures).toBe(3);
+    expect(breaker.isAvailable('test-provider')).toBe(false);
+  });
+
+  it('transitions to half-open at exact recovery timeout', () => {
+    const breaker = new CircuitBreaker({ failureThreshold: 1, recoveryTimeoutMs: 5000 });
+    const baseTime = 10000;
+    
+    // Open the circuit
+    breaker.recordFailure('test-provider', baseTime);
+    expect(breaker.isAvailable('test-provider', baseTime)).toBe(false);
+    
+    // Just before timeout - still open
+    expect(breaker.isAvailable('test-provider', baseTime + 4999)).toBe(false);
+    expect(breaker.getState('test-provider').state).toBe('open');
+    
+    // Exactly at timeout - should transition
+    expect(breaker.isAvailable('test-provider', baseTime + 5000)).toBe(true);
+    expect(breaker.getState('test-provider').state).toBe('half_open');
+    
+    // lastProbeTime should be set
+    expect(breaker.getState('test-provider').lastProbeTime).toBe(baseTime + 5000);
+  });
+
+  it('handles recovery timeout behavior with multiple providers', () => {
+    const breaker = new CircuitBreaker({ failureThreshold: 2, recoveryTimeoutMs: 1000 });
+    const baseTime = 5000;
+    
+    // Open circuits for two providers at different times
+    breaker.recordFailure('provider-a', baseTime);
+    breaker.recordFailure('provider-a', baseTime);
+    
+    breaker.recordFailure('provider-b', baseTime + 500);
+    breaker.recordFailure('provider-b', baseTime + 500);
+    
+    // At baseTime + 1000, only provider-a should transition
+    expect(breaker.isAvailable('provider-a', baseTime + 1000)).toBe(true);
+    expect(breaker.getState('provider-a').state).toBe('half_open');
+    
+    expect(breaker.isAvailable('provider-b', baseTime + 1000)).toBe(false);
+    expect(breaker.getState('provider-b').state).toBe('open');
+    
+    // At baseTime + 1500, both should be half-open
+    expect(breaker.isAvailable('provider-b', baseTime + 1500)).toBe(true);
+    expect(breaker.getState('provider-b').state).toBe('half_open');
+  });
+});

@@ -2,7 +2,7 @@
  * Language detector tests
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { detectLanguage, samplePageText } from './language-detector';
 import type { LanguageDetectionResult } from './language-detector';
 
@@ -636,5 +636,155 @@ describe('Language Detector — boundary conditions', () => {
     
     // Should return some result for long text
     expect(result !== null || result === null).toBe(true); // Test that function runs without error
+  });
+
+  describe('Language Detector — Edge Cases', () => {
+    beforeEach(() => {
+      // Ensure DOM is clean for each test
+      document.body.innerHTML = '';
+    });
+
+    afterEach(() => {
+      // Restore document.body if it was modified during tests
+      if (!document.body) {
+        const body = document.createElement('body');
+        document.documentElement.appendChild(body);
+      }
+      document.body.innerHTML = '';
+    });
+
+    it('handles mixed-script text gracefully', () => {
+      // Mix of Latin and non-Latin scripts
+      const mixedText = 'Hello world こんにちは sekai 世界 and some more English text for context';
+      const result = detectLanguage(mixedText);
+      
+      // Should detect one of the scripts present (either Latin-based or Japanese)
+      expect(result).not.toBeNull();
+      expect(result!.confidence).toBeGreaterThan(0.1);
+      expect(typeof result!.lang).toBe('string');
+      expect(result!.lang.length).toBeGreaterThan(0);
+    });
+
+    it('handles number-heavy text with minimal alphabetic content', () => {
+      // Text that is mostly numbers and symbols
+      const numberHeavyText = '12345 67890 $1,234.56 +10% 2023-12-31 100.5kg 99.9% success rate 42';
+      const result = detectLanguage(numberHeavyText);
+      
+      // Should either return null or a valid detection
+      if (result !== null) {
+        expect(typeof result.lang).toBe('string');
+        expect(result.confidence).toBeGreaterThan(0);
+        expect(result.confidence).toBeLessThanOrEqual(1);
+      } else {
+        // null is also acceptable for text with insufficient alphabetic content
+        expect(result).toBeNull();
+      }
+    });
+
+    it('maintains detection reproducibility for identical inputs', () => {
+      const testText = 'This is a consistent test string with sufficient length for reliable language detection. It should always produce the same result.';
+      
+      // Run detection multiple times
+      const results = [];
+      for (let i = 0; i < 5; i++) {
+        results.push(detectLanguage(testText));
+      }
+      
+      // All results should be identical
+      const firstResult = results[0];
+      for (let i = 1; i < results.length; i++) {
+        expect(results[i]).toEqual(firstResult);
+      }
+      
+      // Should consistently detect English
+      expect(firstResult).not.toBeNull();
+      expect(firstResult!.lang).toBe('en');
+    });
+
+    it('handles edge cases in script detection with boundary Unicode values', () => {
+      // Test boundary values for different Unicode ranges
+      const tests = [
+        { text: '\u4E00\u9FFF', expected: 'zh' }, // CJK boundaries
+        { text: '\u3040\u309F', expected: 'ja' }, // Hiragana boundaries  
+        { text: '\u30A0\u30FF', expected: 'ja' }, // Katakana boundaries
+        { text: '\uAC00\uD7AF', expected: 'ko' }, // Hangul boundaries
+        { text: '\u0400\u04FF', expected: 'ru' }, // Cyrillic boundaries
+        { text: '\u0600\u06FF', expected: 'ar' }, // Arabic boundaries
+        { text: '\u0900\u097F', expected: 'hi' }, // Devanagari boundaries
+      ];
+      
+      tests.forEach(({ text, expected }) => {
+        const paddedText = text.repeat(20); // Ensure above threshold
+        const result = detectLanguage(paddedText);
+        expect(result).not.toBeNull();
+        expect(result!.lang).toBe(expected);
+        expect(result!.confidence).toBeGreaterThan(0.8);
+      });
+    });
+
+    it('handles very long text without performance issues', () => {
+      // Generate very long text to test performance bounds
+      const longText = 'The quick brown fox jumps over the lazy dog. '.repeat(1000); // ~45KB
+      
+      const startTime = performance.now();
+      const result = detectLanguage(longText);
+      const endTime = performance.now();
+      
+      // Should complete within reasonable time (less than 100ms)
+      expect(endTime - startTime).toBeLessThan(100);
+      expect(result).not.toBeNull();
+      expect(result!.lang).toBe('en');
+      expect(result!.confidence).toBeGreaterThan(0.5); // Lower threshold for repetitive text
+    });
+
+    it('samplePageText handles complex DOM structures correctly', () => {
+      // Create complex nested DOM structure
+      const container = document.createElement('div');
+      container.innerHTML = `
+        <div>
+          <p>Visible paragraph text</p>
+          <script>console.log('should be ignored');</script>
+          <style>body { color: red; }</style>
+          <noscript>No script content</noscript>
+          <div>
+            <span>Nested visible text</span>
+            <div>
+              <em>Deeply nested content</em>
+              <script>more script content to ignore</script>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(container);
+      
+      const result = samplePageText();
+      
+      // Should include visible text but not script/style/noscript content
+      expect(result).toContain('Visible paragraph text');
+      expect(result).toContain('Nested visible text');
+      expect(result).toContain('Deeply nested content');
+      expect(result).not.toContain('should be ignored');
+      expect(result).not.toContain('color: red');
+      expect(result).not.toContain('No script content');
+      expect(result).not.toContain('more script content');
+      
+      document.body.removeChild(container);
+    });
+
+    it('samplePageText respects maxLength parameter correctly', () => {
+      // Create content longer than maxLength
+      const longDiv = document.createElement('div');
+      longDiv.textContent = 'A'.repeat(1000);
+      document.body.appendChild(longDiv);
+      
+      const shortResult = samplePageText(50);
+      const longResult = samplePageText(200);
+      
+      expect(shortResult.length).toBeLessThanOrEqual(50);
+      expect(longResult.length).toBeLessThanOrEqual(200);
+      expect(longResult.length).toBeGreaterThan(shortResult.length);
+      
+      document.body.removeChild(longDiv);
+    });
   });
 });

@@ -428,17 +428,20 @@ async function translatePage(
   provider?: string,
   enableProfiling = false
 ): Promise<void> {
+  // Fix race condition: set flag BEFORE any await/async operations
   if (isTranslatingPage) {
     log.info(' Translation already in progress');
     return;
   }
-
   isTranslatingPage = true;
+
+  // Abort any previous translation if running
+  if (navigationAbortController) navigationAbortController.abort();
+  
   stopBelowFoldObserver();
 
   // Create abort controller for this translation session.
   // Aborted on navigation (beforeunload) or undo to stop wasting API calls.
-  if (navigationAbortController) navigationAbortController.abort();
   navigationAbortController = new AbortController();
   const { signal } = navigationAbortController;
 

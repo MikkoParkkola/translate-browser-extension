@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 import { resolve } from 'path';
 import { copyFileSync, mkdirSync, existsSync } from 'fs';
+import { sharedManualChunks } from './vite.shared';
 
 const __dirname = import.meta.dirname;
 
@@ -93,17 +94,7 @@ export default defineConfig({
           }
           return 'assets/[name]-[hash][extname]';
         },
-        manualChunks: (id) => {
-          if (id.includes('@huggingface/transformers')) {
-            return 'transformers';
-          }
-          if (id.includes('onnxruntime')) {
-            return 'onnx-runtime';
-          }
-          if (id.includes('solid-js') || id.includes('solid-refresh')) {
-            return 'solid';
-          }
-        },
+        manualChunks: sharedManualChunks,
       },
     },
   },

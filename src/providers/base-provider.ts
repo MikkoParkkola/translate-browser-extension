@@ -92,14 +92,12 @@ export abstract class BaseProvider implements TranslationProvider {
   }
 
   /**
-   * Test the provider
+   * Test the provider with standard Hello en->fi translation
    */
   async test(): Promise<boolean> {
     try {
       const result = await this.translate('Hello', 'en', 'fi');
-      /* v8 ignore start */
-      return result !== null && (typeof result === 'string' ? result.length > 0 : result.length > 0);
-      /* v8 ignore stop */
+      return typeof result === 'string' && result.length > 0;
     } catch (error) {
       console.error(`${this.name} test failed:`, error);
       return false;

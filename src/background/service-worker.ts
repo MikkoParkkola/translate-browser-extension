@@ -84,6 +84,7 @@ const translationCache: TranslationCache = createTranslationCache(
 // In-flight request deduplication map.
 // When multiple frames request the same translation simultaneously,
 // they share a single API call instead of making duplicate requests.
+const MAX_IN_FLIGHT = 100;
 const inFlightRequests = new Map<string, { promise: Promise<TranslateResponse>; reject: (error: Error) => void }>();
 
 // Load cache on startup
@@ -96,6 +97,7 @@ translationCache.load();
 const predictionEngine = getPredictionEngine();
 
 // Track preloaded models to avoid duplicate preloads
+const MAX_PRELOADED = 20;
 const preloadedModels = new Set<string>();
 
 /**
@@ -129,6 +131,11 @@ async function preloadPredictedModels(url: string): Promise<void> {
       if (prediction.confidence < 0.3) {
         log.debug(`Skipping low confidence prediction: ${key} (${prediction.confidence.toFixed(2)})`);
         continue;
+      }
+
+      // Check if preloaded models exceed limit
+      if (preloadedModels.size >= MAX_PRELOADED) {
+        preloadedModels.clear();
       }
 
       log.info(`Preloading predicted model: ${key} (confidence: ${prediction.confidence.toFixed(2)})`);
@@ -431,6 +438,20 @@ chrome.runtime.onMessage.addListener(
   ) => {
     // Ignore messages from offscreen document
     if ('target' in message && message.target === 'offscreen') return false;
+
+    // Message validation
+    if (!message || typeof message !== 'object' || typeof message.type !== 'string') return;
+    
+    // For translation messages, validate text/sourceLang/targetLang are strings
+    if (message.type === 'translate') {
+      const translationMessage = message as any;
+      if (typeof translationMessage.text !== 'string' && !Array.isArray(translationMessage.text) ||
+          typeof translationMessage.sourceLang !== 'string' ||
+          typeof translationMessage.targetLang !== 'string') {
+        sendResponse({ success: false, error: 'Invalid translation parameters' });
+        return true;
+      }
+    }
 
     // Validate sender for sensitive operations — only allow from extension pages (popup/options),
     // not content scripts running on arbitrary web pages. Content scripts always have sender.url
@@ -819,6 +840,17 @@ async function handleTranslate(message: {
 }): Promise<TranslateResponse> {
   const provider = message.provider || getProvider();
   const dedupKey = translationCache.getKey(message.text, message.sourceLang, message.targetLang, provider);
+
+  // Check if in-flight requests exceed limit
+  if (inFlightRequests.size >= MAX_IN_FLIGHT) {
+    // Delete the oldest entry (first in Map)
+    const [oldestKey] = inFlightRequests.keys();
+    const oldestEntry = inFlightRequests.get(oldestKey);
+    if (oldestEntry) {
+      oldestEntry.reject(new Error('In-flight request limit exceeded'));
+      inFlightRequests.delete(oldestKey);
+    }
+  }
 
   const existing = inFlightRequests.get(dedupKey);
   if (existing) {

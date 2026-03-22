@@ -88,7 +88,12 @@ export class OpusMTProvider extends BaseProvider {
     try {
       // Dynamically import Transformers.js
       const transformers = await import('@huggingface/transformers');
-      this.pipelineFactory = transformers.pipeline as unknown as typeof this.pipelineFactory;
+      const pipelineFactory = transformers.pipeline as (
+        task: string, 
+        model: string, 
+        options: Record<string, unknown>
+      ) => Promise<Pipeline>;
+      this.pipelineFactory = pipelineFactory;
 
       // Check for WebGPU support
       await webgpuDetector.detect();
@@ -103,7 +108,7 @@ export class OpusMTProvider extends BaseProvider {
 
       this.isInitialized = true;
     } catch (error) {
-      console.error('[OPUS-MT] Initialization failed:', error);
+      log.error('Initialization failed:', error);
       throw error;
     }
   }
@@ -150,7 +155,7 @@ export class OpusMTProvider extends BaseProvider {
         const pipe = await this.pipelineFactory('translation', modelId, {
           device: attempt.device,
           dtype: attempt.dtype,
-          progress_callback: (progress: unknown) => {
+          progress_callback: (progress: { status: string; progress?: number; file?: string }) => {
             log.info('Loading progress:', progress);
           },
         });
@@ -165,7 +170,7 @@ export class OpusMTProvider extends BaseProvider {
       }
     }
 
-    console.error(`[OPUS-MT] All attempts failed for ${modelId}`);
+    log.error(`All attempts failed for ${modelId}`);
     /* v8 ignore start */
     throw lastError ?? new Error(`Failed to load model ${modelId}`);
     /* v8 ignore stop */
@@ -212,7 +217,7 @@ export class OpusMTProvider extends BaseProvider {
 
       return await this.translateSingle(pipe, text, sourceLang, targetLang);
     } catch (error) {
-      console.error('[OPUS-MT] Translation error:', error);
+      log.error('Translation error:', error);
       throw error;
     }
   }
@@ -239,7 +244,7 @@ export class OpusMTProvider extends BaseProvider {
 
       return result[0].translation_text;
     } catch (error) {
-      console.error('[OPUS-MT] Single translation error:', error);
+      log.error('Single translation error:', error);
       throw error;
     }
   }
@@ -263,7 +268,7 @@ export class OpusMTProvider extends BaseProvider {
       }
       return this.isInitialized && this.pipelineFactory !== null;
     } catch (error) {
-      console.error('[OPUS-MT] Availability check failed:', error);
+      log.error('Availability check failed:', error);
       return false;
     }
   }
@@ -292,7 +297,7 @@ export class OpusMTProvider extends BaseProvider {
       log.info('Test result:', result);
       return typeof result === 'string' && result.length > 0;
     } catch (error) {
-      console.error('[OPUS-MT] Test failed:', error);
+      log.error('Test failed:', error);
       return false;
     }
   }
