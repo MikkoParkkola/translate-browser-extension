@@ -8,12 +8,10 @@
  * but direct loading gives us more control over dtype and device selection.
  */
 
-import {
-  Gemma3ForCausalLM,
-  AutoTokenizer,
-  type PreTrainedModel,
-  type PreTrainedTokenizer,
-  type Tensor,
+import type {
+  PreTrainedModel,
+  PreTrainedTokenizer,
+  Tensor,
 } from '@huggingface/transformers';
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
@@ -175,6 +173,7 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
 
     const loadModel = async (device: 'webnn' | 'webgpu' | 'wasm', dtype: string) => {
       log.info(`Loading TranslateGemma with device: ${device}, dtype: ${dtype}`);
+      const { Gemma3ForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
       // Load model and tokenizer in parallel for faster startup.
       // Gemma3ForCausalLM is used directly to avoid pipeline model_type
       // resolution failure (model declares "gemma3", TJS only maps "gemma3_text").

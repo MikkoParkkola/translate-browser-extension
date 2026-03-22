@@ -3,7 +3,6 @@
  * Service workers can't use window/document, so we run ML here.
  */
 
-import { pipeline, env } from '@huggingface/transformers';
 import type { TranslationProviderId, TranslationPipeline } from '../types';
 import { getTranslationCache, type TranslationCacheStats } from '../core/translation-cache';
 import { CONFIG } from '../config';
@@ -35,22 +34,33 @@ const log = createLogger('Offscreen');
 // Initialize network monitoring in offscreen context
 initNetworkMonitoring();
 
-// Configure Transformers.js for Chrome extension environment
-env.allowRemoteModels = true;  // Models from HuggingFace Hub
-env.allowLocalModels = false;  // No local filesystem
-env.useBrowserCache = true;    // Cache models in IndexedDB
-
 // CRITICAL: Point ONNX Runtime to bundled WASM files (not CDN)
 // This avoids CSP violations from dynamic CDN imports
 const wasmBasePath = chrome.runtime.getURL('assets/');
-/* v8 ignore start -- optional chaining in if condition */
-if (env.backends?.onnx?.wasm) {
-  env.backends.onnx.wasm.wasmPaths = wasmBasePath;
-}
-/* v8 ignore stop */
 
 log.info(' WASM path configured:', wasmBasePath);
 
+/**
+ * Lazy-load Transformers.js and configure env on first use.
+ * Defers the ~441KB bundle cost until OPUS-MT translation is first needed.
+ */
+type TransformersLib = typeof import('@huggingface/transformers');
+let _transformers: TransformersLib | null = null;
+
+async function getTransformers(): Promise<TransformersLib> {
+  if (_transformers) return _transformers;
+  const lib = await import('@huggingface/transformers');
+  lib.env.allowRemoteModels = true;
+  lib.env.allowLocalModels = false;
+  lib.env.useBrowserCache = true;
+  /* v8 ignore start */
+  if (lib.env.backends?.onnx?.wasm) {
+    lib.env.backends.onnx.wasm.wasmPaths = wasmBasePath;
+  }
+  /* v8 ignore stop */
+  _transformers = lib;
+  return lib;
+}
 
 /**
  * Select optimal dtype for OPUS-MT models.
@@ -107,7 +117,7 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   let pipe;
   try {
     pipe = await withTimeout(
-      pipeline('translation', modelId, { device, dtype } as Record<string, unknown>),
+      (await getTransformers()).pipeline('translation', modelId, { device, dtype } as Record<string, unknown>),
       CONFIG.timeouts.opusMtDirectMs,
       `Loading model ${modelId}`
     );
