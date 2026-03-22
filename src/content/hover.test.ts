@@ -254,9 +254,11 @@ describe('handleHoverTranslation via mousemove with text node', () => {
     };
   }
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     document.body.innerHTML = '';
+    // Reset hover module's lastHoveredText state before each test
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
     Object.defineProperty(window, 'innerWidth', { value: 1200, writable: true });
     Object.defineProperty(window, 'innerHeight', { value: 800, writable: true });
     mockSafeStorageGet.mockResolvedValue({ targetLang: 'fi', provider: 'opus-mt' });
@@ -298,12 +300,12 @@ describe('handleHoverTranslation via mousemove with text node', () => {
     setResolveSourceLang((lang) => lang);
     initHoverListeners();
 
-    const { restoreCaretRange } = setupTextNodeAndRange('hello world');
+    const { restoreCaretRange } = setupTextNodeAndRange('failword test');
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
 
-    await new Promise((r) => setTimeout(r, 200));
+    await vi.waitFor(() => expect(mockSendMessage).toHaveBeenCalled());
     restoreCaretRange();
 
     // No tooltip since translation was not successful
@@ -317,12 +319,12 @@ describe('handleHoverTranslation via mousemove with text node', () => {
     setResolveSourceLang((lang) => lang);
     initHoverListeners();
 
-    const { restoreCaretRange } = setupTextNodeAndRange('hello world');
+    const { restoreCaretRange } = setupTextNodeAndRange('errorword test');
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
 
-    await new Promise((r) => setTimeout(r, 200));
+    await vi.waitFor(() => expect(mockSendMessage).toHaveBeenCalled());
     restoreCaretRange();
 
     expect(document.getElementById('translate-hover-tooltip')).toBeNull();
@@ -341,7 +343,7 @@ describe('handleHoverTranslation via mousemove with text node', () => {
 
     // First hover
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
-    await new Promise((r) => setTimeout(r, 200));
+    await vi.waitFor(() => expect(document.getElementById('translate-hover-tooltip')).not.toBeNull());
 
     const callsAfterFirst = mockSendMessage.mock.calls.length;
 
@@ -351,7 +353,7 @@ describe('handleHoverTranslation via mousemove with text node', () => {
 
     // Second hover over same word — should use cache
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
-    await new Promise((r) => setTimeout(r, 200));
+    await vi.waitFor(() => expect(document.getElementById('translate-hover-tooltip')).not.toBeNull());
 
     restoreCaretRange();
 
