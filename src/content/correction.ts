@@ -10,6 +10,9 @@ import { createLogger } from '../core/logger';
 
 const log = createLogger('Content');
 
+// Track AbortControllers per element so we can remove click listeners on re-setup
+const correctionAbortControllers = new WeakMap<HTMLElement, AbortController>();
+
 /**
  * Make a translated element editable for corrections
  * When the user clicks on a translated element, they can edit it
@@ -18,6 +21,13 @@ const log = createLogger('Content');
 export function makeTranslatedElementEditable(element: HTMLElement): void {
   // Already set up for editing
   if (element.hasAttribute('data-correction-enabled')) return;
+
+  // Abort any previous listener before adding a new one (prevents leak on undo/re-translate)
+  const prev = correctionAbortControllers.get(element);
+  if (prev) prev.abort();
+
+  const controller = new AbortController();
+  correctionAbortControllers.set(element, controller);
 
   element.setAttribute('data-correction-enabled', 'true');
 
@@ -36,7 +46,7 @@ export function makeTranslatedElementEditable(element: HTMLElement): void {
     e.stopPropagation();
 
     enableCorrectionEditing(element);
-  });
+  }, { signal: controller.signal });
 }
 
 /**

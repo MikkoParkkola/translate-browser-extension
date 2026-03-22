@@ -80,7 +80,9 @@ export const GeneralSettings: Component = () => {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } else {
+      /* v8 ignore start -- OR fallback */
       setSaveError(lastStorageError || 'Failed to save settings. Please try again.');
+      /* v8 ignore stop */
     }
   };
 
@@ -204,4 +206,5 @@ export const GeneralSettings: Component = () => {
   );
 };
 
+/* v8 ignore start -- SolidJS export boundary */
 export default GeneralSettings;

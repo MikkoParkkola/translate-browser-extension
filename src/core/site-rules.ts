@@ -168,6 +168,12 @@ export async function importRules(json: string): Promise<number> {
   try {
     const imported: SiteRulesStore = JSON.parse(json);
 
+    // Validate entry count to prevent storage quota exhaustion
+    const MAX_IMPORT_ENTRIES = 10000;
+    if (Object.keys(imported).length > MAX_IMPORT_ENTRIES) {
+      throw new Error(`Import exceeds maximum of ${MAX_IMPORT_ENTRIES} entries`);
+    }
+
     // Validate structure
     for (const [hostname, rules] of Object.entries(imported)) {
       /* v8 ignore start — Object.entries() always yields string keys */

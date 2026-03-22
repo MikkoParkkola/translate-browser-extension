@@ -6673,4 +6673,47 @@ describe('Coverage gap tests — second wave', () => {
     });
   });
 
+  describe('sender URL validation for sensitive operations', () => {
+    function getHandler() {
+      return mockAddMessageListener.mock.calls[0]?.[0] as (
+        message: unknown,
+        sender: unknown,
+        sendResponse: (response: unknown) => void
+      ) => boolean;
+    }
+
+    it('rejects sensitive message from non-extension sender', () => {
+      const handler = getHandler();
+      const sendResponse = vi.fn();
+
+      const result = handler(
+        { type: 'clearCache' },
+        { url: 'https://evil.com' },
+        sendResponse
+      );
+
+      expect(result).toBe(true);
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: false,
+        error: 'Unauthorized sender',
+      });
+    });
+
+    it('allows sensitive message from chrome-extension:// sender', async () => {
+      const handler = getHandler();
+      const sendResponse = vi.fn();
+
+      handler(
+        { type: 'clearCache' },
+        { url: 'chrome-extension://abc123' },
+        sendResponse
+      );
+
+      await vi.waitFor(() => expect(sendResponse).toHaveBeenCalled(), { timeout: 5000 });
+      const response = sendResponse.mock.calls[0]?.[0] as { success: boolean };
+      // Should proceed normally (not blocked as unauthorized)
+      expect(response.error).not.toBe('Unauthorized sender');
+    });
+  });
+
 });

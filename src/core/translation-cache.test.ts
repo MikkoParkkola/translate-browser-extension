@@ -258,6 +258,48 @@ describe('TranslationCache', () => {
       const updatedEntry = mockStore.put.mock.calls[0][0] as CacheEntry;
       expect(updatedEntry.timestamp).toBeGreaterThan(oldTimestamp);
     });
+
+    it('handles store.put onerror during LRU timestamp update without crashing', async () => {
+      const entry: CacheEntry = {
+        key: 'abc123',
+        text: 'hello',
+        sourceLang: 'en',
+        targetLang: 'fi',
+        provider: 'opus-mt',
+        translation: 'hei',
+        timestamp: Date.now() - 5000,
+        size: 100,
+      };
+
+      // Mock put to return a request whose onerror we can trigger
+      const putRequest = {
+        onerror: null as ((ev: Event) => void) | null,
+        onsuccess: null as ((ev: Event) => void) | null,
+        error: new DOMException('Quota exceeded'),
+      };
+      mockStore.put.mockReturnValueOnce(putRequest);
+
+      mockStore.get.mockReturnValueOnce({
+        onerror: null,
+        onsuccess: null,
+        result: entry,
+      });
+
+      const result = await new Promise<string | null>((resolve) => {
+        cache.get('hello', 'en', 'fi', 'opus-mt').then(resolve);
+        setTimeout(() => {
+          const getRequest = mockStore.get.mock.results[0]?.value;
+          getRequest?.onsuccess?.({ target: { result: entry } });
+          // After onsuccess fires, the put onerror handler is assigned
+          setTimeout(() => {
+            putRequest.onerror?.({ target: putRequest } as unknown as Event);
+          }, 0);
+        }, 0);
+      });
+
+      // Cache hit still returns the translation despite the put error
+      expect(result).toBe('hei');
+    });
   });
 
   describe('set', () => {

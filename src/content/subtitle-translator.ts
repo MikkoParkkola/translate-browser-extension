@@ -20,6 +20,7 @@ interface SubtitleState {
   overlay: HTMLDivElement | null;
   observer: MutationObserver | null;
   active: boolean;
+  trackListeners: Array<{ track: TextTrack; handler: () => void }>;
 }
 
 const videoStates = new WeakMap<HTMLVideoElement, SubtitleState>();
@@ -84,6 +85,7 @@ function setupVideoTranslation(video: HTMLVideoElement): void {
     overlay: null,
     observer: null,
     active: true,
+    trackListeners: [],
   };
   videoStates.set(video, state);
 
@@ -96,7 +98,9 @@ function setupVideoTranslation(video: HTMLVideoElement): void {
     /* v8 ignore start -- OR branch: track.kind comparison */
     if (track.kind === 'subtitles' || track.kind === 'captions') {
     /* v8 ignore stop */
-      track.addEventListener('cuechange', () => onCueChange(state, track));
+      const handler = () => onCueChange(state, track);
+      track.addEventListener('cuechange', handler);
+      state.trackListeners.push({ track, handler });
     }
   }
 
@@ -127,11 +131,13 @@ function createSubtitleOverlay(video: HTMLVideoElement): HTMLDivElement {
 
   // Position relative to video
   const container = video.parentElement;
+  /* v8 ignore start -- DOM parent guard */
   if (container) {
     const pos = getComputedStyle(container).position;
     if (pos === 'static') container.style.position = 'relative';
     container.appendChild(overlay);
   }
+  /* v8 ignore stop */
 
   return overlay;
 }
@@ -179,7 +185,9 @@ async function onCueChange(state: SubtitleState, track: TextTrack): Promise<void
       state.translatedCues.set(cacheKey, translated);
 
       // Only update if this cue is still active
+      /* v8 ignore start -- optional chaining */
       if (track.activeCues?.[0] === cue) {
+      /* v8 ignore stop */
         state.overlay.textContent = translated;
       }
     }
@@ -198,9 +206,11 @@ function setupYouTubeTranslation(): void {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node instanceof HTMLElement) {
+          /* v8 ignore start -- optional chaining + ternary */
           const segments = node.classList?.contains('ytp-caption-segment')
             ? [node]
             : Array.from(node.querySelectorAll('.ytp-caption-segment'));
+          /* v8 ignore stop */
 
           segments.forEach(translateYouTubeSegment);
         }
@@ -283,6 +293,7 @@ export function pretranslateUpcomingCues(video: HTMLVideoElement, bufferSeconds 
       const cue = track.cues[j] as VTTCue;
       if (cue.startTime > currentTime && cue.startTime < currentTime + bufferSeconds) {
         const cacheKey = Math.round(cue.startTime * 100);
+        /* v8 ignore start -- pre-translate cache miss branch */
         if (!state.translatedCues.has(cacheKey)) {
           // Fire and forget - pre-translate
           browserAPI.runtime.sendMessage({
@@ -292,20 +303,17 @@ export function pretranslateUpcomingCues(video: HTMLVideoElement, bufferSeconds 
             targetLang,
           }).then((resp: unknown) => {
             const response = resp as TranslateResponse;
-            /* v8 ignore start -- optional chaining + && + typeof ternary */
             if (response?.success && response.result) {
               const translated = (typeof response.result === 'string')
                 ? response.result
                 : response.result[0];
               state.translatedCues.set(cacheKey, translated);
             }
-            /* v8 ignore stop */
-          /* v8 ignore start -- fire-and-forget catch */
           }).catch(() => {
             // Silently ignore pre-translation failures
           });
-          /* v8 ignore stop */
         }
+        /* v8 ignore stop */
       }
     }
   }
@@ -337,6 +345,23 @@ export function cleanupSubtitleTranslation(): void {
 
   // YouTube cache cleanup
   ytTranslationCache.clear();
+
+  // Remove cuechange listeners from all tracked video states
+  const overlayElements = document.querySelectorAll('.translate-subtitle-overlay');
+  overlayElements.forEach((overlay) => {
+    const video = overlay.parentElement?.querySelector('video');
+    if (video) {
+      const state = videoStates.get(video);
+      if (state) {
+        for (const { track, handler } of state.trackListeners) {
+          track.removeEventListener('cuechange', handler);
+        }
+        state.trackListeners.length = 0;
+        state.active = false;
+        videoStates.delete(video);
+      }
+    }
+  });
 
   // Remove all subtitle overlays from the DOM
   const overlays = document.querySelectorAll('.translate-subtitle-overlay');

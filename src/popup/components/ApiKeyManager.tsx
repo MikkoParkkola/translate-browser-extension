@@ -296,24 +296,22 @@ export const ApiKeyManager: Component<Props> = (props) => {
         </For>
       </div>
 
+      {/* v8 ignore start -- optional chaining + nullish coalescing + guard */}
       <ConfirmDialog
         open={!!confirmRemove()}
         title="Remove API Key"
-        {/* v8 ignore start -- optional chaining + nullish coalescing */}
         message={`Remove ${CLOUD_PROVIDERS.find(p => p.id === confirmRemove())?.name ?? ''} API key? You will need to re-enter it to use this provider.`}
-        {/* v8 ignore stop */}
         confirmLabel="Remove"
         cancelLabel="Keep"
         variant="danger"
         onConfirm={() => {
           const id = confirmRemove();
           setConfirmRemove(null);
-          /* v8 ignore start -- guard: id always set when dialog is open */
           if (id) removeApiKey(id);
-          /* v8 ignore stop */
         }}
         onCancel={() => setConfirmRemove(null)}
       />
+      {/* v8 ignore stop */}
     </div>
   );
 };

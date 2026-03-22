@@ -104,6 +104,19 @@ describe('makeTranslatedElementEditable', () => {
     expect(el.getAttribute('data-correction-enabled')).toBe('true');
   });
 
+  it('aborts previous AbortController on re-setup after undo (line 27)', () => {
+    const el = makeTranslatedEl();
+    makeTranslatedElementEditable(el);
+    // Simulate undo+re-translate: attribute removed but WeakMap still holds controller
+    el.removeAttribute('data-correction-enabled');
+    // Second call should abort the previous controller and set up a new one
+    expect(() => makeTranslatedElementEditable(el)).not.toThrow();
+    expect(el.getAttribute('data-correction-enabled')).toBe('true');
+    // Click still works on the re-setup element
+    el.click();
+    expect(el.getAttribute('contenteditable')).toBe('true');
+  });
+
   it('click on element makes it contenteditable', () => {
     const el = makeTranslatedEl();
     makeTranslatedElementEditable(el);

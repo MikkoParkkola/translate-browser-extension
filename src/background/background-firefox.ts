@@ -660,7 +660,6 @@ async function handleTranslate(message: {
     if (message.sourceLang !== 'auto') {
       const cached = getCachedTranslation(cacheKey);
       if (cached) {
-        cacheHits++;
         const duration = Date.now() - startTime;
         return {
           success: true,
@@ -669,7 +668,6 @@ async function handleTranslate(message: {
         } as TranslateResponse & { cached: boolean };
       }
     }
-    cacheMisses++;
 
     const tokenEstimate = estimateTokens(text);
 

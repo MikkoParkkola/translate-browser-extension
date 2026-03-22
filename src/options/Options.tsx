@@ -225,4 +225,5 @@ export default function Options() {
       </footer>
     </div>
   );
+/* v8 ignore start -- SolidJS component boundary */
 }

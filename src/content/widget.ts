@@ -9,7 +9,7 @@ import { safeStorageGet } from '../core/storage';
 
 let floatingWidget: HTMLElement | null = null;
 let widgetVisible = false;
-let widgetPosition = { x: 20, y: 20 };
+let widgetPosition = { x: -1, y: 20 };
 let isDragging = false;
 let dragOffset = { x: 0, y: 0 };
 let widgetDragListenersAdded = false;
@@ -97,11 +97,14 @@ function createFloatingWidget(): HTMLElement {
     </div>
   `;
 
+  // Compute initial left position: use saved value or default to right side of viewport
+  const initialX = widgetPosition.x < 0 ? Math.max(0, window.innerWidth - 300) : widgetPosition.x;
+
   // Apply styles
   Object.assign(widget.style, {
     position: 'fixed',
     top: `${widgetPosition.y}px`,
-    right: `${widgetPosition.x}px`,
+    left: `${initialX}px`,
     width: '280px',
     background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
     borderRadius: '12px',

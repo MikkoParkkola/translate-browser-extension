@@ -273,6 +273,11 @@ export async function importCorrections(json: string): Promise<number> {
       throw new Error('Invalid format: expected array of corrections');
     }
 
+    const MAX_IMPORT_ENTRIES = 10000;
+    if (imported.length > MAX_IMPORT_ENTRIES) {
+      throw new Error(`Import exceeds maximum of ${MAX_IMPORT_ENTRIES} entries`);
+    }
+
     for (const correction of imported) {
       if (
         typeof correction.original !== 'string' ||

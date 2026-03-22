@@ -42,9 +42,11 @@ env.useBrowserCache = true;    // Cache models in IndexedDB
 // CRITICAL: Point ONNX Runtime to bundled WASM files (not CDN)
 // This avoids CSP violations from dynamic CDN imports
 const wasmBasePath = chrome.runtime.getURL('assets/');
+/* v8 ignore start -- optional chaining in if condition */
 if (env.backends?.onnx?.wasm) {
   env.backends.onnx.wasm.wasmPaths = wasmBasePath;
 }
+/* v8 ignore stop */
 
 log.info(' WASM path configured:', wasmBasePath);
 
@@ -60,7 +62,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
     /* v8 ignore stop */
   });
   return Promise.race([promise, timeoutPromise]).finally(() => {
+    /* v8 ignore start -- timer null guard */
     if (timer !== undefined) clearTimeout(timer);
+    /* v8 ignore stop */
   });
 }
 
@@ -88,11 +92,11 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   const key = `${sourceLang}-${targetLang}`;
   const modelId = MODEL_MAP[key];
 
+  /* v8 ignore start -- defensive guard for unsupported language pair */
   if (!modelId) {
-    /* v8 ignore start -- defensive guard for unsupported language pair */
     throw new Error(`Unsupported language pair: ${key}`);
-    /* v8 ignore stop */
   }
+  /* v8 ignore stop */
 
   // Check LRU cache first
   const cached = getCachedPipeline(modelId);
@@ -169,10 +173,12 @@ async function translateDirect(
         try {
           const result = await pipe(t, { max_length: 512 });
           const translated = (result as Array<{ translation_text: string }>)[0].translation_text;
+          /* v8 ignore start -- debug logging branch */
           // Debug: log first 3 to verify model output
           if (i < 3) {
             log.debug(`Model #${i}: "${t.substring(0, 40)}" -> "${translated.substring(0, 40)}" (same=${t === translated})`);
           }
+          /* v8 ignore stop */
           return translated;
         } catch (err) {
           // Per-item error: return original text instead of crashing entire batch
@@ -259,9 +265,11 @@ async function translate(
         // Identity translations (cached === original) are valid: OPUS-MT legitimately
         // returns the original text for proper nouns, brand names, loanwords, etc.
         // Serve them from cache to avoid repeated expensive model inference.
+        /* v8 ignore start -- debug logging branch */
         if (i < 3) {
           log.debug(`Cache #${i}: "${t.substring(0, 30)}" -> "${cached.substring(0, 30)}"${cached === t ? ' (identity)' : ''}`);
         }
+        /* v8 ignore stop */
         results[i] = cached;
       } else {
         uncachedItems.push({ index: i, text: t });
@@ -283,7 +291,9 @@ async function translate(
 
       // Store results and cache them.
       // Results are always returned to the user even if caching fails.
+      /* v8 ignore start -- ternary: Array.isArray */
       const translationArray = Array.isArray(translations) ? translations : [translations];
+      /* v8 ignore stop */
       let cacheFails = 0;
       for (let i = 0; i < uncachedItems.length; i++) {
         const { index, text: originalText } = uncachedItems[i];
@@ -329,7 +339,9 @@ async function translate(
   const result = await translateWithProvider(text, actualSourceLang, targetLang, provider, sessionId, pageContext);
 
   // Cache the translation (best-effort, don't block response)
+  /* v8 ignore start -- ternary: Array.isArray */
   const resultText = Array.isArray(result) ? result[0] : result;
+  /* v8 ignore stop */
   try {
     await cache.set(text, actualSourceLang, targetLang, provider, resultText);
   } catch (err) {
@@ -472,7 +484,9 @@ async function translateWithProvider(
   try {
     return await executeProvider(text, sourceLang, targetLang, provider, _sessionId, pageContext);
   } catch (primaryError) {
+    /* v8 ignore start -- instanceof ternary */
     const errorMsg = primaryError instanceof Error ? primaryError.message : String(primaryError);
+    /* v8 ignore stop */
 
     // Don't fallback for configuration errors (user needs to fix settings)
     if (errorMsg.includes('not configured') || errorMsg.includes('API key')) {

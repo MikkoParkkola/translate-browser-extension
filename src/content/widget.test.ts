@@ -138,6 +138,18 @@ describe('showFloatingWidget', () => {
     expect(select).not.toBeNull();
   });
 
+  it('positions widget at window.innerWidth - 300 when x is default sentinel -1 (line 101)', async () => {
+    (window as { innerWidth: number }).innerWidth = 1024;
+    vi.useFakeTimers();
+    const { showFloatingWidget } = await freshWidget();
+    showFloatingWidget();
+    vi.runAllTimers();
+
+    const widget = document.getElementById('translate-floating-widget') as HTMLElement;
+    expect(widget.style.left).toBe('724px');
+    vi.useRealTimers();
+  });
+
   it('loads saved targetLang from storage', async () => {
     mockSafeStorageGet.mockResolvedValue({ targetLang: 'de' });
     const { showFloatingWidget } = await freshWidget();

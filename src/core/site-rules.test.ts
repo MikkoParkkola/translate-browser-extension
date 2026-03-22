@@ -310,6 +310,17 @@ describe('site-rules', () => {
       });
     });
 
+    it('throws when import exceeds MAX_IMPORT_ENTRIES', async () => {
+      const rules: Record<string, { autoTranslate: boolean }> = {};
+      for (let i = 0; i < 10001; i++) {
+        rules[`site${i}.com`] = { autoTranslate: true };
+      }
+      const json = JSON.stringify(rules);
+      await expect(importRules(json)).rejects.toThrow(
+        'Import exceeds maximum of 10000 entries'
+      );
+    });
+
     it('throws on invalid JSON', async () => {
       await expect(importRules('not valid json')).rejects.toThrow();
     });

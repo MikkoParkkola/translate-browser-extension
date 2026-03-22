@@ -239,9 +239,9 @@ class Profiler {
       min: sorted[0],
       max: sorted[sorted.length - 1],
       avg: sum / sorted.length,
-      p50: sorted[Math.floor(sorted.length * 0.5)],
-      p95: sorted[Math.floor(sorted.length * 0.95)],
-      p99: sorted[Math.floor(sorted.length * 0.99)],
+      p50: sorted[Math.min(Math.floor(sorted.length * 0.5), sorted.length - 1)],
+      p95: sorted[Math.min(Math.floor(sorted.length * 0.95), sorted.length - 1)],
+      p99: sorted[Math.min(Math.floor(sorted.length * 0.99), sorted.length - 1)],
       total: sum,
     };
   }

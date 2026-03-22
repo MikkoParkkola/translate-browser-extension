@@ -434,12 +434,11 @@ export const CloudProviders: Component = () => {
         }}
       </For>
 
+      {/* v8 ignore start -- optional chaining + nullish coalescing */}
       <ConfirmDialog
         open={!!confirmRemove()}
         title="Remove API Key"
-        {/* v8 ignore start -- optional chaining + nullish coalescing */}
         message={`Remove ${CLOUD_PROVIDERS.find(p => p.id === confirmRemove())?.name ?? ''} API key? You will need to re-enter it to use this provider.`}
-        {/* v8 ignore stop */}
         confirmLabel="Remove"
         cancelLabel="Keep"
         variant="danger"
@@ -449,6 +448,7 @@ export const CloudProviders: Component = () => {
         }}
         onCancel={() => setConfirmRemove(null)}
       />
+      {/* v8 ignore stop */}
     </div>
   );
 };

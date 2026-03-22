@@ -654,7 +654,31 @@ describe('OpenAIProvider', () => {
   });
 
   describe('translate batch handling (lines 236-242)', () => {
-    it('splits results on batch separator marker', async () => {
+    it('parses <tN> XML tags for batch translations (primary format)', async () => {
+      await provider.setApiKey('sk-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [
+              {
+                message: {
+                  content: '<t0>Hei</t0>\n<t1>Maailma</t1>',
+                },
+              },
+            ],
+            usage: { total_tokens: 20, prompt_tokens: 10, completion_tokens: 10 },
+          }),
+      });
+
+      const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toEqual(['Hei', 'Maailma']);
+    });
+
+    it('falls back to separator splitting when no XML tags found', async () => {
       await provider.setApiKey('sk-key');
 
       mockFetch.mockResolvedValueOnce({

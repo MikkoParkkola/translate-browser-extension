@@ -259,6 +259,13 @@ function onKeyUp(e: KeyboardEvent): void {
   }
 }
 
+// Named handler so it can be removed on cleanup
+function onWindowBlur(): void {
+  isAltKeyDown = false;
+  document.body.style.cursor = '';
+  removeHoverTooltip();
+}
+
 /**
  * Initialize hover translation listeners
  */
@@ -266,11 +273,7 @@ export function initHoverListeners(): void {
   document.addEventListener('mousemove', onMouseMove, { passive: true });
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('keyup', onKeyUp);
-  window.addEventListener('blur', () => {
-    isAltKeyDown = false;
-    document.body.style.cursor = '';
-    removeHoverTooltip();
-  });
+  window.addEventListener('blur', onWindowBlur);
 }
 
 /**
@@ -280,5 +283,6 @@ export function cleanupHoverListeners(): void {
   document.removeEventListener('mousemove', onMouseMove);
   document.removeEventListener('keydown', onKeyDown);
   document.removeEventListener('keyup', onKeyUp);
+  window.removeEventListener('blur', onWindowBlur);
   hoverTranslationCache.clear();
 }

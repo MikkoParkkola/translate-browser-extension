@@ -252,6 +252,19 @@ describe('Corrections Module', () => {
       await expect(correctionsModule.importCorrections(json)).rejects.toThrow('missing required fields');
     });
 
+    it('should reject import exceeding MAX_IMPORT_ENTRIES', async () => {
+      const entries = Array.from({ length: 10001 }, (_, i) => ({
+        original: `word${i}`,
+        userCorrection: `korjaus${i}`,
+        sourceLang: 'en',
+        targetLang: 'fi',
+      }));
+      const json = JSON.stringify(entries);
+      await expect(correctionsModule.importCorrections(json)).rejects.toThrow(
+        'Import exceeds maximum of 10000 entries'
+      );
+    });
+
     it('should use defaults for missing machineTranslation, timestamp, useCount', async () => {
       const json = JSON.stringify([
         {

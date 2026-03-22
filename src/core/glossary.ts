@@ -99,8 +99,9 @@ export async function clearGlossary(): Promise<void> {
 function createTermRegex(term: string, caseSensitive: boolean): RegExp {
   // Escape special regex characters
   const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // Word boundary matching
-  return new RegExp(`\\b${escaped}\\b`, caseSensitive ? 'g' : 'gi');
+  // Unicode-aware word boundary: not preceded/followed by a letter or digit
+  const flags = caseSensitive ? 'gu' : 'giu';
+  return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, flags);
 }
 
 /**

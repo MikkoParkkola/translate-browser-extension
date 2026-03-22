@@ -159,7 +159,10 @@ export class TranslationCache {
 
             // Update timestamp for LRU (touch the entry)
             entry.timestamp = Date.now();
-            store.put(entry);
+            const putRequest = store.put(entry);
+            putRequest.onerror = () => {
+              log.warn('Failed to update cache entry timestamp:', putRequest.error);
+            };
 
             resolve(entry.translation);
           } else {

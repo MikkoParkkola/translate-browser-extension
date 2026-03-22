@@ -575,7 +575,7 @@ describe('AnthropicProvider', () => {
   });
 
   describe('translate batch handling', () => {
-    it('parses XML-tagged results for batch translations', async () => {
+    it('parses numbered <tN> XML tags for batch translations (primary format)', async () => {
       await provider.setApiKey('sk-key');
 
       mockFetch.mockResolvedValueOnce({
@@ -588,7 +588,7 @@ describe('AnthropicProvider', () => {
             content: [
               {
                 type: 'text',
-                text: '<text id="0">Hei</text>\n<text id="1">Maailma</text>',
+                text: '<t0>Hei</t0>\n<t1>Maailma</t1>',
               },
             ],
             model: 'claude-3-5-haiku-20241022',
@@ -1046,6 +1046,79 @@ describe('AnthropicProvider', () => {
 
       expect(Array.isArray(result)).toBe(true);
       expect(result).toEqual(['Hei']);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Coverage: batch XML fallback parsing (lines 247-267)
+  // ---------------------------------------------------------------------------
+
+  describe('batch XML fallback parsing', () => {
+    beforeEach(async () => {
+      await provider.setApiKey('sk-test-key');
+    });
+
+    it('falls back to legacy <text id="N"> format when <tN> tags are absent', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            content: [
+              {
+                type: 'text',
+                text: '<text id="0">Hei</text>\n<text id="1">Maailma</text>',
+              },
+            ],
+            usage: { input_tokens: 20, output_tokens: 10 },
+          }),
+      });
+
+      const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toEqual(['Hei', 'Maailma']);
+    });
+
+    it('falls back to newline splitting when no XML tags are present', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            content: [
+              {
+                type: 'text',
+                text: 'Hei\nMaailma',
+              },
+            ],
+            usage: { input_tokens: 20, output_tokens: 10 },
+          }),
+      });
+
+      const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toEqual(['Hei', 'Maailma']);
+    });
+
+    it('returns empty strings for each input when response is empty', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            content: [
+              {
+                type: 'text',
+                text: '',
+              },
+            ],
+            usage: { input_tokens: 20, output_tokens: 0 },
+          }),
+      });
+
+      const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toEqual(['', '']);
     });
   });
 

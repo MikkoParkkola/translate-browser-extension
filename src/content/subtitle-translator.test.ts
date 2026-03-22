@@ -469,6 +469,29 @@ describe('Subtitle Translator', () => {
       expect(() => initSubtitleTranslation('de')).not.toThrow();
     });
 
+    it('removes cuechange listeners from tracked video states (lines 357-359)', () => {
+      const video = createMockVideo([
+        { kind: 'subtitles' },
+        { kind: 'captions' },
+      ]);
+      const container = document.createElement('div');
+      container.appendChild(video);
+      document.body.appendChild(container);
+
+      initSubtitleTranslation('fi');
+
+      // Both tracks should have had cuechange listeners added
+      const tracks = video.textTracks;
+      const track0 = tracks[0] as unknown as { removeEventListener: Mock };
+      const track1 = tracks[1] as unknown as { removeEventListener: Mock };
+
+      cleanupSubtitleTranslation();
+
+      // Verify removeEventListener was called with 'cuechange' and a function handler
+      expect(track0.removeEventListener).toHaveBeenCalledWith('cuechange', expect.any(Function));
+      expect(track1.removeEventListener).toHaveBeenCalledWith('cuechange', expect.any(Function));
+    });
+
     it('can be called multiple times safely', () => {
       initSubtitleTranslation('fi');
       expect(() => {
