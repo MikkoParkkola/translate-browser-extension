@@ -2,7 +2,7 @@
  * Circuit Breaker unit tests
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CircuitBreaker } from './circuit-breaker';
 
 describe('CircuitBreaker', () => {

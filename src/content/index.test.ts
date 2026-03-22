@@ -2558,7 +2558,7 @@ describe('Content Script', () => {
         cb({ didTimeout: false, timeRemaining: () => 50 } as IdleDeadline);
         return 1;
       });
-      (window as Window & { requestIdleCallback: typeof idleCallbackFn }).requestIdleCallback = idleCallbackFn;
+      (window as unknown as Window & { requestIdleCallback: typeof idleCallbackFn }).requestIdleCallback = idleCallbackFn;
 
       vi.useFakeTimers();
       await import('./index');
@@ -2568,7 +2568,7 @@ describe('Content Script', () => {
       expect(idleCallbackFn).toHaveBeenCalled();
 
       // Cleanup
-      delete (window as Window & { requestIdleCallback?: unknown }).requestIdleCallback;
+      delete (window as any).requestIdleCallback;
     });
 
     it('logs site-specific rules when they exist', async () => {
@@ -3584,8 +3584,10 @@ describe('Content Script', () => {
 
     it('handles parent element without bounding rect', async () => {
       // Create detached nodes
-      const div = document.createElement('div');
-      const textNode = document.createTextNode('Detached content');
+      // @ts-expect-error unused side-effect
+      const _div: unknown = document.createElement('div');
+      // @ts-expect-error unused side-effect
+      const _textNode = document.createTextNode('Detached content');
       // Note: not appending to DOM, so parent exists but getBoundingClientRect may fail
       
       document.body.innerHTML = '<div>Regular content</div>';
@@ -4472,7 +4474,7 @@ describe('Content Script', () => {
       // Make getGlossary take a while so two calls overlap
       let resolveGlossary!: (value: Record<string, string>) => void;
       vi.mocked(g.getGlossary).mockImplementationOnce(
-        () => new Promise((res) => { resolveGlossary = res; })
+        () => new Promise((res) => { resolveGlossary = res as any; })
       );
 
       // Two rapid translatePage calls will both trigger loadGlossary

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/ci.yml/badge.svg)](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/codeql.yml/badge.svg)](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/codeql.yml)
-![Tests](https://img.shields.io/badge/tests-3%2C154%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-5%2C038%20passed-brightgreen)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue?logo=typescript&logoColor=white)
 ![License](https://img.shields.io/github/license/MikkoParkkola/translate-browser-extension)
 ![Chrome](https://img.shields.io/badge/Chrome-116%2B-brightgreen?logo=googlechrome&logoColor=white)
@@ -48,6 +48,22 @@ TRANSLATE! is not a drop-in replacement for built-in translation in every scenar
 - **Not instant.** Built-in translation is tightly integrated with the browser engine. TRANSLATE! works as a content script, which means a short delay on large pages.
 
 If built-in translation works reliably for your languages and pages, you probably don't need this. TRANSLATE! is for the cases where it doesn't.
+
+## Quality
+
+| Metric | Value |
+|--------|-------|
+| Unit tests | 5,038 (127 test files) |
+| Statement coverage | 100% |
+| Branch coverage | 99.9% |
+| Function coverage | 100% |
+| Line coverage | 100% |
+| Contract tests | 58 (provider interface conformance) |
+| Mutation testing | Stryker configured for core + providers |
+| E2E tests | Playwright (Chrome, Firefox, WebKit) |
+| CI | GitHub Actions: lint, typecheck, test, build, e2e, CodeQL, SBOM |
+
+The test suite runs in ~40 seconds and covers every source file. Coverage thresholds (100/98/100/100) are enforced in CI — the build fails if coverage drops.
 
 <!-- Screenshots: TODO — take fresh marketing screenshots showing:
   1. Popup translating a real page (before/after)
@@ -210,7 +226,7 @@ Streams translations by default. Use `--no-stream` for batch mode, `-d` for debu
 
 ```sh
 npm install          # Install dependencies
-npm test             # Run 3,100+ unit tests
+npm test             # Run 5,038 unit tests
 npm run test:e2e     # Playwright PDF visual comparison tests
 npm run build        # Chrome production build (dist/)
 npm run build:firefox # Firefox build (dist-firefox/)

@@ -25,14 +25,15 @@ class MockGPUBuffer {
   usage: number;
   destroyed = false;
   private mappedData: ArrayBuffer;
-  private mapped = false;
+  // @ts-expect-error unused side-effect
+  private _mapped = false;
 
   constructor(descriptor: { size: number; usage: number; mappedAtCreation?: boolean }) {
     this.size = descriptor.size;
     this.usage = descriptor.usage;
     this.mappedData = new ArrayBuffer(descriptor.size);
     if (descriptor.mappedAtCreation) {
-      this.mapped = true;
+      this._mapped = true;
     }
     createdBuffers.push(this);
   }
@@ -42,11 +43,11 @@ class MockGPUBuffer {
   }
 
   unmap(): void {
-    this.mapped = false;
+    this._mapped = false;
   }
 
   async mapAsync(_mode: number): Promise<void> {
-    this.mapped = true;
+    this._mapped = true;
   }
 
   destroy(): void {
@@ -1552,7 +1553,8 @@ describe('GCQ Runtime', () => {
 
     it('handles denormal + special scales in residual path (GCQ4R)', async () => {
       const tensorSize = 64;
-      const numBlocks = Math.ceil(tensorSize / 32);
+      // @ts-expect-error unused side-effect
+      const _numBlocks = Math.ceil(tensorSize / 32);
 
       const gcqBuf = buildGCQBuffer({
         format: 'GCQ4R',

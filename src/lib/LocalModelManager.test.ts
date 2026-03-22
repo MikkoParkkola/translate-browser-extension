@@ -5,7 +5,7 @@
  * model status, health checks, and cleanup.
  */
 
-import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 
 // Hoist mock instances AND constructor mocks so vi.mock factories can reference them
 const {
@@ -920,7 +920,7 @@ describe('LocalModelManager Extended Coverage', () => {
       globalThis.chrome = undefined;
 
       localStorage.setItem('lmm_fb_key', JSON.stringify({ val: 42 }));
-      const result = await manager._getStoredData('fb_key');
+      const result = await (manager as any)._getStoredData('fb_key');
       expect(result).toEqual({ val: 42 });
 
       localStorage.removeItem('lmm_fb_key');
@@ -933,7 +933,7 @@ describe('LocalModelManager Extended Coverage', () => {
       globalThis.chrome = undefined;
 
       localStorage.removeItem('lmm_missing');
-      const result = await manager._getStoredData('missing');
+      const result = await (manager as any)._getStoredData('missing');
       expect(result).toBeNull();
 
       globalThis.chrome = savedChrome;
@@ -944,7 +944,7 @@ describe('LocalModelManager Extended Coverage', () => {
       // @ts-expect-error - remove chrome
       globalThis.chrome = undefined;
 
-      await manager._storeData('fb_store', { x: 1 });
+      await (manager as any)._storeData('fb_store', { x: 1 });
       const raw = localStorage.getItem('lmm_fb_store');
       expect(raw).toBe(JSON.stringify({ x: 1 }));
 
@@ -960,7 +960,7 @@ describe('LocalModelManager Extended Coverage', () => {
       const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
         throw new Error('QuotaExceeded');
       });
-      const result = await manager._getStoredData('throw_key');
+      const result = await (manager as any)._getStoredData('throw_key');
       expect(result).toBeNull();
 
       spy.mockRestore();
@@ -975,7 +975,7 @@ describe('LocalModelManager Extended Coverage', () => {
       const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
         throw new Error('QuotaExceeded');
       });
-      await expect(manager._storeData('throw_key', {})).resolves.toBeUndefined();
+      await expect((manager as any)._storeData('throw_key', {})).resolves.toBeUndefined();
 
       spy.mockRestore();
       globalThis.chrome = savedChrome;
@@ -987,7 +987,7 @@ describe('LocalModelManager Extended Coverage', () => {
       const savedGet = (globalThis.chrome as any).storage.local.get;
       (globalThis.chrome as any).storage.local.get = () => { throw new Error('Storage corrupt'); };
 
-      const result = await manager._getStoredData('corrupt_key');
+      const result = await (manager as any)._getStoredData('corrupt_key');
       expect(result).toBeNull();
 
       (globalThis.chrome as any).storage.local.get = savedGet;
@@ -997,7 +997,7 @@ describe('LocalModelManager Extended Coverage', () => {
       const savedSet = (globalThis.chrome as any).storage.local.set;
       (globalThis.chrome as any).storage.local.set = () => { throw new Error('Storage corrupt'); };
 
-      await expect(manager._storeData('corrupt_key', {})).resolves.toBeUndefined();
+      await expect((manager as any)._storeData('corrupt_key', {})).resolves.toBeUndefined();
 
       (globalThis.chrome as any).storage.local.set = savedSet;
     });
@@ -1008,7 +1008,7 @@ describe('LocalModelManager Extended Coverage', () => {
       manager.consecutiveFailures = 2;
       manager.modelCorrupted = false;
 
-      manager._handleError(new Error('repeated failure'), 'test-trigger');
+      (manager as any)._handleError(new Error('repeated failure'), 'test-trigger');
 
       // _triggerRecovery is async fire-and-forget; wait for it
       await vi.waitFor(() => {
@@ -1019,10 +1019,10 @@ describe('LocalModelManager Extended Coverage', () => {
 
     it('does not trigger recovery when already in recovery', async () => {
       manager.consecutiveFailures = 2;
-      manager.isInRecovery = true;
+      (manager as any).isInRecovery = true;
       manager.modelCorrupted = false;
 
-      manager._handleError(new Error('repeated failure'), 'test-no-double');
+      (manager as any)._handleError(new Error('repeated failure'), 'test-no-double');
 
       await new Promise(r => setTimeout(r, 50));
       expect(manager.modelCorrupted).toBe(false);
@@ -1082,7 +1082,7 @@ describe('LocalModelManager Extended Coverage', () => {
       globalThis.chrome = undefined;
       manager.modelWorker = null;
 
-      await manager._ensureWorker();
+      await (manager as any)._ensureWorker();
       expect(manager.modelWorker).toBeTruthy();
 
       globalThis.chrome = savedChrome;
@@ -1094,7 +1094,7 @@ describe('LocalModelManager Extended Coverage', () => {
       // Mock _getStoredData to reject — the internal chrome.storage throw is
       // caught inside _getStoredData (returns null), so we need to mock at
       // this level to exercise getModelStatus's own catch block.
-      vi.spyOn(manager, '_getStoredData').mockRejectedValue(new Error('Corrupt'));
+      vi.spyOn(manager, '_getStoredData' as any).mockRejectedValue(new Error('Corrupt'));
 
       const status = await manager.getModelStatus();
       expect(status.downloaded).toBe(false);
@@ -1110,14 +1110,14 @@ describe('LocalModelManager Extended Coverage', () => {
         const unloadSpy = vi.spyOn(manager, '_unloadModel');
 
         // Schedule unload — timer set for unloadTimeout ms from now
-        manager._scheduleUnload();
+        (manager as any)._scheduleUnload();
 
         // Simulate usage halfway through the timeout
-        vi.advanceTimersByTime(manager.unloadTimeout / 2);
-        manager.lastUsed = Date.now(); // Touch — model was used recently
+        vi.advanceTimersByTime((manager as any).unloadTimeout / 2);
+        (manager as any).lastUsed = Date.now(); // Touch — model was used recently
 
         // Fire the timer (remaining half of timeout)
-        vi.advanceTimersByTime(manager.unloadTimeout / 2);
+        vi.advanceTimersByTime((manager as any).unloadTimeout / 2);
 
         // The callback checks Date.now() - lastUsed >= unloadTimeout
         // Date.now() = unloadTimeout, lastUsed = unloadTimeout/2
@@ -1133,10 +1133,10 @@ describe('LocalModelManager Extended Coverage', () => {
     it('logs error when _unloadModel throws during recovery', async () => {
       vi.spyOn(manager, '_unloadModel').mockRejectedValue(new Error('Unload failed'));
 
-      await manager._triggerRecovery();
+      await (manager as any)._triggerRecovery();
 
       // Should complete without throwing — isInRecovery reset in finally block
-      expect(manager.isInRecovery).toBe(false);
+      expect((manager as any).isInRecovery).toBe(false);
     });
   });
 
@@ -1144,7 +1144,7 @@ describe('LocalModelManager Extended Coverage', () => {
     it('resolves after specified delay', async () => {
       vi.useFakeTimers();
       try {
-        const sleepPromise = manager._sleep(1000);
+        const sleepPromise = (manager as any)._sleep(1000);
         vi.advanceTimersByTime(1000);
         await expect(sleepPromise).resolves.toBeUndefined();
       } finally {
@@ -1196,9 +1196,9 @@ describe('LocalModelManager Extended Coverage', () => {
     });
 
     it('cancelModelDownload sets downloadCancelled flag', () => {
-      manager.downloadCancelled = false;
+      (manager as any).downloadCancelled = false;
       manager.cancelModelDownload();
-      expect(manager.downloadCancelled).toBe(true);
+      expect((manager as any).downloadCancelled).toBe(true);
     });
 
     it('cancelModelDownload sends abort message to worker if available', () => {
@@ -1544,7 +1544,7 @@ describe('LocalModelManager - Targeted Missing Coverage', () => {
       expect(manager.modelLoaded).toBe(false);
       expect(manager.modelWorker).toBeNull();
 
-      // @ts-expect-error - restore caches
+      // restore caches
       globalThis.caches = savedCaches;
     });
   });

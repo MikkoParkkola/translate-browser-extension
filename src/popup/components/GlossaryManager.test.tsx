@@ -316,7 +316,7 @@ describe('GlossaryManager', () => {
   });
 
   it('shows error when adding term with empty fields', async () => {
-    const { container } = render(() => <GlossaryManager />);
+    const { container: _container } = render(() => <GlossaryManager />);
     await vi.waitFor(() => {
       expect(screen.getByText('+ Add Term')).toBeTruthy();
     });

@@ -501,7 +501,8 @@ describe('GoogleCloudProvider', () => {
 
     it('persistChar usage failure does not crash translate', async () => {
       await provider.setApiKey('AIza-test-key');
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      // @ts-expect-error unused side-effect
+      const _consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       // Make storage.set fail
       (chrome.storage.local.set as ReturnType<typeof vi.fn>).mockRejectedValueOnce(

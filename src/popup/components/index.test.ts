@@ -47,7 +47,7 @@ vi.mock('../../core/site-rules', () => ({
 }));
 
 vi.mock('../../shared/ConfirmDialog', () => ({
-  ConfirmDialog: (props: any) => null,
+  ConfirmDialog: (__props: any) => null,
 }));
 
 import {

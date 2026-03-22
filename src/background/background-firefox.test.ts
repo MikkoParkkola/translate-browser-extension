@@ -5,7 +5,7 @@
  * for background-firefox.ts. Mocks all external dependencies.
  */
 
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll, afterEach } from 'vitest';
 
 // ============================================================================
 // Mocks — set up BEFORE any imports
@@ -802,7 +802,7 @@ describe('background-firefox startup provider restore', () => {
     // The module loaded in beforeAll calls safeStorageGet during the async IIFE
     // We verify the mock was called at least once during the full lifecycle
     // (clearAllMocks runs in beforeEach so we can only check this after a fresh invoke)
-    const { safeStorageGet } = await import('../core/storage');
+    const { safeStorageGet: _safeStorageGet } = await import('../core/storage');
     await invoke({ type: 'ping' });
     // ping also calls safeStorageGet internally for rate limit check logic,
     // but the key point is the module initializes without error
@@ -1156,7 +1156,6 @@ describe('background-firefox translate: additional coverage', () => {
       // Instead, let's mock Date.now to be in same window and manually fill rate limit
 
       vi.useFakeTimers();
-      const now = Date.now();
 
       // Do 100 translations to fill up rate limit
       for (let i = 0; i < 100; i++) {
@@ -1813,7 +1812,6 @@ describe('background-firefox translate: additional coverage', () => {
 
   describe('handleMessage comprehensive coverage', () => {
     it('handles unknown message type gracefully', async () => {
-      const sendResponse = vi.fn();
       const caughtError: unknown[] = [];
 
       await new Promise<void>((resolve) => {
@@ -2411,8 +2409,8 @@ describe('background-firefox translate: additional coverage', () => {
       const origReqLimit = configMod.CONFIG.rateLimits.requestsPerMinute;
       const origWindowMs = configMod.CONFIG.rateLimits.windowMs;
       // Set windowMs very large so window never resets, and limit to 0 requests
-      configMod.CONFIG.rateLimits.requestsPerMinute = 0;
-      configMod.CONFIG.rateLimits.windowMs = 999_999_999;
+      (configMod.CONFIG.rateLimits as any).requestsPerMinute = 0;
+      (configMod.CONFIG.rateLimits as any).windowMs = 999_999_999;
 
       try {
         const response = await invoke({
@@ -2426,8 +2424,8 @@ describe('background-firefox translate: additional coverage', () => {
         expect(response.error).toContain('Too many requests');
         expect(typeof response.duration).toBe('number');
       } finally {
-        configMod.CONFIG.rateLimits.requestsPerMinute = origReqLimit;
-        configMod.CONFIG.rateLimits.windowMs = origWindowMs;
+        (configMod.CONFIG.rateLimits as any).requestsPerMinute = origReqLimit;
+        (configMod.CONFIG.rateLimits as any).windowMs = origWindowMs;
       }
     });
 
@@ -2436,11 +2434,11 @@ describe('background-firefox translate: additional coverage', () => {
       const origTokenLimit = configMod.CONFIG.rateLimits.tokensPerMinute;
       const origWindowMs = configMod.CONFIG.rateLimits.windowMs;
       // tokensPerMinute = 0 → any token estimate (≥1) exceeds it
-      configMod.CONFIG.rateLimits.tokensPerMinute = 0;
-      configMod.CONFIG.rateLimits.windowMs = 999_999_999;
+      (configMod.CONFIG.rateLimits as any).tokensPerMinute = 0;
+      (configMod.CONFIG.rateLimits as any).windowMs = 999_999_999;
       // Ensure request count is below limit to reach the token check at line 475
       const origReqLimit = configMod.CONFIG.rateLimits.requestsPerMinute;
-      configMod.CONFIG.rateLimits.requestsPerMinute = 999_999;
+      (configMod.CONFIG.rateLimits as any).requestsPerMinute = 999_999;
 
       try {
         // Advance time to reset the window cleanly
@@ -2457,9 +2455,9 @@ describe('background-firefox translate: additional coverage', () => {
         expect(response.success).toBe(false);
         expect(response.error).toContain('Too many requests');
       } finally {
-        configMod.CONFIG.rateLimits.tokensPerMinute = origTokenLimit;
-        configMod.CONFIG.rateLimits.windowMs = origWindowMs;
-        configMod.CONFIG.rateLimits.requestsPerMinute = origReqLimit;
+        (configMod.CONFIG.rateLimits as any).tokensPerMinute = origTokenLimit;
+        (configMod.CONFIG.rateLimits as any).windowMs = origWindowMs;
+        (configMod.CONFIG.rateLimits as any).requestsPerMinute = origReqLimit;
         vi.useRealTimers();
       }
     });
@@ -2737,14 +2735,14 @@ describe('background-firefox translate: additional coverage', () => {
       savedReqLimit = configMod.CONFIG.rateLimits.requestsPerMinute;
       savedTokenLimit = configMod.CONFIG.rateLimits.tokensPerMinute;
       // Prevent any accumulated request/token count from triggering rate limiting
-      configMod.CONFIG.rateLimits.requestsPerMinute = 999_999;
-      configMod.CONFIG.rateLimits.tokensPerMinute = 999_999_999;
+      (configMod.CONFIG.rateLimits as any).requestsPerMinute = 999_999;
+      (configMod.CONFIG.rateLimits as any).tokensPerMinute = 999_999_999;
     });
 
     afterEach(async () => {
       const configMod = await import('../config');
-      configMod.CONFIG.rateLimits.requestsPerMinute = savedReqLimit;
-      configMod.CONFIG.rateLimits.tokensPerMinute = savedTokenLimit;
+      (configMod.CONFIG.rateLimits as any).requestsPerMinute = savedReqLimit;
+      (configMod.CONFIG.rateLimits as any).tokensPerMinute = savedTokenLimit;
       // Restore navigator.gpu to undefined so WebGPU tests don't bleed into others
       try {
         Object.defineProperty(navigator, 'gpu', {
@@ -3060,7 +3058,6 @@ describe('background-firefox translate: additional coverage', () => {
           tabs: { query: vi.fn().mockResolvedValue([]) },
           i18n: { getUILanguage: vi.fn().mockReturnValue('en') },
         },
-        getURL: vi.fn().mockReturnValue(''),
       }));
 
       await import('./background-firefox');

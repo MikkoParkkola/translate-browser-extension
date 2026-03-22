@@ -1403,7 +1403,7 @@ describe('offscreen message handler', () => {
             const canvas = originalCreateElement('canvas') as HTMLCanvasElement;
             vi.spyOn(canvas, 'getContext').mockReturnValue({
               drawImage: vi.fn(),
-            } as unknown as CanvasRenderingContext2D);
+            } as any);
             vi.spyOn(canvas, 'toDataURL').mockReturnValue('data:image/png;base64,CROPPED');
             return canvas;
           }

@@ -179,7 +179,7 @@ describe('estimateTokens', () => {
 
 describe('formatUserError', () => {
   it('returns message when no suggestion', () => {
-    const err = { message: 'Translation failed', code: 'PROVIDER_ERROR' } as TranslationError;
+    const err = { message: 'Translation failed', code: 'PROVIDER_ERROR' } as unknown as TranslationError;
     expect(formatUserError(err)).toBe('Translation failed');
   });
 
@@ -188,7 +188,7 @@ describe('formatUserError', () => {
       message: 'Translation failed',
       code: 'PROVIDER_ERROR',
       suggestion: 'Check your API key',
-    } as TranslationError;
+    } as unknown as TranslationError;
     expect(formatUserError(err)).toBe('Translation failed. Check your API key');
   });
 
@@ -197,7 +197,7 @@ describe('formatUserError', () => {
       message: 'Error',
       code: 'PROVIDER_ERROR',
       suggestion: '',
-    } as TranslationError;
+    } as unknown as TranslationError;
     // Empty suggestion: ". " appended
     const result = formatUserError(err);
     expect(result.startsWith('Error')).toBe(true);

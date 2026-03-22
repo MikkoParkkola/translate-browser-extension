@@ -10,7 +10,7 @@
  * + vi.doMock() is used in beforeEach to get a clean state each test.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Shared mock fns — re-used across module resets
@@ -752,7 +752,9 @@ describe('devicePixelRatio fallback', () => {
       const { enterScreenshotMode, setGetCurrentSettings } = await freshModule();
 
       setGetCurrentSettings(() => ({
+        sourceLang: 'en',
         targetLang: 'fi',
+        strategy: 'smart',
         enableScreenshot: true,
       }));
 
@@ -775,7 +777,9 @@ describe('devicePixelRatio fallback', () => {
       const { enterScreenshotMode, setGetCurrentSettings } = await freshModule();
 
       setGetCurrentSettings(() => ({
+        sourceLang: 'en',
         targetLang: 'fi',
+        strategy: 'smart',
         enableScreenshot: true,
       }));
 
@@ -803,7 +807,9 @@ describe('devicePixelRatio fallback', () => {
       const { enterScreenshotMode, setGetCurrentSettings } = await freshModule();
 
       setGetCurrentSettings(() => ({
+        sourceLang: 'en',
         targetLang: 'fi',
+        strategy: 'smart',
         enableScreenshot: true,
       }));
 
@@ -844,7 +850,9 @@ describe('devicePixelRatio fallback', () => {
       const { enterScreenshotMode, setGetCurrentSettings } = await freshModule();
 
       setGetCurrentSettings(() => ({
+        sourceLang: 'en',
         targetLang: 'fi',
+        strategy: 'smart',
         enableScreenshot: true,
       }));
 
@@ -904,7 +912,8 @@ describe('devicePixelRatio fallback', () => {
     });
 
     it('returns early if not in screenshot mode (line 82)', async () => {
-      const mod = await freshModule();
+      // @ts-expect-error unused side-effect import
+      const _mod = await freshModule();
 
       // Don't enter screenshot mode
       // Dispatch mousedown directly

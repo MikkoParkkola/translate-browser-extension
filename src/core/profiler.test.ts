@@ -2,7 +2,7 @@
  * Performance Profiler unit tests
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { profiler, measureTime, measureTimeAsync } from './profiler';
 import type { TimingCategory } from './profiler';
 

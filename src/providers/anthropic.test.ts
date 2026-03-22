@@ -1131,7 +1131,8 @@ describe('AnthropicProvider', () => {
       await provider.setApiKey('sk-key');
 
       // Make storage.set reject for the token usage write
-      const originalSet = chrome.storage.local.set;
+      // @ts-expect-error unused side-effect
+      const _originalSet = chrome.storage.local.set;
       vi.mocked(chrome.storage.local.set as any).mockImplementationOnce((items: Record<string, unknown>) => {
         // Allow the setApiKey call to succeed, but fail on token tracking
         if ('anthropic_tokens_used' in items) {

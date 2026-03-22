@@ -865,7 +865,8 @@ describe('Subtitle Translator', () => {
       initSubtitleTranslation('fi');
 
       const overlay = document.querySelector('.translate-subtitle-overlay') as HTMLElement;
-      const initialText = overlay.textContent;
+      // @ts-expect-error unused side-effect
+      const _initialText = overlay.textContent;
 
       // Trigger cuechange
       cueChangeListeners[0]?.();

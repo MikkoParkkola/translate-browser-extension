@@ -5,7 +5,7 @@
  * Pure logic, no browser APIs needed — just mock the StorageAdapter.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('../../core/logger', () => ({
   createLogger: () => ({
@@ -658,7 +658,7 @@ describe('size / hits / misses properties', () => {
     expect(cache.size).toBe(10);
 
     // Access key-5 to increase its useCount
-    cache.get('key-5', 'en', 'fi'); // mock hit
+    cache.get('key-5'); // mock hit
 
     // Now add one more — should evict the least used
     cache.set('key-new', 'result-new', 'en', 'fi');
@@ -676,11 +676,11 @@ describe('size / hits / misses properties', () => {
 
     // Add various translations
     cache.set('hello', 'hola', 'en', 'es');
-    cache.get('hello', 'en', 'es');
-    cache.get('hello', 'en', 'es');
+    cache.get('hello');
+    cache.get('hello');
 
     cache.set('world', 'mundo', 'en', 'es');
-    cache.get('world', 'en', 'es');
+    cache.get('world');
 
     cache.set('hi', 'ciao', 'en', 'it');
 
@@ -771,9 +771,9 @@ describe('size / hits / misses properties', () => {
       }
       
       // Create entries with different use counts
-      cache.get('key0', 'en', 'fr'); // useCount = 2
-      cache.get('key0', 'en', 'fr'); // useCount = 3
-      cache.get('key1', 'en', 'fr'); // useCount = 2
+      cache.get('key0'); // useCount = 2
+      cache.get('key0'); // useCount = 3
+      cache.get('key1'); // useCount = 2
       // key2 never retrieved, stays at useCount = 1
       
       // Adding one more entry to fill to 9
@@ -793,9 +793,9 @@ describe('size / hits / misses properties', () => {
       }
       
       // Access some entries to increase their use counts
-      cache.get('k0', 'en', 'fr'); // useCount becomes 2
-      cache.get('k0', 'en', 'fr'); // useCount becomes 3
-      cache.get('k1', 'en', 'fr'); // useCount becomes 2
+      cache.get('k0'); // useCount becomes 2
+      cache.get('k0'); // useCount becomes 3
+      cache.get('k1'); // useCount becomes 2
       
       // Add one more to fill to 10
       cache.set('k9', 'r9', 'en', 'fr');
@@ -815,7 +815,7 @@ describe('size / hits / misses properties', () => {
       
       // Access it multiple times to make it top-5 most used
       for (let i = 0; i < 5; i++) {
-        cache.get(longKey, 'en', 'fr');
+        cache.get(longKey);
       }
       
       // Add other short entries
@@ -845,7 +845,7 @@ describe('size / hits / misses properties', () => {
       
       // Make it most used by accessing it many times
       for (let i = 0; i < 3; i++) {
-        cache.get(shortKey, 'en', 'fr');
+        cache.get(shortKey);
       }
       
       // Add other entries to populate cache

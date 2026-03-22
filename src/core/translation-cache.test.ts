@@ -277,7 +277,7 @@ describe('TranslationCache', () => {
         onsuccess: null as ((ev: Event) => void) | null,
         error: new DOMException('Quota exceeded'),
       };
-      mockStore.put.mockReturnValueOnce(putRequest);
+      mockStore.put.mockReturnValueOnce(putRequest as any);
 
       mockStore.get.mockReturnValueOnce({
         onerror: null,

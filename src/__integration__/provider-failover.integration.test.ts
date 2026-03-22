@@ -8,10 +8,8 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CircuitBreaker } from '../core/circuit-breaker';
-import { TranslationRouter } from '../core/translation-router';
 import type {
   TranslationProvider,
-  TranslationOptions,
   LanguagePair,
   ProviderConfig,
 } from '../types';
@@ -19,7 +17,8 @@ import type {
 // ---------------------------------------------------------------------------
 // Helpers: create a fake provider
 // ---------------------------------------------------------------------------
-function createMockProvider(
+// @ts-expect-error unused helper kept for future tests
+function _createMockProvider(
   overrides: Partial<TranslationProvider> & { id: string; name: string },
 ): TranslationProvider {
   return {

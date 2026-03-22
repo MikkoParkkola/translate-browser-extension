@@ -337,7 +337,7 @@ describe('OnboardingApp', () => {
     await flush();
     const progressButtons = screen.getAllByRole('button');
     const testBtn = progressButtons.find((b) => b.textContent?.includes('Test'));
-    expect(testBtn?.disabled).toBe(true);
+    expect((testBtn as HTMLButtonElement)?.disabled).toBe(true);
   });
 
   it('marks current step with aria-current', async () => {
@@ -380,7 +380,7 @@ describe('OnboardingApp', () => {
     fireEvent.click(testBtn);
     await new Promise((r) => setTimeout(r, 200));
 
-    const args = vi.mocked(chrome.runtime.sendMessage).mock.calls[0][0];
+    const args = vi.mocked(chrome.runtime.sendMessage).mock.calls[0]![0] as any;
     expect(args.type).toBe('translate');
     expect(args.provider).toBe('opus-mt');
     expect(args.targetLang).toBe('en');
@@ -508,7 +508,7 @@ describe('OnboardingApp', () => {
     fireEvent.click(testBtn);
     await new Promise((r) => setTimeout(r, 200));
 
-    const args = vi.mocked(chrome.runtime.sendMessage).mock.calls[0][0];
+    const args = vi.mocked(chrome.runtime.sendMessage).mock.calls[0]![0] as any;
     expect(args.sourceLang).toBe('en');
     expect(args.text).toContain('Hello');
   });

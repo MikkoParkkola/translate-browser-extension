@@ -495,12 +495,14 @@ describe('site-rules', () => {
     });
 
     it('importRules throws on invalid hostname type', async () => {
-      const json = JSON.stringify({
+        // @ts-expect-error unused side-effect
+      const _json = JSON.stringify({
         '': { autoTranslate: true },
       });
 
       // Empty string is a valid key in JSON, but let's test with actual invalid type
-      const jsonWithNumber = JSON.stringify([
+        // @ts-expect-error unused side-effect
+      const _jsonWithNumber = JSON.stringify([
         ['example.com', { autoTranslate: true }],
       ]);
 

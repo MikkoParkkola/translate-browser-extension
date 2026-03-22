@@ -38,7 +38,7 @@ describe('ModelPerformanceMonitor', () => {
 
   it('updatePerformanceStats does not throw', () => {
     const monitor = new ModelPerformanceMonitor();
-    expect(() => monitor.updatePerformanceStats({ fps: 60 })).not.toThrow();
+    expect(() => monitor.updatePerformanceStats({ fps: 60 } as any)).not.toThrow();
   });
 
   it('updatePerformanceStats with no args does not throw', () => {

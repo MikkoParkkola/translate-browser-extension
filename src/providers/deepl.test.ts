@@ -829,7 +829,8 @@ describe('DeepLProvider', () => {
         }),
       });
 
-      const usage1 = await provider.getUsage();
+      // @ts-expect-error unused side-effect
+      const _usage1 = await provider.getUsage();
       // Don't clear cache, call again
       const usage2 = await provider.getUsage();
 

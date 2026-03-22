@@ -1308,7 +1308,6 @@ describe('LocalModelUI', () => {
       vi.useFakeTimers();
       try {
         const ui = new LocalModelUI('local-model-container');
-        // @ts-expect-error - spy on private method
         const updateSpy = vi.spyOn(ui, 'updateStatus').mockResolvedValue(undefined);
 
         ui.startStatusUpdates();
@@ -1382,7 +1381,6 @@ describe('LocalModelUI', () => {
 
     it('testTranslation returns early when window.localModelManager is not set', async () => {
       const ui = new LocalModelUI('local-model-container');
-      // @ts-expect-error - accessing private method
       const showMessageSpy = vi.spyOn(ui, 'showMessage');
       
       delete (window as any).localModelManager;
@@ -1458,7 +1456,7 @@ describe('LocalModelUI', () => {
           memoryUsage: 0,
           recommendedOptimizationLevel: 'balanced',
           recommendations: [],
-        };
+        } as any;
         
         // @ts-expect-error - accessing private method
         expect(() => ui.updatePerformanceChart()).not.toThrow();
@@ -1549,7 +1547,7 @@ describe('LocalModelUI', () => {
           fillStyle: '',
           font: '',
         };
-        vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as unknown as CanvasRenderingContext2D);
+        vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as any);
       }
 
       // Set performanceStats without inferenceHistory to trigger the ?? [] fallback (line 1009)
@@ -1578,7 +1576,7 @@ describe('LocalModelUI', () => {
           fillStyle: '',
           font: '',
         };
-        vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as unknown as CanvasRenderingContext2D);
+        vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as any);
 
         // All values equal → maxValue - minValue = 0 → range = 0 || 1 = 1 (line 1017)
         window.localModelManager.performanceStats = { inferenceHistory: [100, 100, 100] };
@@ -1611,7 +1609,7 @@ describe('LocalModelUI', () => {
           fillStyle: '',
           font: '',
         };
-        vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as unknown as CanvasRenderingContext2D);
+        vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as any);
 
         window.localModelManager.performanceStats = { inferenceHistory: [100, 200, 150] };
 
@@ -1657,7 +1655,7 @@ describe('LocalModelUI', () => {
           fillStyle: '',
           font: '',
         };
-        vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as unknown as CanvasRenderingContext2D);
+        vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as any);
 
         // All same values: maxValue === minValue, so range = 0 || 1 = 1
         window.localModelManager.performanceStats = { inferenceHistory: [100, 100, 100] };
@@ -1691,7 +1689,7 @@ describe('LocalModelUI', () => {
           fillStyle: '',
           font: '',
         };
-        vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as unknown as CanvasRenderingContext2D);
+        vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as any);
 
         // performanceStats is undefined
         window.localModelManager.performanceStats = undefined;
@@ -1714,7 +1712,6 @@ describe('LocalModelUI', () => {
 
       // Should not crash when updating status with undefined stats
       expect(() => {
-        // @ts-expect-error - accessing private method
         ui.updateStatus();
       }).not.toThrow();
 
@@ -1727,11 +1724,10 @@ describe('LocalModelUI', () => {
         totalTranslations: 42,
         successRate: 95,
         averageInferenceTime: 250,
-      };
+      } as any;
 
       // Should not crash when updating status with performance data
       expect(() => {
-        // @ts-expect-error - accessing private method
         ui.updateStatus();
       }).not.toThrow();
 
@@ -1745,11 +1741,10 @@ describe('LocalModelUI', () => {
         successRate: 0,
         averageInferenceTime: 0,
         lastError: { message: 'Out of memory' },
-      };
+      } as any;
 
       // Should not crash and should handle the error state
       expect(() => {
-        // @ts-expect-error - accessing private method
         ui.updateStatus();
       }).not.toThrow();
 

@@ -5,33 +5,35 @@
   "main": "index.js",
   "scripts": {
     "bench": "vitest bench",
-    "test": "vitest run",
-    "test:coverage": "rm -rf coverage && mkdir -p coverage/.tmp && vitest run --coverage",
-    "build:safari": "bash scripts/convert-safari.sh",
-    "test:e2e:web": "playwright test e2e/context-menu.spec.js e2e/dom-translate.spec.js e2e/translate-page.spec.js e2e/streaming-cancel.spec.js",
-    "test:e2e:pdf": "playwright test e2e/pdf-compare.spec.js",
-    "test:e2e-web": "npm run test:e2e:web",
-    "test:e2e-pdf": "npm run test:e2e:pdf",
-    "test:e2e": "npm run test:e2e:web && npm run test:e2e:pdf",
-    "e2e": "npm run test:e2e",
-    "postinstall": "bash scripts/fetch-wasm-assets.sh",
-    "clean": "rimraf dist",
     "build": "vite build && vite build --config vite.pdfjs.config.ts && cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs dist/chunks/pdf.worker.min.mjs && vite build --config vite.content.config.ts",
     "build:fast": "vite build && vite build --config vite.content.config.ts",
-    "zip": "bestzip dist/translate-by-mikko-v$npm_package_version.zip dist/*",
+    "build:safari": "bash scripts/convert-safari.sh",
     "build:zip": "npm run build && npm run zip",
-    "serve": "http-server dist -p 8080",
-    "lint": "eslint .",
+    "changeset": "changeset",
+    "clean": "rimraf dist",
+    "e2e": "npm run test:e2e",
     "format": "prettier --check package.json",
+    "lint": "eslint .",
+    "postinstall": "bash scripts/fetch-wasm-assets.sh",
+    "pr": "bash scripts/pr.sh",
+    "release": "changeset publish",
+    "secrets": "gitleaks detect --no-git",
+    "serve": "http-server dist -p 8080",
     "size": "npm run build && size-limit",
     "size:analyze": "npm run build && webpack-bundle-analyzer dist --port 8888",
     "size:report": "npm run build && size-limit --json > size-report.json",
-    "secrets": "gitleaks detect --no-git",
-    "changeset": "changeset",
-    "release": "changeset publish",
-    "pr": "bash scripts/pr.sh",
+    "test": "vitest run",
+    "test:coverage": "rm -rf coverage && mkdir -p coverage/.tmp && vitest run --coverage",
+    "test:e2e": "npm run test:e2e:web && npm run test:e2e:pdf",
+    "test:e2e-pdf": "npm run test:e2e:pdf",
+    "test:e2e-web": "npm run test:e2e:web",
+    "test:e2e:pdf": "playwright test e2e/pdf-compare.spec.js",
+    "test:e2e:web": "playwright test e2e/context-menu.spec.js e2e/dom-translate.spec.js e2e/translate-page.spec.js e2e/streaming-cancel.spec.js",
     "test:mutation": "stryker run",
-    "test:mutation:core": "stryker run --mutate \"src/core/**/*.ts\" --mutate \"!src/core/**/*.test.ts\" --mutate \"!src/core/index.ts\""
+    "test:mutation:core": "stryker run --mutate \"src/core/**/*.ts\" --mutate \"!src/core/**/*.test.ts\" --mutate \"!src/core/index.ts\"",
+    "typecheck": "tsc --noEmit",
+    "typecheck:popup": "tsc --noEmit --project tsconfig.json",
+    "zip": "bestzip dist/translate-by-mikko-v$npm_package_version.zip dist/*"
   },
   "keywords": [],
   "author": "",
@@ -39,46 +41,34 @@
   "type": "commonjs",
   "size-limit": [
     {
-      "name": "Core translator module",
-      "path": "dist/translator.js",
-      "limit": "60 KB"
-    },
-    {
       "name": "Background service worker",
       "path": "dist/background.js",
-      "limit": "50 KB"
+      "limit": "50 KB",
+      "webpack": false
     },
     {
-      "name": "Content script (initial)",
-      "path": "dist/contentScript.js",
-      "limit": "40 KB"
+      "name": "Content script",
+      "path": "dist/content.js",
+      "limit": "80 KB",
+      "webpack": false
     },
     {
       "name": "Popup interface",
-      "path": "dist/popup.js",
-      "limit": "35 KB"
+      "path": "dist/assets/popup-*.js",
+      "limit": "35 KB",
+      "webpack": false
     },
     {
-      "name": "Core modules (combined)",
-      "path": "dist/core/*.js",
-      "limit": "150 KB",
-      "ignore": [
-        "dist/core/*loader.js"
-      ]
+      "name": "Options page",
+      "path": "dist/assets/options-*.js",
+      "limit": "70 KB",
+      "webpack": false
     },
     {
-      "name": "WASM loaders (should be lazy)",
-      "path": "dist/core/*loader.js",
-      "limit": "25 KB"
-    },
-    {
-      "name": "Initial bundle (critical path)",
-      "path": [
-        "dist/background.js",
-        "dist/translator.js",
-        "dist/config.js"
-      ],
-      "limit": "120 KB"
+      "name": "Offscreen document",
+      "path": "dist/assets/offscreen-*.js",
+      "limit": "200 KB",
+      "webpack": false
     }
   ],
   "devDependencies": {

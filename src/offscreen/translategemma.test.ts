@@ -702,8 +702,8 @@ describe('error logging paths (lines 224-225, 237-238)', () => {
     ];
 
     for (const testCase of testCases) {
-      const message = testCase.value instanceof Error
-        ? testCase.value.message
+      const message = (testCase.value as any) instanceof Error
+        ? ((testCase.value as any) as any).message
         : String(testCase.value);
       expect(message).toBe(testCase.expected);
     }

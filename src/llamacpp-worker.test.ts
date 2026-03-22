@@ -86,7 +86,7 @@ describe('llamacpp-worker', () => {
 
     it('posts progress updates during model loading', async () => {
       mockEngine.loadModel.mockImplementation(
-        (urls: string[], config: unknown, onProgress?: (p: Record<string, number>) => void) => {
+        (_urls: string[], _config: unknown, onProgress?: (p: Record<string, number>) => void) => {
           if (onProgress) {
             onProgress({ loaded: 500, total: 1000, progress: 50 });
             onProgress({ loaded: 1000, total: 1000, progress: 100 });
@@ -553,7 +553,8 @@ describe('llamacpp-worker', () => {
       mockEngine.isReady.mockReturnValue(true);
 
       // Fire translate in the background (don't await — it'll hang)
-      const translatePromise = sendMessage({
+      // @ts-expect-error unused side-effect
+      const _translatePromise = sendMessage({
         type: 'translate',
         prompt: 'test translate',
         requestId: 'abort-test-1',

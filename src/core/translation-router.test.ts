@@ -4,6 +4,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TranslationRouter } from './translation-router';
+import type { TranslationProvider } from '../types';
 import { CircuitBreaker } from './circuit-breaker';
 
 // Mock the opus-mt provider
@@ -257,7 +258,7 @@ describe('TranslationRouter', () => {
         test: vi.fn().mockResolvedValue(true),
         getInfo: vi.fn().mockReturnValue({ id: 'mock-premium', name: 'Mock Premium', type: 'cloud', qualityTier: 'premium', costPerMillion: 20, icon: '' }),
       };
-      freshRouter.registerProvider(premiumProvider);
+      freshRouter.registerProvider(premiumProvider as unknown as TranslationProvider);
 
       // Disable preferLocal so quality bonus alone decides:
       // premium: 100 + 50(quality premium) = 150 vs local: 100 + 0 = 100
@@ -286,7 +287,7 @@ describe('TranslationRouter', () => {
         test: vi.fn().mockResolvedValue(true),
         getInfo: vi.fn().mockReturnValue({ id: 'mock-cloud', name: 'Mock Cloud', type: 'cloud', qualityTier: 'standard', costPerMillion: 10, icon: '' }),
       };
-      router.registerProvider(cloudProvider);
+      router.registerProvider(cloudProvider as unknown as TranslationProvider);
       await router.savePreferences({ enabledProviders: ['opus-mt-local', 'mock-cloud'], prioritize: 'fast' });
 
       // local provider wins under fast strategy
@@ -309,7 +310,7 @@ describe('TranslationRouter', () => {
         test: vi.fn().mockResolvedValue(true),
         getInfo: vi.fn().mockReturnValue({ id: 'mock-paid', name: 'Mock Paid', type: 'cloud', qualityTier: 'standard', costPerMillion: 10, icon: '' }),
       };
-      router.registerProvider(paidProvider);
+      router.registerProvider(paidProvider as unknown as TranslationProvider);
       // Disable preferLocal so we can isolate the cost branch
       await router.savePreferences({ enabledProviders: ['opus-mt-local', 'mock-paid'], prioritize: 'cost', preferLocal: false });
 
@@ -333,7 +334,7 @@ describe('TranslationRouter', () => {
         test: vi.fn().mockResolvedValue(true),
         getInfo: vi.fn().mockReturnValue({ id: 'mock-cloud2', name: 'Mock Cloud 2', type: 'cloud', qualityTier: 'premium', costPerMillion: 5, icon: '' }),
       };
-      router.registerProvider(cloudProvider);
+      router.registerProvider(cloudProvider as unknown as TranslationProvider);
       await router.savePreferences({
         enabledProviders: ['opus-mt-local', 'mock-cloud2'],
         prioritize: 'balanced',
@@ -376,7 +377,7 @@ describe('TranslationRouter', () => {
         test: vi.fn().mockResolvedValue(true),
         getInfo: vi.fn().mockReturnValue({ id: 'mock-anylang', name: 'Mock AnyLang', type: 'cloud', qualityTier: 'standard', costPerMillion: 5, icon: '' }),
       };
-      freshRouter.registerProvider(anyLangProvider);
+      freshRouter.registerProvider(anyLangProvider as unknown as TranslationProvider);
       await freshRouter.savePreferences({ enabledProviders: ['mock-anylang'], prioritize: 'balanced' });
 
       // Exotic language pair that opus-mt doesn't support — cloud provider should still be selected
@@ -551,7 +552,7 @@ describe('TranslationRouter', () => {
       try {
         const freshRouter = new TranslationRouter();
         await freshRouter.initialize();
-        await expect(freshRouter.savePreferences({ strategy: 'fast' })).rejects.toThrow('storage set error');
+        await expect(freshRouter.savePreferences({ prioritize: 'fast' } as any)).rejects.toThrow('storage set error');
       } finally {
         globalThis.chrome = origChrome;
       }
@@ -659,7 +660,7 @@ describe('TranslationRouter uncovered branches', () => {
       const router = new TranslationRouter();
       await router.initialize();
 
-      const localProvider: TranslationProvider = {
+      const localProvider = {
         id: 'local-1',
         name: 'Local',
         type: 'local',
@@ -668,7 +669,7 @@ describe('TranslationRouter uncovered branches', () => {
         costPerMillion: 0,
       };
 
-      router.registerProvider(localProvider);
+      router.registerProvider(localProvider as unknown as TranslationProvider);
       
       // Test different strategies can be set and retrieved
       await router.setStrategy('fast');
@@ -687,7 +688,7 @@ describe('TranslationRouter uncovered branches', () => {
       const router = new TranslationRouter();
       await router.initialize();
 
-      const provider: TranslationProvider = {
+      const provider = {
         id: 'stats-test',
         name: 'StatsTest',
         type: 'api',
@@ -696,7 +697,7 @@ describe('TranslationRouter uncovered branches', () => {
         costPerMillion: 1,
       };
 
-      router.registerProvider(provider);
+      router.registerProvider(provider as unknown as TranslationProvider);
       const stats = router.getStats();
 
       // Should return a valid stats object
@@ -708,87 +709,42 @@ describe('TranslationRouter uncovered branches', () => {
   describe('Branch coverage - scoring logic (lines 236, 241, 246, 252)', () => {
     it('scores quality tier premium for quality prioritization (line 236)', () => {
       const router = new TranslationRouter();
-      router.preferences = { prioritize: 'quality', preferLocal: false };
-
-      const premiumProvider: TranslationProvider = {
-        id: 'prem',
-        name: 'Premium',
-        type: 'api',
-        enabled: true,
-        qualityTier: 'premium',
-        costPerMillion: 5,
-      };
+      (router as any).preferences = { prioritize: 'quality', preferLocal: false, enabledProviders: [], primaryProvider: '' };
 
       // The private calculateScore method is called internally by selectProvider
       // We test this by verifying the router accepts quality strategy
-      expect(router.preferences.prioritize).toBe('quality');
+      expect((router as any).preferences.prioritize).toBe('quality');
     });
 
     it('scores local type for fast prioritization (line 241)', () => {
       const router = new TranslationRouter();
-      router.preferences = { prioritize: 'fast', preferLocal: false };
-
-      const localProvider: TranslationProvider = {
-        id: 'loc',
-        name: 'Local',
-        type: 'local',
-        enabled: true,
-        qualityTier: 'standard',
-        costPerMillion: 0,
-      };
+      (router as any).preferences = { prioritize: 'fast', preferLocal: false, enabledProviders: [], primaryProvider: '' };
 
       // Verify fast strategy is set
-      expect(router.preferences.prioritize).toBe('fast');
+      expect((router as any).preferences.prioritize).toBe('fast');
     });
 
     it('scores zero-cost providers for cost prioritization (line 246)', () => {
       const router = new TranslationRouter();
-      router.preferences = { prioritize: 'cost', preferLocal: false };
-
-      const freeProvider: TranslationProvider = {
-        id: 'free',
-        name: 'FreeService',
-        type: 'local',
-        enabled: true,
-        qualityTier: 'standard',
-        costPerMillion: 0,
-      };
+      (router as any).preferences = { prioritize: 'cost', preferLocal: false, enabledProviders: [], primaryProvider: '' };
 
       // Verify cost strategy is set
-      expect(router.preferences.prioritize).toBe('cost');
+      expect((router as any).preferences.prioritize).toBe('cost');
     });
 
     it('scores local and premium for balanced strategy (line 252)', () => {
       const router = new TranslationRouter();
-      router.preferences = { prioritize: 'balanced', preferLocal: false };
-
-      const localProvider: TranslationProvider = {
-        id: 'balanced-local',
-        name: 'BalancedLocal',
-        type: 'local',
-        enabled: true,
-        qualityTier: 'standard',
-        costPerMillion: 0,
-      };
-
-      const premiumProvider: TranslationProvider = {
-        id: 'balanced-prem',
-        name: 'BalancedPrem',
-        type: 'api',
-        enabled: true,
-        qualityTier: 'premium',
-        costPerMillion: 5,
-      };
+      (router as any).preferences = { prioritize: 'balanced', preferLocal: false, enabledProviders: [], primaryProvider: '' };
 
       // Verify balanced strategy is set
-      expect(router.preferences.prioritize).toBe('balanced');
+      expect((router as any).preferences.prioritize).toBe('balanced');
     });
 
     it('getStats filters out providers not in map (line 364 if branch)', async () => {
       const router = new TranslationRouter();
       await router.initialize();
 
-      const provider: TranslationProvider = {
+      const provider = {
         id: 'test-filter',
         name: 'TestFilter',
         type: 'api',
@@ -797,7 +753,7 @@ describe('TranslationRouter uncovered branches', () => {
         costPerMillion: 1,
       };
 
-      router.registerProvider(provider);
+      router.registerProvider(provider as unknown as TranslationProvider);
       const stats = router.getStats();
 
       // Should handle the case where provider might not be in the map
@@ -836,7 +792,7 @@ describe('TranslationRouter — targeted branch coverage', () => {
       await router.initialize(); // must initialize first to avoid loadPreferences overwriting
 
       const cloud = mockProvider({ id: 'fast-cloud', name: 'FastCloud', type: 'cloud', qualityTier: 'standard', costPerMillion: 10 });
-      router.registerProvider(cloud);
+      router.registerProvider(cloud as unknown as TranslationProvider);
 
       await router.savePreferences({ enabledProviders: ['opus-mt-local', 'fast-cloud'], prioritize: 'fast', preferLocal: false });
 
@@ -852,7 +808,7 @@ describe('TranslationRouter — targeted branch coverage', () => {
       await router.initialize();
 
       const paid = mockProvider({ id: 'cost-paid', name: 'CostPaid', type: 'cloud', qualityTier: 'standard', costPerMillion: 20 });
-      router.registerProvider(paid);
+      router.registerProvider(paid as unknown as TranslationProvider);
 
       await router.savePreferences({ enabledProviders: ['opus-mt-local', 'cost-paid'], prioritize: 'cost', preferLocal: false });
 
@@ -868,7 +824,7 @@ describe('TranslationRouter — targeted branch coverage', () => {
       await router.initialize();
 
       const premium = mockProvider({ id: 'bal-prem', name: 'BalPrem', type: 'cloud', qualityTier: 'premium', costPerMillion: 10 });
-      router.registerProvider(premium);
+      router.registerProvider(premium as unknown as TranslationProvider);
 
       // balanced + preferLocal=false → local gets 100+40=140, premium gets 100+20=120 → local still wins
       // but both branches of the if are exercised (local type and premium qualityTier)

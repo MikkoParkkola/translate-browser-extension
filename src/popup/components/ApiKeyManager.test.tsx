@@ -580,7 +580,7 @@ describe('ApiKeyManager', () => {
     });
 
     it('displays help link for each provider', async () => {
-      const { container } = render(() => <ApiKeyManager />);
+      const { container: _container } = render(() => <ApiKeyManager />);
       await vi.waitFor(() => {
         expect(screen.getAllByText('Add').length).toBe(4);
       });

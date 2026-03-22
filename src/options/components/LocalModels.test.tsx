@@ -419,9 +419,10 @@ describe('LocalModels — uncovered branches', () => {
 
   describe('conditional rendering branches', () => {
     it('shows loading state while data is being fetched', async () => {
-      let resolveEstimate: any;
+    // @ts-expect-error unused side-effect
+      let _resolveEstimate: any;
       const estimatePromise = new Promise((resolve) => {
-        resolveEstimate = resolve;
+        _resolveEstimate = resolve;
       });
 
       vi.stubGlobal('navigator', {

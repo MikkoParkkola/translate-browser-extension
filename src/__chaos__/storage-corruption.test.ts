@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { safeStorageGet, safeStorageSet, lastStorageError } from '../core/storage';
+import { safeStorageGet, safeStorageSet, lastStorageError as _lastStorageError } from '../core/storage';
 
 // Mock the browser-api module that storage.ts imports
 vi.mock('../core/browser-api', () => ({

@@ -45,7 +45,9 @@ const XSS_PAYLOADS = [
 ] as const;
 
 // Characters that must be escaped in any HTML context
-const DANGEROUS_CHARS = ['<', '>', '"', "'", '&'];
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+// @ts-expect-error unused test constant
+const _DANGEROUS_CHARS = ['<', '>', '"', "'", '&'];
 
 describe('XSS Protection', () => {
   describe('escapeHtml() — core sanitization function', () => {

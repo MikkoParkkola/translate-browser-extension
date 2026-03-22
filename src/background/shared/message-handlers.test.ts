@@ -387,7 +387,7 @@ describe('handleGetHistory', () => {
   it('returns history entries', async () => {
     const { getHistory } = await import('../../core/history');
     vi.mocked(getHistory).mockResolvedValueOnce([
-      { original: 'hello', translated: 'hei', sourceLang: 'en', targetLang: 'fi', timestamp: Date.now() },
+      { original: 'hello', translated: 'hei', sourceLang: 'en', targetLang: 'fi', timestamp: Date.now() } as any,
     ]);
 
     const { handleGetHistory } = await import('./message-handlers');
@@ -845,7 +845,7 @@ describe('handleSetCloudApiKey error path', () => {
 
   it('stores anthropic-specific formality option', async () => {
     const { safeStorageSet } = await import('../../core/storage');
-    vi.mocked(safeStorageSet).mockResolvedValueOnce(undefined);
+    vi.mocked(safeStorageSet).mockResolvedValueOnce(false);
 
     const { handleSetCloudApiKey } = await import('./message-handlers');
     const result = await handleSetCloudApiKey({
@@ -862,7 +862,7 @@ describe('handleSetCloudApiKey error path', () => {
 
   it('stores openai-specific formality option', async () => {
     const { safeStorageSet } = await import('../../core/storage');
-    vi.mocked(safeStorageSet).mockResolvedValueOnce(undefined);
+    vi.mocked(safeStorageSet).mockResolvedValueOnce(false);
 
     const { handleSetCloudApiKey } = await import('./message-handlers');
     const result = await handleSetCloudApiKey({

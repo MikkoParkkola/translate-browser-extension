@@ -44,7 +44,7 @@ import {
 } from './image-translator';
 import type { CurrentSettings } from './content-types';
 
-const defaultSettings: CurrentSettings = {
+const defaultSettings = {
   enabled: true,
   sourceLang: 'en',
   targetLang: 'fi',
@@ -52,7 +52,7 @@ const defaultSettings: CurrentSettings = {
   strategy: 'smart',
   autoTranslate: false,
   showBilingual: false,
-};
+} as any as CurrentSettings;
 
 /** Helper: inject a canvas mock that returns a data URL immediately */
 function mockCanvas(): () => void {
@@ -757,7 +757,7 @@ describe('imageUrlToDataUrl Image fallback path (lines 112-127)', () => {
     // Trigger Image.onload after a short delay
     await new Promise(resolve => setTimeout(resolve, 50));
     if (imageLoadHandler) {
-      imageLoadHandler();
+      (imageLoadHandler as any)();
     }
 
     await translatePromise;
@@ -814,7 +814,7 @@ describe('imageUrlToDataUrl Image fallback path (lines 112-127)', () => {
     // Trigger Image.onload
     await new Promise(resolve => setTimeout(resolve, 50));
     if (imageLoadHandler) {
-      imageLoadHandler();
+      (imageLoadHandler as any)();
     }
 
     await translatePromise;
@@ -879,7 +879,7 @@ describe('imageUrlToDataUrl Image fallback path (lines 112-127)', () => {
     // Trigger Image.onload
     await new Promise(resolve => setTimeout(resolve, 50));
     if (imageLoadHandler) {
-      imageLoadHandler();
+      (imageLoadHandler as any)();
     }
 
     await translatePromise;

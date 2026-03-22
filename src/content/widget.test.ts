@@ -544,7 +544,7 @@ describe('history', () => {
   it('pops oldest entry when history exceeds 5 items (line 292)', async () => {
     vi.useFakeTimers();
     const { showFloatingWidget, __testExports } = await freshWidget();
-    const { addToWidgetHistory, getWidgetHistory, clearWidgetHistory } = __testExports();
+    const { addToWidgetHistory, getWidgetHistory } = __testExports();
 
     showFloatingWidget();
     vi.runAllTimers();

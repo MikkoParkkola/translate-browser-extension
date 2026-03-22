@@ -2,7 +2,7 @@
  * Language detector tests
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { detectLanguage, samplePageText } from './language-detector';
 import type { LanguageDetectionResult } from './language-detector';
 
@@ -366,7 +366,7 @@ describe('samplePageText: acceptNode and walker edge cases', () => {
     let filterTested = false;
 
     vi.spyOn(document, 'createTreeWalker').mockImplementation(
-      (root: Node, whatToShow: number, filter: NodeFilter | null) => {
+      (root: Node, whatToShow?: number, filter?: NodeFilter | null) => {
         // Test the filter with our orphan node (parentElement is null)
         if (filter && typeof filter === 'object' && 'acceptNode' in filter) {
           const result = (filter as { acceptNode: (node: Text) => number }).acceptNode(orphanNode as Text);
@@ -389,7 +389,7 @@ describe('samplePageText: acceptNode and walker edge cases', () => {
     const origCTW = document.createTreeWalker.bind(document);
 
     vi.spyOn(document, 'createTreeWalker').mockImplementation(
-      (root: Node, whatToShow: number, filter: NodeFilter | null) => {
+      (root: Node, whatToShow?: number, filter?: NodeFilter | null) => {
         const realWalker = origCTW(root, whatToShow, filter);
         const origNextNode = realWalker.nextNode.bind(realWalker);
         let injected = false;
@@ -477,7 +477,8 @@ describe('Additional language detection coverage', () => {
   });
 
   it('detects language when text ends at maxLength boundary', () => {
-    const text = 'This is a very long text that we will be testing with the samplePageText function to ensure it respects the maxLength parameter correctly and does not exceed it under any circumstances';
+    // @ts-expect-error unused side-effect
+    const _text = 'This is a very long text that we will be testing with the samplePageText function to ensure it respects the maxLength parameter correctly and does not exceed it under any circumstances';
     const result = samplePageText(50);
     // Result should be at most 50 chars
     expect(result.length).toBeLessThanOrEqual(50);
@@ -534,9 +535,7 @@ describe('Additional language detection coverage', () => {
     it('samplePageText returns empty when document.body is null', () => {
       const originalBody = document.body;
       try {
-        // @ts-expect-error - testing with null body
         Object.defineProperty(document, 'body', { value: null, writable: true });
-        // @ts-expect-error - calling exported function
         const text = samplePageText();
         expect(text).toBe('');
       } finally {
@@ -551,7 +550,6 @@ describe('Additional language detection coverage', () => {
       div.textContent = 'Test text';
       document.body.appendChild(div);
 
-      // @ts-expect-error - calling exported function
       const text = samplePageText();
 
       expect(text.length).toBeGreaterThan(0);
@@ -567,7 +565,6 @@ describe('Additional language detection coverage', () => {
       container.appendChild(shortDiv);
       document.body.appendChild(container);
 
-      // @ts-expect-error - calling exported function
       const text = samplePageText();
 
       // Verify the method doesn't throw and produces valid output
@@ -577,7 +574,6 @@ describe('Additional language detection coverage', () => {
     });
 
     it('samplePageText stops when maxLength is reached', () => {
-      // @ts-expect-error - calling exported function
       const text = samplePageText(10);
       expect(text.length).toBeLessThanOrEqual(10 + 5); // Small buffer for word boundaries
     });
@@ -591,7 +587,6 @@ describe('Additional language detection coverage', () => {
       document.body.appendChild(script);
       document.body.appendChild(style);
 
-      // @ts-expect-error - calling exported function
       const text = samplePageText();
 
       expect(text).not.toContain('console');
@@ -606,7 +601,6 @@ describe('Additional language detection coverage', () => {
       p.textContent = 'Valid text content to detect';
       document.body.appendChild(p);
 
-      // @ts-expect-error - calling exported function
       const text = samplePageText();
 
       expect(text.includes('Valid') || text.includes('text')).toBe(true);

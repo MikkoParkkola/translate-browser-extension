@@ -527,7 +527,8 @@ describe('OpusMTProvider', () => {
     });
 
     it('logs progress callback during pipeline loading (line 154)', async () => {
-      const logSpy = vi.spyOn(console, 'log');
+      // @ts-expect-error unused side-effect
+      const _logSpy = vi.spyOn(console, 'log');
       const mockPipeInstance = vi.fn().mockResolvedValue([{ translation_text: 'result' }]);
       const mockFactory = vi.fn().mockImplementation((_task, _model, options) => {
         // Call progress_callback if provided
@@ -579,10 +580,10 @@ describe('OpusMTProvider', () => {
 
       // Mock webgpuDetector to return supported=true
       const { webgpuDetector } = await import('../core/webgpu-detector');
-      vi.mocked(webgpuDetector.detect).mockResolvedValueOnce(undefined);
+      vi.mocked(webgpuDetector.detect).mockResolvedValueOnce(false);
       // Mock the supported property
       Object.defineProperty(webgpuDetector, 'supported', { value: true, configurable: true });
-      vi.mocked(webgpuDetector.initialize).mockResolvedValueOnce(undefined);
+      vi.mocked(webgpuDetector.initialize).mockResolvedValueOnce(null);
 
       await freshProvider.initialize();
 
@@ -598,7 +599,7 @@ describe('OpusMTProvider', () => {
 
       // webgpuDetector.supported is already false in mock
       const { webgpuDetector } = await import('../core/webgpu-detector');
-      vi.mocked(webgpuDetector.detect).mockResolvedValueOnce(undefined);
+      vi.mocked(webgpuDetector.detect).mockResolvedValueOnce(false);
       // Ensure supported is false
       Object.defineProperty(webgpuDetector, 'supported', { value: false, configurable: true });
 

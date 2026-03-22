@@ -30,7 +30,7 @@ function makeFakePipeline(name: string) {
     name,
     dispose: vi.fn().mockResolvedValue(undefined),
     __call: vi.fn(),
-  };
+  } as any;
 }
 
 // ---------------------------------------------------------------------------

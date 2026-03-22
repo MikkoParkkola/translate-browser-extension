@@ -85,3 +85,4 @@ src/ml/gcq-shaders/
 generate_icons.py
 vitest-coverage-measure.config.ts
 coverage.json
+reports/

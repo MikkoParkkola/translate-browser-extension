@@ -59,7 +59,7 @@ describe('pdfjs-entry', () => {
   });
 
   it('exposes renderTextLayer function', () => {
-    expect(typeof mod.default.renderTextLayer).toBe('function');
+    expect(typeof (mod.default as any).renderTextLayer).toBe('function');
   });
 
   it('exposes OPS enumeration', () => {

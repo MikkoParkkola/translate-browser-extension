@@ -8,7 +8,7 @@
  * Run: npx vitest run src/__benchmarks__/cache-performance.test.ts
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import 'fake-indexeddb/auto';
 import { TranslationCache, resetTranslationCache } from '../core/translation-cache';
 

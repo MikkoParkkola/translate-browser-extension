@@ -312,10 +312,10 @@ describe('handleTranslateCore', () => {
     
     // Capture the retry predicate
     let capturedPredicate: ((error: unknown) => boolean) | null = null;
-    vi.mocked(withRetry).mockImplementation(async (fn: () => Promise<unknown>, _config: unknown, predicate?: (error: unknown) => boolean) => {
+    vi.mocked(withRetry).mockImplementation((async (fn: () => Promise<unknown>, _config: unknown, predicate?: (error: unknown) => boolean) => {
       capturedPredicate = predicate || null;
       return fn();
-    });
+    }) as any);
     vi.mocked(isNetworkError).mockReturnValue(true);
 
     const { handleTranslateCore } = await import('./translation-core');
