@@ -628,11 +628,11 @@ describe('InferenceEngine', () => {
       await engine.loadModel('http://example.com/model.gguf');
 
       const memLogs = logSpy.mock.calls.filter(
-        (c) => typeof c[0] === 'string' && c[0].includes('[InferenceEngine:memory]'),
+        (c) => typeof c[1] === 'string' && c[1].includes('[memory]'),
       );
       expect(memLogs.length).toBeGreaterThanOrEqual(2);
-      expect(memLogs[0][0]).toContain('pre-load');
-      expect(memLogs[1][0]).toContain('post-load');
+      expect(memLogs[0][1]).toContain('pre-load');
+      expect(memLogs[1][1]).toContain('post-load');
 
       vi.unstubAllGlobals();
     });
@@ -654,9 +654,9 @@ describe('InferenceEngine', () => {
       await engine.loadModelFromBlobs([new Blob(['data'])]);
 
       const memLogs = logSpy.mock.calls.filter(
-        (c) => typeof c[0] === 'string' && c[0].includes('[InferenceEngine:memory]'),
+        (c) => typeof c[1] === 'string' && c[1].includes('[memory]'),
       );
-      expect(memLogs.some(l => l[0].includes('post-blob-load'))).toBe(true);
+      expect(memLogs.some(l => (l[1] as string).includes('post-blob-load'))).toBe(true);
 
       vi.unstubAllGlobals();
     });

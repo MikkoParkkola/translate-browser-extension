@@ -183,7 +183,7 @@ export class GCQRuntime {
     if (this.initialized) return true;
 
     if (!navigator.gpu) {
-      console.error('[GCQ] WebGPU not supported');
+      log.error('WebGPU not supported');
       return false;
     }
 
@@ -192,7 +192,7 @@ export class GCQRuntime {
     });
 
     if (!adapter) {
-      console.error('[GCQ] No WebGPU adapter');
+      log.error('No WebGPU adapter');
       return false;
     }
 

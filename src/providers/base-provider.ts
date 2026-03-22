@@ -3,6 +3,10 @@
  * All translation providers must implement this interface
  */
 
+import { createLogger } from '../core/logger';
+
+const log = createLogger('Provider');
+
 import type {
   ProviderType,
   QualityTier,
@@ -99,7 +103,7 @@ export abstract class BaseProvider implements TranslationProvider {
       const result = await this.translate('Hello', 'en', 'fi');
       return typeof result === 'string' && result.length > 0;
     } catch (error) {
-      console.error(`${this.name} test failed:`, error);
+      log.error(`${this.name} test failed:`, error);
       return false;
     }
   }

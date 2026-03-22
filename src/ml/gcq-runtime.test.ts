@@ -392,7 +392,7 @@ describe('GCQ Runtime', () => {
       const result = await runtime.init();
 
       expect(result).toBe(false);
-      expect(console.error).toHaveBeenCalledWith('[GCQ] WebGPU not supported');
+      expect(console.error).toHaveBeenCalledWith('[GCQ]', 'WebGPU not supported');
     });
 
     it('returns false when no adapter is available', async () => {
@@ -404,7 +404,7 @@ describe('GCQ Runtime', () => {
       const result = await runtime.init();
 
       expect(result).toBe(false);
-      expect(console.error).toHaveBeenCalledWith('[GCQ] No WebGPU adapter');
+      expect(console.error).toHaveBeenCalledWith('[GCQ]', 'No WebGPU adapter');
     });
 
     it('requests high-performance adapter and 1 GiB buffer limits', async () => {

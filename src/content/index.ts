@@ -385,7 +385,7 @@ async function translateBatchWithRetry(
     }
   }
 
-  console.error(`[Content] Batch failed after ${maxRetries + 1} attempts:`, lastError);
+  log.error(`Batch failed after ${maxRetries + 1} attempts:`, lastError);
   return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime: 0, domUpdateTime: 0 };
 }
 
@@ -720,7 +720,7 @@ function setupScrollAwareTranslation(
             );
           }
         } catch (error) {
-          console.error(`[Content] Scroll-triggered translation error for chunk ${chunkIndex}:`, error);
+          log.error(`Scroll-triggered translation error for chunk ${chunkIndex}:`, error);
         }
         /* v8 ignore stop */
       }
