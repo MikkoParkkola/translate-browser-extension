@@ -4,6 +4,7 @@
  */
 
 import type { TranslationProviderId, TranslationPipeline } from '../types';
+import { extractErrorMessage } from '../core/errors';
 import { getTranslationCache, type TranslationCacheStats } from '../core/translation-cache';
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
@@ -745,7 +746,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sendResponse({
         success: false,
         /* v8 ignore start -- instanceof ternary */
-        error: error instanceof Error ? error.message : String(error)
+        error: extractErrorMessage(error)
         /* v8 ignore stop */
       });
     }

@@ -106,6 +106,16 @@ const ERROR_PATTERNS = {
 };
 
 /**
+ * Extract a string message from any thrown value.
+ * Handles both Error instances and arbitrary thrown values.
+ * Optionally returns a custom fallback instead of String(error) for non-Error values.
+ */
+export function extractErrorMessage(error: unknown, fallback?: string): string {
+  if (error instanceof Error) return error.message;
+  return fallback !== undefined ? fallback : String(error);
+}
+
+/**
  * Categorize an error based on its message
  */
 function categorizeError(error: unknown): ErrorCategory {

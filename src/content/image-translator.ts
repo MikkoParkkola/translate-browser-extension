@@ -9,6 +9,7 @@
 import { showInfoToast, showErrorToast } from './toast';
 import { browserAPI } from '../core/browser-api';
 import { createLogger } from '../core/logger';
+import { extractErrorMessage } from '../core/errors';
 import type { TranslateResponse } from '../types';
 import type { CurrentSettings } from './content-types';
 
@@ -298,7 +299,7 @@ export async function translateImage(imageUrl: string): Promise<void> {
     log.error('Image translation failed:', error);
     // Provide more specific error message based on error type
     /* v8 ignore start */
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = extractErrorMessage(error);
     /* v8 ignore stop */
     if (errorMessage.includes('CORS') || errorMessage.includes('cross-origin')) {
       showErrorToast('Cannot translate: Image is from another website (CORS blocked)');

@@ -12,6 +12,7 @@
  */
 
 import type { Strategy, TranslationProviderId, TranslateResponse } from '../types';
+import { extractErrorMessage } from '../core/errors';
 import { siteRules } from '../core/site-rules';
 import { glossary, type GlossaryStore } from '../core/glossary';
 import { CONFIG } from '../config';
@@ -397,15 +398,6 @@ const TRANSIENT_ERROR_RE = /timeout|network|connection|econnreset|fetch failed|s
 
 function isTransientError(errorMsg: string): boolean {
   return TRANSIENT_ERROR_RE.test(errorMsg);
-}
-
-/**
- * Extract error message from any value, handling both Error and non-Error rejections
- */
-function extractErrorMessage(error: unknown, fallback: string): string {
-  /* v8 ignore start */
-  return error instanceof Error ? error.message : fallback;
-  /* v8 ignore stop */
 }
 
 /** Active IntersectionObserver for scroll-aware below-fold translation */

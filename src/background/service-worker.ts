@@ -12,6 +12,7 @@
 import type { ExtensionMessage, TranslateResponse, Strategy, TranslationProviderId } from '../types';
 import {
   createTranslationError,
+  extractErrorMessage,
   withRetry,
   type TranslationError,
   type RetryConfig,
@@ -303,9 +304,8 @@ async function ensureOffscreenDocument(): Promise<void> {
     offscreenFailureCount++;
     scheduleCircuitBreakerReset();
 
-    /* v8 ignore start -- instanceof ternary */
-    const errMsg = error instanceof Error ? error.message : String(error);
-    /* v8 ignore stop */
+    const errMsg = extractErrorMessage(error);
+
     log.error(' Failed to create offscreen document:', errMsg);
 
     if (offscreenFailureCount >= CONFIG.retry.maxOffscreenFailures) {
@@ -620,7 +620,7 @@ async function handlePreloadModel(message: {
     log.warn(' Preload failed:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: extractErrorMessage(error),
     };
     /* v8 ignore stop */
   }
@@ -674,9 +674,8 @@ async function handleDeleteModel(message: {
     log.error('Failed to delete model:', error);
     return {
       success: false,
-      /* v8 ignore start -- instanceof ternary */
-      error: error instanceof Error ? error.message : String(error),
-      /* v8 ignore stop */
+      error: extractErrorMessage(error),
+
     };
   }
 }
@@ -719,9 +718,8 @@ async function handleClearAllModels(): Promise<unknown> {
     log.error('Failed to clear all models:', error);
     return {
       success: false,
-      /* v8 ignore start -- instanceof ternary */
-      error: error instanceof Error ? error.message : String(error),
-      /* v8 ignore stop */
+      error: extractErrorMessage(error),
+
     };
   }
 }
@@ -778,9 +776,8 @@ async function handleGetPredictionStats(): Promise<unknown> {
     log.warn('Failed to get prediction stats:', error);
     return {
       success: false,
-      /* v8 ignore start -- instanceof ternary */
-      error: error instanceof Error ? error.message : String(error),
-      /* v8 ignore stop */
+      error: extractErrorMessage(error),
+
     };
   }
 }
@@ -818,9 +815,8 @@ async function handleGetCloudProviderUsage(message: {
     log.warn(' Failed to get cloud provider usage:', error);
     return {
       success: false,
-      /* v8 ignore start -- instanceof ternary */
-      error: error instanceof Error ? error.message : String(error),
-      /* v8 ignore stop */
+      error: extractErrorMessage(error),
+
     };
   }
 }
@@ -1038,9 +1034,8 @@ async function handleTranslateInner(message: {
         return { success: true, result, duration, provider: 'chrome-builtin' };
       } catch (error) {
         if (sessionId) profiler.endTiming(sessionId, 'total');
-        /* v8 ignore start -- instanceof ternary */
-        const errMsg = error instanceof Error ? error.message : String(error);
-        /* v8 ignore stop */
+        const errMsg = extractErrorMessage(error);
+
         log.error('Chrome Built-in translation failed:', errMsg);
         return { success: false, error: errMsg, duration: Date.now() - startTime };
       }
@@ -1187,9 +1182,8 @@ async function handleGetProfilingStats(): Promise<unknown> {
     log.warn('Failed to get profiling stats:', error);
     return {
       success: false,
-      /* v8 ignore start -- instanceof ternary */
-      error: error instanceof Error ? error.message : String(error),
-      /* v8 ignore stop */
+      error: extractErrorMessage(error),
+
     };
   }
 }
@@ -1267,9 +1261,8 @@ async function handleOCRImage(message: {
     log.error('OCR failed:', error);
     return {
       success: false,
-      /* v8 ignore start -- instanceof ternary */
-      error: error instanceof Error ? error.message : String(error),
-      /* v8 ignore stop */
+      error: extractErrorMessage(error),
+
     };
   }
 }
@@ -1306,9 +1299,8 @@ async function handleCaptureScreenshot(message: {
     log.error('Screenshot capture failed:', error);
     return {
       success: false,
-      /* v8 ignore start -- instanceof ternary */
-      error: error instanceof Error ? error.message : String(error),
-      /* v8 ignore stop */
+      error: extractErrorMessage(error),
+
     };
   }
 }
@@ -1321,9 +1313,7 @@ async function sendMessageToTab(tabId: number, message: Record<string, unknown>)
   try {
     await chrome.tabs.sendMessage(tabId, message);
   } catch (firstError) {
-    /* v8 ignore start -- instanceof ternary */
-    const errMsg = firstError instanceof Error ? firstError.message : String(firstError);
-    /* v8 ignore stop */
+    const errMsg = extractErrorMessage(firstError);
 
     if (!errMsg.includes('establish connection') && !errMsg.includes('Receiving end does not exist')) {
       throw firstError;
@@ -1342,9 +1332,7 @@ async function sendMessageToTab(tabId: number, message: Record<string, unknown>)
       await chrome.tabs.sendMessage(tabId, message);
       log.info(`Message delivered to tab ${tabId} after injection`);
     } catch (injectError) {
-      /* v8 ignore start -- instanceof ternary */
-      const injectMsg = injectError instanceof Error ? injectError.message : String(injectError);
-      /* v8 ignore stop */
+      const injectMsg = extractErrorMessage(injectError);
       log.warn(`Cannot inject content script into tab ${tabId}: ${injectMsg}`);
       throw new Error(`Translation not available on this page. ${injectMsg}`);
     }

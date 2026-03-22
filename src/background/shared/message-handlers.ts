@@ -9,6 +9,7 @@
 import type { TranslationProviderId, Strategy, DetailedCacheStats, ThrottleUsage } from '../../types';
 import { safeStorageGet, safeStorageSet } from '../../core/storage';
 import { createLogger } from '../../core/logger';
+import { extractErrorMessage } from '../../core/errors';
 import {
   addCorrection,
   getCorrection,
@@ -94,7 +95,7 @@ export async function handleGetCloudProviderStatus(): Promise<{ success: boolean
     log.warn('Failed to get cloud provider status:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: extractErrorMessage(error),
       status: {},
     };
   }
@@ -133,7 +134,7 @@ export async function handleSetCloudApiKey(message: {
     return { success: true, provider: message.provider };
   } catch (error) {
     log.error('Failed to set API key:', error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: extractErrorMessage(error) };
   }
 }
 
@@ -163,7 +164,7 @@ export async function handleClearCloudApiKey(
     return { success: true, provider: message.provider };
   } catch (error) {
     log.error('Failed to clear API key:', error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: extractErrorMessage(error) };
   }
 }
 
@@ -179,7 +180,7 @@ export async function handleGetHistory(): Promise<{ success: boolean; history: H
     log.warn('Failed to get history:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: extractErrorMessage(error),
       history: [],
     };
   }
@@ -191,7 +192,7 @@ export async function handleClearHistory(): Promise<{ success: boolean; error?: 
     return { success: true };
   } catch (error) {
     log.warn('Failed to clear history:', error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: extractErrorMessage(error) };
   }
 }
 
@@ -232,7 +233,7 @@ export async function handleAddCorrection(message: {
     return { success: true };
   } catch (error) {
     log.warn('Failed to add correction:', error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: extractErrorMessage(error) };
   }
 }
 
@@ -249,7 +250,7 @@ export async function handleGetCorrection(message: {
     log.warn('Failed to get correction:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: extractErrorMessage(error),
       correction: null,
       hasCorrection: false,
     };
@@ -264,7 +265,7 @@ export async function handleGetAllCorrections(): Promise<{ success: boolean; cor
     log.warn('Failed to get corrections:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: extractErrorMessage(error),
       corrections: [],
     };
   }
@@ -278,7 +279,7 @@ export async function handleGetCorrectionStats(): Promise<{ success: boolean; st
     log.warn('Failed to get correction stats:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: extractErrorMessage(error),
       stats: { total: 0, totalUses: 0, topCorrections: [] },
     };
   }
@@ -290,7 +291,7 @@ export async function handleClearCorrections(): Promise<{ success: boolean; erro
     return { success: true };
   } catch (error) {
     log.warn('Failed to clear corrections:', error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: extractErrorMessage(error) };
   }
 }
 
@@ -307,7 +308,7 @@ export async function handleDeleteCorrection(message: {
     log.warn('Failed to delete correction:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: extractErrorMessage(error),
       deleted: false,
     };
   }
@@ -319,7 +320,7 @@ export async function handleExportCorrections(): Promise<{ success: boolean; jso
     return { success: true, json };
   } catch (error) {
     log.warn('Failed to export corrections:', error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: extractErrorMessage(error) };
   }
 }
 
@@ -334,7 +335,7 @@ export async function handleImportCorrections(message: {
     log.warn('Failed to import corrections:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: extractErrorMessage(error),
       importedCount: 0,
     };
   }

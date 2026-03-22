@@ -1,4 +1,5 @@
 import { createLogger } from './logger';
+import { extractErrorMessage } from './errors';
 import { browserAPI } from './browser-api';
 
 const log = createLogger('Storage');
@@ -13,7 +14,7 @@ export async function safeStorageGet<T>(keys: string | string[]): Promise<Partia
     return result;
   } catch (error) {
     const keyStr = Array.isArray(keys) ? keys.join(', ') : keys;
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorMsg = extractErrorMessage(error);
     lastStorageError = `Failed to read settings (${keyStr}): ${errorMsg}`;
     log.error(`Storage get failed for keys [${keyStr}]:`, errorMsg);
     return {};
@@ -27,7 +28,7 @@ export async function safeStorageSet(items: Record<string, unknown>): Promise<bo
     return true;
   } catch (error) {
     const keyStr = Object.keys(items).join(', ');
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorMsg = extractErrorMessage(error);
     lastStorageError = `Failed to save settings (${keyStr}): ${errorMsg}`;
     log.error(`Storage set failed for keys [${keyStr}]:`, errorMsg);
     return false;
@@ -41,7 +42,7 @@ export async function safeStorageRemove(keys: string | string[]): Promise<boolea
     return true;
   } catch (error) {
     const keyStr = Array.isArray(keys) ? keys.join(', ') : keys;
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorMsg = extractErrorMessage(error);
     lastStorageError = `Failed to remove settings (${keyStr}): ${errorMsg}`;
     log.error(`Storage remove failed for keys [${keyStr}]:`, errorMsg);
     return false;

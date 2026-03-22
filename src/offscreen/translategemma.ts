@@ -15,6 +15,7 @@ import type {
 } from '@huggingface/transformers';
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
+import { extractErrorMessage } from '../core/errors';
 import { withTimeout } from '../core/async-utils';
 
 const log = createLogger('TranslateGemma');
@@ -135,7 +136,7 @@ function sendProgress(update: Record<string, unknown>): void {
  * Check if an error is an ONNX type mismatch (float vs float16 in layernorm).
  */
 export function isOnnxTypeMismatch(error: unknown): boolean {
-  const errorMsg = error instanceof Error ? error.message : String(error);
+  const errorMsg = extractErrorMessage(error);
   return errorMsg.includes('Type parameter') || errorMsg.includes('bound to different types');
 }
 
@@ -226,7 +227,7 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
         log.info('TranslateGemma loaded successfully via WebNN (NPU)');
         return setResult(result);
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorMsg = extractErrorMessage(error);
         log.warn(`TranslateGemma: WebNN failed (${errorMsg}), falling back to WebGPU...`);
       }
     }
@@ -239,7 +240,7 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
         return setResult(result);
       } catch (error) {
         /* v8 ignore start -- defensive error type narrowing */
-        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorMsg = extractErrorMessage(error);
         /* v8 ignore stop */
         log.warn(`TranslateGemma: WebGPU q4f16 failed (${errorMsg}), trying WebGPU q4 (fp32)...`);
       }
@@ -254,7 +255,7 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       return setResult(result);
     } catch (error) {
       /* v8 ignore start -- defensive error type narrowing */
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = extractErrorMessage(error);
       /* v8 ignore stop */
       log.warn(`TranslateGemma: WebGPU q4 also failed (${errorMsg}), final fallback to WASM + q4`);
 

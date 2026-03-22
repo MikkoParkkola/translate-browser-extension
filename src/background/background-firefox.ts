@@ -13,6 +13,7 @@ import {
   validateInput,
   withRetry,
   isNetworkError,
+  extractErrorMessage,
   type TranslationError,
   type RetryConfig,
 } from '../core/errors';
@@ -577,7 +578,7 @@ async function handlePreloadModel(message: {
     log.warn('Preload failed:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: extractErrorMessage(error),
     };
   }
 }

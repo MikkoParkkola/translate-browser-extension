@@ -119,6 +119,7 @@ vi.mock('../core/errors', () => ({
     suggestion: undefined,
     technicalDetails: err instanceof Error ? err.message : String(err),
   }),
+  extractErrorMessage: (err: unknown) => err instanceof Error ? err.message : String(err),
   validateInput: vi.fn().mockReturnValue({ valid: true, sanitizedText: 'hello' }),
   withRetry: vi.fn().mockImplementation(async (fn: () => Promise<unknown>) => fn()),
   isNetworkError: vi.fn().mockReturnValue(false),

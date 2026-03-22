@@ -9,6 +9,7 @@
 import { BaseProvider } from './base-provider';
 import { webgpuDetector } from '../core/webgpu-detector';
 import { createLogger } from '../core/logger';
+import { extractErrorMessage } from '../core/errors';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 const log = createLogger('OPUS-MT');
@@ -164,7 +165,7 @@ export class OpusMTProvider extends BaseProvider {
         log.info(`Model loaded: ${modelId} (${attempt.label})`);
         return pipe;
       } catch (error) {
-        const errMsg = error instanceof Error ? error.message : String(error);
+        const errMsg = extractErrorMessage(error);
         log.warn(`${attempt.label} failed: ${errMsg}`);
         lastError = error instanceof Error ? error : new Error(errMsg);
       }
