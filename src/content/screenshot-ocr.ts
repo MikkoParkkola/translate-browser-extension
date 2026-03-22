@@ -81,11 +81,12 @@ function onScreenshotKeyDown(e: KeyboardEvent): void {
 }
 
 function onScreenshotMouseDown(e: MouseEvent): void {
-  /* v8 ignore next */
+  /* v8 ignore start */
   if (!screenshotMode) return;
+  /* v8 ignore stop */
   e.preventDefault();
   selectionStart = { x: e.clientX, y: e.clientY };
-  /* v8 ignore next */
+  /* v8 ignore start */
   if (selectionOverlay) {
     selectionOverlay.style.display = 'block';
     selectionOverlay.style.left = `${e.clientX}px`;

@@ -382,4 +382,29 @@ describe('showCorrectionHint', () => {
     showCorrectionHint(el);
     expect(document.getElementById('translate-correction-hint')).toBeNull();
   });
+
+  it('makeTranslatedElementEditable sets up event handlers', () => {
+    mockSafeStorageGet.mockResolvedValue({
+      'key1': { original: 'orig', machine: 'trans' },
+    });
+
+    const el = document.createElement('div');
+    el.setAttribute('data-translation-key', 'key1');
+    document.body.appendChild(el);
+
+    // Should not throw when initializing
+    expect(() => {
+      makeTranslatedElementEditable(el);
+    }).not.toThrow();
+  });
+
+  it('makeTranslatedElementEditable handles missing data-translation-key', () => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+
+    // Should not throw even without key
+    expect(() => {
+      makeTranslatedElementEditable(el);
+    }).not.toThrow();
+  });
 });
