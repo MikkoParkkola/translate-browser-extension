@@ -140,7 +140,7 @@ interface WorkerProgressMessage {
   loaded?: number;
   total?: number;
   progress?: number;
-  [key: string]: unknown;
+  file?: string;
 }
 
 interface WorkerErrorMessage {
@@ -152,7 +152,7 @@ interface WorkerResultMessage {
   type: 'result' | 'loaded';
   translatedText?: string;
   tokensGenerated?: number;
-  [key: string]: unknown;
+  modelInfo?: Record<string, unknown>;
 }
 
 type WorkerInboundMessage = WorkerProgressMessage | WorkerErrorMessage | WorkerResultMessage;
@@ -467,7 +467,9 @@ export class LocalModelManager {
     }
 
     const startTime = Date.now();
-    const requestId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const requestId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? `tr_${crypto.randomUUID()}`
+      : `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     try {
       const prompt = this._createTranslationPrompt(text, sourceLanguage, targetLanguage);

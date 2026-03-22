@@ -40,7 +40,7 @@ describe('Profiler', () => {
 
     it('generates a unique ID when none provided', () => {
       const id = profiler.startSession();
-      expect(id).toMatch(/^session_\d+_[a-z0-9]+$/);
+      expect(id).toMatch(/^session_/);
     });
 
     it('returns empty string when disabled', () => {
