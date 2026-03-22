@@ -174,11 +174,20 @@ export class DeepLProvider extends BaseProvider {
       }
 
       const data: DeepLTranslateResponse = await response.json();
+
+      if (!data.translations) {
+        throw new Error('DeepL returned invalid response: no translations field');
+      }
+
       const results = data.translations.map(t => t.text);
+
+      if (!Array.isArray(text) && results.length === 0) {
+        log.warn('DeepL returned empty translations array');
+      }
 
       return Array.isArray(text) ? results : results[0];
     } catch (error) {
-      console.error('[DeepL] Translation error:', error);
+      log.error('Translation error:', error);
       throw createTranslationError(error);
     }
   }
@@ -207,10 +216,13 @@ export class DeepLProvider extends BaseProvider {
 
       if (response.ok) {
         const data: DeepLTranslateResponse = await response.json();
-        return data.translations[0].detected_source_language.toLowerCase();
+        const translation = data.translations?.[0];
+        if (translation?.detected_source_language) {
+          return translation.detected_source_language.toLowerCase();
+        }
       }
     } catch (error) {
-      console.error('[DeepL] Language detection error:', error);
+      log.error('Language detection error:', error);
     }
 
     return 'auto';
@@ -273,7 +285,7 @@ export class DeepLProvider extends BaseProvider {
         };
       }
     } catch (error) {
-      console.error('[DeepL] Usage check error:', error);
+      log.error('Usage check error:', error);
     }
 
     return { requests: 0, tokens: 0, cost: 0, limitReached: false };
@@ -304,7 +316,7 @@ export class DeepLProvider extends BaseProvider {
       const result = await this.translate('Hello', 'en', 'fi');
       return typeof result === 'string' && result.length > 0;
     } catch (error) {
-      console.error('[DeepL] Test failed:', error);
+      log.error('Test failed:', error);
       return false;
     }
   }

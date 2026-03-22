@@ -178,13 +178,13 @@ Rules:
     const isArray = Array.isArray(text);
     const texts = isArray ? text : [text];
 
-    // For batch translations, use XML tags for clear separation
+    // For batch translations, use numbered XML tags for unambiguous separation
     let userContent: string;
     if (texts.length === 1) {
       userContent = texts[0];
     } else {
-      userContent = texts.map((t, i) => `<text id="${i}">${t}</text>`).join('\n');
-      userContent += '\n\nTranslate each <text> element and respond with the same XML structure.';
+      userContent = texts.map((t, i) => `<t${i}>${t}</t${i}>`).join('\n');
+      userContent += '\n\nTranslate each numbered element and respond using the same tags: <t0>translation</t0>, <t1>translation</t1>, etc.';
     }
 
     // Add source language hint if known
@@ -237,12 +237,35 @@ Rules:
       // Parse XML response for batch
       if (isArray && texts.length > 1) {
         const results: string[] = [];
-        const regex = /<text id="(\d+)">([\s\S]*?)<\/text>/g;
+        let matched = false;
+
+        // Try numbered tag format first (preferred)
+        const numberedRegex = /<t(\d+)>([\s\S]*?)<\/t\1>/g;
         let match;
 
-        while ((match = regex.exec(translated)) !== null) {
+        while ((match = numberedRegex.exec(translated)) !== null) {
           const idx = parseInt(match[1], 10);
           results[idx] = match[2].trim();
+          matched = true;
+        }
+
+        // Fallback: try legacy <text id="N"> format
+        if (!matched) {
+          const legacyRegex = /<text id="(\d+)">([\s\S]*?)<\/text>/g;
+          while ((match = legacyRegex.exec(translated)) !== null) {
+            const idx = parseInt(match[1], 10);
+            results[idx] = match[2].trim();
+            matched = true;
+          }
+        }
+
+        // Fallback: if model returned plain text without tags, try newline splitting
+        if (!matched && translated.length > 0) {
+          log.warn('XML tag parsing failed, falling back to newline splitting');
+          const lines = translated.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+          for (let i = 0; i < Math.min(lines.length, texts.length); i++) {
+            results[i] = lines[i];
+          }
         }
 
         // Fill any missing results
@@ -257,7 +280,7 @@ Rules:
 
       return isArray ? [translated] : translated;
     } catch (error) {
-      console.error('[Anthropic] Translation error:', error);
+      log.error('Translation error:', error);
       throw createTranslationError(error);
     }
   }
@@ -297,7 +320,7 @@ Rules:
         }
       }
     } catch (error) {
-      console.error('[Anthropic] Language detection error:', error);
+      log.error('Language detection error:', error);
     }
 
     return 'auto';
@@ -365,7 +388,7 @@ Rules:
       const result = await this.translate('Hello', 'en', 'fi');
       return typeof result === 'string' && result.length > 0;
     } catch (error) {
-      console.error('[Anthropic] Test failed:', error);
+      log.error('Test failed:', error);
       return false;
     }
   }

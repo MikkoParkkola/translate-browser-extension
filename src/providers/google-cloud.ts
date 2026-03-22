@@ -67,7 +67,7 @@ export class GoogleCloudProvider extends BaseProvider {
         log.info('Initialized');
       }
     } catch (error) {
-      console.error('[GoogleCloud] Failed to load config:', error);
+      log.error('Failed to load config:', error);
     }
   }
 
@@ -104,7 +104,7 @@ export class GoogleCloudProvider extends BaseProvider {
     const isArray = Array.isArray(text);
     const texts = isArray ? text : [text];
 
-    // Build request URL with API key
+    // Build request URL — API key in query param per Google Cloud v2 API convention
     const url = new URL(GOOGLE_TRANSLATE_API);
     url.searchParams.set('key', this.config.apiKey);
 
@@ -151,7 +151,7 @@ export class GoogleCloudProvider extends BaseProvider {
       const results = data.data.translations.map(t => t.translatedText);
       return isArray ? results : results[0];
     } catch (error) {
-      console.error('[GoogleCloud] Translation error:', error);
+      log.error('Translation error:', error);
       throw createTranslationError(error);
     }
   }
@@ -187,7 +187,7 @@ export class GoogleCloudProvider extends BaseProvider {
         }
       }
     } catch (error) {
-      console.error('[GoogleCloud] Language detection error:', error);
+      log.error('Language detection error:', error);
     }
 
     return 'auto';
@@ -247,7 +247,7 @@ export class GoogleCloudProvider extends BaseProvider {
       const result = await this.translate('Hello', 'en', 'fi');
       return typeof result === 'string' && result.length > 0;
     } catch (error) {
-      console.error('[GoogleCloud] Test failed:', error);
+      log.error('Test failed:', error);
       return false;
     }
   }

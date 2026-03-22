@@ -79,7 +79,7 @@ export class OpenAIProvider extends BaseProvider {
         log.info('Initialized with model:', this.config.model);
       }
     } catch (error) {
-      console.error('[OpenAI] Failed to load config:', error);
+      log.error('Failed to load config:', error);
     }
   }
 
@@ -175,9 +175,13 @@ export class OpenAIProvider extends BaseProvider {
     const isArray = Array.isArray(text);
     const texts = isArray ? text : [text];
 
-    // For batch translations, join with markers
-    const batchMarker = '\n---TRANSLATE_SEPARATOR---\n';
-    const inputText = texts.join(batchMarker);
+    // For batch translations, use XML-like tags for unambiguous separation
+    let inputText: string;
+    if (isArray && texts.length > 1) {
+      inputText = texts.map((t, i) => `<t${i}>${t}</t${i}>`).join('\n');
+    } else {
+      inputText = texts[0];
+    }
 
     const systemPrompt = this.buildPrompt(targetLang, this.config.formality);
     let userPrompt = inputText;
@@ -189,7 +193,7 @@ export class OpenAIProvider extends BaseProvider {
 
     // For batch, add instruction
     if (isArray && texts.length > 1) {
-      userPrompt += `\n\n[Note: Translate each section separated by "---TRANSLATE_SEPARATOR---" and keep the separators in your response]`;
+      userPrompt += '\n\nReturn each translation in the same numbered XML tags: <t0>translated text</t0>, <t1>translated text</t1>, etc.';
     }
 
     try {
@@ -236,7 +240,26 @@ export class OpenAIProvider extends BaseProvider {
 
       // Split back if batch
       if (isArray && texts.length > 1) {
-        const results = translated.split(/---TRANSLATE_SEPARATOR---/i).map(s => s.trim());
+        // Try XML-tagged format first (preferred)
+        const xmlRegex = /<t(\d+)>([\s\S]*?)<\/t\1>/g;
+        const results: string[] = [];
+        let match;
+        let xmlFound = false;
+
+        while ((match = xmlRegex.exec(translated)) !== null) {
+          const idx = parseInt(match[1], 10);
+          results[idx] = match[2].trim();
+          xmlFound = true;
+        }
+
+        if (!xmlFound) {
+          // Fallback: split on separator pattern for backward compatibility
+          const splitResults = translated.split(/---TRANSLATE_SEPARATOR---/i).map(s => s.trim());
+          for (let i = 0; i < splitResults.length; i++) {
+            results[i] = splitResults[i];
+          }
+        }
+
         // Ensure we have the right number of results
         while (results.length < texts.length) {
           results.push('');
@@ -246,7 +269,7 @@ export class OpenAIProvider extends BaseProvider {
 
       return isArray ? [translated] : translated;
     } catch (error) {
-      console.error('[OpenAI] Translation error:', error);
+      log.error('Translation error:', error);
       throw createTranslationError(error);
     }
   }
@@ -289,7 +312,7 @@ export class OpenAIProvider extends BaseProvider {
         }
       }
     } catch (error) {
-      console.error('[OpenAI] Language detection error:', error);
+      log.error('Language detection error:', error);
     }
 
     return 'auto';
@@ -358,7 +381,7 @@ export class OpenAIProvider extends BaseProvider {
       const result = await this.translate('Hello', 'en', 'fi');
       return typeof result === 'string' && result.length > 0;
     } catch (error) {
-      console.error('[OpenAI] Test failed:', error);
+      log.error('Test failed:', error);
       return false;
     }
   }
