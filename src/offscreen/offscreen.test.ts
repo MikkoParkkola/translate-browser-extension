@@ -96,11 +96,13 @@ vi.mock('./language-detection', () => ({
 
 // TranslateGemma
 const mockDetectWebGPU = vi.fn().mockResolvedValue({ supported: false, fp16: false });
+const mockDetectWebNN = vi.fn().mockResolvedValue(false);
 const mockGetTranslateGemmaPipeline = vi.fn().mockResolvedValue({ model: {}, tokenizer: {} });
 const mockTranslateWithGemma = vi.fn().mockResolvedValue('gemma translated');
 
 vi.mock('./translategemma', () => ({
   detectWebGPU: (...args: unknown[]) => mockDetectWebGPU(...args),
+  detectWebNN: (...args: unknown[]) => mockDetectWebNN(...args),
   getTranslateGemmaPipeline: (...args: unknown[]) => mockGetTranslateGemmaPipeline(...args),
   translateWithGemma: (...args: unknown[]) => mockTranslateWithGemma(...args),
 }));
@@ -743,6 +745,7 @@ describe('offscreen message handler', () => {
   describe('translate — translategemma provider', () => {
     it('fails when WebGPU not available', async () => {
       mockDetectWebGPU.mockResolvedValue({ supported: false, fp16: false });
+      mockDetectWebNN.mockResolvedValue(false);
 
       const r = await dispatch({
         type: 'translate',
@@ -1166,6 +1169,7 @@ describe('offscreen message handler', () => {
 
     it('rejects TranslateGemma preload when WebGPU unavailable', async () => {
       mockDetectWebGPU.mockResolvedValue({ supported: false, fp16: false });
+      mockDetectWebNN.mockResolvedValue(false);
 
       const r = await dispatch({
         type: 'preloadModel',

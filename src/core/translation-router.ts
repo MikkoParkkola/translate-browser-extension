@@ -227,7 +227,7 @@ export class TranslationRouter {
 
     // Chrome built-in: free, on-device, maintained by Google — always preferred when available
     // User can override by setting preferLocal: false + primaryProvider to something else
-    if (provider.id === 'chrome-translator') {
+    if (provider.id === 'chrome-builtin') {
       score += 60; // Highest base bonus
     }
 

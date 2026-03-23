@@ -15,7 +15,7 @@ import { withTimeout } from '../core/async-utils';
 import { MODEL_MAP, PIVOT_ROUTES } from './model-maps';
 import { getCachedPipeline, cachePipeline, clearCache as clearPipelineCache } from './pipeline-cache';
 import { detectLanguage } from './language-detection';
-import { translateWithGemma, getTranslateGemmaPipeline, detectWebGPU } from './translategemma';
+import { translateWithGemma, getTranslateGemmaPipeline, detectWebGPU, detectWebNN } from './translategemma';
 import { getChromeTranslator, isChromeTranslatorAvailable } from '../providers/chrome-translator';
 
 // Cloud providers
@@ -371,11 +371,11 @@ async function executeProvider(
   }
 
   // TranslateGemma: supports any-to-any translation with a single model
-  // Requires WebGPU -- the 3.6GB model cannot fit in the 4GB WASM heap.
+  // Requires WebNN (NPU) or WebGPU -- the 3.6GB model cannot fit in the 4GB WASM heap.
   if (provider === 'translategemma') {
-    const gpu = await detectWebGPU();
-    if (!gpu.supported) {
-      throw new Error('TranslateGemma requires WebGPU (GPU acceleration). This browser does not support WebGPU. Please use OPUS-MT instead.');
+    const [gpu, webnn] = await Promise.all([detectWebGPU(), detectWebNN()]);
+    if (!gpu.supported && !webnn) {
+      throw new Error('TranslateGemma requires WebNN or WebGPU (GPU/NPU acceleration). This browser does not support either. Please use OPUS-MT instead.');
     }
     return translateWithGemma(text, sourceLang, targetLang, pageContext);
   }
@@ -606,9 +606,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           }
 
           if (message.provider === 'translategemma') {
-            const gpu = await detectWebGPU();
-            if (!gpu.supported) {
-              sendResponse({ success: false, error: 'TranslateGemma requires WebGPU. GPU acceleration is not available.' });
+            const [gpu, webnn] = await Promise.all([detectWebGPU(), detectWebNN()]);
+            if (!gpu.supported && !webnn) {
+              sendResponse({ success: false, error: 'TranslateGemma requires WebNN or WebGPU. Neither is available.' });
               break;
             }
             await getTranslateGemmaPipeline();
@@ -646,6 +646,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         case 'checkWebGPU': {
           const gpu = await detectWebGPU();
           sendResponse({ success: true, ...gpu });
+          break;
+        }
+        case 'checkWebNN': {
+          const supported = await detectWebNN();
+          sendResponse({ success: true, supported });
           break;
         }
         case 'getCacheStats': {
