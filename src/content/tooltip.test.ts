@@ -141,6 +141,36 @@ describe('showTranslationTooltip', () => {
     vi.advanceTimersByTime(10001);
     expect(document.getElementById('translate-tooltip')).toBeNull();
   });
+
+  it('streaming=true updates text in-place without recreating the tooltip', () => {
+    const range = makeRange();
+    showTranslationTooltip('partial', range);
+    const first = document.getElementById('translate-tooltip');
+    expect(first).not.toBeNull();
+
+    showTranslationTooltip('updated', range, true);
+    const second = document.getElementById('translate-tooltip');
+
+    // Same DOM node — not recreated
+    expect(second).toBe(first);
+    expect(second!.textContent).toContain('updated');
+  });
+
+  it('streaming=true creates a new tooltip if none exists', () => {
+    const range = makeRange();
+    showTranslationTooltip('hello', range, true);
+    const tooltip = document.getElementById('translate-tooltip');
+    expect(tooltip).not.toBeNull();
+    expect(tooltip!.textContent).toContain('hello');
+  });
+
+  it('streaming=false replaces existing tooltip', () => {
+    const range = makeRange();
+    showTranslationTooltip('first', range);
+    showTranslationTooltip('second', range, false);
+    expect(document.querySelectorAll('#translate-tooltip')).toHaveLength(1);
+    expect(document.getElementById('translate-tooltip')!.textContent).toContain('second');
+  });
 });
 
 // ============================================================================

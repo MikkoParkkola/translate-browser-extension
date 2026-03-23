@@ -484,6 +484,99 @@ chrome.runtime.onMessage.addListener(
   }
 );
 
+// ============================================================================
+// Streaming Translation via Port (chrome.runtime.connect)
+// ============================================================================
+//
+// Content scripts connect with name 'translate-stream' to receive incremental
+// translation tokens. This is used for long selected text so the tooltip can
+// show partial results as they arrive rather than waiting for the full response.
+//
+// Protocol:
+//   CS → SW  { type: 'startStream', text, sourceLang, targetLang, provider? }
+//   SW → CS  { type: 'chunk', partial: string }  (one or more)
+//   SW → CS  { type: 'done', result: string }
+//   SW → CS  { type: 'error', error: string }
+
+chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
+  if (port.name !== 'translate-stream') return;
+
+  port.onMessage.addListener(async (msg: {
+    type: string;
+    text?: string;
+    sourceLang?: string;
+    targetLang?: string;
+    provider?: string;
+  }) => {
+    if (msg.type !== 'startStream') return;
+    const { text, sourceLang, targetLang, provider: requestedProvider } = msg;
+
+    if (!text || !sourceLang || !targetLang) {
+      port.postMessage({ type: 'error', error: 'Missing required fields' });
+      return;
+    }
+
+    const provider = (requestedProvider || getProvider()) as TranslationProviderId;
+    acquireKeepAlive();
+
+    try {
+      // For chrome-builtin: translate sentence-by-sentence for progressive feedback.
+      // The Chrome Translator API only supports streaming within the main world of a tab
+      // (not from the service worker), so we approximate streaming by splitting on
+      // sentence boundaries and posting each translated sentence as a chunk.
+      if (provider === 'chrome-builtin') {
+        const sentences = splitIntoSentences(text);
+        const accumulated: string[] = [];
+
+        for (const sentence of sentences) {
+          if (!sentence.trim()) {
+            accumulated.push(sentence);
+            continue;
+          }
+
+          const response = await handleTranslate({
+            text: sentence,
+            sourceLang,
+            targetLang,
+            provider: 'chrome-builtin',
+          });
+
+          if (response.success && response.result) {
+            accumulated.push(response.result as string);
+            port.postMessage({ type: 'chunk', partial: accumulated.join(' ') });
+          } else {
+            throw new Error(response.error || 'Translation failed');
+          }
+        }
+
+        port.postMessage({ type: 'done', result: accumulated.join(' ') });
+        return;
+      }
+
+      // For all other providers: translate via offscreen IPC (they already batch-
+      // translate efficiently; send the whole text and return a single done message).
+      const response = await handleTranslate({ text, sourceLang, targetLang, provider });
+      if (response.success && response.result) {
+        port.postMessage({ type: 'chunk', partial: response.result as string });
+        port.postMessage({ type: 'done', result: response.result as string });
+      } else {
+        throw new Error(response.error || 'Translation failed');
+      }
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      try { port.postMessage({ type: 'error', error: errMsg }); } catch { /* port may be closed */ }
+    } finally {
+      releaseKeepAlive();
+    }
+  });
+});
+
+/** Split text into sentences on common sentence-ending punctuation. */
+function splitIntoSentences(text: string): string[] {
+  // Split after . ! ? when followed by whitespace and a capital letter or end-of-string.
+  return text.split(/(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÀÈÌÒÙÄÖÜ])/u).filter(Boolean);
+}
+
 async function handleMessage(message: ExtensionMessage): Promise<unknown> {
   switch (message.type) {
     case 'ping':

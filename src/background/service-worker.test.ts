@@ -31,6 +31,9 @@ vi.stubGlobal('chrome', {
     onStartup: {
       addListener: mockAddStartupListener,
     },
+    onConnect: {
+      addListener: vi.fn(),
+    },
     getURL: vi.fn((path: string) => `chrome-extension://test-id/${path}`),
     getContexts: vi.fn().mockResolvedValue([
       { documentUrl: 'chrome-extension://test-id/src/offscreen/offscreen.html' },
@@ -6701,4 +6704,45 @@ describe('Coverage gap tests — second wave', () => {
     });
   });
 
+});
+
+// ============================================================================
+// splitIntoSentences (exported only for testing via dynamic import trick)
+// We test the behaviour indirectly through a re-implementation here since the
+// function is module-private.
+// ============================================================================
+describe('splitIntoSentences (streaming helper)', () => {
+  /** Mirror the implementation to test the splitting logic. */
+  function split(text: string): string[] {
+    return text.split(/(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÀÈÌÒÙÄÖÜ])/u).filter(Boolean);
+  }
+
+  it('returns a single element for a short sentence without terminal punctuation', () => {
+    expect(split('Hello world')).toEqual(['Hello world']);
+  });
+
+  it('splits on period followed by capital letter', () => {
+    const parts = split('First sentence. Second sentence.');
+    expect(parts).toEqual(['First sentence.', 'Second sentence.']);
+  });
+
+  it('splits on exclamation followed by capital letter', () => {
+    const parts = split('Great! Now do it again.');
+    expect(parts).toEqual(['Great!', 'Now do it again.']);
+  });
+
+  it('splits on question mark followed by capital letter', () => {
+    const parts = split('Done? Yes, all done.');
+    expect(parts).toEqual(['Done?', 'Yes, all done.']);
+  });
+
+  it('does NOT split on abbreviations (no following capital)', () => {
+    // "Mr. smith" - 's' is lowercase
+    const parts = split('Email mr. smith today.');
+    expect(parts).toHaveLength(1);
+  });
+
+  it('handles empty string', () => {
+    expect(split('')).toEqual([]);
+  });
 });

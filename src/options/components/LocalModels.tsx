@@ -93,6 +93,7 @@ export const LocalModels: Component = () => {
         { id: 'opus-mt-fi-en', name: 'OPUS-MT Finnish-English', size: 300 * 1024 * 1024 },
         { id: 'opus-mt-en-de', name: 'OPUS-MT English-German', size: 300 * 1024 * 1024 },
         { id: 'opus-mt-de-en', name: 'OPUS-MT German-English', size: 300 * 1024 * 1024 },
+        { id: 'nllb-200', name: 'NLLB-200 (Universal — 200 languages)', size: 350 * 1024 * 1024 },
         { id: 'translategemma', name: 'TranslateGemma 4B', size: 2.5 * 1024 * 1024 * 1024 },
       ];
 
@@ -284,8 +285,12 @@ export const LocalModels: Component = () => {
               Fast and accurate for European languages.
             </p>
             <p style={{ "margin-bottom": "0.75rem" }}>
+              <strong>NLLB-200</strong> (~350MB): Meta's universal model covering 200 language pairs
+              in a single download. Replaces multiple OPUS-MT models and supports low-resource languages.
+            </p>
+            <p style={{ "margin-bottom": "0.75rem" }}>
               <strong>TranslateGemma</strong> (~2.5GB): Google's multilingual model.
-              Supports 8 languages with high quality but requires WebGPU.
+              Supports 8 languages with high quality but requires WebGPU or WebNN.
             </p>
             <p>
               Models are stored in IndexedDB and persist across browser restarts.

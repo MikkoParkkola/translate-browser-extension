@@ -99,6 +99,8 @@ export default defineConfig({
       '@core': resolve(__dirname, 'src/core'),
       '@providers': resolve(__dirname, 'src/providers'),
       '@components': resolve(__dirname, 'src/popup/components'),
+      // Map the checked-in bundle to the npm package so updates flow automatically
+      './wllama.bundle.js': resolve(__dirname, 'node_modules/@wllama/wllama/esm/index.min.js'),
     },
   },
   build: {

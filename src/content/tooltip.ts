@@ -2,17 +2,31 @@
  * Selection translation tooltips (result + error)
  */
 
+/** Data attribute used to identify the text-content span inside a tooltip. */
+const TOOLTIP_TEXT_ATTR = 'data-translate-text';
+
 /**
  * Show translation tooltip
+ * @param streaming — when true, updates an existing tooltip in place rather than
+ *   recreating it. This avoids flicker during progressive streaming updates.
  */
-export function showTranslationTooltip(text: string, range: Range): void {
+export function showTranslationTooltip(text: string, range: Range, streaming = false): void {
+  // In streaming mode, reuse the existing tooltip element if present
+  if (streaming) {
+    const existing = document.getElementById('translate-tooltip');
+    const textSpan = existing?.querySelector<HTMLSpanElement>(`[${TOOLTIP_TEXT_ATTR}]`);
+    if (textSpan) {
+      textSpan.textContent = text;
+      return;
+    }
+  }
+
   removeTooltip();
 
   const rect = range.getBoundingClientRect();
 
   const tooltip = document.createElement('div');
   tooltip.id = 'translate-tooltip';
-  tooltip.textContent = text;
   tooltip.style.cssText = `
     position: fixed;
     top: ${Math.min(rect.bottom + 8, window.innerHeight - 100)}px;
@@ -29,6 +43,12 @@ export function showTranslationTooltip(text: string, range: Range): void {
     animation: translateFadeIn 0.2s ease;
     word-wrap: break-word;
   `;
+
+  // Dedicated text span — streaming updates target this element
+  const textSpan = document.createElement('span');
+  textSpan.setAttribute(TOOLTIP_TEXT_ATTR, '');
+  textSpan.textContent = text;
+  tooltip.appendChild(textSpan);
 
   // Add close button
   const closeBtn = document.createElement('button');

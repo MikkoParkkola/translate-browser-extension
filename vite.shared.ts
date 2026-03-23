@@ -8,6 +8,10 @@ export const sharedManualChunks = (id: string) => {
   if (id.includes('onnxruntime')) {
     return 'onnx-runtime';
   }
+  // wllama - lazy-loaded GGUF inference engine (~220KB)
+  if (id.includes('@wllama/wllama') || id.includes('wllama.bundle')) {
+    return 'wllama';
+  }
   // Solid.js - UI framework (popup/options only)
   if (id.includes('solid-js') || id.includes('solid-refresh')) {
     return 'solid';

@@ -80,6 +80,7 @@ vi.stubGlobal('chrome', {
     },
     onInstalled: { addListener: vi.fn() },
     onStartup: { addListener: vi.fn() },
+    onConnect: { addListener: vi.fn() },
     getURL: vi.fn((p: string) => `chrome-extension://test/${p}`),
     getContexts: vi.fn().mockResolvedValue([
       { documentUrl: 'chrome-extension://test/src/offscreen/offscreen.html' },

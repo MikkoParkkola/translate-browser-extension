@@ -192,6 +192,53 @@ async function loadGlossary(): Promise<GlossaryStore> {
   return glossaryLoadingPromise;
 }
 
+/** Minimum text length (chars) to attempt streaming for selected text. */
+const STREAM_THRESHOLD = 300;
+
+/**
+ * Translate text via a long-lived Port connection so partial results arrive
+ * progressively. Calls `onChunk(partial)` as each sentence is translated, then
+ * resolves with the final full translation. Falls back to `sendMessage` on any
+ * port error.
+ */
+async function translateWithStreaming(
+  text: string,
+  sourceLang: string,
+  targetLang: string,
+  provider: string | undefined,
+  onChunk: (partial: string) => void,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let port: chrome.runtime.Port;
+    try {
+      port = browserAPI.runtime.connect({ name: 'translate-stream' });
+    } catch {
+      reject(new Error('Port connection failed'));
+      return;
+    }
+
+    port.onMessage.addListener((msg: { type: string; partial?: string; result?: string; error?: string }) => {
+      if (msg.type === 'chunk' && msg.partial) {
+        onChunk(msg.partial);
+      } else if (msg.type === 'done') {
+        port.disconnect();
+        resolve(msg.result ?? '');
+      } else if (msg.type === 'error') {
+        port.disconnect();
+        reject(new Error(msg.error ?? 'Streaming translation failed'));
+      }
+    });
+
+    port.onDisconnect.addListener(() => {
+      // If port was disconnected unexpectedly (e.g., service worker restart)
+      // the promise may already be settled; if not, reject so caller falls back.
+      reject(new Error('Port disconnected'));
+    });
+
+    port.postMessage({ type: 'startStream', text, sourceLang, targetLang, provider });
+  });
+}
+
 /**
  * Translate selected text with error handling
  */
@@ -232,6 +279,28 @@ async function translateSelection(
     const g = await loadGlossary();
     const { processedText, restore } = await glossary.applyGlossary(sanitized, g);
 
+    const range = selection.getRangeAt(0);
+
+    // Use port-based streaming for long texts so the tooltip updates progressively.
+    if (processedText.length >= STREAM_THRESHOLD) {
+      try {
+        const result = await translateWithStreaming(
+          processedText,
+          sourceLang,
+          targetLang,
+          provider,
+          (partial) => {
+            showTranslationTooltip(restore(partial), range, /* streaming */ true);
+          },
+        );
+        showTranslationTooltip(restore(result), range);
+        return;
+      } catch (streamError) {
+        log.debug('Streaming failed, falling back to sendMessage:', streamError);
+        // Fall through to the regular sendMessage path below
+      }
+    }
+
     const response = (await browserAPI.runtime.sendMessage({
       type: 'translate',
       text: processedText,
@@ -247,10 +316,10 @@ async function translateSelection(
     if (response.success && response.result) {
       // Apply glossary post-processing (restore placeholders)
       const finalResult = restore(response.result as string);
-      showTranslationTooltip(finalResult, selection.getRangeAt(0));
+      showTranslationTooltip(finalResult, range);
     } else {
       log.error(' Translation failed:', response.error);
-      showErrorTooltip(response.error || 'Translation failed', selection.getRangeAt(0));
+      showErrorTooltip(response.error || 'Translation failed', range);
     }
   } catch (error) {
     log.error(' Translation error:', error);
