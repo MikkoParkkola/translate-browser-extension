@@ -76,3 +76,9 @@ export { t, getUILanguage } from './i18n';
 
 // Version detection
 export { checkVersion, dismissUpdateNotice, isUpdateDismissed } from './version';
+
+// Async utilities
+export { sleep, withTimeout } from './async-utils';
+
+// Text utilities
+export { splitIntoSentences, approxTokens } from './text-utils';

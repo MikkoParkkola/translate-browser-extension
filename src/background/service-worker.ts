@@ -26,6 +26,7 @@ import { getPredictionEngine } from '../core/prediction-engine';
 import { CONFIG } from '../config';
 import { profiler, type AggregateStats } from '../core/profiler';
 import { sleep } from '../core/async-utils';
+import { splitIntoSentences } from '../core/text-utils';
 
 // Shared modules — extracted from duplicated Chrome/Firefox logic
 import {
@@ -574,11 +575,6 @@ chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
   });
 });
 
-/** Split text into sentences on common sentence-ending punctuation. */
-function splitIntoSentences(text: string): string[] {
-  // Split after . ! ? when followed by whitespace and a capital letter or end-of-string.
-  return text.split(/(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÀÈÌÒÙÄÖÜ])/u).filter(Boolean);
-}
 
 async function handleMessage(message: ExtensionMessage): Promise<unknown> {
   switch (message.type) {

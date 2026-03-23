@@ -12,6 +12,7 @@
 import type { ThrottleConfig, ThrottleUsage } from '../types';
 import { CONFIG } from '../config';
 import { createLogger } from './logger';
+import { splitIntoSentences, approxTokens } from './text-utils';
 
 const log = createLogger('Throttle');
 
@@ -57,19 +58,19 @@ export class Throttle {
   }
 
   /**
-   * Split text into sentences for batching
-   */
+     /** Split text into sentences for batching (delegates to shared utility). */
   splitSentences(text: string): string[] {
     const s = String(text || '');
-    const matches = s.match(/[^.!?]+[.!?]+(?:\s+|$)/g);
-    return matches ? matches.map((t) => t.trim()) : [s.trim()];
+    const sentences = splitIntoSentences(s);
+    // Preserve original behaviour: empty/single-sentence input returns [trimmed text]
+    return sentences.length > 0 ? sentences : [s.trim()];
   }
 
   /**
    * Approximate token count (~4 chars per token)
    */
   approxTokens(text: string): number {
-    return Math.max(1, Math.ceil(text.length / 4));
+    return approxTokens(text);
   }
 
   /**
