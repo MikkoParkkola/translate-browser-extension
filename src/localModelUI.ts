@@ -18,6 +18,7 @@ import type {
   HealthCheckResult,
   HealthCheck,
   ModelInfo,
+  PerformanceSummary,
 } from './lib/LocalModelManager.js';
 
 import { escapeHtml } from './content/sanitize.js';
@@ -48,7 +49,7 @@ interface LocalModelManagerForUI {
   startPerformanceMonitoring(): Promise<void>;
   switchOptimizationLevel(level: string): Promise<void>;
   getPerformanceReport(): Promise<PerformanceReport>;
-  performanceStats?: { inferenceHistory?: number[] };
+  performanceStats?: PerformanceSummary;
 }
 
 interface ValidationProgressInfo {
@@ -101,11 +102,10 @@ interface Recommendation {
   action: string;
 }
 
-interface PerformanceStats {
+interface PerformanceStats extends PerformanceSummary {
   totalTranslations: number;
   successRate: number;
   averageInferenceTime: number;
-  lastError?: { message: string };
 }
 
 class LocalModelUI {
@@ -295,7 +295,7 @@ class LocalModelUI {
       this.renderStatus(modelInfo);
 
       if (modelInfo.available) {
-        this.updatePerformanceStats(modelInfo.performanceStats as unknown as PerformanceStats);
+        this.updatePerformanceStats(modelInfo.performanceStats);
       }
 
     } catch (error) {
@@ -350,23 +350,24 @@ class LocalModelUI {
     /* v8 ignore stop */
 
     /* v8 ignore start */
-    if ((modelInfo.performanceStats as unknown as PerformanceStats)?.lastError) {
+    if (modelInfo.performanceStats?.lastError) {
     /* v8 ignore stop */
-      this.showError('Recent Error', (modelInfo.performanceStats as unknown as PerformanceStats).lastError!.message);
+      this.showError('Recent Error', modelInfo.performanceStats.lastError.message);
     } else {
       this.hideError();
     }
   }
 
-  private updatePerformanceStats(stats: PerformanceStats | undefined): void {
+  private updatePerformanceStats(stats: PerformanceSummary | undefined): void {
     const perfElement = document.getElementById('performance-stats');
     const perfText = document.getElementById('performance-text');
 
     /* v8 ignore start */
-    if (stats && stats.totalTranslations > 0) {
+    const s = stats as PerformanceStats | undefined;
+    if (s && s.totalTranslations > 0) {
     /* v8 ignore stop */
       perfElement!.style.display = 'block';
-      perfText!.textContent = `${stats.totalTranslations} translations, ${stats.successRate}% success rate, ~${Math.round(stats.averageInferenceTime)}ms avg`;
+      perfText!.textContent = `${s.totalTranslations} translations, ${s.successRate}% success rate, ~${Math.round(s.averageInferenceTime)}ms avg`;
     }
   }
 

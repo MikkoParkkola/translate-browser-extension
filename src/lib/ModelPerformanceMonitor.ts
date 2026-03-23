@@ -11,6 +11,11 @@ export interface PerformanceMonitorConfig {
 }
 
 export interface PerformanceSummary {
+  totalTranslations?: number;
+  successRate?: number;
+  averageInferenceTime?: number;
+  lastError?: { message: string };
+  inferenceHistory?: number[];
   [key: string]: unknown;
 }
 
