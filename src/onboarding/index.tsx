@@ -2,37 +2,9 @@ import { render } from 'solid-js/web';
 import { createSignal, Show, For, onMount } from 'solid-js';
 import { safeStorageSet } from '../core/storage';
 import { ONBOARDING_LANGUAGES } from '../shared/translation-options';
+import { ONBOARDING_MODELS as MODELS } from '../shared/provider-options';
+import type { TranslationProviderId } from '../types';
 import './styles.css';
-
-const MODELS = [
-  {
-    id: 'opus-mt',
-    name: 'OPUS-MT',
-    desc: 'Fast local translation',
-    size: '~170MB per language pair',
-    speed: 'Fast',
-    quality: 'Good',
-    recommended: true
-  },
-  {
-    id: 'chrome-builtin',
-    name: 'Chrome Built-in',
-    desc: "Uses Chrome's translation API",
-    size: 'No download',
-    speed: 'Instant',
-    quality: 'Good',
-    recommended: false
-  },
-  {
-    id: 'deepl',
-    name: 'DeepL API',
-    desc: 'Highest quality (requires API key)',
-    size: 'Cloud-based',
-    speed: 'Fast',
-    quality: 'Excellent',
-    recommended: false
-  },
-];
 
 interface Step {
   title: string;
@@ -42,7 +14,7 @@ interface Step {
 export function OnboardingApp() {
   const [step, setStep] = createSignal(0);
   const [targetLang, setTargetLang] = createSignal('en');
-  const [model, setModel] = createSignal('opus-mt');
+  const [model, setModel] = createSignal<TranslationProviderId>('opus-mt');
   const [testResult, setTestResult] = createSignal<string | null>(null);
   const [testing, setTesting] = createSignal(false);
   const [testError, setTestError] = createSignal<string | null>(null);

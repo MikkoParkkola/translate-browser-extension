@@ -11,6 +11,7 @@ import { safeStorageSet } from '../../core/storage';
 import { approxTokens } from '../../core/text-utils';
 import { createLogger } from '../../core/logger';
 import { CONFIG } from '../../config';
+import { BACKGROUND_PROVIDER_LIST } from '../../shared/provider-options';
 
 const log = createLogger('ProviderMgmt');
 
@@ -103,24 +104,7 @@ export const CLOUD_PROVIDER_KEYS: Record<CloudProviderId, string> = {
 };
 
 /** Static provider list shown in the UI. */
-export const PROVIDER_LIST = [
-  {
-    id: 'opus-mt',
-    name: 'Helsinki-NLP OPUS-MT',
-    type: 'local',
-    qualityTier: 'standard',
-    description: 'Fast, lightweight (~170MB per pair)',
-    icon: '',
-  },
-  {
-    id: 'translategemma',
-    name: 'TranslateGemma 4B',
-    type: 'local',
-    qualityTier: 'premium',
-    description: 'High quality, single model (~3.6GB)',
-    icon: '',
-  },
-] as const;
+export const PROVIDER_LIST = BACKGROUND_PROVIDER_LIST;
 
 // ============================================================================
 // Common Handlers

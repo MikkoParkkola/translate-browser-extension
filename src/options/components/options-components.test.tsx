@@ -21,6 +21,10 @@ import {
   SITE_RULE_LANGUAGES,
   SITE_RULE_STRATEGIES,
 } from '../../shared/translation-options';
+import {
+  OPTIONS_CLOUD_PROVIDERS,
+  SITE_RULE_PROVIDER_OPTIONS,
+} from '../../shared/provider-options';
 
 // ============================================================================
 // Chrome / browser API mock
@@ -170,49 +174,7 @@ describe('CacheSettings logic', () => {
 // ============================================================================
 
 describe('CloudProviders logic', () => {
-  // CLOUD_PROVIDERS definitions — verbatim from CloudProviders.tsx
-  type TranslationProviderId = 'deepl' | 'openai' | 'google-cloud' | 'anthropic' | 'opus-mt' | 'translategemma' | 'chrome-builtin';
-
-  const CLOUD_PROVIDERS = [
-    {
-      id: 'deepl' as TranslationProviderId,
-      name: 'DeepL',
-      keyField: 'deepl_api_key',
-      enabledField: 'deepl_enabled',
-      hasProTier: true,
-      proField: 'deepl_is_pro',
-      placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx',
-      helpUrl: 'https://www.deepl.com/pro-api',
-    },
-    {
-      id: 'openai' as TranslationProviderId,
-      name: 'OpenAI',
-      keyField: 'openai_api_key',
-      enabledField: 'openai_enabled',
-      modelField: 'openai_model',
-      hasProTier: false,
-      placeholder: 'sk-...',
-      models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-    },
-    {
-      id: 'google-cloud' as TranslationProviderId,
-      name: 'Google Cloud',
-      keyField: 'google_cloud_api_key',
-      enabledField: 'google_cloud_enabled',
-      hasProTier: false,
-      placeholder: 'AIza...',
-    },
-    {
-      id: 'anthropic' as TranslationProviderId,
-      name: 'Claude (Anthropic)',
-      keyField: 'anthropic_api_key',
-      enabledField: 'anthropic_enabled',
-      modelField: 'anthropic_model',
-      hasProTier: false,
-      placeholder: 'sk-ant-...',
-      models: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-latest'],
-    },
-  ];
+  const CLOUD_PROVIDERS = OPTIONS_CLOUD_PROVIDERS;
 
   describe('CLOUD_PROVIDERS definitions', () => {
     it('has exactly 4 providers', () => {
@@ -525,24 +487,13 @@ describe('GlossarySettings logic', () => {
 // ============================================================================
 
 describe('SiteRulesSettings logic', () => {
-  const PROVIDERS = [
-    { id: '', name: 'Use default' },
-    { id: 'opus-mt', name: 'OPUS-MT (Local)' },
-    { id: 'translategemma', name: 'TranslateGemma (Local)' },
-    { id: 'chrome-builtin', name: 'Chrome Built-in' },
-    { id: 'deepl', name: 'DeepL' },
-    { id: 'openai', name: 'OpenAI' },
-    { id: 'google-cloud', name: 'Google Cloud' },
-    { id: 'anthropic', name: 'Claude' },
-  ];
-
   describe('PROVIDERS', () => {
-    it('has 8 entries', () => expect(PROVIDERS).toHaveLength(8));
-    it('first is Use default', () => expect(PROVIDERS[0].id).toBe(''));
-    it('includes opus-mt', () => expect(PROVIDERS.some((p) => p.id === 'opus-mt')).toBe(true));
-    it('includes deepl', () => expect(PROVIDERS.some((p) => p.id === 'deepl')).toBe(true));
+    it('has 8 entries', () => expect(SITE_RULE_PROVIDER_OPTIONS).toHaveLength(8));
+    it('first is Use default', () => expect(SITE_RULE_PROVIDER_OPTIONS[0].id).toBe(''));
+    it('includes opus-mt', () => expect(SITE_RULE_PROVIDER_OPTIONS.some((p) => p.id === 'opus-mt')).toBe(true));
+    it('includes deepl', () => expect(SITE_RULE_PROVIDER_OPTIONS.some((p) => p.id === 'deepl')).toBe(true));
     it('all IDs unique', () => {
-      const ids = PROVIDERS.map((p) => p.id);
+      const ids = SITE_RULE_PROVIDER_OPTIONS.map((p) => p.id);
       expect(new Set(ids).size).toBe(ids.length);
     });
   });

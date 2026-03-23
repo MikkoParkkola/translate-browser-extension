@@ -1,6 +1,6 @@
 import { createSignal, onMount, onCleanup, Show } from 'solid-js';
 import { ProviderStatus } from './components/ProviderStatus';
-import { ModelSelector, MODELS, type ModelDownloadStatus } from './components/ModelSelector';
+import { ModelSelector, type ModelDownloadStatus } from './components/ModelSelector';
 import { LanguageSelector } from './components/LanguageSelector';
 import { StrategySelector } from './components/StrategySelector';
 import { ModelStatus } from './components/ModelStatus';
@@ -11,6 +11,7 @@ import { checkVersion, dismissUpdateNotice, isUpdateDismissed } from '../core/ve
 import { createLogger } from '../core/logger';
 import { sleep } from '../core/async-utils';
 import { extractErrorMessage } from '../core/errors';
+import { PROVIDER_STATUS_NAMES } from '../shared/provider-options';
 
 const log = createLogger('Popup');
 
@@ -35,16 +36,6 @@ const BROWSER_INTERNAL_PREFIXES = [
 
 const isRestrictedTabUrl = (url?: string): boolean =>
   Boolean(url && BROWSER_INTERNAL_PREFIXES.some((prefix) => url.startsWith(prefix)));
-
-const PROVIDER_STATUS_NAME_OVERRIDES: Partial<Record<TranslationProviderId, string>> = {
-  'opus-mt': 'Helsinki-NLP OPUS-MT',
-  'translategemma': 'TranslateGemma 4B',
-};
-
-const PROVIDER_STATUS_NAMES = Object.freeze({
-  ...Object.fromEntries(MODELS.map((model) => [model.id, model.name])),
-  ...PROVIDER_STATUS_NAME_OVERRIDES,
-}) as Record<TranslationProviderId, string>;
 
 export default function App() {
   const [sourceLang, setSourceLangInternal] = createSignal('auto');

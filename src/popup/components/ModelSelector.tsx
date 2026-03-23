@@ -1,15 +1,18 @@
 import { Component, Show, createSignal, onMount, onCleanup, For, createEffect } from 'solid-js';
 import type { TranslationProviderId } from '../../types';
+import {
+  MODEL_SELECTOR_CLOUD_PROVIDERS as CLOUD_PROVIDERS,
+  MODEL_SELECTOR_LOCAL_MODELS as LOCAL_MODELS,
+  MODEL_SELECTOR_MODELS as MODELS,
+} from '../../shared/provider-options';
+import type { ModelInfo } from '../../shared/provider-options';
 
-export interface ModelInfo {
-  id: TranslationProviderId;
-  name: string;
-  tag: string;
-  description: string;
-  size: string;
-  isCloud?: boolean;
-  costEstimate?: string;
-}
+export type { ModelInfo } from '../../shared/provider-options';
+export {
+  MODEL_SELECTOR_CLOUD_PROVIDERS as CLOUD_PROVIDERS,
+  MODEL_SELECTOR_LOCAL_MODELS as LOCAL_MODELS,
+  MODEL_SELECTOR_MODELS as MODELS,
+} from '../../shared/provider-options';
 
 export interface ModelDownloadStatus {
   isDownloading: boolean;
@@ -34,73 +37,6 @@ interface Props {
   cloudStatus?: Record<string, CloudProviderStatus>;
   webGpuAvailable?: boolean | null;
 }
-
-// Local models (no API key required)
-export const LOCAL_MODELS: ModelInfo[] = [
-  {
-    id: 'opus-mt',
-    name: 'OPUS-MT',
-    tag: 'Fast',
-    description: 'Helsinki-NLP',
-    size: '~170MB',
-  },
-  {
-    id: 'translategemma',
-    name: 'TranslateGemma',
-    tag: 'Quality',
-    description: 'Google 4B',
-    size: '~3.6GB',
-  },
-  {
-    id: 'chrome-builtin',
-    name: 'Chrome Built-in',
-    tag: 'Native',
-    description: 'Chrome 138+',
-    size: 'Built-in',
-  },
-];
-
-// Cloud providers (API key required)
-export const CLOUD_PROVIDERS: ModelInfo[] = [
-  {
-    id: 'deepl',
-    name: 'DeepL',
-    tag: 'Premium',
-    description: 'Best quality',
-    size: 'API',
-    isCloud: true,
-    costEstimate: '~$20/1M chars',
-  },
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    tag: 'OpenAI',
-    description: 'AI translation',
-    size: 'API',
-    isCloud: true,
-    costEstimate: '~$5/1M tokens',
-  },
-  {
-    id: 'anthropic',
-    name: 'Claude',
-    tag: 'AI',
-    description: 'Anthropic',
-    size: 'API',
-    isCloud: true,
-    costEstimate: '~$3/1M tokens',
-  },
-  {
-    id: 'google-cloud',
-    name: 'Google',
-    tag: 'Cloud',
-    description: 'Google Cloud',
-    size: 'API',
-    isCloud: true,
-    costEstimate: '~$20/1M chars',
-  },
-];
-
-export const MODELS: ModelInfo[] = [...LOCAL_MODELS, ...CLOUD_PROVIDERS];
 
 /**
  * Compact dropdown model selector

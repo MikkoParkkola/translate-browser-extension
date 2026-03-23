@@ -14,19 +14,9 @@ import {
   SITE_RULE_STRATEGIES,
   SITE_RULE_TARGET_LANGUAGES,
 } from '../../shared/translation-options';
+import { SITE_RULE_PROVIDER_OPTIONS } from '../../shared/provider-options';
 
 const log = createLogger('SiteRulesSettings');
-
-const PROVIDERS: Array<{ id: TranslationProviderId | ''; name: string }> = [
-  { id: '', name: 'Use default' },
-  { id: 'opus-mt', name: 'OPUS-MT (Local)' },
-  { id: 'translategemma', name: 'TranslateGemma (Local)' },
-  { id: 'chrome-builtin', name: 'Chrome Built-in' },
-  { id: 'deepl', name: 'DeepL' },
-  { id: 'openai', name: 'OpenAI' },
-  { id: 'google-cloud', name: 'Google Cloud' },
-  { id: 'anthropic', name: 'Claude' },
-];
 
 export const SiteRulesSettings: Component = () => {
   const [allRules, setAllRules] = createSignal<SiteRulesStore>({});
@@ -263,7 +253,7 @@ export const SiteRulesSettings: Component = () => {
                 value={newProvider()}
                 onChange={(e) => setNewProvider(e.currentTarget.value as TranslationProviderId | '')}
               >
-                <For each={PROVIDERS}>
+                <For each={SITE_RULE_PROVIDER_OPTIONS}>
                   {(p) => <option value={p.id}>{p.name}</option>}
                 </For>
               </select>
@@ -354,7 +344,7 @@ export const SiteRulesSettings: Component = () => {
                           {rules.autoTranslate ? 'Auto' : 'Manual'}
                         </span>
                         <Show when={rules.preferredProvider}>
-                          <span>{PROVIDERS.find(p => p.id === rules.preferredProvider)?.name}</span>
+                          <span>{SITE_RULE_PROVIDER_OPTIONS.find(p => p.id === rules.preferredProvider)?.name}</span>
                         </Show>
                         <Show when={rules.targetLang}>
                           <span>{'->'} {rules.targetLang}</span>
@@ -403,7 +393,7 @@ export const SiteRulesSettings: Component = () => {
                         value={editProvider()}
                         onChange={(e) => setEditProvider(e.currentTarget.value as TranslationProviderId | '')}
                       >
-                        <For each={PROVIDERS}>
+                        <For each={SITE_RULE_PROVIDER_OPTIONS}>
                           {(p) => <option value={p.id}>{p.name}</option>}
                         </For>
                       </select>

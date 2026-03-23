@@ -5,28 +5,13 @@
 
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
-import { CLOUD_PROVIDER_CONFIGS, type CloudProviderConfig } from '../../shared/cloud-provider-configs';
+import { OPTIONS_CLOUD_PROVIDERS as CLOUD_PROVIDERS } from '../../shared/provider-options';
 import { reportUiError } from '../../shared/ui-feedback';
 import { createLogger } from '../../core/logger';
 import { safeStorageGet, safeStorageSet, safeStorageRemove } from '../../core/storage';
 import { extractErrorMessage } from '../../core/errors';
 
 const log = createLogger('CloudProviders');
-
-// Cloud provider definitions
-interface CloudProviderFullConfig extends CloudProviderConfig {
-  enabledField: string;
-  testEndpoint?: string;
-  models?: string[];
-  modelField?: string;
-}
-
-const CLOUD_PROVIDERS: CloudProviderFullConfig[] = [
-  { ...CLOUD_PROVIDER_CONFIGS[0]!, enabledField: 'deepl_enabled', testEndpoint: 'https://api-free.deepl.com/v2/usage' },
-  { ...CLOUD_PROVIDER_CONFIGS[1]!, enabledField: 'openai_enabled', modelField: 'openai_model', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'] },
-  { ...CLOUD_PROVIDER_CONFIGS[2]!, enabledField: 'google_cloud_enabled' },
-  { ...CLOUD_PROVIDER_CONFIGS[3]!, enabledField: 'anthropic_enabled', modelField: 'anthropic_model', models: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-latest'] },
-];
 
 interface ProviderStatus {
   hasKey: boolean;
