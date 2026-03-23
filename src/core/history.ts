@@ -35,8 +35,8 @@ export async function getHistory(): Promise<HistoryEntry[]> {
   try {
     const data = await browserAPI.storage.local.get(STORAGE_KEY);
     return data[STORAGE_KEY] || [];
-  } catch (e) {
-    log.error('Failed to get history:', e);
+  } catch (error) {
+    log.error('Failed to get history:', error);
     return [];
   }
 }
@@ -100,8 +100,8 @@ export async function addToHistory(
 
     await browserAPI.storage.local.set({ [STORAGE_KEY]: history });
     log.info('Added to history:', truncatedSource.substring(0, 30) + '...');
-  } catch (e) {
-    log.error('Failed to add to history:', e);
+  } catch (error) {
+    log.error('Failed to add to history:', error);
   }
 }
 
@@ -112,8 +112,8 @@ export async function clearHistory(): Promise<void> {
   try {
     await browserAPI.storage.local.remove(STORAGE_KEY);
     log.info('History cleared');
-  } catch (e) {
-    log.error('Failed to clear history:', e);
+  } catch (error) {
+    log.error('Failed to clear history:', error);
   }
 }
 
@@ -126,8 +126,8 @@ export async function removeFromHistory(id: string): Promise<void> {
     const filtered = history.filter((entry) => entry.id !== id);
     await browserAPI.storage.local.set({ [STORAGE_KEY]: filtered });
     log.info('Removed from history:', id);
-  } catch (e) {
-    log.error('Failed to remove from history:', e);
+  } catch (error) {
+    log.error('Failed to remove from history:', error);
   }
 }
 

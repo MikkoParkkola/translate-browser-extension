@@ -1575,8 +1575,8 @@ chrome.runtime.onInstalled.addListener(async (details) => {
           log.info(`Cleared IndexedDB: ${db.name}`);
         }
       }
-    } catch (e) {
-      log.warn('Cache clearing on update failed:', e);
+    } catch (error) {
+      log.warn('Cache clearing on update failed:', error);
     }
   }
 });

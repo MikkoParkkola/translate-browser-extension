@@ -171,8 +171,8 @@ async function loadGlossary(): Promise<GlossaryStore> {
   glossaryLoadingPromise = (async () => {
     try {
       cachedGlossary = await glossary.getGlossary();
-    } catch (e) {
-      log.error(' Failed to load glossary:', e);
+    } catch (error) {
+      log.error(' Failed to load glossary:', error);
       cachedGlossary = {};
     }
     glossaryLoadingPromise = null;

@@ -85,8 +85,8 @@ export async function getRules(hostname: string): Promise<SiteRules | null> {
 
     const match = findMatchingRule(hostname, allRules);
     return match ? match.rules : null;
-  } catch (e) {
-    log.error(' Failed to get rules:', e);
+  } catch (error) {
+    log.error(' Failed to get rules:', error);
     return null;
   }
 }
@@ -103,9 +103,9 @@ export async function setRules(hostnameOrPattern: string, rules: SiteRules): Pro
 
     await browserAPI.storage.local.set({ [STORAGE_KEY]: allRules });
     log.info(' Updated rules for:', hostnameOrPattern, rules);
-  } catch (e) {
-    log.error(' Failed to set rules:', e);
-    throw e;
+  } catch (error) {
+    log.error(' Failed to set rules:', error);
+    throw error;
   }
 }
 
@@ -121,9 +121,9 @@ export async function clearRules(hostnameOrPattern: string): Promise<void> {
 
     await browserAPI.storage.local.set({ [STORAGE_KEY]: allRules });
     log.info(' Cleared rules for:', hostnameOrPattern);
-  } catch (e) {
-    log.error(' Failed to clear rules:', e);
-    throw e;
+  } catch (error) {
+    log.error(' Failed to clear rules:', error);
+    throw error;
   }
 }
 
@@ -134,8 +134,8 @@ export async function getAllRules(): Promise<SiteRulesStore> {
   try {
     const data = await browserAPI.storage.local.get(STORAGE_KEY);
     return data[STORAGE_KEY] || {};
-  } catch (e) {
-    log.error(' Failed to get all rules:', e);
+  } catch (error) {
+    log.error(' Failed to get all rules:', error);
     return {};
   }
 }
@@ -147,9 +147,9 @@ export async function clearAllRules(): Promise<void> {
   try {
     await browserAPI.storage.local.remove(STORAGE_KEY);
     log.info(' Cleared all rules');
-  } catch (e) {
-    log.error(' Failed to clear all rules:', e);
-    throw e;
+  } catch (error) {
+    log.error(' Failed to clear all rules:', error);
+    throw error;
   }
 }
 
@@ -199,9 +199,9 @@ export async function importRules(json: string): Promise<number> {
     log.info(' Imported', Object.keys(imported).length, 'rules');
 
     return Object.keys(imported).length;
-  } catch (e) {
-    log.error(' Failed to import rules:', e);
-    throw e;
+  } catch (error) {
+    log.error(' Failed to import rules:', error);
+    throw error;
   }
 }
 

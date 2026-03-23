@@ -114,8 +114,8 @@ export async function detectLanguage(text: string): Promise<string> {
           return results[0].detectedLanguage;
         }
       }
-    } catch (e) {
-      log.debug('Chrome LanguageDetector failed, trying next method:', e);
+    } catch (error) {
+      log.debug('Chrome LanguageDetector failed, trying next method:', error);
     }
   }
 
@@ -128,8 +128,8 @@ export async function detectLanguage(text: string): Promise<string> {
         log.debug(`Firefox i18n.detectLanguage: "${lang}"`);
         return lang;
       }
-    } catch (e) {
-      log.debug('Firefox i18n.detectLanguage failed:', e);
+    } catch (error) {
+      log.debug('Firefox i18n.detectLanguage failed:', error);
     }
   }
 

@@ -124,7 +124,7 @@ async function imageUrlToDataUrl(imageUrl: string): Promise<string> {
         ctx.drawImage(tempImg, 0, 0);
         try {
           resolve(canvas.toDataURL('image/png'));
-        } catch (e) {
+        } catch {
           reject(new Error('Cannot access image due to CORS policy'));
         }
       };

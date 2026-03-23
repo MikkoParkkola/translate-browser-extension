@@ -36,8 +36,8 @@ export async function getGlossary(): Promise<GlossaryStore> {
   try {
     const data = await browserAPI.storage.local.get(STORAGE_KEY);
     return data[STORAGE_KEY] || {};
-  } catch (e) {
-    log.error(' Failed to get glossary:', e);
+  } catch (error) {
+    log.error(' Failed to get glossary:', error);
     return {};
   }
 }
@@ -60,9 +60,9 @@ export async function addTerm(
     glossary[term] = { replacement, caseSensitive, description };
     await browserAPI.storage.local.set({ [STORAGE_KEY]: glossary });
     log.info(' Added term:', term, '->', replacement);
-  } catch (e) {
-    log.error(' Failed to add term:', e);
-    throw e;
+  } catch (error) {
+    log.error(' Failed to add term:', error);
+    throw error;
   }
 }
 
@@ -75,9 +75,9 @@ export async function removeTerm(term: string): Promise<void> {
     delete glossary[term];
     await browserAPI.storage.local.set({ [STORAGE_KEY]: glossary });
     log.info(' Removed term:', term);
-  } catch (e) {
-    log.error(' Failed to remove term:', e);
-    throw e;
+  } catch (error) {
+    log.error(' Failed to remove term:', error);
+    throw error;
   }
 }
 
@@ -88,9 +88,9 @@ export async function clearGlossary(): Promise<void> {
   try {
     await browserAPI.storage.local.remove(STORAGE_KEY);
     log.info(' Cleared glossary');
-  } catch (e) {
-    log.error(' Failed to clear glossary:', e);
-    throw e;
+  } catch (error) {
+    log.error(' Failed to clear glossary:', error);
+    throw error;
   }
 }
 
@@ -273,9 +273,9 @@ export async function importGlossary(json: string): Promise<number> {
     log.info(' Imported', Object.keys(imported).length, 'terms');
 
     return Object.keys(imported).length;
-  } catch (e) {
-    log.error(' Failed to import glossary:', e);
-    throw e;
+  } catch (error) {
+    log.error(' Failed to import glossary:', error);
+    throw error;
   }
 }
 

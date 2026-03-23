@@ -178,8 +178,8 @@ export class Throttle {
         this.recordUsage(tokens);
         try {
           Promise.resolve(fn()).then(resolve, reject);
-        } catch (e) {
-          reject(e);
+        } catch (error) {
+          reject(error);
         }
         return;
       }
