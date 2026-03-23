@@ -6,6 +6,11 @@
  * - Sharded download progress (shows per-shard progress)
  * - WebGPU/WASM backend indicator
  * - No more single ArrayBuffer size warnings
+ *
+ * @note This file is NOT currently wired into any build entry point.
+ * It is a standalone DOM-based UI class intended for future integration
+ * into an options page or dedicated local model management page.
+ * Until integrated, it is covered only by unit tests (localModelUI.test.ts).
  */
 
 import type {

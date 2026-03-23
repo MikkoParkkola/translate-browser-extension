@@ -5,6 +5,7 @@
 
 import type { TranslationProviderId } from '../types';
 import { createLogger } from './logger';
+import { fnv1aHash } from './hash';
 
 const log = createLogger('TranslationCache');
 
@@ -38,18 +39,11 @@ const STORE_NAME = 'translations';
 const MAX_CACHE_SIZE_BYTES = 100 * 1024 * 1024; // 100MB
 
 /**
- * Simple FNV-1a hash for cache keys.
- * Fast and good distribution for string keys.
+ * Generate cache key from translation parameters.
+ * FNV-1a hash of the combined fields for compact, uniform keys.
  */
 function hashKey(text: string, sourceLang: string, targetLang: string, provider: string): string {
-  const input = `${text}|${sourceLang}|${targetLang}|${provider}`;
-  let hash = 2166136261; // FNV offset basis
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 16777619); // FNV prime
-  }
-  // Convert to unsigned 32-bit integer and then to hex string
-  return (hash >>> 0).toString(16).padStart(8, '0');
+  return fnv1aHash(`${text}|${sourceLang}|${targetLang}|${provider}`);
 }
 
 /**
