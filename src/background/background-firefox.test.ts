@@ -412,6 +412,42 @@ describe('background-firefox message handler', () => {
       }) as Record<string, unknown>;
       expect(response).toMatchObject({ success: expect.any(Boolean) });
     });
+
+    it('applies user corrections before translation and warms the Firefox cache', async () => {
+      await invoke({ type: 'clearCache' });
+
+      const corrections = await import('../core/corrections');
+      const errors = await import('../core/errors');
+      const spy = vi.spyOn(corrections, 'getCorrection').mockResolvedValueOnce('korjattu');
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'hello unique correction',
+        sourceLang: 'en',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      spy.mockRestore();
+      expect(response.success).toBe(true);
+      expect(response.result).toBe('korjattu');
+      expect(response.fromCorrection).toBe(true);
+      expect(errors.withRetry).not.toHaveBeenCalled();
+
+      const cachedResponse = await invoke({
+        type: 'translate',
+        text: 'hello unique correction',
+        sourceLang: 'en',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      expect(cachedResponse.success).toBe(true);
+      expect(cachedResponse.result).toBe('korjattu');
+      expect(errors.withRetry).not.toHaveBeenCalled();
+
+      const cacheStats = await invoke({ type: 'getCacheStats' }) as Record<string, unknown>;
+      const cache = cacheStats.cache as Record<string, unknown>;
+      expect(cache.size).toBeGreaterThan(0);
+    });
   });
 
   describe('preloadModel', () => {

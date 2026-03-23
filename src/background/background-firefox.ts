@@ -21,6 +21,7 @@ import {
 } from '../core/errors';
 import { createLogger } from '../core/logger';
 import { safeStorageGet, safeStorageSet } from '../core/storage';
+import { getCorrection } from '../core/corrections';
 import { withTimeout } from '../core/async-utils';
 import { generateCacheKey } from '../core/hash';
 import { CONFIG } from '../config';
@@ -626,6 +627,21 @@ async function handleTranslate(message: TranslateMessage): Promise<TranslateResp
           result: cached.result,
           duration,
         } as TranslateResponse & { cached: boolean };
+      }
+
+      if (typeof text === 'string') {
+        const userCorrection = await getCorrection(text, message.sourceLang, message.targetLang);
+        if (userCorrection) {
+          const duration = Date.now() - startTime;
+          log.info(`Using user correction, returning in ${duration}ms`);
+          setCachedTranslation(cacheKey, userCorrection, message.sourceLang, message.targetLang);
+          return {
+            success: true,
+            result: userCorrection,
+            duration,
+            fromCorrection: true,
+          };
+        }
       }
     }
 
