@@ -14,6 +14,7 @@ const mockAddStartupListener = vi.fn();
 const mockAddTabsUpdatedListener = vi.fn();
 const mockAddCommandListener = vi.fn();
 const mockAddContextMenuClickedListener = vi.fn();
+const mockAddConnectListener = vi.fn();
 const mockStorageSet = vi.fn();
 const mockStorageRemove = vi.fn().mockResolvedValue(undefined);
 
@@ -32,7 +33,7 @@ vi.stubGlobal('chrome', {
       addListener: mockAddStartupListener,
     },
     onConnect: {
-      addListener: vi.fn(),
+      addListener: mockAddConnectListener,
     },
     getURL: vi.fn((path: string) => `chrome-extension://test-id/${path}`),
     getContexts: vi.fn().mockResolvedValue([
@@ -6792,5 +6793,66 @@ describe('cache readiness gating', () => {
     const response = await responsePromise as Record<string, unknown>;
     expect(response.success).toBe(true);
     expect(mockSendMessage).toHaveBeenCalled();
+  });
+});
+
+describe('streaming port hardening', () => {
+  function createStreamPort() {
+    let messageListener: ((message: Record<string, unknown>) => Promise<void> | void) | undefined;
+    let disconnectListener: (() => void) | undefined;
+    const postMessage = vi.fn();
+
+    const port = {
+      name: 'translate-stream',
+      postMessage,
+      onMessage: {
+        addListener: vi.fn((listener) => {
+          messageListener = listener;
+        }),
+      },
+      onDisconnect: {
+        addListener: vi.fn((listener) => {
+          disconnectListener = listener;
+        }),
+      },
+    };
+
+    return {
+      port,
+      async start(message: Record<string, unknown>) {
+        await messageListener?.(message);
+      },
+      disconnect() {
+        disconnectListener?.();
+      },
+      postMessage,
+    };
+  }
+
+  it('stops streaming cleanly when the port closes before chunk delivery', async () => {
+    const connectHandler = mockAddConnectListener.mock.calls[0]?.[0] as (port: unknown) => void;
+    const stream = createStreamPort();
+    connectHandler(stream.port);
+
+    stream.postMessage.mockImplementation(() => {
+      stream.disconnect();
+      throw new Error('Port closed');
+    });
+    mockSendMessage.mockReset();
+    mockSendMessage.mockReturnValue({ success: true, result: 'translated stream result' });
+
+    await expect(stream.start({
+      type: 'startStream',
+      text: 'Hello stream',
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'opus-mt',
+    })).resolves.toBeUndefined();
+
+    expect(stream.postMessage).toHaveBeenCalledTimes(1);
+    expect(stream.postMessage).toHaveBeenCalledWith({
+      type: 'chunk',
+      partial: 'translated stream result',
+    });
   });
 });

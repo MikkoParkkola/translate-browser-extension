@@ -503,8 +503,28 @@ chrome.runtime.onMessage.addListener(
 //   SW → CS  { type: 'done', result: string }
 //   SW → CS  { type: 'error', error: string }
 
+function createStreamPortSender(port: chrome.runtime.Port): (message: Record<string, unknown>) => boolean {
+  let closed = false;
+  port.onDisconnect.addListener(() => {
+    closed = true;
+  });
+
+  return (message: Record<string, unknown>) => {
+    if (closed) return false;
+    try {
+      port.postMessage(message);
+      return true;
+    } catch (error) {
+      closed = true;
+      log.debug('Stream port closed before message delivery:', error);
+      return false;
+    }
+  };
+}
+
 chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
   if (port.name !== 'translate-stream') return;
+  const postToStream = createStreamPortSender(port);
 
   port.onMessage.addListener(async (msg: {
     type: string;
@@ -517,7 +537,7 @@ chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
     const { text, sourceLang, targetLang, provider: requestedProvider } = msg;
 
     if (!text || !sourceLang || !targetLang) {
-      port.postMessage({ type: 'error', error: 'Missing required fields' });
+      postToStream({ type: 'error', error: 'Missing required fields' });
       return;
     }
 
@@ -548,13 +568,13 @@ chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
 
           if (response.success && response.result) {
             accumulated.push(response.result as string);
-            port.postMessage({ type: 'chunk', partial: accumulated.join(' ') });
+            if (!postToStream({ type: 'chunk', partial: accumulated.join(' ') })) return;
           } else {
             throw new Error(response.error || 'Translation failed');
           }
         }
 
-        port.postMessage({ type: 'done', result: accumulated.join(' ') });
+        postToStream({ type: 'done', result: accumulated.join(' ') });
         return;
       }
 
@@ -562,14 +582,14 @@ chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
       // translate efficiently; send the whole text and return a single done message).
       const response = await handleTranslate({ text, sourceLang, targetLang, provider });
       if (response.success && response.result) {
-        port.postMessage({ type: 'chunk', partial: response.result as string });
-        port.postMessage({ type: 'done', result: response.result as string });
+        if (!postToStream({ type: 'chunk', partial: response.result as string })) return;
+        postToStream({ type: 'done', result: response.result as string });
       } else {
         throw new Error(response.error || 'Translation failed');
       }
     } catch (error) {
       const errMsg = extractErrorMessage(error);
-      try { port.postMessage({ type: 'error', error: errMsg }); } catch { /* port may be closed */ }
+      postToStream({ type: 'error', error: errMsg });
     } finally {
       releaseKeepAlive();
     }
