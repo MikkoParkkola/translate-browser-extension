@@ -224,8 +224,8 @@ export default function App() {
         log.info('Chrome Translator API not available (Chrome 138+ required)');
         updateModelStatus('chrome-builtin', { isDownloaded: false, error: 'Chrome 138+ required' });
       }
-    } catch (e) {
-      log.info('Chrome Translator check failed:', e);
+    } catch (error) {
+      log.info('Chrome Translator check failed:', error);
       updateModelStatus('chrome-builtin', { isDownloaded: false, error: 'Not available' });
     }
 
@@ -248,8 +248,8 @@ export default function App() {
           setTimeout(() => clearError(), 8000);
         }
       }
-    } catch (e) {
-      log.info('WebGPU check failed:', e);
+    } catch (error) {
+      log.info('WebGPU check failed:', error);
       setWebGpuAvailable(false);
     }
 
@@ -299,8 +299,8 @@ export default function App() {
       // Notify background service worker
       await browserAPI.runtime.sendMessage({ type: 'setProvider', provider });
       log.info('Provider changed to:', provider);
-    } catch (e) {
-      log.error('Failed to set provider:', e);
+    } catch (error) {
+      log.error('Failed to set provider:', error);
     }
   };
 
@@ -345,8 +345,8 @@ export default function App() {
         setBilingualMode(response.enabled);
         log.info('Bilingual mode:', response.enabled);
       }
-    } catch (e) {
-      log.error('Toggle bilingual mode failed:', e);
+    } catch (error) {
+      log.error('Toggle bilingual mode failed:', error);
     }
   };
 
@@ -431,9 +431,9 @@ export default function App() {
       if (response && typeof response === 'object' && 'success' in response && !response.success) {
         handleError(new Error(response.error || 'Translation failed'));
       }
-    } catch (e) {
-      log.error('Translation failed:', e);
-      handleError(e);
+    } catch (error) {
+      log.error('Translation failed:', error);
+      handleError(error);
     } finally {
       setIsTranslating(false);
     }
@@ -474,9 +474,9 @@ export default function App() {
       if (response && typeof response === 'object' && 'success' in response && !response.success) {
         handleError(new Error(response.error || 'Page translation failed'));
       }
-    } catch (e) {
-      log.error('Page translation failed:', e);
-      handleError(e);
+    } catch (error) {
+      log.error('Page translation failed:', error);
+      handleError(error);
     } finally {
       setIsTranslating(false);
     }
@@ -499,8 +499,8 @@ export default function App() {
       if (!injected) return;
 
       await browserAPI.tabs.sendMessage(tab.id, { type: 'undoTranslation' });
-    } catch (e) {
-      log.error('Undo failed:', e);
+    } catch (error) {
+      log.error('Undo failed:', error);
     }
   };
 

@@ -90,8 +90,8 @@ export const LocalModels: Component = () => {
         quota: estimate.quota || 0,
         models: mergedModels,
       });
-    } catch (e) {
-      log.error('Failed to load stats:', e);
+    } catch (error) {
+      log.error('Failed to load stats:', error);
     } finally {
       setLoading(false);
     }
@@ -119,8 +119,8 @@ export const LocalModels: Component = () => {
 
       // Refresh stats
       await loadModelStats();
-    } catch (e) {
-      log.error('Failed to delete model:', e);
+    } catch (error) {
+      log.error('Failed to delete model:', error);
       alert('Failed to delete model. It may be in use.');
     } finally {
       setDeleting(null);
@@ -150,8 +150,8 @@ export const LocalModels: Component = () => {
 
       // Refresh stats
       await loadModelStats();
-    } catch (e) {
-      log.error('Failed to clear models:', e);
+    } catch (error) {
+      log.error('Failed to clear models:', error);
       alert('Failed to clear models. Some models may still be cached.');
     }
   };

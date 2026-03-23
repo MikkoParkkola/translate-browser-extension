@@ -6,6 +6,7 @@
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
 import { CLOUD_PROVIDER_CONFIGS, type CloudProviderConfig } from '../../shared/cloud-provider-configs';
+import { reportUiError } from '../../shared/ui-feedback';
 import { createLogger } from '../../core/logger';
 import { safeStorageGet, safeStorageSet, safeStorageRemove } from '../../core/storage';
 import { extractErrorMessage } from '../../core/errors';
@@ -74,8 +75,8 @@ export const CloudProviders: Component = () => {
           /* v8 ignore stop */
         };
       }
-    } catch (e) {
-      log.error('Failed to load status:', e);
+    } catch (error) {
+      log.error('Failed to load status:', error);
     }
 
     setProviderStatus(status);
@@ -144,9 +145,8 @@ export const CloudProviders: Component = () => {
       }));
 
       setEditingProvider(null);
-    } catch (e) {
-      log.error('Failed to save key:', e);
-      setError('Failed to save API key');
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to save API key', 'Failed to save key:', error);
     } finally {
       setSaving(false);
     }
@@ -178,8 +178,8 @@ export const CloudProviders: Component = () => {
         ...prev,
         [providerId]: { hasKey: false, enabled: false },
       }));
-    } catch (e) {
-      log.error('Failed to remove key:', e);
+    } catch (error) {
+      log.error('Failed to remove key:', error);
     }
   };
 
@@ -199,8 +199,8 @@ export const CloudProviders: Component = () => {
         ...prev,
         [providerId]: { ...prev[providerId], enabled: newEnabled },
       }));
-    } catch (e) {
-      log.error('Failed to toggle provider:', e);
+    } catch (error) {
+      log.error('Failed to toggle provider:', error);
     }
   };
 
@@ -241,8 +241,8 @@ export const CloudProviders: Component = () => {
           [providerId]: { ...prev[providerId], testResult: null, testMessage: undefined },
         }));
       }, 3000);
-    } catch (e) {
-      log.error('Test failed:', e);
+    } catch (error) {
+      log.error('Test failed:', error);
       setProviderStatus((prev) => ({
         ...prev,
         [providerId]: {
@@ -250,7 +250,7 @@ export const CloudProviders: Component = () => {
           testing: false,
           testResult: 'error',
           /* v8 ignore start */
-          testMessage: 'Test failed: ' + extractErrorMessage(e, 'Unknown error'),
+          testMessage: 'Test failed: ' + extractErrorMessage(error, 'Unknown error'),
           /* v8 ignore stop */
         },
       }));
