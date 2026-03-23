@@ -193,8 +193,6 @@ async function loadGlossary(): Promise<GlossaryStore> {
   return glossaryLoadingPromise;
 }
 
-/** Minimum text length (chars) to attempt streaming for selected text. */
-const STREAM_THRESHOLD = 300;
 
 /**
  * Translate text via a long-lived Port connection so partial results arrive
@@ -283,7 +281,7 @@ async function translateSelection(
     const range = selection.getRangeAt(0);
 
     // Use port-based streaming for long texts so the tooltip updates progressively.
-    if (processedText.length >= STREAM_THRESHOLD) {
+    if (processedText.length >= CONFIG.selection.streamThresholdChars) {
       try {
         const result = await translateWithStreaming(
           processedText,

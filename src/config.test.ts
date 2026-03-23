@@ -156,6 +156,7 @@ describe('CONFIG immutability', () => {
       'mutations',
       'rateLimits',
       'retry',
+      'selection',
       'throttle',
       'timeouts',
     ]);

@@ -92,6 +92,14 @@ export const CONFIG = {
   },
 
   /**
+   * Selection translation (tooltip) settings
+   */
+  selection: {
+    /** Minimum character count to enable streaming mode for selection translate */
+    streamThresholdChars: 300,
+  },
+
+  /**
    * Throttle defaults (used by Throttle class)
    */
   throttle: {
