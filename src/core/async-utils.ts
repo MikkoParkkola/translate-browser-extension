@@ -3,6 +3,13 @@
  */
 
 /**
+ * Resolve after `ms` milliseconds. Useful for delays and backoff.
+ */
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Wrap a promise with a timeout. The timer is always cleared when the
  * promise settles (success or error) — no lingering callbacks.
  */

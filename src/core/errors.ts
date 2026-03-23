@@ -5,6 +5,7 @@
 
 // Error categories for routing to appropriate handlers
 import { createLogger } from './logger';
+import { sleep } from './async-utils';
 
 const log = createLogger('Errors');
 
@@ -292,7 +293,7 @@ export async function withRetry<T>(
         `Retrying in ${delay}ms...`
       );
 
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await sleep(delay);
     }
   }
 

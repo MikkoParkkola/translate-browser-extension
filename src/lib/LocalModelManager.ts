@@ -16,6 +16,7 @@ import { standardErrorHandler } from './standardErrorHandler.js';
 import { safeStorageGet, safeStorageSet } from '../core/storage';
 import { ModelValidator } from './ModelValidator.js';
 export type { ValidationResult } from './ModelValidator.js';
+import { sleep } from '../core/async-utils';
 import { ModelUpdater } from './ModelUpdater.js';
 import type { UpdateCheckResult } from './ModelUpdater.js';
 import { ModelPerformanceMonitor } from './ModelPerformanceMonitor.js';
@@ -874,8 +875,9 @@ export class LocalModelManager {
     await this._storeData('model_status', updated);
   }
 
+  /** Delay helper — delegates to shared sleep utility; kept private for testability via spyOn. */
   private _sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => { setTimeout(resolve, ms); });
+    return sleep(ms);
   }
 
   // Storage helpers — chrome path uses safeStorageGet/Set; fallback uses localStorage

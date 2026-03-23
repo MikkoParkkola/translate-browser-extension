@@ -25,6 +25,7 @@ import { getCorrection } from '../core/corrections';
 import { getPredictionEngine } from '../core/prediction-engine';
 import { CONFIG } from '../config';
 import { profiler, type AggregateStats } from '../core/profiler';
+import { sleep } from '../core/async-utils';
 
 // Shared modules — extracted from duplicated Chrome/Firefox logic
 import {
@@ -360,7 +361,7 @@ async function resetOffscreenDocument(): Promise<void> {
 
   creatingOffscreen = null;
 
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await sleep(500);
   await ensureOffscreenDocument();
 
   offscreenResetCount = 0;
@@ -447,10 +448,12 @@ chrome.runtime.onMessage.addListener(
     
     // For translation messages, validate text/sourceLang/targetLang are strings
     if (message.type === 'translate') {
-      const translationMessage = message as unknown as { text?: unknown; sourceLang?: unknown; targetLang?: unknown };
-      if (typeof translationMessage.text !== 'string' && !Array.isArray(translationMessage.text) ||
-          typeof translationMessage.sourceLang !== 'string' ||
-          typeof translationMessage.targetLang !== 'string') {
+      // TypeScript narrows message to TranslateMessage here; validation is a runtime guard
+      // against malformed messages from content scripts (the union type ensures correct types
+      // for well-formed callers, but runtime messages are untyped).
+      if (typeof message.text !== 'string' && !Array.isArray(message.text) ||
+          typeof message.sourceLang !== 'string' ||
+          typeof message.targetLang !== 'string') {
         sendResponse({ success: false, error: 'Invalid translation parameters' });
         return true;
       }
@@ -1421,7 +1424,7 @@ async function sendMessageToTab(tabId: number, message: Record<string, unknown>)
         files: ['src/content/index.js'],
       });
 
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await sleep(200);
 
       await chrome.tabs.sendMessage(tabId, message);
       log.info(`Message delivered to tab ${tabId} after injection`);

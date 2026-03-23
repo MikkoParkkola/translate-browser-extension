@@ -13,6 +13,7 @@
 
 import type { Strategy, TranslationProviderId, TranslateResponse } from '../types';
 import { extractErrorMessage, calculateRetryDelay } from '../core/errors';
+import { sleep } from '../core/async-utils';
 import { siteRules } from '../core/site-rules';
 import { glossary, type GlossaryStore } from '../core/glossary';
 import { CONFIG } from '../config';
@@ -351,7 +352,7 @@ async function translateBatchWithRetry(
       // Exponential backoff on retry
       if (attempt > 0) {
         const delay = calculateRetryDelay(attempt);
-        await new Promise((r) => setTimeout(r, delay));
+        await sleep(delay);
         log.info(`Retry attempt ${attempt} for batch`);
       }
 
