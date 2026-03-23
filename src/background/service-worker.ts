@@ -738,7 +738,6 @@ async function handleDeleteModel(message: DeleteModelMessage): Promise<MessageRe
     return {
       success: false,
       error: extractErrorMessage(error),
-
     };
   }
 }
@@ -776,7 +775,6 @@ async function handleClearAllModels(): Promise<MessageResponse> {
     return {
       success: false,
       error: extractErrorMessage(error),
-
     };
   }
 }
@@ -834,7 +832,6 @@ async function handleGetPredictionStats(): Promise<MessageResponse<{ prediction:
     return {
       success: false,
       error: extractErrorMessage(error),
-
     };
   }
 }
@@ -1235,7 +1232,6 @@ async function handleGetProfilingStats(): Promise<MessageResponse<{ aggregates: 
     return {
       success: false,
       error: extractErrorMessage(error),
-
     };
   }
 }
@@ -1340,7 +1336,6 @@ async function handleCaptureScreenshot(message: CaptureScreenshotMessage): Promi
     return {
       success: false,
       error: extractErrorMessage(error),
-
     };
   }
 }
