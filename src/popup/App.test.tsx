@@ -1601,6 +1601,33 @@ describe('App error action button handlers', () => {
     });
   });
 
+  it('Retry action retries selection translation', async () => {
+    let selectionAttempts = 0;
+    const sendMessage = browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>;
+    sendMessage.mockImplementation((_tabId: number, message: { type: string }) => {
+      if (message.type === 'ping') return Promise.resolve({});
+      if (message.type === 'translateSelection') {
+        selectionAttempts++;
+        if (selectionAttempts === 1) {
+          return Promise.reject(new Error('connection refused'));
+        }
+      }
+      return Promise.resolve({});
+    });
+
+    render(() => <App />);
+    await flush();
+    fireEvent.click(screen.getByLabelText('Translate selected text'));
+    await vi.waitFor(() => {
+      expect(screen.getByLabelText('Retry')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByLabelText('Retry'));
+    await vi.waitFor(() => {
+      const selectionCalls = sendMessage.mock.calls.filter(([, msg]) => msg?.type === 'translateSelection');
+      expect(selectionCalls).toHaveLength(2);
+    });
+  });
+
   it('Switch Provider action switches to chrome-builtin', async () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('model loading failed'),

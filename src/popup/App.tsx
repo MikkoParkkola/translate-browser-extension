@@ -22,6 +22,20 @@ const getBrowserLanguage = () => {
   return lang;
 };
 
+type TranslationCommand = 'translatePage' | 'translateSelection';
+
+const BROWSER_INTERNAL_PREFIXES = [
+  'chrome://',
+  'about:',
+  'chrome-extension://',
+  'moz-extension://',
+  'resource://',
+  'view-source:',
+] as const;
+
+const isRestrictedTabUrl = (url?: string): boolean =>
+  Boolean(url && BROWSER_INTERNAL_PREFIXES.some((prefix) => url.startsWith(prefix)));
+
 export default function App() {
   const [sourceLang, setSourceLangInternal] = createSignal('auto');
   const [targetLang, setTargetLangInternal] = createSignal(getBrowserLanguage());
@@ -286,7 +300,7 @@ export default function App() {
     // Block TranslateGemma when WebGPU is not available
     if (provider === 'translategemma' && webGpuAvailable() === false) {
       setError('TranslateGemma requires WebGPU (GPU acceleration). Your browser does not support WebGPU. Use OPUS-MT for local translation instead.');
-      setErrorAction({ label: 'Use OPUS-MT', handler: () => { clearError(); handleProviderChange('opus-mt'); } });
+      setClearingErrorAction('Use OPUS-MT', () => handleProviderChange('opus-mt'));
       return;
     }
 
@@ -355,9 +369,47 @@ export default function App() {
     setErrorAction(null);
   };
 
-  const handleError = (e: unknown) => {
-    const msg = extractErrorMessage(e);
+  const setClearingErrorAction = (
+    label: string,
+    action: () => void | Promise<void>
+  ) => {
+    setErrorAction({
+      label,
+      handler: () => {
+        clearError();
+        void action();
+      },
+    });
+  };
+
+  const getTranslatableTabId = async (): Promise<number | null> => {
+    const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) {
+      setError('No active tab');
+      return null;
+    }
+
+    if (isRestrictedTabUrl(tab.url)) {
+      setError('Cannot translate browser pages');
+      return null;
+    }
+
+    const injected = await ensureContentScript(tab.id);
+    if (!injected) {
+      setError('Cannot access this page');
+      return null;
+    }
+
+    return tab.id;
+  };
+
+  const handleError = (
+    error: unknown,
+    retryAction?: () => void | Promise<void>
+  ) => {
+    const msg = extractErrorMessage(error);
     const msgLower = msg.toLowerCase();
+    const retry = retryAction || (() => handleTranslatePage());
 
     // Reset action
     setErrorAction(null);
@@ -366,120 +418,75 @@ export default function App() {
       setError('Cannot translate this page. Browser internal pages cannot be translated.');
     } else if (msgLower.includes('not configured') || msgLower.includes('api key')) {
       setError(`${msg}`);
-      setErrorAction({ label: 'Open Settings', handler: () => { clearError(); openSettings(); } });
+      setClearingErrorAction('Open Settings', openSettings);
     } else if (msgLower.includes('no network') || msgLower.includes('offline')) {
       setError('No network connection. Switch to a local model for offline translation.');
-      setErrorAction({ label: 'Use OPUS-MT', handler: () => { clearError(); handleProviderChange('opus-mt'); } });
+      setClearingErrorAction('Use OPUS-MT', () => handleProviderChange('opus-mt'));
     } else if (msgLower.includes('language pair') || msgLower.includes('not available') || msgLower.includes('unsupported')) {
       setError(msg);
     } else if (msgLower.includes('network') || msgLower.includes('connection') || (msgLower.includes('fetch') && !msgLower.includes('model'))) {
       setError(`Connection error. Check your internet connection.`);
-      setErrorAction({ label: 'Retry', handler: () => { clearError(); handleTranslatePage(); } });
+      setClearingErrorAction('Retry', retry);
     } else if (msgLower.includes('rate') && msgLower.includes('limit')) {
       setError(`Rate limited. Please wait a moment before retrying.`);
-      setErrorAction({ label: 'Retry', handler: () => { clearError(); handleTranslatePage(); } });
+      setClearingErrorAction('Retry', retry);
     } else if (msgLower.includes('timeout') || msgLower.includes('timed out')) {
       setError(`${msg}. Try with less text or wait for the model to fully load.`);
-      setErrorAction({ label: 'Retry', handler: () => { clearError(); handleTranslatePage(); } });
+      setClearingErrorAction('Retry', retry);
     } else if (msgLower.includes('model') || msgLower.includes('pipeline') || msgLower.includes('load')) {
       setError(`${msg}. Try waiting for the model to download.`);
-      setErrorAction({ label: 'Switch Provider', handler: () => { clearError(); handleProviderChange('chrome-builtin'); } });
+      setClearingErrorAction('Switch Provider', () => handleProviderChange('chrome-builtin'));
     } else if (msgLower.includes('memory') || msgLower.includes('oom')) {
       setError(`${msg}. Try closing other tabs or using a smaller text selection.`);
     } else {
       setError(msg || 'Translation failed. Please try again.');
       /* v8 ignore start -- error action handler */
-      setErrorAction({ label: 'Retry', handler: () => { clearError(); handleTranslatePage(); } });
+      setClearingErrorAction('Retry', retry);
       /* v8 ignore stop */
     }
     // Clear error after 12 seconds (longer for action buttons)
     setTimeout(() => clearError(), 12000);
   };
 
-  const handleTranslateSelection = async () => {
+  const executeTranslateCommand = async (
+    type: TranslationCommand,
+    fallbackError: string
+  ) => {
     setIsTranslating(true);
     setError(null);
+
     try {
-      const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) {
-        setError('No active tab');
-        return;
-      }
-      // Check if it's a restricted URL (handles both Chrome and Firefox)
-      const restrictedPrefixes = [
-        'chrome://', 'about:', 'chrome-extension://',
-        'moz-extension://', 'resource://', 'view-source:'
-      ];
-      if (tab.url && restrictedPrefixes.some(prefix => tab.url!.startsWith(prefix))) {
-        setError('Cannot translate browser pages');
-        return;
-      }
-      // Ensure content script is loaded
-      const injected = await ensureContentScript(tab.id);
-      if (!injected) {
-        setError('Cannot access this page');
-        return;
-      }
-      const response = await browserAPI.tabs.sendMessage(tab.id, {
-        type: 'translateSelection',
+      const tabId = await getTranslatableTabId();
+      if (!tabId) return;
+
+      const response = await browserAPI.tabs.sendMessage(tabId, {
+        type,
         sourceLang: sourceLang(),
         targetLang: targetLang(),
         strategy: strategy(),
         provider: activeProvider(),
       });
-      // Check for structured error response from content script
+
       if (response && typeof response === 'object' && 'success' in response && !response.success) {
-        handleError(new Error(response.error || 'Translation failed'));
+        handleError(
+          new Error(response.error || fallbackError),
+          () => executeTranslateCommand(type, fallbackError)
+        );
       }
     } catch (error) {
-      log.error('Translation failed:', error);
-      handleError(error);
+      log.error(type === 'translatePage' ? 'Page translation failed:' : 'Translation failed:', error);
+      handleError(error, () => executeTranslateCommand(type, fallbackError));
     } finally {
       setIsTranslating(false);
     }
   };
 
+  const handleTranslateSelection = async () => {
+    await executeTranslateCommand('translateSelection', 'Translation failed');
+  };
+
   const handleTranslatePage = async () => {
-    setIsTranslating(true);
-    setError(null);
-    try {
-      const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) {
-        setError('No active tab');
-        return;
-      }
-      // Check if it's a restricted URL (handles both Chrome and Firefox)
-      const restrictedPrefixes = [
-        'chrome://', 'about:', 'chrome-extension://',
-        'moz-extension://', 'resource://', 'view-source:'
-      ];
-      if (tab.url && restrictedPrefixes.some(prefix => tab.url!.startsWith(prefix))) {
-        setError('Cannot translate browser pages');
-        return;
-      }
-      // Ensure content script is loaded
-      const injected = await ensureContentScript(tab.id);
-      if (!injected) {
-        setError('Cannot access this page');
-        return;
-      }
-      const response = await browserAPI.tabs.sendMessage(tab.id, {
-        type: 'translatePage',
-        sourceLang: sourceLang(),
-        targetLang: targetLang(),
-        strategy: strategy(),
-        provider: activeProvider(),
-      });
-      // Check for structured error response from content script
-      if (response && typeof response === 'object' && 'success' in response && !response.success) {
-        handleError(new Error(response.error || 'Page translation failed'));
-      }
-    } catch (error) {
-      log.error('Page translation failed:', error);
-      handleError(error);
-    } finally {
-      setIsTranslating(false);
-    }
+    await executeTranslateCommand('translatePage', 'Page translation failed');
   };
 
   const swapLanguages = () => {
