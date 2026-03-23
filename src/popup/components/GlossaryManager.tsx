@@ -7,6 +7,7 @@ import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import { createLogger } from '../../core/logger';
 import { glossary, type GlossaryStore, type GlossaryTerm } from '../../core/glossary';
 import { extractErrorMessage } from '../../core/errors';
+import { reportUiError } from '../../shared/ui-feedback';
 
 const log = createLogger('GlossaryManager');
 
@@ -41,9 +42,8 @@ export const GlossaryManager: Component<Props> = (props) => {
       const g = await glossary.getGlossary();
       setTerms(g);
       setError(null);
-    } catch (e) {
-      setError('Failed to load glossary');
-      log.error('Load error:', e);
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to load glossary', 'Load error:', error);
     }
   };
 
@@ -66,9 +66,8 @@ export const GlossaryManager: Component<Props> = (props) => {
       setNewDescription('');
       setShowAddForm(false);
       await loadGlossary();
-    } catch (e) {
-      setError('Failed to add term');
-      log.error('Add error:', e);
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to add term', 'Add error:', error);
     }
   };
 
@@ -97,9 +96,8 @@ export const GlossaryManager: Component<Props> = (props) => {
       /* v8 ignore stop */
       setEditingTerm(null);
       await loadGlossary();
-    } catch (e) {
-      setError('Failed to update term');
-      log.error('Update error:', e);
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to update term', 'Update error:', error);
     }
   };
 
@@ -111,9 +109,8 @@ export const GlossaryManager: Component<Props> = (props) => {
     try {
       await glossary.removeTerm(term);
       await loadGlossary();
-    } catch (e) {
-      setError('Failed to delete term');
-      log.error('Delete error:', e);
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to delete term', 'Delete error:', error);
     }
   };
 
@@ -125,9 +122,8 @@ export const GlossaryManager: Component<Props> = (props) => {
     try {
       await glossary.clearGlossary();
       await loadGlossary();
-    } catch (e) {
-      setError('Failed to clear glossary');
-      log.error('Clear error:', e);
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to clear glossary', 'Clear error:', error);
     }
   };
 
@@ -141,9 +137,8 @@ export const GlossaryManager: Component<Props> = (props) => {
       a.download = 'glossary.json';
       a.click();
       URL.revokeObjectURL(url);
-    } catch (e) {
-      setError('Failed to export glossary');
-      log.error('Export error:', e);
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to export glossary', 'Export error:', error);
     }
   };
 
@@ -160,9 +155,14 @@ export const GlossaryManager: Component<Props> = (props) => {
       await loadGlossary();
       setError(null);
       alert(`Imported ${count} glossary terms`);
-    } catch (e) {
-      setError('Failed to import glossary: ' + extractErrorMessage(e, 'Unknown error'));
-      log.error('Import error:', e);
+    } catch (error) {
+      reportUiError(
+        setError,
+        log,
+        'Failed to import glossary: ' + extractErrorMessage(error, 'Unknown error'),
+        'Import error:',
+        error
+      );
     }
   };
 

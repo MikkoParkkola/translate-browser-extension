@@ -7,6 +7,7 @@ import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import { createLogger } from '../../core/logger';
 import { glossary, type GlossaryStore, type GlossaryTerm } from '../../core/glossary';
 import { extractErrorMessage } from '../../core/errors';
+import { reportUiError, showTemporaryMessage } from '../../shared/ui-feedback';
 
 const log = createLogger('GlossarySettings');
 
@@ -50,15 +51,9 @@ export const GlossarySettings: Component = () => {
       const g = await glossary.getGlossary();
       setTerms(g);
       setError(null);
-    } catch (e) {
-      setError('Failed to load glossary');
-      log.error('Load error:', e);
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to load glossary', 'Load error:', error);
     }
-  };
-
-  const showSuccess = (message: string) => {
-    setSuccess(message);
-    setTimeout(() => setSuccess(null), 3000);
   };
 
   const addNewTerm = async () => {
@@ -86,10 +81,9 @@ export const GlossarySettings: Component = () => {
       setShowAddForm(false);
 
       await loadGlossary();
-      showSuccess('Term added successfully');
-    } catch (e) {
-      setError('Failed to add term');
-      log.error('Add error:', e);
+      showTemporaryMessage(setSuccess, 'Term added successfully');
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to add term', 'Add error:', error);
     }
   };
 
@@ -118,10 +112,9 @@ export const GlossarySettings: Component = () => {
       /* v8 ignore stop */
       setEditingTerm(null);
       await loadGlossary();
-      showSuccess('Term updated');
-    } catch (e) {
-      setError('Failed to update term');
-      log.error('Update error:', e);
+      showTemporaryMessage(setSuccess, 'Term updated');
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to update term', 'Update error:', error);
     }
   };
 
@@ -131,10 +124,9 @@ export const GlossarySettings: Component = () => {
     try {
       await glossary.removeTerm(term);
       await loadGlossary();
-      showSuccess('Term deleted');
-    } catch (e) {
-      setError('Failed to delete term');
-      log.error('Delete error:', e);
+      showTemporaryMessage(setSuccess, 'Term deleted');
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to delete term', 'Delete error:', error);
     }
   };
 
@@ -144,10 +136,9 @@ export const GlossarySettings: Component = () => {
     try {
       await glossary.clearGlossary();
       await loadGlossary();
-      showSuccess('Glossary cleared');
-    } catch (e) {
-      setError('Failed to clear glossary');
-      log.error('Clear error:', e);
+      showTemporaryMessage(setSuccess, 'Glossary cleared');
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to clear glossary', 'Clear error:', error);
     }
   };
 
@@ -161,10 +152,9 @@ export const GlossarySettings: Component = () => {
       a.download = 'translate-glossary.json';
       a.click();
       URL.revokeObjectURL(url);
-      showSuccess('Glossary exported');
-    } catch (e) {
-      setError('Failed to export glossary');
-      log.error('Export error:', e);
+      showTemporaryMessage(setSuccess, 'Glossary exported');
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to export glossary', 'Export error:', error);
     }
   };
 
@@ -179,11 +169,16 @@ export const GlossarySettings: Component = () => {
       const text = await file.text();
       const count = await glossary.importGlossary(text);
       await loadGlossary();
-      showSuccess(`Imported ${count} terms`);
+      showTemporaryMessage(setSuccess, `Imported ${count} terms`);
       input.value = '';
-    } catch (e) {
-      setError('Failed to import: ' + extractErrorMessage(e, 'Invalid file'));
-      log.error('Import error:', e);
+    } catch (error) {
+      reportUiError(
+        setError,
+        log,
+        'Failed to import: ' + extractErrorMessage(error, 'Invalid file'),
+        'Import error:',
+        error
+      );
     }
   };
 

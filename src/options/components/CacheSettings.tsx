@@ -8,6 +8,7 @@ import { createLogger } from '../../core/logger';
 import type { TranslationCacheStats } from '../../core/translation-cache';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
 import { formatBytes, formatPercent, formatDate } from '../../shared/format-utils';
+import { reportUiError, showTemporaryMessage } from '../../shared/ui-feedback';
 
 const log = createLogger('CacheSettings');
 
@@ -49,19 +50,11 @@ export const CacheSettings: Component = () => {
           newestTimestamp: null,
         });
       }
-    } catch (e) {
-      log.error('Failed to load stats:', e);
-      setError('Failed to load cache statistics');
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to load cache statistics', 'Failed to load stats:', error);
     } finally {
       setLoading(false);
     }
-  };
-
-  const showSuccess = (message: string) => {
-    /* v8 ignore start -- UI feedback timer */
-    setSuccess(message);
-    setTimeout(() => setSuccess(null), 3000);
-    /* v8 ignore stop */
   };
 
   const clearCache = async () => {
@@ -72,10 +65,9 @@ export const CacheSettings: Component = () => {
     try {
       await chrome.runtime.sendMessage({ type: 'clearCache' });
       await loadStats();
-      showSuccess('Cache cleared successfully');
-    } catch (e) {
-      log.error('Failed to clear cache:', e);
-      setError('Failed to clear cache');
+      showTemporaryMessage(setSuccess, 'Cache cleared successfully');
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to clear cache', 'Failed to clear cache:', error);
     } finally {
       setClearing(false);
     }

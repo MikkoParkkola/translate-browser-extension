@@ -6,6 +6,7 @@
 import { Component, createSignal, For, Show, onMount } from 'solid-js';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
 import { CLOUD_PROVIDER_CONFIGS } from '../../shared/cloud-provider-configs';
+import { reportUiError, showTemporaryMessage } from '../../shared/ui-feedback';
 import { createLogger } from '../../core/logger';
 import { safeStorageGet, safeStorageSet, safeStorageRemove } from '../../core/storage';
 
@@ -54,8 +55,8 @@ export const ApiKeyManager: Component<Props> = (props) => {
           /* v8 ignore stop */
         };
       }
-    } catch (e) {
-      log.error('Failed to load status:', e);
+    } catch (error) {
+      log.error('Failed to load status:', error);
     }
 
     setProviderStatus(status);
@@ -109,14 +110,14 @@ export const ApiKeyManager: Component<Props> = (props) => {
         [providerId]: { hasKey: true, isPro: isProTier() },
       }));
 
-      setSuccess(`${provider.name} API key saved successfully`);
-      setTimeout(() => {
-        setSuccess(null);
-        setEditingProvider(null);
-      }, 1500);
-    } catch (e) {
-      log.error('Failed to save key:', e);
-      setError('Failed to save API key');
+      showTemporaryMessage(
+        setSuccess,
+        `${provider.name} API key saved successfully`,
+        1500,
+        () => setEditingProvider(null)
+      );
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to save API key', 'Failed to save key:', error);
     } finally {
       setSaving(false);
     }
@@ -145,11 +146,9 @@ export const ApiKeyManager: Component<Props> = (props) => {
         [providerId]: { hasKey: false, isPro: undefined },
       }));
 
-      setSuccess(`${provider.name} API key removed`);
-      setTimeout(() => setSuccess(null), 1500);
-    } catch (e) {
-      log.error('Failed to remove key:', e);
-      setError('Failed to remove API key');
+      showTemporaryMessage(setSuccess, `${provider.name} API key removed`, 1500);
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to remove API key', 'Failed to remove key:', error);
     }
   };
 

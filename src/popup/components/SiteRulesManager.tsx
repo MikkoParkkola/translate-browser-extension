@@ -8,6 +8,7 @@ import { createLogger } from '../../core/logger';
 import { siteRules, type SiteRules, type SiteRulesStore } from '../../core/site-rules';
 import type { TranslationProviderId, Strategy } from '../../types';
 import { extractErrorMessage } from '../../core/errors';
+import { reportUiError } from '../../shared/ui-feedback';
 
 const log = createLogger('SiteRulesManager');
 
@@ -52,9 +53,8 @@ export const SiteRulesManager: Component<Props> = (props) => {
           setStrategy(current.strategy || '');
         }
       }
-    } catch (e) {
-      setError('Failed to load site rules');
-      log.error('Load error:', e);
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to load site rules', 'Load error:', error);
     }
   };
 
@@ -78,9 +78,8 @@ export const SiteRulesManager: Component<Props> = (props) => {
       setCurrentSiteRules(rules);
       await loadRules();
       setError(null);
-    } catch (e) {
-      setError('Failed to save rules');
-      log.error('Save error:', e);
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to save rules', 'Save error:', error);
     }
   };
 
@@ -99,9 +98,8 @@ export const SiteRulesManager: Component<Props> = (props) => {
       setStrategy('');
       await loadRules();
       setError(null);
-    } catch (e) {
-      setError('Failed to clear rules');
-      log.error('Clear error:', e);
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to clear rules', 'Clear error:', error);
     }
   };
 
@@ -110,9 +108,8 @@ export const SiteRulesManager: Component<Props> = (props) => {
       await siteRules.clearRules(pattern);
       await loadRules();
       setError(null);
-    } catch (e) {
-      setError('Failed to delete rule');
-      log.error('Delete error:', e);
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to delete rule', 'Delete error:', error);
     }
   };
 
@@ -129,9 +126,8 @@ export const SiteRulesManager: Component<Props> = (props) => {
       setShowAddForm(false);
       await loadRules();
       setError(null);
-    } catch (e) {
-      setError('Failed to add rule');
-      log.error('Add error:', e);
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to add rule', 'Add error:', error);
     }
   };
 
@@ -145,9 +141,8 @@ export const SiteRulesManager: Component<Props> = (props) => {
       a.download = 'site-rules.json';
       a.click();
       URL.revokeObjectURL(url);
-    } catch (e) {
-      setError('Failed to export rules');
-      log.error('Export error:', e);
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to export rules', 'Export error:', error);
     }
   };
 
@@ -164,9 +159,14 @@ export const SiteRulesManager: Component<Props> = (props) => {
       await loadRules();
       setError(null);
       alert(`Imported ${count} site rules`);
-    } catch (e) {
-      setError('Failed to import rules: ' + extractErrorMessage(e, 'Unknown error'));
-      log.error('Import error:', e);
+    } catch (error) {
+      reportUiError(
+        setError,
+        log,
+        'Failed to import rules: ' + extractErrorMessage(error, 'Unknown error'),
+        'Import error:',
+        error
+      );
     }
   };
 

@@ -8,6 +8,7 @@ import { createLogger } from '../../core/logger';
 import { siteRules, type SiteRules, type SiteRulesStore } from '../../core/site-rules';
 import type { TranslationProviderId, Strategy } from '../../types';
 import { extractErrorMessage } from '../../core/errors';
+import { reportUiError, showTemporaryMessage } from '../../shared/ui-feedback';
 
 const log = createLogger('SiteRulesSettings');
 
@@ -73,15 +74,9 @@ export const SiteRulesSettings: Component = () => {
       const rules = await siteRules.getAllRules();
       setAllRules(rules);
       setError(null);
-    } catch (e) {
-      setError('Failed to load site rules');
-      log.error('Load error:', e);
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to load site rules', 'Load error:', error);
     }
-  };
-
-  const showSuccess = (message: string) => {
-    setSuccess(message);
-    setTimeout(() => setSuccess(null), 3000);
   };
 
   const addRule = async () => {
@@ -119,10 +114,9 @@ export const SiteRulesSettings: Component = () => {
       setShowAddForm(false);
 
       await loadRules();
-      showSuccess('Site rule added');
-    } catch (e) {
-      setError('Failed to add rule');
-      log.error('Add error:', e);
+      showTemporaryMessage(setSuccess, 'Site rule added');
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to add rule', 'Add error:', error);
     }
   };
 
@@ -155,10 +149,9 @@ export const SiteRulesSettings: Component = () => {
       await siteRules.setRules(pattern, rules);
       setEditingPattern(null);
       await loadRules();
-      showSuccess('Site rule updated');
-    } catch (e) {
-      setError('Failed to update rule');
-      log.error('Update error:', e);
+      showTemporaryMessage(setSuccess, 'Site rule updated');
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to update rule', 'Update error:', error);
     }
   };
 
@@ -168,10 +161,9 @@ export const SiteRulesSettings: Component = () => {
     try {
       await siteRules.clearRules(pattern);
       await loadRules();
-      showSuccess('Rule deleted');
-    } catch (e) {
-      setError('Failed to delete rule');
-      log.error('Delete error:', e);
+      showTemporaryMessage(setSuccess, 'Rule deleted');
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to delete rule', 'Delete error:', error);
     }
   };
 
@@ -185,10 +177,9 @@ export const SiteRulesSettings: Component = () => {
       a.download = 'translate-site-rules.json';
       a.click();
       URL.revokeObjectURL(url);
-      showSuccess('Rules exported');
-    } catch (e) {
-      setError('Failed to export rules');
-      log.error('Export error:', e);
+      showTemporaryMessage(setSuccess, 'Rules exported');
+    } catch (error) {
+      reportUiError(setError, log, 'Failed to export rules', 'Export error:', error);
     }
   };
 
@@ -201,11 +192,16 @@ export const SiteRulesSettings: Component = () => {
       const text = await file.text();
       const count = await siteRules.importRules(text);
       await loadRules();
-      showSuccess(`Imported ${count} rules`);
+      showTemporaryMessage(setSuccess, `Imported ${count} rules`);
       input.value = '';
-    } catch (e) {
-      setError('Failed to import: ' + extractErrorMessage(e, 'Invalid file'));
-      log.error('Import error:', e);
+    } catch (error) {
+      reportUiError(
+        setError,
+        log,
+        'Failed to import: ' + extractErrorMessage(error, 'Invalid file'),
+        'Import error:',
+        error
+      );
     }
   };
 
