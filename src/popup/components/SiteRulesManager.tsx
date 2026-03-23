@@ -7,6 +7,7 @@ import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import { createLogger } from '../../core/logger';
 import { siteRules, type SiteRules, type SiteRulesStore } from '../../core/site-rules';
 import type { TranslationProviderId, Strategy } from '../../types';
+import { extractErrorMessage } from '../../core/errors';
 
 const log = createLogger('SiteRulesManager');
 
@@ -164,7 +165,7 @@ export const SiteRulesManager: Component<Props> = (props) => {
       setError(null);
       alert(`Imported ${count} site rules`);
     } catch (e) {
-      setError('Failed to import rules: ' + (e instanceof Error ? e.message : 'Unknown error'));
+      setError('Failed to import rules: ' + extractErrorMessage(e, 'Unknown error'));
       log.error('Import error:', e);
     }
   };

@@ -8,6 +8,7 @@ import { ConfirmDialog } from '../../shared/ConfirmDialog';
 import { CLOUD_PROVIDER_CONFIGS, type CloudProviderConfig } from '../../shared/cloud-provider-configs';
 import { createLogger } from '../../core/logger';
 import { safeStorageGet, safeStorageSet, safeStorageRemove } from '../../core/storage';
+import { extractErrorMessage } from '../../core/errors';
 
 const log = createLogger('CloudProviders');
 
@@ -249,7 +250,7 @@ export const CloudProviders: Component = () => {
           testing: false,
           testResult: 'error',
           /* v8 ignore start */
-          testMessage: 'Test failed: ' + (e instanceof Error ? e.message : 'Unknown error'),
+          testMessage: 'Test failed: ' + extractErrorMessage(e, 'Unknown error'),
           /* v8 ignore stop */
         },
       }));

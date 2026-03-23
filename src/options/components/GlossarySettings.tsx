@@ -6,6 +6,7 @@
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import { createLogger } from '../../core/logger';
 import { glossary, type GlossaryStore, type GlossaryTerm } from '../../core/glossary';
+import { extractErrorMessage } from '../../core/errors';
 
 const log = createLogger('GlossarySettings');
 
@@ -181,7 +182,7 @@ export const GlossarySettings: Component = () => {
       showSuccess(`Imported ${count} terms`);
       input.value = '';
     } catch (e) {
-      setError('Failed to import: ' + (e instanceof Error ? e.message : 'Invalid file'));
+      setError('Failed to import: ' + extractErrorMessage(e, 'Invalid file'));
       log.error('Import error:', e);
     }
   };

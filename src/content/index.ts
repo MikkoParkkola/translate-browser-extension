@@ -322,7 +322,7 @@ async function translateSelection(
     }
   } catch (error) {
     log.error(' Translation error:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = extractErrorMessage(error, 'Unknown error');
     showErrorTooltip(message, selection.getRangeAt(0));
   }
 }

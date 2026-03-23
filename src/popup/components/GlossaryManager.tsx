@@ -6,6 +6,7 @@
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import { createLogger } from '../../core/logger';
 import { glossary, type GlossaryStore, type GlossaryTerm } from '../../core/glossary';
+import { extractErrorMessage } from '../../core/errors';
 
 const log = createLogger('GlossaryManager');
 
@@ -160,7 +161,7 @@ export const GlossaryManager: Component<Props> = (props) => {
       setError(null);
       alert(`Imported ${count} glossary terms`);
     } catch (e) {
-      setError('Failed to import glossary: ' + (e instanceof Error ? e.message : 'Unknown error'));
+      setError('Failed to import glossary: ' + extractErrorMessage(e, 'Unknown error'));
       log.error('Import error:', e);
     }
   };

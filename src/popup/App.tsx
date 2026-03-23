@@ -10,6 +10,7 @@ import { browserAPI } from '../core/browser-api';
 import { checkVersion, dismissUpdateNotice, isUpdateDismissed } from '../core/version';
 import { createLogger } from '../core/logger';
 import { sleep } from '../core/async-utils';
+import { extractErrorMessage } from '../core/errors';
 
 const log = createLogger('Popup');
 
@@ -355,7 +356,7 @@ export default function App() {
   };
 
   const handleError = (e: unknown) => {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = extractErrorMessage(e);
     const msgLower = msg.toLowerCase();
 
     // Reset action
