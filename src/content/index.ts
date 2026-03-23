@@ -12,7 +12,7 @@
  */
 
 import type { Strategy, TranslationProviderId, TranslateResponse } from '../types';
-import { extractErrorMessage } from '../core/errors';
+import { extractErrorMessage, calculateRetryDelay } from '../core/errors';
 import { siteRules } from '../core/site-rules';
 import { glossary, type GlossaryStore } from '../core/glossary';
 import { CONFIG } from '../config';
@@ -350,7 +350,7 @@ async function translateBatchWithRetry(
     try {
       // Exponential backoff on retry
       if (attempt > 0) {
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        const delay = calculateRetryDelay(attempt);
         await new Promise((r) => setTimeout(r, delay));
         log.info(`Retry attempt ${attempt} for batch`);
       }
@@ -439,7 +439,6 @@ async function translateBatchWithRetry(
 
       /* v8 ignore start -- OR default fallback */
       lastError = response.error || 'Translation returned unsuccessful response';
-      /* v8 ignore stop */
       /* v8 ignore stop */
     } catch (error) {
       lastError = error;
@@ -967,7 +966,7 @@ function processPendingMutations(): void {
       translateDynamicContent(chunk);
       if (offset < addedNodes.length) {
         if ('requestIdleCallback' in window) {
-          (window as unknown as { requestIdleCallback: (cb: () => void) => void }).requestIdleCallback(processNextChunk);
+          window.requestIdleCallback(processNextChunk);
         } else {
           setTimeout(processNextChunk, 50);
         }
@@ -975,7 +974,7 @@ function processPendingMutations(): void {
     };
     /* v8 ignore start -- requestIdleCallback: chunked processing not reachable in jsdom */
     if ('requestIdleCallback' in window) {
-      (window as unknown as { requestIdleCallback: (cb: () => void) => void }).requestIdleCallback(processNextChunk);
+      window.requestIdleCallback(processNextChunk);
     } else {
       setTimeout(processNextChunk, 50);
     }
@@ -1275,7 +1274,7 @@ async function checkAutoTranslate(): Promise<void> {
     };
 
     if ('requestIdleCallback' in window) {
-      (window as Window).requestIdleCallback(startTranslation, { timeout: 2000 });
+      window.requestIdleCallback(startTranslation, { timeout: 2000 });
     } else {
       setTimeout(startTranslation, 500);
     }
