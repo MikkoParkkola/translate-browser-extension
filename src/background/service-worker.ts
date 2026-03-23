@@ -1240,7 +1240,7 @@ async function handleGetProfilingStats(): Promise<MessageResponse<{ aggregates: 
   }
 }
 
-function handleClearProfilingStats(): unknown {
+function handleClearProfilingStats(): MessageResponse {
   profiler.clear();
   log.info('Profiling stats cleared');
   return { success: true };
@@ -1250,7 +1250,7 @@ function handleClearProfilingStats(): unknown {
 // Providers Handler (Chrome — gets languages from offscreen)
 // ============================================================================
 
-async function handleGetProviders(): Promise<unknown> {
+async function handleGetProviders(): Promise<{ providers: typeof PROVIDER_LIST; activeProvider: TranslationProviderId; strategy: Strategy; supportedLanguages: Array<{ src: string; tgt: string }>; error?: string }> {
   try {
     const response = await sendToOffscreen<{
       success: boolean;
@@ -1263,7 +1263,7 @@ async function handleGetProviders(): Promise<unknown> {
       providers: [...PROVIDER_LIST],
       activeProvider: getProvider(),
       strategy: getStrategy(),
-      supportedLanguages: response.success ? response.languages : [],
+      supportedLanguages: response.success ? (response.languages ?? []) : [],
     };
   } catch (error) {
     /* v8 ignore start -- defensive fallback when offscreen language fetch fails */
