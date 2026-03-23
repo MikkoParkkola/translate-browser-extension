@@ -8,13 +8,13 @@ import { shouldSkip } from './dom-utils';
 import { browserAPI } from '../core/browser-api';
 import { safeStorageGet } from '../core/storage';
 import { createLogger } from '../core/logger';
+import { CONFIG } from '../config';
 
 const log = createLogger('Content');
 
 let hoverDebounceTimer: number | null = null;
 let lastHoveredText: string = '';
 let isAltKeyDown = false;
-const HOVER_CACHE_MAX_SIZE = 100;
 const hoverTranslationCache = new Map<string, string>();
 
 /** Provided by index.ts to resolve 'auto' source language */
@@ -184,7 +184,6 @@ async function handleHoverTranslation(e: MouseEvent): Promise<void> {
     const provider = settings.provider || 'opus-mt';
 
     // Timeout prevents indefinite hang if service worker is unresponsive
-    const HOVER_TIMEOUT_MS = 10000;
     let hoverTimer: ReturnType<typeof setTimeout> | undefined;
     const response = (await Promise.race([
       browserAPI.runtime.sendMessage({
@@ -196,7 +195,7 @@ async function handleHoverTranslation(e: MouseEvent): Promise<void> {
         provider,
       }),
       new Promise<never>((_, reject) => {
-        hoverTimer = setTimeout(() => reject(new Error('Hover translation timed out')), HOVER_TIMEOUT_MS);
+        hoverTimer = setTimeout(() => reject(new Error('Hover translation timed out')), CONFIG.selection.hoverTimeoutMs);
       }),
     /* v8 ignore start */
     ]).finally(() => { if (hoverTimer) clearTimeout(hoverTimer); })) as TranslateResponse;
@@ -209,7 +208,7 @@ async function handleHoverTranslation(e: MouseEvent): Promise<void> {
       hoverTranslationCache.set(cacheKey, translated);
 
       // Evict oldest (first) entry when over limit — Map preserves insertion order
-      if (hoverTranslationCache.size > HOVER_CACHE_MAX_SIZE) {
+      if (hoverTranslationCache.size > CONFIG.selection.hoverCacheSize) {
         const firstKey = hoverTranslationCache.keys().next().value;
         /* v8 ignore start */
         if (firstKey) hoverTranslationCache.delete(firstKey);

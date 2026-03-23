@@ -125,3 +125,16 @@ export async function clearCache(): Promise<void> {
   pipelineCache.clear();
   log.info(' Pipeline cache cleared');
 }
+
+/**
+ * Cast the raw pipeline object returned by @huggingface/transformers `pipeline()`
+ * to our internal `TranslationPipeline` interface.
+ *
+ * The transformers library's return type is intentionally opaque (it varies by
+ * task), so a runtime type guard is not practical. This helper centralises the
+ * unavoidable cast so it appears in exactly one place and can be updated when
+ * the library provides better typings.
+ */
+export function castAsPipeline(pipe: unknown): TranslationPipeline {
+  return pipe as unknown as TranslationPipeline;
+}

@@ -36,6 +36,10 @@ type TranslationPipeline = (
   options?: Record<string, unknown>
 ) => Promise<Array<{ translation_text: string }>>;
 
+/** Cast the opaque transformers pipeline return to our local interface. */
+const castAsPipeline = (pipe: unknown): TranslationPipeline =>
+  pipe as unknown as TranslationPipeline;
+
 /**
  * Maps ISO 639-1 codes to FLORES-200 language codes used by NLLB.
  * FLORES-200 uses the format: <language>_<script> (e.g. eng_Latn, fin_Latn, zho_Hans)
@@ -164,7 +168,7 @@ export class NLLB200Provider extends BaseProvider {
         CONFIG.timeouts.opusMtDirectMs,
         'Loading NLLB-200-distilled-600M',
       );
-      this.pipeline = pipe as unknown as TranslationPipeline;
+      this.pipeline = castAsPipeline(pipe);
       this.loading = null;
       log.info('NLLB-200-distilled-600M loaded');
       return this.pipeline;

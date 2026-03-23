@@ -9,7 +9,7 @@
  * - Predictive model pre-translation based on browsing patterns
  */
 
-import type { ExtensionMessage, TranslateResponse, Strategy, TranslationProviderId } from '../types';
+import type { ExtensionMessage, TranslateResponse, Strategy, TranslationProviderId, ContentCommand } from '../types';
 import {
   createTranslationError,
   extractErrorMessage,
@@ -1197,7 +1197,9 @@ async function handleTranslateInner(message: {
 
     // Record for prediction engine
     /* v8 ignore start -- fire-and-forget */
-    recordTranslation(message.targetLang).catch(() => {});
+    recordTranslation(message.targetLang).catch((err: unknown) => {
+      log.debug('recordTranslation skipped:', err);
+    });
     /* v8 ignore stop */
 
     // Record to history
@@ -1398,7 +1400,7 @@ async function handleCaptureScreenshot(message: {
 // Reliable Tab Messaging (Chrome-specific)
 // ============================================================================
 
-async function sendMessageToTab(tabId: number, message: Record<string, unknown>): Promise<void> {
+async function sendMessageToTab(tabId: number, message: ContentCommand): Promise<void> {
   try {
     await chrome.tabs.sendMessage(tabId, message);
   } catch (firstError) {

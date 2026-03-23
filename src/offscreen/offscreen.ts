@@ -13,7 +13,7 @@ import { withTimeout } from '../core/async-utils';
 
 // Extracted modules
 import { MODEL_MAP, PIVOT_ROUTES } from './model-maps';
-import { getCachedPipeline, cachePipeline, clearCache as clearPipelineCache } from './pipeline-cache';
+import { getCachedPipeline, cachePipeline, clearCache as clearPipelineCache, castAsPipeline } from './pipeline-cache';
 import { detectLanguage } from './language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline, detectWebGPU, detectWebNN } from './translategemma';
 import { getChromeTranslator, isChromeTranslatorAvailable } from '../providers/chrome-translator';
@@ -31,6 +31,14 @@ import { extractTextFromImage, terminateOCR, type OCRResult } from '../core/ocr-
 import { isOnline, isCloudProvider, initNetworkMonitoring } from '../core/network-status';
 
 const log = createLogger('Offscreen');
+
+/**
+ * Returns true if the value is a valid language code string:
+ * non-empty, no surrounding whitespace, max 20 characters.
+ */
+function isValidLangCode(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= 20;
+}
 
 // Initialize network monitoring in offscreen context
 initNetworkMonitoring();
@@ -135,9 +143,9 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   log.info(` Model loaded: ${modelId} in ${loadDuration.toFixed(0)}ms`);
 
   // Store in LRU cache (may evict old models)
-  cachePipeline(modelId, pipe as unknown as TranslationPipeline);
+  cachePipeline(modelId, castAsPipeline(pipe));
 
-  return pipe as unknown as TranslationPipeline;
+  return castAsPipeline(pipe);
 }
 
 /**
@@ -548,11 +556,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           }
 
           // Validate sourceLang/targetLang: non-empty strings, max length 20 chars
-          if (typeof message.sourceLang !== 'string' || message.sourceLang.trim().length === 0 || message.sourceLang.length > 20) {
+          if (!isValidLangCode(message.sourceLang)) {
             sendResponse({ success: false, error: 'Invalid sourceLang: must be non-empty string, max 20 characters' });
             return;
           }
-          if (typeof message.targetLang !== 'string' || message.targetLang.trim().length === 0 || message.targetLang.length > 20) {
+          if (!isValidLangCode(message.targetLang)) {
             sendResponse({ success: false, error: 'Invalid targetLang: must be non-empty string, max 20 characters' });
             return;
           }

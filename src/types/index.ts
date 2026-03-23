@@ -420,3 +420,15 @@ export type ExtensionMessage =
   | { type: 'deleteModel'; modelId: string; target?: string }
   | { type: 'clearAllModels'; target?: string }
   | { type: 'getSettings'; target?: string };
+
+/**
+ * Commands sent FROM the background service worker TO the content script.
+ * These are distinct from ExtensionMessage (content → background direction).
+ */
+export type ContentCommand =
+  | { type: 'translatePage'; sourceLang: string; targetLang: string; strategy: Strategy; provider: TranslationProviderId }
+  | { type: 'translateSelection'; sourceLang: string; targetLang: string; strategy: Strategy; provider: TranslationProviderId }
+  | { type: 'translateImage'; imageUrl?: string; sourceLang: string; targetLang: string; strategy: Strategy; provider: TranslationProviderId }
+  | { type: 'undoTranslation' }
+  | { type: 'toggleWidget' }
+  | { type: 'enterScreenshotMode' };

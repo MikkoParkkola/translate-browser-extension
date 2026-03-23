@@ -572,11 +572,9 @@ async function translatePage(
     let totalDomUpdateTime = 0;
     let firstTranslation = true;
 
-    // Translate viewport batches with concurrency limit of 2:
-    // Pipelines IPC round-trips while model processes previous batch.
-    // DOM updates happen in-order within each batch's callback.
-    const BATCH_CONCURRENCY = 2;
-    for (let i = 0; i < viewportBatches.length; i += BATCH_CONCURRENCY) {
+    // Translate viewport batches with concurrency limit — pipelines IPC round-trips
+    // while model processes previous batch. DOM updates happen in-order per batch.
+    for (let i = 0; i < viewportBatches.length; i += CONFIG.batching.concurrencyLimit) {
       // Check abort signal between batches to stop on navigation
       /* v8 ignore start -- abort timing is non-deterministic in jsdom async */
       if (signal.aborted) {
@@ -585,7 +583,7 @@ async function translatePage(
       }
       /* v8 ignore stop */
 
-      const chunk = viewportBatches.slice(i, i + BATCH_CONCURRENCY);
+      const chunk = viewportBatches.slice(i, i + CONFIG.batching.concurrencyLimit);
 
       if (totalBatches > 1) {
         updateProgressToast(`Translating... ${i + 1}/${totalBatches}`);
@@ -695,7 +693,7 @@ async function translatePage(
  */
 async function createBatches(
   nodes: Text[],
-  g: GlossaryStore
+  glossaryStore: GlossaryStore
 ): Promise<Array<{ nodes: Text[]; texts: string[]; restoreFns: Array<(text: string) => string> }>> {
   const batches: Array<{ nodes: Text[]; texts: string[]; restoreFns: Array<(text: string) => string> }> = [];
   for (let i = 0; i < nodes.length; i += CONFIG.batching.maxSize) {
@@ -709,7 +707,7 @@ async function createBatches(
         : text;
     });
 
-    const { processedTexts, restoreFns } = await glossary.applyGlossaryBatch(rawTexts, g);
+    const { processedTexts, restoreFns } = await glossary.applyGlossaryBatch(rawTexts, glossaryStore);
     batches.push({ nodes: batchNodes, texts: processedTexts, restoreFns });
   }
   return batches;
@@ -727,7 +725,7 @@ function setupScrollAwareTranslation(
   _sourceLang: string,
   _targetLang: string,
   _strategy: Strategy,
-  g: GlossaryStore,
+  glossaryStore: GlossaryStore,
   _provider?: string,
   enableProfiling = false
 ): void {
@@ -772,7 +770,7 @@ function setupScrollAwareTranslation(
         log.info(`Scroll-triggered: translating chunk ${chunkIndex + 1}/${chunks.length} (${validNodes.length} nodes)`);
 
         try {
-          const batches = await createBatches(validNodes, g);
+          const batches = await createBatches(validNodes, glossaryStore);
           for (const batch of batches) {
             await translateBatchWithRetry(
               batch, sourceLang, targetLang, strategy, provider, enableProfiling
@@ -924,8 +922,6 @@ function undoTranslation(): number {
  * Caps per-cycle processing to avoid blocking the main thread on
  * content-heavy pages that generate hundreds of mutations.
  */
-const MUTATION_BATCH_CAP = 100;
-
 function processPendingMutations(): void {
   /* v8 ignore start -- debounce timer always fires with pending mutations */
   if (pendingMutations.length === 0) return;
@@ -949,19 +945,19 @@ function processPendingMutations(): void {
   if (addedNodes.length === 0) return;
 
   // Process in capped chunks to avoid main-thread jank
-  if (addedNodes.length <= MUTATION_BATCH_CAP) {
+  if (addedNodes.length <= CONFIG.mutations.batchCapPerCycle) {
     translateDynamicContent(addedNodes);
   } else {
     // Process first chunk immediately
-    translateDynamicContent(addedNodes.slice(0, MUTATION_BATCH_CAP));
+    translateDynamicContent(addedNodes.slice(0, CONFIG.mutations.batchCapPerCycle));
     // Defer remaining chunks via requestIdleCallback / setTimeout
-    let offset = MUTATION_BATCH_CAP;
+    let offset = CONFIG.mutations.batchCapPerCycle;
     const processNextChunk = () => {
       /* v8 ignore start -- chunk boundary guard in deferred processing */
       if (offset >= addedNodes.length) return;
       /* v8 ignore stop */
-      const chunk = addedNodes.slice(offset, offset + MUTATION_BATCH_CAP);
-      offset += MUTATION_BATCH_CAP;
+      const chunk = addedNodes.slice(offset, offset + CONFIG.mutations.batchCapPerCycle);
+      offset += CONFIG.mutations.batchCapPerCycle;
       translateDynamicContent(chunk);
       if (offset < addedNodes.length) {
         if ('requestIdleCallback' in window) {

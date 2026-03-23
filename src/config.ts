@@ -59,6 +59,8 @@ export const CONFIG = {
     maxTextLength: 5000,
     /** Minimum text length for translation */
     minTextLength: 2,
+    /** Number of IPC batches to pipeline concurrently during viewport translation */
+    concurrencyLimit: 2,
   },
 
   /**
@@ -115,6 +117,8 @@ export const CONFIG = {
     debounceMs: 500,
     /** Maximum pending mutations to buffer (high for SPAs like ah.nl, bol.com) */
     maxPending: 2000,
+    /** Maximum mutations to process per debounce cycle (prevents main-thread jank on busy pages) */
+    batchCapPerCycle: 100,
   },
 
   /**
@@ -123,6 +127,12 @@ export const CONFIG = {
   selection: {
     /** Minimum character count to enable streaming mode for selection translate */
     streamThresholdChars: 300,
+    /** Minimum character count to use Chrome built-in streaming API */
+    chromeStreamingThresholdChars: 200,
+    /** Alt+hover translation popup timeout (ms) */
+    hoverTimeoutMs: 10_000,
+    /** Maximum entries in the hover translation LRU cache */
+    hoverCacheSize: 100,
   },
 
   /**

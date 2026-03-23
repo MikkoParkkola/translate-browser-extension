@@ -86,6 +86,7 @@ vi.mock('./pipeline-cache', () => ({
   getCachedPipeline: (...args: unknown[]) => mockGetCachedPipeline(...args),
   cachePipeline: (...args: unknown[]) => mockCachePipeline(...args),
   clearCache: (...args: unknown[]) => mockClearPipelineCache(...args),
+  castAsPipeline: (pipe: unknown) => pipe,
 }));
 
 // Language detection

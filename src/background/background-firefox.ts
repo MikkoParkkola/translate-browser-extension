@@ -25,7 +25,7 @@ import { browserAPI, getURL } from '../core/browser-api';
 
 // Extracted modules from offscreen (now used directly)
 import { MODEL_MAP, PIVOT_ROUTES } from '../offscreen/model-maps';
-import { getCachedPipeline, cachePipeline } from '../offscreen/pipeline-cache';
+import { getCachedPipeline, cachePipeline, castAsPipeline } from '../offscreen/pipeline-cache';
 import { detectLanguage } from '../offscreen/language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline } from '../offscreen/translategemma';
 import { estimateTokens, formatUserError } from './shared/provider-management';
@@ -317,10 +317,10 @@ async function getPipeline(sourceLang: string, targetLang: string): Promise<Tran
     `Loading model ${modelId}`
   );
 
-  cachePipeline(modelId, pipe as unknown as TranslationPipeline);
+  cachePipeline(modelId, castAsPipeline(pipe));
   log.info(`Model loaded: ${modelId}`);
 
-  return pipe as unknown as TranslationPipeline;
+  return castAsPipeline(pipe);
 }
 
 async function translateDirect(

@@ -70,6 +70,7 @@ vi.mock('../offscreen/model-maps', () => ({
 vi.mock('../offscreen/pipeline-cache', () => ({
   getCachedPipeline: vi.fn().mockReturnValue(null),
   cachePipeline: vi.fn(),
+  castAsPipeline: vi.fn((pipe: unknown) => pipe),
 }));
 
 vi.mock('../offscreen/language-detection', () => ({

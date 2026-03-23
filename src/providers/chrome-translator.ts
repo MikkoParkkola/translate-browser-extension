@@ -22,6 +22,7 @@
 import { BaseProvider } from './base-provider';
 import type { TranslationProviderId, ProviderConfig, LanguagePair } from '../types';
 import { createLogger } from '../core/logger';
+import { CONFIG } from '../config';
 
 const log = createLogger('ChromeTranslator');
 
@@ -277,7 +278,7 @@ export class ChromeTranslatorProvider extends BaseProvider {
 
       try {
         // Use streaming if available and text is long enough to benefit
-        if (this.translator.translateStreaming && t.length > 200) {
+        if (this.translator.translateStreaming && t.length > CONFIG.selection.chromeStreamingThresholdChars) {
           const stream = this.translator.translateStreaming(t);
           const chunks: string[] = [];
           const reader = stream.getReader();
