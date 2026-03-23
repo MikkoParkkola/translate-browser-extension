@@ -15,7 +15,6 @@ import {
   isNetworkError,
   extractErrorMessage,
   type TranslationError,
-  type RetryConfig,
 } from '../core/errors';
 import { createLogger } from '../core/logger';
 import { safeStorageGet, safeStorageSet } from '../core/storage';
@@ -30,6 +29,7 @@ import { getCachedPipeline, cachePipeline } from '../offscreen/pipeline-cache';
 import { detectLanguage } from '../offscreen/language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline } from '../offscreen/translategemma';
 import { estimateTokens, formatUserError } from './shared/provider-management';
+import { NETWORK_RETRY_CONFIG } from './shared/translation-core';
 
 const log = createLogger('Background-FF');
 
@@ -509,12 +509,6 @@ function recordUsage(tokens: number): void {
 // ============================================================================
 // Retry Configuration
 // ============================================================================
-
-const NETWORK_RETRY_CONFIG: Partial<RetryConfig> = {
-  maxRetries: CONFIG.retry.network.maxRetries,
-  baseDelayMs: CONFIG.retry.network.baseDelayMs,
-  maxDelayMs: CONFIG.retry.network.maxDelayMs,
-};
 
 // ============================================================================
 // Message Handlers
