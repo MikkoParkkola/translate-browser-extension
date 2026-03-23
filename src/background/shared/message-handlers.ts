@@ -340,7 +340,8 @@ export async function handleGetSettings(
         strategy: (settings.strategy as string) || 'smart',
       },
     };
-  } catch {
+  } catch (error) {
+    log.warn('Failed to get settings:', error);
     return { success: false, error: 'Failed to get settings' };
   }
 }

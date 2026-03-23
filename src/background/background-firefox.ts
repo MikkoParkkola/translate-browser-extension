@@ -7,7 +7,10 @@
  */
 
 import { pipeline, env } from '@huggingface/transformers';
-import type { ExtensionMessage, TranslateResponse, Strategy, TranslationProviderId, TranslationPipeline } from '../types';
+import type {
+  ExtensionMessage, TranslateResponse, Strategy, TranslationProviderId, TranslationPipeline,
+  SetProviderMessage, PreloadModelMessage, TranslateMessage,
+} from '../types';
 import {
   createTranslationError,
   validateInput,
@@ -525,9 +528,9 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
     case 'getProviders':
       return handleGetProviders();
     case 'preloadModel':
-      return handlePreloadModel(message as { type: 'preloadModel'; sourceLang: string; targetLang: string; provider?: TranslationProviderId });
+      return handlePreloadModel(message);
     case 'setProvider':
-      return handleSetProvider(message as { type: 'setProvider'; provider: TranslationProviderId });
+      return handleSetProvider(message);
     case 'getCacheStats':
       return handleGetCacheStats();
     case 'clearCache':
@@ -537,22 +540,14 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
   }
 }
 
-async function handleSetProvider(message: {
-  type: 'setProvider';
-  provider: TranslationProviderId;
-}): Promise<unknown> {
+async function handleSetProvider(message: SetProviderMessage): Promise<unknown> {
   currentProvider = message.provider;
   log.info(`Provider set to: ${currentProvider}`);
   await safeStorageSet({ provider: currentProvider });
   return { success: true, provider: currentProvider };
 }
 
-async function handlePreloadModel(message: {
-  type: 'preloadModel';
-  sourceLang: string;
-  targetLang: string;
-  provider?: TranslationProviderId;
-}): Promise<unknown> {
+async function handlePreloadModel(message: PreloadModelMessage): Promise<unknown> {
   const provider = message.provider || currentProvider;
   log.info(`Preloading ${provider} model: ${message.sourceLang} -> ${message.targetLang}`);
 
@@ -594,13 +589,7 @@ async function handleClearCache(): Promise<unknown> {
   };
 }
 
-async function handleTranslate(message: {
-  text: string | string[];
-  sourceLang: string;
-  targetLang: string;
-  options?: { strategy?: Strategy };
-  provider?: TranslationProviderId;
-}): Promise<TranslateResponse> {
+async function handleTranslate(message: TranslateMessage): Promise<TranslateResponse> {
   const startTime = Date.now();
 
   try {

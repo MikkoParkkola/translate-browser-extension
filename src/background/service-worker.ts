@@ -1221,7 +1221,8 @@ async function handleGetProfilingStats(): Promise<unknown> {
         offscreenStats = offscreenResult.aggregates;
       }
     } catch {
-      // Offscreen may not be available
+      // Offscreen may not be available; continue with local stats only
+      log.debug('Offscreen not available for profiling stats merge');
     }
 
     const mergedStats = { ...localStats, ...offscreenStats };
