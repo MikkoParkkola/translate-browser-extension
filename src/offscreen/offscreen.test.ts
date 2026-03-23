@@ -361,6 +361,33 @@ describe('offscreen message handler', () => {
       const r = await dispatch({ type: 'ping' });
       expect(r).toEqual({ success: true, status: 'ready' });
     });
+
+    it('falls back to the outer catch when sendResponse throws twice', async () => {
+      const listener = registeredListeners[registeredListeners.length - 1];
+      let attempts = 0;
+      let finalResponse: Record<string, unknown> | undefined;
+
+      const result = listener(
+        { target: 'offscreen', type: 'ping' },
+        {},
+        (response) => {
+          attempts++;
+          if (attempts < 3) {
+            throw new Error(`send failure ${attempts}`);
+          }
+          finalResponse = response as Record<string, unknown>;
+        }
+      );
+
+      expect(result).toBe(true);
+      await vi.waitFor(() => {
+        expect(attempts).toBe(3);
+      });
+      expect(finalResponse).toMatchObject({
+        success: false,
+        error: 'send failure 2',
+      });
+    });
   });
 
   // -------------------------------------------------------------------------

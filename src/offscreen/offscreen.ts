@@ -763,7 +763,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         /* v8 ignore stop */
       });
     }
-  })();
+  })().catch((error) => {
+    log.error('Unhandled offscreen listener error:', error);
+    try {
+      sendResponse({
+        success: false,
+        error: extractErrorMessage(error),
+      });
+    } catch (responseError) {
+      log.error('Failed to send offscreen fallback error response:', responseError);
+    }
+  });
 
   return true; // Keep channel open for async response
 });
