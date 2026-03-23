@@ -9,7 +9,7 @@
 import { pipeline, env } from '@huggingface/transformers';
 import type {
   ExtensionMessage, TranslateResponse, Strategy, TranslationProviderId, TranslationPipeline,
-  SetProviderMessage, PreloadModelMessage, TranslateMessage,
+  SetProviderMessage, PreloadModelMessage, TranslateMessage, MessageResponse,
 } from '../types';
 import {
   createTranslationError,
@@ -31,7 +31,7 @@ import { MODEL_MAP, PIVOT_ROUTES } from '../offscreen/model-maps';
 import { getCachedPipeline, cachePipeline, castAsPipeline } from '../offscreen/pipeline-cache';
 import { detectLanguage } from '../offscreen/language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline } from '../offscreen/translategemma';
-import { estimateTokens, formatUserError } from './shared/provider-management';
+import { estimateTokens, formatUserError, PROVIDER_LIST } from './shared/provider-management';
 import { NETWORK_RETRY_CONFIG } from './shared/translation-core';
 
 const log = createLogger('Background-FF');
@@ -540,14 +540,14 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
   }
 }
 
-async function handleSetProvider(message: SetProviderMessage): Promise<unknown> {
+async function handleSetProvider(message: SetProviderMessage): Promise<MessageResponse<{ provider: TranslationProviderId }>> {
   currentProvider = message.provider;
   log.info(`Provider set to: ${currentProvider}`);
   await safeStorageSet({ provider: currentProvider });
   return { success: true, provider: currentProvider };
 }
 
-async function handlePreloadModel(message: PreloadModelMessage): Promise<unknown> {
+async function handlePreloadModel(message: PreloadModelMessage): Promise<MessageResponse<{ preloaded: boolean }>> {
   const provider = message.provider || currentProvider;
   log.info(`Preloading ${provider} model: ${message.sourceLang} -> ${message.targetLang}`);
 
@@ -572,7 +572,7 @@ async function handlePreloadModel(message: PreloadModelMessage): Promise<unknown
   }
 }
 
-async function handleGetCacheStats(): Promise<unknown> {
+async function handleGetCacheStats(): Promise<MessageResponse<{ cache: DetailedCacheStats }>> {
   await loadPersistentCache();
   return {
     success: true,
@@ -580,7 +580,7 @@ async function handleGetCacheStats(): Promise<unknown> {
   };
 }
 
-async function handleClearCache(): Promise<unknown> {
+async function handleClearCache(): Promise<{ success: true; clearedEntries: number }> {
   const previousSize = translationCache.size;
   await clearTranslationCache();
   return {
@@ -676,7 +676,7 @@ async function handleTranslate(message: TranslateMessage): Promise<TranslateResp
   }
 }
 
-function handleGetUsage(): unknown {
+function handleGetUsage(): { throttle: { requests: number; tokens: number; requestLimit: number; tokenLimit: number; queue: number }; cache: DetailedCacheStats; providers: Record<string, never> } {
   return {
     throttle: {
       requests: rateLimit.requests,
@@ -690,26 +690,9 @@ function handleGetUsage(): unknown {
   };
 }
 
-async function handleGetProviders(): Promise<unknown> {
+function handleGetProviders(): { providers: typeof PROVIDER_LIST; activeProvider: TranslationProviderId; strategy: Strategy; supportedLanguages: Array<{ src: string; tgt: string; pivot?: boolean }> } {
   return {
-    providers: [
-      {
-        id: 'opus-mt',
-        name: 'Helsinki-NLP OPUS-MT',
-        type: 'local',
-        qualityTier: 'standard',
-        description: 'Fast, lightweight (~170MB per pair)',
-        icon: '',
-      },
-      {
-        id: 'translategemma',
-        name: 'TranslateGemma 4B',
-        type: 'local',
-        qualityTier: 'premium',
-        description: 'High quality, single model (~3.6GB)',
-        icon: '',
-      },
-    ],
+    providers: PROVIDER_LIST,
     activeProvider: currentProvider,
     strategy: currentStrategy,
     supportedLanguages: getSupportedLanguages(),
