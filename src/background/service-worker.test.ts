@@ -6746,3 +6746,51 @@ describe('splitIntoSentences (streaming helper)', () => {
     expect(split('')).toEqual([]);
   });
 });
+
+// ============================================================================
+// Cache readiness gating
+// ============================================================================
+describe('cache readiness gating', () => {
+  it('waits for startup cache load before handling the first translation', async () => {
+    vi.resetModules();
+
+    let resolveLoad!: (value: Record<string, unknown>) => void;
+    const pendingLoad = new Promise<Record<string, unknown>>((resolve) => {
+      resolveLoad = resolve;
+    });
+
+    vi.mocked(chrome.storage.local.get).mockImplementation(() => pendingLoad);
+    mockSendMessage.mockReset();
+    mockSendMessage.mockReturnValue({ success: true, result: 'translated after cache' });
+
+    await import('./service-worker');
+    const freshHandler = mockAddMessageListener.mock.calls.at(-1)?.[0] as (
+      message: unknown,
+      sender: unknown,
+      sendResponse: (response: unknown) => void
+    ) => boolean;
+
+    const responsePromise = new Promise<unknown>((resolve) => {
+      freshHandler(
+        {
+          type: 'translate',
+          text: 'Cache gate check',
+          sourceLang: 'en',
+          targetLang: 'fi',
+        },
+        {},
+        resolve,
+      );
+    });
+
+    await Promise.resolve();
+    expect(mockSendMessage).not.toHaveBeenCalled();
+    expect(vi.mocked(chrome.storage.local.get).mock.calls.length).toBeGreaterThan(0);
+
+    resolveLoad({});
+
+    const response = await responsePromise as Record<string, unknown>;
+    expect(response.success).toBe(true);
+    expect(mockSendMessage).toHaveBeenCalled();
+  });
+});

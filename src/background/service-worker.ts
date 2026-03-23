@@ -879,6 +879,7 @@ async function handleTranslate(message: {
   provider?: TranslationProviderId;
   enableProfiling?: boolean;
 }): Promise<TranslateResponse> {
+  await translationCache.load();
   const provider = message.provider || getProvider();
   const dedupKey = translationCache.getKey(message.text, message.sourceLang, message.targetLang, provider);
 

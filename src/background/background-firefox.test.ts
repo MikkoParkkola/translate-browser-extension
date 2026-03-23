@@ -2749,6 +2749,52 @@ describe('background-firefox translate: additional coverage', () => {
     });
   });
 
+  describe('cache readiness gating', () => {
+    let freshMessageHandler4: (
+      msg: Record<string, unknown>,
+      sender: unknown,
+      sendResponse: (r: unknown) => void
+    ) => boolean;
+
+    const freshInvoke4 = (message: Record<string, unknown>): Promise<unknown> =>
+      new Promise((resolve) => freshMessageHandler4(message, {}, (r) => resolve(r)));
+
+    it('waits for startup cache load before handling the first translation', async () => {
+      vi.resetModules();
+
+      let resolveLoad!: (value: Record<string, unknown>) => void;
+      const pendingLoad = new Promise<Record<string, unknown>>((resolve) => {
+        resolveLoad = resolve;
+      });
+
+      mockStorageGet.mockImplementation(() => pendingLoad);
+
+      await import('./background-firefox');
+      const calls = mockAddMessageListener.mock.calls;
+      freshMessageHandler4 = calls[calls.length - 1][0];
+
+      const errors = await import('../core/errors');
+      (errors.withRetry as ReturnType<typeof vi.fn>).mockClear();
+
+      const responsePromise = freshInvoke4({
+        type: 'translate',
+        text: 'cache readiness',
+        sourceLang: 'en',
+        targetLang: 'fi',
+      });
+
+      await Promise.resolve();
+      expect(errors.withRetry).not.toHaveBeenCalled();
+      expect(mockStorageGet.mock.calls.length).toBeGreaterThan(0);
+
+      resolveLoad({});
+
+      const response = await responsePromise as Record<string, unknown>;
+      expect(response.success).toBe(true);
+      expect(errors.withRetry).toHaveBeenCalled();
+    });
+  });
+
   // ============================================================================
   // Coverage: deep translation paths blocked by accumulated rate-limit counter.
   //

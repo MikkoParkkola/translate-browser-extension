@@ -75,6 +75,7 @@ const translationCache = new Map<string, PersistentCacheEntry>();
 let cacheHits = 0;
 let cacheMisses = 0;
 let cacheInitialized = false;
+let cacheLoadingPromise: Promise<void> | null = null;
 let saveCacheTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
@@ -82,34 +83,41 @@ let saveCacheTimer: ReturnType<typeof setTimeout> | null = null;
  */
 async function loadPersistentCache(): Promise<void> {
   if (cacheInitialized) return;
+  if (cacheLoadingPromise) return cacheLoadingPromise;
 
-  try {
-    const stored = await browserAPI.storage.local.get([
-      CONFIG.cache.storageKey,
-      CONFIG.cache.cacheStatsKey,
-    ]);
+  cacheLoadingPromise = (async () => {
+    try {
+      const stored = await browserAPI.storage.local.get([
+        CONFIG.cache.storageKey,
+        CONFIG.cache.cacheStatsKey,
+      ]);
 
-    if (stored[CONFIG.cache.storageKey]) {
-      const entries = stored[CONFIG.cache.storageKey] as [string, PersistentCacheEntry][];
-      entries.forEach(([key, value]) => {
-        translationCache.set(key, value);
-      });
-      log.info(`Loaded ${translationCache.size} cached translations from storage`);
+      if (stored[CONFIG.cache.storageKey]) {
+        const entries = stored[CONFIG.cache.storageKey] as [string, PersistentCacheEntry][];
+        entries.forEach(([key, value]) => {
+          translationCache.set(key, value);
+        });
+        log.info(`Loaded ${translationCache.size} cached translations from storage`);
+      }
+
+      if (stored.cacheStats) {
+        const stats = stored.cacheStats as { hits: number; misses: number };
+        /* v8 ignore start */
+        cacheHits = stats.hits || 0;
+        cacheMisses = stats.misses || 0;
+        /* v8 ignore stop */
+      }
+
+      cacheInitialized = true;
+    } catch (error) {
+      log.warn('Failed to load persistent cache:', error);
+      cacheInitialized = true;
+    } finally {
+      cacheLoadingPromise = null;
     }
+  })();
 
-    if (stored.cacheStats) {
-      const stats = stored.cacheStats as { hits: number; misses: number };
-      /* v8 ignore start */
-      cacheHits = stats.hits || 0;
-      cacheMisses = stats.misses || 0;
-      /* v8 ignore stop */
-    }
-
-    cacheInitialized = true;
-  } catch (error) {
-    log.warn('Failed to load persistent cache:', error);
-    cacheInitialized = true;
-  }
+  return cacheLoadingPromise;
 }
 
 /**
@@ -594,6 +602,8 @@ async function handleTranslate(message: TranslateMessage): Promise<TranslateResp
   const startTime = Date.now();
 
   try {
+    await loadPersistentCache();
+
     const validation = validateInput(
       message.text,
       message.sourceLang,
