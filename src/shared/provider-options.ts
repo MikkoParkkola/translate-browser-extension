@@ -226,6 +226,9 @@ const MODEL_SELECTOR_ORDER: TranslationProviderId[] = [
   'google-cloud',
 ];
 
+export const TRANSLATION_PROVIDER_IDS: TranslationProviderId[] = [...MODEL_SELECTOR_ORDER];
+export const CLOUD_PROVIDER_IDS: CloudProviderId[] = ['deepl', 'openai', 'google-cloud', 'anthropic'];
+
 const LOCAL_MODEL_IDS: LocalProviderId[] = ['opus-mt', 'translategemma', 'chrome-builtin'];
 const PROVIDER_SELECTOR_IDS: ProviderSelectorOption['id'][] = ['opus-mt', 'translategemma'];
 const SITE_RULE_PROVIDER_IDS: TranslationProviderId[] = [
@@ -239,6 +242,9 @@ const SITE_RULE_PROVIDER_IDS: TranslationProviderId[] = [
 ];
 const ONBOARDING_MODEL_IDS: OnboardingProviderId[] = ['opus-mt', 'chrome-builtin', 'deepl'];
 const BACKGROUND_PROVIDER_IDS: BackgroundProviderId[] = ['opus-mt', 'translategemma'];
+
+const TRANSLATION_PROVIDER_ID_SET = new Set<string>(TRANSLATION_PROVIDER_IDS);
+const CLOUD_PROVIDER_ID_SET = new Set<string>(CLOUD_PROVIDER_IDS);
 
 interface CloudProviderOptionMetadata {
   enabledField: string;
@@ -307,6 +313,21 @@ export const PROVIDER_STATUS_NAMES = Object.freeze(
     MODEL_SELECTOR_ORDER.map((id) => [id, PROVIDER_DEFINITIONS[id].statusName] as const)
   )
 ) as Record<TranslationProviderId, string>;
+
+export function isTranslationProviderId(value: unknown): value is TranslationProviderId {
+  return typeof value === 'string' && TRANSLATION_PROVIDER_ID_SET.has(value);
+}
+
+export function normalizeTranslationProviderId(
+  value: unknown,
+  fallback: TranslationProviderId = 'opus-mt'
+): TranslationProviderId {
+  return isTranslationProviderId(value) ? value : fallback;
+}
+
+export function isCloudProviderId(value: unknown): value is CloudProviderId {
+  return typeof value === 'string' && CLOUD_PROVIDER_ID_SET.has(value);
+}
 
 export const BACKGROUND_PROVIDER_LIST: BackgroundProviderInfo[] = BACKGROUND_PROVIDER_IDS.map(
   (id) => ({

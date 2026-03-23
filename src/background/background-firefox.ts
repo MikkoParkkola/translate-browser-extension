@@ -26,6 +26,7 @@ import { withTimeout } from '../core/async-utils';
 import { generateCacheKey } from '../core/hash';
 import { CONFIG } from '../config';
 import { browserAPI, getURL } from '../core/browser-api';
+import { normalizeTranslationProviderId } from '../shared/provider-options';
 
 // Extracted modules from offscreen (now used directly)
 import { MODEL_MAP, PIVOT_ROUTES } from '../offscreen/model-maps';
@@ -853,9 +854,13 @@ browserAPI.runtime.onInstalled.addListener((details) => {
 
 /* v8 ignore start — module-level IIFE runs at import time, before test mocks are configured */
 (async () => {
-  const result = await safeStorageGet<{ provider?: TranslationProviderId }>(['provider']);
-  if (result.provider) {
-    currentProvider = result.provider;
+  const result = await safeStorageGet<{ provider?: unknown }>(['provider']);
+  if (result.provider !== undefined) {
+    const restoredProvider = normalizeTranslationProviderId(result.provider);
+    if (restoredProvider !== result.provider) {
+      log.warn('Ignoring invalid stored provider:', result.provider);
+    }
+    currentProvider = restoredProvider;
     log.info('Restored provider:', currentProvider);
   }
 })();

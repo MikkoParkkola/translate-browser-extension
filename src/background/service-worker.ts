@@ -32,6 +32,7 @@ import { CONFIG } from '../config';
 import { profiler, type AggregateStats } from '../core/profiler';
 import { sleep } from '../core/async-utils';
 import { splitIntoSentences } from '../core/text-utils';
+import { normalizeTranslationProviderId } from '../shared/provider-options';
 
 // Shared modules — extracted from duplicated Chrome/Firefox logic
 import {
@@ -1609,9 +1610,13 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 // Load saved provider on startup, auto-detect Chrome Built-in availability
 /* v8 ignore start — module-level IIFE runs at import time, before test mocks are configured */
 (async () => {
-  const result = await safeStorageGet<{ provider?: TranslationProviderId }>(['provider']);
-  if (result.provider) {
-    setProvider(result.provider);
+  const result = await safeStorageGet<{ provider?: unknown }>(['provider']);
+  if (result.provider !== undefined) {
+    const restoredProvider = normalizeTranslationProviderId(result.provider);
+    if (restoredProvider !== result.provider) {
+      log.warn('Ignoring invalid stored provider:', result.provider);
+    }
+    setProvider(restoredProvider);
     log.info('Restored provider:', getProvider());
   }
 

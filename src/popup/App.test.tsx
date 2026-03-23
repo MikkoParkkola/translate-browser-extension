@@ -1746,6 +1746,15 @@ describe('App providerName computed', () => {
     await flush();
     expect(screen.getByText('Helsinki-NLP OPUS-MT')).toBeTruthy();
   });
+
+  it('falls back to OPUS-MT when stored provider is invalid', async () => {
+    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({
+      provider: 'invalid-provider',
+    });
+    render(() => <App />);
+    await flush();
+    expect(screen.getByText('Helsinki-NLP OPUS-MT')).toBeTruthy();
+  });
 });
 
 // ---------------------------------------------------------------------------

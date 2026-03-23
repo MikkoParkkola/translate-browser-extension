@@ -34,6 +34,7 @@ import {
   getRateLimitState,
   CLOUD_PROVIDER_KEYS,
 } from './provider-management';
+import { normalizeTranslationProviderId } from '../../shared/provider-options';
 
 const log = createLogger('SharedHandlers');
 
@@ -325,7 +326,7 @@ export async function handleGetSettings(
         // Keep the legacy response shape for existing getSettings consumers.
         sourceLanguage: (settings.sourceLang as string) || 'auto',
         targetLanguage: (settings.targetLang as string) || 'en',
-        provider: (settings.provider as TranslationProviderId | undefined) || 'opus-mt',
+        provider: normalizeTranslationProviderId(settings.provider),
         strategy: (settings.strategy as string) || 'smart',
       },
     };
@@ -351,13 +352,13 @@ export async function getActionSettings(): Promise<ActionSettings> {
     sourceLang?: string;
     targetLang?: string;
     strategy?: Strategy;
-    provider?: TranslationProviderId;
+    provider?: unknown;
   }>(['sourceLang', 'targetLang', 'strategy', 'provider']);
 
   return {
     sourceLang: settings.sourceLang || 'auto',
     targetLang: settings.targetLang || 'en',
     strategy: settings.strategy || 'smart',
-    provider: settings.provider || getProvider(),
+    provider: normalizeTranslationProviderId(settings.provider, getProvider()),
   };
 }

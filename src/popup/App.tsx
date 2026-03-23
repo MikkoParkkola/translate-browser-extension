@@ -11,7 +11,10 @@ import { checkVersion, dismissUpdateNotice, isUpdateDismissed } from '../core/ve
 import { createLogger } from '../core/logger';
 import { sleep } from '../core/async-utils';
 import { extractErrorMessage } from '../core/errors';
-import { PROVIDER_STATUS_NAMES } from '../shared/provider-options';
+import {
+  PROVIDER_STATUS_NAMES,
+  normalizeTranslationProviderId,
+} from '../shared/provider-options';
 
 const log = createLogger('Popup');
 
@@ -213,14 +216,16 @@ export default function App() {
       targetLang?: string;
       strategy?: Strategy;
       autoTranslate?: boolean;
-      provider?: TranslationProviderId;
+      provider?: unknown;
     }
     const stored = await safeStorageGet<StoredPrefs>(['sourceLang', 'targetLang', 'strategy', 'autoTranslate', 'provider']);
     if (stored.sourceLang) setSourceLangInternal(stored.sourceLang);
     if (stored.targetLang) setTargetLangInternal(stored.targetLang);
     if (stored.strategy) setStrategyInternal(stored.strategy);
     if (stored.autoTranslate !== undefined) setAutoTranslate(stored.autoTranslate);
-    if (stored.provider) setActiveProvider(stored.provider);
+    if (stored.provider !== undefined) {
+      setActiveProvider(normalizeTranslationProviderId(stored.provider));
+    }
     log.info('Loaded preferences:', { source: stored.sourceLang, target: stored.targetLang });
 
     // Check Chrome Translator API availability (Chrome 138+)

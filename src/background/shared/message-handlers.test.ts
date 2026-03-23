@@ -614,6 +614,17 @@ describe('handleGetSettings', () => {
     expect(data.strategy).toBe('quality');
   });
 
+  it('falls back to default provider when stored provider is invalid', async () => {
+    const storageGet = vi.fn().mockResolvedValue({
+      provider: 'invalid-provider',
+    });
+    const { handleGetSettings } = await import('./message-handlers');
+    const result = await handleGetSettings(storageGet) as Record<string, unknown>;
+
+    const data = result.data as Record<string, unknown>;
+    expect(data.provider).toBe('opus-mt');
+  });
+
   it('returns error when storage throws', async () => {
     const storageGet = vi.fn().mockRejectedValue(new Error('Storage unavailable'));
     const { handleGetSettings } = await import('./message-handlers');
@@ -654,6 +665,20 @@ describe('getActionSettings', () => {
 
     expect(result.sourceLang).toBe('fi');
     expect(result.targetLang).toBe('sv');
+  });
+
+  it('falls back to current provider when stored provider is invalid', async () => {
+    const { safeStorageGet } = await import('../../core/storage');
+    const { getProvider } = await import('./provider-management');
+    vi.mocked(getProvider).mockReturnValueOnce('chrome-builtin');
+    vi.mocked(safeStorageGet).mockResolvedValueOnce({
+      provider: 'invalid-provider',
+    });
+
+    const { getActionSettings } = await import('./message-handlers');
+    const result = await getActionSettings();
+
+    expect(result.provider).toBe('chrome-builtin');
   });
 });
 
