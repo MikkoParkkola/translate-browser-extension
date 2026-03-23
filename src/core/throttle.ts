@@ -208,13 +208,13 @@ export class Throttle {
       try {
         if (debug) log.debug('attempt', i + 1);
         return await this.runWithRateLimit(fn, tokens, { immediate: true });
-      } catch (err) {
-        const error = err as RetryableError;
-        if (!error.retryable || i === attempts - 1) throw error;
-        const base = error.retryAfter || wait;
+      } catch (error) {
+        const retryableError = error as RetryableError;
+        if (!retryableError.retryable || i === attempts - 1) throw retryableError;
+        const base = retryableError.retryAfter || wait;
         const jitter = 0.9 + Math.random() * 0.2;
         const delayMs = Math.round(base * jitter);
-        if (debug) log.debug('retrying after error', error.message, 'in', delayMs, 'ms');
+        if (debug) log.debug('retrying after error', retryableError.message, 'in', delayMs, 'ms');
         await this.delay(delayMs);
         wait = Math.min(base * 2, 60000);
       }

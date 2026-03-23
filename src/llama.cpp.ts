@@ -414,8 +414,8 @@ class InferenceEngine {
     if (this.wllama) {
       try {
         await this.wllama.exit();
-      } catch (err) {
-        log.warn('Error during model unload:', err);
+      } catch (error) {
+        log.warn('Error during model unload:', error);
       }
     }
     this.isModelLoaded = false;

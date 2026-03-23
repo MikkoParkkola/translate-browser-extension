@@ -134,8 +134,8 @@ export function OnboardingApp() {
       } else {
         setTestError(response.error || 'Translation failed');
       }
-    } catch (e) {
-      setTestError(`Connection error: ${e}`);
+    } catch (error) {
+      setTestError(`Connection error: ${String(error)}`);
     }
 
     setTesting(false);

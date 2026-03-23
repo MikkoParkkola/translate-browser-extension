@@ -316,8 +316,8 @@ export async function translateGroups(
         group.translatedText = translated;
         cache.set(group.text, translated);
       }
-    } catch (err) {
-      log.error('Translation failed for group', group.text, err);
+    } catch (error) {
+      log.error('Translation failed for group', group.text, error);
       // Leave translatedText undefined on failure
     }
 
@@ -590,10 +590,10 @@ export async function initPdfTranslation(targetLang: string): Promise<void> {
     /* v8 ignore stop */
 
     log.info('PDF translation ready. Use toggle button to view.');
-  } catch (err) {
-    log.error('PDF translation failed', err);
+  } catch (error) {
+    log.error('PDF translation failed', error);
     cleanupPdfTranslation();
-    throw err;
+    throw error;
   }
 }
 

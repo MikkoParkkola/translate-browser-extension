@@ -130,9 +130,9 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
       CONFIG.timeouts.opusMtDirectMs,
       `Loading model ${modelId}`
     );
-  } catch (err) {
+  } catch (error) {
     /* v8 ignore start -- defensive rethrow */
-    throw err;
+    throw error;
     /* v8 ignore stop */
   }
 
@@ -182,9 +182,9 @@ async function translateDirect(
           }
           /* v8 ignore stop */
           return translated;
-        } catch (err) {
+        } catch (error) {
           // Per-item error: return original text instead of crashing entire batch
-          log.warn(` Translation failed for item (${t.substring(0, 30)}...):`, err);
+          log.warn(` Translation failed for item (${t.substring(0, 30)}...):`, error);
           return t;
         }
       })
@@ -307,10 +307,10 @@ async function translate(
         // loanwords, and short words. Caching these prevents repeated model inference.
         try {
           await cache.set(originalText, actualSourceLang, targetLang, provider, translation);
-        } catch (err) {
+        } catch (error) {
           cacheFails++;
           if (cacheFails <= 2) {
-            log.warn(`Failed to cache translation (${cacheFails}):`, err);
+            log.warn(`Failed to cache translation (${cacheFails}):`, error);
           }
         }
         if (translation === originalText) {
@@ -346,8 +346,8 @@ async function translate(
   /* v8 ignore stop */
   try {
     await cache.set(text, actualSourceLang, targetLang, provider, resultText);
-  } catch (err) {
-    log.warn('Failed to cache translation:', err);
+  } catch (error) {
+    log.warn('Failed to cache translation:', error);
   }
 
   return result;

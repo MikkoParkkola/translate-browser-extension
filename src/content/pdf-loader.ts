@@ -154,9 +154,9 @@ export async function loadPdfjs(): Promise<PdfjsLib> {
 
   try {
     return await loadingPromise;
-  } catch (err) {
+  } catch (error) {
     loadingPromise = null;
-    throw err;
+    throw error;
   }
 }
 
