@@ -13,6 +13,14 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import {
+  GENERAL_SETTINGS_LANGUAGES,
+  GENERAL_SETTINGS_STRATEGIES,
+  GENERAL_SETTINGS_TARGET_LANGUAGES,
+  GLOSSARY_LANGUAGES,
+  SITE_RULE_LANGUAGES,
+  SITE_RULE_STRATEGIES,
+} from '../../shared/translation-options';
 
 // ============================================================================
 // Chrome / browser API mock
@@ -406,30 +414,20 @@ describe('LocalModels logic', () => {
 // ============================================================================
 
 describe('GlossarySettings logic', () => {
-  const LANGUAGES = [
-    { code: 'all', name: 'All Languages' },
-    { code: 'en', name: 'English' },
-    { code: 'fi', name: 'Finnish' },
-    { code: 'de', name: 'German' },
-    { code: 'fr', name: 'French' },
-    { code: 'es', name: 'Spanish' },
-    { code: 'sv', name: 'Swedish' },
-  ];
-
   describe('LANGUAGES list', () => {
-    it('has 7 entries', () => expect(LANGUAGES).toHaveLength(7));
+    it('has 7 entries', () => expect(GLOSSARY_LANGUAGES).toHaveLength(7));
     it('first is All Languages', () => {
-      expect(LANGUAGES[0].code).toBe('all');
-      expect(LANGUAGES[0].name).toBe('All Languages');
+      expect(GLOSSARY_LANGUAGES[0].code).toBe('all');
+      expect(GLOSSARY_LANGUAGES[0].name).toBe('All Languages');
     });
     it('includes English', () => {
-      expect(LANGUAGES.some((l) => l.code === 'en')).toBe(true);
+      expect(GLOSSARY_LANGUAGES.some((l) => l.code === 'en')).toBe(true);
     });
     it('includes Finnish', () => {
-      expect(LANGUAGES.some((l) => l.code === 'fi')).toBe(true);
+      expect(GLOSSARY_LANGUAGES.some((l) => l.code === 'fi')).toBe(true);
     });
     it('all codes are unique', () => {
-      const codes = LANGUAGES.map((l) => l.code);
+      const codes = GLOSSARY_LANGUAGES.map((l) => l.code);
       expect(new Set(codes).size).toBe(codes.length);
     });
   });
@@ -538,22 +536,6 @@ describe('SiteRulesSettings logic', () => {
     { id: 'anthropic', name: 'Claude' },
   ];
 
-  const STRATEGIES = [
-    { id: '', name: 'Use default' },
-    { id: 'smart', name: 'Smart' },
-    { id: 'fast', name: 'Fast' },
-    { id: 'quality', name: 'Quality' },
-    { id: 'cost', name: 'Cost' },
-    { id: 'balanced', name: 'Balanced' },
-  ];
-
-  const SITE_LANGUAGES = [
-    { code: '', name: 'Use default' },
-    { code: 'auto', name: 'Auto Detect' },
-    { code: 'en', name: 'English' },
-    { code: 'fi', name: 'Finnish' },
-  ];
-
   describe('PROVIDERS', () => {
     it('has 8 entries', () => expect(PROVIDERS).toHaveLength(8));
     it('first is Use default', () => expect(PROVIDERS[0].id).toBe(''));
@@ -566,10 +548,10 @@ describe('SiteRulesSettings logic', () => {
   });
 
   describe('STRATEGIES', () => {
-    it('has 6 entries', () => expect(STRATEGIES).toHaveLength(6));
-    it('first is Use default', () => expect(STRATEGIES[0].id).toBe(''));
-    it('includes smart', () => expect(STRATEGIES.some((s) => s.id === 'smart')).toBe(true));
-    it('includes quality', () => expect(STRATEGIES.some((s) => s.id === 'quality')).toBe(true));
+    it('has 6 entries', () => expect(SITE_RULE_STRATEGIES).toHaveLength(6));
+    it('first is Use default', () => expect(SITE_RULE_STRATEGIES[0].id).toBe(''));
+    it('includes smart', () => expect(SITE_RULE_STRATEGIES.some((s) => s.id === 'smart')).toBe(true));
+    it('includes quality', () => expect(SITE_RULE_STRATEGIES.some((s) => s.id === 'quality')).toBe(true));
   });
 
   describe('domain pattern validation', () => {
@@ -614,10 +596,10 @@ describe('SiteRulesSettings logic', () => {
 
   describe('SITE_LANGUAGES', () => {
     it('has Use default option', () => {
-      expect(SITE_LANGUAGES.some((l) => l.code === '')).toBe(true);
+      expect(SITE_RULE_LANGUAGES.some((l) => l.code === '')).toBe(true);
     });
     it('has Auto Detect option', () => {
-      expect(SITE_LANGUAGES.some((l) => l.code === 'auto')).toBe(true);
+      expect(SITE_RULE_LANGUAGES.some((l) => l.code === 'auto')).toBe(true);
     });
   });
 
@@ -657,64 +639,36 @@ describe('GeneralSettings component invocation', () => {
 // ============================================================================
 
 describe('GeneralSettings constants', () => {
-  const LANGUAGES = [
-    { code: 'auto', name: 'Auto Detect' },
-    { code: 'en', name: 'English' },
-    { code: 'fi', name: 'Finnish' },
-    { code: 'de', name: 'German' },
-    { code: 'fr', name: 'French' },
-    { code: 'es', name: 'Spanish' },
-    { code: 'sv', name: 'Swedish' },
-    { code: 'ru', name: 'Russian' },
-    { code: 'zh', name: 'Chinese' },
-    { code: 'ja', name: 'Japanese' },
-    { code: 'nl', name: 'Dutch' },
-    { code: 'cs', name: 'Czech' },
-    { code: 'pt', name: 'Portuguese' },
-    { code: 'it', name: 'Italian' },
-    { code: 'pl', name: 'Polish' },
-    { code: 'ko', name: 'Korean' },
-  ];
-
-  const STRATEGIES = [
-    { id: 'smart', name: 'Smart', description: 'Auto-select best provider based on content' },
-    { id: 'fast', name: 'Fast', description: 'Prioritize speed over quality' },
-    { id: 'quality', name: 'Quality', description: 'Prioritize accuracy over speed' },
-    { id: 'cost', name: 'Cost', description: 'Prioritize free/local providers' },
-    { id: 'balanced', name: 'Balanced', description: 'Balance between speed, quality, and cost' },
-  ];
-
   describe('LANGUAGES array', () => {
-    it('has 16 entries', () => expect(LANGUAGES).toHaveLength(16));
-    it('starts with auto', () => expect(LANGUAGES[0].code).toBe('auto'));
-    it('includes English', () => expect(LANGUAGES.some((l) => l.code === 'en')).toBe(true));
+    it('has 16 entries', () => expect(GENERAL_SETTINGS_LANGUAGES).toHaveLength(16));
+    it('starts with auto', () => expect(GENERAL_SETTINGS_LANGUAGES[0].code).toBe('auto'));
+    it('includes English', () => expect(GENERAL_SETTINGS_LANGUAGES.some((l) => l.code === 'en')).toBe(true));
     it('all codes unique', () => {
-      const codes = LANGUAGES.map((l) => l.code);
+      const codes = GENERAL_SETTINGS_LANGUAGES.map((l) => l.code);
       expect(new Set(codes).size).toBe(codes.length);
     });
     it('all names non-empty', () => {
-      for (const lang of LANGUAGES) {
+      for (const lang of GENERAL_SETTINGS_LANGUAGES) {
         expect(lang.name.length).toBeGreaterThan(0);
       }
     });
     it('target filter excludes auto', () => {
-      const targets = LANGUAGES.filter((l) => l.code !== 'auto');
-      expect(targets.some((l) => l.code === 'auto')).toBe(false);
-      expect(targets).toHaveLength(LANGUAGES.length - 1);
+      expect(GENERAL_SETTINGS_TARGET_LANGUAGES.some((l) => l.code === 'auto')).toBe(false);
+      expect(GENERAL_SETTINGS_TARGET_LANGUAGES).toHaveLength(GENERAL_SETTINGS_LANGUAGES.length - 1);
     });
   });
 
   describe('STRATEGIES array', () => {
-    it('has 5 strategies', () => expect(STRATEGIES).toHaveLength(5));
-    it('starts with smart', () => expect(STRATEGIES[0].id).toBe('smart'));
-    it('includes fast', () => expect(STRATEGIES.some((s) => s.id === 'fast')).toBe(true));
-    it('includes quality', () => expect(STRATEGIES.some((s) => s.id === 'quality')).toBe(true));
+    it('has 5 strategies', () => expect(GENERAL_SETTINGS_STRATEGIES).toHaveLength(5));
+    it('starts with smart', () => expect(GENERAL_SETTINGS_STRATEGIES[0].id).toBe('smart'));
+    it('includes fast', () => expect(GENERAL_SETTINGS_STRATEGIES.some((s) => s.id === 'fast')).toBe(true));
+    it('includes quality', () => expect(GENERAL_SETTINGS_STRATEGIES.some((s) => s.id === 'quality')).toBe(true));
     it('all IDs unique', () => {
-      const ids = STRATEGIES.map((s) => s.id);
+      const ids = GENERAL_SETTINGS_STRATEGIES.map((s) => s.id);
       expect(new Set(ids).size).toBe(ids.length);
     });
     it('all descriptions non-empty', () => {
-      for (const s of STRATEGIES) {
+      for (const s of GENERAL_SETTINGS_STRATEGIES) {
         expect(s.description.length).toBeGreaterThan(0);
       }
     });

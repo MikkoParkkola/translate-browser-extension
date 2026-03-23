@@ -8,6 +8,11 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@solidjs/testing-library';
+import {
+  GENERAL_SETTINGS_LANGUAGES,
+  GENERAL_SETTINGS_STRATEGIES,
+  GENERAL_SETTINGS_TARGET_LANGUAGES,
+} from '../shared/translation-options';
 
 // ---------------------------------------------------------------------------
 // Chrome API mock
@@ -740,109 +745,79 @@ describe('CacheSettings utility functions', () => {
 // ---------------------------------------------------------------------------
 
 describe('GeneralSettings constants', () => {
-  const LANGUAGES = [
-    { code: 'auto', name: 'Auto Detect' },
-    { code: 'en', name: 'English' },
-    { code: 'fi', name: 'Finnish' },
-    { code: 'de', name: 'German' },
-    { code: 'fr', name: 'French' },
-    { code: 'es', name: 'Spanish' },
-    { code: 'sv', name: 'Swedish' },
-    { code: 'ru', name: 'Russian' },
-    { code: 'zh', name: 'Chinese' },
-    { code: 'ja', name: 'Japanese' },
-    { code: 'nl', name: 'Dutch' },
-    { code: 'cs', name: 'Czech' },
-    { code: 'pt', name: 'Portuguese' },
-    { code: 'it', name: 'Italian' },
-    { code: 'pl', name: 'Polish' },
-    { code: 'ko', name: 'Korean' },
-  ];
-
-  type Strategy = 'smart' | 'fast' | 'quality' | 'cost' | 'balanced';
-
-  const STRATEGIES: Array<{ id: Strategy; name: string; description: string }> = [
-    { id: 'smart', name: 'Smart', description: 'Auto-select best provider based on content' },
-    { id: 'fast', name: 'Fast', description: 'Prioritize speed over quality' },
-    { id: 'quality', name: 'Quality', description: 'Prioritize accuracy over speed' },
-    { id: 'cost', name: 'Cost', description: 'Prioritize free/local providers' },
-    { id: 'balanced', name: 'Balanced', description: 'Balance between speed, quality, and cost' },
-  ];
-
   describe('LANGUAGES', () => {
     it('has 16 language options', () => {
-      expect(LANGUAGES).toHaveLength(16);
+      expect(GENERAL_SETTINGS_LANGUAGES).toHaveLength(16);
     });
 
     it('first language is auto-detect', () => {
-      expect(LANGUAGES[0].code).toBe('auto');
-      expect(LANGUAGES[0].name).toBe('Auto Detect');
+      expect(GENERAL_SETTINGS_LANGUAGES[0].code).toBe('auto');
+      expect(GENERAL_SETTINGS_LANGUAGES[0].name).toBe('Auto Detect');
     });
 
     it('includes English', () => {
-      expect(LANGUAGES.some((l) => l.code === 'en')).toBe(true);
+      expect(GENERAL_SETTINGS_LANGUAGES.some((l) => l.code === 'en')).toBe(true);
     });
 
     it('includes Finnish', () => {
-      expect(LANGUAGES.some((l) => l.code === 'fi')).toBe(true);
+      expect(GENERAL_SETTINGS_LANGUAGES.some((l) => l.code === 'fi')).toBe(true);
     });
 
     it('all language codes are unique', () => {
-      const codes = LANGUAGES.map((l) => l.code);
+      const codes = GENERAL_SETTINGS_LANGUAGES.map((l) => l.code);
       expect(new Set(codes).size).toBe(codes.length);
     });
 
     it('all language names are non-empty', () => {
-      for (const lang of LANGUAGES) {
+      for (const lang of GENERAL_SETTINGS_LANGUAGES) {
         expect(lang.name.length).toBeGreaterThan(0);
       }
     });
 
     it('target language filter excludes auto', () => {
-      const targetLanguages = LANGUAGES.filter((l) => l.code !== 'auto');
-      expect(targetLanguages.some((l) => l.code === 'auto')).toBe(false);
-      expect(targetLanguages).toHaveLength(LANGUAGES.length - 1);
+      expect(GENERAL_SETTINGS_TARGET_LANGUAGES.some((l) => l.code === 'auto')).toBe(false);
+      expect(GENERAL_SETTINGS_TARGET_LANGUAGES).toHaveLength(GENERAL_SETTINGS_LANGUAGES.length - 1);
     });
   });
 
   describe('STRATEGIES', () => {
     it('has five strategies', () => {
-      expect(STRATEGIES).toHaveLength(5);
+      expect(GENERAL_SETTINGS_STRATEGIES).toHaveLength(5);
     });
 
     it('all strategy IDs are unique', () => {
-      const ids = STRATEGIES.map((s) => s.id);
+      const ids = GENERAL_SETTINGS_STRATEGIES.map((s) => s.id);
       expect(new Set(ids).size).toBe(ids.length);
     });
 
     it('includes smart strategy', () => {
-      expect(STRATEGIES.some((s) => s.id === 'smart')).toBe(true);
+      expect(GENERAL_SETTINGS_STRATEGIES.some((s) => s.id === 'smart')).toBe(true);
     });
 
     it('includes fast strategy', () => {
-      expect(STRATEGIES.some((s) => s.id === 'fast')).toBe(true);
+      expect(GENERAL_SETTINGS_STRATEGIES.some((s) => s.id === 'fast')).toBe(true);
     });
 
     it('includes quality strategy', () => {
-      expect(STRATEGIES.some((s) => s.id === 'quality')).toBe(true);
+      expect(GENERAL_SETTINGS_STRATEGIES.some((s) => s.id === 'quality')).toBe(true);
     });
 
     it('includes cost strategy', () => {
-      expect(STRATEGIES.some((s) => s.id === 'cost')).toBe(true);
+      expect(GENERAL_SETTINGS_STRATEGIES.some((s) => s.id === 'cost')).toBe(true);
     });
 
     it('includes balanced strategy', () => {
-      expect(STRATEGIES.some((s) => s.id === 'balanced')).toBe(true);
+      expect(GENERAL_SETTINGS_STRATEGIES.some((s) => s.id === 'balanced')).toBe(true);
     });
 
     it('all strategies have non-empty descriptions', () => {
-      for (const s of STRATEGIES) {
+      for (const s of GENERAL_SETTINGS_STRATEGIES) {
         expect(s.description.length).toBeGreaterThan(0);
       }
     });
 
     it('first strategy is smart (sensible default)', () => {
-      expect(STRATEGIES[0].id).toBe('smart');
+      expect(GENERAL_SETTINGS_STRATEGIES[0].id).toBe('smart');
     });
   });
 });

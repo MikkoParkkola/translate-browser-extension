@@ -6,33 +6,11 @@
 import { Component, createSignal, onMount, For } from 'solid-js';
 import { safeStorageGet, safeStorageSet, lastStorageError } from '../../core/storage';
 import type { Strategy } from '../../types';
-
-const LANGUAGES = [
-  { code: 'auto', name: 'Auto Detect' },
-  { code: 'en', name: 'English' },
-  { code: 'fi', name: 'Finnish' },
-  { code: 'de', name: 'German' },
-  { code: 'fr', name: 'French' },
-  { code: 'es', name: 'Spanish' },
-  { code: 'sv', name: 'Swedish' },
-  { code: 'ru', name: 'Russian' },
-  { code: 'zh', name: 'Chinese' },
-  { code: 'ja', name: 'Japanese' },
-  { code: 'nl', name: 'Dutch' },
-  { code: 'cs', name: 'Czech' },
-  { code: 'pt', name: 'Portuguese' },
-  { code: 'it', name: 'Italian' },
-  { code: 'pl', name: 'Polish' },
-  { code: 'ko', name: 'Korean' },
-];
-
-const STRATEGIES: Array<{ id: Strategy; name: string; description: string }> = [
-  { id: 'smart', name: 'Smart', description: 'Auto-select best provider based on content' },
-  { id: 'fast', name: 'Fast', description: 'Prioritize speed over quality' },
-  { id: 'quality', name: 'Quality', description: 'Prioritize accuracy over speed' },
-  { id: 'cost', name: 'Cost', description: 'Prioritize free/local providers' },
-  { id: 'balanced', name: 'Balanced', description: 'Balance between speed, quality, and cost' },
-];
+import {
+  GENERAL_SETTINGS_LANGUAGES,
+  GENERAL_SETTINGS_STRATEGIES,
+  GENERAL_SETTINGS_TARGET_LANGUAGES,
+} from '../../shared/translation-options';
 
 interface StoredSettings {
   sourceLang?: string;
@@ -107,7 +85,7 @@ export const GeneralSettings: Component = () => {
               value={sourceLang()}
               onChange={(e) => setSourceLang(e.currentTarget.value)}
             >
-              <For each={LANGUAGES}>
+              <For each={GENERAL_SETTINGS_LANGUAGES}>
                 {(lang) => <option value={lang.code}>{lang.name}</option>}
               </For>
             </select>
@@ -121,7 +99,7 @@ export const GeneralSettings: Component = () => {
               value={targetLang()}
               onChange={(e) => setTargetLang(e.currentTarget.value)}
             >
-              <For each={LANGUAGES.filter(l => l.code !== 'auto')}>
+              <For each={GENERAL_SETTINGS_TARGET_LANGUAGES}>
                 {(lang) => <option value={lang.code}>{lang.name}</option>}
               </For>
             </select>
@@ -148,7 +126,7 @@ export const GeneralSettings: Component = () => {
             onChange={(e) => setStrategy(e.currentTarget.value as Strategy)}
             /* v8 ignore stop */
           >
-            <For each={STRATEGIES}>
+            <For each={GENERAL_SETTINGS_STRATEGIES}>
               {(s) => <option value={s.id}>{s.name} - {s.description}</option>}
             </For>
           </select>

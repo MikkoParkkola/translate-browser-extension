@@ -8,18 +8,9 @@ import { createLogger } from '../../core/logger';
 import { glossary, type GlossaryStore, type GlossaryTerm } from '../../core/glossary';
 import { extractErrorMessage } from '../../core/errors';
 import { reportUiError, showTemporaryMessage } from '../../shared/ui-feedback';
+import { GLOSSARY_LANGUAGES } from '../../shared/translation-options';
 
 const log = createLogger('GlossarySettings');
-
-const LANGUAGES = [
-  { code: 'all', name: 'All Languages' },
-  { code: 'en', name: 'English' },
-  { code: 'fi', name: 'Finnish' },
-  { code: 'de', name: 'German' },
-  { code: 'fr', name: 'French' },
-  { code: 'es', name: 'Spanish' },
-  { code: 'sv', name: 'Swedish' },
-];
 
 export const GlossarySettings: Component = () => {
   const [terms, setTerms] = createSignal<GlossaryStore>({});
@@ -252,7 +243,7 @@ export const GlossarySettings: Component = () => {
             value={selectedLanguage()}
             onChange={(e) => setSelectedLanguage(e.currentTarget.value)}
           >
-            <For each={LANGUAGES}>
+            <For each={GLOSSARY_LANGUAGES}>
               {(lang) => <option value={lang.code}>{lang.name}</option>}
             </For>
           </select>
@@ -302,7 +293,7 @@ export const GlossarySettings: Component = () => {
                 value={newLanguage()}
                 onChange={(e) => setNewLanguage(e.currentTarget.value)}
               >
-                <For each={LANGUAGES}>
+                <For each={GLOSSARY_LANGUAGES}>
                   {(lang) => <option value={lang.code}>{lang.name}</option>}
                 </For>
               </select>

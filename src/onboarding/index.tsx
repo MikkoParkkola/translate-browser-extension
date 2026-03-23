@@ -1,28 +1,8 @@
 import { render } from 'solid-js/web';
 import { createSignal, Show, For, onMount } from 'solid-js';
 import { safeStorageSet } from '../core/storage';
+import { ONBOARDING_LANGUAGES } from '../shared/translation-options';
 import './styles.css';
-
-const LANGUAGES = [
-  { code: 'en', name: 'English', flag: 'GB' },
-  { code: 'fi', name: 'Finnish', flag: 'FI' },
-  { code: 'sv', name: 'Swedish', flag: 'SE' },
-  { code: 'de', name: 'German', flag: 'DE' },
-  { code: 'fr', name: 'French', flag: 'FR' },
-  { code: 'es', name: 'Spanish', flag: 'ES' },
-  { code: 'nl', name: 'Dutch', flag: 'NL' },
-  { code: 'it', name: 'Italian', flag: 'IT' },
-  { code: 'pt', name: 'Portuguese', flag: 'PT' },
-  { code: 'pl', name: 'Polish', flag: 'PL' },
-  { code: 'ru', name: 'Russian', flag: 'RU' },
-  { code: 'ja', name: 'Japanese', flag: 'JP' },
-  { code: 'zh', name: 'Chinese', flag: 'CN' },
-  { code: 'ko', name: 'Korean', flag: 'KR' },
-  { code: 'ar', name: 'Arabic', flag: 'SA' },
-  { code: 'hi', name: 'Hindi', flag: 'IN' },
-  { code: 'tr', name: 'Turkish', flag: 'TR' },
-  { code: 'uk', name: 'Ukrainian', flag: 'UA' },
-];
 
 const MODELS = [
   {
@@ -79,7 +59,7 @@ export function OnboardingApp() {
   // Detect browser language on mount
   onMount(() => {
     const browserLang = navigator.language.split('-')[0];
-    const supported = LANGUAGES.find(l => l.code === browserLang);
+    const supported = ONBOARDING_LANGUAGES.find(l => l.code === browserLang);
     if (supported) {
       setTargetLang(browserLang);
     }
@@ -165,7 +145,7 @@ export function OnboardingApp() {
 
   const getLanguageName = (code: string) => {
     /* v8 ignore start */
-    return LANGUAGES.find(l => l.code === code)?.name || code;
+    return ONBOARDING_LANGUAGES.find(l => l.code === code)?.name || code;
     /* v8 ignore stop */
   };
 
@@ -268,7 +248,7 @@ export function OnboardingApp() {
             <p class="subtitle">What language do you want to translate TO?</p>
 
             <div class="language-grid">
-              <For each={LANGUAGES}>
+              <For each={ONBOARDING_LANGUAGES}>
                 {(lang) => (
                   <button
                     class={`lang-btn ${targetLang() === lang.code ? 'selected' : ''}`}

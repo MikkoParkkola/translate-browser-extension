@@ -9,19 +9,13 @@ import { siteRules, type SiteRules, type SiteRulesStore } from '../../core/site-
 import type { TranslationProviderId, Strategy } from '../../types';
 import { extractErrorMessage } from '../../core/errors';
 import { reportUiError, showTemporaryMessage } from '../../shared/ui-feedback';
+import {
+  SITE_RULE_LANGUAGES,
+  SITE_RULE_STRATEGIES,
+  SITE_RULE_TARGET_LANGUAGES,
+} from '../../shared/translation-options';
 
 const log = createLogger('SiteRulesSettings');
-
-const LANGUAGES = [
-  { code: '', name: 'Use default' },
-  { code: 'auto', name: 'Auto Detect' },
-  { code: 'en', name: 'English' },
-  { code: 'fi', name: 'Finnish' },
-  { code: 'de', name: 'German' },
-  { code: 'fr', name: 'French' },
-  { code: 'es', name: 'Spanish' },
-  { code: 'sv', name: 'Swedish' },
-];
 
 const PROVIDERS: Array<{ id: TranslationProviderId | ''; name: string }> = [
   { id: '', name: 'Use default' },
@@ -32,15 +26,6 @@ const PROVIDERS: Array<{ id: TranslationProviderId | ''; name: string }> = [
   { id: 'openai', name: 'OpenAI' },
   { id: 'google-cloud', name: 'Google Cloud' },
   { id: 'anthropic', name: 'Claude' },
-];
-
-const STRATEGIES: Array<{ id: Strategy | ''; name: string }> = [
-  { id: '', name: 'Use default' },
-  { id: 'smart', name: 'Smart' },
-  { id: 'fast', name: 'Fast' },
-  { id: 'quality', name: 'Quality' },
-  { id: 'cost', name: 'Cost' },
-  { id: 'balanced', name: 'Balanced' },
 ];
 
 export const SiteRulesSettings: Component = () => {
@@ -290,7 +275,7 @@ export const SiteRulesSettings: Component = () => {
                 value={newStrategy()}
                 onChange={(e) => setNewStrategy(e.currentTarget.value as Strategy | '')}
               >
-                <For each={STRATEGIES}>
+                <For each={SITE_RULE_STRATEGIES}>
                   {(s) => <option value={s.id}>{s.name}</option>}
                 </For>
               </select>
@@ -305,7 +290,7 @@ export const SiteRulesSettings: Component = () => {
                 value={newSourceLang()}
                 onChange={(e) => setNewSourceLang(e.currentTarget.value)}
               >
-                <For each={LANGUAGES}>
+                <For each={SITE_RULE_LANGUAGES}>
                   {(lang) => <option value={lang.code}>{lang.name}</option>}
                 </For>
               </select>
@@ -317,7 +302,7 @@ export const SiteRulesSettings: Component = () => {
                 value={newTargetLang()}
                 onChange={(e) => setNewTargetLang(e.currentTarget.value)}
               >
-                <For each={LANGUAGES.filter(l => l.code !== 'auto')}>
+                <For each={SITE_RULE_TARGET_LANGUAGES}>
                   {(lang) => <option value={lang.code}>{lang.name}</option>}
                 </For>
               </select>
@@ -430,7 +415,7 @@ export const SiteRulesSettings: Component = () => {
                         value={editStrategy()}
                         onChange={(e) => setEditStrategy(e.currentTarget.value as Strategy | '')}
                       >
-                        <For each={STRATEGIES}>
+                        <For each={SITE_RULE_STRATEGIES}>
                           {(s) => <option value={s.id}>{s.name}</option>}
                         </For>
                       </select>
@@ -445,7 +430,7 @@ export const SiteRulesSettings: Component = () => {
                         value={editSourceLang()}
                         onChange={(e) => setEditSourceLang(e.currentTarget.value)}
                       >
-                        <For each={LANGUAGES}>
+                        <For each={SITE_RULE_LANGUAGES}>
                           {(lang) => <option value={lang.code}>{lang.name}</option>}
                         </For>
                       </select>
@@ -457,7 +442,7 @@ export const SiteRulesSettings: Component = () => {
                         value={editTargetLang()}
                         onChange={(e) => setEditTargetLang(e.currentTarget.value)}
                       >
-                        <For each={LANGUAGES.filter(l => l.code !== 'auto')}>
+                        <For each={SITE_RULE_TARGET_LANGUAGES}>
                           {(lang) => <option value={lang.code}>{lang.name}</option>}
                         </For>
                       </select>

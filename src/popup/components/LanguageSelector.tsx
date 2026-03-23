@@ -1,4 +1,5 @@
 import { Component, For } from 'solid-js';
+import { POPUP_SOURCE_LANGUAGES, POPUP_TARGET_LANGUAGES } from '../../shared/translation-options';
 
 interface Props {
   sourceLang: string;
@@ -7,21 +8,6 @@ interface Props {
   onTargetChange: (lang: string) => void;
   onSwap: () => void;
 }
-
-const LANGUAGES = [
-  { code: 'auto', name: 'Auto Detect', flag: '' },
-  { code: 'en', name: 'English', flag: '' },
-  { code: 'fi', name: 'Finnish', flag: '' },
-  { code: 'de', name: 'German', flag: '' },
-  { code: 'fr', name: 'French', flag: '' },
-  { code: 'es', name: 'Spanish', flag: '' },
-  { code: 'sv', name: 'Swedish', flag: '' },
-  { code: 'ru', name: 'Russian', flag: '' },
-  { code: 'zh', name: 'Chinese', flag: '' },
-  { code: 'ja', name: 'Japanese', flag: '' },
-  { code: 'nl', name: 'Dutch', flag: '' },
-  { code: 'cs', name: 'Czech', flag: '' },
-];
 
 export const LanguageSelector: Component<Props> = (props) => {
   return (
@@ -35,7 +21,7 @@ export const LanguageSelector: Component<Props> = (props) => {
               onChange={(e) => props.onSourceChange(e.target.value)}
               aria-label="Source language"
             >
-              <For each={LANGUAGES}>
+              <For each={POPUP_SOURCE_LANGUAGES}>
                 {(lang) => (
                   <option value={lang.code}>
                     {lang.flag} {lang.name}
@@ -75,7 +61,7 @@ export const LanguageSelector: Component<Props> = (props) => {
               onChange={(e) => props.onTargetChange(e.target.value)}
               aria-label="Target language"
             >
-              <For each={LANGUAGES.filter((l) => l.code !== 'auto')}>
+              <For each={POPUP_TARGET_LANGUAGES}>
                 {(lang) => (
                   <option value={lang.code}>
                     {lang.flag} {lang.name}
