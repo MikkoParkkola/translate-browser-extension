@@ -1577,7 +1577,7 @@ describe('background-firefox translate: additional coverage', () => {
     beforeEach(async () => {
       // Set up language detection to return target language (triggers skip case)
       const langDetection = vi.mocked(await import('../offscreen/language-detection'));
-      langDetection.detectLanguage.mockReturnValue('fi');
+      langDetection.detectLanguage.mockResolvedValue('fi');
     });
 
     it('handles auto-detection returning target language', async () => {

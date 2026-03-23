@@ -66,7 +66,7 @@ export const LocalModels: Component = () => {
       }
 
       // Get cached model info from storage
-      const stored = await safeStorageGet(['downloadedModels']);
+      const stored = await safeStorageGet<{ downloadedModels?: ModelInfo[] }>(['downloadedModels']);
       const models: ModelInfo[] = stored.downloadedModels || [];
 
       // Try to get model list from background

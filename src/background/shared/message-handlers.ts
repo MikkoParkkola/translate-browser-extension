@@ -65,6 +65,8 @@ export function handleGetUsage(cache: TranslationCache): { throttle: ThrottleUsa
       tokens: rl.tokens,
       requestLimit: CONFIG_RL.requestsPerMinute,
       tokenLimit: CONFIG_RL.tokensPerMinute,
+      totalRequests: rl.requests,
+      totalTokens: rl.tokens,
       queue: 0,
     },
     cache: cache.getStats(),

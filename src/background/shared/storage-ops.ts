@@ -123,7 +123,7 @@ export function createTranslationCache(
 
     loadingPromise = (async () => {
       try {
-        const keysToGet = [CONFIG.cache.storageKey, CONFIG.cache.cacheStatsKey];
+        const keysToGet: string[] = [CONFIG.cache.storageKey, CONFIG.cache.cacheStatsKey];
         if (enableVersioning) keysToGet.push(CACHE_VERSION_KEY);
 
         const stored = await storage.get(keysToGet);
@@ -352,7 +352,7 @@ export function createTranslationCache(
     cacheMisses = 0;
 
     try {
-      const keysToRemove = [CONFIG.cache.storageKey, CONFIG.cache.cacheStatsKey];
+      const keysToRemove: string[] = [CONFIG.cache.storageKey, CONFIG.cache.cacheStatsKey];
       if (enableVersioning) keysToRemove.push(CACHE_VERSION_KEY);
       await storage.remove(keysToRemove);
       log.info('Translation cache cleared (memory + persistent storage)');

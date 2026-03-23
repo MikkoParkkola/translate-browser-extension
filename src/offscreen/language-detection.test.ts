@@ -18,6 +18,14 @@ vi.mock('../core/logger', () => ({
   }),
 }));
 
+// Mock browserAPI — language-detection uses it for Firefox i18n.detectLanguage
+// which is never available in test environments
+vi.mock('../core/browser-api', () => ({
+  browserAPI: {
+    i18n: { getUILanguage: () => 'en' },
+  },
+}));
+
 describe('FRANC_TO_ISO', () => {
   describe('structure', () => {
     it('contains 60+ language mappings', async () => {

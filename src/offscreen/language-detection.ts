@@ -8,6 +8,7 @@
  */
 
 import { createLogger } from '../core/logger';
+import { browserAPI } from '../core/browser-api';
 
 const log = createLogger('LanguageDetection');
 
@@ -119,9 +120,9 @@ export async function detectLanguage(text: string): Promise<string> {
   }
 
   // 2. Firefox built-in i18n language detection
-  if (typeof browser !== 'undefined' && browser.i18n?.detectLanguage) {
+  if (browserAPI.i18n && 'detectLanguage' in browserAPI.i18n) {
     try {
-      const result = await browser.i18n.detectLanguage(text);
+      const result = await (browserAPI.i18n as { detectLanguage(text: string): Promise<{ isReliable: boolean; languages: Array<{ language: string }> }> }).detectLanguage(text);
       if (result.isReliable && result.languages.length > 0) {
         const lang = result.languages[0].language.split('-')[0]; // strip region
         log.debug(`Firefox i18n.detectLanguage: "${lang}"`);

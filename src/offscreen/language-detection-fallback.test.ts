@@ -18,6 +18,12 @@ vi.mock('../core/logger', () => ({
   }),
 }));
 
+vi.mock('../core/browser-api', () => ({
+  browserAPI: {
+    i18n: { getUILanguage: () => 'en' },
+  },
+}));
+
 import { detectLanguage } from './language-detection';
 
 describe('detectLanguage unmapped franc code', () => {

@@ -102,9 +102,9 @@ export const CloudProviders: Component = () => {
         status[provider.id] = {
           hasKey: !!stored[provider.keyField],
           /* v8 ignore start */
-          enabled: stored[provider.enabledField] ?? false,
-          isPro: provider.hasProTier && provider.proField ? stored[provider.proField] : undefined,
-          model: provider.modelField ? stored[provider.modelField] : undefined,
+          enabled: (stored[provider.enabledField] ?? false) as boolean,
+          isPro: provider.hasProTier && provider.proField ? stored[provider.proField] as boolean | undefined : undefined,
+          model: provider.modelField ? stored[provider.modelField] as string | undefined : undefined,
           /* v8 ignore stop */
         };
       }

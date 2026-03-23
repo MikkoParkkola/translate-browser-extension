@@ -159,7 +159,7 @@ export class NLLB200Provider extends BaseProvider {
       type: this.type,
       qualityTier: this.qualityTier,
       costPerMillion: this.costPerMillion,
-      isAvailable: true,
+      icon: this.icon,
     };
   }
 

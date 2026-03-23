@@ -83,13 +83,13 @@ export const ApiKeyManager: Component<Props> = (props) => {
       const keys = CLOUD_PROVIDERS.flatMap(p =>
         p.hasProTier && p.proField ? [p.keyField, p.proField] : [p.keyField]
       );
-      const stored = await safeStorageGet(keys);
+      const stored = await safeStorageGet<Record<string, unknown>>(keys);
 
       for (const provider of CLOUD_PROVIDERS) {
         status[provider.id] = {
           hasKey: !!stored[provider.keyField],
           /* v8 ignore start */
-          isPro: provider.hasProTier && provider.proField ? stored[provider.proField] : undefined,
+          isPro: provider.hasProTier && provider.proField ? stored[provider.proField] as boolean | undefined : undefined,
           /* v8 ignore stop */
         };
       }
