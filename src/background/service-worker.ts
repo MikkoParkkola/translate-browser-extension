@@ -198,7 +198,6 @@ let creatingOffscreen: Promise<void> | null = null;
 let offscreenFailureCount = 0;
 let offscreenResetCount = 0;
 
-const CIRCUIT_BREAKER_COOLDOWN_MS = 60_000;
 let circuitBreakerCooldownTimer: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleCircuitBreakerReset(): void {
@@ -213,7 +212,7 @@ function scheduleCircuitBreakerReset(): void {
       offscreenResetCount = 0;
     }
     circuitBreakerCooldownTimer = null;
-  }, CIRCUIT_BREAKER_COOLDOWN_MS);
+  }, CONFIG.retry.offscreenCooldownMs);
   /* v8 ignore stop */
 }
 

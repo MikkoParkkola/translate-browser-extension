@@ -81,6 +81,8 @@ export const CONFIG = {
     maxOffscreenFailures: 3,
     /** Maximum offscreen document reset attempts per reset cycle */
     maxOffscreenResets: 3,
+    /** Cooldown after circuit trips: reset failure/reset counters after this delay (ms) */
+    offscreenCooldownMs: 60_000,
   },
 
   /**
