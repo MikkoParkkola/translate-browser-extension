@@ -4,61 +4,26 @@
  */
 
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
-import type { TranslationProviderId } from '../../types';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
+import { CLOUD_PROVIDER_CONFIGS, type CloudProviderConfig } from '../../shared/cloud-provider-configs';
 import { createLogger } from '../../core/logger';
 import { safeStorageGet, safeStorageSet, safeStorageRemove } from '../../core/storage';
 
 const log = createLogger('CloudProviders');
 
 // Cloud provider definitions
-const CLOUD_PROVIDERS = [
-  {
-    id: 'deepl' as TranslationProviderId,
-    name: 'DeepL',
-    keyField: 'deepl_api_key',
-    enabledField: 'deepl_enabled',
-    hasProTier: true,
-    proField: 'deepl_is_pro',
-    placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx',
-    helpUrl: 'https://www.deepl.com/pro-api',
-    description: 'Premium translation quality. Free tier: 500K chars/month.',
-    testEndpoint: 'https://api-free.deepl.com/v2/usage',
-  },
-  {
-    id: 'openai' as TranslationProviderId,
-    name: 'OpenAI',
-    keyField: 'openai_api_key',
-    enabledField: 'openai_enabled',
-    modelField: 'openai_model',
-    hasProTier: false,
-    placeholder: 'sk-...',
-    helpUrl: 'https://platform.openai.com/api-keys',
-    description: 'LLM-powered translations with context understanding.',
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-  },
-  {
-    id: 'google-cloud' as TranslationProviderId,
-    name: 'Google Cloud',
-    keyField: 'google_cloud_api_key',
-    enabledField: 'google_cloud_enabled',
-    hasProTier: false,
-    placeholder: 'AIza...',
-    helpUrl: 'https://cloud.google.com/translate/docs/setup',
-    description: 'Google Cloud Translation API v2.',
-  },
-  {
-    id: 'anthropic' as TranslationProviderId,
-    name: 'Claude (Anthropic)',
-    keyField: 'anthropic_api_key',
-    enabledField: 'anthropic_enabled',
-    modelField: 'anthropic_model',
-    hasProTier: false,
-    placeholder: 'sk-ant-...',
-    helpUrl: 'https://console.anthropic.com/settings/keys',
-    description: 'Claude-powered translations with nuanced understanding.',
-    models: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-latest'],
-  },
+interface CloudProviderFullConfig extends CloudProviderConfig {
+  enabledField: string;
+  testEndpoint?: string;
+  models?: string[];
+  modelField?: string;
+}
+
+const CLOUD_PROVIDERS: CloudProviderFullConfig[] = [
+  { ...CLOUD_PROVIDER_CONFIGS[0]!, enabledField: 'deepl_enabled', testEndpoint: 'https://api-free.deepl.com/v2/usage' },
+  { ...CLOUD_PROVIDER_CONFIGS[1]!, enabledField: 'openai_enabled', modelField: 'openai_model', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'] },
+  { ...CLOUD_PROVIDER_CONFIGS[2]!, enabledField: 'google_cloud_enabled' },
+  { ...CLOUD_PROVIDER_CONFIGS[3]!, enabledField: 'anthropic_enabled', modelField: 'anthropic_model', models: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-latest'] },
 ];
 
 interface ProviderStatus {

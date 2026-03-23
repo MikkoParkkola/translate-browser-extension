@@ -4,53 +4,14 @@
  */
 
 import { Component, createSignal, For, Show, onMount } from 'solid-js';
-import type { TranslationProviderId } from '../../types';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
+import { CLOUD_PROVIDER_CONFIGS } from '../../shared/cloud-provider-configs';
 import { createLogger } from '../../core/logger';
 import { safeStorageGet, safeStorageSet, safeStorageRemove } from '../../core/storage';
 
 const log = createLogger('ApiKeyManager');
 
-// Cloud provider definitions
-const CLOUD_PROVIDERS = [
-  {
-    id: 'deepl' as TranslationProviderId,
-    name: 'DeepL',
-    keyField: 'deepl_api_key',
-    hasProTier: true,
-    proField: 'deepl_is_pro',
-    placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx',
-    helpUrl: 'https://www.deepl.com/pro-api',
-    description: 'Premium translation quality. Free tier: 500K chars/month.',
-  },
-  {
-    id: 'openai' as TranslationProviderId,
-    name: 'OpenAI',
-    keyField: 'openai_api_key',
-    hasProTier: false,
-    placeholder: 'sk-...',
-    helpUrl: 'https://platform.openai.com/api-keys',
-    description: 'LLM-powered translations with context understanding.',
-  },
-  {
-    id: 'google-cloud' as TranslationProviderId,
-    name: 'Google Cloud',
-    keyField: 'google_cloud_api_key',
-    hasProTier: false,
-    placeholder: 'AIza...',
-    helpUrl: 'https://cloud.google.com/translate/docs/setup',
-    description: 'Google Cloud Translation API v2.',
-  },
-  {
-    id: 'anthropic' as TranslationProviderId,
-    name: 'Claude',
-    keyField: 'anthropic_api_key',
-    hasProTier: false,
-    placeholder: 'sk-ant-...',
-    helpUrl: 'https://console.anthropic.com/settings/keys',
-    description: 'Claude-powered translations with nuanced understanding.',
-  },
-];
+// Cloud provider definitions sourced from shared config
 
 interface ProviderStatus {
   hasKey: boolean;
@@ -80,12 +41,12 @@ export const ApiKeyManager: Component<Props> = (props) => {
     const status: Record<string, ProviderStatus> = {};
 
     try {
-      const keys = CLOUD_PROVIDERS.flatMap(p =>
+      const keys = CLOUD_PROVIDER_CONFIGS.flatMap(p =>
         p.hasProTier && p.proField ? [p.keyField, p.proField] : [p.keyField]
       );
       const stored = await safeStorageGet<Record<string, unknown>>(keys);
 
-      for (const provider of CLOUD_PROVIDERS) {
+      for (const provider of CLOUD_PROVIDER_CONFIGS) {
         status[provider.id] = {
           hasKey: !!stored[provider.keyField],
           /* v8 ignore start */
@@ -116,7 +77,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
   };
 
   const saveApiKey = async (providerId: string) => {
-    const provider = CLOUD_PROVIDERS.find(p => p.id === providerId);
+    const provider = CLOUD_PROVIDER_CONFIGS.find(p => p.id === providerId);
     /* v8 ignore start -- guard: provider always found from own button handlers */
     if (!provider) return;
     /* v8 ignore stop */
@@ -162,7 +123,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
   };
 
   const removeApiKey = async (providerId: string) => {
-    const provider = CLOUD_PROVIDERS.find(p => p.id === providerId);
+    const provider = CLOUD_PROVIDER_CONFIGS.find(p => p.id === providerId);
     /* v8 ignore start -- guard */
     if (!provider) return;
     /* v8 ignore stop */
@@ -210,7 +171,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
       </Show>
 
       <div class="api-key-providers">
-        <For each={CLOUD_PROVIDERS}>
+        <For each={CLOUD_PROVIDER_CONFIGS}>
           {(provider) => {
             const status = () => providerStatus()[provider.id] || { hasKey: false };
             const isEditing = () => editingProvider() === provider.id;
@@ -313,7 +274,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
       <ConfirmDialog
         open={!!confirmRemove()}
         title="Remove API Key"
-        message={`Remove ${CLOUD_PROVIDERS.find(p => p.id === confirmRemove())?.name ?? ''} API key? You will need to re-enter it to use this provider.`}
+        message={`Remove ${CLOUD_PROVIDER_CONFIGS.find(p => p.id === confirmRemove())?.name ?? ''} API key? You will need to re-enter it to use this provider.`}
         confirmLabel="Remove"
         cancelLabel="Keep"
         variant="danger"

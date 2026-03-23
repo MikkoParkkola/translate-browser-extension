@@ -115,8 +115,7 @@ let _wllamaPromise: Promise<WllamaModule> | null = null;
 
 async function getWllamaModule(): Promise<WllamaModule> {
   if (!_wllamaPromise) {
-    // @ts-expect-error -- bundled JS without type declarations
-    _wllamaPromise = (import('./wllama.bundle.js') as Promise<WllamaModule>).catch((err: Error) => {
+    _wllamaPromise = (import('./wllama.bundle.js') as unknown as Promise<WllamaModule>).catch((err: Error) => {
       _wllamaPromise = null;
       log.error('Failed to import wllama bundle:', err);
       throw new Error(`Failed to load inference engine: ${err.message}`);

@@ -24,7 +24,7 @@ import { BaseProvider } from './base-provider';
 import { createLogger } from '../core/logger';
 import { withTimeout } from '../core/async-utils';
 import { CONFIG } from '../config';
-import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
+import type { TranslationOptions, LanguagePair } from '../types';
 
 const log = createLogger('NLLB-200');
 
@@ -150,17 +150,6 @@ export class NLLB200Provider extends BaseProvider {
 
   supportsLanguagePair(src: string, tgt: string): boolean {
     return src in ISO_TO_FLORES && tgt in ISO_TO_FLORES;
-  }
-
-  getConfig(): ProviderConfig {
-    return {
-      id: this.id,
-      name: this.name,
-      type: this.type,
-      qualityTier: this.qualityTier,
-      costPerMillion: this.costPerMillion,
-      icon: this.icon,
-    };
   }
 
   private async getPipeline(): Promise<TranslationPipeline> {

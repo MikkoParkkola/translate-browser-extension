@@ -70,7 +70,7 @@ describe('ApiKeyManager', () => {
       expect(screen.getByText('DeepL')).toBeTruthy();
       expect(screen.getByText('OpenAI')).toBeTruthy();
       expect(screen.getByText('Google Cloud')).toBeTruthy();
-      expect(screen.getByText('Claude')).toBeTruthy();
+      expect(screen.getByText('Claude (Anthropic)')).toBeTruthy();
     });
   });
 

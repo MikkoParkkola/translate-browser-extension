@@ -17,6 +17,9 @@ declare const browser: typeof chrome | undefined;
  * Modern Chrome also supports `chrome` with Promises, so we prefer `browser` if available
  * as it's guaranteed to be Promise-based.
  */
+// Note: webextension-polyfill (npm package) would handle chrome/browser API
+// normalization more completely, but is not currently installed. This lightweight
+// Proxy covers the primary use cases needed by this extension.
 export const browserAPI: typeof chrome = new Proxy({} as typeof chrome, {
   get(_target, prop: string | symbol) {
     const api = typeof browser !== 'undefined' ? (browser as typeof chrome) : chrome;
