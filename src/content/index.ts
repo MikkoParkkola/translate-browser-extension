@@ -22,7 +22,6 @@ import { safeStorageGet } from '../core/storage';
 import { browserAPI } from '../core/browser-api';
 import { initSubtitleTranslation, cleanupSubtitleTranslation } from './subtitle-translator';
 import { isPdfPage, initPdfTranslation, cleanupPdfTranslation } from './pdf-translator';
-import { detectLanguage, samplePageText } from '../core/language-detector';
 import {
   observeShadowRoots,
   observeShadowRoot,
@@ -90,6 +89,12 @@ import {
   toggleBilingualMode,
   getBilingualModeState,
 } from './bilingual';
+import {
+  resolveSourceLang,
+  translateWithStreaming,
+  isTransientError,
+  createBatches,
+} from './translation-helpers';
 
 const log = createLogger('Content');
 
@@ -98,22 +103,6 @@ const log = createLogger('Content');
 // created after this point will be intercepted. The interceptor is idempotent —
 // calling it again in startMutationObserver is safe.
 installAttachShadowInterceptor();
-
-/**
- * Resolve 'auto' source language using fast trigram-based detection.
- * Falls back to 'auto' if detection fails or confidence is too low.
- */
-function resolveSourceLang(sourceLang: string, text?: string): string {
-  if (sourceLang !== 'auto') return sourceLang;
-  const sample = text || samplePageText(300);
-  if (!sample) return 'auto';
-  const result = detectLanguage(sample);
-  if (result && result.confidence >= 0.20) {
-    log.info(`Detected language: ${result.lang} (confidence: ${result.confidence.toFixed(2)})`);
-    return result.lang;
-  }
-  return 'auto';
-}
 
 // ============================================================================
 // State
@@ -193,50 +182,6 @@ async function loadGlossary(): Promise<GlossaryStore> {
   return glossaryLoadingPromise;
 }
 
-
-/**
- * Translate text via a long-lived Port connection so partial results arrive
- * progressively. Calls `onChunk(partial)` as each sentence is translated, then
- * resolves with the final full translation. Falls back to `sendMessage` on any
- * port error.
- */
-async function translateWithStreaming(
-  text: string,
-  sourceLang: string,
-  targetLang: string,
-  provider: string | undefined,
-  onChunk: (partial: string) => void,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let port: chrome.runtime.Port;
-    try {
-      port = browserAPI.runtime.connect({ name: 'translate-stream' });
-    } catch {
-      reject(new Error('Port connection failed'));
-      return;
-    }
-
-    port.onMessage.addListener((msg: { type: string; partial?: string; result?: string; error?: string }) => {
-      if (msg.type === 'chunk' && msg.partial) {
-        onChunk(msg.partial);
-      } else if (msg.type === 'done') {
-        port.disconnect();
-        resolve(msg.result ?? '');
-      } else if (msg.type === 'error') {
-        port.disconnect();
-        reject(new Error(msg.error ?? 'Streaming translation failed'));
-      }
-    });
-
-    port.onDisconnect.addListener(() => {
-      // If port was disconnected unexpectedly (e.g., service worker restart)
-      // the promise may already be settled; if not, reject so caller falls back.
-      reject(new Error('Port disconnected'));
-    });
-
-    port.postMessage({ type: 'startStream', text, sourceLang, targetLang, provider });
-  });
-}
 
 /**
  * Translate selected text with error handling
@@ -455,16 +400,6 @@ async function translateBatchWithRetry(
 
   log.error(`Batch failed after ${maxRetries + 1} attempts:`, lastError);
   return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime: 0, domUpdateTime: 0 };
-}
-
-/**
- * Check if an error is likely transient and worth retrying.
- * Pre-compiled regex for performance (called on every retry).
- */
-const TRANSIENT_ERROR_RE = /timeout|network|connection|econnreset|fetch failed|service worker|disconnected|offscreen|loading model/i;
-
-function isTransientError(errorMsg: string): boolean {
-  return TRANSIENT_ERROR_RE.test(errorMsg);
 }
 
 /** Active IntersectionObserver for scroll-aware below-fold translation */
@@ -686,31 +621,6 @@ async function translatePage(
       translateDynamicContent(queued);
     }
   }
-}
-
-/**
- * Create translation batches from text nodes with glossary pre-processing
- */
-async function createBatches(
-  nodes: Text[],
-  glossaryStore: GlossaryStore
-): Promise<Array<{ nodes: Text[]; texts: string[]; restoreFns: Array<(text: string) => string> }>> {
-  const batches: Array<{ nodes: Text[]; texts: string[]; restoreFns: Array<(text: string) => string> }> = [];
-  for (let i = 0; i < nodes.length; i += CONFIG.batching.maxSize) {
-    const batchNodes = nodes.slice(i, i + CONFIG.batching.maxSize);
-    const rawTexts = batchNodes.map((n) => {
-      /* v8 ignore start */
-      const text = sanitizeText(n.textContent || '');
-      return text.length > CONFIG.batching.maxTextLength
-      /* v8 ignore stop */
-        ? text.substring(0, CONFIG.batching.maxTextLength)
-        : text;
-    });
-
-    const { processedTexts, restoreFns } = await glossary.applyGlossaryBatch(rawTexts, glossaryStore);
-    batches.push({ nodes: batchNodes, texts: processedTexts, restoreFns });
-  }
-  return batches;
 }
 
 /**
