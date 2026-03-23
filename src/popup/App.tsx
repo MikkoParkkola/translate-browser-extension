@@ -9,6 +9,7 @@ import { safeStorageGet, safeStorageSet } from '../core/storage';
 import { browserAPI } from '../core/browser-api';
 import { checkVersion, dismissUpdateNotice, isUpdateDismissed } from '../core/version';
 import { createLogger } from '../core/logger';
+import { sleep } from '../core/async-utils';
 
 const log = createLogger('Popup');
 
@@ -317,7 +318,7 @@ export default function App() {
           files: ['content.js'],
         });
         // Wait a bit for script to initialize
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await sleep(100);
         return true;
       } catch (injectError) {
         log.error('Failed to inject content script:', injectError);

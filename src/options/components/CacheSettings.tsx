@@ -7,34 +7,9 @@ import { Component, createSignal, onMount, Show } from 'solid-js';
 import { createLogger } from '../../core/logger';
 import type { TranslationCacheStats } from '../../core/translation-cache';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
+import { formatBytes, formatPercent, formatDate } from '../../shared/format-utils';
 
 const log = createLogger('CacheSettings');
-
-// Format bytes to human-readable
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-}
-
-// Format percentage
-function formatPercent(value: number): string {
-  return (value * 100).toFixed(1) + '%';
-}
-
-// Format date
-function formatDate(timestamp: number | null): string {
-  if (!timestamp) return 'N/A';
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 export const CacheSettings: Component = () => {
   const [loading, setLoading] = createSignal(true);
@@ -183,10 +158,10 @@ export const CacheSettings: Component = () => {
 
           <div style={{ display: "flex", "justify-content": "space-between", "font-size": "0.875rem", color: "var(--color-gray-600)" }}>
             <div>
-              <strong>Oldest entry:</strong> {formatDate(stats()!.oldestTimestamp)}
+              <strong>Oldest entry:</strong> {formatDate(stats()!.oldestTimestamp, { showTime: true })}
             </div>
             <div>
-              <strong>Newest entry:</strong> {formatDate(stats()!.newestTimestamp)}
+              <strong>Newest entry:</strong> {formatDate(stats()!.newestTimestamp, { showTime: true })}
             </div>
           </div>
         </section>

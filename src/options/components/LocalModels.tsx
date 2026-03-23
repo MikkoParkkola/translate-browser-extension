@@ -6,6 +6,7 @@
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import { createLogger } from '../../core/logger';
 import { safeStorageGet } from '../../core/storage';
+import { formatBytes, formatDate } from '../../shared/format-utils';
 
 const log = createLogger('LocalModels');
 
@@ -20,24 +21,6 @@ interface StorageStats {
   totalUsed: number;
   quota: number;
   models: ModelInfo[];
-}
-
-// Format bytes to human-readable
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-}
-
-// Format date
-function formatDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
 }
 
 export const LocalModels: Component = () => {

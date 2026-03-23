@@ -79,6 +79,30 @@ export const CONFIG = {
     },
     /** Maximum offscreen document creation failures before hard error */
     maxOffscreenFailures: 3,
+    /** Maximum offscreen document reset attempts per reset cycle */
+    maxOffscreenResets: 3,
+  },
+
+  /**
+   * In-flight request deduplication limits (service worker)
+   */
+  inFlight: {
+    /** Maximum simultaneous translation requests before rejecting new ones */
+    maxRequests: 100,
+    /** Maximum pre-loaded model slots to keep warm */
+    maxPreloaded: 20,
+  },
+
+  /**
+   * HTTP error retry delays by status code (milliseconds)
+   */
+  httpRetryDelays: {
+    serverError: 5000,    // 500
+    badGateway: 10000,    // 502
+    unavailable: 30000,   // 503
+    gatewayTimeout: 15000, // 504
+    overloaded: 30000,    // 529 (Anthropic)
+    generic5xx: 10000,    // Other 5xx
   },
 
   /**

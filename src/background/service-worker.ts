@@ -90,7 +90,6 @@ const translationCache: TranslationCache = createTranslationCache(
 // In-flight request deduplication map.
 // When multiple frames request the same translation simultaneously,
 // they share a single API call instead of making duplicate requests.
-const MAX_IN_FLIGHT = 100;
 const inFlightRequests = new Map<string, { promise: Promise<TranslateResponse>; reject: (error: Error) => void }>();
 
 // Load cache on startup
@@ -103,7 +102,6 @@ translationCache.load();
 const predictionEngine = getPredictionEngine();
 
 // Track preloaded models to avoid duplicate preloads
-const MAX_PRELOADED = 20;
 const preloadedModels = new Set<string>();
 
 /**
@@ -140,7 +138,7 @@ async function preloadPredictedModels(url: string): Promise<void> {
       }
 
       // Check if preloaded models exceed limit
-      if (preloadedModels.size >= MAX_PRELOADED) {
+      if (preloadedModels.size >= CONFIG.inFlight.maxPreloaded) {
         preloadedModels.clear();
       }
 
@@ -199,7 +197,6 @@ async function recordTranslation(targetLang: string): Promise<void> {
 let creatingOffscreen: Promise<void> | null = null;
 let offscreenFailureCount = 0;
 let offscreenResetCount = 0;
-const MAX_OFFSCREEN_RESETS = 3;
 
 const CIRCUIT_BREAKER_COOLDOWN_MS = 60_000;
 let circuitBreakerCooldownTimer: ReturnType<typeof setTimeout> | null = null;
@@ -328,13 +325,13 @@ async function ensureOffscreenDocument(): Promise<void> {
 async function resetOffscreenDocument(): Promise<void> {
   offscreenResetCount++;
   scheduleCircuitBreakerReset();
-  if (offscreenResetCount > MAX_OFFSCREEN_RESETS) {
+  if (offscreenResetCount > CONFIG.retry.maxOffscreenResets) {
     const msg = 'Translation engine crashed repeatedly. Please reload the extension or restart Chrome.';
     log.error(msg);
     throw new Error(msg);
   }
 
-  log.info(`Offscreen reset attempt ${offscreenResetCount}/${MAX_OFFSCREEN_RESETS}`);
+  log.info(`Offscreen reset attempt ${offscreenResetCount}/${CONFIG.retry.maxOffscreenResets}`);
 
   if (inFlightRequests.size > 0) {
     log.info(`Rejecting ${inFlightRequests.size} in-flight requests before offscreen reset`);
@@ -421,7 +418,7 @@ async function sendToOffscreen<T>(
       if (error.technicalDetails.includes('offscreen')) {
         log.info('Attempting offscreen document reset...');
         resetOffscreenDocument().catch((resetError) => {
-          log.error('Offscreen reset failed:', resetError instanceof Error ? resetError.message : String(resetError));
+          log.error('Offscreen reset failed:', extractErrorMessage(resetError));
         });
       }
 
@@ -567,7 +564,7 @@ chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
         throw new Error(response.error || 'Translation failed');
       }
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = extractErrorMessage(error);
       try { port.postMessage({ type: 'error', error: errMsg }); } catch { /* port may be closed */ }
     } finally {
       releaseKeepAlive();
@@ -930,7 +927,7 @@ async function handleTranslate(message: {
   const dedupKey = translationCache.getKey(message.text, message.sourceLang, message.targetLang, provider);
 
   // Check if in-flight requests exceed limit
-  if (inFlightRequests.size >= MAX_IN_FLIGHT) {
+  if (inFlightRequests.size >= CONFIG.inFlight.maxRequests) {
     // Delete the oldest entry (first in Map)
     const [oldestKey] = inFlightRequests.keys();
     const oldestEntry = inFlightRequests.get(oldestKey);
@@ -954,7 +951,7 @@ async function handleTranslate(message: {
     log.error('handleTranslateInner threw synchronously:', syncError);
     return {
       success: false,
-      error: syncError instanceof Error ? syncError.message : String(syncError),
+      error: extractErrorMessage(syncError),
     };
     /* v8 ignore stop */
   }

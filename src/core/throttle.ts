@@ -13,6 +13,7 @@ import type { ThrottleConfig, ThrottleUsage } from '../types';
 import { CONFIG } from '../config';
 import { createLogger } from './logger';
 import { splitIntoSentences, approxTokens } from './text-utils';
+import { sleep } from './async-utils';
 
 const log = createLogger('Throttle');
 
@@ -188,7 +189,7 @@ export class Throttle {
   }
 
   private delay(ms: number): Promise<void> {
-    return new Promise((r) => setTimeout(r, ms));
+    return sleep(ms);
   }
 
   /**

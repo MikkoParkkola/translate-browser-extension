@@ -3,6 +3,8 @@
  * Centralizes common HTTP status code handling across all cloud providers
  */
 
+import { CONFIG } from '../config';
+
 export interface HttpErrorResult {
   message: string;
   retryable: boolean;
@@ -94,28 +96,28 @@ export function handleProviderHttpError(
       return {
         message: `${provider} internal server error`,
         retryable: true,
-        retryAfter: 5000, // Wait 5s before retry
+        retryAfter: CONFIG.httpRetryDelays.serverError,
       };
 
     case 502:
       return {
         message: `${provider} service temporarily unavailable (bad gateway)`,
         retryable: true,
-        retryAfter: 10000,
+        retryAfter: CONFIG.httpRetryDelays.badGateway,
       };
 
     case 503:
       return {
         message: `${provider} service temporarily unavailable`,
         retryable: true,
-        retryAfter: retryAfter ?? 30000,
+        retryAfter: retryAfter ?? CONFIG.httpRetryDelays.unavailable,
       };
 
     case 504:
       return {
         message: `${provider} gateway timeout`,
         retryable: true,
-        retryAfter: 15000,
+        retryAfter: CONFIG.httpRetryDelays.gatewayTimeout,
       };
 
     // Anthropic-specific: API overloaded
@@ -123,7 +125,7 @@ export function handleProviderHttpError(
       return {
         message: `${provider} API overloaded`,
         retryable: true,
-        retryAfter: retryAfter ?? 30000,
+        retryAfter: retryAfter ?? CONFIG.httpRetryDelays.overloaded,
       };
 
     // Bad request - usually not retryable
@@ -142,7 +144,7 @@ export function handleProviderHttpError(
         return {
           message: `${provider} server error (${status})`,
           retryable: true,
-          retryAfter: 10000,
+          retryAfter: CONFIG.httpRetryDelays.generic5xx,
         };
       }
       return {

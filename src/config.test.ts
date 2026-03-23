@@ -153,6 +153,8 @@ describe('CONFIG immutability', () => {
     expect(keys).toEqual([
       'batching',
       'cache',
+      'httpRetryDelays',
+      'inFlight',
       'mutations',
       'rateLimits',
       'retry',

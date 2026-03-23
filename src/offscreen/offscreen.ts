@@ -479,7 +479,7 @@ async function translateWithProvider(
     return await executeProvider(text, sourceLang, targetLang, provider, _sessionId, pageContext);
   } catch (primaryError) {
     /* v8 ignore start -- instanceof ternary */
-    const errorMsg = primaryError instanceof Error ? primaryError.message : String(primaryError);
+    const errorMsg = extractErrorMessage(primaryError);
     /* v8 ignore stop */
 
     // Don't fallback for configuration errors (user needs to fix settings)
@@ -502,7 +502,7 @@ async function translateWithProvider(
         return result;
       } catch (fallbackError) {
         /* v8 ignore start -- instanceof ternary */
-        log.warn(`Fallback ${fallback} also failed: ${fallbackError instanceof Error ? fallbackError.message : fallbackError}`);
+        log.warn(`Fallback ${fallback} also failed: ${extractErrorMessage(fallbackError)}`);
         /* v8 ignore stop */
       }
     }

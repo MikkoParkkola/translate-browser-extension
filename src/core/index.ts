@@ -19,6 +19,7 @@ export {
   isMemoryError,
   isModelError,
   isRetryableError,
+  extractErrorMessage,
 } from './errors';
 
 // HTTP error handling
