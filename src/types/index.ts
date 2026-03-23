@@ -377,6 +377,18 @@ export interface CaptureScreenshotMessage {
   target?: string;
 }
 
+// Model management
+export interface DeleteModelMessage {
+  type: 'deleteModel';
+  modelId: string;
+  target?: string;
+}
+
+export interface ClearAllModelsMessage {
+  type: 'clearAllModels';
+  target?: string;
+}
+
 export type ExtensionMessage =
   | TranslateMessage
   | TranslatePageMessage
@@ -417,18 +429,20 @@ export type ExtensionMessage =
   | CaptureScreenshotMessage
   | { type: 'getDownloadedModels'; target?: string }
   | { type: 'checkWebGPU'; target?: string }
-  | { type: 'deleteModel'; modelId: string; target?: string }
-  | { type: 'clearAllModels'; target?: string }
+  | DeleteModelMessage
+  | ClearAllModelsMessage
   | { type: 'getSettings'; target?: string };
 
 /**
  * Commands sent FROM the background service worker TO the content script.
  * These are distinct from ExtensionMessage (content → background direction).
+ * Subset of ContentMessage (defined in content/content-types.ts) covering only
+ * the commands that the background initiates.
  */
 export type ContentCommand =
-  | { type: 'translatePage'; sourceLang: string; targetLang: string; strategy: Strategy; provider: TranslationProviderId }
-  | { type: 'translateSelection'; sourceLang: string; targetLang: string; strategy: Strategy; provider: TranslationProviderId }
-  | { type: 'translateImage'; imageUrl?: string; sourceLang: string; targetLang: string; strategy: Strategy; provider: TranslationProviderId }
+  | { type: 'translatePage'; sourceLang: string; targetLang: string; strategy: Strategy; provider?: TranslationProviderId }
+  | { type: 'translateSelection'; sourceLang: string; targetLang: string; strategy: Strategy; provider?: TranslationProviderId }
+  | { type: 'translateImage'; imageUrl?: string; sourceLang: string; targetLang: string; strategy: Strategy; provider?: TranslationProviderId }
   | { type: 'undoTranslation' }
   | { type: 'toggleWidget' }
   | { type: 'enterScreenshotMode' };

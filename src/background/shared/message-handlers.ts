@@ -6,7 +6,11 @@
  * — they depend only on the shared TranslationCache and ProviderState.
  */
 
-import type { TranslationProviderId, Strategy, DetailedCacheStats, ThrottleUsage } from '../../types';
+import type {
+  TranslationProviderId, Strategy, DetailedCacheStats, ThrottleUsage,
+  SetCloudApiKeyMessage, ClearCloudApiKeyMessage,
+  AddCorrectionMessage, GetCorrectionMessage, DeleteCorrectionMessage, ImportCorrectionsMessage,
+} from '../../types';
 import { safeStorageGet, safeStorageSet } from '../../core/storage';
 import { createLogger } from '../../core/logger';
 import { extractErrorMessage } from '../../core/errors';
@@ -103,12 +107,7 @@ export async function handleGetCloudProviderStatus(): Promise<{ success: boolean
   }
 }
 
-export async function handleSetCloudApiKey(message: {
-  type: 'setCloudApiKey';
-  provider: string;
-  apiKey: string;
-  options?: Record<string, unknown>;
-}): Promise<{ success: boolean; provider?: string; error?: string }> {
+export async function handleSetCloudApiKey(message: SetCloudApiKeyMessage): Promise<{ success: boolean; provider?: string; error?: string }> {
   const storageKey = CLOUD_PROVIDER_KEYS[message.provider];
   if (!storageKey) {
     return { success: false, error: `Unknown provider: ${message.provider}` };
@@ -141,7 +140,7 @@ export async function handleSetCloudApiKey(message: {
 }
 
 export async function handleClearCloudApiKey(
-  message: { type: 'clearCloudApiKey'; provider: string },
+  message: ClearCloudApiKeyMessage,
   storageRemove: (keys: string[]) => Promise<void>,
 ): Promise<{ success: boolean; provider?: string; error?: string }> {
   const storageKey = CLOUD_PROVIDER_KEYS[message.provider];
@@ -216,14 +215,7 @@ export function recordTranslationToHistory(
 // Corrections Handlers
 // ============================================================================
 
-export async function handleAddCorrection(message: {
-  type: 'addCorrection';
-  original: string;
-  machineTranslation: string;
-  userCorrection: string;
-  sourceLang: string;
-  targetLang: string;
-}): Promise<{ success: boolean; error?: string }> {
+export async function handleAddCorrection(message: AddCorrectionMessage): Promise<{ success: boolean; error?: string }> {
   try {
     await addCorrection(
       message.original,
@@ -239,12 +231,7 @@ export async function handleAddCorrection(message: {
   }
 }
 
-export async function handleGetCorrection(message: {
-  type: 'getCorrection';
-  original: string;
-  sourceLang: string;
-  targetLang: string;
-}): Promise<unknown> {
+export async function handleGetCorrection(message: GetCorrectionMessage): Promise<unknown> {
   try {
     const correction = await getCorrection(message.original, message.sourceLang, message.targetLang);
     return { success: true, correction, hasCorrection: correction !== null };
@@ -297,12 +284,7 @@ export async function handleClearCorrections(): Promise<{ success: boolean; erro
   }
 }
 
-export async function handleDeleteCorrection(message: {
-  type: 'deleteCorrection';
-  original: string;
-  sourceLang: string;
-  targetLang: string;
-}): Promise<unknown> {
+export async function handleDeleteCorrection(message: DeleteCorrectionMessage): Promise<unknown> {
   try {
     const deleted = await deleteCorrection(message.original, message.sourceLang, message.targetLang);
     return { success: true, deleted };
@@ -326,10 +308,7 @@ export async function handleExportCorrections(): Promise<{ success: boolean; jso
   }
 }
 
-export async function handleImportCorrections(message: {
-  type: 'importCorrections';
-  json: string;
-}): Promise<unknown> {
+export async function handleImportCorrections(message: ImportCorrectionsMessage): Promise<unknown> {
   try {
     const count = await importCorrections(message.json);
     return { success: true, importedCount: count };

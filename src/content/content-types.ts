@@ -2,7 +2,7 @@
  * Content script types and constants
  */
 
-import type { Strategy } from '../types';
+import type { Strategy, TranslationProviderId } from '../types';
 
 // ============================================================================
 // Constants
@@ -50,7 +50,7 @@ export interface TranslateSelectionMessage {
   sourceLang: string;
   targetLang: string;
   strategy: Strategy;
-  provider?: string;
+  provider?: TranslationProviderId;
 }
 
 export interface TranslatePageMessage {
@@ -58,7 +58,7 @@ export interface TranslatePageMessage {
   sourceLang: string;
   targetLang: string;
   strategy: Strategy;
-  provider?: string;
+  provider?: TranslationProviderId;
 }
 
 export interface TranslateImageMessage {
@@ -66,7 +66,7 @@ export interface TranslateImageMessage {
   imageUrl: string;
   sourceLang: string;
   targetLang: string;
-  provider?: string;
+  provider?: TranslationProviderId;
 }
 
 export interface TranslatePdfContentMessage {
@@ -97,5 +97,5 @@ export interface CurrentSettings {
   sourceLang: string;
   targetLang: string;
   strategy: Strategy;
-  provider?: string;
+  provider?: TranslationProviderId;
 }

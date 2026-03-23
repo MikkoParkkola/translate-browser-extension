@@ -9,7 +9,12 @@
  * - Predictive model pre-translation based on browsing patterns
  */
 
-import type { ExtensionMessage, TranslateResponse, Strategy, TranslationProviderId, ContentCommand } from '../types';
+import type {
+  ExtensionMessage, TranslateResponse, Strategy, TranslationProviderId, ContentCommand,
+  PreloadModelMessage, RecordLanguageDetectionMessage,
+  GetCloudProviderUsageMessage, OCRImageMessage, CaptureScreenshotMessage,
+  DeleteModelMessage,
+} from '../types';
 import {
   createTranslationError,
   extractErrorMessage,
@@ -583,9 +588,9 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
     case 'getProviders':
       return handleGetProviders();
     case 'preloadModel':
-      return handlePreloadModel(message as { type: 'preloadModel'; sourceLang: string; targetLang: string; provider?: TranslationProviderId });
+      return handlePreloadModel(message);
     case 'setProvider':
-      return handleSetProvider(message as { type: 'setProvider'; provider: TranslationProviderId });
+      return handleSetProvider(message);
     case 'getCacheStats':
       return handleGetCacheStats(translationCache);
     case 'clearCache':
@@ -597,18 +602,18 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
     case 'getPredictionStats':
       return handleGetPredictionStats();
     case 'recordLanguageDetection':
-      return handleRecordLanguageDetection(message as { type: 'recordLanguageDetection'; url: string; language: string });
+      return handleRecordLanguageDetection(message);
     case 'getCloudProviderStatus':
       return handleGetCloudProviderStatus();
     case 'setCloudApiKey':
-      return handleSetCloudApiKey(message as { type: 'setCloudApiKey'; provider: string; apiKey: string; options?: Record<string, unknown> });
+      return handleSetCloudApiKey(message);
     case 'clearCloudApiKey':
       return handleClearCloudApiKey(
-        message as { type: 'clearCloudApiKey'; provider: string },
+        message,
         (keys) => safeStorageRemove(keys).then(() => undefined),
       );
     case 'getCloudProviderUsage':
-      return handleGetCloudProviderUsage(message as { type: 'getCloudProviderUsage'; provider: string });
+      return handleGetCloudProviderUsage(message);
     case 'getProfilingStats':
       return handleGetProfilingStats();
     case 'clearProfilingStats':
@@ -618,21 +623,9 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
     case 'clearHistory':
       return handleClearHistory();
     case 'addCorrection':
-      return handleAddCorrection(message as {
-        type: 'addCorrection';
-        original: string;
-        machineTranslation: string;
-        userCorrection: string;
-        sourceLang: string;
-        targetLang: string;
-      });
+      return handleAddCorrection(message);
     case 'getCorrection':
-      return handleGetCorrection(message as {
-        type: 'getCorrection';
-        original: string;
-        sourceLang: string;
-        targetLang: string;
-      });
+      return handleGetCorrection(message);
     case 'getAllCorrections':
       return handleGetAllCorrections();
     case 'getCorrectionStats':
@@ -640,37 +633,21 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
     case 'clearCorrections':
       return handleClearCorrections();
     case 'deleteCorrection':
-      return handleDeleteCorrection(message as {
-        type: 'deleteCorrection';
-        original: string;
-        sourceLang: string;
-        targetLang: string;
-      });
+      return handleDeleteCorrection(message);
     case 'exportCorrections':
       return handleExportCorrections();
     case 'importCorrections':
-      return handleImportCorrections(message as {
-        type: 'importCorrections';
-        json: string;
-      });
+      return handleImportCorrections(message);
     case 'ocrImage':
-      return handleOCRImage(message as {
-        type: 'ocrImage';
-        imageData: string;
-        lang?: string;
-      });
+      return handleOCRImage(message);
     case 'captureScreenshot':
-      return handleCaptureScreenshot(message as {
-        type: 'captureScreenshot';
-        rect?: { x: number; y: number; width: number; height: number };
-        devicePixelRatio?: number;
-      });
+      return handleCaptureScreenshot(message);
     case 'getDownloadedModels': {
       const stored = await safeStorageGet<{ downloadedModels?: unknown[] }>(['downloadedModels']);
       return { success: true, models: stored.downloadedModels || [] };
     }
     case 'deleteModel':
-      return handleDeleteModel(message as { type: 'deleteModel'; modelId: string });
+      return handleDeleteModel(message);
     case 'clearAllModels':
       return handleClearAllModels();
     case 'getSettings':
@@ -688,12 +665,7 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
 /**
  * Preload model for a language pair
  */
-async function handlePreloadModel(message: {
-  type: 'preloadModel';
-  sourceLang: string;
-  targetLang: string;
-  provider?: TranslationProviderId;
-}): Promise<unknown> {
+async function handlePreloadModel(message: PreloadModelMessage): Promise<unknown> {
   const provider = message.provider || getProvider();
   log.info(` Preloading ${provider} model: ${message.sourceLang} -> ${message.targetLang}`);
   try {
@@ -736,10 +708,7 @@ async function handleClearCacheWithOffscreen(): Promise<unknown> {
 /**
  * Delete a specific downloaded model.
  */
-async function handleDeleteModel(message: {
-  type: 'deleteModel';
-  modelId: string;
-}): Promise<unknown> {
+async function handleDeleteModel(message: DeleteModelMessage): Promise<unknown> {
   const { modelId } = message;
   log.info(`Deleting model: ${modelId}`);
 
@@ -874,11 +843,7 @@ async function handleGetPredictionStats(): Promise<unknown> {
 /**
  * Handle language detection recording
  */
-async function handleRecordLanguageDetection(message: {
-  type: 'recordLanguageDetection';
-  url: string;
-  language: string;
-}): Promise<unknown> {
+async function handleRecordLanguageDetection(message: RecordLanguageDetectionMessage): Promise<unknown> {
   await recordLanguageDetection(message.url, message.language);
   return { success: true };
 }
@@ -886,10 +851,7 @@ async function handleRecordLanguageDetection(message: {
 /**
  * Get usage statistics for a cloud provider
  */
-async function handleGetCloudProviderUsage(message: {
-  type: 'getCloudProviderUsage';
-  provider: string;
-}): Promise<unknown> {
+async function handleGetCloudProviderUsage(message: GetCloudProviderUsageMessage): Promise<unknown> {
   try {
     const result = await sendToOffscreen<{
       success: boolean;
@@ -1323,11 +1285,7 @@ async function handleGetProviders(): Promise<unknown> {
 // OCR
 // ============================================================================
 
-async function handleOCRImage(message: {
-  type: 'ocrImage';
-  imageData: string;
-  lang?: string;
-}): Promise<unknown> {
+async function handleOCRImage(message: OCRImageMessage): Promise<unknown> {
   try {
     log.info('Processing OCR request...');
 
@@ -1362,11 +1320,7 @@ async function handleOCRImage(message: {
 // Screenshot Capture
 // ============================================================================
 
-async function handleCaptureScreenshot(message: {
-  type: 'captureScreenshot';
-  rect?: { x: number; y: number; width: number; height: number };
-  devicePixelRatio?: number;
-}): Promise<unknown> {
+async function handleCaptureScreenshot(message: CaptureScreenshotMessage): Promise<unknown> {
   try {
     const dataUrl = await chrome.tabs.captureVisibleTab({ format: 'png' });
 
