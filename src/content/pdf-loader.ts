@@ -17,6 +17,7 @@
 
 import { browserAPI } from '../core/browser-api';
 import { createLogger } from '../core/logger';
+import { extractErrorMessage } from '../core/errors';
 
 const log = createLogger('PDFLoader');
 
@@ -127,7 +128,7 @@ export async function loadPdfjs(): Promise<PdfjsLib> {
       log.error('Dynamic import of pdfjs chunk failed:', importError);
       throw new Error(
         /* v8 ignore start */
-        `Failed to import pdfjs chunk: ${importError instanceof Error ? importError.message : String(importError)}`
+        `Failed to import pdfjs chunk: ${extractErrorMessage(importError)}`
         /* v8 ignore stop */
       );
     }
