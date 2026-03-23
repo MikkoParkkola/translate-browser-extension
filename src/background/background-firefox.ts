@@ -27,6 +27,11 @@ import { generateCacheKey } from '../core/hash';
 import { CONFIG } from '../config';
 import { browserAPI, getURL } from '../core/browser-api';
 import { normalizeTranslationProviderId } from '../shared/provider-options';
+import {
+  assertNever,
+  isExtensionMessage,
+  isHandledExtensionMessage,
+} from './shared/message-routing';
 
 // Extracted modules from offscreen (now used directly)
 import { MODEL_MAP, PIVOT_ROUTES } from '../offscreen/model-maps';
@@ -527,7 +532,27 @@ function recordUsage(tokens: number): void {
 // Message Handlers
 // ============================================================================
 
-async function handleMessage(message: ExtensionMessage): Promise<unknown> {
+const FIREFOX_MESSAGE_TYPES = [
+  'ping',
+  'translate',
+  'getUsage',
+  'getProviders',
+  'preloadModel',
+  'setProvider',
+  'getCacheStats',
+  'clearCache',
+] as const satisfies readonly ExtensionMessage['type'][];
+
+type FirefoxHandledMessage = Extract<
+  ExtensionMessage,
+  { type: (typeof FIREFOX_MESSAGE_TYPES)[number] }
+>;
+
+function isFirefoxHandledMessage(message: ExtensionMessage): message is FirefoxHandledMessage {
+  return isHandledExtensionMessage(message, FIREFOX_MESSAGE_TYPES);
+}
+
+async function handleMessage(message: FirefoxHandledMessage): Promise<unknown> {
   switch (message.type) {
     case 'ping':
       return { success: true, status: 'ready', provider: currentProvider };
@@ -546,7 +571,7 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
     case 'clearCache':
       return handleClearCache();
     default:
-      throw new Error(`Unknown message type: ${(message as { type: string }).type}`);
+      return assertNever(message);
   }
 }
 
@@ -732,10 +757,12 @@ function handleGetProviders(): { providers: typeof PROVIDER_LIST; activeProvider
 
 browserAPI.runtime.onMessage.addListener(
   (
-    message: ExtensionMessage,
+    message: unknown,
     sender: chrome.runtime.MessageSender,
     sendResponse: (response: TranslateResponse | unknown) => void
   ) => {
+    if (!isExtensionMessage(message)) return;
+
     // Ignore messages meant for offscreen (Chrome compatibility)
     if ('target' in message && (message as { target?: string }).target === 'offscreen') return false;
 
@@ -747,6 +774,12 @@ browserAPI.runtime.onMessage.addListener(
     ];
     if (sensitiveTypes.includes(message.type) && sender.url && !sender.url.startsWith('moz-extension://')) {
       sendResponse({ success: false, error: 'Unauthorized sender' });
+      return true;
+    }
+
+    if (!isFirefoxHandledMessage(message)) {
+      log.warn(`Unknown message type: ${message.type}`);
+      sendResponse({ success: false, error: `Unknown message type: ${message.type}` });
       return true;
     }
 

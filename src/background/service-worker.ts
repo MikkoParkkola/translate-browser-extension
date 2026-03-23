@@ -33,6 +33,11 @@ import { profiler, type AggregateStats } from '../core/profiler';
 import { sleep } from '../core/async-utils';
 import { splitIntoSentences } from '../core/text-utils';
 import { normalizeTranslationProviderId } from '../shared/provider-options';
+import {
+  assertNever,
+  isExtensionMessage,
+  isHandledExtensionMessage,
+} from './shared/message-routing';
 
 // Shared modules — extracted from duplicated Chrome/Firefox logic
 import {
@@ -439,16 +444,15 @@ async function sendToOffscreen<T>(
 
 chrome.runtime.onMessage.addListener(
   (
-    message: ExtensionMessage,
+    message: unknown,
     sender: chrome.runtime.MessageSender,
     sendResponse: (response: TranslateResponse | unknown) => void
   ) => {
+    if (!isExtensionMessage(message)) return;
+
     // Ignore messages from offscreen document
     if ('target' in message && message.target === 'offscreen') return false;
 
-    // Message validation
-    if (!message || typeof message !== 'object' || typeof message.type !== 'string') return;
-    
     // For translation messages, validate text/sourceLang/targetLang are strings
     if (message.type === 'translate') {
       // TypeScript narrows message to TranslateMessage here; validation is a runtime guard
@@ -471,6 +475,12 @@ chrome.runtime.onMessage.addListener(
     ];
     if (sensitiveTypes.includes(message.type) && sender.url && !sender.url.startsWith('chrome-extension://')) {
       sendResponse({ success: false, error: 'Unauthorized sender' });
+      return true;
+    }
+
+    if (!isServiceWorkerHandledMessage(message)) {
+      log.warn(` Unknown message type: ${message.type}`);
+      sendResponse({ success: false, error: `Unknown message type: ${message.type}` });
       return true;
     }
 
@@ -598,7 +608,55 @@ chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
 });
 
 
-async function handleMessage(message: ExtensionMessage): Promise<unknown> {
+const SERVICE_WORKER_MESSAGE_TYPES = [
+  'ping',
+  'translate',
+  'getUsage',
+  'getProviders',
+  'preloadModel',
+  'setProvider',
+  'getCacheStats',
+  'clearCache',
+  'checkChromeTranslator',
+  'checkWebGPU',
+  'getPredictionStats',
+  'recordLanguageDetection',
+  'getCloudProviderStatus',
+  'setCloudApiKey',
+  'clearCloudApiKey',
+  'getCloudProviderUsage',
+  'getProfilingStats',
+  'clearProfilingStats',
+  'getHistory',
+  'clearHistory',
+  'addCorrection',
+  'getCorrection',
+  'getAllCorrections',
+  'getCorrectionStats',
+  'clearCorrections',
+  'deleteCorrection',
+  'exportCorrections',
+  'importCorrections',
+  'ocrImage',
+  'captureScreenshot',
+  'getDownloadedModels',
+  'deleteModel',
+  'clearAllModels',
+  'getSettings',
+] as const satisfies readonly ExtensionMessage['type'][];
+
+type ServiceWorkerHandledMessage = Extract<
+  ExtensionMessage,
+  { type: (typeof SERVICE_WORKER_MESSAGE_TYPES)[number] }
+>;
+
+function isServiceWorkerHandledMessage(
+  message: ExtensionMessage
+): message is ServiceWorkerHandledMessage {
+  return isHandledExtensionMessage(message, SERVICE_WORKER_MESSAGE_TYPES);
+}
+
+async function handleMessage(message: ServiceWorkerHandledMessage): Promise<unknown> {
   switch (message.type) {
     case 'ping':
       return { success: true, status: 'ready', provider: getProvider() };
@@ -674,8 +732,7 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
     case 'getSettings':
       return handleGetSettings((keys) => safeStorageGet(keys));
     default:
-      log.warn(`Unknown message type: ${(message as { type: string }).type}`);
-      return { success: false, error: `Unknown message type: ${(message as { type: string }).type}` };
+      return assertNever(message);
   }
 }
 
