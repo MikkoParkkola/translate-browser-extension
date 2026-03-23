@@ -5,7 +5,7 @@
  * used by both Chrome and Firefox background scripts.
  */
 
-import type { Strategy, TranslationProviderId, SetProviderMessage, MessageResponse } from '../../types';
+import type { Strategy, TranslationProviderId, CloudProviderId, SetProviderMessage, MessageResponse } from '../../types';
 import type { TranslationError } from '../../core/errors';
 import { safeStorageSet } from '../../core/storage';
 import { approxTokens } from '../../core/text-utils';
@@ -95,7 +95,7 @@ export function formatUserError(error: TranslationError): string {
 // ============================================================================
 
 /** Cloud provider API key storage keys. */
-export const CLOUD_PROVIDER_KEYS: Record<string, string> = {
+export const CLOUD_PROVIDER_KEYS: Record<CloudProviderId, string> = {
   deepl: 'deepl_api_key',
   openai: 'openai_api_key',
   anthropic: 'anthropic_api_key',

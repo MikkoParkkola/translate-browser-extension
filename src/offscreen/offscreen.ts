@@ -684,7 +684,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         // see the Translator API.
         case 'getCloudProviderUsage': {
           // Get usage stats for a specific cloud provider
-          const providerId = message.provider as string;
+          const providerId = message.provider;
           let usage = { tokens: 0, cost: 0, limitReached: false };
 
           if (providerId === 'deepl') {

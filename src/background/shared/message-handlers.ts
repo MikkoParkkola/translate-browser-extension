@@ -108,7 +108,7 @@ export async function handleGetCloudProviderStatus(): Promise<{ success: boolean
   }
 }
 
-export async function handleSetCloudApiKey(message: SetCloudApiKeyMessage): Promise<{ success: boolean; provider?: string; error?: string }> {
+export async function handleSetCloudApiKey(message: SetCloudApiKeyMessage): Promise<{ success: boolean; provider?: SetCloudApiKeyMessage['provider']; error?: string }> {
   const storageKey = CLOUD_PROVIDER_KEYS[message.provider];
   if (!storageKey) {
     return { success: false, error: `Unknown provider: ${message.provider}` };
@@ -143,7 +143,7 @@ export async function handleSetCloudApiKey(message: SetCloudApiKeyMessage): Prom
 export async function handleClearCloudApiKey(
   message: ClearCloudApiKeyMessage,
   storageRemove: (keys: string[]) => Promise<void>,
-): Promise<{ success: boolean; provider?: string; error?: string }> {
+): Promise<{ success: boolean; provider?: ClearCloudApiKeyMessage['provider']; error?: string }> {
   const storageKey = CLOUD_PROVIDER_KEYS[message.provider];
   if (!storageKey) {
     return { success: false, error: `Unknown provider: ${message.provider}` };
@@ -316,7 +316,7 @@ export async function handleImportCorrections(message: ImportCorrectionsMessage)
 
 export async function handleGetSettings(
   storageGet: (keys: string[]) => Promise<Record<string, unknown>>,
-): Promise<MessageResponse<{ data: { sourceLanguage: string; targetLanguage: string; provider: string; strategy: string } }>> {
+): Promise<MessageResponse<{ data: { sourceLanguage: string; targetLanguage: string; provider: TranslationProviderId; strategy: string } }>> {
   try {
     const settings = await storageGet(['sourceLang', 'targetLang', 'provider', 'strategy']);
     return {
@@ -325,7 +325,7 @@ export async function handleGetSettings(
         // Keep the legacy response shape for existing getSettings consumers.
         sourceLanguage: (settings.sourceLang as string) || 'auto',
         targetLanguage: (settings.targetLang as string) || 'en',
-        provider: (settings.provider as string) || 'opus-mt',
+        provider: (settings.provider as TranslationProviderId | undefined) || 'opus-mt',
         strategy: (settings.strategy as string) || 'smart',
       },
     };

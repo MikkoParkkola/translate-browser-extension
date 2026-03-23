@@ -15,6 +15,7 @@ export type ProviderType = 'local' | 'cloud' | 'hybrid';
 export type QualityTier = 'basic' | 'standard' | 'premium';
 export type Strategy = 'smart' | 'fast' | 'quality' | 'cost' | 'balanced';
 export type TranslationProviderId = 'opus-mt' | 'translategemma' | 'chrome-builtin' | 'deepl' | 'openai' | 'google-cloud' | 'anthropic';
+export type CloudProviderId = Exclude<TranslationProviderId, 'opus-mt' | 'translategemma' | 'chrome-builtin'>;
 
 /**
  * Standard discriminated-union response type for background message handlers.
@@ -40,7 +41,7 @@ export interface ProviderConfig {
 
 export interface TranslationResult {
   text: string;
-  provider: string;
+  provider: TranslationProviderId;
   cached: boolean;
   duration: number;
 }
@@ -148,7 +149,7 @@ export interface TranslateResponse {
   success: boolean;
   result?: string | string[];
   error?: string;
-  provider?: string;
+  provider?: TranslationProviderId;
   duration?: number;
   cached?: boolean;
   fromCorrection?: boolean;
@@ -274,7 +275,7 @@ export interface GetCloudProviderStatusMessage {
 
 export interface SetCloudApiKeyMessage {
   type: 'setCloudApiKey';
-  provider: string;
+  provider: CloudProviderId;
   apiKey: string;
   options?: Record<string, unknown>;
   target?: string;
@@ -282,13 +283,13 @@ export interface SetCloudApiKeyMessage {
 
 export interface ClearCloudApiKeyMessage {
   type: 'clearCloudApiKey';
-  provider: string;
+  provider: CloudProviderId;
   target?: string;
 }
 
 export interface GetCloudProviderUsageMessage {
   type: 'getCloudProviderUsage';
-  provider: string;
+  provider: CloudProviderId;
   target?: string;
 }
 

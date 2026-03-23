@@ -1,10 +1,10 @@
 /**
  * Shared cloud provider configuration used across popup and options pages.
  */
-import type { TranslationProviderId } from '../types';
+import type { CloudProviderId } from '../types';
 
 export interface CloudProviderConfig {
-  id: TranslationProviderId;
+  id: CloudProviderId;
   name: string;
   keyField: string;
   hasProTier: boolean;
@@ -16,7 +16,7 @@ export interface CloudProviderConfig {
 
 export const CLOUD_PROVIDER_CONFIGS: CloudProviderConfig[] = [
   {
-    id: 'deepl' as TranslationProviderId,
+    id: 'deepl',
     name: 'DeepL',
     keyField: 'deepl_api_key',
     hasProTier: true,
@@ -26,7 +26,7 @@ export const CLOUD_PROVIDER_CONFIGS: CloudProviderConfig[] = [
     description: 'Premium translation quality. Free tier: 500K chars/month.',
   },
   {
-    id: 'openai' as TranslationProviderId,
+    id: 'openai',
     name: 'OpenAI',
     keyField: 'openai_api_key',
     hasProTier: false,
@@ -35,7 +35,7 @@ export const CLOUD_PROVIDER_CONFIGS: CloudProviderConfig[] = [
     description: 'LLM-powered translations with context understanding.',
   },
   {
-    id: 'google-cloud' as TranslationProviderId,
+    id: 'google-cloud',
     name: 'Google Cloud',
     keyField: 'google_cloud_api_key',
     hasProTier: false,
@@ -44,7 +44,7 @@ export const CLOUD_PROVIDER_CONFIGS: CloudProviderConfig[] = [
     description: 'Google Cloud Translation API v2.',
   },
   {
-    id: 'anthropic' as TranslationProviderId,
+    id: 'anthropic',
     name: 'Claude (Anthropic)',
     keyField: 'anthropic_api_key',
     hasProTier: false,

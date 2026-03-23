@@ -191,7 +191,7 @@ describe('handleSetCloudApiKey', () => {
     const { handleSetCloudApiKey } = await import('./message-handlers');
     const result = await handleSetCloudApiKey({
       type: 'setCloudApiKey',
-      provider: 'unknown-provider',
+      provider: 'unknown-provider' as never,
       apiKey: 'test-key',
     }) as Record<string, unknown>;
 
@@ -349,7 +349,7 @@ describe('handleClearCloudApiKey', () => {
     const mockRemove = vi.fn();
 
     const result = await handleClearCloudApiKey(
-      { type: 'clearCloudApiKey', provider: 'fake' },
+      { type: 'clearCloudApiKey', provider: 'fake' as never },
       mockRemove
     ) as Record<string, unknown>;
 
@@ -366,8 +366,8 @@ describe('handleClearCloudApiKey', () => {
       const { handleClearCloudApiKey } = await import('./message-handlers');
       const mockRemove = vi.fn().mockResolvedValue(undefined);
 
-      const result = await handleClearCloudApiKey(
-        { type: 'clearCloudApiKey', provider: 'custom-provider' },
+        const result = await handleClearCloudApiKey(
+        { type: 'clearCloudApiKey', provider: 'custom-provider' as never },
         mockRemove
       ) as Record<string, unknown>;
 
