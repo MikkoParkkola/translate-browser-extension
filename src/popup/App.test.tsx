@@ -1728,6 +1728,18 @@ describe('App providerName computed', () => {
     });
   });
 
+  it('shows DeepL for deepl provider', async () => {
+    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({
+      provider: 'deepl',
+    });
+    render(() => <App />);
+    await flush();
+    await vi.waitFor(() => {
+      const status = screen.getByRole('status');
+      expect(within(status).getByText('DeepL')).toBeTruthy();
+    });
+  });
+
   it('shows Helsinki-NLP OPUS-MT for default provider', async () => {
     (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
     render(() => <App />);

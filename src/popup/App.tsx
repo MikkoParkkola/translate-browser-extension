@@ -1,6 +1,6 @@
 import { createSignal, onMount, onCleanup, Show } from 'solid-js';
 import { ProviderStatus } from './components/ProviderStatus';
-import { ModelSelector, type ModelDownloadStatus } from './components/ModelSelector';
+import { ModelSelector, MODELS, type ModelDownloadStatus } from './components/ModelSelector';
 import { LanguageSelector } from './components/LanguageSelector';
 import { StrategySelector } from './components/StrategySelector';
 import { ModelStatus } from './components/ModelStatus';
@@ -36,6 +36,16 @@ const BROWSER_INTERNAL_PREFIXES = [
 const isRestrictedTabUrl = (url?: string): boolean =>
   Boolean(url && BROWSER_INTERNAL_PREFIXES.some((prefix) => url.startsWith(prefix)));
 
+const PROVIDER_STATUS_NAME_OVERRIDES: Partial<Record<TranslationProviderId, string>> = {
+  'opus-mt': 'Helsinki-NLP OPUS-MT',
+  'translategemma': 'TranslateGemma 4B',
+};
+
+const PROVIDER_STATUS_NAMES = Object.freeze({
+  ...Object.fromEntries(MODELS.map((model) => [model.id, model.name])),
+  ...PROVIDER_STATUS_NAME_OVERRIDES,
+}) as Record<TranslationProviderId, string>;
+
 export default function App() {
   const [sourceLang, setSourceLangInternal] = createSignal('auto');
   const [targetLang, setTargetLangInternal] = createSignal(getBrowserLanguage());
@@ -43,13 +53,7 @@ export default function App() {
   const [activeProvider, setActiveProvider] = createSignal<TranslationProviderId>('opus-mt');
   const [providerStatus, setProviderStatus] = createSignal<'ready' | 'loading' | 'error'>('ready');
 
-  const providerName = () => {
-    switch (activeProvider()) {
-      case 'translategemma': return 'TranslateGemma 4B';
-      case 'chrome-builtin': return 'Chrome Built-in';
-      default: return 'Helsinki-NLP OPUS-MT';
-    }
-  };
+  const providerName = () => PROVIDER_STATUS_NAMES[activeProvider()] ?? activeProvider();
   const [isTranslating, setIsTranslating] = createSignal(false);
   const [autoTranslate, setAutoTranslate] = createSignal(false);
   const [bilingualMode, setBilingualMode] = createSignal(false);

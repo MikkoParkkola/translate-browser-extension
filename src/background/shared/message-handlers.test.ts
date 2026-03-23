@@ -589,6 +589,7 @@ describe('handleGetSettings', () => {
     const result = await handleGetSettings(storageGet) as Record<string, unknown>;
 
     expect(result.success).toBe(true);
+    expect(storageGet).toHaveBeenCalledWith(['sourceLang', 'targetLang', 'provider', 'strategy']);
     const data = result.data as Record<string, unknown>;
     expect(data.sourceLanguage).toBe('auto');
     expect(data.targetLanguage).toBe('en');
@@ -598,8 +599,8 @@ describe('handleGetSettings', () => {
 
   it('returns stored settings', async () => {
     const storageGet = vi.fn().mockResolvedValue({
-      sourceLanguage: 'fi',
-      targetLanguage: 'de',
+      sourceLang: 'fi',
+      targetLang: 'de',
       provider: 'deepl',
       strategy: 'quality',
     });
@@ -609,6 +610,8 @@ describe('handleGetSettings', () => {
     const data = result.data as Record<string, unknown>;
     expect(data.sourceLanguage).toBe('fi');
     expect(data.targetLanguage).toBe('de');
+    expect(data.provider).toBe('deepl');
+    expect(data.strategy).toBe('quality');
   });
 
   it('returns error when storage throws', async () => {

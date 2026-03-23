@@ -318,12 +318,13 @@ export async function handleGetSettings(
   storageGet: (keys: string[]) => Promise<Record<string, unknown>>,
 ): Promise<MessageResponse<{ data: { sourceLanguage: string; targetLanguage: string; provider: string; strategy: string } }>> {
   try {
-    const settings = await storageGet(['sourceLanguage', 'targetLanguage', 'provider', 'strategy']);
+    const settings = await storageGet(['sourceLang', 'targetLang', 'provider', 'strategy']);
     return {
       success: true,
       data: {
-        sourceLanguage: (settings.sourceLanguage as string) || 'auto',
-        targetLanguage: (settings.targetLanguage as string) || 'en',
+        // Keep the legacy response shape for existing getSettings consumers.
+        sourceLanguage: (settings.sourceLang as string) || 'auto',
+        targetLanguage: (settings.targetLang as string) || 'en',
         provider: (settings.provider as string) || 'opus-mt',
         strategy: (settings.strategy as string) || 'smart',
       },
