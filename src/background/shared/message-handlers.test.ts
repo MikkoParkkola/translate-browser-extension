@@ -671,8 +671,7 @@ describe('handleGetCorrection error path', () => {
       targetLang: 'fi',
     }) as Record<string, unknown>;
     expect(result.success).toBe(false);
-    expect(result.correction).toBeNull();
-    expect(result.hasCorrection).toBe(false);
+    expect(result.error).toBeDefined();
   });
 
   it('handles non-Error thrown', async () => {
@@ -769,7 +768,7 @@ describe('handleDeleteCorrection error path', () => {
       targetLang: 'fi',
     }) as Record<string, unknown>;
     expect(result.success).toBe(false);
-    expect(result.deleted).toBe(false);
+    expect(result.error).toBeDefined();
   });
 
   it('handles non-Error thrown', async () => {
@@ -988,7 +987,7 @@ describe('handleImportCorrections non-Error path', () => {
       json: 'bad json',
     }) as Record<string, unknown>;
     expect(result.success).toBe(false);
-    expect(result.importedCount).toBe(0);
+    expect(result.error).toBeDefined();
   });
 });
 

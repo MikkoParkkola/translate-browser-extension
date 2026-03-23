@@ -13,7 +13,7 @@ import type {
   ExtensionMessage, TranslateResponse, Strategy, TranslationProviderId, ContentCommand,
   PreloadModelMessage, RecordLanguageDetectionMessage,
   GetCloudProviderUsageMessage, OCRImageMessage, CaptureScreenshotMessage,
-  DeleteModelMessage,
+  DeleteModelMessage, MessageResponse,
 } from '../types';
 import {
   createTranslationError,
@@ -665,7 +665,7 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
 /**
  * Preload model for a language pair
  */
-async function handlePreloadModel(message: PreloadModelMessage): Promise<unknown> {
+async function handlePreloadModel(message: PreloadModelMessage): Promise<MessageResponse<{ preloaded?: boolean }>> {
   const provider = message.provider || getProvider();
   log.info(` Preloading ${provider} model: ${message.sourceLang} -> ${message.targetLang}`);
   try {
@@ -675,7 +675,7 @@ async function handlePreloadModel(message: PreloadModelMessage): Promise<unknown
       targetLang: message.targetLang,
       provider,
     });
-    return response;
+    return response as MessageResponse<{ preloaded?: boolean }>;
   } catch (error) {
     /* v8 ignore start -- preload failure fallback */
     log.warn(' Preload failed:', error);
@@ -690,7 +690,7 @@ async function handlePreloadModel(message: PreloadModelMessage): Promise<unknown
 /**
  * Clear cache — also forwards to offscreen document's cache.
  */
-async function handleClearCacheWithOffscreen(): Promise<unknown> {
+async function handleClearCacheWithOffscreen(): Promise<{ success: boolean; clearedEntries: number }> {
   const result = await handleClearCache(translationCache);
 
   // Also clear the offscreen document's translation cache
@@ -705,21 +705,26 @@ async function handleClearCacheWithOffscreen(): Promise<unknown> {
   return result;
 }
 
+/** Best-effort clear of the offscreen pipeline cache (offscreen may not be running). */
+async function tryClearOffscreenPipelineCache(): Promise<void> {
+  try {
+    await sendToOffscreen({ type: 'clearPipelineCache' });
+  } catch {
+    /* v8 ignore start */
+    log.warn('Could not clear offscreen pipeline cache (may not be running)');
+    /* v8 ignore stop */
+  }
+}
+
 /**
  * Delete a specific downloaded model.
  */
-async function handleDeleteModel(message: DeleteModelMessage): Promise<unknown> {
+async function handleDeleteModel(message: DeleteModelMessage): Promise<MessageResponse> {
   const { modelId } = message;
   log.info(`Deleting model: ${modelId}`);
 
   try {
-    try {
-      await sendToOffscreen({ type: 'clearPipelineCache' });
-    } catch {
-      /* v8 ignore start */
-      log.warn('Could not clear offscreen pipeline cache (may not be running)');
-      /* v8 ignore stop */
-    }
+    await tryClearOffscreenPipelineCache();
 
     const stored = await browserAPI.storage.local.get(['downloadedModels']) as { downloadedModels?: Array<{ id: string }> };
     const models: Array<{ id: string }> = stored.downloadedModels || [];
@@ -741,17 +746,11 @@ async function handleDeleteModel(message: DeleteModelMessage): Promise<unknown> 
 /**
  * Clear all downloaded models.
  */
-async function handleClearAllModels(): Promise<unknown> {
+async function handleClearAllModels(): Promise<MessageResponse> {
   log.info('Clearing all downloaded models...');
 
   try {
-    try {
-      await sendToOffscreen({ type: 'clearPipelineCache' });
-    } catch {
-      /* v8 ignore start */
-      log.warn('Could not clear offscreen pipeline cache (may not be running)');
-      /* v8 ignore stop */
-    }
+    await tryClearOffscreenPipelineCache();
 
     await browserAPI.storage.local.remove(['downloadedModels']);
 
@@ -785,7 +784,7 @@ async function handleClearAllModels(): Promise<unknown> {
 /**
  * Check if Chrome Translator API is available (Chrome 138+)
  */
-async function handleCheckChromeTranslator(): Promise<unknown> {
+async function handleCheckChromeTranslator(): Promise<{ success: true; available: boolean }> {
   try {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const tabId = tabs[0]?.id;
@@ -809,14 +808,14 @@ async function handleCheckChromeTranslator(): Promise<unknown> {
 /**
  * Check WebGPU availability via the offscreen document.
  */
-async function handleCheckWebGPU(): Promise<unknown> {
+async function handleCheckWebGPU(): Promise<{ success: true; supported: boolean; fp16: boolean }> {
   try {
     const response = await sendToOffscreen<{
       success: boolean;
       supported: boolean;
       fp16: boolean;
     }>({ type: 'checkWebGPU' });
-    return response;
+    return response as { success: true; supported: boolean; fp16: boolean };
   } catch (error) {
     log.debug('WebGPU check failed:', error);
     return { success: true, supported: false, fp16: false };
@@ -826,7 +825,7 @@ async function handleCheckWebGPU(): Promise<unknown> {
 /**
  * Get prediction engine statistics
  */
-async function handleGetPredictionStats(): Promise<unknown> {
+async function handleGetPredictionStats(): Promise<MessageResponse<{ prediction: { domainCount: number; totalTranslations: number; recentTranslations: number; preferredTarget: string; topDomains: Array<{ domain: string; detections: number }> } }>> {
   try {
     const stats = await predictionEngine.getStats();
     return { success: true, prediction: stats };
@@ -843,7 +842,7 @@ async function handleGetPredictionStats(): Promise<unknown> {
 /**
  * Handle language detection recording
  */
-async function handleRecordLanguageDetection(message: RecordLanguageDetectionMessage): Promise<unknown> {
+async function handleRecordLanguageDetection(message: RecordLanguageDetectionMessage): Promise<MessageResponse> {
   await recordLanguageDetection(message.url, message.language);
   return { success: true };
 }
@@ -851,7 +850,7 @@ async function handleRecordLanguageDetection(message: RecordLanguageDetectionMes
 /**
  * Get usage statistics for a cloud provider
  */
-async function handleGetCloudProviderUsage(message: GetCloudProviderUsageMessage): Promise<unknown> {
+async function handleGetCloudProviderUsage(message: GetCloudProviderUsageMessage): Promise<MessageResponse<{ usage?: { tokens: number; cost: number; limitReached: boolean } }>> {
   try {
     const result = await sendToOffscreen<{
       success: boolean;
@@ -861,13 +860,12 @@ async function handleGetCloudProviderUsage(message: GetCloudProviderUsageMessage
       type: 'getCloudProviderUsage',
       provider: message.provider,
     });
-    return result;
+    return result as MessageResponse<{ usage?: { tokens: number; cost: number; limitReached: boolean } }>;
   } catch (error) {
     log.warn(' Failed to get cloud provider usage:', error);
     return {
       success: false,
       error: extractErrorMessage(error),
-
     };
   }
 }
@@ -1204,7 +1202,7 @@ async function handleTranslateInner(message: {
 // Profiling Handlers (Chrome-specific — offscreen profiling)
 // ============================================================================
 
-async function handleGetProfilingStats(): Promise<unknown> {
+async function handleGetProfilingStats(): Promise<MessageResponse<{ aggregates: Record<string, AggregateStats>; formatted: string }>> {
   try {
     const localStats = profiler.getAllAggregates();
 
@@ -1286,7 +1284,7 @@ async function handleGetProviders(): Promise<unknown> {
 // OCR
 // ============================================================================
 
-async function handleOCRImage(message: OCRImageMessage): Promise<unknown> {
+async function handleOCRImage(message: OCRImageMessage): Promise<MessageResponse<{ text?: string; confidence?: number; blocks?: Array<{ text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } }> }>> {
   try {
     log.info('Processing OCR request...');
 
@@ -1306,14 +1304,10 @@ async function handleOCRImage(message: OCRImageMessage): Promise<unknown> {
       log.info(`OCR completed: ${result.blocks?.length || 0} blocks, ${result.confidence?.toFixed(1)}% confidence`);
     }
 
-    return result;
+    return result as MessageResponse<{ text?: string; confidence?: number; blocks?: Array<{ text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } }> }>;
   } catch (error) {
     log.error('OCR failed:', error);
-    return {
-      success: false,
-      error: extractErrorMessage(error),
-
-    };
+    return { success: false, error: extractErrorMessage(error) };
   }
 }
 
@@ -1321,7 +1315,7 @@ async function handleOCRImage(message: OCRImageMessage): Promise<unknown> {
 // Screenshot Capture
 // ============================================================================
 
-async function handleCaptureScreenshot(message: CaptureScreenshotMessage): Promise<unknown> {
+async function handleCaptureScreenshot(message: CaptureScreenshotMessage): Promise<MessageResponse<{ imageData: string }>> {
   try {
     const dataUrl = await chrome.tabs.captureVisibleTab({ format: 'png' });
 
@@ -1337,7 +1331,7 @@ async function handleCaptureScreenshot(message: CaptureScreenshotMessage): Promi
         devicePixelRatio: message.devicePixelRatio || 1,
       });
 
-      return { success: true, imageData: cropResponse.imageData };
+      return { success: true, imageData: cropResponse.imageData ?? dataUrl };
     }
 
     return { success: true, imageData: dataUrl };

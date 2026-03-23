@@ -10,6 +10,7 @@ import type {
   TranslationProviderId, Strategy, DetailedCacheStats, ThrottleUsage,
   SetCloudApiKeyMessage, ClearCloudApiKeyMessage,
   AddCorrectionMessage, GetCorrectionMessage, DeleteCorrectionMessage, ImportCorrectionsMessage,
+  MessageResponse,
 } from '../../types';
 import { safeStorageGet, safeStorageSet } from '../../core/storage';
 import { createLogger } from '../../core/logger';
@@ -231,18 +232,13 @@ export async function handleAddCorrection(message: AddCorrectionMessage): Promis
   }
 }
 
-export async function handleGetCorrection(message: GetCorrectionMessage): Promise<unknown> {
+export async function handleGetCorrection(message: GetCorrectionMessage): Promise<MessageResponse<{ correction: string | null; hasCorrection: boolean }>> {
   try {
     const correction = await getCorrection(message.original, message.sourceLang, message.targetLang);
     return { success: true, correction, hasCorrection: correction !== null };
   } catch (error) {
     log.warn('Failed to get correction:', error);
-    return {
-      success: false,
-      error: extractErrorMessage(error),
-      correction: null,
-      hasCorrection: false,
-    };
+    return { success: false, error: extractErrorMessage(error) };
   }
 }
 
@@ -284,17 +280,13 @@ export async function handleClearCorrections(): Promise<{ success: boolean; erro
   }
 }
 
-export async function handleDeleteCorrection(message: DeleteCorrectionMessage): Promise<unknown> {
+export async function handleDeleteCorrection(message: DeleteCorrectionMessage): Promise<MessageResponse<{ deleted: boolean }>> {
   try {
     const deleted = await deleteCorrection(message.original, message.sourceLang, message.targetLang);
     return { success: true, deleted };
   } catch (error) {
     log.warn('Failed to delete correction:', error);
-    return {
-      success: false,
-      error: extractErrorMessage(error),
-      deleted: false,
-    };
+    return { success: false, error: extractErrorMessage(error) };
   }
 }
 
@@ -308,17 +300,13 @@ export async function handleExportCorrections(): Promise<{ success: boolean; jso
   }
 }
 
-export async function handleImportCorrections(message: ImportCorrectionsMessage): Promise<unknown> {
+export async function handleImportCorrections(message: ImportCorrectionsMessage): Promise<MessageResponse<{ importedCount: number }>> {
   try {
     const count = await importCorrections(message.json);
     return { success: true, importedCount: count };
   } catch (error) {
     log.warn('Failed to import corrections:', error);
-    return {
-      success: false,
-      error: extractErrorMessage(error),
-      importedCount: 0,
-    };
+    return { success: false, error: extractErrorMessage(error) };
   }
 }
 
@@ -328,7 +316,7 @@ export async function handleImportCorrections(message: ImportCorrectionsMessage)
 
 export async function handleGetSettings(
   storageGet: (keys: string[]) => Promise<Record<string, unknown>>,
-): Promise<unknown> {
+): Promise<MessageResponse<{ data: { sourceLanguage: string; targetLanguage: string; provider: string; strategy: string } }>> {
   try {
     const settings = await storageGet(['sourceLanguage', 'targetLanguage', 'provider', 'strategy']);
     return {

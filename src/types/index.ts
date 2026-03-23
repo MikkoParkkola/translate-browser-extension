@@ -16,6 +16,19 @@ export type QualityTier = 'basic' | 'standard' | 'premium';
 export type Strategy = 'smart' | 'fast' | 'quality' | 'cost' | 'balanced';
 export type TranslationProviderId = 'opus-mt' | 'translategemma' | 'chrome-builtin' | 'deepl' | 'openai' | 'google-cloud' | 'anthropic';
 
+/**
+ * Standard discriminated-union response type for background message handlers.
+ * T is the shape of extra fields present on the success branch.
+ *
+ * @example
+ *   Promise<MessageResponse<{ available: boolean }>>
+ *   // resolves to  { success: true; available: boolean }
+ *              // | { success: false; error: string }
+ */
+export type MessageResponse<T extends Record<string, unknown> = Record<string, unknown>> =
+  | ({ success: true } & T)
+  | { success: false; error: string };
+
 export interface ProviderConfig {
   id: string;
   name: string;

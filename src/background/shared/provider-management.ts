@@ -5,7 +5,7 @@
  * used by both Chrome and Firefox background scripts.
  */
 
-import type { Strategy, TranslationProviderId, SetProviderMessage } from '../../types';
+import type { Strategy, TranslationProviderId, SetProviderMessage, MessageResponse } from '../../types';
 import type { TranslationError } from '../../core/errors';
 import { safeStorageSet } from '../../core/storage';
 import { approxTokens } from '../../core/text-utils';
@@ -127,7 +127,7 @@ export const PROVIDER_LIST = [
 // ============================================================================
 
 /** Handle 'setProvider' message. */
-export async function handleSetProvider(message: SetProviderMessage): Promise<unknown> {
+export async function handleSetProvider(message: SetProviderMessage): Promise<MessageResponse<{ provider: TranslationProviderId }>> {
   currentProvider = message.provider;
   log.info(`Provider set to: ${currentProvider}`);
   await safeStorageSet({ provider: currentProvider });
