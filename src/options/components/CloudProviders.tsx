@@ -7,6 +7,7 @@ import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
 import { OPTIONS_CLOUD_PROVIDERS as CLOUD_PROVIDERS } from '../../shared/provider-options';
 import { reportUiError } from '../../shared/ui-feedback';
+import { sendBackgroundMessage } from '../../shared/background-message';
 import { createLogger } from '../../core/logger';
 import { safeStorageGet, safeStorageSet, safeStorageRemove } from '../../core/storage';
 import { extractErrorMessage } from '../../core/errors';
@@ -201,8 +202,7 @@ export const CloudProviders: Component = () => {
     }));
 
     try {
-      // Send test message to background script
-      const response = await chrome.runtime.sendMessage({
+      const response = await sendBackgroundMessage<{ success?: boolean; message?: string }>({
         type: 'testProvider',
         provider: providerId,
       });

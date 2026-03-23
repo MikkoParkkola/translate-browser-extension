@@ -5,6 +5,7 @@ import {
   MODEL_SELECTOR_LOCAL_MODELS as LOCAL_MODELS,
   MODEL_SELECTOR_MODELS as MODELS,
 } from '../../shared/provider-options';
+import { trySendBackgroundMessage } from '../../shared/background-message';
 import type { ModelInfo } from '../../shared/provider-options';
 
 export type { ModelInfo } from '../../shared/provider-options';
@@ -49,15 +50,13 @@ export const ModelSelector: Component<Props> = (props) => {
   let triggerRef: HTMLButtonElement | undefined;
 
   onMount(async () => {
-    try {
-      const response = await chrome.runtime.sendMessage({ type: 'getCloudProviderStatus' });
-      /* v8 ignore start -- optional chaining */
-      if (response?.status) {
-      /* v8 ignore stop */
-        setCloudApiStatus(response.status);
-      }
-    } catch {
-      // Ignore
+    const response = await trySendBackgroundMessage<{ status?: Record<string, boolean> }>({
+      type: 'getCloudProviderStatus',
+    });
+    /* v8 ignore start -- optional chaining */
+    if (response?.status) {
+    /* v8 ignore stop */
+      setCloudApiStatus(response.status);
     }
   });
 

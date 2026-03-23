@@ -34,23 +34,27 @@ vi.mock('../core/storage', () => ({
   safeStorageSet: vi.fn().mockResolvedValue(true),
 }));
 
-vi.mock('../core/browser-api', () => ({
-  browserAPI: {
-    runtime: {
-      sendMessage: vi.fn().mockResolvedValue({}),
-      onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
-      openOptionsPage: vi.fn(),
+vi.mock('../core/browser-api', () => {
+  const runtimeSendMessage = vi.fn().mockResolvedValue({});
+  return {
+    browserAPI: {
+      runtime: {
+        sendMessage: runtimeSendMessage,
+        onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
+        openOptionsPage: vi.fn(),
+      },
+      storage: {
+        local: { get: vi.fn().mockResolvedValue({}) },
+      },
+      tabs: {
+        query: vi.fn().mockResolvedValue([{ id: 1, url: 'https://example.com' }]),
+        sendMessage: vi.fn().mockResolvedValue({}),
+      },
+      scripting: { executeScript: vi.fn().mockResolvedValue(undefined) },
     },
-    storage: {
-      local: { get: vi.fn().mockResolvedValue({}) },
-    },
-    tabs: {
-      query: vi.fn().mockResolvedValue([{ id: 1, url: 'https://example.com' }]),
-      sendMessage: vi.fn().mockResolvedValue({}),
-    },
-    scripting: { executeScript: vi.fn().mockResolvedValue(undefined) },
-  },
-}));
+    sendMessage: runtimeSendMessage,
+  };
+});
 
 vi.mock('../core/version', () => ({
   checkVersion: vi.fn().mockResolvedValue({ isUpdate: false, current: '1.0.0' }),

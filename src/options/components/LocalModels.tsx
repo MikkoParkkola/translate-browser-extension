@@ -6,6 +6,7 @@
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import { createLogger } from '../../core/logger';
 import { safeStorageGet } from '../../core/storage';
+import { trySendBackgroundMessage } from '../../shared/background-message';
 import { formatBytes, formatDate } from '../../shared/format-utils';
 
 const log = createLogger('LocalModels');
@@ -53,21 +54,19 @@ export const LocalModels: Component = () => {
       const models: ModelInfo[] = stored.downloadedModels || [];
 
       // Try to get model list from background
-      try {
-        const response = await chrome.runtime.sendMessage({ type: 'getDownloadedModels' });
-        if (response?.models) {
-          setStats({
-            totalUsed: estimate.usage || 0,
-            /* v8 ignore start */
-            quota: estimate.quota || 0,
-            /* v8 ignore stop */
-            models: response.models,
-          });
-          setLoading(false);
-          return;
-        }
-      } catch {
-        // Background script might not support this message
+      const response = await trySendBackgroundMessage<{ models?: ModelInfo[] }>({
+        type: 'getDownloadedModels',
+      });
+      if (response?.models) {
+        setStats({
+          totalUsed: estimate.usage || 0,
+          /* v8 ignore start */
+          quota: estimate.quota || 0,
+          /* v8 ignore stop */
+          models: response.models,
+        });
+        setLoading(false);
+        return;
       }
 
       // Fallback: estimate from known model sizes
@@ -105,11 +104,19 @@ export const LocalModels: Component = () => {
     setDeleting(modelId);
 
     try {
-      // Try to delete via background script
-      await chrome.runtime.sendMessage({
-        type: 'deleteModel',
-        modelId,
-      });
+      const response = await trySendBackgroundMessage(
+        {
+          type: 'deleteModel',
+          modelId,
+        },
+        {
+          onError: (error) => {
+            log.error('Failed to delete model:', error);
+            alert('Failed to delete model. It may be in use.');
+          },
+        }
+      );
+      if (response === undefined) return;
 
       // Remove from local list
       setStats((prev) => ({
@@ -120,7 +127,7 @@ export const LocalModels: Component = () => {
       // Refresh stats
       await loadModelStats();
     } catch (error) {
-      log.error('Failed to delete model:', error);
+      log.error('Failed to refresh models after delete:', error);
       alert('Failed to delete model. It may be in use.');
     } finally {
       setDeleting(null);
@@ -133,8 +140,16 @@ export const LocalModels: Component = () => {
     }
 
     try {
-      // Try to clear via background script
-      await chrome.runtime.sendMessage({ type: 'clearAllModels' });
+      const response = await trySendBackgroundMessage(
+        { type: 'clearAllModels' },
+        {
+          onError: (error) => {
+            log.error('Failed to clear models:', error);
+            alert('Failed to clear models. Some models may still be cached.');
+          },
+        }
+      );
+      if (response === undefined) return;
 
       // Clear Cache API if available
       /* v8 ignore start */

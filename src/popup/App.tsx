@@ -11,6 +11,7 @@ import { checkVersion, dismissUpdateNotice, isUpdateDismissed } from '../core/ve
 import { createLogger } from '../core/logger';
 import { sleep } from '../core/async-utils';
 import { extractErrorMessage } from '../core/errors';
+import { sendBackgroundMessage, trySendBackgroundMessage } from '../shared/background-message';
 import {
   PROVIDER_STATUS_NAMES,
   normalizeTranslationProviderId,
@@ -229,42 +230,52 @@ export default function App() {
     log.info('Loaded preferences:', { source: stored.sourceLang, target: stored.targetLang });
 
     // Check Chrome Translator API availability (Chrome 138+)
-    try {
-      const response = await browserAPI.runtime.sendMessage({ type: 'checkChromeTranslator' });
-      if (response?.available) {
-        log.info('Chrome Translator API available');
-        updateModelStatus('chrome-builtin', { isDownloaded: true, error: null });
-      } else {
-        log.info('Chrome Translator API not available (Chrome 138+ required)');
-        updateModelStatus('chrome-builtin', { isDownloaded: false, error: 'Chrome 138+ required' });
+    const response = await trySendBackgroundMessage<{ available?: boolean }>(
+      { type: 'checkChromeTranslator' },
+      {
+        onError: (error) => {
+          log.info('Chrome Translator check failed:', error);
+          updateModelStatus('chrome-builtin', { isDownloaded: false, error: 'Not available' });
+        },
       }
-    } catch (error) {
-      log.info('Chrome Translator check failed:', error);
-      updateModelStatus('chrome-builtin', { isDownloaded: false, error: 'Not available' });
+    );
+    if (response?.available) {
+      log.info('Chrome Translator API available');
+      updateModelStatus('chrome-builtin', { isDownloaded: true, error: null });
+    } else if (response) {
+      log.info('Chrome Translator API not available (Chrome 138+ required)');
+      updateModelStatus('chrome-builtin', { isDownloaded: false, error: 'Chrome 138+ required' });
     }
 
     // Check WebGPU availability (TranslateGemma needs it -- 3.6GB model cannot fit WASM heap)
-    try {
-      const gpuResponse = await browserAPI.runtime.sendMessage({ type: 'checkWebGPU' });
-      const available = gpuResponse?.supported === true;
-      setWebGpuAvailable(available);
-      log.info('WebGPU available:', available, gpuResponse?.fp16 ? '(fp16)' : '');
-      if (!available) {
-        updateModelStatus('translategemma', {
-          isDownloaded: false,
-          error: 'Requires WebGPU (GPU acceleration not available)',
-        });
-        // Auto-switch away from TranslateGemma if it was saved from a previous session
-        if (activeProvider() === 'translategemma') {
-          log.info('WebGPU unavailable, switching from TranslateGemma to OPUS-MT');
-          handleProviderChange('opus-mt');
-          setError('TranslateGemma requires WebGPU. Switched to OPUS-MT.');
-          setTimeout(() => clearError(), 8000);
+    {
+      const gpuResponse = await trySendBackgroundMessage<{ supported?: boolean; fp16?: boolean }>(
+        { type: 'checkWebGPU' },
+        {
+          onError: (error) => {
+            log.info('WebGPU check failed:', error);
+            setWebGpuAvailable(false);
+          },
+        }
+      );
+      if (gpuResponse) {
+        const available = gpuResponse.supported === true;
+        setWebGpuAvailable(available);
+        log.info('WebGPU available:', available, gpuResponse.fp16 ? '(fp16)' : '');
+        if (!available) {
+          updateModelStatus('translategemma', {
+            isDownloaded: false,
+            error: 'Requires WebGPU (GPU acceleration not available)',
+          });
+          // Auto-switch away from TranslateGemma if it was saved from a previous session
+          if (activeProvider() === 'translategemma') {
+            log.info('WebGPU unavailable, switching from TranslateGemma to OPUS-MT');
+            handleProviderChange('opus-mt');
+            setError('TranslateGemma requires WebGPU. Switched to OPUS-MT.');
+            setTimeout(() => clearError(), 8000);
+          }
         }
       }
-    } catch (error) {
-      log.info('WebGPU check failed:', error);
-      setWebGpuAvailable(false);
     }
 
     // Check for version update
@@ -310,8 +321,7 @@ export default function App() {
 
     await safeStorageSet({ provider });
     try {
-      // Notify background service worker
-      await browserAPI.runtime.sendMessage({ type: 'setProvider', provider });
+      await sendBackgroundMessage({ type: 'setProvider', provider });
       log.info('Provider changed to:', provider);
     } catch (error) {
       log.error('Failed to set provider:', error);

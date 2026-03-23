@@ -757,9 +757,11 @@ describe('ModelSelector render — download progress', () => {
     });
 
     // DeepL should show ✓ (configured), other clouds should show 🔑
-    const options = screen.getAllByRole('option');
-    const deeplOption = options.find(o => o.textContent?.includes('DeepL'));
-    expect(deeplOption?.textContent).toContain('✓');
+    await vi.waitFor(() => {
+      const options = screen.getAllByRole('option');
+      const deeplOption = options.find(o => o.textContent?.includes('DeepL'));
+      expect(deeplOption?.textContent).toContain('✓');
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -792,8 +794,13 @@ describe('ModelSelector render — download progress', () => {
       expect(screen.getByRole('listbox')).toBeTruthy();
     });
 
-    const options = screen.getAllByRole('option');
-    const deeplOption = options.find(o => o.textContent?.includes('DeepL'));
+    const deeplOption = await vi.waitFor(() => {
+      const options = screen.getAllByRole('option');
+      const option = options.find(o => o.textContent?.includes('DeepL'));
+      expect(option).toBeTruthy();
+      expect(option!.className).not.toContain('unconfigured');
+      return option;
+    });
     fireEvent.click(deeplOption!);
 
     expect(onChange).toHaveBeenCalledWith('deepl');
@@ -978,10 +985,12 @@ describe('ModelSelector branch coverage — cloud provider classes', () => {
     });
 
     // DeepL is configured — should NOT have 'unconfigured' class
-    const options = screen.getAllByRole('option');
-    const deeplOption = options.find(o => o.textContent?.includes('DeepL'));
-    expect(deeplOption).toBeTruthy();
-    expect(deeplOption!.className).not.toContain('unconfigured');
+    await vi.waitFor(() => {
+      const options = screen.getAllByRole('option');
+      const deeplOption = options.find(o => o.textContent?.includes('DeepL'));
+      expect(deeplOption).toBeTruthy();
+      expect(deeplOption!.className).not.toContain('unconfigured');
+    });
   });
 
   // -----------------------------------------------------------------------

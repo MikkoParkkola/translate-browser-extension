@@ -8,6 +8,7 @@ import { createLogger } from '../../core/logger';
 import type { TranslationCacheStats } from '../../core/translation-cache';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
 import { formatBytes, formatPercent, formatDate } from '../../shared/format-utils';
+import { sendBackgroundMessageWithUiError } from '../../shared/background-message';
 import { reportUiError, showTemporaryMessage } from '../../shared/ui-feedback';
 
 const log = createLogger('CacheSettings');
@@ -28,11 +29,23 @@ export const CacheSettings: Component = () => {
     setLoading(true);
 
     try {
-      // Try to get cache stats from background
-      const response = await chrome.runtime.sendMessage({ type: 'getCacheStats' });
+      const response = await sendBackgroundMessageWithUiError<{
+        stats?: TranslationCacheStats;
+        cache?: TranslationCacheStats;
+      }>(
+        { type: 'getCacheStats' },
+        {
+          setError,
+          logger: log,
+          userMessage: 'Failed to load cache statistics',
+          logMessage: 'Failed to load stats:',
+        }
+      );
+      if (!response) return;
 
-      if (response?.stats) {
-        setStats(response.stats);
+      const cacheStats = response.cache ?? response.stats;
+      if (cacheStats) {
+        setStats(cacheStats);
       } else {
         // Fallback: estimate from storage
         /* v8 ignore start -- optional chaining on navigator.storage API */
@@ -63,11 +76,18 @@ export const CacheSettings: Component = () => {
     setError(null);
 
     try {
-      await chrome.runtime.sendMessage({ type: 'clearCache' });
+      const response = await sendBackgroundMessageWithUiError(
+        { type: 'clearCache' },
+        {
+          setError,
+          logger: log,
+          userMessage: 'Failed to clear cache',
+          logMessage: 'Failed to clear cache:',
+        }
+      );
+      if (response === undefined) return;
       await loadStats();
       showTemporaryMessage(setSuccess, 'Cache cleared successfully');
-    } catch (error) {
-      reportUiError(setError, log, 'Failed to clear cache', 'Failed to clear cache:', error);
     } finally {
       setClearing(false);
     }
