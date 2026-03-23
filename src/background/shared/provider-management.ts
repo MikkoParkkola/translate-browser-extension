@@ -8,6 +8,7 @@
 import type { Strategy, TranslationProviderId } from '../../types';
 import type { TranslationError } from '../../core/errors';
 import { safeStorageSet } from '../../core/storage';
+import { approxTokens } from '../../core/text-utils';
 import { createLogger } from '../../core/logger';
 import { CONFIG } from '../../config';
 
@@ -70,7 +71,7 @@ export function recordUsage(tokens: number): void {
 
 export function estimateTokens(text: string | string[]): number {
   const str = Array.isArray(text) ? text.join(' ') : text;
-  return Math.max(1, Math.ceil(str.length / 4));
+  return approxTokens(str);
 }
 
 export function getRateLimitState(): Readonly<RateLimitState> {

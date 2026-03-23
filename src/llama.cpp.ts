@@ -1,4 +1,5 @@
 import { createLogger } from './core/logger';
+import { approxTokens } from './core/text-utils';
 
 const log = createLogger('InferenceEngine');
 
@@ -355,7 +356,7 @@ class InferenceEngine {
       tokensGenerated = tokens.length;
     } catch {
       // Approximate: ~4 chars per token
-      tokensGenerated = Math.ceil(result.length / 4);
+      tokensGenerated = approxTokens(result);
     }
 
     return {
@@ -391,7 +392,7 @@ class InferenceEngine {
       const tokens = await this.wllama.tokenize(result);
       tokensGenerated = tokens.length;
     } catch {
-      tokensGenerated = Math.ceil(result.length / 4);
+      tokensGenerated = approxTokens(result);
     }
 
     return {
