@@ -62,13 +62,13 @@ vi.mock('./lib/ModelPerformanceMonitor.js', () => ({
   ModelPerformanceMonitor: MockModelPerformanceMonitor,
 }));
 
-// Mock chrome storage
+// Mock chrome storage (Promise-based to match safeStorageGet/Set usage)
 globalThis.chrome = {
   runtime: { getURL: vi.fn((path: string) => 'chrome-extension://test/' + path) } as unknown as typeof chrome.runtime,
   storage: {
     local: {
-      get: vi.fn((_keys: unknown, cb: (result: Record<string, unknown>) => void) => { cb({}); }) as any,
-      set: vi.fn((_data: unknown, cb: () => void) => { cb(); }) as any,
+      get: vi.fn(() => Promise.resolve({})) as any,
+      set: vi.fn(() => Promise.resolve()) as any,
     },
   },
 } as unknown as typeof chrome;
@@ -178,10 +178,8 @@ describe('LocalModelManager (subclass)', () => {
     it('validateModel delegates to validator when downloaded', async () => {
       // Override chrome storage to return downloaded status
       const chromeGet = globalThis.chrome.storage.local.get as ReturnType<typeof vi.fn>;
-      chromeGet.mockImplementationOnce(
-        (_keys: unknown, cb: (result: Record<string, unknown>) => void) => {
-          cb({ model_status: { downloaded: true, size: 1024 } });
-        },
+      chromeGet.mockImplementationOnce(() =>
+        Promise.resolve({ model_status: { downloaded: true, size: 1024 } }),
       );
       const result = await manager.validateModel();
       expect(result.valid).toBe(true);
@@ -189,10 +187,8 @@ describe('LocalModelManager (subclass)', () => {
 
     it('isModelReady returns false when status has error', async () => {
       const chromeGet = globalThis.chrome.storage.local.get as ReturnType<typeof vi.fn>;
-      chromeGet.mockImplementationOnce(
-        (_keys: unknown, cb: (result: Record<string, unknown>) => void) => {
-          cb({ model_status: { downloaded: true, error: 'corrupt file' } });
-        },
+      chromeGet.mockImplementationOnce(() =>
+        Promise.resolve({ model_status: { downloaded: true, error: 'corrupt file' } }),
       );
       const ready = await manager.isModelReady();
       expect(ready).toBe(false);
@@ -200,10 +196,8 @@ describe('LocalModelManager (subclass)', () => {
 
     it('isModelReady returns true when downloaded and no error', async () => {
       const chromeGet = globalThis.chrome.storage.local.get as ReturnType<typeof vi.fn>;
-      chromeGet.mockImplementationOnce(
-        (_keys: unknown, cb: (result: Record<string, unknown>) => void) => {
-          cb({ model_status: { downloaded: true } });
-        },
+      chromeGet.mockImplementationOnce(() =>
+        Promise.resolve({ model_status: { downloaded: true } }),
       );
       const ready = await manager.isModelReady();
       expect(ready).toBe(true);
@@ -211,10 +205,8 @@ describe('LocalModelManager (subclass)', () => {
 
     it('getModelSize returns size when stored', async () => {
       const chromeGet = globalThis.chrome.storage.local.get as ReturnType<typeof vi.fn>;
-      chromeGet.mockImplementationOnce(
-        (_keys: unknown, cb: (result: Record<string, unknown>) => void) => {
-          cb({ model_status: { downloaded: true, size: 2489909952 } });
-        },
+      chromeGet.mockImplementationOnce(() =>
+        Promise.resolve({ model_status: { downloaded: true, size: 2489909952 } }),
       );
       const size = await manager.getModelSize();
       expect(size).toBe(2489909952);

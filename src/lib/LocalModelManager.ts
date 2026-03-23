@@ -13,6 +13,7 @@
 
 import { logger } from './logger.js';
 import { standardErrorHandler } from './standardErrorHandler.js';
+import { safeStorageGet, safeStorageSet } from '../core/storage';
 import { ModelValidator } from './ModelValidator.js';
 export type { ValidationResult } from './ModelValidator.js';
 import { ModelUpdater } from './ModelUpdater.js';
@@ -877,36 +878,29 @@ export class LocalModelManager {
     return new Promise((resolve) => { setTimeout(resolve, ms); });
   }
 
-  // Storage helpers — kept as callback-style for localStorage fallback in non-extension contexts
+  // Storage helpers — chrome path uses safeStorageGet/Set; fallback uses localStorage
   private async _getStoredData(key: string): Promise<unknown> {
-    return new Promise((resolve) => {
-      try {
-        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-          chrome.storage.local.get([key], (result: Record<string, unknown>) => {
-            resolve(result[key] || null);
-          });
-        } else {
-          const data = localStorage.getItem(`lmm_${key}`);
-          resolve(data ? JSON.parse(data) : null);
-        }
-      } catch {
-        resolve(null);
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        const result = await safeStorageGet<Record<string, unknown>>([key]);
+        return result[key] ?? null;
       }
-    });
+      const data = localStorage.getItem(`lmm_${key}`);
+      return data ? JSON.parse(data) : null;
+    } catch {
+      return null;
+    }
   }
 
   private async _storeData(key: string, data: unknown): Promise<void> {
-    return new Promise((resolve) => {
-      try {
-        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-          chrome.storage.local.set({ [key]: data }, () => resolve());
-        } else {
-          localStorage.setItem(`lmm_${key}`, JSON.stringify(data));
-          resolve();
-        }
-      } catch {
-        resolve();
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        await safeStorageSet({ [key]: data });
+      } else {
+        localStorage.setItem(`lmm_${key}`, JSON.stringify(data));
       }
-    });
+    } catch {
+      // Silently ignore storage errors
+    }
   }
 }

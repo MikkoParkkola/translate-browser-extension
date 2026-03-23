@@ -19,6 +19,7 @@ import {
 } from '../core/errors';
 import { createLogger } from '../core/logger';
 import { safeStorageGet, safeStorageSet, safeStorageRemove } from '../core/storage';
+import { browserAPI } from '../core/browser-api';
 import { validateInput } from '../core/errors';
 import { getCorrection } from '../core/corrections';
 import { getPredictionEngine } from '../core/prediction-engine';
@@ -663,10 +664,10 @@ async function handleDeleteModel(message: {
       /* v8 ignore stop */
     }
 
-    const stored = await chrome.storage.local.get(['downloadedModels']);
+    const stored = await browserAPI.storage.local.get(['downloadedModels']) as { downloadedModels?: Array<{ id: string }> };
     const models: Array<{ id: string }> = stored.downloadedModels || [];
     const filtered = models.filter((m) => m.id !== modelId);
-    await chrome.storage.local.set({ downloadedModels: filtered });
+    await browserAPI.storage.local.set({ downloadedModels: filtered });
 
     log.info(`Model ${modelId} deleted`);
     return { success: true };
@@ -695,7 +696,7 @@ async function handleClearAllModels(): Promise<unknown> {
       /* v8 ignore stop */
     }
 
-    await chrome.storage.local.remove(['downloadedModels']);
+    await browserAPI.storage.local.remove(['downloadedModels']);
 
     try {
       const cacheNames = await caches.keys();

@@ -106,8 +106,8 @@ globalThis.chrome = {
   runtime: { getURL: vi.fn((path: string) => 'chrome-extension://test/' + path) },
   storage: {
     local: {
-      get: vi.fn((_keys: unknown, cb: (result: Record<string, unknown>) => void) => { cb({}); }),
-      set: vi.fn((_data: unknown, cb: () => void) => { cb(); }),
+      get: vi.fn(() => Promise.resolve({})),
+      set: vi.fn(() => Promise.resolve()),
     },
   },
 } as unknown as typeof chrome;
@@ -457,9 +457,7 @@ describe('LocalModelManager', () => {
   describe('retrieveModel', () => {
     it('returns cached status when model downloaded', async () => {
       (globalThis.chrome.storage.local.get as Mock).mockImplementation(
-        (_keys: unknown, cb: (result: Record<string, unknown>) => void) => {
-          cb({ model_status: { downloaded: true } });
-        },
+        () => Promise.resolve({ model_status: { downloaded: true } }),
       );
 
       const result = await manager.retrieveModel();
@@ -468,9 +466,7 @@ describe('LocalModelManager', () => {
 
     it('returns null when model not downloaded', async () => {
       (globalThis.chrome.storage.local.get as Mock).mockImplementation(
-        (_keys: unknown, cb: (result: Record<string, unknown>) => void) => {
-          cb({});
-        },
+        () => Promise.resolve({}),
       );
 
       const result = await manager.retrieveModel();
@@ -495,8 +491,8 @@ describe('LocalModelManager Extended Coverage', () => {
       runtime: { getURL: vi.fn((path: string) => 'chrome-extension://test/' + path) },
       storage: {
         local: {
-          get: vi.fn((_keys: unknown, cb: (result: Record<string, unknown>) => void) => { cb({}); }),
-          set: vi.fn((_data: unknown, cb: () => void) => { cb(); }),
+          get: vi.fn(() => Promise.resolve({})),
+          set: vi.fn(() => Promise.resolve()),
         },
       },
     } as unknown as typeof chrome;
@@ -663,9 +659,9 @@ describe('LocalModelManager Extended Coverage', () => {
       const mockGet = vi.mocked(globalThis.chrome.storage.local.get as ReturnType<typeof vi.fn>);
       const mockSet = vi.mocked(globalThis.chrome.storage.local.set as ReturnType<typeof vi.fn>);
 
-      mockGet.mockImplementationOnce((_keys: unknown, cb: (r: Record<string, unknown>) => void) => {
-        cb({ model_status: { downloaded: false, size: 0 } });
-      });
+      mockGet.mockImplementationOnce(() =>
+        Promise.resolve({ model_status: { downloaded: false, size: 0 } }),
+      );
 
       await manager.updateModelStatus({ downloaded: true, size: 12345 });
 
@@ -673,7 +669,6 @@ describe('LocalModelManager Extended Coverage', () => {
         expect.objectContaining({
           model_status: expect.objectContaining({ downloaded: true, size: 12345 }),
         }),
-        expect.any(Function)
       );
     });
   });
@@ -813,10 +808,7 @@ describe('LocalModelManager Extended Coverage', () => {
     it('throws when getModelStatus fails', async () => {
       const origGet = globalThis.chrome.storage.local.get;
       globalThis.chrome.storage.local.get = vi.fn().mockImplementation(
-        (_keys: unknown, cb: (r: Record<string, unknown>) => void) => {
-          // Return normally the first call, but error on second
-          cb({});
-        }
+        () => Promise.resolve({}),
       );
 
       // Make updater.checkForUpdates throw to trigger catch
@@ -826,9 +818,7 @@ describe('LocalModelManager Extended Coverage', () => {
 
       // Make stored data say model is downloaded to trigger checkForUpdates
       globalThis.chrome.storage.local.get = vi.fn().mockImplementation(
-        (_keys: unknown, cb: (r: Record<string, unknown>) => void) => {
-          cb({ model_status: { downloaded: true } });
-        }
+        () => Promise.resolve({ model_status: { downloaded: true } }),
       );
 
       // Should not throw (error is caught and rethrown as HandledError)
@@ -1327,8 +1317,8 @@ describe('LocalModelManager - Targeted Missing Coverage', () => {
       runtime: { getURL: vi.fn((path: string) => 'chrome-extension://test/' + path) },
       storage: {
         local: {
-          get: vi.fn((_keys: unknown, cb: (result: Record<string, unknown>) => void) => { cb({}); }),
-          set: vi.fn((_data: unknown, cb: () => void) => { cb(); }),
+          get: vi.fn(() => Promise.resolve({})),
+          set: vi.fn(() => Promise.resolve()),
         },
       },
     } as unknown as typeof chrome;
@@ -1367,9 +1357,7 @@ describe('LocalModelManager - Targeted Missing Coverage', () => {
   describe('init with already-downloaded model', () => {
     it('calls checkForUpdates when stored status shows downloaded', async () => {
       (globalThis.chrome.storage.local.get as Mock).mockImplementation(
-        (_keys: unknown, cb: (result: Record<string, unknown>) => void) => {
-          cb({ model_status: { downloaded: true } });
-        },
+        () => Promise.resolve({ model_status: { downloaded: true } }),
       );
       mockUpdaterInstance.checkForUpdates.mockResolvedValue({ hasUpdate: false });
 
@@ -1886,9 +1874,7 @@ describe('LocalModelManager - Targeted Missing Coverage', () => {
 
       // Make stored status show downloaded → bid=27[0]: downloaded ? 'Model cached'
       (globalThis.chrome.storage.local.get as Mock).mockImplementation(
-        (_keys: unknown, cb: (result: Record<string, unknown>) => void) => {
-          cb({ model_status: { downloaded: true } });
-        },
+        () => Promise.resolve({ model_status: { downloaded: true } }),
       );
 
       // Set worker and modelLoaded → bid=28[1]: modelWorker !== null && modelLoaded evaluates right operand

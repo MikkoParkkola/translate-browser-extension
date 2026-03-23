@@ -14,6 +14,7 @@ import { nllb200Provider } from '../providers/nllb-200';
 import { webgpuDetector } from './webgpu-detector';
 import { CircuitBreaker } from './circuit-breaker';
 import { safeStorageGet } from './storage';
+import { browserAPI } from './browser-api';
 import type {
   TranslationProvider,
   TranslationOptions,
@@ -91,7 +92,7 @@ export class TranslationRouter {
         log.info('chrome.storage not available, preferences saved in memory only');
         return;
       }
-      await chrome.storage.local.set({ [STORAGE_KEY]: this.preferences });
+      await browserAPI.storage.local.set({ [STORAGE_KEY]: this.preferences });
       log.info('Saved preferences to storage:', this.preferences);
     } catch (error) {
       log.error('Failed to save preferences:', error);

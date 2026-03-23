@@ -5,10 +5,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@solidjs/testing-library';
 
-const mockStorageGet = vi.fn().mockResolvedValue({});
-const mockStorageSet = vi.fn().mockResolvedValue(undefined);
-const mockStorageRemove = vi.fn().mockResolvedValue(undefined);
+const { mockStorageGet, mockStorageSet, mockStorageRemove } = vi.hoisted(() => ({
+  mockStorageGet: vi.fn().mockResolvedValue({}),
+  mockStorageSet: vi.fn().mockResolvedValue(true),
+  mockStorageRemove: vi.fn().mockResolvedValue(true),
+}));
 const mockSendMessage = vi.fn().mockResolvedValue({});
+
+vi.mock('../../core/storage', () => ({
+  safeStorageGet: mockStorageGet,
+  safeStorageSet: mockStorageSet,
+  safeStorageRemove: mockStorageRemove,
+}));
 
 vi.stubGlobal('chrome', {
   runtime: {
