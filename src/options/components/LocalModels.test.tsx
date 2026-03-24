@@ -54,7 +54,7 @@ describe('LocalModels', () => {
     it('renders section title', async () => {
       render(() => <LocalModels />);
       await vi.waitFor(() => {
-        expect(screen.getByText('Offline Translation')).toBeTruthy();
+        expect(screen.getByText('Local Translation Runtimes')).toBeTruthy();
       });
     });
 
@@ -79,10 +79,10 @@ describe('LocalModels', () => {
       });
     });
 
-    it('shows About Offline Translation section', async () => {
+    it('shows Runtime Overview section', async () => {
       render(() => <LocalModels />);
       await vi.waitFor(() => {
-        expect(screen.getByText('About Offline Translation')).toBeTruthy();
+        expect(screen.getByText('Runtime Overview')).toBeTruthy();
       });
     });
   });
@@ -145,6 +145,7 @@ describe('LocalModels', () => {
       await vi.waitFor(() => {
         expect(screen.getByText('OPUS-MT English-German')).toBeTruthy();
       });
+      expect(screen.getByText(/Background inventory was unavailable/)).toBeTruthy();
     });
   });
 

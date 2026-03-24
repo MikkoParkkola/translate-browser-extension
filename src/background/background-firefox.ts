@@ -748,7 +748,7 @@ browserAPI.runtime.onInstalled.addListener((details) => {
       sourceLang: 'auto',
       targetLang: browserLang || 'en',
       strategy: 'smart',
-      provider: 'opus-mt',
+      provider: DEFAULT_PROVIDER_ID,
     }).catch((error) => {
       log.error('Failed to persist install defaults:', error);
     });
@@ -774,7 +774,7 @@ browserAPI.runtime.onInstalled.addListener((details) => {
     currentProvider = restoredProvider;
     log.info('Restored provider:', currentProvider);
   } else {
-    log.info('No stored provider found, using default opus-mt');
+    log.info(`No stored provider found, using default ${DEFAULT_PROVIDER_ID}`);
   }
 })();
 /* v8 ignore stop */

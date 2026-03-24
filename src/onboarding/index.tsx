@@ -166,7 +166,7 @@ export function OnboardingApp() {
               </div>
             </div>
             <h1>Welcome to TRANSLATE!</h1>
-            <p class="subtitle">The privacy-first translation extension that works offline.</p>
+            <p class="subtitle">The privacy-first translation extension with local, browser-native, and cloud options.</p>
 
             <ul class="features">
               <li>
@@ -183,7 +183,7 @@ export function OnboardingApp() {
                     <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10" />
                   </svg>
                 </span>
-                <span>Works offline after initial setup</span>
+                <span>Supports offline translation after local model setup</span>
               </li>
               <li>
                 <span class="feature-icon">

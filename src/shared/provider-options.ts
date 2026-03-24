@@ -16,7 +16,7 @@ export {
   OPENAI_MODEL_VALUES,
 } from './cloud-provider-configs';
 
-type LocalProviderId = Extract<TranslationProviderId, 'opus-mt' | 'translategemma' | 'chrome-builtin'>;
+export type LocalProviderId = Extract<TranslationProviderId, 'opus-mt' | 'translategemma' | 'chrome-builtin'>;
 type DownloadableProviderId = Extract<TranslationProviderId, 'opus-mt' | 'translategemma'>;
 type BackgroundProviderId = Extract<TranslationProviderId, 'opus-mt' | 'translategemma'>;
 type OnboardingProviderId = Extract<TranslationProviderId, 'opus-mt' | 'chrome-builtin' | 'deepl'>;
@@ -25,7 +25,7 @@ export type ProviderRuntimeKind = 'wasm' | 'webgpu' | 'native-browser' | 'cloud-
 export type ProviderDeliveryKind = 'downloaded-model' | 'browser-managed' | 'cloud-api';
 export type ProviderStability = 'stable' | 'experimental';
 
-export const DEFAULT_PROVIDER_ID: TranslationProviderId = 'opus-mt';
+export const DEFAULT_PROVIDER_ID: LocalProviderId = 'opus-mt';
 
 export interface ModelInfo {
   id: TranslationProviderId;
@@ -35,12 +35,12 @@ export interface ModelInfo {
   size: string;
   isCloud?: boolean;
   costEstimate?: string;
-   runtimeKind?: ProviderRuntimeKind;
-   deliveryKind?: ProviderDeliveryKind;
-   stability?: ProviderStability;
-   availabilityNote?: string;
-   requiresDownload?: boolean;
-   preferredWhenAvailable?: boolean;
+  runtimeKind?: ProviderRuntimeKind;
+  deliveryKind?: ProviderDeliveryKind;
+  stability?: ProviderStability;
+  availabilityNote?: string;
+  requiresDownload?: boolean;
+  preferredWhenAvailable?: boolean;
 }
 
 export interface ProviderSelectorOption {
@@ -63,9 +63,9 @@ export interface OnboardingModelOption {
   speed: string;
   quality: string;
   recommended: boolean;
-   badge?: string;
-   availabilityNote?: string;
-   stability?: ProviderStability;
+  badge?: string;
+  availabilityNote?: string;
+  stability?: ProviderStability;
 }
 
 export interface BackgroundProviderInfo {
@@ -75,17 +75,17 @@ export interface BackgroundProviderInfo {
   qualityTier: QualityTier;
   description: string;
   icon: string;
-   runtimeKind: ProviderRuntimeKind;
-   stability: ProviderStability;
+  runtimeKind: ProviderRuntimeKind;
+  stability: ProviderStability;
 }
 
 export interface ProviderDefinition {
   type: 'local' | 'cloud';
-   runtimeKind: ProviderRuntimeKind;
-   deliveryKind: ProviderDeliveryKind;
-   stability: ProviderStability;
-   requiresDownload: boolean;
-   preferredWhenAvailable?: boolean;
+  runtimeKind: ProviderRuntimeKind;
+  deliveryKind: ProviderDeliveryKind;
+  stability: ProviderStability;
+  requiresDownload: boolean;
+  preferredWhenAvailable?: boolean;
   statusName: string;
   siteRuleName: string;
   qualityTier: QualityTier;
@@ -192,13 +192,13 @@ const PROVIDER_DEFINITIONS: Record<TranslationProviderId, ProviderDefinition> = 
     onboarding: {
       id: 'chrome-builtin',
       name: 'Chrome Built-in',
-      desc: "Uses Chrome's built-in translation API",
+      desc: 'Uses Chrome native translation when available',
       size: 'No download',
       speed: 'Instant',
       quality: 'Good',
       recommended: false,
-      badge: 'Chrome 138+',
-      availabilityNote: 'Preferred when available. Managed by Chrome rather than the extension.',
+      badge: 'Preferred native',
+      availabilityNote: 'Chrome 138+ only. Managed by Chrome rather than the extension.',
       stability: 'stable',
     },
   },
@@ -375,6 +375,24 @@ const CLOUD_PROVIDER_FORMALITY_ALIASES: Readonly<Record<CloudProviderId, Readonl
   },
 };
 
+const PROVIDER_RUNTIME_LABELS: Record<ProviderRuntimeKind, string> = {
+  wasm: 'WebAssembly runtime',
+  webgpu: 'WebGPU/WebNN runtime',
+  'native-browser': 'Browser-native runtime',
+  'cloud-api': 'Cloud API runtime',
+};
+
+const PROVIDER_DELIVERY_LABELS: Record<ProviderDeliveryKind, string> = {
+  'downloaded-model': 'Extension-managed download',
+  'browser-managed': 'Browser-managed delivery',
+  'cloud-api': 'Network API delivery',
+};
+
+const PROVIDER_STABILITY_LABELS: Record<ProviderStability, string> = {
+  stable: 'Stable',
+  experimental: 'Experimental',
+};
+
 function normalizeAliasedCloudProviderValue(
   providerId: CloudProviderId,
   value: unknown,
@@ -400,6 +418,51 @@ export function normalizeCloudProviderFormalityValue(
   value: unknown
 ): string | undefined {
   return normalizeAliasedCloudProviderValue(providerId, value, CLOUD_PROVIDER_FORMALITY_ALIASES);
+}
+
+export function getProviderModelInfo(providerId: TranslationProviderId): Readonly<ModelInfo> {
+  return PROVIDER_DEFINITIONS[providerId].modelSelector;
+}
+
+export function getProviderRuntimeLabel(runtimeKind: ProviderRuntimeKind): string {
+  return PROVIDER_RUNTIME_LABELS[runtimeKind];
+}
+
+export function getProviderDeliveryLabel(deliveryKind: ProviderDeliveryKind): string {
+  return PROVIDER_DELIVERY_LABELS[deliveryKind];
+}
+
+export function getProviderStabilityLabel(stability: ProviderStability): string {
+  return PROVIDER_STABILITY_LABELS[stability];
+}
+
+export function getPreferredLocalProvider(options: { browserNativeAvailable?: boolean } = {}): LocalProviderId {
+  return options.browserNativeAvailable ? 'chrome-builtin' : DEFAULT_PROVIDER_ID;
+}
+
+export function resolveProviderFromModelId(
+  modelId: string | null | undefined
+): TranslationProviderId | null {
+  if (!modelId) {
+    return null;
+  }
+
+  if (isTranslationProviderId(modelId)) {
+    return modelId;
+  }
+
+  const normalized = modelId.toLowerCase();
+  if (normalized.includes('opus-mt')) {
+    return 'opus-mt';
+  }
+  if (normalized.includes('gemma')) {
+    return 'translategemma';
+  }
+  if (normalized.includes('chrome') && normalized.includes('builtin')) {
+    return 'chrome-builtin';
+  }
+
+  return null;
 }
 
 export const MODEL_SELECTOR_OFFLINE_MODELS: ModelInfo[] = OFFLINE_PROVIDER_IDS.map(

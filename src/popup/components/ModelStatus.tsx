@@ -1,4 +1,5 @@
 import { Component, Show } from 'solid-js';
+import { getProviderModelInfo, resolveProviderFromModelId } from '../../shared/provider-options';
 
 interface Props {
   isLoading: boolean;
@@ -11,8 +12,14 @@ interface Props {
 // Extract short model name from full ID (e.g., "Xenova/opus-mt-en-fi" -> "en-fi")
 function getShortModelName(modelId: string | null): string {
   if (!modelId) return 'Model';
-  const match = modelId.match(/opus-mt-(.+)$/);
-  return match ? match[1].toUpperCase() : modelId;
+
+  const providerId = resolveProviderFromModelId(modelId);
+  if (providerId === 'opus-mt') {
+    const match = modelId.match(/opus-mt-(.+)$/);
+    return match ? match[1].toUpperCase() : getProviderModelInfo(providerId).name;
+  }
+
+  return providerId ? getProviderModelInfo(providerId).name : modelId;
 }
 
 // Format file name for display
@@ -26,8 +33,9 @@ function getShortFileName(file: string | null): string {
 }
 
 // Estimate download size for first-time users
-function getEstimatedSize(): string {
-  return '~50-100 MB'; // OPUS-MT models are typically in this range
+function getEstimatedSize(modelId: string | null): string {
+  const providerId = resolveProviderFromModelId(modelId);
+  return providerId ? getProviderModelInfo(providerId).size : 'Size varies';
 }
 
 export const ModelStatus: Component<Props> = (props) => {
@@ -76,7 +84,7 @@ export const ModelStatus: Component<Props> = (props) => {
             </Show>
             <Show when={props.progress === 0}>
               <div class="model-first-time">
-                First-time download: {getEstimatedSize()}
+                First-time download: {getEstimatedSize(props.modelId)}
               </div>
             </Show>
           </div>

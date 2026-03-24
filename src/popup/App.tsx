@@ -13,8 +13,10 @@ import { sleep } from '../core/async-utils';
 import { extractErrorMessage } from '../core/errors';
 import { sendBackgroundMessage, trySendBackgroundMessage } from '../shared/background-message';
 import {
+  DEFAULT_PROVIDER_ID,
   PROVIDER_STATUS_NAMES,
   normalizeTranslationProviderId,
+  resolveProviderFromModelId,
 } from '../shared/provider-options';
 
 const log = createLogger('Popup');
@@ -45,7 +47,7 @@ export default function App() {
   const [sourceLang, setSourceLangInternal] = createSignal('auto');
   const [targetLang, setTargetLangInternal] = createSignal(getBrowserLanguage());
   const [strategy, setStrategyInternal] = createSignal<Strategy>('smart');
-  const [activeProvider, setActiveProvider] = createSignal<TranslationProviderId>('opus-mt');
+  const [activeProvider, setActiveProvider] = createSignal<TranslationProviderId>(DEFAULT_PROVIDER_ID);
   const [providerStatus, setProviderStatus] = createSignal<'ready' | 'loading' | 'error'>('ready');
 
   const providerName = () => PROVIDER_STATUS_NAMES[activeProvider()] ?? activeProvider();
@@ -99,13 +101,6 @@ export default function App() {
     safeStorageSet({ strategy: s });
   };
 
-  // Determine provider from model ID (e.g., "Xenova/opus-mt-en-fi" -> "opus-mt")
-  const getProviderFromModelId = (modelId: string): TranslationProviderId | null => {
-    if (modelId.includes('opus-mt')) return 'opus-mt';
-    if (modelId.includes('gemma') || modelId.includes('translategemma')) return 'translategemma';
-    return null;
-  };
-
   // Update per-model download status
   const updateModelStatus = (
     providerId: TranslationProviderId,
@@ -125,7 +120,7 @@ export default function App() {
     setCurrentModelId(message.modelId);
 
     // Determine which provider this model belongs to
-    const providerId = getProviderFromModelId(message.modelId);
+    const providerId = resolveProviderFromModelId(message.modelId);
 
     switch (message.status) {
       case 'initiate':
@@ -286,8 +281,8 @@ export default function App() {
         });
         // Auto-switch away from TranslateGemma if it was saved from a previous session
         if (activeProvider() === 'translategemma') {
-          log.info('TranslateGemma acceleration unavailable, switching to OPUS-MT');
-          handleProviderChange('opus-mt');
+          log.info(`TranslateGemma acceleration unavailable, switching to ${DEFAULT_PROVIDER_ID}`);
+          handleProviderChange(DEFAULT_PROVIDER_ID);
           setError('TranslateGemma requires WebGPU or WebNN. Switched to OPUS-MT.');
           setTimeout(() => clearError(), 8000);
         }

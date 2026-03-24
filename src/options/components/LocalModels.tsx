@@ -1,28 +1,32 @@
 /**
- * Offline Translation Section
- * Downloaded model list, storage usage, and browser-managed translation notes
+ * Local translation runtimes section.
+ * Shows the extension-managed download inventory plus browser-managed runtime notes.
  */
 
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import { createLogger } from '../../core/logger';
 import { safeStorageGet } from '../../core/storage';
 import { trySendBackgroundMessage } from '../../shared/background-message';
+import { normalizeDownloadedModelRecords } from '../../shared/downloaded-models';
 import { formatBytes, formatDate } from '../../shared/format-utils';
+import {
+  MODEL_SELECTOR_OFFLINE_MODELS,
+  getProviderDeliveryLabel,
+  getProviderRuntimeLabel,
+  getProviderStabilityLabel,
+  resolveProviderFromModelId,
+} from '../../shared/provider-options';
+import type { DownloadedModelRecord } from '../../types';
 
 const log = createLogger('LocalModels');
-
-interface ModelInfo {
-  id: string;
-  name: string;
-  size: number;
-  lastUsed?: number;
-}
 
 interface StorageStats {
   totalUsed: number;
   quota: number;
-  models: ModelInfo[];
+  models: DownloadedModelRecord[];
 }
+
+type InventorySource = 'background' | 'storage-fallback';
 
 export const LocalModels: Component = () => {
   const [loading, setLoading] = createSignal(true);
@@ -32,6 +36,7 @@ export const LocalModels: Component = () => {
     models: [],
   });
   const [deleting, setDeleting] = createSignal<string | null>(null);
+  const [inventorySource, setInventorySource] = createSignal<InventorySource>('background');
 
   onMount(async () => {
     await loadModelStats();
@@ -50,29 +55,31 @@ export const LocalModels: Component = () => {
       }
 
       // Get cached model info from storage
-      const stored = await safeStorageGet<{ downloadedModels?: ModelInfo[] }>(['downloadedModels']);
-      const models: ModelInfo[] = stored.downloadedModels || [];
+      const stored = await safeStorageGet<{ downloadedModels?: unknown[] }>(['downloadedModels']);
+      const fallbackModels = normalizeDownloadedModelRecords(stored.downloadedModels);
 
       // Try to get model list from background
-      const response = await trySendBackgroundMessage<{ models?: ModelInfo[] }>({
+      const response = await trySendBackgroundMessage<{ models?: DownloadedModelRecord[] }>({
         type: 'getDownloadedModels',
       });
-      if (response?.models) {
+      if (response && Array.isArray(response.models)) {
+        setInventorySource('background');
         setStats({
           totalUsed: estimate.usage || 0,
           /* v8 ignore start */
           quota: estimate.quota || 0,
           /* v8 ignore stop */
-          models: response.models,
+          models: normalizeDownloadedModelRecords(response.models),
         });
         setLoading(false);
         return;
       }
 
+      setInventorySource('storage-fallback');
       setStats({
         totalUsed: estimate.usage || 0,
         quota: estimate.quota || 0,
-        models,
+        models: fallbackModels,
       });
     } catch (error) {
       log.error('Failed to load stats:', error);
@@ -162,12 +169,24 @@ export const LocalModels: Component = () => {
     return Math.min(100, (s.totalUsed / s.quota) * 100);
   };
 
+  const formatTrackedSize = (size: number) => (size > 0 ? formatBytes(size) : 'Size unavailable');
+
+  const getInventoryNote = () =>
+    inventorySource() === 'background'
+      ? 'This is the extension-managed download inventory. Chrome Built-in stays outside this list because Chrome manages that runtime separately.'
+      : 'Background inventory was unavailable, so this list is using the last extension-managed storage snapshot and may lag behind current caches.';
+
+  const getRuntimeMeta = (modelId: string) => {
+    const providerId = resolveProviderFromModelId(modelId);
+    return providerId ? MODEL_SELECTOR_OFFLINE_MODELS.find((model) => model.id === providerId) : undefined;
+  };
+
   return (
     <div>
-      <h2 class="section-title" style={{ "margin-bottom": "0.5rem" }}>Offline Translation</h2>
+      <h2 class="section-title" style={{ "margin-bottom": "0.5rem" }}>Local Translation Runtimes</h2>
       <p class="section-description">
-        Manage downloaded offline models and review how browser-managed translation works.
-        Chrome Built-in translation does not download into this list because Chrome manages it separately.
+        Review extension-managed model downloads and the browser-native or local runtimes the
+        extension can use.
       </p>
 
       <Show when={loading()}>
@@ -184,7 +203,7 @@ export const LocalModels: Component = () => {
           <div class="section-header">
             <div>
               <h3 class="section-title">Storage Usage</h3>
-              <p class="section-subtitle">Extension-managed storage used by downloaded models</p>
+              <p class="section-subtitle">Browser storage used by extension-managed model downloads and caches</p>
             </div>
           </div>
 
@@ -211,7 +230,10 @@ export const LocalModels: Component = () => {
         {/* Downloaded Models */}
         <section class="settings-section">
           <div class="section-header">
-            <h3 class="section-title">Downloaded Models</h3>
+            <div>
+              <h3 class="section-title">Downloaded Models</h3>
+              <p class="section-subtitle">{getInventoryNote()}</p>
+            </div>
           </div>
 
           <Show
@@ -235,12 +257,23 @@ export const LocalModels: Component = () => {
                   <div class="model-info">
                     <div class="model-name">{model.name || model.id}</div>
                     <div class="model-size">
-                      {formatBytes(model.size)}
+                      {formatTrackedSize(model.size)}
                       <Show when={model.lastUsed}>
                         {' | Last used: '}
                         {formatDate(model.lastUsed!)}
                       </Show>
                     </div>
+                    <Show when={getRuntimeMeta(model.id)}>
+                      {(runtime) => (
+                        <div class="model-size">
+                          {runtime().name}
+                          {' | '}
+                          {getProviderStabilityLabel(runtime().stability!)}
+                          {' | '}
+                          {getProviderRuntimeLabel(runtime().runtimeKind!)}
+                        </div>
+                      )}
+                    </Show>
                   </div>
                   <div class="model-actions">
                     <button
@@ -257,29 +290,34 @@ export const LocalModels: Component = () => {
           </Show>
         </section>
 
-        {/* Info */}
+        {/* Runtime overview */}
         <section class="settings-section">
-            <div class="section-header">
-            <h3 class="section-title">About Offline Translation</h3>
+          <div class="section-header">
+            <h3 class="section-title">Runtime Overview</h3>
           </div>
-          <div style={{ "font-size": "0.875rem", color: "var(--color-gray-600)" }}>
-            <p style={{ "margin-bottom": "0.75rem" }}>
-              <strong>OPUS-MT Models</strong> (~170MB per language pair): Helsinki-NLP translation models.
-              This is the stable downloaded baseline and works without GPU acceleration.
-            </p>
-            <p style={{ "margin-bottom": "0.75rem" }}>
-              <strong>TranslateGemma</strong> (~3.6GB): experimental high-quality translation in a single model.
-              Requires WebGPU or WebNN acceleration.
-            </p>
-            <p>
-              <strong>Chrome Built-in</strong> uses the browser translator in Chrome 138+ and does not
-              require a local model download, so it does not appear in this list.
-            </p>
-            <p>
-              Downloaded models are best-effort tracked from extension metadata and browser caches.
-              Browser-managed translation may still work even when no downloaded models appear here.
-            </p>
-          </div>
+          <For each={MODEL_SELECTOR_OFFLINE_MODELS}>
+            {(runtime) => (
+              <div class="model-card">
+                <div class="model-info">
+                  <div class="model-name">{runtime.name}</div>
+                  <div class="model-size">
+                    {getProviderStabilityLabel(runtime.stability!)}
+                    {' | '}
+                    {getProviderRuntimeLabel(runtime.runtimeKind!)}
+                    {' | '}
+                    {getProviderDeliveryLabel(runtime.deliveryKind!)}
+                  </div>
+                  <div class="model-size">{runtime.description}</div>
+                  <Show when={runtime.availabilityNote}>
+                    <div class="model-size">{runtime.availabilityNote}</div>
+                  </Show>
+                </div>
+                <div class="model-actions">
+                  <span class="model-size">{runtime.size}</span>
+                </div>
+              </div>
+            )}
+          </For>
         </section>
       </Show>
     </div>

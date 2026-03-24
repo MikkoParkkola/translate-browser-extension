@@ -65,7 +65,7 @@ describe('OnboardingApp', () => {
     render(() => <OnboardingApp />);
     await flush();
     expect(screen.getByText('Local AI translation - your data stays private')).toBeTruthy();
-    expect(screen.getByText('Works offline after initial setup')).toBeTruthy();
+    expect(screen.getByText('Supports offline translation after local model setup')).toBeTruthy();
     expect(screen.getByText('Hover to translate any word')).toBeTruthy();
     expect(screen.getByText('One-click full page translation')).toBeTruthy();
   });
@@ -122,7 +122,7 @@ describe('OnboardingApp', () => {
     expect(screen.getByText('Chrome Built-in')).toBeTruthy();
     expect(screen.getByText('DeepL API')).toBeTruthy();
     expect(screen.getByText('Recommended')).toBeTruthy();
-    expect(screen.getByText('Chrome 138+')).toBeTruthy();
+    expect(screen.getByText('Preferred native')).toBeTruthy();
     expect(screen.getByText('API key')).toBeTruthy();
   });
 

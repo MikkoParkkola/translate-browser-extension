@@ -174,6 +174,13 @@ export interface CloudProviderUsage {
   limitReached: boolean;
 }
 
+export interface DownloadedModelRecord {
+  id: string;
+  name?: string;
+  size: number;
+  lastUsed?: number;
+}
+
 export interface PredictionStats {
   domainCount: number;
   totalTranslations: number;
@@ -546,7 +553,7 @@ export interface ExtensionMessageResponseMap {
   importCorrections: MessageResponse<{ importedCount: number }>;
   ocrImage: MessageResponse<{ text?: string; confidence?: number; blocks?: OCRBlock[] }>;
   captureScreenshot: MessageResponse<{ imageData: string }>;
-  getDownloadedModels: MessageResponse<{ models: unknown[] }>;
+  getDownloadedModels: MessageResponse<{ models: DownloadedModelRecord[] }>;
   deleteModel: MessageResponse;
   clearAllModels: MessageResponse;
   getSettings: MessageResponse<{ data: ExtensionSettingsData }>;

@@ -15,7 +15,7 @@ import type {
   ExtensionMessage, ExtensionMessageResponse, TranslateResponse, Strategy, TranslationProviderId, ContentCommand,
   PreloadModelMessage, RecordLanguageDetectionMessage,
   GetCloudProviderUsageMessage, OCRImageMessage, CaptureScreenshotMessage,
-  DeleteModelMessage, MessageResponse,
+  DeleteModelMessage, DownloadedModelRecord, MessageResponse,
 } from '../types';
 import {
   createTranslationError,
@@ -34,7 +34,8 @@ import { CONFIG } from '../config';
 import { profiler, type AggregateStats } from '../core/profiler';
 import { sleep } from '../core/async-utils';
 import { splitIntoSentences } from '../core/text-utils';
-import { normalizeTranslationProviderId } from '../shared/provider-options';
+import { normalizeDownloadedModelRecords } from '../shared/downloaded-models';
+import { DEFAULT_PROVIDER_ID, normalizeTranslationProviderId } from '../shared/provider-options';
 import {
   assertNever,
   isExtensionMessage,
@@ -725,7 +726,10 @@ async function handleMessage(message: ServiceWorkerHandledMessage): Promise<Serv
       return handleCaptureScreenshot(message);
     case 'getDownloadedModels': {
       const stored = await safeStorageGet<{ downloadedModels?: unknown[] }>(['downloadedModels']);
-      return { success: true, models: stored.downloadedModels || [] };
+      const models: DownloadedModelRecord[] = normalizeDownloadedModelRecords(
+        stored.downloadedModels
+      );
+      return { success: true, models };
     }
     case 'deleteModel':
       return handleDeleteModel(message);
@@ -857,8 +861,10 @@ async function handleDeleteModel(message: DeleteModelMessage): Promise<MessageRe
   try {
     await tryClearOffscreenPipelineCache();
 
-    const stored = await browserAPI.storage.local.get(['downloadedModels']) as { downloadedModels?: Array<{ id: string }> };
-    const models: Array<{ id: string }> = stored.downloadedModels || [];
+    const stored = await browserAPI.storage.local.get(['downloadedModels']) as {
+      downloadedModels?: unknown[];
+    };
+    const models = normalizeDownloadedModelRecords(stored.downloadedModels);
     const filtered = models.filter((m) => m.id !== modelId);
     await browserAPI.storage.local.set({ downloadedModels: filtered });
 
@@ -1695,7 +1701,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
         sourceLang: 'auto',
         targetLang: browserLang || 'en',
         strategy: 'smart',
-        provider: 'opus-mt',
+        provider: DEFAULT_PROVIDER_ID,
       });
     } catch (error) {
       log.error('Failed to persist install defaults:', error);
@@ -1750,12 +1756,12 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     setProvider(restoredProvider);
     log.info('Restored provider:', getProvider());
   } else {
-    log.info('No stored provider found, using default opus-mt');
+    log.info(`No stored provider found, using default ${DEFAULT_PROVIDER_ID}`);
   }
 
   // Auto-detect Chrome Built-in Translator
   try {
-    if (getProvider() === 'opus-mt') {
+    if (getProvider() === DEFAULT_PROVIDER_ID) {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       const tabId = tabs[0]?.id;
       if (tabId) {

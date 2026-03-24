@@ -21,17 +21,17 @@ Built-in browser translation (Chrome, Safari, Firefox) works well for many pages
 
 **You use Safari or iOS.** Safari has Apple's own translation (added in Safari 15 / macOS Monterey), but it supports fewer languages and isn't available on all pages. On iOS, options are even more limited. TRANSLATE! works across Chrome, Safari, Firefox, Edge, and Brave with the same feature set.
 
-**You work with less common languages.** Translation quality for major pairs like English-Spanish or English-French is good across most services. For less common pairs -- Finnish-Thai, Estonian-Korean, Latvian-Vietnamese -- quality varies significantly between providers. TRANSLATE! lets you route through whichever provider handles your language pair best, whether that's DeepL, a specialized LLM, or a dedicated translation API like Qwen-MT.
+**You work with less common languages.** Translation quality for major pairs like English-Spanish or English-French is good across most services. For less common pairs -- Finnish-Thai, Estonian-Korean, Latvian-Vietnamese -- quality varies significantly between providers. TRANSLATE! lets you route through whichever supported path handles your language pair best, whether that's Chrome Built-in, OPUS-MT, DeepL, or a configured cloud provider.
 
 **Pages with mixed languages don't translate correctly.** When a page contains text in multiple languages (e.g., a German forum on an English-tagged site), built-in translation often either skips it entirely or translates everything as if it were one language. TRANSLATE! detects language per text node using trigram analysis.
 
-**You want control over where your text goes.** Built-in translation sends your page text to Google (Chrome), Apple (Safari), or Mozilla's servers (Firefox). TRANSLATE! lets you choose: use your own API keys with any provider, run OPUS-MT models locally in the browser via WebAssembly, or self-host with Ollama. Your text, your choice.
+**You want control over where your text goes.** Built-in translation sends your page text to Google (Chrome), Apple (Safari), or Mozilla's servers (Firefox). TRANSLATE! lets you choose: use Chrome Built-in when available, use your own API keys with supported cloud providers, or run OPUS-MT locally in the browser via WebAssembly. Your text, your choice.
 
 ## What it does
 
 - **Full-page translation** -- translates visible text on a page, including dynamically loaded content and iframes. A MutationObserver watches for DOM changes so content added after page load is caught.
 - **PDF translation** -- built-in PDF viewer with layout-preserving translation. Supports provider document APIs (Google Cloud, DeepL) and a local WASM pipeline. Save translated PDFs.
-- **10 translation providers** -- DashScope (Qwen-MT), OpenAI, Anthropic, Mistral, Gemini, DeepL, Google Cloud, OpenRouter, Ollama, and in-browser OPUS-MT. Switch on the fly.
+- **7 shipping translation providers** -- Chrome Built-in, OPUS-MT, TranslateGemma (experimental), DeepL, OpenAI, Anthropic, and Google Cloud. Switch on the fly between the available native, local, and cloud paths.
 - **Failover and load balancing** -- if your primary provider hits a rate limit or fails, requests automatically route to the next provider in your chain.
 - **Smart batching and caching** -- identical strings translated once and reused. Hidden elements skipped. Session cache minimizes repeat API calls.
 - **Auto-translate** -- optionally translate pages on load.
@@ -44,7 +44,7 @@ Built-in browser translation (Chrome, Safari, Firefox) works well for many pages
 TRANSLATE! is not a drop-in replacement for built-in translation in every scenario:
 
 - **Setup required.** Most providers need an API key. Built-in translation works with zero configuration.
-- **API costs.** Providers charge per character or token. Built-in translation is free. (The local OPUS-MT option is free but lower quality for most pairs.)
+- **API costs.** Cloud providers charge per character or token. Chrome Built-in and OPUS-MT avoid per-request API billing, but OPUS-MT usually has lower quality than the best cloud pairs.
 - **Not instant.** Built-in translation is tightly integrated with the browser engine. TRANSLATE! works as a content script, which means a short delay on large pages.
 
 If built-in translation works reliably for your languages and pages, you probably don't need this. TRANSLATE! is for the cases where it doesn't.

@@ -93,7 +93,7 @@ describe('ModelStatus', () => {
         <ModelStatus {...baseProps} isLoading={true} progress={0} modelId="Xenova/opus-mt-en-fi" />
       ));
       expect(screen.getByText(/First-time download/)).toBeInTheDocument();
-      expect(screen.getByText(/~50-100 MB/)).toBeInTheDocument();
+      expect(screen.getByText(/~170MB/)).toBeInTheDocument();
     });
 
     it('does not show estimated size when progress > 0', () => {
@@ -188,6 +188,13 @@ describe('ModelStatus', () => {
       <ModelStatus {...baseProps} isCached={true} modelId="some-other-model" />
     ));
     expect(screen.getByText('some-other-model ready')).toBeInTheDocument();
+  });
+
+  it('shows TranslateGemma name for recognized gemma model ids', () => {
+    render(() => (
+      <ModelStatus {...baseProps} isCached={true} modelId="google/translategemma-2b-it" />
+    ));
+    expect(screen.getByText('TranslateGemma ready')).toBeInTheDocument();
   });
 
   it('shows file info with simple filename (no slashes)', () => {

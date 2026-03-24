@@ -3137,9 +3137,13 @@ describe('Service Worker Additional Coverage', () => {
       }) as { success: boolean };
 
       expect(response.success).toBe(true);
-      expect(vi.mocked(chrome.storage.local.set)).toHaveBeenCalledWith({
-        downloadedModels: [{ id: 'model-2' }],
-      });
+      expect(vi.mocked(chrome.storage.local.set)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          downloadedModels: expect.arrayContaining([
+            expect.objectContaining({ id: 'model-2' }),
+          ]),
+        })
+      );
     });
 
     it('handles clearAllModels message', async () => {
@@ -4899,7 +4903,10 @@ describe('Advanced Coverage Push to 90%+', () => {
       });
 
       expect(response.success).toBe(true);
-      expect(response.models).toEqual(['opus-mt-en-es', 'opus-mt-en-fr']);
+      expect(response.models).toEqual([
+        { id: 'opus-mt-en-es', size: 0 },
+        { id: 'opus-mt-en-fr', size: 0 },
+      ]);
     });
 
     it('handles empty downloaded models list', async () => {
