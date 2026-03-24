@@ -6,35 +6,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { installChromeStorageMock } from '../__contract__/shared-provider-mocks';
 import { DeepLProvider } from './deepl';
 
-// Mock chrome.storage
-const mockStorage: Record<string, unknown> = {};
-vi.stubGlobal('chrome', {
-  storage: {
-    local: {
-      get: vi.fn((keys: string[]) => {
-        const result: Record<string, unknown> = {};
-        for (const key of keys) {
-          if (mockStorage[key] !== undefined) {
-            result[key] = mockStorage[key];
-          }
-        }
-        return Promise.resolve(result);
-      }),
-      set: vi.fn((items: Record<string, unknown>) => {
-        Object.assign(mockStorage, items);
-        return Promise.resolve();
-      }),
-      remove: vi.fn((keys: string[]) => {
-        for (const key of keys) {
-          delete mockStorage[key];
-        }
-        return Promise.resolve();
-      }),
-    },
-  },
-});
+const { mockStorage, resetStorage } = installChromeStorageMock();
 
 // Mock fetch
 const mockFetch = vi.fn();
@@ -60,7 +35,7 @@ describe('DeepLProvider', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
+    resetStorage();
     provider = new DeepLProvider();
   });
 

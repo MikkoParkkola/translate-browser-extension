@@ -12,6 +12,7 @@ import { fetchProviderJson, estimateMaxTokens, generateAllLanguagePairs, parseBa
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
 import { validateOpenAIStoredConfig } from '../background/shared/config-validation';
+import { OPENAI_MODEL_VALUES } from '../shared/cloud-provider-configs';
 
 const OPENAI_API = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_STORAGE_KEYS = [
@@ -23,7 +24,7 @@ const OPENAI_STORAGE_KEYS = [
 ] as const;
 
 export type OpenAIFormality = 'formal' | 'informal' | 'neutral';
-export type OpenAIModel = 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4-turbo' | 'gpt-3.5-turbo';
+export type OpenAIModel = (typeof OPENAI_MODEL_VALUES)[number];
 
 export interface OpenAIConfig {
   apiKey: string;
