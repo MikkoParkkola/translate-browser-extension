@@ -10,6 +10,8 @@ import { getLanguageName } from '../core/language-map';
 import { CONFIG } from '../config';
 import { fetchProviderJson, estimateMaxTokens, generateAllLanguagePairs, parseBatchResponse } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
+import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
+import { validateOpenAIStoredConfig } from '../background/shared/config-validation';
 
 const OPENAI_API = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_STORAGE_KEYS = [
@@ -64,17 +66,21 @@ export class OpenAIProvider extends CloudProvider {
     return [...OPENAI_STORAGE_KEYS];
   }
 
-  protected applyStoredConfig(stored: Record<string, unknown>): void {
-    if (stored.openai_api_key) {
-      this.config = {
-        apiKey: stored.openai_api_key as string,
-        model: (stored.openai_model as OpenAIModel) ?? 'gpt-4o-mini',
-        formality: (stored.openai_formality as OpenAIFormality) ?? 'neutral',
-        temperature: (stored.openai_temperature as number) ?? 0.3,
-      };
-      this.totalTokensUsed = (stored.openai_tokens_used as number) ?? 0;
-      this.log.info('Initialized with model:', this.config.model);
+  protected applyStoredConfig(stored: CloudProviderStorageRecord): void {
+    const config = validateOpenAIStoredConfig(stored);
+    if (!config) {
+      this.resetConfig();
+      return;
     }
+
+    this.config = {
+      apiKey: config.apiKey,
+      model: config.model,
+      formality: config.formality,
+      temperature: config.temperature,
+    };
+    this.totalTokensUsed = config.tokensUsed;
+    this.log.info('Initialized with model:', this.config.model);
   }
 
   protected hasConfig(): boolean {
@@ -83,6 +89,7 @@ export class OpenAIProvider extends CloudProvider {
 
   protected resetConfig(): void {
     this.config = null;
+    this.totalTokensUsed = 0;
   }
 
   /**

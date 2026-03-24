@@ -14,6 +14,10 @@ import { BaseProvider } from './base-provider';
 import { safeStorageGet, safeStorageRemove, safeStorageSet } from '../core/storage';
 import { createLogger } from '../core/logger';
 import type { ProviderConfig } from '../types';
+import type {
+  CloudProviderStorageMutation,
+  CloudProviderStorageRecord,
+} from '../background/shared/provider-config-types';
 
 export abstract class CloudProvider extends BaseProvider {
   protected readonly log = createLogger(this.name);
@@ -28,7 +32,7 @@ export abstract class CloudProvider extends BaseProvider {
    * Populate this provider's internal config from the values loaded from storage.
    * Called with a partial record — check for key presence before using values.
    */
-  protected abstract applyStoredConfig(stored: Record<string, unknown>): void;
+  protected abstract applyStoredConfig(stored: CloudProviderStorageRecord): void;
 
   /**
    * Return true if the provider has a valid configuration (API key loaded).
@@ -43,8 +47,8 @@ export abstract class CloudProvider extends BaseProvider {
 
   async initialize(): Promise<void> {
     try {
-      const stored = await safeStorageGet<Record<string, unknown>>(this.getStorageKeys());
-      this.applyStoredConfig(stored as Record<string, unknown>);
+      const stored = await safeStorageGet<CloudProviderStorageRecord>(this.getStorageKeys());
+      this.applyStoredConfig(stored);
     } catch (error) {
       this.log.error('Failed to load config:', error);
     }
@@ -66,14 +70,14 @@ export abstract class CloudProvider extends BaseProvider {
    * Persist one or more config values to storage.
    * Thin wrapper so subclasses don't need to import safeStorageSet directly.
    */
-  protected persist(items: Record<string, unknown>): Promise<boolean> {
+  protected persist(items: CloudProviderStorageMutation): Promise<boolean> {
     return safeStorageSet(items);
   }
 
   /**
    * Best-effort persistence for counters/telemetry that must not fail the request path.
    */
-  protected persistBestEffort(items: Record<string, unknown>, failureMessage: string): void {
+  protected persistBestEffort(items: CloudProviderStorageMutation, failureMessage: string): void {
     /* v8 ignore start -- fire-and-forget persist */
     void this.persist(items).catch((error) => this.log.warn(failureMessage, error));
     /* v8 ignore stop */

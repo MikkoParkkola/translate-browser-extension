@@ -10,6 +10,8 @@ import { getLanguageName } from '../core/language-map';
 import { CONFIG } from '../config';
 import { fetchProviderJson, estimateMaxTokens, generateAllLanguagePairs, parseBatchResponse } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
+import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
+import { validateAnthropicStoredConfig } from '../background/shared/config-validation';
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_STORAGE_KEYS = [
@@ -63,16 +65,20 @@ export class AnthropicProvider extends CloudProvider {
     return [...ANTHROPIC_STORAGE_KEYS];
   }
 
-  protected applyStoredConfig(stored: Record<string, unknown>): void {
-    if (stored.anthropic_api_key) {
-      this.config = {
-        apiKey: stored.anthropic_api_key as string,
-        model: (stored.anthropic_model as ClaudeModel) ?? 'claude-3-5-haiku-20241022',
-        formality: (stored.anthropic_formality as ClaudeFormality) ?? 'neutral',
-      };
-      this.totalTokensUsed = (stored.anthropic_tokens_used as number) ?? 0;
-      this.log.info('Initialized with model:', this.config.model);
+  protected applyStoredConfig(stored: CloudProviderStorageRecord): void {
+    const config = validateAnthropicStoredConfig(stored);
+    if (!config) {
+      this.resetConfig();
+      return;
     }
+
+    this.config = {
+      apiKey: config.apiKey,
+      model: config.model,
+      formality: config.formality,
+    };
+    this.totalTokensUsed = config.tokensUsed;
+    this.log.info('Initialized with model:', this.config.model);
   }
 
   protected hasConfig(): boolean {
@@ -81,6 +87,7 @@ export class AnthropicProvider extends CloudProvider {
 
   protected resetConfig(): void {
     this.config = null;
+    this.totalTokensUsed = 0;
   }
 
   /** Store API key in storage */

@@ -10,6 +10,8 @@ import { fetchProviderJson } from './provider-utils';
 import { toDeepLCode, getDeepLSupportedLanguages } from '../core/language-map';
 import { CONFIG } from '../config';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
+import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
+import { validateDeepLStoredConfig } from '../background/shared/config-validation';
 
 // DeepL API endpoints
 const DEEPL_FREE_API = 'https://api-free.deepl.com/v2';
@@ -59,15 +61,19 @@ export class DeepLProvider extends CloudProvider {
     return [...DEEPL_STORAGE_KEYS];
   }
 
-  protected applyStoredConfig(stored: Record<string, unknown>): void {
-    if (stored.deepl_api_key) {
-      this.config = {
-        apiKey: stored.deepl_api_key as string,
-        isPro: (stored.deepl_is_pro as boolean) ?? false,
-        formality: (stored.deepl_formality as DeepLFormality) ?? 'default',
-      };
-      this.log.info('Initialized with', this.config.isPro ? 'Pro' : 'Free', 'tier');
+  protected applyStoredConfig(stored: CloudProviderStorageRecord): void {
+    const config = validateDeepLStoredConfig(stored);
+    if (!config) {
+      this.resetConfig();
+      return;
     }
+
+    this.config = {
+      apiKey: config.apiKey,
+      isPro: config.isPro,
+      formality: config.formality,
+    };
+    this.log.info('Initialized with', this.config.isPro ? 'Pro' : 'Free', 'tier');
   }
 
   protected hasConfig(): boolean {
