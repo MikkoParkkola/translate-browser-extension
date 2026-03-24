@@ -1,5 +1,9 @@
 import type { Setter } from 'solid-js';
 import { sendMessage } from '../core/browser-api';
+import type {
+  BackgroundRequestMessage,
+  ExtensionMessageResponse,
+} from '../types';
 import { reportUiError, type ErrorLogger } from './ui-feedback';
 
 export interface BackgroundMessageOptions {
@@ -13,27 +17,47 @@ export interface BackgroundMessageUiErrorOptions extends BackgroundMessageOption
   logMessage: string;
 }
 
-export async function sendBackgroundMessage<TResponse = unknown>(message: unknown): Promise<TResponse> {
-  return sendMessage<TResponse>(message);
+export function sendBackgroundMessage<TMessage extends BackgroundRequestMessage>(
+  message: TMessage
+): Promise<ExtensionMessageResponse<TMessage>>;
+export function sendBackgroundMessage<TResponse = unknown>(message: unknown): Promise<TResponse>;
+export async function sendBackgroundMessage(message: unknown): Promise<unknown> {
+  return sendMessage(message);
 }
 
-export async function trySendBackgroundMessage<TResponse = unknown>(
+export function trySendBackgroundMessage<TMessage extends BackgroundRequestMessage>(
+  message: TMessage,
+  options?: BackgroundMessageOptions
+): Promise<ExtensionMessageResponse<TMessage> | undefined>;
+export function trySendBackgroundMessage<TResponse = unknown>(
+  message: unknown,
+  options?: BackgroundMessageOptions
+): Promise<TResponse | undefined>;
+export async function trySendBackgroundMessage(
   message: unknown,
   options: BackgroundMessageOptions = {}
-): Promise<TResponse | undefined> {
+): Promise<unknown | undefined> {
   try {
-    return await sendBackgroundMessage<TResponse>(message);
+    return await sendBackgroundMessage(message);
   } catch (error) {
     options.onError?.(error);
     return undefined;
   }
 }
 
-export async function sendBackgroundMessageWithUiError<TResponse = unknown>(
+export function sendBackgroundMessageWithUiError<TMessage extends BackgroundRequestMessage>(
+  message: TMessage,
+  options: BackgroundMessageUiErrorOptions
+): Promise<ExtensionMessageResponse<TMessage> | undefined>;
+export function sendBackgroundMessageWithUiError<TResponse = unknown>(
   message: unknown,
   options: BackgroundMessageUiErrorOptions
-): Promise<TResponse | undefined> {
-  return trySendBackgroundMessage<TResponse>(message, {
+): Promise<TResponse | undefined>;
+export async function sendBackgroundMessageWithUiError(
+  message: unknown,
+  options: BackgroundMessageUiErrorOptions
+): Promise<unknown | undefined> {
+  return trySendBackgroundMessage(message, {
     onError: (error) => {
       reportUiError(options.setError, options.logger, options.userMessage, options.logMessage, error);
       options.onError?.(error);

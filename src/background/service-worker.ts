@@ -10,7 +10,9 @@
  */
 
 import type {
-  ExtensionMessage, TranslateResponse, Strategy, TranslationProviderId, ContentCommand,
+  BackgroundRequestMessage,
+  BackgroundRequestMessageType,
+  ExtensionMessage, ExtensionMessageResponse, TranslateResponse, Strategy, TranslationProviderId, ContentCommand,
   PreloadModelMessage, RecordLanguageDetectionMessage,
   GetCloudProviderUsageMessage, OCRImageMessage, CaptureScreenshotMessage,
   DeleteModelMessage, MessageResponse,
@@ -643,12 +645,14 @@ const SERVICE_WORKER_MESSAGE_TYPES = [
   'deleteModel',
   'clearAllModels',
   'getSettings',
-] as const satisfies readonly ExtensionMessage['type'][];
+] as const satisfies readonly BackgroundRequestMessageType[];
 
 type ServiceWorkerHandledMessage = Extract<
-  ExtensionMessage,
+  BackgroundRequestMessage,
   { type: (typeof SERVICE_WORKER_MESSAGE_TYPES)[number] }
 >;
+
+type ServiceWorkerHandledResponse = ExtensionMessageResponse<ServiceWorkerHandledMessage>;
 
 function isServiceWorkerHandledMessage(
   message: ExtensionMessage
@@ -656,7 +660,7 @@ function isServiceWorkerHandledMessage(
   return isHandledExtensionMessage(message, SERVICE_WORKER_MESSAGE_TYPES);
 }
 
-async function handleMessage(message: ServiceWorkerHandledMessage): Promise<unknown> {
+async function handleMessage(message: ServiceWorkerHandledMessage): Promise<ServiceWorkerHandledResponse> {
   switch (message.type) {
     case 'ping':
       return { success: true, status: 'ready', provider: getProvider() };

@@ -50,7 +50,7 @@ export const ModelSelector: Component<Props> = (props) => {
   let triggerRef: HTMLButtonElement | undefined;
 
   onMount(async () => {
-    const response = await trySendBackgroundMessage<{ status?: Record<string, boolean> }>({
+    const response = await trySendBackgroundMessage({
       type: 'getCloudProviderStatus',
     });
     /* v8 ignore start -- optional chaining */

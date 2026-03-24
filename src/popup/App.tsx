@@ -230,7 +230,7 @@ export default function App() {
     log.info('Loaded preferences:', { source: stored.sourceLang, target: stored.targetLang });
 
     // Check Chrome Translator API availability (Chrome 138+)
-    const response = await trySendBackgroundMessage<{ available?: boolean }>(
+    const response = await trySendBackgroundMessage(
       { type: 'checkChromeTranslator' },
       {
         onError: (error) => {
@@ -249,7 +249,7 @@ export default function App() {
 
     // Check WebGPU availability (TranslateGemma needs it -- 3.6GB model cannot fit WASM heap)
     {
-      const gpuResponse = await trySendBackgroundMessage<{ supported?: boolean; fp16?: boolean }>(
+      const gpuResponse = await trySendBackgroundMessage(
         { type: 'checkWebGPU' },
         {
           onError: (error) => {

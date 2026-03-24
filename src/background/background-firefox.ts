@@ -8,7 +8,9 @@
 
 import { pipeline, env } from '@huggingface/transformers';
 import type {
-  ExtensionMessage, TranslateResponse, Strategy, TranslationProviderId, TranslationPipeline,
+  BackgroundRequestMessage,
+  BackgroundRequestMessageType,
+  ExtensionMessage, ExtensionMessageResponse, TranslateResponse, Strategy, TranslationProviderId, TranslationPipeline,
   SetProviderMessage, PreloadModelMessage, TranslateMessage, MessageResponse,
 } from '../types';
 import {
@@ -541,18 +543,20 @@ const FIREFOX_MESSAGE_TYPES = [
   'setProvider',
   'getCacheStats',
   'clearCache',
-] as const satisfies readonly ExtensionMessage['type'][];
+] as const satisfies readonly BackgroundRequestMessageType[];
 
 type FirefoxHandledMessage = Extract<
-  ExtensionMessage,
+  BackgroundRequestMessage,
   { type: (typeof FIREFOX_MESSAGE_TYPES)[number] }
 >;
+
+type FirefoxHandledResponse = ExtensionMessageResponse<FirefoxHandledMessage>;
 
 function isFirefoxHandledMessage(message: ExtensionMessage): message is FirefoxHandledMessage {
   return isHandledExtensionMessage(message, FIREFOX_MESSAGE_TYPES);
 }
 
-async function handleMessage(message: FirefoxHandledMessage): Promise<unknown> {
+async function handleMessage(message: FirefoxHandledMessage): Promise<FirefoxHandledResponse> {
   switch (message.type) {
     case 'ping':
       return { success: true, status: 'ready', provider: currentProvider };
@@ -728,13 +732,27 @@ async function handleTranslate(message: TranslateMessage): Promise<TranslateResp
   }
 }
 
-function handleGetUsage(): { throttle: { requests: number; tokens: number; requestLimit: number; tokenLimit: number; queue: number }; cache: DetailedCacheStats; providers: Record<string, never> } {
+function handleGetUsage(): {
+  throttle: {
+    requests: number;
+    tokens: number;
+    requestLimit: number;
+    tokenLimit: number;
+    totalRequests: number;
+    totalTokens: number;
+    queue: number;
+  };
+  cache: DetailedCacheStats;
+  providers: Record<string, never>;
+} {
   return {
     throttle: {
       requests: rateLimit.requests,
       tokens: rateLimit.tokens,
       requestLimit: CONFIG.rateLimits.requestsPerMinute,
       tokenLimit: CONFIG.rateLimits.tokensPerMinute,
+      totalRequests: rateLimit.requests,
+      totalTokens: rateLimit.tokens,
       queue: 0,
     },
     cache: getCacheStats(),

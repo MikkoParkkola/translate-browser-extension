@@ -71,6 +71,10 @@ export interface LanguagePair {
   tgt: string;
 }
 
+export interface SupportedLanguageInfo extends LanguagePair {
+  pivot?: boolean;
+}
+
 // Throttle types
 export interface ThrottleConfig {
   requestLimit: number;
@@ -154,6 +158,41 @@ export interface TranslateResponse {
   cached?: boolean;
   fromCorrection?: boolean;
   profilingReport?: object;
+}
+
+export interface CloudProviderUsage {
+  tokens: number;
+  cost: number;
+  limitReached: boolean;
+}
+
+export interface PredictionStats {
+  domainCount: number;
+  totalTranslations: number;
+  recentTranslations: number;
+  preferredTarget: string;
+  topDomains: Array<{ domain: string; detections: number }>;
+}
+
+export interface OCRBlock {
+  text: string;
+  confidence: number;
+  bbox: { x0: number; y0: number; x1: number; y1: number };
+}
+
+export interface ExtensionSettingsData {
+  sourceLanguage: string;
+  targetLanguage: string;
+  provider: TranslationProviderId;
+  strategy: string;
+}
+
+export interface ProvidersMessagePayload {
+  providers: unknown[];
+  activeProvider: TranslationProviderId;
+  strategy: Strategy;
+  supportedLanguages: SupportedLanguageInfo[];
+  error?: string;
 }
 
 // Model progress types
@@ -446,6 +485,65 @@ export type ExtensionMessage =
   | DeleteModelMessage
   | ClearAllModelsMessage
   | { type: 'getSettings'; target?: string };
+
+export interface ExtensionMessageResponseMap {
+  ping: { success: true; status: 'ready'; provider: TranslationProviderId };
+  translate: TranslateResponse;
+  getUsage: {
+    throttle: ThrottleUsage;
+    cache: DetailedCacheStats;
+    providers: Record<string, unknown>;
+  };
+  getProviders: ProvidersMessagePayload;
+  preloadModel: MessageResponse<{ preloaded?: boolean }>;
+  setProvider: MessageResponse<{ provider: TranslationProviderId }>;
+  getCacheStats: MessageResponse<{ cache: DetailedCacheStats }>;
+  clearCache: { success: boolean; clearedEntries: number };
+  checkChromeTranslator: { success: true; available: boolean };
+  checkWebGPU: { success: true; supported: boolean; fp16: boolean };
+  getPredictionStats: MessageResponse<{ prediction: PredictionStats }>;
+  recordLanguageDetection: MessageResponse;
+  getCloudProviderStatus: { success: boolean; status: Record<string, boolean>; error?: string };
+  setCloudApiKey: { success: boolean; provider?: CloudProviderId; error?: string };
+  clearCloudApiKey: { success: boolean; provider?: CloudProviderId; error?: string };
+  getCloudProviderUsage: MessageResponse<{ usage?: CloudProviderUsage }>;
+  getProfilingStats: MessageResponse<{ aggregates: Record<string, unknown>; formatted: string }>;
+  clearProfilingStats: MessageResponse;
+  getHistory: { success: boolean; history: unknown[]; error?: string };
+  clearHistory: MessageResponse;
+  addCorrection: MessageResponse;
+  getCorrection: MessageResponse<{ correction: string | null; hasCorrection: boolean }>;
+  getAllCorrections: { success: boolean; corrections: unknown[]; error?: string };
+  getCorrectionStats: {
+    success: boolean;
+    stats: { total: number; totalUses: number; topCorrections: unknown[] };
+    error?: string;
+  };
+  clearCorrections: MessageResponse;
+  deleteCorrection: MessageResponse<{ deleted: boolean }>;
+  exportCorrections: { success: boolean; json?: string; error?: string };
+  importCorrections: MessageResponse<{ importedCount: number }>;
+  ocrImage: MessageResponse<{ text?: string; confidence?: number; blocks?: OCRBlock[] }>;
+  captureScreenshot: MessageResponse<{ imageData: string }>;
+  getDownloadedModels: MessageResponse<{ models: unknown[] }>;
+  deleteModel: MessageResponse;
+  clearAllModels: MessageResponse;
+  getSettings: MessageResponse<{ data: ExtensionSettingsData }>;
+}
+
+export type BackgroundRequestMessage = Extract<
+  ExtensionMessage,
+  { type: keyof ExtensionMessageResponseMap }
+>;
+
+export type BackgroundRequestMessageType = BackgroundRequestMessage['type'];
+
+export type ExtensionMessageResponse<TMessage extends BackgroundRequestMessage> =
+  ExtensionMessageResponseMap[TMessage['type']];
+
+export type ExtensionMessageResponseByType<
+  TType extends keyof ExtensionMessageResponseMap,
+> = ExtensionMessageResponseMap[TType];
 
 /**
  * Commands sent FROM the background service worker TO the content script.
