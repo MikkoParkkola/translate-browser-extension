@@ -122,7 +122,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run e2e web smoke
-        run: npm run test:e2e:web
+        run: xvfb-run -a npm run test:e2e:web
 
       - name: Upload Playwright report
         if: always()

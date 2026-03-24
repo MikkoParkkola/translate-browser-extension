@@ -8,7 +8,7 @@
 
 import { test as base } from '@playwright/test';
 import { test, expect, popupUrl } from './fixtures';
-import path from 'path';
+import { gotoMockHarness } from './mock-harness';
 
 // Skip in CI (extensions require headed mode)
 const SKIP_CI = process.env.CI === 'true';
@@ -138,17 +138,15 @@ test.describe('TRANSLATE! Extension E2E', () => {
     await page.close();
   });
 
-  test('test page loads correctly', async ({ context }) => {
+  test('mock harness page loads correctly', async ({ context }) => {
     if (SKIP_CI) test.skip();
 
     const page = await context.newPage();
-    const testPagePath = path.resolve(__dirname, '../test/test-page.html');
-    await page.goto(`file://${testPagePath}`);
+    await gotoMockHarness(page);
 
-    await expect(page).toHaveTitle('Translation Extension Test Page');
+    await expect(page).toHaveTitle('Playwright Mock Harness');
 
-    const content = await page.locator('p').first().textContent();
-    expect(content).toContain('Hello');
+    await expect(page.locator('#mock-root')).toContainText('Mock translation harness');
 
     await page.close();
   });
@@ -180,12 +178,12 @@ If automated tests skip (extension not detected), verify manually:
    - Test strategy selector (Smart/Fast/Quality)
 
 4. TRANSLATION TESTS
-   - Open test/test-page.html in browser
+   - Run: npm run serve:e2e
+   - Open http://127.0.0.1:8080/e2e/mock.html in browser
    - Set: English -> Finnish
    - Click "Translate Page"
-   - First run: Wait for model download (~170MB)
-   - Verify: Text changes to Finnish
-   - Second run: Should be instant (cached model)
+   - Verify: Mock harness page is detected by the extension
+   - Verify: Page translation controls dispatch without popup/runtime errors
 
 5. SELECTION TRANSLATION
    - Select some text on any webpage

@@ -162,15 +162,15 @@ test.describe('CSP & Model Loading', () => {
     await page.close();
   });
 
-  test('can get translation status', async ({ context, extensionId }) => {
+  test('can read downloaded model inventory', async ({ context, extensionId }) => {
     const page = await context.newPage();
     await page.goto(popupUrl(extensionId));
     await page.waitForSelector('.popup-container', { timeout: 10_000 });
 
     const status = await page.evaluate(async () => {
       return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Status timeout')), 10_000);
-        chrome.runtime.sendMessage({ type: 'getTranslationStatus' }, (result) => {
+        const timeout = setTimeout(() => reject(new Error('Downloaded models timeout')), 10_000);
+        chrome.runtime.sendMessage({ type: 'getDownloadedModels' }, (result) => {
           clearTimeout(timeout);
           if (chrome.runtime.lastError) {
             reject(new Error(chrome.runtime.lastError.message));
@@ -182,8 +182,9 @@ test.describe('CSP & Model Loading', () => {
     });
 
     expect(status).toBeTruthy();
-    const statusObj = status as { isModelLoaded?: boolean };
-    expect(typeof statusObj.isModelLoaded).toBe('boolean');
+    const statusObj = status as { success?: boolean; models?: unknown[] };
+    expect(statusObj.success).toBe(true);
+    expect(Array.isArray(statusObj.models)).toBe(true);
     await page.close();
   });
 
@@ -228,10 +229,11 @@ test.describe('CSP & Model Loading', () => {
 
         chrome.runtime.sendMessage(
           {
-            type: 'translateText',
+            type: 'translate',
             text: 'Hello world',
-            source: 'en',
-            target: 'fi',
+            sourceLang: 'en',
+            targetLang: 'fi',
+            provider: 'opus-mt',
           },
           (response) => {
             clearTimeout(timeout);
@@ -242,6 +244,8 @@ test.describe('CSP & Model Loading', () => {
     });
 
     console.log('Translation result:', result);
+    expect((result as { success?: boolean; result?: unknown }).success).toBe(true);
+    expect(typeof (result as { result?: unknown }).result).toBe('string');
 
     const cspErrors = errors.filter(
       (entry) =>

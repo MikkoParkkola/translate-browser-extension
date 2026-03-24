@@ -1,43 +1,23 @@
 import { test as base, expect, chromium, type BrowserContext, type Page } from '@playwright/test';
-import path from 'path';
-
-const EXTENSION_PATH = path.resolve(__dirname, '..', 'dist');
-const BACKGROUND_MODE = process.env.BACKGROUND !== 'false';
-
-interface ExtensionFixtureOptions {
-  enableGpu?: boolean;
-}
+import {
+  EXTENSION_PATH,
+  getExtensionLaunchSettings,
+  type ExtensionLaunchOptions,
+} from './extension-launch';
 
 interface ExtensionFixtures {
   context: BrowserContext;
   extensionId: string;
 }
 
-function buildExtensionArgs({ enableGpu = false }: ExtensionFixtureOptions = {}): string[] {
-  return [
-    `--disable-extensions-except=${EXTENSION_PATH}`,
-    `--load-extension=${EXTENSION_PATH}`,
-    '--no-first-run',
-    '--disable-component-update',
-    ...(BACKGROUND_MODE
-      ? [
-          '--window-position=-32000,-32000',
-          '--window-size=1280,720',
-          ...(enableGpu ? [] : ['--disable-gpu']),
-          '--mute-audio',
-        ]
-      : []),
-  ];
-}
-
-function createExtensionTest(options: ExtensionFixtureOptions = {}) {
+function createExtensionTest(options: ExtensionLaunchOptions = {}) {
   return base.extend<ExtensionFixtures>({
     // eslint-disable-next-line no-empty-pattern
     context: async ({}, use) => {
-      const context = await chromium.launchPersistentContext('', {
-        headless: false,
-        args: buildExtensionArgs(options),
-      });
+      const context = await chromium.launchPersistentContext(
+        '',
+        getExtensionLaunchSettings(options)
+      );
 
       await use(context);
       await context.close();
