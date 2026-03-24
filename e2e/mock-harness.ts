@@ -27,6 +27,65 @@ export interface MockConfig {
   [key: string]: unknown;
 }
 
+interface MockTranslateResult {
+  text: string;
+}
+
+interface MockHarnessProviderRequest {
+  text?: string;
+  source?: string;
+  target?: string;
+  provider?: string;
+  onData?: (chunk: string) => void;
+  signal?: AbortSignal;
+  stream?: boolean;
+}
+
+interface MockHarnessProvider {
+  translate(options: MockHarnessProviderRequest): Promise<MockTranslateResult>;
+}
+
+interface MockHarnessProviderRegistry {
+  register(providerId: string, provider: MockHarnessProvider): void;
+  get(providerId: string): MockHarnessProvider;
+  list(): string[];
+  reset(): void;
+}
+
+interface MockHarnessCacheValue {
+  text: string;
+}
+
+interface MockHarnessCache {
+  cacheReady: Promise<void>;
+  get(key: string): MockHarnessCacheValue | null;
+  set(key: string, value: MockHarnessCacheValue): void;
+  remove(key: string): void;
+  clear(): void;
+  size(): number;
+  setLimit(limit?: number): void;
+  setTTL(ttl?: number): void;
+}
+
+interface MockHarnessRuntime {
+  providers: MockHarnessProviderRegistry;
+  cache: MockHarnessCache;
+  clearCache(): void;
+  loadConfig(): Promise<MockConfig>;
+  saveConfig(config: unknown): Promise<void>;
+  translate(request: MockTranslateRequest): Promise<MockTranslateResult>;
+  translateBatch(request: MockBatchTranslateRequest): Promise<{ texts: string[] }>;
+  translateStream(
+    request: MockTranslateRequest & { signal?: AbortSignal },
+    onChunk: (chunk: string) => void,
+  ): Promise<MockTranslateResult>;
+}
+
+type MockHarnessWindow = Window &
+  typeof globalThis & {
+    mockHarness: MockHarnessRuntime;
+  };
+
 type MockProviderLog = {
   logMessage?: string;
 };
@@ -74,54 +133,57 @@ export async function gotoMockHarness(page: Page): Promise<void> {
 
 export async function installNoopCache(page: Page): Promise<void> {
   await page.evaluate(() => {
-    window.qwenCache = {
+    const mockWindow = window as MockHarnessWindow;
+    mockWindow.mockHarness.cache = {
       cacheReady: Promise.resolve(),
-      getCache: () => null,
-      setCache: () => {},
-      removeCache: () => {},
-      qwenClearCache: () => {},
-      qwenGetCacheSize: () => 0,
-      qwenSetCacheLimit: () => {},
-      qwenSetCacheTTL: () => {},
+      get: () => null,
+      set: () => {},
+      remove: () => {},
+      clear: () => {},
+      size: () => 0,
+      setLimit: () => {},
+      setTTL: () => {},
     };
-    window.qwenClearCache = window.qwenCache.qwenClearCache;
+    mockWindow.mockHarness.clearCache = () => mockWindow.mockHarness.cache.clear();
   });
 }
 
 export async function installLocalStorageCache(page: Page): Promise<void> {
   await page.evaluate(() => {
-    window.qwenCache = {
+    const mockWindow = window as MockHarnessWindow;
+    mockWindow.mockHarness.cache = {
       cacheReady: Promise.resolve(),
-      getCache: (key: string) => {
+      get: (key: string) => {
         const raw = localStorage.getItem(`cache:${key}`);
         return raw ? JSON.parse(raw) : null;
       },
-      setCache: (key: string, value: unknown) => {
+      set: (key: string, value: unknown) => {
         localStorage.setItem(`cache:${key}`, JSON.stringify(value));
       },
-      removeCache: (key: string) => {
+      remove: (key: string) => {
         localStorage.removeItem(`cache:${key}`);
       },
-      qwenClearCache: () => {
+      clear: () => {
         Object.keys(localStorage)
           .filter((key) => key.startsWith('cache:'))
           .forEach((key) => localStorage.removeItem(key));
       },
-      qwenGetCacheSize: () => Object.keys(localStorage).filter((key) => key.startsWith('cache:')).length,
-      qwenSetCacheLimit: () => {},
-      qwenSetCacheTTL: () => {},
+      size: () => Object.keys(localStorage).filter((key) => key.startsWith('cache:')).length,
+      setLimit: () => {},
+      setTTL: () => {},
     };
-    window.qwenClearCache = window.qwenCache.qwenClearCache;
+    mockWindow.mockHarness.clearCache = () => mockWindow.mockHarness.cache.clear();
   });
 }
 
 export async function installLocalStorageConfig(page: Page): Promise<void> {
   await page.evaluate(() => {
-    window.qwenLoadConfig = async () => {
+    const mockWindow = window as MockHarnessWindow;
+    mockWindow.mockHarness.loadConfig = async () => {
       const raw = localStorage.getItem('cfg');
       return raw ? JSON.parse(raw) : { providerOrder: [], debug: false };
     };
-    window.qwenSaveConfig = async (config: unknown) => {
+    mockWindow.mockHarness.saveConfig = async (config: unknown) => {
       localStorage.setItem('cfg', JSON.stringify(config));
     };
   });
@@ -129,11 +191,17 @@ export async function installLocalStorageConfig(page: Page): Promise<void> {
 
 export async function installDirectTranslate(page: Page): Promise<void> {
   await page.evaluate(() => {
-    window.qwenTranslate = async (options: { provider: string; text: string; source: string; target: string }) => {
-      const provider = window.qwenProviders.getProvider(options.provider);
+    const mockWindow = window as MockHarnessWindow;
+    mockWindow.mockHarness.translate = async (options: {
+      provider: string;
+      text: string;
+      source: string;
+      target: string;
+    }) => {
+      const provider = mockWindow.mockHarness.providers.get(options.provider);
       return provider.translate(options);
     };
-    window.qwenTranslateBatch = async ({
+    mockWindow.mockHarness.translateBatch = async ({
       texts = [],
       provider,
       source,
@@ -144,22 +212,26 @@ export async function installDirectTranslate(page: Page): Promise<void> {
       source: string;
       target: string;
     }) => {
-      const runtimeProvider = window.qwenProviders.getProvider(provider);
-      const results = await Promise.all(
-        texts.map((text) => runtimeProvider.translate({ text, source, target, provider })),
-      );
-      return { texts: results.map((result: { text: string }) => result.text) };
+      const runtimeProvider = mockWindow.mockHarness.providers.get(provider);
+      const results = await Promise.all(texts.map((text) => runtimeProvider.translate({ text, source, target, provider })));
+      return { texts: results.map((result) => result.text) };
     };
   });
 }
 
 export async function installCachedBatchTranslate(page: Page): Promise<void> {
   await page.evaluate(() => {
-    window.qwenTranslate = async (options: { provider: string; text: string; source: string; target: string }) => {
-      const provider = window.qwenProviders.getProvider(options.provider);
+    const mockWindow = window as MockHarnessWindow;
+    mockWindow.mockHarness.translate = async (options: {
+      provider: string;
+      text: string;
+      source: string;
+      target: string;
+    }) => {
+      const provider = mockWindow.mockHarness.providers.get(options.provider);
       return provider.translate(options);
     };
-    window.qwenTranslateBatch = async ({
+    mockWindow.mockHarness.translateBatch = async ({
       texts = [],
       provider,
       source,
@@ -172,18 +244,18 @@ export async function installCachedBatchTranslate(page: Page): Promise<void> {
       target: string;
       force?: boolean;
     }) => {
-      const runtimeProvider = window.qwenProviders.getProvider(provider);
+      const runtimeProvider = mockWindow.mockHarness.providers.get(provider);
       const translatedTexts: string[] = [];
       for (const text of texts) {
         const cacheKey = `${provider}:${source}:${target}:${text}`;
-        const cached = !force && window.qwenCache.getCache(cacheKey);
+        const cached = !force && mockWindow.mockHarness.cache.get(cacheKey);
         if (cached) {
           translatedTexts.push(cached.text);
           continue;
         }
 
         const result = await runtimeProvider.translate({ text, source, target, provider });
-        window.qwenCache.setCache(cacheKey, { text: result.text });
+        mockWindow.mockHarness.cache.set(cacheKey, { text: result.text });
         translatedTexts.push(result.text);
       }
 
@@ -197,6 +269,7 @@ export async function registerMockProviders(
   scenarios: readonly MockProviderScenario[],
 ): Promise<void> {
   await page.evaluate((definitions) => {
+    const mockWindow = window as MockHarnessWindow;
     const createError = (message: string, retryable = false) => {
       const error = new Error(message) as Error & { retryable?: boolean };
       error.retryable = retryable;
@@ -205,7 +278,7 @@ export async function registerMockProviders(
 
     for (const scenario of definitions) {
       let callCount = 0;
-      window.qwenProviders.registerProvider(scenario.id, {
+      mockWindow.mockHarness.providers.register(scenario.id, {
         async translate(options: {
           text?: string;
           onData?: (chunk: string) => void;
@@ -255,15 +328,21 @@ export async function registerMockProviders(
 export async function translate(
   page: Page,
   request: MockTranslateRequest,
-): Promise<{ text: string }> {
-  return page.evaluate((options) => window.qwenTranslate(options), request);
+): Promise<MockTranslateResult> {
+  return page.evaluate((options) => {
+    const mockWindow = window as MockHarnessWindow;
+    return mockWindow.mockHarness.translate(options);
+  }, request);
 }
 
 export async function translateBatch(
   page: Page,
   request: MockBatchTranslateRequest,
 ): Promise<{ texts: string[] }> {
-  return page.evaluate((options) => window.qwenTranslateBatch(options), request);
+  return page.evaluate((options) => {
+    const mockWindow = window as MockHarnessWindow;
+    return mockWindow.mockHarness.translateBatch(options);
+  }, request);
 }
 
 export async function translateBatchAndCaptureProviderCalls(
@@ -272,7 +351,8 @@ export async function translateBatchAndCaptureProviderCalls(
   request: MockBatchTranslateRequest,
 ): Promise<{ texts: string[]; calls: number }> {
   return page.evaluate(async ({ activeProviderId, batchRequest }) => {
-    const provider = window.qwenProviders.getProvider(activeProviderId);
+    const mockWindow = window as MockHarnessWindow;
+    const provider = mockWindow.mockHarness.providers.get(activeProviderId);
     const originalTranslate = provider.translate;
     let calls = 0;
 
@@ -282,7 +362,7 @@ export async function translateBatchAndCaptureProviderCalls(
     };
 
     try {
-      const response = await window.qwenTranslateBatch(batchRequest);
+      const response = await mockWindow.mockHarness.translateBatch(batchRequest);
       return { texts: response.texts, calls };
     } finally {
       provider.translate = originalTranslate;
@@ -291,15 +371,24 @@ export async function translateBatchAndCaptureProviderCalls(
 }
 
 export async function clearMockCache(page: Page): Promise<void> {
-  await page.evaluate(() => window.qwenClearCache());
+  await page.evaluate(() => {
+    const mockWindow = window as MockHarnessWindow;
+    mockWindow.mockHarness.clearCache();
+  });
 }
 
 export async function loadMockConfig(page: Page): Promise<MockConfig> {
-  return page.evaluate(() => window.qwenLoadConfig());
+  return page.evaluate(() => {
+    const mockWindow = window as MockHarnessWindow;
+    return mockWindow.mockHarness.loadConfig();
+  });
 }
 
 export async function saveMockConfig(page: Page, config: MockConfig): Promise<void> {
-  await page.evaluate((nextConfig) => window.qwenSaveConfig(nextConfig), config);
+  await page.evaluate((nextConfig) => {
+    const mockWindow = window as MockHarnessWindow;
+    return mockWindow.mockHarness.saveConfig(nextConfig);
+  }, config);
 }
 
 export async function runStreamingTranslationWithAbort(
@@ -310,10 +399,11 @@ export async function runStreamingTranslationWithAbort(
   return page.evaluate(
     ({ options, abortDelayMs }) =>
       new Promise<{ error: string | null; chunks: string[] }>((resolve) => {
+        const mockWindow = window as MockHarnessWindow;
         const controller = new AbortController();
         const chunks: string[] = [];
 
-        window.qwenTranslateStream(
+        mockWindow.mockHarness.translateStream(
           { ...options, signal: controller.signal },
           (chunk: string) => chunks.push(chunk),
         ).then(

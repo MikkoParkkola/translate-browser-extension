@@ -21,13 +21,13 @@
 
       const defaultCache = {
         cacheReady: Promise.resolve(),
-        getCache: () => null,
-        setCache: () => {},
-        removeCache: () => {},
-        qwenClearCache: () => {},
-        qwenGetCacheSize: () => 0,
-        qwenSetCacheLimit: () => {},
-        qwenSetCacheTTL: () => {},
+        get: () => null,
+        set: () => {},
+        remove: () => {},
+        clear: () => {},
+        size: () => 0,
+        setLimit: () => {},
+        setTTL: () => {},
       };
 
       function getProvider(providerId) {
@@ -38,59 +38,61 @@
         return provider;
       }
 
-      window.qwenProviders = {
-        registerProvider(providerId, provider) {
-          providers.set(providerId, provider);
+      const mockHarness = {
+        providers: {
+          register(providerId, provider) {
+            providers.set(providerId, provider);
+          },
+          get: getProvider,
+          list() {
+            return [...providers.keys()];
+          },
+          reset() {
+            providers.clear();
+            registerDefaultProviders();
+          },
         },
-        getProvider,
-        listProviders() {
-          return [...providers.keys()];
+        cache: defaultCache,
+        clearCache() {
+          mockHarness.cache.clear();
         },
-        clearProviders() {
-          providers.clear();
-          registerDefaultProviders();
+        loadConfig: async () => ({ providerOrder: [], debug: false }),
+        saveConfig: async () => {},
+        async translate(opts = {}) {
+          const providerOrder = Array.isArray(opts.providerOrder) && opts.providerOrder.length > 0
+            ? opts.providerOrder
+            : opts.provider
+              ? [opts.provider]
+              : [];
+
+          let lastError = null;
+          for (const providerId of providerOrder) {
+            try {
+              return await getProvider(providerId).translate({ ...opts, provider: providerId });
+            } catch (error) {
+              lastError = error;
+            }
+          }
+
+          throw lastError ?? new Error('No provider available');
+        },
+        async translateBatch({ texts = [], ...opts } = {}) {
+          const results = [];
+          for (const text of texts) {
+            const translated = await mockHarness.translate({ ...opts, text });
+            results.push(translated.text);
+          }
+          return { texts: results };
+        },
+        async translateStream(opts = {}, onData) {
+          const provider = getProvider(opts.provider);
+          return provider.translate({ ...opts, onData, stream: true });
         },
       };
+
+      window.mockHarness = mockHarness;
 
       registerDefaultProviders();
-
-      window.qwenCache = defaultCache;
-      window.qwenClearCache = defaultCache.qwenClearCache;
-      window.qwenLoadConfig = async () => ({ providerOrder: [], debug: false });
-      window.qwenSaveConfig = async () => {};
-
-      window.qwenTranslate = async (opts = {}) => {
-        const providerOrder = Array.isArray(opts.providerOrder) && opts.providerOrder.length > 0
-          ? opts.providerOrder
-          : opts.provider
-            ? [opts.provider]
-            : [];
-
-        let lastError = null;
-        for (const providerId of providerOrder) {
-          try {
-            return await getProvider(providerId).translate({ ...opts, provider: providerId });
-          } catch (error) {
-            lastError = error;
-          }
-        }
-
-        throw lastError ?? new Error('No provider available');
-      };
-
-      window.qwenTranslateBatch = async ({ texts = [], ...opts } = {}) => {
-        const results = [];
-        for (const text of texts) {
-          const translated = await window.qwenTranslate({ ...opts, text });
-          results.push(translated.text);
-        }
-        return { texts: results };
-      };
-
-      window.qwenTranslateStream = async (opts = {}, onData) => {
-        const provider = getProvider(opts.provider);
-        return provider.translate({ ...opts, onData, stream: true });
-      };
     })();
   </script>
 </body>

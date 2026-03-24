@@ -37,10 +37,19 @@ test('distributes requests according to provider weights', async ({ page }) => {
   ]);
 
   const counts = await page.evaluate(async (): Promise<Record<string, number>> => {
+    const mockWindow = window as typeof window & {
+      mockHarness: {
+        providers: {
+          get(providerId: string): {
+            translate(options: unknown): Promise<{ text: string }>;
+          };
+        };
+      };
+    };
     const hits: Record<string, number> = { fast: 0, slow: 0 };
     const weights: Record<string, number> = { fast: 80, slow: 20 };
-    const fastProvider = window.qwenProviders.getProvider('fast');
-    const slowProvider = window.qwenProviders.getProvider('slow');
+    const fastProvider = mockWindow.mockHarness.providers.get('fast');
+    const slowProvider = mockWindow.mockHarness.providers.get('slow');
     const originalFastTranslate = fastProvider.translate;
     const originalSlowTranslate = slowProvider.translate;
 
@@ -63,7 +72,7 @@ test('distributes requests according to provider weights', async ({ page }) => {
         rand -= weights[id];
         if (rand <= 0) { chosen = id; break; }
       }
-      const prov = window.qwenProviders.getProvider(chosen);
+      const prov = mockWindow.mockHarness.providers.get(chosen);
       await prov.translate({ text: `req-${i}`, source: 'en', target: 'fr', provider: chosen });
     }
 

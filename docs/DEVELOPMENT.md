@@ -1240,88 +1240,23 @@ test.describe('Extension Workflow', () => {
 
 #### PDF Translation Testing
 
-```javascript
-// e2e/pdf-translation.spec.js
+The current repository no longer routes PDFs through a standalone `pdfViewer.html`
+page or a dedicated Playwright-only viewer harness. PDF behavior is validated on
+the real module surface instead:
 
-import { test, expect } from '@playwright/test';
-import { PDFDocument, rgb } from 'pdf-lib';
-import { writeFile } from 'fs/promises';
+- `src/pdfjs-entry.test.ts`
+- `src/content/pdf-loader.test.ts`
+- `src/content/pdf-translator.test.ts`
 
-test.describe('PDF Translation', () => {
-  test.beforeAll(async () => {
-    // Create a test PDF
-    const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage();
-    
-    page.drawText('Hello World', {
-      x: 50,
-      y: 700,
-      color: rgb(0, 0, 0)
-    });
-    
-    page.drawText('This is a test document for translation.', {
-      x: 50,
-      y: 650,
-      color: rgb(0, 0, 0)
-    });
-    
-    const pdfBytes = await pdfDoc.save();
-    await writeFile('./e2e/fixtures/test.pdf', pdfBytes);
-  });
-  
-  test('should intercept and redirect PDF URLs', async ({ page }) => {
-    // Navigate to PDF
-    const pdfUrl = 'file://' + path.resolve('./e2e/fixtures/test.pdf');
-    await page.goto(pdfUrl);
-    
-    // Should be redirected to custom PDF viewer
-    await expect(page).toHaveURL(/pdfViewer\.html/);
-    
-    // Wait for PDF to load
-    await expect(page.locator('#pdf-canvas')).toBeVisible();
-    
-    // Verify PDF content is rendered
-    const canvas = page.locator('#pdf-canvas');
-    await expect(canvas).toHaveAttribute('width');
-    await expect(canvas).toHaveAttribute('height');
-  });
-  
-  test('should translate PDF text content', async ({ page }) => {
-    // Load PDF viewer directly
-    await page.goto(`chrome-extension://${extensionId}/pdfViewer.html`);
-    
-    // Load test PDF
-    const pdfPath = path.resolve('./e2e/fixtures/test.pdf');
-    await page.setInputFiles('#pdf-file-input', pdfPath);
-    
-    // Wait for PDF processing
-    await expect(page.locator('#pdf-canvas')).toBeVisible();
-    
-    // Trigger translation
-    await page.click('#translate-button');
-    
-    // Configure translation
-    await page.selectOption('#source-language', 'en');
-    await page.selectOption('#target-language', 'es');
-    
-    // Start translation
-    await page.click('#start-translation');
-    
-    // Wait for translation overlay
-    await expect(page.locator('.translation-overlay')).toBeVisible();
-    
-    // Verify translated text appears
-    const translatedText = page.locator('.translated-text');
-    await expect(translatedText.first()).toBeVisible();
-    
-    // Check that translation is different from original
-    const originalText = 'Hello World';
-    const translationContent = await translatedText.first().textContent();
-    expect(translationContent).not.toBe(originalText);
-    expect(translationContent.length).toBeGreaterThan(0);
-  });
-});
+Run the focused PDF coverage with:
+
+```bash
+npm run test:pdf
 ```
+
+Keep Playwright coverage focused on extension-backed browser flows and content-script
+contracts; use the PDF module tests for loader, detection, extraction, and overlay
+behavior.
 
 ---
 
@@ -1334,55 +1269,41 @@ The extension uses Manifest V3 for modern Chrome compatibility:
 ```json
 {
   "manifest_version": 3,
-  "name": "Qwen Translator",
-  "version": "1.44.1",
-  "description": "AI-powered translation for web pages and PDFs",
-  
-  "permissions": [
-    "storage",
-    "activeTab",
-    "scripting",
-    "webRequest"
-  ],
-  
-  "host_permissions": [
-    "<all_urls>"
-  ],
-  
+  "name": "__MSG_extensionName__",
+  "version": "2.1.3",
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
-  
   "content_scripts": [{
     "matches": ["<all_urls>"],
-    "js": ["contentScript.js"],
-    "run_at": "document_end",
-    "all_frames": true
+    "js": ["content.js"],
+    "run_at": "document_idle"
   }],
-  
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "Translate Page"
+    "default_popup": "src/popup/index.html",
+    "default_title": "TRANSLATE!"
   },
-  
-  "options_ui": {
-    "page": "options.html",
-    "open_in_tab": true
-  },
-  
+  "options_page": "src/options/index.html",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "offscreen",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "web_accessible_resources": [{
     "resources": [
-      "pdfViewer.html",
-      "pdf.min.js",
-      "pdf.worker.min.js",
-      "styles/*.css"
+      "assets/*",
+      "chunks/*"
     ],
     "matches": ["<all_urls>"]
   }],
-  
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'none';"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; ..."
   }
 }
 ```
@@ -1391,75 +1312,38 @@ The extension uses Manifest V3 for modern Chrome compatibility:
 
 Key considerations for Service Worker development:
 
-```javascript
-// src/background.js
+```typescript
+// src/background/service-worker.ts
 
-// Service workers have no DOM access and limited lifetime
-// Use chrome.storage for persistence
-// Handle extension lifecycle events
-
-// Import scripts (must be at top level)
-importScripts(
-  'lib/logger.js',
-  'lib/providers.js', 
-  'lib/messaging.js',
-  'config.js',
-  'translator.js'
-);
-
-// Service worker activation
-chrome.runtime.onStartup.addListener(async () => {
-  console.log('Extension startup');
-  await initializeExtension();
-});
-
-chrome.runtime.onInstalled.addListener(async (details) => {
-  console.log('Extension installed/updated', details.reason);
-  
+chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
-    await setupDefaultConfiguration();
-  } else if (details.reason === 'update') {
-    await migrateConfiguration(details.previousVersion);
+    // Seed extension defaults and context menus
   }
 });
 
-// Message handling
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  handleMessage(message, sender)
-    .then(response => sendResponse({ success: true, data: response }))
-    .catch(error => sendResponse({ success: false, error: error.message }));
-  
-  return true; // Keep message channel open for async response
+  void handleMessage(message, sender)
+    .then((response) => sendResponse(response))
+    .catch((error) =>
+      sendResponse({
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+
+  return true;
 });
 
-// Tab updates for PDF interception
-chrome.webRequest.onBeforeRequest.addListener(
-  (details) => {
-    if (details.url.includes('.pdf')) {
-      return {
-        redirectUrl: chrome.runtime.getURL(
-          `pdfViewer.html?url=${encodeURIComponent(details.url)}`
-        )
-      };
-    }
-  },
-  { urls: ["<all_urls>"] },
-  ["blocking"]
-);
-
-// Periodic maintenance (Service Workers can be terminated)
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'cache-cleanup') {
-    performCacheCleanup();
-  } else if (alarm.name === 'usage-reset') {
-    resetUsageCounters();
-  }
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  // Dispatch translate-page / translate-selection / translate-image /
+  // undo-translation requests into the active tab.
 });
-
-// Set up recurring alarms
-chrome.alarms.create('cache-cleanup', { delayInMinutes: 60, periodInMinutes: 60 });
-chrome.alarms.create('usage-reset', { delayInMinutes: 1440, periodInMinutes: 1440 }); // Daily
 ```
+
+PDF translation is **not** handled by a background redirect to a custom viewer page
+in the current codebase. The content script detects PDF surfaces (`document.contentType`,
+`.pdf` URLs, `<embed type="application/pdf">`, and `<pdf-viewer>`) and initializes
+`src/content/pdf-translator.ts` in place.
 
 ### Content Script Development
 
