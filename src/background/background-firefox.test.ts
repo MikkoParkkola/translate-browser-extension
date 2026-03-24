@@ -74,6 +74,9 @@ vi.mock('../offscreen/pipeline-cache', () => ({
 }));
 
 vi.mock('../offscreen/language-detection', () => ({
+  buildLanguageDetectionSample: vi.fn((text: string | string[]) =>
+    Array.isArray(text) ? text.join(' ') : text
+  ),
   detectLanguage: vi.fn().mockReturnValue('en'),
 }));
 
@@ -1086,6 +1089,36 @@ describe('background-firefox translate: additional coverage', () => {
 
       expect(response.success).toBe(true);
       expect(response.result).toBe('moi');
+    });
+
+    it('uses the shared detection sample helper for auto-detected arrays', async () => {
+      const languageDetection = await import('../offscreen/language-detection');
+      const { validateInput } = await import('../core/errors');
+
+      (validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+        valid: true,
+        sanitizedText: ['short', 'long sample sentence for detection'],
+      });
+      (languageDetection.buildLanguageDetectionSample as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+        'long sample sentence for detection'
+      );
+      (languageDetection.detectLanguage as ReturnType<typeof vi.fn>).mockReturnValueOnce('en');
+
+      const response = await invoke({
+        type: 'translate',
+        text: ['short', 'long sample sentence for detection'],
+        sourceLang: 'auto',
+        targetLang: 'fi',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      expect(languageDetection.buildLanguageDetectionSample).toHaveBeenCalledWith([
+        'short',
+        'long sample sentence for detection',
+      ]);
+      expect(languageDetection.detectLanguage).toHaveBeenCalledWith(
+        'long sample sentence for detection'
+      );
     });
 
     it('handles empty string gracefully', async () => {

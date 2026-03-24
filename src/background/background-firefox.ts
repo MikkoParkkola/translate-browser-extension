@@ -25,7 +25,6 @@ import { createLogger } from '../core/logger';
 import { safeStorageGet, safeStorageSet } from '../core/storage';
 import { getCorrection } from '../core/corrections';
 import { withTimeout } from '../core/async-utils';
-import { generateCacheKey } from '../core/hash';
 import { CONFIG } from '../config';
 import { browserAPI, getURL } from '../core/browser-api';
 import { normalizeTranslationProviderId } from '../shared/provider-options';
@@ -40,8 +39,14 @@ import {
 // Extracted modules from offscreen (now used directly)
 import { MODEL_MAP, PIVOT_ROUTES } from '../offscreen/model-maps';
 import { getCachedPipeline, cachePipeline, castAsPipeline } from '../offscreen/pipeline-cache';
-import { detectLanguage } from '../offscreen/language-detection';
+import { buildLanguageDetectionSample, detectLanguage } from '../offscreen/language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline } from '../offscreen/translategemma';
+import {
+  createTranslationCache,
+  type DetailedCacheStats,
+  type StorageAdapter,
+  type TranslationCache,
+} from './shared';
 import { estimateTokens, formatUserError, PROVIDER_LIST } from './shared/provider-management';
 import { NETWORK_RETRY_CONFIG } from './shared/translation-core';
 
@@ -67,233 +72,29 @@ if (env.backends?.onnx?.wasm) {
 log.info('WASM path configured:', wasmBasePath);
 
 // ============================================================================
-// Enhanced Translation Memory (Persistent LRU Cache)
+// State Management
 // ============================================================================
 
-/**
- * Persistent cache entry with usage tracking.
- */
-interface PersistentCacheEntry {
-  result: string | string[];
-  timestamp: number;
-  sourceLang: string;
-  targetLang: string;
-  useCount: number;
-}
+let currentStrategy: Strategy = 'smart';
+let currentProvider: TranslationProviderId = 'opus-mt';
 
-const translationCache = new Map<string, PersistentCacheEntry>();
-let cacheHits = 0;
-let cacheMisses = 0;
-let cacheInitialized = false;
-let cacheLoadingPromise: Promise<void> | null = null;
-let saveCacheTimer: ReturnType<typeof setTimeout> | null = null;
+// ============================================================================
+// Shared Translation Cache (Persistent LRU)
+// ============================================================================
 
-/**
- * Load cache from persistent storage on startup.
- */
-async function loadPersistentCache(): Promise<void> {
-  if (cacheInitialized) return;
-  if (cacheLoadingPromise) return cacheLoadingPromise;
+const firefoxStorageAdapter: StorageAdapter = {
+  get: (keys) => browserAPI.storage.local.get(keys),
+  set: (data) => browserAPI.storage.local.set(data),
+  remove: (keys) => browserAPI.storage.local.remove(keys),
+};
 
-  cacheLoadingPromise = (async () => {
-    try {
-      const stored = await browserAPI.storage.local.get([
-        CONFIG.cache.storageKey,
-        CONFIG.cache.cacheStatsKey,
-      ]);
-
-      if (stored[CONFIG.cache.storageKey]) {
-        const entries = stored[CONFIG.cache.storageKey] as [string, PersistentCacheEntry][];
-        entries.forEach(([key, value]) => {
-          translationCache.set(key, value);
-        });
-        log.info(`Loaded ${translationCache.size} cached translations from storage`);
-      }
-
-      if (stored.cacheStats) {
-        const stats = stored.cacheStats as { hits: number; misses: number };
-        /* v8 ignore start */
-        cacheHits = stats.hits || 0;
-        cacheMisses = stats.misses || 0;
-        /* v8 ignore stop */
-      }
-
-      cacheInitialized = true;
-    } catch (error) {
-      log.warn('Failed to load persistent cache:', error);
-      cacheInitialized = true;
-    } finally {
-      cacheLoadingPromise = null;
-    }
-  })();
-
-  return cacheLoadingPromise;
-}
-
-/**
- * Schedule cache save to persistent storage (debounced).
- */
-function scheduleCacheSave(): void {
-  if (saveCacheTimer) return;
-
-  saveCacheTimer = setTimeout(async () => {
-    saveCacheTimer = null;
-    try {
-      const entries = Array.from(translationCache.entries());
-      await browserAPI.storage.local.set({
-        [CONFIG.cache.storageKey]: entries,
-        cacheStats: { hits: cacheHits, misses: cacheMisses },
-      });
-      /* v8 ignore start */
-      log.debug(`Saved ${entries.length} translations to persistent storage`);
-      // v8 does not reliably track the rejection path of an await inside a
-      // setTimeout callback across microtask boundaries in fake-timer tests.
-    } catch (error) {
-      log.warn('Failed to save cache:', error);
-    /* v8 ignore stop */
-    }
-  }, CONFIG.cache.saveDebounceMs);
-}
-
-function getCacheKey(text: string | string[], sourceLang: string, targetLang: string, provider?: string): string {
-  /* v8 ignore start */
-  const providerKey = provider || currentProvider;
-  /* v8 ignore stop */
-  return generateCacheKey(text, sourceLang, targetLang, providerKey);
-}
-
-function getCachedTranslation(key: string): PersistentCacheEntry | undefined {
-  const entry = translationCache.get(key);
-  if (entry) {
-    entry.useCount++;
-    translationCache.delete(key);
-    translationCache.set(key, entry);
-    cacheHits++;
-    scheduleCacheSave();
-    log.debug(`Cache HIT: ${key.substring(0, 40)}... (used ${entry.useCount}x)`);
-  } else {
-    cacheMisses++;
-  }
-  return entry;
-}
-
-function setCachedTranslation(
-  key: string,
-  result: string | string[],
-  sourceLang: string,
-  targetLang: string
-): void {
-  while (translationCache.size >= CONFIG.cache.maxSize) {
-    const entries = Array.from(translationCache.entries());
-    const oldestCount = Math.max(10, Math.floor(entries.length * 0.1));
-    const oldestEntries = entries.slice(0, oldestCount);
-    const leastUsed = oldestEntries.reduce((min, curr) =>
-      /* v8 ignore start */
-      curr[1].useCount < min[1].useCount ? curr : min
-      /* v8 ignore stop */
-    );
-    translationCache.delete(leastUsed[0]);
-  }
-
-  translationCache.set(key, {
-    result,
-    timestamp: Date.now(),
-    sourceLang,
-    targetLang,
-    useCount: 1,
-  });
-
-  scheduleCacheSave();
-  log.debug(`Cached translation (${translationCache.size}/${CONFIG.cache.maxSize})`);
-}
-
-/**
- * Detailed cache statistics for diagnostics.
- */
-interface DetailedCacheStats {
-  size: number;
-  maxSize: number;
-  hitRate: string;
-  totalHits: number;
-  totalMisses: number;
-  oldestEntry: number | null;
-  mostUsed: Array<{ text: string; useCount: number; langs: string }>;
-  memoryEstimate: string;
-  languagePairs: Record<string, number>;
-}
-
-function getCacheStats(): DetailedCacheStats {
-  const entries = Array.from(translationCache.entries());
-
-  let oldestTimestamp: number | null = null;
-  for (const [, entry] of entries) {
-    if (oldestTimestamp === null || entry.timestamp < oldestTimestamp) {
-      oldestTimestamp = entry.timestamp;
-    }
-  }
-
-  const mostUsed = entries
-    .sort((a, b) => b[1].useCount - a[1].useCount)
-    .slice(0, 5)
-    .map(([key, value]) => ({
-      /* v8 ignore start */
-      text: key.substring(0, 50) + (key.length > 50 ? '...' : ''),
-      /* v8 ignore stop */
-      useCount: value.useCount,
-      langs: `${value.sourceLang} -> ${value.targetLang}`,
-    }));
-
-  const languagePairs: Record<string, number> = {};
-  for (const [, entry] of entries) {
-    const pair = `${entry.sourceLang}-${entry.targetLang}`;
-    languagePairs[pair] = (languagePairs[pair] || 0) + 1;
-  }
-
-  const totalChars = entries.reduce((sum, [key, value]) => {
-    /* v8 ignore start */
-    const resultLen = Array.isArray(value.result)
-      ? value.result.join('').length
-      : value.result.length;
-    /* v8 ignore stop */
-    return sum + key.length + resultLen;
-  }, 0);
-
-  const totalTranslations = cacheHits + cacheMisses;
-  const hitRatePercent = totalTranslations > 0
-    ? Math.round((cacheHits / totalTranslations) * 100)
-    : 0;
-
-  return {
-    size: translationCache.size,
-    maxSize: CONFIG.cache.maxSize,
-    hitRate: `${cacheHits}/${totalTranslations} (${hitRatePercent}%)`,
-    totalHits: cacheHits,
-    totalMisses: cacheMisses,
-    oldestEntry: oldestTimestamp,
-    mostUsed,
-    memoryEstimate: `~${Math.round(totalChars / 1024)}KB`,
-    languagePairs,
-  };
-}
-
-/**
- * Clear translation cache and reset statistics.
- */
-async function clearTranslationCache(): Promise<void> {
-  translationCache.clear();
-  cacheHits = 0;
-  cacheMisses = 0;
-
-  try {
-    await browserAPI.storage.local.remove([CONFIG.cache.storageKey, CONFIG.cache.cacheStatsKey]);
-    log.info('Translation cache cleared');
-  } catch (error) {
-    log.warn('Failed to clear persistent cache:', error);
-  }
-}
+const translationCache: TranslationCache = createTranslationCache(
+  firefoxStorageAdapter,
+  () => currentProvider
+);
 
 // Load cache on startup
-loadPersistentCache();
+translationCache.load();
 
 // ============================================================================
 // ML Pipeline Management (Direct - no offscreen needed)
@@ -418,7 +219,7 @@ async function translate(
   // Handle auto-detection
   let actualSourceLang = sourceLang;
   if (sourceLang === 'auto') {
-    const sampleText = Array.isArray(text) ? text.slice(0, 3).join(' ') : text;
+    const sampleText = buildLanguageDetectionSample(text);
     actualSourceLang = await detectLanguage(sampleText);
     log.info(`Auto-detected source: ${actualSourceLang}`);
 
@@ -491,11 +292,8 @@ function getSupportedLanguages(): Array<{ src: string; tgt: string; pivot?: bool
 }
 
 // ============================================================================
-// State Management
+// Rate limiting
 // ============================================================================
-
-let currentStrategy: Strategy = 'smart';
-let currentProvider: TranslationProviderId = 'opus-mt';
 
 interface RateLimitState {
   requests: number;
@@ -614,16 +412,16 @@ async function handlePreloadModel(message: PreloadModelMessage): Promise<Message
 }
 
 async function handleGetCacheStats(): Promise<MessageResponse<{ cache: DetailedCacheStats }>> {
-  await loadPersistentCache();
+  await translationCache.load();
   return {
     success: true,
-    cache: getCacheStats(),
+    cache: translationCache.getStats(),
   };
 }
 
 async function handleClearCache(): Promise<{ success: true; clearedEntries: number }> {
   const previousSize = translationCache.size;
-  await clearTranslationCache();
+  await translationCache.clear();
   return {
     success: true,
     clearedEntries: previousSize,
@@ -634,7 +432,7 @@ async function handleTranslate(message: TranslateMessage): Promise<TranslateResp
   const startTime = Date.now();
 
   try {
-    await loadPersistentCache();
+    await translationCache.load();
 
     const validation = validateInput(
       message.text,
@@ -659,9 +457,14 @@ async function handleTranslate(message: TranslateMessage): Promise<TranslateResp
     const provider = message.provider || currentProvider;
 
     // Check cache first
-    const cacheKey = getCacheKey(text, message.sourceLang, message.targetLang, provider);
+    const cacheKey = translationCache.getKey(
+      text,
+      message.sourceLang,
+      message.targetLang,
+      provider
+    );
     if (message.sourceLang !== 'auto') {
-      const cached = getCachedTranslation(cacheKey);
+      const cached = translationCache.get(cacheKey);
       if (cached) {
         const duration = Date.now() - startTime;
         return {
@@ -676,7 +479,7 @@ async function handleTranslate(message: TranslateMessage): Promise<TranslateResp
         if (userCorrection) {
           const duration = Date.now() - startTime;
           log.info(`Using user correction, returning in ${duration}ms`);
-          setCachedTranslation(cacheKey, userCorrection, message.sourceLang, message.targetLang);
+          translationCache.set(cacheKey, userCorrection, message.sourceLang, message.targetLang);
           return {
             success: true,
             result: userCorrection,
@@ -714,7 +517,7 @@ async function handleTranslate(message: TranslateMessage): Promise<TranslateResp
 
     // Cache the result
     if (result && message.sourceLang !== 'auto') {
-      setCachedTranslation(cacheKey, result, message.sourceLang, message.targetLang);
+      translationCache.set(cacheKey, result, message.sourceLang, message.targetLang);
     }
 
     return {
@@ -757,7 +560,7 @@ function handleGetUsage(): {
       totalTokens: rateLimit.tokens,
       queue: 0,
     },
-    cache: getCacheStats(),
+    cache: translationCache.getStats(),
     providers: {},
   };
 }
