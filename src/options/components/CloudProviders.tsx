@@ -5,9 +5,19 @@
 
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
-import { OPTIONS_CLOUD_PROVIDERS as CLOUD_PROVIDERS } from '../../shared/provider-options';
+import {
+  normalizeCloudProviderModelValue,
+  OPTIONS_CLOUD_PROVIDERS as CLOUD_PROVIDERS,
+} from '../../shared/provider-options';
 import { reportUiError } from '../../shared/ui-feedback';
 import { sendBackgroundMessage } from '../../shared/background-message';
+import {
+  getCloudProviderStorageKeys,
+  hasStoredApiKey,
+  readStoredBoolean,
+  readStoredString,
+  type CloudProviderSettingsStorageRecord,
+} from '../../shared/cloud-provider-storage';
 import { createLogger } from '../../core/logger';
 import { safeStorageGet, safeStorageSet, safeStorageRemove } from '../../core/storage';
 import { extractErrorMessage } from '../../core/errors';
@@ -42,23 +52,21 @@ export const CloudProviders: Component = () => {
     const status: Record<string, ProviderStatus> = {};
 
     try {
-      const keys = CLOUD_PROVIDERS.flatMap((p) => {
-        const fields = [p.keyField, p.enabledField];
-        if (p.hasProTier && p.proField) fields.push(p.proField);
-        if (p.modelField) fields.push(p.modelField);
-        return fields;
-      });
-
-      const stored = await safeStorageGet<Record<string, unknown>>(keys);
+      const stored = await safeStorageGet<CloudProviderSettingsStorageRecord>(
+        getCloudProviderStorageKeys(CLOUD_PROVIDERS)
+      );
 
       for (const provider of CLOUD_PROVIDERS) {
         status[provider.id] = {
-          hasKey: !!stored[provider.keyField],
-          /* v8 ignore start */
-          enabled: (stored[provider.enabledField] ?? false) as boolean,
-          isPro: provider.hasProTier && provider.proField ? stored[provider.proField] as boolean | undefined : undefined,
-          model: provider.modelField ? stored[provider.modelField] as string | undefined : undefined,
-          /* v8 ignore stop */
+          hasKey: hasStoredApiKey(stored, provider.keyField),
+          enabled: readStoredBoolean(stored, provider.enabledField) ?? false,
+          isPro: provider.hasProTier ? readStoredBoolean(stored, provider.proField) : undefined,
+          model: provider.modelField
+            ? normalizeCloudProviderModelValue(
+                provider.id,
+                readStoredString(stored, provider.modelField)
+              )
+            : undefined,
         };
       }
     } catch (error) {
@@ -101,6 +109,9 @@ export const CloudProviders: Component = () => {
     setError(null);
 
     try {
+      const normalizedModel = provider.modelField
+        ? normalizeCloudProviderModelValue(provider.id, selectedModel())
+        : undefined;
       const data: Record<string, unknown> = {
         [provider.keyField]: key,
         [provider.enabledField]: true,
@@ -110,8 +121,8 @@ export const CloudProviders: Component = () => {
         data[provider.proField] = isProTier();
       }
 
-      if (provider.modelField) {
-        data[provider.modelField] = selectedModel();
+      if (provider.modelField && normalizedModel !== undefined) {
+        data[provider.modelField] = normalizedModel;
       }
 
       const ok = await safeStorageSet(data);
@@ -126,7 +137,7 @@ export const CloudProviders: Component = () => {
           hasKey: true,
           enabled: true,
           isPro: isProTier(),
-          model: selectedModel(),
+          model: normalizedModel,
         },
       }));
 

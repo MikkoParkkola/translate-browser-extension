@@ -25,6 +25,12 @@ import {
   OPTIONS_CLOUD_PROVIDERS,
   SITE_RULE_PROVIDER_OPTIONS,
 } from '../../shared/provider-options';
+import {
+  getCloudProviderStorageKeys,
+  hasStoredApiKey,
+  readStoredBoolean,
+  readStoredString,
+} from '../../shared/cloud-provider-storage';
 
 // ============================================================================
 // Chrome / browser API mock
@@ -225,28 +231,18 @@ describe('CloudProviders logic', () => {
   });
 
   describe('storage key computation', () => {
-    // Logic from loadProviderStatus: builds storage keys array
-    const getStorageKeys = (providers: typeof CLOUD_PROVIDERS) => {
-      return providers.flatMap((p) => {
-        const fields = [p.keyField, p.enabledField];
-        if (p.hasProTier && 'proField' in p && p.proField) fields.push(p.proField);
-        if ('modelField' in p && p.modelField) fields.push(p.modelField);
-        return fields;
-      });
-    };
-
     it('includes DeepL pro field in keys', () => {
-      const keys = getStorageKeys(CLOUD_PROVIDERS);
+      const keys = getCloudProviderStorageKeys(CLOUD_PROVIDERS);
       expect(keys).toContain('deepl_is_pro');
     });
 
     it('includes openai model field in keys', () => {
-      const keys = getStorageKeys(CLOUD_PROVIDERS);
+      const keys = getCloudProviderStorageKeys(CLOUD_PROVIDERS);
       expect(keys).toContain('openai_model');
     });
 
     it('includes all base fields', () => {
-      const keys = getStorageKeys(CLOUD_PROVIDERS);
+      const keys = getCloudProviderStorageKeys(CLOUD_PROVIDERS);
       expect(keys).toContain('deepl_api_key');
       expect(keys).toContain('deepl_enabled');
       expect(keys).toContain('openai_api_key');
@@ -255,18 +251,14 @@ describe('CloudProviders logic', () => {
   });
 
   describe('provider status from storage', () => {
-    // Logic from loadProviderStatus body
     const buildStatus = (stored: Record<string, unknown>) => {
       const status: Record<string, { hasKey: boolean; enabled: boolean; isPro?: boolean; model?: string }> = {};
       for (const provider of CLOUD_PROVIDERS) {
-        const hasProTier = provider.hasProTier;
-        const proField = 'proField' in provider ? (provider as { proField?: string }).proField : undefined;
-        const modelField = 'modelField' in provider ? (provider as { modelField?: string }).modelField : undefined;
         status[provider.id] = {
-          hasKey: !!stored[provider.keyField],
-          enabled: (stored[provider.enabledField] as boolean) ?? false,
-          isPro: hasProTier && proField ? (stored[proField] as boolean) : undefined,
-          model: modelField ? (stored[modelField] as string) : undefined,
+          hasKey: hasStoredApiKey(stored, provider.keyField),
+          enabled: readStoredBoolean(stored, provider.enabledField) ?? false,
+          isPro: provider.hasProTier ? readStoredBoolean(stored, provider.proField) : undefined,
+          model: readStoredString(stored, provider.modelField),
         };
       }
       return status;

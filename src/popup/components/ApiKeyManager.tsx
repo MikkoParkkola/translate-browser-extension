@@ -7,6 +7,12 @@ import { Component, createSignal, For, Show, onMount } from 'solid-js';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
 import { CLOUD_PROVIDER_CONFIGS } from '../../shared/cloud-provider-configs';
 import { reportUiError, showTemporaryMessage } from '../../shared/ui-feedback';
+import {
+  getCloudProviderStorageKeys,
+  hasStoredApiKey,
+  readStoredBoolean,
+  type CloudProviderStorageRecord,
+} from '../../shared/cloud-provider-storage';
 import { createLogger } from '../../core/logger';
 import { safeStorageGet, safeStorageSet, safeStorageRemove } from '../../core/storage';
 
@@ -42,17 +48,14 @@ export const ApiKeyManager: Component<Props> = (props) => {
     const status: Record<string, ProviderStatus> = {};
 
     try {
-      const keys = CLOUD_PROVIDER_CONFIGS.flatMap(p =>
-        p.hasProTier && p.proField ? [p.keyField, p.proField] : [p.keyField]
+      const stored = await safeStorageGet<CloudProviderStorageRecord>(
+        getCloudProviderStorageKeys(CLOUD_PROVIDER_CONFIGS)
       );
-      const stored = await safeStorageGet<Record<string, unknown>>(keys);
 
       for (const provider of CLOUD_PROVIDER_CONFIGS) {
         status[provider.id] = {
-          hasKey: !!stored[provider.keyField],
-          /* v8 ignore start */
-          isPro: provider.hasProTier && provider.proField ? stored[provider.proField] as boolean | undefined : undefined,
-          /* v8 ignore stop */
+          hasKey: hasStoredApiKey(stored, provider.keyField),
+          isPro: provider.hasProTier ? readStoredBoolean(stored, provider.proField) : undefined,
         };
       }
     } catch (error) {
