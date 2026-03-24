@@ -14,37 +14,12 @@ import { AnthropicProvider } from '../providers/anthropic';
 import { OpenAIProvider } from '../providers/openai';
 import { DeepLProvider } from '../providers/deepl';
 import { GoogleCloudProvider } from '../providers/google-cloud';
+import { installChromeStorageMock } from './shared-provider-mocks';
 
 // ---------------------------------------------------------------------------
 // Chrome storage mock
 // ---------------------------------------------------------------------------
-const mockStorage: Record<string, unknown> = {};
-
-vi.stubGlobal('chrome', {
-  storage: {
-    local: {
-      get: vi.fn((keys: string[]) => {
-        const result: Record<string, unknown> = {};
-        for (const key of keys) {
-          if (mockStorage[key] !== undefined) {
-            result[key] = mockStorage[key];
-          }
-        }
-        return Promise.resolve(result);
-      }),
-      set: vi.fn((items: Record<string, unknown>) => {
-        Object.assign(mockStorage, items);
-        return Promise.resolve();
-      }),
-      remove: vi.fn((keys: string[]) => {
-        for (const key of keys) {
-          delete mockStorage[key];
-        }
-        return Promise.resolve();
-      }),
-    },
-  },
-});
+const { mockStorage, resetStorage } = installChromeStorageMock();
 
 // ---------------------------------------------------------------------------
 // Fetch mock
@@ -71,10 +46,6 @@ vi.mock('../core/language-map', () => ({
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function resetStorage() {
-  Object.keys(mockStorage).forEach((k) => delete mockStorage[k]);
-}
 
 function httpErrorResponse(status: number, body = '') {
   return {

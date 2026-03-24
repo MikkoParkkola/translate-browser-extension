@@ -14,37 +14,12 @@ import { DeepLProvider } from '../providers/deepl';
 import { GoogleCloudProvider } from '../providers/google-cloud';
 import { ChromeTranslatorProvider } from '../providers/chrome-translator';
 import { OpusMTProvider } from '../providers/opus-mt-local';
+import { installChromeStorageMock } from './shared-provider-mocks';
 
 // ---------------------------------------------------------------------------
 // Chrome storage mock (shared by all cloud providers)
 // ---------------------------------------------------------------------------
-const mockStorage: Record<string, unknown> = {};
-
-vi.stubGlobal('chrome', {
-  storage: {
-    local: {
-      get: vi.fn((keys: string[]) => {
-        const result: Record<string, unknown> = {};
-        for (const key of keys) {
-          if (mockStorage[key] !== undefined) {
-            result[key] = mockStorage[key];
-          }
-        }
-        return Promise.resolve(result);
-      }),
-      set: vi.fn((items: Record<string, unknown>) => {
-        Object.assign(mockStorage, items);
-        return Promise.resolve();
-      }),
-      remove: vi.fn((keys: string[]) => {
-        for (const key of keys) {
-          delete mockStorage[key];
-        }
-        return Promise.resolve();
-      }),
-    },
-  },
-});
+const { mockStorage, resetStorage } = installChromeStorageMock();
 
 // ---------------------------------------------------------------------------
 // Fetch mock
@@ -83,10 +58,6 @@ vi.mock('@huggingface/transformers', () => ({
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function resetStorage() {
-  Object.keys(mockStorage).forEach((k) => delete mockStorage[k]);
-}
 
 /** Build a minimal successful fetch response */
 function okResponse(body: unknown) {
