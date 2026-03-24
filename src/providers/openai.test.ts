@@ -1044,6 +1044,33 @@ describe('OpenAIProvider', () => {
     });
   });
 
+  describe('token tracking storage failure', () => {
+    it('continues without throwing when storage.set fails during token tracking', async () => {
+      await provider.setApiKey('sk-key');
+
+      vi.mocked(chrome.storage.local.set as any).mockImplementationOnce((items: Record<string, unknown>) => {
+        if ('openai_tokens_used' in items) {
+          return Promise.reject(new Error('Storage quota exceeded'));
+        }
+        Object.assign(mockStorage, items);
+        return Promise.resolve();
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            choices: [{ message: { content: 'Hei' } }],
+            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
+          }),
+      });
+
+      const result = await provider.translate('Hello', 'en', 'fi');
+
+      expect(result).toBe('Hei');
+    });
+  });
+
   describe('detectLanguage response not ok (line 282)', () => {
     it('returns auto when detectLanguage response is not ok', async () => {
       await provider.setApiKey('sk-key');

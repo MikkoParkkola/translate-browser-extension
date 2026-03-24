@@ -70,6 +70,15 @@ export abstract class CloudProvider extends BaseProvider {
     return safeStorageSet(items);
   }
 
+  /**
+   * Best-effort persistence for counters/telemetry that must not fail the request path.
+   */
+  protected persistBestEffort(items: Record<string, unknown>, failureMessage: string): void {
+    /* v8 ignore start -- fire-and-forget persist */
+    void this.persist(items).catch((error) => this.log.warn(failureMessage, error));
+    /* v8 ignore stop */
+  }
+
   getInfo(): ProviderConfig {
     return super.getInfo();
   }

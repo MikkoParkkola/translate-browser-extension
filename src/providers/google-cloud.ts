@@ -119,9 +119,10 @@ export class GoogleCloudProvider extends CloudProvider {
       // Track character usage
       const charsUsed = texts.reduce((sum, t) => sum + t.length, 0);
       this.charactersUsed += charsUsed;
-      /* v8 ignore start -- fire-and-forget persist */
-      this.persist({ google_cloud_chars_used: this.charactersUsed }).catch((e) => this.log.warn('Failed to persist char usage:', e));
-      /* v8 ignore stop */
+      this.persistBestEffort(
+        { google_cloud_chars_used: this.charactersUsed },
+        'Failed to persist char usage:'
+      );
 
       const results = data.data.translations.map(t => t.translatedText);
       return isArray ? results : results[0];
@@ -198,4 +199,3 @@ export class GoogleCloudProvider extends CloudProvider {
 export const googleCloudProvider = new GoogleCloudProvider();
 
 export default googleCloudProvider;
-

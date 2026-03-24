@@ -192,9 +192,10 @@ export class OpenAIProvider extends CloudProvider {
       // Track token usage
       if (data.usage) {
         this.totalTokensUsed += data.usage.total_tokens;
-        /* v8 ignore start -- fire-and-forget persist */
-        this.persist({ openai_tokens_used: this.totalTokensUsed }).catch((e) => this.log.warn('Failed to persist token usage:', e));
-        /* v8 ignore stop */
+        this.persistBestEffort(
+          { openai_tokens_used: this.totalTokensUsed },
+          'Failed to persist token usage:'
+        );
       }
 
       const translated = data.choices[0]?.message?.content?.trim() || '';
@@ -297,4 +298,3 @@ export class OpenAIProvider extends CloudProvider {
 export const openaiProvider = new OpenAIProvider();
 
 export default openaiProvider;
-

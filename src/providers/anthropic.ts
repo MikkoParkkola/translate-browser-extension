@@ -188,9 +188,10 @@ Rules:
       // Track token usage
       if (data.usage) {
         this.totalTokensUsed += data.usage.input_tokens + data.usage.output_tokens;
-        /* v8 ignore start -- fire-and-forget persist */
-        this.persist({ anthropic_tokens_used: this.totalTokensUsed }).catch((e) => this.log.warn('Failed to persist token usage:', e));
-        /* v8 ignore stop */
+        this.persistBestEffort(
+          { anthropic_tokens_used: this.totalTokensUsed },
+          'Failed to persist token usage:'
+        );
       }
 
       const translated = data.content[0]?.text?.trim() || '';
@@ -296,4 +297,3 @@ Rules:
 export const anthropicProvider = new AnthropicProvider();
 
 export default anthropicProvider;
-
