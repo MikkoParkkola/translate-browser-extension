@@ -5,10 +5,13 @@
 
 import { Component, createSignal, For, Show, onMount } from 'solid-js';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
-import { CLOUD_PROVIDER_CONFIGS } from '../../shared/cloud-provider-configs';
+import {
+  CLOUD_PROVIDER_CONFIGS,
+  getCloudProviderConfig,
+} from '../../shared/cloud-provider-configs';
+import { sendBackgroundMessageWithUiError } from '../../shared/background-message';
 import { reportUiError, showTemporaryMessage } from '../../shared/ui-feedback';
 import {
-  buildCloudProviderSaveMutation,
   createRemovedCloudProviderStatus,
   getCloudProviderEditDefaults,
   loadCloudProviderUiStatus,
@@ -16,7 +19,6 @@ import {
   type CloudProviderUiStatus,
 } from '../../shared/cloud-provider-ui-state';
 import { createLogger } from '../../core/logger';
-import { safeStorageSet, safeStorageRemove } from '../../core/storage';
 import type { CloudProviderId } from '../../types';
 
 const log = createLogger('ApiKeyManager');
@@ -72,7 +74,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
   };
 
   const saveApiKey = async (providerId: CloudProviderId) => {
-    const provider = CLOUD_PROVIDER_CONFIGS.find(p => p.id === providerId);
+    const provider = getCloudProviderConfig(providerId);
     /* v8 ignore start -- guard: provider always found from own button handlers */
     if (!provider) return;
     /* v8 ignore stop */
@@ -87,12 +89,26 @@ export const ApiKeyManager: Component<Props> = (props) => {
     setError(null);
 
     try {
-      const ok = await safeStorageSet(buildCloudProviderSaveMutation(provider, key, {
-        isPro: isProTier(),
-      }));
+      const response = await sendBackgroundMessageWithUiError({
+        type: 'setCloudApiKey',
+        provider: providerId,
+        apiKey: key,
+        options: {
+          isPro: isProTier(),
+        },
+      }, {
+        setError,
+        logger: log,
+        userMessage: 'Failed to save API key',
+        logMessage: 'Failed to save key:',
+      });
 
-      if (!ok) {
-        setError('Failed to save API key');
+      if (!response) {
+        return;
+      }
+
+      if (!response.success) {
+        setError(response.error ?? 'Failed to save API key');
         return;
       }
 
@@ -117,20 +133,28 @@ export const ApiKeyManager: Component<Props> = (props) => {
   };
 
   const removeApiKey = async (providerId: CloudProviderId) => {
-    const provider = CLOUD_PROVIDER_CONFIGS.find(p => p.id === providerId);
+    const provider = getCloudProviderConfig(providerId);
     /* v8 ignore start -- guard */
     if (!provider) return;
     /* v8 ignore stop */
 
     try {
-      const keysToRemove = [provider.keyField];
-      if (provider.hasProTier && provider.proField) {
-        keysToRemove.push(provider.proField);
+      const response = await sendBackgroundMessageWithUiError({
+        type: 'clearCloudApiKey',
+        provider: providerId,
+      }, {
+        setError,
+        logger: log,
+        userMessage: 'Failed to remove API key',
+        logMessage: 'Failed to remove key:',
+      });
+
+      if (!response) {
+        return;
       }
 
-      const ok = await safeStorageRemove(keysToRemove);
-      if (!ok) {
-        setError('Failed to remove API key');
+      if (!response.success) {
+        setError(response.error ?? 'Failed to remove API key');
         return;
       }
 

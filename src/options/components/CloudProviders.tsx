@@ -5,22 +5,23 @@
 
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
+import { getCloudProviderConfig } from '../../shared/cloud-provider-configs';
 import {
   OPTIONS_CLOUD_PROVIDERS as CLOUD_PROVIDERS,
 } from '../../shared/provider-options';
 import { reportUiError } from '../../shared/ui-feedback';
-import { sendBackgroundMessage } from '../../shared/background-message';
+import {
+  sendBackgroundMessage,
+  sendBackgroundMessageWithUiError,
+} from '../../shared/background-message';
 import {
   applySavedCloudProviderStatus,
-  buildCloudProviderSaveMutation,
   createRemovedCloudProviderStatus,
   getCloudProviderEditDefaults,
-  getManagedCloudProviderKeys,
   loadCloudProviderUiStatus,
   type CloudProviderUiStatus,
 } from '../../shared/cloud-provider-ui-state';
 import { createLogger } from '../../core/logger';
-import { safeStorageSet, safeStorageRemove } from '../../core/storage';
 import { extractErrorMessage } from '../../core/errors';
 import type { CloudProviderId } from '../../types';
 
@@ -67,7 +68,7 @@ export const CloudProviders: Component = () => {
   };
 
   const saveApiKey = async (providerId: CloudProviderId) => {
-    const provider = CLOUD_PROVIDERS.find((p) => p.id === providerId);
+    const provider = getCloudProviderConfig(providerId);
     /* v8 ignore start -- guard: provider always found from own button handlers */
     if (!provider) return;
     /* v8 ignore stop */
@@ -82,13 +83,28 @@ export const CloudProviders: Component = () => {
     setError(null);
 
     try {
-      const ok = await safeStorageSet(buildCloudProviderSaveMutation(provider, key, {
-        enabled: true,
-        isPro: isProTier(),
-        model: selectedModel(),
-      }));
-      if (!ok) {
-        setError('Failed to save API key');
+      const response = await sendBackgroundMessageWithUiError({
+        type: 'setCloudApiKey',
+        provider: providerId,
+        apiKey: key,
+        options: {
+          enabled: true,
+          isPro: isProTier(),
+          model: selectedModel(),
+        },
+      }, {
+        setError,
+        logger: log,
+        userMessage: 'Failed to save API key',
+        logMessage: 'Failed to save key:',
+      });
+
+      if (!response) {
+        return;
+      }
+
+      if (!response.success) {
+        setError(response.error ?? 'Failed to save API key');
         return;
       }
 
@@ -110,16 +126,29 @@ export const CloudProviders: Component = () => {
   };
 
   const removeApiKey = async (providerId: CloudProviderId) => {
-    const provider = CLOUD_PROVIDERS.find((p) => p.id === providerId);
+    const provider = getCloudProviderConfig(providerId);
     /* v8 ignore start -- guard: provider always found from own button handlers */
     if (!provider) return;
     /* v8 ignore stop */
 
     setConfirmRemove(null);
     try {
-      const ok = await safeStorageRemove(getManagedCloudProviderKeys(provider));
-      if (!ok) {
-        log.error('Failed to remove key');
+      const response = await sendBackgroundMessageWithUiError({
+        type: 'clearCloudApiKey',
+        provider: providerId,
+      }, {
+        setError,
+        logger: log,
+        userMessage: 'Failed to remove API key',
+        logMessage: 'Failed to remove key:',
+      });
+
+      if (!response) {
+        return;
+      }
+
+      if (!response.success) {
+        setError(response.error ?? 'Failed to remove API key');
         return;
       }
 
@@ -133,7 +162,7 @@ export const CloudProviders: Component = () => {
   };
 
   const toggleProvider = async (providerId: CloudProviderId) => {
-    const provider = CLOUD_PROVIDERS.find((p) => p.id === providerId);
+    const provider = getCloudProviderConfig(providerId);
     const status = providerStatus()[providerId];
     /* v8 ignore start -- guard: toggle only rendered when hasKey is true */
     if (!provider || !status?.hasKey) return;
@@ -142,7 +171,25 @@ export const CloudProviders: Component = () => {
     const newEnabled = !status.enabled;
 
     try {
-      await safeStorageSet({ [provider.enabledField]: newEnabled });
+      const response = await sendBackgroundMessageWithUiError({
+        type: 'setCloudProviderEnabled',
+        provider: providerId,
+        enabled: newEnabled,
+      }, {
+        setError,
+        logger: log,
+        userMessage: 'Failed to update provider state',
+        logMessage: 'Failed to toggle provider:',
+      });
+
+      if (!response) {
+        return;
+      }
+
+      if (!response.success) {
+        setError(response.error ?? 'Failed to update provider state');
+        return;
+      }
 
       setProviderStatus((prev) => ({
         ...prev,

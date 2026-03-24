@@ -22,7 +22,7 @@ import {
   type TranslationError,
 } from '../core/errors';
 import { createLogger } from '../core/logger';
-import { safeStorageGet, safeStorageSet } from '../core/storage';
+import { safeStorageGet, safeStorageSet, strictStorageSet } from '../core/storage';
 import { getCorrection } from '../core/corrections';
 import { withTimeout } from '../core/async-utils';
 import { CONFIG } from '../config';
@@ -46,6 +46,10 @@ import {
   type DetailedCacheStats,
   type StorageAdapter,
   type TranslationCache,
+  handleClearCloudApiKey,
+  handleGetCloudProviderStatus,
+  handleSetCloudApiKey,
+  handleSetCloudProviderEnabled,
 } from './shared';
 import { estimateTokens, formatUserError, PROVIDER_LIST } from './shared/provider-management';
 import { NETWORK_RETRY_CONFIG } from './shared/translation-core';
@@ -343,6 +347,10 @@ const FIREFOX_MESSAGE_TYPES = [
   'setProvider',
   'getCacheStats',
   'clearCache',
+  'getCloudProviderStatus',
+  'setCloudApiKey',
+  'clearCloudApiKey',
+  'setCloudProviderEnabled',
 ] as const satisfies readonly BackgroundRequestMessageType[];
 
 type FirefoxHandledMessage = Extract<
@@ -374,6 +382,14 @@ async function handleMessage(message: FirefoxHandledMessage): Promise<FirefoxHan
       return handleGetCacheStats();
     case 'clearCache':
       return handleClearCache();
+    case 'getCloudProviderStatus':
+      return handleGetCloudProviderStatus();
+    case 'setCloudApiKey':
+      return handleSetCloudApiKey(message);
+    case 'clearCloudApiKey':
+      return handleClearCloudApiKey(message);
+    case 'setCloudProviderEnabled':
+      return handleSetCloudProviderEnabled(message);
     default:
       return assertNever(message);
   }
@@ -382,7 +398,7 @@ async function handleMessage(message: FirefoxHandledMessage): Promise<FirefoxHan
 async function handleSetProvider(message: SetProviderMessage): Promise<MessageResponse<{ provider: TranslationProviderId }>> {
   currentProvider = message.provider;
   log.info(`Provider set to: ${currentProvider}`);
-  await safeStorageSet({ provider: currentProvider });
+  await strictStorageSet({ provider: currentProvider });
   return { success: true, provider: currentProvider };
 }
 

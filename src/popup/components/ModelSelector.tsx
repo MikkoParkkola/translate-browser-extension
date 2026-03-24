@@ -48,6 +48,7 @@ export const ModelSelector: Component<Props> = (props) => {
   const [cloudApiStatus, setCloudApiStatus] = createSignal<CloudProviderConfiguredStatus>(
     createEmptyCloudProviderConfiguredStatus()
   );
+  const [cloudStatusWarning, setCloudStatusWarning] = createSignal<string | null>(null);
   const [isOpen, setIsOpen] = createSignal(false);
   const [focusedIndex, setFocusedIndex] = createSignal(-1);
   let wrapperRef: HTMLDivElement | undefined;
@@ -57,10 +58,14 @@ export const ModelSelector: Component<Props> = (props) => {
     const response = await trySendBackgroundMessage({
       type: 'getCloudProviderStatus',
     });
-    /* v8 ignore start -- optional chaining */
-    if (response?.status) {
-    /* v8 ignore stop */
+    if (response?.success) {
       setCloudApiStatus(response.status);
+      setCloudStatusWarning(null);
+      return;
+    }
+
+    if (response && !response.success) {
+      setCloudStatusWarning(response.error);
     }
   });
 
@@ -162,7 +167,7 @@ export const ModelSelector: Component<Props> = (props) => {
   const handleSelect = (modelId: TranslationProviderId) => {
     const model = MODELS.find(m => m.id === modelId);
     /* v8 ignore start -- optional chaining + && */
-    if (model?.isCloud && !isCloudConfigured(modelId)) {
+    if (model?.isCloud && !cloudStatusWarning() && !isCloudConfigured(modelId)) {
     /* v8 ignore stop */
       chrome.runtime.openOptionsPage();
     } else {
@@ -187,6 +192,7 @@ export const ModelSelector: Component<Props> = (props) => {
     if (status.isDownloading) return '⏳';
     if (status.error) return '⚠️';
     if (model.isCloud) {
+      if (cloudStatusWarning()) return '⚠️';
       /* v8 ignore start -- ternary */
       return isCloudConfigured(model.id) ? '✓' : '🔑';
       /* v8 ignore stop */
@@ -268,14 +274,19 @@ export const ModelSelector: Component<Props> = (props) => {
                   Configure
                 </button>
               </div>
+              <Show when={cloudStatusWarning()}>
+                <div class="model-dropdown-item-status" role="status">
+                  Cloud provider status unavailable
+                </div>
+              </Show>
               <For each={CLOUD_PROVIDERS}>
                 {(model, idx) => {
                   const absoluteIdx = () => LOCAL_MODELS.length + idx();
                   return (
                   <button
-                    id={`model-option-${absoluteIdx()}`}
-                    class={`model-dropdown-item ${props.selected === model.id ? 'active' : ''} ${!isCloudConfigured(model.id) ? 'unconfigured' : ''} ${focusedIndex() === absoluteIdx() ? 'focused' : ''}`}
-                    onClick={() => handleSelect(model.id)}
+                     id={`model-option-${absoluteIdx()}`}
+                     class={`model-dropdown-item ${props.selected === model.id ? 'active' : ''} ${!cloudStatusWarning() && !isCloudConfigured(model.id) ? 'unconfigured' : ''} ${focusedIndex() === absoluteIdx() ? 'focused' : ''}`}
+                     onClick={() => handleSelect(model.id)}
                     /* v8 ignore start -- mouse event handler */
                     onMouseEnter={() => setFocusedIndex(absoluteIdx())}
                     /* v8 ignore stop */

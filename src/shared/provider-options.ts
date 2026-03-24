@@ -3,7 +3,17 @@
  */
 
 import type { CloudProviderId, QualityTier, TranslationProviderId } from '../types';
-import { CLOUD_PROVIDER_CONFIGS, type CloudProviderConfig } from './cloud-provider-configs';
+import {
+  CLOUD_PROVIDER_CONFIGS,
+  type CloudProviderConfig,
+} from './cloud-provider-configs';
+export {
+  ANTHROPIC_FORMALITY_VALUES,
+  ANTHROPIC_MODEL_VALUES,
+  DEEPL_FORMALITY_VALUES,
+  OPENAI_FORMALITY_VALUES,
+  OPENAI_MODEL_VALUES,
+} from './cloud-provider-configs';
 
 type LocalProviderId = Extract<TranslationProviderId, 'opus-mt' | 'translategemma' | 'chrome-builtin'>;
 type BackgroundProviderId = Extract<TranslationProviderId, 'opus-mt' | 'translategemma'>;
@@ -39,13 +49,6 @@ export interface OnboardingModelOption {
   speed: string;
   quality: string;
   recommended: boolean;
-}
-
-export interface CloudProviderFullConfig extends CloudProviderConfig {
-  enabledField: string;
-  testEndpoint?: string;
-  models?: readonly string[];
-  modelField?: string;
 }
 
 export interface BackgroundProviderInfo {
@@ -227,7 +230,7 @@ const MODEL_SELECTOR_ORDER: TranslationProviderId[] = [
 ];
 
 export const TRANSLATION_PROVIDER_IDS: TranslationProviderId[] = [...MODEL_SELECTOR_ORDER];
-export const CLOUD_PROVIDER_IDS: CloudProviderId[] = ['deepl', 'openai', 'google-cloud', 'anthropic'];
+export const CLOUD_PROVIDER_IDS: CloudProviderId[] = CLOUD_PROVIDER_CONFIGS.map((config) => config.id);
 
 const LOCAL_MODEL_IDS: LocalProviderId[] = ['opus-mt', 'translategemma', 'chrome-builtin'];
 const PROVIDER_SELECTOR_IDS: ProviderSelectorOption['id'][] = ['opus-mt', 'translategemma'];
@@ -245,22 +248,6 @@ const BACKGROUND_PROVIDER_IDS: BackgroundProviderId[] = ['opus-mt', 'translatege
 
 const TRANSLATION_PROVIDER_ID_SET = new Set<string>(TRANSLATION_PROVIDER_IDS);
 const CLOUD_PROVIDER_ID_SET = new Set<string>(CLOUD_PROVIDER_IDS);
-
-export const DEEPL_FORMALITY_VALUES = [
-  'default',
-  'more',
-  'less',
-  'prefer_more',
-  'prefer_less',
-] as const;
-export const OPENAI_FORMALITY_VALUES = ['formal', 'informal', 'neutral'] as const;
-export const OPENAI_MODEL_VALUES = ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'] as const;
-export const ANTHROPIC_FORMALITY_VALUES = ['formal', 'informal', 'neutral'] as const;
-export const ANTHROPIC_MODEL_VALUES = [
-  'claude-sonnet-4-20250514',
-  'claude-3-5-haiku-20241022',
-  'claude-3-5-sonnet-20241022',
-] as const;
 
 const CLOUD_PROVIDER_MODEL_ALIASES: Readonly<Record<CloudProviderId, Readonly<Record<string, string>>>> = {
   deepl: {},
@@ -316,33 +303,6 @@ export function normalizeCloudProviderFormalityValue(
   return normalizeAliasedCloudProviderValue(providerId, value, CLOUD_PROVIDER_FORMALITY_ALIASES);
 }
 
-interface CloudProviderOptionMetadata {
-  enabledField: string;
-  testEndpoint?: string;
-  models?: readonly string[];
-  modelField?: string;
-}
-
-const CLOUD_PROVIDER_OPTION_METADATA: Record<CloudProviderId, CloudProviderOptionMetadata> = {
-  deepl: {
-    enabledField: 'deepl_enabled',
-    testEndpoint: 'https://api-free.deepl.com/v2/usage',
-  },
-  openai: {
-    enabledField: 'openai_enabled',
-    modelField: 'openai_model',
-    models: OPENAI_MODEL_VALUES,
-  },
-  'google-cloud': {
-    enabledField: 'google_cloud_enabled',
-  },
-  anthropic: {
-    enabledField: 'anthropic_enabled',
-    modelField: 'anthropic_model',
-    models: ANTHROPIC_MODEL_VALUES,
-  },
-};
-
 export const MODEL_SELECTOR_LOCAL_MODELS: ModelInfo[] = LOCAL_MODEL_IDS.map(
   (id) => PROVIDER_DEFINITIONS[id].modelSelector
 );
@@ -371,12 +331,7 @@ export const ONBOARDING_MODELS: OnboardingModelOption[] = ONBOARDING_MODEL_IDS.m
   (id) => PROVIDER_DEFINITIONS[id].onboarding!
 );
 
-export const OPTIONS_CLOUD_PROVIDERS: CloudProviderFullConfig[] = CLOUD_PROVIDER_CONFIGS.map(
-  (config) => ({
-    ...config,
-    ...CLOUD_PROVIDER_OPTION_METADATA[config.id],
-  })
-);
+export const OPTIONS_CLOUD_PROVIDERS: CloudProviderConfig[] = CLOUD_PROVIDER_CONFIGS;
 
 export const PROVIDER_STATUS_NAMES = Object.freeze(
   Object.fromEntries(
@@ -392,6 +347,9 @@ export function normalizeTranslationProviderId(
   value: unknown,
   fallback: TranslationProviderId = 'opus-mt'
 ): TranslationProviderId {
+  if (value === 'opus-mt-local') {
+    return 'opus-mt';
+  }
   return isTranslationProviderId(value) ? value : fallback;
 }
 

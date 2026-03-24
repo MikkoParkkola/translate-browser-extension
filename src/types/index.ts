@@ -340,6 +340,13 @@ export interface ClearCloudApiKeyMessage {
   target?: string;
 }
 
+export interface SetCloudProviderEnabledMessage {
+  type: 'setCloudProviderEnabled';
+  provider: CloudProviderId;
+  enabled: boolean;
+  target?: string;
+}
+
 export interface GetCloudProviderUsageMessage {
   type: 'getCloudProviderUsage';
   provider: CloudProviderId;
@@ -478,6 +485,7 @@ export type ExtensionMessage =
   | GetCloudProviderStatusMessage
   | SetCloudApiKeyMessage
   | ClearCloudApiKeyMessage
+  | SetCloudProviderEnabledMessage
   | GetCloudProviderUsageMessage
   | GetProfilingStatsMessage
   | ClearProfilingStatsMessage
@@ -514,8 +522,9 @@ export interface ExtensionMessageResponseMap {
   getPredictionStats: MessageResponse<{ prediction: PredictionStats }>;
   recordLanguageDetection: MessageResponse;
   getCloudProviderStatus: MessageResponseWithFallback<{ status: CloudProviderConfiguredStatus }>;
-  setCloudApiKey: { success: boolean; provider?: CloudProviderId; error?: string };
-  clearCloudApiKey: { success: boolean; provider?: CloudProviderId; error?: string };
+  setCloudApiKey: MessageResponse<{ provider: CloudProviderId }>;
+  clearCloudApiKey: MessageResponse<{ provider: CloudProviderId }>;
+  setCloudProviderEnabled: MessageResponse<{ provider: CloudProviderId; enabled: boolean }>;
   getCloudProviderUsage: MessageResponse<{ usage?: CloudProviderUsage }>;
   getProfilingStats: MessageResponse<{ aggregates: Record<string, unknown>; formatted: string }>;
   clearProfilingStats: MessageResponse;

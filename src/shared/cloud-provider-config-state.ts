@@ -9,13 +9,15 @@ import type { OpenAIFormality, OpenAIModel } from '../providers/openai';
 import {
   ANTHROPIC_FORMALITY_VALUES,
   ANTHROPIC_MODEL_VALUES,
+  CLOUD_PROVIDER_CONFIGS,
   DEEPL_FORMALITY_VALUES,
   OPENAI_FORMALITY_VALUES,
   OPENAI_MODEL_VALUES,
+} from './cloud-provider-configs';
+import {
   normalizeCloudProviderFormalityValue,
   normalizeCloudProviderModelValue,
 } from './provider-options';
-import { CLOUD_PROVIDER_CONFIGS } from './cloud-provider-configs';
 import type {
   AnthropicStoredConfig,
   CloudProviderStorageMutation,

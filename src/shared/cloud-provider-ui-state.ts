@@ -4,6 +4,7 @@
 
 import { safeStorageGet } from '../core/storage';
 import type { CloudProviderId } from '../types';
+import type { CloudProviderConfig } from './cloud-provider-configs';
 import {
   buildValidatedCloudProviderMutation,
   extractCloudProviderConfigState,
@@ -15,17 +16,6 @@ import {
   type CloudProviderSettingsStorageRecord,
 } from './cloud-provider-storage';
 import { normalizeCloudProviderModelValue } from './provider-options';
-
-export interface CloudProviderUiConfig {
-  id: CloudProviderId;
-  keyField: string;
-  hasProTier: boolean;
-  proField?: string;
-  enabledField?: string;
-  modelField?: string;
-  models?: readonly string[];
-  optionFields?: Readonly<Record<string, string>>;
-}
 
 export interface CloudProviderUiStatus {
   hasKey: boolean;
@@ -49,7 +39,7 @@ export interface CloudProviderSaveOptions {
 }
 
 export function buildCloudProviderUiStatusRecord(
-  providers: readonly CloudProviderUiConfig[],
+  providers: readonly CloudProviderConfig[],
   stored: CloudProviderSettingsStorageRecord,
 ): Record<CloudProviderId, CloudProviderUiStatus> {
   const status = {} as Record<CloudProviderId, CloudProviderUiStatus>;
@@ -70,7 +60,7 @@ export function buildCloudProviderUiStatusRecord(
 }
 
 export async function loadCloudProviderUiStatus(
-  providers: readonly CloudProviderUiConfig[],
+  providers: readonly CloudProviderConfig[],
 ): Promise<Record<CloudProviderId, CloudProviderUiStatus>> {
   const stored = await safeStorageGet<CloudProviderSettingsStorageRecord>(
     getCloudProviderStorageKeys(providers)
@@ -80,7 +70,7 @@ export async function loadCloudProviderUiStatus(
 }
 
 export function getCloudProviderEditDefaults(
-  provider: CloudProviderUiConfig | undefined,
+  provider: CloudProviderConfig | undefined,
   status?: CloudProviderUiStatus,
 ): CloudProviderEditDefaults {
   return {
@@ -90,7 +80,7 @@ export function getCloudProviderEditDefaults(
 }
 
 export function buildCloudProviderSaveMutation(
-  provider: CloudProviderUiConfig,
+  provider: CloudProviderConfig,
   apiKey: string,
   options: CloudProviderSaveOptions = {},
 ): CloudProviderSettingsStorageMutation {
@@ -116,7 +106,7 @@ export function buildCloudProviderSaveMutation(
 
 export function applySavedCloudProviderStatus(
   previous: CloudProviderUiStatus | undefined,
-  provider: CloudProviderUiConfig,
+  provider: CloudProviderConfig,
   options: CloudProviderSaveOptions = {},
 ): CloudProviderUiStatus {
   return {
@@ -145,15 +135,15 @@ export function createRemovedCloudProviderStatus(
   };
 }
 
-export function getManagedCloudProviderKeys(provider: CloudProviderUiConfig): string[] {
-  const keys = new Set<string>([provider.keyField]);
+export function getManagedCloudProviderKeys(provider: CloudProviderConfig): string[] {
+  const keys = new Set<string>([provider.storage.apiKey]);
 
   if (provider.enabledField) {
     keys.add(provider.enabledField);
   }
 
-  for (const optionKey of Object.values(provider.optionFields ?? {})) {
-    keys.add(optionKey);
+  for (const relatedKey of provider.storage.related) {
+    keys.add(relatedKey);
   }
 
   return [...keys];

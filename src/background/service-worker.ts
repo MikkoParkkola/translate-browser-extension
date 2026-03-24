@@ -25,7 +25,7 @@ import {
   type RetryConfig,
 } from '../core/errors';
 import { createLogger } from '../core/logger';
-import { safeStorageGet, safeStorageSet, safeStorageRemove } from '../core/storage';
+import { safeStorageGet, safeStorageSet } from '../core/storage';
 import { browserAPI } from '../core/browser-api';
 import { validateInput } from '../core/errors';
 import { getCorrection } from '../core/corrections';
@@ -63,6 +63,7 @@ import {
   handleGetCloudProviderStatus,
   handleSetCloudApiKey,
   handleClearCloudApiKey,
+  handleSetCloudProviderEnabled,
   handleGetHistory,
   handleClearHistory,
   recordTranslationToHistory,
@@ -620,6 +621,7 @@ const SERVICE_WORKER_MESSAGE_TYPES = [
   'getCloudProviderStatus',
   'setCloudApiKey',
   'clearCloudApiKey',
+  'setCloudProviderEnabled',
   'getCloudProviderUsage',
   'getProfilingStats',
   'clearProfilingStats',
@@ -685,10 +687,9 @@ async function handleMessage(message: ServiceWorkerHandledMessage): Promise<Serv
     case 'setCloudApiKey':
       return handleSetCloudApiKey(message);
     case 'clearCloudApiKey':
-      return handleClearCloudApiKey(
-        message,
-        (keys) => safeStorageRemove(keys).then(() => undefined),
-      );
+      return handleClearCloudApiKey(message);
+    case 'setCloudProviderEnabled':
+      return handleSetCloudProviderEnabled(message);
     case 'getCloudProviderUsage':
       return handleGetCloudProviderUsage(message);
     case 'getProfilingStats':

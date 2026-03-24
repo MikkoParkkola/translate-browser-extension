@@ -112,7 +112,7 @@ installAttachShadowInterceptor();
 let isTranslatingPage = false;
 let isTranslatingDynamic = false;
 let pendingMutations: MutationRecord[] = [];
-let mutationDebounceTimer: number | null = null;
+let mutationDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let mutationObserver: MutationObserver | null = null;
 /** Cleanup function returned by observeShadowRoots */
 let shadowRootCleanup: (() => void) | null = null;

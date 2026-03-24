@@ -9,11 +9,17 @@
 import type {
   TranslationProviderId, Strategy, DetailedCacheStats,
   SetCloudApiKeyMessage, ClearCloudApiKeyMessage,
+  SetCloudProviderEnabledMessage,
   AddCorrectionMessage, GetCorrectionMessage, DeleteCorrectionMessage, ImportCorrectionsMessage,
   ExtensionMessageResponseByType,
   MessageResponse,
 } from '../../types';
-import { safeStorageGet, safeStorageSet } from '../../core/storage';
+import {
+  safeStorageGet,
+  strictStorageGet,
+  strictStorageRemove,
+  strictStorageSet,
+} from '../../core/storage';
 import { createLogger } from '../../core/logger';
 import {
   addCorrection,
@@ -32,6 +38,7 @@ import type { TranslationCache } from './storage-ops';
 import {
   getProvider,
   getRateLimitState,
+  CLOUD_PROVIDER_ENABLED_FIELDS,
   CLOUD_PROVIDER_KEYS,
   CLOUD_PROVIDER_OPTION_FIELDS,
   CLOUD_PROVIDER_STORAGE_KEYS,
@@ -114,7 +121,7 @@ export async function handleGetCloudProviderStatus(): Promise<
   return withMessageResponseFallback(
     async () => {
       const keys = Object.values(CLOUD_PROVIDER_KEYS);
-      const stored = await safeStorageGet<CloudProviderStatusStorageRecord>(keys);
+      const stored = await strictStorageGet<CloudProviderStatusStorageRecord>(keys);
       return { status: buildCloudProviderConfiguredStatusRecord(stored) };
     },
     { status: createEmptyCloudProviderConfiguredStatus() },
@@ -122,7 +129,9 @@ export async function handleGetCloudProviderStatus(): Promise<
   );
 }
 
-export async function handleSetCloudApiKey(message: SetCloudApiKeyMessage): Promise<{ success: boolean; provider?: SetCloudApiKeyMessage['provider']; error?: string }> {
+export async function handleSetCloudApiKey(
+  message: SetCloudApiKeyMessage
+): Promise<ExtensionMessageResponseByType<'setCloudApiKey'>> {
   const storageKey = CLOUD_PROVIDER_KEYS[message.provider];
   if (!storageKey) {
     return { success: false, error: `Unknown provider: ${message.provider}` };
@@ -142,7 +151,7 @@ export async function handleSetCloudApiKey(message: SetCloudApiKeyMessage): Prom
         );
       }
 
-      await safeStorageSet(dataToStore);
+      await strictStorageSet(dataToStore);
       log.info(`API key set for ${message.provider}`);
       return { provider: message.provider };
     },
@@ -152,8 +161,8 @@ export async function handleSetCloudApiKey(message: SetCloudApiKeyMessage): Prom
 
 export async function handleClearCloudApiKey(
   message: ClearCloudApiKeyMessage,
-  storageRemove: (keys: string[]) => Promise<void>,
-): Promise<{ success: boolean; provider?: ClearCloudApiKeyMessage['provider']; error?: string }> {
+  storageRemove: (keys: string[]) => Promise<void> = strictStorageRemove,
+): Promise<ExtensionMessageResponseByType<'clearCloudApiKey'>> {
   const storageKey = CLOUD_PROVIDER_KEYS[message.provider];
   if (!storageKey) {
     return { success: false, error: `Unknown provider: ${message.provider}` };
@@ -167,6 +176,24 @@ export async function handleClearCloudApiKey(
       return { provider: message.provider };
     },
     (error) => log.error('Failed to clear API key:', error)
+  );
+}
+
+export async function handleSetCloudProviderEnabled(
+  message: SetCloudProviderEnabledMessage
+): Promise<ExtensionMessageResponseByType<'setCloudProviderEnabled'>> {
+  const enabledField = CLOUD_PROVIDER_ENABLED_FIELDS[message.provider];
+  if (!enabledField) {
+    return { success: false, error: `Unknown provider: ${message.provider}` };
+  }
+
+  return withMessageResponse(
+    async () => {
+      await strictStorageSet({ [enabledField]: message.enabled });
+      log.info(`Provider ${message.provider} enabled=${message.enabled}`);
+      return { provider: message.provider, enabled: message.enabled };
+    },
+    (error) => log.error('Failed to update cloud provider enabled state:', error)
   );
 }
 

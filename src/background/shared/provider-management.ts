@@ -7,7 +7,7 @@
 
 import type { Strategy, TranslationProviderId, CloudProviderId, SetProviderMessage, MessageResponse } from '../../types';
 import type { TranslationError } from '../../core/errors';
-import { safeStorageSet } from '../../core/storage';
+import { strictStorageSet } from '../../core/storage';
 import { approxTokens } from '../../core/text-utils';
 import { createLogger } from '../../core/logger';
 import { CONFIG } from '../../config';
@@ -109,13 +109,22 @@ export const CLOUD_PROVIDER_KEYS: Record<CloudProviderId, string> = buildCloudPr
 
 /** Full storage lifecycle keys for each cloud provider. */
 export const CLOUD_PROVIDER_STORAGE_KEYS = buildCloudProviderRecord(
-  (config) => Object.freeze([config.storage.apiKey, ...config.storage.related])
+  (config) => Object.freeze([
+    config.storage.apiKey,
+    config.enabledField,
+    ...config.storage.related,
+  ])
 ) as Readonly<Record<CloudProviderId, readonly string[]>>;
 
 /** Writable option field -> storage key mappings for each cloud provider. */
 export const CLOUD_PROVIDER_OPTION_FIELDS = buildCloudProviderRecord(
   (config) => Object.freeze({ ...(config.optionFields ?? {}) })
 ) as Readonly<Record<CloudProviderId, Readonly<Record<string, string>>>>;
+
+/** Enabled flag storage key for each cloud provider. */
+export const CLOUD_PROVIDER_ENABLED_FIELDS = buildCloudProviderRecord(
+  (config) => config.enabledField
+);
 
 /** Static provider list shown in the UI. */
 export const PROVIDER_LIST = BACKGROUND_PROVIDER_LIST;
@@ -128,6 +137,6 @@ export const PROVIDER_LIST = BACKGROUND_PROVIDER_LIST;
 export async function handleSetProvider(message: SetProviderMessage): Promise<MessageResponse<{ provider: TranslationProviderId }>> {
   currentProvider = message.provider;
   log.info(`Provider set to: ${currentProvider}`);
-  await safeStorageSet({ provider: currentProvider });
+  await strictStorageSet({ provider: currentProvider });
   return { success: true, provider: currentProvider };
 }

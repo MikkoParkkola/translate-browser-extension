@@ -19,6 +19,7 @@ export function isHandledExtensionMessage<TType extends ExtensionMessage['type']
 export const SENSITIVE_EXTENSION_MESSAGE_TYPES = [
   'setCloudApiKey',
   'clearCloudApiKey',
+  'setCloudProviderEnabled',
   'importCorrections',
   'clearCache',
   'clearCorrections',
