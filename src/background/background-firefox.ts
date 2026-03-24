@@ -33,6 +33,8 @@ import {
   assertNever,
   isExtensionMessage,
   isHandledExtensionMessage,
+  isAuthorizedExtensionSender,
+  routeHandledExtensionMessage,
 } from './shared/message-routing';
 
 // Extracted modules from offscreen (now used directly)
@@ -786,34 +788,26 @@ browserAPI.runtime.onMessage.addListener(
 
     // Validate sender for sensitive operations — only allow from extension pages (popup/options),
     // not content scripts running on arbitrary web pages.
-    const sensitiveTypes: string[] = [
-      'setCloudApiKey', 'clearCloudApiKey', 'importCorrections', 'clearCache',
-      'clearCorrections', 'clearHistory', 'clearAllModels', 'clearProfilingStats',
-    ];
-    if (sensitiveTypes.includes(message.type) && sender.url && !sender.url.startsWith('moz-extension://')) {
+    if (!isAuthorizedExtensionSender(message, sender.url, 'moz-extension://')) {
       sendResponse({ success: false, error: 'Unauthorized sender' });
       return true;
     }
 
-    if (!isFirefoxHandledMessage(message)) {
-      log.warn(`Unknown message type: ${message.type}`);
-      sendResponse({ success: false, error: `Unknown message type: ${message.type}` });
-      return true;
-    }
-
-    handleMessage(message)
-      .then(sendResponse)
-      .catch((error) => {
+    return routeHandledExtensionMessage({
+      message,
+      sendResponse,
+      isHandledMessage: isFirefoxHandledMessage,
+      dispatch: handleMessage,
+      logUnknownMessage: (type) => log.warn(`Unknown message type: ${type}`),
+      createErrorResponse: (error) => {
         const translationError = createTranslationError(error);
         log.error('Error:', translationError.technicalDetails);
-
-        sendResponse({
+        return {
           success: false,
           error: formatUserError(translationError),
-        });
-      });
-
-    return true; // Async response
+        };
+      },
+    });
   }
 );
 

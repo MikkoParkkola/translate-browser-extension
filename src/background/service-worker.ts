@@ -39,6 +39,8 @@ import {
   assertNever,
   isExtensionMessage,
   isHandledExtensionMessage,
+  isAuthorizedExtensionSender,
+  routeHandledExtensionMessage,
 } from './shared/message-routing';
 
 // Shared modules — extracted from duplicated Chrome/Firefox logic
@@ -471,34 +473,26 @@ chrome.runtime.onMessage.addListener(
     // Validate sender for sensitive operations — only allow from extension pages (popup/options),
     // not content scripts running on arbitrary web pages. Content scripts always have sender.url
     // set to the web page URL; extension pages have chrome-extension:// URLs.
-    const sensitiveTypes: string[] = [
-      'setCloudApiKey', 'clearCloudApiKey', 'importCorrections', 'clearCache',
-      'clearCorrections', 'clearHistory', 'clearAllModels', 'clearProfilingStats',
-    ];
-    if (sensitiveTypes.includes(message.type) && sender.url && !sender.url.startsWith('chrome-extension://')) {
+    if (!isAuthorizedExtensionSender(message, sender.url, 'chrome-extension://')) {
       sendResponse({ success: false, error: 'Unauthorized sender' });
       return true;
     }
 
-    if (!isServiceWorkerHandledMessage(message)) {
-      log.warn(` Unknown message type: ${message.type}`);
-      sendResponse({ success: false, error: `Unknown message type: ${message.type}` });
-      return true;
-    }
-
-    handleMessage(message)
-      .then(sendResponse)
-      .catch((error) => {
+    return routeHandledExtensionMessage({
+      message,
+      sendResponse,
+      isHandledMessage: isServiceWorkerHandledMessage,
+      dispatch: handleMessage,
+      logUnknownMessage: (type) => log.warn(` Unknown message type: ${type}`),
+      createErrorResponse: (error) => {
         const translationError = createTranslationError(error);
         log.error(' Error:', translationError.technicalDetails);
-
-        sendResponse({
+        return {
           success: false,
           error: formatUserError(translationError),
-        });
-      });
-
-    return true; // Async response
+        };
+      },
+    });
   }
 );
 
