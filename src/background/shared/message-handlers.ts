@@ -32,6 +32,8 @@ import {
   getProvider,
   getRateLimitState,
   CLOUD_PROVIDER_KEYS,
+  CLOUD_PROVIDER_OPTION_FIELDS,
+  CLOUD_PROVIDER_STORAGE_KEYS,
 } from './provider-management';
 import {
   withMessageResponse,
@@ -94,13 +96,13 @@ const CONFIG_RL = CONFIG.rateLimits;
 export async function handleGetCloudProviderStatus(): Promise<{ success: boolean; status: Record<string, boolean>; error?: string }> {
   return withMessageResponseFallback(
     async () => {
-    const keys = Object.values(CLOUD_PROVIDER_KEYS);
-    const stored = await safeStorageGet<Record<string, string>>(keys);
+      const keys = Object.values(CLOUD_PROVIDER_KEYS);
+      const stored = await safeStorageGet<Record<string, string>>(keys);
 
-    const status: Record<string, boolean> = {};
-    for (const [provider, storageKey] of Object.entries(CLOUD_PROVIDER_KEYS)) {
-      status[provider] = !!stored[storageKey];
-    }
+      const status: Record<string, boolean> = {};
+      for (const [provider, storageKey] of Object.entries(CLOUD_PROVIDER_KEYS)) {
+        status[provider] = !!stored[storageKey];
+      }
 
       return { status };
     },
@@ -121,16 +123,14 @@ export async function handleSetCloudApiKey(message: SetCloudApiKeyMessage): Prom
         [storageKey]: message.apiKey,
       };
 
-      // Provider-specific options
-      if (message.provider === 'deepl' && message.options) {
-        if (message.options.isPro !== undefined) dataToStore['deepl_is_pro'] = message.options.isPro;
-        if (message.options.formality !== undefined) dataToStore['deepl_formality'] = message.options.formality;
-      } else if (message.provider === 'openai' && message.options) {
-        if (message.options.model !== undefined) dataToStore['openai_model'] = message.options.model;
-        if (message.options.formality !== undefined) dataToStore['openai_formality'] = message.options.formality;
-      } else if (message.provider === 'anthropic' && message.options) {
-        if (message.options.model !== undefined) dataToStore['anthropic_model'] = message.options.model;
-        if (message.options.formality !== undefined) dataToStore['anthropic_formality'] = message.options.formality;
+      if (message.options) {
+        const optionFields = CLOUD_PROVIDER_OPTION_FIELDS[message.provider];
+        for (const [optionKey, optionStorageKey] of Object.entries(optionFields)) {
+          const optionValue = message.options[optionKey];
+          if (optionValue !== undefined) {
+            dataToStore[optionStorageKey] = optionValue;
+          }
+        }
       }
 
       await safeStorageSet(dataToStore);
@@ -152,17 +152,7 @@ export async function handleClearCloudApiKey(
 
   return withMessageResponse(
     async () => {
-      const keysToRemove = [storageKey];
-      if (message.provider === 'deepl') {
-        keysToRemove.push('deepl_is_pro', 'deepl_formality');
-      } else if (message.provider === 'openai') {
-        keysToRemove.push('openai_model', 'openai_formality', 'openai_temperature', 'openai_tokens_used');
-      } else if (message.provider === 'anthropic') {
-        keysToRemove.push('anthropic_model', 'anthropic_formality', 'anthropic_tokens_used');
-      } else if (message.provider === 'google-cloud') {
-        keysToRemove.push('google_cloud_chars_used');
-      }
-
+      const keysToRemove = [...(CLOUD_PROVIDER_STORAGE_KEYS[message.provider] ?? [storageKey])];
       await storageRemove(keysToRemove);
       log.info(`API key cleared for ${message.provider}`);
       return { provider: message.provider };

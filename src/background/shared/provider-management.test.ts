@@ -46,6 +46,8 @@ import {
   formatUserError,
   handleSetProvider,
   CLOUD_PROVIDER_KEYS,
+  CLOUD_PROVIDER_OPTION_FIELDS,
+  CLOUD_PROVIDER_STORAGE_KEYS,
   PROVIDER_LIST,
 } from './provider-management';
 import type { TranslationError } from '../../core/errors';
@@ -223,6 +225,39 @@ describe('CLOUD_PROVIDER_KEYS', () => {
 
   it('contains google-cloud key', () => {
     expect(CLOUD_PROVIDER_KEYS['google-cloud']).toBe('google_cloud_api_key');
+  });
+});
+
+describe('CLOUD_PROVIDER_STORAGE_KEYS', () => {
+  it('includes related deepl keys', () => {
+    expect(CLOUD_PROVIDER_STORAGE_KEYS['deepl']).toEqual([
+      'deepl_api_key',
+      'deepl_is_pro',
+      'deepl_formality',
+    ]);
+  });
+
+  it('includes tracked usage cleanup keys for openai', () => {
+    expect(CLOUD_PROVIDER_STORAGE_KEYS['openai']).toEqual([
+      'openai_api_key',
+      'openai_model',
+      'openai_formality',
+      'openai_temperature',
+      'openai_tokens_used',
+    ]);
+  });
+});
+
+describe('CLOUD_PROVIDER_OPTION_FIELDS', () => {
+  it('maps deepl option fields to storage keys', () => {
+    expect(CLOUD_PROVIDER_OPTION_FIELDS['deepl']).toEqual({
+      isPro: 'deepl_is_pro',
+      formality: 'deepl_formality',
+    });
+  });
+
+  it('omits writable option fields for google-cloud', () => {
+    expect(CLOUD_PROVIDER_OPTION_FIELDS['google-cloud']).toEqual({});
   });
 });
 

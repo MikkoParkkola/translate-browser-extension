@@ -22,6 +22,8 @@ export {
   getRateLimitState,
   formatUserError,
   CLOUD_PROVIDER_KEYS,
+  CLOUD_PROVIDER_OPTION_FIELDS,
+  CLOUD_PROVIDER_STORAGE_KEYS,
   PROVIDER_LIST,
   handleSetProvider,
 } from './provider-management';

@@ -12,6 +12,7 @@ import { approxTokens } from '../../core/text-utils';
 import { createLogger } from '../../core/logger';
 import { CONFIG } from '../../config';
 import { BACKGROUND_PROVIDER_LIST } from '../../shared/provider-options';
+import { CLOUD_PROVIDER_CONFIGS } from '../../shared/cloud-provider-configs';
 
 const log = createLogger('ProviderMgmt');
 
@@ -95,13 +96,26 @@ export function formatUserError(error: TranslationError): string {
 // Provider Constants
 // ============================================================================
 
+function buildCloudProviderRecord<T>(select: (config: typeof CLOUD_PROVIDER_CONFIGS[number]) => T): Record<CloudProviderId, T> {
+  return Object.freeze(
+    Object.fromEntries(CLOUD_PROVIDER_CONFIGS.map((config) => [config.id, select(config)]))
+  ) as Record<CloudProviderId, T>;
+}
+
 /** Cloud provider API key storage keys. */
-export const CLOUD_PROVIDER_KEYS: Record<CloudProviderId, string> = {
-  deepl: 'deepl_api_key',
-  openai: 'openai_api_key',
-  anthropic: 'anthropic_api_key',
-  'google-cloud': 'google_cloud_api_key',
-};
+export const CLOUD_PROVIDER_KEYS: Record<CloudProviderId, string> = buildCloudProviderRecord(
+  (config) => config.storage.apiKey
+);
+
+/** Full storage lifecycle keys for each cloud provider. */
+export const CLOUD_PROVIDER_STORAGE_KEYS = buildCloudProviderRecord(
+  (config) => Object.freeze([config.storage.apiKey, ...config.storage.related])
+) as Readonly<Record<CloudProviderId, readonly string[]>>;
+
+/** Writable option field -> storage key mappings for each cloud provider. */
+export const CLOUD_PROVIDER_OPTION_FIELDS = buildCloudProviderRecord(
+  (config) => Object.freeze({ ...(config.optionFields ?? {}) })
+) as Readonly<Record<CloudProviderId, Readonly<Record<string, string>>>>;
 
 /** Static provider list shown in the UI. */
 export const PROVIDER_LIST = BACKGROUND_PROVIDER_LIST;

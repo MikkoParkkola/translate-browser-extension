@@ -70,6 +70,8 @@ describe('shared/index barrel export', () => {
     expect(barrel.getRateLimitState).toBeDefined();
     expect(barrel.formatUserError).toBeDefined();
     expect(barrel.CLOUD_PROVIDER_KEYS).toBeDefined();
+    expect(barrel.CLOUD_PROVIDER_OPTION_FIELDS).toBeDefined();
+    expect(barrel.CLOUD_PROVIDER_STORAGE_KEYS).toBeDefined();
     expect(barrel.PROVIDER_LIST).toBeDefined();
     expect(barrel.handleSetProvider).toBeDefined();
   });

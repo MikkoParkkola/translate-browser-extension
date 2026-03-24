@@ -52,6 +52,18 @@ vi.mock('./provider-management', () => ({
     anthropic: 'anthropic_api_key',
     'google-cloud': 'google_cloud_key',
   },
+  CLOUD_PROVIDER_STORAGE_KEYS: {
+    deepl: ['deepl_api_key', 'deepl_is_pro', 'deepl_formality'],
+    openai: ['openai_api_key', 'openai_model', 'openai_formality', 'openai_temperature', 'openai_tokens_used'],
+    anthropic: ['anthropic_api_key', 'anthropic_model', 'anthropic_formality', 'anthropic_tokens_used'],
+    'google-cloud': ['google_cloud_key', 'google_cloud_chars_used'],
+  },
+  CLOUD_PROVIDER_OPTION_FIELDS: {
+    deepl: { isPro: 'deepl_is_pro', formality: 'deepl_formality' },
+    openai: { model: 'openai_model', formality: 'openai_formality' },
+    anthropic: { model: 'anthropic_model', formality: 'anthropic_formality' },
+    'google-cloud': {},
+  },
   PROVIDER_LIST: ['opus-mt', 'deepl', 'openai', 'anthropic', 'google-cloud'],
 }));
 
@@ -358,9 +370,11 @@ describe('handleClearCloudApiKey', () => {
   });
 
   it('removes only base key for provider without extra cleanup rules', async () => {
-    const { CLOUD_PROVIDER_KEYS } = await import('./provider-management');
+    const { CLOUD_PROVIDER_KEYS, CLOUD_PROVIDER_STORAGE_KEYS } = await import('./provider-management');
     const keys = CLOUD_PROVIDER_KEYS as Record<string, string>;
+    const storageKeys = CLOUD_PROVIDER_STORAGE_KEYS as Record<string, readonly string[]>;
     keys['custom-provider'] = 'custom_api_key';
+    storageKeys['custom-provider'] = ['custom_api_key'];
 
     try {
       const { handleClearCloudApiKey } = await import('./message-handlers');
@@ -375,6 +389,7 @@ describe('handleClearCloudApiKey', () => {
       expect(mockRemove).toHaveBeenCalledWith(['custom_api_key']);
     } finally {
       delete keys['custom-provider'];
+      delete storageKeys['custom-provider'];
     }
   });
 });
