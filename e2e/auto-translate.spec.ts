@@ -10,48 +10,7 @@
  *   - Uses requestIdleCallback on page load to start translation
  *   - Starts MutationObserver after initial translation for dynamic content
  */
-import { test as base, expect, chromium, type BrowserContext, type Page } from '@playwright/test';
-import path from 'path';
-
-const EXTENSION_PATH = path.resolve(__dirname, '..', 'dist');
-const BACKGROUND_MODE = process.env.BACKGROUND !== 'false';
-
-const test = base.extend<{
-  context: BrowserContext;
-  extensionId: string;
-}>({
-  // eslint-disable-next-line no-empty-pattern
-  context: async ({}, use) => {
-    const context = await chromium.launchPersistentContext('', {
-      headless: false,
-      args: [
-        `--disable-extensions-except=${EXTENSION_PATH}`,
-        `--load-extension=${EXTENSION_PATH}`,
-        '--no-first-run',
-        '--disable-component-update',
-        ...(BACKGROUND_MODE
-          ? ['--window-position=-32000,-32000', '--window-size=1280,720', '--disable-gpu', '--mute-audio']
-          : []),
-      ],
-    });
-    await use(context);
-    await context.close();
-  },
-  extensionId: async ({ context }, use) => {
-    let sw = context.serviceWorkers()[0];
-    if (!sw) sw = await context.waitForEvent('serviceworker', { timeout: 30_000 });
-    const match = sw.url().match(/chrome-extension:\/\/([^/]+)/);
-    if (!match) throw new Error(`Could not extract extension ID from: ${sw.url()}`);
-    await use(match[1]);
-  },
-});
-
-// Helper: configure extension settings via storage
-async function setExtensionSettings(page: Page, settings: Record<string, unknown>): Promise<void> {
-  await page.evaluate(async (s) => {
-    await chrome.storage.local.set(s);
-  }, settings);
-}
+import { test, expect, setExtensionSettings } from './fixtures';
 
 test.describe('Auto-translate', () => {
   test.describe.configure({ timeout: 90_000 });

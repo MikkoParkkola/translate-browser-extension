@@ -1,45 +1,4 @@
-import { test as base, expect, chromium, type BrowserContext } from '@playwright/test';
-import path from 'path';
-
-const EXTENSION_PATH = path.resolve(__dirname, '..', 'dist');
-
-// Custom test fixture with extension loaded
-const test = base.extend<{
-  context: BrowserContext;
-  extensionId: string;
-}>({
-  // eslint-disable-next-line no-empty-pattern
-  context: async ({}, use) => {
-    const BACKGROUND_MODE = process.env.BACKGROUND !== 'false';
-    const context = await chromium.launchPersistentContext('', {
-      headless: false,
-      args: [
-        `--disable-extensions-except=${EXTENSION_PATH}`,
-        `--load-extension=${EXTENSION_PATH}`,
-        '--no-first-run',
-        '--disable-component-update',
-        ...(BACKGROUND_MODE ? [
-          '--window-position=-32000,-32000',
-          '--window-size=1280,720',
-          '--disable-gpu',
-          '--mute-audio',
-        ] : []),
-      ],
-    });
-    await use(context);
-    await context.close();
-  },
-  extensionId: async ({ context }, use) => {
-    let sw = context.serviceWorkers()[0];
-    if (!sw) {
-      sw = await context.waitForEvent('serviceworker', { timeout: 30000 });
-    }
-    const url = sw.url();
-    const match = url.match(/chrome-extension:\/\/([^/]+)/);
-    if (!match) throw new Error(`Could not extract extension ID from: ${url}`);
-    await use(match[1]);
-  },
-});
+import { gpuTest as test, expect, popupUrl, offscreenUrl } from './fixtures';
 
 test.describe('TranslateGemma WebGPU Fallback', () => {
   test('offscreen document creates and processes messages', async ({ context, extensionId }) => {
@@ -55,7 +14,7 @@ test.describe('TranslateGemma WebGPU Fallback', () => {
 
     // Trigger offscreen document creation via preload message from the popup
     const popupPage = await context.newPage();
-    await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+    await popupPage.goto(popupUrl(extensionId));
     await popupPage.waitForLoadState('domcontentloaded');
 
     // Send preloadModel message to the background service worker
@@ -87,7 +46,7 @@ test.describe('TranslateGemma WebGPU Fallback', () => {
   test('WebGPU detection works in extension context', async ({ context, extensionId }) => {
     // Navigate to the offscreen page directly to test WebGPU detection
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/offscreen/offscreen.html`);
+    await page.goto(offscreenUrl(extensionId));
     await page.waitForLoadState('domcontentloaded');
 
     // Check if WebGPU is available in the offscreen document context

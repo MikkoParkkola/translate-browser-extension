@@ -11,53 +11,7 @@
  *   translate-selection→ Ctrl+Shift+T  → Translate selected text
  *   undo-translation   → Ctrl+Shift+U  → Undo translation
  */
-import { test as base, expect, chromium, type BrowserContext, type Page } from '@playwright/test';
-import path from 'path';
-
-const EXTENSION_PATH = path.resolve(__dirname, '..', 'dist');
-const BACKGROUND_MODE = process.env.BACKGROUND !== 'false';
-
-const test = base.extend<{
-  context: BrowserContext;
-  extensionId: string;
-}>({
-  // eslint-disable-next-line no-empty-pattern
-  context: async ({}, use) => {
-    const context = await chromium.launchPersistentContext('', {
-      headless: false,
-      args: [
-        `--disable-extensions-except=${EXTENSION_PATH}`,
-        `--load-extension=${EXTENSION_PATH}`,
-        '--no-first-run',
-        '--disable-component-update',
-        ...(BACKGROUND_MODE
-          ? ['--window-position=-32000,-32000', '--window-size=1280,720', '--disable-gpu', '--mute-audio']
-          : []),
-      ],
-    });
-    await use(context);
-    await context.close();
-  },
-  extensionId: async ({ context }, use) => {
-    let sw = context.serviceWorkers()[0];
-    if (!sw) sw = await context.waitForEvent('serviceworker', { timeout: 30_000 });
-    const match = sw.url().match(/chrome-extension:\/\/([^/]+)/);
-    if (!match) throw new Error(`Could not extract extension ID from: ${sw.url()}`);
-    await use(match[1]);
-  },
-});
-
-// Helper: send a message to the extension background
-async function sendExtensionMessage(page: Page, message: Record<string, unknown>): Promise<unknown> {
-  return page.evaluate(async (msg) => {
-    return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(msg, (response: unknown) => {
-        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-        else resolve(response);
-      });
-    });
-  }, message);
-}
+import { test, expect, popupUrl } from './fixtures';
 
 test.describe('Keyboard Shortcuts', () => {
   test.describe.configure({ timeout: 60_000 });
@@ -93,7 +47,7 @@ test.describe('Keyboard Shortcuts', () => {
     // dispatchEvent won't trigger the extension command handler.
     // Verify the command is registered in the manifest instead.
     const popupPage = await context.newPage();
-    await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+    await popupPage.goto(popupUrl(extensionId));
     await popupPage.waitForLoadState('domcontentloaded');
 
     const commands = await popupPage.evaluate(async () => {
@@ -115,7 +69,7 @@ test.describe('Keyboard Shortcuts', () => {
   // ── 2. translate-selection command is registered ───────────────
   test('translate-selection command is registered', async ({ context, extensionId }) => {
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+    await page.goto(popupUrl(extensionId));
     await page.waitForLoadState('domcontentloaded');
 
     const commands = await page.evaluate(async () => {
@@ -136,7 +90,7 @@ test.describe('Keyboard Shortcuts', () => {
   // ── 3. undo-translation command is registered ─────────────────
   test('undo-translation command is registered', async ({ context, extensionId }) => {
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+    await page.goto(popupUrl(extensionId));
     await page.waitForLoadState('domcontentloaded');
 
     const commands = await page.evaluate(async () => {
@@ -155,7 +109,7 @@ test.describe('Keyboard Shortcuts', () => {
   // ── 4. Alt+T → _execute_action (open popup) registered ────────
   test('Alt+T is registered for opening popup', async ({ context, extensionId }) => {
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+    await page.goto(popupUrl(extensionId));
     await page.waitForLoadState('domcontentloaded');
 
     const commands = await page.evaluate(async () => {
@@ -182,7 +136,7 @@ test.describe('Keyboard Shortcuts', () => {
 
     // Verify we can communicate with the extension from the page context
     const popupPage = await context.newPage();
-    await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+    await popupPage.goto(popupUrl(extensionId));
     await popupPage.waitForLoadState('domcontentloaded');
 
     // Extension should report all 4+ commands

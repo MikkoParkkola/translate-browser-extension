@@ -15,6 +15,12 @@ export default defineConfig({
   workers: 1, // Single worker for extension tests
   reporter: [['list'], ['html', { open: 'never' }]],
   timeout: 120000, // 2 min for model downloads
+  webServer: {
+    command: 'npm run serve:e2e',
+    url: 'http://127.0.0.1:8080',
+    reuseExistingServer: !process.env.CI,
+    timeout: 30_000,
+  },
   expect: {
     timeout: 30000,
   },

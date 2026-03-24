@@ -6,60 +6,7 @@
  * - TranslateGemma provider (4B model, ~3.5GB)
  * - Provider switching, popup UI, content script injection
  */
-import { test as base, expect, chromium, type BrowserContext, type Page } from '@playwright/test';
-import path from 'path';
-
-const EXTENSION_PATH = path.resolve(__dirname, '..', 'dist');
-
-// Shared fixture: extension loaded with GPU enabled
-const test = base.extend<{
-  context: BrowserContext;
-  extensionId: string;
-}>({
-  // eslint-disable-next-line no-empty-pattern
-  context: async ({}, use) => {
-    const context = await chromium.launchPersistentContext('', {
-      headless: false,
-      args: [
-        `--disable-extensions-except=${EXTENSION_PATH}`,
-        `--load-extension=${EXTENSION_PATH}`,
-        '--no-first-run',
-        '--disable-component-update',
-        '--window-position=-32000,-32000',
-        '--window-size=1280,720',
-        '--mute-audio',
-      ],
-    });
-    await use(context);
-    await context.close();
-  },
-  extensionId: async ({ context }, use) => {
-    let sw = context.serviceWorkers()[0];
-    if (!sw) {
-      sw = await context.waitForEvent('serviceworker', { timeout: 30000 });
-    }
-    const match = sw.url().match(/chrome-extension:\/\/([^/]+)/);
-    if (!match) throw new Error(`Could not extract extension ID from: ${sw.url()}`);
-    await use(match[1]);
-  },
-});
-
-/**
- * Helper: send a message to the extension background from a page context.
- */
-async function sendExtensionMessage(page: Page, message: Record<string, unknown>): Promise<unknown> {
-  return page.evaluate(async (msg) => {
-    return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(msg, (response) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-        } else {
-          resolve(response);
-        }
-      });
-    });
-  }, message);
-}
+import { test, expect, sendExtensionMessage } from './fixtures';
 
 // ============================================================
 // OPUS-MT Tests (lightweight, fast download)

@@ -9,22 +9,21 @@
  * Run: npm run test:e2e:background
  */
 
-import { test, expect, chromium, type BrowserContext, type Page } from '@playwright/test';
+import { test as base } from '@playwright/test';
+import { test, expect, popupUrl, offscreenUrl } from './fixtures';
 import path from 'path';
 import fs from 'fs';
+
 const EXTENSION_PATH = path.resolve(__dirname, '../dist');
 
-// Collect all console errors
 interface ConsoleError {
   type: string;
   text: string;
   location?: string;
 }
 
-// Static manifest test - no browser needed
-test.describe('Manifest CSP Validation', () => {
-  test('manifest has correct CSP for HuggingFace CDNs', async () => {
-    // Read the manifest directly
+base.describe('Manifest CSP Validation', () => {
+  base('manifest has correct CSP for HuggingFace CDNs', async () => {
     const manifestPath = path.join(EXTENSION_PATH, 'manifest.json');
     expect(fs.existsSync(manifestPath), 'Manifest should exist').toBe(true);
 
@@ -33,7 +32,6 @@ test.describe('Manifest CSP Validation', () => {
 
     console.log('Current CSP:', csp);
 
-    // Required domains for HuggingFace model downloads
     const requiredDomains = [
       'cdn-lfs.huggingface.co',
       'cdn-lfs-us-1.hf.co',
@@ -41,8 +39,8 @@ test.describe('Manifest CSP Validation', () => {
       'cdn-lfs-ap-1.hf.co',
       'huggingface.co',
       'hf.co',
-      '*.xethub.hf.co',        // New XetHub CDN wildcard
-      'cas-bridge.xethub.hf.co', // Specific XetHub endpoint
+      '*.xethub.hf.co',
+      'cas-bridge.xethub.hf.co',
     ];
 
     const missing: string[] = [];
@@ -63,101 +61,13 @@ test.describe('Manifest CSP Validation', () => {
 test.describe.configure({ mode: 'serial' });
 
 test.describe('CSP & Model Loading', () => {
-  let context: BrowserContext;
-  let extensionId: string | null = null;
-  const collectedErrors: ConsoleError[] = [];
-
-  test.beforeAll(async () => {
-    // Verify extension is built
-    if (!fs.existsSync(EXTENSION_PATH)) {
-      throw new Error('Extension not built. Run: npm run build');
-    }
-
-    const userDataDir = `/tmp/playwright-csp-test-${Date.now()}`;
-
-    context = await chromium.launchPersistentContext(userDataDir, {
-      headless: false,
-      channel: 'chrome',
-      args: [
-        `--disable-extensions-except=${EXTENSION_PATH}`,
-        `--load-extension=${EXTENSION_PATH}`,
-        '--no-first-run',
-        '--disable-component-update',
-        // Background mode
-        '--window-position=-32000,-32000',
-        '--window-size=1280,720',
-        '--disable-gpu',
-        '--mute-audio',
-      ],
-    });
-
-    // Wait for extension to initialize - try multiple detection methods
-    console.log('Waiting for extension to initialize...');
-
-    for (let i = 0; i < 40; i++) {
-      await new Promise((r) => setTimeout(r, 500));
-
-      // Method 1: Service workers
-      const serviceWorkers = context.serviceWorkers();
-      if (serviceWorkers.length > 0) {
-        const url = serviceWorkers[0].url();
-        const match = url.match(/chrome-extension:\/\/([^/]+)/);
-        if (match) {
-          extensionId = match[1];
-          console.log(`Extension detected via service worker: ${extensionId}`);
-          break;
-        }
-      }
-
-      // Method 2: Try to find extension by loading chrome://extensions programmatically
-      if (i === 20 && !extensionId) {
-        console.log('Service worker not detected, trying extensions page...');
-        try {
-          const extPage = await context.newPage();
-          await extPage.goto('chrome://extensions');
-          await extPage.waitForTimeout(1000);
-
-          // Try to extract extension ID from page content
-          const content = await extPage.content();
-          const match = content.match(/extension-id="([a-z]{32})"/);
-          if (match) {
-            extensionId = match[1];
-            console.log(`Extension detected via extensions page: ${extensionId}`);
-          }
-          await extPage.close();
-        } catch {
-          // chrome:// pages may fail, continue
-        }
-      }
-    }
-
-    if (!extensionId) {
-      console.log('WARNING: Extension service worker not detected after 20s');
-      console.log('Tests requiring extension ID will be skipped');
-    }
-  });
-
-  test.afterAll(async () => {
-    if (context) {
-      await context.close();
-    }
-  });
-
-  test('extension context is available', async () => {
-    // If we have extension ID, context is available
-    // If not, we still have the browser context for limited testing
+  test('extension context is available', async ({ context, extensionId }) => {
     expect(context).toBeTruthy();
-
-    if (extensionId) {
-      console.log(`Extension available: ${extensionId}`);
-    } else {
-      console.log('Extension ID not detected - some tests will be skipped');
-    }
+    expect(extensionId).toBeTruthy();
+    console.log(`Extension available: ${extensionId}`);
   });
 
-  test('popup loads without CSP errors', async () => {
-    test.skip(!extensionId, 'Extension ID not detected');
-
+  test('popup loads without CSP errors', async ({ context, extensionId }) => {
     const page = await context.newPage();
     const errors: ConsoleError[] = [];
 
@@ -178,86 +88,70 @@ test.describe('CSP & Model Loading', () => {
       });
     });
 
-    await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
-    await page.waitForSelector('.popup-container', { timeout: 10000 });
+    await page.goto(popupUrl(extensionId));
+    await page.waitForSelector('.popup-container', { timeout: 10_000 });
+    await page.waitForTimeout(2_000);
 
-    // Wait a bit for any async errors
-    await page.waitForTimeout(2000);
-
-    // Filter for CSP-related errors
     const cspErrors = errors.filter(
-      (e) =>
-        e.text.includes('Content Security Policy') ||
-        e.text.includes('CSP') ||
-        e.text.includes("Refused to connect")
+      (entry) =>
+        entry.text.includes('Content Security Policy') ||
+        entry.text.includes('CSP') ||
+        entry.text.includes('Refused to connect')
     );
 
     if (cspErrors.length > 0) {
       console.log('CSP Errors found:');
-      cspErrors.forEach((e) => console.log(`  ${e.text}`));
+      cspErrors.forEach((entry) => console.log(`  ${entry.text}`));
     }
 
     expect(cspErrors, 'No CSP errors should occur on popup load').toHaveLength(0);
-
     await page.close();
   });
 
-  test('offscreen document loads without errors', async () => {
-    test.skip(!extensionId, 'Extension ID not detected');
-
+  test('offscreen document loads without errors', async ({ context, extensionId }) => {
     const page = await context.newPage();
     const errors: ConsoleError[] = [];
 
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
-        errors.push({
-          type: msg.type(),
-          text: msg.text(),
-        });
+        errors.push({ type: msg.type(), text: msg.text() });
       }
     });
 
-    // Load offscreen document directly
-    await page.goto(`chrome-extension://${extensionId}/src/offscreen/offscreen.html`);
+    await page.goto(offscreenUrl(extensionId));
+    await page.waitForTimeout(3_000);
 
-    // Wait for any errors to appear
-    await page.waitForTimeout(3000);
-
-    // Filter for relevant errors (not network errors which are expected)
     const relevantErrors = errors.filter(
-      (e) =>
-        e.text.includes('Content Security Policy') ||
-        e.text.includes('SyntaxError') ||
-        e.text.includes('TypeError') ||
-        e.text.includes('ReferenceError')
+      (entry) =>
+        entry.text.includes('Content Security Policy') ||
+        entry.text.includes('SyntaxError') ||
+        entry.text.includes('TypeError') ||
+        entry.text.includes('ReferenceError')
     );
 
     if (relevantErrors.length > 0) {
       console.log('Offscreen document errors:');
-      relevantErrors.forEach((e) => console.log(`  ${e.text}`));
+      relevantErrors.forEach((entry) => console.log(`  ${entry.text}`));
     }
 
     expect(relevantErrors, 'No critical errors in offscreen document').toHaveLength(0);
-
     await page.close();
   });
 
-  test('can ping service worker', async () => {
-    test.skip(!extensionId, 'Extension ID not detected');
-
+  test('can ping service worker', async ({ context, extensionId }) => {
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
-    await page.waitForSelector('.popup-container', { timeout: 10000 });
+    await page.goto(popupUrl(extensionId));
+    await page.waitForSelector('.popup-container', { timeout: 10_000 });
 
     const response = await page.evaluate(async () => {
       return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Ping timeout')), 5000);
-        chrome.runtime.sendMessage({ type: 'ping' }, (response) => {
+        const timeout = setTimeout(() => reject(new Error('Ping timeout')), 5_000);
+        chrome.runtime.sendMessage({ type: 'ping' }, (result) => {
           clearTimeout(timeout);
           if (chrome.runtime.lastError) {
             reject(new Error(chrome.runtime.lastError.message));
           } else {
-            resolve(response);
+            resolve(result);
           }
         });
       });
@@ -265,58 +159,50 @@ test.describe('CSP & Model Loading', () => {
 
     expect(response).toBeTruthy();
     expect((response as { success: boolean }).success).toBe(true);
-
     await page.close();
   });
 
-  test('can get translation status', async () => {
-    test.skip(!extensionId, 'Extension ID not detected');
-
+  test('can get translation status', async ({ context, extensionId }) => {
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
-    await page.waitForSelector('.popup-container', { timeout: 10000 });
+    await page.goto(popupUrl(extensionId));
+    await page.waitForSelector('.popup-container', { timeout: 10_000 });
 
     const status = await page.evaluate(async () => {
       return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Status timeout')), 10000);
-        chrome.runtime.sendMessage({ type: 'getTranslationStatus' }, (response) => {
+        const timeout = setTimeout(() => reject(new Error('Status timeout')), 10_000);
+        chrome.runtime.sendMessage({ type: 'getTranslationStatus' }, (result) => {
           clearTimeout(timeout);
           if (chrome.runtime.lastError) {
             reject(new Error(chrome.runtime.lastError.message));
           } else {
-            resolve(response);
+            resolve(result);
           }
         });
       });
     });
 
     expect(status).toBeTruthy();
-    // Status should have required fields
-    const statusObj = status as { isModelLoaded?: boolean; supportedLanguages?: unknown };
+    const statusObj = status as { isModelLoaded?: boolean };
     expect(typeof statusObj.isModelLoaded).toBe('boolean');
-
     await page.close();
   });
 
-  test('model download does not trigger CSP violations', async () => {
-    test.skip(!extensionId, 'Extension ID not detected');
-    test.setTimeout(180000); // 3 min for model download
+  test('model download does not trigger CSP violations', async ({ context, extensionId }) => {
+    test.setTimeout(180_000);
 
     const page = await context.newPage();
     const errors: ConsoleError[] = [];
 
-    // Collect all errors during model loading
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
         const text = msg.text();
         errors.push({
           type: msg.type(),
-          text: text,
+          text,
           location: msg.location()?.url,
         });
 
-        // Log CSP errors immediately
-        if (text.includes('Content Security Policy') || text.includes("Refused to connect")) {
+        if (text.includes('Content Security Policy') || text.includes('Refused to connect')) {
           console.error('CSP ERROR:', text);
         }
       }
@@ -329,18 +215,16 @@ test.describe('CSP & Model Loading', () => {
       });
     });
 
-    await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
-    await page.waitForSelector('.popup-container', { timeout: 10000 });
+    await page.goto(popupUrl(extensionId));
+    await page.waitForSelector('.popup-container', { timeout: 10_000 });
 
-    // Select en -> fi translation (common pair)
     await page.locator('.language-select').first().selectOption('en');
     await page.locator('.language-select').last().selectOption('fi');
 
-    // Request translation to trigger model download
     console.log('Triggering model download...');
     const result = await page.evaluate(async () => {
       return new Promise((resolve) => {
-        const timeout = setTimeout(() => resolve({ error: 'Timeout waiting for model' }), 120000);
+        const timeout = setTimeout(() => resolve({ error: 'Timeout waiting for model' }), 120_000);
 
         chrome.runtime.sendMessage(
           {
@@ -359,32 +243,29 @@ test.describe('CSP & Model Loading', () => {
 
     console.log('Translation result:', result);
 
-    // Check for CSP violations
     const cspErrors = errors.filter(
-      (e) =>
-        e.text.includes('Content Security Policy') ||
-        e.text.includes("Refused to connect") ||
-        e.text.includes("violates the following")
+      (entry) =>
+        entry.text.includes('Content Security Policy') ||
+        entry.text.includes('Refused to connect') ||
+        entry.text.includes('violates the following')
     );
 
     if (cspErrors.length > 0) {
       console.log('\n=== CSP VIOLATIONS DETECTED ===');
-      cspErrors.forEach((e) => {
-        console.log(`ERROR: ${e.text}`);
-        if (e.location) console.log(`  at: ${e.location}`);
+      cspErrors.forEach((entry) => {
+        console.log(`ERROR: ${entry.text}`);
+        if (entry.location) console.log(`  at: ${entry.location}`);
       });
       console.log('================================\n');
     }
 
     expect(cspErrors, 'No CSP violations during model download').toHaveLength(0);
-
     await page.close();
   });
 });
 
-test.describe('Error Collection Summary', () => {
-  test('prints any collected errors at end', async () => {
-    // This is a documentation test that runs last
+base.describe('Error Collection Summary', () => {
+  base('prints any collected errors at end', async () => {
     console.log(`
 =================================================================
   CSP & Model Loading Test Complete

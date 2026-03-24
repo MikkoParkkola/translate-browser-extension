@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Playwright Mock Harness</title>
+</head>
+<body>
+  <main id="mock-root">Mock translation harness</main>
+  <script>
+    (() => {
+      const providers = new Map();
+
+      const defaultCache = {
+        cacheReady: Promise.resolve(),
+        getCache: () => null,
+        setCache: () => {},
+        removeCache: () => {},
+        qwenClearCache: () => {},
+        qwenGetCacheSize: () => 0,
+        qwenSetCacheLimit: () => {},
+        qwenSetCacheTTL: () => {},
+      };
+
+      function getProvider(providerId) {
+        const provider = providers.get(providerId);
+        if (!provider) {
+          throw new Error(`Unknown provider: ${providerId}`);
+        }
+        return provider;
+      }
+
+      window.qwenProviders = {
+        registerProvider(providerId, provider) {
+          providers.set(providerId, provider);
+        },
+        getProvider,
+        listProviders() {
+          return [...providers.keys()];
+        },
+      };
+
+      window.qwenCache = defaultCache;
+      window.qwenClearCache = defaultCache.qwenClearCache;
+      window.qwenLoadConfig = async () => ({ providerOrder: [], debug: false });
+      window.qwenSaveConfig = async () => {};
+
+      window.qwenTranslate = async (opts = {}) => {
+        const providerOrder = Array.isArray(opts.providerOrder) && opts.providerOrder.length > 0
+          ? opts.providerOrder
+          : opts.provider
+            ? [opts.provider]
+            : [];
+
+        let lastError = null;
+        for (const providerId of providerOrder) {
+          try {
+            return await getProvider(providerId).translate({ ...opts, provider: providerId });
+          } catch (error) {
+            lastError = error;
+          }
+        }
+
+        throw lastError ?? new Error('No provider available');
+      };
+
+      window.qwenTranslateBatch = async ({ texts = [], ...opts } = {}) => {
+        const results = [];
+        for (const text of texts) {
+          const translated = await window.qwenTranslate({ ...opts, text });
+          results.push(translated.text);
+        }
+        return { texts: results };
+      };
+
+      window.qwenTranslateStream = async (opts = {}, onData) => {
+        const provider = getProvider(opts.provider);
+        return provider.translate({ ...opts, onData, stream: true });
+      };
+    })();
+  </script>
+</body>
+</html>

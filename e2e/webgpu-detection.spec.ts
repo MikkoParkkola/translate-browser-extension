@@ -1,47 +1,9 @@
-import { test as base, expect, chromium, type BrowserContext } from '@playwright/test';
-import path from 'path';
-
-const EXTENSION_PATH = path.resolve(__dirname, '..', 'dist');
-
-// Launch WITH GPU enabled to test real WebGPU path
-const test = base.extend<{
-  context: BrowserContext;
-  extensionId: string;
-}>({
-  // eslint-disable-next-line no-empty-pattern
-  context: async ({}, use) => {
-    const context = await chromium.launchPersistentContext('', {
-      headless: false,
-      args: [
-        `--disable-extensions-except=${EXTENSION_PATH}`,
-        `--load-extension=${EXTENSION_PATH}`,
-        '--no-first-run',
-        '--disable-component-update',
-        // Keep GPU enabled for WebGPU testing
-        '--window-position=-32000,-32000',
-        '--window-size=1280,720',
-        '--mute-audio',
-      ],
-    });
-    await use(context);
-    await context.close();
-  },
-  extensionId: async ({ context }, use) => {
-    let sw = context.serviceWorkers()[0];
-    if (!sw) {
-      sw = await context.waitForEvent('serviceworker', { timeout: 30000 });
-    }
-    const url = sw.url();
-    const match = url.match(/chrome-extension:\/\/([^/]+)/);
-    if (!match) throw new Error(`Could not extract extension ID from: ${url}`);
-    await use(match[1]);
-  },
-});
+import { gpuTest as test, expect, offscreenUrl } from './fixtures';
 
 test.describe('WebGPU Detection (GPU Enabled)', () => {
   test('detects WebGPU and shader-f16 capability', async ({ context, extensionId }) => {
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/src/offscreen/offscreen.html`);
+    await page.goto(offscreenUrl(extensionId));
     await page.waitForLoadState('domcontentloaded');
 
     const gpuInfo = await page.evaluate(async () => {

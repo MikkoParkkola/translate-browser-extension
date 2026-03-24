@@ -1,49 +1,4 @@
-import { test as base, expect, chromium, type BrowserContext } from '@playwright/test';
-import path from 'path';
-
-const EXTENSION_PATH = path.resolve(__dirname, '..', 'dist');
-
-// Custom test fixture that launches Chromium with extension loaded
-// using launchPersistentContext (required for MV3 extensions)
-const test = base.extend<{
-  context: BrowserContext;
-  extensionId: string;
-}>({
-  // eslint-disable-next-line no-empty-pattern
-  context: async ({}, use) => {
-    const BACKGROUND_MODE = process.env.BACKGROUND !== 'false';
-    const context = await chromium.launchPersistentContext('', {
-      headless: false,
-      args: [
-        `--disable-extensions-except=${EXTENSION_PATH}`,
-        `--load-extension=${EXTENSION_PATH}`,
-        '--no-first-run',
-        '--disable-component-update',
-        ...(BACKGROUND_MODE ? [
-          '--window-position=-32000,-32000',
-          '--window-size=1280,720',
-          '--disable-gpu',
-          '--mute-audio',
-        ] : []),
-      ],
-    });
-    await use(context);
-    await context.close();
-  },
-  extensionId: async ({ context }, use) => {
-    // Wait for the service worker to be registered
-    let sw = context.serviceWorkers()[0];
-    if (!sw) {
-      sw = await context.waitForEvent('serviceworker', { timeout: 30000 });
-    }
-    const url = sw.url();
-    const match = url.match(/chrome-extension:\/\/([^/]+)/);
-    if (!match) {
-      throw new Error(`Could not extract extension ID from: ${url}`);
-    }
-    await use(match[1]);
-  },
-});
+import { test, expect, popupUrl } from './fixtures';
 
 test.describe('Extension Loading', () => {
   test('service worker registers and extension is active', async ({ extensionId }) => {
@@ -53,7 +8,7 @@ test.describe('Extension Loading', () => {
   });
 
   test('popup page loads without errors', async ({ context, extensionId }) => {
-    const popupUrl = `chrome-extension://${extensionId}/src/popup/index.html`;
+    const popupPageUrl = popupUrl(extensionId);
 
     const page = await context.newPage();
     const consoleErrors: string[] = [];
@@ -63,7 +18,7 @@ test.describe('Extension Loading', () => {
       }
     });
 
-    await page.goto(popupUrl);
+    await page.goto(popupPageUrl);
     await page.waitForLoadState('domcontentloaded');
 
     // Check that the popup rendered something meaningful
@@ -82,7 +37,7 @@ test.describe('Extension Loading', () => {
 
   test('chrome.storage API works in extension context', async ({ context, extensionId }) => {
     const popupPage = await context.newPage();
-    await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+    await popupPage.goto(popupUrl(extensionId));
     await popupPage.waitForLoadState('domcontentloaded');
 
     // Verify extension storage is accessible (basic runtime check)
