@@ -616,6 +616,7 @@ const SERVICE_WORKER_MESSAGE_TYPES = [
   'clearCache',
   'checkChromeTranslator',
   'checkWebGPU',
+  'checkWebNN',
   'getPredictionStats',
   'recordLanguageDetection',
   'getCloudProviderStatus',
@@ -678,6 +679,8 @@ async function handleMessage(message: ServiceWorkerHandledMessage): Promise<Serv
       return handleCheckChromeTranslator();
     case 'checkWebGPU':
       return handleCheckWebGPU();
+    case 'checkWebNN':
+      return handleCheckWebNN();
     case 'getPredictionStats':
       return handleGetPredictionStats();
     case 'recordLanguageDetection':
@@ -944,6 +947,22 @@ async function handleCheckWebGPU(): Promise<{ success: true; supported: boolean;
   } catch (error) {
     log.debug('WebGPU check failed:', error);
     return { success: true, supported: false, fp16: false };
+  }
+}
+
+/**
+ * Check WebNN availability via the offscreen document.
+ */
+async function handleCheckWebNN(): Promise<{ success: true; supported: boolean }> {
+  try {
+    const response = await sendToOffscreen<{
+      success: boolean;
+      supported: boolean;
+    }>({ type: 'checkWebNN' });
+    return response as { success: true; supported: boolean };
+  } catch (error) {
+    log.debug('WebNN check failed:', error);
+    return { success: true, supported: false };
   }
 }
 
