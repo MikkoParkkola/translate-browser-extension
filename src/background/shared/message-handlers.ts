@@ -109,7 +109,7 @@ export async function handleGetCloudProviderStatus(): Promise<{ success: boolean
 
       const status: Record<string, boolean> = {};
       for (const [provider, storageKey] of Object.entries(CLOUD_PROVIDER_KEYS)) {
-        status[provider] = Boolean(stored[storageKey as keyof CloudProviderStatusStorageRecord]);
+        status[provider] = !!stored[storageKey as keyof CloudProviderStatusStorageRecord];
       }
 
       return { status };
