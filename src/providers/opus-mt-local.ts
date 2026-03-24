@@ -11,57 +11,17 @@ import { webgpuDetector } from '../core/webgpu-detector';
 import { createLogger } from '../core/logger';
 import { extractErrorMessage } from '../core/errors';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
+import {
+  getModelId,
+  getSupportedLanguagePairs,
+  getSupportedTargetsForSource,
+  resolveOpusMtTranslationRoute,
+} from '../offscreen/model-maps';
 
 const log = createLogger('OPUS-MT');
 
 // Dynamic imports for Transformers.js
 type Pipeline = (text: string, options?: Record<string, unknown>) => Promise<Array<{ translation_text: string }>>;
-
-// Supported language pairs with Xenova quantized models
-const SUPPORTED_PAIRS: Record<string, string> = {
-  // English ↔ Finnish
-  'en-fi': 'Xenova/opus-mt-en-fi',
-  'fi-en': 'Xenova/opus-mt-fi-en',
-  // English ↔ German
-  'en-de': 'Xenova/opus-mt-en-de',
-  'de-en': 'Xenova/opus-mt-de-en',
-  // English ↔ French
-  'en-fr': 'Xenova/opus-mt-en-fr',
-  'fr-en': 'Xenova/opus-mt-fr-en',
-  // English ↔ Spanish
-  'en-es': 'Xenova/opus-mt-en-es',
-  'es-en': 'Xenova/opus-mt-es-en',
-  // English ↔ Swedish
-  'en-sv': 'Xenova/opus-mt-en-sv',
-  'sv-en': 'Xenova/opus-mt-sv-en',
-  // English ↔ Dutch
-  'en-nl': 'Xenova/opus-mt-en-nl',
-  'nl-en': 'Xenova/opus-mt-nl-en',
-  // English ↔ Russian
-  'en-ru': 'Xenova/opus-mt-en-ru',
-  'ru-en': 'Xenova/opus-mt-ru-en',
-  // English ↔ Chinese
-  'en-zh': 'Xenova/opus-mt-en-zh',
-  'zh-en': 'Xenova/opus-mt-zh-en',
-  // English ↔ Japanese
-  'en-ja': 'Xenova/opus-mt-en-jap',
-  'ja-en': 'Xenova/opus-mt-jap-en',
-  // English ↔ Italian
-  'en-it': 'Xenova/opus-mt-en-it',
-  'it-en': 'Xenova/opus-mt-it-en',
-  // English ↔ Portuguese
-  'en-pt': 'Xenova/opus-mt-en-pt',
-  'pt-en': 'Xenova/opus-mt-pt-en',
-  // English ↔ Polish
-  'en-pl': 'Xenova/opus-mt-en-pl',
-  'pl-en': 'Xenova/opus-mt-pl-en',
-  // English ↔ Danish
-  'en-da': 'Xenova/opus-mt-en-da',
-  'da-en': 'Xenova/opus-mt-da-en',
-  // English ↔ Norwegian
-  'en-no': 'Xenova/opus-mt-en-no',
-  'no-en': 'Xenova/opus-mt-no-en',
-};
 
 export class OpusMTProvider extends BaseProvider {
   private pipelines = new Map<string, Pipeline>();
@@ -112,14 +72,6 @@ export class OpusMTProvider extends BaseProvider {
       log.error('Initialization failed:', error);
       throw error;
     }
-  }
-
-  /**
-   * Get the model ID for a language pair
-   */
-  private getModelId(sourceLang: string, targetLang: string): string | null {
-    const pair = `${sourceLang}-${targetLang}`;
-    return SUPPORTED_PAIRS[pair] || null;
   }
 
   /**
@@ -178,6 +130,43 @@ export class OpusMTProvider extends BaseProvider {
   }
 
   /**
+   * Translate text with a single OPUS-MT model.
+   */
+  private async translateWithModel(
+    text: string | string[],
+    modelId: string
+  ): Promise<string | string[]> {
+    const pipe = await this.getPipeline(modelId);
+
+    if (Array.isArray(text)) {
+      return Promise.all(text.map((value) => this.translateSingle(pipe, value)));
+    }
+
+    return this.translateSingle(pipe, text);
+  }
+
+  /**
+   * Translate text through a pivot route using two direct models.
+   */
+  private async translateWithPivotRoute(
+    text: string | string[],
+    firstHop: string,
+    secondHop: string
+  ): Promise<string | string[]> {
+    const [firstSrc, firstTgt] = firstHop.split('-');
+    const [secondSrc, secondTgt] = secondHop.split('-');
+    const firstModelId = getModelId(firstSrc, firstTgt);
+    const secondModelId = getModelId(secondSrc, secondTgt);
+
+    if (!firstModelId || !secondModelId) {
+      throw new Error(`Invalid OPUS-MT pivot route: ${firstHop} -> ${secondHop}`);
+    }
+
+    const intermediate = await this.translateWithModel(text, firstModelId);
+    return this.translateWithModel(intermediate, secondModelId);
+  }
+
+  /**
    * Translate text
    */
   async translate(
@@ -190,14 +179,9 @@ export class OpusMTProvider extends BaseProvider {
       await this.initialize();
     }
 
-    const modelId = this.getModelId(sourceLang, targetLang);
-    if (!modelId) {
-      // Get list of available target languages for this source
-      const availableTargets = Object.keys(SUPPORTED_PAIRS)
-        .filter(pair => pair.startsWith(`${sourceLang}-`))
-        .map(pair => pair.split('-')[1])
-        .join(', ');
-
+    const route = resolveOpusMtTranslationRoute(sourceLang, targetLang);
+    if (!route) {
+      const availableTargets = getSupportedTargetsForSource(sourceLang).join(', ');
       const hint = availableTargets
         ? `Available targets for ${sourceLang}: ${availableTargets}`
         : `${sourceLang} is not a supported source language`;
@@ -206,17 +190,14 @@ export class OpusMTProvider extends BaseProvider {
     }
 
     try {
-      const pipe = await this.getPipeline(modelId);
-
-      // Handle batch translation
-      if (Array.isArray(text)) {
-        const results = await Promise.all(
-          text.map((t) => this.translateSingle(pipe, t, sourceLang, targetLang))
-        );
-        return results;
+      if (route.kind === 'direct') {
+        return await this.translateWithModel(text, route.modelId);
       }
 
-      return await this.translateSingle(pipe, text, sourceLang, targetLang);
+      const [firstHop, secondHop] = route.route;
+      const [, pivotTarget] = firstHop.split('-');
+      log.info(`Pivot translation: ${sourceLang} -> ${pivotTarget} -> ${targetLang}`);
+      return await this.translateWithPivotRoute(text, firstHop, secondHop);
     } catch (error) {
       log.error('Translation error:', error);
       throw error;
@@ -228,20 +209,14 @@ export class OpusMTProvider extends BaseProvider {
    */
   private async translateSingle(
     pipe: Pipeline,
-    text: string,
-    sourceLang: string,
-    targetLang: string
+    text: string
   ): Promise<string> {
     if (!text || text.trim().length === 0) {
       return text;
     }
 
     try {
-      const result = await pipe(text, {
-        src_lang: sourceLang,
-        tgt_lang: targetLang,
-        max_length: 512,
-      });
+      const result = await pipe(text, { max_length: 512 });
 
       return result[0].translation_text;
     } catch (error) {
@@ -278,10 +253,7 @@ export class OpusMTProvider extends BaseProvider {
    * Get supported language pairs
    */
   getSupportedLanguages(): LanguagePair[] {
-    return Object.keys(SUPPORTED_PAIRS).map((pair) => {
-      const [src, tgt] = pair.split('-');
-      return { src, tgt };
-    });
+    return getSupportedLanguagePairs().map(({ src, tgt }) => ({ src, tgt }));
   }
 
   /**

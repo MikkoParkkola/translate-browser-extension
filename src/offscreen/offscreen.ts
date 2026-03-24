@@ -12,7 +12,11 @@ import { profiler } from '../core/profiler';
 import { withTimeout } from '../core/async-utils';
 
 // Extracted modules
-import { MODEL_MAP, PIVOT_ROUTES } from './model-maps';
+import {
+  getModelId,
+  getSupportedLanguagePairs,
+  resolveOpusMtTranslationRoute,
+} from './model-maps';
 import { getCachedPipeline, cachePipeline, clearCache as clearPipelineCache, castAsPipeline } from './pipeline-cache';
 import { buildLanguageDetectionSample, detectLanguage } from './language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline, detectWebGPU, detectWebNN } from './translategemma';
@@ -92,12 +96,11 @@ function selectOpusMtDtype(_webgpu: { supported: boolean; fp16: boolean }): stri
  * Get or create pipeline for a language pair with LRU caching.
  */
 async function getPipeline(sourceLang: string, targetLang: string, sessionId?: string): Promise<TranslationPipeline> {
-  const key = `${sourceLang}-${targetLang}`;
-  const modelId = MODEL_MAP[key];
+  const modelId = getModelId(sourceLang, targetLang);
 
   /* v8 ignore start -- defensive guard for unsupported language pair */
   if (!modelId) {
-    throw new Error(`Unsupported language pair: ${key}`);
+    throw new Error(`Unsupported language pair: ${sourceLang}-${targetLang}`);
   }
   /* v8 ignore stop */
 
@@ -426,15 +429,14 @@ async function executeProvider(
   }
 
   // OPUS-MT: check for direct model or pivot route
-  const key = `${sourceLang}-${targetLang}`;
+  const route = resolveOpusMtTranslationRoute(sourceLang, targetLang);
 
-  if (MODEL_MAP[key]) {
+  if (route?.kind === 'direct') {
     return translateDirect(text, sourceLang, targetLang, sessionId);
   }
 
-  const pivotRoute = PIVOT_ROUTES[key];
-  if (pivotRoute) {
-    const [firstHop, secondHop] = pivotRoute;
+  if (route?.kind === 'pivot') {
+    const [firstHop, secondHop] = route.route;
     const [firstSrc, firstTgt] = firstHop.split('-');
     const [secondSrc, secondTgt] = secondHop.split('-');
 
@@ -443,7 +445,7 @@ async function executeProvider(
     return translateDirect(intermediateResult, secondSrc, secondTgt, sessionId);
   }
 
-  throw new Error(`Unsupported language pair: ${key}`);
+  throw new Error(`Unsupported language pair: ${sourceLang}-${targetLang}`);
 }
 
 /**
@@ -525,17 +527,7 @@ async function translateWithProvider(
  * Get supported language pairs (direct + pivot).
  */
 function getSupportedLanguages(): Array<{ src: string; tgt: string; pivot?: boolean }> {
-  const direct = Object.keys(MODEL_MAP).map((key) => {
-    const [src, tgt] = key.split('-');
-    return { src, tgt };
-  });
-
-  const pivot = Object.keys(PIVOT_ROUTES).map((key) => {
-    const [src, tgt] = key.split('-');
-    return { src, tgt, pivot: true };
-  });
-
-  return [...direct, ...pivot];
+  return getSupportedLanguagePairs();
 }
 
 // Message handler
@@ -628,13 +620,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             sendResponse({ success: true, preloaded: available, available });
           } else {
             // OPUS-MT: preload the pipeline for the language pair
-            const pair = `${message.sourceLang}-${message.targetLang}`;
-            if (MODEL_MAP[pair]) {
+            const route = resolveOpusMtTranslationRoute(message.sourceLang, message.targetLang);
+            if (route?.kind === 'direct') {
               await getPipeline(message.sourceLang, message.targetLang);
               sendResponse({ success: true, preloaded: true });
-            } else if (PIVOT_ROUTES[pair]) {
+            } else if (route?.kind === 'pivot') {
               // For pivot routes, preload the first hop model (source -> English)
-              const [firstHop] = PIVOT_ROUTES[pair];
+              const [firstHop] = route.route;
               const [firstSrc, firstTgt] = firstHop.split('-');
               await getPipeline(firstSrc, firstTgt);
               sendResponse({ success: true, preloaded: true, partial: true });

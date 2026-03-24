@@ -13,6 +13,8 @@
  * - Germanic family: gem-gem, gmw-gmw multilingual
  */
 
+import type { SupportedLanguageInfo } from '../types';
+
 // Model mapping (direct language pairs with available Xenova OPUS-MT models)
 export const MODEL_MAP: Record<string, string> = {
   // === English <-> Major European Languages ===
@@ -250,6 +252,20 @@ export const PIVOT_ROUTES: Record<string, [string, string]> = {
   'fi-pt': ['fi-en', 'en-ROMANCE'],      // Finnish -> English -> Portuguese
 };
 
+export type OpusMtTranslationRoute =
+  | { kind: 'direct'; modelId: string }
+  | { kind: 'pivot'; route: [string, string] };
+
+function toSupportedLanguageInfo(pair: string, pivot = false): SupportedLanguageInfo {
+  const [src, tgt] = pair.split('-');
+  return pivot ? { src, tgt, pivot: true } : { src, tgt };
+}
+
+const SUPPORTED_LANGUAGE_PAIRS = Object.freeze([
+  ...Object.keys(MODEL_MAP).map((pair) => toSupportedLanguageInfo(pair)),
+  ...Object.keys(PIVOT_ROUTES).map((pair) => toSupportedLanguageInfo(pair, true)),
+]);
+
 /**
  * Check if a language pair has a direct model.
  */
@@ -276,4 +292,51 @@ export function getModelId(sourceLang: string, targetLang: string): string | nul
  */
 export function getPivotRoute(sourceLang: string, targetLang: string): [string, string] | null {
   return PIVOT_ROUTES[`${sourceLang}-${targetLang}`] || null;
+}
+
+/**
+ * Check whether OPUS-MT can translate a language pair directly or via a pivot route.
+ */
+export function supportsOpusMtLanguagePair(sourceLang: string, targetLang: string): boolean {
+  return hasDirectModel(sourceLang, targetLang) || hasPivotRoute(sourceLang, targetLang);
+}
+
+/**
+ * Resolve the translation route used by OPUS-MT for a language pair.
+ */
+export function resolveOpusMtTranslationRoute(
+  sourceLang: string,
+  targetLang: string
+): OpusMtTranslationRoute | null {
+  const modelId = getModelId(sourceLang, targetLang);
+  if (modelId) {
+    return { kind: 'direct', modelId };
+  }
+
+  const route = getPivotRoute(sourceLang, targetLang);
+  if (route) {
+    return { kind: 'pivot', route };
+  }
+
+  return null;
+}
+
+/**
+ * Return all supported OPUS-MT language pairs, including pivot-only routes.
+ */
+export function getSupportedLanguagePairs(): SupportedLanguageInfo[] {
+  return SUPPORTED_LANGUAGE_PAIRS.map((pair) => ({ ...pair }));
+}
+
+/**
+ * Return all supported targets for a given source language.
+ */
+export function getSupportedTargetsForSource(sourceLang: string): string[] {
+  return [
+    ...new Set(
+      SUPPORTED_LANGUAGE_PAIRS
+        .filter((pair) => pair.src === sourceLang)
+        .map((pair) => pair.tgt)
+    ),
+  ];
 }

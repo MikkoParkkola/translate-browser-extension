@@ -56,16 +56,41 @@ vi.mock('@huggingface/transformers', () => ({
 }));
 
 // Mock offscreen modules
-vi.mock('../offscreen/model-maps', () => ({
-  MODEL_MAP: {
+vi.mock('../offscreen/model-maps', () => {
+  const MODEL_MAP: Record<string, string> = {
     'en-fi': 'Helsinki-NLP/opus-mt-en-fi',
     'fi-en': 'Helsinki-NLP/opus-mt-fi-en',
     'en-de': 'Helsinki-NLP/opus-mt-en-de',
-  },
-  PIVOT_ROUTES: {
+  };
+  const PIVOT_ROUTES: Record<string, [string, string]> = {
     'fi-de': ['fi-en', 'en-de'],
-  },
-}));
+  };
+
+  return {
+    MODEL_MAP,
+    PIVOT_ROUTES,
+    getModelId: vi.fn((sourceLang: string, targetLang: string) => MODEL_MAP[`${sourceLang}-${targetLang}`] || null),
+    getSupportedLanguagePairs: vi.fn(() => [
+      ...Object.keys(MODEL_MAP).map((pair) => {
+        const [src, tgt] = pair.split('-');
+        return { src, tgt };
+      }),
+      ...Object.keys(PIVOT_ROUTES).map((pair) => {
+        const [src, tgt] = pair.split('-');
+        return { src, tgt, pivot: true };
+      }),
+    ]),
+    resolveOpusMtTranslationRoute: vi.fn((sourceLang: string, targetLang: string) => {
+      const modelId = MODEL_MAP[`${sourceLang}-${targetLang}`];
+      if (modelId) {
+        return { kind: 'direct', modelId };
+      }
+
+      const route = PIVOT_ROUTES[`${sourceLang}-${targetLang}`];
+      return route ? { kind: 'pivot', route } : null;
+    }),
+  };
+});
 
 vi.mock('../offscreen/pipeline-cache', () => ({
   getCachedPipeline: vi.fn().mockReturnValue(null),

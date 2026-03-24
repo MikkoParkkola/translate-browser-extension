@@ -23,6 +23,7 @@ import type {
   Strategy,
 } from '../types';
 import { createLogger } from './logger';
+import { supportsOpusMtLanguagePair } from '../offscreen/model-maps';
 
 const log = createLogger('Router');
 const LEGACY_OPUS_PROVIDER_ID = 'opus-mt-local';
@@ -222,11 +223,9 @@ export class TranslationRouter {
     sourceLang: string,
     targetLang: string
   ): boolean {
-    // Special handling for OPUS-MT
+    // Keep OPUS-MT routing aligned with the canonical direct + pivot capability map.
     if (provider.id === 'opus-mt') {
-      const pair = `${sourceLang}-${targetLang}`;
-      const supported = provider.getSupportedLanguages();
-      return supported.some((p) => `${p.src}-${p.tgt}` === pair);
+      return supportsOpusMtLanguagePair(sourceLang, targetLang);
     }
 
     return true; // Other providers typically support all pairs

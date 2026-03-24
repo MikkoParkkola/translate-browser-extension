@@ -63,6 +63,8 @@ describe('OpusMTProvider', () => {
       expect(languages).toContainEqual({ src: 'fi', tgt: 'en' });
       expect(languages).toContainEqual({ src: 'en', tgt: 'de' });
       expect(languages).toContainEqual({ src: 'de', tgt: 'en' });
+      expect(languages).toContainEqual({ src: 'nl', tgt: 'fi' });
+      expect(languages).toContainEqual({ src: 'ja', tgt: 'de' });
       expect(languages.length).toBeGreaterThan(10);
     });
   });
@@ -144,6 +146,39 @@ describe('OpusMTProvider', () => {
       const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
 
       expect(result).toEqual(['Hei', 'Maailma']);
+    });
+
+    it('translates pivot-only pairs via two model hops', async () => {
+      const firstHopPipe = vi
+        .fn()
+        .mockImplementation((text: string) => Promise.resolve([{ translation_text: `${text}-via-en` }]));
+      const secondHopPipe = vi
+        .fn()
+        .mockImplementation((text: string) => Promise.resolve([{ translation_text: `${text}-final` }]));
+      const mockFactory = vi
+        .fn()
+        .mockResolvedValueOnce(firstHopPipe)
+        .mockResolvedValueOnce(secondHopPipe);
+
+      (provider as any).pipelineFactory = mockFactory;
+      (provider as any).isInitialized = true;
+      (provider as any).pipelines = new Map();
+
+      const result = await provider.translate('Hallo', 'nl', 'fi');
+
+      expect(result).toBe('Hallo-via-en-final');
+      expect(mockFactory).toHaveBeenNthCalledWith(
+        1,
+        'translation',
+        'Xenova/opus-mt-nl-en',
+        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
+      );
+      expect(mockFactory).toHaveBeenNthCalledWith(
+        2,
+        'translation',
+        'Xenova/opus-mt-en-fi',
+        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
+      );
     });
   });
 
