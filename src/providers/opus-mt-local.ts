@@ -71,7 +71,7 @@ export class OpusMTProvider extends BaseProvider {
 
   constructor() {
     super({
-      id: 'opus-mt-local',
+      id: 'opus-mt',
       name: 'Helsinki-NLP OPUS-MT',
       type: 'local',
       qualityTier: 'standard',

@@ -32,7 +32,7 @@ describe('OpusMTProvider', () => {
 
   describe('constructor', () => {
     it('creates provider with correct config', () => {
-      expect(provider.id).toBe('opus-mt-local');
+      expect(provider.id).toBe('opus-mt');
       expect(provider.name).toBe('Helsinki-NLP OPUS-MT');
       expect(provider.type).toBe('local');
       expect(provider.qualityTier).toBe('standard');
@@ -344,7 +344,7 @@ describe('OpusMTProvider', () => {
     it('returns extended info with device status', async () => {
       const info = provider.getInfo();
 
-      expect(info.id).toBe('opus-mt-local');
+      expect(info.id).toBe('opus-mt');
       expect(info.name).toBe('Helsinki-NLP OPUS-MT');
       expect(info.modelSize).toBeDefined();
       expect(info.speed).toBeDefined();

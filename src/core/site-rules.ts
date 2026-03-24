@@ -11,8 +11,10 @@
 import type { TranslationProviderId, Strategy } from '../types';
 import { createLogger } from './logger';
 import { browserAPI } from './browser-api';
+import { isTranslationProviderId } from '../shared/provider-options';
 
 const log = createLogger('SiteRules');
+const LEGACY_OPUS_PROVIDER_ID = 'opus-mt-local';
 
 export interface SiteRules {
   autoTranslate: boolean;
@@ -26,7 +28,37 @@ export interface SiteRulesStore {
   [hostname: string]: SiteRules;
 }
 
+interface PersistedSiteRules extends Omit<SiteRules, 'preferredProvider'> {
+  preferredProvider?: string;
+}
+
+interface PersistedSiteRulesStore {
+  [hostname: string]: PersistedSiteRules;
+}
+
 const STORAGE_KEY = 'siteRules';
+
+function normalizeSiteRule(rule: PersistedSiteRules): SiteRules {
+  const preferredProvider = rule.preferredProvider === LEGACY_OPUS_PROVIDER_ID
+    ? 'opus-mt'
+    : rule.preferredProvider;
+
+  return {
+    autoTranslate: rule.autoTranslate,
+    sourceLang: rule.sourceLang,
+    targetLang: rule.targetLang,
+    strategy: rule.strategy,
+    ...(preferredProvider && isTranslationProviderId(preferredProvider)
+      ? { preferredProvider }
+      : {}),
+  };
+}
+
+function normalizeSiteRulesStore(rules: PersistedSiteRulesStore): SiteRulesStore {
+  return Object.fromEntries(
+    Object.entries(rules).map(([hostname, rule]) => [hostname, normalizeSiteRule(rule)])
+  );
+}
 
 /**
  * Check if hostname matches a wildcard pattern
@@ -81,7 +113,7 @@ export function findMatchingRule(
 export async function getRules(hostname: string): Promise<SiteRules | null> {
   try {
     const data = await browserAPI.storage.local.get(STORAGE_KEY);
-    const allRules: SiteRulesStore = data[STORAGE_KEY] || {};
+    const allRules = normalizeSiteRulesStore((data[STORAGE_KEY] || {}) as PersistedSiteRulesStore);
 
     const match = findMatchingRule(hostname, allRules);
     return match ? match.rules : null;
@@ -97,9 +129,9 @@ export async function getRules(hostname: string): Promise<SiteRules | null> {
 export async function setRules(hostnameOrPattern: string, rules: SiteRules): Promise<void> {
   try {
     const data = await browserAPI.storage.local.get(STORAGE_KEY);
-    const allRules: SiteRulesStore = data[STORAGE_KEY] || {};
+    const allRules = normalizeSiteRulesStore((data[STORAGE_KEY] || {}) as PersistedSiteRulesStore);
 
-    allRules[hostnameOrPattern] = rules;
+    allRules[hostnameOrPattern] = normalizeSiteRule(rules);
 
     await browserAPI.storage.local.set({ [STORAGE_KEY]: allRules });
     log.info(' Updated rules for:', hostnameOrPattern, rules);
@@ -115,7 +147,7 @@ export async function setRules(hostnameOrPattern: string, rules: SiteRules): Pro
 export async function clearRules(hostnameOrPattern: string): Promise<void> {
   try {
     const data = await browserAPI.storage.local.get(STORAGE_KEY);
-    const allRules: SiteRulesStore = data[STORAGE_KEY] || {};
+    const allRules = normalizeSiteRulesStore((data[STORAGE_KEY] || {}) as PersistedSiteRulesStore);
 
     delete allRules[hostnameOrPattern];
 
@@ -133,7 +165,7 @@ export async function clearRules(hostnameOrPattern: string): Promise<void> {
 export async function getAllRules(): Promise<SiteRulesStore> {
   try {
     const data = await browserAPI.storage.local.get(STORAGE_KEY);
-    return data[STORAGE_KEY] || {};
+    return normalizeSiteRulesStore((data[STORAGE_KEY] || {}) as PersistedSiteRulesStore);
   } catch (error) {
     log.error(' Failed to get all rules:', error);
     return {};
@@ -167,7 +199,7 @@ export async function exportRules(): Promise<string> {
  */
 export async function importRules(json: string): Promise<number> {
   try {
-    const imported: SiteRulesStore = JSON.parse(json);
+    const imported: PersistedSiteRulesStore = JSON.parse(json);
 
     // Validate entry count to prevent storage quota exhaustion
     const MAX_IMPORT_ENTRIES = 10000;
@@ -193,7 +225,7 @@ export async function importRules(json: string): Promise<number> {
     }
 
     const existing = await getAllRules();
-    const merged = { ...existing, ...imported };
+    const merged = { ...existing, ...normalizeSiteRulesStore(imported) };
 
     await browserAPI.storage.local.set({ [STORAGE_KEY]: merged });
     log.info(' Imported', Object.keys(imported).length, 'rules');

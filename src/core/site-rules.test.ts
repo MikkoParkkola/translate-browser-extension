@@ -527,7 +527,7 @@ describe('site-rules', () => {
           autoTranslate: true,
           sourceLang: 'en',
           targetLang: 'fi',
-          preferredProvider: 'opus-mt-local',
+          preferredProvider: 'opus-mt',
           strategy: 'fast',
         },
       };
@@ -539,8 +539,22 @@ describe('site-rules', () => {
         autoTranslate: true,
         sourceLang: 'en',
         targetLang: 'fi',
-        preferredProvider: 'opus-mt-local',
+        preferredProvider: 'opus-mt',
         strategy: 'fast',
+      });
+    });
+
+    it('getRules normalizes the legacy opus provider alias', async () => {
+      mockStorage['siteRules'] = {
+        'example.com': {
+          autoTranslate: true,
+          preferredProvider: 'opus-mt-local',
+        },
+      };
+
+      await expect(getRules('example.com')).resolves.toEqual({
+        autoTranslate: true,
+        preferredProvider: 'opus-mt',
       });
     });
 

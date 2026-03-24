@@ -11,7 +11,11 @@
  */
 
 import { BaseProvider } from './base-provider';
-import { safeStorageGet, safeStorageRemove, safeStorageSet } from '../core/storage';
+import {
+  strictStorageGet,
+  strictStorageRemove,
+  strictStorageSet,
+} from '../core/storage';
 import { createLogger } from '../core/logger';
 import type { ProviderConfig } from '../types';
 import type {
@@ -47,10 +51,11 @@ export abstract class CloudProvider extends BaseProvider {
 
   async initialize(): Promise<void> {
     try {
-      const stored = await safeStorageGet<CloudProviderStorageRecord>(this.getStorageKeys());
+      const stored = await strictStorageGet<CloudProviderStorageRecord>(this.getStorageKeys());
       this.applyStoredConfig(stored);
     } catch (error) {
-      this.log.error('Failed to load config:', error);
+      this.resetConfig();
+      this.log.error('Failed to load config from storage:', error);
     }
   }
 
@@ -62,7 +67,7 @@ export abstract class CloudProvider extends BaseProvider {
   }
 
   async clearApiKey(): Promise<void> {
-    await safeStorageRemove(this.getStorageKeys());
+    await strictStorageRemove(this.getStorageKeys());
     this.resetConfig();
   }
 
@@ -70,8 +75,8 @@ export abstract class CloudProvider extends BaseProvider {
    * Persist one or more config values to storage.
    * Thin wrapper so subclasses don't need to import safeStorageSet directly.
    */
-  protected persist(items: CloudProviderStorageMutation): Promise<boolean> {
-    return safeStorageSet(items);
+  protected persist(items: CloudProviderStorageMutation): Promise<void> {
+    return strictStorageSet(items);
   }
 
   /**

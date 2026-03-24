@@ -38,6 +38,10 @@ describe('provider-options guards', () => {
     expect(normalizeTranslationProviderId('invalid-provider', 'deepl')).toBe('deepl');
   });
 
+  it('normalizes the legacy opus provider alias', () => {
+    expect(normalizeTranslationProviderId('opus-mt-local')).toBe('opus-mt');
+  });
+
   it('accepts cloud provider ids only for cloud guard', () => {
     expect(isCloudProviderId('deepl')).toBe(true);
     expect(isCloudProviderId('chrome-builtin')).toBe(false);

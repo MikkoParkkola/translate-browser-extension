@@ -25,7 +25,7 @@ import {
   type RetryConfig,
 } from '../core/errors';
 import { createLogger } from '../core/logger';
-import { safeStorageGet, safeStorageSet } from '../core/storage';
+import { safeStorageGet, safeStorageSet, strictStorageSet } from '../core/storage';
 import { browserAPI } from '../core/browser-api';
 import { validateInput } from '../core/errors';
 import { getCorrection } from '../core/corrections';
@@ -1671,12 +1671,16 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     const browserLang = chrome.i18n.getUILanguage().split('-')[0];
     log.info('Browser language detected:', browserLang);
     /* v8 ignore start -- browserLang || default */
-    safeStorageSet({
-      sourceLang: 'auto',
-      targetLang: browserLang || 'en',
-      strategy: 'smart',
-      provider: 'opus-mt',
-    });
+    try {
+      await strictStorageSet({
+        sourceLang: 'auto',
+        targetLang: browserLang || 'en',
+        strategy: 'smart',
+        provider: 'opus-mt',
+      });
+    } catch (error) {
+      log.error('Failed to persist install defaults:', error);
+    }
     /* v8 ignore stop */
   /* v8 ignore start -- else-if branch: update reason */
   } else if (details.reason === 'update') {
@@ -1719,11 +1723,15 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   const result = await safeStorageGet<{ provider?: unknown }>(['provider']);
   if (result.provider !== undefined) {
     const restoredProvider = normalizeTranslationProviderId(result.provider);
-    if (restoredProvider !== result.provider) {
+    if (result.provider === 'opus-mt-local') {
+      log.info('Migrated legacy stored provider alias to opus-mt');
+    } else if (restoredProvider !== result.provider) {
       log.warn('Ignoring invalid stored provider:', result.provider);
     }
     setProvider(restoredProvider);
     log.info('Restored provider:', getProvider());
+  } else {
+    log.info('No stored provider found, using default opus-mt');
   }
 
   // Auto-detect Chrome Built-in Translator

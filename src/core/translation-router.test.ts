@@ -10,7 +10,7 @@ import { CircuitBreaker } from './circuit-breaker';
 // Mock the opus-mt provider
 vi.mock('../providers/opus-mt-local', () => ({
   opusMTProvider: {
-    id: 'opus-mt-local',
+    id: 'opus-mt',
     name: 'Mock OPUS-MT',
     type: 'local',
     qualityTier: 'standard',
@@ -26,7 +26,7 @@ vi.mock('../providers/opus-mt-local', () => ({
     translate: vi.fn().mockResolvedValue('Mocked translation'),
     test: vi.fn().mockResolvedValue(true),
     getInfo: vi.fn().mockReturnValue({
-      id: 'opus-mt-local',
+      id: 'opus-mt',
       name: 'Mock OPUS-MT',
       type: 'local',
       qualityTier: 'standard',
@@ -100,10 +100,10 @@ describe('TranslationRouter', () => {
 
   describe('getProviderInfo', () => {
     it('returns info for valid provider', () => {
-      const info = router.getProviderInfo('opus-mt-local');
+      const info = router.getProviderInfo('opus-mt');
 
       expect(info).not.toBeNull();
-      expect(info?.id).toBe('opus-mt-local');
+      expect(info?.id).toBe('opus-mt');
     });
 
     it('returns null for unknown provider', () => {
@@ -144,8 +144,8 @@ describe('TranslationRouter', () => {
     it('tests all providers and returns results', async () => {
       const results = await router.testProviders();
 
-      expect(results).toHaveProperty('opus-mt-local');
-      expect(results['opus-mt-local'].passed).toBe(true);
+      expect(results).toHaveProperty('opus-mt');
+      expect(results['opus-mt'].passed).toBe(true);
     });
 
     it('handles test errors gracefully', async () => {
@@ -155,8 +155,8 @@ describe('TranslationRouter', () => {
 
       const results = await router.testProviders();
 
-      expect(results['opus-mt-local'].passed).toBe(false);
-      expect(results['opus-mt-local'].status).toContain('ERROR');
+      expect(results['opus-mt'].passed).toBe(false);
+      expect(results['opus-mt'].status).toContain('ERROR');
     });
   });
 
@@ -263,7 +263,7 @@ describe('TranslationRouter', () => {
       // Disable preferLocal so quality bonus alone decides:
       // premium: 100 + 50(quality premium) = 150 vs local: 100 + 0 = 100
       await freshRouter.savePreferences({
-        enabledProviders: ['opus-mt-local', 'mock-premium'],
+        enabledProviders: ['opus-mt', 'mock-premium'],
         prioritize: 'quality',
         preferLocal: false,
       });
@@ -288,7 +288,7 @@ describe('TranslationRouter', () => {
         getInfo: vi.fn().mockReturnValue({ id: 'mock-cloud', name: 'Mock Cloud', type: 'cloud', qualityTier: 'standard', costPerMillion: 10, icon: '' }),
       };
       router.registerProvider(cloudProvider as unknown as TranslationProvider);
-      await router.savePreferences({ enabledProviders: ['opus-mt-local', 'mock-cloud'], prioritize: 'fast' });
+      await router.savePreferences({ enabledProviders: ['opus-mt', 'mock-cloud'], prioritize: 'fast' });
 
       // local provider wins under fast strategy
       const selected = await router.selectProvider('en', 'fi');
@@ -312,7 +312,7 @@ describe('TranslationRouter', () => {
       };
       router.registerProvider(paidProvider as unknown as TranslationProvider);
       // Disable preferLocal so we can isolate the cost branch
-      await router.savePreferences({ enabledProviders: ['opus-mt-local', 'mock-paid'], prioritize: 'cost', preferLocal: false });
+      await router.savePreferences({ enabledProviders: ['opus-mt', 'mock-paid'], prioritize: 'cost', preferLocal: false });
 
       // free local provider wins under cost strategy (costPerMillion === 0)
       const selected = await router.selectProvider('en', 'fi');
@@ -336,7 +336,7 @@ describe('TranslationRouter', () => {
       };
       router.registerProvider(cloudProvider as unknown as TranslationProvider);
       await router.savePreferences({
-        enabledProviders: ['opus-mt-local', 'mock-cloud2'],
+        enabledProviders: ['opus-mt', 'mock-cloud2'],
         prioritize: 'balanced',
         preferLocal: true,
       });
@@ -347,7 +347,7 @@ describe('TranslationRouter', () => {
     });
 
     it('usage-based penalty reduces score for heavily-used provider', async () => {
-      // Force high usage on opus-mt-local by translating many times
+      // Force high usage on opus-mt by translating many times
       for (let i = 0; i < 5; i++) {
         await router.translate('Hello', 'en', 'fi');
       }
@@ -416,7 +416,7 @@ describe('TranslationRouter', () => {
 
       await routerWithBreaker.translate('Hello', 'en', 'fi');
 
-      const state = breaker.getState('opus-mt-local');
+      const state = breaker.getState('opus-mt');
       expect(state.state).toBe('closed');
       expect(state.consecutiveFailures).toBe(0);
     });
@@ -430,7 +430,7 @@ describe('TranslationRouter', () => {
 
       await expect(routerWithBreaker.translate('Hello', 'en', 'fi')).rejects.toThrow('Provider failed');
 
-      const state = breaker.getState('opus-mt-local');
+      const state = breaker.getState('opus-mt');
       expect(state.consecutiveFailures).toBe(1);
     });
 
@@ -438,10 +438,10 @@ describe('TranslationRouter', () => {
       const breaker = new CircuitBreaker({ failureThreshold: 1 });
       const routerWithBreaker = new TranslationRouter(breaker);
 
-      // Open the circuit for opus-mt-local
-      breaker.recordFailure('opus-mt-local');
+      // Open the circuit for opus-mt
+      breaker.recordFailure('opus-mt');
 
-      // Since opus-mt-local is the only enabled provider, this should throw
+      // Since opus-mt is the only enabled provider, this should throw
       await expect(
         routerWithBreaker.translate('Hello', 'en', 'fi')
       ).rejects.toThrow('No available provider');
@@ -455,14 +455,14 @@ describe('TranslationRouter', () => {
       const routerWithBreaker = new TranslationRouter(breaker);
 
       // Open the circuit
-      breaker.recordFailure('opus-mt-local');
+      breaker.recordFailure('opus-mt');
 
       // With 0ms recovery, the next isAvailable check transitions to half_open
       const result = await routerWithBreaker.translate('Hello', 'en', 'fi');
       expect(result).toBe('Mocked translation');
 
       // Success should close the circuit
-      const state = breaker.getState('opus-mt-local');
+      const state = breaker.getState('opus-mt');
       expect(state.state).toBe('closed');
     });
   });
@@ -560,7 +560,7 @@ describe('TranslationRouter', () => {
   });
 
   describe('loadPreferences: stored preferences exist (lines 77-79)', () => {
-    it('merges stored preferences with defaults on load', async () => {
+    it('merges stored preferences with defaults and normalizes legacy opus ids on load', async () => {
       const origChrome = globalThis.chrome;
 
       const storedPrefs = {
@@ -587,6 +587,7 @@ describe('TranslationRouter', () => {
         await freshRouter.initialize();
         // Should have loaded the stored 'quality' strategy
         expect(freshRouter.getStrategy()).toBe('quality');
+        expect((freshRouter as any).preferences.enabledProviders).toEqual(['opus-mt', 'deepl']);
       } finally {
         globalThis.chrome = origChrome;
       }
@@ -620,6 +621,41 @@ describe('TranslationRouter', () => {
           routerPreferences: expect.objectContaining({ prioritize: 'fast' }),
         });
         expect(freshRouter.getStrategy()).toBe('fast');
+      } finally {
+        globalThis.chrome = origChrome;
+      }
+    });
+
+    it('normalizes legacy opus ids before persisting preferences', async () => {
+      const origChrome = globalThis.chrome;
+      const mockSet = vi.fn().mockResolvedValue(undefined);
+
+      globalThis.chrome = {
+        ...origChrome,
+        storage: {
+          ...origChrome?.storage,
+          local: {
+            ...origChrome?.storage?.local,
+            get: vi.fn().mockResolvedValue({}),
+            set: mockSet,
+          },
+        },
+      } as typeof chrome;
+
+      try {
+        const freshRouter = new TranslationRouter();
+        await freshRouter.initialize();
+        await freshRouter.savePreferences({
+          enabledProviders: ['opus-mt-local', 'mock-cloud'],
+          primaryProvider: 'opus-mt-local',
+        });
+
+        expect(mockSet).toHaveBeenCalledWith({
+          routerPreferences: expect.objectContaining({
+            enabledProviders: ['opus-mt', 'mock-cloud'],
+            primaryProvider: 'opus-mt',
+          }),
+        });
       } finally {
         globalThis.chrome = origChrome;
       }
@@ -794,7 +830,7 @@ describe('TranslationRouter — targeted branch coverage', () => {
       const cloud = mockProvider({ id: 'fast-cloud', name: 'FastCloud', type: 'cloud', qualityTier: 'standard', costPerMillion: 10 });
       router.registerProvider(cloud as unknown as TranslationProvider);
 
-      await router.savePreferences({ enabledProviders: ['opus-mt-local', 'fast-cloud'], prioritize: 'fast', preferLocal: false });
+      await router.savePreferences({ enabledProviders: ['opus-mt', 'fast-cloud'], prioritize: 'fast', preferLocal: false });
 
       // local provider should win because of +50 fast bonus
       const selected = await router.selectProvider('en', 'fi');
@@ -810,7 +846,7 @@ describe('TranslationRouter — targeted branch coverage', () => {
       const paid = mockProvider({ id: 'cost-paid', name: 'CostPaid', type: 'cloud', qualityTier: 'standard', costPerMillion: 20 });
       router.registerProvider(paid as unknown as TranslationProvider);
 
-      await router.savePreferences({ enabledProviders: ['opus-mt-local', 'cost-paid'], prioritize: 'cost', preferLocal: false });
+      await router.savePreferences({ enabledProviders: ['opus-mt', 'cost-paid'], prioritize: 'cost', preferLocal: false });
 
       // free local provider (costPerMillion=0) should win
       const selected = await router.selectProvider('en', 'fi');
@@ -828,7 +864,7 @@ describe('TranslationRouter — targeted branch coverage', () => {
 
       // balanced + preferLocal=false → local gets 100+40=140, premium gets 100+20=120 → local still wins
       // but both branches of the if are exercised (local type and premium qualityTier)
-      await router.savePreferences({ enabledProviders: ['opus-mt-local', 'bal-prem'], prioritize: 'balanced', preferLocal: false });
+      await router.savePreferences({ enabledProviders: ['opus-mt', 'bal-prem'], prioritize: 'balanced', preferLocal: false });
 
       const selected = await router.selectProvider('en', 'fi');
       // local still wins on balanced (40 > 20) but both branches are now exercised

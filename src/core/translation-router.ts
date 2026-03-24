@@ -25,6 +25,7 @@ import type {
 import { createLogger } from './logger';
 
 const log = createLogger('Router');
+const LEGACY_OPUS_PROVIDER_ID = 'opus-mt-local';
 
 interface ProviderCandidate {
   provider: TranslationProvider;
@@ -38,9 +39,21 @@ const STORAGE_KEY = 'routerPreferences';
 const DEFAULT_PREFERENCES: RouterPreferences = {
   prioritize: 'balanced',
   preferLocal: true,
-  enabledProviders: ['opus-mt-local'],
-  primaryProvider: 'opus-mt-local',
+  enabledProviders: ['opus-mt'],
+  primaryProvider: 'opus-mt',
 };
+
+function normalizeRouterProviderId(providerId: string): string {
+  return providerId === LEGACY_OPUS_PROVIDER_ID ? 'opus-mt' : providerId;
+}
+
+function normalizeRouterPreferences(preferences: RouterPreferences): RouterPreferences {
+  return {
+    ...preferences,
+    enabledProviders: [...new Set(preferences.enabledProviders.map(normalizeRouterProviderId))],
+    primaryProvider: normalizeRouterProviderId(preferences.primaryProvider),
+  };
+}
 
 export class TranslationRouter {
   private providers = new Map<string, TranslationProvider>();
@@ -74,8 +87,12 @@ export class TranslationRouter {
     const stored = await safeStorageGet<Record<string, RouterPreferences>>(STORAGE_KEY);
     const preferences = stored[STORAGE_KEY];
     if (preferences) {
-      log.info('Loaded preferences from storage:', preferences);
-      return { ...DEFAULT_PREFERENCES, ...preferences };
+      const normalizedPreferences = normalizeRouterPreferences({
+        ...DEFAULT_PREFERENCES,
+        ...preferences,
+      });
+      log.info('Loaded preferences from storage:', normalizedPreferences);
+      return normalizedPreferences;
     }
     log.info('No stored preferences, using defaults');
     return { ...DEFAULT_PREFERENCES };
@@ -85,7 +102,7 @@ export class TranslationRouter {
    * Save preferences to chrome.storage.local
    */
   async savePreferences(prefs: Partial<RouterPreferences>): Promise<void> {
-    this.preferences = { ...this.preferences, ...prefs };
+    this.preferences = normalizeRouterPreferences({ ...this.preferences, ...prefs });
 
     try {
       if (typeof chrome === 'undefined' || !chrome.storage?.local) {
@@ -206,7 +223,7 @@ export class TranslationRouter {
     targetLang: string
   ): boolean {
     // Special handling for OPUS-MT
-    if (provider.id === 'opus-mt-local') {
+    if (provider.id === 'opus-mt') {
       const pair = `${sourceLang}-${targetLang}`;
       const supported = provider.getSupportedLanguages();
       return supported.some((p) => `${p.src}-${p.tgt}` === pair);

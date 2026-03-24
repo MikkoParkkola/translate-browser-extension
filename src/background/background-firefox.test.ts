@@ -131,7 +131,6 @@ vi.mock('../core/errors', () => ({
 
 vi.mock('../core/storage', () => ({
   safeStorageGet: vi.fn().mockResolvedValue({}),
-  safeStorageSet: vi.fn().mockResolvedValue(undefined),
   strictStorageSet: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -566,13 +565,13 @@ describe('background-firefox installation handler', () => {
       return;
     }
     mockGetUILanguage.mockReturnValue('fi-FI');
-    const { safeStorageSet } = await import('../core/storage');
+    const { strictStorageSet } = await import('../core/storage');
 
     capturedInstalledHandler({ reason: 'install' });
 
-    // safeStorageSet is called asynchronously on install
+    // strictStorageSet is called asynchronously on install
     await new Promise((r) => setTimeout(r, 10));
-    expect(safeStorageSet).toHaveBeenCalledWith(
+    expect(strictStorageSet).toHaveBeenCalledWith(
       expect.objectContaining({ sourceLang: 'auto', strategy: 'smart' })
     );
   });
@@ -591,10 +590,10 @@ describe('background-firefox installation handler', () => {
       return;
     }
     mockGetUILanguage.mockReturnValue(''); // '' → split('-')[0] = '' → browserLang || 'en' = 'en'
-    const { safeStorageSet } = await import('../core/storage');
+    const { strictStorageSet } = await import('../core/storage');
     capturedInstalledHandler({ reason: 'install' });
     await new Promise((r) => setTimeout(r, 10));
-    expect(safeStorageSet).toHaveBeenCalledWith(expect.objectContaining({ targetLang: 'en' }));
+    expect(strictStorageSet).toHaveBeenCalledWith(expect.objectContaining({ targetLang: 'en' }));
   });
 
   it('onInstalled silently ignores unknown reason (line 844 else-if false branch)', async () => {
@@ -1365,8 +1364,8 @@ describe('background-firefox translate: additional coverage', () => {
       if (capturedInstalledHandler) {
         mockGetUILanguage.mockReturnValueOnce('fi-FI');
         capturedInstalledHandler({ reason: 'install' });
-        const { safeStorageSet } = await import('../core/storage');
-        expect(safeStorageSet).toHaveBeenCalledWith(
+        const { strictStorageSet } = await import('../core/storage');
+        expect(strictStorageSet).toHaveBeenCalledWith(
           expect.objectContaining({ targetLang: 'fi' })
         );
       }

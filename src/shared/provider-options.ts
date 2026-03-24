@@ -347,6 +347,8 @@ export function normalizeTranslationProviderId(
   value: unknown,
   fallback: TranslationProviderId = 'opus-mt'
 ): TranslationProviderId {
+  // Legacy compatibility: older router/site-rule data persisted the internal
+  // OPUS implementation id instead of the canonical provider contract id.
   if (value === 'opus-mt-local') {
     return 'opus-mt';
   }

@@ -22,7 +22,7 @@ import {
   type TranslationError,
 } from '../core/errors';
 import { createLogger } from '../core/logger';
-import { safeStorageGet, safeStorageSet, strictStorageSet } from '../core/storage';
+import { safeStorageGet, strictStorageSet } from '../core/storage';
 import { getCorrection } from '../core/corrections';
 import { withTimeout } from '../core/async-utils';
 import { CONFIG } from '../config';
@@ -689,11 +689,13 @@ browserAPI.runtime.onInstalled.addListener((details) => {
     log.info('Extension installed');
     const browserLang = browserAPI.i18n.getUILanguage().split('-')[0];
     log.info('Browser language detected:', browserLang);
-    safeStorageSet({
+    void strictStorageSet({
       sourceLang: 'auto',
       targetLang: browserLang || 'en',
       strategy: 'smart',
       provider: 'opus-mt',
+    }).catch((error) => {
+      log.error('Failed to persist install defaults:', error);
     });
   } else if (details.reason === 'update') {
     log.info('Extension updated from', details.previousVersion);
@@ -709,11 +711,15 @@ browserAPI.runtime.onInstalled.addListener((details) => {
   const result = await safeStorageGet<{ provider?: unknown }>(['provider']);
   if (result.provider !== undefined) {
     const restoredProvider = normalizeTranslationProviderId(result.provider);
-    if (restoredProvider !== result.provider) {
+    if (result.provider === 'opus-mt-local') {
+      log.info('Migrated legacy stored provider alias to opus-mt');
+    } else if (restoredProvider !== result.provider) {
       log.warn('Ignoring invalid stored provider:', result.provider);
     }
     currentProvider = restoredProvider;
     log.info('Restored provider:', currentProvider);
+  } else {
+    log.info('No stored provider found, using default opus-mt');
   }
 })();
 /* v8 ignore stop */
