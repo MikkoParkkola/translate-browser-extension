@@ -1,6 +1,6 @@
 # Architecture Overview
 
-TRANSLATE! is a multi-provider browser translation extension built on Chrome Manifest V3 with a modular, provider-agnostic architecture.
+TRANSLATE! is a multi-provider browser translation extension that ships on Chrome (MV3) and Firefox (MV2) with a local-first architecture.
 
 ## Core Components
 
@@ -11,9 +11,26 @@ TRANSLATE! is a multi-provider browser translation extension built on Chrome Man
 - **Popup UI** - Translation controls, language selection, provider status
 - **Options UI** - Provider configuration, API keys, settings management
 
+### Canonical shipped runtime paths
+
+#### Chrome
+- **Downloaded local models** (`opus-mt`, `translategemma`) route through `popup/content -> background service worker -> offscreen document`.
+- **Native browser translation** (`chrome-builtin`) routes through `popup/content -> chrome.scripting.executeScript(...)` in the active tab main world.
+- **Cloud providers** route through `popup/content -> background service worker -> provider API`.
+
+#### Firefox
+- Firefox routes shipped translation work through `popup/content -> background-firefox`.
+- Firefox does not support the Chrome MV3 offscreen-document path.
+- Firefox does not ship the `chrome-builtin` provider.
+
+#### Shipping status
+- **Stable**: `chrome-builtin`, `opus-mt`, and configured cloud providers
+- **Experimental**: `translategemma`
+- Legacy router / `llama.cpp` / `wllama` surfaces should not be treated as the canonical shipped runtime.
+
 ### Provider Routing System
 
-The extension routes translation requests through a background service worker that manages:
+The extension routes translation requests through the browser-appropriate background runtime, which manages:
 
 - **Provider selection** - Weighted distribution, failover chains, quota tracking
 - **Rate limiting** - Per-provider request/token limits with automatic retry
@@ -28,12 +45,13 @@ The extension routes translation requests through a background service worker th
 4. **Cache** - Store results for session, reuse across matching nodes
 5. **Inject** - Replace original text preserving whitespace and structure
 
-### WASM Integration (Offline Mode)
+### Offline Integration
 
 For privacy-sensitive or offline scenarios:
 
-- **OPUS-MT models** - Run entirely in-browser via WebAssembly
-- **WebGPU acceleration** - When available, falls back to CPU
+- **OPUS-MT models** - Stable downloaded baseline running entirely in-browser via WebAssembly
+- **TranslateGemma** - Experimental accelerated path that requires WebGPU or WebNN
+- **Chrome Built-in** - Browser-managed native translation when supported by Chrome
 - **No network** - Zero data transmission, no API key required
 
 ## Data Flow
@@ -43,11 +61,11 @@ User Action (translate page)
   ↓
 Content Script (scan DOM, batch nodes)
   ↓
-Background Worker (route to provider)
+Background Runtime (route to provider)
   ↓
-Provider API / Local WASM
+Provider API / Local runtime
   ↓
-Background Worker (cache result)
+Background Runtime (cache result)
   ↓
 Content Script (inject translation)
   ↓

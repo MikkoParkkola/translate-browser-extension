@@ -36,7 +36,7 @@ import { getCorrection } from '../core/corrections';
 import { withTimeout } from '../core/async-utils';
 import { CONFIG } from '../config';
 import { browserAPI, getURL } from '../core/browser-api';
-import { normalizeTranslationProviderId } from '../shared/provider-options';
+import { DEFAULT_PROVIDER_ID, normalizeTranslationProviderId } from '../shared/provider-options';
 import {
   assertNever,
   isExtensionMessage,
@@ -89,7 +89,7 @@ log.info('WASM path configured:', wasmBasePath);
 // ============================================================================
 
 let currentStrategy: Strategy = 'smart';
-let currentProvider: TranslationProviderId = 'opus-mt';
+let currentProvider: TranslationProviderId = DEFAULT_PROVIDER_ID;
 
 // ============================================================================
 // Shared Translation Cache (Persistent LRU)
@@ -251,7 +251,7 @@ async function translate(
   text: string | string[],
   sourceLang: string,
   targetLang: string,
-  provider: TranslationProviderId = 'opus-mt'
+  provider: TranslationProviderId = DEFAULT_PROVIDER_ID
 ): Promise<string | string[]> {
   // Handle auto-detection
   let actualSourceLang = sourceLang;

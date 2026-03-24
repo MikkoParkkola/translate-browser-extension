@@ -2,7 +2,7 @@ import { render } from 'solid-js/web';
 import { createSignal, Show, For, onMount } from 'solid-js';
 import { safeStorageSet } from '../core/storage';
 import { ONBOARDING_LANGUAGES } from '../shared/translation-options';
-import { ONBOARDING_MODELS as MODELS } from '../shared/provider-options';
+import { DEFAULT_PROVIDER_ID, ONBOARDING_MODELS as MODELS } from '../shared/provider-options';
 import type { TranslationProviderId } from '../types';
 import './styles.css';
 
@@ -14,7 +14,7 @@ interface Step {
 export function OnboardingApp() {
   const [step, setStep] = createSignal(0);
   const [targetLang, setTargetLang] = createSignal('en');
-  const [model, setModel] = createSignal<TranslationProviderId>('opus-mt');
+  const [model, setModel] = createSignal<TranslationProviderId>(DEFAULT_PROVIDER_ID);
   const [testResult, setTestResult] = createSignal<string | null>(null);
   const [testing, setTesting] = createSignal(false);
   const [testError, setTestError] = createSignal<string | null>(null);
@@ -266,11 +266,19 @@ export function OnboardingApp() {
                   >
                     <div class="model-header">
                       <span class="model-name">{m.name}</span>
-                      <Show when={m.recommended}>
-                        <span class="badge">Recommended</span>
-                      </Show>
+                      <div class="model-badges">
+                        <Show when={m.recommended}>
+                          <span class="badge">Recommended</span>
+                        </Show>
+                        <Show when={m.badge}>
+                          <span class="badge">{m.badge}</span>
+                        </Show>
+                      </div>
                     </div>
                     <div class="model-desc">{m.desc}</div>
+                    <Show when={m.availabilityNote}>
+                      <div class="model-note">{m.availabilityNote}</div>
+                    </Show>
                     <div class="model-specs">
                       <span class="spec">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

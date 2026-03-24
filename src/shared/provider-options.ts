@@ -1,5 +1,6 @@
 /**
- * Shared provider metadata used across popup, options, onboarding, and tests.
+ * Canonical shipped provider/runtime metadata used across popup, options,
+ * onboarding, background helpers, and tests.
  */
 
 import type { CloudProviderId, QualityTier, TranslationProviderId } from '../types';
@@ -16,8 +17,15 @@ export {
 } from './cloud-provider-configs';
 
 type LocalProviderId = Extract<TranslationProviderId, 'opus-mt' | 'translategemma' | 'chrome-builtin'>;
+type DownloadableProviderId = Extract<TranslationProviderId, 'opus-mt' | 'translategemma'>;
 type BackgroundProviderId = Extract<TranslationProviderId, 'opus-mt' | 'translategemma'>;
 type OnboardingProviderId = Extract<TranslationProviderId, 'opus-mt' | 'chrome-builtin' | 'deepl'>;
+
+export type ProviderRuntimeKind = 'wasm' | 'webgpu' | 'native-browser' | 'cloud-api';
+export type ProviderDeliveryKind = 'downloaded-model' | 'browser-managed' | 'cloud-api';
+export type ProviderStability = 'stable' | 'experimental';
+
+export const DEFAULT_PROVIDER_ID: TranslationProviderId = 'opus-mt';
 
 export interface ModelInfo {
   id: TranslationProviderId;
@@ -27,6 +35,12 @@ export interface ModelInfo {
   size: string;
   isCloud?: boolean;
   costEstimate?: string;
+   runtimeKind?: ProviderRuntimeKind;
+   deliveryKind?: ProviderDeliveryKind;
+   stability?: ProviderStability;
+   availabilityNote?: string;
+   requiresDownload?: boolean;
+   preferredWhenAvailable?: boolean;
 }
 
 export interface ProviderSelectorOption {
@@ -49,6 +63,9 @@ export interface OnboardingModelOption {
   speed: string;
   quality: string;
   recommended: boolean;
+   badge?: string;
+   availabilityNote?: string;
+   stability?: ProviderStability;
 }
 
 export interface BackgroundProviderInfo {
@@ -58,10 +75,17 @@ export interface BackgroundProviderInfo {
   qualityTier: QualityTier;
   description: string;
   icon: string;
+   runtimeKind: ProviderRuntimeKind;
+   stability: ProviderStability;
 }
 
-interface ProviderDefinition {
+export interface ProviderDefinition {
   type: 'local' | 'cloud';
+   runtimeKind: ProviderRuntimeKind;
+   deliveryKind: ProviderDeliveryKind;
+   stability: ProviderStability;
+   requiresDownload: boolean;
+   preferredWhenAvailable?: boolean;
   statusName: string;
   siteRuleName: string;
   qualityTier: QualityTier;
@@ -74,6 +98,10 @@ interface ProviderDefinition {
 const PROVIDER_DEFINITIONS: Record<TranslationProviderId, ProviderDefinition> = {
   'opus-mt': {
     type: 'local',
+    runtimeKind: 'wasm',
+    deliveryKind: 'downloaded-model',
+    stability: 'stable',
+    requiresDownload: true,
     statusName: 'Helsinki-NLP OPUS-MT',
     siteRuleName: 'OPUS-MT (Local)',
     qualityTier: 'standard',
@@ -84,6 +112,11 @@ const PROVIDER_DEFINITIONS: Record<TranslationProviderId, ProviderDefinition> = 
       tag: 'Fast',
       description: 'Helsinki-NLP',
       size: '~170MB',
+      runtimeKind: 'wasm',
+      deliveryKind: 'downloaded-model',
+      stability: 'stable',
+      availabilityNote: 'Downloads one model per language pair on first use.',
+      requiresDownload: true,
     },
     providerSelector: {
       id: 'opus-mt',
@@ -99,30 +132,46 @@ const PROVIDER_DEFINITIONS: Record<TranslationProviderId, ProviderDefinition> = 
       speed: 'Fast',
       quality: 'Good',
       recommended: true,
+      availabilityNote: 'Downloads one model per language pair the first time you use it.',
+      stability: 'stable',
     },
   },
   translategemma: {
     type: 'local',
+    runtimeKind: 'webgpu',
+    deliveryKind: 'downloaded-model',
+    stability: 'experimental',
+    requiresDownload: true,
     statusName: 'TranslateGemma 4B',
     siteRuleName: 'TranslateGemma (Local)',
     qualityTier: 'premium',
-    backgroundDescription: 'High quality, single model (~3.6GB)',
+    backgroundDescription: 'Experimental quality path (~3.6GB, WebGPU/WebNN)',
     modelSelector: {
       id: 'translategemma',
       name: 'TranslateGemma',
       tag: 'Quality',
-      description: 'Google 4B',
+      description: 'Experimental Google 4B',
       size: '~3.6GB',
+      runtimeKind: 'webgpu',
+      deliveryKind: 'downloaded-model',
+      stability: 'experimental',
+      availabilityNote: 'Experimental. Requires WebGPU or WebNN acceleration.',
+      requiresDownload: true,
     },
     providerSelector: {
       id: 'translategemma',
       name: 'TranslateGemma',
       tag: 'Quality',
-      desc: '~3.6GB one model',
+      desc: 'Experimental · ~3.6GB · WebGPU/WebNN',
     },
   },
   'chrome-builtin': {
     type: 'local',
+    runtimeKind: 'native-browser',
+    deliveryKind: 'browser-managed',
+    stability: 'stable',
+    requiresDownload: false,
+    preferredWhenAvailable: true,
     statusName: 'Chrome Built-in',
     siteRuleName: 'Chrome Built-in',
     qualityTier: 'standard',
@@ -133,19 +182,32 @@ const PROVIDER_DEFINITIONS: Record<TranslationProviderId, ProviderDefinition> = 
       tag: 'Native',
       description: 'Chrome 138+',
       size: 'Built-in',
+      runtimeKind: 'native-browser',
+      deliveryKind: 'browser-managed',
+      stability: 'stable',
+      availabilityNote: 'Preferred when available. Managed by Chrome, not by the extension.',
+      requiresDownload: false,
+      preferredWhenAvailable: true,
     },
     onboarding: {
       id: 'chrome-builtin',
       name: 'Chrome Built-in',
-      desc: "Uses Chrome's translation API",
+      desc: "Uses Chrome's built-in translation API",
       size: 'No download',
       speed: 'Instant',
       quality: 'Good',
       recommended: false,
+      badge: 'Chrome 138+',
+      availabilityNote: 'Preferred when available. Managed by Chrome rather than the extension.',
+      stability: 'stable',
     },
   },
   deepl: {
     type: 'cloud',
+    runtimeKind: 'cloud-api',
+    deliveryKind: 'cloud-api',
+    stability: 'stable',
+    requiresDownload: false,
     statusName: 'DeepL',
     siteRuleName: 'DeepL',
     qualityTier: 'premium',
@@ -158,6 +220,11 @@ const PROVIDER_DEFINITIONS: Record<TranslationProviderId, ProviderDefinition> = 
       size: 'API',
       isCloud: true,
       costEstimate: '~$20/1M chars',
+      runtimeKind: 'cloud-api',
+      deliveryKind: 'cloud-api',
+      stability: 'stable',
+      availabilityNote: 'Requires an API key and an internet connection.',
+      requiresDownload: false,
     },
     onboarding: {
       id: 'deepl',
@@ -167,10 +234,17 @@ const PROVIDER_DEFINITIONS: Record<TranslationProviderId, ProviderDefinition> = 
       speed: 'Fast',
       quality: 'Excellent',
       recommended: false,
+      badge: 'API key',
+      availabilityNote: 'Requires a DeepL API key and an internet connection.',
+      stability: 'stable',
     },
   },
   openai: {
     type: 'cloud',
+    runtimeKind: 'cloud-api',
+    deliveryKind: 'cloud-api',
+    stability: 'stable',
+    requiresDownload: false,
     statusName: 'OpenAI',
     siteRuleName: 'OpenAI',
     qualityTier: 'premium',
@@ -183,10 +257,19 @@ const PROVIDER_DEFINITIONS: Record<TranslationProviderId, ProviderDefinition> = 
       size: 'API',
       isCloud: true,
       costEstimate: '~$5/1M tokens',
+      runtimeKind: 'cloud-api',
+      deliveryKind: 'cloud-api',
+      stability: 'stable',
+      availabilityNote: 'Requires an API key and an internet connection.',
+      requiresDownload: false,
     },
   },
   anthropic: {
     type: 'cloud',
+    runtimeKind: 'cloud-api',
+    deliveryKind: 'cloud-api',
+    stability: 'stable',
+    requiresDownload: false,
     statusName: 'Claude',
     siteRuleName: 'Claude',
     qualityTier: 'premium',
@@ -199,10 +282,19 @@ const PROVIDER_DEFINITIONS: Record<TranslationProviderId, ProviderDefinition> = 
       size: 'API',
       isCloud: true,
       costEstimate: '~$3/1M tokens',
+      runtimeKind: 'cloud-api',
+      deliveryKind: 'cloud-api',
+      stability: 'stable',
+      availabilityNote: 'Requires an API key and an internet connection.',
+      requiresDownload: false,
     },
   },
   'google-cloud': {
     type: 'cloud',
+    runtimeKind: 'cloud-api',
+    deliveryKind: 'cloud-api',
+    stability: 'stable',
+    requiresDownload: false,
     statusName: 'Google Cloud',
     siteRuleName: 'Google Cloud',
     qualityTier: 'standard',
@@ -215,6 +307,11 @@ const PROVIDER_DEFINITIONS: Record<TranslationProviderId, ProviderDefinition> = 
       size: 'API',
       isCloud: true,
       costEstimate: '~$20/1M chars',
+      runtimeKind: 'cloud-api',
+      deliveryKind: 'cloud-api',
+      stability: 'stable',
+      availabilityNote: 'Requires an API key and an internet connection.',
+      requiresDownload: false,
     },
   },
 };
@@ -230,21 +327,23 @@ const MODEL_SELECTOR_ORDER: TranslationProviderId[] = [
 ];
 
 export const TRANSLATION_PROVIDER_IDS: TranslationProviderId[] = [...MODEL_SELECTOR_ORDER];
-export const CLOUD_PROVIDER_IDS: CloudProviderId[] = CLOUD_PROVIDER_CONFIGS.map((config) => config.id);
+export const CLOUD_PROVIDER_IDS: CloudProviderId[] = MODEL_SELECTOR_ORDER.filter(
+  (id): id is CloudProviderId => PROVIDER_DEFINITIONS[id].type === 'cloud'
+);
 
-const LOCAL_MODEL_IDS: LocalProviderId[] = ['opus-mt', 'translategemma', 'chrome-builtin'];
-const PROVIDER_SELECTOR_IDS: ProviderSelectorOption['id'][] = ['opus-mt', 'translategemma'];
-const SITE_RULE_PROVIDER_IDS: TranslationProviderId[] = [
-  'opus-mt',
-  'translategemma',
-  'chrome-builtin',
-  'deepl',
-  'openai',
-  'google-cloud',
-  'anthropic',
-];
-const ONBOARDING_MODEL_IDS: OnboardingProviderId[] = ['opus-mt', 'chrome-builtin', 'deepl'];
-const BACKGROUND_PROVIDER_IDS: BackgroundProviderId[] = ['opus-mt', 'translategemma'];
+const OFFLINE_PROVIDER_IDS: LocalProviderId[] = MODEL_SELECTOR_ORDER.filter(
+  (id): id is LocalProviderId => PROVIDER_DEFINITIONS[id].type === 'local'
+);
+const DOWNLOADABLE_PROVIDER_IDS: DownloadableProviderId[] = OFFLINE_PROVIDER_IDS.filter(
+  (id): id is DownloadableProviderId => PROVIDER_DEFINITIONS[id].requiresDownload
+);
+const PROVIDER_SELECTOR_IDS: ProviderSelectorOption['id'][] = OFFLINE_PROVIDER_IDS.filter(
+  (id): id is ProviderSelectorOption['id'] => PROVIDER_DEFINITIONS[id].providerSelector !== undefined
+);
+const ONBOARDING_MODEL_IDS: OnboardingProviderId[] = MODEL_SELECTOR_ORDER.filter(
+  (id): id is OnboardingProviderId => PROVIDER_DEFINITIONS[id].onboarding !== undefined
+);
+const BACKGROUND_PROVIDER_IDS: BackgroundProviderId[] = [...PROVIDER_SELECTOR_IDS];
 
 const TRANSLATION_PROVIDER_ID_SET = new Set<string>(TRANSLATION_PROVIDER_IDS);
 const CLOUD_PROVIDER_ID_SET = new Set<string>(CLOUD_PROVIDER_IDS);
@@ -303,7 +402,11 @@ export function normalizeCloudProviderFormalityValue(
   return normalizeAliasedCloudProviderValue(providerId, value, CLOUD_PROVIDER_FORMALITY_ALIASES);
 }
 
-export const MODEL_SELECTOR_LOCAL_MODELS: ModelInfo[] = LOCAL_MODEL_IDS.map(
+export const MODEL_SELECTOR_OFFLINE_MODELS: ModelInfo[] = OFFLINE_PROVIDER_IDS.map(
+  (id) => PROVIDER_DEFINITIONS[id].modelSelector
+);
+export const MODEL_SELECTOR_LOCAL_MODELS: ModelInfo[] = MODEL_SELECTOR_OFFLINE_MODELS;
+export const MODEL_SELECTOR_DOWNLOADABLE_MODELS: ModelInfo[] = DOWNLOADABLE_PROVIDER_IDS.map(
   (id) => PROVIDER_DEFINITIONS[id].modelSelector
 );
 
@@ -321,7 +424,7 @@ export const PROVIDER_SELECTOR_OPTIONS: ProviderSelectorOption[] = PROVIDER_SELE
 
 export const SITE_RULE_PROVIDER_OPTIONS: SiteRuleProviderOption[] = [
   { id: '', name: 'Use default' },
-  ...SITE_RULE_PROVIDER_IDS.map((id) => ({
+  ...TRANSLATION_PROVIDER_IDS.map((id) => ({
     id,
     name: PROVIDER_DEFINITIONS[id].siteRuleName,
   })),
@@ -345,7 +448,7 @@ export function isTranslationProviderId(value: unknown): value is TranslationPro
 
 export function normalizeTranslationProviderId(
   value: unknown,
-  fallback: TranslationProviderId = 'opus-mt'
+  fallback: TranslationProviderId = DEFAULT_PROVIDER_ID
 ): TranslationProviderId {
   // Legacy compatibility: older router/site-rule data persisted the internal
   // OPUS implementation id instead of the canonical provider contract id.
@@ -359,6 +462,23 @@ export function isCloudProviderId(value: unknown): value is CloudProviderId {
   return typeof value === 'string' && CLOUD_PROVIDER_ID_SET.has(value);
 }
 
+export function isDownloadableProviderId(value: unknown): value is DownloadableProviderId {
+  return typeof value === 'string' && DOWNLOADABLE_PROVIDER_IDS.includes(value as DownloadableProviderId);
+}
+
+export function isExperimentalProviderId(value: unknown): boolean {
+  return isTranslationProviderId(value) && PROVIDER_DEFINITIONS[value].stability === 'experimental';
+}
+
+export function isBrowserManagedProviderId(value: unknown): boolean {
+  return isTranslationProviderId(value)
+    && PROVIDER_DEFINITIONS[value].deliveryKind === 'browser-managed';
+}
+
+export function getProviderDefinition(providerId: TranslationProviderId): Readonly<ProviderDefinition> {
+  return PROVIDER_DEFINITIONS[providerId];
+}
+
 export const BACKGROUND_PROVIDER_LIST: BackgroundProviderInfo[] = BACKGROUND_PROVIDER_IDS.map(
   (id) => ({
     id,
@@ -367,5 +487,7 @@ export const BACKGROUND_PROVIDER_LIST: BackgroundProviderInfo[] = BACKGROUND_PRO
     qualityTier: PROVIDER_DEFINITIONS[id].qualityTier,
     description: PROVIDER_DEFINITIONS[id].backgroundDescription,
     icon: '',
+    runtimeKind: PROVIDER_DEFINITIONS[id].runtimeKind,
+    stability: PROVIDER_DEFINITIONS[id].stability,
   })
 );

@@ -54,7 +54,7 @@ describe('LocalModels', () => {
     it('renders section title', async () => {
       render(() => <LocalModels />);
       await vi.waitFor(() => {
-        expect(screen.getByText('Local Models')).toBeTruthy();
+        expect(screen.getByText('Offline Translation')).toBeTruthy();
       });
     });
 
@@ -72,17 +72,17 @@ describe('LocalModels', () => {
       });
     });
 
-    it('shows Clear All Models button', async () => {
+    it('shows Clear Downloaded Models button', async () => {
       render(() => <LocalModels />);
       await vi.waitFor(() => {
-        expect(screen.getByText('Clear All Models')).toBeTruthy();
+        expect(screen.getByText('Clear Downloaded Models')).toBeTruthy();
       });
     });
 
-    it('shows About Local Models section', async () => {
+    it('shows About Offline Translation section', async () => {
       render(() => <LocalModels />);
       await vi.waitFor(() => {
-        expect(screen.getByText('About Local Models')).toBeTruthy();
+        expect(screen.getByText('About Offline Translation')).toBeTruthy();
       });
     });
   });
@@ -209,8 +209,8 @@ describe('LocalModels', () => {
         .mockResolvedValue({});
 
       render(() => <LocalModels />);
-      await vi.waitFor(() => expect(screen.getByText('Clear All Models')).toBeTruthy());
-      fireEvent.click(screen.getByText('Clear All Models'));
+      await vi.waitFor(() => expect(screen.getByText('Clear Downloaded Models')).toBeTruthy());
+      fireEvent.click(screen.getByText('Clear Downloaded Models'));
       await vi.waitFor(() => {
         expect(mockSendMessage).toHaveBeenCalledWith(
           expect.objectContaining({ type: 'clearAllModels' })
@@ -221,9 +221,9 @@ describe('LocalModels', () => {
     it('does not call clearAllModels when confirm cancelled', async () => {
       vi.stubGlobal('confirm', vi.fn().mockReturnValue(false));
       render(() => <LocalModels />);
-      await vi.waitFor(() => expect(screen.getByText('Clear All Models')).toBeTruthy());
+      await vi.waitFor(() => expect(screen.getByText('Clear Downloaded Models')).toBeTruthy());
       mockSendMessage.mockClear();
-      fireEvent.click(screen.getByText('Clear All Models'));
+      fireEvent.click(screen.getByText('Clear Downloaded Models'));
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
@@ -235,8 +235,8 @@ describe('LocalModels', () => {
         .mockRejectedValue(new Error('Cannot clear'));
 
       render(() => <LocalModels />);
-      await vi.waitFor(() => expect(screen.getByText('Clear All Models')).toBeTruthy());
-      fireEvent.click(screen.getByText('Clear All Models'));
+      await vi.waitFor(() => expect(screen.getByText('Clear Downloaded Models')).toBeTruthy());
+      fireEvent.click(screen.getByText('Clear Downloaded Models'));
       await vi.waitFor(() => {
         expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Failed to clear'));
       });
@@ -306,8 +306,8 @@ describe('LocalModels', () => {
         .mockResolvedValue({});
 
       render(() => <LocalModels />);
-      await vi.waitFor(() => expect(screen.getByText('Clear All Models')).toBeTruthy());
-      fireEvent.click(screen.getByText('Clear All Models'));
+      await vi.waitFor(() => expect(screen.getByText('Clear Downloaded Models')).toBeTruthy());
+      fireEvent.click(screen.getByText('Clear Downloaded Models'));
 
       await vi.waitFor(() => {
         expect(mockCachesDelete).toHaveBeenCalledWith('transformers-v4-cache');
@@ -362,8 +362,8 @@ describe('LocalModels — uncovered branches', () => {
 
       render(() => <LocalModels />);
 
-      await vi.waitFor(() => expect(screen.getByText('Clear All Models')).toBeTruthy());
-      fireEvent.click(screen.getByText('Clear All Models'));
+      await vi.waitFor(() => expect(screen.getByText('Clear Downloaded Models')).toBeTruthy());
+      fireEvent.click(screen.getByText('Clear Downloaded Models'));
 
       await vi.waitFor(() => {
         expect(mockCachesDelete).toHaveBeenCalledWith('transformers-cache');

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-**TRANSLATE!** is a browser extension for high-quality local-first translation using OPUS-MT models via Transformers.js with WebGPU acceleration. Supports both Chrome (MV3) and Firefox (MV2).
+**TRANSLATE!** is a browser extension for local-first translation across Chrome (MV3) and Firefox (MV2). The shipped paths are Chrome Built-in (native, Chrome 138+), OPUS-MT (stable downloaded local baseline), TranslateGemma (experimental accelerated local path), and optional cloud providers.
 
 ## Architecture (v2.0)
 
@@ -15,7 +15,7 @@ src/
 ├── core/                  # Core translation infrastructure
 │   ├── throttle.ts        # Rate limiting with exponential backoff
 │   ├── webgpu-detector.ts # WebGPU detection and setup
-│   └── translation-router.ts # Intelligent provider selection
+│   └── translation-router.ts # Legacy routing surface (not the canonical popup path)
 ├── providers/             # Translation provider implementations
 │   ├── base-provider.ts   # Abstract base class
 │   └── opus-mt-local.ts   # Helsinki-NLP OPUS-MT via Transformers.js
@@ -40,6 +40,28 @@ src/
 ├── manifest.json          # Chrome manifest (MV3)
 └── manifest.firefox.json  # Firefox manifest (MV2)
 ```
+
+## Canonical shipped runtime paths
+
+### Chrome
+- `popup/content -> background service worker -> offscreen document`
+  - `opus-mt` (stable downloaded baseline)
+  - `translategemma` (experimental, WebGPU/WebNN)
+  - cloud providers (`deepl`, `openai`, `anthropic`, `google-cloud`)
+- `popup/content -> chrome.scripting.executeScript(...)`
+  - `chrome-builtin` (preferred native path when available, Chrome 138+)
+
+### Firefox
+- `popup/content -> background-firefox`
+  - `opus-mt`
+  - `translategemma`
+  - configured cloud providers
+- `chrome-builtin` is not available on Firefox.
+
+### Guidance
+- Treat `chrome-builtin` and `opus-mt` as the canonical shipped user-facing translation paths.
+- Treat `translategemma` as experimental.
+- Do not treat `translation-router`, `localModel`, `llama.cpp`, or `wllama` surfaces as the canonical shipped runtime unless a task explicitly targets those legacy/experimental paths.
 
 ## Tech Stack
 
@@ -77,10 +99,10 @@ npm run test         # Run Vitest tests
 - WebGPU acceleration when available
 
 ### Translation Flow
-1. Popup sends message to background service worker
-2. Background uses router to select best provider
-3. Throttle ensures rate limits respected
-4. Provider translates via Transformers.js
+1. Popup/content sends a typed message to the background runtime
+2. Chrome routes local/cloud work through the service worker (and offscreen when needed)
+3. Firefox routes work through the persistent background page
+4. Native/cloud/local provider execution runs on the selected path
 5. Content script replaces DOM text nodes
 
 ## Development Notes

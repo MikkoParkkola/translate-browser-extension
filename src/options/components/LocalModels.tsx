@@ -1,6 +1,6 @@
 /**
- * Local Models Section
- * Downloaded models list, storage usage, clear all
+ * Offline Translation Section
+ * Downloaded model list, storage usage, and browser-managed translation notes
  */
 
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
@@ -120,7 +120,7 @@ export const LocalModels: Component = () => {
   };
 
   const clearAllModels = async () => {
-    if (!confirm('Delete ALL downloaded models? This will free up storage but you will need to re-download models when needed.')) {
+    if (!confirm('Delete all downloaded models? This frees extension-managed storage, but you will need to download models again when needed.')) {
       return;
     }
 
@@ -164,10 +164,10 @@ export const LocalModels: Component = () => {
 
   return (
     <div>
-      <h2 class="section-title" style={{ "margin-bottom": "0.5rem" }}>Local Models</h2>
+      <h2 class="section-title" style={{ "margin-bottom": "0.5rem" }}>Offline Translation</h2>
       <p class="section-description">
-        Manage downloaded translation models. Local models run entirely on your device
-        without sending data to any server.
+        Manage downloaded offline models and review how browser-managed translation works.
+        Chrome Built-in translation does not download into this list because Chrome manages it separately.
       </p>
 
       <Show when={loading()}>
@@ -184,7 +184,7 @@ export const LocalModels: Component = () => {
           <div class="section-header">
             <div>
               <h3 class="section-title">Storage Usage</h3>
-              <p class="section-subtitle">Local storage used by downloaded models</p>
+              <p class="section-subtitle">Extension-managed storage used by downloaded models</p>
             </div>
           </div>
 
@@ -204,7 +204,7 @@ export const LocalModels: Component = () => {
           </div>
 
           <button class="btn btn-danger" onClick={clearAllModels}>
-            Clear All Models
+            Clear Downloaded Models
           </button>
         </section>
 
@@ -259,16 +259,16 @@ export const LocalModels: Component = () => {
 
         {/* Info */}
         <section class="settings-section">
-          <div class="section-header">
-            <h3 class="section-title">About Local Models</h3>
+            <div class="section-header">
+            <h3 class="section-title">About Offline Translation</h3>
           </div>
           <div style={{ "font-size": "0.875rem", color: "var(--color-gray-600)" }}>
             <p style={{ "margin-bottom": "0.75rem" }}>
               <strong>OPUS-MT Models</strong> (~170MB per language pair): Helsinki-NLP translation models.
-              Fast and accurate for European languages.
+              This is the stable downloaded baseline and works without GPU acceleration.
             </p>
             <p style={{ "margin-bottom": "0.75rem" }}>
-              <strong>TranslateGemma</strong> (~3.6GB): high-quality local translation in a single model.
+              <strong>TranslateGemma</strong> (~3.6GB): experimental high-quality translation in a single model.
               Requires WebGPU or WebNN acceleration.
             </p>
             <p>
@@ -276,8 +276,8 @@ export const LocalModels: Component = () => {
               require a local model download, so it does not appear in this list.
             </p>
             <p>
-              Downloaded models are tracked from extension metadata and browser caches.
-              They persist across browser restarts and download on first use when needed.
+              Downloaded models are best-effort tracked from extension metadata and browser caches.
+              Browser-managed translation may still work even when no downloaded models appear here.
             </p>
           </div>
         </section>

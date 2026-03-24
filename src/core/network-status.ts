@@ -5,6 +5,7 @@
  */
 
 import { createLogger } from './logger';
+import { isCloudProviderId } from '../shared/provider-options';
 
 const log = createLogger('Network');
 
@@ -78,5 +79,5 @@ export function onNetworkChange(listener: NetworkListener): () => void {
  * Check if a provider requires network access.
  */
 export function isCloudProvider(providerId: string): boolean {
-  return ['deepl', 'openai', 'anthropic', 'google-cloud'].includes(providerId);
+  return isCloudProviderId(providerId);
 }

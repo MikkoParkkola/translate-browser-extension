@@ -227,7 +227,7 @@ export const ModelSelector: Component<Props> = (props) => {
         <Show when={isOpen()}>
           <div class="model-dropdown-menu" role="listbox">
             <div class="model-dropdown-group">
-              <div class="model-dropdown-group-label">Local Models</div>
+              <div class="model-dropdown-group-label">Offline Translation</div>
               <For each={LOCAL_MODELS}>
                 {(model, idx) => {
                   const disabled = () => isModelDisabled(model);

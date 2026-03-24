@@ -234,7 +234,7 @@ describe('Options TABS definitions', () => {
   const TABS: Array<{ id: Tab; label: string; icon: string }> = [
     { id: 'general', label: 'General', icon: 'settings' },
     { id: 'cloud', label: 'Cloud Providers', icon: 'cloud' },
-    { id: 'local', label: 'Local Models', icon: 'cpu' },
+    { id: 'local', label: 'Offline Translation', icon: 'cpu' },
     { id: 'glossary', label: 'Glossary', icon: 'book' },
     { id: 'sites', label: 'Site Rules', icon: 'globe' },
     { id: 'cache', label: 'Cache', icon: 'database' },
@@ -943,7 +943,7 @@ describe('Options render — basic', () => {
     render(() => <Options />);
     expect(screen.getByText('General')).toBeTruthy();
     expect(screen.getByText('Cloud Providers')).toBeTruthy();
-    expect(screen.getByText('Local Models')).toBeTruthy();
+    expect(screen.getByText('Offline Translation')).toBeTruthy();
     expect(screen.getByText('Glossary')).toBeTruthy();
     expect(screen.getByText('Site Rules')).toBeTruthy();
     expect(screen.getByText('Cache')).toBeTruthy();
@@ -961,10 +961,10 @@ describe('Options render — tab switching', () => {
     expect(cloudTab.getAttribute('aria-selected')).toBe('true');
   });
 
-  it('clicking Local Models tab makes it active', async () => {
+  it('clicking Offline Translation tab makes it active', async () => {
     const { default: Options } = await import('./Options');
     render(() => <Options />);
-    const localTab = screen.getByRole('tab', { name: /Local Models/ });
+    const localTab = screen.getByRole('tab', { name: /Offline Translation/ });
     fireEvent.click(localTab);
     expect(localTab.getAttribute('aria-selected')).toBe('true');
   });

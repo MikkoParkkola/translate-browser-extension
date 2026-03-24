@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_PROVIDER_ID,
   ANTHROPIC_MODEL_VALUES,
   CLOUD_PROVIDER_IDS,
+  MODEL_SELECTOR_DOWNLOADABLE_MODELS,
   TRANSLATION_PROVIDER_IDS,
+  getProviderDefinition,
+  isBrowserManagedProviderId,
   isCloudProviderId,
+  isDownloadableProviderId,
+  isExperimentalProviderId,
   isTranslationProviderId,
   normalizeCloudProviderFormalityValue,
   normalizeCloudProviderModelValue,
@@ -38,6 +44,10 @@ describe('provider-options guards', () => {
     expect(normalizeTranslationProviderId('invalid-provider', 'deepl')).toBe('deepl');
   });
 
+  it('exports the canonical default provider id', () => {
+    expect(DEFAULT_PROVIDER_ID).toBe('opus-mt');
+  });
+
   it('normalizes the legacy opus provider alias', () => {
     expect(normalizeTranslationProviderId('opus-mt-local')).toBe('opus-mt');
   });
@@ -45,6 +55,36 @@ describe('provider-options guards', () => {
   it('accepts cloud provider ids only for cloud guard', () => {
     expect(isCloudProviderId('deepl')).toBe(true);
     expect(isCloudProviderId('chrome-builtin')).toBe(false);
+  });
+
+  it('identifies downloadable local providers', () => {
+    expect(isDownloadableProviderId('opus-mt')).toBe(true);
+    expect(isDownloadableProviderId('translategemma')).toBe(true);
+    expect(isDownloadableProviderId('chrome-builtin')).toBe(false);
+  });
+
+  it('identifies browser-managed providers', () => {
+    expect(isBrowserManagedProviderId('chrome-builtin')).toBe(true);
+    expect(isBrowserManagedProviderId('opus-mt')).toBe(false);
+  });
+
+  it('identifies experimental providers', () => {
+    expect(isExperimentalProviderId('translategemma')).toBe(true);
+    expect(isExperimentalProviderId('opus-mt')).toBe(false);
+  });
+
+  it('exports downloadable models separately from browser-managed ones', () => {
+    expect(MODEL_SELECTOR_DOWNLOADABLE_MODELS.map((model) => model.id)).toEqual([
+      'opus-mt',
+      'translategemma',
+    ]);
+  });
+
+  it('stores canonical runtime metadata for chrome-builtin', () => {
+    const chromeBuiltin = getProviderDefinition('chrome-builtin');
+    expect(chromeBuiltin.runtimeKind).toBe('native-browser');
+    expect(chromeBuiltin.deliveryKind).toBe('browser-managed');
+    expect(chromeBuiltin.preferredWhenAvailable).toBe(true);
   });
 
   it('normalizes legacy cloud provider model aliases', () => {

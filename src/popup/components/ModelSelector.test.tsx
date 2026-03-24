@@ -73,7 +73,7 @@ describe('MODELS constant', () => {
     });
 
     it('indicates Google 4B description', () => {
-      expect(gemma?.description).toBe('Google 4B');
+      expect(gemma?.description).toBe('Experimental Google 4B');
     });
 
     it('shows ~3.6GB size', () => {

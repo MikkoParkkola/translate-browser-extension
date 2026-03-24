@@ -67,14 +67,15 @@ export default function App() {
   // TranslateGemma requires hardware acceleration via WebGPU or WebNN.
   const [translateGemmaAvailable, setTranslateGemmaAvailable] = createSignal<boolean | null>(null);
 
-  // Per-model download status for ModelSelector
-  // Cloud providers and chrome-builtin don't need downloads - always "ready"
+  // Per-model readiness for ModelSelector.
+  // Cloud providers are request-ready immediately; chrome-builtin becomes ready
+  // only after the runtime capability probe succeeds.
   const [modelDownloadStatus, setModelDownloadStatus] = createSignal<
     Record<TranslationProviderId, ModelDownloadStatus>
   >({
     'opus-mt': { isDownloading: false, progress: 0, isDownloaded: false, error: null },
     'translategemma': { isDownloading: false, progress: 0, isDownloaded: false, error: null },
-    'chrome-builtin': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
+    'chrome-builtin': { isDownloading: false, progress: 0, isDownloaded: false, error: null },
     'deepl': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
     'openai': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
     'google-cloud': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
