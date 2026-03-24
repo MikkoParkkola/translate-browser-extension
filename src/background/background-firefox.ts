@@ -10,8 +10,17 @@ import { pipeline, env } from '@huggingface/transformers';
 import type {
   BackgroundRequestMessage,
   BackgroundRequestMessageType,
-  ExtensionMessage, ExtensionMessageResponse, ExtensionMessageResponseByType, TranslateResponse, Strategy, TranslationProviderId, TranslationPipeline,
-  SetProviderMessage, PreloadModelMessage, TranslateMessage, MessageResponse,
+  ExtensionMessage,
+  ExtensionMessageResponse,
+  ExtensionMessageResponseByType,
+  TranslateResponse,
+  Strategy,
+  TranslationProviderId,
+  TranslationPipeline,
+  SetProviderMessage,
+  PreloadModelMessage,
+  TranslateMessage,
+  MessageResponse,
 } from '../types';
 import {
   createTranslationError,
@@ -27,7 +36,7 @@ import { getCorrection } from '../core/corrections';
 import { withTimeout } from '../core/async-utils';
 import { CONFIG } from '../config';
 import { browserAPI, getURL } from '../core/browser-api';
-import { normalizeTranslationProviderId } from '../shared/provider-options';
+import { DEFAULT_PROVIDER_ID, normalizeTranslationProviderId } from '../shared/provider-options';
 import {
   assertNever,
   isExtensionMessage,
@@ -80,7 +89,7 @@ log.info('WASM path configured:', wasmBasePath);
 // ============================================================================
 
 let currentStrategy: Strategy = 'smart';
-let currentProvider: TranslationProviderId = 'opus-mt';
+let currentProvider: TranslationProviderId = DEFAULT_PROVIDER_ID;
 
 // ============================================================================
 // Shared Translation Cache (Persistent LRU)
@@ -105,10 +114,34 @@ translationCache.load();
 // ============================================================================
 
 async function detectWebGPU(): Promise<boolean> {
-  if (!navigator.gpu) return false;
+  const { supported } = await detectWebGPUCapabilities();
+  return supported;
+}
+
+async function detectWebGPUCapabilities(): Promise<{ supported: boolean; fp16: boolean }> {
+  if (!navigator.gpu) return { supported: false, fp16: false };
   try {
     const adapter = await navigator.gpu.requestAdapter();
-    return adapter !== null;
+    if (!adapter) {
+      return { supported: false, fp16: false };
+    }
+    return {
+      supported: true,
+      fp16: adapter.features.has('shader-f16'),
+    };
+  } catch {
+    return { supported: false, fp16: false };
+  }
+}
+
+async function detectWebNN(): Promise<boolean> {
+  try {
+    const ml = (navigator as unknown as {
+      ml?: { createContext(opts: object): Promise<unknown> };
+    }).ml;
+    if (!ml) return false;
+    const context = await ml.createContext({ deviceType: 'gpu' });
+    return !!context;
   } catch {
     return false;
   }
@@ -218,7 +251,7 @@ async function translate(
   text: string | string[],
   sourceLang: string,
   targetLang: string,
-  provider: TranslationProviderId = 'opus-mt'
+  provider: TranslationProviderId = DEFAULT_PROVIDER_ID
 ): Promise<string | string[]> {
   // Handle auto-detection
   let actualSourceLang = sourceLang;
@@ -347,6 +380,9 @@ const FIREFOX_MESSAGE_TYPES = [
   'setProvider',
   'getCacheStats',
   'clearCache',
+  'checkChromeTranslator',
+  'checkWebGPU',
+  'checkWebNN',
   'getCloudProviderStatus',
   'setCloudApiKey',
   'clearCloudApiKey',
@@ -382,6 +418,12 @@ async function handleMessage(message: FirefoxHandledMessage): Promise<FirefoxHan
       return handleGetCacheStats();
     case 'clearCache':
       return handleClearCache();
+    case 'checkChromeTranslator':
+      return handleCheckChromeTranslator();
+    case 'checkWebGPU':
+      return handleCheckWebGPU();
+    case 'checkWebNN':
+      return handleCheckWebNN();
     case 'getCloudProviderStatus':
       return handleGetCloudProviderStatus();
     case 'setCloudApiKey':
@@ -442,6 +484,19 @@ async function handleClearCache(): Promise<{ success: true; clearedEntries: numb
     success: true,
     clearedEntries: previousSize,
   };
+}
+
+async function handleCheckChromeTranslator(): Promise<{ success: true; available: boolean }> {
+  return { success: true, available: false };
+}
+
+async function handleCheckWebGPU(): Promise<{ success: true; supported: boolean; fp16: boolean }> {
+  const gpu = await detectWebGPUCapabilities();
+  return { success: true, supported: gpu.supported, fp16: gpu.fp16 };
+}
+
+async function handleCheckWebNN(): Promise<{ success: true; supported: boolean }> {
+  return { success: true, supported: await detectWebNN() };
 }
 
 async function handleTranslate(message: TranslateMessage): Promise<TranslateResponse> {

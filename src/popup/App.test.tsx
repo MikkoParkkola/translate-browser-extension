@@ -677,18 +677,20 @@ describe('App onMount branches', () => {
     expect(screen.getByText('TRANSLATE!')).toBeTruthy();
   });
 
-  it('checks WebGPU availability on mount', async () => {
+  it('checks TranslateGemma hardware acceleration on mount', async () => {
     render(() => <App />);
     await flush();
     await vi.waitFor(() => {
       expect(browserAPI.runtime.sendMessage).toHaveBeenCalledWith({ type: 'checkWebGPU' });
+      expect(browserAPI.runtime.sendMessage).toHaveBeenCalledWith({ type: 'checkWebNN' });
     });
   });
 
-  it('sets webGpuAvailable=true when supported=true', async () => {
+  it('treats TranslateGemma as available when WebGPU is supported', async () => {
     (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>)
       .mockImplementation((msg: { type: string }) => {
         if (msg.type === 'checkWebGPU') return Promise.resolve({ supported: true });
+        if (msg.type === 'checkWebNN') return Promise.resolve({ supported: false });
         return Promise.resolve({});
       });
     render(() => <App />);
@@ -696,10 +698,11 @@ describe('App onMount branches', () => {
     expect(screen.getByText('TRANSLATE!')).toBeTruthy();
   });
 
-  it('handles WebGPU check failure gracefully', async () => {
+  it('handles hardware acceleration checks failure gracefully', async () => {
     (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>)
       .mockImplementation((msg: { type: string }) => {
         if (msg.type === 'checkWebGPU') return Promise.reject(new Error('GPU unavailable'));
+        if (msg.type === 'checkWebNN') return Promise.reject(new Error('WebNN unavailable'));
         return Promise.resolve({});
       });
     render(() => <App />);
@@ -1482,7 +1485,7 @@ describe('App WebGPU + TranslateGemma auto-switch', () => {
 
   afterEach(cleanup);
 
-  it('auto-switches from TranslateGemma when WebGPU unavailable', async () => {
+  it('auto-switches from TranslateGemma when no hardware acceleration is available', async () => {
     vi.useFakeTimers();
     try {
       // Load with translategemma as saved provider
@@ -1492,6 +1495,7 @@ describe('App WebGPU + TranslateGemma auto-switch', () => {
       (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
         (msg: { type: string }) => {
           if (msg.type === 'checkWebGPU') return Promise.resolve({ supported: false });
+          if (msg.type === 'checkWebNN') return Promise.resolve({ supported: false });
           return Promise.resolve({});
         },
       );
@@ -1500,7 +1504,7 @@ describe('App WebGPU + TranslateGemma auto-switch', () => {
       await vi.advanceTimersByTimeAsync(500);
       await vi.waitFor(() => {
         const alert = screen.queryByRole('alert');
-        expect(alert?.textContent).toContain('TranslateGemma requires WebGPU');
+        expect(alert?.textContent).toContain('TranslateGemma requires WebGPU or WebNN');
       });
       // The setTimeout to clear error should fire after 8000ms
       await vi.advanceTimersByTimeAsync(8000);
@@ -1510,13 +1514,14 @@ describe('App WebGPU + TranslateGemma auto-switch', () => {
     }
   });
 
-  it('does not auto-switch when WebGPU is available', async () => {
+  it('does not auto-switch when WebNN is available without WebGPU', async () => {
     (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({
       provider: 'translategemma',
     });
     (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
       (msg: { type: string }) => {
-        if (msg.type === 'checkWebGPU') return Promise.resolve({ supported: true, fp16: true });
+        if (msg.type === 'checkWebGPU') return Promise.resolve({ supported: false, fp16: false });
+        if (msg.type === 'checkWebNN') return Promise.resolve({ supported: true });
         return Promise.resolve({});
       },
     );

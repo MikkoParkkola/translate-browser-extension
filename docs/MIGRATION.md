@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide helps developers migrate from the monolithic architecture (v1.x) to the new modular architecture (v2.x) of the Qwen Translator Extension. The modular refactor introduces significant architectural changes while maintaining backward compatibility where possible.
+This guide helps developers migrate from the monolithic architecture (v1.x) to the new modular architecture (v2.x) of the Translate by Mikko Extension. The modular refactor introduces significant architectural changes while maintaining backward compatibility where possible.
 
 ## Table of Contents
 
@@ -225,7 +225,7 @@ try {
 
 ```bash
 # Backup your current extension
-cp -r qwen-translator-extension qwen-translator-extension-backup
+cp -r translate-browser-extension translate-browser-extension-backup
 
 # Analyze current structure
 find . -name "*.js" -exec wc -l {} + | sort -n
@@ -1503,7 +1503,7 @@ echo "Starting manual rollback..."
 cp -r dist dist-v2-backup
 
 # 2. Restore v1 files
-cp -r qwen-translator-extension-backup/* .
+cp -r translate-browser-extension-backup/* .
 
 # 3. Rebuild v1 extension
 npm install
@@ -1777,7 +1777,7 @@ class MigrationNotification {
       chrome.notifications.create({
         type: 'basic',
         iconUrl: 'icons/icon48.png',
-        title: 'Qwen Translator Updated',
+        title: 'Translate by Mikko Updated',
         message: 'Your extension has been upgraded to v2.0 with improved performance and new features!'
       });
       

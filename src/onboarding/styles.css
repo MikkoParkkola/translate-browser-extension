@@ -468,7 +468,14 @@ h2 {
 .model-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-3);
+}
+
+.model-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 .model-name {
@@ -491,6 +498,11 @@ h2 {
 .model-desc {
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
+}
+
+.model-note {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
 }
 
 .model-specs {

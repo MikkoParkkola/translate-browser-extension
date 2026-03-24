@@ -1,4 +1,4 @@
-# Qwen Translator Extension - Developer Guide
+# Translate by Mikko Extension - Developer Guide
 
 ## Table of Contents
 
@@ -30,8 +30,8 @@ Ensure you have the following tools installed:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/qwen-translator-extension.git
-cd qwen-translator-extension
+git clone https://github.com/MikkoParkkola/translate-browser-extension.git
+cd translate-browser-extension
 
 # Install dependencies
 npm install
@@ -109,7 +109,7 @@ VSCode workspace settings (`.vscode/settings.json`):
 ### Directory Layout
 
 ```
-qwen-translator-extension/
+translate-browser-extension/
 ├── src/                          # Source code
 │   ├── core/                     # Core modules (JSDoc-typed JS)
 │   │   ├── types.js              # Shared type helpers
@@ -294,7 +294,7 @@ Every core module should follow this structure:
 
 /**
  * @fileoverview Example core module following standards
- * @author Qwen Translator Team
+ * @author Translate by Mikko maintainers
  * @version 1.0.0
  */
 
@@ -1135,7 +1135,7 @@ test.describe('Extension Workflow', () => {
     
     for (const ext of extensions) {
       const name = await ext.locator('.extension-name').textContent();
-      if (name.includes('Qwen Translator')) {
+      if (name.includes('Translate by Mikko')) {
         extensionId = await ext.getAttribute('id');
         break;
       }
@@ -1147,7 +1147,7 @@ test.describe('Extension Workflow', () => {
     await page.goto(`chrome-extension://${extensionId}/popup.html`);
     
     // Check that popup loads
-    await expect(page.locator('h1')).toContainText('Qwen Translator');
+    await expect(page.locator('h1')).toContainText('Translate by Mikko');
     
     // Check provider grid
     const providerCards = page.locator('.provider-card');
@@ -1981,7 +1981,7 @@ class DevToolsIntegration {
   
   createPanel() {
     chrome.devtools.panels.create(
-      'Qwen Translator',
+      'Translate by Mikko',
       'icons/icon16.png',
       'devtools-panel.html',
       (panel) => {
@@ -2306,4 +2306,4 @@ git push origin main --tags
 
 ---
 
-This comprehensive developer guide covers all aspects of developing and contributing to the Qwen Translator Extension. For additional help, see the [API Documentation](API.md) and [Architecture Documentation](architecture/README.md).
+This comprehensive developer guide covers all aspects of developing and contributing to the Translate by Mikko Extension. For additional help, see the [API Documentation](API.md) and [Architecture Documentation](architecture/README.md).

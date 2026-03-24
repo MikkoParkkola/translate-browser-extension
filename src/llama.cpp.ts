@@ -4,7 +4,13 @@ import { approxTokens } from './core/text-utils';
 const log = createLogger('InferenceEngine');
 
 /**
- * WebGPU/WASM inference engine using wllama
+ * Legacy experimental WebGPU/WASM inference engine using wllama.
+ *
+ * This GGUF path is not currently wired into the shipped popup/provider routing;
+ * the active extension runtime uses the offscreen OPUS-MT and TranslateGemma
+ * paths. Keep this surface isolated so it does not get mistaken for the primary
+ * inference stack.
+ *
  * Replaces the old mock llama.cpp WASM interface with real inference via @wllama/wllama.
  *
  * Solves: RangeError: Array buffer allocation failed (single 2.5GB ArrayBuffer)

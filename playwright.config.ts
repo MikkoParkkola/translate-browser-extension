@@ -1,11 +1,7 @@
 import { defineConfig } from '@playwright/test';
-import path from 'path';
+import { getExtensionLaunchSettings } from './e2e/extension-launch';
 
-// __dirname is provided by Playwright's TS transform (CJS context)
-const EXTENSION_PATH = path.resolve(__dirname, 'dist');
-
-// Background mode: run Chrome off-screen (no focus stealing)
-const BACKGROUND_MODE = process.env.BACKGROUND !== 'false';
+const extensionLaunchSettings = getExtensionLaunchSettings();
 
 export default defineConfig({
   testDir: './e2e',
@@ -35,21 +31,9 @@ export default defineConfig({
       use: {
         // Use Playwright's bundled Chromium (NOT system Chrome)
         // System Chrome 144+ silently ignores --load-extension on macOS
-        headless: false, // Extensions require headed mode (Chrome limitation)
+        headless: extensionLaunchSettings.headless,
         launchOptions: {
-          args: [
-            `--disable-extensions-except=${EXTENSION_PATH}`,
-            `--load-extension=${EXTENSION_PATH}`,
-            '--no-first-run',
-            '--disable-component-update',
-            // Background mode: off-screen window (no focus stealing)
-            ...(BACKGROUND_MODE ? [
-              '--window-position=-32000,-32000',
-              '--window-size=1280,720',
-              '--disable-gpu',
-              '--mute-audio',
-            ] : []),
-          ],
+          args: extensionLaunchSettings.args,
         },
       },
     },

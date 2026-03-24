@@ -1,6 +1,6 @@
 /**
  * Options Page - Full settings interface for TRANSLATE! extension
- * Sections: General, Cloud Providers, Local Models, Glossary, Site Rules, Cache
+ * Sections: General, Cloud Providers, Offline Translation, Glossary, Site Rules, Cache
  */
 
 import { createSignal, onMount, Show, For } from 'solid-js';
@@ -17,7 +17,7 @@ type Tab = 'general' | 'cloud' | 'local' | 'glossary' | 'sites' | 'cache';
 const TABS: Array<{ id: Tab; label: string; icon: string }> = [
   { id: 'general', label: 'General', icon: 'settings' },
   { id: 'cloud', label: 'Cloud Providers', icon: 'cloud' },
-  { id: 'local', label: 'Local Models', icon: 'cpu' },
+  { id: 'local', label: 'Offline Translation', icon: 'cpu' },
   { id: 'glossary', label: 'Glossary', icon: 'book' },
   { id: 'sites', label: 'Site Rules', icon: 'globe' },
   { id: 'cache', label: 'Cache', icon: 'database' },

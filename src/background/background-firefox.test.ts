@@ -343,6 +343,86 @@ describe('background-firefox message handler', () => {
     });
   });
 
+  describe('checkChromeTranslator', () => {
+    it('returns available: false because Firefox does not expose the Chrome Translator API', async () => {
+      const response = await invoke({ type: 'checkChromeTranslator' }) as Record<string, unknown>;
+      expect(response.success).toBe(true);
+      expect(response.available).toBe(false);
+    });
+  });
+
+  describe('checkWebGPU', () => {
+    it('returns unsupported when navigator.gpu is unavailable', async () => {
+      Object.defineProperty(navigator, 'gpu', {
+        value: undefined,
+        configurable: true,
+        writable: true,
+      });
+
+      const response = await invoke({ type: 'checkWebGPU' }) as Record<string, unknown>;
+      expect(response.success).toBe(true);
+      expect(response.supported).toBe(false);
+      expect(response.fp16).toBe(false);
+    });
+
+    it('reports fp16 support when the adapter exposes shader-f16', async () => {
+      Object.defineProperty(navigator, 'gpu', {
+        value: {
+          requestAdapter: vi.fn().mockResolvedValue({
+            features: new Set(['shader-f16']),
+          }),
+        },
+        configurable: true,
+        writable: true,
+      });
+
+      const response = await invoke({ type: 'checkWebGPU' }) as Record<string, unknown>;
+      expect(response.success).toBe(true);
+      expect(response.supported).toBe(true);
+      expect(response.fp16).toBe(true);
+
+      Object.defineProperty(navigator, 'gpu', {
+        value: undefined,
+        configurable: true,
+        writable: true,
+      });
+    });
+  });
+
+  describe('checkWebNN', () => {
+    it('returns unsupported when navigator.ml is unavailable', async () => {
+      Object.defineProperty(navigator, 'ml', {
+        value: undefined,
+        configurable: true,
+        writable: true,
+      });
+
+      const response = await invoke({ type: 'checkWebNN' }) as Record<string, unknown>;
+      expect(response.success).toBe(true);
+      expect(response.supported).toBe(false);
+    });
+
+    it('returns supported when navigator.ml.createContext succeeds', async () => {
+      Object.defineProperty(navigator, 'ml', {
+        value: {
+          createContext: vi.fn().mockResolvedValue({}),
+        },
+        configurable: true,
+        writable: true,
+      });
+
+      const response = await invoke({ type: 'checkWebNN' }) as Record<string, unknown>;
+      expect(response.success).toBe(true);
+      expect(response.supported).toBe(true);
+
+      Object.defineProperty(navigator, 'ml', {
+        value: undefined,
+        configurable: true,
+        writable: true,
+      });
+    });
+  });
+
   describe('translate', () => {
     it('returns success:true for valid translation', async () => {
       const { withRetry } = await import('../core/errors');

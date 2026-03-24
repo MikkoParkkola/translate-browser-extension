@@ -14,7 +14,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci --no-audit --no-fund
-      - run: npm test -- --coverage
+      - run: npm run test:coverage
       - uses: actions/upload-artifact@v4
         with:
           name: coverage

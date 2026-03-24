@@ -300,7 +300,7 @@ async function testPopupHTML() {
 }
 
 async function main() {
-  console.log('🔍 Qwen Translator Extension - Popup UI Test\n');
+  console.log('🔍 Translate by Mikko Extension - Popup UI Test\n');
   console.log('============================================\n');
   
   await testPopupHTML();

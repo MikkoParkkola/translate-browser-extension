@@ -11,7 +11,7 @@ import { strictStorageSet } from '../../core/storage';
 import { approxTokens } from '../../core/text-utils';
 import { createLogger } from '../../core/logger';
 import { CONFIG } from '../../config';
-import { BACKGROUND_PROVIDER_LIST } from '../../shared/provider-options';
+import { BACKGROUND_PROVIDER_LIST, DEFAULT_PROVIDER_ID } from '../../shared/provider-options';
 import { CLOUD_PROVIDER_CONFIGS } from '../../shared/cloud-provider-configs';
 
 const log = createLogger('ProviderMgmt');
@@ -21,7 +21,7 @@ const log = createLogger('ProviderMgmt');
 // ============================================================================
 
 let currentStrategy: Strategy = 'smart';
-let currentProvider: TranslationProviderId = 'opus-mt';
+let currentProvider: TranslationProviderId = DEFAULT_PROVIDER_ID;
 
 export function getStrategy(): Strategy {
   return currentStrategy;

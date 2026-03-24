@@ -1,6 +1,6 @@
 /**
- * Local Models Section
- * Downloaded models list, storage usage, clear all
+ * Offline Translation Section
+ * Downloaded model list, storage usage, and browser-managed translation notes
  */
 
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
@@ -69,25 +69,10 @@ export const LocalModels: Component = () => {
         return;
       }
 
-      // Fallback: estimate from known model sizes
-      const knownModels: ModelInfo[] = [
-        { id: 'opus-mt-en-fi', name: 'OPUS-MT English-Finnish', size: 300 * 1024 * 1024 },
-        { id: 'opus-mt-fi-en', name: 'OPUS-MT Finnish-English', size: 300 * 1024 * 1024 },
-        { id: 'opus-mt-en-de', name: 'OPUS-MT English-German', size: 300 * 1024 * 1024 },
-        { id: 'opus-mt-de-en', name: 'OPUS-MT German-English', size: 300 * 1024 * 1024 },
-        { id: 'nllb-200', name: 'NLLB-200 (Universal — 200 languages)', size: 350 * 1024 * 1024 },
-        { id: 'translategemma', name: 'TranslateGemma 4B', size: 2.5 * 1024 * 1024 * 1024 },
-      ];
-
-      // Merge with stored models if available
-      const mergedModels = models.length > 0 ? models : knownModels.filter(
-        () => estimate.usage && estimate.usage > 100 * 1024 * 1024
-      );
-
       setStats({
         totalUsed: estimate.usage || 0,
         quota: estimate.quota || 0,
-        models: mergedModels,
+        models,
       });
     } catch (error) {
       log.error('Failed to load stats:', error);
@@ -135,7 +120,7 @@ export const LocalModels: Component = () => {
   };
 
   const clearAllModels = async () => {
-    if (!confirm('Delete ALL downloaded models? This will free up storage but you will need to re-download models when needed.')) {
+    if (!confirm('Delete all downloaded models? This frees extension-managed storage, but you will need to download models again when needed.')) {
       return;
     }
 
@@ -179,10 +164,10 @@ export const LocalModels: Component = () => {
 
   return (
     <div>
-      <h2 class="section-title" style={{ "margin-bottom": "0.5rem" }}>Local Models</h2>
+      <h2 class="section-title" style={{ "margin-bottom": "0.5rem" }}>Offline Translation</h2>
       <p class="section-description">
-        Manage downloaded translation models. Local models run entirely on your device
-        without sending data to any server.
+        Manage downloaded offline models and review how browser-managed translation works.
+        Chrome Built-in translation does not download into this list because Chrome manages it separately.
       </p>
 
       <Show when={loading()}>
@@ -199,7 +184,7 @@ export const LocalModels: Component = () => {
           <div class="section-header">
             <div>
               <h3 class="section-title">Storage Usage</h3>
-              <p class="section-subtitle">Local storage used by downloaded models</p>
+              <p class="section-subtitle">Extension-managed storage used by downloaded models</p>
             </div>
           </div>
 
@@ -219,7 +204,7 @@ export const LocalModels: Component = () => {
           </div>
 
           <button class="btn btn-danger" onClick={clearAllModels}>
-            Clear All Models
+            Clear Downloaded Models
           </button>
         </section>
 
@@ -274,25 +259,25 @@ export const LocalModels: Component = () => {
 
         {/* Info */}
         <section class="settings-section">
-          <div class="section-header">
-            <h3 class="section-title">About Local Models</h3>
+            <div class="section-header">
+            <h3 class="section-title">About Offline Translation</h3>
           </div>
           <div style={{ "font-size": "0.875rem", color: "var(--color-gray-600)" }}>
             <p style={{ "margin-bottom": "0.75rem" }}>
-              <strong>OPUS-MT Models</strong> (~300MB each): Helsinki-NLP translation models.
-              Fast and accurate for European languages.
+              <strong>OPUS-MT Models</strong> (~170MB per language pair): Helsinki-NLP translation models.
+              This is the stable downloaded baseline and works without GPU acceleration.
             </p>
             <p style={{ "margin-bottom": "0.75rem" }}>
-              <strong>NLLB-200</strong> (~350MB): Meta's universal model covering 200 language pairs
-              in a single download. Replaces multiple OPUS-MT models and supports low-resource languages.
-            </p>
-            <p style={{ "margin-bottom": "0.75rem" }}>
-              <strong>TranslateGemma</strong> (~2.5GB): Google's multilingual model.
-              Supports 8 languages with high quality but requires WebGPU or WebNN.
+              <strong>TranslateGemma</strong> (~3.6GB): experimental high-quality translation in a single model.
+              Requires WebGPU or WebNN acceleration.
             </p>
             <p>
-              Models are stored in IndexedDB and persist across browser restarts.
-              They are downloaded on first use for each language pair.
+              <strong>Chrome Built-in</strong> uses the browser translator in Chrome 138+ and does not
+              require a local model download, so it does not appear in this list.
+            </p>
+            <p>
+              Downloaded models are best-effort tracked from extension metadata and browser caches.
+              Browser-managed translation may still work even when no downloaded models appear here.
             </p>
           </div>
         </section>

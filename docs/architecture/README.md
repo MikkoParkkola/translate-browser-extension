@@ -1,4 +1,4 @@
-# Qwen Translator Extension Architecture
+# Translate by Mikko Extension Architecture
 
 ## Architecture Decision Record (ADR)
 
@@ -8,7 +8,7 @@
 
 ## System Overview
 
-The Qwen Translator Extension is a Chrome/Safari browser extension that provides real-time web page translation using multiple AI translation providers. The system has been refactored from a monolithic architecture to a modular, microservice-inspired design optimized for browser extension constraints.
+The Translate by Mikko Extension is a Chrome/Safari browser extension that provides real-time web page translation using multiple AI translation providers. The system has been refactored from a monolithic architecture to a modular, microservice-inspired design optimized for browser extension constraints. The shipped local inference path is the offscreen OPUS-MT + TranslateGemma stack; older `localModel` / `llama.cpp` surfaces remain experimental and are not wired into popup/provider routing.
 
 ### Key Design Decisions
 

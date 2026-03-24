@@ -1,60 +1,73 @@
-# Providers and API keys
+# Providers and local models
 
-Call `qwenProviders.initProviders()` (or `qwenProviders.ensureProviders()`) to load the default provider presets: DashScope, OpenAI, Mistral, OpenRouter, Gemini, Anthropic, DeepL, Google, Qwen and Local WASM.
+Manage provider selection from the extension popup and configure cloud credentials from the options page.
 
-Manage providers in the extension under **Settings → Providers**. Use **Add Provider** or **Add Local Provider** to supply API keys, endpoints and models.
+## Shipping status
 
-DashScope (Qwen)
-- Endpoint: https://dashscope-intl.aliyuncs.com/api/v1
-- Keys: https://dashscope.console.aliyun.com/
-- Models: qwen-mt-turbo, qwen-mt-plus
-- Notes: Streaming supported (SSE). Background keeps the key.
+### Stable shipped providers
+- **Chrome Built-in** - preferred native path when Chrome 138+ exposes the browser translator.
+- **OPUS-MT** - stable downloaded local baseline for offline translation.
+- **DeepL / OpenAI / Anthropic / Google Cloud** - supported cloud providers when configured with API keys.
 
-OpenAI
-- Preset: openai
-- Endpoint: https://api.openai.com/v1
-- Keys: https://platform.openai.com/api-keys
-- Models: gpt-5, gpt-5-mini, gpt-5-nano (chat/completions)
-- Notes: Use a model available to your account. Background keeps the key.
+### Experimental provider
+- **TranslateGemma** - higher-quality local path, but still experimental because it depends on WebGPU/WebNN acceleration and a much larger download.
 
-Gemini
-- Endpoint: https://generativelanguage.googleapis.com/v1beta
-- Keys: https://aistudio.google.com/app/apikey
-- Models: gemini-1.5-flash, gemini-pro
-- Notes: Streaming supported (SSE). Background keeps the key.
+## Local translation paths
 
-OpenRouter
-- Preset: openrouter
-- Endpoint: https://openrouter.ai/api/v1
-- Keys: https://openrouter.ai/keys
-- Models: fetched dynamically from OpenRouter
-- Notes: Streaming supported. Background keeps the key.
+### OPUS-MT
+- Type: local model
+- Runtime: `@huggingface/transformers` in the Chrome offscreen document or Firefox background page
+- Size: ~170MB per language pair
+- Notes: Stable default offline baseline. Runs on WASM, so it works even without GPU acceleration.
 
-Mistral
-- Endpoint: https://api.mistral.ai/v1
-- Keys: https://console.mistral.ai/
-- Models: mistral-small, mistral-medium
-- Notes: Streaming supported (SSE). Custom endpoints allow self-hosted deployments.
+### TranslateGemma
+- Type: local model
+- Runtime: direct model + tokenizer loading in the Chrome offscreen document or Firefox background page
+- Size: ~3.6GB
+- Notes: Experimental higher-quality path. Requires WebGPU or WebNN acceleration.
 
-Anthropic (Claude)
-- Endpoint: https://api.anthropic.com/v1
-- Keys: https://console.anthropic.com/account/api-keys
-- Models: claude-4.1-haiku, claude-4.1-sonnet (legacy: claude-3-haiku, claude-3-sonnet)
-- Notes: Streaming supported (/messages SSE). Background keeps the key.
+### Chrome Built-in
+- Type: native browser translation
+- Availability: Chrome 138+
+- Size: no download
+- Notes: Uses the browser translator directly when available. Managed by Chrome rather than by extension model downloads.
 
-Local WASM
-- Preset: local-wasm
-- Endpoint: runs in-browser
-- Keys: none
-- Models: bundled Qwen translator
-- Notes: Initializes the model on first use and caches it for reuse. Works offline.
+## Runtime architecture
 
-DeepL
-- Endpoint: https://api.deepl.com/v2
-- Keys: https://www.deepl.com/pro-api
-- Notes: No streaming for /translate; single-shot responses. Background keeps the key.
+### Chrome
+- **Downloaded local models** (`opus-mt`, `translategemma`) route through `popup/content -> background service worker -> offscreen document`.
+- **Chrome Built-in** routes through `popup/content -> chrome.scripting.executeScript(...)` in the active tab's main world.
+- **Cloud providers** route through `popup/content -> background service worker -> provider API`.
 
-Google detection (optional)
-- Set Detector to “Google” for auto-detect when Source is “auto”
-- Create a key and enable Cloud Translation API: https://cloud.google.com/translate/docs/setup
-- Store the key in “Detection API Key (Google)”. Used only for detection.
+### Firefox
+- Firefox uses `popup/content -> background-firefox` directly because it does not support the Chrome MV3 offscreen-document path.
+- `chrome-builtin` is not available on Firefox.
+
+## Cloud providers
+
+### DeepL
+- Endpoint: `https://api.deepl.com/v2`
+- Keys: <https://www.deepl.com/pro-api>
+- Notes: High-quality translation API. Credentials stay in extension-managed storage.
+
+### OpenAI
+- Endpoint: `https://api.openai.com/v1`
+- Keys: <https://platform.openai.com/api-keys>
+- Notes: LLM-powered translation. Use a model available to your account.
+
+### Anthropic
+- Endpoint: `https://api.anthropic.com/v1`
+- Keys: <https://console.anthropic.com/account/api-keys>
+- Notes: Claude-powered translation via the extension background path.
+
+### Google Cloud
+- Endpoint: `https://translation.googleapis.com/`
+- Keys: <https://cloud.google.com/translate/docs/setup>
+- Notes: Google Cloud Translation API support for cloud translation workflows.
+
+## Operational notes
+
+- Downloaded models are tracked on a best-effort basis by extension metadata plus browser caches.
+- `Clear Downloaded Models` removes locally tracked model metadata and clears matching model caches.
+- Browser-managed translation such as Chrome Built-in is not included in downloaded-model storage stats.
+- Cloud providers remain optional; local translation continues to work without API keys.

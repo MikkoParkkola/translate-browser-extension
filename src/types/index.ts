@@ -504,6 +504,7 @@ export type ExtensionMessage =
   | CaptureScreenshotMessage
   | { type: 'getDownloadedModels'; target?: string }
   | { type: 'checkWebGPU'; target?: string }
+  | { type: 'checkWebNN'; target?: string }
   | DeleteModelMessage
   | ClearAllModelsMessage
   | { type: 'getSettings'; target?: string };
@@ -519,6 +520,7 @@ export interface ExtensionMessageResponseMap {
   clearCache: { success: boolean; clearedEntries: number };
   checkChromeTranslator: { success: true; available: boolean };
   checkWebGPU: { success: true; supported: boolean; fp16: boolean };
+  checkWebNN: { success: true; supported: boolean };
   getPredictionStats: MessageResponse<{ prediction: PredictionStats }>;
   recordLanguageDetection: MessageResponse;
   getCloudProviderStatus: MessageResponseWithFallback<{ status: CloudProviderConfiguredStatus }>;

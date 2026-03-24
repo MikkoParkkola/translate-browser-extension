@@ -122,6 +122,8 @@ describe('OnboardingApp', () => {
     expect(screen.getByText('Chrome Built-in')).toBeTruthy();
     expect(screen.getByText('DeepL API')).toBeTruthy();
     expect(screen.getByText('Recommended')).toBeTruthy();
+    expect(screen.getByText('Chrome 138+')).toBeTruthy();
+    expect(screen.getByText('API key')).toBeTruthy();
   });
 
   it('allows selecting a model', async () => {

@@ -773,6 +773,34 @@ describe('Service Worker Extended Handler Coverage', () => {
   });
 
   // --------------------------------------------------------------------------
+  // checkWebNN
+  // --------------------------------------------------------------------------
+  describe('checkWebNN message', () => {
+    it('returns supported status from offscreen', async () => {
+      mockSendMessage.mockReturnValue({ success: true, supported: true });
+
+      const response = await invoke({ type: 'checkWebNN' }) as {
+        success: boolean;
+        supported: boolean;
+      };
+
+      expect(response.success).toBe(true);
+      expect(response.supported).toBe(true);
+    });
+
+    it('returns supported: false when offscreen returns failure', async () => {
+      mockSendMessage.mockReturnValue({ success: false, supported: false });
+
+      const response = await invoke({ type: 'checkWebNN' }) as {
+        success: boolean;
+        supported: boolean;
+      };
+
+      expect(typeof response.supported).toBe('boolean');
+    });
+  });
+
+  // --------------------------------------------------------------------------
   // getPredictionStats
   // --------------------------------------------------------------------------
   describe('getPredictionStats message', () => {
@@ -5862,6 +5890,18 @@ describe('Coverage gap tests — second wave', () => {
       expect(response.success).toBe(true);
       expect(response.supported).toBe(false);
       expect(response.fp16).toBe(false);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // handleCheckWebNN: catch block
+  // -----------------------------------------------------------------------
+  describe('handleCheckWebNN: error path', () => {
+    it('returns supported: false when sendToOffscreen fails', async () => {
+      forceOffscreenFailure();
+      const response = await invoke({ type: 'checkWebNN' }) as any;
+      expect(response.success).toBe(true);
+      expect(response.supported).toBe(false);
     });
   });
 

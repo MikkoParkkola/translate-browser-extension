@@ -17,6 +17,7 @@ import { getCachedPipeline, cachePipeline, clearCache as clearPipelineCache, cas
 import { buildLanguageDetectionSample, detectLanguage } from './language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline, detectWebGPU, detectWebNN } from './translategemma';
 import { getChromeTranslator, isChromeTranslatorAvailable } from '../providers/chrome-translator';
+import { DEFAULT_PROVIDER_ID } from '../shared/provider-options';
 
 // Cloud providers
 import { deeplProvider } from '../providers/deepl';
@@ -225,7 +226,7 @@ async function translate(
   text: string | string[],
   sourceLang: string,
   targetLang: string,
-  provider: TranslationProviderId = 'opus-mt',
+  provider: TranslationProviderId = DEFAULT_PROVIDER_ID,
   sessionId?: string,
   pageContext?: string
 ): Promise<string | string[]> {

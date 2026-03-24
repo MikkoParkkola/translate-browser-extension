@@ -109,13 +109,6 @@ describe('Bundle size tracking', () => {
   const distPath = resolve(ROOT, 'dist');
   const distExists = existsSync(distPath);
 
-  it('dist/ directory exists (build must run first)', () => {
-    expect(
-      distExists,
-      'dist/ directory not found. Run `npm run build` first.',
-    ).toBe(true);
-  });
-
   // Load size-limit config from package.json
   let sizeLimits: SizeLimitEntry[] = [];
   try {
@@ -125,8 +118,13 @@ describe('Bundle size tracking', () => {
     // package.json read error — tests will skip gracefully
   }
 
-  if (!distExists || sizeLimits.length === 0) {
-    it.skip('skipping size checks (no dist/ or no size-limit config)', () => {});
+  if (!distExists) {
+    it.skip('skipping size checks (dist/ missing; run `npm run build` or `npm run size`)', () => {});
+    return;
+  }
+
+  if (sizeLimits.length === 0) {
+    it.skip('skipping size checks (no size-limit config)', () => {});
     return;
   }
 

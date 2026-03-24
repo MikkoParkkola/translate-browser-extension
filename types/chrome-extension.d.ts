@@ -1,5 +1,5 @@
 /**
- * Chrome Extension API type definitions for Qwen Translator Extension
+ * Chrome Extension API type definitions for Translate by Mikko Extension
  * Extends the @types/chrome package with project-specific interfaces
  */
 

@@ -21,12 +21,12 @@ jobs:
           echo "$CRX_PRIVATE_KEY" | base64 -d > key.pem
       - name: Pack and sign
         run: |
-          npx -y crx pack dist -o qwen-translator-extension.crx --zip-output qwen-translator-extension.zip -p key.pem
+          npx -y crx pack dist -o translate-by-mikko-extension.crx --zip-output translate-by-mikko-extension.zip -p key.pem
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: signed-extension
           path: |
-            qwen-translator-extension.crx
-            qwen-translator-extension.zip
+            translate-by-mikko-extension.crx
+            translate-by-mikko-extension.zip
       - run: rm key.pem

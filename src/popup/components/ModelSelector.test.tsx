@@ -73,7 +73,7 @@ describe('MODELS constant', () => {
     });
 
     it('indicates Google 4B description', () => {
-      expect(gemma?.description).toBe('Google 4B');
+      expect(gemma?.description).toBe('Experimental Google 4B');
     });
 
     it('shows ~3.6GB size', () => {
@@ -499,17 +499,17 @@ describe('ModelSelector render — open dropdown', () => {
     expect(chrome.runtime.openOptionsPage).toHaveBeenCalled();
   });
 
-  it('shows disabled state for TranslateGemma when WebGPU unavailable', () => {
+  it('shows disabled state for TranslateGemma when hardware acceleration is unavailable', () => {
     render(() => (
       <ModelSelector
         selected="opus-mt"
         onChange={vi.fn()}
         downloadStatus={allDownloadStatus()}
-        webGpuAvailable={false}
+        translateGemmaAvailable={false}
       />
     ));
     fireEvent.click(screen.getByRole('button', { name: /Translation model/ }));
-    expect(screen.getByText('Requires WebGPU')).toBeTruthy();
+    expect(screen.getByText('Requires WebGPU or WebNN')).toBeTruthy();
   });
 
   it('closes dropdown on click outside', () => {
@@ -924,7 +924,7 @@ describe('ModelSelector branch coverage — aria-activedescendant', () => {
         selected="opus-mt"
         onChange={vi.fn()}
         downloadStatus={allDownloadStatus()}
-        webGpuAvailable={true}
+        translateGemmaAvailable={true}
       />
     ));
     const trigger = screen.getByRole('button', { name: /Translation model/ });
@@ -938,7 +938,7 @@ describe('ModelSelector branch coverage — aria-activedescendant', () => {
         selected="opus-mt"
         onChange={vi.fn()}
         downloadStatus={allDownloadStatus()}
-        webGpuAvailable={true}
+        translateGemmaAvailable={true}
       />
     ));
     const wrapper = container.querySelector('.model-dropdown-wrapper') as HTMLElement;
@@ -971,7 +971,7 @@ describe('ModelSelector branch coverage — cloud provider classes', () => {
         selected="opus-mt"
         onChange={vi.fn()}
         downloadStatus={allDownloadStatus()}
-        webGpuAvailable={true}
+        translateGemmaAvailable={true}
       />
     ));
 
