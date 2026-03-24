@@ -35,6 +35,7 @@ describe('SENSITIVE_EXTENSION_MESSAGE_TYPES', () => {
   it('includes the cloud provider mutation messages', () => {
     expect(SENSITIVE_EXTENSION_MESSAGE_TYPES).toContain('setCloudApiKey');
     expect(SENSITIVE_EXTENSION_MESSAGE_TYPES).toContain('clearCloudApiKey');
+    expect(SENSITIVE_EXTENSION_MESSAGE_TYPES).toContain('setCloudProviderEnabled');
   });
 });
 

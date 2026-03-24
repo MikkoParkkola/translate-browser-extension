@@ -132,6 +132,7 @@ vi.mock('../core/errors', () => ({
 vi.mock('../core/storage', () => ({
   safeStorageGet: vi.fn().mockResolvedValue({}),
   safeStorageSet: vi.fn().mockResolvedValue(undefined),
+  strictStorageSet: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../core/hash', () => ({
@@ -306,9 +307,8 @@ describe('background-firefox message handler', () => {
 
     it('persists provider to storage', async () => {
       await invoke({ type: 'setProvider', provider: 'opus-mt' });
-      // safeStorageSet should have been called
-      const { safeStorageSet } = await import('../core/storage');
-      expect(safeStorageSet).toHaveBeenCalledWith(expect.objectContaining({ provider: 'opus-mt' }));
+      const { strictStorageSet } = await import('../core/storage');
+      expect(strictStorageSet).toHaveBeenCalledWith(expect.objectContaining({ provider: 'opus-mt' }));
     });
   });
 

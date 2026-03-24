@@ -66,7 +66,7 @@ describe('safeStorageGet', () => {
 
     expect(errorSpy).toHaveBeenCalledWith(
       '[Storage]',
-      'Storage get failed for keys [test]:',
+      'Storage read failed for keys [test]:',
       'Quota exceeded'
     );
   });
@@ -112,7 +112,7 @@ describe('safeStorageSet', () => {
 
     expect(errorSpy).toHaveBeenCalledWith(
       '[Storage]',
-      'Storage set failed for keys [key]:',
+      'Storage save failed for keys [key]:',
       'Write failed'
     );
   });

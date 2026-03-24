@@ -285,7 +285,7 @@ describe('Content ↔ Background messaging integration', () => {
     );
   });
 
-  it('falls back to a full false cloud status record when storage reads fail', async () => {
+  it('returns a degraded false cloud status record when strict storage reads fail', async () => {
     (mockStorageGet as Mock).mockRejectedValueOnce(new Error('status read failed'));
 
     const response = (await sendToBg({
@@ -296,7 +296,8 @@ describe('Content ↔ Background messaging integration', () => {
       status: Record<string, boolean>;
     };
 
-    expect(response.success).toBe(true);
+    expect(response.success).toBe(false);
+    expect(response.error).toBe('status read failed');
     expect(response.status).toEqual({
       deepl: false,
       openai: false,

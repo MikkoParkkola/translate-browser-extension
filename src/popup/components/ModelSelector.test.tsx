@@ -734,6 +734,7 @@ describe('ModelSelector render — download progress', () => {
 
   it('loads cloud provider status on mount and reflects it', async () => {
     (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: true,
       status: { deepl: true, openai: false },
     });
 
@@ -770,6 +771,7 @@ describe('ModelSelector render — download progress', () => {
 
   it('calls onChange when selecting a configured cloud provider', async () => {
     vi.mocked(chrome.runtime.sendMessage).mockResolvedValueOnce({
+      success: true,
       status: { deepl: true },
     });
     vi.mocked(chrome.runtime.openOptionsPage).mockClear();
@@ -960,6 +962,7 @@ describe('ModelSelector branch coverage — cloud provider classes', () => {
 
   it('configured cloud provider does not have unconfigured class', async () => {
     (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: true,
       status: { deepl: true },
     });
 

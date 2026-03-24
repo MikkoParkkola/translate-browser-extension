@@ -28,10 +28,10 @@ vi.mock('../../config', () => ({
   },
 }));
 
-// Mock safeStorageSet
-const mockSafeStorageSet = vi.fn().mockResolvedValue(undefined);
+// Mock strictStorageSet
+const mockStrictStorageSet = vi.fn().mockResolvedValue(undefined);
 vi.mock('../../core/storage', () => ({
-  safeStorageSet: (...args: unknown[]) => mockSafeStorageSet(...args),
+  strictStorageSet: (...args: unknown[]) => mockStrictStorageSet(...args),
 }));
 
 import {
@@ -232,6 +232,7 @@ describe('CLOUD_PROVIDER_STORAGE_KEYS', () => {
   it('includes related deepl keys', () => {
     expect(CLOUD_PROVIDER_STORAGE_KEYS['deepl']).toEqual([
       'deepl_api_key',
+      'deepl_enabled',
       'deepl_is_pro',
       'deepl_formality',
     ]);
@@ -240,6 +241,7 @@ describe('CLOUD_PROVIDER_STORAGE_KEYS', () => {
   it('includes tracked usage cleanup keys for openai', () => {
     expect(CLOUD_PROVIDER_STORAGE_KEYS['openai']).toEqual([
       'openai_api_key',
+      'openai_enabled',
       'openai_model',
       'openai_formality',
       'openai_temperature',
@@ -285,13 +287,13 @@ describe('PROVIDER_LIST', () => {
 
 describe('handleSetProvider', () => {
   beforeEach(() => {
-    mockSafeStorageSet.mockClear();
+    mockStrictStorageSet.mockClear();
   });
 
   it('sets provider and persists to storage', async () => {
     const result = await handleSetProvider({ type: 'setProvider', provider: 'opus-mt' });
     expect(result).toEqual({ success: true, provider: 'opus-mt' });
-    expect(mockSafeStorageSet).toHaveBeenCalledWith({ provider: 'opus-mt' });
+    expect(mockStrictStorageSet).toHaveBeenCalledWith({ provider: 'opus-mt' });
   });
 
   it('updates currentProvider state', async () => {

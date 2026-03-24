@@ -23,7 +23,9 @@ vi.mock('../../core/logger', () => ({
 
 vi.mock('../../core/storage', () => ({
   safeStorageGet: vi.fn().mockResolvedValue({}),
-  safeStorageSet: vi.fn().mockResolvedValue(undefined),
+  strictStorageGet: vi.fn().mockResolvedValue({}),
+  strictStorageSet: vi.fn().mockResolvedValue(undefined),
+  strictStorageRemove: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../core/corrections', () => ({
@@ -51,13 +53,19 @@ vi.mock('./provider-management', () => ({
     deepl: 'deepl_api_key',
     openai: 'openai_api_key',
     anthropic: 'anthropic_api_key',
-    'google-cloud': 'google_cloud_key',
+    'google-cloud': 'google_cloud_api_key',
+  },
+  CLOUD_PROVIDER_ENABLED_FIELDS: {
+    deepl: 'deepl_enabled',
+    openai: 'openai_enabled',
+    anthropic: 'anthropic_enabled',
+    'google-cloud': 'google_cloud_enabled',
   },
   CLOUD_PROVIDER_STORAGE_KEYS: {
-    deepl: ['deepl_api_key', 'deepl_is_pro', 'deepl_formality'],
-    openai: ['openai_api_key', 'openai_model', 'openai_formality', 'openai_temperature', 'openai_tokens_used'],
-    anthropic: ['anthropic_api_key', 'anthropic_model', 'anthropic_formality', 'anthropic_tokens_used'],
-    'google-cloud': ['google_cloud_key', 'google_cloud_chars_used'],
+    deepl: ['deepl_api_key', 'deepl_enabled', 'deepl_is_pro', 'deepl_formality'],
+    openai: ['openai_api_key', 'openai_enabled', 'openai_model', 'openai_formality', 'openai_temperature', 'openai_tokens_used'],
+    anthropic: ['anthropic_api_key', 'anthropic_enabled', 'anthropic_model', 'anthropic_formality', 'anthropic_tokens_used'],
+    'google-cloud': ['google_cloud_api_key', 'google_cloud_enabled', 'google_cloud_chars_used'],
   },
   CLOUD_PROVIDER_OPTION_FIELDS: {
     deepl: { isPro: 'deepl_is_pro', formality: 'deepl_formality' },
@@ -159,8 +167,8 @@ describe('handleGetCloudProviderStatus', () => {
   });
 
   it('returns true status for providers that have keys', async () => {
-    const { safeStorageGet } = await import('../../core/storage');
-    vi.mocked(safeStorageGet).mockResolvedValueOnce({ deepl_api_key: 'abc123' });
+    const { strictStorageGet } = await import('../../core/storage');
+    vi.mocked(strictStorageGet).mockResolvedValueOnce({ deepl_api_key: 'abc123' });
 
     const { handleGetCloudProviderStatus } = await import('./message-handlers');
     const result = await handleGetCloudProviderStatus();
@@ -170,15 +178,17 @@ describe('handleGetCloudProviderStatus', () => {
     expect(status.openai).toBe(false);
   });
 
-  it('handles safeStorageGet error gracefully', async () => {
-    const { safeStorageGet } = await import('../../core/storage');
-    vi.mocked(safeStorageGet).mockRejectedValueOnce(new Error('Storage error'));
+  it('handles strictStorageGet error gracefully', async () => {
+    const { strictStorageGet } = await import('../../core/storage');
+    vi.mocked(strictStorageGet).mockRejectedValueOnce(new Error('Storage error'));
 
     const { handleGetCloudProviderStatus } = await import('./message-handlers');
     const result = await handleGetCloudProviderStatus();
 
     expect(result.success).toBe(false);
-    expect(result.error).toBeDefined();
+    if (!result.success) {
+      expect(result.error).toBeDefined();
+    }
     expect(result.status).toEqual({
       deepl: false,
       openai: false,
@@ -219,7 +229,7 @@ describe('handleSetCloudApiKey', () => {
 
   it('stores deepl-specific options', async () => {
     const { handleSetCloudApiKey } = await import('./message-handlers');
-    const { safeStorageSet } = await import('../../core/storage');
+    const { strictStorageSet } = await import('../../core/storage');
     const result = await handleSetCloudApiKey({
       type: 'setCloudApiKey',
       provider: 'deepl',
@@ -228,14 +238,14 @@ describe('handleSetCloudApiKey', () => {
     }) as Record<string, unknown>;
 
     expect(result.success).toBe(true);
-    expect(vi.mocked(safeStorageSet)).toHaveBeenCalledWith(
+    expect(vi.mocked(strictStorageSet)).toHaveBeenCalledWith(
       expect.objectContaining({ deepl_is_pro: true, deepl_formality: 'more' })
     );
   });
 
   it('stores openai-specific options', async () => {
     const { handleSetCloudApiKey } = await import('./message-handlers');
-    const { safeStorageSet } = await import('../../core/storage');
+    const { strictStorageSet } = await import('../../core/storage');
     const result = await handleSetCloudApiKey({
       type: 'setCloudApiKey',
       provider: 'openai',
@@ -244,14 +254,14 @@ describe('handleSetCloudApiKey', () => {
     }) as Record<string, unknown>;
 
     expect(result.success).toBe(true);
-    expect(vi.mocked(safeStorageSet)).toHaveBeenCalledWith(
+    expect(vi.mocked(strictStorageSet)).toHaveBeenCalledWith(
       expect.objectContaining({ openai_model: 'gpt-4o' })
     );
   });
 
   it('stores anthropic-specific options', async () => {
     const { handleSetCloudApiKey } = await import('./message-handlers');
-    const { safeStorageSet } = await import('../../core/storage');
+    const { strictStorageSet } = await import('../../core/storage');
     const result = await handleSetCloudApiKey({
       type: 'setCloudApiKey',
       provider: 'anthropic',
@@ -260,14 +270,14 @@ describe('handleSetCloudApiKey', () => {
     }) as Record<string, unknown>;
 
     expect(result.success).toBe(true);
-    expect(vi.mocked(safeStorageSet)).toHaveBeenCalledWith(
+    expect(vi.mocked(strictStorageSet)).toHaveBeenCalledWith(
       expect.objectContaining({ anthropic_model: 'claude-3-5-sonnet-20241022' })
     );
   });
 
   it('stores deepl key without optional isPro or formality', async () => {
     const { handleSetCloudApiKey } = await import('./message-handlers');
-    const { safeStorageSet } = await import('../../core/storage');
+    const { strictStorageSet } = await import('../../core/storage');
     const result = await handleSetCloudApiKey({
       type: 'setCloudApiKey',
       provider: 'deepl',
@@ -276,14 +286,14 @@ describe('handleSetCloudApiKey', () => {
     }) as Record<string, unknown>;
 
     expect(result.success).toBe(true);
-    const callArg = vi.mocked(safeStorageSet).mock.lastCall![0] as Record<string, unknown>;
+    const callArg = vi.mocked(strictStorageSet).mock.lastCall![0] as Record<string, unknown>;
     expect(callArg).not.toHaveProperty('deepl_is_pro');
     expect(callArg).not.toHaveProperty('deepl_formality');
   });
 
   it('stores openai key with model but without formality', async () => {
     const { handleSetCloudApiKey } = await import('./message-handlers');
-    const { safeStorageSet } = await import('../../core/storage');
+    const { strictStorageSet } = await import('../../core/storage');
     const result = await handleSetCloudApiKey({
       type: 'setCloudApiKey',
       provider: 'openai',
@@ -292,14 +302,14 @@ describe('handleSetCloudApiKey', () => {
     }) as Record<string, unknown>;
 
     expect(result.success).toBe(true);
-    const callArg = vi.mocked(safeStorageSet).mock.lastCall![0] as Record<string, unknown>;
+    const callArg = vi.mocked(strictStorageSet).mock.lastCall![0] as Record<string, unknown>;
     expect(callArg).toHaveProperty('openai_model', 'gpt-4o');
     expect(callArg).not.toHaveProperty('openai_formality');
   });
 
   it('stores anthropic key with formality but without model', async () => {
     const { handleSetCloudApiKey } = await import('./message-handlers');
-    const { safeStorageSet } = await import('../../core/storage');
+    const { strictStorageSet } = await import('../../core/storage');
     const result = await handleSetCloudApiKey({
       type: 'setCloudApiKey',
       provider: 'anthropic',
@@ -308,7 +318,7 @@ describe('handleSetCloudApiKey', () => {
     }) as Record<string, unknown>;
 
     expect(result.success).toBe(true);
-    const callArg = vi.mocked(safeStorageSet).mock.lastCall![0] as Record<string, unknown>;
+    const callArg = vi.mocked(strictStorageSet).mock.lastCall![0] as Record<string, unknown>;
     expect(callArg).not.toHaveProperty('anthropic_model');
     expect(callArg).toHaveProperty('anthropic_formality', 'formal');
   });
@@ -330,7 +340,7 @@ describe('handleClearCloudApiKey', () => {
 
     expect(result.success).toBe(true);
     expect(mockRemove).toHaveBeenCalledWith(
-      expect.arrayContaining(['deepl_api_key', 'deepl_is_pro', 'deepl_formality'])
+      expect.arrayContaining(['deepl_api_key', 'deepl_enabled', 'deepl_is_pro', 'deepl_formality'])
     );
   });
 
@@ -344,7 +354,7 @@ describe('handleClearCloudApiKey', () => {
     );
 
     expect(mockRemove).toHaveBeenCalledWith(
-      expect.arrayContaining(['openai_api_key', 'openai_model', 'openai_formality'])
+      expect.arrayContaining(['openai_api_key', 'openai_enabled', 'openai_model', 'openai_formality'])
     );
   });
 
@@ -358,7 +368,7 @@ describe('handleClearCloudApiKey', () => {
     );
 
     expect(mockRemove).toHaveBeenCalledWith(
-      expect.arrayContaining(['google_cloud_key', 'google_cloud_chars_used'])
+      expect.arrayContaining(['google_cloud_api_key', 'google_cloud_enabled', 'google_cloud_chars_used'])
     );
   });
 
@@ -863,9 +873,9 @@ describe('handleExportCorrections error path', () => {
 // ============================================================================
 
 describe('handleSetCloudApiKey error path', () => {
-  it('handles safeStorageSet failure', async () => {
-    const { safeStorageSet } = await import('../../core/storage');
-    vi.mocked(safeStorageSet).mockRejectedValueOnce(new Error('Storage full'));
+  it('handles strictStorageSet failure', async () => {
+    const { strictStorageSet } = await import('../../core/storage');
+    vi.mocked(strictStorageSet).mockRejectedValueOnce(new Error('Storage full'));
 
     const { handleSetCloudApiKey } = await import('./message-handlers');
     const result = await handleSetCloudApiKey({
@@ -878,8 +888,8 @@ describe('handleSetCloudApiKey error path', () => {
   });
 
   it('handles non-Error storage failure', async () => {
-    const { safeStorageSet } = await import('../../core/storage');
-    vi.mocked(safeStorageSet).mockRejectedValueOnce('quota exceeded');
+    const { strictStorageSet } = await import('../../core/storage');
+    vi.mocked(strictStorageSet).mockRejectedValueOnce('quota exceeded');
 
     const { handleSetCloudApiKey } = await import('./message-handlers');
     const result = await handleSetCloudApiKey({
@@ -892,8 +902,8 @@ describe('handleSetCloudApiKey error path', () => {
   });
 
   it('stores anthropic-specific formality option', async () => {
-    const { safeStorageSet } = await import('../../core/storage');
-    vi.mocked(safeStorageSet).mockResolvedValueOnce(false);
+    const { strictStorageSet } = await import('../../core/storage');
+    vi.mocked(strictStorageSet).mockResolvedValueOnce(undefined);
 
     const { handleSetCloudApiKey } = await import('./message-handlers');
     const result = await handleSetCloudApiKey({
@@ -903,14 +913,14 @@ describe('handleSetCloudApiKey error path', () => {
       options: { model: 'claude-3-5-sonnet', formality: 'formal' },
     }) as Record<string, unknown>;
     expect(result.success).toBe(true);
-    expect(vi.mocked(safeStorageSet)).toHaveBeenCalledWith(
+    expect(vi.mocked(strictStorageSet)).toHaveBeenCalledWith(
       expect.objectContaining({ anthropic_formality: 'formal' })
     );
   });
 
   it('stores openai-specific formality option', async () => {
-    const { safeStorageSet } = await import('../../core/storage');
-    vi.mocked(safeStorageSet).mockResolvedValueOnce(false);
+    const { strictStorageSet } = await import('../../core/storage');
+    vi.mocked(strictStorageSet).mockResolvedValueOnce(undefined);
 
     const { handleSetCloudApiKey } = await import('./message-handlers');
     const result = await handleSetCloudApiKey({
@@ -920,9 +930,37 @@ describe('handleSetCloudApiKey error path', () => {
       options: { formality: 'informal' },
     }) as Record<string, unknown>;
     expect(result.success).toBe(true);
-    expect(vi.mocked(safeStorageSet)).toHaveBeenCalledWith(
+    expect(vi.mocked(strictStorageSet)).toHaveBeenCalledWith(
       expect.objectContaining({ openai_formality: 'informal' })
     );
+  });
+});
+
+describe('handleSetCloudProviderEnabled', () => {
+  it('stores enabled flag for a known provider', async () => {
+    const { strictStorageSet } = await import('../../core/storage');
+    const { handleSetCloudProviderEnabled } = await import('./message-handlers');
+
+    const result = await handleSetCloudProviderEnabled({
+      type: 'setCloudProviderEnabled',
+      provider: 'deepl',
+      enabled: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(vi.mocked(strictStorageSet)).toHaveBeenCalledWith({ deepl_enabled: true });
+  });
+
+  it('returns error for unknown provider', async () => {
+    const { handleSetCloudProviderEnabled } = await import('./message-handlers');
+
+    const result = await handleSetCloudProviderEnabled({
+      type: 'setCloudProviderEnabled',
+      provider: 'custom-provider' as never,
+      enabled: true,
+    });
+
+    expect(result.success).toBe(false);
   });
 });
 
@@ -961,7 +999,7 @@ describe('handleClearCloudApiKey error path', () => {
     );
 
     expect(mockRemove).toHaveBeenCalledWith(
-      expect.arrayContaining(['anthropic_api_key', 'anthropic_model', 'anthropic_formality', 'anthropic_tokens_used'])
+      expect.arrayContaining(['anthropic_api_key', 'anthropic_enabled', 'anthropic_model', 'anthropic_formality', 'anthropic_tokens_used'])
     );
   });
 });
@@ -972,14 +1010,16 @@ describe('handleClearCloudApiKey error path', () => {
 
 describe('handleGetCloudProviderStatus non-Error path', () => {
   it('handles non-Error thrown', async () => {
-    const { safeStorageGet } = await import('../../core/storage');
-    vi.mocked(safeStorageGet).mockRejectedValueOnce('storage boom');
+    const { strictStorageGet } = await import('../../core/storage');
+    vi.mocked(strictStorageGet).mockRejectedValueOnce('storage boom');
 
     const { handleGetCloudProviderStatus } = await import('./message-handlers');
     const result: ExtensionMessageResponseByType<'getCloudProviderStatus'> =
       await handleGetCloudProviderStatus();
     expect(result.success).toBe(false);
-    expect(result.error).toBe('storage boom');
+    if (!result.success) {
+      expect(result.error).toBe('storage boom');
+    }
     expect(result.status['google-cloud']).toBe(false);
   });
 });

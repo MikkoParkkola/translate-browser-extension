@@ -10,7 +10,7 @@ import { render, screen, fireEvent, cleanup } from '@solidjs/testing-library';
 // Chrome API mock
 vi.stubGlobal('chrome', {
   runtime: {
-    sendMessage: vi.fn().mockResolvedValue({}),
+    sendMessage: vi.fn().mockResolvedValue({ success: true }),
     onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
     openOptionsPage: vi.fn(),
   },
@@ -43,6 +43,7 @@ describe('ApiKeyManager', () => {
     vi.clearAllMocks();
     // Default: no keys stored
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true });
   });
 
   // -----------------------------------------------------------------------
@@ -193,7 +194,7 @@ describe('ApiKeyManager', () => {
   // Save flow
   // -----------------------------------------------------------------------
 
-  it('calls chrome.storage.local.set when saving a valid key', async () => {
+  it('calls background setCloudApiKey when saving a valid key', async () => {
     const { container } = render(() => <ApiKeyManager />);
     await vi.waitFor(() => {
       expect(screen.getAllByText('Add').length).toBe(4);
@@ -213,9 +214,12 @@ describe('ApiKeyManager', () => {
     fireEvent.click(screen.getByText('Save'));
 
     await vi.waitFor(() => {
-      expect(chrome.storage.local.set).toHaveBeenCalledWith(
-        expect.objectContaining({ deepl_api_key: 'my-test-api-key' }),
-      );
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+        type: 'setCloudApiKey',
+        provider: 'deepl',
+        apiKey: 'my-test-api-key',
+        options: { isPro: false },
+      });
     });
   });
 
@@ -293,12 +297,12 @@ describe('ApiKeyManager', () => {
     fireEvent.click(screen.getByText('Save'));
 
     await vi.waitFor(() => {
-      expect(chrome.storage.local.set).toHaveBeenCalledWith(
-        expect.objectContaining({
-          deepl_api_key: 'deepl-pro-key',
-          deepl_is_pro: true,
-        }),
-      );
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+        type: 'setCloudApiKey',
+        provider: 'deepl',
+        apiKey: 'deepl-pro-key',
+        options: { isPro: true },
+      });
     });
   });
 
@@ -339,7 +343,7 @@ describe('ApiKeyManager', () => {
   // Remove flow — confirm/cancel/error
   // -----------------------------------------------------------------------
 
-  it('confirming removal calls chrome.storage.local.remove and shows success', async () => {
+  it('confirming removal calls background clearCloudApiKey and shows success', async () => {
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({
       deepl_api_key: 'existing-key',
     });
@@ -356,14 +360,17 @@ describe('ApiKeyManager', () => {
 
     fireEvent.click(screen.getByTestId('confirm-btn'));
     await vi.waitFor(() => {
-      expect(chrome.storage.local.remove).toHaveBeenCalledWith(['deepl_api_key', 'deepl_is_pro']);
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+        type: 'clearCloudApiKey',
+        provider: 'deepl',
+      });
     });
     await vi.waitFor(() => {
       expect(screen.getByText(/API key removed/)).toBeTruthy();
     });
   });
 
-  it('confirming removal for a non-pro provider only removes the keyField', async () => {
+  it('confirming removal for a non-pro provider clears it through background', async () => {
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({
       openai_api_key: 'oai-key',
     });
@@ -380,7 +387,10 @@ describe('ApiKeyManager', () => {
 
     fireEvent.click(screen.getByTestId('confirm-btn'));
     await vi.waitFor(() => {
-      expect(chrome.storage.local.remove).toHaveBeenCalledWith(['openai_api_key']);
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+        type: 'clearCloudApiKey',
+        provider: 'openai',
+      });
     });
   });
 
@@ -403,14 +413,14 @@ describe('ApiKeyManager', () => {
     await vi.waitFor(() => {
       expect(screen.queryByTestId('confirm-dialog')).toBeNull();
     });
-    expect(chrome.storage.local.remove).not.toHaveBeenCalled();
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
   });
 
-  it('shows error when chrome.storage.local.remove rejects during removal', async () => {
+  it('shows error when background removal rejects during removal', async () => {
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({
       deepl_api_key: 'existing-key',
     });
-    (chrome.storage.local.remove as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('remove failed'));
+    (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('remove failed'));
 
     render(() => <ApiKeyManager />);
     await vi.waitFor(() => {
@@ -424,7 +434,7 @@ describe('ApiKeyManager', () => {
 
     fireEvent.click(screen.getByTestId('confirm-btn'));
     await vi.waitFor(() => {
-      expect(chrome.storage.local.remove).toHaveBeenCalled();
+      expect(chrome.runtime.sendMessage).toHaveBeenCalled();
     });
     // Error is set on signal but only visible in editing mode — verify no success message
     await vi.waitFor(() => {
@@ -437,7 +447,7 @@ describe('ApiKeyManager', () => {
   // -----------------------------------------------------------------------
 
   it('shows error when save rejects', async () => {
-    (chrome.storage.local.set as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('save failed'));
+    (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('save failed'));
 
     render(() => <ApiKeyManager />);
     await vi.waitFor(() => {
@@ -538,14 +548,13 @@ describe('ApiKeyManager', () => {
       fireEvent.click(screen.getByText('Save'));
 
       await vi.waitFor(() => {
-        expect(chrome.storage.local.set).toHaveBeenCalledWith(
-          expect.objectContaining({ openai_api_key: 'sk-test123' }),
-        );
+        expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+          type: 'setCloudApiKey',
+          provider: 'openai',
+          apiKey: 'sk-test123',
+          options: { isPro: false },
+        });
       });
-
-      // Should NOT include any pro tier field (provider.hasProTier is false)
-      const lastCall = (chrome.storage.local.set as any).mock.calls.at(-1)[0];
-      expect(lastCall).not.toHaveProperty('deepl_is_pro');
     });
   });
 
@@ -624,7 +633,7 @@ describe('ApiKeyManager', () => {
       fireEvent.click(screen.getByText('Save'));
 
       await vi.waitFor(() => {
-        expect(chrome.storage.local.set).toHaveBeenCalled();
+        expect(chrome.runtime.sendMessage).toHaveBeenCalled();
       });
     });
 
@@ -647,7 +656,10 @@ describe('ApiKeyManager', () => {
       fireEvent.click(screen.getByTestId('confirm-btn'));
 
       await vi.waitFor(() => {
-        expect(chrome.storage.local.remove).toHaveBeenCalled();
+        expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+          type: 'clearCloudApiKey',
+          provider: 'deepl',
+        });
       });
     });
   });
