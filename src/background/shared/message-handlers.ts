@@ -7,9 +7,10 @@
  */
 
 import type {
-  TranslationProviderId, Strategy, DetailedCacheStats, ThrottleUsage,
+  TranslationProviderId, Strategy, DetailedCacheStats,
   SetCloudApiKeyMessage, ClearCloudApiKeyMessage,
   AddCorrectionMessage, GetCorrectionMessage, DeleteCorrectionMessage, ImportCorrectionsMessage,
+  ExtensionMessageResponseByType,
   MessageResponse,
 } from '../../types';
 import { safeStorageGet, safeStorageSet } from '../../core/storage';
@@ -48,6 +49,10 @@ import {
   buildValidatedCloudProviderMutation,
   normalizeUserSettings,
 } from './config-validation';
+import {
+  buildCloudProviderConfiguredStatusRecord,
+  createEmptyCloudProviderConfiguredStatus,
+} from '../../shared/cloud-provider-config-state';
 
 const log = createLogger('SharedHandlers');
 
@@ -76,7 +81,9 @@ export async function handleClearCache(cache: TranslationCache): Promise<{ succe
 // Usage / Providers
 // ============================================================================
 
-export function handleGetUsage(cache: TranslationCache): { throttle: ThrottleUsage; cache: DetailedCacheStats; providers: Record<string, unknown> } {
+export function handleGetUsage(
+  cache: TranslationCache,
+): ExtensionMessageResponseByType<'getUsage'> {
   const rl = getRateLimitState();
   return {
     throttle: {
@@ -101,20 +108,16 @@ const CONFIG_RL = CONFIG.rateLimits;
 // Cloud Provider Handlers
 // ============================================================================
 
-export async function handleGetCloudProviderStatus(): Promise<{ success: boolean; status: Record<string, boolean>; error?: string }> {
+export async function handleGetCloudProviderStatus(): Promise<
+  ExtensionMessageResponseByType<'getCloudProviderStatus'>
+> {
   return withMessageResponseFallback(
     async () => {
       const keys = Object.values(CLOUD_PROVIDER_KEYS);
       const stored = await safeStorageGet<CloudProviderStatusStorageRecord>(keys);
-
-      const status: Record<string, boolean> = {};
-      for (const [provider, storageKey] of Object.entries(CLOUD_PROVIDER_KEYS)) {
-        status[provider] = !!stored[storageKey as keyof CloudProviderStatusStorageRecord];
-      }
-
-      return { status };
+      return { status: buildCloudProviderConfiguredStatusRecord(stored) };
     },
-    { status: {} },
+    { status: createEmptyCloudProviderConfiguredStatus() },
     (error) => log.warn('Failed to get cloud provider status:', error)
   );
 }

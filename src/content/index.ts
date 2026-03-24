@@ -952,7 +952,7 @@ function handleMutations(mutations: MutationRecord[]): void {
     clearTimeout(mutationDebounceTimer);
   }
 
-  mutationDebounceTimer = window.setTimeout(() => {
+  mutationDebounceTimer = setTimeout(() => {
     mutationDebounceTimer = null;
     processPendingMutations();
   }, CONFIG.mutations.debounceMs);

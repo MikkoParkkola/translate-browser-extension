@@ -257,6 +257,54 @@ describe('Content ↔ Background messaging integration', () => {
   // -----------------------------------------------------------------------
   // 9. Invalid message type returns error
   // -----------------------------------------------------------------------
+  it('canonicalizes cloud provider options and reports configured status', async () => {
+    const setResponse = (await sendToBg({
+      type: 'setCloudApiKey',
+      provider: 'openai',
+      apiKey: 'sk-test-123',
+      options: { model: 'gpt-4' },
+    })) as { success: boolean; provider?: string };
+
+    expect(setResponse.success).toBe(true);
+    expect(setResponse.provider).toBe('openai');
+    expect(storageStore.openai_api_key).toBe('sk-test-123');
+    expect(storageStore.openai_model).toBe('gpt-4-turbo');
+
+    const statusResponse = (await sendToBg({
+      type: 'getCloudProviderStatus',
+    })) as {
+      success: boolean;
+      status: Record<string, boolean>;
+    };
+
+    expect(statusResponse.success).toBe(true);
+    expect(statusResponse.status.openai).toBe(true);
+    expect(statusResponse.status.deepl).toBe(false);
+    expect(Object.keys(statusResponse.status)).toEqual(
+      expect.arrayContaining(['deepl', 'openai', 'anthropic', 'google-cloud'])
+    );
+  });
+
+  it('falls back to a full false cloud status record when storage reads fail', async () => {
+    (mockStorageGet as Mock).mockRejectedValueOnce(new Error('status read failed'));
+
+    const response = (await sendToBg({
+      type: 'getCloudProviderStatus',
+    })) as {
+      success: boolean;
+      error?: string;
+      status: Record<string, boolean>;
+    };
+
+    expect(response.success).toBe(true);
+    expect(response.status).toEqual({
+      deepl: false,
+      openai: false,
+      anthropic: false,
+      'google-cloud': false,
+    });
+  });
+
   it('returns error for unknown message type', async () => {
     const res = (await sendToBg({ type: 'nonExistentAction' })) as Record<string, unknown>;
     // Should either return success:false or not crash

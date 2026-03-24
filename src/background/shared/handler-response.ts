@@ -1,5 +1,5 @@
 import { extractErrorMessage } from '../../core/errors';
-import type { MessageResponse } from '../../types';
+import type { MessageResponse, MessageResponseWithFallback } from '../../types';
 
 export async function withMessageResponse<T extends Record<string, unknown>>(
   operation: () => Promise<T>,
@@ -23,7 +23,7 @@ export async function withMessageResponseFallback<T extends Record<string, unkno
   operation: () => Promise<T>,
   fallback: T,
   onError?: (error: unknown) => void
-): Promise<({ success: true } & T) | ({ success: false; error: string } & T)> {
+): Promise<MessageResponseWithFallback<T>> {
   try {
     return {
       success: true,

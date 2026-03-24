@@ -115,8 +115,9 @@ describe('API Key Storage Security', () => {
       );
       expect(handlerMatch).not.toBeNull();
       const handler = handlerMatch![0];
-      // It should convert to boolean (!!stored[key]), not return raw key
-      expect(handler).toContain('!!stored');
+      // It should derive a boolean-only status map, not return raw key values.
+      expect(handler).toContain('buildCloudProviderConfiguredStatusRecord');
+      expect(handler).not.toContain('api_key:');
     });
   });
 

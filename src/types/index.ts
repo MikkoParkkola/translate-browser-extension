@@ -16,6 +16,8 @@ export type QualityTier = 'basic' | 'standard' | 'premium';
 export type Strategy = 'smart' | 'fast' | 'quality' | 'cost' | 'balanced';
 export type TranslationProviderId = 'opus-mt' | 'translategemma' | 'chrome-builtin' | 'deepl' | 'openai' | 'google-cloud' | 'anthropic';
 export type CloudProviderId = Exclude<TranslationProviderId, 'opus-mt' | 'translategemma' | 'chrome-builtin'>;
+export type CloudProviderConfiguredStatus = Record<CloudProviderId, boolean>;
+export type CloudProviderUsageSummary = Partial<Record<CloudProviderId, never>>;
 
 /**
  * Standard discriminated-union response type for background message handlers.
@@ -29,6 +31,12 @@ export type CloudProviderId = Exclude<TranslationProviderId, 'opus-mt' | 'transl
 export type MessageResponse<T extends Record<string, unknown> = Record<string, unknown>> =
   | ({ success: true } & T)
   | { success: false; error: string };
+
+export type MessageResponseWithFallback<
+  T extends Record<string, unknown> = Record<string, unknown>,
+> =
+  | ({ success: true } & T)
+  | ({ success: false; error: string } & T);
 
 export interface ProviderConfig {
   id: string;
@@ -266,6 +274,12 @@ export interface DetailedCacheStats extends CacheStats {
   languagePairs: Record<string, number>;
 }
 
+export interface GetUsageResponsePayload {
+  throttle: ThrottleUsage;
+  cache: DetailedCacheStats;
+  providers: CloudProviderUsageSummary;
+}
+
 export interface SetProviderMessage {
   type: 'setProvider';
   provider: TranslationProviderId;
@@ -489,11 +503,7 @@ export type ExtensionMessage =
 export interface ExtensionMessageResponseMap {
   ping: { success: true; status: 'ready'; provider: TranslationProviderId };
   translate: TranslateResponse;
-  getUsage: {
-    throttle: ThrottleUsage;
-    cache: DetailedCacheStats;
-    providers: Record<string, unknown>;
-  };
+  getUsage: GetUsageResponsePayload;
   getProviders: ProvidersMessagePayload;
   preloadModel: MessageResponse<{ preloaded?: boolean }>;
   setProvider: MessageResponse<{ provider: TranslationProviderId }>;
@@ -503,7 +513,7 @@ export interface ExtensionMessageResponseMap {
   checkWebGPU: { success: true; supported: boolean; fp16: boolean };
   getPredictionStats: MessageResponse<{ prediction: PredictionStats }>;
   recordLanguageDetection: MessageResponse;
-  getCloudProviderStatus: { success: boolean; status: Record<string, boolean>; error?: string };
+  getCloudProviderStatus: MessageResponseWithFallback<{ status: CloudProviderConfiguredStatus }>;
   setCloudApiKey: { success: boolean; provider?: CloudProviderId; error?: string };
   clearCloudApiKey: { success: boolean; provider?: CloudProviderId; error?: string };
   getCloudProviderUsage: MessageResponse<{ usage?: CloudProviderUsage }>;

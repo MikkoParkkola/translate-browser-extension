@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { ExtensionMessageResponseByType } from '../../types';
 
 // ============================================================================
 // Mocks
@@ -128,13 +129,12 @@ describe('handleGetUsage', () => {
   it('returns throttle and cache stats', async () => {
     const { handleGetUsage } = await import('./message-handlers');
     const cache = makeCache({ getStats: () => ({ size: 3 }) });
-    const result = handleGetUsage(cache as never) as Record<string, unknown>;
+    const result = handleGetUsage(cache as never);
 
     expect(result).toHaveProperty('throttle');
     expect(result).toHaveProperty('cache');
-    const throttle = result.throttle as Record<string, unknown>;
-    expect(throttle.requests).toBe(0);
-    expect(throttle.tokens).toBe(0);
+    expect(result.throttle.requests).toBe(0);
+    expect(result.throttle.tokens).toBe(0);
   });
 });
 
@@ -150,10 +150,10 @@ describe('handleGetCloudProviderStatus', () => {
 
   it('returns false status for all providers when no keys set', async () => {
     const { handleGetCloudProviderStatus } = await import('./message-handlers');
-    const result = await handleGetCloudProviderStatus() as Record<string, unknown>;
+    const result = await handleGetCloudProviderStatus();
 
     expect(result.success).toBe(true);
-    const status = result.status as Record<string, boolean>;
+    const status = result.status;
     expect(status.deepl).toBe(false);
     expect(status.openai).toBe(false);
   });
@@ -163,9 +163,9 @@ describe('handleGetCloudProviderStatus', () => {
     vi.mocked(safeStorageGet).mockResolvedValueOnce({ deepl_api_key: 'abc123' });
 
     const { handleGetCloudProviderStatus } = await import('./message-handlers');
-    const result = await handleGetCloudProviderStatus() as Record<string, unknown>;
+    const result = await handleGetCloudProviderStatus();
 
-    const status = result.status as Record<string, boolean>;
+    const status = result.status;
     expect(status.deepl).toBe(true);
     expect(status.openai).toBe(false);
   });
@@ -175,10 +175,16 @@ describe('handleGetCloudProviderStatus', () => {
     vi.mocked(safeStorageGet).mockRejectedValueOnce(new Error('Storage error'));
 
     const { handleGetCloudProviderStatus } = await import('./message-handlers');
-    const result = await handleGetCloudProviderStatus() as Record<string, unknown>;
+    const result = await handleGetCloudProviderStatus();
 
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
+    expect(result.status).toEqual({
+      deepl: false,
+      openai: false,
+      anthropic: false,
+      'google-cloud': false,
+    });
   });
 });
 
@@ -970,9 +976,11 @@ describe('handleGetCloudProviderStatus non-Error path', () => {
     vi.mocked(safeStorageGet).mockRejectedValueOnce('storage boom');
 
     const { handleGetCloudProviderStatus } = await import('./message-handlers');
-    const result = await handleGetCloudProviderStatus() as Record<string, unknown>;
+    const result: ExtensionMessageResponseByType<'getCloudProviderStatus'> =
+      await handleGetCloudProviderStatus();
     expect(result.success).toBe(false);
     expect(result.error).toBe('storage boom');
+    expect(result.status['google-cloud']).toBe(false);
   });
 });
 

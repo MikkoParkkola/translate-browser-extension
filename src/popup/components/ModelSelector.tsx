@@ -1,12 +1,14 @@
 import { Component, Show, createSignal, onMount, onCleanup, For, createEffect } from 'solid-js';
-import type { TranslationProviderId } from '../../types';
+import type { CloudProviderConfiguredStatus, CloudProviderId, TranslationProviderId } from '../../types';
 import {
   MODEL_SELECTOR_CLOUD_PROVIDERS as CLOUD_PROVIDERS,
   MODEL_SELECTOR_LOCAL_MODELS as LOCAL_MODELS,
   MODEL_SELECTOR_MODELS as MODELS,
+  isCloudProviderId,
 } from '../../shared/provider-options';
 import { trySendBackgroundMessage } from '../../shared/background-message';
 import type { ModelInfo } from '../../shared/provider-options';
+import { createEmptyCloudProviderConfiguredStatus } from '../../shared/cloud-provider-config-state';
 
 export type { ModelInfo } from '../../shared/provider-options';
 export {
@@ -35,7 +37,7 @@ interface Props {
   selected: TranslationProviderId;
   onChange: (provider: TranslationProviderId) => void;
   downloadStatus?: Record<TranslationProviderId, ModelDownloadStatus>;
-  cloudStatus?: Record<string, CloudProviderStatus>;
+  cloudStatus?: Partial<Record<CloudProviderId, CloudProviderStatus>>;
   webGpuAvailable?: boolean | null;
 }
 
@@ -43,7 +45,9 @@ interface Props {
  * Compact dropdown model selector
  */
 export const ModelSelector: Component<Props> = (props) => {
-  const [cloudApiStatus, setCloudApiStatus] = createSignal<Record<string, boolean>>({});
+  const [cloudApiStatus, setCloudApiStatus] = createSignal<CloudProviderConfiguredStatus>(
+    createEmptyCloudProviderConfiguredStatus()
+  );
   const [isOpen, setIsOpen] = createSignal(false);
   const [focusedIndex, setFocusedIndex] = createSignal(-1);
   let wrapperRef: HTMLDivElement | undefined;
@@ -148,9 +152,7 @@ export const ModelSelector: Component<Props> = (props) => {
   };
 
   const isCloudConfigured = (modelId: TranslationProviderId): boolean => {
-    /* v8 ignore start */
-    return cloudApiStatus()[modelId] ?? false;
-    /* v8 ignore stop */
+    return isCloudProviderId(modelId) ? cloudApiStatus()[modelId] : false;
   };
 
   /* v8 ignore start -- OR fallback */

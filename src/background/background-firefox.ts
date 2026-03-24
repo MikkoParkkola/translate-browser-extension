@@ -10,7 +10,7 @@ import { pipeline, env } from '@huggingface/transformers';
 import type {
   BackgroundRequestMessage,
   BackgroundRequestMessageType,
-  ExtensionMessage, ExtensionMessageResponse, TranslateResponse, Strategy, TranslationProviderId, TranslationPipeline,
+  ExtensionMessage, ExtensionMessageResponse, ExtensionMessageResponseByType, TranslateResponse, Strategy, TranslationProviderId, TranslationPipeline,
   SetProviderMessage, PreloadModelMessage, TranslateMessage, MessageResponse,
 } from '../types';
 import {
@@ -537,19 +537,7 @@ async function handleTranslate(message: TranslateMessage): Promise<TranslateResp
   }
 }
 
-function handleGetUsage(): {
-  throttle: {
-    requests: number;
-    tokens: number;
-    requestLimit: number;
-    tokenLimit: number;
-    totalRequests: number;
-    totalTokens: number;
-    queue: number;
-  };
-  cache: DetailedCacheStats;
-  providers: Record<string, never>;
-} {
+function handleGetUsage(): ExtensionMessageResponseByType<'getUsage'> {
   return {
     throttle: {
       requests: rateLimit.requests,

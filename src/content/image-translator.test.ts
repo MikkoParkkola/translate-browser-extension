@@ -702,6 +702,9 @@ describe('translateImage image not found branch', () => {
     const url = 'https://example.com/not-in-dom.png';
     // Don't inject the image into DOM
     const restore = mockCanvas();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      blob: async () => new Blob(['test-image'], { type: 'image/png' }),
+    }));
 
     mockSendMessage
       .mockResolvedValueOnce({
@@ -716,6 +719,7 @@ describe('translateImage image not found branch', () => {
     // translateImage should complete without throwing even when image not in DOM
     await expect(translateImage(url)).resolves.not.toThrow();
 
+    vi.unstubAllGlobals();
     restore();
   }, 5000);
 });
