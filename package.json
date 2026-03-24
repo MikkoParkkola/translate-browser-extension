@@ -27,13 +27,16 @@
     "test:e2e": "npm run test:e2e:web && npm run test:e2e:pdf",
     "test:e2e-pdf": "npm run test:e2e:pdf",
     "test:e2e-web": "npm run test:e2e:web",
-    "test:e2e:pdf": "playwright test e2e/pdf-compare.spec.js",
-    "test:e2e:web": "playwright test e2e/context-menu.spec.js e2e/dom-translate.spec.js e2e/translate-page.spec.js e2e/streaming-cancel.spec.js",
+    "test:e2e:pdf": "playwright test e2e/pdf-compare.spec.js e2e/pdf-regression.spec.ts",
+    "test:e2e:web": "playwright test e2e/extension-load.spec.ts e2e/extension-playwright.spec.ts e2e/translation-e2e.spec.ts e2e/auto-translate.spec.ts e2e/keyboard-shortcuts.spec.ts e2e/streaming-cancel.spec.js e2e/provider-switch.spec.js e2e/translation-cache.spec.js e2e/quota-exhaustion.spec.js e2e/multi-provider-failover.spec.ts e2e/popup.spec.js e2e/ux.spec.js e2e/csp-model-loading.spec.ts e2e/webgpu-detection.spec.ts",
     "test:mutation": "stryker run",
     "test:mutation:core": "stryker run --mutate \"src/core/**/*.ts\" --mutate \"!src/core/**/*.test.ts\" --mutate \"!src/core/index.ts\"",
     "typecheck": "tsc --noEmit",
     "typecheck:popup": "tsc --noEmit --project tsconfig.json",
-    "zip": "bestzip dist/translate-by-mikko-v$npm_package_version.zip dist/*"
+    "zip": "bestzip dist/translate-by-mikko-v$npm_package_version.zip dist/*",
+    "test:e2e:firefox": "playwright test e2e/firefox-compat.spec.ts",
+    "test:e2e:webgpu": "playwright test e2e/translategemma-webgpu.spec.ts",
+    "test:e2e:engine": "playwright test e2e/engine-smoke.spec.js"
   },
   "keywords": [],
   "author": "",
@@ -96,7 +99,6 @@
     "globals": "^16.3.0",
     "http-server": "^14.1.1",
     "jsdom": "^29.0.0",
-
     "prettier": "^3.3.2",
     "rimraf": "^6.0.1",
     "size-limit": "^11.1.5",
