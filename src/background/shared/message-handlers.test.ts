@@ -223,7 +223,7 @@ describe('handleSetCloudApiKey', () => {
 
     expect(result.success).toBe(true);
     expect(vi.mocked(safeStorageSet)).toHaveBeenCalledWith(
-      expect.objectContaining({ deepl_is_pro: true, deepl_formality: 'formal' })
+      expect.objectContaining({ deepl_is_pro: true, deepl_formality: 'more' })
     );
   });
 
@@ -255,7 +255,7 @@ describe('handleSetCloudApiKey', () => {
 
     expect(result.success).toBe(true);
     expect(vi.mocked(safeStorageSet)).toHaveBeenCalledWith(
-      expect.objectContaining({ anthropic_model: 'claude-3-5-sonnet' })
+      expect.objectContaining({ anthropic_model: 'claude-3-5-sonnet-20241022' })
     );
   });
 

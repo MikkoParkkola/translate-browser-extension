@@ -44,7 +44,7 @@ export interface OnboardingModelOption {
 export interface CloudProviderFullConfig extends CloudProviderConfig {
   enabledField: string;
   testEndpoint?: string;
-  models?: string[];
+  models?: readonly string[];
   modelField?: string;
 }
 
@@ -246,10 +246,80 @@ const BACKGROUND_PROVIDER_IDS: BackgroundProviderId[] = ['opus-mt', 'translatege
 const TRANSLATION_PROVIDER_ID_SET = new Set<string>(TRANSLATION_PROVIDER_IDS);
 const CLOUD_PROVIDER_ID_SET = new Set<string>(CLOUD_PROVIDER_IDS);
 
+export const DEEPL_FORMALITY_VALUES = [
+  'default',
+  'more',
+  'less',
+  'prefer_more',
+  'prefer_less',
+] as const;
+export const OPENAI_FORMALITY_VALUES = ['formal', 'informal', 'neutral'] as const;
+export const OPENAI_MODEL_VALUES = ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'] as const;
+export const ANTHROPIC_FORMALITY_VALUES = ['formal', 'informal', 'neutral'] as const;
+export const ANTHROPIC_MODEL_VALUES = [
+  'claude-sonnet-4-20250514',
+  'claude-3-5-haiku-20241022',
+  'claude-3-5-sonnet-20241022',
+] as const;
+
+const CLOUD_PROVIDER_MODEL_ALIASES: Readonly<Record<CloudProviderId, Readonly<Record<string, string>>>> = {
+  deepl: {},
+  openai: {
+    'gpt-4': 'gpt-4-turbo',
+  },
+  'google-cloud': {},
+  anthropic: {
+    'claude-3-5-haiku-latest': 'claude-3-5-haiku-20241022',
+    'claude-3-5-sonnet': 'claude-3-5-sonnet-20241022',
+    'claude-3-haiku-20240307': 'claude-3-5-haiku-20241022',
+  },
+};
+
+const CLOUD_PROVIDER_FORMALITY_ALIASES: Readonly<Record<CloudProviderId, Readonly<Record<string, string>>>> = {
+  deepl: {
+    formal: 'more',
+    informal: 'less',
+  },
+  openai: {
+    default: 'neutral',
+  },
+  'google-cloud': {},
+  anthropic: {
+    default: 'neutral',
+  },
+};
+
+function normalizeAliasedCloudProviderValue(
+  providerId: CloudProviderId,
+  value: unknown,
+  aliases: Readonly<Record<CloudProviderId, Readonly<Record<string, string>>>>
+): string | undefined {
+  const rawValue = typeof value === 'string' && value.length > 0 ? value : undefined;
+  if (!rawValue) {
+    return undefined;
+  }
+
+  return aliases[providerId][rawValue] ?? rawValue;
+}
+
+export function normalizeCloudProviderModelValue(
+  providerId: CloudProviderId,
+  value: unknown
+): string | undefined {
+  return normalizeAliasedCloudProviderValue(providerId, value, CLOUD_PROVIDER_MODEL_ALIASES);
+}
+
+export function normalizeCloudProviderFormalityValue(
+  providerId: CloudProviderId,
+  value: unknown
+): string | undefined {
+  return normalizeAliasedCloudProviderValue(providerId, value, CLOUD_PROVIDER_FORMALITY_ALIASES);
+}
+
 interface CloudProviderOptionMetadata {
   enabledField: string;
   testEndpoint?: string;
-  models?: string[];
+  models?: readonly string[];
   modelField?: string;
 }
 
@@ -261,7 +331,7 @@ const CLOUD_PROVIDER_OPTION_METADATA: Record<CloudProviderId, CloudProviderOptio
   openai: {
     enabledField: 'openai_enabled',
     modelField: 'openai_model',
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
+    models: OPENAI_MODEL_VALUES,
   },
   'google-cloud': {
     enabledField: 'google_cloud_enabled',
@@ -269,7 +339,7 @@ const CLOUD_PROVIDER_OPTION_METADATA: Record<CloudProviderId, CloudProviderOptio
   anthropic: {
     enabledField: 'anthropic_enabled',
     modelField: 'anthropic_model',
-    models: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-latest'],
+    models: ANTHROPIC_MODEL_VALUES,
   },
 };
 

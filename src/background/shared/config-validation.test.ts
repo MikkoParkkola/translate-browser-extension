@@ -137,11 +137,11 @@ describe('provider config validators', () => {
 });
 
 describe('buildValidatedCloudProviderMutation', () => {
-  it('stores only valid DeepL options', () => {
+  it('stores only valid DeepL options and canonicalizes aliases', () => {
     expect(
       buildValidatedCloudProviderMutation(
         'deepl',
-        { isPro: true, formality: 'more', ignored: 'value' },
+        { isPro: true, formality: 'formal', ignored: 'value' },
         { isPro: 'deepl_is_pro', formality: 'deepl_formality' }
       )
     ).toEqual({
@@ -150,15 +150,27 @@ describe('buildValidatedCloudProviderMutation', () => {
     });
   });
 
-  it('keeps legacy string options while filtering invalid primitive types', () => {
+  it('canonicalizes legacy OpenAI aliases while filtering invalid primitive types', () => {
     expect(
       buildValidatedCloudProviderMutation(
         'openai',
-        { model: 'not-real', formality: 'formal', temperature: 'hot' },
+        { model: 'gpt-4', formality: 'default', temperature: 'hot' },
         { model: 'openai_model', formality: 'openai_formality' }
       )
     ).toEqual({
-      openai_model: 'not-real',
+      openai_model: 'gpt-4-turbo',
+      openai_formality: 'neutral',
+    });
+  });
+
+  it('drops unsupported OpenAI model values', () => {
+    expect(
+      buildValidatedCloudProviderMutation(
+        'openai',
+        { model: 'not-real', formality: 'formal' },
+        { model: 'openai_model', formality: 'openai_formality' }
+      )
+    ).toEqual({
       openai_formality: 'formal',
     });
   });

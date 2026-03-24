@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ANTHROPIC_MODEL_VALUES,
   CLOUD_PROVIDER_IDS,
   TRANSLATION_PROVIDER_IDS,
   isCloudProviderId,
   isTranslationProviderId,
+  normalizeCloudProviderFormalityValue,
+  normalizeCloudProviderModelValue,
   normalizeTranslationProviderId,
 } from './provider-options';
 
@@ -38,5 +41,21 @@ describe('provider-options guards', () => {
   it('accepts cloud provider ids only for cloud guard', () => {
     expect(isCloudProviderId('deepl')).toBe(true);
     expect(isCloudProviderId('chrome-builtin')).toBe(false);
+  });
+
+  it('normalizes legacy cloud provider model aliases', () => {
+    expect(normalizeCloudProviderModelValue('openai', 'gpt-4')).toBe('gpt-4-turbo');
+    expect(normalizeCloudProviderModelValue('anthropic', 'claude-3-5-sonnet')).toBe(
+      'claude-3-5-sonnet-20241022'
+    );
+  });
+
+  it('normalizes legacy cloud provider formality aliases', () => {
+    expect(normalizeCloudProviderFormalityValue('deepl', 'formal')).toBe('more');
+    expect(normalizeCloudProviderFormalityValue('openai', 'default')).toBe('neutral');
+  });
+
+  it('exports canonical anthropic model values', () => {
+    expect(ANTHROPIC_MODEL_VALUES).toContain('claude-3-5-sonnet-20241022');
   });
 });
