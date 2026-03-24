@@ -14,27 +14,45 @@ jobs:
     runs-on: ubuntu-latest
     env:
       EXTENSION_ID: ${{ secrets.EXTENSION_ID }}
+      CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Check signing configuration
+        id: signing
+        run: |
+          missing=()
+          if [ -z "$EXTENSION_ID" ]; then
+            missing+=("EXTENSION_ID")
+          fi
+          if [ -z "$CRX_PRIVATE_KEY" ]; then
+            missing+=("CRX_PRIVATE_KEY")
+          fi
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Skipping signed dev build::Missing required secrets: ${missing[*]}"
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
       - name: Decode signing key
-        env:
-          CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
+        if: steps.signing.outputs.enabled == 'true'
         run: |
           echo "$CRX_PRIVATE_KEY" | base64 -d > key.pem
       - name: Package and sign extension
+        if: steps.signing.outputs.enabled == 'true'
         run: |
           VERSION=$(jq -r .version src/manifest.json)
           NAME="translate-by-mikko-extension-${VERSION}"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "NAME=$NAME" >> $GITHUB_ENV
-          npx -y crx pack dist -o "$NAME.crx" --zip-output "$NAME.zip" -p key.pem
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "NAME=$NAME" >> "$GITHUB_ENV"
+          bash scripts/pack-extension.sh "$NAME" key.pem
       - name: Prepare update files
+        if: steps.signing.outputs.enabled == 'true'
         run: |
           printf '%s\n' \
             '<?xml version="1.0" encoding="UTF-8"?>' \
@@ -44,10 +62,11 @@ jobs:
             '  </app>' \
             '</gupdate>' > updates.xml
       - name: Commit update files
+        if: steps.signing.outputs.enabled == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add updates.xml "${NAME}.crx" "${NAME}.zip"
           git commit -m "chore: update dev build [skip ci]" || echo "No changes to commit"
           git push
-      - run: rm key.pem
+      - run: rm -f key.pem

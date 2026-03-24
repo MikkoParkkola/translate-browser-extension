@@ -188,7 +188,7 @@ test.describe('CSP & Model Loading', () => {
     await page.close();
   });
 
-  test('model download does not trigger CSP violations', async ({ context, extensionId }) => {
+  test('model download does not trigger CSP violations @slow', async ({ context, extensionId }) => {
     test.setTimeout(180_000);
 
     const page = await context.newPage();

@@ -191,10 +191,12 @@ npm run lint              # ESLint code checking
 npm run format            # Prettier code formatting
 
 # Testing
-npm test                  # Run unit tests
-npm run test:e2e         # Run end-to-end tests
-npm run test:e2e-web     # Web-specific E2E tests
-npm run test:e2e-pdf     # PDF-specific E2E tests
+npm test                         # Run unit tests
+npm run test:e2e                # Run the full web + harness E2E surface
+npm run test:e2e:web            # Run the full extension-backed browser E2E suite
+npm run test:e2e:web:smoke      # Run the fast extension smoke subset used in CI
+npm run test:e2e:web:integration # Run the slower extension integration/model checks
+npm run test:e2e-pdf            # PDF-specific regression tests
 
 # Size Analysis
 npm run size             # Bundle size analysis
