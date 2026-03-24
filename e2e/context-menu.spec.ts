@@ -1,7 +1,5 @@
 import { test, expect, popupUrl, type Page } from './fixtures';
-
-const CONTENT_PAGE_URL = 'http://127.0.0.1:8080/e2e/mock.html';
-const CONTENT_PAGE_FRAGMENT = '/e2e/mock.html';
+import { MOCK_HARNESS_FRAGMENT, MOCK_HARNESS_URL } from './mock-harness';
 
 async function getTabIdForContentPage(popupPage: Page, urlFragment: string): Promise<number> {
   const tabId = await popupPage.evaluate(async (fragment) => {
@@ -42,7 +40,7 @@ test.describe('Context menu dispatch contracts', () => {
     extensionId,
   }) => {
     const page = await context.newPage();
-    await page.goto(CONTENT_PAGE_URL);
+    await page.goto(MOCK_HARNESS_URL);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1_500);
 
@@ -68,7 +66,7 @@ test.describe('Context menu dispatch contracts', () => {
     await popupPage.goto(popupUrl(extensionId));
     await popupPage.waitForLoadState('domcontentloaded');
 
-    const tabId = await getTabIdForContentPage(popupPage, CONTENT_PAGE_FRAGMENT);
+    const tabId = await getTabIdForContentPage(popupPage, MOCK_HARNESS_FRAGMENT);
     const response = await sendTabMessage<{ success: boolean; status: string }>(popupPage, tabId, {
       type: 'translateSelection',
       sourceLang: 'en',
@@ -88,7 +86,7 @@ test.describe('Context menu dispatch contracts', () => {
     extensionId,
   }) => {
     const page = await context.newPage();
-    await page.goto(CONTENT_PAGE_URL);
+    await page.goto(MOCK_HARNESS_URL);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1_500);
 
@@ -96,7 +94,7 @@ test.describe('Context menu dispatch contracts', () => {
     await popupPage.goto(popupUrl(extensionId));
     await popupPage.waitForLoadState('domcontentloaded');
 
-    const tabId = await getTabIdForContentPage(popupPage, CONTENT_PAGE_FRAGMENT);
+    const tabId = await getTabIdForContentPage(popupPage, MOCK_HARNESS_FRAGMENT);
     const response = await sendTabMessage<{ success: boolean; status: string }>(popupPage, tabId, {
       type: 'translatePage',
       sourceLang: 'en',
@@ -113,7 +111,7 @@ test.describe('Context menu dispatch contracts', () => {
 
   test('undo-translation restores translated markers', async ({ context, extensionId }) => {
     const page = await context.newPage();
-    await page.goto(CONTENT_PAGE_URL);
+    await page.goto(MOCK_HARNESS_URL);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1_500);
 
@@ -131,7 +129,7 @@ test.describe('Context menu dispatch contracts', () => {
     await popupPage.goto(popupUrl(extensionId));
     await popupPage.waitForLoadState('domcontentloaded');
 
-    const tabId = await getTabIdForContentPage(popupPage, CONTENT_PAGE_FRAGMENT);
+    const tabId = await getTabIdForContentPage(popupPage, MOCK_HARNESS_FRAGMENT);
     const response = await sendTabMessage<{ success: boolean; restoredCount: number }>(popupPage, tabId, {
       type: 'undoTranslation',
     });
@@ -160,7 +158,7 @@ test.describe('Context menu dispatch contracts', () => {
 
   test('translate-image dispatch accepts an image payload', async ({ context, extensionId }) => {
     const page = await context.newPage();
-    await page.goto(CONTENT_PAGE_URL);
+    await page.goto(MOCK_HARNESS_URL);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1_500);
 
@@ -181,7 +179,7 @@ test.describe('Context menu dispatch contracts', () => {
     await popupPage.goto(popupUrl(extensionId));
     await popupPage.waitForLoadState('domcontentloaded');
 
-    const tabId = await getTabIdForContentPage(popupPage, CONTENT_PAGE_FRAGMENT);
+    const tabId = await getTabIdForContentPage(popupPage, MOCK_HARNESS_FRAGMENT);
     const response = await sendTabMessage<{ success: boolean; status: string }>(popupPage, tabId, {
       type: 'translateImage',
       imageUrl,

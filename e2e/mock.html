@@ -11,6 +11,14 @@
     (() => {
       const providers = new Map();
 
+      function registerDefaultProviders() {
+        providers.set('mock', {
+          async translate({ text = '', target = 'translated' } = {}) {
+            return { text: `${text}-${target}` };
+          },
+        });
+      }
+
       const defaultCache = {
         cacheReady: Promise.resolve(),
         getCache: () => null,
@@ -38,7 +46,13 @@
         listProviders() {
           return [...providers.keys()];
         },
+        clearProviders() {
+          providers.clear();
+          registerDefaultProviders();
+        },
       };
+
+      registerDefaultProviders();
 
       window.qwenCache = defaultCache;
       window.qwenClearCache = defaultCache.qwenClearCache;
