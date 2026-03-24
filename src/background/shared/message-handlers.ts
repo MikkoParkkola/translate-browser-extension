@@ -39,7 +39,15 @@ import {
   withMessageResponse,
   withMessageResponseFallback,
 } from './handler-response';
-import { normalizeTranslationProviderId } from '../../shared/provider-options';
+import type {
+  CloudProviderStatusStorageRecord,
+  CloudProviderStorageMutation,
+  UserSettingsStorageRecord,
+} from './provider-config-types';
+import {
+  buildValidatedCloudProviderMutation,
+  normalizeUserSettings,
+} from './config-validation';
 
 const log = createLogger('SharedHandlers');
 
@@ -97,11 +105,11 @@ export async function handleGetCloudProviderStatus(): Promise<{ success: boolean
   return withMessageResponseFallback(
     async () => {
       const keys = Object.values(CLOUD_PROVIDER_KEYS);
-      const stored = await safeStorageGet<Record<string, string>>(keys);
+      const stored = await safeStorageGet<CloudProviderStatusStorageRecord>(keys);
 
       const status: Record<string, boolean> = {};
       for (const [provider, storageKey] of Object.entries(CLOUD_PROVIDER_KEYS)) {
-        status[provider] = !!stored[storageKey];
+        status[provider] = Boolean(stored[storageKey as keyof CloudProviderStatusStorageRecord]);
       }
 
       return { status };
@@ -119,18 +127,16 @@ export async function handleSetCloudApiKey(message: SetCloudApiKeyMessage): Prom
 
   return withMessageResponse(
     async () => {
-      const dataToStore: Record<string, unknown> = {
+      const dataToStore: CloudProviderStorageMutation = {
         [storageKey]: message.apiKey,
       };
 
       if (message.options) {
         const optionFields = CLOUD_PROVIDER_OPTION_FIELDS[message.provider];
-        for (const [optionKey, optionStorageKey] of Object.entries(optionFields)) {
-          const optionValue = message.options[optionKey];
-          if (optionValue !== undefined) {
-            dataToStore[optionStorageKey] = optionValue;
-          }
-        }
+        Object.assign(
+          dataToStore,
+          buildValidatedCloudProviderMutation(message.provider, message.options, optionFields),
+        );
       }
 
       await safeStorageSet(dataToStore);
@@ -281,18 +287,21 @@ export async function handleImportCorrections(message: ImportCorrectionsMessage)
 // ============================================================================
 
 export async function handleGetSettings(
-  storageGet: (keys: string[]) => Promise<Record<string, unknown>>,
+  storageGet: (keys: string[]) => Promise<UserSettingsStorageRecord>,
 ): Promise<MessageResponse<{ data: { sourceLanguage: string; targetLanguage: string; provider: TranslationProviderId; strategy: string } }>> {
   try {
-    const settings = await storageGet(['sourceLang', 'targetLang', 'provider', 'strategy']);
+    const settings = normalizeUserSettings(
+      await storageGet(['sourceLang', 'targetLang', 'provider', 'strategy']),
+      'opus-mt',
+    );
     return {
       success: true,
       data: {
         // Keep the legacy response shape for existing getSettings consumers.
-        sourceLanguage: (settings.sourceLang as string) || 'auto',
-        targetLanguage: (settings.targetLang as string) || 'en',
-        provider: normalizeTranslationProviderId(settings.provider),
-        strategy: (settings.strategy as string) || 'smart',
+        sourceLanguage: settings.sourceLang,
+        targetLanguage: settings.targetLang,
+        provider: settings.provider,
+        strategy: settings.strategy,
       },
     };
   } catch (error) {
@@ -313,17 +322,8 @@ export interface ActionSettings {
 }
 
 export async function getActionSettings(): Promise<ActionSettings> {
-  const settings = await safeStorageGet<{
-    sourceLang?: string;
-    targetLang?: string;
-    strategy?: Strategy;
-    provider?: unknown;
-  }>(['sourceLang', 'targetLang', 'strategy', 'provider']);
-
-  return {
-    sourceLang: settings.sourceLang || 'auto',
-    targetLang: settings.targetLang || 'en',
-    strategy: settings.strategy || 'smart',
-    provider: normalizeTranslationProviderId(settings.provider, getProvider()),
-  };
+  return normalizeUserSettings(
+    await safeStorageGet<UserSettingsStorageRecord>(['sourceLang', 'targetLang', 'strategy', 'provider']),
+    getProvider(),
+  );
 }

@@ -43,12 +43,23 @@ export interface DetailedCacheStats {
   languagePairs: Record<string, number>;
 }
 
+export interface CacheStatsSnapshot {
+  hits: number;
+  misses: number;
+}
+
+export interface TranslationCacheStorageRecord {
+  [key: string]: unknown;
+  cacheStats?: CacheStatsSnapshot;
+  translationCacheVersion?: number;
+}
+
 /**
  * Minimal storage adapter — both Chrome and Firefox implement this.
  */
-export interface StorageAdapter {
-  get(keys: string[]): Promise<Record<string, unknown>>;
-  set(data: Record<string, unknown>): Promise<void>;
+export interface StorageAdapter<TRecord extends object = TranslationCacheStorageRecord> {
+  get(keys: string[]): Promise<Partial<TRecord>>;
+  set(data: Partial<TRecord>): Promise<void>;
   remove(keys: string[]): Promise<void>;
 }
 
@@ -99,7 +110,7 @@ export interface TranslationCache {
  * @param options       Optional feature flags
  */
 export function createTranslationCache(
-  storage: StorageAdapter,
+  storage: StorageAdapter<TranslationCacheStorageRecord>,
   getProvider: () => string,
   options: TranslationCacheOptions = {},
 ): TranslationCache {
@@ -130,20 +141,21 @@ export function createTranslationCache(
 
         // Version check (Chrome only — prevents type errors from stale entries)
         if (enableVersioning) {
-          const storedVersion = stored[CACHE_VERSION_KEY] as number | undefined;
+          const storedVersion = stored.translationCacheVersion;
           if (storedVersion !== CACHE_VERSION) {
             log.info(
               `Cache version mismatch (stored: ${storedVersion}, current: ${CACHE_VERSION}), clearing stale cache`,
             );
             await storage.remove([CONFIG.cache.storageKey, CONFIG.cache.cacheStatsKey]);
-            await storage.set({ [CACHE_VERSION_KEY]: CACHE_VERSION });
+            await storage.set({ translationCacheVersion: CACHE_VERSION });
             initialized = true;
             return;
           }
         }
 
-        if (stored[CONFIG.cache.storageKey]) {
-          const entries = stored[CONFIG.cache.storageKey] as [string, PersistentCacheEntry][];
+        const storedEntries = stored[CONFIG.cache.storageKey];
+        if (Array.isArray(storedEntries)) {
+          const entries = storedEntries as [string, PersistentCacheEntry][];
           entries.forEach(([key, value]) => {
             cache.set(key, value);
           });
@@ -151,7 +163,7 @@ export function createTranslationCache(
         }
 
         if (stored.cacheStats) {
-          const stats = stored.cacheStats as { hits: number; misses: number };
+          const stats = stored.cacheStats;
           cacheHits = stats.hits || 0;
           cacheMisses = stats.misses || 0;
         }
@@ -175,12 +187,12 @@ export function createTranslationCache(
       saveTimer = null;
       try {
         const entries = Array.from(cache.entries());
-        const data: Record<string, unknown> = {
+        const data: TranslationCacheStorageRecord = {
           [CONFIG.cache.storageKey]: entries,
           cacheStats: { hits: cacheHits, misses: cacheMisses },
         };
         if (enableVersioning) {
-          data[CACHE_VERSION_KEY] = CACHE_VERSION;
+          data.translationCacheVersion = CACHE_VERSION;
         }
         await storage.set(data);
         log.debug(`Saved ${entries.length} translations to persistent storage`);
@@ -196,12 +208,12 @@ export function createTranslationCache(
     saveTimer = null;
 
     const entries = Array.from(cache.entries());
-    const data: Record<string, unknown> = {
+    const data: TranslationCacheStorageRecord = {
       [CONFIG.cache.storageKey]: entries,
       cacheStats: { hits: cacheHits, misses: cacheMisses },
     };
     if (enableVersioning) {
-      data[CACHE_VERSION_KEY] = CACHE_VERSION;
+      data.translationCacheVersion = CACHE_VERSION;
     }
     storage.set(data).catch((error) => {
       log.warn('Failed to flush cache on shutdown:', error);
