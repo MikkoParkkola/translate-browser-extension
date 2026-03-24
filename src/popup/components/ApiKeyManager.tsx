@@ -8,36 +8,34 @@ import { ConfirmDialog } from '../../shared/ConfirmDialog';
 import { CLOUD_PROVIDER_CONFIGS } from '../../shared/cloud-provider-configs';
 import { reportUiError, showTemporaryMessage } from '../../shared/ui-feedback';
 import {
-  getCloudProviderStorageKeys,
-  hasStoredApiKey,
-  readStoredBoolean,
-  type CloudProviderStorageRecord,
-} from '../../shared/cloud-provider-storage';
+  buildCloudProviderSaveMutation,
+  createRemovedCloudProviderStatus,
+  getCloudProviderEditDefaults,
+  loadCloudProviderUiStatus,
+  applySavedCloudProviderStatus,
+  type CloudProviderUiStatus,
+} from '../../shared/cloud-provider-ui-state';
 import { createLogger } from '../../core/logger';
-import { safeStorageGet, safeStorageSet, safeStorageRemove } from '../../core/storage';
+import { safeStorageSet, safeStorageRemove } from '../../core/storage';
+import type { CloudProviderId } from '../../types';
 
 const log = createLogger('ApiKeyManager');
 
 // Cloud provider definitions sourced from shared config
-
-interface ProviderStatus {
-  hasKey: boolean;
-  isPro?: boolean;
-}
 
 interface Props {
   onClose?: () => void;
 }
 
 export const ApiKeyManager: Component<Props> = (props) => {
-  const [providerStatus, setProviderStatus] = createSignal<Record<string, ProviderStatus>>({});
-  const [editingProvider, setEditingProvider] = createSignal<string | null>(null);
+  const [providerStatus, setProviderStatus] = createSignal<Partial<Record<CloudProviderId, CloudProviderUiStatus>>>({});
+  const [editingProvider, setEditingProvider] = createSignal<CloudProviderId | null>(null);
   const [apiKeyInput, setApiKeyInput] = createSignal('');
   const [isProTier, setIsProTier] = createSignal(false);
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [success, setSuccess] = createSignal<string | null>(null);
-  const [confirmRemove, setConfirmRemove] = createSignal<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = createSignal<CloudProviderId | null>(null);
 
   // Load current status on mount
   onMount(async () => {
@@ -45,30 +43,23 @@ export const ApiKeyManager: Component<Props> = (props) => {
   });
 
   const loadProviderStatus = async () => {
-    const status: Record<string, ProviderStatus> = {};
-
     try {
-      const stored = await safeStorageGet<CloudProviderStorageRecord>(
-        getCloudProviderStorageKeys(CLOUD_PROVIDER_CONFIGS)
-      );
-
-      for (const provider of CLOUD_PROVIDER_CONFIGS) {
-        status[provider.id] = {
-          hasKey: hasStoredApiKey(stored, provider.keyField),
-          isPro: provider.hasProTier ? readStoredBoolean(stored, provider.proField) : undefined,
-        };
-      }
+      setProviderStatus(await loadCloudProviderUiStatus(CLOUD_PROVIDER_CONFIGS));
     } catch (error) {
       log.error('Failed to load status:', error);
+      setProviderStatus({});
     }
-
-    setProviderStatus(status);
   };
 
-  const startEditing = (providerId: string) => {
+  const startEditing = (providerId: CloudProviderId) => {
+    const defaults = getCloudProviderEditDefaults(
+      CLOUD_PROVIDER_CONFIGS.find((provider) => provider.id === providerId),
+      providerStatus()[providerId],
+    );
+
     setEditingProvider(providerId);
     setApiKeyInput('');
-    setIsProTier(providerStatus()[providerId]?.isPro ?? false);
+    setIsProTier(defaults.isProTier);
     setError(null);
     setSuccess(null);
   };
@@ -80,7 +71,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
     setSuccess(null);
   };
 
-  const saveApiKey = async (providerId: string) => {
+  const saveApiKey = async (providerId: CloudProviderId) => {
     const provider = CLOUD_PROVIDER_CONFIGS.find(p => p.id === providerId);
     /* v8 ignore start -- guard: provider always found from own button handlers */
     if (!provider) return;
@@ -96,12 +87,9 @@ export const ApiKeyManager: Component<Props> = (props) => {
     setError(null);
 
     try {
-      const data: Record<string, unknown> = { [provider.keyField]: key };
-      if (provider.hasProTier && provider.proField) {
-        data[provider.proField] = isProTier();
-      }
-
-      const ok = await safeStorageSet(data);
+      const ok = await safeStorageSet(buildCloudProviderSaveMutation(provider, key, {
+        isPro: isProTier(),
+      }));
 
       if (!ok) {
         setError('Failed to save API key');
@@ -110,7 +98,9 @@ export const ApiKeyManager: Component<Props> = (props) => {
 
       setProviderStatus(prev => ({
         ...prev,
-        [providerId]: { hasKey: true, isPro: isProTier() },
+        [providerId]: applySavedCloudProviderStatus(prev[providerId], provider, {
+          isPro: isProTier(),
+        }),
       }));
 
       showTemporaryMessage(
@@ -126,7 +116,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
     }
   };
 
-  const removeApiKey = async (providerId: string) => {
+  const removeApiKey = async (providerId: CloudProviderId) => {
     const provider = CLOUD_PROVIDER_CONFIGS.find(p => p.id === providerId);
     /* v8 ignore start -- guard */
     if (!provider) return;
@@ -146,7 +136,7 @@ export const ApiKeyManager: Component<Props> = (props) => {
 
       setProviderStatus(prev => ({
         ...prev,
-        [providerId]: { hasKey: false, isPro: undefined },
+        [providerId]: createRemovedCloudProviderStatus(prev[providerId]),
       }));
 
       showTemporaryMessage(setSuccess, `${provider.name} API key removed`, 1500);
@@ -175,7 +165,8 @@ export const ApiKeyManager: Component<Props> = (props) => {
       <div class="api-key-providers">
         <For each={CLOUD_PROVIDER_CONFIGS}>
           {(provider) => {
-            const status = () => providerStatus()[provider.id] || { hasKey: false };
+            const status = (): CloudProviderUiStatus =>
+              providerStatus()[provider.id] || { hasKey: false, enabled: false };
             const isEditing = () => editingProvider() === provider.id;
 
             return (

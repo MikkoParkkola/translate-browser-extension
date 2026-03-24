@@ -505,13 +505,9 @@ describe('CloudProviders', () => {
       mockStorageRemove.mockResolvedValue(undefined);
 
       render(() => <CloudProviders />);
-      await vi.waitFor(() => expect(screen.getAllByText('Add API Key').length).toBe(4));
-      
-      // Get the second provider's Update button (OpenAI)
-      const buttons = screen.getAllByText('Update API Key');
-      if (buttons.length > 0) {
-        fireEvent.click(buttons[1] || buttons[0]);
-      }
+      await vi.waitFor(() => expect(screen.getAllByText('Update API Key').length).toBeGreaterThan(0));
+
+      fireEvent.click(screen.getAllByText('Update API Key')[0]);
 
       await vi.waitFor(() => {
         const removeBtn = screen.queryByText('Remove');
@@ -531,18 +527,13 @@ describe('CloudProviders', () => {
 
       render(() => <CloudProviders />);
       await vi.waitFor(() => {
-        // Look for a button that indicates OpenAI is configured
-        expect(mockStorageGet).toHaveBeenCalled();
+        expect(screen.getAllByText('Remove').length).toBeGreaterThan(0);
       });
 
-      // Find and click the Remove button for OpenAI (first provider with a key)
-      // The Remove button should be visible since openai_api_key is configured
       const removeButtons = screen.getAllByText('Remove');
       expect(removeButtons.length).toBeGreaterThan(0);
 
-      // Click the Remove button (first one is likely DeepL or another provider)
-      // We're testing that the modelField gets included in removal
-      fireEvent.click(removeButtons[1] || removeButtons[0]);
+      fireEvent.click(removeButtons[0]);
 
       await vi.waitFor(() => expect(screen.getByText('Remove API Key')).toBeTruthy());
       const confirmBtn = document.querySelector('.confirm-dialog__btn--confirm') as HTMLElement;
@@ -566,7 +557,7 @@ describe('CloudProviders', () => {
 
       render(() => <CloudProviders />);
       await vi.waitFor(() => {
-        expect(mockStorageGet).toHaveBeenCalled();
+        expect(screen.getAllByText('Remove').length).toBeGreaterThan(0);
       });
 
       // Find and click a Remove button

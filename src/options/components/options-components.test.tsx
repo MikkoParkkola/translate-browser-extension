@@ -25,12 +25,8 @@ import {
   OPTIONS_CLOUD_PROVIDERS,
   SITE_RULE_PROVIDER_OPTIONS,
 } from '../../shared/provider-options';
-import {
-  getCloudProviderStorageKeys,
-  hasStoredApiKey,
-  readStoredBoolean,
-  readStoredString,
-} from '../../shared/cloud-provider-storage';
+import { getCloudProviderStorageKeys } from '../../shared/cloud-provider-storage';
+import { buildCloudProviderUiStatusRecord } from '../../shared/cloud-provider-ui-state';
 
 // ============================================================================
 // Chrome / browser API mock
@@ -251,18 +247,8 @@ describe('CloudProviders logic', () => {
   });
 
   describe('provider status from storage', () => {
-    const buildStatus = (stored: Record<string, unknown>) => {
-      const status: Record<string, { hasKey: boolean; enabled: boolean; isPro?: boolean; model?: string }> = {};
-      for (const provider of CLOUD_PROVIDERS) {
-        status[provider.id] = {
-          hasKey: hasStoredApiKey(stored, provider.keyField),
-          enabled: readStoredBoolean(stored, provider.enabledField) ?? false,
-          isPro: provider.hasProTier ? readStoredBoolean(stored, provider.proField) : undefined,
-          model: readStoredString(stored, provider.modelField),
-        };
-      }
-      return status;
-    };
+    const buildStatus = (stored: Record<string, unknown>) =>
+      buildCloudProviderUiStatusRecord(CLOUD_PROVIDERS, stored);
 
     it('marks provider as configured when key present', () => {
       const status = buildStatus({ deepl_api_key: 'key123', deepl_enabled: true });
@@ -289,6 +275,11 @@ describe('CloudProviders logic', () => {
     it('reads model from storage for OpenAI', () => {
       const status = buildStatus({ openai_api_key: 'key', openai_model: 'gpt-4o-mini' });
       expect(status.openai.model).toBe('gpt-4o-mini');
+    });
+
+    it('normalizes aliased cloud model values from storage', () => {
+      const status = buildStatus({ openai_api_key: 'key', openai_model: 'gpt-4' });
+      expect(status.openai.model).toBe('gpt-4-turbo');
     });
   });
 
