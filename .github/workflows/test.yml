@@ -20,4 +20,6 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
       - name: Run tests
-        run: npm test -- --run --reporters=default
+        run: npm test
+        env:
+          CI: true

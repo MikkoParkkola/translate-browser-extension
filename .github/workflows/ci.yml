@@ -47,7 +47,7 @@ jobs:
         run: npm run typecheck:popup
 
       - name: Run unit tests
-        run: npm test -- --ci --reporters=default
+        run: npm test
         env:
           CI: true
 
