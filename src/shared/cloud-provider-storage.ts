@@ -54,6 +54,10 @@ export type CloudProviderStorageMutation = Partial<
   Record<CloudProviderStorageKey, CloudProviderStorageValue>
 >;
 
+export type CloudProviderSettingsStorageMutation = Partial<
+  Record<CloudProviderSettingsStorageKey, CloudProviderStorageValue>
+>;
+
 export type CloudProviderStatusStorageRecord = Pick<
   CloudProviderStorageRecord,
   'deepl_api_key' | 'openai_api_key' | 'anthropic_api_key' | 'google_cloud_api_key'

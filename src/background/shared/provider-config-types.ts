@@ -2,6 +2,7 @@ export type {
   AnthropicStoredConfig,
   CloudProviderEnabledStorageRecord,
   CloudProviderSettingsStorageKey,
+  CloudProviderSettingsStorageMutation,
   CloudProviderSettingsStorageRecord,
   CloudProviderStorageKey,
   CloudProviderStorageMutation,
