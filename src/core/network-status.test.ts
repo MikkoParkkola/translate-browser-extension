@@ -134,6 +134,34 @@ describe('onNetworkChange', () => {
     addSpy.mockRestore();
   });
 
+  it('logs offline transitions at info level instead of warn', () => {
+    const handlers: Array<[string, EventListenerOrEventListenerObject]> = [];
+    const origAdd = globalThis.addEventListener.bind(globalThis);
+    const addSpy = vi.spyOn(globalThis, 'addEventListener').mockImplementation(
+      (type: string, handler: EventListenerOrEventListenerObject) => {
+        handlers.push([type, handler]);
+        origAdd(type, handler);
+      }
+    );
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    _resetNetworkMonitoring();
+    initNetworkMonitoring();
+
+    const offlineHandler = handlers.find(([type]) => type === 'offline');
+    if (offlineHandler) {
+      (offlineHandler[1] as EventListener)(new Event('offline'));
+    }
+
+    expect(warnSpy).not.toHaveBeenCalledWith('[Network]', 'Network lost - cloud providers unavailable');
+    expect(logSpy).toHaveBeenCalledWith('[Network]', 'Network lost - cloud providers unavailable');
+
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
+    addSpy.mockRestore();
+  });
+
   it('unsubscribe removes listener so it no longer receives events', () => {
     const listener = vi.fn();
     const unsub = onNetworkChange(listener);

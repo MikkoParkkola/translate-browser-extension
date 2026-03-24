@@ -38,6 +38,7 @@ import {
 import {
   TRANSLATED_ATTR,
   ORIGINAL_TEXT_ATTR,
+  ORIGINAL_TEXT_NODES_ATTR,
   MACHINE_TRANSLATION_ATTR,
   SOURCE_LANG_ATTR,
   TARGET_LANG_ATTR,
@@ -327,10 +328,12 @@ async function translateBatchWithRetry(
 
         response.result.forEach((translated, idx) => {
           const node = batch.nodes[idx];
-          // Guard: skip detached nodes (removed from DOM during translation) and already-translated
-          if (node && translated && node.parentElement && document.contains(node) &&
-              !node.parentElement.hasAttribute(TRANSLATED_ATTR)) {
+          // Guard: skip detached nodes (removed from DOM during translation).
+          // A single rich text container can legitimately contain multiple sibling
+          // text nodes, so reinjection must not stop after the first child update.
+          if (node && translated && node.parentElement && document.contains(node)) {
             try {
+              const parent = node.parentElement;
               const finalText = batch.restoreFns[idx](translated);
               /* v8 ignore start */
               const original = node.textContent || '';
@@ -343,23 +346,18 @@ async function translateBatchWithRetry(
                 log.debug(`DOM Replace #${idx}: "${original.trim().substring(0, 40)}" -> "${finalText.substring(0, 40)}" (same=${original.trim() === finalText})`);
               }
 
-              /* v8 ignore start */
-              if (!node.parentElement.hasAttribute(ORIGINAL_TEXT_ATTR)) {
-              /* v8 ignore stop */
-                node.parentElement.setAttribute(ORIGINAL_TEXT_ATTR, original);
-              }
-
-              node.parentElement.setAttribute(MACHINE_TRANSLATION_ATTR, finalText);
-              node.parentElement.setAttribute(SOURCE_LANG_ATTR, sourceLang);
-              node.parentElement.setAttribute(TARGET_LANG_ATTR, targetLang);
+              ensureOriginalTextSnapshot(parent);
 
               node.textContent = leadingSpace + finalText + trailingSpace;
-              node.parentElement.setAttribute(TRANSLATED_ATTR, 'true');
-              makeTranslatedElementEditable(node.parentElement);
+              parent.setAttribute(MACHINE_TRANSLATION_ATTR, parent.textContent || '');
+              parent.setAttribute(SOURCE_LANG_ATTR, sourceLang);
+              parent.setAttribute(TARGET_LANG_ATTR, targetLang);
+              parent.setAttribute(TRANSLATED_ATTR, 'true');
+              makeTranslatedElementEditable(parent);
 
               // Auto-apply bilingual annotation if bilingual mode is active
               if (getBilingualModeState()) {
-                applyBilingualToElement(node.parentElement);
+                applyBilingualToElement(parent);
               }
 
               translatedCount++;
@@ -404,6 +402,23 @@ async function translateBatchWithRetry(
 
 /** Active IntersectionObserver for scroll-aware below-fold translation */
 let belowFoldObserver: IntersectionObserver | null = null;
+
+function getDirectTextChildren(element: Element): Text[] {
+  return Array.from(element.childNodes).filter((node): node is Text => node.nodeType === Node.TEXT_NODE);
+}
+
+function ensureOriginalTextSnapshot(element: Element): void {
+  if (!element.hasAttribute(ORIGINAL_TEXT_ATTR)) {
+    element.setAttribute(ORIGINAL_TEXT_ATTR, element.textContent || '');
+  }
+
+  if (!element.hasAttribute(ORIGINAL_TEXT_NODES_ATTR)) {
+    element.setAttribute(
+      ORIGINAL_TEXT_NODES_ATTR,
+      JSON.stringify(getDirectTextChildren(element).map((node) => node.textContent || ''))
+    );
+  }
+}
 
 /**
  * Clean up scroll-aware translation observer
@@ -552,11 +567,14 @@ async function translatePage(
     if (belowFoldNodes.length > 0) {
       updateProgressToast(`Translating remaining content...`);
 
-      // Split below-fold nodes into chunks by screen-height sections
-      // Translate the first chunk immediately, defer the rest to scroll
-      const IMMEDIATE_BELOW_FOLD = Math.min(belowFoldNodes.length, CONFIG.batching.maxSize * 2);
-      const immediateNodes = belowFoldNodes.slice(0, IMMEDIATE_BELOW_FOLD);
-      const deferredNodes = belowFoldNodes.slice(IMMEDIATE_BELOW_FOLD);
+      // Finish modest pages immediately so long descriptions below the fold
+      // are translated in the first pass. Only defer the tail of very large pages.
+      const immediateBelowFoldCount = Math.min(
+        belowFoldNodes.length,
+        CONFIG.batching.immediateBelowFoldMaxNodes
+      );
+      const immediateNodes = belowFoldNodes.slice(0, immediateBelowFoldCount);
+      const deferredNodes = belowFoldNodes.slice(immediateBelowFoldCount);
 
       // Translate the first section below fold immediately
       const immediateBatches = await createBatches(immediateNodes, g);
@@ -597,7 +615,7 @@ async function translatePage(
     if (errorCount > 0 && translatedCount > 0) {
       showInfoToast(`Translated ${translatedCount} items (${errorCount} failed)`);
     } else if (translatedCount > 0 && errorCount === 0) {
-      const deferredMsg = belowFoldNodes.length > CONFIG.batching.maxSize * 2
+      const deferredMsg = belowFoldNodes.length > CONFIG.batching.immediateBelowFoldMaxNodes
         ? ' (more translates as you scroll)' : '';
       showInfoToast(`Translated ${translatedCount} items${deferredMsg}`);
     } else if (errorCount > 0 && translatedCount === 0) {
@@ -799,7 +817,27 @@ function undoTranslation(): number {
 
   translatedElements.forEach((element) => {
     const originalText = element.getAttribute(ORIGINAL_TEXT_ATTR);
-    if (originalText !== null) {
+    const originalNodeTexts = element.getAttribute(ORIGINAL_TEXT_NODES_ATTR);
+    let restoredViaNodes = false;
+    if (originalNodeTexts !== null) {
+      try {
+        const originals = JSON.parse(originalNodeTexts) as unknown;
+        if (Array.isArray(originals)) {
+          const textNodes = getDirectTextChildren(element);
+          textNodes.forEach((textNode, index) => {
+            if (typeof originals[index] === 'string') {
+              textNode.textContent = originals[index];
+            }
+          });
+          restoredCount++;
+          restoredViaNodes = true;
+        }
+      } catch {
+        // Fall back to the legacy single-text-node restoration path below.
+      }
+    }
+
+    if (!restoredViaNodes && originalText !== null) {
       // Find the text node and restore original
       const textNode = Array.from(element.childNodes).find(
         (node) => node.nodeType === Node.TEXT_NODE
@@ -815,6 +853,7 @@ function undoTranslation(): number {
     // Clean up attributes and invalidate skip cache
     element.removeAttribute(TRANSLATED_ATTR);
     element.removeAttribute(ORIGINAL_TEXT_ATTR);
+    element.removeAttribute(ORIGINAL_TEXT_NODES_ATTR);
     clearSkipCacheEntry(element);
   });
 

@@ -61,6 +61,8 @@ export const CONFIG = {
     minTextLength: 2,
     /** Number of IPC batches to pipeline concurrently during viewport translation */
     concurrencyLimit: 2,
+    /** Finish small/medium below-fold pages immediately before deferring to scroll */
+    immediateBelowFoldMaxNodes: 200,
   },
 
   /**

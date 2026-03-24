@@ -14,7 +14,7 @@ import { withTimeout } from '../core/async-utils';
 // Extracted modules
 import { MODEL_MAP, PIVOT_ROUTES } from './model-maps';
 import { getCachedPipeline, cachePipeline, clearCache as clearPipelineCache, castAsPipeline } from './pipeline-cache';
-import { detectLanguage } from './language-detection';
+import { buildLanguageDetectionSample, detectLanguage } from './language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline, detectWebGPU, detectWebNN } from './translategemma';
 import { getChromeTranslator, isChromeTranslatorAvailable } from '../providers/chrome-translator';
 
@@ -233,7 +233,7 @@ async function translate(
   let actualSourceLang = sourceLang;
   if (sourceLang === 'auto') {
     const detectStart = performance.now();
-    const sampleText = Array.isArray(text) ? text.slice(0, 3).join(' ') : text;
+    const sampleText = buildLanguageDetectionSample(text);
     actualSourceLang = await detectLanguage(sampleText);
     if (sessionId) {
       profiler.recordTiming(sessionId, 'language_detect', performance.now() - detectStart);

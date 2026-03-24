@@ -95,6 +95,47 @@ export const FRANC_TO_ISO: Record<string, string> = {
   'glg': 'gl',  // Galician
 };
 
+const DETECTION_SAMPLE_MAX_CHARS = 500;
+const DETECTION_SAMPLE_SCAN_ITEMS = 40;
+const DETECTION_SAMPLE_MAX_ITEMS = 8;
+const DETECTION_SAMPLE_MIN_ITEM_LENGTH = 12;
+
+/**
+ * Build a representative language-detection sample for translation requests.
+ *
+ * Page translations often send arrays where the first few items are short
+ * navigation labels ("Home", "Chat", etc.) and the meaningful body copy
+ * appears slightly later. Prefer longer early items so mixed-language pages
+ * are detected from the actual content rather than chrome around it.
+ */
+export function buildLanguageDetectionSample(text: string | string[]): string {
+  if (!Array.isArray(text)) {
+    return text;
+  }
+
+  const candidates = text
+    .map((item, index) => ({ index, value: item.trim() }))
+    .filter((item) => item.value.length >= DETECTION_SAMPLE_MIN_ITEM_LENGTH)
+    .slice(0, DETECTION_SAMPLE_SCAN_ITEMS);
+
+  if (candidates.length === 0) {
+    return text
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+      .slice(0, DETECTION_SAMPLE_MAX_ITEMS)
+      .join(' ')
+      .slice(0, DETECTION_SAMPLE_MAX_CHARS);
+  }
+
+  return candidates
+    .sort((a, b) => b.value.length - a.value.length)
+    .slice(0, DETECTION_SAMPLE_MAX_ITEMS)
+    .sort((a, b) => a.index - b.index)
+    .map((item) => item.value)
+    .join(' ')
+    .slice(0, DETECTION_SAMPLE_MAX_CHARS);
+}
+
 /**
  * Detect language from text.
  *

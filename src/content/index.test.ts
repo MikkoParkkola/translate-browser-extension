@@ -416,6 +416,84 @@ describe('Content Script', () => {
       expect(div?.getAttribute('data-translated')).toBe('true');
     });
 
+    it('translates sibling text nodes within the same rich-text parent', async () => {
+      document.body.innerHTML = `
+        <p id="test">
+          Zin in een leuke avontuurlijke date?<br>
+          Ik ben een Nederlandse vrouw van 29 jaar.<br>
+          Afspreken? Stuur mij dan een WhatsApp berichtje
+        </p>
+      `;
+
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: [
+          'Fancy a fun adventurous date?',
+          'I am a Dutch woman of 29 years.',
+          'Want to meet? Send me a WhatsApp message',
+        ],
+      });
+
+      const sendResponse = vi.fn();
+
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'nl', targetLang: 'en', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      const paragraph = document.getElementById('test');
+      const textNodes = Array.from(paragraph?.childNodes || []).filter(
+        (node): node is Text => node.nodeType === Node.TEXT_NODE
+      );
+
+      expect(textNodes.map((node) => node.textContent?.trim()).filter(Boolean)).toEqual([
+        'Fancy a fun adventurous date?',
+        'I am a Dutch woman of 29 years.',
+        'Want to meet? Send me a WhatsApp message',
+      ]);
+    });
+
+    it('undo restores sibling text nodes within the same rich-text parent', async () => {
+      document.body.innerHTML = `
+        <p id="rich">
+          Eerste regel<br>
+          Tweede regel<br>
+          Derde regel
+        </p>
+      `;
+
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['First line', 'Second line', 'Third line'],
+      });
+
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'nl', targetLang: 'en', strategy: 'balanced' },
+        {},
+        vi.fn()
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      const undoResponse = vi.fn();
+      messageHandler({ type: 'undoTranslation' } as unknown as Parameters<typeof messageHandler>[0], {}, undoResponse);
+
+      const paragraph = document.getElementById('rich');
+      const textNodes = Array.from(paragraph?.childNodes || []).filter(
+        (node): node is Text => node.nodeType === Node.TEXT_NODE
+      );
+
+      expect(textNodes.map((node) => node.textContent?.trim()).filter(Boolean)).toEqual([
+        'Eerste regel',
+        'Tweede regel',
+        'Derde regel',
+      ]);
+      expect(undoResponse).toHaveBeenCalledWith({ success: true, restoredCount: 1 });
+    });
+
     it('preserves whitespace', async () => {
       document.body.innerHTML = '<div id="test">  Original text  </div>';
 
@@ -2855,7 +2933,7 @@ describe('Content Script', () => {
   describe('Below-fold translation with IntersectionObserver', () => {
     it('sets up scroll-aware translation for deferred content', async () => {
       let html = '';
-      for (let i = 0; i < 120; i++) {
+      for (let i = 0; i < 220; i++) {
         html += `<p>Paragraph ${i} content here</p>`;
       }
       document.body.innerHTML = html;
@@ -2872,6 +2950,31 @@ describe('Content Script', () => {
 
       await new Promise((r) => setTimeout(r, 200));
 
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+    });
+
+    it('translates medium below-fold pages immediately without deferring', async () => {
+      let html = '';
+      for (let i = 0; i < 150; i++) {
+        html += `<p>Paragraph ${i} content here</p>`;
+      }
+      document.body.innerHTML = html;
+
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: Array(50).fill('Käännetty'),
+      });
+
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(document.querySelector('[data-translate-chunk]')).toBeNull();
       expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
     });
 
@@ -4037,10 +4140,10 @@ describe('Content Script', () => {
     });
 
     it('creates IntersectionObserver for deferred nodes and fires callback on intersection', async () => {
-      // 102 paragraphs: all go to below-fold in jsdom (getBoundingClientRect returns all zeros,
+      // 220 paragraphs: all go to below-fold in jsdom (getBoundingClientRect returns all zeros,
       // so rect.bottom=0 which fails the rect.bottom>0 check).
-      // IMMEDIATE_BELOW_FOLD = min(102, 100) = 100; deferredNodes = 2 → setupScrollAwareTranslation.
-      const paragraphs = Array.from({ length: 102 }, (_, i) => `<p>Content item ${i}</p>`).join('');
+      // immediateBelowFoldCount = min(220, 200) = 200; deferredNodes = 20 → setupScrollAwareTranslation.
+      const paragraphs = Array.from({ length: 220 }, (_, i) => `<p>Content item ${i}</p>`).join('');
       document.body.innerHTML = paragraphs;
 
       mockSendMessage.mockImplementation(async (msg: { type: string; text?: string[] }) =>

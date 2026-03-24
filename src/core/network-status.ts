@@ -41,7 +41,9 @@ export function initNetworkMonitoring(): void {
 
   globalThis.addEventListener('offline', () => {
     _isOnline = false;
-    log.warn('Network lost - cloud providers unavailable');
+    // Cloud requests still fail explicitly at execution time; keep the transition
+    // visible in logs without surfacing it as an extension warning.
+    log.info('Network lost - cloud providers unavailable');
     listeners.forEach((fn) => fn(false));
   });
 

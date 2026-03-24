@@ -792,6 +792,57 @@ async function tryClearOffscreenPipelineCache(): Promise<void> {
   }
 }
 
+type IndexedDbWithDatabases = IDBFactory & {
+  databases?: () => Promise<Array<{ name?: string }>>;
+};
+
+function getCacheStorage(): CacheStorage | null {
+  return typeof globalThis.caches === 'undefined' ? null : globalThis.caches;
+}
+
+function getIndexedDbFactory(): IndexedDbWithDatabases | null {
+  return typeof globalThis.indexedDB === 'undefined'
+    ? null
+    : globalThis.indexedDB as IndexedDbWithDatabases;
+}
+
+async function clearMatchingCaches(patterns: readonly string[]): Promise<string[] | null> {
+  const cacheStorage = getCacheStorage();
+  if (!cacheStorage) {
+    return null;
+  }
+
+  const cacheNames = await cacheStorage.keys();
+  const cleared: string[] = [];
+  for (const name of cacheNames) {
+    if (patterns.some((pattern) => name.includes(pattern))) {
+      await cacheStorage.delete(name);
+      cleared.push(name);
+    }
+  }
+  return cleared;
+}
+
+async function clearMatchingIndexedDbDatabases(
+  patterns: readonly string[]
+): Promise<string[] | null> {
+  const indexedDbFactory = getIndexedDbFactory();
+  if (!indexedDbFactory || typeof indexedDbFactory.databases !== 'function') {
+    return null;
+  }
+
+  const databases = await indexedDbFactory.databases();
+  const cleared: string[] = [];
+  for (const db of databases) {
+    const name = db.name;
+    if (name && patterns.some((pattern) => name.includes(pattern))) {
+      indexedDbFactory.deleteDatabase(name);
+      cleared.push(name);
+    }
+  }
+  return cleared;
+}
+
 /**
  * Delete a specific downloaded model.
  */
@@ -830,18 +881,17 @@ async function handleClearAllModels(): Promise<MessageResponse> {
     await browserAPI.storage.local.remove(['downloadedModels']);
 
     try {
-      const cacheNames = await caches.keys();
-      let cleared = 0;
-      for (const name of cacheNames) {
-        if (name.includes('transformers') || name.includes('onnx') || name.includes('model')) {
-          await caches.delete(name);
-          cleared++;
+      const clearedCaches = await clearMatchingCaches(['transformers', 'onnx', 'model']);
+      if (clearedCaches === null) {
+        log.info('CacheStorage unavailable in service worker; skipping model cache cleanup');
+      } else {
+        for (const name of clearedCaches) {
           log.info(`Cleared cache: ${name}`);
         }
+        log.info(`Cleared ${clearedCaches.length} model caches`);
       }
-      log.info(`Cleared ${cleared} model caches`);
     } catch (cacheError) {
-      log.warn('Cache API not available in service worker:', cacheError);
+      log.warn('Model cache cleanup failed:', cacheError);
     }
 
     log.info('All models cleared');
@@ -1633,27 +1683,27 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     log.info('Extension updated from', details.previousVersion);
 
     try {
-      const cacheNames = await caches.keys();
-      let cleared = 0;
-      for (const name of cacheNames) {
-        if (name.includes('transformers') || name.includes('onnx') || name.includes('huggingface')) {
-          await caches.delete(name);
-          cleared++;
-        }
-      }
-      if (cleared > 0) {
-        log.info(`Cleared ${cleared} model caches on update`);
+      const clearedCaches = await clearMatchingCaches(['transformers', 'onnx', 'huggingface']);
+      if (clearedCaches === null) {
+        log.info('CacheStorage unavailable during update cleanup; skipping model cache cleanup');
+      } else if (clearedCaches.length > 0) {
+        log.info(`Cleared ${clearedCaches.length} model caches on update`);
       }
 
-      const databases = await indexedDB.databases();
-      for (const db of databases) {
-        if (db.name && (db.name.includes('transformers') || db.name.includes('onnx') || db.name.includes('huggingface'))) {
-          indexedDB.deleteDatabase(db.name);
-          log.info(`Cleared IndexedDB: ${db.name}`);
+      const clearedDatabases = await clearMatchingIndexedDbDatabases([
+        'transformers',
+        'onnx',
+        'huggingface',
+      ]);
+      if (clearedDatabases === null) {
+        log.info('IndexedDB database listing unavailable during update cleanup; skipping database cleanup');
+      } else {
+        for (const name of clearedDatabases) {
+          log.info(`Cleared IndexedDB: ${name}`);
         }
       }
     } catch (error) {
-      log.warn('Cache clearing on update failed:', error);
+      log.warn('Update cache cleanup failed:', error);
     }
   }
 });

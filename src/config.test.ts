@@ -89,10 +89,15 @@ describe('CONFIG default values', () => {
       expect(CONFIG.batching.maxSize).toBe(50);
       expect(CONFIG.batching.maxTextLength).toBe(5000);
       expect(CONFIG.batching.minTextLength).toBe(2);
+      expect(CONFIG.batching.immediateBelowFoldMaxNodes).toBe(200);
     });
 
     it('minTextLength is less than maxTextLength', () => {
       expect(CONFIG.batching.minTextLength).toBeLessThan(CONFIG.batching.maxTextLength);
+    });
+
+    it('immediate below-fold limit exceeds one batch', () => {
+      expect(CONFIG.batching.immediateBelowFoldMaxNodes).toBeGreaterThan(CONFIG.batching.maxSize);
     });
   });
 

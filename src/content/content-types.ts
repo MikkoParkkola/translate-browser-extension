@@ -35,6 +35,7 @@ export const TRANSLATED_ATTR = 'data-translated';
 
 /** Attribute to store original text for undo */
 export const ORIGINAL_TEXT_ATTR = 'data-original-text';
+export const ORIGINAL_TEXT_NODES_ATTR = 'data-original-text-nodes';
 
 /** Attributes for correction learning */
 export const MACHINE_TRANSLATION_ATTR = 'data-machine-translation';

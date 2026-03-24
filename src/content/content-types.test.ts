@@ -3,6 +3,7 @@ import {
   SKIP_TAGS,
   TRANSLATED_ATTR,
   ORIGINAL_TEXT_ATTR,
+  ORIGINAL_TEXT_NODES_ATTR,
   MACHINE_TRANSLATION_ATTR,
   SOURCE_LANG_ATTR,
   TARGET_LANG_ATTR,
@@ -50,6 +51,11 @@ describe('constants', () => {
   it('ORIGINAL_TEXT_ATTR is a string', () => {
     expect(typeof ORIGINAL_TEXT_ATTR).toBe('string');
     expect(ORIGINAL_TEXT_ATTR).toBe('data-original-text');
+  });
+
+  it('ORIGINAL_TEXT_NODES_ATTR is a string', () => {
+    expect(typeof ORIGINAL_TEXT_NODES_ATTR).toBe('string');
+    expect(ORIGINAL_TEXT_NODES_ATTR).toBe('data-original-text-nodes');
   });
 
   it('MACHINE_TRANSLATION_ATTR is a string', () => {

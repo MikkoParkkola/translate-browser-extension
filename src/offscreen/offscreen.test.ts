@@ -91,8 +91,12 @@ vi.mock('./pipeline-cache', () => ({
 
 // Language detection
 const mockDetectLanguage = vi.fn().mockReturnValue('en');
+const mockBuildLanguageDetectionSample = vi.fn((text: string | string[]) =>
+  Array.isArray(text) ? text.join(' ') : text
+);
 vi.mock('./language-detection', () => ({
-  detectLanguage: (...args: unknown[]) => mockDetectLanguage(...args),
+  detectLanguage: (text: string) => mockDetectLanguage(text),
+  buildLanguageDetectionSample: (text: string | string[]) => mockBuildLanguageDetectionSample(text),
 }));
 
 // TranslateGemma
@@ -279,6 +283,9 @@ beforeEach(() => {
   mockGetCachedPipeline.mockReturnValue(null);
   mockClearPipelineCache.mockResolvedValue(undefined);
   mockDetectLanguage.mockReturnValue('en');
+  mockBuildLanguageDetectionSample.mockImplementation((text: string | string[]) =>
+    Array.isArray(text) ? text.join(' ') : text
+  );
   mockDetectWebGPU.mockResolvedValue({ supported: false, fp16: false });
   mockGetTranslateGemmaPipeline.mockResolvedValue({ model: {}, tokenizer: {} });
   mockTranslateWithGemma.mockResolvedValue('gemma translated');
@@ -749,20 +756,30 @@ describe('offscreen message handler', () => {
       expect(pipe).not.toHaveBeenCalled();
     });
 
-    it('joins first 3 array items as sample text for auto-detection', async () => {
+    it('builds a broader sample for array auto-detection', async () => {
       mockDetectLanguage.mockReturnValue('en');
       mockCacheGet.mockResolvedValue('vertaald');
 
       await dispatch({
         type: 'translate',
-        text: ['Hello', 'World', 'Test'],
+        text: [
+          'Home',
+          'Events',
+          'Chat',
+          'Login',
+          'Beschrijving',
+          'Hoi ik ben Rosie en ik besteed graag lekker tijd aan het voorspel om heerlijk op te warmen.',
+        ],
         sourceLang: 'auto',
         targetLang: 'nl',
         provider: 'opus-mt',
       });
 
+      expect(mockBuildLanguageDetectionSample).toHaveBeenCalledWith(
+        expect.arrayContaining(['Beschrijving'])
+      );
       expect(mockDetectLanguage).toHaveBeenCalledWith(
-        expect.stringContaining('Hello')
+        expect.stringContaining('Hoi ik ben Rosie')
       );
     });
   });

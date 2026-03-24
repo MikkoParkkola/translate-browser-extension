@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { FRANC_TO_ISO, detectLanguage } from './language-detection';
+import { buildLanguageDetectionSample, FRANC_TO_ISO, detectLanguage } from './language-detection';
 
 // Mock the logger to avoid console output in tests
 vi.mock('../core/logger', () => ({
@@ -244,5 +244,30 @@ describe('detectLanguage', () => {
       );
       expect(result).toBe('fr');
     });
+  });
+});
+
+describe('buildLanguageDetectionSample', () => {
+  it('keeps single-string input unchanged', () => {
+    expect(buildLanguageDetectionSample('Hallo wereld')).toBe('Hallo wereld');
+  });
+
+  it('prefers longer body text over short navigation labels', async () => {
+    const sample = buildLanguageDetectionSample([
+      'Home',
+      'Events',
+      'Chat',
+      'Login',
+      'Contact',
+      'High class',
+      'Beschrijving',
+      'Hoi ik ben Rosie en ik besteed graag lekker tijd aan het voorspel om heerlijk op te warmen en geniet net zoveel van de sex als jij.',
+      'Dirty talk',
+      'Privé €150 per uur',
+    ]);
+
+    expect(sample).toContain('Hoi ik ben Rosie');
+    expect(sample).toContain('Beschrijving');
+    expect(await detectLanguage(sample)).toBe('nl');
   });
 });

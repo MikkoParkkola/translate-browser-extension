@@ -6365,6 +6365,58 @@ describe('Coverage gap tests — second wave', () => {
 
       (globalThis as any).caches = undefined;
     });
+
+    it('skips update cache cleanup when CacheStorage is unavailable', async () => {
+      const origCaches = (globalThis as Record<string, unknown>).caches;
+      const origIndexedDB = (globalThis as Record<string, unknown>).indexedDB;
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      (globalThis as Record<string, unknown>).caches = undefined;
+      (globalThis as Record<string, unknown>).indexedDB = {
+        databases: vi.fn().mockResolvedValue([]),
+        deleteDatabase: vi.fn(),
+      };
+
+      const installHandler = mockAddInstalledListener.mock.calls[0]?.[0];
+      await installHandler({ reason: 'update', previousVersion: '1.0.0' });
+
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        '[Background]',
+        'Update cache cleanup failed:',
+        expect.anything()
+      );
+
+      warnSpy.mockRestore();
+      (globalThis as Record<string, unknown>).caches = origCaches;
+      (globalThis as Record<string, unknown>).indexedDB = origIndexedDB;
+    });
+
+    it('skips update database cleanup when indexedDB database listing is unavailable', async () => {
+      const origCaches = (globalThis as Record<string, unknown>).caches;
+      const origIndexedDB = (globalThis as Record<string, unknown>).indexedDB;
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      (globalThis as Record<string, unknown>).caches = {
+        keys: vi.fn().mockResolvedValue([]),
+        delete: vi.fn(),
+      };
+      (globalThis as Record<string, unknown>).indexedDB = {
+        deleteDatabase: vi.fn(),
+      };
+
+      const installHandler = mockAddInstalledListener.mock.calls[0]?.[0];
+      await installHandler({ reason: 'update', previousVersion: '1.0.0' });
+
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        '[Background]',
+        'Update cache cleanup failed:',
+        expect.anything()
+      );
+
+      warnSpy.mockRestore();
+      (globalThis as Record<string, unknown>).caches = origCaches;
+      (globalThis as Record<string, unknown>).indexedDB = origIndexedDB;
+    });
   });
 
   // -----------------------------------------------------------------------
