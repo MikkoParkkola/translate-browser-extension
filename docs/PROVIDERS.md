@@ -1,60 +1,51 @@
-# Providers and API keys
+# Providers and local models
 
-Call `qwenProviders.initProviders()` (or `qwenProviders.ensureProviders()`) to load the default provider presets: DashScope, OpenAI, Mistral, OpenRouter, Gemini, Anthropic, DeepL, Google, Qwen and Local WASM.
+Manage provider selection from the extension popup and configure cloud credentials from the options page.
 
-Manage providers in the extension under **Settings → Providers**. Use **Add Provider** or **Add Local Provider** to supply API keys, endpoints and models.
+## Local translation paths
 
-DashScope (Qwen)
-- Endpoint: https://dashscope-intl.aliyuncs.com/api/v1
-- Keys: https://dashscope.console.aliyun.com/
-- Models: qwen-mt-turbo, qwen-mt-plus
-- Notes: Streaming supported (SSE). Background keeps the key.
+### OPUS-MT
+- Type: local model
+- Runtime: `@huggingface/transformers` in the offscreen document
+- Size: ~170MB per language pair
+- Notes: Fast default local fallback. Runs on WASM, so it works even without GPU acceleration.
 
-OpenAI
-- Preset: openai
-- Endpoint: https://api.openai.com/v1
-- Keys: https://platform.openai.com/api-keys
-- Models: gpt-5, gpt-5-mini, gpt-5-nano (chat/completions)
-- Notes: Use a model available to your account. Background keeps the key.
+### TranslateGemma
+- Type: local model
+- Runtime: direct model + tokenizer loading in the offscreen document
+- Size: ~3.6GB
+- Notes: Higher-quality local translation. Requires WebGPU or WebNN acceleration.
 
-Gemini
-- Endpoint: https://generativelanguage.googleapis.com/v1beta
-- Keys: https://aistudio.google.com/app/apikey
-- Models: gemini-1.5-flash, gemini-pro
-- Notes: Streaming supported (SSE). Background keeps the key.
+### Chrome Built-in
+- Type: native browser translation
+- Availability: Chrome 138+
+- Size: no download
+- Notes: Uses the browser translator directly when available.
 
-OpenRouter
-- Preset: openrouter
-- Endpoint: https://openrouter.ai/api/v1
-- Keys: https://openrouter.ai/keys
-- Models: fetched dynamically from OpenRouter
-- Notes: Streaming supported. Background keeps the key.
+## Cloud providers
 
-Mistral
-- Endpoint: https://api.mistral.ai/v1
-- Keys: https://console.mistral.ai/
-- Models: mistral-small, mistral-medium
-- Notes: Streaming supported (SSE). Custom endpoints allow self-hosted deployments.
+### DeepL
+- Endpoint: `https://api.deepl.com/v2`
+- Keys: <https://www.deepl.com/pro-api>
+- Notes: High-quality translation API. Credentials stay in extension-managed storage.
 
-Anthropic (Claude)
-- Endpoint: https://api.anthropic.com/v1
-- Keys: https://console.anthropic.com/account/api-keys
-- Models: claude-4.1-haiku, claude-4.1-sonnet (legacy: claude-3-haiku, claude-3-sonnet)
-- Notes: Streaming supported (/messages SSE). Background keeps the key.
+### OpenAI
+- Endpoint: `https://api.openai.com/v1`
+- Keys: <https://platform.openai.com/api-keys>
+- Notes: LLM-powered translation. Use a model available to your account.
 
-Local WASM
-- Preset: local-wasm
-- Endpoint: runs in-browser
-- Keys: none
-- Models: bundled Qwen translator
-- Notes: Initializes the model on first use and caches it for reuse. Works offline.
+### Anthropic
+- Endpoint: `https://api.anthropic.com/v1`
+- Keys: <https://console.anthropic.com/account/api-keys>
+- Notes: Claude-powered translation via the extension background path.
 
-DeepL
-- Endpoint: https://api.deepl.com/v2
-- Keys: https://www.deepl.com/pro-api
-- Notes: No streaming for /translate; single-shot responses. Background keeps the key.
+### Google Cloud
+- Endpoint: `https://translation.googleapis.com/`
+- Keys: <https://cloud.google.com/translate/docs/setup>
+- Notes: Google Cloud Translation API support for cloud translation workflows.
 
-Google detection (optional)
-- Set Detector to “Google” for auto-detect when Source is “auto”
-- Create a key and enable Cloud Translation API: https://cloud.google.com/translate/docs/setup
-- Store the key in “Detection API Key (Google)”. Used only for detection.
+## Operational notes
+
+- Local model downloads are tracked by extension metadata plus browser caches.
+- `Clear All Models` removes locally tracked model metadata and clears matching model caches.
+- Cloud providers remain optional; local translation continues to work without API keys.

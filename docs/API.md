@@ -1,8 +1,8 @@
-# Qwen Translator Extension API Documentation
+# Translate by Mikko Extension API Documentation
 
 ## Overview
 
-This document provides comprehensive API documentation for the Qwen Translator Extension's modular architecture. The extension follows a service-oriented design with well-defined interfaces between components.
+This document provides comprehensive API documentation for the Translate by Mikko Extension's modular architecture. The extension follows a service-oriented design with well-defined interfaces between components.
 
 ## Table of Contents
 

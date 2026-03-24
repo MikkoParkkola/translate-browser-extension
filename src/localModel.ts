@@ -1,13 +1,15 @@
 /**
- * Local Model Manager singleton for translation using wllama (WebGPU/WASM).
+ * Legacy experimental local-model manager surface backed by wllama (WebGPU/WASM).
  *
- * This file maintains backward compatibility while using the new wllama-based
- * LocalModelManager. The modular architecture is preserved:
+ * The shipped extension currently routes local translation through
+ * `src/offscreen/offscreen.ts` (OPUS-MT) and `src/offscreen/translategemma.ts`.
+ * This file remains for older/manual surfaces and focused unit tests while using
+ * the wllama-based LocalModelManager underneath. The modular architecture is preserved:
  * - ModelValidator: Handles model validation and integrity checks
  * - ModelUpdater: Manages version updates and migrations
  * - ModelPerformanceMonitor: Tracks performance metrics and optimization
  *
- * Backend: @wllama/wllama (replaces mock llama.cpp WASM)
+ * Backend: @wllama/wllama (replaces the old mock llama.cpp WASM)
  * Key fix: Chunked/sharded model loading (no single large ArrayBuffer)
  */
 

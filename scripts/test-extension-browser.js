@@ -2,7 +2,7 @@
 // This script should be run in the browser console when the extension popup is open
 
 (function() {
-  console.log('🔍 Browser Extension UI Test - Qwen Translator Extension');
+  console.log('🔍 Browser Extension UI Test - Translate by Mikko Extension');
   
   function testElement(id, description) {
     const element = document.getElementById(id);

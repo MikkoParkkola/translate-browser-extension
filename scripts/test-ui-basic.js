@@ -36,7 +36,7 @@ global.chrome = {
 };
 
 async function testBasicUI() {
-  console.log('🔍 Basic UI Test - Qwen Translator Extension\n');
+  console.log('🔍 Basic UI Test - Translate by Mikko Extension\n');
   
   try {
     // Test 1: HTML Structure

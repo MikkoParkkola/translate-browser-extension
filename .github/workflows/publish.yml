@@ -30,20 +30,19 @@ jobs:
       - name: Package and sign extension
         run: |
           VERSION=$(jq -r .version src/manifest.json)
-          NAME="qwen-translator-extension-${VERSION}"
+          NAME="translate-by-mikko-extension-${VERSION}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "NAME=$NAME" >> $GITHUB_ENV
           npx -y crx pack dist -o "$NAME.crx" --zip-output "$NAME.zip" -p key.pem
       - name: Prepare update files
         run: |
-          cat <<XML > updates.xml
-<?xml version="1.0" encoding="UTF-8"?>
-<gupdate xmlns="http://www.google.com/update2/response" protocol="2.0">
-  <app appid="${EXTENSION_ID}">
-    <updatecheck codebase="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/${NAME}.crx" version="${VERSION}" />
-  </app>
-</gupdate>
-XML
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="UTF-8"?>' \
+            '<gupdate xmlns="http://www.google.com/update2/response" protocol="2.0">' \
+            "  <app appid=\"${EXTENSION_ID}\">" \
+            "    <updatecheck codebase=\"https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/${NAME}.crx\" version=\"${VERSION}\" />" \
+            '  </app>' \
+            '</gupdate>' > updates.xml
       - name: Commit update files
         run: |
           git config user.name "github-actions"

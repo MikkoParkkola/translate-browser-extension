@@ -3,7 +3,7 @@
 
 (function() {
   console.clear();
-  console.log('🔍 Extension Debug Helper - Qwen Translator');
+  console.log('🔍 Extension Debug Helper - Translate by Mikko');
   console.log('================================================\n');
   
   // Helper function to check element state

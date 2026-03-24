@@ -1,5 +1,9 @@
 /**
- * Local Model Manager for translation using wllama (WebGPU/WASM).
+ * Legacy experimental local-model manager for translation using wllama (WebGPU/WASM).
+ *
+ * This is not the main popup/provider runtime path today; the shipped extension
+ * uses the offscreen OPUS-MT and TranslateGemma paths. This manager remains as a
+ * quarantined experimental surface for the wllama-backed GGUF flow.
  *
  * Refactored from the old llama.cpp mock to use real inference via @wllama/wllama.
  * Key changes:

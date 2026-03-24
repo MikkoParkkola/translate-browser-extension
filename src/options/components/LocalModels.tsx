@@ -69,25 +69,10 @@ export const LocalModels: Component = () => {
         return;
       }
 
-      // Fallback: estimate from known model sizes
-      const knownModels: ModelInfo[] = [
-        { id: 'opus-mt-en-fi', name: 'OPUS-MT English-Finnish', size: 300 * 1024 * 1024 },
-        { id: 'opus-mt-fi-en', name: 'OPUS-MT Finnish-English', size: 300 * 1024 * 1024 },
-        { id: 'opus-mt-en-de', name: 'OPUS-MT English-German', size: 300 * 1024 * 1024 },
-        { id: 'opus-mt-de-en', name: 'OPUS-MT German-English', size: 300 * 1024 * 1024 },
-        { id: 'nllb-200', name: 'NLLB-200 (Universal — 200 languages)', size: 350 * 1024 * 1024 },
-        { id: 'translategemma', name: 'TranslateGemma 4B', size: 2.5 * 1024 * 1024 * 1024 },
-      ];
-
-      // Merge with stored models if available
-      const mergedModels = models.length > 0 ? models : knownModels.filter(
-        () => estimate.usage && estimate.usage > 100 * 1024 * 1024
-      );
-
       setStats({
         totalUsed: estimate.usage || 0,
         quota: estimate.quota || 0,
-        models: mergedModels,
+        models,
       });
     } catch (error) {
       log.error('Failed to load stats:', error);
@@ -279,20 +264,20 @@ export const LocalModels: Component = () => {
           </div>
           <div style={{ "font-size": "0.875rem", color: "var(--color-gray-600)" }}>
             <p style={{ "margin-bottom": "0.75rem" }}>
-              <strong>OPUS-MT Models</strong> (~300MB each): Helsinki-NLP translation models.
+              <strong>OPUS-MT Models</strong> (~170MB per language pair): Helsinki-NLP translation models.
               Fast and accurate for European languages.
             </p>
             <p style={{ "margin-bottom": "0.75rem" }}>
-              <strong>NLLB-200</strong> (~350MB): Meta's universal model covering 200 language pairs
-              in a single download. Replaces multiple OPUS-MT models and supports low-resource languages.
-            </p>
-            <p style={{ "margin-bottom": "0.75rem" }}>
-              <strong>TranslateGemma</strong> (~2.5GB): Google's multilingual model.
-              Supports 8 languages with high quality but requires WebGPU or WebNN.
+              <strong>TranslateGemma</strong> (~3.6GB): high-quality local translation in a single model.
+              Requires WebGPU or WebNN acceleration.
             </p>
             <p>
-              Models are stored in IndexedDB and persist across browser restarts.
-              They are downloaded on first use for each language pair.
+              <strong>Chrome Built-in</strong> uses the browser translator in Chrome 138+ and does not
+              require a local model download, so it does not appear in this list.
+            </p>
+            <p>
+              Downloaded models are tracked from extension metadata and browser caches.
+              They persist across browser restarts and download on first use when needed.
             </p>
           </div>
         </section>
