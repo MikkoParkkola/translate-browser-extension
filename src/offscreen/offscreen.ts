@@ -5,7 +5,7 @@
 
 import type { TranslationProviderId, TranslationPipeline } from '../types';
 import { extractErrorMessage } from '../core/errors';
-import { getTranslationCache, type TranslationCacheStats } from '../core/translation-cache';
+import { getTranslationCache } from '../core/translation-cache';
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
 import { profiler } from '../core/profiler';
@@ -32,6 +32,14 @@ import {
   isOffscreenCloudProviderRuntimeId,
   translateWithOffscreenCloudProvider,
 } from './cloud-provider-runtime';
+import {
+  isOffscreenTargetedMessage,
+  routeOffscreenMessage,
+  type OffscreenMessageByType,
+  type OffscreenMessageHandlers,
+  type OffscreenMessageResponseMap,
+  type OffscreenRoutedResponse,
+} from './message-routing';
 
 // OCR service
 import { extractTextFromImage, terminateOCR, type OCRResult } from '../core/ocr-service';
@@ -536,206 +544,188 @@ function getSupportedLanguages(): Array<{ src: string; tgt: string; pivot?: bool
   return getSupportedLanguagePairs();
 }
 
+function validateTranslateMessage(message: OffscreenMessageByType<'translate'>): string | undefined {
+  if (message.text === undefined || message.text === null) {
+    return 'Missing required field: text';
+  }
+  if (!message.sourceLang || !message.targetLang) {
+    return 'Missing required field: sourceLang or targetLang';
+  }
+  if (!isValidLangCode(message.sourceLang)) {
+    return 'Invalid sourceLang: must be non-empty string, max 20 characters';
+  }
+  if (!isValidLangCode(message.targetLang)) {
+    return 'Invalid targetLang: must be non-empty string, max 20 characters';
+  }
+
+  return undefined;
+}
+
+async function handleOffscreenTranslate(
+  message: OffscreenMessageByType<'translate'>
+): Promise<OffscreenMessageResponseMap['translate']> {
+  const validationError = validateTranslateMessage(message);
+  if (validationError) {
+    return { success: false, error: validationError };
+  }
+
+  const sessionId = message.sessionId;
+  if (sessionId) {
+    profiler.startTiming(sessionId, 'offscreen_processing');
+  }
+
+  const pageContext = typeof message.pageContext === 'string' ? message.pageContext : undefined;
+
+  const result = await translate(
+    message.text,
+    message.sourceLang,
+    message.targetLang,
+    message.provider ?? 'opus-mt',
+    sessionId,
+    pageContext
+  );
+
+  let profilingData = undefined;
+  if (sessionId) {
+    profiler.endTiming(sessionId, 'offscreen_processing');
+    profilingData = profiler.getSessionData(sessionId);
+  }
+
+  return { success: true, result, profilingData };
+}
+
+async function handleOffscreenPreloadModel(
+  message: OffscreenMessageByType<'preloadModel'>
+): Promise<OffscreenMessageResponseMap['preloadModel']> {
+  const isLowPriority = message.priority === 'low';
+  if (isLowPriority) {
+    log.debug(`Low-priority preload: ${message.sourceLang}->${message.targetLang}`);
+  }
+
+  if (message.provider === 'translategemma') {
+    const [gpu, webnn] = await Promise.all([detectWebGPU(), detectWebNN()]);
+    if (!gpu.supported && !webnn) {
+      return {
+        success: false,
+        error: 'TranslateGemma requires WebNN or WebGPU. Neither is available.',
+      };
+    }
+    await getTranslateGemmaPipeline();
+    return { success: true, preloaded: true };
+  }
+
+  if (message.provider === 'chrome-builtin') {
+    const available = await isChromeTranslatorAvailable();
+    return { success: true, preloaded: available, available };
+  }
+
+  const route = resolveOpusMtTranslationRoute(message.sourceLang, message.targetLang);
+  if (route?.kind === 'direct') {
+    await getPipeline(message.sourceLang, message.targetLang);
+    return { success: true, preloaded: true };
+  }
+  if (route?.kind === 'pivot') {
+    const [firstHop] = route.route;
+    const [firstSrc, firstTgt] = firstHop.split('-');
+    await getPipeline(firstSrc, firstTgt);
+    return { success: true, preloaded: true, partial: true };
+  }
+
+  return { success: true, preloaded: false };
+}
+
+async function handleOffscreenCropImage(
+  message: OffscreenMessageByType<'cropImage'>
+): Promise<OffscreenMessageResponseMap['cropImage']> {
+  const { imageData: cropSrc, rect, devicePixelRatio = 1 } = message;
+  const img = new Image();
+  img.src = cropSrc;
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error('Failed to load image for cropping'));
+  });
+
+  const canvas = document.createElement('canvas');
+  const dpr = devicePixelRatio;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(
+    img,
+    rect.x * dpr,
+    rect.y * dpr,
+    rect.width * dpr,
+    rect.height * dpr,
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+  return { success: true, imageData: canvas.toDataURL('image/png') };
+}
+
+const offscreenMessageHandlers: OffscreenMessageHandlers = {
+  translate: handleOffscreenTranslate,
+  getProfilingStats: async () => ({
+    success: true,
+    aggregates: profiler.getAllAggregates(),
+    formatted: profiler.formatAggregates(),
+  }),
+  preloadModel: handleOffscreenPreloadModel,
+  getSupportedLanguages: async () => ({
+    success: true,
+    languages: getSupportedLanguages(),
+  }),
+  ping: async () => ({ success: true, status: 'ready' }),
+  checkWebGPU: async () => {
+    const gpu = await detectWebGPU();
+    return { success: true, ...gpu };
+  },
+  checkWebNN: async () => ({
+    success: true,
+    supported: await detectWebNN(),
+  }),
+  getCacheStats: async () => ({
+    success: true,
+    stats: await getTranslationCache().getStats(),
+  }),
+  clearCache: async () => {
+    await getTranslationCache().clear();
+    return { success: true, cleared: true };
+  },
+  clearPipelineCache: async () => {
+    await clearPipelineCache();
+    return { success: true, cleared: true };
+  },
+  getCloudProviderUsage: async (message) => ({
+    success: true,
+    usage: await getOffscreenCloudProviderUsage(message.provider),
+  }),
+  ocrImage: async (message) => {
+    log.info('Processing OCR request...');
+    const ocrResult: OCRResult = await extractTextFromImage(message.imageData, message.lang);
+    return {
+      success: true,
+      text: ocrResult.text,
+      confidence: ocrResult.confidence,
+      blocks: ocrResult.blocks,
+    };
+  },
+  terminateOCR: async () => {
+    await terminateOCR();
+    return { success: true };
+  },
+  cropImage: handleOffscreenCropImage,
+};
+
 // Message handler
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.target !== 'offscreen') return false;
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse: (response: OffscreenRoutedResponse) => void) => {
+  if (!isOffscreenTargetedMessage(message)) return false;
 
   (async () => {
     try {
-      switch (message.type) {
-        case 'translate': {
-          // Validate required fields to prevent cryptic downstream errors
-          if (message.text === undefined || message.text === null) {
-            sendResponse({ success: false, error: 'Missing required field: text' });
-            return;
-          }
-          if (!message.sourceLang || !message.targetLang) {
-            sendResponse({ success: false, error: 'Missing required field: sourceLang or targetLang' });
-            return;
-          }
-
-          // Validate sourceLang/targetLang: non-empty strings, max length 20 chars
-          if (!isValidLangCode(message.sourceLang)) {
-            sendResponse({ success: false, error: 'Invalid sourceLang: must be non-empty string, max 20 characters' });
-            return;
-          }
-          if (!isValidLangCode(message.targetLang)) {
-            sendResponse({ success: false, error: 'Invalid targetLang: must be non-empty string, max 20 characters' });
-            return;
-          }
-
-          // Support profiling sessions passed from background
-          const sessionId = message.sessionId;
-          if (sessionId) {
-            profiler.startTiming(sessionId, 'offscreen_processing');
-          }
-
-          // Extract page context from translation options if provided
-          const pageContext = message.pageContext as string | undefined;
-
-          const result = await translate(
-            message.text,
-            message.sourceLang,
-            message.targetLang,
-            /* v8 ignore start -- OR default */
-            message.provider || 'opus-mt',
-            /* v8 ignore stop */
-            sessionId,
-            pageContext
-          );
-
-          // Collect profiling data to send back
-          let profilingData = undefined;
-          if (sessionId) {
-            profiler.endTiming(sessionId, 'offscreen_processing');
-            profilingData = profiler.getSessionData(sessionId);
-          }
-
-          sendResponse({ success: true, result, profilingData });
-          break;
-        }
-        case 'getProfilingStats': {
-          // Return aggregate profiling statistics
-          sendResponse({
-            success: true,
-            aggregates: profiler.getAllAggregates(),
-            formatted: profiler.formatAggregates(),
-          });
-          break;
-        }
-        case 'preloadModel': {
-          // Preload the requested provider's model
-          // Priority: 'low' for background/predictive preloads, 'high' for user-initiated
-          const isLowPriority = message.priority === 'low';
-
-          if (isLowPriority) {
-            log.debug(`Low-priority preload: ${message.sourceLang}->${message.targetLang}`);
-          }
-
-          if (message.provider === 'translategemma') {
-            const [gpu, webnn] = await Promise.all([detectWebGPU(), detectWebNN()]);
-            if (!gpu.supported && !webnn) {
-              sendResponse({ success: false, error: 'TranslateGemma requires WebNN or WebGPU. Neither is available.' });
-              break;
-            }
-            await getTranslateGemmaPipeline();
-            sendResponse({ success: true, preloaded: true });
-          } else if (message.provider === 'chrome-builtin') {
-            // Chrome Built-in doesn't need preloading, just check availability
-            const available = await isChromeTranslatorAvailable();
-            sendResponse({ success: true, preloaded: available, available });
-          } else {
-            // OPUS-MT: preload the pipeline for the language pair
-            const route = resolveOpusMtTranslationRoute(message.sourceLang, message.targetLang);
-            if (route?.kind === 'direct') {
-              await getPipeline(message.sourceLang, message.targetLang);
-              sendResponse({ success: true, preloaded: true });
-            } else if (route?.kind === 'pivot') {
-              // For pivot routes, preload the first hop model (source -> English)
-              const [firstHop] = route.route;
-              const [firstSrc, firstTgt] = firstHop.split('-');
-              await getPipeline(firstSrc, firstTgt);
-              sendResponse({ success: true, preloaded: true, partial: true });
-            } else {
-              sendResponse({ success: true, preloaded: false });
-            }
-          }
-          break;
-        }
-        case 'getSupportedLanguages': {
-          sendResponse({ success: true, languages: getSupportedLanguages() });
-          break;
-        }
-        case 'ping': {
-          sendResponse({ success: true, status: 'ready' });
-          break;
-        }
-        case 'checkWebGPU': {
-          const gpu = await detectWebGPU();
-          sendResponse({ success: true, ...gpu });
-          break;
-        }
-        case 'checkWebNN': {
-          const supported = await detectWebNN();
-          sendResponse({ success: true, supported });
-          break;
-        }
-        case 'getCacheStats': {
-          const cache = getTranslationCache();
-          const stats: TranslationCacheStats = await cache.getStats();
-          sendResponse({ success: true, stats });
-          break;
-        }
-        case 'clearCache': {
-          const cache = getTranslationCache();
-          await cache.clear();
-          sendResponse({ success: true, cleared: true });
-          break;
-        }
-        case 'clearPipelineCache': {
-          // Clear all loaded ML pipelines (frees GPU/WASM memory)
-          await clearPipelineCache();
-          sendResponse({ success: true, cleared: true });
-          break;
-        }
-        // checkChromeTranslator: handled directly in service-worker via
-        // chrome.scripting.executeScript (MAIN world) — offscreen cannot
-        // see the Translator API.
-        case 'getCloudProviderUsage': {
-          const usage = await getOffscreenCloudProviderUsage(message.provider);
-          sendResponse({ success: true, usage });
-          break;
-        }
-        case 'ocrImage': {
-          // Extract text from image using Tesseract.js
-          log.info('Processing OCR request...');
-          const ocrResult: OCRResult = await extractTextFromImage(
-            message.imageData,
-            message.lang
-          );
-          sendResponse({
-            success: true,
-            text: ocrResult.text,
-            confidence: ocrResult.confidence,
-            blocks: ocrResult.blocks,
-          });
-          break;
-        }
-        case 'terminateOCR': {
-          // Clean up OCR worker
-          await terminateOCR();
-          sendResponse({ success: true });
-          break;
-        }
-        case 'cropImage': {
-          // Crop a screenshot image to a specified rectangle
-          const { imageData: cropSrc, rect, devicePixelRatio = 1 } = message;
-          const img = new Image();
-          img.src = cropSrc;
-          await new Promise<void>((resolve, reject) => {
-            img.onload = () => resolve();
-            img.onerror = () => reject(new Error('Failed to load image for cropping'));
-          });
-
-          const canvas = document.createElement('canvas');
-          const dpr = devicePixelRatio as number;
-          canvas.width = rect.width * dpr;
-          canvas.height = rect.height * dpr;
-          const ctx = canvas.getContext('2d')!;
-          ctx.drawImage(
-            img,
-            rect.x * dpr, rect.y * dpr,
-            rect.width * dpr, rect.height * dpr,
-            0, 0,
-            canvas.width, canvas.height
-          );
-
-          sendResponse({ success: true, imageData: canvas.toDataURL('image/png') });
-          break;
-        }
-        default:
-          sendResponse({ success: false, error: `Unknown type: ${message.type}` });
-      }
+      sendResponse(await routeOffscreenMessage(message, offscreenMessageHandlers));
     } catch (error) {
       log.error(' Error:', error);
       sendResponse({
