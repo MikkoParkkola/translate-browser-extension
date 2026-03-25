@@ -102,6 +102,19 @@ describe('OpenAIProvider', () => {
       expect(info.model).toBe('gpt-4o-mini');
       expect(info.formality).toBe('neutral');
     });
+
+    it('preserves existing in-memory settings when the key changes', async () => {
+      await provider.setApiKey('sk-old-key');
+      await provider.setModel('gpt-4o');
+      await provider.setFormality('formal');
+
+      await provider.setApiKey('sk-new-key');
+
+      const info = provider.getInfo();
+      expect(mockStorage['openai_api_key']).toBe('sk-new-key');
+      expect(info.model).toBe('gpt-4o');
+      expect(info.formality).toBe('formal');
+    });
   });
 
   describe('setModel', () => {

@@ -37,7 +37,11 @@ interface GoogleDetectResponse {
   };
 }
 
-export class GoogleCloudProvider extends CloudProvider {
+function createGoogleCloudConfig(apiKey: string): GoogleCloudConfig {
+  return { apiKey };
+}
+
+export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
   private config: GoogleCloudConfig | null = null;
   private charactersUsed = 0;
 
@@ -77,10 +81,20 @@ export class GoogleCloudProvider extends CloudProvider {
     this.charactersUsed = 0;
   }
 
+  protected getConfigState(): GoogleCloudConfig | null {
+    return this.config;
+  }
+
+  protected setConfigState(config: GoogleCloudConfig | null): void {
+    this.config = config;
+  }
+
   /** Store API key in storage */
   async setApiKey(apiKey: string): Promise<void> {
-    await this.persist({ google_cloud_api_key: apiKey });
-    this.config = { apiKey };
+    await this.persistAndUpdateConfig(
+      { google_cloud_api_key: apiKey },
+      () => createGoogleCloudConfig(apiKey)
+    );
   }
 
   /**

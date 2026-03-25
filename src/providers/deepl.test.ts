@@ -97,6 +97,19 @@ describe('DeepLProvider', () => {
       expect(mockStorage['deepl_api_key']).toBe('pro-key');
       expect(mockStorage['deepl_is_pro']).toBe(true);
     });
+
+    it('preserves formality when the key and tier change', async () => {
+      await provider.setApiKey('test-key:fx', false);
+      await provider.setFormality('prefer_more');
+
+      await provider.setApiKey('pro-key', true);
+
+      const info = provider.getInfo();
+      expect(mockStorage['deepl_api_key']).toBe('pro-key');
+      expect(mockStorage['deepl_is_pro']).toBe(true);
+      expect(info.tier).toBe('Pro');
+      expect(info.formality).toBe('prefer_more');
+    });
   });
 
   describe('setFormality', () => {

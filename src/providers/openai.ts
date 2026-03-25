@@ -48,7 +48,20 @@ interface OpenAIChatResponse {
   };
 }
 
-export class OpenAIProvider extends CloudProvider {
+const DEFAULT_OPENAI_MODEL: OpenAIModel = 'gpt-4o-mini';
+const DEFAULT_OPENAI_FORMALITY: OpenAIFormality = 'neutral';
+const DEFAULT_OPENAI_TEMPERATURE = 0.3;
+
+function createOpenAIConfig(apiKey: string): OpenAIConfig {
+  return {
+    apiKey,
+    model: DEFAULT_OPENAI_MODEL,
+    formality: DEFAULT_OPENAI_FORMALITY,
+    temperature: DEFAULT_OPENAI_TEMPERATURE,
+  };
+}
+
+export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
   private config: OpenAIConfig | null = null;
   private totalTokensUsed = 0;
 
@@ -93,37 +106,38 @@ export class OpenAIProvider extends CloudProvider {
     this.totalTokensUsed = 0;
   }
 
+  protected getConfigState(): OpenAIConfig | null {
+    return this.config;
+  }
+
+  protected setConfigState(config: OpenAIConfig | null): void {
+    this.config = config;
+  }
+
   /**
    * Store API key and settings in storage
    */
   async setApiKey(apiKey: string): Promise<void> {
-    await this.persist({ openai_api_key: apiKey });
-    if (this.config) {
-      this.config.apiKey = apiKey;
-    } else {
-      this.config = {
-        apiKey,
-        model: 'gpt-4o-mini',
-        formality: 'neutral',
-        temperature: 0.3,
-      };
-    }
+    await this.persistAndUpdateConfig(
+      { openai_api_key: apiKey },
+      (config) => (config ? { ...config, apiKey } : createOpenAIConfig(apiKey))
+    );
   }
 
   /** Set model preference */
   async setModel(model: OpenAIModel): Promise<void> {
-    await this.persist({ openai_model: model });
-    if (this.config) {
-      this.config.model = model;
-    }
+    await this.persistAndUpdateLoadedConfig(
+      { openai_model: model },
+      (config) => ({ ...config, model })
+    );
   }
 
   /** Set formality preference */
   async setFormality(formality: OpenAIFormality): Promise<void> {
-    await this.persist({ openai_formality: formality });
-    if (this.config) {
-      this.config.formality = formality;
-    }
+    await this.persistAndUpdateLoadedConfig(
+      { openai_formality: formality },
+      (config) => ({ ...config, formality })
+    );
   }
 
   private buildPrompt(targetLang: string, formality: OpenAIFormality): string {
@@ -236,7 +250,7 @@ export class OpenAIProvider extends CloudProvider {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini', // Use cheaper model for detection
+          model: DEFAULT_OPENAI_MODEL, // Use cheaper model for detection
           messages: [
             {
               role: 'system',
@@ -278,7 +292,7 @@ export class OpenAIProvider extends CloudProvider {
       'gpt-3.5-turbo': 0.0005,
     };
 
-    const rate = costPer1K[this.config?.model ?? 'gpt-4o-mini'];
+    const rate = costPer1K[this.config?.model ?? DEFAULT_OPENAI_MODEL];
     const cost = (this.totalTokensUsed / 1000) * rate;
 
     return {
@@ -296,8 +310,8 @@ export class OpenAIProvider extends CloudProvider {
   getInfo(): ProviderConfig & { model: string; formality: string } {
     return {
       ...super.getInfo(),
-      model: this.config?.model ?? 'gpt-4o-mini',
-      formality: this.config?.formality ?? 'neutral',
+      model: this.config?.model ?? DEFAULT_OPENAI_MODEL,
+      formality: this.config?.formality ?? DEFAULT_OPENAI_FORMALITY,
     };
   }
 }

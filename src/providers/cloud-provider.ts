@@ -23,7 +23,7 @@ import type {
   CloudProviderStorageRecord,
 } from '../background/shared/provider-config-types';
 
-export abstract class CloudProvider extends BaseProvider {
+export abstract class CloudProvider<TConfig> extends BaseProvider {
   protected readonly log = createLogger(this.name);
 
   /**
@@ -48,6 +48,16 @@ export abstract class CloudProvider extends BaseProvider {
    * Subclasses reset their internal config state here.
    */
   protected abstract resetConfig(): void;
+
+  /**
+   * Read the current in-memory config state.
+   */
+  protected abstract getConfigState(): TConfig | null;
+
+  /**
+   * Replace the current in-memory config state.
+   */
+  protected abstract setConfigState(config: TConfig | null): void;
 
   async initialize(): Promise<void> {
     try {
@@ -77,6 +87,28 @@ export abstract class CloudProvider extends BaseProvider {
    */
   protected persist(items: CloudProviderStorageMutation): Promise<void> {
     return strictStorageSet(items);
+  }
+
+  /**
+   * Persist storage updates, then refresh in-memory config using the current local state.
+   */
+  protected async persistAndUpdateConfig(
+    items: CloudProviderStorageMutation,
+    update: (config: TConfig | null) => TConfig | null
+  ): Promise<void> {
+    await this.persist(items);
+    this.setConfigState(update(this.getConfigState()));
+  }
+
+  /**
+   * Persist settings even before the provider is configured, but only mutate in-memory state when
+   * a config is already loaded.
+   */
+  protected async persistAndUpdateLoadedConfig(
+    items: CloudProviderStorageMutation,
+    update: (config: TConfig) => TConfig
+  ): Promise<void> {
+    await this.persistAndUpdateConfig(items, (config) => (config ? update(config) : null));
   }
 
   /**

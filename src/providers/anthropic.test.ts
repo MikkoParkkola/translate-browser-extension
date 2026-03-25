@@ -84,6 +84,19 @@ describe('AnthropicProvider', () => {
       expect(info.model).toBe('claude-3-5-haiku-20241022');
       expect(info.formality).toBe('neutral');
     });
+
+    it('preserves existing in-memory settings when the key changes', async () => {
+      await provider.setApiKey('sk-old-key');
+      await provider.setModel('claude-sonnet-4-20250514');
+      await provider.setFormality('formal');
+
+      await provider.setApiKey('sk-new-key');
+
+      const info = provider.getInfo();
+      expect(mockStorage['anthropic_api_key']).toBe('sk-new-key');
+      expect(info.model).toBe('claude-sonnet-4-20250514');
+      expect(info.formality).toBe('formal');
+    });
   });
 
   describe('setModel', () => {

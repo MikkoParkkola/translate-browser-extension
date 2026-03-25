@@ -38,7 +38,13 @@ interface DeepLUsageResponse {
   character_limit: number;
 }
 
-export class DeepLProvider extends CloudProvider {
+const DEFAULT_DEEPL_FORMALITY: DeepLFormality = 'default';
+
+function createDeepLConfig(apiKey: string, isPro: boolean, formality: DeepLFormality): DeepLConfig {
+  return { apiKey, isPro, formality };
+}
+
+export class DeepLProvider extends CloudProvider<DeepLConfig> {
   private config: DeepLConfig | null = null;
   private usageCache: { count: number; limit: number; timestamp: number } | null = null;
 
@@ -84,18 +90,28 @@ export class DeepLProvider extends CloudProvider {
     this.config = null;
   }
 
+  protected getConfigState(): DeepLConfig | null {
+    return this.config;
+  }
+
+  protected setConfigState(config: DeepLConfig | null): void {
+    this.config = config;
+  }
+
   /** Store API key in storage */
   async setApiKey(apiKey: string, isPro: boolean = false): Promise<void> {
-    await this.persist({ deepl_api_key: apiKey, deepl_is_pro: isPro });
-    this.config = { apiKey, isPro, formality: this.config?.formality ?? 'default' };
+    await this.persistAndUpdateConfig(
+      { deepl_api_key: apiKey, deepl_is_pro: isPro },
+      (config) => createDeepLConfig(apiKey, isPro, config?.formality ?? DEFAULT_DEEPL_FORMALITY)
+    );
   }
 
   /** Set formality preference */
   async setFormality(formality: DeepLFormality): Promise<void> {
-    await this.persist({ deepl_formality: formality });
-    if (this.config) {
-      this.config.formality = formality;
-    }
+    await this.persistAndUpdateLoadedConfig(
+      { deepl_formality: formality },
+      (config) => ({ ...config, formality })
+    );
   }
 
   /**
@@ -263,7 +279,7 @@ export class DeepLProvider extends CloudProvider {
     return {
       ...super.getInfo(),
       tier: this.config?.isPro ? 'Pro' : 'Free',
-      formality: this.config?.formality ?? 'default',
+      formality: this.config?.formality ?? DEFAULT_DEEPL_FORMALITY,
     };
   }
 }

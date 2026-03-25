@@ -47,7 +47,18 @@ interface AnthropicMessageResponse {
   };
 }
 
-export class AnthropicProvider extends CloudProvider {
+const DEFAULT_ANTHROPIC_MODEL: ClaudeModel = 'claude-3-5-haiku-20241022';
+const DEFAULT_ANTHROPIC_FORMALITY: ClaudeFormality = 'neutral';
+
+function createAnthropicConfig(apiKey: string): AnthropicConfig {
+  return {
+    apiKey,
+    model: DEFAULT_ANTHROPIC_MODEL,
+    formality: DEFAULT_ANTHROPIC_FORMALITY,
+  };
+}
+
+export class AnthropicProvider extends CloudProvider<AnthropicConfig> {
   private config: AnthropicConfig | null = null;
   private totalTokensUsed = 0;
 
@@ -91,34 +102,36 @@ export class AnthropicProvider extends CloudProvider {
     this.totalTokensUsed = 0;
   }
 
+  protected getConfigState(): AnthropicConfig | null {
+    return this.config;
+  }
+
+  protected setConfigState(config: AnthropicConfig | null): void {
+    this.config = config;
+  }
+
   /** Store API key in storage */
   async setApiKey(apiKey: string): Promise<void> {
-    await this.persist({ anthropic_api_key: apiKey });
-    if (this.config) {
-      this.config.apiKey = apiKey;
-    } else {
-      this.config = {
-        apiKey,
-        model: 'claude-3-5-haiku-20241022',
-        formality: 'neutral',
-      };
-    }
+    await this.persistAndUpdateConfig(
+      { anthropic_api_key: apiKey },
+      (config) => (config ? { ...config, apiKey } : createAnthropicConfig(apiKey))
+    );
   }
 
   /** Set model preference */
   async setModel(model: ClaudeModel): Promise<void> {
-    await this.persist({ anthropic_model: model });
-    if (this.config) {
-      this.config.model = model;
-    }
+    await this.persistAndUpdateLoadedConfig(
+      { anthropic_model: model },
+      (config) => ({ ...config, model })
+    );
   }
 
   /** Set formality preference */
   async setFormality(formality: ClaudeFormality): Promise<void> {
-    await this.persist({ anthropic_formality: formality });
-    if (this.config) {
-      this.config.formality = formality;
-    }
+    await this.persistAndUpdateLoadedConfig(
+      { anthropic_formality: formality },
+      (config) => ({ ...config, formality })
+    );
   }
 
   private buildSystemPrompt(targetLang: string, formality: ClaudeFormality): string {
@@ -241,7 +254,7 @@ Rules:
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'claude-3-5-haiku-20241022', // Use cheaper model for detection
+          model: DEFAULT_ANTHROPIC_MODEL, // Use cheaper model for detection
           max_tokens: 10,
           system: 'Identify the language of the text. Respond with ONLY the ISO 639-1 code (2 lowercase letters).',
           messages: [
@@ -277,7 +290,7 @@ Rules:
       'claude-3-5-sonnet-20241022': 0.003,
     };
 
-    const rate = costPer1K[this.config?.model ?? 'claude-3-5-haiku-20241022'];
+    const rate = costPer1K[this.config?.model ?? DEFAULT_ANTHROPIC_MODEL];
     const cost = (this.totalTokensUsed / 1000) * rate;
 
     return {
@@ -295,8 +308,8 @@ Rules:
   getInfo(): ProviderConfig & { model: string; formality: string } {
     return {
       ...super.getInfo(),
-      model: this.config?.model ?? 'claude-3-5-haiku-20241022',
-      formality: this.config?.formality ?? 'neutral',
+      model: this.config?.model ?? DEFAULT_ANTHROPIC_MODEL,
+      formality: this.config?.formality ?? DEFAULT_ANTHROPIC_FORMALITY,
     };
   }
 }
