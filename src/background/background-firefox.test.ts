@@ -2560,21 +2560,27 @@ describe('background-firefox translate: additional coverage', () => {
         }
         return [{ translation_text: 'hei' }];
       });
-      (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fakePipe);
+      (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValue(fakePipe);
 
       const pipelineCache = await import('../offscreen/pipeline-cache');
       (pipelineCache.getCachedPipeline as ReturnType<typeof vi.fn>).mockReturnValue(null);
 
-      const response = await invoke({
-        type: 'translate',
-        text: ['hello', 'boom'],
-        sourceLang: 'auto',
-        targetLang: 'fi',
-        provider: 'opus-mt',
-      }) as Record<string, unknown>;
+      try {
+        await invoke({ type: 'clearCache' });
 
-      expect(response.success).toBe(true);
-      expect(response.result).toEqual(['hei', 'boom']);
+        const response = await invoke({
+          type: 'translate',
+          text: ['hello', 'boom'],
+          sourceLang: 'auto',
+          targetLang: 'fi',
+          provider: 'opus-mt',
+        }) as Record<string, unknown>;
+
+        expect(response.success).toBe(true);
+        expect(response.result).toEqual(['hei', 'boom']);
+      } finally {
+        await invoke({ type: 'clearCache' });
+      }
     });
   });
 
@@ -2602,6 +2608,66 @@ describe('background-firefox translate: additional coverage', () => {
 
       expect(response).toMatchObject({ success: expect.any(Boolean) });
       expect('success' in response).toBe(true);
+    });
+
+    it('reuses cached batch items after auto-detecting the source language', async () => {
+      const errors = await import('../core/errors');
+      (errors.validateInput as ReturnType<typeof vi.fn>)
+        .mockReturnValueOnce({
+          valid: true,
+          sanitizedText: ['hello'],
+        })
+        .mockReturnValueOnce({
+          valid: true,
+          sanitizedText: ['hello', 'world'],
+        });
+
+      const hashMod = await import('../core/hash');
+      (hashMod.generateCacheKey as ReturnType<typeof vi.fn>).mockImplementation(
+        (text: string | string[], sourceLang: string, targetLang: string, provider?: string) => (
+          `${provider ?? 'default'}:${sourceLang}:${targetLang}:${Array.isArray(text) ? text.join('|') : text}`
+        )
+      );
+
+      const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+      const fakePipe = vi.fn(async (value: string) => [
+        { translation_text: value === 'hello' ? 'hei' : 'maailma' },
+      ]);
+      (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValue(fakePipe);
+
+      try {
+        await invoke({ type: 'clearCache' });
+
+        const firstResponse = await invoke({
+          type: 'translate',
+          text: ['hello'],
+          sourceLang: 'auto',
+          targetLang: 'fi',
+          provider: 'opus-mt',
+        }) as Record<string, unknown>;
+
+        expect(firstResponse.success).toBe(true);
+        expect(firstResponse.result).toEqual(['hei']);
+
+        const secondResponse = await invoke({
+          type: 'translate',
+          text: ['hello', 'world'],
+          sourceLang: 'auto',
+          targetLang: 'fi',
+          provider: 'opus-mt',
+        }) as Record<string, unknown>;
+
+        expect(secondResponse.success).toBe(true);
+        expect(secondResponse.result).toEqual(['hei', 'maailma']);
+
+        const statsResponse = await invoke({ type: 'getCacheStats' }) as Record<string, unknown>;
+        const cache = statsResponse.cache as Record<string, unknown>;
+        expect(cache.size).toBe(2);
+        expect(cache.totalHits).toBeGreaterThanOrEqual(1);
+      } finally {
+        (hashMod.generateCacheKey as ReturnType<typeof vi.fn>).mockReturnValue('mock-cache-key');
+        await invoke({ type: 'clearCache' });
+      }
     });
 
     it('handles array with mixed empty and non-empty items (lines 398-399)', async () => {

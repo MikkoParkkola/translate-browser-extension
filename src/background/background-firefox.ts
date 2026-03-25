@@ -113,6 +113,30 @@ const translationCache: TranslationCache = createTranslationCache(
 // Load cache on startup
 translationCache.load();
 
+// Firefox keeps cache ownership in the background layer, but still benefits from
+// per-item batch reuse so partially overlapping arrays avoid repeated inference.
+function getCachedBatchItemTranslation(
+  text: string,
+  sourceLang: string,
+  targetLang: string,
+  provider: TranslationProviderId,
+): string | null {
+  const cacheKey = translationCache.getKey(text, sourceLang, targetLang, provider);
+  const cachedResult = translationCache.get(cacheKey)?.result;
+  return typeof cachedResult === 'string' ? cachedResult : null;
+}
+
+function storeCachedBatchItemTranslation(
+  text: string,
+  translation: string,
+  sourceLang: string,
+  targetLang: string,
+  provider: TranslationProviderId,
+): void {
+  const cacheKey = translationCache.getKey(text, sourceLang, targetLang, provider);
+  translationCache.set(cacheKey, translation, sourceLang, targetLang);
+}
+
 // ============================================================================
 // ML Pipeline Management (Direct - no offscreen needed)
 // ============================================================================
@@ -266,7 +290,21 @@ async function translate(
 
   // Handle array of texts
   if (Array.isArray(text)) {
-    const { results, uncachedItems } = await collectBatchTranslationInputs(text);
+    const { results, uncachedItems } = await collectBatchTranslationInputs(text, {
+      getCached: (value) => getCachedBatchItemTranslation(
+        value,
+        actualSourceLang,
+        targetLang,
+        provider,
+      ),
+      onCacheHit: ({ index, text: originalText, cached }) => {
+        /* v8 ignore start -- debug logging branch */
+        if (index < 3) {
+          log.debug(`Cache #${index}: "${originalText.substring(0, 30)}" -> "${cached.substring(0, 30)}"${cached === originalText ? ' (identity)' : ''}`);
+        }
+        /* v8 ignore stop */
+      },
+    });
 
     /* v8 ignore start */
     if (uncachedItems.length > 0) {
@@ -279,11 +317,33 @@ async function translate(
         provider
       );
 
-      const { results: mergedResults } = await mergeBatchTranslationResults(
+      const { results: mergedResults, cacheFailures } = await mergeBatchTranslationResults(
         results,
         uncachedItems,
-        translations
+        translations,
+        {
+          storeCached: (originalText, translation) => {
+            storeCachedBatchItemTranslation(
+              originalText,
+              translation,
+              actualSourceLang,
+              targetLang,
+              provider,
+            );
+          },
+          onCacheStoreFailure: ({ failureCount, error }) => {
+            if (failureCount <= 2) {
+              log.warn(`Failed to cache translation (${failureCount}):`, error);
+            }
+          },
+          onIdentityTranslation: ({ text: originalText }) => {
+            log.debug(`Identity translation cached for "${originalText.substring(0, 30)}"`);
+          },
+        },
       );
+      if (cacheFailures > 2) {
+        log.warn(`Cache write failed for ${cacheFailures}/${uncachedItems.length} items`);
+      }
       return mergedResults;
     }
 
