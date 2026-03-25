@@ -136,6 +136,19 @@ const mockIndexedDB = {
 // Apply mock to global
 vi.stubGlobal('indexedDB', mockIndexedDB);
 
+const waitForCacheAsyncWork = (ms = 10): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+const createReadyCache = async (
+  maxSize?: number,
+  waitMs = 10
+): Promise<TranslationCache> => {
+  const translationCache =
+    typeof maxSize === 'number' ? new TranslationCache(maxSize) : new TranslationCache();
+  await waitForCacheAsyncWork(waitMs);
+  return translationCache;
+};
+
 describe('TranslationCache', () => {
   let cache: TranslationCache;
 
@@ -155,7 +168,7 @@ describe('TranslationCache', () => {
     it('opens IndexedDB on creation', async () => {
       cache = new TranslationCache();
       // Wait for db to be ready
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await waitForCacheAsyncWork(10);
       expect(mockIndexedDB.open).toHaveBeenCalledWith('translate-extension-cache', 1);
     });
 
@@ -173,8 +186,7 @@ describe('TranslationCache', () => {
 
   describe('get', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('returns null for cache miss', async () => {
@@ -305,8 +317,7 @@ describe('TranslationCache', () => {
 
   describe('set', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('stores translation in cache', async () => {
@@ -318,7 +329,7 @@ describe('TranslationCache', () => {
       const setPromise = cache.set('hello', 'en', 'fi', 'opus-mt', 'hei');
 
       // Wait for stats check and then put
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitForCacheAsyncWork(50);
 
       // Trigger onsuccess for put
       const putRequest = mockStore.put.mock.results[0]?.value;
@@ -343,7 +354,7 @@ describe('TranslationCache', () => {
 
       cache.set('hello', 'en', 'fi', 'opus-mt', 'hei');
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitForCacheAsyncWork(50);
 
       const entry = mockStore.put.mock.calls[0]?.[0] as CacheEntry;
       // "hello" (5 chars) + "hei" (3 chars) = 8 chars * 2 bytes + 100 overhead = 116
@@ -353,8 +364,7 @@ describe('TranslationCache', () => {
 
   describe('clear', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('clears all entries', async () => {
@@ -398,8 +408,7 @@ describe('TranslationCache', () => {
 
   describe('getStats', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('returns correct statistics', async () => {
@@ -464,8 +473,7 @@ describe('TranslationCache', () => {
 
   describe('hash key generation', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('generates different keys for different inputs', async () => {
@@ -541,8 +549,7 @@ describe('Edge cases', () => {
     vi.clearAllMocks();
     mockEntries.clear();
     resetTranslationCache();
-    cache = new TranslationCache();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache();
   });
 
   afterEach(() => {
@@ -557,7 +564,7 @@ describe('Edge cases', () => {
 
     cache.set('', 'en', 'fi', 'opus-mt', '');
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitForCacheAsyncWork(50);
 
     expect(mockStore.put).toHaveBeenCalled();
   });
@@ -570,7 +577,7 @@ describe('Edge cases', () => {
 
     cache.set('Hello World!', 'en', 'fi', 'opus-mt', 'Hei maailma!');
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitForCacheAsyncWork(50);
 
     const entry = mockStore.put.mock.calls[0]?.[0] as CacheEntry;
     expect(entry?.text).toBe('Hello World!');
@@ -588,7 +595,7 @@ describe('Edge cases', () => {
 
     cache.set(longText, 'en', 'fi', 'opus-mt', longTranslation);
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitForCacheAsyncWork(50);
 
     const entry = mockStore.put.mock.calls[0]?.[0] as CacheEntry;
     // 10000 + 10000 chars * 2 bytes + 100 overhead = 40100
@@ -605,7 +612,7 @@ describe('Edge cases', () => {
 
     cache.set(specialText, 'en', 'fi', 'opus-mt', 'translation');
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitForCacheAsyncWork(50);
 
     const entry = mockStore.put.mock.calls[0]?.[0] as CacheEntry;
     expect(entry?.text).toBe(specialText);
@@ -628,8 +635,7 @@ describe('LRU eviction', () => {
 
   it('evicts oldest entries when cache exceeds capacity', async () => {
     // Create a cache with a very small max size (500 bytes) so entries trigger eviction
-    cache = new TranslationCache(500);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache(500);
 
     // Pre-fill mockEntries to exceed the 80% target (400 bytes)
     const oldEntry: CacheEntry = {
@@ -661,7 +667,7 @@ describe('LRU eviction', () => {
     const setPromise = cache.set('new', 'en', 'fi', 'opus-mt', 'uusi');
 
     // Allow getStats to run (openCursor for stats)
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitForCacheAsyncWork(10);
 
     // Trigger eviction cursor with the old entry, then end
     if (evictRequest.onsuccess && !evictCursorCalled) {
@@ -681,7 +687,7 @@ describe('LRU eviction', () => {
     }
 
     // Now trigger the actual put
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await waitForCacheAsyncWork(20);
     const putRequest = mockStore.put.mock.results[0]?.value;
     if (putRequest) {
       putRequest.onsuccess?.({});
@@ -695,8 +701,7 @@ describe('LRU eviction', () => {
 
   it('skips eviction when cache has enough space', async () => {
     // Small cache but no existing entries
-    cache = new TranslationCache(100 * 1024 * 1024);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache(100 * 1024 * 1024);
 
     mockStore.put.mockReturnValue({
       onerror: null,
@@ -705,7 +710,7 @@ describe('LRU eviction', () => {
 
     const setPromise = cache.set('hello', 'en', 'fi', 'opus-mt', 'hei');
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await waitForCacheAsyncWork(20);
 
     // index.openCursor for eviction should NOT have been called since size is within limit
     expect(mockIndex.openCursor).not.toHaveBeenCalled();
@@ -725,8 +730,7 @@ describe('error paths', () => {
     vi.clearAllMocks();
     mockEntries.clear();
     resetTranslationCache();
-    cache = new TranslationCache();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache();
   });
 
   afterEach(() => {
@@ -794,7 +798,7 @@ describe('error paths', () => {
 
     const getPromise = cache.get('hello', 'en', 'fi', 'opus-mt');
 
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await waitForCacheAsyncWork(5);
     // Trigger onabort
     abortTransaction.onabort?.({} as Event);
 
@@ -906,8 +910,7 @@ describe('error paths', () => {
       };
 
       resetTranslationCache();
-      const upgradeCache = new TranslationCache();
-      await new Promise((r) => setTimeout(r, 20));
+      const upgradeCache = await createReadyCache(undefined, 20);
       expect(upgradeCache).toBeDefined();
 
       (globalThis as Record<string, unknown>).indexedDB = origIndexedDB;
@@ -916,8 +919,7 @@ describe('error paths', () => {
 
   describe('get() transaction error paths', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('returns null when transaction fires onerror', async () => {
@@ -992,8 +994,7 @@ describe('error paths', () => {
 
   describe('set() transaction error paths', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('does not throw when set transaction fires onerror', async () => {
@@ -1077,8 +1078,7 @@ describe('error paths', () => {
 
   describe('eviction error paths', () => {
     beforeEach(async () => {
-      cache = new TranslationCache(100); // Very small max size to trigger eviction
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache(100); // Very small max size to trigger eviction
     });
 
     it('handles eviction transaction onerror gracefully', async () => {
@@ -1126,8 +1126,7 @@ describe('error paths', () => {
 
   describe('clear() error paths', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('throws when clear transaction fires onerror', async () => {
@@ -1198,8 +1197,7 @@ describe('error paths', () => {
 
   describe('getStats() error paths', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('rejects when getStats transaction fires onerror', async () => {
@@ -1284,8 +1282,7 @@ describe('error paths', () => {
 
   describe('get() outer catch path', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('returns null when dbReady rejects', async () => {
@@ -1299,8 +1296,7 @@ describe('error paths', () => {
 
   describe('set() outer catch path', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('silently catches when dbReady rejects in set()', async () => {
@@ -1315,8 +1311,7 @@ describe('error paths', () => {
 
   describe('transaction abort handlers', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('rejects on get() transaction abort', async () => {
@@ -1365,8 +1360,7 @@ describe('error paths', () => {
 
   describe('clear() error paths', () => {
     it('throws when dbReady rejects in clear()', async () => {
-      const failCache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      const failCache = await createReadyCache();
 
       // Replace dbReady with a rejected promise to trigger the catch block
       (failCache as unknown as Record<string, unknown>).dbReady = Promise.reject(new Error('clear db fail'));
@@ -1418,8 +1412,7 @@ describe('remaining uncovered branches', () => {
     };
 
     resetTranslationCache();
-    cache = new TranslationCache();
-    await new Promise((r) => setTimeout(r, 20));
+    cache = await createReadyCache(undefined, 20);
 
     // createObjectStore should NOT have been called since the store already exists
     expect(createObjectStoreSpy).not.toHaveBeenCalled();
@@ -1428,8 +1421,7 @@ describe('remaining uncovered branches', () => {
   });
 
   it('eviction transaction onabort rejects with transaction.error', async () => {
-    cache = new TranslationCache(100);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache(100);
 
     const bigEntry: CacheEntry = {
       key: 'big1',
@@ -1472,8 +1464,7 @@ describe('remaining uncovered branches', () => {
   });
 
   it('eviction transaction onabort uses fallback Error when transaction.error is null', async () => {
-    cache = new TranslationCache(100);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache(100);
 
     const bigEntry: CacheEntry = {
       key: 'big1',
@@ -1514,8 +1505,7 @@ describe('remaining uncovered branches', () => {
   });
 
   it('eviction cursor request onerror rejects', async () => {
-    cache = new TranslationCache(100);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache(100);
 
     const bigEntry: CacheEntry = {
       key: 'big1',
@@ -1560,8 +1550,7 @@ describe('remaining uncovered branches', () => {
   });
 
   it('getStats newestTimestamp else branch when later entry has older timestamp', async () => {
-    cache = new TranslationCache();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache();
 
     const now = Date.now();
     // Insert entries so iteration order produces a non-ascending timestamp sequence
@@ -1606,8 +1595,7 @@ describe('Cache-at-Capacity and LRU Ordering Tests', () => {
   });
 
   it('handles cache near capacity without premature eviction', async () => {
-    cache = new TranslationCache(1000);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache(1000);
 
     // Mock a successful put operation
     const putRequest: { onerror: ((e: any) => void) | null; onsuccess: ((e: any) => void) | null } = { onerror: null, onsuccess: null };
@@ -1637,8 +1625,7 @@ describe('Cache-at-Capacity and LRU Ordering Tests', () => {
   });
 
   it('triggers eviction process when cache exceeds capacity', async () => {
-    cache = new TranslationCache(100); // Very small cache
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache(100); // Very small cache
 
     // Mock getStats to return high usage that would trigger eviction
     const statsRequest: { onerror: ((e: any) => void) | null; onsuccess: ((e: any) => void) | null } = { onerror: null, onsuccess: null };
@@ -1675,8 +1662,7 @@ describe('Cache-at-Capacity and LRU Ordering Tests', () => {
   });
 
   it('calculates entry sizes correctly for boundary conditions', async () => {
-    cache = new TranslationCache(1000);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache(1000);
 
     const putRequest = { onerror: null as any, onsuccess: null as any };
     mockStore.put.mockImplementation(() => {
@@ -1688,7 +1674,7 @@ describe('Cache-at-Capacity and LRU Ordering Tests', () => {
     // Store a single entry and verify size is calculated
     const promise = cache.set('hello world', 'en', 'fi', 'opus-mt', 'hei maailma');
     await promise;
-    await new Promise(resolve => setTimeout(resolve, 5));
+    await waitForCacheAsyncWork(5);
 
     expect(mockStore.put).toHaveBeenCalled();
     const call = mockStore.put.mock.calls[0];
