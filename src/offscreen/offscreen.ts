@@ -17,6 +17,7 @@ import {
   getSupportedLanguagePairs,
   resolveOpusMtTranslationRoute,
 } from './model-maps';
+import { getOpusMtPipelineConfig } from './opus-runtime';
 import {
   logDownloadedModelTrackingFailure,
   reportModelProgress,
@@ -88,22 +89,6 @@ async function getTransformers(): Promise<TransformersLib> {
   return lib;
 }
 
-/**
- * Select optimal dtype for OPUS-MT models.
- *
- * Xenova/Helsinki-NLP OPUS-MT models only ship _quantized (q8) ONNX variants.
- * They do NOT have dedicated fp16 ONNX files. Requesting 'fp16' causes
- * ONNX Runtime to attempt mixed-precision (float16 + float32) which crashes:
- *   "Type parameter (T) of Optype (Mul) bound to different types"
- *
- * Always use 'q8' for OPUS-MT. fp16 dtype is only safe for models that
- * ship explicit fp16 ONNX files (e.g., TranslateGemma).
- */
-function selectOpusMtDtype(_webgpu: { supported: boolean; fp16: boolean }): string {
-  // Always q8 for OPUS-MT — fp16 causes mixed-precision crash
-  return 'q8';
-}
-
 function normalizeProgressStatus(value: unknown): 'initiate' | 'download' | 'progress' | 'done' {
   switch (value) {
     case 'initiate':
@@ -148,8 +133,7 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   // (repeated words like "Figure Figure..." or "Switzerland Switzerland...")
   // with q8-quantized Marian models. WebGPU is only viable for models with
   // dedicated fp16 ONNX files (e.g., TranslateGemma).
-  const device = 'wasm';
-  const dtype = selectOpusMtDtype({ supported: false, fp16: false });
+  const { device, dtype } = getOpusMtPipelineConfig({ supported: false, fp16: false });
   log.info(` Using device: ${device}, dtype: ${dtype}`);
 
   // Use optimized timeout for OPUS-MT direct models (~85MB quantized, typically loads in <30s)

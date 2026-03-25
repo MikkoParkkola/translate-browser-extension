@@ -1310,6 +1310,28 @@ describe('background-firefox translate: additional coverage', () => {
       // This should use the pivot route fi-en, en-de
     });
 
+    it('loads OPUS-MT with canonical wasm/q8 runtime options', async () => {
+      const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+      const pipelineCache = await import('../offscreen/pipeline-cache');
+      const fakePipe = vi.fn().mockResolvedValue([{ translation_text: 'Hei' }]);
+      (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValue(fakePipe);
+      (pipelineCache.getCachedPipeline as ReturnType<typeof vi.fn>).mockReturnValue(null);
+
+      const response = await invoke({
+        type: 'preloadModel',
+        sourceLang: 'en',
+        targetLang: 'fi',
+        provider: 'opus-mt',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      expect(mockPipeline).toHaveBeenCalledWith(
+        'translation',
+        'Helsinki-NLP/opus-mt-en-fi',
+        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
+      );
+    });
+
     it('throws for unsupported language pair', async () => {
       const response = await invoke({
         type: 'translate',

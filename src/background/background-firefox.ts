@@ -44,6 +44,7 @@ import {
   getSupportedLanguagePairs,
   resolveOpusMtTranslationRoute,
 } from '../offscreen/model-maps';
+import { getOpusMtPipelineConfig } from '../offscreen/opus-runtime';
 import { getCachedPipeline, cachePipeline, castAsPipeline } from '../offscreen/pipeline-cache';
 import { buildLanguageDetectionSample, detectLanguage } from '../offscreen/language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline } from '../offscreen/translategemma';
@@ -110,11 +111,6 @@ translationCache.load();
 // ML Pipeline Management (Direct - no offscreen needed)
 // ============================================================================
 
-async function detectWebGPU(): Promise<boolean> {
-  const { supported } = await detectWebGPUCapabilities();
-  return supported;
-}
-
 async function detectWebGPUCapabilities(): Promise<{ supported: boolean; fp16: boolean }> {
   if (!navigator.gpu) return { supported: false, fp16: false };
   try {
@@ -163,12 +159,11 @@ async function getPipeline(sourceLang: string, targetLang: string): Promise<Tran
 
   log.info(`Loading model: ${modelId}`);
 
-  const webgpu = await detectWebGPU();
-  const device = webgpu ? 'webgpu' : 'wasm';
-  log.info(`Using device: ${device}`);
+  const { device, dtype } = getOpusMtPipelineConfig(await detectWebGPUCapabilities());
+  log.info(`Using device: ${device}, dtype: ${dtype}`);
 
   const pipe = await withTimeout(
-    pipeline('translation', modelId, { device }),
+    pipeline('translation', modelId, { device, dtype }),
     CONFIG.timeouts.opusMtDirectMs,
     `Loading model ${modelId}`
   );

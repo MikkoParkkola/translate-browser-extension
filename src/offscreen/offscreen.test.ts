@@ -14,6 +14,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { selectOpusMtDtype } from './opus-runtime';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1774,10 +1775,6 @@ describe('getFallbackProviders logic', () => {
 });
 
 describe('selectOpusMtDtype', () => {
-  function selectOpusMtDtype(_webgpu: { supported: boolean; fp16: boolean }): string {
-    return 'q8';
-  }
-
   it('always returns q8 regardless of WebGPU capabilities', () => {
     expect(selectOpusMtDtype({ supported: true, fp16: true })).toBe('q8');
     expect(selectOpusMtDtype({ supported: true, fp16: false })).toBe('q8');
