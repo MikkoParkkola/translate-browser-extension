@@ -176,11 +176,13 @@ vi.mock('../config', () => ({
 // Module import + handler capture
 // ============================================================================
 
-let messageHandler: (
+type FirefoxMessageHandler = (
   msg: Record<string, unknown>,
   sender: unknown,
   sendResponse: (r: unknown) => void
 ) => boolean;
+
+let messageHandler: FirefoxMessageHandler;
 
 let capturedInstalledHandler: ((details: { reason: string; previousVersion?: string }) => void) | null = null;
 let capturedCommandHandler: ((command: string) => Promise<void>) | null = null;
@@ -239,10 +241,45 @@ beforeEach(async () => {
 // Helper
 // ============================================================================
 
-function invoke(message: Record<string, unknown>): Promise<unknown> {
+const waitForAsyncFirefoxWork = (ms = 10): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+function invokeWithHandler(
+  handler: FirefoxMessageHandler,
+  message: Record<string, unknown>
+): Promise<unknown> {
   return new Promise((resolve) => {
-    messageHandler(message, {}, (response) => resolve(response));
+    handler(message, {}, (response) => resolve(response));
   });
+}
+
+function getLatestMessageHandler(): FirefoxMessageHandler {
+  const calls = mockAddMessageListener.mock.calls;
+  const latestHandler = calls[calls.length - 1]?.[0];
+
+  if (typeof latestHandler !== 'function') {
+    throw new Error('Expected background-firefox message handler registration');
+  }
+
+  return latestHandler;
+}
+
+async function importFreshMessageHandler(
+  options: { settleMs?: number; runAllTimers?: boolean } = {}
+): Promise<FirefoxMessageHandler> {
+  await import('./background-firefox');
+
+  if (options.runAllTimers) {
+    await vi.runAllTimersAsync();
+  } else if (options.settleMs !== 0) {
+    await waitForAsyncFirefoxWork(options.settleMs ?? 20);
+  }
+
+  return getLatestMessageHandler();
+}
+
+function invoke(message: Record<string, unknown>): Promise<unknown> {
+  return invokeWithHandler(messageHandler, message);
 }
 
 // ============================================================================
@@ -675,7 +712,7 @@ describe('background-firefox installation handler', () => {
     capturedInstalledHandler({ reason: 'install' });
 
     // strictStorageSet is called asynchronously on install
-    await new Promise((r) => setTimeout(r, 10));
+    await waitForAsyncFirefoxWork(10);
     expect(strictStorageSet).toHaveBeenCalledWith(
       expect.objectContaining({ sourceLang: 'auto', strategy: 'smart' })
     );
@@ -697,7 +734,7 @@ describe('background-firefox installation handler', () => {
     mockGetUILanguage.mockReturnValue(''); // '' → split('-')[0] = '' → browserLang || 'en' = 'en'
     const { strictStorageSet } = await import('../core/storage');
     capturedInstalledHandler({ reason: 'install' });
-    await new Promise((r) => setTimeout(r, 10));
+    await waitForAsyncFirefoxWork(10);
     expect(strictStorageSet).toHaveBeenCalledWith(expect.objectContaining({ targetLang: 'en' }));
   });
 
@@ -1670,7 +1707,7 @@ describe('background-firefox translate: additional coverage', () => {
       expect(response).toMatchObject({ success: true });
       
       // Wait for potential async operations
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await waitForAsyncFirefoxWork(50);
       
       // The translation itself exercises the cache storage paths
     });
@@ -1819,7 +1856,7 @@ describe('background-firefox translate: additional coverage', () => {
       expect(response).toMatchObject({ success: true });
       
       // Wait for async save attempt
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await waitForAsyncFirefoxWork(100);
     });
   });
 
@@ -2717,14 +2754,7 @@ describe('background-firefox translate: additional coverage', () => {
   // ============================================================================
 
   describe('loadPersistentCache with stored cache data (fresh module)', () => {
-    let freshMessageHandler: (
-      msg: Record<string, unknown>,
-      sender: unknown,
-      sendResponse: (r: unknown) => void
-    ) => boolean;
-
-    const freshInvoke = (message: Record<string, unknown>): Promise<unknown> =>
-      new Promise((resolve) => freshMessageHandler(message, {}, (r) => resolve(r)));
+    let freshMessageHandler: FirefoxMessageHandler;
 
     beforeAll(async () => {
       // Reset module registry so the next import re-runs module-level code
@@ -2758,19 +2788,13 @@ describe('background-firefox translate: additional coverage', () => {
       });
 
       // Re-import the module — this re-runs loadPersistentCache() with stored data
-      await import('./background-firefox');
-
-      // Allow the async loadPersistentCache() promise to settle
-      await new Promise((resolve) => setTimeout(resolve, 20));
-
-      // Capture the handler registered by the fresh module instance
-      const calls = mockAddMessageListener.mock.calls;
-      const lastCall = calls[calls.length - 1];
-      freshMessageHandler = lastCall[0];
+      freshMessageHandler = await importFreshMessageHandler();
     });
 
     it('loads cache entries from storage into translationCache (lines 84-88)', async () => {
-      const response = await freshInvoke({ type: 'getCacheStats' }) as Record<string, unknown>;
+      const response = await invokeWithHandler(freshMessageHandler, {
+        type: 'getCacheStats',
+      }) as Record<string, unknown>;
       expect(response.success).toBe(true);
       const cache = response.cache as Record<string, unknown>;
       // The two entries we seeded should be loaded
@@ -2778,7 +2802,9 @@ describe('background-firefox translate: additional coverage', () => {
     });
 
     it('restores cacheHits and cacheMisses from stored stats (lines 92-94)', async () => {
-      const response = await freshInvoke({ type: 'getCacheStats' }) as Record<string, unknown>;
+      const response = await invokeWithHandler(freshMessageHandler, {
+        type: 'getCacheStats',
+      }) as Record<string, unknown>;
       expect(response.success).toBe(true);
       const cache = response.cache as Record<string, unknown>;
       // hits=7 misses=4 were stored; verify they influenced the hit-rate string
@@ -2787,14 +2813,7 @@ describe('background-firefox translate: additional coverage', () => {
   });
 
   describe('loadPersistentCache error path (lines 99-100)', () => {
-    let freshMessageHandler2: (
-      msg: Record<string, unknown>,
-      sender: unknown,
-      sendResponse: (r: unknown) => void
-    ) => boolean;
-
-    const freshInvoke2 = (message: Record<string, unknown>): Promise<unknown> =>
-      new Promise((resolve) => freshMessageHandler2(message, {}, (r) => resolve(r)));
+    let freshMessageHandler2: FirefoxMessageHandler;
 
     beforeAll(async () => {
       vi.resetModules();
@@ -2803,29 +2822,20 @@ describe('background-firefox translate: additional coverage', () => {
       mockStorageGet.mockRejectedValueOnce(new Error('Storage failure during init'));
 
       // Import — loadPersistentCache will catch the error (lines 99-100)
-      await import('./background-firefox');
-      await new Promise((resolve) => setTimeout(resolve, 20));
-
-      const calls = mockAddMessageListener.mock.calls;
-      freshMessageHandler2 = calls[calls.length - 1][0];
+      freshMessageHandler2 = await importFreshMessageHandler();
     });
 
     it('sets cacheInitialized=true even after storage error (lines 99-100)', async () => {
       // Module should still be functional despite the init error
-      const response = await freshInvoke2({ type: 'ping' }) as Record<string, unknown>;
+      const response = await invokeWithHandler(freshMessageHandler2, {
+        type: 'ping',
+      }) as Record<string, unknown>;
       expect(response.success).toBe(true);
     });
   });
 
   describe('scheduleCacheSave timer callback (lines 111-121)', () => {
-    let freshMessageHandler3: (
-      msg: Record<string, unknown>,
-      sender: unknown,
-      sendResponse: (r: unknown) => void
-    ) => boolean;
-
-    const freshInvoke3 = (message: Record<string, unknown>): Promise<unknown> =>
-      new Promise((resolve) => freshMessageHandler3(message, {}, (r) => resolve(r)));
+    let freshMessageHandler3: FirefoxMessageHandler;
 
     beforeAll(async () => {
       vi.useFakeTimers();
@@ -2834,11 +2844,7 @@ describe('background-firefox translate: additional coverage', () => {
       // Empty storage so loadPersistentCache succeeds quickly
       mockStorageGet.mockResolvedValue({});
 
-      await import('./background-firefox');
-      await vi.runAllTimersAsync(); // settle the async init
-
-      const calls = mockAddMessageListener.mock.calls;
-      freshMessageHandler3 = calls[calls.length - 1][0];
+      freshMessageHandler3 = await importFreshMessageHandler({ runAllTimers: true });
     });
 
     afterAll(() => {
@@ -2850,7 +2856,7 @@ describe('background-firefox translate: additional coverage', () => {
       mockStorageSet.mockResolvedValue(undefined);
 
       // Translation → setCachedTranslation → scheduleCacheSave (timer = null in fresh module)
-      await freshInvoke3({
+      await invokeWithHandler(freshMessageHandler3, {
         type: 'translate',
         text: 'hello',
         sourceLang: 'en',
@@ -2870,11 +2876,11 @@ describe('background-firefox translate: additional coverage', () => {
       // Make storage.set reject to exercise the catch branch
       mockStorageSet.mockRejectedValueOnce(new Error('Disk full'));
 
-      await freshInvoke3({
+      await invokeWithHandler(freshMessageHandler3, {
         type: 'clearCache', // clears timer so scheduleCacheSave runs on next translate
       });
 
-      await freshInvoke3({
+      await invokeWithHandler(freshMessageHandler3, {
         type: 'translate',
         text: 'world',
         sourceLang: 'fi',
@@ -2887,14 +2893,7 @@ describe('background-firefox translate: additional coverage', () => {
   });
 
   describe('cache readiness gating', () => {
-    let freshMessageHandler4: (
-      msg: Record<string, unknown>,
-      sender: unknown,
-      sendResponse: (r: unknown) => void
-    ) => boolean;
-
-    const freshInvoke4 = (message: Record<string, unknown>): Promise<unknown> =>
-      new Promise((resolve) => freshMessageHandler4(message, {}, (r) => resolve(r)));
+    let freshMessageHandler4: FirefoxMessageHandler;
 
     it('waits for startup cache load before handling the first translation', async () => {
       vi.resetModules();
@@ -2906,14 +2905,12 @@ describe('background-firefox translate: additional coverage', () => {
 
       mockStorageGet.mockImplementation(() => pendingLoad);
 
-      await import('./background-firefox');
-      const calls = mockAddMessageListener.mock.calls;
-      freshMessageHandler4 = calls[calls.length - 1][0];
+      freshMessageHandler4 = await importFreshMessageHandler({ settleMs: 0 });
 
       const errors = await import('../core/errors');
       (errors.withRetry as ReturnType<typeof vi.fn>).mockClear();
 
-      const responsePromise = freshInvoke4({
+      const responsePromise = invokeWithHandler(freshMessageHandler4, {
         type: 'translate',
         text: 'cache readiness',
         sourceLang: 'en',
@@ -3280,7 +3277,7 @@ describe('background-firefox translate: additional coverage', () => {
       }));
 
       await import('./background-firefox');
-      await new Promise((r) => setTimeout(r, 20));
+      await waitForAsyncFirefoxWork(20);
     });
 
     afterAll(() => {
