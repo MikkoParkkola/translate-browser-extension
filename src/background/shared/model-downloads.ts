@@ -17,33 +17,32 @@ import {
   normalizeDownloadedModelRecords,
   upsertDownloadedModelRecord,
 } from '../../shared/downloaded-models';
+import {
+  createTypeMessageGuard,
+  isLiteralValue,
+  isStringValue,
+} from '../../shared/message-guards';
 
 const log = createLogger('ModelDownloads');
 const DOWNLOADED_MODELS_KEY = 'downloadedModels';
+const isBackgroundTarget = isLiteralValue('background');
 
-export function isOffscreenModelProgressMessage(
-  message: unknown,
-): message is OffscreenModelProgressMessage {
-  return (
-    typeof message === 'object'
-    && message !== null
-    && (message as { type?: unknown }).type === 'offscreenModelProgress'
-    && (message as { target?: unknown }).target === 'background'
-    && typeof (message as { modelId?: unknown }).modelId === 'string'
-  );
-}
+export const isOffscreenModelProgressMessage = createTypeMessageGuard<OffscreenModelProgressMessage>(
+  'offscreenModelProgress',
+  {
+    target: isBackgroundTarget,
+    modelId: isStringValue,
+  }
+);
 
-export function isOffscreenDownloadedModelUpdateMessage(
-  message: unknown,
-): message is OffscreenDownloadedModelUpdateMessage {
-  return (
-    typeof message === 'object'
-    && message !== null
-    && (message as { type?: unknown }).type === 'offscreenDownloadedModelUpdate'
-    && (message as { target?: unknown }).target === 'background'
-    && typeof (message as { modelId?: unknown }).modelId === 'string'
+export const isOffscreenDownloadedModelUpdateMessage =
+  createTypeMessageGuard<OffscreenDownloadedModelUpdateMessage>(
+    'offscreenDownloadedModelUpdate',
+    {
+      target: isBackgroundTarget,
+      modelId: isStringValue,
+    }
   );
-}
 
 export function isOffscreenModelMessage(message: unknown): message is OffscreenModelMessage {
   return (

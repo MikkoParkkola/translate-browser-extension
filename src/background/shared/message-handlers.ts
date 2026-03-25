@@ -7,6 +7,7 @@
  */
 
 import type {
+  CloudProviderId,
   TranslationProviderId, Strategy, DetailedCacheStats,
   SetCloudApiKeyMessage, ClearCloudApiKeyMessage,
   SetCloudProviderEnabledMessage,
@@ -62,6 +63,50 @@ import {
 } from '../../shared/cloud-provider-config-state';
 
 const log = createLogger('SharedHandlers');
+
+function getCloudProviderValue<T>(
+  provider: CloudProviderId,
+  values: Readonly<Record<CloudProviderId, T>>
+): T | undefined {
+  return (values as Record<string, T | undefined>)[provider];
+}
+
+function createUnknownCloudProviderResponse<T extends Record<string, unknown>>(
+  provider: string
+): MessageResponse<T> {
+  return { success: false, error: `Unknown provider: ${provider}` };
+}
+
+async function handleCloudProviderMutation<TResolved, TSuccess extends Record<string, unknown>>(
+  provider: CloudProviderId,
+  resolve: (provider: CloudProviderId) => TResolved | undefined,
+  run: (resolved: TResolved) => Promise<TSuccess>,
+  errorLogMessage: string
+): Promise<MessageResponse<TSuccess>> {
+  const resolved = resolve(provider);
+  if (resolved === undefined) {
+    return createUnknownCloudProviderResponse<TSuccess>(provider);
+  }
+
+  return withMessageResponse(
+    () => run(resolved),
+    (error) => log.error(errorLogMessage, error)
+  );
+}
+
+function resolveCloudProviderStorageKeys(provider: CloudProviderId): readonly string[] | undefined {
+  const storageKeys = getCloudProviderValue(provider, CLOUD_PROVIDER_STORAGE_KEYS);
+  if (storageKeys) {
+    return storageKeys;
+  }
+
+  const storageKey = getCloudProviderValue(provider, CLOUD_PROVIDER_KEYS);
+  return storageKey ? [storageKey] : undefined;
+}
+
+function resolveCloudProviderEnabledField(provider: CloudProviderId): string | undefined {
+  return getCloudProviderValue(provider, CLOUD_PROVIDER_ENABLED_FIELDS);
+}
 
 // ============================================================================
 // Cache Handlers
@@ -134,8 +179,10 @@ export async function handleSetCloudApiKey(
 ): Promise<ExtensionMessageResponseByType<'setCloudApiKey'>> {
   const storageKey = CLOUD_PROVIDER_KEYS[message.provider];
   if (!storageKey) {
-    return { success: false, error: `Unknown provider: ${message.provider}` };
+    return createUnknownCloudProviderResponse<{ provider: CloudProviderId }>(message.provider);
   }
+
+  const optionFields = getCloudProviderValue(message.provider, CLOUD_PROVIDER_OPTION_FIELDS) ?? {};
 
   return withMessageResponse(
     async () => {
@@ -144,7 +191,6 @@ export async function handleSetCloudApiKey(
       };
 
       if (message.options) {
-        const optionFields = CLOUD_PROVIDER_OPTION_FIELDS[message.provider];
         Object.assign(
           dataToStore,
           buildValidatedCloudProviderMutation(message.provider, message.options, optionFields),
@@ -163,37 +209,30 @@ export async function handleClearCloudApiKey(
   message: ClearCloudApiKeyMessage,
   storageRemove: (keys: string[]) => Promise<void> = strictStorageRemove,
 ): Promise<ExtensionMessageResponseByType<'clearCloudApiKey'>> {
-  const storageKey = CLOUD_PROVIDER_KEYS[message.provider];
-  if (!storageKey) {
-    return { success: false, error: `Unknown provider: ${message.provider}` };
-  }
-
-  return withMessageResponse(
-    async () => {
-      const keysToRemove = [...(CLOUD_PROVIDER_STORAGE_KEYS[message.provider] ?? [storageKey])];
-      await storageRemove(keysToRemove);
+  return handleCloudProviderMutation(
+    message.provider,
+    resolveCloudProviderStorageKeys,
+    async (keysToRemove) => {
+      await storageRemove([...keysToRemove]);
       log.info(`API key cleared for ${message.provider}`);
       return { provider: message.provider };
     },
-    (error) => log.error('Failed to clear API key:', error)
+    'Failed to clear API key:'
   );
 }
 
 export async function handleSetCloudProviderEnabled(
   message: SetCloudProviderEnabledMessage
 ): Promise<ExtensionMessageResponseByType<'setCloudProviderEnabled'>> {
-  const enabledField = CLOUD_PROVIDER_ENABLED_FIELDS[message.provider];
-  if (!enabledField) {
-    return { success: false, error: `Unknown provider: ${message.provider}` };
-  }
-
-  return withMessageResponse(
-    async () => {
+  return handleCloudProviderMutation(
+    message.provider,
+    resolveCloudProviderEnabledField,
+    async (enabledField) => {
       await strictStorageSet({ [enabledField]: message.enabled });
       log.info(`Provider ${message.provider} enabled=${message.enabled}`);
       return { provider: message.provider, enabled: message.enabled };
     },
-    (error) => log.error('Failed to update cloud provider enabled state:', error)
+    'Failed to update cloud provider enabled state:'
   );
 }
 

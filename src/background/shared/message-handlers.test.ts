@@ -962,6 +962,23 @@ describe('handleSetCloudProviderEnabled', () => {
 
     expect(result.success).toBe(false);
   });
+
+  it('handles storage failure gracefully', async () => {
+    const { strictStorageSet } = await import('../../core/storage');
+    vi.mocked(strictStorageSet).mockRejectedValueOnce(new Error('Enable failed'));
+
+    const { handleSetCloudProviderEnabled } = await import('./message-handlers');
+    const result = await handleSetCloudProviderEnabled({
+      type: 'setCloudProviderEnabled',
+      provider: 'deepl',
+      enabled: false,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toBe('Enable failed');
+    }
+  });
 });
 
 describe('handleClearCloudApiKey error path', () => {

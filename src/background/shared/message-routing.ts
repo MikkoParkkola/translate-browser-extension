@@ -1,12 +1,8 @@
 import type { ExtensionMessage, MessageResponse } from '../../types';
+import { hasStringMessageType } from '../../shared/message-guards';
 
 export function isExtensionMessage(message: unknown): message is ExtensionMessage {
-  return (
-    typeof message === 'object'
-    && message !== null
-    && 'type' in message
-    && typeof (message as { type?: unknown }).type === 'string'
-  );
+  return hasStringMessageType(message);
 }
 
 export function isHandledExtensionMessage<TType extends ExtensionMessage['type']>(
