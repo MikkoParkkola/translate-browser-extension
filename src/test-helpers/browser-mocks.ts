@@ -1,5 +1,12 @@
 import { vi } from 'vitest';
 
+export function setupNavigatorLanguageMock(language = 'en-US') {
+  vi.stubGlobal('navigator', {
+    ...globalThis.navigator,
+    language,
+  });
+}
+
 export function setupNavigatorStorageEstimateMock(
   initialValue: { usage: number; quota: number } = { usage: 0, quota: 0 }
 ) {

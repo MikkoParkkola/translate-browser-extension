@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@solidjs/testing-library';
 import { OnboardingApp } from './index';
+import { setupNavigatorLanguageMock } from '../test-helpers/browser-mocks';
+import { setupUiChromeMock } from '../test-helpers/chrome-mocks';
 
 // Flush microtasks
 const flush = () => new Promise<void>((r) => setTimeout(r, 0));
@@ -24,21 +26,20 @@ async function goToStep(n: number) {
   if (n >= 4) await clickBtn('Skip');
 }
 
-beforeEach(() => {
-  // chrome mocks
-  globalThis.chrome = {
-    storage: {
-      local: {
-        set: vi.fn().mockResolvedValue(undefined),
-        get: vi.fn().mockResolvedValue({}),
-      },
-    },
-    runtime: {
-      sendMessage: vi.fn().mockResolvedValue({ success: true, result: 'Translated text' }),
-    },
-  } as any;
+function setupOnboardingBrowserMocks(language = 'en-US') {
+  setupUiChromeMock({
+    storageLocalSet: vi.fn().mockResolvedValue(undefined),
+    storageLocalGet: vi.fn().mockResolvedValue({}),
+    runtimeSendMessage: vi.fn().mockResolvedValue({
+      success: true,
+      result: 'Translated text',
+    }),
+  });
+  setupNavigatorLanguageMock(language);
+}
 
-  vi.stubGlobal('navigator', { ...navigator, language: 'en-US' });
+beforeEach(() => {
+  setupOnboardingBrowserMocks();
 });
 
 afterEach(() => {
@@ -71,7 +72,7 @@ describe('OnboardingApp', () => {
   });
 
   it('detects supported browser language on mount', async () => {
-    vi.stubGlobal('navigator', { ...navigator, language: 'fi-FI' });
+    setupNavigatorLanguageMock('fi-FI');
     render(() => <OnboardingApp />);
     await flush();
     await goToStep(1);
@@ -80,7 +81,7 @@ describe('OnboardingApp', () => {
   });
 
   it('keeps default English for unsupported browser language', async () => {
-    vi.stubGlobal('navigator', { ...navigator, language: 'xx-XX' });
+    setupNavigatorLanguageMock('xx-XX');
     render(() => <OnboardingApp />);
     await flush();
     await goToStep(1);
@@ -169,7 +170,7 @@ describe('OnboardingApp', () => {
   });
 
   it('shows English source text when target is non-English', async () => {
-    vi.stubGlobal('navigator', { ...navigator, language: 'fi' });
+    setupNavigatorLanguageMock('fi');
     render(() => <OnboardingApp />);
     await flush();
     await goToStep(3);
@@ -407,7 +408,7 @@ describe('OnboardingApp', () => {
   });
 
   it('persists Finnish + DeepL when selected', async () => {
-    vi.stubGlobal('navigator', { ...navigator, language: 'fi' });
+    setupNavigatorLanguageMock('fi');
     render(() => <OnboardingApp />);
     await flush();
     await goToStep(1);
@@ -499,7 +500,7 @@ describe('OnboardingApp', () => {
   });
 
   it('uses English source text when target is non-English on test step', async () => {
-    vi.stubGlobal('navigator', { ...navigator, language: 'de' });
+    setupNavigatorLanguageMock('de');
     render(() => <OnboardingApp />);
     await flush();
     await goToStep(3);
