@@ -16,6 +16,7 @@
     "lint": "eslint .",
     "postinstall": "bash scripts/fetch-wasm-assets.sh",
     "pr": "bash scripts/pr.sh",
+    "playwright:install:chromium": "playwright install chromium",
     "release": "changeset publish",
     "secrets": "gitleaks detect --no-git",
     "serve": "http-server dist -p 8080",
