@@ -4,19 +4,31 @@
  */
 
 import { Component, createSignal, onMount, Show } from 'solid-js';
+import { CONFIG } from '../../config';
 import { createLogger } from '../../core/logger';
-import type { TranslationCacheStats } from '../../core/translation-cache';
+import type { DetailedCacheStats } from '../../types';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
-import { formatBytes, formatPercent, formatDate } from '../../shared/format-utils';
+import { formatPercent, formatDate } from '../../shared/format-utils';
 import { sendBackgroundMessageWithUiError } from '../../shared/background-message';
 import { reportUiError, showTemporaryMessage } from '../../shared/ui-feedback';
 
 const log = createLogger('CacheSettings');
+const EMPTY_CACHE_STATS: DetailedCacheStats = {
+  size: 0,
+  maxSize: CONFIG.cache.maxSize,
+  hitRate: '0/0 (0%)',
+  oldestEntry: null,
+  totalHits: 0,
+  totalMisses: 0,
+  mostUsed: [],
+  memoryEstimate: '~0KB',
+  languagePairs: {},
+};
 
 export const CacheSettings: Component = () => {
   const [loading, setLoading] = createSignal(true);
   const [clearing, setClearing] = createSignal(false);
-  const [stats, setStats] = createSignal<TranslationCacheStats | null>(null);
+  const [stats, setStats] = createSignal<DetailedCacheStats | null>(null);
   const [error, setError] = createSignal<string | null>(null);
   const [success, setSuccess] = createSignal<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = createSignal(false);
@@ -30,8 +42,7 @@ export const CacheSettings: Component = () => {
 
     try {
       const response = await sendBackgroundMessageWithUiError<{
-        stats?: TranslationCacheStats;
-        cache?: TranslationCacheStats;
+        cache?: DetailedCacheStats;
       }>(
         { type: 'getCacheStats' },
         {
@@ -43,26 +54,7 @@ export const CacheSettings: Component = () => {
       );
       if (!response) return;
 
-      const cacheStats = response.cache ?? response.stats;
-      if (cacheStats) {
-        setStats(cacheStats);
-      } else {
-        // Fallback: estimate from storage
-        /* v8 ignore start -- optional chaining on navigator.storage API */
-        const estimate = await navigator.storage?.estimate?.() || { usage: 0, quota: 0 };
-        /* v8 ignore stop */
-
-        setStats({
-          entries: 0,
-          totalSize: estimate.usage || 0,
-          maxSize: 100 * 1024 * 1024, // 100MB default
-          hits: 0,
-          misses: 0,
-          hitRate: 0,
-          oldestTimestamp: null,
-          newestTimestamp: null,
-        });
-      }
+      setStats(response.cache ?? EMPTY_CACHE_STATS);
     } catch (error) {
       reportUiError(setError, log, 'Failed to load cache statistics', 'Failed to load stats:', error);
     } finally {
@@ -98,15 +90,36 @@ export const CacheSettings: Component = () => {
     /* v8 ignore start -- guard */
     if (!s || s.maxSize === 0) return 0;
     /* v8 ignore stop */
-    return Math.min(100, (s.totalSize / s.maxSize) * 100);
+    return Math.min(100, (s.size / s.maxSize) * 100);
+  };
+
+  const totalLookups = () => {
+    const s = stats();
+    return s ? s.totalHits + s.totalMisses : 0;
+  };
+
+  const hitRate = () => {
+    const lookups = totalLookups();
+    /* v8 ignore start -- guard */
+    if (lookups === 0) return 0;
+    /* v8 ignore stop */
+    return stats()!.totalHits / lookups;
+  };
+
+  const languagePairCount = () => Object.keys(stats()?.languagePairs ?? {}).length;
+
+  const capacityLabel = () => {
+    const s = stats();
+    if (!s) return '0 entries';
+    return `${s.size.toLocaleString()} entries`;
   };
 
   return (
     <div>
       <h2 class="section-title" style={{ "margin-bottom": "0.5rem" }}>Translation Cache</h2>
       <p class="section-description">
-        Translations are cached locally to improve performance and reduce API calls.
-        The cache uses IndexedDB with LRU (Least Recently Used) eviction when full.
+        Recent translations are stored in the extension's persistent background cache to speed up repeated requests.
+        This screen reflects that translation memory, not the offscreen runtime's internal model caches.
       </p>
 
       {/* Alerts */}
@@ -129,35 +142,35 @@ export const CacheSettings: Component = () => {
         {/* Stats Cards */}
         <div class="cache-stats">
           <div class="stat-card">
-            <div class="stat-value">{stats()!.entries.toLocaleString()}</div>
+            <div class="stat-value">{stats()!.size.toLocaleString()}</div>
             <div class="stat-label">Cached Entries</div>
           </div>
 
           <div class="stat-card">
-            <div class="stat-value">{formatBytes(stats()!.totalSize)}</div>
-            <div class="stat-label">Storage Used</div>
+            <div class="stat-value">{stats()!.memoryEstimate}</div>
+            <div class="stat-label">Estimated Memory</div>
           </div>
 
           <div class="stat-card">
-            <div class="stat-value">{formatPercent(stats()!.hitRate)}</div>
+            <div class="stat-value">{formatPercent(hitRate())}</div>
             <div class="stat-label">Hit Rate</div>
           </div>
         </div>
 
-        {/* Storage Usage */}
+        {/* Capacity Usage */}
         <section class="settings-section">
           <div class="section-header">
             <div>
-              <h3 class="section-title">Storage Usage</h3>
-              <p class="section-subtitle">Cache storage allocation and usage</p>
+              <h3 class="section-title">Capacity Usage</h3>
+              <p class="section-subtitle">Persistent background cache entry usage</p>
             </div>
           </div>
 
           <div style={{ "margin-bottom": "1rem" }}>
             <div style={{ display: "flex", "justify-content": "space-between", "margin-bottom": "0.5rem" }}>
-              <span style={{ "font-weight": "500" }}>{formatBytes(stats()!.totalSize)}</span>
+              <span style={{ "font-weight": "500" }}>{capacityLabel()}</span>
               <span style={{ color: "var(--color-gray-500)" }}>
-                of {formatBytes(stats()!.maxSize)} maximum
+                of {stats()!.maxSize.toLocaleString()} maximum
               </span>
             </div>
             <div class="progress-bar">
@@ -170,10 +183,10 @@ export const CacheSettings: Component = () => {
 
           <div style={{ display: "flex", "justify-content": "space-between", "font-size": "0.875rem", color: "var(--color-gray-600)" }}>
             <div>
-              <strong>Oldest entry:</strong> {formatDate(stats()!.oldestTimestamp, { showTime: true })}
+              <strong>Oldest entry:</strong> {formatDate(stats()!.oldestEntry, { showTime: true })}
             </div>
             <div>
-              <strong>Newest entry:</strong> {formatDate(stats()!.newestTimestamp, { showTime: true })}
+              <strong>Language pairs:</strong> {languagePairCount().toLocaleString()}
             </div>
           </div>
         </section>
@@ -190,30 +203,30 @@ export const CacheSettings: Component = () => {
           <div style={{ display: "grid", "grid-template-columns": "repeat(3, 1fr)", gap: "1rem" }}>
             <div>
               <div style={{ "font-size": "1.25rem", "font-weight": "600", color: "var(--color-green-600)" }}>
-                {stats()!.hits.toLocaleString()}
+                {stats()!.totalHits.toLocaleString()}
               </div>
               <div style={{ "font-size": "0.75rem", color: "var(--color-gray-500)" }}>Cache Hits</div>
             </div>
 
             <div>
               <div style={{ "font-size": "1.25rem", "font-weight": "600", color: "var(--color-gray-600)" }}>
-                {stats()!.misses.toLocaleString()}
+                {stats()!.totalMisses.toLocaleString()}
               </div>
               <div style={{ "font-size": "0.75rem", color: "var(--color-gray-500)" }}>Cache Misses</div>
             </div>
 
             <div>
               <div style={{ "font-size": "1.25rem", "font-weight": "600", color: "var(--color-primary-600)" }}>
-                {(stats()!.hits + stats()!.misses).toLocaleString()}
+                {totalLookups().toLocaleString()}
               </div>
               <div style={{ "font-size": "0.75rem", color: "var(--color-gray-500)" }}>Total Lookups</div>
             </div>
           </div>
 
-          <Show when={stats()!.hitRate > 0}>
+          <Show when={hitRate() > 0}>
             <div class="alert alert-info" style={{ "margin-top": "1rem" }}>
-              Your cache hit rate of {formatPercent(stats()!.hitRate)} means {formatPercent(stats()!.hitRate)} of
-              translations are served from cache, saving API calls and improving response time.
+              Your cache served {stats()!.totalHits.toLocaleString()} of {totalLookups().toLocaleString()} repeated
+              translations from memory ({formatPercent(hitRate())}), reducing repeated translation work and API calls.
             </div>
           </Show>
         </section>
@@ -228,15 +241,15 @@ export const CacheSettings: Component = () => {
           </div>
 
           <p style={{ "font-size": "0.875rem", color: "var(--color-gray-600)", "margin-bottom": "1rem" }}>
-            Clearing the cache will remove all stored translations. Future translations
-            will need to be fetched again, which may result in increased API usage.
+            Clearing the cache will remove all stored translations from the background translation memory.
+            Future translations will need to be processed again, which may increase latency and API usage.
           </p>
 
           <div class="btn-group">
             <button
               class="btn btn-danger"
               onClick={() => setShowClearConfirm(true)}
-              disabled={clearing() || stats()!.entries === 0}
+              disabled={clearing() || stats()!.size === 0}
             >
               {clearing() ? (
                 <>
@@ -271,8 +284,8 @@ export const CacheSettings: Component = () => {
               text translated with different settings will have separate cache entries.
             </p>
             <p>
-              <strong>Persistence:</strong> The cache is stored in IndexedDB and
-              persists across browser restarts. It is not synced across devices.
+              <strong>Persistence:</strong> The background translation memory is stored
+              in extension storage and persists across browser restarts. It is not synced across devices.
             </p>
           </div>
         </section>
@@ -281,7 +294,7 @@ export const CacheSettings: Component = () => {
       <ConfirmDialog
         open={showClearConfirm()}
         title="Clear Translation Cache"
-        message="This will delete all cached translations. You cannot undo this action. Future translations will need to be fetched again."
+        message="This will delete all cached translations from the background translation memory. You cannot undo this action. Future translations will need to be processed again."
         confirmLabel="Clear Cache"
         cancelLabel="Keep Cache"
         variant="warning"
