@@ -146,6 +146,7 @@ describe('handleTranslateCore', () => {
 
     expect(result.success).toBe(true);
     expect((result as unknown as Record<string, unknown>).result).toBe('cached translation');
+    expect((result as unknown as Record<string, unknown>).cached).toBe(true);
     expect(translateFn).not.toHaveBeenCalled();
   });
 
@@ -191,6 +192,7 @@ describe('handleTranslateCore', () => {
 
     expect(result.success).toBe(true);
     expect((result as unknown as Record<string, unknown>).result).toBe('user corrected text');
+    expect((result as unknown as Record<string, unknown>).fromCorrection).toBe(true);
     expect(translateFn).not.toHaveBeenCalled(); // Should not call translate when correction exists
   });
 

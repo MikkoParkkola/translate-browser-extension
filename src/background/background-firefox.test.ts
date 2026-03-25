@@ -487,9 +487,6 @@ describe('background-firefox message handler', () => {
 
   describe('translate', () => {
     it('returns success:true for valid translation', async () => {
-      const { withRetry } = await import('../core/errors');
-      (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('translated text');
-
       const response = await invoke({
         type: 'translate',
         text: 'hello',
@@ -500,9 +497,6 @@ describe('background-firefox message handler', () => {
     });
 
     it('returns duration in response', async () => {
-      const { withRetry } = await import('../core/errors');
-      (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('translated');
-
       const response = await invoke({
         type: 'translate',
         text: 'hello',
@@ -544,9 +538,6 @@ describe('background-firefox message handler', () => {
     });
 
     it('accepts strategy in options', async () => {
-      const { withRetry } = await import('../core/errors');
-      (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('ok');
-
       const response = await invoke({
         type: 'translate',
         text: 'hello',
@@ -839,9 +830,6 @@ describe('background-firefox token estimation', () => {
 
 describe('background-firefox getCacheKey', () => {
   it('generateCacheKey is called with correct arguments', async () => {
-    const { withRetry } = await import('../core/errors');
-    (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('ok');
-
     const { generateCacheKey } = await import('../core/hash');
 
     await invoke({
@@ -1005,9 +993,6 @@ describe('background-firefox translate: additional coverage', () => {
     // state is module-level and persists across tests.
     // Instead, verify the rate limit error message format by checking the
     // formatUserError code path via a direct translation error scenario.
-    const { withRetry } = await import('../core/errors');
-    (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('translated text');
-
     const response = await invoke({
       type: 'translate',
       text: 'hello',
@@ -1020,9 +1005,6 @@ describe('background-firefox translate: additional coverage', () => {
   });
 
   it('handles translate with explicit provider option', async () => {
-    const { withRetry } = await import('../core/errors');
-    (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('gemma result');
-
     const response = await invoke({
       type: 'translate',
       text: 'hello',
@@ -1035,9 +1017,6 @@ describe('background-firefox translate: additional coverage', () => {
   });
 
   it('handles translate with array text input', async () => {
-    const { withRetry } = await import('../core/errors');
-    (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce(['hei', 'maailma']);
-
     const response = await invoke({
       type: 'translate',
       text: ['hello', 'world'],
@@ -1049,9 +1028,6 @@ describe('background-firefox translate: additional coverage', () => {
   });
 
   it('handles translate with sourceLang=auto', async () => {
-    const { withRetry } = await import('../core/errors');
-    (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('autodetected translation');
-
     const { validateInput } = await import('../core/errors');
     (validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
       valid: true,
@@ -1071,9 +1047,6 @@ describe('background-firefox translate: additional coverage', () => {
   });
 
   it('translate with sourceLang=auto and result not cached', async () => {
-    const { withRetry } = await import('../core/errors');
-    (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('result');
-
     const { validateInput } = await import('../core/errors');
     (validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
       valid: true,
@@ -1121,9 +1094,6 @@ describe('background-firefox translate: additional coverage', () => {
 
   it('clearCache after translations clears stored entries', async () => {
     // First do a translation to populate cache
-    const { withRetry } = await import('../core/errors');
-    (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('translation');
-
     await invoke({
       type: 'translate',
       text: 'hello',

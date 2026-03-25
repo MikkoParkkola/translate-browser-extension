@@ -12,27 +12,20 @@ import type {
   BackgroundRequestMessageType,
   ExtensionMessage,
   ExtensionMessageResponse,
-  ExtensionMessageResponseByType,
   TranslateResponse,
   Strategy,
   TranslationProviderId,
   TranslationPipeline,
-  SetProviderMessage,
   PreloadModelMessage,
   TranslateMessage,
   MessageResponse,
 } from '../types';
 import {
   createTranslationError,
-  validateInput,
-  withRetry,
-  isNetworkError,
   extractErrorMessage,
-  type TranslationError,
 } from '../core/errors';
 import { createLogger } from '../core/logger';
 import { safeStorageGet, strictStorageSet } from '../core/storage';
-import { getCorrection } from '../core/corrections';
 import { withTimeout } from '../core/async-utils';
 import { CONFIG } from '../config';
 import { browserAPI, getURL } from '../core/browser-api';
@@ -56,16 +49,23 @@ import { buildLanguageDetectionSample, detectLanguage } from '../offscreen/langu
 import { translateWithGemma, getTranslateGemmaPipeline } from '../offscreen/translategemma';
 import {
   createTranslationCache,
-  type DetailedCacheStats,
   type StorageAdapter,
   type TranslationCache,
+  getProvider,
+  setProvider,
+  getStrategy,
+  handleSetProvider,
+  handleGetCacheStats,
+  handleClearCache,
+  handleGetUsage,
+  handleTranslateCore,
+  formatUserError,
+  PROVIDER_LIST,
   handleClearCloudApiKey,
   handleGetCloudProviderStatus,
   handleSetCloudApiKey,
   handleSetCloudProviderEnabled,
 } from './shared';
-import { estimateTokens, formatUserError, PROVIDER_LIST } from './shared/provider-management';
-import { NETWORK_RETRY_CONFIG } from './shared/translation-core';
 
 const log = createLogger('Background-FF');
 
@@ -89,13 +89,6 @@ if (env.backends?.onnx?.wasm) {
 log.info('WASM path configured:', wasmBasePath);
 
 // ============================================================================
-// State Management
-// ============================================================================
-
-let currentStrategy: Strategy = 'smart';
-let currentProvider: TranslationProviderId = DEFAULT_PROVIDER_ID;
-
-// ============================================================================
 // Shared Translation Cache (Persistent LRU)
 // ============================================================================
 
@@ -107,7 +100,7 @@ const firefoxStorageAdapter: StorageAdapter = {
 
 const translationCache: TranslationCache = createTranslationCache(
   firefoxStorageAdapter,
-  () => currentProvider
+  getProvider,
 );
 
 // Load cache on startup
@@ -321,45 +314,6 @@ function getSupportedLanguages(): Array<{ src: string; tgt: string; pivot?: bool
 }
 
 // ============================================================================
-// Rate limiting
-// ============================================================================
-
-interface RateLimitState {
-  requests: number;
-  tokens: number;
-  windowStart: number;
-}
-
-const rateLimit: RateLimitState = {
-  requests: 0,
-  tokens: 0,
-  windowStart: Date.now(),
-};
-
-function checkRateLimit(tokenEstimate: number): boolean {
-  const now = Date.now();
-  if (now - rateLimit.windowStart > CONFIG.rateLimits.windowMs) {
-    rateLimit.requests = 0;
-    rateLimit.tokens = 0;
-    rateLimit.windowStart = now;
-  }
-
-  if (rateLimit.requests >= CONFIG.rateLimits.requestsPerMinute) return false;
-  if (rateLimit.tokens + tokenEstimate > CONFIG.rateLimits.tokensPerMinute) return false;
-
-  return true;
-}
-
-function recordUsage(tokens: number): void {
-  rateLimit.requests++;
-  rateLimit.tokens += tokens;
-}
-
-// ============================================================================
-// Retry Configuration
-// ============================================================================
-
-// ============================================================================
 // Message Handlers
 // ============================================================================
 
@@ -395,11 +349,11 @@ function isFirefoxHandledMessage(message: ExtensionMessage): message is FirefoxH
 async function handleMessage(message: FirefoxHandledMessage): Promise<FirefoxHandledResponse> {
   switch (message.type) {
     case 'ping':
-      return { success: true, status: 'ready', provider: currentProvider };
+      return { success: true, status: 'ready', provider: getProvider() };
     case 'translate':
       return handleTranslate(message);
     case 'getUsage':
-      return handleGetUsage();
+      return handleGetUsage(translationCache);
     case 'getProviders':
       return handleGetProviders();
     case 'preloadModel':
@@ -407,9 +361,9 @@ async function handleMessage(message: FirefoxHandledMessage): Promise<FirefoxHan
     case 'setProvider':
       return handleSetProvider(message);
     case 'getCacheStats':
-      return handleGetCacheStats();
+      return handleGetCacheStats(translationCache);
     case 'clearCache':
-      return handleClearCache();
+      return handleClearCache(translationCache);
     case 'checkChromeTranslator':
       return handleCheckChromeTranslator();
     case 'checkWebGPU':
@@ -429,15 +383,8 @@ async function handleMessage(message: FirefoxHandledMessage): Promise<FirefoxHan
   }
 }
 
-async function handleSetProvider(message: SetProviderMessage): Promise<MessageResponse<{ provider: TranslationProviderId }>> {
-  currentProvider = message.provider;
-  log.info(`Provider set to: ${currentProvider}`);
-  await strictStorageSet({ provider: currentProvider });
-  return { success: true, provider: currentProvider };
-}
-
 async function handlePreloadModel(message: PreloadModelMessage): Promise<MessageResponse<{ preloaded: boolean }>> {
-  const provider = message.provider || currentProvider;
+  const provider = message.provider || getProvider();
   log.info(`Preloading ${provider} model: ${message.sourceLang} -> ${message.targetLang}`);
 
   try {
@@ -467,23 +414,6 @@ async function handlePreloadModel(message: PreloadModelMessage): Promise<Message
   }
 }
 
-async function handleGetCacheStats(): Promise<MessageResponse<{ cache: DetailedCacheStats }>> {
-  await translationCache.load();
-  return {
-    success: true,
-    cache: translationCache.getStats(),
-  };
-}
-
-async function handleClearCache(): Promise<{ success: true; clearedEntries: number }> {
-  const previousSize = translationCache.size;
-  await translationCache.clear();
-  return {
-    success: true,
-    clearedEntries: previousSize,
-  };
-}
-
 async function handleCheckChromeTranslator(): Promise<{ success: true; available: boolean }> {
   return { success: true, available: false };
 }
@@ -498,135 +428,21 @@ async function handleCheckWebNN(): Promise<{ success: true; supported: boolean }
 }
 
 async function handleTranslate(message: TranslateMessage): Promise<TranslateResponse> {
-  const startTime = Date.now();
-
-  try {
-    await translationCache.load();
-
-    const validation = validateInput(
-      message.text,
-      message.sourceLang,
-      message.targetLang
-    );
-
-    if (!validation.valid) {
-      return {
-        success: false,
-        error: formatUserError(validation.error!),
-        duration: Date.now() - startTime,
-      };
-    }
-
-    const text = validation.sanitizedText!;
-
-    if (message.options?.strategy) {
-      currentStrategy = message.options.strategy;
-    }
-
-    const provider = message.provider || currentProvider;
-
-    // Check cache first
-    const cacheKey = translationCache.getKey(
-      text,
-      message.sourceLang,
-      message.targetLang,
-      provider
-    );
-    if (message.sourceLang !== 'auto') {
-      const cached = translationCache.get(cacheKey);
-      if (cached) {
-        const duration = Date.now() - startTime;
-        return {
-          success: true,
-          result: cached.result,
-          duration,
-        } as TranslateResponse & { cached: boolean };
-      }
-
-      if (typeof text === 'string') {
-        const userCorrection = await getCorrection(text, message.sourceLang, message.targetLang);
-        if (userCorrection) {
-          const duration = Date.now() - startTime;
-          log.info(`Using user correction, returning in ${duration}ms`);
-          translationCache.set(cacheKey, userCorrection, message.sourceLang, message.targetLang);
-          return {
-            success: true,
-            result: userCorrection,
-            duration,
-            fromCorrection: true,
-          };
-        }
-      }
-    }
-
-    const tokenEstimate = estimateTokens(text);
-
-    if (!checkRateLimit(tokenEstimate)) {
-      return {
-        success: false,
-        error: 'Too many requests. Please wait a moment and try again.',
-        duration: Date.now() - startTime,
-      };
-    }
-
-    log.info(`Translating: ${message.sourceLang} -> ${message.targetLang}`);
-
-    const result = await withRetry(
-      async () => {
-        return translate(text, message.sourceLang, message.targetLang, provider);
-      },
-      NETWORK_RETRY_CONFIG,
-      (error: TranslationError) => {
-        return isNetworkError(error.technicalDetails);
-      }
-    );
-
-    log.info('Translation complete');
-    recordUsage(tokenEstimate);
-
-    // Cache the result
-    if (result && message.sourceLang !== 'auto') {
-      translationCache.set(cacheKey, result, message.sourceLang, message.targetLang);
-    }
-
-    return {
-      success: true,
-      result,
-      duration: Date.now() - startTime,
-    };
-  } catch (error) {
-    const translationError = createTranslationError(error);
-    log.error('Translation error:', translationError.technicalDetails);
-
-    return {
-      success: false,
-      error: formatUserError(translationError),
-      duration: Date.now() - startTime,
-    };
-  }
-}
-
-function handleGetUsage(): ExtensionMessageResponseByType<'getUsage'> {
-  return {
-    throttle: {
-      requests: rateLimit.requests,
-      tokens: rateLimit.tokens,
-      requestLimit: CONFIG.rateLimits.requestsPerMinute,
-      tokenLimit: CONFIG.rateLimits.tokensPerMinute,
-      totalRequests: rateLimit.requests,
-      totalTokens: rateLimit.tokens,
-      queue: 0,
-    },
-    cache: translationCache.getStats(),
-    providers: {},
-  };
+  await translationCache.load();
+  return handleTranslateCore(
+    message,
+    translationCache,
+    async (text, sourceLang, targetLang, provider) => ({
+      result: await translate(text, sourceLang, targetLang, provider),
+    }),
+  );
 }
 
 function handleGetProviders(): { providers: typeof PROVIDER_LIST; activeProvider: TranslationProviderId; strategy: Strategy; supportedLanguages: Array<{ src: string; tgt: string; pivot?: boolean }> } {
   return {
-    providers: PROVIDER_LIST,
-    activeProvider: currentProvider,
-    strategy: currentStrategy,
+    providers: [...PROVIDER_LIST],
+    activeProvider: getProvider(),
+    strategy: getStrategy(),
     supportedLanguages: getSupportedLanguages(),
   };
 }
@@ -707,7 +523,7 @@ if (browserAPI.commands?.onCommand) {
     const sourceLang = settings.sourceLang || 'auto';
     const targetLang = settings.targetLang || 'en';
     const strategy = settings.strategy || 'smart';
-    const provider = settings.provider || currentProvider;
+    const provider = settings.provider || getProvider();
 
     try {
       switch (command) {
@@ -769,8 +585,8 @@ browserAPI.runtime.onInstalled.addListener((details) => {
     } else if (restoredProvider !== result.provider) {
       log.warn('Ignoring invalid stored provider:', result.provider);
     }
-    currentProvider = restoredProvider;
-    log.info('Restored provider:', currentProvider);
+    setProvider(restoredProvider);
+    log.info('Restored provider:', getProvider());
   } else {
     log.info(`No stored provider found, using default ${DEFAULT_PROVIDER_ID}`);
   }

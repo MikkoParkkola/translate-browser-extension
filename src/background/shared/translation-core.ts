@@ -135,6 +135,7 @@ export async function handleTranslateCore(
           success: true,
           result: cached.result,
           duration,
+          cached: true,
         } as TranslateResponse & { cached: boolean };
       }
     }
@@ -150,6 +151,7 @@ export async function handleTranslateCore(
           success: true,
           result: userCorrection,
           duration,
+          fromCorrection: true,
         } as TranslateResponse & { fromCorrection: boolean };
       }
     }
