@@ -6,14 +6,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { installChromeStorageMock } from '../__contract__/shared-provider-mocks';
+import { installCloudProviderTestHarness } from '../__contract__/cloud-provider-test-harness';
 import { GoogleCloudProvider } from './google-cloud';
 
-const { mockStorage, resetStorage } = installChromeStorageMock();
-
-// Mock fetch
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+const { mockStorage, resetStorage, mockFetch } = installCloudProviderTestHarness();
 
 describe('GoogleCloudProvider', () => {
   let provider: GoogleCloudProvider;
@@ -22,59 +18,6 @@ describe('GoogleCloudProvider', () => {
     vi.clearAllMocks();
     resetStorage();
     provider = new GoogleCloudProvider();
-  });
-
-  describe('constructor', () => {
-    it('sets correct provider info', () => {
-      const info = provider.getInfo();
-      expect(info.id).toBe('google-cloud');
-      expect(info.name).toBe('Google Cloud Translation');
-      expect(info.type).toBe('cloud');
-      expect(info.qualityTier).toBe('standard');
-    });
-
-    it('sets cost per million', () => {
-      expect(provider.costPerMillion).toBe(20);
-    });
-  });
-
-  describe('initialize', () => {
-    it('loads config from storage when API key exists', async () => {
-      mockStorage['google_cloud_api_key'] = 'AIza-test-key';
-      mockStorage['google_cloud_chars_used'] = 5000;
-
-      await provider.initialize();
-
-      expect(await provider.isAvailable()).toBe(true);
-      const info = provider.getInfo();
-      expect(info.charactersUsed).toBe(5000);
-    });
-
-    it('handles missing API key', async () => {
-      await provider.initialize();
-      expect(await provider.isAvailable()).toBe(false);
-    });
-  });
-
-  describe('setApiKey', () => {
-    it('stores API key in storage', async () => {
-      await provider.setApiKey('AIza-new-key');
-
-      expect(mockStorage['google_cloud_api_key']).toBe('AIza-new-key');
-      expect(await provider.isAvailable()).toBe(true);
-    });
-  });
-
-  describe('clearApiKey', () => {
-    it('removes all config from storage', async () => {
-      mockStorage['google_cloud_api_key'] = 'key';
-      mockStorage['google_cloud_chars_used'] = 1000;
-
-      await provider.setApiKey('key');
-      await provider.clearApiKey();
-
-      expect(await provider.isAvailable()).toBe(false);
-    });
   });
 
   describe('translate', () => {

@@ -6,14 +6,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { installChromeStorageMock } from '../__contract__/shared-provider-mocks';
+import { installCloudProviderTestHarness } from '../__contract__/cloud-provider-test-harness';
 import { OpenAIProvider } from './openai';
 
-const { mockStorage, resetStorage } = installChromeStorageMock();
-
-// Mock fetch
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+const { mockStorage, resetStorage, mockFetch } = installCloudProviderTestHarness();
 
 // Mock language-map module
 vi.mock('../core/language-map', () => ({
@@ -41,82 +37,6 @@ describe('OpenAIProvider', () => {
     provider = new OpenAIProvider();
   });
 
-  describe('constructor', () => {
-    it('sets correct provider info', () => {
-      const info = provider.getInfo();
-      expect(info.id).toBe('openai');
-      expect(info.name).toBe('OpenAI');
-      expect(info.type).toBe('cloud');
-      expect(info.qualityTier).toBe('premium');
-    });
-
-    it('sets cost per million', () => {
-      expect(provider.costPerMillion).toBe(5000);
-    });
-  });
-
-  describe('initialize', () => {
-    it('loads config from storage when API key exists', async () => {
-      mockStorage['openai_api_key'] = 'sk-test-key';
-      mockStorage['openai_model'] = 'gpt-4o';
-      mockStorage['openai_formality'] = 'formal';
-      mockStorage['openai_temperature'] = 0.5;
-      mockStorage['openai_tokens_used'] = 2000;
-
-      await provider.initialize();
-
-      expect(await provider.isAvailable()).toBe(true);
-      const info = provider.getInfo();
-      expect(info.model).toBe('gpt-4o');
-      expect(info.formality).toBe('formal');
-    });
-
-    it('handles missing API key', async () => {
-      await provider.initialize();
-      expect(await provider.isAvailable()).toBe(false);
-    });
-
-    it('uses default settings when not set', async () => {
-      mockStorage['openai_api_key'] = 'sk-key';
-
-      await provider.initialize();
-
-      const info = provider.getInfo();
-      expect(info.model).toBe('gpt-4o-mini');
-      expect(info.formality).toBe('neutral');
-    });
-  });
-
-  describe('setApiKey', () => {
-    it('stores API key in storage', async () => {
-      await provider.setApiKey('sk-new-key');
-
-      expect(mockStorage['openai_api_key']).toBe('sk-new-key');
-      expect(await provider.isAvailable()).toBe(true);
-    });
-
-    it('initializes config with defaults', async () => {
-      await provider.setApiKey('sk-key');
-
-      const info = provider.getInfo();
-      expect(info.model).toBe('gpt-4o-mini');
-      expect(info.formality).toBe('neutral');
-    });
-
-    it('preserves existing in-memory settings when the key changes', async () => {
-      await provider.setApiKey('sk-old-key');
-      await provider.setModel('gpt-4o');
-      await provider.setFormality('formal');
-
-      await provider.setApiKey('sk-new-key');
-
-      const info = provider.getInfo();
-      expect(mockStorage['openai_api_key']).toBe('sk-new-key');
-      expect(info.model).toBe('gpt-4o');
-      expect(info.formality).toBe('formal');
-    });
-  });
-
   describe('setModel', () => {
     it('stores model preference', async () => {
       await provider.setApiKey('sk-key');
@@ -132,20 +52,6 @@ describe('OpenAIProvider', () => {
       await provider.setFormality('informal');
 
       expect(mockStorage['openai_formality']).toBe('informal');
-    });
-  });
-
-  describe('clearApiKey', () => {
-    it('removes all config from storage', async () => {
-      mockStorage['openai_api_key'] = 'sk-key';
-      mockStorage['openai_model'] = 'gpt-4o';
-      mockStorage['openai_formality'] = 'formal';
-      mockStorage['openai_temperature'] = 0.5;
-
-      await provider.setApiKey('sk-key');
-      await provider.clearApiKey();
-
-      expect(await provider.isAvailable()).toBe(false);
     });
   });
 

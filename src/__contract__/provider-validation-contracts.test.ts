@@ -1,133 +1,180 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { expect } from 'vitest';
 import { AnthropicProvider } from '../providers/anthropic';
 import { DeepLProvider } from '../providers/deepl';
 import { GoogleCloudProvider } from '../providers/google-cloud';
 import { OpenAIProvider } from '../providers/openai';
-import { installChromeStorageMock } from './shared-provider-mocks';
+import {
+  defineCloudProviderLifecycleContract,
+  inspectCloudProvider,
+  installCloudProviderTestHarness,
+} from './cloud-provider-test-harness';
 
-type ProviderHooks = {
-  getStorageKeys(): string[];
-  hasConfig(): boolean;
-};
+const { mockStorage, resetStorage, storageLocal } = installCloudProviderTestHarness();
 
-interface CloudProviderEntry {
-  name: string;
-  create: () => object;
-  apiKeyKey: string;
-  seedConfiguredStorage(storage: Record<string, unknown>): void;
-}
-
-const { mockStorage, resetStorage, storageLocal } = installChromeStorageMock();
-
-const CLOUD_PROVIDERS: CloudProviderEntry[] = [
-  {
-    name: 'Anthropic',
-    create: () => new AnthropicProvider(),
-    apiKeyKey: 'anthropic_api_key',
-    seedConfiguredStorage(storage) {
-      storage['anthropic_api_key'] = 'sk-ant-test';
-      storage['anthropic_model'] = 'claude-3-5-haiku-20241022';
-      storage['anthropic_formality'] = 'neutral';
-      storage['anthropic_tokens_used'] = 100;
-    },
+defineCloudProviderLifecycleContract({
+  name: 'Anthropic',
+  create: () => inspectCloudProvider(new AnthropicProvider()),
+  mockStorage,
+  resetStorage,
+  storageLocal,
+  apiKeyKey: 'anthropic_api_key',
+  expectedInfo: {
+    id: 'anthropic',
+    name: 'Claude',
+    type: 'cloud',
+    qualityTier: 'premium',
+    costPerMillion: 3000,
   },
-  {
+  seedConfiguredStorage(storage) {
+    storage['anthropic_api_key'] = 'sk-ant-test';
+    storage['anthropic_model'] = 'claude-sonnet-4-20250514';
+    storage['anthropic_formality'] = 'formal';
+    storage['anthropic_tokens_used'] = 100;
+  },
+  assertLoadedInfo(info) {
+    expect(info.model).toBe('claude-sonnet-4-20250514');
+    expect(info.formality).toBe('formal');
+  },
+  async configure(provider) {
+    await provider.setApiKey('sk-ant-test');
+  },
+  assertConfiguredStorage(storage) {
+    expect(storage['anthropic_api_key']).toBe('sk-ant-test');
+  },
+  assertConfiguredInfo(info) {
+    expect(info.model).toBe('claude-3-5-haiku-20241022');
+    expect(info.formality).toBe('neutral');
+  },
+  async reconfigure(provider) {
+    await provider.setModel('claude-sonnet-4-20250514');
+    await provider.setFormality('formal');
+    await provider.setApiKey('sk-ant-rotated');
+  },
+  assertReconfiguredInfo(info, storage) {
+    expect(storage['anthropic_api_key']).toBe('sk-ant-rotated');
+    expect(info.model).toBe('claude-sonnet-4-20250514');
+    expect(info.formality).toBe('formal');
+  },
+});
+
+defineCloudProviderLifecycleContract({
+  name: 'OpenAI',
+  create: () => inspectCloudProvider(new OpenAIProvider()),
+  mockStorage,
+  resetStorage,
+  storageLocal,
+  apiKeyKey: 'openai_api_key',
+  expectedInfo: {
+    id: 'openai',
     name: 'OpenAI',
-    create: () => new OpenAIProvider(),
-    apiKeyKey: 'openai_api_key',
-    seedConfiguredStorage(storage) {
-      storage['openai_api_key'] = 'sk-openai-test';
-      storage['openai_model'] = 'gpt-4o-mini';
-      storage['openai_formality'] = 'neutral';
-      storage['openai_temperature'] = 0.3;
-      storage['openai_tokens_used'] = 100;
-    },
+    type: 'cloud',
+    qualityTier: 'premium',
+    costPerMillion: 5000,
   },
-  {
+  seedConfiguredStorage(storage) {
+    storage['openai_api_key'] = 'sk-openai-test';
+    storage['openai_model'] = 'gpt-4o';
+    storage['openai_formality'] = 'formal';
+    storage['openai_temperature'] = 0.3;
+    storage['openai_tokens_used'] = 100;
+  },
+  assertLoadedInfo(info) {
+    expect(info.model).toBe('gpt-4o');
+    expect(info.formality).toBe('formal');
+  },
+  async configure(provider) {
+    await provider.setApiKey('sk-openai-test');
+  },
+  assertConfiguredStorage(storage) {
+    expect(storage['openai_api_key']).toBe('sk-openai-test');
+  },
+  assertConfiguredInfo(info) {
+    expect(info.model).toBe('gpt-4o-mini');
+    expect(info.formality).toBe('neutral');
+  },
+  async reconfigure(provider) {
+    await provider.setModel('gpt-4o');
+    await provider.setFormality('formal');
+    await provider.setApiKey('sk-openai-rotated');
+  },
+  assertReconfiguredInfo(info, storage) {
+    expect(storage['openai_api_key']).toBe('sk-openai-rotated');
+    expect(info.model).toBe('gpt-4o');
+    expect(info.formality).toBe('formal');
+  },
+});
+
+defineCloudProviderLifecycleContract({
+  name: 'DeepL',
+  create: () => inspectCloudProvider(new DeepLProvider()),
+  mockStorage,
+  resetStorage,
+  storageLocal,
+  apiKeyKey: 'deepl_api_key',
+  expectedInfo: {
+    id: 'deepl',
     name: 'DeepL',
-    create: () => new DeepLProvider(),
-    apiKeyKey: 'deepl_api_key',
-    seedConfiguredStorage(storage) {
-      storage['deepl_api_key'] = 'deepl-test-key';
-      storage['deepl_is_pro'] = true;
-      storage['deepl_formality'] = 'default';
-    },
+    type: 'cloud',
+    qualityTier: 'premium',
+    costPerMillion: 20,
   },
-  {
-    name: 'Google Cloud',
-    create: () => new GoogleCloudProvider(),
-    apiKeyKey: 'google_cloud_api_key',
-    seedConfiguredStorage(storage) {
-      storage['google_cloud_api_key'] = 'AIza-test-key';
-      storage['google_cloud_chars_used'] = 1000;
-    },
+  seedConfiguredStorage(storage) {
+    storage['deepl_api_key'] = 'deepl-test-key';
+    storage['deepl_is_pro'] = true;
+    storage['deepl_formality'] = 'more';
   },
-];
+  assertLoadedInfo(info) {
+    expect(info.tier).toBe('Pro');
+    expect(info.formality).toBe('more');
+  },
+  async configure(provider) {
+    await provider.setApiKey('deepl-test-key', false);
+  },
+  assertConfiguredStorage(storage) {
+    expect(storage['deepl_api_key']).toBe('deepl-test-key');
+    expect(storage['deepl_is_pro']).toBe(false);
+  },
+  assertConfiguredInfo(info) {
+    expect(info.tier).toBe('Free');
+    expect(info.formality).toBe('default');
+  },
+  async reconfigure(provider) {
+    await provider.setFormality('prefer_more');
+    await provider.setApiKey('deepl-pro-key', true);
+  },
+  assertReconfiguredInfo(info, storage) {
+    expect(storage['deepl_api_key']).toBe('deepl-pro-key');
+    expect(storage['deepl_is_pro']).toBe(true);
+    expect(info.tier).toBe('Pro');
+    expect(info.formality).toBe('prefer_more');
+  },
+});
 
-describe.each(CLOUD_PROVIDERS)('$name validation hook contract', ({ create, apiKeyKey, seedConfiguredStorage }) => {
-  const createInspectableProvider = () => create() as {
-    initialize(): Promise<void>;
-    isAvailable(): Promise<boolean>;
-    clearApiKey(): Promise<void>;
-  } & ProviderHooks;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
-  });
-
-  it('exposes non-empty storage keys that include the API key', () => {
-    const provider = createInspectableProvider();
-    const keys = provider.getStorageKeys();
-
-    expect(keys.length).toBeGreaterThan(0);
-    expect(keys).toContain(apiKeyKey);
-    expect(new Set(keys).size).toBe(keys.length);
-  });
-
-  it('does not report availability when only ancillary storage keys are present', async () => {
-    const provider = createInspectableProvider();
-    const ancillaryKey = provider.getStorageKeys().find((key) => key !== apiKeyKey);
-
-    if (!ancillaryKey) {
-      expect(provider.hasConfig()).toBe(false);
-      await provider.initialize();
-      expect(await provider.isAvailable()).toBe(false);
-      return;
-    }
-
-    mockStorage[ancillaryKey] = ancillaryKey.includes('used') ? 1 : 'placeholder';
-
-    expect(provider.hasConfig()).toBe(false);
-    await provider.initialize();
-    expect(provider.hasConfig()).toBe(false);
-    expect(await provider.isAvailable()).toBe(false);
-  });
-
-  it('loads configured storage into the availability lifecycle', async () => {
-    const provider = createInspectableProvider();
-    seedConfiguredStorage(mockStorage);
-
-    expect(provider.hasConfig()).toBe(false);
-    await provider.initialize();
-
-    expect(provider.hasConfig()).toBe(true);
-    expect(await provider.isAvailable()).toBe(true);
-  });
-
-  it('clearApiKey removes every storage key and resets availability', async () => {
-    const provider = createInspectableProvider();
-    seedConfiguredStorage(mockStorage);
-    await provider.initialize();
-    const keys = provider.getStorageKeys();
-
-    await provider.clearApiKey();
-
-    expect(storageLocal.remove).toHaveBeenCalledWith(keys);
-    for (const key of keys) {
-      expect(mockStorage[key]).toBeUndefined();
-    }
-    expect(provider.hasConfig()).toBe(false);
-    expect(await provider.isAvailable()).toBe(false);
-  });
+defineCloudProviderLifecycleContract({
+  name: 'Google Cloud',
+  create: () => inspectCloudProvider(new GoogleCloudProvider()),
+  mockStorage,
+  resetStorage,
+  storageLocal,
+  apiKeyKey: 'google_cloud_api_key',
+  expectedInfo: {
+    id: 'google-cloud',
+    name: 'Google Cloud Translation',
+    type: 'cloud',
+    qualityTier: 'standard',
+    costPerMillion: 20,
+  },
+  seedConfiguredStorage(storage) {
+    storage['google_cloud_api_key'] = 'AIza-test-key';
+    storage['google_cloud_chars_used'] = 1000;
+  },
+  assertLoadedInfo(info) {
+    expect(info.charactersUsed).toBe(1000);
+  },
+  async configure(provider) {
+    await provider.setApiKey('AIza-test-key');
+  },
+  assertConfiguredStorage(storage) {
+    expect(storage['google_cloud_api_key']).toBe('AIza-test-key');
+  },
 });

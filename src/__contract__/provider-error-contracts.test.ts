@@ -14,18 +14,12 @@ import { AnthropicProvider } from '../providers/anthropic';
 import { OpenAIProvider } from '../providers/openai';
 import { DeepLProvider } from '../providers/deepl';
 import { GoogleCloudProvider } from '../providers/google-cloud';
-import { installChromeStorageMock } from './shared-provider-mocks';
+import {
+  httpErrorResponse,
+  installCloudProviderTestHarness,
+} from './cloud-provider-test-harness';
 
-// ---------------------------------------------------------------------------
-// Chrome storage mock
-// ---------------------------------------------------------------------------
-const { mockStorage, resetStorage } = installChromeStorageMock();
-
-// ---------------------------------------------------------------------------
-// Fetch mock
-// ---------------------------------------------------------------------------
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+const { mockStorage, resetStorage, mockFetch } = installCloudProviderTestHarness();
 
 // ---------------------------------------------------------------------------
 // Module mocks
@@ -42,20 +36,6 @@ vi.mock('../core/language-map', () => ({
   },
   getDeepLSupportedLanguages: () => ['en', 'fi', 'de'],
 }));
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function httpErrorResponse(status: number, body = '') {
-  return {
-    ok: false,
-    status,
-    json: () => Promise.resolve({}),
-    text: () => Promise.resolve(body),
-    headers: { get: () => null },
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Provider factory: create + initialise each cloud provider

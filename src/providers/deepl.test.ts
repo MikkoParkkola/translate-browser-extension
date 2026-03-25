@@ -6,14 +6,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { installChromeStorageMock } from '../__contract__/shared-provider-mocks';
+import { installCloudProviderTestHarness } from '../__contract__/cloud-provider-test-harness';
 import { DeepLProvider } from './deepl';
 
-const { mockStorage, resetStorage } = installChromeStorageMock();
-
-// Mock fetch
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+const { mockStorage, resetStorage, mockFetch } = installCloudProviderTestHarness();
 
 // Mock language-map module
 vi.mock('../core/language-map', () => ({
@@ -39,98 +35,12 @@ describe('DeepLProvider', () => {
     provider = new DeepLProvider();
   });
 
-  describe('constructor', () => {
-    it('sets correct provider info', () => {
-      const info = provider.getInfo();
-      expect(info.id).toBe('deepl');
-      expect(info.name).toBe('DeepL');
-      expect(info.type).toBe('cloud');
-      expect(info.qualityTier).toBe('premium');
-    });
-
-    it('sets cost per million', () => {
-      expect(provider.costPerMillion).toBe(20);
-    });
-  });
-
-  describe('initialize', () => {
-    it('loads config from storage when API key exists', async () => {
-      mockStorage['deepl_api_key'] = 'test-key:fx';
-      mockStorage['deepl_is_pro'] = false;
-      mockStorage['deepl_formality'] = 'more';
-
-      await provider.initialize();
-
-      expect(await provider.isAvailable()).toBe(true);
-      const info = provider.getInfo();
-      expect(info.tier).toBe('Free');
-      expect(info.formality).toBe('more');
-    });
-
-    it('handles Pro tier', async () => {
-      mockStorage['deepl_api_key'] = 'test-pro-key';
-      mockStorage['deepl_is_pro'] = true;
-
-      await provider.initialize();
-
-      const info = provider.getInfo();
-      expect(info.tier).toBe('Pro');
-    });
-
-    it('handles missing API key', async () => {
-      await provider.initialize();
-      expect(await provider.isAvailable()).toBe(false);
-    });
-  });
-
-  describe('setApiKey', () => {
-    it('stores API key with Free tier', async () => {
-      await provider.setApiKey('test-key:fx', false);
-
-      expect(mockStorage['deepl_api_key']).toBe('test-key:fx');
-      expect(mockStorage['deepl_is_pro']).toBe(false);
-    });
-
-    it('stores API key with Pro tier', async () => {
-      await provider.setApiKey('pro-key', true);
-
-      expect(mockStorage['deepl_api_key']).toBe('pro-key');
-      expect(mockStorage['deepl_is_pro']).toBe(true);
-    });
-
-    it('preserves formality when the key and tier change', async () => {
-      await provider.setApiKey('test-key:fx', false);
-      await provider.setFormality('prefer_more');
-
-      await provider.setApiKey('pro-key', true);
-
-      const info = provider.getInfo();
-      expect(mockStorage['deepl_api_key']).toBe('pro-key');
-      expect(mockStorage['deepl_is_pro']).toBe(true);
-      expect(info.tier).toBe('Pro');
-      expect(info.formality).toBe('prefer_more');
-    });
-  });
-
   describe('setFormality', () => {
     it('stores formality preference', async () => {
       await provider.setApiKey('key', false);
       await provider.setFormality('prefer_more');
 
       expect(mockStorage['deepl_formality']).toBe('prefer_more');
-    });
-  });
-
-  describe('clearApiKey', () => {
-    it('removes all config from storage', async () => {
-      mockStorage['deepl_api_key'] = 'key';
-      mockStorage['deepl_is_pro'] = true;
-      mockStorage['deepl_formality'] = 'more';
-
-      await provider.setApiKey('key');
-      await provider.clearApiKey();
-
-      expect(await provider.isAvailable()).toBe(false);
     });
   });
 

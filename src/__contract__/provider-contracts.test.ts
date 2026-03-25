@@ -14,18 +14,14 @@ import { DeepLProvider } from '../providers/deepl';
 import { GoogleCloudProvider } from '../providers/google-cloud';
 import { ChromeTranslatorProvider } from '../providers/chrome-translator';
 import { OpusMTProvider } from '../providers/opus-mt-local';
-import { installChromeStorageMock } from './shared-provider-mocks';
+import {
+  installCloudProviderTestHarness,
+  okJsonResponse,
+} from './cloud-provider-test-harness';
 
-// ---------------------------------------------------------------------------
-// Chrome storage mock (shared by all cloud providers)
-// ---------------------------------------------------------------------------
-const { mockStorage, resetStorage } = installChromeStorageMock();
+const { mockStorage, resetStorage, mockFetch } = installCloudProviderTestHarness();
 
-// ---------------------------------------------------------------------------
-// Fetch mock
-// ---------------------------------------------------------------------------
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+const okResponse = okJsonResponse;
 
 // ---------------------------------------------------------------------------
 // Module mocks (same as the individual test files)
@@ -54,21 +50,6 @@ vi.mock('../core/webgpu-detector', () => ({
 vi.mock('@huggingface/transformers', () => ({
   pipeline: vi.fn(),
 }));
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Build a minimal successful fetch response */
-function okResponse(body: unknown) {
-  return {
-    ok: true,
-    status: 200,
-    json: () => Promise.resolve(body),
-    text: () => Promise.resolve(JSON.stringify(body)),
-    headers: { get: () => null },
-  };
-}
 
 // =========================================================================
 // 1. BaseProvider abstract contract

@@ -6,14 +6,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { installChromeStorageMock } from '../__contract__/shared-provider-mocks';
+import { installCloudProviderTestHarness } from '../__contract__/cloud-provider-test-harness';
 import { AnthropicProvider } from './anthropic';
 
-const { mockStorage, resetStorage } = installChromeStorageMock();
-
-// Mock fetch
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+const { mockStorage, resetStorage, mockFetch } = installCloudProviderTestHarness();
 
 describe('AnthropicProvider', () => {
   let provider: AnthropicProvider;
@@ -22,81 +18,6 @@ describe('AnthropicProvider', () => {
     vi.clearAllMocks();
     resetStorage();
     provider = new AnthropicProvider();
-  });
-
-  describe('constructor', () => {
-    it('sets correct provider info', () => {
-      const info = provider.getInfo();
-      expect(info.id).toBe('anthropic');
-      expect(info.name).toBe('Claude');
-      expect(info.type).toBe('cloud');
-      expect(info.qualityTier).toBe('premium');
-    });
-
-    it('sets cost per million', () => {
-      expect(provider.costPerMillion).toBe(3000);
-    });
-  });
-
-  describe('initialize', () => {
-    it('loads config from storage when API key exists', async () => {
-      mockStorage['anthropic_api_key'] = 'sk-test-key';
-      mockStorage['anthropic_model'] = 'claude-sonnet-4-20250514';
-      mockStorage['anthropic_formality'] = 'formal';
-      mockStorage['anthropic_tokens_used'] = 1000;
-
-      await provider.initialize();
-
-      expect(await provider.isAvailable()).toBe(true);
-      const info = provider.getInfo();
-      expect(info.model).toBe('claude-sonnet-4-20250514');
-      expect(info.formality).toBe('formal');
-    });
-
-    it('handles missing API key', async () => {
-      await provider.initialize();
-      expect(await provider.isAvailable()).toBe(false);
-    });
-
-    it('uses default model and formality when not set', async () => {
-      mockStorage['anthropic_api_key'] = 'sk-test-key';
-
-      await provider.initialize();
-
-      const info = provider.getInfo();
-      expect(info.model).toBe('claude-3-5-haiku-20241022');
-      expect(info.formality).toBe('neutral');
-    });
-  });
-
-  describe('setApiKey', () => {
-    it('stores API key in storage', async () => {
-      await provider.setApiKey('sk-new-key');
-
-      expect(mockStorage['anthropic_api_key']).toBe('sk-new-key');
-      expect(await provider.isAvailable()).toBe(true);
-    });
-
-    it('initializes config with defaults', async () => {
-      await provider.setApiKey('sk-new-key');
-
-      const info = provider.getInfo();
-      expect(info.model).toBe('claude-3-5-haiku-20241022');
-      expect(info.formality).toBe('neutral');
-    });
-
-    it('preserves existing in-memory settings when the key changes', async () => {
-      await provider.setApiKey('sk-old-key');
-      await provider.setModel('claude-sonnet-4-20250514');
-      await provider.setFormality('formal');
-
-      await provider.setApiKey('sk-new-key');
-
-      const info = provider.getInfo();
-      expect(mockStorage['anthropic_api_key']).toBe('sk-new-key');
-      expect(info.model).toBe('claude-sonnet-4-20250514');
-      expect(info.formality).toBe('formal');
-    });
   });
 
   describe('setModel', () => {
@@ -114,32 +35,6 @@ describe('AnthropicProvider', () => {
       await provider.setFormality('formal');
 
       expect(mockStorage['anthropic_formality']).toBe('formal');
-    });
-  });
-
-  describe('clearApiKey', () => {
-    it('removes all config from storage', async () => {
-      mockStorage['anthropic_api_key'] = 'sk-key';
-      mockStorage['anthropic_model'] = 'claude-sonnet-4-20250514';
-      mockStorage['anthropic_formality'] = 'formal';
-      mockStorage['anthropic_tokens_used'] = 1000;
-
-      await provider.setApiKey('sk-key');
-      await provider.clearApiKey();
-
-      expect(await provider.isAvailable()).toBe(false);
-    });
-  });
-
-  describe('isAvailable', () => {
-    it('returns false without API key', async () => {
-      expect(await provider.isAvailable()).toBe(false);
-    });
-
-    it('returns true with API key', async () => {
-      mockStorage['anthropic_api_key'] = 'sk-key';
-      await provider.initialize();
-      expect(await provider.isAvailable()).toBe(true);
     });
   });
 
