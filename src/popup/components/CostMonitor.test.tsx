@@ -1,41 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render } from '@solidjs/testing-library';
 import { CostMonitor } from './CostMonitor';
+import { setupUiChromeMock } from '../../test-helpers/chrome-mocks';
+import { makeUsage } from '../../test-helpers/popup-test-fixtures';
 
-// Mock chrome global for components that reference it
-vi.stubGlobal('chrome', {
-  runtime: {
-    sendMessage: vi.fn().mockResolvedValue({}),
-    onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
-    openOptionsPage: vi.fn(),
-  },
-  storage: {
-    local: { get: vi.fn().mockResolvedValue({}), set: vi.fn().mockResolvedValue(undefined), remove: vi.fn().mockResolvedValue(undefined) },
-  },
-  tabs: {
-    query: vi.fn().mockResolvedValue([]),
-    sendMessage: vi.fn().mockResolvedValue({}),
-  },
-  scripting: { executeScript: vi.fn().mockResolvedValue(undefined) },
-});
-
-const makeUsage = (overrides: {
-  cost?: number;
-  monthly?: number;
-  used?: number;
-  requests?: number;
-  characters?: number;
-} = {}) => ({
-  today: {
-    requests: overrides.requests ?? 10,
-    characters: overrides.characters ?? 5000,
-    cost: overrides.cost ?? 0.42,
-  },
-  budget: {
-    monthly: overrides.monthly ?? 5.0,
-    used: overrides.used ?? 2.5,
-  },
-});
+setupUiChromeMock();
 
 describe('CostMonitor', () => {
   it('renders today\'s cost formatted as $X.XX', () => {
