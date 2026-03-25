@@ -1,6 +1,7 @@
 import { render } from 'solid-js/web';
 import { createSignal, Show, For, onMount } from 'solid-js';
 import { safeStorageSet } from '../core/storage';
+import { sendBackgroundMessage } from '../shared/background-message';
 import { buildExtensionSettingsStorageMutation } from '../shared/extension-settings';
 import { ONBOARDING_LANGUAGES } from '../shared/translation-options';
 import {
@@ -80,7 +81,7 @@ export function OnboardingApp() {
         : 'Hello, world! This is a test translation.';
       const sourceLang = isEnglishTarget ? 'de' : 'en';
 
-      const response = await chrome.runtime.sendMessage({
+      const response = await sendBackgroundMessage({
         type: 'translate',
         text: testText,
         sourceLang: sourceLang,

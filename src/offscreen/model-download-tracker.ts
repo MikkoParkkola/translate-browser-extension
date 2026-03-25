@@ -1,4 +1,5 @@
 import { createLogger } from '../core/logger';
+import { sendBackgroundMessage } from '../shared/background-message';
 import { deriveDownloadedModelName } from '../shared/downloaded-models';
 import type {
   MessageResponse,
@@ -19,7 +20,7 @@ function readFinitePositiveNumber(value: unknown): number | undefined {
 async function sendBackgroundModelMessage(
   message: OffscreenModelProgressMessage | OffscreenDownloadedModelUpdateMessage,
 ): Promise<void> {
-  const response = await chrome.runtime.sendMessage(message) as MessageResponse | undefined;
+  const response = await sendBackgroundMessage<MessageResponse | undefined>(message);
   if (response && !response.success) {
     throw new Error(
       typeof response.error === 'string'
