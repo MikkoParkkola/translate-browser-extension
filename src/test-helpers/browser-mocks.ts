@@ -1,10 +1,17 @@
 import { vi } from 'vitest';
 
-export function setupNavigatorLanguageMock(language = 'en-US') {
-  vi.stubGlobal('navigator', {
+export function setupNavigatorMock(overrides: Record<string, unknown> = {}) {
+  const navigatorMock = {
     ...globalThis.navigator,
-    language,
-  });
+    ...overrides,
+  };
+
+  vi.stubGlobal('navigator', navigatorMock);
+  return navigatorMock;
+}
+
+export function setupNavigatorLanguageMock(language = 'en-US') {
+  return setupNavigatorMock({ language });
 }
 
 export function setupNavigatorStorageEstimateMock(
