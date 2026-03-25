@@ -27,12 +27,11 @@ import { buildLanguageDetectionSample, detectLanguage } from './language-detecti
 import { translateWithGemma, getTranslateGemmaPipeline, detectWebGPU, detectWebNN } from './translategemma';
 import { getChromeTranslator, isChromeTranslatorAvailable } from '../providers/chrome-translator';
 import { DEFAULT_PROVIDER_ID } from '../shared/provider-options';
-
-// Cloud providers
-import { deeplProvider } from '../providers/deepl';
-import { openaiProvider } from '../providers/openai';
-import { anthropicProvider } from '../providers/anthropic';
-import { googleCloudProvider } from '../providers/google-cloud';
+import {
+  getOffscreenCloudProviderUsage,
+  isOffscreenCloudProviderRuntimeId,
+  translateWithOffscreenCloudProvider,
+} from './cloud-provider-runtime';
 
 // OCR service
 import { extractTextFromImage, terminateOCR, type OCRResult } from '../core/ocr-service';
@@ -431,40 +430,8 @@ async function executeProvider(
     return translateWithGemma(text, sourceLang, targetLang, pageContext);
   }
 
-  // DeepL Cloud Provider
-  if (provider === 'deepl') {
-    await deeplProvider.initialize();
-    if (!(await deeplProvider.isAvailable())) {
-      throw new Error('DeepL API key not configured. Please configure in Settings.');
-    }
-    return deeplProvider.translate(text, sourceLang, targetLang);
-  }
-
-  // OpenAI Cloud Provider
-  if (provider === 'openai') {
-    await openaiProvider.initialize();
-    if (!(await openaiProvider.isAvailable())) {
-      throw new Error('OpenAI API key not configured. Please configure in Settings.');
-    }
-    return openaiProvider.translate(text, sourceLang, targetLang);
-  }
-
-  // Anthropic Cloud Provider
-  if (provider === 'anthropic') {
-    await anthropicProvider.initialize();
-    if (!(await anthropicProvider.isAvailable())) {
-      throw new Error('Anthropic API key not configured. Please configure in Settings.');
-    }
-    return anthropicProvider.translate(text, sourceLang, targetLang);
-  }
-
-  // Google Cloud Provider
-  if (provider === 'google-cloud') {
-    await googleCloudProvider.initialize();
-    if (!(await googleCloudProvider.isAvailable())) {
-      throw new Error('Google Cloud API key not configured. Please configure in Settings.');
-    }
-    return googleCloudProvider.translate(text, sourceLang, targetLang);
+  if (isOffscreenCloudProviderRuntimeId(provider)) {
+    return translateWithOffscreenCloudProvider(provider, text, sourceLang, targetLang);
   }
 
   // OPUS-MT: check for direct model or pivot route
@@ -715,24 +682,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         // chrome.scripting.executeScript (MAIN world) — offscreen cannot
         // see the Translator API.
         case 'getCloudProviderUsage': {
-          // Get usage stats for a specific cloud provider
-          const providerId = message.provider;
-          let usage = { tokens: 0, cost: 0, limitReached: false };
-
-          if (providerId === 'deepl') {
-            await deeplProvider.initialize();
-            usage = await deeplProvider.getUsage();
-          } else if (providerId === 'openai') {
-            await openaiProvider.initialize();
-            usage = await openaiProvider.getUsage();
-          } else if (providerId === 'anthropic') {
-            await anthropicProvider.initialize();
-            usage = await anthropicProvider.getUsage();
-          } else if (providerId === 'google-cloud') {
-            await googleCloudProvider.initialize();
-            usage = await googleCloudProvider.getUsage();
-          }
-
+          const usage = await getOffscreenCloudProviderUsage(message.provider);
           sendResponse({ success: true, usage });
           break;
         }
