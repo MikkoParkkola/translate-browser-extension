@@ -12,7 +12,11 @@ import { fetchProviderJson, estimateMaxTokens, generateAllLanguagePairs, parseBa
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
 import { validateAnthropicStoredConfig } from '../background/shared/config-validation';
-import { ANTHROPIC_MODEL_VALUES } from '../shared/cloud-provider-configs';
+import {
+  ANTHROPIC_MODEL_VALUES,
+  DEFAULT_ANTHROPIC_FORMALITY,
+  DEFAULT_ANTHROPIC_MODEL,
+} from '../shared/cloud-provider-configs';
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_STORAGE_KEYS = [
@@ -46,9 +50,6 @@ interface AnthropicMessageResponse {
     output_tokens: number;
   };
 }
-
-const DEFAULT_ANTHROPIC_MODEL: ClaudeModel = 'claude-3-5-haiku-20241022';
-const DEFAULT_ANTHROPIC_FORMALITY: ClaudeFormality = 'neutral';
 
 function createAnthropicConfig(apiKey: string): AnthropicConfig {
   return {

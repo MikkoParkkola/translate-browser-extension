@@ -12,6 +12,7 @@ import { CONFIG } from '../config';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
 import { validateDeepLStoredConfig } from '../background/shared/config-validation';
+import { DEFAULT_DEEPL_FORMALITY } from '../shared/cloud-provider-configs';
 
 // DeepL API endpoints
 const DEEPL_FREE_API = 'https://api-free.deepl.com/v2';
@@ -37,8 +38,6 @@ interface DeepLUsageResponse {
   character_count: number;
   character_limit: number;
 }
-
-const DEFAULT_DEEPL_FORMALITY: DeepLFormality = 'default';
 
 function createDeepLConfig(apiKey: string, isPro: boolean, formality: DeepLFormality): DeepLConfig {
   return { apiKey, isPro, formality };

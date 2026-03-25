@@ -12,7 +12,12 @@ import { fetchProviderJson, estimateMaxTokens, generateAllLanguagePairs, parseBa
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
 import { validateOpenAIStoredConfig } from '../background/shared/config-validation';
-import { OPENAI_MODEL_VALUES } from '../shared/cloud-provider-configs';
+import {
+  DEFAULT_OPENAI_FORMALITY,
+  DEFAULT_OPENAI_MODEL,
+  DEFAULT_OPENAI_TEMPERATURE,
+  OPENAI_MODEL_VALUES,
+} from '../shared/cloud-provider-configs';
 
 const OPENAI_API = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_STORAGE_KEYS = [
@@ -47,10 +52,6 @@ interface OpenAIChatResponse {
     total_tokens: number;
   };
 }
-
-const DEFAULT_OPENAI_MODEL: OpenAIModel = 'gpt-4o-mini';
-const DEFAULT_OPENAI_FORMALITY: OpenAIFormality = 'neutral';
-const DEFAULT_OPENAI_TEMPERATURE = 0.3;
 
 function createOpenAIConfig(apiKey: string): OpenAIConfig {
   return {

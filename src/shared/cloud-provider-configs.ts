@@ -11,15 +11,21 @@ export const DEEPL_FORMALITY_VALUES = [
   'prefer_more',
   'prefer_less',
 ] as const;
+export const DEFAULT_DEEPL_FORMALITY = 'default';
 
 export const OPENAI_FORMALITY_VALUES = ['formal', 'informal', 'neutral'] as const;
 export const OPENAI_MODEL_VALUES = ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'] as const;
+export const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+export const DEFAULT_OPENAI_FORMALITY = 'neutral';
+export const DEFAULT_OPENAI_TEMPERATURE = 0.3;
 export const ANTHROPIC_FORMALITY_VALUES = ['formal', 'informal', 'neutral'] as const;
 export const ANTHROPIC_MODEL_VALUES = [
   'claude-sonnet-4-20250514',
   'claude-3-5-haiku-20241022',
   'claude-3-5-sonnet-20241022',
 ] as const;
+export const DEFAULT_ANTHROPIC_MODEL = 'claude-3-5-haiku-20241022';
+export const DEFAULT_ANTHROPIC_FORMALITY = 'neutral';
 
 export interface CloudProviderStorageConfig {
   apiKey: string;

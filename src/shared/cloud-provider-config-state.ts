@@ -10,6 +10,12 @@ import {
   ANTHROPIC_FORMALITY_VALUES,
   ANTHROPIC_MODEL_VALUES,
   CLOUD_PROVIDER_CONFIGS,
+  DEFAULT_ANTHROPIC_FORMALITY,
+  DEFAULT_ANTHROPIC_MODEL,
+  DEFAULT_DEEPL_FORMALITY,
+  DEFAULT_OPENAI_FORMALITY,
+  DEFAULT_OPENAI_MODEL,
+  DEFAULT_OPENAI_TEMPERATURE,
   DEEPL_FORMALITY_VALUES,
   OPENAI_FORMALITY_VALUES,
   OPENAI_MODEL_VALUES,
@@ -71,6 +77,11 @@ export interface ValidatedGoogleCloudConfig {
   charactersUsed: number;
 }
 
+interface StoredConfigSchema<TStored, TValidated extends { apiKey: string }> {
+  readApiKey: (stored: TStored) => string | undefined;
+  readFields: (stored: TStored) => Omit<TValidated, 'apiKey'>;
+}
+
 export interface CloudProviderConfigState {
   hasKey: boolean;
   isPro?: boolean;
@@ -109,58 +120,76 @@ export function readClaudeModel(value: unknown): ClaudeModel | undefined {
   return model ? readEnumValue(model, ANTHROPIC_MODEL_VALUES) : undefined;
 }
 
-export function validateDeepLStoredConfig(stored: DeepLStoredConfig): ValidatedDeepLConfig | null {
-  const apiKey = readNonEmptyString(stored.deepl_api_key);
+function validateStoredConfig<TStored, TValidated extends { apiKey: string }>(
+  stored: TStored,
+  schema: StoredConfigSchema<TStored, TValidated>
+): TValidated | null {
+  const apiKey = schema.readApiKey(stored);
   if (!apiKey) {
     return null;
   }
 
   return {
     apiKey,
+    ...schema.readFields(stored),
+  } as TValidated;
+}
+
+const DEEPL_STORED_CONFIG_SCHEMA: StoredConfigSchema<DeepLStoredConfig, ValidatedDeepLConfig> = {
+  readApiKey: (stored) => readNonEmptyString(stored.deepl_api_key),
+  readFields: (stored) => ({
     isPro: readBoolean(stored.deepl_is_pro) ?? false,
-    formality: readDeepLFormality(stored.deepl_formality) ?? 'default',
-  };
+    formality: readDeepLFormality(stored.deepl_formality) ?? DEFAULT_DEEPL_FORMALITY,
+  }),
+};
+
+const OPENAI_STORED_CONFIG_SCHEMA: StoredConfigSchema<OpenAIStoredConfig, ValidatedOpenAIConfig> = {
+  readApiKey: (stored) => readNonEmptyString(stored.openai_api_key),
+  readFields: (stored) => ({
+    model: readOpenAIModel(stored.openai_model) ?? DEFAULT_OPENAI_MODEL,
+    formality: readOpenAIFormality(stored.openai_formality) ?? DEFAULT_OPENAI_FORMALITY,
+    temperature: readFiniteNumber(stored.openai_temperature) ?? DEFAULT_OPENAI_TEMPERATURE,
+    tokensUsed: readFiniteNumber(stored.openai_tokens_used) ?? 0,
+  }),
+};
+
+const ANTHROPIC_STORED_CONFIG_SCHEMA: StoredConfigSchema<
+  AnthropicStoredConfig,
+  ValidatedAnthropicConfig
+> = {
+  readApiKey: (stored) => readNonEmptyString(stored.anthropic_api_key),
+  readFields: (stored) => ({
+    model: readClaudeModel(stored.anthropic_model) ?? DEFAULT_ANTHROPIC_MODEL,
+    formality:
+      readAnthropicFormality(stored.anthropic_formality) ?? DEFAULT_ANTHROPIC_FORMALITY,
+    tokensUsed: readFiniteNumber(stored.anthropic_tokens_used) ?? 0,
+  }),
+};
+
+const GOOGLE_CLOUD_STORED_CONFIG_SCHEMA: StoredConfigSchema<
+  GoogleCloudStoredConfig,
+  ValidatedGoogleCloudConfig
+> = {
+  readApiKey: (stored) => readNonEmptyString(stored.google_cloud_api_key),
+  readFields: (stored) => ({
+    charactersUsed: readFiniteNumber(stored.google_cloud_chars_used) ?? 0,
+  }),
+};
+
+export function validateDeepLStoredConfig(stored: DeepLStoredConfig): ValidatedDeepLConfig | null {
+  return validateStoredConfig(stored, DEEPL_STORED_CONFIG_SCHEMA);
 }
 
 export function validateOpenAIStoredConfig(stored: OpenAIStoredConfig): ValidatedOpenAIConfig | null {
-  const apiKey = readNonEmptyString(stored.openai_api_key);
-  if (!apiKey) {
-    return null;
-  }
-
-  return {
-    apiKey,
-    model: readOpenAIModel(stored.openai_model) ?? 'gpt-4o-mini',
-    formality: readOpenAIFormality(stored.openai_formality) ?? 'neutral',
-    temperature: readFiniteNumber(stored.openai_temperature) ?? 0.3,
-    tokensUsed: readFiniteNumber(stored.openai_tokens_used) ?? 0,
-  };
+  return validateStoredConfig(stored, OPENAI_STORED_CONFIG_SCHEMA);
 }
 
 export function validateAnthropicStoredConfig(stored: AnthropicStoredConfig): ValidatedAnthropicConfig | null {
-  const apiKey = readNonEmptyString(stored.anthropic_api_key);
-  if (!apiKey) {
-    return null;
-  }
-
-  return {
-    apiKey,
-    model: readClaudeModel(stored.anthropic_model) ?? 'claude-3-5-haiku-20241022',
-    formality: readAnthropicFormality(stored.anthropic_formality) ?? 'neutral',
-    tokensUsed: readFiniteNumber(stored.anthropic_tokens_used) ?? 0,
-  };
+  return validateStoredConfig(stored, ANTHROPIC_STORED_CONFIG_SCHEMA);
 }
 
 export function validateGoogleCloudStoredConfig(stored: GoogleCloudStoredConfig): ValidatedGoogleCloudConfig | null {
-  const apiKey = readNonEmptyString(stored.google_cloud_api_key);
-  if (!apiKey) {
-    return null;
-  }
-
-  return {
-    apiKey,
-    charactersUsed: readFiniteNumber(stored.google_cloud_chars_used) ?? 0,
-  };
+  return validateStoredConfig(stored, GOOGLE_CLOUD_STORED_CONFIG_SCHEMA);
 }
 
 export function validateCloudProviderOptions(
