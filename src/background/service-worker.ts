@@ -32,6 +32,11 @@ import { profiler, type AggregateStats } from '../core/profiler';
 import { sleep } from '../core/async-utils';
 import { splitIntoSentences } from '../core/text-utils';
 import { DEFAULT_PROVIDER_ID, normalizeTranslationProviderId } from '../shared/provider-options';
+import type {
+  OffscreenMessageByType,
+  OffscreenMessageResponseMap,
+  OffscreenMessageType,
+} from '../offscreen/message-routing';
 import {
   assertNever,
   isExtensionMessage,
@@ -164,7 +169,7 @@ async function preloadPredictedModels(url: string): Promise<void> {
 
       log.info(`Preloading predicted model: ${key} (confidence: ${prediction.confidence.toFixed(2)})`);
 
-      sendToOffscreen<{ success: boolean; preloaded?: boolean }>({
+      sendToOffscreen<'preloadModel'>({
         type: 'preloadModel',
         sourceLang: prediction.sourceLang,
         targetLang: prediction.targetLang,
@@ -172,7 +177,7 @@ async function preloadPredictedModels(url: string): Promise<void> {
         priority: 'low',
       })
         .then((response) => {
-          if (response.preloaded) {
+          if (response.success && response.preloaded) {
             preloadedModels.add(key);
             log.info(`Predictive preload complete: ${key}`);
           }
@@ -389,15 +394,19 @@ async function resetOffscreenDocument(): Promise<void> {
 /**
  * Send message to offscreen document with timeout and retry
  */
-async function sendToOffscreen<T>(
-  message: Record<string, unknown>,
+type OffscreenRequest<TType extends OffscreenMessageType> = Omit<OffscreenMessageByType<TType>, 'target'>;
+type OffscreenTransportResponse<TType extends OffscreenMessageType> =
+  OffscreenMessageResponseMap[TType] | { success: false; error: string };
+
+async function sendToOffscreen<TType extends OffscreenMessageType>(
+  message: OffscreenRequest<TType>,
   timeoutMs = CONFIG.timeouts.offscreenMs
-): Promise<T> {
+): Promise<OffscreenTransportResponse<TType>> {
   return withRetry(
     async () => {
       await ensureOffscreenDocument();
 
-      return new Promise<T>((resolve, reject) => {
+      return new Promise<OffscreenTransportResponse<TType>>((resolve, reject) => {
         /* v8 ignore start -- timeout callback */
         const timeout = setTimeout(() => {
           reject(new Error('Offscreen communication timeout'));
@@ -420,7 +429,7 @@ async function sendToOffscreen<T>(
                 return;
               }
 
-              resolve(response as T);
+              resolve(response as OffscreenTransportResponse<TType>);
             }
           );
         } catch (error) {
@@ -812,19 +821,13 @@ async function handlePreloadModel(message: PreloadModelMessage): Promise<Message
   const provider = message.provider || getProvider();
   log.info(` Preloading ${provider} model: ${message.sourceLang} -> ${message.targetLang}`);
   try {
-    const response = await sendToOffscreen<{
-      success: boolean;
-      preloaded?: boolean;
-      partial?: boolean;
-      available?: boolean;
-      error?: string;
-    }>({
+    const response = await sendToOffscreen<'preloadModel'>({
       type: 'preloadModel',
       sourceLang: message.sourceLang,
       targetLang: message.targetLang,
       provider,
     });
-    return response as MessageResponse<PreloadModelResponsePayload>;
+    return response;
   } catch (error) {
     /* v8 ignore start -- preload failure fallback */
     log.warn(' Preload failed:', error);
@@ -1002,12 +1005,11 @@ async function handleCheckChromeTranslator(): Promise<{ success: true; available
  */
 async function handleCheckWebGPU(): Promise<{ success: true; supported: boolean; fp16: boolean }> {
   try {
-    const response = await sendToOffscreen<{
-      success: boolean;
-      supported: boolean;
-      fp16: boolean;
-    }>({ type: 'checkWebGPU' });
-    return response as { success: true; supported: boolean; fp16: boolean };
+    const response = await sendToOffscreen<'checkWebGPU'>({ type: 'checkWebGPU' });
+    if (!response.success) {
+      throw new Error(response.error);
+    }
+    return response;
   } catch (error) {
     log.debug('WebGPU check failed:', error);
     return { success: true, supported: false, fp16: false };
@@ -1019,11 +1021,11 @@ async function handleCheckWebGPU(): Promise<{ success: true; supported: boolean;
  */
 async function handleCheckWebNN(): Promise<{ success: true; supported: boolean }> {
   try {
-    const response = await sendToOffscreen<{
-      success: boolean;
-      supported: boolean;
-    }>({ type: 'checkWebNN' });
-    return response as { success: true; supported: boolean };
+    const response = await sendToOffscreen<'checkWebNN'>({ type: 'checkWebNN' });
+    if (!response.success) {
+      throw new Error(response.error);
+    }
+    return response;
   } catch (error) {
     log.debug('WebNN check failed:', error);
     return { success: true, supported: false };
@@ -1059,15 +1061,11 @@ async function handleRecordLanguageDetection(message: RecordLanguageDetectionMes
  */
 async function handleGetCloudProviderUsage(message: GetCloudProviderUsageMessage): Promise<MessageResponse<{ usage?: { tokens: number; cost: number; limitReached: boolean } }>> {
   try {
-    const result = await sendToOffscreen<{
-      success: boolean;
-      usage?: { tokens: number; cost: number; limitReached: boolean };
-      error?: string;
-    }>({
+    const result = await sendToOffscreen<'getCloudProviderUsage'>({
       type: 'getCloudProviderUsage',
       provider: message.provider,
     });
-    return result as MessageResponse<{ usage?: { tokens: number; cost: number; limitReached: boolean } }>;
+    return result;
   } catch (error) {
     log.warn(' Failed to get cloud provider usage:', error);
     return {
@@ -1257,12 +1255,7 @@ async function handleTranslateInner(message: {
 
     const response = await withRetry(
       async () => {
-        const result = await sendToOffscreen<{
-          success: boolean;
-          result?: string | string[];
-          error?: unknown;
-          profilingData?: object;
-        }>({
+        const result = await sendToOffscreen<'translate'>({
           type: 'translate',
           text: execution.text,
           sourceLang: execution.message.sourceLang,
@@ -1277,14 +1270,7 @@ async function handleTranslateInner(message: {
         }
 
         if (!result.success) {
-          /* v8 ignore start -- typeof + instanceof ternary chain + || */
-          const errorMsg = typeof result.error === 'string'
-            ? result.error
-            : result.error instanceof Error
-              ? result.error.message
-              : JSON.stringify(result.error) || 'Translation failed';
-          /* v8 ignore stop */
-          throw new Error(errorMsg);
+          throw new Error(result.error);
         }
 
         return result;
@@ -1369,14 +1355,10 @@ async function handleGetProfilingStats(): Promise<MessageResponse<{ aggregates: 
 
     let offscreenStats: Record<string, AggregateStats> = {};
     try {
-      const offscreenResult = await sendToOffscreen<{
-        success: boolean;
-        aggregates?: Record<string, AggregateStats>;
-        formatted?: string;
-      }>({
+      const offscreenResult = await sendToOffscreen<'getProfilingStats'>({
         type: 'getProfilingStats',
       });
-      if (offscreenResult?.success && offscreenResult.aggregates) {
+      if (offscreenResult.success) {
         offscreenStats = offscreenResult.aggregates;
       }
     } catch {
@@ -1412,10 +1394,7 @@ function handleClearProfilingStats(): MessageResponse {
 
 async function handleGetProviders(): Promise<{ providers: typeof PROVIDER_LIST; activeProvider: TranslationProviderId; strategy: Strategy; supportedLanguages: Array<{ src: string; tgt: string }>; error?: string }> {
   try {
-    const response = await sendToOffscreen<{
-      success: boolean;
-      languages?: Array<{ src: string; tgt: string }>;
-    }>({
+    const response = await sendToOffscreen<'getSupportedLanguages'>({
       type: 'getSupportedLanguages',
     });
 
@@ -1448,13 +1427,7 @@ async function handleOCRImage(message: OCRImageMessage): Promise<MessageResponse
   try {
     log.info('Processing OCR request...');
 
-    const result = await sendToOffscreen<{
-      success: boolean;
-      text?: string;
-      confidence?: number;
-      blocks?: Array<{ text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } }>;
-      error?: string;
-    }>({
+    const result = await sendToOffscreen<'ocrImage'>({
       type: 'ocrImage',
       imageData: message.imageData,
       lang: message.lang,
@@ -1464,7 +1437,7 @@ async function handleOCRImage(message: OCRImageMessage): Promise<MessageResponse
       log.info(`OCR completed: ${result.blocks?.length || 0} blocks, ${result.confidence?.toFixed(1)}% confidence`);
     }
 
-    return result as MessageResponse<{ text?: string; confidence?: number; blocks?: Array<{ text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } }> }>;
+    return result;
   } catch (error) {
     log.error('OCR failed:', error);
     return { success: false, error: extractErrorMessage(error) };
@@ -1480,18 +1453,17 @@ async function handleCaptureScreenshot(message: CaptureScreenshotMessage): Promi
     const dataUrl = await chrome.tabs.captureVisibleTab({ format: 'png' });
 
     if (message.rect) {
-      const cropResponse = await sendToOffscreen<{
-        success: boolean;
-        imageData?: string;
-        error?: string;
-      }>({
+      const cropResponse = await sendToOffscreen<'cropImage'>({
         type: 'cropImage',
         imageData: dataUrl,
         rect: message.rect,
         devicePixelRatio: message.devicePixelRatio || 1,
       });
 
-      return { success: true, imageData: cropResponse.imageData ?? dataUrl };
+      return {
+        success: true,
+        imageData: cropResponse.success ? cropResponse.imageData : dataUrl,
+      };
     }
 
     return { success: true, imageData: dataUrl };

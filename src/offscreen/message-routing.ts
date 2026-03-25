@@ -12,6 +12,7 @@ import type {
   SupportedLanguageInfo,
   TranslationProviderId,
 } from '../types';
+import type { AggregateStats } from '../core/profiler';
 import type { TranslationCacheStats } from '../core/translation-cache';
 import { hasStringMessageType, isObjectRecord } from '../shared/message-guards';
 
@@ -93,13 +94,13 @@ export type OffscreenMessageByType<TType extends OffscreenMessageType> = Extract
 
 export interface OffscreenMessageResponseMap {
   translate: MessageResponse<{ result: string | string[]; profilingData?: unknown }>;
-  getProfilingStats: MessageResponse<{ aggregates: Record<string, unknown>; formatted: string }>;
+  getProfilingStats: MessageResponse<{ aggregates: Record<string, AggregateStats>; formatted: string }>;
   preloadModel: MessageResponse<{ preloaded: boolean; available?: boolean; partial?: boolean }>;
   getSupportedLanguages: { success: true; languages: SupportedLanguageInfo[] };
   ping: { success: true; status: 'ready' };
   checkWebGPU: { success: true; supported: boolean; fp16: boolean };
   checkWebNN: { success: true; supported: boolean };
-  getCacheStats: MessageResponse<{ stats: TranslationCacheStats }>;
+  getCacheStats: MessageResponse<{ cache: TranslationCacheStats }>;
   clearCache: MessageResponse<{ cleared: true }>;
   clearPipelineCache: MessageResponse<{ cleared: true }>;
   getCloudProviderUsage: MessageResponse<{ usage: CloudProviderUsage }>;

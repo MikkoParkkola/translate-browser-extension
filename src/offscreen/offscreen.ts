@@ -650,7 +650,7 @@ const offscreenMessageHandlers: OffscreenMessageHandlers = {
   }),
   getCacheStats: async () => ({
     success: true,
-    stats: await getTranslationCache().getStats(),
+    cache: await getTranslationCache().getStats(),
   }),
   clearCache: async () => {
     await getTranslationCache().clear();

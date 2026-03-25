@@ -453,7 +453,7 @@ describe('offscreen message handler', () => {
     it('returns stats from translation cache', async () => {
       const r = await dispatch({ type: 'getCacheStats' });
       expect(r.success).toBe(true);
-      expect(r.stats).toBeDefined();
+      expect(r.cache).toBeDefined();
       expect(mockCacheGetStats).toHaveBeenCalledOnce();
     });
   });
