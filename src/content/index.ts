@@ -42,9 +42,15 @@ import {
   MACHINE_TRANSLATION_ATTR,
   SOURCE_LANG_ATTR,
   TARGET_LANG_ATTR,
-  type ContentMessage,
+  type ContentMessageResponse,
   type CurrentSettings,
 } from './content-types';
+import {
+  defineImmediateContentHandler,
+  defineStartedContentHandler,
+  routeContentMessage,
+  type ContentMessageHandlers,
+} from './message-routing';
 import {
   showInfoToast,
   showProgressToast,
@@ -1014,89 +1020,61 @@ function stopMutationObserver(): void {
 // Message Handling
 // ============================================================================
 
-browserAPI.runtime.onMessage.addListener(
-  (
-    message: ContentMessage,
-    _sender,
-    sendResponse: (response: boolean | { loaded: boolean } | { success: boolean; restoredCount: number } | { enabled: boolean } | { visible: boolean } | { success: boolean; status: string } | { success: boolean; error: string }) => void
-  ) => {
-    if (message.type === 'ping') {
-      sendResponse({ loaded: true });
-      return true;
-    }
+function logContentMessageFailure(action: string, error: unknown, fallbackMessage: string): void {
+  const msg = extractErrorMessage(error, fallbackMessage);
+  log.error(`${action} failed:`, msg);
+}
 
-    if (message.type === 'stopAutoTranslate') {
-      stopMutationObserver();
-      currentSettings = null;
-      sendResponse(true);
-      return true;
+const contentMessageHandlers: ContentMessageHandlers = {
+  ping: defineImmediateContentHandler('ping', () => ({ loaded: true })),
+  stopAutoTranslate: defineImmediateContentHandler('stopAutoTranslate', () => {
+    stopMutationObserver();
+    currentSettings = null;
+    return true;
+  }),
+  undoTranslation: defineImmediateContentHandler('undoTranslation', () => {
+    const restoredCount = undoTranslation();
+    return { success: true, restoredCount };
+  }),
+  toggleBilingualMode: defineImmediateContentHandler('toggleBilingualMode', () => ({
+    enabled: toggleBilingualMode(),
+  })),
+  setBilingualMode: defineImmediateContentHandler('setBilingualMode', (message) => {
+    if (message.enabled) {
+      enableBilingualMode();
+    } else {
+      disableBilingualMode();
     }
-
-    if (message.type === 'undoTranslation') {
-      const restoredCount = undoTranslation();
-      sendResponse({ success: true, restoredCount });
-      return true;
-    }
-
-    if (message.type === 'toggleBilingualMode') {
-      const enabled = toggleBilingualMode();
-      sendResponse({ enabled });
-      return true;
-    }
-
-    if (message.type === 'setBilingualMode') {
-      if (message.enabled) {
-        enableBilingualMode();
-      } else {
-        disableBilingualMode();
-      }
-      sendResponse({ enabled: getBilingualModeState() });
-      return true;
-    }
-
-    if (message.type === 'getBilingualMode') {
-      sendResponse({ enabled: getBilingualModeState() });
-      return true;
-    }
-
-    if (message.type === 'toggleWidget') {
-      const visible = toggleFloatingWidget();
-      sendResponse({ visible });
-      return true;
-    }
-
-    if (message.type === 'showWidget') {
-      showFloatingWidget();
-      sendResponse({ visible: true });
-      return true;
-    }
-
-    if (message.type === 'translateSelection') {
+    return { enabled: getBilingualModeState() };
+  }),
+  getBilingualMode: defineImmediateContentHandler('getBilingualMode', () => ({
+    enabled: getBilingualModeState(),
+  })),
+  toggleWidget: defineImmediateContentHandler('toggleWidget', () => ({
+    visible: toggleFloatingWidget(),
+  })),
+  showWidget: defineImmediateContentHandler('showWidget', () => {
+    showFloatingWidget();
+    return { visible: true };
+  }),
+  translateSelection: defineStartedContentHandler(
+    'translateSelection',
+    async (message) => {
       const selSourceLang = resolveSourceLang(message.sourceLang);
-      // Acknowledge immediately so the caller does not time out
-      sendResponse({ success: true, status: 'started' });
-      translateSelection(selSourceLang, message.targetLang, message.strategy, message.provider)
-        .catch((error) => {
-          const msg = extractErrorMessage(error, 'Translation failed');
-          log.error('translateSelection failed:', msg);
-        });
-      return true;
+      await translateSelection(selSourceLang, message.targetLang, message.strategy, message.provider);
+    },
+    (error) => {
+      logContentMessageFailure('translateSelection', error, 'Translation failed');
     }
-
-    if (message.type === 'translatePage') {
-      // For PDF pages, use the specialized PDF translator
+  ),
+  translatePage: defineStartedContentHandler(
+    'translatePage',
+    async (message) => {
       if (isPdfPage()) {
-        // Acknowledge immediately so the caller does not time out
-        sendResponse({ success: true, status: 'started' });
-        initPdfTranslation(message.targetLang)
-          .catch((error) => {
-            const msg = extractErrorMessage(error, 'PDF translation failed');
-            log.error('initPdfTranslation failed:', msg);
-          });
-        return true;
+        await initPdfTranslation(message.targetLang);
+        return;
       }
 
-      // Store settings for dynamic content translation
       const resolvedPageLang = resolveSourceLang(message.sourceLang);
       currentSettings = {
         sourceLang: resolvedPageLang,
@@ -1105,53 +1083,48 @@ browserAPI.runtime.onMessage.addListener(
         provider: message.provider,
       };
 
-      // Acknowledge immediately so the caller does not time out
-      sendResponse({ success: true, status: 'started' });
-
-      translatePage(resolvedPageLang, message.targetLang, message.strategy, message.provider)
-        .then(() => {
-          // Start observing for dynamic content
-          startMutationObserver();
-        })
-        .catch((error) => {
-          const msg = extractErrorMessage(error, 'Page translation failed');
-          log.error('translatePage failed:', msg);
-        });
-      return true;
+      await translatePage(
+        resolvedPageLang,
+        message.targetLang,
+        message.strategy,
+        message.provider
+      );
+      startMutationObserver();
+    },
+    (error) => {
+      logContentMessageFailure('translatePage', error, 'Page translation failed');
     }
-
-    if (message.type === 'translatePdf') {
-      // Acknowledge immediately so the caller does not time out
-      sendResponse({ success: true, status: 'started' });
-      initPdfTranslation(message.targetLang)
-        .catch((error) => {
-          const msg = extractErrorMessage(error, 'PDF translation failed');
-          log.error('translatePdf failed:', msg);
-        });
-      return true;
+  ),
+  translatePdf: defineStartedContentHandler(
+    'translatePdf',
+    async (message) => {
+      await initPdfTranslation(message.targetLang);
+    },
+    (error) => {
+      logContentMessageFailure('translatePdf', error, 'PDF translation failed');
     }
-
-    if (message.type === 'translateImage') {
-      // Acknowledge immediately so the caller does not time out
-      sendResponse({ success: true, status: 'started' });
-      translateImage(
-        message.imageUrl
-      )
-        .catch((error) => {
-          const msg = extractErrorMessage(error, 'Image translation failed');
-          log.error('translateImage failed:', msg);
-        });
-      return true;
+  ),
+  translateImage: defineStartedContentHandler(
+    'translateImage',
+    async (message) => {
+      await translateImage(message.imageUrl);
+    },
+    (error) => {
+      logContentMessageFailure('translateImage', error, 'Image translation failed');
     }
+  ),
+  enterScreenshotMode: defineImmediateContentHandler('enterScreenshotMode', () => {
+    enterScreenshotMode();
+    return true;
+  }),
+};
 
-    if (message.type === 'enterScreenshotMode') {
-      enterScreenshotMode();
-      sendResponse(true);
-      return true;
-    }
-
-    return false;
-  }
+browserAPI.runtime.onMessage.addListener(
+  (
+    message: unknown,
+    _sender,
+    sendResponse: (response: ContentMessageResponse) => void
+  ) => routeContentMessage(message, sendResponse, contentMessageHandlers)
 );
 
 // ============================================================================

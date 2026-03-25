@@ -90,6 +90,36 @@ export type ContentMessage =
   | { type: 'showWidget' }
   | { type: 'enterScreenshotMode' };
 
+export type ContentMessageType = ContentMessage['type'];
+
+export type ContentMessageByType<TType extends ContentMessageType> = Extract<
+  ContentMessage,
+  { type: TType }
+>;
+
+export interface StartedContentResponse {
+  success: true;
+  status: 'started';
+}
+
+export interface ContentMessageResponseMap {
+  ping: { loaded: boolean };
+  stopAutoTranslate: boolean;
+  undoTranslation: { success: boolean; restoredCount: number };
+  toggleBilingualMode: { enabled: boolean };
+  setBilingualMode: { enabled: boolean };
+  getBilingualMode: { enabled: boolean };
+  toggleWidget: { visible: boolean };
+  showWidget: { visible: boolean };
+  translateSelection: StartedContentResponse;
+  translatePage: StartedContentResponse;
+  translatePdf: StartedContentResponse;
+  translateImage: StartedContentResponse;
+  enterScreenshotMode: boolean;
+}
+
+export type ContentMessageResponse = ContentMessageResponseMap[ContentMessageType];
+
 // ============================================================================
 // Shared State Types
 // ============================================================================
