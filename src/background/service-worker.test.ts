@@ -215,6 +215,95 @@ describe('Service Worker', () => {
 
       expect(result).toBe(false);
     });
+
+    it('relays offscreen model progress updates with stable UI message shape', async () => {
+      const sendResponse = vi.fn();
+
+      messageHandler(
+        {
+          type: 'offscreenModelProgress',
+          target: 'background',
+          modelId: 'opus-mt-en-fi',
+          status: 'progress',
+          progress: 55,
+        },
+        { url: 'chrome-extension://test-id/src/offscreen/offscreen.html' },
+        sendResponse
+      );
+
+      await vi.waitFor(() => {
+        expect(sendResponse).toHaveBeenCalledWith({ success: true });
+      });
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'modelProgress',
+          modelId: 'opus-mt-en-fi',
+          status: 'progress',
+          progress: 55,
+        })
+      );
+    });
+
+    it('persists offscreen downloaded model updates through background-owned storage', async () => {
+      vi.mocked(chrome.storage.local.get).mockResolvedValueOnce({
+        downloadedModels: [{ id: 'opus-mt-en-de', size: 42 }],
+      });
+      const sendResponse = vi.fn();
+
+      messageHandler(
+        {
+          type: 'offscreenDownloadedModelUpdate',
+          target: 'background',
+          modelId: 'opus-mt-en-fi',
+          name: 'OPUS-MT EN-FI',
+          size: 100,
+          lastUsed: 1234,
+        },
+        { url: 'chrome-extension://test-id/src/offscreen/offscreen.html' },
+        sendResponse
+      );
+
+      await vi.waitFor(() => {
+        expect(sendResponse).toHaveBeenCalledWith({ success: true });
+      });
+      expect(mockStorageSet).toHaveBeenCalledWith({
+        downloadedModels: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'opus-mt-en-de',
+            size: 42,
+          }),
+          expect.objectContaining({
+            id: 'opus-mt-en-fi',
+            name: 'OPUS-MT EN-FI',
+            size: 100,
+            lastUsed: 1234,
+          }),
+        ]),
+      });
+    });
+
+    it('rejects offscreen model contract messages from non-offscreen senders', async () => {
+      const sendResponse = vi.fn();
+
+      messageHandler(
+        {
+          type: 'offscreenModelProgress',
+          target: 'background',
+          modelId: 'opus-mt-en-fi',
+          status: 'progress',
+        },
+        { url: 'chrome-extension://test-id/src/popup/index.html' },
+        sendResponse
+      );
+
+      await vi.waitFor(() => {
+        expect(sendResponse).toHaveBeenCalledWith({
+          success: false,
+          error: 'Unauthorized sender',
+        });
+      });
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
   });
 
   describe('install handler', () => {
@@ -583,10 +672,10 @@ describe('Service Worker Extended Handler Coverage', () => {
     ) => boolean;
   }
 
-  async function invoke(message: unknown): Promise<unknown> {
+  async function invoke(message: unknown, sender: unknown = {}): Promise<unknown> {
     const handler = getMessageHandler();
     const sendResponse = vi.fn();
-    handler(message, {}, sendResponse);
+    handler(message, sender, sendResponse);
     // Allow enough time for retry logic and async handlers
     await vi.waitFor(() => {
       expect(sendResponse).toHaveBeenCalled();
@@ -1213,6 +1302,79 @@ describe('Service Worker Extended Handler Coverage', () => {
 
       expect(response.success).toBe(true);
       expect(response.models).toHaveLength(0);
+    });
+  });
+
+  describe('offscreen model contracts', () => {
+    const offscreenSender = {
+      url: 'chrome-extension://test-id/src/offscreen/offscreen.html',
+    };
+
+    it('relays offscreen progress and upserts inventory on ready', async () => {
+      vi.mocked(chrome.storage.local.get).mockImplementationOnce((_keys, callback) => {
+        const result = {};
+        if (callback && typeof callback === 'function') callback(result);
+        return Promise.resolve(result);
+      });
+      mockStorageSet.mockClear();
+      mockSendMessage.mockClear();
+
+      const response = await invoke({
+        type: 'offscreenModelProgress',
+        target: 'background',
+        modelId: 'opus-mt-en-fi',
+        status: 'ready',
+        progress: 100,
+        total: 2048,
+      }, offscreenSender) as { success: boolean };
+
+      expect(response.success).toBe(true);
+      expect(mockStorageSet).toHaveBeenCalledWith({
+        downloadedModels: [
+          expect.objectContaining({
+            id: 'opus-mt-en-fi',
+            name: 'OPUS-MT EN-FI',
+            size: 2048,
+          }),
+        ],
+      });
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'modelProgress',
+          modelId: 'opus-mt-en-fi',
+          status: 'ready',
+          progress: 100,
+        })
+      );
+    });
+
+    it('persists explicit offscreen inventory updates', async () => {
+      vi.mocked(chrome.storage.local.get).mockImplementationOnce((_keys, callback) => {
+        const result = {};
+        if (callback && typeof callback === 'function') callback(result);
+        return Promise.resolve(result);
+      });
+      mockStorageSet.mockClear();
+
+      const response = await invoke({
+        type: 'offscreenDownloadedModelUpdate',
+        target: 'background',
+        modelId: 'm1cc0z/translategemma-4b-it-onnx-q4-webgpu',
+        size: 4096,
+        lastUsed: 12345,
+      }, offscreenSender) as { success: boolean };
+
+      expect(response.success).toBe(true);
+      expect(mockStorageSet).toHaveBeenCalledWith({
+        downloadedModels: [
+          expect.objectContaining({
+            id: 'm1cc0z/translategemma-4b-it-onnx-q4-webgpu',
+            name: 'TranslateGemma',
+            size: 4096,
+            lastUsed: 12345,
+          }),
+        ],
+      });
     });
   });
 

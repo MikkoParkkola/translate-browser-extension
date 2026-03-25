@@ -55,3 +55,14 @@ export {
   getActionSettings,
 } from './message-handlers';
 export type { ActionSettings } from './message-handlers';
+
+export {
+  clearDownloadedModelInventory,
+  deleteDownloadedModelInventoryEntry,
+  getDownloadedModelInventory,
+  isOffscreenDownloadedModelUpdateMessage,
+  isOffscreenModelMessage,
+  isOffscreenModelProgressMessage,
+  relayModelProgress,
+  upsertDownloadedModelInventory,
+} from './model-downloads';

@@ -1,4 +1,8 @@
 import type { DownloadedModelRecord } from '../types';
+import {
+  getProviderModelInfo,
+  resolveProviderFromModelId,
+} from './provider-options';
 
 function isFiniteNonNegativeNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
@@ -50,6 +54,20 @@ export interface DownloadedModelRecordUpdate {
   name?: string;
   size?: number;
   lastUsed?: number;
+}
+
+export function deriveDownloadedModelName(modelId: string): string | undefined {
+  const providerId = resolveProviderFromModelId(modelId);
+  if (!providerId) {
+    return undefined;
+  }
+
+  if (providerId === 'opus-mt') {
+    const pair = modelId.match(/opus-mt-(.+)$/)?.[1];
+    return pair ? `OPUS-MT ${pair.toUpperCase()}` : getProviderModelInfo(providerId).name;
+  }
+
+  return getProviderModelInfo(providerId).name;
 }
 
 function readOptionalNonEmptyString(value: unknown): string | undefined {

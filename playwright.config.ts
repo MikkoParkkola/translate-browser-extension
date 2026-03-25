@@ -34,6 +34,7 @@ export default defineConfig({
         headless: extensionLaunchSettings.headless,
         launchOptions: {
           args: extensionLaunchSettings.args,
+          executablePath: extensionLaunchSettings.executablePath,
         },
       },
     },

@@ -2,6 +2,7 @@ import path from 'path';
 
 export const EXTENSION_PATH = path.resolve(__dirname, '..', 'dist');
 const BACKGROUND_MODE = process.env.BACKGROUND !== 'false';
+const CHROMIUM_EXECUTABLE_PATH_ENV = 'PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH';
 
 export interface ExtensionLaunchOptions {
   enableGpu?: boolean;
@@ -10,6 +11,7 @@ export interface ExtensionLaunchOptions {
 export interface ExtensionLaunchSettings {
   headless: boolean;
   args: string[];
+  executablePath?: string;
 }
 
 export function buildExtensionArgs({ enableGpu = false }: ExtensionLaunchOptions = {}): string[] {
@@ -29,11 +31,19 @@ export function buildExtensionArgs({ enableGpu = false }: ExtensionLaunchOptions
   ];
 }
 
+function readChromiumExecutablePathOverride(): string | undefined {
+  const executablePath = process.env[CHROMIUM_EXECUTABLE_PATH_ENV];
+  return typeof executablePath === 'string' && executablePath.length > 0
+    ? executablePath
+    : undefined;
+}
+
 export function getExtensionLaunchSettings(
   options: ExtensionLaunchOptions = {}
 ): ExtensionLaunchSettings {
   return {
     headless: false,
     args: buildExtensionArgs(options),
+    executablePath: readChromiumExecutablePathOverride(),
   };
 }

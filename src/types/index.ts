@@ -231,6 +231,31 @@ export interface ModelStatusMessage {
   progress?: number;
 }
 
+export interface OffscreenModelProgressMessage {
+  type: 'offscreenModelProgress';
+  target: 'background';
+  status: ModelProgressMessage['status'];
+  modelId: string;
+  progress?: number;
+  loaded?: number;
+  total?: number;
+  file?: string;
+  error?: string;
+}
+
+export interface OffscreenDownloadedModelUpdateMessage {
+  type: 'offscreenDownloadedModelUpdate';
+  target: 'background';
+  modelId: string;
+  name?: string;
+  size?: number;
+  lastUsed?: number;
+}
+
+export type OffscreenModelMessage =
+  | OffscreenModelProgressMessage
+  | OffscreenDownloadedModelUpdateMessage;
+
 // Preload message for lazy model loading
 export interface PreloadModelMessage {
   type: 'preloadModel';
@@ -485,6 +510,7 @@ export type ExtensionMessage =
   | PreloadModelMessage
   | ModelProgressMessage
   | ModelStatusMessage
+  | OffscreenModelMessage
   | BatchProgressMessage
   | SetProviderMessage
   | RecordLanguageDetectionMessage
@@ -509,6 +535,7 @@ export type ExtensionMessage =
   | TranslatePdfMessage
   | OCRImageMessage
   | CaptureScreenshotMessage
+  | OffscreenModelMessage
   | { type: 'getDownloadedModels'; target?: string }
   | { type: 'checkWebGPU'; target?: string }
   | { type: 'checkWebNN'; target?: string }
@@ -522,6 +549,8 @@ export interface ExtensionMessageResponseMap {
   getUsage: GetUsageResponsePayload;
   getProviders: ProvidersMessagePayload;
   preloadModel: MessageResponse<{ preloaded?: boolean }>;
+  offscreenModelProgress: MessageResponse;
+  offscreenDownloadedModelUpdate: MessageResponse;
   setProvider: MessageResponse<{ provider: TranslationProviderId }>;
   getCacheStats: MessageResponse<{ cache: DetailedCacheStats }>;
   clearCache: { success: boolean; clearedEntries: number };

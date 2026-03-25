@@ -26,7 +26,6 @@ import {
 } from '../core/errors';
 import { createLogger } from '../core/logger';
 import { safeStorageGet, safeStorageSet, strictStorageSet } from '../core/storage';
-import { browserAPI } from '../core/browser-api';
 import { validateInput } from '../core/errors';
 import { getCorrection } from '../core/corrections';
 import { getPredictionEngine } from '../core/prediction-engine';
@@ -34,7 +33,6 @@ import { CONFIG } from '../config';
 import { profiler, type AggregateStats } from '../core/profiler';
 import { sleep } from '../core/async-utils';
 import { splitIntoSentences } from '../core/text-utils';
-import { normalizeDownloadedModelRecords } from '../shared/downloaded-models';
 import { DEFAULT_PROVIDER_ID, normalizeTranslationProviderId } from '../shared/provider-options';
 import {
   assertNever,
@@ -57,6 +55,9 @@ import {
   recordUsage,
   estimateTokens,
   formatUserError,
+  getDownloadedModelInventory,
+  clearDownloadedModelInventory,
+  deleteDownloadedModelInventoryEntry,
   handleSetProvider,
   handleGetCacheStats,
   handleClearCache,
@@ -77,9 +78,14 @@ import {
   handleExportCorrections,
   handleImportCorrections,
   handleGetSettings,
+  isOffscreenDownloadedModelUpdateMessage,
+  isOffscreenModelMessage,
+  isOffscreenModelProgressMessage,
   getActionSettings,
   PROVIDER_LIST,
   NETWORK_RETRY_CONFIG,
+  relayModelProgress,
+  upsertDownloadedModelInventory,
 } from './shared';
 
 const log = createLogger('Background');
@@ -444,6 +450,10 @@ async function sendToOffscreen<T>(
   );
 }
 
+function isOffscreenDocumentSender(sender: chrome.runtime.MessageSender): boolean {
+  return sender.url === chrome.runtime.getURL('src/offscreen/offscreen.html');
+}
+
 // ============================================================================
 // Message Handler
 // ============================================================================
@@ -458,6 +468,61 @@ chrome.runtime.onMessage.addListener(
 
     // Ignore messages from offscreen document
     if ('target' in message && message.target === 'offscreen') return false;
+
+    if (isOffscreenModelMessage(message)) {
+      if (!isOffscreenDocumentSender(sender)) {
+        sendResponse({ success: false, error: 'Unauthorized sender' });
+        return true;
+      }
+
+      if (isOffscreenModelProgressMessage(message)) {
+        const relayUpdate = {
+          modelId: message.modelId,
+          status: message.status,
+          progress: message.progress,
+          loaded: message.loaded,
+          total: message.total,
+          file: message.file,
+          error: message.error,
+        } as const;
+        const persistInventory = message.status === 'ready' || message.status === 'done'
+          ? upsertDownloadedModelInventory({
+            type: 'offscreenDownloadedModelUpdate',
+            target: 'background',
+            modelId: message.modelId,
+            size: message.total,
+            lastUsed: Date.now(),
+          })
+          : Promise.resolve();
+
+        persistInventory
+          .then(() => {
+            relayModelProgress(relayUpdate);
+            sendResponse({ success: true });
+          })
+          .catch((error) => {
+            sendResponse({
+              success: false,
+              error: extractErrorMessage(error),
+            });
+          });
+        return true;
+      }
+
+      if (isOffscreenDownloadedModelUpdateMessage(message)) {
+        upsertDownloadedModelInventory(message)
+          .then(() => {
+            sendResponse({ success: true });
+          })
+          .catch((error) => {
+            sendResponse({
+              success: false,
+              error: extractErrorMessage(error),
+            });
+          });
+        return true;
+      }
+    }
 
     // For translation messages, validate text/sourceLang/targetLang are strings
     if (message.type === 'translate') {
@@ -725,10 +790,7 @@ async function handleMessage(message: ServiceWorkerHandledMessage): Promise<Serv
     case 'captureScreenshot':
       return handleCaptureScreenshot(message);
     case 'getDownloadedModels': {
-      const stored = await safeStorageGet<{ downloadedModels?: unknown[] }>(['downloadedModels']);
-      const models: DownloadedModelRecord[] = normalizeDownloadedModelRecords(
-        stored.downloadedModels
-      );
+      const models: DownloadedModelRecord[] = await getDownloadedModelInventory();
       return { success: true, models };
     }
     case 'deleteModel':
@@ -860,13 +922,7 @@ async function handleDeleteModel(message: DeleteModelMessage): Promise<MessageRe
 
   try {
     await tryClearOffscreenPipelineCache();
-
-    const stored = await browserAPI.storage.local.get(['downloadedModels']) as {
-      downloadedModels?: unknown[];
-    };
-    const models = normalizeDownloadedModelRecords(stored.downloadedModels);
-    const filtered = models.filter((m) => m.id !== modelId);
-    await browserAPI.storage.local.set({ downloadedModels: filtered });
+    await deleteDownloadedModelInventoryEntry(modelId);
 
     log.info(`Model ${modelId} deleted`);
     return { success: true };
@@ -887,8 +943,7 @@ async function handleClearAllModels(): Promise<MessageResponse> {
 
   try {
     await tryClearOffscreenPipelineCache();
-
-    await browserAPI.storage.local.remove(['downloadedModels']);
+    await clearDownloadedModelInventory();
 
     try {
       const clearedCaches = await clearMatchingCaches(['transformers', 'onnx', 'model']);

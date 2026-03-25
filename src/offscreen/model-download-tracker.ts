@@ -1,10 +1,11 @@
 import { createLogger } from '../core/logger';
-import { upsertDownloadedModelRecord } from '../shared/downloaded-models';
-import {
-  getProviderModelInfo,
-  resolveProviderFromModelId,
-} from '../shared/provider-options';
-import type { ModelProgressMessage } from '../types';
+import { deriveDownloadedModelName } from '../shared/downloaded-models';
+import type {
+  MessageResponse,
+  ModelProgressMessage,
+  OffscreenDownloadedModelUpdateMessage,
+  OffscreenModelProgressMessage,
+} from '../types';
 
 const log = createLogger('ModelDownloadTracker');
 const trackedModelSizes = new Map<string, number>();
@@ -15,23 +16,22 @@ function readFinitePositiveNumber(value: unknown): number | undefined {
     : undefined;
 }
 
-function getTrackedModelName(modelId: string): string | undefined {
-  const providerId = resolveProviderFromModelId(modelId);
-  if (!providerId) {
-    return undefined;
+async function sendBackgroundModelMessage(
+  message: OffscreenModelProgressMessage | OffscreenDownloadedModelUpdateMessage,
+): Promise<void> {
+  const response = await chrome.runtime.sendMessage(message) as MessageResponse | undefined;
+  if (response && !response.success) {
+    throw new Error(
+      typeof response.error === 'string'
+        ? response.error
+        : 'Background model message failed',
+    );
   }
-
-  if (providerId === 'opus-mt') {
-    const pair = modelId.match(/opus-mt-(.+)$/)?.[1];
-    return pair ? `OPUS-MT ${pair.toUpperCase()}` : getProviderModelInfo(providerId).name;
-  }
-
-  return getProviderModelInfo(providerId).name;
 }
 
 export function reportModelProgress(
   modelId: string,
-  update: Omit<ModelProgressMessage, 'type' | 'modelId'>,
+  update: Omit<ModelProgressMessage, 'type' | 'modelId' | 'target'>,
 ): void {
   const trackedSize = readFinitePositiveNumber(update.total);
   if (trackedSize !== undefined) {
@@ -41,15 +41,14 @@ export function reportModelProgress(
     );
   }
 
-  try {
-    chrome.runtime.sendMessage({
-      type: 'modelProgress',
-      modelId,
-      ...update,
-    });
-  } catch {
-    // Popup may be closed
-  }
+  void sendBackgroundModelMessage({
+    type: 'offscreenModelProgress',
+    target: 'background',
+    modelId,
+    ...update,
+  } satisfies OffscreenModelProgressMessage).catch((error) => {
+    logDownloadedModelTrackingFailure('report model progress', error);
+  });
 }
 
 export async function trackDownloadedModel(
@@ -60,19 +59,15 @@ export async function trackDownloadedModel(
     lastUsed?: number;
   } = {},
 ): Promise<void> {
-  const stored = await chrome.storage.local.get(['downloadedModels']) as {
-    downloadedModels?: unknown[];
-  };
   const trackedSize = readFinitePositiveNumber(options.size) ?? trackedModelSizes.get(modelId);
-
-  await chrome.storage.local.set({
-    downloadedModels: upsertDownloadedModelRecord(stored.downloadedModels, {
-      id: modelId,
-      name: options.name ?? getTrackedModelName(modelId),
-      size: trackedSize,
-      lastUsed: options.lastUsed ?? Date.now(),
-    }),
-  });
+  await sendBackgroundModelMessage({
+    type: 'offscreenDownloadedModelUpdate',
+    target: 'background',
+    modelId,
+    name: options.name ?? deriveDownloadedModelName(modelId),
+    size: trackedSize,
+    lastUsed: options.lastUsed ?? Date.now(),
+  } satisfies OffscreenDownloadedModelUpdateMessage);
 }
 
 export function logDownloadedModelTrackingFailure(

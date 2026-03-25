@@ -17,6 +17,8 @@ export function isHandledExtensionMessage<TType extends ExtensionMessage['type']
 }
 
 export const SENSITIVE_EXTENSION_MESSAGE_TYPES = [
+  'offscreenModelProgress',
+  'offscreenDownloadedModelUpdate',
   'setCloudApiKey',
   'clearCloudApiKey',
   'setCloudProviderEnabled',
