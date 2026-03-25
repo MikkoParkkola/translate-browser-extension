@@ -19,6 +19,11 @@ import {
 } from './model-maps';
 import { getOpusMtPipelineConfig, preloadOpusMtModel } from './opus-runtime';
 import {
+  collectBatchTranslationInputs,
+  mergeBatchTranslationResults,
+  translateArrayItems,
+} from './batch-translation';
+import {
   logDownloadedModelTrackingFailure,
   reportModelProgress,
   trackDownloadedModel,
@@ -201,27 +206,26 @@ async function translateDirect(
     if (text.length === 0) return [];
     /* v8 ignore stop */
 
-    const results = await Promise.all(
-      text.map(async (t, i) => {
-        /* v8 ignore start -- empty string guard */
-        if (!t || t.trim().length === 0) return t;
-        /* v8 ignore stop */
-        try {
-          const result = await pipe(t, { max_length: 512 });
-          const translated = (result as Array<{ translation_text: string }>)[0].translation_text;
+    const results = await translateArrayItems(
+      text,
+      async (value) => {
+        const result = await pipe(value, { max_length: 512 });
+        return (result as Array<{ translation_text: string }>)[0].translation_text;
+      },
+      {
+        onItemTranslated: ({ index, text: originalText, translation }) => {
           /* v8 ignore start -- debug logging branch */
           // Debug: log first 3 to verify model output
-          if (i < 3) {
-            log.debug(`Model #${i}: "${t.substring(0, 40)}" -> "${translated.substring(0, 40)}" (same=${t === translated})`);
+          if (index < 3) {
+            log.debug(`Model #${index}: "${originalText.substring(0, 40)}" -> "${translation.substring(0, 40)}" (same=${originalText === translation})`);
           }
           /* v8 ignore stop */
-          return translated;
-        } catch (error) {
+        },
+        onItemError: ({ text: originalText, error }) => {
           // Per-item error: return original text instead of crashing entire batch
-          log.warn(` Translation failed for item (${t.substring(0, 30)}...):`, error);
-          return t;
-        }
-      })
+          log.warn(` Translation failed for item (${originalText.substring(0, 30)}...):`, error);
+        },
+      }
     );
 
     const inferenceDuration = performance.now() - inferenceStart;
@@ -285,32 +289,19 @@ async function translate(
 
   // Handle array of texts
   if (Array.isArray(text)) {
-    const results: string[] = [];
-    const uncachedItems: Array<{ index: number; text: string }> = [];
-
-    // Check cache for each text
-    for (let i = 0; i < text.length; i++) {
-      const t = text[i];
-      if (!t || t.trim().length === 0) {
-        results[i] = t;
-        continue;
-      }
-
-      const cached = await cache.get(t, actualSourceLang, targetLang, provider);
-      if (cached !== null) {
+    const { results, uncachedItems } = await collectBatchTranslationInputs(text, {
+      getCached: (value) => cache.get(value, actualSourceLang, targetLang, provider),
+      onCacheHit: ({ index, text: originalText, cached }) => {
         // Identity translations (cached === original) are valid: OPUS-MT legitimately
         // returns the original text for proper nouns, brand names, loanwords, etc.
         // Serve them from cache to avoid repeated expensive model inference.
         /* v8 ignore start -- debug logging branch */
-        if (i < 3) {
-          log.debug(`Cache #${i}: "${t.substring(0, 30)}" -> "${cached.substring(0, 30)}"${cached === t ? ' (identity)' : ''}`);
+        if (index < 3) {
+          log.debug(`Cache #${index}: "${originalText.substring(0, 30)}" -> "${cached.substring(0, 30)}"${cached === originalText ? ' (identity)' : ''}`);
         }
         /* v8 ignore stop */
-        results[i] = cached;
-      } else {
-        uncachedItems.push({ index: i, text: t });
-      }
-    }
+      },
+    });
 
     // Translate uncached items
     if (uncachedItems.length > 0) {
@@ -325,35 +316,31 @@ async function translate(
         pageContext
       );
 
-      // Store results and cache them.
-      // Results are always returned to the user even if caching fails.
-      /* v8 ignore start -- ternary: Array.isArray */
-      const translationArray = Array.isArray(translations) ? translations : [translations];
-      /* v8 ignore stop */
-      let cacheFails = 0;
-      for (let i = 0; i < uncachedItems.length; i++) {
-        const { index, text: originalText } = uncachedItems[i];
-        const translation = translationArray[i];
-        results[index] = translation;
-
-        // Cache all translations including identity translations (output === input).
-        // OPUS-MT legitimately returns original text for proper nouns, brand names,
-        // loanwords, and short words. Caching these prevents repeated model inference.
-        try {
-          await cache.set(originalText, actualSourceLang, targetLang, provider, translation);
-        } catch (error) {
-          cacheFails++;
-          if (cacheFails <= 2) {
-            log.warn(`Failed to cache translation (${cacheFails}):`, error);
-          }
+      const { results: mergedResults, cacheFailures } = await mergeBatchTranslationResults(
+        results,
+        uncachedItems,
+        translations,
+        {
+          // Cache all translations including identity translations (output === input).
+          // OPUS-MT legitimately returns original text for proper nouns, brand names,
+          // loanwords, and short words. Caching these prevents repeated model inference.
+          storeCached: (originalText, translation) => (
+            cache.set(originalText, actualSourceLang, targetLang, provider, translation)
+          ),
+          onCacheStoreFailure: ({ failureCount, error }) => {
+            if (failureCount <= 2) {
+              log.warn(`Failed to cache translation (${failureCount}):`, error);
+            }
+          },
+          onIdentityTranslation: ({ text: originalText }) => {
+            log.debug(`Identity translation cached for "${originalText.substring(0, 30)}"`);
+          },
         }
-        if (translation === originalText) {
-          log.debug(`Identity translation cached for "${originalText.substring(0, 30)}"`);
-        }
+      );
+      if (cacheFailures > 2) {
+        log.warn(`Cache write failed for ${cacheFailures}/${uncachedItems.length} items`);
       }
-      if (cacheFails > 2) {
-        log.warn(`Cache write failed for ${cacheFails}/${uncachedItems.length} items`);
-      }
+      return mergedResults;
     }
 
     return results;

@@ -32,6 +32,11 @@ import { CONFIG } from '../config';
 import { browserAPI, getURL } from '../core/browser-api';
 import { DEFAULT_PROVIDER_ID, normalizeTranslationProviderId } from '../shared/provider-options';
 import {
+  collectBatchTranslationInputs,
+  mergeBatchTranslationResults,
+  translateArrayItems,
+} from '../offscreen/batch-translation';
+import {
   assertNever,
   isExtensionMessage,
   isHandledExtensionMessage,
@@ -183,16 +188,18 @@ async function translateDirect(
   const pipe = await getPipeline(sourceLang, targetLang);
 
   if (Array.isArray(text)) {
-    const results = await Promise.all(
-      text.map(async (t) => {
-        /* v8 ignore start */
-        if (!t || t.trim().length === 0) return t;
-        const result = await pipe(t, { max_length: 512 });
+    return translateArrayItems(
+      text,
+      async (value) => {
+        const result = await pipe(value, { max_length: 512 });
         return (result as Array<{ translation_text: string }>)[0].translation_text;
-        /* v8 ignore stop */
-      })
+      },
+      {
+        onItemError: ({ text: originalText, error }) => {
+          log.warn(` Translation failed for item (${originalText.substring(0, 30)}...):`, error);
+        },
+      }
     );
-    return results;
   }
 
   /* v8 ignore start */
@@ -259,21 +266,7 @@ async function translate(
 
   // Handle array of texts
   if (Array.isArray(text)) {
-    const results: string[] = [];
-    const uncachedItems: Array<{ index: number; text: string }> = [];
-
-    for (let i = 0; i < text.length; i++) {
-      const t = text[i];
-      /* v8 ignore start */
-      if (!t || t.trim().length === 0) {
-      /* v8 ignore stop */
-        results[i] = t;
-        continue;
-      }
-
-      // Skip cache for now - use in-memory cache above
-      uncachedItems.push({ index: i, text: t });
-    }
+    const { results, uncachedItems } = await collectBatchTranslationInputs(text);
 
     /* v8 ignore start */
     if (uncachedItems.length > 0) {
@@ -286,10 +279,12 @@ async function translate(
         provider
       );
 
-      const translationArray = Array.isArray(translations) ? translations : [translations];
-      for (let i = 0; i < uncachedItems.length; i++) {
-        results[uncachedItems[i].index] = translationArray[i];
-      }
+      const { results: mergedResults } = await mergeBatchTranslationResults(
+        results,
+        uncachedItems,
+        translations
+      );
+      return mergedResults;
     }
 
     return results;

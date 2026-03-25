@@ -231,10 +231,21 @@ beforeEach(async () => {
   const pipelineCache = await import('../offscreen/pipeline-cache');
   (pipelineCache.getCachedPipeline as ReturnType<typeof vi.fn>).mockReturnValue(null);
 
+  const languageDetection = await import('../offscreen/language-detection');
+  (languageDetection.buildLanguageDetectionSample as ReturnType<typeof vi.fn>).mockImplementation(
+    (text: string | string[]) => Array.isArray(text) ? text.join(' ') : text
+  );
+  (languageDetection.detectLanguage as ReturnType<typeof vi.fn>).mockReturnValue('en');
+
   const translategemma = await import('../offscreen/translategemma');
   (translategemma.getTranslateGemmaPipeline as ReturnType<typeof vi.fn>).mockResolvedValue({
     model: {}, tokenizer: {},
   });
+
+  const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+  (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValue(
+    vi.fn().mockResolvedValue([{ translation_text: 'translated' }])
+  );
 });
 
 // ============================================================================
@@ -1333,7 +1344,7 @@ describe('background-firefox translate: additional coverage', () => {
       const { pipeline: mockPipeline } = await import('@huggingface/transformers');
       const pipelineCache = await import('../offscreen/pipeline-cache');
       const fakePipe = vi.fn().mockResolvedValue([{ translation_text: 'Hei' }]);
-      (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValue(fakePipe);
+      (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fakePipe);
       (pipelineCache.getCachedPipeline as ReturnType<typeof vi.fn>).mockReturnValue(null);
 
       const response = await invoke({
@@ -2533,6 +2544,37 @@ describe('background-firefox translate: additional coverage', () => {
 
       expect(response).toMatchObject({ success: expect.any(Boolean) });
       expect('success' in response).toBe(true);
+    });
+
+    it('keeps the original item when one array translation fails', async () => {
+      const errors = await import('../core/errors');
+      (errors.validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+        valid: true,
+        sanitizedText: ['hello', 'boom'],
+      });
+
+      const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+      const fakePipe = vi.fn(async (value: string) => {
+        if (value === 'boom') {
+          throw new Error('inference failed');
+        }
+        return [{ translation_text: 'hei' }];
+      });
+      (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fakePipe);
+
+      const pipelineCache = await import('../offscreen/pipeline-cache');
+      (pipelineCache.getCachedPipeline as ReturnType<typeof vi.fn>).mockReturnValue(null);
+
+      const response = await invoke({
+        type: 'translate',
+        text: ['hello', 'boom'],
+        sourceLang: 'auto',
+        targetLang: 'fi',
+        provider: 'opus-mt',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      expect(response.result).toEqual(['hei', 'boom']);
     });
   });
 
