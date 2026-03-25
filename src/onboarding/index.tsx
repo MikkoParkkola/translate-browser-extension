@@ -1,6 +1,7 @@
 import { render } from 'solid-js/web';
 import { createSignal, Show, For, onMount } from 'solid-js';
 import { safeStorageSet } from '../core/storage';
+import { buildExtensionSettingsStorageMutation } from '../shared/extension-settings';
 import { ONBOARDING_LANGUAGES } from '../shared/translation-options';
 import { DEFAULT_PROVIDER_ID, ONBOARDING_MODELS as MODELS } from '../shared/provider-options';
 import type { TranslationProviderId } from '../types';
@@ -48,10 +49,12 @@ export function OnboardingApp() {
 
   const saveSettings = async () => {
     await safeStorageSet({
-      targetLang: targetLang(),
-      provider: model(),
-      sourceLang: 'auto',
-      strategy: 'smart',
+      ...buildExtensionSettingsStorageMutation({
+        targetLang: targetLang(),
+        provider: model(),
+        sourceLang: 'auto',
+        strategy: 'smart',
+      }),
       onboardingComplete: true,
     });
   };

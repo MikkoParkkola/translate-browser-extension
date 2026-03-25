@@ -44,3 +44,47 @@ export function normalizeDownloadedModelRecords(values: unknown): DownloadedMode
     .map((value) => normalizeDownloadedModelRecord(value))
     .filter((value): value is DownloadedModelRecord => value !== null);
 }
+
+export interface DownloadedModelRecordUpdate {
+  id: string;
+  name?: string;
+  size?: number;
+  lastUsed?: number;
+}
+
+function readOptionalNonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+export function upsertDownloadedModelRecord(
+  values: unknown,
+  update: DownloadedModelRecordUpdate,
+): DownloadedModelRecord[] {
+  const normalizedId = readOptionalNonEmptyString(update.id);
+  if (!normalizedId) {
+    return normalizeDownloadedModelRecords(values);
+  }
+
+  const existing = normalizeDownloadedModelRecords(values);
+  const existingIndex = existing.findIndex((model) => model.id === normalizedId);
+  const previous = existingIndex >= 0 ? existing[existingIndex] : undefined;
+
+  const merged: DownloadedModelRecord = {
+    id: normalizedId,
+    name: readOptionalNonEmptyString(update.name) ?? previous?.name,
+    size: isFiniteNonNegativeNumber(update.size) && update.size > 0
+      ? update.size
+      : previous?.size ?? 0,
+    lastUsed: isFiniteNonNegativeNumber(update.lastUsed)
+      ? update.lastUsed
+      : previous?.lastUsed,
+  };
+
+  if (existingIndex < 0) {
+    return [...existing, merged];
+  }
+
+  const next = [...existing];
+  next[existingIndex] = merged;
+  return next;
+}

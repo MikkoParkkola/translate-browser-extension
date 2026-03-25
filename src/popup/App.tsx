@@ -13,9 +13,13 @@ import { sleep } from '../core/async-utils';
 import { extractErrorMessage } from '../core/errors';
 import { sendBackgroundMessage, trySendBackgroundMessage } from '../shared/background-message';
 import {
+  buildExtensionSettingsStorageMutation,
+  normalizeExtensionSettings,
+  type ExtensionSettingsStorageRecord,
+} from '../shared/extension-settings';
+import {
   DEFAULT_PROVIDER_ID,
   PROVIDER_STATUS_NAMES,
-  normalizeTranslationProviderId,
   resolveProviderFromModelId,
 } from '../shared/provider-options';
 
@@ -84,21 +88,24 @@ export default function App() {
     'anthropic': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
   });
 
+  const persistSettings = (patch: Partial<ExtensionSettingsStorageRecord>) =>
+    safeStorageSet(buildExtensionSettingsStorageMutation(patch));
+
   // Wrapper functions that persist language preferences to storage
   const setSourceLang = (lang: string) => {
     setSourceLangInternal(lang);
-    safeStorageSet({ sourceLang: lang });
+    void persistSettings({ sourceLang: lang });
   };
 
   const setTargetLang = (lang: string) => {
     setTargetLangInternal(lang);
-    safeStorageSet({ targetLang: lang });
+    void persistSettings({ targetLang: lang });
     log.info('Target language saved:', lang);
   };
 
   const setStrategy = (s: Strategy) => {
     setStrategyInternal(s);
-    safeStorageSet({ strategy: s });
+    void persistSettings({ strategy: s });
   };
 
   // Update per-model download status
@@ -208,21 +215,21 @@ export default function App() {
     });
 
     // Load saved preferences (use internal setters to avoid re-saving)
-    interface StoredPrefs {
-      sourceLang?: string;
-      targetLang?: string;
-      strategy?: Strategy;
-      autoTranslate?: boolean;
-      provider?: unknown;
-    }
-    const stored = await safeStorageGet<StoredPrefs>(['sourceLang', 'targetLang', 'strategy', 'autoTranslate', 'provider']);
-    if (stored.sourceLang) setSourceLangInternal(stored.sourceLang);
-    if (stored.targetLang) setTargetLangInternal(stored.targetLang);
-    if (stored.strategy) setStrategyInternal(stored.strategy);
-    if (stored.autoTranslate !== undefined) setAutoTranslate(stored.autoTranslate);
-    if (stored.provider !== undefined) {
-      setActiveProvider(normalizeTranslationProviderId(stored.provider));
-    }
+    const stored = normalizeExtensionSettings(
+      await safeStorageGet<ExtensionSettingsStorageRecord>([
+        'sourceLang',
+        'targetLang',
+        'strategy',
+        'autoTranslate',
+        'provider',
+      ]),
+      { targetLang: getBrowserLanguage() },
+    );
+    setSourceLangInternal(stored.sourceLang);
+    setTargetLangInternal(stored.targetLang);
+    setStrategyInternal(stored.strategy);
+    setAutoTranslate(stored.autoTranslate);
+    setActiveProvider(stored.provider);
     log.info('Loaded preferences:', { source: stored.sourceLang, target: stored.targetLang });
 
     // Check Chrome Translator API availability (Chrome 138+)
@@ -311,12 +318,7 @@ export default function App() {
   const toggleAutoTranslate = async () => {
     const newValue = !autoTranslate();
     setAutoTranslate(newValue);
-    const saved = await safeStorageSet({
-      autoTranslate: newValue,
-      sourceLang: sourceLang(),
-      targetLang: targetLang(),
-      strategy: strategy(),
-    });
+    const saved = await persistSettings({ autoTranslate: newValue });
     if (saved) {
       log.info('Auto-translate:', newValue);
     }
@@ -334,7 +336,7 @@ export default function App() {
     setProviderStatus('ready');
     setError(null);
 
-    await safeStorageSet({ provider });
+    await persistSettings({ provider });
     try {
       await sendBackgroundMessage({ type: 'setProvider', provider });
       log.info('Provider changed to:', provider);

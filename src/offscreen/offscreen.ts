@@ -17,6 +17,11 @@ import {
   getSupportedLanguagePairs,
   resolveOpusMtTranslationRoute,
 } from './model-maps';
+import {
+  logDownloadedModelTrackingFailure,
+  reportModelProgress,
+  trackDownloadedModel,
+} from './model-download-tracker';
 import { getCachedPipeline, cachePipeline, clearCache as clearPipelineCache, castAsPipeline } from './pipeline-cache';
 import { buildLanguageDetectionSample, detectLanguage } from './language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline, detectWebGPU, detectWebNN } from './translategemma';
@@ -92,6 +97,17 @@ function selectOpusMtDtype(_webgpu: { supported: boolean; fp16: boolean }): stri
   return 'q8';
 }
 
+function normalizeProgressStatus(value: unknown): 'initiate' | 'download' | 'progress' | 'done' {
+  switch (value) {
+    case 'initiate':
+    case 'download':
+    case 'done':
+      return value;
+    default:
+      return 'progress';
+  }
+}
+
 /**
  * Get or create pipeline for a language pair with LRU caching.
  */
@@ -111,6 +127,10 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
     if (sessionId) {
       profiler.recordTiming(sessionId, 'model_load', 0, { cached: true, modelId });
     }
+    reportModelProgress(modelId, { status: 'ready', progress: 100 });
+    void trackDownloadedModel(modelId).catch((error) => {
+      logDownloadedModelTrackingFailure('refresh downloaded model inventory', error);
+    });
     return cached;
   }
 
@@ -129,8 +149,21 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   // If WebGPU fails (GPU incompatibility), fall back to WASM+q8 automatically.
   let pipe;
   try {
+    reportModelProgress(modelId, { status: 'initiate', progress: 0 });
     pipe = await withTimeout(
-      (await getTransformers()).pipeline('translation', modelId, { device, dtype } as Record<string, unknown>),
+      (await getTransformers()).pipeline('translation', modelId, {
+        device,
+        dtype,
+        progress_callback: (progress: Record<string, unknown>) => {
+          reportModelProgress(modelId, {
+            status: normalizeProgressStatus(progress.status),
+            progress: typeof progress.progress === 'number' ? progress.progress : undefined,
+            file: typeof progress.file === 'string' ? progress.file : undefined,
+            loaded: typeof progress.loaded === 'number' ? progress.loaded : undefined,
+            total: typeof progress.total === 'number' ? progress.total : undefined,
+          });
+        },
+      } as Record<string, unknown>),
       CONFIG.timeouts.opusMtDirectMs,
       `Loading model ${modelId}`
     );
@@ -148,6 +181,12 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
 
   // Store in LRU cache (may evict old models)
   cachePipeline(modelId, castAsPipeline(pipe));
+  reportModelProgress(modelId, { status: 'ready', progress: 100 });
+  try {
+    await trackDownloadedModel(modelId);
+  } catch (error) {
+    logDownloadedModelTrackingFailure('persist downloaded model inventory', error);
+  }
 
   return castAsPipeline(pipe);
 }

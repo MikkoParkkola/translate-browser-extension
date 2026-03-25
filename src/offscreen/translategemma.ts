@@ -17,6 +17,11 @@ import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
 import { extractErrorMessage } from '../core/errors';
 import { withTimeout } from '../core/async-utils';
+import {
+  logDownloadedModelTrackingFailure,
+  reportModelProgress,
+  trackDownloadedModel,
+} from './model-download-tracker';
 
 const log = createLogger('TranslateGemma');
 
@@ -121,15 +126,10 @@ export function formatTranslateGemmaPrompt(
  * Send model progress update to popup via service worker.
  */
 function sendProgress(update: Record<string, unknown>): void {
-  try {
-    chrome.runtime.sendMessage({
-      type: 'modelProgress',
-      modelId: TRANSLATEGEMMA_MODEL,
-      ...update,
-    });
-  } catch {
-    // Popup may be closed
-  }
+  reportModelProgress(
+    TRANSLATEGEMMA_MODEL,
+    update as Parameters<typeof reportModelProgress>[1],
+  );
 }
 
 /**
@@ -153,7 +153,12 @@ export function isOnnxTypeMismatch(error: unknown): boolean {
  * but Transformers.js only maps "gemma3_text" to the causal LM class.
  */
 export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedModel; tokenizer: PreTrainedTokenizer }> {
-  if (tgModel && tgTokenizer) return { model: tgModel, tokenizer: tgTokenizer };
+  if (tgModel && tgTokenizer) {
+    void trackDownloadedModel(TRANSLATEGEMMA_MODEL).catch((error) => {
+      logDownloadedModelTrackingFailure('refresh TranslateGemma inventory', error);
+    });
+    return { model: tgModel, tokenizer: tgTokenizer };
+  }
   if (tgLoading) return tgLoading;
 
   tgLoading = (async () => {
@@ -196,11 +201,16 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       return { model: model as PreTrainedModel, tokenizer: tokenizer as PreTrainedTokenizer };
     };
 
-    const setResult = (result: { model: PreTrainedModel; tokenizer: PreTrainedTokenizer }) => {
+    const setResult = async (result: { model: PreTrainedModel; tokenizer: PreTrainedTokenizer }) => {
       tgModel = result.model;
       tgTokenizer = result.tokenizer;
       tgLoading = null;
       sendProgress({ status: 'ready', progress: 100 });
+      try {
+        await trackDownloadedModel(TRANSLATEGEMMA_MODEL);
+      } catch (error) {
+        logDownloadedModelTrackingFailure('persist TranslateGemma inventory', error);
+      }
       return { model: tgModel, tokenizer: tgTokenizer };
     };
 
@@ -225,7 +235,7 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       try {
         const result = await loadModel('webnn', 'q4f16');
         log.info('TranslateGemma loaded successfully via WebNN (NPU)');
-        return setResult(result);
+        return await setResult(result);
       } catch (error) {
         const errorMsg = extractErrorMessage(error);
         log.warn(`TranslateGemma: WebNN failed (${errorMsg}), falling back to WebGPU...`);
@@ -237,7 +247,7 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       try {
         const result = await loadModel('webgpu', 'q4f16');
         log.info('TranslateGemma loaded successfully via WebGPU + q4f16');
-        return setResult(result);
+        return await setResult(result);
       } catch (error) {
         /* v8 ignore start -- defensive error type narrowing */
         const errorMsg = extractErrorMessage(error);
@@ -252,7 +262,7 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
     try {
       const result = await loadModel('webgpu', 'q4');
       log.info('TranslateGemma loaded successfully via WebGPU + q4 (fp32)');
-      return setResult(result);
+      return await setResult(result);
     } catch (error) {
       /* v8 ignore start -- defensive error type narrowing */
       const errorMsg = extractErrorMessage(error);

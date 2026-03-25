@@ -45,6 +45,12 @@ vi.mock('../core/logger', () => ({
 
 vi.stubGlobal('chrome', {
   runtime: { sendMessage: (...args: unknown[]) => mockSendMessage(...args) },
+  storage: {
+    local: {
+      get: vi.fn().mockResolvedValue({}),
+      set: vi.fn().mockResolvedValue(undefined),
+    },
+  },
 });
 
 // ============================================================================
