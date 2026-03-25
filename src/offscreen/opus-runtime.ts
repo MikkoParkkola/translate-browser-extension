@@ -1,3 +1,6 @@
+import type { PreloadModelResponsePayload } from '../types';
+import { resolveOpusMtTranslationRoute } from './model-maps';
+
 export interface OpusMtRuntimeCapabilities {
   supported: boolean;
   fp16: boolean;
@@ -24,4 +27,26 @@ export function getOpusMtPipelineConfig(
     device: 'wasm',
     dtype: selectOpusMtDtype(capabilities),
   };
+}
+
+export async function preloadOpusMtModel(
+  sourceLang: string,
+  targetLang: string,
+  loadPipeline: (sourceLang: string, targetLang: string) => Promise<unknown>
+): Promise<PreloadModelResponsePayload> {
+  const route = resolveOpusMtTranslationRoute(sourceLang, targetLang);
+
+  if (route?.kind === 'direct') {
+    await loadPipeline(sourceLang, targetLang);
+    return { preloaded: true, available: true };
+  }
+
+  if (route?.kind === 'pivot') {
+    const [firstHop] = route.route;
+    const [firstSrc, firstTgt] = firstHop.split('-');
+    await loadPipeline(firstSrc, firstTgt);
+    return { preloaded: true, partial: true, available: true };
+  }
+
+  return { preloaded: false, available: false };
 }

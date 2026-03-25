@@ -266,6 +266,12 @@ export interface PreloadModelMessage {
   priority?: 'low' | 'high';
 }
 
+export interface PreloadModelResponsePayload extends Record<string, unknown> {
+  preloaded: boolean;
+  partial?: boolean;
+  available?: boolean;
+}
+
 // Language detection recording message
 export interface RecordLanguageDetectionMessage {
   type: 'recordLanguageDetection';
@@ -548,7 +554,7 @@ export interface ExtensionMessageResponseMap {
   translate: TranslateResponse;
   getUsage: GetUsageResponsePayload;
   getProviders: ProvidersMessagePayload;
-  preloadModel: MessageResponse<{ preloaded?: boolean }>;
+  preloadModel: MessageResponse<PreloadModelResponsePayload>;
   offscreenModelProgress: MessageResponse;
   offscreenDownloadedModelUpdate: MessageResponse;
   setProvider: MessageResponse<{ provider: TranslationProviderId }>;

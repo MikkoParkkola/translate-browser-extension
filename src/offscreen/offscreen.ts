@@ -17,7 +17,7 @@ import {
   getSupportedLanguagePairs,
   resolveOpusMtTranslationRoute,
 } from './model-maps';
-import { getOpusMtPipelineConfig } from './opus-runtime';
+import { getOpusMtPipelineConfig, preloadOpusMtModel } from './opus-runtime';
 import {
   logDownloadedModelTrackingFailure,
   reportModelProgress,
@@ -595,7 +595,7 @@ async function handleOffscreenPreloadModel(
       };
     }
     await getTranslateGemmaPipeline();
-    return { success: true, preloaded: true };
+    return { success: true, preloaded: true, available: true };
   }
 
   if (message.provider === 'chrome-builtin') {
@@ -603,19 +603,10 @@ async function handleOffscreenPreloadModel(
     return { success: true, preloaded: available, available };
   }
 
-  const route = resolveOpusMtTranslationRoute(message.sourceLang, message.targetLang);
-  if (route?.kind === 'direct') {
-    await getPipeline(message.sourceLang, message.targetLang);
-    return { success: true, preloaded: true };
-  }
-  if (route?.kind === 'pivot') {
-    const [firstHop] = route.route;
-    const [firstSrc, firstTgt] = firstHop.split('-');
-    await getPipeline(firstSrc, firstTgt);
-    return { success: true, preloaded: true, partial: true };
-  }
-
-  return { success: true, preloaded: false };
+  return {
+    success: true,
+    ...(await preloadOpusMtModel(message.sourceLang, message.targetLang, getPipeline)),
+  };
 }
 
 async function handleOffscreenCropImage(

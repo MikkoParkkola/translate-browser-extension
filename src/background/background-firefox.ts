@@ -17,6 +17,7 @@ import type {
   TranslationProviderId,
   TranslationPipeline,
   PreloadModelMessage,
+  PreloadModelResponsePayload,
   TranslateMessage,
   MessageResponse,
 } from '../types';
@@ -44,7 +45,7 @@ import {
   getSupportedLanguagePairs,
   resolveOpusMtTranslationRoute,
 } from '../offscreen/model-maps';
-import { getOpusMtPipelineConfig } from '../offscreen/opus-runtime';
+import { getOpusMtPipelineConfig, preloadOpusMtModel } from '../offscreen/opus-runtime';
 import { getCachedPipeline, cachePipeline, castAsPipeline } from '../offscreen/pipeline-cache';
 import { buildLanguageDetectionSample, detectLanguage } from '../offscreen/language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline } from '../offscreen/translategemma';
@@ -378,28 +379,24 @@ async function handleMessage(message: FirefoxHandledMessage): Promise<FirefoxHan
   }
 }
 
-async function handlePreloadModel(message: PreloadModelMessage): Promise<MessageResponse<{ preloaded: boolean }>> {
+async function handlePreloadModel(message: PreloadModelMessage): Promise<MessageResponse<PreloadModelResponsePayload>> {
   const provider = message.provider || getProvider();
   log.info(`Preloading ${provider} model: ${message.sourceLang} -> ${message.targetLang}`);
 
   try {
     if (provider === 'translategemma') {
       await getTranslateGemmaPipeline();
-      return { success: true, preloaded: true };
-    } else {
-      const route = resolveOpusMtTranslationRoute(message.sourceLang, message.targetLang);
-      if (route?.kind === 'direct') {
-        await getPipeline(message.sourceLang, message.targetLang);
-        return { success: true, preloaded: true };
-      }
-      if (route?.kind === 'pivot') {
-        const [firstHop] = route.route;
-        const [firstSrc, firstTgt] = firstHop.split('-');
-        await getPipeline(firstSrc, firstTgt);
-        return { success: true, preloaded: true };
-      }
-      return { success: true, preloaded: false };
+      return { success: true, preloaded: true, available: true };
     }
+
+    if (provider === 'chrome-builtin') {
+      return { success: true, preloaded: false, available: false };
+    }
+
+    return {
+      success: true,
+      ...(await preloadOpusMtModel(message.sourceLang, message.targetLang, getPipeline)),
+    };
   } catch (error) {
     log.warn('Preload failed:', error);
     return {

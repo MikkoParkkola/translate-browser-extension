@@ -1199,6 +1199,7 @@ describe('offscreen message handler', () => {
 
       expect(r.success).toBe(true);
       expect(r.preloaded).toBe(true);
+      expect(r.available).toBe(true);
     });
 
     it('returns preloaded:false for unsupported pair', async () => {
@@ -1211,6 +1212,7 @@ describe('offscreen message handler', () => {
 
       expect(r.success).toBe(true);
       expect(r.preloaded).toBe(false);
+      expect(r.available).toBe(false);
     });
 
     it('rejects TranslateGemma preload when WebGPU unavailable', async () => {
@@ -1240,6 +1242,7 @@ describe('offscreen message handler', () => {
 
       expect(r.success).toBe(true);
       expect(r.preloaded).toBe(true);
+      expect(r.available).toBe(true);
       expect(mockGetTranslateGemmaPipeline).toHaveBeenCalled();
     });
 
@@ -1271,6 +1274,7 @@ describe('offscreen message handler', () => {
 
       expect(r.success).toBe(true);
       expect(r.partial).toBe(true);
+      expect(r.available).toBe(true);
     });
   });
 

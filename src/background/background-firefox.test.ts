@@ -597,6 +597,8 @@ describe('background-firefox message handler', () => {
         provider: 'opus-mt',
       }) as Record<string, unknown>;
       expect(response.success).toBe(true);
+      expect(response.preloaded).toBe(true);
+      expect(response.available).toBe(true);
     });
 
     it('returns preloaded:false for unknown pair', async () => {
@@ -608,6 +610,7 @@ describe('background-firefox message handler', () => {
       }) as Record<string, unknown>;
       expect(response.success).toBe(true);
       expect(response.preloaded).toBe(false);
+      expect(response.available).toBe(false);
     });
 
     it('handles translategemma preload', async () => {
@@ -623,6 +626,8 @@ describe('background-firefox message handler', () => {
         provider: 'translategemma',
       }) as Record<string, unknown>;
       expect(response.success).toBe(true);
+      expect(response.preloaded).toBe(true);
+      expect(response.available).toBe(true);
     });
 
     it('handles preload failure gracefully', async () => {
@@ -639,6 +644,20 @@ describe('background-firefox message handler', () => {
       }) as Record<string, unknown>;
       expect(response.success).toBe(false);
       expect(response.error).toEqual(expect.any(String));
+    });
+
+    it('reports partial:true for pivot preload pairs', async () => {
+      const response = await invoke({
+        type: 'preloadModel',
+        sourceLang: 'fi',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      expect(response.preloaded).toBe(true);
+      expect(response.partial).toBe(true);
+      expect(response.available).toBe(true);
     });
   });
 

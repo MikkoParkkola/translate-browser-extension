@@ -13,7 +13,7 @@ import type {
   BackgroundRequestMessage,
   BackgroundRequestMessageType,
   ExtensionMessage, ExtensionMessageResponse, TranslateResponse, Strategy, TranslationProviderId, ContentCommand,
-  PreloadModelMessage, RecordLanguageDetectionMessage,
+  PreloadModelMessage, PreloadModelResponsePayload, RecordLanguageDetectionMessage,
   GetCloudProviderUsageMessage, OCRImageMessage, CaptureScreenshotMessage,
   DeleteModelMessage, DownloadedModelRecord, MessageResponse,
 } from '../types';
@@ -808,17 +808,23 @@ async function handleMessage(message: ServiceWorkerHandledMessage): Promise<Serv
 /**
  * Preload model for a language pair
  */
-async function handlePreloadModel(message: PreloadModelMessage): Promise<MessageResponse<{ preloaded?: boolean }>> {
+async function handlePreloadModel(message: PreloadModelMessage): Promise<MessageResponse<PreloadModelResponsePayload>> {
   const provider = message.provider || getProvider();
   log.info(` Preloading ${provider} model: ${message.sourceLang} -> ${message.targetLang}`);
   try {
-    const response = await sendToOffscreen<{ success: boolean; preloaded?: boolean; error?: string }>({
+    const response = await sendToOffscreen<{
+      success: boolean;
+      preloaded?: boolean;
+      partial?: boolean;
+      available?: boolean;
+      error?: string;
+    }>({
       type: 'preloadModel',
       sourceLang: message.sourceLang,
       targetLang: message.targetLang,
       provider,
     });
-    return response as MessageResponse<{ preloaded?: boolean }>;
+    return response as MessageResponse<PreloadModelResponsePayload>;
   } catch (error) {
     /* v8 ignore start -- preload failure fallback */
     log.warn(' Preload failed:', error);
