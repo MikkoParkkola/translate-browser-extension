@@ -105,6 +105,61 @@ vi.stubGlobal('chrome', {
   },
 });
 
+const DEFAULT_TRANSLATED_RESPONSE = { success: true, result: 'translated' };
+const DEFAULT_TRANSLATED_TEXT_RESPONSE = { success: true, result: 'translated text' };
+const DEFAULT_SERVICE_WORKER_SETTINGS = {
+  sourceLang: 'en',
+  targetLang: 'fi',
+  strategy: 'smart',
+  provider: 'opus-mt',
+};
+const DEFAULT_OFFSCREEN_CONTEXTS = [
+  { documentUrl: 'chrome-extension://test-id/src/offscreen/offscreen.html' },
+];
+
+const waitForAsyncChromeWork = (ms = 50) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function setMockSendMessageResponse(response = DEFAULT_TRANSLATED_RESPONSE) {
+  mockSendMessage.mockReset();
+  mockSendMessage.mockReturnValue(response);
+}
+
+function resetDefaultRuntimeMessageState(response = DEFAULT_TRANSLATED_RESPONSE) {
+  setMockSendMessageResponse(response);
+  vi.mocked(chrome.runtime.sendMessage).mockClear();
+}
+
+function restoreRuntimeSendMessageWrapper(response = DEFAULT_TRANSLATED_TEXT_RESPONSE) {
+  setMockSendMessageResponse(response);
+  vi.mocked(chrome.runtime.sendMessage).mockReset();
+  vi.mocked(chrome.runtime.sendMessage).mockImplementation(((message: any, callback: any) => {
+    const runtimeResponse = mockSendMessage(message);
+    if (callback && typeof callback === 'function') {
+      Promise.resolve(runtimeResponse).then(callback);
+    }
+    return runtimeResponse;
+  }) as any);
+}
+
+function resetTabSendMessageMock() {
+  vi.mocked(chrome.tabs.sendMessage).mockReset();
+  vi.mocked(chrome.tabs.sendMessage).mockResolvedValue(undefined);
+}
+
+function replaceTabSendMessageMock() {
+  vi.mocked(chrome.tabs).sendMessage = vi.fn().mockResolvedValue(undefined);
+}
+
+function resetStorageLocalGetMock(result: any = {}) {
+  vi.mocked(chrome.storage.local.get).mockReset();
+  vi.mocked(chrome.storage.local.get).mockImplementation((_keys: any, callback?: any) => {
+    if (callback && typeof callback === 'function') {
+      callback(result);
+    }
+    return Promise.resolve(result);
+  });
+}
+
 describe('Service Worker', () => {
   let messageHandler: (
     message: unknown,
@@ -126,9 +181,7 @@ describe('Service Worker', () => {
 
   beforeEach(() => {
     // Reset mock state between tests
-    mockSendMessage.mockReset();
-    mockSendMessage.mockReturnValue({ success: true, result: 'translated' });
-    vi.mocked(chrome.runtime.sendMessage).mockClear();
+    resetDefaultRuntimeMessageState();
   });
 
   describe('initialization', () => {
@@ -162,7 +215,7 @@ describe('Service Worker', () => {
 
       messageHandler({ type: 'ping' }, {}, sendResponse);
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(sendResponse).toHaveBeenCalledWith({
         success: true,
@@ -176,7 +229,7 @@ describe('Service Worker', () => {
 
       messageHandler({ type: 'getUsage' }, {}, sendResponse);
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(sendResponse).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -193,7 +246,7 @@ describe('Service Worker', () => {
 
       messageHandler({ type: 'unknown' }, {}, sendResponse);
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(sendResponse).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -561,7 +614,7 @@ describe('Service Worker Pure Functions', () => {
       );
 
       // Wait for async processing
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
 
       // The handler should respond (success or error, not hang)
       expect(sendResponse).toHaveBeenCalled();
@@ -581,7 +634,7 @@ describe('Service Worker Pure Functions', () => {
       const sendResponse = vi.fn();
 
       messageHandler({ type: 'clearCache' }, {}, sendResponse);
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
 
       expect(sendResponse).toHaveBeenCalledWith(
         expect.objectContaining({ success: true })
@@ -611,7 +664,7 @@ describe('Service Worker Pure Functions', () => {
 
       // Send clearCache
       messageHandler({ type: 'clearCache' }, {}, sendResponse);
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
 
       expect(sendResponse).toHaveBeenCalledWith(
         expect.objectContaining({ success: true })
@@ -643,7 +696,7 @@ describe('Service Worker Pure Functions', () => {
       const sendResponse = vi.fn();
 
       messageHandler({ type: 'clearCache' }, {}, sendResponse);
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
 
       // The remove call must include the version key so that on restart,
       // loadPersistentCache sees no version and re-initializes cleanly
@@ -684,10 +737,8 @@ describe('Service Worker Extended Handler Coverage', () => {
   }
 
   beforeEach(() => {
-    mockSendMessage.mockReset();
     // Default: offscreen responds with a success translation
-    mockSendMessage.mockReturnValue({ success: true, result: 'translated text' });
-    vi.mocked(chrome.runtime.sendMessage).mockClear();
+    resetDefaultRuntimeMessageState(DEFAULT_TRANSLATED_TEXT_RESPONSE);
   });
 
   // --------------------------------------------------------------------------
@@ -1641,7 +1692,7 @@ describe('Service Worker Extended Handler Coverage', () => {
 
       // Resolve the single offscreen call
       resolveOffscreen(undefined);
-      await new Promise((r) => setTimeout(r, 200));
+      await waitForAsyncChromeWork(200);
 
       // Both callers get a response
       expect(resp1).toHaveBeenCalled();
@@ -1671,7 +1722,7 @@ describe('Service Worker Extended Handler Coverage', () => {
         tabsUpdatedHandler(1, { status: 'complete' }, { url: 'https://example.com/news' });
       }).not.toThrow();
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
     });
 
     it('ignores chrome:// URLs', async () => {
@@ -1738,7 +1789,7 @@ describe('Service Worker Extended Handler Coverage', () => {
       ) => void;
 
       await installHandler({ reason: 'install' });
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(chrome.contextMenus.removeAll).toHaveBeenCalled();
     });
@@ -1751,7 +1802,7 @@ describe('Service Worker Extended Handler Coverage', () => {
       ) => void;
 
       await installHandler({ reason: 'update', previousVersion: '1.0.0' });
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(chrome.contextMenus.removeAll).toHaveBeenCalled();
     });
@@ -1917,19 +1968,15 @@ describe('Service Worker Extended Handler Coverage', () => {
 
     beforeEach(() => {
       // Mock tabs.sendMessage to succeed immediately
-      vi.mocked(chrome.tabs).sendMessage = vi.fn().mockResolvedValue(undefined);
+      replaceTabSendMessageMock();
       // Mock storage.local.get for settings
-      vi.mocked(chrome.storage.local.get).mockImplementation((_keys, callback) => {
-        const result = { sourceLang: 'en', targetLang: 'fi', strategy: 'smart', provider: 'opus-mt' };
-        if (callback && typeof callback === 'function') callback(result);
-        return Promise.resolve(result);
-      });
+      resetStorageLocalGetMock(DEFAULT_SERVICE_WORKER_SETTINGS);
     });
 
     it('handles translate-selection menu item', async () => {
       const handler = getContextMenuHandler();
       handler({ menuItemId: 'translate-selection' }, { id: 42 });
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
       // Should attempt to send message to tab
       expect(vi.mocked(chrome.tabs).sendMessage).toHaveBeenCalled();
     });
@@ -1937,21 +1984,21 @@ describe('Service Worker Extended Handler Coverage', () => {
     it('handles translate-page menu item', async () => {
       const handler = getContextMenuHandler();
       handler({ menuItemId: 'translate-page' }, { id: 42 });
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
       expect(vi.mocked(chrome.tabs).sendMessage).toHaveBeenCalled();
     });
 
     it('handles undo-translation menu item', async () => {
       const handler = getContextMenuHandler();
       handler({ menuItemId: 'undo-translation' }, { id: 42 });
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
       expect(vi.mocked(chrome.tabs).sendMessage).toHaveBeenCalled();
     });
 
     it('handles translate-image menu item', async () => {
       const handler = getContextMenuHandler();
       handler({ menuItemId: 'translate-image', srcUrl: 'https://example.com/img.png' }, { id: 42 });
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
       expect(vi.mocked(chrome.tabs).sendMessage).toHaveBeenCalled();
     });
 
@@ -1974,46 +2021,42 @@ describe('Service Worker Extended Handler Coverage', () => {
     }
 
     beforeEach(() => {
-      vi.mocked(chrome.tabs).sendMessage = vi.fn().mockResolvedValue(undefined);
-      vi.mocked(chrome.storage.local.get).mockImplementation((_keys, callback) => {
-        const result = { sourceLang: 'en', targetLang: 'fi', strategy: 'smart', provider: 'opus-mt' };
-        if (callback && typeof callback === 'function') callback(result);
-        return Promise.resolve(result);
-      });
+      replaceTabSendMessageMock();
+      resetStorageLocalGetMock(DEFAULT_SERVICE_WORKER_SETTINGS);
     });
 
     it('handles translate-page command', async () => {
       const handler = getCommandHandler();
       handler('translate-page', { id: 10 });
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
       expect(vi.mocked(chrome.tabs).sendMessage).toHaveBeenCalled();
     });
 
     it('handles translate-selection command', async () => {
       const handler = getCommandHandler();
       handler('translate-selection', { id: 10 });
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
       expect(vi.mocked(chrome.tabs).sendMessage).toHaveBeenCalled();
     });
 
     it('handles undo-translation command', async () => {
       const handler = getCommandHandler();
       handler('undo-translation', { id: 10 });
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
       expect(vi.mocked(chrome.tabs).sendMessage).toHaveBeenCalled();
     });
 
     it('handles toggle-widget command', async () => {
       const handler = getCommandHandler();
       handler('toggle-widget', { id: 10 });
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
       expect(vi.mocked(chrome.tabs).sendMessage).toHaveBeenCalled();
     });
 
     it('handles screenshot-translate command', async () => {
       const handler = getCommandHandler();
       handler('screenshot-translate', { id: 10 });
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
       expect(vi.mocked(chrome.tabs).sendMessage).toHaveBeenCalled();
     });
 
@@ -2268,7 +2311,7 @@ describe('Service Worker Extended Handler Coverage', () => {
       ) => void;
 
       await installHandler({ reason: 'update', previousVersion: '1.0.0' });
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       // Should have attempted to clear model caches
       expect(mockCachesKeys).toHaveBeenCalled();
@@ -2291,7 +2334,7 @@ describe('Service Worker Extended Handler Coverage', () => {
 
       // Should not throw even if caches API fails
       await installHandler({ reason: 'update', previousVersion: '2.0.0' });
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       // Verify it handled gracefully (no throw)
       expect(true).toBe(true);
@@ -2468,7 +2511,7 @@ describe('Service Worker Context Menu Handlers', () => {
   });
 
   beforeEach(() => {
-    vi.mocked(chrome.tabs.sendMessage).mockResolvedValue(undefined);
+    resetTabSendMessageMock();
   });
 
   it('handler is registered', () => {
@@ -2560,7 +2603,7 @@ describe('Service Worker Keyboard Shortcut Handlers', () => {
   });
 
   beforeEach(() => {
-    vi.mocked(chrome.tabs.sendMessage).mockResolvedValue(undefined);
+    resetTabSendMessageMock();
   });
 
   it('handler is registered', () => {
@@ -2796,7 +2839,7 @@ describe('Service Worker Additional Coverage', () => {
         tabsUpdatedHandler(1, { status: 'complete' }, { url: 'https://news.example.com/' });
       }).not.toThrow();
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
     });
 
     it('does not trigger preload for non-complete status', async () => {
@@ -2943,7 +2986,7 @@ describe('Service Worker Additional Coverage', () => {
 
       contextMenuHandler({ menuItemId: 'translate-selection' }, { id: 1 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         1,
@@ -2961,7 +3004,7 @@ describe('Service Worker Additional Coverage', () => {
 
       contextMenuHandler({ menuItemId: 'translate-page' }, { id: 1 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         1,
@@ -2979,7 +3022,7 @@ describe('Service Worker Additional Coverage', () => {
 
       contextMenuHandler({ menuItemId: 'undo-translation' }, { id: 1 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         1,
@@ -3000,7 +3043,7 @@ describe('Service Worker Additional Coverage', () => {
         { id: 1 }
       );
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         1,
@@ -3021,7 +3064,7 @@ describe('Service Worker Additional Coverage', () => {
 
       contextMenuHandler({ menuItemId: 'translate-selection' }, {});
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).not.toHaveBeenCalled();
     });
@@ -3038,7 +3081,7 @@ describe('Service Worker Additional Coverage', () => {
 
       contextMenuHandler({ menuItemId: 'translate-selection' }, { id: 1 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalled();
     });
@@ -3060,7 +3103,7 @@ describe('Service Worker Additional Coverage', () => {
 
       commandHandler('translate-page', { id: 1 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         1,
@@ -3078,7 +3121,7 @@ describe('Service Worker Additional Coverage', () => {
 
       commandHandler('translate-selection', { id: 1 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         1,
@@ -3096,7 +3139,7 @@ describe('Service Worker Additional Coverage', () => {
 
       commandHandler('undo-translation', { id: 1 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         1,
@@ -3114,7 +3157,7 @@ describe('Service Worker Additional Coverage', () => {
 
       commandHandler('toggle-widget', { id: 1 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         1,
@@ -3132,7 +3175,7 @@ describe('Service Worker Additional Coverage', () => {
 
       commandHandler('screenshot-translate', { id: 1 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         1,
@@ -3150,7 +3193,7 @@ describe('Service Worker Additional Coverage', () => {
 
       commandHandler('translate-page', {});
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).not.toHaveBeenCalled();
     });
@@ -3167,7 +3210,7 @@ describe('Service Worker Additional Coverage', () => {
 
       commandHandler('translate-page', { id: 1 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalled();
     });
@@ -3405,7 +3448,7 @@ describe('Service Worker Additional Coverage', () => {
         sendResponse
       );
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
 
       expect(sendResponse).toHaveBeenCalled();
     });
@@ -3448,9 +3491,7 @@ describe('Service Worker Deep Coverage', () => {
   });
 
   beforeEach(() => {
-    mockSendMessage.mockReset();
-    mockSendMessage.mockReturnValue({ success: true, result: 'translated' });
-    vi.mocked(chrome.runtime.sendMessage).mockClear();
+    resetDefaultRuntimeMessageState();
     vi.mocked(chrome.tabs.sendMessage).mockClear();
     vi.mocked(chrome.scripting.executeScript).mockClear();
     vi.mocked(chrome.tabs.create).mockClear();
@@ -3467,12 +3508,12 @@ describe('Service Worker Deep Coverage', () => {
       const sendResponse = vi.fn();
       messageHandler({ type: 'ping' }, {}, sendResponse);
       
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
       
       // Tab update with no activity should not trigger preload
       tabUpdateHandler(1, { status: 'complete' }, { id: 1, url: 'https://example.com' });
       
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
       // Preload may or may not happen depending on activity state
     });
 
@@ -3483,7 +3524,7 @@ describe('Service Worker Deep Coverage', () => {
       mockTabUpdate?.(1, { status: 'complete' }, { id: 1, url: 'https://test.com' });
       
       // Wait for async preload to process
-      await new Promise((r) => setTimeout(r, 150));
+      await waitForAsyncChromeWork(150);
       // Verify no errors thrown
     });
 
@@ -3492,7 +3533,7 @@ describe('Service Worker Deep Coverage', () => {
       
       tabUpdateHandler(1, { status: 'complete' }, { id: 1, url: 'https://example.com' });
       
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
       // Should not propagate error
     });
   });
@@ -3895,13 +3936,13 @@ describe('Service Worker Deep Coverage', () => {
   // --------------------------------------------------------------------------
   describe('context menu click handlers (lines 1279-1317)', () => {
     beforeEach(() => {
-      vi.mocked(chrome.tabs.sendMessage).mockResolvedValue(undefined);
+      resetTabSendMessageMock();
     });
 
     it('handles translate-selection menu click', async () => {
       contextMenuHandler({ menuItemId: 'translate-selection' }, { id: 1 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         1,
@@ -3912,7 +3953,7 @@ describe('Service Worker Deep Coverage', () => {
     it('handles translate-page menu click', async () => {
       contextMenuHandler({ menuItemId: 'translate-page' }, { id: 2 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         2,
@@ -3923,7 +3964,7 @@ describe('Service Worker Deep Coverage', () => {
     it('handles undo-translation menu click', async () => {
       contextMenuHandler({ menuItemId: 'undo-translation' }, { id: 3 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         3,
@@ -3937,7 +3978,7 @@ describe('Service Worker Deep Coverage', () => {
         { id: 4 }
       );
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         4,
@@ -3948,7 +3989,7 @@ describe('Service Worker Deep Coverage', () => {
     it('ignores menu click without tab id', async () => {
       contextMenuHandler({ menuItemId: 'translate-page' }, {});
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).not.toHaveBeenCalled();
     });
@@ -3960,7 +4001,7 @@ describe('Service Worker Deep Coverage', () => {
 
       contextMenuHandler({ menuItemId: 'translate-page' }, { id: 5 });
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
 
       // Should log error but not throw
       expect(true).toBe(true);
@@ -3972,13 +4013,13 @@ describe('Service Worker Deep Coverage', () => {
   // --------------------------------------------------------------------------
   describe('keyboard shortcut handlers (lines 1323-1367)', () => {
     beforeEach(() => {
-      vi.mocked(chrome.tabs.sendMessage).mockResolvedValue(undefined);
+      resetTabSendMessageMock();
     });
 
     it('handles translate-page command', async () => {
       commandHandler('translate-page', { id: 10 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         10,
@@ -3989,7 +4030,7 @@ describe('Service Worker Deep Coverage', () => {
     it('handles translate-selection command', async () => {
       commandHandler('translate-selection', { id: 11 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         11,
@@ -4000,7 +4041,7 @@ describe('Service Worker Deep Coverage', () => {
     it('handles undo-translation command', async () => {
       commandHandler('undo-translation', { id: 12 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         12,
@@ -4011,7 +4052,7 @@ describe('Service Worker Deep Coverage', () => {
     it('handles toggle-widget command', async () => {
       commandHandler('toggle-widget', { id: 13 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         13,
@@ -4022,7 +4063,7 @@ describe('Service Worker Deep Coverage', () => {
     it('handles screenshot-translate command', async () => {
       commandHandler('screenshot-translate', { id: 14 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         14,
@@ -4033,7 +4074,7 @@ describe('Service Worker Deep Coverage', () => {
     it('ignores unknown command', async () => {
       commandHandler('unknown-command', { id: 15 });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).not.toHaveBeenCalled();
     });
@@ -4041,7 +4082,7 @@ describe('Service Worker Deep Coverage', () => {
     it('ignores command without tab id', async () => {
       commandHandler('translate-page', {});
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       expect(vi.mocked(chrome.tabs.sendMessage)).not.toHaveBeenCalled();
     });
@@ -4053,7 +4094,7 @@ describe('Service Worker Deep Coverage', () => {
 
       commandHandler('translate-page', { id: 16 });
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
 
       // Should log error but not throw
       expect(true).toBe(true);
@@ -4067,7 +4108,7 @@ describe('Service Worker Deep Coverage', () => {
     it('triggers predictive preload on tab complete', async () => {
       tabUpdateHandler(5, { status: 'complete' }, { id: 5, url: 'https://example.com' });
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
 
       // Predictive preload triggered (internal async operation)
       expect(true).toBe(true);
@@ -4076,7 +4117,7 @@ describe('Service Worker Deep Coverage', () => {
     it('ignores chrome:// URLs', async () => {
       tabUpdateHandler(6, { status: 'complete' }, { id: 6, url: 'chrome://settings' });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       // Should not attempt preload on chrome:// URLs
       expect(true).toBe(true);
@@ -4085,7 +4126,7 @@ describe('Service Worker Deep Coverage', () => {
     it('ignores non-complete status updates', async () => {
       tabUpdateHandler(7, { status: 'loading' }, { id: 7, url: 'https://example.com' });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
 
       // Should not attempt preload
       expect(true).toBe(true);
@@ -4094,7 +4135,7 @@ describe('Service Worker Deep Coverage', () => {
     it('handles preload trigger error gracefully', async () => {
       tabUpdateHandler(8, { status: 'complete' }, { id: 8, url: 'https://example.com' });
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
 
       // Should not crash on error
       expect(true).toBe(true);
@@ -4188,7 +4229,7 @@ describe('Service Worker Deep Coverage', () => {
       ] as any);
 
       // Auto-detection runs on startup
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
 
       // Chrome builtin detection attempted
       expect(true).toBe(true);
@@ -4198,7 +4239,7 @@ describe('Service Worker Deep Coverage', () => {
       vi.mocked(chrome.tabs.query).mockResolvedValueOnce([]);
 
       // Auto-detection should skip when no tab
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
 
       expect(true).toBe(true);
     });
@@ -4223,7 +4264,7 @@ describe('Service Worker Deep Coverage', () => {
         const callback = vi.fn();
         startupHandler(callback);
 
-        await new Promise((r) => setTimeout(r, 100));
+        await waitForAsyncChromeWork(100);
       }
     });
   });
@@ -4917,7 +4958,7 @@ describe('Advanced Coverage Push to 90%+', () => {
   });
 
   beforeEach(() => {
-    mockSendMessage.mockReset();
+    setMockSendMessageResponse();
     vi.mocked(chrome.tabs.sendMessage).mockClear();
     vi.mocked(chrome.scripting.executeScript).mockClear();
   });
@@ -4987,7 +5028,7 @@ describe('Advanced Coverage Push to 90%+', () => {
         installHandler({ reason: 'install' });
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await waitForAsyncChromeWork(100);
 
       // Should create multiple context menu items (titles are Title Case in source)
       expect(vi.mocked(chrome.contextMenus.create)).toHaveBeenCalledWith(
@@ -5250,7 +5291,7 @@ describe('Advanced Coverage Push to 90%+', () => {
           { id: 123, url: 'https://example.com' }
         );
 
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await waitForAsyncChromeWork(100);
         
         // Should not crash
         expect(true).toBe(true);
@@ -5266,7 +5307,7 @@ describe('Advanced Coverage Push to 90%+', () => {
           { id: 456, url: 'chrome://settings/' }
         );
 
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await waitForAsyncChromeWork(50);
 
         // Should ignore system URLs
         expect(vi.mocked(chrome.tabs.sendMessage)).not.toHaveBeenCalled();
@@ -5282,7 +5323,7 @@ describe('Advanced Coverage Push to 90%+', () => {
           { id: 789, url: 'about:blank' }
         );
 
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await waitForAsyncChromeWork(50);
 
         expect(vi.mocked(chrome.tabs.sendMessage)).not.toHaveBeenCalled();
       }
@@ -5392,7 +5433,7 @@ describe('Advanced Coverage Push to 90%+', () => {
 
         actionHandler({ id: 123 });
 
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await waitForAsyncChromeWork(100);
 
         // Just verify it doesn't crash
         expect(actionHandler).toBeDefined();
@@ -5406,7 +5447,7 @@ describe('Advanced Coverage Push to 90%+', () => {
 
         actionHandler({});
 
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await waitForAsyncChromeWork(50);
 
         expect(vi.mocked(chrome.tabs.sendMessage)).not.toHaveBeenCalled();
       }
@@ -5451,32 +5492,16 @@ describe('Coverage gap tests', () => {
   }
 
   beforeEach(() => {
-    mockSendMessage.mockReset();
-    mockSendMessage.mockReturnValue({ success: true, result: 'translated text' });
     // mockReset + restore original wrapper so mockSendMessage is always consulted
-    vi.mocked(chrome.runtime.sendMessage).mockReset();
-    vi.mocked(chrome.runtime.sendMessage).mockImplementation(((message: any, callback: any) => {
-      const response = mockSendMessage(message);
-      if (callback && typeof callback === 'function') {
-        Promise.resolve(response).then(callback);
-      }
-      return response;
-    }) as any);
+    restoreRuntimeSendMessageWrapper();
     // mockReset clears both history AND the accumulated mockImplementationOnce/mockResolvedValueOnce queue
-    vi.mocked(chrome.tabs.sendMessage).mockReset();
-    vi.mocked(chrome.tabs.sendMessage).mockResolvedValue(undefined);
+    resetTabSendMessageMock();
     vi.mocked(chrome.scripting.executeScript).mockReset();
     vi.mocked(chrome.scripting.executeScript).mockResolvedValue([]);
-    vi.mocked(chrome.storage.local.get).mockReset();
-    vi.mocked(chrome.storage.local.get).mockImplementation((_keys: any, callback?: any) => {
-      if (callback) callback({});
-      return Promise.resolve({});
-    });
+    resetStorageLocalGetMock();
     vi.mocked(chrome.tabs.query).mockReset();
     vi.mocked(chrome.tabs.query).mockResolvedValue([]);
-    vi.mocked(chrome.runtime.getContexts).mockResolvedValue([
-      { documentUrl: 'chrome-extension://test-id/src/offscreen/offscreen.html' },
-    ]);
+    vi.mocked(chrome.runtime.getContexts).mockResolvedValue(DEFAULT_OFFSCREEN_CONTEXTS);
   });
 
   // ============================================================================
@@ -5492,7 +5517,7 @@ describe('Coverage gap tests', () => {
     it('skips preload when URL starts with chrome://', async () => {
       const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
       handler(1, { status: 'complete' }, { url: 'chrome://settings' });
-      await new Promise(r => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
     });
 
     it('skips preload when tab.url is undefined', () => {
@@ -5508,13 +5533,13 @@ describe('Coverage gap tests', () => {
     it('returns early when tab is undefined', async () => {
       const handler = mockAddContextMenuClickedListener.mock.calls[0]?.[0];
       handler({ menuItemId: 'translate-page' }, undefined);
-      await new Promise(r => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
     });
 
     it('returns early when tab has no id', async () => {
       const handler = mockAddContextMenuClickedListener.mock.calls[0]?.[0];
       handler({ menuItemId: 'translate-selection' }, {});
-      await new Promise(r => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
     });
   });
 
@@ -5527,7 +5552,7 @@ describe('Coverage gap tests', () => {
       vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([]);
       const handler = mockAddContextMenuClickedListener.mock.calls[0]?.[0];
       handler({ menuItemId: 'translate-page' }, { id: 999 });
-      await new Promise(r => setTimeout(r, 400));
+      await waitForAsyncChromeWork(400);
     });
   });
 
@@ -5538,7 +5563,7 @@ describe('Coverage gap tests', () => {
     it('returns early when command tab has no id', async () => {
       const handler = mockAddCommandListener.mock.calls[0]?.[0];
       handler('translate-page', {});
-      await new Promise(r => setTimeout(r, 50));
+      await waitForAsyncChromeWork(50);
     });
   });
 
@@ -5551,7 +5576,7 @@ describe('Coverage gap tests', () => {
       vi.mocked(chrome.scripting.executeScript).mockRejectedValueOnce(new Error('inject failed'));
       const handler = mockAddCommandListener.mock.calls[0]?.[0];
       handler('translate-page', { id: 777 });
-      await new Promise(r => setTimeout(r, 400));
+      await waitForAsyncChromeWork(400);
     });
   });
 
@@ -5749,7 +5774,7 @@ describe('Coverage gap tests', () => {
       handler({ menuItemId: 'translate-page' }, { id: 42 });
 
       // Wait for the 200ms setTimeout inside sendMessageToTab + async overhead
-      await new Promise(r => setTimeout(r, 500));
+      await waitForAsyncChromeWork(500);
 
       // First call (failed) + second call (succeeded after injection)
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledTimes(2);
@@ -5769,7 +5794,7 @@ describe('Coverage gap tests', () => {
       const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
       handler(10, { status: 'complete' }, { url: 'https://news.example.com/article' });
 
-      await new Promise(r => setTimeout(r, 150));
+      await waitForAsyncChromeWork(150);
       expect(actSpy).toHaveBeenCalled();
       actSpy.mockRestore();
     });
@@ -5783,7 +5808,7 @@ describe('Coverage gap tests', () => {
       const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
       handler(11, { status: 'complete' }, { url: 'https://blog.example.com/post' });
 
-      await new Promise(r => setTimeout(r, 150));
+      await waitForAsyncChromeWork(150);
       expect(predSpy).toHaveBeenCalled();
       actSpy.mockRestore();
       predSpy.mockRestore();
@@ -5800,7 +5825,7 @@ describe('Coverage gap tests', () => {
       const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
       handler(12, { status: 'complete' }, { url: 'https://shop.example.com/product' });
 
-      await new Promise(r => setTimeout(r, 150));
+      await waitForAsyncChromeWork(150);
       expect(predSpy).toHaveBeenCalled();
       actSpy.mockRestore();
       predSpy.mockRestore();
@@ -5818,7 +5843,7 @@ describe('Coverage gap tests', () => {
       const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
       handler(13, { status: 'complete' }, { url: 'https://tech.example.com/article' });
 
-      await new Promise(r => setTimeout(r, 200));
+      await waitForAsyncChromeWork(200);
       expect(predSpy).toHaveBeenCalled();
       actSpy.mockRestore();
       predSpy.mockRestore();
@@ -5865,7 +5890,7 @@ describe('Coverage gap tests', () => {
         targetLang: 'de',
       }) as any;
 
-      await new Promise(r => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
       spy.mockRestore();
       expect(response.success).toBe(true);
     });
@@ -5993,30 +6018,14 @@ describe('Coverage gap tests — second wave', () => {
   }
 
   beforeEach(() => {
-    mockSendMessage.mockReset();
-    mockSendMessage.mockReturnValue({ success: true, result: 'translated text' });
-    vi.mocked(chrome.runtime.sendMessage).mockReset();
-    vi.mocked(chrome.runtime.sendMessage).mockImplementation(((message: any, callback: any) => {
-      const response = mockSendMessage(message);
-      if (callback && typeof callback === 'function') {
-        Promise.resolve(response).then(callback);
-      }
-      return response;
-    }) as any);
-    vi.mocked(chrome.tabs.sendMessage).mockReset();
-    vi.mocked(chrome.tabs.sendMessage).mockResolvedValue(undefined);
+    restoreRuntimeSendMessageWrapper();
+    resetTabSendMessageMock();
     vi.mocked(chrome.scripting.executeScript).mockReset();
     vi.mocked(chrome.scripting.executeScript).mockResolvedValue([] as any);
-    vi.mocked(chrome.storage.local.get).mockReset();
-    vi.mocked(chrome.storage.local.get).mockImplementation((_keys: any, callback?: any) => {
-      if (callback) callback({});
-      return Promise.resolve({});
-    });
+    resetStorageLocalGetMock();
     vi.mocked(chrome.tabs.query).mockReset();
     vi.mocked(chrome.tabs.query).mockResolvedValue([]);
-    vi.mocked(chrome.runtime.getContexts).mockResolvedValue([
-      { documentUrl: 'chrome-extension://test-id/src/offscreen/offscreen.html' },
-    ]);
+    vi.mocked(chrome.runtime.getContexts).mockResolvedValue(DEFAULT_OFFSCREEN_CONTEXTS);
     vi.mocked(chrome.offscreen.createDocument).mockResolvedValue(undefined);
   });
 
@@ -6361,7 +6370,7 @@ describe('Coverage gap tests — second wave', () => {
     it('translate-selection sends translateSelection to tab', async () => {
       const handler = mockAddCommandListener.mock.calls[0]?.[0];
       handler('translate-selection', { id: 42 });
-      await new Promise(r => setTimeout(r, 300));
+      await waitForAsyncChromeWork(300);
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         42,
         expect.objectContaining({ type: 'translateSelection' })
@@ -6371,7 +6380,7 @@ describe('Coverage gap tests — second wave', () => {
     it('undo-translation sends undoTranslation to tab', async () => {
       const handler = mockAddCommandListener.mock.calls[0]?.[0];
       handler('undo-translation', { id: 42 });
-      await new Promise(r => setTimeout(r, 300));
+      await waitForAsyncChromeWork(300);
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         42,
         expect.objectContaining({ type: 'undoTranslation' })
@@ -6381,7 +6390,7 @@ describe('Coverage gap tests — second wave', () => {
     it('toggle-widget sends toggleWidget to tab', async () => {
       const handler = mockAddCommandListener.mock.calls[0]?.[0];
       handler('toggle-widget', { id: 42 });
-      await new Promise(r => setTimeout(r, 300));
+      await waitForAsyncChromeWork(300);
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         42,
         expect.objectContaining({ type: 'toggleWidget' })
@@ -6391,7 +6400,7 @@ describe('Coverage gap tests — second wave', () => {
     it('screenshot-translate sends enterScreenshotMode to tab', async () => {
       const handler = mockAddCommandListener.mock.calls[0]?.[0];
       handler('screenshot-translate', { id: 42 });
-      await new Promise(r => setTimeout(r, 300));
+      await waitForAsyncChromeWork(300);
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         42,
         expect.objectContaining({ type: 'enterScreenshotMode' })
@@ -6402,7 +6411,7 @@ describe('Coverage gap tests — second wave', () => {
       vi.mocked(chrome.tabs.sendMessage).mockClear();
       const handler = mockAddCommandListener.mock.calls[0]?.[0];
       handler('nonexistent-command', { id: 42 });
-      await new Promise(r => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
       expect(vi.mocked(chrome.tabs.sendMessage)).not.toHaveBeenCalled();
     });
   });
@@ -6414,7 +6423,7 @@ describe('Coverage gap tests — second wave', () => {
     it('undo-translation sends undoTranslation to tab', async () => {
       const handler = mockAddContextMenuClickedListener.mock.calls[0]?.[0];
       handler({ menuItemId: 'undo-translation' }, { id: 42 });
-      await new Promise(r => setTimeout(r, 300));
+      await waitForAsyncChromeWork(300);
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         42,
         expect.objectContaining({ type: 'undoTranslation' })
@@ -6424,7 +6433,7 @@ describe('Coverage gap tests — second wave', () => {
     it('translate-image sends translateImage with imageUrl to tab', async () => {
       const handler = mockAddContextMenuClickedListener.mock.calls[0]?.[0];
       handler({ menuItemId: 'translate-image', srcUrl: 'https://example.com/img.png' }, { id: 42 });
-      await new Promise(r => setTimeout(r, 300));
+      await waitForAsyncChromeWork(300);
       expect(vi.mocked(chrome.tabs.sendMessage)).toHaveBeenCalledWith(
         42,
         expect.objectContaining({ type: 'translateImage', imageUrl: 'https://example.com/img.png' })
@@ -6445,7 +6454,7 @@ describe('Coverage gap tests — second wave', () => {
 
       const handler = mockAddContextMenuClickedListener.mock.calls[0]?.[0];
       handler({ menuItemId: 'translate-page' }, { id: 99 });
-      await new Promise(r => setTimeout(r, 600));
+      await waitForAsyncChromeWork(600);
       // The context menu handler swallows all errors — no throw expected
     });
   });
@@ -6463,7 +6472,7 @@ describe('Coverage gap tests — second wave', () => {
       const spy = vi.spyOn(engine, 'hasRecentActivity').mockRejectedValueOnce(new Error('DB unavailable'));
       const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
       handler(60, { status: 'complete' }, { url: 'https://error-outer.example.com/' });
-      await new Promise(r => setTimeout(r, 200));
+      await waitForAsyncChromeWork(200);
       spy.mockRestore();
     });
   });
@@ -6488,7 +6497,7 @@ describe('Coverage gap tests — second wave', () => {
       }) as any);
       const handler = mockAddTabsUpdatedListener.mock.calls[0]?.[0];
       handler(61, { status: 'complete' }, { url: 'https://preload-fail.example.com/' });
-      await new Promise(r => setTimeout(r, 600));
+      await waitForAsyncChromeWork(600);
       actSpy.mockRestore();
       predSpy.mockRestore();
     });
@@ -6725,7 +6734,7 @@ describe('Coverage gap tests — second wave', () => {
       // The test just verifies that tabs.onUpdated handler doesn't crash
       // when called with a valid URL
       handler(1, { status: 'complete' }, { url: 'https://example.com' });
-      await new Promise(r => setTimeout(r, 100));
+      await waitForAsyncChromeWork(100);
       // Should not throw; any preload errors are caught internally
     });
   });
