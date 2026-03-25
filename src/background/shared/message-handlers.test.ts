@@ -227,6 +227,29 @@ describe('handleSetCloudApiKey', () => {
     expect(result.error).toContain('Unknown provider');
   });
 
+  it('does not fall back to cleanup metadata when the allow-list key is missing', async () => {
+    const { CLOUD_PROVIDER_STORAGE_KEYS } = await import('./provider-management');
+    const { strictStorageSet } = await import('../../core/storage');
+    const storageKeys = CLOUD_PROVIDER_STORAGE_KEYS as Record<string, readonly string[]>;
+    storageKeys['custom-provider'] = ['custom_api_key'];
+    vi.mocked(strictStorageSet).mockClear();
+
+    try {
+      const { handleSetCloudApiKey } = await import('./message-handlers');
+      const result = await handleSetCloudApiKey({
+        type: 'setCloudApiKey',
+        provider: 'custom-provider' as never,
+        apiKey: 'test-key',
+      }) as Record<string, unknown>;
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Unknown provider');
+      expect(vi.mocked(strictStorageSet)).not.toHaveBeenCalled();
+    } finally {
+      delete storageKeys['custom-provider'];
+    }
+  });
+
   it('stores deepl-specific options', async () => {
     const { handleSetCloudApiKey } = await import('./message-handlers');
     const { strictStorageSet } = await import('../../core/storage');
@@ -385,12 +408,11 @@ describe('handleClearCloudApiKey', () => {
     expect(mockRemove).not.toHaveBeenCalled();
   });
 
-  it('removes only base key for provider without extra cleanup rules', async () => {
+  it('falls back to the base key when cleanup metadata is missing', async () => {
     const { CLOUD_PROVIDER_KEYS, CLOUD_PROVIDER_STORAGE_KEYS } = await import('./provider-management');
     const keys = CLOUD_PROVIDER_KEYS as Record<string, string>;
     const storageKeys = CLOUD_PROVIDER_STORAGE_KEYS as Record<string, readonly string[]>;
     keys['custom-provider'] = 'custom_api_key';
-    storageKeys['custom-provider'] = ['custom_api_key'];
 
     try {
       const { handleClearCloudApiKey } = await import('./message-handlers');

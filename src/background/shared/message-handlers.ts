@@ -71,6 +71,21 @@ function getCloudProviderValue<T>(
   return (values as Record<string, T | undefined>)[provider];
 }
 
+function resolveCloudProviderValueWithFallback<TPrimary, TFallback>(
+  provider: CloudProviderId,
+  primaryValues: Readonly<Record<CloudProviderId, TPrimary>>,
+  fallbackValues?: Readonly<Record<CloudProviderId, TFallback>>
+): TPrimary | TFallback | undefined {
+  const primaryValue = getCloudProviderValue(provider, primaryValues);
+  if (primaryValue !== undefined) {
+    return primaryValue;
+  }
+
+  return fallbackValues
+    ? getCloudProviderValue(provider, fallbackValues)
+    : undefined;
+}
+
 function createUnknownCloudProviderResponse<T extends Record<string, unknown>>(
   provider: string
 ): MessageResponse<T> {
@@ -95,17 +110,27 @@ async function handleCloudProviderMutation<TResolved, TSuccess extends Record<st
 }
 
 function resolveCloudProviderStorageKeys(provider: CloudProviderId): readonly string[] | undefined {
-  const storageKeys = getCloudProviderValue(provider, CLOUD_PROVIDER_STORAGE_KEYS);
-  if (storageKeys) {
-    return storageKeys;
+  const resolved = resolveCloudProviderValueWithFallback(
+    provider,
+    CLOUD_PROVIDER_STORAGE_KEYS,
+    CLOUD_PROVIDER_KEYS
+  );
+  if (!resolved) {
+    return undefined;
   }
 
-  const storageKey = getCloudProviderValue(provider, CLOUD_PROVIDER_KEYS);
-  return storageKey ? [storageKey] : undefined;
+  return typeof resolved === 'string' ? [resolved] : resolved;
 }
 
 function resolveCloudProviderEnabledField(provider: CloudProviderId): string | undefined {
-  return getCloudProviderValue(provider, CLOUD_PROVIDER_ENABLED_FIELDS);
+  return resolveCloudProviderValueWithFallback(
+    provider,
+    CLOUD_PROVIDER_ENABLED_FIELDS
+  );
+}
+
+function logCorrectionError(operation: string, error: unknown): void {
+  log.warn(`Failed to ${operation}:`, error);
 }
 
 // ============================================================================
@@ -177,6 +202,8 @@ export async function handleGetCloudProviderStatus(): Promise<
 export async function handleSetCloudApiKey(
   message: SetCloudApiKeyMessage
 ): Promise<ExtensionMessageResponseByType<'setCloudApiKey'>> {
+  // Security-sensitive: keep this as a direct allow-list lookup so unknown providers
+  // cannot write arbitrary storage keys through broader cleanup metadata.
   const storageKey = CLOUD_PROVIDER_KEYS[message.provider];
   if (!storageKey) {
     return createUnknownCloudProviderResponse<{ provider: CloudProviderId }>(message.provider);
@@ -209,6 +236,8 @@ export async function handleClearCloudApiKey(
   message: ClearCloudApiKeyMessage,
   storageRemove: (keys: string[]) => Promise<void> = strictStorageRemove,
 ): Promise<ExtensionMessageResponseByType<'clearCloudApiKey'>> {
+  // Clear prefers the full cleanup list when available, but falls back to the
+  // primary API-key entry so older provider metadata still remains removable.
   return handleCloudProviderMutation(
     message.provider,
     resolveCloudProviderStorageKeys,
@@ -224,6 +253,7 @@ export async function handleClearCloudApiKey(
 export async function handleSetCloudProviderEnabled(
   message: SetCloudProviderEnabledMessage
 ): Promise<ExtensionMessageResponseByType<'setCloudProviderEnabled'>> {
+  // Enabled-state writes intentionally resolve through the dedicated enabled-field map.
   return handleCloudProviderMutation(
     message.provider,
     resolveCloudProviderEnabledField,
@@ -288,7 +318,7 @@ export async function handleAddCorrection(message: AddCorrectionMessage): Promis
       );
       return {};
     },
-    (error) => log.warn('Failed to add correction:', error)
+    (error) => logCorrectionError('add correction', error)
   );
 }
 
@@ -298,7 +328,7 @@ export async function handleGetCorrection(message: GetCorrectionMessage): Promis
       const correction = await getCorrection(message.original, message.sourceLang, message.targetLang);
       return { correction, hasCorrection: correction !== null };
     },
-    (error) => log.warn('Failed to get correction:', error)
+    (error) => logCorrectionError('get correction', error)
   );
 }
 
@@ -306,7 +336,7 @@ export async function handleGetAllCorrections(): Promise<{ success: boolean; cor
   return withMessageResponseFallback(
     async () => ({ corrections: await getAllCorrections() }),
     { corrections: [] },
-    (error) => log.warn('Failed to get corrections:', error)
+    (error) => logCorrectionError('get corrections', error)
   );
 }
 
@@ -314,7 +344,7 @@ export async function handleGetCorrectionStats(): Promise<{ success: boolean; st
   return withMessageResponseFallback(
     async () => ({ stats: await getCorrectionStats() }),
     { stats: { total: 0, totalUses: 0, topCorrections: [] } },
-    (error) => log.warn('Failed to get correction stats:', error)
+    (error) => logCorrectionError('get correction stats', error)
   );
 }
 
@@ -324,7 +354,7 @@ export async function handleClearCorrections(): Promise<{ success: boolean; erro
       await clearCorrections();
       return {};
     },
-    (error) => log.warn('Failed to clear corrections:', error)
+    (error) => logCorrectionError('clear corrections', error)
   );
 }
 
@@ -333,21 +363,21 @@ export async function handleDeleteCorrection(message: DeleteCorrectionMessage): 
     async () => ({
       deleted: await deleteCorrection(message.original, message.sourceLang, message.targetLang),
     }),
-    (error) => log.warn('Failed to delete correction:', error)
+    (error) => logCorrectionError('delete correction', error)
   );
 }
 
 export async function handleExportCorrections(): Promise<{ success: boolean; json?: string; error?: string }> {
   return withMessageResponse(
     async () => ({ json: await exportCorrections() }),
-    (error) => log.warn('Failed to export corrections:', error)
+    (error) => logCorrectionError('export corrections', error)
   );
 }
 
 export async function handleImportCorrections(message: ImportCorrectionsMessage): Promise<MessageResponse<{ importedCount: number }>> {
   return withMessageResponse(
     async () => ({ importedCount: await importCorrections(message.json) }),
-    (error) => log.warn('Failed to import corrections:', error)
+    (error) => logCorrectionError('import corrections', error)
   );
 }
 
