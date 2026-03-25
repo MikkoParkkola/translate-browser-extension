@@ -6,6 +6,9 @@ import {
   MODEL_SELECTOR_DOWNLOADABLE_MODELS,
   TRANSLATION_PROVIDER_IDS,
   getProviderDefinition,
+  getProviderModelInfo,
+  getProviderRuntimeRequirementLabel,
+  getProviderUiBadgeLabel,
   isBrowserManagedProviderId,
   isCloudProviderId,
   isDownloadableProviderId,
@@ -85,6 +88,31 @@ describe('provider-options guards', () => {
     expect(chromeBuiltin.runtimeKind).toBe('native-browser');
     expect(chromeBuiltin.deliveryKind).toBe('browser-managed');
     expect(chromeBuiltin.preferredWhenAvailable).toBe(true);
+  });
+
+  it('stores canonical recommendation badges for onboarding models', () => {
+    const opus = getProviderDefinition('opus-mt').onboarding;
+    const chromeBuiltin = getProviderDefinition('chrome-builtin').onboarding;
+    const deepl = getProviderDefinition('deepl').onboarding;
+
+    expect(opus?.badges).toEqual(['recommended']);
+    expect(chromeBuiltin?.badges).toEqual(['preferred-native']);
+    expect(deepl?.badges).toEqual(['api-key']);
+    expect(getProviderUiBadgeLabel('recommended')).toBe('Recommended');
+    expect(getProviderUiBadgeLabel('preferred-native')).toBe('Preferred native');
+    expect(getProviderUiBadgeLabel('api-key')).toBe('API key');
+  });
+
+  it('stores canonical runtime requirements for gated local providers', () => {
+    const translateGemma = getProviderModelInfo('translategemma');
+    const chromeBuiltin = getProviderModelInfo('chrome-builtin');
+
+    expect(translateGemma.runtimeRequirement).toBe('webgpu-or-webnn');
+    expect(chromeBuiltin.runtimeRequirement).toBe('chrome-138');
+    expect(getProviderRuntimeRequirementLabel('webgpu-or-webnn')).toBe(
+      'Requires WebGPU or WebNN'
+    );
+    expect(getProviderRuntimeRequirementLabel('chrome-138')).toBe('Chrome 138+ required');
   });
 
   it('normalizes legacy cloud provider model aliases', () => {

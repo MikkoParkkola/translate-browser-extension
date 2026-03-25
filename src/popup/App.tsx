@@ -20,6 +20,8 @@ import {
 import {
   DEFAULT_PROVIDER_ID,
   PROVIDER_STATUS_NAMES,
+  getProviderModelInfo,
+  getProviderRuntimeRequirementLabel,
   resolveProviderFromModelId,
 } from '../shared/provider-options';
 
@@ -32,6 +34,19 @@ const getBrowserLanguage = () => {
   /* v8 ignore stop */
   return lang;
 };
+
+const chromeBuiltinRequirement = getProviderModelInfo('chrome-builtin').runtimeRequirement;
+const chromeBuiltinRequirementLabel = chromeBuiltinRequirement
+  ? getProviderRuntimeRequirementLabel(chromeBuiltinRequirement)
+  : 'Chrome 138+ required';
+const translateGemmaRequirement = getProviderModelInfo('translategemma').runtimeRequirement;
+const translateGemmaRequirementLabel = translateGemmaRequirement
+  ? getProviderRuntimeRequirementLabel(translateGemmaRequirement)
+  : 'Requires WebGPU or WebNN';
+const translateGemmaRequirementSentence = translateGemmaRequirementLabel.replace(
+  /^Requires /,
+  'requires '
+);
 
 type TranslationCommand = 'translatePage' | 'translateSelection';
 
@@ -247,7 +262,7 @@ export default function App() {
       updateModelStatus('chrome-builtin', { isDownloaded: true, error: null });
     } else if (response) {
       log.info('Chrome Translator API not available (Chrome 138+ required)');
-      updateModelStatus('chrome-builtin', { isDownloaded: false, error: 'Chrome 138+ required' });
+      updateModelStatus('chrome-builtin', { isDownloaded: false, error: chromeBuiltinRequirementLabel });
     }
 
     // Check TranslateGemma hardware acceleration availability.
@@ -284,13 +299,13 @@ export default function App() {
       if (!available) {
         updateModelStatus('translategemma', {
           isDownloaded: false,
-          error: 'Requires WebGPU or WebNN (hardware acceleration not available)',
+          error: `${translateGemmaRequirementLabel} (hardware acceleration not available)`,
         });
         // Auto-switch away from TranslateGemma if it was saved from a previous session
         if (activeProvider() === 'translategemma') {
           log.info(`TranslateGemma acceleration unavailable, switching to ${DEFAULT_PROVIDER_ID}`);
           handleProviderChange(DEFAULT_PROVIDER_ID);
-          setError('TranslateGemma requires WebGPU or WebNN. Switched to OPUS-MT.');
+          setError(`TranslateGemma ${translateGemmaRequirementSentence}. Switched to OPUS-MT.`);
           setTimeout(() => clearError(), 8000);
         }
       } else {
@@ -327,7 +342,9 @@ export default function App() {
   const handleProviderChange = async (provider: TranslationProviderId) => {
     // Block TranslateGemma when hardware acceleration is unavailable.
     if (provider === 'translategemma' && translateGemmaAvailable() === false) {
-      setError('TranslateGemma requires WebGPU or WebNN (hardware acceleration). Your browser supports neither. Use OPUS-MT for local translation instead.');
+      setError(
+        `TranslateGemma ${translateGemmaRequirementSentence}. Your browser supports neither. Use OPUS-MT for local translation instead.`
+      );
       setClearingErrorAction('Use OPUS-MT', () => handleProviderChange('opus-mt'));
       return;
     }

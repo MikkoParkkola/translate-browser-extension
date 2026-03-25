@@ -3,7 +3,11 @@ import { createSignal, Show, For, onMount } from 'solid-js';
 import { safeStorageSet } from '../core/storage';
 import { buildExtensionSettingsStorageMutation } from '../shared/extension-settings';
 import { ONBOARDING_LANGUAGES } from '../shared/translation-options';
-import { DEFAULT_PROVIDER_ID, ONBOARDING_MODELS as MODELS } from '../shared/provider-options';
+import {
+  DEFAULT_PROVIDER_ID,
+  ONBOARDING_MODELS as MODELS,
+  getProviderUiBadgeLabel,
+} from '../shared/provider-options';
 import type { TranslationProviderId } from '../types';
 import './styles.css';
 
@@ -267,17 +271,16 @@ export function OnboardingApp() {
                     onClick={() => setModel(m.id)}
                     aria-pressed={model() === m.id}
                   >
-                    <div class="model-header">
-                      <span class="model-name">{m.name}</span>
-                      <div class="model-badges">
-                        <Show when={m.recommended}>
-                          <span class="badge">Recommended</span>
-                        </Show>
-                        <Show when={m.badge}>
-                          <span class="badge">{m.badge}</span>
-                        </Show>
+                      <div class="model-header">
+                        <span class="model-name">{m.name}</span>
+                        <div class="model-badges">
+                          <For each={m.badges ?? []}>
+                            {(badge) => (
+                              <span class="badge">{getProviderUiBadgeLabel(badge)}</span>
+                            )}
+                          </For>
+                        </div>
                       </div>
-                    </div>
                     <div class="model-desc">{m.desc}</div>
                     <Show when={m.availabilityNote}>
                       <div class="model-note">{m.availabilityNote}</div>

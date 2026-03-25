@@ -4,6 +4,7 @@ import {
   MODEL_SELECTOR_CLOUD_PROVIDERS as CLOUD_PROVIDERS,
   MODEL_SELECTOR_LOCAL_MODELS as LOCAL_MODELS,
   MODEL_SELECTOR_MODELS as MODELS,
+  getProviderRuntimeRequirementLabel,
   isCloudProviderId,
 } from '../../shared/provider-options';
 import { trySendBackgroundMessage } from '../../shared/background-message';
@@ -184,6 +185,23 @@ export const ModelSelector: Component<Props> = (props) => {
     return false;
   };
 
+  const getDisabledModelLabel = (model: ModelInfo): string => {
+    return model.runtimeRequirement
+      ? getProviderRuntimeRequirementLabel(model.runtimeRequirement)
+      : 'Unavailable';
+  };
+
+  const getDisabledModelTitle = (model: ModelInfo): string | undefined => {
+    const label = model.runtimeRequirement
+      ? getProviderRuntimeRequirementLabel(model.runtimeRequirement)
+      : null;
+    if (!label) return undefined;
+    if (model.runtimeRequirement === 'webgpu-or-webnn') {
+      return `${label} (hardware acceleration not available in this browser)`;
+    }
+    return label;
+  };
+
   const getStatusIcon = (model: ModelInfo) => {
     /* v8 ignore start -- disabled model guard */
     if (isModelDisabled(model)) return '';
@@ -240,20 +258,22 @@ export const ModelSelector: Component<Props> = (props) => {
                      role="option"
                      aria-selected={props.selected === model.id}
                      aria-disabled={disabled()}
-                     title={disabled() ? 'Requires WebGPU or WebNN (hardware acceleration not available in this browser)' : undefined}
-                   >
-                     <span class="model-dropdown-item-name">{model.name}</span>
-                     <span class="model-dropdown-item-meta">
-                      <Show when={disabled()} fallback={
-                        <>
+                      title={disabled() ? getDisabledModelTitle(model) : undefined}
+                    >
+                      <span class="model-dropdown-item-name">{model.name}</span>
+                      <span class="model-dropdown-item-meta">
+                       <Show when={disabled()} fallback={
+                         <>
                           <span class="model-dropdown-item-tag">{model.tag}</span>
                           <span class="model-dropdown-item-size">{model.size}</span>
                            <span class="model-dropdown-item-status">{getStatusIcon(model)}</span>
-                         </>
-                       }>
-                         <span class="model-dropdown-item-tag model-dropdown-item-tag--disabled">Requires WebGPU or WebNN</span>
-                       </Show>
-                     </span>
+                          </>
+                        }>
+                          <span class="model-dropdown-item-tag model-dropdown-item-tag--disabled">
+                            {getDisabledModelLabel(model)}
+                          </span>
+                        </Show>
+                      </span>
                    </button>
                   );
                 }}
