@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@solidjs/testing-library';
+import { setupUiChromeMock } from '../../test-helpers/chrome-mocks';
 
 const { mockStorageGet, mockStorageSet, mockStorageRemove } = vi.hoisted(() => ({
   mockStorageGet: vi.fn().mockResolvedValue({}),
@@ -18,18 +19,11 @@ vi.mock('../../core/storage', () => ({
   safeStorageRemove: mockStorageRemove,
 }));
 
-vi.stubGlobal('chrome', {
-  runtime: {
-    sendMessage: mockSendMessage,
-    onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
-  },
-  storage: {
-    local: {
-      get: mockStorageGet,
-      set: mockStorageSet,
-      remove: mockStorageRemove,
-    },
-  },
+setupUiChromeMock({
+  runtimeSendMessage: mockSendMessage,
+  storageLocalGet: mockStorageGet,
+  storageLocalSet: mockStorageSet,
+  storageLocalRemove: mockStorageRemove,
 });
 
 import { CloudProviders } from './CloudProviders';

@@ -12,7 +12,9 @@
  * per-component logic coverage.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { setupNavigatorStorageEstimateMock } from '../../test-helpers/browser-mocks';
+import { setupUiChromeMock } from '../../test-helpers/chrome-mocks';
 import {
   GENERAL_SETTINGS_LANGUAGES,
   GENERAL_SETTINGS_STRATEGIES,
@@ -32,37 +34,10 @@ import { buildCloudProviderUiStatusRecord } from '../../shared/cloud-provider-ui
 // Chrome / browser API mock
 // ============================================================================
 
-const mockChrome = {
-  storage: {
-    local: {
-      get: vi.fn().mockResolvedValue({}),
-      set: vi.fn().mockResolvedValue(undefined),
-      remove: vi.fn().mockResolvedValue(undefined),
-    },
-    sync: {
-      get: vi.fn().mockResolvedValue({}),
-      set: vi.fn().mockResolvedValue(undefined),
-    },
-  },
-  runtime: {
-    sendMessage: vi.fn().mockResolvedValue({}),
-    onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
-    openOptionsPage: vi.fn(),
-  },
-};
-
-// @ts-expect-error — mock chrome global
-globalThis.chrome = mockChrome;
-
-Object.defineProperty(navigator, 'storage', {
-  value: {
-    estimate: vi.fn().mockResolvedValue({
-      usage: 50 * 1024 * 1024,
-      quota: 100 * 1024 * 1024,
-    }),
-  },
-  writable: true,
-  configurable: true,
+setupUiChromeMock();
+setupNavigatorStorageEstimateMock({
+  usage: 50 * 1024 * 1024,
+  quota: 100 * 1024 * 1024,
 });
 
 // ============================================================================

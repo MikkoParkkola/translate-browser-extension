@@ -4,27 +4,16 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@solidjs/testing-library';
+import { setupNavigatorStorageEstimateMock } from '../../test-helpers/browser-mocks';
+import { setupUiChromeMock } from '../../test-helpers/chrome-mocks';
 
 const mockSendMessage = vi.fn();
 
-vi.stubGlobal('chrome', {
-  runtime: {
-    sendMessage: mockSendMessage,
-    onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
-  },
-  storage: {
-    local: {
-      get: vi.fn().mockResolvedValue({}),
-      set: vi.fn().mockResolvedValue(undefined),
-    },
-  },
+setupUiChromeMock({
+  runtimeSendMessage: mockSendMessage,
 });
 
-vi.stubGlobal('navigator', {
-  storage: {
-    estimate: vi.fn().mockResolvedValue({ usage: 0, quota: 0 }),
-  },
-});
+setupNavigatorStorageEstimateMock();
 
 import { CacheSettings } from './CacheSettings';
 

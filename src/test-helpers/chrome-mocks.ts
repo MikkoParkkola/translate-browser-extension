@@ -1,31 +1,55 @@
 import { vi } from 'vitest';
 
-export function createUiChromeMock() {
+type UiChromeMockFn = ReturnType<typeof vi.fn>;
+
+export interface UiChromeMockOptions {
+  runtimeSendMessage?: UiChromeMockFn;
+  runtimeOpenOptionsPage?: UiChromeMockFn;
+  runtimeOnMessageAddListener?: UiChromeMockFn;
+  runtimeOnMessageRemoveListener?: UiChromeMockFn;
+  storageLocalGet?: UiChromeMockFn;
+  storageLocalSet?: UiChromeMockFn;
+  storageLocalRemove?: UiChromeMockFn;
+  storageSyncGet?: UiChromeMockFn;
+  storageSyncSet?: UiChromeMockFn;
+  tabsQuery?: UiChromeMockFn;
+  tabsSendMessage?: UiChromeMockFn;
+  scriptingExecuteScript?: UiChromeMockFn;
+}
+
+export function createUiChromeMock(options: UiChromeMockOptions = {}) {
   return {
     runtime: {
-      sendMessage: vi.fn().mockResolvedValue({}),
-      onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
-      openOptionsPage: vi.fn(),
+      sendMessage: options.runtimeSendMessage ?? vi.fn().mockResolvedValue({}),
+      onMessage: {
+        addListener: options.runtimeOnMessageAddListener ?? vi.fn(),
+        removeListener: options.runtimeOnMessageRemoveListener ?? vi.fn(),
+      },
+      openOptionsPage: options.runtimeOpenOptionsPage ?? vi.fn(),
     },
     storage: {
       local: {
-        get: vi.fn().mockResolvedValue({}),
-        set: vi.fn().mockResolvedValue(undefined),
-        remove: vi.fn().mockResolvedValue(undefined),
+        get: options.storageLocalGet ?? vi.fn().mockResolvedValue({}),
+        set: options.storageLocalSet ?? vi.fn().mockResolvedValue(undefined),
+        remove: options.storageLocalRemove ?? vi.fn().mockResolvedValue(undefined),
+      },
+      sync: {
+        get: options.storageSyncGet ?? vi.fn().mockResolvedValue({}),
+        set: options.storageSyncSet ?? vi.fn().mockResolvedValue(undefined),
       },
     },
     tabs: {
-      query: vi.fn().mockResolvedValue([]),
-      sendMessage: vi.fn().mockResolvedValue({}),
+      query: options.tabsQuery ?? vi.fn().mockResolvedValue([]),
+      sendMessage: options.tabsSendMessage ?? vi.fn().mockResolvedValue({}),
     },
     scripting: {
-      executeScript: vi.fn().mockResolvedValue(undefined),
+      executeScript: options.scriptingExecuteScript ?? vi.fn().mockResolvedValue(undefined),
     },
   };
 }
 
-export function setupUiChromeMock() {
-  const chromeMock = createUiChromeMock();
+export function setupUiChromeMock(options: UiChromeMockOptions = {}) {
+  const chromeMock = createUiChromeMock(options);
   vi.stubGlobal('chrome', chromeMock);
   return chromeMock;
 }
