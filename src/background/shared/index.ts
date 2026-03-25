@@ -29,8 +29,23 @@ export {
   handleSetProvider,
 } from './provider-management';
 
-export type { TranslateFn, TranslateMessagePayload } from './translation-core';
-export { NETWORK_RETRY_CONFIG, handleTranslateCore } from './translation-core';
+export type {
+  TranslateFn,
+  TranslateMessagePayload,
+  TranslationExecutionContext,
+  PreparedTranslationExecution,
+  PrepareTranslationExecutionResult,
+  PrepareTranslationExecutionHooks,
+  PrepareTranslationExecutionOptions,
+  FinalizeTranslationExecutionOptions,
+} from './translation-core';
+export {
+  NETWORK_RETRY_CONFIG,
+  prepareTranslationExecution,
+  finalizeTranslationExecution,
+  createTranslateErrorResponse,
+  handleTranslateCore,
+} from './translation-core';
 
 export {
   handleGetCacheStats,

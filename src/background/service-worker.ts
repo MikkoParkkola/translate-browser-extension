@@ -26,8 +26,6 @@ import {
 } from '../core/errors';
 import { createLogger } from '../core/logger';
 import { safeStorageGet, safeStorageSet, strictStorageSet } from '../core/storage';
-import { validateInput } from '../core/errors';
-import { getCorrection } from '../core/corrections';
 import { getPredictionEngine } from '../core/prediction-engine';
 import { CONFIG } from '../config';
 import { profiler, type AggregateStats } from '../core/profiler';
@@ -50,10 +48,6 @@ import {
   getProvider,
   setProvider,
   getStrategy,
-  setStrategy,
-  checkRateLimit,
-  recordUsage,
-  estimateTokens,
   formatUserError,
   getDownloadedModelInventory,
   clearDownloadedModelInventory,
@@ -84,6 +78,9 @@ import {
   getActionSettings,
   PROVIDER_LIST,
   NETWORK_RETRY_CONFIG,
+  prepareTranslationExecution,
+  finalizeTranslationExecution,
+  createTranslateErrorResponse,
   relayModelProgress,
   upsertDownloadedModelInventory,
 } from './shared';
@@ -1149,109 +1146,51 @@ async function handleTranslateInner(message: {
 }): Promise<TranslateResponse> {
   const startTime = Date.now();
 
-  if (message.options?.context) {
-    const { before, after, pageContext } = message.options.context;
-    log.debug('Translation context:', {
-      before: before?.substring(0, 50),
-      after: after?.substring(0, 50),
-      pageContext: pageContext?.substring(0, 80),
-    });
-  }
-
   // Profiling session
   const sessionId = message.enableProfiling ? profiler.startSession() : undefined;
   if (sessionId) {
     profiler.startTiming(sessionId, 'total');
-    profiler.startTiming(sessionId, 'validation');
   }
 
   try {
-    // Validate input
-    const validation = validateInput(
-      message.text,
-      message.sourceLang,
-      message.targetLang
-    );
+    const preparedResult = await prepareTranslationExecution(message, translationCache, {
+      startTime,
+      hooks: {
+        onValidationStart: () => {
+          if (sessionId) profiler.startTiming(sessionId, 'validation');
+        },
+        onValidationEnd: () => {
+          if (sessionId) profiler.endTiming(sessionId, 'validation');
+        },
+        onCacheLookupStart: () => {
+          if (sessionId) profiler.startTiming(sessionId, 'cache_lookup');
+        },
+        onCacheLookupEnd: () => {
+          if (sessionId) profiler.endTiming(sessionId, 'cache_lookup');
+        },
+        onEarlyReturn: () => {
+          if (sessionId) profiler.endTiming(sessionId, 'total');
+        },
+      },
+    });
 
-    if (sessionId) profiler.endTiming(sessionId, 'validation');
-
-    if (!validation.valid) {
-      return {
-        success: false,
-        error: formatUserError(validation.error!),
-        duration: Date.now() - startTime,
-      };
+    if (preparedResult.kind === 'response') {
+      return preparedResult.response;
     }
 
-    const text = validation.sanitizedText!;
+    const { execution } = preparedResult;
 
-    if (message.options?.strategy) {
-      setStrategy(message.options.strategy);
-    }
-
-    const provider = message.provider || getProvider();
-
-    // Check cache
-    if (sessionId) profiler.startTiming(sessionId, 'cache_lookup');
-    const cacheKey = translationCache.getKey(text, message.sourceLang, message.targetLang, provider);
-    if (message.sourceLang !== 'auto') {
-      const cached = translationCache.get(cacheKey);
-      if (sessionId) profiler.endTiming(sessionId, 'cache_lookup');
-      if (cached) {
-        const duration = Date.now() - startTime;
-        log.info(` Cache hit, returning in ${duration}ms`);
-        if (sessionId) profiler.endTiming(sessionId, 'total');
-        return {
-          success: true,
-          result: cached.result,
-          duration,
-          cached: true,
-        } as TranslateResponse;
-      }
-    } else if (sessionId) {
-      profiler.endTiming(sessionId, 'cache_lookup');
-    }
-
-    // Check for user corrections
-    if (typeof text === 'string' && message.sourceLang !== 'auto') {
-      const userCorrection = await getCorrection(text, message.sourceLang, message.targetLang);
-      if (userCorrection) {
-        const duration = Date.now() - startTime;
-        log.info(`Using user correction, returning in ${duration}ms`);
-        if (sessionId) profiler.endTiming(sessionId, 'total');
-        translationCache.set(cacheKey, userCorrection, message.sourceLang, message.targetLang);
-        return {
-          success: true,
-          result: userCorrection,
-          duration,
-          fromCorrection: true,
-        } as TranslateResponse;
-      }
-    }
-
-    const tokenEstimate = estimateTokens(text);
-
-    /* v8 ignore start -- rate limit exceeded */
-    if (!checkRateLimit(tokenEstimate)) {
-      return {
-        success: false,
-        error: 'Too many requests. Please wait a moment and try again.',
-        duration: Date.now() - startTime,
-      };
-    }
-    /* v8 ignore stop */
-
-    log.info('Translating:', message.sourceLang, '->', message.targetLang);
+    log.info('Translating:', execution.message.sourceLang, '->', execution.message.targetLang);
 
     // Chrome Built-in Translator: runs in tab's main world
-    if (provider === 'chrome-builtin') {
+    if (execution.provider === 'chrome-builtin') {
       if (sessionId) profiler.startTiming(sessionId, 'chrome_builtin_translate');
       try {
         const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
         const tabId = tabs[0]?.id;
         if (!tabId) throw new Error('No active tab for Chrome Translator');
 
-        const texts = Array.isArray(text) ? text : [text];
+        const texts = Array.isArray(execution.text) ? execution.text : [execution.text];
         const results = await chrome.scripting.executeScript({
           target: { tabId },
           world: 'MAIN' as chrome.scripting.ExecutionWorld,
@@ -1274,20 +1213,32 @@ async function handleTranslateInner(message: {
             return translated;
           },
           /* v8 ignore stop */
-          args: [texts, message.sourceLang, message.targetLang],
+          args: [texts, execution.message.sourceLang, execution.message.targetLang],
         });
 
         if (sessionId) profiler.endTiming(sessionId, 'chrome_builtin_translate');
         const translated = results[0]?.result as string[] | undefined;
         if (!translated) throw new Error('Chrome Translator returned no result');
 
-        const result = Array.isArray(text) ? translated : translated[0];
-        const duration = Date.now() - startTime;
-        translationCache.set(cacheKey, result, message.sourceLang, message.targetLang);
-        if (sessionId) profiler.endTiming(sessionId, 'total');
-        return { success: true, result, duration, provider: 'chrome-builtin' };
+        const result = Array.isArray(execution.text) ? translated : translated[0];
+        return finalizeTranslationExecution(
+          execution,
+          translationCache,
+          result,
+          {
+            responsePatch: { provider: 'chrome-builtin' },
+            recordUsage: false,
+            cacheSourceLang: execution.message.sourceLang,
+            onAfterCacheStore: () => {
+              if (sessionId) profiler.endTiming(sessionId, 'total');
+            },
+          },
+        );
       } catch (error) {
-        if (sessionId) profiler.endTiming(sessionId, 'total');
+        if (sessionId) {
+          profiler.endTiming(sessionId, 'chrome_builtin_translate');
+          profiler.endTiming(sessionId, 'total');
+        }
         const errMsg = extractErrorMessage(error);
 
         log.error('Chrome Built-in translation failed:', errMsg);
@@ -1307,12 +1258,12 @@ async function handleTranslateInner(message: {
           profilingData?: object;
         }>({
           type: 'translate',
-          text,
-          sourceLang: message.sourceLang,
-          targetLang: message.targetLang,
-          provider,
+          text: execution.text,
+          sourceLang: execution.message.sourceLang,
+          targetLang: execution.message.targetLang,
+          provider: execution.provider,
           sessionId,
-          pageContext: message.options?.context?.pageContext,
+          pageContext: execution.message.options?.context?.pageContext,
         });
 
         if (!result) {
@@ -1345,61 +1296,60 @@ async function handleTranslateInner(message: {
         profiler.importSessionData(response.profilingData);
       }
     }
-
-    log.info('Translation complete');
-    recordUsage(tokenEstimate);
-
-    // Cache the result
-    if (sessionId) profiler.startTiming(sessionId, 'cache_store');
-    const actualSourceLang = message.sourceLang === 'auto' ? 'auto' : message.sourceLang;
-    if (response.result && actualSourceLang !== 'auto') {
-      translationCache.set(cacheKey, response.result, actualSourceLang, message.targetLang);
+    if (response.result === undefined) {
+      throw new Error('Translation engine returned no result');
     }
+    return finalizeTranslationExecution(
+      execution,
+      translationCache,
+      response.result,
+      {
+        onBeforeCacheStore: () => {
+          if (sessionId) profiler.startTiming(sessionId, 'cache_store');
+        },
+        onAfterCacheStore: () => {
+          if (sessionId) {
+            profiler.endTiming(sessionId, 'cache_store');
+            profiler.endTiming(sessionId, 'total');
+          }
+        },
+        onSuccess: ({ execution: successfulExecution, result }) => {
+          /* v8 ignore start -- fire-and-forget */
+          recordTranslation(successfulExecution.message.targetLang).catch((err: unknown) => {
+            log.debug('recordTranslation skipped:', err);
+          });
+          /* v8 ignore stop */
+
+          if (typeof successfulExecution.text === 'string' && typeof result === 'string') {
+            recordTranslationToHistory(
+              successfulExecution.text,
+              result,
+              successfulExecution.message.sourceLang,
+              successfulExecution.message.targetLang,
+            );
+          }
+
+          if (!sessionId) {
+            return;
+          }
+
+          const report = profiler.getReport(sessionId);
+          if (!report) {
+            return;
+          }
+
+          log.info(profiler.formatReport(sessionId));
+          return { profilingReport: report };
+        },
+      },
+    );
+  } catch (error) {
     if (sessionId) {
+      profiler.endTiming(sessionId, 'ipc_background_to_offscreen');
       profiler.endTiming(sessionId, 'cache_store');
       profiler.endTiming(sessionId, 'total');
     }
-
-    // Record for prediction engine
-    /* v8 ignore start -- fire-and-forget */
-    recordTranslation(message.targetLang).catch((err: unknown) => {
-      log.debug('recordTranslation skipped:', err);
-    });
-    /* v8 ignore stop */
-
-    // Record to history
-    if (response.result && typeof text === 'string' && typeof response.result === 'string') {
-      recordTranslationToHistory(text, response.result, message.sourceLang, message.targetLang);
-    }
-
-    // Include profiling report if enabled
-    let profilingReport: object | undefined;
-    if (sessionId) {
-      const report = profiler.getReport(sessionId);
-      if (report) {
-        profilingReport = report;
-        log.info(profiler.formatReport(sessionId));
-      }
-    }
-
-    return {
-      success: true,
-      result: response.result,
-      duration: Date.now() - startTime,
-      profilingReport,
-    } as TranslateResponse;
-  } catch (error) {
-    /* v8 ignore start -- profiler cleanup in error path */
-    if (sessionId) profiler.endTiming(sessionId, 'total');
-    /* v8 ignore stop */
-    const translationError = createTranslationError(error);
-    log.error(' Translation error:', translationError.technicalDetails);
-
-    return {
-      success: false,
-      error: formatUserError(translationError),
-      duration: Date.now() - startTime,
-    };
+    return createTranslateErrorResponse(error, startTime);
   }
 }
 
