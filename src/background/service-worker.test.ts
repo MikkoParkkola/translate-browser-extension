@@ -6,107 +6,13 @@
  */
 
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
-// Mock chrome API before any imports
-const mockAddMessageListener = vi.fn();
-const mockAddInstalledListener = vi.fn();
-const mockAddClickedListener = vi.fn();
-const mockAddStartupListener = vi.fn();
-const mockAddTabsUpdatedListener = vi.fn();
-const mockAddCommandListener = vi.fn();
-const mockAddContextMenuClickedListener = vi.fn();
-const mockAddConnectListener = vi.fn();
-const mockStorageSet = vi.fn();
-const mockStorageRemove = vi.fn().mockResolvedValue(undefined);
-
-// Mock offscreen document response
-const mockSendMessage = vi.fn();
-
-vi.stubGlobal('chrome', {
-  runtime: {
-    onMessage: {
-      addListener: mockAddMessageListener,
-    },
-    onInstalled: {
-      addListener: mockAddInstalledListener,
-    },
-    onStartup: {
-      addListener: mockAddStartupListener,
-    },
-    onConnect: {
-      addListener: mockAddConnectListener,
-    },
-    getURL: vi.fn((path: string) => `chrome-extension://test-id/${path}`),
-    getContexts: vi.fn().mockResolvedValue([
-      { documentUrl: 'chrome-extension://test-id/src/offscreen/offscreen.html' },
-    ]),
-    sendMessage: vi.fn((message, callback) => {
-      // Simulate async callback pattern
-      const response = mockSendMessage(message);
-      if (callback && typeof callback === 'function') {
-        Promise.resolve(response).then(callback);
-      }
-      return response;
-    }),
-    lastError: null,
-    ContextType: {
-      OFFSCREEN_DOCUMENT: 'OFFSCREEN_DOCUMENT',
-    },
-  },
-  i18n: {
-    getUILanguage: vi.fn(() => 'en-US'), // Mock browser language as English
-  },
-  offscreen: {
-    createDocument: vi.fn().mockResolvedValue(undefined),
-    closeDocument: vi.fn().mockResolvedValue(undefined),
-    Reason: {
-      WORKERS: 'WORKERS',
-    },
-  },
-  action: {
-    onClicked: {
-      addListener: mockAddClickedListener,
-    },
-  },
-  contextMenus: {
-    create: vi.fn(),
-    removeAll: vi.fn((cb?: () => void) => { if (cb) cb(); }),
-    onClicked: {
-      addListener: mockAddContextMenuClickedListener,
-    },
-  },
-  commands: {
-    onCommand: {
-      addListener: mockAddCommandListener,
-    },
-  },
-  tabs: {
-    create: vi.fn(),
-    query: vi.fn().mockResolvedValue([]),
-    sendMessage: vi.fn().mockResolvedValue(undefined),
-    onUpdated: {
-      addListener: mockAddTabsUpdatedListener,
-    },
-  },
-  scripting: {
-    executeScript: vi.fn().mockResolvedValue([]),
-  },
-  storage: {
-    local: {
-      set: mockStorageSet,
-      get: vi.fn((_keys, callback) => {
-        // Return empty result by default
-        if (callback && typeof callback === 'function') {
-          callback({});
-        }
-        return Promise.resolve({});
-      }),
-      remove: mockStorageRemove,
-    },
-  },
-});
+import { setupChromeApiMock } from '../test-helpers/chrome-mocks';
 
 const DEFAULT_TRANSLATED_RESPONSE = { success: true, result: 'translated' };
-const DEFAULT_TRANSLATED_TEXT_RESPONSE = { success: true, result: 'translated text' };
+const DEFAULT_TRANSLATED_TEXT_RESPONSE = {
+  success: true,
+  result: 'translated text',
+};
 const DEFAULT_SERVICE_WORKER_SETTINGS = {
   sourceLang: 'en',
   targetLang: 'fi',
@@ -117,6 +23,59 @@ const DEFAULT_OFFSCREEN_CONTEXTS = [
   { documentUrl: 'chrome-extension://test-id/src/offscreen/offscreen.html' },
 ];
 
+const mockSendMessage = vi.fn();
+
+const serviceWorkerChromeMock = setupChromeApiMock({
+  runtime: {
+    getURL: vi.fn((path: string) => `chrome-extension://test-id/${path}`),
+    getContexts: vi.fn().mockResolvedValue(DEFAULT_OFFSCREEN_CONTEXTS),
+    sendMessage: vi.fn((message, callback) => {
+      const response = mockSendMessage(message);
+      if (callback && typeof callback === 'function') {
+        Promise.resolve(response).then(callback);
+      }
+      return response;
+    }),
+    ContextType: {
+      OFFSCREEN_DOCUMENT: 'OFFSCREEN_DOCUMENT',
+    },
+  },
+  i18n: {
+    getUILanguage: vi.fn(() => 'en-US'),
+  },
+  offscreen: {
+    createDocument: vi.fn().mockResolvedValue(undefined),
+    closeDocument: vi.fn().mockResolvedValue(undefined),
+    Reason: {
+      WORKERS: 'WORKERS',
+    },
+  },
+  contextMenus: {
+    create: vi.fn(),
+    removeAll: vi.fn((cb?: () => void) => {
+      if (cb) cb();
+    }),
+  },
+  tabs: {
+    create: vi.fn(),
+    query: vi.fn().mockResolvedValue([]),
+    sendMessage: vi.fn().mockResolvedValue(undefined),
+  },
+  scripting: {
+    executeScript: vi.fn().mockResolvedValue([]),
+  },
+});
+
+const mockAddMessageListener = serviceWorkerChromeMock.events.runtime.onMessage.addListener;
+const mockAddInstalledListener = serviceWorkerChromeMock.events.runtime.onInstalled.addListener;
+const mockAddClickedListener = serviceWorkerChromeMock.events.action.onClicked.addListener;
+const mockAddStartupListener = serviceWorkerChromeMock.events.runtime.onStartup.addListener;
+const mockAddTabsUpdatedListener = serviceWorkerChromeMock.events.tabs.onUpdated.addListener;
+const mockAddCommandListener = serviceWorkerChromeMock.events.commands.onCommand.addListener;
+const mockAddContextMenuClickedListener = serviceWorkerChromeMock.events.contextMenus.onClicked.addListener;
+const mockAddConnectListener = serviceWorkerChromeMock.events.runtime.onConnect.addListener;
+const mockStorageSet = serviceWorkerChromeMock.chrome.storage.local.set;
+const mockStorageRemove = serviceWorkerChromeMock.chrome.storage.local.remove;
 const waitForAsyncChromeWork = (ms = 50) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function setMockSendMessageResponse(response = DEFAULT_TRANSLATED_RESPONSE) {

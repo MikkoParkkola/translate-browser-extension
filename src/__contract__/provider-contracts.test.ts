@@ -19,7 +19,7 @@ import {
   okJsonResponse,
 } from './cloud-provider-test-harness';
 
-const { mockStorage, resetStorage, mockFetch } = installCloudProviderTestHarness();
+const { mockStorage, resetCloudProviderState, mockFetch } = installCloudProviderTestHarness();
 
 const okResponse = okJsonResponse;
 
@@ -153,8 +153,7 @@ describe('Anthropic response parsing contract', () => {
   let provider: AnthropicProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
+    resetCloudProviderState();
     provider = new AnthropicProvider();
   });
 
@@ -236,8 +235,7 @@ describe('OpenAI response parsing contract', () => {
   let provider: OpenAIProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
+    resetCloudProviderState();
     provider = new OpenAIProvider();
   });
 
@@ -304,8 +302,7 @@ describe('DeepL response parsing contract', () => {
   let provider: DeepLProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
+    resetCloudProviderState();
     provider = new DeepLProvider();
   });
 
@@ -366,8 +363,7 @@ describe('Google Cloud response parsing contract', () => {
   let provider: GoogleCloudProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
+    resetCloudProviderState();
     provider = new GoogleCloudProvider();
   });
 
@@ -430,8 +426,7 @@ describe('Google Cloud response parsing contract', () => {
 // =========================================================================
 describe('Cloud providers throw on missing API key', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
+    resetCloudProviderState();
   });
 
   it('AnthropicProvider throws when no API key', async () => {
@@ -462,8 +457,7 @@ describe('OpusMT local provider contract', () => {
   let provider: OpusMTProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
+    resetCloudProviderState();
     provider = new OpusMTProvider();
   });
 

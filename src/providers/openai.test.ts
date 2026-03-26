@@ -6,12 +6,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { installCloudProviderTestHarness } from '../__contract__/cloud-provider-test-harness';
+import {
+  defineProviderErrorTests,
+  installCloudProviderTestHarness,
+} from '../__contract__/cloud-provider-test-harness';
 import { OpenAIProvider } from './openai';
 
 const {
   mockStorage,
-  resetStorage,
+  resetCloudProviderState,
   mockFetch,
   queueJsonResponse,
   queueRejectedFetch,
@@ -50,8 +53,7 @@ describe('OpenAIProvider', () => {
   let provider: OpenAIProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
+    resetCloudProviderState();
     provider = new OpenAIProvider();
   });
 
@@ -185,10 +187,34 @@ describe('OpenAIProvider', () => {
       expect(body.messages[1].content).toContain('English');
     });
 
-    it('handles API errors', async () => {
-      queueHttpError(401, 'Invalid API key');
-
-      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+    defineProviderErrorTests({
+      run: () => provider.translate('Hello', 'en', 'fi'),
+      cases: [
+        {
+          title: 'handles API errors',
+          arrange: () => {
+            queueHttpError(401, 'Invalid API key');
+          },
+          expected: {
+            category: 'auth',
+            messagePattern: /api.key|auth|unauthorized|invalid/i,
+            technicalDetailsPattern: /api.key|invalid/i,
+          },
+        },
+        {
+          title: 'handles rate limits',
+          arrange: () => {
+            queueHttpError(429, 'Rate limited', {
+              headers: { 'Retry-After': '30' },
+            });
+          },
+          expected: {
+            category: 'rate_limit',
+            retryable: true,
+            messagePattern: /rate.limit|too many requests/i,
+          },
+        },
+      ],
     });
 
     it('handles API errors when response.text() fails (line 215)', async () => {
@@ -198,12 +224,6 @@ describe('OpenAIProvider', () => {
         text: () => Promise.reject(new Error('Failed to read error body')),
         headers: { get: () => null },
       });
-
-      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
-    });
-
-    it('handles rate limits', async () => {
-      queueHttpError(429, 'Rate limited', { headers: { 'Retry-After': '30' } });
 
       await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
     });

@@ -6,12 +6,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { installCloudProviderTestHarness } from '../__contract__/cloud-provider-test-harness';
+import {
+  defineProviderErrorTests,
+  installCloudProviderTestHarness,
+} from '../__contract__/cloud-provider-test-harness';
 import { DeepLProvider } from './deepl';
 
 const {
   mockStorage,
-  resetStorage,
+  resetCloudProviderState,
   mockFetch,
   queueJsonResponse,
   queueRejectedFetch,
@@ -49,8 +52,7 @@ describe('DeepLProvider', () => {
   let provider: DeepLProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
+    resetCloudProviderState();
     provider = new DeepLProvider();
   });
 
@@ -167,16 +169,31 @@ describe('DeepLProvider', () => {
       expect(body.formality).toBe('more');
     });
 
-    it('handles API errors', async () => {
-      queueHttpError(403, 'Forbidden');
-
-      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
-    });
-
-    it('handles quota exceeded', async () => {
-      queueHttpError(456, 'Quota exceeded');
-
-      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+    defineProviderErrorTests({
+      run: () => provider.translate('Hello', 'en', 'fi'),
+      cases: [
+        {
+          title: 'handles API errors',
+          arrange: () => {
+            queueHttpError(403, 'Forbidden');
+          },
+          expected: {
+            category: 'auth',
+            messagePattern: /api.key|auth|forbidden|unauthorized/i,
+            technicalDetailsPattern: /api.key|forbidden|unauthorized/i,
+          },
+        },
+        {
+          title: 'handles quota exceeded',
+          arrange: () => {
+            queueHttpError(456, 'Quota exceeded');
+          },
+          expected: {
+            messagePattern: /quota|limit|too many requests/i,
+            technicalDetailsPattern: /quota|limit|too many requests/i,
+          },
+        },
+      ],
     });
   });
 

@@ -1,13 +1,18 @@
 import { vi } from 'vitest';
 
-function normalizeKeys(keys?: string | string[] | null): string[] | null {
+export interface MockStorageResetOptions {
+  clearMocks?: boolean;
+  seed?: Record<string, unknown>;
+}
+
+export function normalizeKeys(keys?: string | string[] | null): string[] | null {
   if (keys == null) return null;
   return Array.isArray(keys) ? keys : [keys];
 }
 
-function readStorage(
+export function readStorage(
   mockStorage: Record<string, unknown>,
-  keys?: string | string[] | null
+  keys?: string | string[] | null,
 ): Record<string, unknown> {
   const keyList = normalizeKeys(keys);
   if (keyList === null) {
@@ -23,10 +28,41 @@ function readStorage(
   return result;
 }
 
+export function seedMockStorage(
+  mockStorage: Record<string, unknown>,
+  seed: Record<string, unknown> = {},
+) {
+  Object.assign(mockStorage, seed);
+  return mockStorage;
+}
+
+export function clearMockStorage(mockStorage: Record<string, unknown>) {
+  Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
+}
+
+export function resetMockStorage(
+  mockStorage: Record<string, unknown>,
+  options: MockStorageResetOptions = {},
+) {
+  if (options.clearMocks ?? true) {
+    vi.clearAllMocks();
+  }
+
+  clearMockStorage(mockStorage);
+
+  if (options.seed) {
+    seedMockStorage(mockStorage, options.seed);
+  }
+
+  return mockStorage;
+}
+
 export function installChromeStorageMock() {
   const mockStorage: Record<string, unknown> = {};
   const storageLocal = {
-    get: vi.fn((keys?: string | string[] | null) => Promise.resolve(readStorage(mockStorage, keys))),
+    get: vi.fn((keys?: string | string[] | null) =>
+      Promise.resolve(readStorage(mockStorage, keys)),
+    ),
     set: vi.fn((items: Record<string, unknown>) => {
       Object.assign(mockStorage, items);
       return Promise.resolve();
@@ -38,7 +74,7 @@ export function installChromeStorageMock() {
       return Promise.resolve();
     }),
     clear: vi.fn(() => {
-      Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
+      clearMockStorage(mockStorage);
       return Promise.resolve();
     }),
   };
@@ -52,8 +88,14 @@ export function installChromeStorageMock() {
   return {
     mockStorage,
     storageLocal,
+    seedStorage(seed: Record<string, unknown> = {}) {
+      return seedMockStorage(mockStorage, seed);
+    },
     resetStorage() {
-      Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
+      clearMockStorage(mockStorage);
+    },
+    resetStorageState(options: MockStorageResetOptions = {}) {
+      return resetMockStorage(mockStorage, options);
     },
   };
 }

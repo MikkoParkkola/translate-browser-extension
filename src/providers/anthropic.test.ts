@@ -6,12 +6,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { installCloudProviderTestHarness } from '../__contract__/cloud-provider-test-harness';
+import {
+  defineProviderErrorTests,
+  installCloudProviderTestHarness,
+} from '../__contract__/cloud-provider-test-harness';
 import { AnthropicProvider } from './anthropic';
 
 const {
   mockStorage,
-  resetStorage,
+  resetCloudProviderState,
   mockFetch,
   queueJsonResponse,
   queueRejectedFetch,
@@ -23,8 +26,7 @@ describe('AnthropicProvider', () => {
   let provider: AnthropicProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
+    resetCloudProviderState();
     provider = new AnthropicProvider();
   });
 
@@ -132,16 +134,34 @@ describe('AnthropicProvider', () => {
       expect(body.messages[0].content).toContain('English');
     });
 
-    it('handles API error responses', async () => {
-      queueHttpError(401, 'Unauthorized');
-
-      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
-    });
-
-    it('handles rate limit errors', async () => {
-      queueHttpError(429, 'Rate limited', { headers: { 'Retry-After': '60' } });
-
-      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+    defineProviderErrorTests({
+      run: () => provider.translate('Hello', 'en', 'fi'),
+      cases: [
+        {
+          title: 'handles API error responses',
+          arrange: () => {
+            queueHttpError(401, 'Unauthorized');
+          },
+          expected: {
+            category: 'auth',
+            messagePattern: /api.key|auth|unauthorized/i,
+            technicalDetailsPattern: /api.key|unauthorized/i,
+          },
+        },
+        {
+          title: 'handles rate limit errors',
+          arrange: () => {
+            queueHttpError(429, 'Rate limited', {
+              headers: { 'Retry-After': '60' },
+            });
+          },
+          expected: {
+            category: 'rate_limit',
+            retryable: true,
+            messagePattern: /rate.limit|too many requests/i,
+          },
+        },
+      ],
     });
   });
 

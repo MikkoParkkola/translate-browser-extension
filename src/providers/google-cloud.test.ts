@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
+  defineProviderErrorTests,
   installCloudProviderTestHarness,
   okJsonResponse,
 } from '../__contract__/cloud-provider-test-harness';
@@ -14,7 +15,7 @@ import { GoogleCloudProvider } from './google-cloud';
 
 const {
   mockStorage,
-  resetStorage,
+  resetCloudProviderState,
   mockFetch,
   queueJsonResponse,
   queueRejectedFetch,
@@ -25,8 +26,7 @@ describe('GoogleCloudProvider', () => {
   let provider: GoogleCloudProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
+    resetCloudProviderState();
     provider = new GoogleCloudProvider();
   });
 
@@ -107,10 +107,21 @@ describe('GoogleCloudProvider', () => {
       expect(body.source).toBeUndefined();
     });
 
-    it('handles API errors', async () => {
-      queueHttpError(403, 'API key invalid');
-
-      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+    defineProviderErrorTests({
+      run: () => provider.translate('Hello', 'en', 'fi'),
+      cases: [
+        {
+          title: 'handles API errors',
+          arrange: () => {
+            queueHttpError(403, 'API key invalid');
+          },
+          expected: {
+            category: 'auth',
+            messagePattern: /api.key|auth|forbidden|invalid/i,
+            technicalDetailsPattern: /api.key|invalid/i,
+          },
+        },
+      ],
     });
 
     it('tracks character usage', async () => {

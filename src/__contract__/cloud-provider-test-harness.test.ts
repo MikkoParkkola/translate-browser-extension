@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  assertProviderError,
   httpErrorResponse,
   installCloudProviderTestHarness,
   okJsonResponse,
@@ -92,5 +93,32 @@ describe('cloud provider test harness helpers', () => {
 
     const second = await mockFetch();
     expect(await second.text()).toBe('custom');
+  });
+
+  it('resets and seeds storage through the installed harness helpers', () => {
+    const harness = installCloudProviderTestHarness();
+
+    harness.seedStorage({ existing: 'value' });
+    harness.resetCloudProviderState({ seed: { restored: true } });
+
+    expect(harness.mockStorage).toEqual({ restored: true });
+    expect(harness.storageLocal.get).toHaveBeenCalledTimes(0);
+  });
+
+  it('assertProviderError supports category, retryable, and detail matching', () => {
+    assertProviderError(
+      {
+        category: 'rate_limit',
+        retryable: true,
+        message: 'Rate limit reached',
+        technicalDetails: 'Retry after 15 seconds',
+      },
+      {
+        category: 'rate_limit',
+        retryable: true,
+        messagePattern: /rate limit/i,
+        technicalDetailsPattern: /retry after 15/i,
+      },
+    );
   });
 });

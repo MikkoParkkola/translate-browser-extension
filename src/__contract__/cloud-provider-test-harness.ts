@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderType, QualityTier } from '../types';
-import { installChromeStorageMock } from './shared-provider-mocks';
+import {
+  installChromeStorageMock,
+  seedMockStorage,
+  type MockStorageResetOptions,
+} from './shared-provider-mocks';
 
 export interface InspectableCloudProviderHooks {
   getStorageKeys(): string[];
@@ -90,6 +94,28 @@ export type MockFetchSequenceStep =
       error: unknown;
     };
 
+export interface CloudProviderStorageHelpers {
+  mockStorage: Record<string, unknown>;
+  seedStorage(seed?: Record<string, unknown>): Record<string, unknown>;
+  resetStorageState(options?: MockStorageResetOptions): Record<string, unknown>;
+  resetCloudProviderState(
+    options?: MockStorageResetOptions,
+  ): Record<string, unknown>;
+}
+
+export interface ProviderErrorExpectation {
+  category?: string;
+  retryable?: boolean;
+  messagePattern?: RegExp;
+  technicalDetailsPattern?: RegExp;
+}
+
+export interface ProviderErrorTestCase {
+  title: string;
+  arrange: () => void;
+  expected?: ProviderErrorExpectation;
+}
+
 function createMockHeaders(headers: MockFetchHeaders = {}) {
   const normalizedHeaders = new Map(
     Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]),
@@ -100,13 +126,44 @@ function createMockHeaders(headers: MockFetchHeaders = {}) {
   };
 }
 
+export function createCloudProviderStorageHelpers(storageHarness: {
+  mockStorage: Record<string, unknown>;
+  resetStorage: () => void;
+}): CloudProviderStorageHelpers {
+  const seedStorage = (seed: Record<string, unknown> = {}) =>
+    seedMockStorage(storageHarness.mockStorage, seed);
+
+  const resetStorageState = (options: MockStorageResetOptions = {}) => {
+    if (options.clearMocks ?? true) {
+      vi.clearAllMocks();
+    }
+
+    storageHarness.resetStorage();
+
+    if (options.seed) {
+      seedStorage(options.seed);
+    }
+
+    return storageHarness.mockStorage;
+  };
+
+  return {
+    mockStorage: storageHarness.mockStorage,
+    seedStorage,
+    resetStorageState,
+    resetCloudProviderState: resetStorageState,
+  };
+}
+
 export function installCloudProviderTestHarness() {
   const storageHarness = installChromeStorageMock();
+  const storageHelpers = createCloudProviderStorageHelpers(storageHarness);
   const mockFetch = vi.fn();
   vi.stubGlobal('fetch', mockFetch);
 
   return {
     ...storageHarness,
+    ...storageHelpers,
     mockFetch,
     queueJsonResponse(body: unknown, options?: MockJsonResponseOptions) {
       return queueJsonResponse(mockFetch, body, options);
@@ -206,15 +263,92 @@ export function queueFetchSequence(
   return mockFetch;
 }
 
+function stringifyThrownError(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string') {
+      return message;
+    }
+  }
+
+  return String(error);
+}
+
+export function assertProviderError(
+  error: unknown,
+  expectation: ProviderErrorExpectation = {},
+) {
+  const err = error as Record<string, unknown>;
+  const message = stringifyThrownError(error);
+  const technicalDetails = String(err.technicalDetails ?? message);
+  const searchableErrorText = `${message} ${technicalDetails}`.trim();
+
+  if (expectation.category && 'category' in err) {
+    expect(err.category).toBe(expectation.category);
+  }
+
+  if (
+    expectation.retryable !== undefined &&
+    'retryable' in err
+  ) {
+    expect(err.retryable).toBe(expectation.retryable);
+  }
+
+  if (expectation.messagePattern) {
+    expect(searchableErrorText).toMatch(expectation.messagePattern);
+  }
+
+  if (expectation.technicalDetailsPattern) {
+    expect(technicalDetails).toMatch(expectation.technicalDetailsPattern);
+  }
+}
+
+export async function expectProviderError(
+  operation: Promise<unknown>,
+  expectation: ProviderErrorExpectation = {},
+) {
+  try {
+    await operation;
+  } catch (error: unknown) {
+    assertProviderError(error, expectation);
+    return error;
+  }
+
+  expect.unreachable('Expected provider operation to throw');
+}
+
+export function defineProviderErrorTests(spec: {
+  run: () => Promise<unknown>;
+  cases: ProviderErrorTestCase[];
+}) {
+  for (const errorCase of spec.cases) {
+    it(errorCase.title, async () => {
+      errorCase.arrange();
+      await expectProviderError(spec.run(), errorCase.expected);
+    });
+  }
+}
+
 export function defineCloudProviderLifecycleContract<
   TProvider extends InspectableCloudProvider,
 >(spec: CloudProviderLifecycleContractSpec<TProvider>): void {
   describe(`${spec.name} lifecycle contract`, () => {
     let provider: TProvider;
+    const { resetCloudProviderState } = createCloudProviderStorageHelpers({
+      mockStorage: spec.mockStorage,
+      resetStorage: spec.resetStorage,
+    });
 
     beforeEach(() => {
-      vi.clearAllMocks();
-      spec.resetStorage();
+      resetCloudProviderState();
       provider = spec.create();
     });
 

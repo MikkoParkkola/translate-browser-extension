@@ -9,16 +9,18 @@
  *   - 500 Server Error → should throw
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, vi, beforeEach } from 'vitest';
 import { AnthropicProvider } from '../providers/anthropic';
 import { OpenAIProvider } from '../providers/openai';
 import { DeepLProvider } from '../providers/deepl';
 import { GoogleCloudProvider } from '../providers/google-cloud';
-import { installCloudProviderTestHarness } from './cloud-provider-test-harness';
+import {
+  defineProviderErrorTests,
+  installCloudProviderTestHarness,
+} from './cloud-provider-test-harness';
 
 const {
-  mockStorage,
-  resetStorage,
+  resetCloudProviderState,
   queueRejectedFetch,
   queueHttpError,
 } = installCloudProviderTestHarness();
@@ -90,127 +92,59 @@ describe.each(CLOUD_PROVIDERS)(
     let provider: ReturnType<typeof create>;
 
     beforeEach(async () => {
-      vi.clearAllMocks();
-      resetStorage();
-      mockStorage[storageKey] = 'test-api-key-12345';
+      resetCloudProviderState({
+        seed: { [storageKey]: 'test-api-key-12345' },
+      });
       provider = create();
       await provider.initialize();
     });
 
-    // ----- Network error (fetch throws) --------------------------------
-    it('throws on network error (fetch rejects)', async () => {
-      queueRejectedFetch(new TypeError('Failed to fetch'));
-
-      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
-    });
-
-    it('network error is retryable', async () => {
-      queueRejectedFetch(new TypeError('Failed to fetch'));
-
-      try {
-        await provider.translate('Hello', 'en', 'fi');
-      } catch (error: unknown) {
-        // The error should be wrapped by createTranslationError which
-        // produces a TranslationError object with retryable: true.
-        // The thrown value itself is either a TranslationError object or
-        // an Error whose message is matchable.
-        const err = error as Record<string, unknown>;
-        if ('retryable' in err) {
-          expect(err.retryable).toBe(true);
-        }
-        // At minimum it must throw — already proven by the assertion above
-        return;
-      }
-      // Should not reach here
-      expect.unreachable('Expected an error to be thrown');
-    });
-
-    // ----- 401 Unauthorized -------------------------------------------
-    it('throws on 401 Unauthorized', async () => {
-      queueHttpError(401, '{"error":"invalid_api_key"}');
-
-      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
-    });
-
-    it('401 error is categorised as auth', async () => {
-      queueHttpError(401, '{"error":"invalid_api_key"}');
-
-      try {
-        await provider.translate('Hello', 'en', 'fi');
-      } catch (error: unknown) {
-        const err = error as Record<string, unknown>;
-        // createTranslationError returns a TranslationError object
-        if ('category' in err) {
-          expect(err.category).toBe('auth');
-          expect(typeof err.message).toBe('string');
-          // technicalDetails should mention API key
-          expect(/api.key/i.test(String(err.technicalDetails))).toBe(true);
-        } else {
-          // Fallback: plain Error path
-          const msg = error instanceof Error ? error.message : String(error);
-          expect(/api.key|auth|unauthorized/i.test(msg)).toBe(true);
-        }
-        return;
-      }
-      expect.unreachable('Expected an error to be thrown');
-    });
-
-    // ----- 429 Rate Limit ---------------------------------------------
-    it('throws on 429 Rate Limit', async () => {
-      queueHttpError(429, '{"error":"rate_limit_exceeded"}');
-
-      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
-    });
-
-    it('429 error is categorised as rate_limit', async () => {
-      queueHttpError(429, '{"error":"rate_limit_exceeded"}');
-
-      try {
-        await provider.translate('Hello', 'en', 'fi');
-      } catch (error: unknown) {
-        const err = error as Record<string, unknown>;
-        if ('category' in err) {
-          expect(err.category).toBe('rate_limit');
-          expect(err.retryable).toBe(true);
-        } else {
-          const msg = error instanceof Error ? error.message : String(error);
-          expect(/rate.limit/i.test(msg)).toBe(true);
-        }
-        return;
-      }
-      expect.unreachable('Expected an error to be thrown');
-    });
-
-    // ----- 500 Server Error -------------------------------------------
-    it('throws on 500 Server Error', async () => {
-      queueHttpError(500, 'Internal Server Error');
-
-      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
-    });
-
-    it('500 error propagates as thrown error', async () => {
-      queueHttpError(500, 'Internal Server Error');
-
-      try {
-        await provider.translate('Hello', 'en', 'fi');
-      } catch (error: unknown) {
-        const err = error as Record<string, unknown>;
-        if ('category' in err) {
-          // createTranslationError wraps the "…internal server error" message;
-          // depending on pattern matching it may land in 'internal' or 'network'.
-          expect(typeof err.category).toBe('string');
-          expect(
-            /server.error|internal/i.test(
-              String(err.technicalDetails ?? err.message),
-            ),
-          ).toBe(true);
-        } else {
-          const msg = error instanceof Error ? error.message : String(error);
-          expect(/server.error|internal/i.test(msg)).toBe(true);
-        }
-        return;
-      }
-      expect.unreachable('Expected an error to be thrown');
+    defineProviderErrorTests({
+      run: () => provider.translate('Hello', 'en', 'fi'),
+      cases: [
+        {
+          title: 'throws on network error (fetch rejects)',
+          arrange: () => {
+            queueRejectedFetch(new TypeError('Failed to fetch'));
+          },
+          expected: {
+            retryable: true,
+            messagePattern: /fetch|network|connect/i,
+          },
+        },
+        {
+          title: '401 error is categorised as auth',
+          arrange: () => {
+            queueHttpError(401, '{"error":"invalid_api_key"}');
+          },
+          expected: {
+            category: 'auth',
+            messagePattern: /api.key|auth|unauthorized/i,
+            technicalDetailsPattern: /api.key|invalid/i,
+          },
+        },
+        {
+          title: '429 error is categorised as rate_limit',
+          arrange: () => {
+            queueHttpError(429, '{"error":"rate_limit_exceeded"}');
+          },
+          expected: {
+            category: 'rate_limit',
+            retryable: true,
+            messagePattern: /rate.limit|too many requests/i,
+          },
+        },
+        {
+          title: '500 error propagates as thrown error',
+          arrange: () => {
+            queueHttpError(500, 'Internal Server Error');
+          },
+          expected: {
+            messagePattern: /server.error|internal/i,
+            technicalDetailsPattern: /server.error|internal/i,
+          },
+        },
+      ],
     });
   },
 );
