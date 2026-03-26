@@ -5,23 +5,10 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { setupUiChromeMock } from '../../test-helpers/chrome-mocks';
 
 // Chrome API mock — required because some components reference chrome on import
-vi.stubGlobal('chrome', {
-  runtime: {
-    sendMessage: vi.fn().mockResolvedValue({}),
-    onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
-    openOptionsPage: vi.fn(),
-  },
-  storage: {
-    local: { get: vi.fn().mockResolvedValue({}), set: vi.fn().mockResolvedValue(undefined), remove: vi.fn().mockResolvedValue(undefined) },
-  },
-  tabs: {
-    query: vi.fn().mockResolvedValue([]),
-    sendMessage: vi.fn().mockResolvedValue({}),
-  },
-  scripting: { executeScript: vi.fn().mockResolvedValue(undefined) },
-});
+setupUiChromeMock();
 
 // Mock modules that do async work on import to avoid side effects
 vi.mock('../../core/glossary', () => ({

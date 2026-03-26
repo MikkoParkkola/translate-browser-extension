@@ -5,17 +5,15 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { setupChromeApiMock } from '../test-helpers/chrome-mocks';
 
-// Mock chrome API
 const mockSendMessage = vi.fn();
-const mockOnMessage = {
-  addListener: vi.fn(),
-};
-
-vi.stubGlobal('chrome', {
+const contentChromeMock = setupChromeApiMock({
   runtime: {
     sendMessage: mockSendMessage,
-    onMessage: mockOnMessage,
+    onMessage: {
+      addListener: vi.fn(),
+    },
   },
   storage: {
     local: {
@@ -24,6 +22,18 @@ vi.stubGlobal('chrome', {
     },
   },
 });
+const mockOnMessage = contentChromeMock.events.runtime.onMessage;
+const mockStorageLocalGet = contentChromeMock.chrome.storage.local.get;
+const mockStorageLocalSet = contentChromeMock.chrome.storage.local.set;
+
+const resetContentChromeMocks = () => {
+  mockSendMessage.mockReset();
+  mockOnMessage.addListener.mockReset();
+  mockStorageLocalGet.mockReset();
+  mockStorageLocalGet.mockResolvedValue({});
+  mockStorageLocalSet.mockReset();
+  mockStorageLocalSet.mockResolvedValue(undefined);
+};
 
 // Mock glossary module - functions are async, must return Promises
 vi.mock('../core/glossary', () => ({
@@ -100,6 +110,7 @@ describe('Content Script', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    resetContentChromeMocks();
     vi.resetModules();
     cleanupContentArtifacts();
 
@@ -2408,9 +2419,8 @@ describe('Content Script', () => {
       // Override storage.get to return autoTranslate: true
       // siteRules.getRules calls storage.get first (returns {}=no site rules),
       // then safeStorageGet calls storage.get with autoTranslate settings.
-      const storageGet = (globalThis as unknown as Record<string, { storage: { local: { get: ReturnType<typeof vi.fn> } } }>).chrome.storage.local.get;
-      storageGet.mockResolvedValueOnce({}); // site rules call (no site rules)
-      storageGet.mockResolvedValueOnce({
+      mockStorageLocalGet.mockResolvedValueOnce({}); // site rules call (no site rules)
+      mockStorageLocalGet.mockResolvedValueOnce({
         autoTranslate: true,
         sourceLang: 'en',
         targetLang: 'fi',
@@ -2441,9 +2451,8 @@ describe('Content Script', () => {
       document.body.innerHTML = '<p>Idle callback test</p>';
       document.head.innerHTML = '';
 
-      const storageGet = (globalThis as unknown as Record<string, { storage: { local: { get: ReturnType<typeof vi.fn> } } }>).chrome.storage.local.get;
-      storageGet.mockResolvedValueOnce({}); // site rules call
-      storageGet.mockResolvedValueOnce({
+      mockStorageLocalGet.mockResolvedValueOnce({}); // site rules call
+      mockStorageLocalGet.mockResolvedValueOnce({
         autoTranslate: true,
         sourceLang: 'en',
         targetLang: 'fi',
@@ -2476,9 +2485,8 @@ describe('Content Script', () => {
       document.body.innerHTML = '<p>Site rules test</p>';
       document.head.innerHTML = '';
 
-      const storageGet = (globalThis as unknown as Record<string, { storage: { local: { get: ReturnType<typeof vi.fn> } } }>).chrome.storage.local.get;
       // Return site rules (first call from siteRules.getRules returns raw rules)
-      storageGet.mockResolvedValueOnce({
+      mockStorageLocalGet.mockResolvedValueOnce({
         siteRules: {
           'localhost': {
             autoTranslate: true,
@@ -2490,7 +2498,7 @@ describe('Content Script', () => {
         },
       });
       // Second call for global settings
-      storageGet.mockResolvedValueOnce({});
+      mockStorageLocalGet.mockResolvedValueOnce({});
 
       mockSendMessage.mockResolvedValue({ success: true, result: ['Sivukohtainen'] });
 
@@ -2508,8 +2516,7 @@ describe('Content Script', () => {
       document.body.innerHTML = '';
       document.head.innerHTML = '';
 
-      const storageGet = (globalThis as unknown as Record<string, { storage: { local: { get: ReturnType<typeof vi.fn> } } }>).chrome.storage.local.get;
-      storageGet.mockResolvedValue({});
+      mockStorageLocalGet.mockResolvedValue({});
 
       // Override document.readyState to 'loading'
       Object.defineProperty(document, 'readyState', {
