@@ -317,7 +317,9 @@ interface TranslationProvider {
   translate(request: TranslationRequest): Promise<TranslationResult>;
   detectLanguage(text: string): Promise<string>;
   isAvailable(): Promise<boolean>;
-  getUsage(): Promise<UsageStats>;
+  // Optional provider-local diagnostics/cost snapshot.
+  // Extension-level background diagnostics are queried separately.
+  getUsage?(): Promise<UsageStats>;
 }
 
 interface TranslationRequest {

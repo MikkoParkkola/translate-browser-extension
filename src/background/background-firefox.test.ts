@@ -316,6 +316,7 @@ describe('background-firefox message handler', () => {
       const response = await invoke({ type: 'getUsage' }) as Record<string, unknown>;
       expect(response.throttle).toEqual(expect.any(Object));
       expect(response.cache).toEqual(expect.any(Object));
+      expect(response.providers).toEqual({});
     });
 
     it('throttle stats include requests and tokens', async () => {
@@ -2239,14 +2240,15 @@ describe('background-firefox translate: additional coverage', () => {
 
       expect(response.throttle).toEqual(expect.any(Object));
       expect(response.cache).toEqual(expect.any(Object));
-      expect(response.providers).toEqual(expect.any(Object));
+      expect(response.providers).toEqual({});
 
       const throttle = (response.throttle as Record<string, unknown>);
       expect(throttle.requests).toEqual(expect.any(Number));
       expect(throttle.tokens).toEqual(expect.any(Number));
       expect(throttle.requestLimit).toEqual(expect.any(Number));
       expect(throttle.tokenLimit).toEqual(expect.any(Number));
-      expect(throttle.queue).toEqual(expect.any(Number));
+      expect(throttle).not.toHaveProperty('queue');
+      expect(throttle).not.toHaveProperty('totalRequests');
     });
   });
 

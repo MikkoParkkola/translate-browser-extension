@@ -141,6 +141,7 @@ describe('handleGetUsage', () => {
 
     expect(result).toHaveProperty('throttle');
     expect(result).toHaveProperty('cache');
+    expect(result.providers).toEqual({});
     expect(result.throttle.requests).toBe(0);
     expect(result.throttle.tokens).toBe(0);
   });

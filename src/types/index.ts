@@ -17,6 +17,11 @@ export type Strategy = 'smart' | 'fast' | 'quality' | 'cost' | 'balanced';
 export type TranslationProviderId = 'opus-mt' | 'translategemma' | 'chrome-builtin' | 'deepl' | 'openai' | 'google-cloud' | 'anthropic';
 export type CloudProviderId = Exclude<TranslationProviderId, 'opus-mt' | 'translategemma' | 'chrome-builtin'>;
 export type CloudProviderConfiguredStatus = Record<CloudProviderId, boolean>;
+/**
+ * Reserved placeholder for future aggregate provider diagnostics in `getUsage`.
+ * Current `getUsage` snapshots are background-local; fetch cloud metrics via
+ * `getCloudProviderUsage` for a specific provider.
+ */
 export type CloudProviderUsageSummary = Partial<Record<CloudProviderId, never>>;
 
 /**
@@ -98,6 +103,14 @@ export interface ThrottleUsage {
   totalRequests: number;
   totalTokens: number;
   queue: number;
+}
+
+/** Background-local throttle snapshot used by the `getUsage` message. */
+export interface BackgroundThrottleUsage {
+  requests: number;
+  tokens: number;
+  requestLimit: number;
+  tokenLimit: number;
 }
 
 // Usage tracking
@@ -312,9 +325,15 @@ export interface DetailedCacheStats extends CacheStats {
   languagePairs: Record<string, number>;
 }
 
+/**
+ * Background-local usage snapshot returned by `getUsage`.
+ * This endpoint currently reports throttle state plus the persistent translation
+ * memory snapshot; it does not aggregate offscreen or cloud-provider usage.
+ */
 export interface GetUsageResponsePayload {
-  throttle: ThrottleUsage;
+  throttle: BackgroundThrottleUsage;
   cache: DetailedCacheStats;
+  /** Reserved empty summary; cloud usage is fetched via `getCloudProviderUsage`. */
   providers: CloudProviderUsageSummary;
 }
 

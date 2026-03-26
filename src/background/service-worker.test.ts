@@ -237,6 +237,7 @@ describe('Service Worker', () => {
             requestLimit: 60,
             tokenLimit: 100000,
           }),
+          providers: {},
         })
       );
     });
@@ -2403,15 +2404,17 @@ describe('Service Worker Extended Handler Coverage', () => {
   describe('getUsage message extended', () => {
     it('returns throttle and cache fields', async () => {
       const response = await invoke({ type: 'getUsage' }) as {
-        throttle: { requestLimit: number; tokenLimit: number };
+        throttle: { requestLimit: number; tokenLimit: number; queue?: number; totalRequests?: number };
         cache: { size: number };
-        providers: object;
+        providers: Record<string, never>;
       };
 
       expect(response.throttle.requestLimit).toBe(60);
       expect(response.throttle.tokenLimit).toBe(100000);
+      expect(response.throttle).not.toHaveProperty('queue');
+      expect(response.throttle).not.toHaveProperty('totalRequests');
       expect(typeof response.cache.size).toBe('number');
-      expect(response.providers).toBeDefined();
+      expect(response.providers).toEqual({});
     });
   });
 

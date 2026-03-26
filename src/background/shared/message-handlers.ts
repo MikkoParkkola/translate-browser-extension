@@ -8,6 +8,7 @@
 
 import type {
   CloudProviderId,
+  CloudProviderUsageSummary,
   TranslationProviderId, Strategy, DetailedCacheStats,
   SetCloudApiKeyMessage, ClearCloudApiKeyMessage,
   SetCloudProviderEnabledMessage,
@@ -162,18 +163,18 @@ export function handleGetUsage(
   cache: TranslationCache,
 ): ExtensionMessageResponseByType<'getUsage'> {
   const rl = getRateLimitState();
+  const providers: CloudProviderUsageSummary = {};
   return {
     throttle: {
       requests: rl.requests,
       tokens: rl.tokens,
       requestLimit: CONFIG_RL.requestsPerMinute,
       tokenLimit: CONFIG_RL.tokensPerMinute,
-      totalRequests: rl.requests,
-      totalTokens: rl.tokens,
-      queue: 0,
     },
     cache: cache.getStats(),
-    providers: {},
+    // Aggregate cloud/offscreen usage is intentionally not folded into this
+    // background-local snapshot; fetch provider usage separately.
+    providers,
   };
 }
 

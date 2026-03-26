@@ -46,6 +46,7 @@ import {
   type OffscreenMessageResponseMap,
   type OffscreenRoutedResponse,
 } from './message-routing';
+import { cropImageToDataUrl } from './image-crop';
 
 // OCR service
 import { extractTextFromImage, terminateOCR, type OCRResult } from '../core/ocr-service';
@@ -599,32 +600,14 @@ async function handleOffscreenPreloadModel(
 async function handleOffscreenCropImage(
   message: OffscreenMessageByType<'cropImage'>
 ): Promise<OffscreenMessageResponseMap['cropImage']> {
-  const { imageData: cropSrc, rect, devicePixelRatio = 1 } = message;
-  const img = new Image();
-  img.src = cropSrc;
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve();
-    img.onerror = () => reject(new Error('Failed to load image for cropping'));
-  });
-
-  const canvas = document.createElement('canvas');
-  const dpr = devicePixelRatio;
-  canvas.width = rect.width * dpr;
-  canvas.height = rect.height * dpr;
-  const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(
-    img,
-    rect.x * dpr,
-    rect.y * dpr,
-    rect.width * dpr,
-    rect.height * dpr,
-    0,
-    0,
-    canvas.width,
-    canvas.height
-  );
-
-  return { success: true, imageData: canvas.toDataURL('image/png') };
+  return {
+    success: true,
+    imageData: await cropImageToDataUrl(
+      message.imageData,
+      message.rect,
+      message.devicePixelRatio
+    ),
+  };
 }
 
 const offscreenMessageHandlers: OffscreenMessageHandlers = {
