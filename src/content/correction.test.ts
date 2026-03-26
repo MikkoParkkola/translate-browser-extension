@@ -5,16 +5,10 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createBrowserApiModuleMock, createLoggerModuleMock } from '../test-helpers/module-mocks';
 
 // Mock logger
-vi.mock('../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock('../core/logger', () => createLoggerModuleMock());
 
 // Mock toast to avoid DOM side effects
 vi.mock('./toast', () => ({
@@ -29,19 +23,13 @@ vi.mock('../core/storage', () => ({
 }));
 
 // Mock browserAPI
-const mockSendMessage = vi.fn().mockResolvedValue({ success: true });
-const mockStorageSet = vi.fn().mockResolvedValue(undefined);
-vi.mock('../core/browser-api', () => ({
-  browserAPI: {
-    runtime: {
-      sendMessage: (...args: unknown[]) => mockSendMessage(...args),
-    },
-    storage: {
-      local: {
-        set: (...args: unknown[]) => mockStorageSet(...args),
-      },
-    },
-  },
+const { mockSendMessage, mockStorageSet } = vi.hoisted(() => ({
+  mockSendMessage: vi.fn().mockResolvedValue({ success: true }),
+  mockStorageSet: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../core/browser-api', () => createBrowserApiModuleMock({
+  runtimeSendMessage: mockSendMessage,
+  storageLocalSet: mockStorageSet,
 }));
 
 // Mock content-types

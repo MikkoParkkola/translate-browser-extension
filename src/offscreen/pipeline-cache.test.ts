@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { createLoggerModuleMock } from '../test-helpers/module-mocks';
 import {
   MAX_CACHED_PIPELINES,
   evictLRUPipelines,
@@ -16,14 +17,7 @@ import {
 import type { TranslationPipeline } from '../types';
 
 // Mock the logger to avoid console output in tests
-vi.mock('../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock('../core/logger', () => createLoggerModuleMock());
 
 const waitForPipelineCacheAsyncWork = (ms = 10): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));

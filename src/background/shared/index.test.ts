@@ -3,13 +3,10 @@
  * Importing from the barrel exercises all re-export paths.
  */
 import { describe, it, expect, vi } from 'vitest';
+import { createLoggerModuleMock } from '../../test-helpers/module-mocks';
 
 // Mock all downstream dependencies before importing the barrel
-vi.mock('../../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(),
-  }),
-}));
+vi.mock('../../core/logger', () => createLoggerModuleMock());
 
 vi.mock('../../core/storage', () => ({
   safeStorageGet: vi.fn().mockResolvedValue({}),

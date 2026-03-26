@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, within } from '@solidjs/testing-library';
 import { setupNavigatorMock } from '../test-helpers/browser-mocks';
 import { setupUiChromeMock } from '../test-helpers/chrome-mocks';
+import { createBrowserApiModuleMock, createLoggerModuleMock } from '../test-helpers/module-mocks';
 
 // ---------------------------------------------------------------------------
 // Mocks — must be declared before any imports that reference them
@@ -37,24 +38,17 @@ vi.mock('../core/storage', () => ({
 
 vi.mock('../core/browser-api', () => {
   const runtimeSendMessage = vi.fn().mockResolvedValue({});
-  return {
-    browserAPI: {
-      runtime: {
-        sendMessage: runtimeSendMessage,
-        onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
-        openOptionsPage: vi.fn(),
-      },
-      storage: {
-        local: { get: vi.fn().mockResolvedValue({}) },
-      },
-      tabs: {
-        query: vi.fn().mockResolvedValue([{ id: 1, url: 'https://example.com' }]),
-        sendMessage: vi.fn().mockResolvedValue({}),
-      },
-      scripting: { executeScript: vi.fn().mockResolvedValue(undefined) },
-    },
-    sendMessage: runtimeSendMessage,
-  };
+  return createBrowserApiModuleMock({
+    runtimeSendMessage,
+    runtimeOnMessageAddListener: vi.fn(),
+    runtimeOnMessageRemoveListener: vi.fn(),
+    runtimeOpenOptionsPage: vi.fn(),
+    storageLocalGet: vi.fn().mockResolvedValue({}),
+    tabsQuery: vi.fn().mockResolvedValue([{ id: 1, url: 'https://example.com' }]),
+    tabsSendMessage: vi.fn().mockResolvedValue({}),
+    scriptingExecuteScript: vi.fn().mockResolvedValue(undefined),
+    includeSendMessageExport: true,
+  });
 });
 
 vi.mock('../core/version', () => ({
@@ -63,14 +57,7 @@ vi.mock('../core/version', () => ({
   isUpdateDismissed: vi.fn().mockResolvedValue(false),
 }));
 
-vi.mock('../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock('../core/logger', () => createLoggerModuleMock());
 
 // ---------------------------------------------------------------------------
 // Subject under test — imported AFTER mocks are wired

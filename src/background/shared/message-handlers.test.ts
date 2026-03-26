@@ -6,20 +6,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createLoggerModuleMock } from '../../test-helpers/module-mocks';
 import type { ExtensionMessageResponseByType } from '../../types';
 
 // ============================================================================
 // Mocks
 // ============================================================================
 
-vi.mock('../../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock('../../core/logger', () => createLoggerModuleMock());
 
 vi.mock('../../core/storage', () => ({
   safeStorageGet: vi.fn().mockResolvedValue({}),
