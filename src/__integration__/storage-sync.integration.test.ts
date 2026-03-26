@@ -7,6 +7,10 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import {
+  createBrowserApiModuleMock,
+  createLoggerModuleMock,
+} from '../test-helpers/module-mocks';
 
 // ---------------------------------------------------------------------------
 // vi.hoisted() — shared state & mocks available to vi.mock factory + tests
@@ -44,20 +48,21 @@ const { store, mockGet, mockSet, mockRemove, mockClear } = vi.hoisted(() => {
 
 // Mock browser-api — factory can reference hoisted variables safely
 vi.mock('../core/browser-api', () => {
-  const fakeChrome = {
-    storage: {
-      local: { get: mockGet, set: mockSet, remove: mockRemove, clear: mockClear },
-    },
-    runtime: {
-      sendMessage: vi.fn().mockResolvedValue({ success: true }),
-      onMessage: { addListener: vi.fn() },
-      getURL: (p: string) => `chrome-extension://test/${p}`,
-      lastError: null,
-    },
-  };
+  const moduleMock = createBrowserApiModuleMock({
+    runtimeSendMessage: vi.fn().mockResolvedValue({ success: true }),
+    runtimeOnMessageAddListener: vi.fn(),
+    runtimeGetURL: (path: string) => `chrome-extension://test/${path}`,
+    storageLocalGet: mockGet,
+    storageLocalSet: mockSet,
+    storageLocalRemove: mockRemove,
+    storageLocalClear: mockClear,
+    i18nGetUILanguage: vi.fn(() => 'en'),
+    includeSendMessageExport: true,
+  });
+  const fakeChrome = moduleMock.browserAPI as typeof chrome;
 
   return {
-    browserAPI: fakeChrome,
+    ...moduleMock,
     storage: {
       get: <T = Record<string, unknown>>(keys: string | string[]) =>
         fakeChrome.storage.local.get(keys) as Promise<T>,
@@ -75,14 +80,7 @@ vi.mock('../core/browser-api', () => {
 });
 
 // Mock logger to suppress output
-vi.mock('../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock('../core/logger', () => createLoggerModuleMock());
 
 // Stub chrome global for any transitive references
 vi.stubGlobal('chrome', {

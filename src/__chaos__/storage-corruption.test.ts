@@ -4,19 +4,16 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createBrowserApiModuleMock } from '../test-helpers/module-mocks';
 import { safeStorageGet, safeStorageSet, lastStorageError as _lastStorageError } from '../core/storage';
 
 // Mock the browser-api module that storage.ts imports
-vi.mock('../core/browser-api', () => ({
-  browserAPI: {
-    storage: {
-      local: {
-        get: vi.fn(),
-        set: vi.fn(),
-      },
-    },
-  },
-}));
+vi.mock('../core/browser-api', () =>
+  createBrowserApiModuleMock({
+    storageLocalGet: vi.fn(),
+    storageLocalSet: vi.fn(),
+  })
+);
 
 // Import AFTER mock is set up so the mock is used
 import { browserAPI } from '../core/browser-api';

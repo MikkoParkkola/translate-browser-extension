@@ -3,27 +3,24 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createBrowserApiModuleMock } from '../test-helpers/module-mocks';
 
-// Use vi.hoisted so mock objects are available in vi.mock factory
-const mockStorage = vi.hoisted(() => ({
-  local: {
-    get: vi.fn(),
-    set: vi.fn(),
-  },
-}));
+vi.mock('./browser-api', () =>
+  createBrowserApiModuleMock({
+    storageLocalGet: vi.fn(),
+    storageLocalSet: vi.fn(),
+  })
+);
 
-vi.mock('./browser-api', () => ({
-  browserAPI: {
-    runtime: {
-      getURL: vi.fn(),
-      sendMessage: vi.fn(),
-      onMessage: { addListener: vi.fn() },
-    },
-    storage: mockStorage,
-  },
-}));
-
+import { browserAPI } from './browser-api';
 import { safeStorageGet, safeStorageSet, lastStorageError } from './storage';
+
+const mockStorage = {
+  local: browserAPI.storage.local as unknown as {
+    get: ReturnType<typeof vi.fn>;
+    set: ReturnType<typeof vi.fn>;
+  },
+};
 
 describe('safeStorageGet', () => {
   beforeEach(() => {

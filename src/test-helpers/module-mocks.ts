@@ -21,6 +21,8 @@ export interface BrowserApiModuleMockOptions {
   runtimeOpenOptionsPage?: MockFn;
   storageLocalGet?: MockFn;
   storageLocalSet?: MockFn;
+  storageLocalRemove?: MockFn;
+  storageLocalClear?: MockFn;
   tabsQuery?: MockFn;
   tabsSendMessage?: MockFn;
   scriptingExecuteScript?: MockFn;
@@ -78,7 +80,9 @@ export function createBrowserApiModuleMock(
 
   if (
     options.storageLocalGet !== undefined ||
-    options.storageLocalSet !== undefined
+    options.storageLocalSet !== undefined ||
+    options.storageLocalRemove !== undefined ||
+    options.storageLocalClear !== undefined
   ) {
     browserAPI.storage = {
       local: {
@@ -87,6 +91,12 @@ export function createBrowserApiModuleMock(
           : {}),
         ...(options.storageLocalSet !== undefined
           ? { set: options.storageLocalSet }
+          : {}),
+        ...(options.storageLocalRemove !== undefined
+          ? { remove: options.storageLocalRemove }
+          : {}),
+        ...(options.storageLocalClear !== undefined
+          ? { clear: options.storageLocalClear }
           : {}),
       },
     };

@@ -3,26 +3,23 @@
  * Uses vi.mock to make franc return an unmapped ISO 639-3 code.
  */
 import { describe, it, expect, vi } from 'vitest';
+import {
+  createBrowserApiModuleMock,
+  createLoggerModuleMock,
+} from '../test-helpers/module-mocks';
 
 // Mock franc-min to return a code NOT in FRANC_TO_ISO
 vi.mock('franc-min', () => ({
   franc: vi.fn(() => 'zzj'), // fictional ISO 639-3 code — NOT in our FRANC_TO_ISO mapping
 }));
 
-vi.mock('../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock('../core/logger', () => createLoggerModuleMock());
 
-vi.mock('../core/browser-api', () => ({
-  browserAPI: {
-    i18n: { getUILanguage: () => 'en' },
-  },
-}));
+vi.mock('../core/browser-api', () =>
+  createBrowserApiModuleMock({
+    i18nGetUILanguage: () => 'en',
+  })
+);
 
 import { detectLanguage } from './language-detection';
 

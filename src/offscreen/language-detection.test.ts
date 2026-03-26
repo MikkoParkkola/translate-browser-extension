@@ -6,25 +6,22 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import {
+  createBrowserApiModuleMock,
+  createLoggerModuleMock,
+} from '../test-helpers/module-mocks';
 import { buildLanguageDetectionSample, FRANC_TO_ISO, detectLanguage } from './language-detection';
 
 // Mock the logger to avoid console output in tests
-vi.mock('../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock('../core/logger', () => createLoggerModuleMock());
 
 // Mock browserAPI — language-detection uses it for Firefox i18n.detectLanguage
 // which is never available in test environments
-vi.mock('../core/browser-api', () => ({
-  browserAPI: {
-    i18n: { getUILanguage: () => 'en' },
-  },
-}));
+vi.mock('../core/browser-api', () =>
+  createBrowserApiModuleMock({
+    i18nGetUILanguage: () => 'en',
+  })
+);
 
 describe('FRANC_TO_ISO', () => {
   describe('structure', () => {

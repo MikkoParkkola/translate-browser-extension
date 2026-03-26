@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createBrowserApiModuleMock } from '../test-helpers/module-mocks';
 
 // Use vi.hoisted so mock objects are available in vi.mock factory
 const mockStorageData = vi.hoisted(() => {
@@ -25,16 +26,14 @@ const mockBrowserStorage = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('./browser-api', () => ({
-  browserAPI: {
-    runtime: {
-      getURL: vi.fn(),
-      sendMessage: vi.fn(),
-      onMessage: { addListener: vi.fn() },
-    },
-    storage: mockBrowserStorage,
-  },
-}));
+vi.mock('./browser-api', () =>
+  createBrowserApiModuleMock({
+    storageLocalGet: mockBrowserStorage.local.get,
+    storageLocalSet: mockBrowserStorage.local.set,
+    storageLocalRemove: mockBrowserStorage.local.remove,
+    storageLocalClear: mockBrowserStorage.local.clear,
+  })
+);
 
 import {
   getHistory,
