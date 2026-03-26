@@ -14,7 +14,8 @@ export interface InspectableCloudProviderLifecycle {
   getInfo(): object;
 }
 
-type InspectableCloudProvider = InspectableCloudProviderLifecycle & InspectableCloudProviderHooks;
+type InspectableCloudProvider = InspectableCloudProviderLifecycle &
+  InspectableCloudProviderHooks;
 
 type InspectableProviderInfo = {
   id?: string;
@@ -33,7 +34,9 @@ export interface CloudProviderInfoExpectation {
   costPerMillion: number;
 }
 
-export interface CloudProviderLifecycleContractSpec<TProvider extends InspectableCloudProvider> {
+export interface CloudProviderLifecycleContractSpec<
+  TProvider extends InspectableCloudProvider,
+> {
   name: string;
   create: () => TProvider;
   mockStorage: Record<string, unknown>;
@@ -51,8 +54,50 @@ export interface CloudProviderLifecycleContractSpec<TProvider extends Inspectabl
   reconfigure?(provider: TProvider): Promise<void>;
   assertReconfiguredInfo?(
     info: InspectableProviderInfo,
-    storage: Record<string, unknown>
+    storage: Record<string, unknown>,
   ): void;
+}
+
+export interface MockFetchHeaders {
+  [key: string]: string;
+}
+
+export interface MockJsonResponseOptions {
+  status?: number;
+  headers?: MockFetchHeaders;
+  text?: string;
+}
+
+export interface MockHttpErrorOptions {
+  headers?: MockFetchHeaders;
+  jsonBody?: unknown;
+}
+
+export type MockFetchSequenceStep =
+  | {
+      type: 'json';
+      body: unknown;
+      options?: MockJsonResponseOptions;
+    }
+  | {
+      type: 'httpError';
+      status: number;
+      body?: string;
+      options?: MockHttpErrorOptions;
+    }
+  | {
+      type: 'reject';
+      error: unknown;
+    };
+
+function createMockHeaders(headers: MockFetchHeaders = {}) {
+  const normalizedHeaders = new Map(
+    Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]),
+  );
+
+  return {
+    get: (key: string) => normalizedHeaders.get(key.toLowerCase()) ?? null,
+  };
 }
 
 export function installCloudProviderTestHarness() {
@@ -63,38 +108,107 @@ export function installCloudProviderTestHarness() {
   return {
     ...storageHarness,
     mockFetch,
+    queueJsonResponse(body: unknown, options?: MockJsonResponseOptions) {
+      return queueJsonResponse(mockFetch, body, options);
+    },
+    queueHttpError(status: number, body = '', options?: MockHttpErrorOptions) {
+      return queueHttpError(mockFetch, status, body, options);
+    },
+    queueRejectedFetch(error: unknown) {
+      return queueRejectedFetch(mockFetch, error);
+    },
+    queueFetchSequence(...steps: MockFetchSequenceStep[]) {
+      return queueFetchSequence(mockFetch, ...steps);
+    },
   };
 }
 
-export function inspectCloudProvider<TProvider extends InspectableCloudProviderLifecycle>(
-  provider: TProvider
-): TProvider & InspectableCloudProviderHooks {
+export function inspectCloudProvider<
+  TProvider extends InspectableCloudProviderLifecycle,
+>(provider: TProvider): TProvider & InspectableCloudProviderHooks {
   return provider as TProvider & InspectableCloudProviderHooks;
 }
 
-export function okJsonResponse(body: unknown) {
+export function okJsonResponse(
+  body: unknown,
+  options: MockJsonResponseOptions = {},
+) {
+  const status = options.status ?? 200;
+
   return {
     ok: true,
-    status: 200,
+    status,
     json: () => Promise.resolve(body),
-    text: () => Promise.resolve(JSON.stringify(body)),
-    headers: { get: () => null },
+    text: () => Promise.resolve(options.text ?? JSON.stringify(body)),
+    headers: createMockHeaders(options.headers),
   };
 }
 
-export function httpErrorResponse(status: number, body = '') {
+export function httpErrorResponse(
+  status: number,
+  body = '',
+  options: MockHttpErrorOptions = {},
+) {
   return {
     ok: false,
     status,
-    json: () => Promise.resolve({}),
+    json: () => Promise.resolve(options.jsonBody ?? {}),
     text: () => Promise.resolve(body),
-    headers: { get: () => null },
+    headers: createMockHeaders(options.headers),
   };
 }
 
-export function defineCloudProviderLifecycleContract<TProvider extends InspectableCloudProvider>(
-  spec: CloudProviderLifecycleContractSpec<TProvider>
-): void {
+export function queueJsonResponse(
+  mockFetch: ReturnType<typeof vi.fn>,
+  body: unknown,
+  options?: MockJsonResponseOptions,
+) {
+  mockFetch.mockResolvedValueOnce(okJsonResponse(body, options));
+  return mockFetch;
+}
+
+export function queueHttpError(
+  mockFetch: ReturnType<typeof vi.fn>,
+  status: number,
+  body = '',
+  options?: MockHttpErrorOptions,
+) {
+  mockFetch.mockResolvedValueOnce(httpErrorResponse(status, body, options));
+  return mockFetch;
+}
+
+export function queueRejectedFetch(
+  mockFetch: ReturnType<typeof vi.fn>,
+  error: unknown,
+) {
+  mockFetch.mockRejectedValueOnce(error);
+  return mockFetch;
+}
+
+export function queueFetchSequence(
+  mockFetch: ReturnType<typeof vi.fn>,
+  ...steps: MockFetchSequenceStep[]
+) {
+  for (const step of steps) {
+    if (step.type === 'json') {
+      queueJsonResponse(mockFetch, step.body, step.options);
+      continue;
+    }
+
+    if (step.type === 'httpError') {
+      queueHttpError(mockFetch, step.status, step.body, step.options);
+      continue;
+    }
+
+    queueRejectedFetch(mockFetch, step.error);
+  }
+
+  return mockFetch;
+}
+
+export function defineCloudProviderLifecycleContract<
+  TProvider extends InspectableCloudProvider,
+>(spec: CloudProviderLifecycleContractSpec<TProvider>): void {
   describe(`${spec.name} lifecycle contract`, () => {
     let provider: TProvider;
 
@@ -123,7 +237,9 @@ export function defineCloudProviderLifecycleContract<TProvider extends Inspectab
     });
 
     it('does not report availability when only ancillary storage keys are present', async () => {
-      const ancillaryKey = provider.getStorageKeys().find((key) => key !== spec.apiKeyKey);
+      const ancillaryKey = provider
+        .getStorageKeys()
+        .find((key) => key !== spec.apiKeyKey);
 
       if (!ancillaryKey) {
         expect(provider.hasConfig()).toBe(false);
@@ -132,7 +248,9 @@ export function defineCloudProviderLifecycleContract<TProvider extends Inspectab
         return;
       }
 
-      spec.mockStorage[ancillaryKey] = ancillaryKey.includes('used') ? 1 : 'placeholder';
+      spec.mockStorage[ancillaryKey] = ancillaryKey.includes('used')
+        ? 1
+        : 'placeholder';
 
       expect(provider.hasConfig()).toBe(false);
       await provider.initialize();
@@ -158,7 +276,9 @@ export function defineCloudProviderLifecycleContract<TProvider extends Inspectab
       expect(await provider.isAvailable()).toBe(true);
 
       if (spec.assertConfiguredInfo) {
-        spec.assertConfiguredInfo(provider.getInfo() as InspectableProviderInfo);
+        spec.assertConfiguredInfo(
+          provider.getInfo() as InspectableProviderInfo,
+        );
       }
     });
 
@@ -172,7 +292,7 @@ export function defineCloudProviderLifecycleContract<TProvider extends Inspectab
 
         assertReconfiguredInfo(
           provider.getInfo() as InspectableProviderInfo,
-          spec.mockStorage
+          spec.mockStorage,
         );
       });
     }

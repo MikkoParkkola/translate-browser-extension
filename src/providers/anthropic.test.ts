@@ -9,7 +9,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { installCloudProviderTestHarness } from '../__contract__/cloud-provider-test-harness';
 import { AnthropicProvider } from './anthropic';
 
-const { mockStorage, resetStorage, mockFetch } = installCloudProviderTestHarness();
+const {
+  mockStorage,
+  resetStorage,
+  mockFetch,
+  queueJsonResponse,
+  queueRejectedFetch,
+  queueHttpError,
+  queueFetchSequence,
+} = installCloudProviderTestHarness();
 
 describe('AnthropicProvider', () => {
   let provider: AnthropicProvider;
@@ -66,17 +74,15 @@ describe('AnthropicProvider', () => {
 
     it('throws when API key not configured', async () => {
       const noKeyProvider = new AnthropicProvider();
-      await expect(noKeyProvider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+      await expect(
+        noKeyProvider.translate('Hello', 'en', 'fi'),
+      ).rejects.toThrow();
     });
 
     it('sends correct request for single text', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [{ type: 'text', text: 'Hei' }],
-            usage: { input_tokens: 10, output_tokens: 5 },
-          }),
+      queueJsonResponse({
+        content: [{ type: 'text', text: 'Hei' }],
+        usage: { input_tokens: 10, output_tokens: 5 },
       });
 
       const result = await provider.translate('Hello', 'en', 'fi');
@@ -98,18 +104,14 @@ describe('AnthropicProvider', () => {
     });
 
     it('sends correct request for batch texts', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [
-              {
-                type: 'text',
-                text: '<text id="0">Hei</text>\n<text id="1">Maailma</text>',
-              },
-            ],
-            usage: { input_tokens: 20, output_tokens: 10 },
-          }),
+      queueJsonResponse({
+        content: [
+          {
+            type: 'text',
+            text: '<text id="0">Hei</text>\n<text id="1">Maailma</text>',
+          },
+        ],
+        usage: { input_tokens: 20, output_tokens: 10 },
       });
 
       const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
@@ -119,13 +121,9 @@ describe('AnthropicProvider', () => {
     });
 
     it('includes source language hint when not auto', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [{ type: 'text', text: 'Hei' }],
-            usage: { input_tokens: 10, output_tokens: 5 },
-          }),
+      queueJsonResponse({
+        content: [{ type: 'text', text: 'Hei' }],
+        usage: { input_tokens: 10, output_tokens: 5 },
       });
 
       await provider.translate('Hello', 'en', 'fi');
@@ -135,27 +133,13 @@ describe('AnthropicProvider', () => {
     });
 
     it('handles API error responses', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        text: () => Promise.resolve('Unauthorized'),
-        headers: {
-          get: () => null,
-        },
-      });
+      queueHttpError(401, 'Unauthorized');
 
       await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
     });
 
     it('handles rate limit errors', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 429,
-        text: () => Promise.resolve('Rate limited'),
-        headers: {
-          get: (key: string) => (key === 'Retry-After' ? '60' : null),
-        },
-      });
+      queueHttpError(429, 'Rate limited', { headers: { 'Retry-After': '60' } });
 
       await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
     });
@@ -170,12 +154,8 @@ describe('AnthropicProvider', () => {
     it('detects language with API key', async () => {
       await provider.setApiKey('sk-test-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [{ type: 'text', text: 'en' }],
-          }),
+      queueJsonResponse({
+        content: [{ type: 'text', text: 'en' }],
       });
 
       const result = await provider.detectLanguage('Hello world');
@@ -185,10 +165,7 @@ describe('AnthropicProvider', () => {
     it('returns auto on API error', async () => {
       await provider.setApiKey('sk-test-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-      });
+      queueHttpError(500);
 
       const result = await provider.detectLanguage('Hello');
       expect(result).toBe('auto');
@@ -198,12 +175,8 @@ describe('AnthropicProvider', () => {
       await provider.setApiKey('sk-test-key');
       await provider.setModel('claude-sonnet-4-20250514');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [{ type: 'text', text: 'en' }],
-          }),
+      queueJsonResponse({
+        content: [{ type: 'text', text: 'en' }],
       });
 
       await provider.detectLanguage('Hello');
@@ -239,13 +212,9 @@ describe('AnthropicProvider', () => {
     it('returns true on successful translation', async () => {
       await provider.setApiKey('sk-test-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [{ type: 'text', text: 'Hei' }],
-            usage: { input_tokens: 5, output_tokens: 2 },
-          }),
+      queueJsonResponse({
+        content: [{ type: 'text', text: 'Hei' }],
+        usage: { input_tokens: 5, output_tokens: 2 },
       });
 
       const result = await provider.test();
@@ -255,7 +224,7 @@ describe('AnthropicProvider', () => {
     it('returns false on error', async () => {
       await provider.setApiKey('sk-test-key');
 
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      queueRejectedFetch(new Error('Network error'));
 
       const result = await provider.test();
       expect(result).toBe(false);
@@ -282,32 +251,26 @@ describe('AnthropicProvider', () => {
       await provider.setApiKey('sk-test-key');
       await provider.setFormality('formal');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [{ type: 'text', text: 'Hei' }],
-            usage: { input_tokens: 10, output_tokens: 5 },
-          }),
+      queueJsonResponse({
+        content: [{ type: 'text', text: 'Hei' }],
+        usage: { input_tokens: 10, output_tokens: 5 },
       });
 
       await provider.translate('Hello', 'en', 'fi');
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.system).toContain('Use formal register and polite forms where appropriate.');
+      expect(body.system).toContain(
+        'Use formal register and polite forms where appropriate.',
+      );
     });
 
     it('includes informal instruction in system prompt', async () => {
       await provider.setApiKey('sk-test-key');
       await provider.setFormality('informal');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [{ type: 'text', text: 'Hei' }],
-            usage: { input_tokens: 10, output_tokens: 5 },
-          }),
+      queueJsonResponse({
+        content: [{ type: 'text', text: 'Hei' }],
+        usage: { input_tokens: 10, output_tokens: 5 },
       });
 
       await provider.translate('Hello', 'en', 'fi');
@@ -321,21 +284,21 @@ describe('AnthropicProvider', () => {
     it('fills missing items with empty string when XML is incomplete', async () => {
       await provider.setApiKey('sk-test-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [
-              {
-                type: 'text',
-                text: '<text id="0">Hei</text>',
-              },
-            ],
-            usage: { input_tokens: 20, output_tokens: 10 },
-          }),
+      queueJsonResponse({
+        content: [
+          {
+            type: 'text',
+            text: '<text id="0">Hei</text>',
+          },
+        ],
+        usage: { input_tokens: 20, output_tokens: 10 },
       });
 
-      const result = await provider.translate(['Hello', 'World', 'Foo'], 'en', 'fi');
+      const result = await provider.translate(
+        ['Hello', 'World', 'Foo'],
+        'en',
+        'fi',
+      );
 
       expect(Array.isArray(result)).toBe(true);
       expect(result).toEqual(['Hei', '', '']);
@@ -346,7 +309,7 @@ describe('AnthropicProvider', () => {
     it('returns auto when fetch throws during detectLanguage', async () => {
       await provider.setApiKey('sk-test-key');
 
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      queueRejectedFetch(new Error('Network error'));
 
       const result = await provider.detectLanguage('Bonjour');
       expect(result).toBe('auto');
@@ -377,18 +340,14 @@ describe('AnthropicProvider', () => {
 
       await freshProvider.initialize();
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            id: 'msg-123',
-            type: 'message',
-            role: 'assistant',
-            content: [{ type: 'text', text: 'Formal response' }],
-            model: 'claude-3-5-haiku-20241022',
-            stop_reason: 'end_turn',
-            usage: { input_tokens: 10, output_tokens: 5 },
-          }),
+      queueJsonResponse({
+        id: 'msg-123',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Formal response' }],
+        model: 'claude-3-5-haiku-20241022',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 10, output_tokens: 5 },
       });
 
       await freshProvider.translate('hello', 'en', 'fi');
@@ -405,18 +364,14 @@ describe('AnthropicProvider', () => {
 
       await freshProvider.initialize();
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            id: 'msg-123',
-            type: 'message',
-            role: 'assistant',
-            content: [{ type: 'text', text: 'Informal response' }],
-            model: 'claude-3-5-haiku-20241022',
-            stop_reason: 'end_turn',
-            usage: { input_tokens: 10, output_tokens: 5 },
-          }),
+      queueJsonResponse({
+        id: 'msg-123',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Informal response' }],
+        model: 'claude-3-5-haiku-20241022',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 10, output_tokens: 5 },
       });
 
       await freshProvider.translate('hello', 'en', 'fi');
@@ -433,18 +388,14 @@ describe('AnthropicProvider', () => {
 
       await freshProvider.initialize();
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            id: 'msg-123',
-            type: 'message',
-            role: 'assistant',
-            content: [{ type: 'text', text: 'Neutral response' }],
-            model: 'claude-3-5-haiku-20241022',
-            stop_reason: 'end_turn',
-            usage: { input_tokens: 10, output_tokens: 5 },
-          }),
+      queueJsonResponse({
+        id: 'msg-123',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Neutral response' }],
+        model: 'claude-3-5-haiku-20241022',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 10, output_tokens: 5 },
       });
 
       await freshProvider.translate('hello', 'en', 'fi');
@@ -461,23 +412,19 @@ describe('AnthropicProvider', () => {
     it('parses numbered <tN> XML tags for batch translations (primary format)', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            id: 'msg-123',
-            type: 'message',
-            role: 'assistant',
-            content: [
-              {
-                type: 'text',
-                text: '<t0>Hei</t0>\n<t1>Maailma</t1>',
-              },
-            ],
-            model: 'claude-3-5-haiku-20241022',
-            stop_reason: 'end_turn',
-            usage: { input_tokens: 20, output_tokens: 10 },
-          }),
+      queueJsonResponse({
+        id: 'msg-123',
+        type: 'message',
+        role: 'assistant',
+        content: [
+          {
+            type: 'text',
+            text: '<t0>Hei</t0>\n<t1>Maailma</t1>',
+          },
+        ],
+        model: 'claude-3-5-haiku-20241022',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 20, output_tokens: 10 },
       });
 
       const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
@@ -489,55 +436,50 @@ describe('AnthropicProvider', () => {
     it('pads results when batch returns fewer translations than input', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            id: 'msg-123',
-            type: 'message',
-            role: 'assistant',
-            content: [
-              {
-                type: 'text',
-                text: '<text id="0">Hei</text>',  // Only one translation
-              },
-            ],
-            model: 'claude-3-5-haiku-20241022',
-            stop_reason: 'end_turn',
-            usage: { input_tokens: 20, output_tokens: 10 },
-          }),
+      queueJsonResponse({
+        id: 'msg-123',
+        type: 'message',
+        role: 'assistant',
+        content: [
+          {
+            type: 'text',
+            text: '<text id="0">Hei</text>', // Only one translation
+          },
+        ],
+        model: 'claude-3-5-haiku-20241022',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 20, output_tokens: 10 },
       });
 
-      const result = await provider.translate(['Hello', 'World', 'Test'], 'en', 'fi');
+      const result = await provider.translate(
+        ['Hello', 'World', 'Test'],
+        'en',
+        'fi',
+      );
 
       expect(Array.isArray(result)).toBe(true);
       expect(result.length).toBe(3);
       expect(result[0]).toBe('Hei');
-      expect(result[1]).toBe('');  // Padded
-      expect(result[2]).toBe('');  // Padded
+      expect(result[1]).toBe(''); // Padded
+      expect(result[2]).toBe(''); // Padded
     });
 
     it('includes extra translations when batch returns more than input', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            id: 'msg-123',
-            type: 'message',
-            role: 'assistant',
-            content: [
-              {
-                type: 'text',
-                text:
-                  '<text id="0">Hei</text>\n<text id="1">Maailma</text>\n<text id="2">Extra</text>',
-              },
-            ],
-            model: 'claude-3-5-haiku-20241022',
-            stop_reason: 'end_turn',
-            usage: { input_tokens: 30, output_tokens: 15 },
-          }),
+      queueJsonResponse({
+        id: 'msg-123',
+        type: 'message',
+        role: 'assistant',
+        content: [
+          {
+            type: 'text',
+            text: '<text id="0">Hei</text>\n<text id="1">Maailma</text>\n<text id="2">Extra</text>',
+          },
+        ],
+        model: 'claude-3-5-haiku-20241022',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 30, output_tokens: 15 },
       });
 
       const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
@@ -555,18 +497,14 @@ describe('AnthropicProvider', () => {
     it('handles missing text in content array', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            id: 'msg-123',
-            type: 'message',
-            role: 'assistant',
-            content: [{ type: 'text' }],  // Missing text field
-            model: 'claude-3-5-haiku-20241022',
-            stop_reason: 'end_turn',
-            usage: { input_tokens: 10, output_tokens: 5 },
-          }),
+      queueJsonResponse({
+        id: 'msg-123',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text' }], // Missing text field
+        model: 'claude-3-5-haiku-20241022',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 10, output_tokens: 5 },
       });
 
       const result = await provider.translate('Hello', 'en', 'fi');
@@ -576,18 +514,14 @@ describe('AnthropicProvider', () => {
     it('handles empty content array', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            id: 'msg-123',
-            type: 'message',
-            role: 'assistant',
-            content: [],  // Empty content
-            model: 'claude-3-5-haiku-20241022',
-            stop_reason: 'end_turn',
-            usage: { input_tokens: 10, output_tokens: 5 },
-          }),
+      queueJsonResponse({
+        id: 'msg-123',
+        type: 'message',
+        role: 'assistant',
+        content: [], // Empty content
+        model: 'claude-3-5-haiku-20241022',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 10, output_tokens: 5 },
       });
 
       const result = await provider.translate('Hello', 'en', 'fi');
@@ -599,18 +533,14 @@ describe('AnthropicProvider', () => {
     it('returns auto when detected language is empty string', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            id: 'msg-123',
-            type: 'message',
-            role: 'assistant',
-            content: [{ type: 'text', text: '' }],  // Empty
-            model: 'claude-3-5-haiku-20241022',
-            stop_reason: 'end_turn',
-            usage: { input_tokens: 5, output_tokens: 2 },
-          }),
+      queueJsonResponse({
+        id: 'msg-123',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: '' }], // Empty
+        model: 'claude-3-5-haiku-20241022',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 5, output_tokens: 2 },
       });
 
       const result = await provider.detectLanguage('text');
@@ -620,39 +550,31 @@ describe('AnthropicProvider', () => {
     it('returns detected language when response is 2-letter code', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            id: 'msg-123',
-            type: 'message',
-            role: 'assistant',
-            content: [{ type: 'text', text: 'FI' }],  // Uppercase
-            model: 'claude-3-5-haiku-20241022',
-            stop_reason: 'end_turn',
-            usage: { input_tokens: 5, output_tokens: 2 },
-          }),
+      queueJsonResponse({
+        id: 'msg-123',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'FI' }], // Uppercase
+        model: 'claude-3-5-haiku-20241022',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 5, output_tokens: 2 },
       });
 
       const result = await provider.detectLanguage('Terve');
-      expect(result).toBe('fi');  // Should be lowercased
+      expect(result).toBe('fi'); // Should be lowercased
     });
 
     it('returns auto when detected language is longer than 2 chars', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            id: 'msg-123',
-            type: 'message',
-            role: 'assistant',
-            content: [{ type: 'text', text: 'Finnish' }],
-            model: 'claude-3-5-haiku-20241022',
-            stop_reason: 'end_turn',
-            usage: { input_tokens: 5, output_tokens: 2 },
-          }),
+      queueJsonResponse({
+        id: 'msg-123',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Finnish' }],
+        model: 'claude-3-5-haiku-20241022',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 5, output_tokens: 2 },
       });
 
       const result = await provider.detectLanguage('Hello');
@@ -705,18 +627,14 @@ describe('AnthropicProvider', () => {
     it('includes source language in prompt for known languages', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            id: 'msg-123',
-            type: 'message',
-            role: 'assistant',
-            content: [{ type: 'text', text: 'Hei' }],
-            model: 'claude-3-5-haiku-20241022',
-            stop_reason: 'end_turn',
-            usage: { input_tokens: 10, output_tokens: 5 },
-          }),
+      queueJsonResponse({
+        id: 'msg-123',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Hei' }],
+        model: 'claude-3-5-haiku-20241022',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 10, output_tokens: 5 },
       });
 
       await provider.translate('Hello', 'en', 'fi');
@@ -729,18 +647,14 @@ describe('AnthropicProvider', () => {
     it('omits source hint for auto-detection', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            id: 'msg-123',
-            type: 'message',
-            role: 'assistant',
-            content: [{ type: 'text', text: 'Translated' }],
-            model: 'claude-3-5-haiku-20241022',
-            stop_reason: 'end_turn',
-            usage: { input_tokens: 10, output_tokens: 5 },
-          }),
+      queueJsonResponse({
+        id: 'msg-123',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Translated' }],
+        model: 'claude-3-5-haiku-20241022',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 10, output_tokens: 5 },
       });
 
       await provider.translate('Hello', 'auto', 'fi');
@@ -795,7 +709,9 @@ describe('AnthropicProvider', () => {
 
       // Mock chrome.storage to throw an error
       const mockGetError = new Error('Storage access denied');
-      vi.mocked(chrome.storage.local.get as any).mockRejectedValueOnce(mockGetError);
+      vi.mocked(chrome.storage.local.get as any).mockRejectedValueOnce(
+        mockGetError,
+      );
 
       // Should not throw — safeStorageGet handles the error at the storage layer
       await expect(freshProvider.initialize()).resolves.not.toThrow();
@@ -816,39 +732,38 @@ describe('AnthropicProvider', () => {
     it('tracks token usage across translations', async () => {
       await provider.setApiKey('key');
 
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              id: 'msg-1',
-              type: 'message',
-              role: 'assistant',
-              content: [{ type: 'text', text: 'Hei' }],
-              model: 'claude-3-5-haiku-20241022',
-              stop_reason: 'end_turn',
-              usage: { input_tokens: 10, output_tokens: 5 },
-            }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              id: 'msg-2',
-              type: 'message',
-              role: 'assistant',
-              content: [{ type: 'text', text: 'Maailma' }],
-              model: 'claude-3-5-haiku-20241022',
-              stop_reason: 'end_turn',
-              usage: { input_tokens: 15, output_tokens: 8 },
-            }),
-        });
+      queueFetchSequence(
+        {
+          type: 'json',
+          body: {
+            id: 'msg-1',
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Hei' }],
+            model: 'claude-3-5-haiku-20241022',
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 10, output_tokens: 5 },
+          },
+        },
+        {
+          type: 'json',
+          body: {
+            id: 'msg-2',
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Maailma' }],
+            model: 'claude-3-5-haiku-20241022',
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 15, output_tokens: 8 },
+          },
+        },
+      );
 
       await provider.translate('Hello', 'en', 'fi');
       await provider.translate('World', 'en', 'fi');
 
       const usage = await provider.getUsage();
-      expect(usage.tokens).toBe(38);  // 10+5+15+8
+      expect(usage.tokens).toBe(38); // 10+5+15+8
     });
   });
 
@@ -890,13 +805,9 @@ describe('AnthropicProvider', () => {
     it('handles response without usage object', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [{ type: 'text', text: 'Hei' }],
-            // No usage field
-          }),
+      queueJsonResponse({
+        content: [{ type: 'text', text: 'Hei' }],
+        // No usage field
       });
 
       const result = await provider.translate('Hello', 'en', 'fi');
@@ -916,13 +827,9 @@ describe('AnthropicProvider', () => {
     it('wraps result in array when input is single-element array', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [{ type: 'text', text: 'Hei' }],
-            usage: { input_tokens: 10, output_tokens: 5 },
-          }),
+      queueJsonResponse({
+        content: [{ type: 'text', text: 'Hei' }],
+        usage: { input_tokens: 10, output_tokens: 5 },
       });
 
       const result = await provider.translate(['Hello'], 'en', 'fi');
@@ -942,18 +849,14 @@ describe('AnthropicProvider', () => {
     });
 
     it('falls back to legacy <text id="N"> format when <tN> tags are absent', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [
-              {
-                type: 'text',
-                text: '<text id="0">Hei</text>\n<text id="1">Maailma</text>',
-              },
-            ],
-            usage: { input_tokens: 20, output_tokens: 10 },
-          }),
+      queueJsonResponse({
+        content: [
+          {
+            type: 'text',
+            text: '<text id="0">Hei</text>\n<text id="1">Maailma</text>',
+          },
+        ],
+        usage: { input_tokens: 20, output_tokens: 10 },
       });
 
       const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
@@ -963,18 +866,14 @@ describe('AnthropicProvider', () => {
     });
 
     it('falls back to newline splitting when no XML tags are present', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [
-              {
-                type: 'text',
-                text: 'Hei\nMaailma',
-              },
-            ],
-            usage: { input_tokens: 20, output_tokens: 10 },
-          }),
+      queueJsonResponse({
+        content: [
+          {
+            type: 'text',
+            text: 'Hei\nMaailma',
+          },
+        ],
+        usage: { input_tokens: 20, output_tokens: 10 },
       });
 
       const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
@@ -984,18 +883,14 @@ describe('AnthropicProvider', () => {
     });
 
     it('returns empty strings for each input when response is empty', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [
-              {
-                type: 'text',
-                text: '',
-              },
-            ],
-            usage: { input_tokens: 20, output_tokens: 0 },
-          }),
+      queueJsonResponse({
+        content: [
+          {
+            type: 'text',
+            text: '',
+          },
+        ],
+        usage: { input_tokens: 20, output_tokens: 0 },
       });
 
       const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
@@ -1016,22 +911,20 @@ describe('AnthropicProvider', () => {
       // Make storage.set reject for the token usage write
       // @ts-expect-error unused side-effect
       const _originalSet = chrome.storage.local.set;
-      vi.mocked(chrome.storage.local.set as any).mockImplementationOnce((items: Record<string, unknown>) => {
-        // Allow the setApiKey call to succeed, but fail on token tracking
-        if ('anthropic_tokens_used' in items) {
-          return Promise.reject(new Error('Storage quota exceeded'));
-        }
-        Object.assign(mockStorage, items);
-        return Promise.resolve();
-      });
+      vi.mocked(chrome.storage.local.set as any).mockImplementationOnce(
+        (items: Record<string, unknown>) => {
+          // Allow the setApiKey call to succeed, but fail on token tracking
+          if ('anthropic_tokens_used' in items) {
+            return Promise.reject(new Error('Storage quota exceeded'));
+          }
+          Object.assign(mockStorage, items);
+          return Promise.resolve();
+        },
+      );
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [{ type: 'text', text: 'Hei' }],
-            usage: { input_tokens: 10, output_tokens: 5 },
-          }),
+      queueJsonResponse({
+        content: [{ type: 'text', text: 'Hei' }],
+        usage: { input_tokens: 10, output_tokens: 5 },
       });
 
       // Should not throw despite storage failure

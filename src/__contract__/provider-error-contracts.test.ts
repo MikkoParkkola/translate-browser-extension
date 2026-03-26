@@ -14,19 +14,25 @@ import { AnthropicProvider } from '../providers/anthropic';
 import { OpenAIProvider } from '../providers/openai';
 import { DeepLProvider } from '../providers/deepl';
 import { GoogleCloudProvider } from '../providers/google-cloud';
-import {
-  httpErrorResponse,
-  installCloudProviderTestHarness,
-} from './cloud-provider-test-harness';
+import { installCloudProviderTestHarness } from './cloud-provider-test-harness';
 
-const { mockStorage, resetStorage, mockFetch } = installCloudProviderTestHarness();
+const {
+  mockStorage,
+  resetStorage,
+  queueRejectedFetch,
+  queueHttpError,
+} = installCloudProviderTestHarness();
 
 // ---------------------------------------------------------------------------
 // Module mocks
 // ---------------------------------------------------------------------------
 vi.mock('../core/language-map', () => ({
   getLanguageName: (code: string) => {
-    const names: Record<string, string> = { en: 'English', fi: 'Finnish', de: 'German' };
+    const names: Record<string, string> = {
+      en: 'English',
+      fi: 'Finnish',
+      de: 'German',
+    };
     return names[code] ?? code;
   },
   getAllLanguageCodes: () => ['en', 'fi', 'de'],
@@ -93,15 +99,13 @@ describe.each(CLOUD_PROVIDERS)(
 
     // ----- Network error (fetch throws) --------------------------------
     it('throws on network error (fetch rejects)', async () => {
-      mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      queueRejectedFetch(new TypeError('Failed to fetch'));
 
-      await expect(
-        provider.translate('Hello', 'en', 'fi'),
-      ).rejects.toThrow();
+      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
     });
 
     it('network error is retryable', async () => {
-      mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      queueRejectedFetch(new TypeError('Failed to fetch'));
 
       try {
         await provider.translate('Hello', 'en', 'fi');
@@ -123,19 +127,13 @@ describe.each(CLOUD_PROVIDERS)(
 
     // ----- 401 Unauthorized -------------------------------------------
     it('throws on 401 Unauthorized', async () => {
-      mockFetch.mockResolvedValueOnce(
-        httpErrorResponse(401, '{"error":"invalid_api_key"}'),
-      );
+      queueHttpError(401, '{"error":"invalid_api_key"}');
 
-      await expect(
-        provider.translate('Hello', 'en', 'fi'),
-      ).rejects.toThrow();
+      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
     });
 
     it('401 error is categorised as auth', async () => {
-      mockFetch.mockResolvedValueOnce(
-        httpErrorResponse(401, '{"error":"invalid_api_key"}'),
-      );
+      queueHttpError(401, '{"error":"invalid_api_key"}');
 
       try {
         await provider.translate('Hello', 'en', 'fi');
@@ -159,19 +157,13 @@ describe.each(CLOUD_PROVIDERS)(
 
     // ----- 429 Rate Limit ---------------------------------------------
     it('throws on 429 Rate Limit', async () => {
-      mockFetch.mockResolvedValueOnce(
-        httpErrorResponse(429, '{"error":"rate_limit_exceeded"}'),
-      );
+      queueHttpError(429, '{"error":"rate_limit_exceeded"}');
 
-      await expect(
-        provider.translate('Hello', 'en', 'fi'),
-      ).rejects.toThrow();
+      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
     });
 
     it('429 error is categorised as rate_limit', async () => {
-      mockFetch.mockResolvedValueOnce(
-        httpErrorResponse(429, '{"error":"rate_limit_exceeded"}'),
-      );
+      queueHttpError(429, '{"error":"rate_limit_exceeded"}');
 
       try {
         await provider.translate('Hello', 'en', 'fi');
@@ -191,19 +183,13 @@ describe.each(CLOUD_PROVIDERS)(
 
     // ----- 500 Server Error -------------------------------------------
     it('throws on 500 Server Error', async () => {
-      mockFetch.mockResolvedValueOnce(
-        httpErrorResponse(500, 'Internal Server Error'),
-      );
+      queueHttpError(500, 'Internal Server Error');
 
-      await expect(
-        provider.translate('Hello', 'en', 'fi'),
-      ).rejects.toThrow();
+      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
     });
 
     it('500 error propagates as thrown error', async () => {
-      mockFetch.mockResolvedValueOnce(
-        httpErrorResponse(500, 'Internal Server Error'),
-      );
+      queueHttpError(500, 'Internal Server Error');
 
       try {
         await provider.translate('Hello', 'en', 'fi');
@@ -214,7 +200,9 @@ describe.each(CLOUD_PROVIDERS)(
           // depending on pattern matching it may land in 'internal' or 'network'.
           expect(typeof err.category).toBe('string');
           expect(
-            /server.error|internal/i.test(String(err.technicalDetails ?? err.message)),
+            /server.error|internal/i.test(
+              String(err.technicalDetails ?? err.message),
+            ),
           ).toBe(true);
         } else {
           const msg = error instanceof Error ? error.message : String(error);
