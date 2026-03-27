@@ -3854,7 +3854,7 @@ describe('Content Script', () => {
       startPageTranslation(sr);
       await waitForAsyncContentWork(400);
 
-      // 201 elements → outer requestIdleCallback (line 869), inner requestIdleCallback (line 862)
+      // 201 elements → deferred chunk scheduling uses requestIdleCallback for the tail work
       mockSendMessage.mockResolvedValue({ success: true, result: [] });
       for (let i = 0; i < 201; i++) {
         const span = document.createElement('span');
@@ -3866,7 +3866,7 @@ describe('Content Script', () => {
     });
   });
 
-  describe('handleMutations overflow protection', () => {
+  describe('mutation orchestrator overflow protection', () => {
     it('drops mutations beyond maxPending limit and logs at 200-mutation intervals', async () => {
       document.body.innerHTML = '<p>Seed</p>';
       mockSendMessage.mockResolvedValueOnce({ success: true, result: ['T'] });
@@ -3875,8 +3875,8 @@ describe('Content Script', () => {
       startPageTranslation(sr);
       await waitForAsyncContentWork(400);
 
-      // 2200 synchronous appends produce one handleMutations call with 2200 records.
-      // maxPending=2000: first 2000 pushed, 200 dropped → droppedCount=200, 200%200=0 → line 893.
+      // 2200 synchronous appends produce one overflow burst in the shared mutation orchestrator.
+      // maxPending=2000: first 2000 buffered, 200 dropped → first diagnostic warning boundary.
       mockSendMessage.mockResolvedValue({ success: true, result: [] });
       for (let i = 0; i < 2200; i++) {
         document.body.appendChild(document.createElement('span'));
@@ -3910,7 +3910,7 @@ describe('Content Script', () => {
       await waitForAsyncContentWork(400);
 
       // attachShadow triggers the interceptor installed by observeShadowRoots in startMutationObserver
-      // → the callback at line 924 (observeShadowRoot) fires
+      // → the shared shadow-root observer callback fires
       const host = document.createElement('div');
       document.body.appendChild(host);
       host.attachShadow({ mode: 'open' });
@@ -4197,8 +4197,8 @@ describe('Content Script', () => {
   // ============================================================================
   // Branch coverage: processPendingMutations early return (line 828)
   // ============================================================================
-  describe('processPendingMutations with empty pending array', () => {
-    it('returns early when no mutations are pending', async () => {
+  describe('mutation orchestrator no-op flush', () => {
+    it('returns early when no buffered mutations are pending', async () => {
       document.body.innerHTML = '<p>Seed for empty mutations</p>';
       mockSendMessage.mockResolvedValueOnce({ success: true, result: ['T'] });
 

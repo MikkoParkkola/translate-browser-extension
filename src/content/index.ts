@@ -23,12 +23,10 @@ import { browserAPI } from '../core/browser-api';
 import { initSubtitleTranslation, cleanupSubtitleTranslation } from './subtitle-translator';
 import { isPdfPage, initPdfTranslation, cleanupPdfTranslation } from './pdf-translator';
 import {
-  observeShadowRoots,
-  observeShadowRoot,
-  cleanupShadowObservers,
   getDeepSelection,
   installAttachShadowInterceptor,
 } from './shadow-dom-walker';
+import { createMutationOrchestrator } from './mutation-orchestrator';
 // measureTimeAsync imported for future use in async profiling
 // import { measureTimeAsync } from '../core/profiler';
 import {
@@ -117,11 +115,6 @@ installAttachShadowInterceptor();
 
 let isTranslatingPage = false;
 let isTranslatingDynamic = false;
-let pendingMutations: MutationRecord[] = [];
-let mutationDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-let mutationObserver: MutationObserver | null = null;
-/** Cleanup function returned by observeShadowRoots */
-let shadowRootCleanup: (() => void) | null = null;
 /** Queued dynamic nodes that arrived during page translation, translated after page completes */
 let queuedDynamicNodes: Node[] = [];
 
@@ -872,97 +865,13 @@ function undoTranslation(): number {
 // MutationObserver for Dynamic Content
 // ============================================================================
 
-/**
- * Process pending mutations with debouncing and chunked processing.
- * Caps per-cycle processing to avoid blocking the main thread on
- * content-heavy pages that generate hundreds of mutations.
- */
-function processPendingMutations(): void {
-  /* v8 ignore start -- debounce timer always fires with pending mutations */
-  if (pendingMutations.length === 0) return;
-  /* v8 ignore stop */
-
-  // Collect all added nodes
-  const addedNodes: Node[] = [];
-  for (const mutation of pendingMutations) {
-    for (const node of mutation.addedNodes) {
-      if (
-        node.nodeType === Node.ELEMENT_NODE ||
-        node.nodeType === Node.TEXT_NODE
-      ) {
-        addedNodes.push(node);
-      }
-    }
-  }
-
-  pendingMutations = [];
-
-  if (addedNodes.length === 0) return;
-
-  // Process in capped chunks to avoid main-thread jank
-  if (addedNodes.length <= CONFIG.mutations.batchCapPerCycle) {
-    translateDynamicContent(addedNodes);
-  } else {
-    // Process first chunk immediately
-    translateDynamicContent(addedNodes.slice(0, CONFIG.mutations.batchCapPerCycle));
-    // Defer remaining chunks via requestIdleCallback / setTimeout
-    let offset = CONFIG.mutations.batchCapPerCycle;
-    const processNextChunk = () => {
-      /* v8 ignore start -- chunk boundary guard in deferred processing */
-      if (offset >= addedNodes.length) return;
-      /* v8 ignore stop */
-      const chunk = addedNodes.slice(offset, offset + CONFIG.mutations.batchCapPerCycle);
-      offset += CONFIG.mutations.batchCapPerCycle;
-      translateDynamicContent(chunk);
-      if (offset < addedNodes.length) {
-        if ('requestIdleCallback' in window) {
-          window.requestIdleCallback(processNextChunk);
-        } else {
-          setTimeout(processNextChunk, 50);
-        }
-      }
-    };
-    /* v8 ignore start -- requestIdleCallback: chunked processing not reachable in jsdom */
-    if ('requestIdleCallback' in window) {
-      window.requestIdleCallback(processNextChunk);
-    } else {
-      setTimeout(processNextChunk, 50);
-    }
-    /* v8 ignore stop */
-  }
-}
-
-/** Counter for mutations dropped due to buffer overflow (diagnostic) */
-let droppedMutationCount = 0;
-
-/**
- * Shared mutation callback for both the main observer and shadow root observers.
- */
-function handleMutations(mutations: MutationRecord[]): void {
-  for (const mutation of mutations) {
-    if (pendingMutations.length < CONFIG.mutations.maxPending) {
-      pendingMutations.push(mutation);
-    } else {
-      droppedMutationCount++;
-    }
-  }
-
-  // Log dropped mutations periodically so heavy SPAs are diagnosable
-  /* v8 ignore start -- requires exactly 200 dropped mutations; diagnostic-only */
-  if (droppedMutationCount > 0 && droppedMutationCount % 200 === 0) {
-    log.warn(`Dropped ${droppedMutationCount} mutations (maxPending=${CONFIG.mutations.maxPending})`);
-  }
-  /* v8 ignore stop */
-
-  if (mutationDebounceTimer !== null) {
-    clearTimeout(mutationDebounceTimer);
-  }
-
-  mutationDebounceTimer = setTimeout(() => {
-    mutationDebounceTimer = null;
-    processPendingMutations();
-  }, CONFIG.mutations.debounceMs);
-}
+const mutationOrchestrator = createMutationOrchestrator({
+  log,
+  config: CONFIG,
+  onNodesAdded: (nodes) => {
+    void translateDynamicContent(nodes);
+  },
+});
 
 /**
  * Start observing DOM mutations for auto-translation.
@@ -970,49 +879,16 @@ function handleMutations(mutations: MutationRecord[]): void {
  * are captured for dynamic translation.
  */
 function startMutationObserver(): void {
-  if (mutationObserver) return;
-
-  mutationObserver = new MutationObserver(handleMutations);
-
-  mutationObserver.observe(document.body, {
-    childList: true,
-    subtree: true,
-  });
-
-  // Observe shadow roots: when a new shadow root appears, attach a
-  // MutationObserver inside it so dynamic content is translated.
-  shadowRootCleanup = observeShadowRoots(document, (shadowRoot) => {
-    observeShadowRoot(shadowRoot, handleMutations);
-  });
-
-  log.info(' MutationObserver started (with shadow DOM support)');
+  mutationOrchestrator.start();
 }
 
 /**
  * Stop observing DOM mutations (including shadow root observers)
  */
 function stopMutationObserver(): void {
-  if (mutationObserver) {
-    mutationObserver.disconnect();
-    mutationObserver = null;
-  }
-
-  // Clean up shadow root observers and interceptor
-  if (shadowRootCleanup) {
-    shadowRootCleanup();
-    shadowRootCleanup = null;
-  }
-  cleanupShadowObservers();
-
-  if (mutationDebounceTimer !== null) {
-    clearTimeout(mutationDebounceTimer);
-    mutationDebounceTimer = null;
-  }
-
-  pendingMutations = [];
+  mutationOrchestrator.stop();
   stopBelowFoldObserver();
   removeProgressToast();
-  log.info(' MutationObserver stopped');
 }
 
 
