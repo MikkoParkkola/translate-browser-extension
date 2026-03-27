@@ -1,4 +1,5 @@
 import { vi } from 'vitest';
+import { createBrowserApiModuleExports } from './browser-api-mocks';
 
 type MockFn = ReturnType<typeof vi.fn>;
 
@@ -123,12 +124,10 @@ export function createBrowserApiModuleMock(
     };
   }
 
-  const moduleMock: Record<string, unknown> = { browserAPI };
-
-  if (options.includeSendMessageExport) {
-    moduleMock.sendMessage = (browserAPI.runtime as { sendMessage?: unknown })
-      ?.sendMessage;
-  }
-
-  return moduleMock;
+  return createBrowserApiModuleExports({
+    browserAPI,
+    getURL: options.runtimeGetURL,
+    sendMessage: options.runtimeSendMessage,
+    includeSendMessageExport: options.includeSendMessageExport,
+  });
 }

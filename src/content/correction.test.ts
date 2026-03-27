@@ -5,7 +5,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createBrowserApiModuleMock, createLoggerModuleMock } from '../test-helpers/module-mocks';
+import { createBrowserApiModuleMock } from '../test-helpers/browser-api-mocks';
+import { createLoggerModuleMock } from '../test-helpers/module-mocks';
 
 // Mock logger
 vi.mock('../core/logger', () => createLoggerModuleMock());
@@ -28,8 +29,14 @@ const { mockSendMessage, mockStorageSet } = vi.hoisted(() => ({
   mockStorageSet: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../core/browser-api', () => createBrowserApiModuleMock({
-  runtimeSendMessage: mockSendMessage,
-  storageLocalSet: mockStorageSet,
+  runtime: {
+    sendMessage: mockSendMessage,
+  },
+  storage: {
+    local: {
+      set: mockStorageSet,
+    },
+  },
 }));
 
 // Mock content-types
@@ -284,12 +291,18 @@ describe('showCorrectionHint', () => {
     vi.doMock('../core/storage', () => ({
       safeStorageGet: (...args: unknown[]) => mockSafeStorageGet(...args),
     }));
-    vi.doMock('../core/browser-api', () => ({
-      browserAPI: {
-        runtime: { sendMessage: (...args: unknown[]) => mockSendMessage(...args) },
-        storage: { local: { set: (...args: unknown[]) => mockStorageSet(...args) } },
-      },
-    }));
+    vi.doMock('../core/browser-api', () =>
+      createBrowserApiModuleMock({
+        runtime: {
+          sendMessage: mockSendMessage,
+        },
+        storage: {
+          local: {
+            set: mockStorageSet,
+          },
+        },
+      })
+    );
     vi.doMock('./content-types', () => ({
       MACHINE_TRANSLATION_ATTR: 'data-machine-translation',
       ORIGINAL_TEXT_ATTR: 'data-original-text',

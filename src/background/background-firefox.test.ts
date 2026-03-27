@@ -8,6 +8,10 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll, afterEach } from 'vitest';
 import { setupChromeApiMock } from '../test-helpers/chrome-mocks';
 import { setupChromeRuntimeMessagingMocks } from '../test-helpers/chrome-runtime-messaging-mocks';
+import {
+  createBrowserApiModuleExports,
+  createFirefoxBrowserApiModuleMock,
+} from '../test-helpers/browser-api-mocks';
 
 // ============================================================================
 // Mocks — set up BEFORE any imports
@@ -125,10 +129,14 @@ vi.mock('../core/logger', () => ({
   }),
 }));
 
-vi.mock('../core/browser-api', () => ({
-  browserAPI: firefoxBrowserApi,
-  getURL: mockGetURL,
-}));
+vi.mock('../core/browser-api', () =>
+  createBrowserApiModuleExports({
+    browserAPI: firefoxBrowserApi as unknown as Record<string, unknown>,
+    getURL: mockGetURL,
+    isFirefox: true,
+    isChrome: false,
+  })
+);
 
 // Mock core utilities
 vi.mock('../core/errors', () => ({
@@ -3366,13 +3374,13 @@ describe('background-firefox translate: additional coverage', () => {
 
       // Re-mock browser-api WITHOUT browserAction or commands so both optional-
       // chain guards evaluate to false when the module is re-imported.
-      vi.doMock('../core/browser-api', () => ({
-        getURL: vi.fn().mockReturnValue('mocked://assets/'),
-        browserAPI: {
+      vi.doMock('../core/browser-api', () =>
+        createFirefoxBrowserApiModuleMock({
+          omit: ['browserAction', 'commands'],
+          getURL: vi.fn().mockReturnValue('mocked://assets/'),
           runtime: {
             onInstalled: { addListener: vi.fn() },
             onMessage: { addListener: vi.fn() },
-            // no browserAction, no commands
           },
           storage: {
             local: {
@@ -3381,10 +3389,14 @@ describe('background-firefox translate: additional coverage', () => {
               remove: vi.fn().mockResolvedValue(undefined),
             },
           },
-          tabs: { query: vi.fn().mockResolvedValue([]) },
-          i18n: { getUILanguage: vi.fn().mockReturnValue('en') },
-        },
-      }));
+          tabs: {
+            query: vi.fn().mockResolvedValue([]),
+          },
+          i18n: {
+            getUILanguage: vi.fn().mockReturnValue('en'),
+          },
+        })
+      );
 
       await import('./background-firefox');
       await waitForAsyncFirefoxWork(20);

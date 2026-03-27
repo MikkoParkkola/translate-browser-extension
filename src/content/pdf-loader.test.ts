@@ -6,8 +6,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createBrowserApiModuleMock } from '../test-helpers/browser-api-mocks';
 import {
-  createBrowserApiModuleMock,
   createLoggerModuleMock,
 } from '../test-helpers/module-mocks';
 
@@ -18,7 +18,9 @@ vi.mock('../core/logger', () => createLoggerModuleMock());
 const mockGetURL = vi.fn((path: string) => `chrome-extension://test-id/${path}`);
 vi.mock('../core/browser-api', () =>
   createBrowserApiModuleMock({
-    runtimeGetURL: (path: string) => mockGetURL(path),
+    runtime: {
+      getURL: mockGetURL,
+    },
   })
 );
 
@@ -45,7 +47,9 @@ describe('pdf-loader', () => {
     vi.doMock('../core/logger', () => createLoggerModuleMock());
     vi.doMock('../core/browser-api', () =>
       createBrowserApiModuleMock({
-        runtimeGetURL: (path: string) => mockGetURL(path),
+        runtime: {
+          getURL: mockGetURL,
+        },
       })
     );
 
@@ -209,7 +213,9 @@ describe('pdf-loader', () => {
       vi.doMock('../core/logger', () => createLoggerModuleMock());
       vi.doMock('../core/browser-api', () =>
         createBrowserApiModuleMock({
-          runtimeGetURL: (path: string) => `chrome-extension://test-id/${path}`,
+          runtime: {
+            getURL: vi.fn((path: string) => `chrome-extension://test-id/${path}`),
+          },
         })
       );
 
