@@ -6,32 +6,26 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createLoggerModuleMock } from '../test-helpers/module-mocks';
+import { createMockRange } from '../test-helpers/dom-property-mocks';
 
 vi.mock('../core/logger', () => createLoggerModuleMock());
 
 import { showTranslationTooltip, showErrorTooltip, removeTooltip } from './tooltip';
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
-function makeRange(rect: Partial<DOMRect> = {}): Range {
-  const range = document.createRange();
-  // Override getBoundingClientRect
-  range.getBoundingClientRect = () => ({
-    top: 0,
-    bottom: 100,
-    left: 50,
-    right: 200,
-    width: 150,
-    height: 100,
-    x: 50,
-    y: 0,
-    toJSON: () => ({}),
-    ...rect,
-  });
-  return range;
-}
+const makeRange = (rect: Partial<DOMRect> = {}) =>
+  createMockRange({
+    rect: {
+      top: 0,
+      bottom: 100,
+      left: 50,
+      right: 200,
+      width: 150,
+      height: 100,
+      x: 50,
+      y: 0,
+      ...rect,
+    },
+  }).range;
 
 // ============================================================================
 // removeTooltip

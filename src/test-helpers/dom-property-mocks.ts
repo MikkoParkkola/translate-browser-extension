@@ -30,6 +30,48 @@ type ImageConstructorMockOptions = {
   trigger?: 'microtask' | 'macrotask';
 };
 
+type MockRangeRectOptions = {
+  rect?: Partial<DOMRect>;
+  fixtureKey?: string;
+  target?: Range | typeof Range.prototype;
+};
+
+type CreateMockRangeOptions = {
+  startContainer?: Node;
+  startOffset?: number;
+  endContainer?: Node;
+  endOffset?: number;
+  rect?: Partial<DOMRect>;
+  rectTarget?: Range | typeof Range.prototype;
+  fixtureKey?: string;
+};
+
+type MockSelectionOptions = {
+  range?: Range | null;
+  text?: string;
+  isCollapsed?: boolean;
+  rangeCount?: number;
+  anchorNode?: Node | null;
+  focusNode?: Node | null;
+  selection?: Partial<Selection>;
+  fixtureKey?: string;
+};
+
+type SetupCaretRangeFromTextOptions = {
+  hostTag?: keyof HTMLElementTagNameMap;
+  startOffset?: number;
+  endOffset?: number;
+  rect?: Partial<DOMRect>;
+  fixtureKeyPrefix?: string;
+};
+
+let domMockFixtureSequence = 0;
+
+function nextFixtureKey(prefix: string) {
+  domMockFixtureSequence += 1;
+  return `${prefix}.${domMockFixtureSequence}`;
+}
+
 export function overrideProperty(
   target: PropertyTarget,
   property: PropertyKey,
@@ -118,6 +160,183 @@ export function createDomRect(rect: Partial<DOMRect> = {}): DOMRect {
       height,
     }),
   } as DOMRect;
+}
+
+export function mockRangeBoundingClientRect(options: MockRangeRectOptions = {}) {
+  const rect = createDomRect(options.rect);
+  const target = options.target ?? Range.prototype;
+  const restore = overrideProperty(target, 'getBoundingClientRect', {
+    value: () => rect,
+  }, {
+    fixtureKey: options.fixtureKey ?? nextFixtureKey('range.getBoundingClientRect'),
+  });
+
+  return {
+    rect,
+    restore,
+  };
+}
+
+export function createMockRange(options: CreateMockRangeOptions = {}) {
+  const range = document.createRange();
+
+  if (options.startContainer) {
+    range.setStart(options.startContainer, options.startOffset ?? 0);
+  }
+
+  if (options.endContainer) {
+    range.setEnd(options.endContainer, options.endOffset ?? 0);
+  } else if (options.startContainer) {
+    range.setEnd(options.startContainer, options.startOffset ?? 0);
+  }
+
+  const rectMock = options.rect
+    ? mockRangeBoundingClientRect({
+      rect: options.rect,
+      target: options.rectTarget ?? range,
+      fixtureKey: options.fixtureKey,
+    })
+    : null;
+
+  return {
+    range,
+    rect: rectMock?.rect ?? null,
+    restore: () => {
+      rectMock?.restore();
+    },
+  };
+}
+
+export function mockCaretRangeFromPoint(
+  rangeOrFactory: Range | null | ((x: number, y: number) => Range | null),
+  fixtureKey = nextFixtureKey('document.caretRangeFromPoint'),
+) {
+  const caretRangeFromPointMock = vi.fn((x: number, y: number) =>
+    typeof rangeOrFactory === 'function'
+      ? rangeOrFactory(x, y)
+      : rangeOrFactory
+  );
+
+  const restore = overrideProperty(document, 'caretRangeFromPoint', {
+    value: caretRangeFromPointMock,
+    writable: true,
+  }, {
+    fixtureKey,
+  });
+
+  return {
+    caretRangeFromPointMock,
+    restore,
+  };
+}
+
+export function mockDocumentCreateRange(
+  rangeOrFactory: Range | (() => Range),
+  fixtureKey = nextFixtureKey('document.createRange'),
+) {
+  const createRangeMock = vi.fn(() =>
+    typeof rangeOrFactory === 'function'
+      ? rangeOrFactory()
+      : rangeOrFactory
+  );
+
+  const restore = overrideProperty(document, 'createRange', {
+    value: createRangeMock,
+    writable: true,
+  }, {
+    fixtureKey,
+  });
+
+  return {
+    createRangeMock,
+    restore,
+  };
+}
+
+export function mockWindowSelection(
+  selectionOrFactory: Selection | null | (() => Selection | null),
+  fixtureKey = nextFixtureKey('window.getSelection'),
+) {
+  const getSelectionMock = vi.fn(() =>
+    typeof selectionOrFactory === 'function'
+      ? selectionOrFactory()
+      : selectionOrFactory
+  );
+
+  const restore = overrideProperty(window, 'getSelection', {
+    value: getSelectionMock,
+    writable: true,
+  }, {
+    fixtureKey,
+  });
+
+  return {
+    getSelectionMock,
+    restore,
+  };
+}
+
+export function setupSelectionMock(options: MockSelectionOptions = {}) {
+  const selection = {
+    isCollapsed: options.isCollapsed ?? false,
+    rangeCount: options.rangeCount ?? (options.range ? 1 : 0),
+    toString: () => options.text ?? '',
+    getRangeAt: vi.fn(() => {
+      if (!options.range) {
+        throw new Error('No mock range configured');
+      }
+      return options.range;
+    }),
+    anchorNode: options.anchorNode ?? options.range?.startContainer ?? null,
+    focusNode: options.focusNode ?? options.range?.endContainer ?? null,
+    ...options.selection,
+  } as unknown as Selection;
+
+  const selectionMock = mockWindowSelection(selection, options.fixtureKey);
+
+  return {
+    selection,
+    getSelectionMock: selectionMock.getSelectionMock,
+    restore: selectionMock.restore,
+  };
+}
+
+export function setupCaretRangeFromText(text: string, options: SetupCaretRangeFromTextOptions = {}) {
+  const host = document.createElement(options.hostTag ?? 'p');
+  const textNode = document.createTextNode(text);
+  host.appendChild(textNode);
+  document.body.appendChild(host);
+
+  const fallbackOffset = Math.floor(text.length / 2);
+  const rangeMock = createMockRange({
+    startContainer: textNode,
+    startOffset: options.startOffset ?? fallbackOffset,
+    endContainer: textNode,
+    endOffset: options.endOffset ?? options.startOffset ?? fallbackOffset,
+    rect: options.rect,
+    rectTarget: Range.prototype,
+    fixtureKey: options.fixtureKeyPrefix
+      ? `${options.fixtureKeyPrefix}.rangeRect`
+      : nextFixtureKey('hoverText.rangeRect'),
+  });
+  const caretRangeMock = mockCaretRangeFromPoint(
+    rangeMock.range,
+    options.fixtureKeyPrefix
+      ? `${options.fixtureKeyPrefix}.caretRangeFromPoint`
+      : nextFixtureKey('hoverText.caretRangeFromPoint'),
+  );
+
+  return {
+    host,
+    textNode,
+    range: rangeMock.range,
+    rect: rangeMock.rect,
+    restore: () => {
+      caretRangeMock.restore();
+      rangeMock.restore();
+      host.remove();
+    },
+  };
 }
 
 export function createLoadedImage(src: string, options: MockImageOptions = {}) {

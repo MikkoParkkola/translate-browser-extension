@@ -7,6 +7,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createBrowserApiModuleMock, createLoggerModuleMock } from '../test-helpers/module-mocks';
+import {
+  createMockRange,
+  mockCaretRangeFromPoint,
+  mockRangeBoundingClientRect,
+  setupCaretRangeFromText,
+} from '../test-helpers/dom-property-mocks';
 
 // ============================================================================
 // Mocks (must be at top level — vi.mock hoisting)
@@ -43,6 +49,17 @@ vi.mock('./dom-utils', () => ({
 // ============================================================================
 // Tests
 // ============================================================================
+
+const HOVER_RANGE_RECT = {
+  top: 100,
+  bottom: 120,
+  left: 200,
+  right: 250,
+  width: 50,
+  height: 20,
+  x: 200,
+  y: 100,
+};
 
 describe('setResolveSourceLang', () => {
   beforeEach(() => {
@@ -214,33 +231,15 @@ describe('handleHoverTranslation via mousemove with text node', () => {
   // Helper: create a text node and mock caretRangeFromPoint to return a Range on it.
   // Also patches Range.prototype.getBoundingClientRect so the wordRange in hover.ts works.
   function setupTextNodeAndRange(text: string): { textNode: Text; restoreCaretRange: () => void } {
-    // Add a real text node in a plain element (shouldSkip returns false by default from mock)
-    const p = document.createElement('p');
-    const textNode = document.createTextNode(text);
-    p.appendChild(textNode);
-    document.body.appendChild(p);
-
-    // Create a real Range on the text node (returned by caretRangeFromPoint)
-    const range = document.createRange();
-    range.setStart(textNode, Math.floor(text.length / 2));
-    range.setEnd(textNode, Math.floor(text.length / 2));
-
-    // Patch getBoundingClientRect on Range.prototype so ALL ranges work
-    const origGetBBR = Range.prototype.getBoundingClientRect;
-    Range.prototype.getBoundingClientRect = () => ({
-      top: 100, bottom: 120, left: 200, right: 250,
-      width: 50, height: 20, x: 200, y: 100, toJSON: () => ({}),
-    } as DOMRect);
-
-    const origCaretRange = document.caretRangeFromPoint;
-    document.caretRangeFromPoint = () => range;
+    const caretRangeMock = setupCaretRangeFromText(text, {
+      startOffset: Math.floor(text.length / 2),
+      endOffset: Math.floor(text.length / 2),
+      rect: HOVER_RANGE_RECT,
+    });
 
     return {
-      textNode,
-      restoreCaretRange: () => {
-        document.caretRangeFromPoint = origCaretRange;
-        Range.prototype.getBoundingClientRect = origGetBBR;
-      },
+      textNode: caretRangeMock.textNode,
+      restoreCaretRange: caretRangeMock.restore,
     };
   }
 
@@ -379,21 +378,11 @@ describe('handleHoverTranslation error handling', () => {
     document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
 
-    const p = document.createElement('p');
-    const textNode = document.createTextNode('errortestword');
-    p.appendChild(textNode);
-    document.body.appendChild(p);
-
-    const range = document.createRange();
-    range.setStart(textNode, 0);
-    range.setEnd(textNode, 0);
-
-    const origGetBBR = Range.prototype.getBoundingClientRect;
-    Range.prototype.getBoundingClientRect = () =>
-      ({ top: 100, bottom: 120, left: 200, right: 250, width: 50, height: 20, x: 200, y: 100, toJSON: () => ({}) } as DOMRect);
-
-    const origCaretRange = document.caretRangeFromPoint;
-    document.caretRangeFromPoint = () => range;
+    const hoverWord = setupCaretRangeFromText('errortestword', {
+      startOffset: 0,
+      endOffset: 0,
+      rect: HOVER_RANGE_RECT,
+    });
 
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
     await vi.advanceTimersByTimeAsync(160);
@@ -402,8 +391,7 @@ describe('handleHoverTranslation error handling', () => {
     // Tooltip removed by finally block when tooltipReplaced is false (lines 222-223)
     expect(document.getElementById('translate-hover-tooltip')).toBeNull();
 
-    document.caretRangeFromPoint = origCaretRange;
-    Range.prototype.getBoundingClientRect = origGetBBR;
+    hoverWord.restore();
     cleanupHoverListeners();
   });
 
@@ -420,21 +408,11 @@ describe('handleHoverTranslation error handling', () => {
     document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
 
-    const p = document.createElement('p');
-    const textNode = document.createTextNode('timeoutword');
-    p.appendChild(textNode);
-    document.body.appendChild(p);
-
-    const range = document.createRange();
-    range.setStart(textNode, 0);
-    range.setEnd(textNode, 0);
-
-    const origGetBBR = Range.prototype.getBoundingClientRect;
-    Range.prototype.getBoundingClientRect = () =>
-      ({ top: 100, bottom: 120, left: 200, right: 250, width: 50, height: 20, x: 200, y: 100, toJSON: () => ({}) } as DOMRect);
-
-    const origCaretRange = document.caretRangeFromPoint;
-    document.caretRangeFromPoint = () => range;
+    const hoverWord = setupCaretRangeFromText('timeoutword', {
+      startOffset: 0,
+      endOffset: 0,
+      rect: HOVER_RANGE_RECT,
+    });
 
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
     await vi.advanceTimersByTimeAsync(160); // debounce fires, async chain starts
@@ -442,8 +420,7 @@ describe('handleHoverTranslation error handling', () => {
 
     expect(document.getElementById('translate-hover-tooltip')).toBeNull();
 
-    document.caretRangeFromPoint = origCaretRange;
-    Range.prototype.getBoundingClientRect = origGetBBR;
+    hoverWord.restore();
     cleanupHoverListeners();
   });
 });
@@ -455,28 +432,11 @@ describe('handleHoverTranslation error handling', () => {
 describe('handleHoverTranslation branch coverage', () => {
   /** Helper: set up a text node with mocked caretRangeFromPoint + getBoundingClientRect */
   function setupHoverWord(word: string): { restore: () => void } {
-    const p = document.createElement('p');
-    const textNode = document.createTextNode(word);
-    p.appendChild(textNode);
-    document.body.appendChild(p);
-
-    const range = document.createRange();
-    range.setStart(textNode, 0);
-    range.setEnd(textNode, 0);
-
-    const origGetBBR = Range.prototype.getBoundingClientRect;
-    Range.prototype.getBoundingClientRect = () =>
-      ({ top: 100, bottom: 120, left: 200, right: 250, width: 50, height: 20, x: 200, y: 100, toJSON: () => ({}) } as DOMRect);
-
-    const origCaretRange = document.caretRangeFromPoint;
-    document.caretRangeFromPoint = () => range;
-
-    return {
-      restore: () => {
-        document.caretRangeFromPoint = origCaretRange;
-        Range.prototype.getBoundingClientRect = origGetBBR;
-      },
-    };
+    return setupCaretRangeFromText(word, {
+      startOffset: 0,
+      endOffset: 0,
+      rect: HOVER_RANGE_RECT,
+    });
   }
 
   afterEach(() => {
@@ -577,12 +537,13 @@ describe('handleHoverTranslation branch coverage', () => {
     document.body.appendChild(div);
 
     // caretRangeFromPoint returns a range whose startContainer is an element, not text
-    const range = document.createRange();
-    range.setStart(div, 0);
-    range.setEnd(div, 0);
-
-    const origCaretRange = document.caretRangeFromPoint;
-    document.caretRangeFromPoint = () => range;
+    const { range } = createMockRange({
+      startContainer: div,
+      startOffset: 0,
+      endContainer: div,
+      endOffset: 0,
+    });
+    const caretRangeMock = mockCaretRangeFromPoint(range, 'hover.branch.nonText.caretRangeFromPoint');
 
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
     await vi.advanceTimersByTimeAsync(160);
@@ -591,7 +552,7 @@ describe('handleHoverTranslation branch coverage', () => {
     expect(document.getElementById('translate-hover-tooltip')).toBeNull();
     expect(mockSendMessage).not.toHaveBeenCalled();
 
-    document.caretRangeFromPoint = origCaretRange;
+    caretRangeMock.restore();
     cleanupHoverListeners();
   });
 
@@ -607,24 +568,17 @@ describe('handleHoverTranslation branch coverage', () => {
     document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
 
-    const p = document.createElement('p');
-    const textNode = document.createTextNode('shouldskipword');
-    p.appendChild(textNode);
-    document.body.appendChild(p);
-
-    const range = document.createRange();
-    range.setStart(textNode, 0);
-    range.setEnd(textNode, 0);
-
-    const origCaretRange = document.caretRangeFromPoint;
-    document.caretRangeFromPoint = () => range;
+    const hoverWord = setupCaretRangeFromText('shouldskipword', {
+      startOffset: 0,
+      endOffset: 0,
+    });
 
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
     await vi.advanceTimersByTimeAsync(160);
 
     expect(mockSendMessage).not.toHaveBeenCalled();
 
-    document.caretRangeFromPoint = origCaretRange;
+    hoverWord.restore();
     (shouldSkip as ReturnType<typeof vi.fn>).mockReturnValue(false);
     cleanupHoverListeners();
   });
@@ -640,24 +594,17 @@ describe('handleHoverTranslation branch coverage', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
 
     // Single character word — too short (< 2 chars)
-    const p = document.createElement('p');
-    const textNode = document.createTextNode('x');
-    p.appendChild(textNode);
-    document.body.appendChild(p);
-
-    const range = document.createRange();
-    range.setStart(textNode, 0);
-    range.setEnd(textNode, 0);
-
-    const origCaretRange = document.caretRangeFromPoint;
-    document.caretRangeFromPoint = () => range;
+    const hoverWord = setupCaretRangeFromText('x', {
+      startOffset: 0,
+      endOffset: 0,
+    });
 
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
     await vi.advanceTimersByTimeAsync(160);
 
     expect(mockSendMessage).not.toHaveBeenCalled();
 
-    document.caretRangeFromPoint = origCaretRange;
+    hoverWord.restore();
     cleanupHoverListeners();
   });
 
@@ -698,24 +645,17 @@ describe('handleHoverTranslation branch coverage', () => {
     document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
 
-    const p = document.createElement('p');
-    const textNode = document.createTextNode('');
-    p.appendChild(textNode);
-    document.body.appendChild(p);
-
-    const range = document.createRange();
-    range.setStart(textNode, 0);
-    range.setEnd(textNode, 0);
-
-    const origCaretRange = document.caretRangeFromPoint;
-    document.caretRangeFromPoint = () => range;
+    const hoverWord = setupCaretRangeFromText('', {
+      startOffset: 0,
+      endOffset: 0,
+    });
 
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
     await vi.advanceTimersByTimeAsync(160);
 
     expect(mockSendMessage).not.toHaveBeenCalled();
 
-    document.caretRangeFromPoint = origCaretRange;
+    hoverWord.restore();
     cleanupHoverListeners();
   });
 });
@@ -749,11 +689,16 @@ describe('LRU cache eviction in handleHoverTranslation', () => {
     const p = document.createElement('p');
     document.body.appendChild(p);
 
-    const origGetBBR = Range.prototype.getBoundingClientRect;
-    Range.prototype.getBoundingClientRect = () =>
-      ({ top: 100, bottom: 120, left: 200, right: 250, width: 50, height: 20, x: 200, y: 100, toJSON: () => ({}) } as DOMRect);
-
-    const origCaretRange = document.caretRangeFromPoint;
+    const rangeRectMock = mockRangeBoundingClientRect({
+      rect: HOVER_RANGE_RECT,
+      target: Range.prototype,
+      fixtureKey: 'hover.lru.rangeRect',
+    });
+    let currentRange: Range | null = null;
+    const caretRangeMock = mockCaretRangeFromPoint(
+      () => currentRange,
+      'hover.lru.caretRangeFromPoint',
+    );
 
     for (let i = 0; i < 101; i++) {
       document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
@@ -764,10 +709,12 @@ describe('LRU cache eviction in handleHoverTranslation', () => {
       const textNode = document.createTextNode(word);
       p.appendChild(textNode);
 
-      const range = document.createRange();
-      range.setStart(textNode, 0);
-      range.setEnd(textNode, 0);
-      document.caretRangeFromPoint = () => range;
+      currentRange = createMockRange({
+        startContainer: textNode,
+        startOffset: 0,
+        endContainer: textNode,
+        endOffset: 0,
+      }).range;
 
       document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
       await vi.advanceTimersByTimeAsync(160);
@@ -775,8 +722,8 @@ describe('LRU cache eviction in handleHoverTranslation', () => {
 
     expect(mockSendMessage).toHaveBeenCalledTimes(101);
 
-    document.caretRangeFromPoint = origCaretRange;
-    Range.prototype.getBoundingClientRect = origGetBBR;
+    caretRangeMock.restore();
+    rangeRectMock.restore();
     cleanupHoverListeners();
   });
 });
@@ -796,11 +743,16 @@ describe('Hover translation cache eviction (line 211 branch)', () => {
     const p = document.createElement('p');
     document.body.appendChild(p);
 
-    const origGetBBR = Range.prototype.getBoundingClientRect;
-    Range.prototype.getBoundingClientRect = () =>
-      ({ top: 100, bottom: 120, left: 200, right: 250, width: 50, height: 20, x: 200, y: 100, toJSON: () => ({}) } as DOMRect);
-
-    const origCaretRange = document.caretRangeFromPoint;
+    const rangeRectMock = mockRangeBoundingClientRect({
+      rect: HOVER_RANGE_RECT,
+      target: Range.prototype,
+      fixtureKey: 'hover.cacheEviction.rangeRect',
+    });
+    let currentRange: Range | null = null;
+    const caretRangeMock = mockCaretRangeFromPoint(
+      () => currentRange,
+      'hover.cacheEviction.caretRangeFromPoint',
+    );
 
     // Insert 5 items to test the cache logic path
     for (let i = 0; i < 5; i++) {
@@ -809,9 +761,12 @@ describe('Hover translation cache eviction (line 211 branch)', () => {
       const textNode = document.createTextNode(word);
       p.appendChild(textNode);
 
-      const range = document.createRange();
-      range.setStart(textNode, 0);
-      range.setEnd(textNode, word.length);
+      currentRange = createMockRange({
+        startContainer: textNode,
+        startOffset: 0,
+        endContainer: textNode,
+        endOffset: word.length,
+      }).range;
 
       mockSendMessage.mockResolvedValueOnce({
         success: true,
@@ -821,13 +776,12 @@ describe('Hover translation cache eviction (line 211 branch)', () => {
       document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
 
-      document.caretRangeFromPoint = () => range;
       document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 100 }));
       await vi.advanceTimersByTimeAsync(160);
     }
 
-    Range.prototype.getBoundingClientRect = origGetBBR;
-    document.caretRangeFromPoint = origCaretRange;
+    caretRangeMock.restore();
+    rangeRectMock.restore();
     cleanupHoverListeners();
     vi.useRealTimers();
   });
@@ -845,18 +799,22 @@ describe('Hover translation cache eviction (line 211 branch)', () => {
     const p = document.createElement('p');
     document.body.appendChild(p);
 
-    const origGetBBR = Range.prototype.getBoundingClientRect;
-    Range.prototype.getBoundingClientRect = () =>
-      ({ top: 100, bottom: 120, left: 200, right: 250, width: 50, height: 20, x: 200, y: 100, toJSON: () => ({}) } as DOMRect);
-
     const word = 'testword';
     p.textContent = '';
     const textNode = document.createTextNode(word);
     p.appendChild(textNode);
 
-    const range = document.createRange();
-    range.setStart(textNode, 0);
-    range.setEnd(textNode, word.length);
+    const rangeRectMock = mockRangeBoundingClientRect({
+      rect: HOVER_RANGE_RECT,
+      target: Range.prototype,
+      fixtureKey: 'hover.finally.rangeRect',
+    });
+    const { range } = createMockRange({
+      startContainer: textNode,
+      startOffset: 0,
+      endContainer: textNode,
+      endOffset: word.length,
+    });
 
     mockSendMessage.mockResolvedValueOnce({
       success: true,
@@ -866,8 +824,10 @@ describe('Hover translation cache eviction (line 211 branch)', () => {
     document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
 
-    const origCaretRange = document.caretRangeFromPoint;
-    document.caretRangeFromPoint = () => range;
+    const caretRangeMock = mockCaretRangeFromPoint(
+      range,
+      'hover.finally.caretRangeFromPoint',
+    );
 
     const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
 
@@ -877,8 +837,8 @@ describe('Hover translation cache eviction (line 211 branch)', () => {
     // Verify clearTimeout was called (finally block executes)
     expect(clearTimeoutSpy).toHaveBeenCalled();
 
-    document.caretRangeFromPoint = origCaretRange;
-    Range.prototype.getBoundingClientRect = origGetBBR;
+    caretRangeMock.restore();
+    rangeRectMock.restore();
     clearTimeoutSpy.mockRestore();
     cleanupHoverListeners();
     vi.useRealTimers();

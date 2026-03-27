@@ -6,6 +6,12 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setupChromeApiMock } from '../test-helpers/chrome-mocks';
+import {
+  createMockRange,
+  mockCaretRangeFromPoint,
+  mockDocumentCreateRange,
+  setupSelectionMock,
+} from '../test-helpers/dom-property-mocks';
 
 const mockSendMessage = vi.fn();
 const contentChromeMock = setupChromeApiMock({
@@ -95,6 +101,56 @@ describe('Content Script', () => {
     removeElementById('translate-ext-progress-toast');
     exitScreenshotMode();
     document.body.style.cursor = '';
+  };
+
+  const setupParagraphSelection = (
+    fullText: string,
+    options: {
+      selectedText?: string;
+      startOffset?: number;
+      endOffset?: number;
+      rect?: Partial<DOMRect>;
+      selection?: Partial<Selection>;
+      isCollapsed?: boolean;
+      rangeCount?: number;
+    } = {},
+  ) => {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = fullText;
+    document.body.appendChild(paragraph);
+    const textNode = paragraph.firstChild as Text;
+    const startOffset = options.startOffset ?? 0;
+    const endOffset = options.endOffset ?? fullText.length;
+    const { range } = createMockRange({
+      startContainer: textNode,
+      startOffset,
+      endContainer: textNode,
+      endOffset,
+      rect: {
+        top: 100,
+        bottom: 120,
+        left: 50,
+        right: 200,
+        width: 150,
+        height: 20,
+        ...options.rect,
+      },
+    });
+    const selectionText = options.selectedText ?? fullText.slice(startOffset, endOffset);
+    const selectionMock = setupSelectionMock({
+      range,
+      text: selectionText,
+      isCollapsed: options.isCollapsed,
+      rangeCount: options.rangeCount,
+      selection: options.selection,
+    });
+
+    return {
+      paragraph,
+      textNode,
+      range,
+      selection: selectionMock.selection,
+    };
   };
 
   const dispatchMessage = (message: unknown, sendResponse = vi.fn()) =>
@@ -270,14 +326,15 @@ describe('Content Script', () => {
 
   describe('translateSelection', () => {
     it('does nothing when no selection', async () => {
-      // Mock empty selection
-      const mockSelection = {
+      setupSelectionMock({
+        range: null,
+        text: '',
         isCollapsed: true,
-        toString: () => '',
-        getRangeAt: vi.fn(),
-      };
-
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+        rangeCount: 0,
+        selection: {
+          getRangeAt: vi.fn(),
+        },
+      });
 
       const sendResponse = vi.fn();
 
@@ -293,33 +350,7 @@ describe('Content Script', () => {
     });
 
     it('sends translate message for selected text', async () => {
-      // Create a real DOM text node inside a block element for getSelectionContext
-      const p = document.createElement('p');
-      p.textContent = 'Selected text here';
-      document.body.appendChild(p);
-      const textNode = p.firstChild!;
-
-      // Create a mock range with getBoundingClientRect
-      const mockRange = {
-        getBoundingClientRect: () => ({
-          top: 100,
-          bottom: 120,
-          left: 50,
-          right: 200,
-          width: 150,
-          height: 20,
-        }),
-        commonAncestorContainer: textNode,
-      };
-
-      const mockSelection = {
-        isCollapsed: false,
-        toString: () => 'Selected text here',
-        getRangeAt: () => mockRange,
-        rangeCount: 1,
-      };
-
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      setupParagraphSelection('Selected text here');
 
       mockSendMessage.mockResolvedValue({
         success: true,
@@ -345,32 +376,7 @@ describe('Content Script', () => {
     });
 
     it('creates tooltip after successful translation', async () => {
-      // Create a real DOM text node inside a block element for getSelectionContext
-      const p = document.createElement('p');
-      p.textContent = 'Text';
-      document.body.appendChild(p);
-      const textNode = p.firstChild!;
-
-      const mockRange = {
-        getBoundingClientRect: () => ({
-          top: 100,
-          bottom: 120,
-          left: 50,
-          right: 200,
-          width: 150,
-          height: 20,
-        }),
-        commonAncestorContainer: textNode,
-      };
-
-      const mockSelection = {
-        isCollapsed: false,
-        toString: () => 'Text',
-        getRangeAt: () => mockRange,
-        rangeCount: 1,
-      };
-
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      setupParagraphSelection('Text');
 
       mockSendMessage.mockResolvedValue({
         success: true,
@@ -578,31 +584,9 @@ describe('Content Script', () => {
     });
 
     it('sends immediate acknowledgment for translateSelection', () => {
-      document.body.innerHTML = '<p>Selected text</p>';
-
-      // Mock window.getSelection
-      const mockRange = {
-        getBoundingClientRect: () => ({ top: 0, left: 0, bottom: 10, right: 50, width: 50, height: 10 }),
-        cloneContents: () => {
-          const frag = document.createDocumentFragment();
-          frag.appendChild(document.createTextNode('Selected text'));
-          return frag;
-        },
-        commonAncestorContainer: document.body,
-        startContainer: document.body.firstChild!,
-        endContainer: document.body.firstChild!,
-        startOffset: 0,
-        endOffset: 1,
-      };
-      const mockSelection = {
-        rangeCount: 1,
-        getRangeAt: () => mockRange,
-        toString: () => 'Selected text',
-        isCollapsed: false,
-        anchorNode: document.body.firstChild,
-        focusNode: document.body.firstChild,
-      };
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      setupParagraphSelection('Selected text', {
+        rect: { top: 0, left: 0, bottom: 10, right: 50, width: 50, height: 10 },
+      });
 
       const sendResponse = vi.fn();
 
@@ -625,32 +609,7 @@ describe('Content Script', () => {
       existingTooltip.id = 'translate-tooltip';
       document.body.appendChild(existingTooltip);
 
-      // Create a real DOM text node inside a block element for getSelectionContext
-      const p = document.createElement('p');
-      p.textContent = 'New text';
-      document.body.appendChild(p);
-      const textNode = p.firstChild!;
-
-      const mockRange = {
-        getBoundingClientRect: () => ({
-          top: 100,
-          bottom: 120,
-          left: 50,
-          right: 200,
-          width: 150,
-          height: 20,
-        }),
-        commonAncestorContainer: textNode,
-      };
-
-      const mockSelection = {
-        isCollapsed: false,
-        toString: () => 'New text',
-        getRangeAt: () => mockRange,
-        rangeCount: 1,
-      };
-
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      setupParagraphSelection('New text');
 
       mockSendMessage.mockResolvedValue({
         success: true,
@@ -673,32 +632,7 @@ describe('Content Script', () => {
     });
 
     it('creates tooltip with correct structure', async () => {
-      // Create a real DOM text node inside a block element for getSelectionContext
-      const p = document.createElement('p');
-      p.textContent = 'Text';
-      document.body.appendChild(p);
-      const textNode = p.firstChild!;
-
-      const mockRange = {
-        getBoundingClientRect: () => ({
-          top: 100,
-          bottom: 120,
-          left: 50,
-          right: 200,
-          width: 150,
-          height: 20,
-        }),
-        commonAncestorContainer: textNode,
-      };
-
-      const mockSelection = {
-        isCollapsed: false,
-        toString: () => 'Text',
-        getRangeAt: () => mockRange,
-        rangeCount: 1,
-      };
-
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      setupParagraphSelection('Text');
 
       mockSendMessage.mockResolvedValue({
         success: true,
@@ -723,32 +657,7 @@ describe('Content Script', () => {
     });
 
     it('has close button that removes tooltip', async () => {
-      // Create a real DOM text node inside a block element for getSelectionContext
-      const p = document.createElement('p');
-      p.textContent = 'Text';
-      document.body.appendChild(p);
-      const textNode = p.firstChild!;
-
-      const mockRange = {
-        getBoundingClientRect: () => ({
-          top: 100,
-          bottom: 120,
-          left: 50,
-          right: 200,
-          width: 150,
-          height: 20,
-        }),
-        commonAncestorContainer: textNode,
-      };
-
-      const mockSelection = {
-        isCollapsed: false,
-        toString: () => 'Text',
-        getRangeAt: () => mockRange,
-        rangeCount: 1,
-      };
-
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      setupParagraphSelection('Text');
 
       mockSendMessage.mockResolvedValue({
         success: true,
@@ -2172,25 +2081,28 @@ describe('Content Script', () => {
       p.textContent = 'Hello world example text';
       document.body.appendChild(p);
 
-      // Mock caretRangeFromPoint to return a range at the text node
       const textNode = p.firstChild as Text;
-      const mockWordRange = {
+      const { range: caretRange } = createMockRange({
+        startContainer: textNode,
+        startOffset: 0,
+        endContainer: textNode,
+        endOffset: 0,
+      });
+      const { range: wordRange } = createMockRange({
         startContainer: textNode,
         startOffset: 0,
         endContainer: textNode,
         endOffset: 5,
-        getBoundingClientRect: () => ({ top: 10, left: 10, bottom: 30, right: 60, width: 50, height: 20 }),
-        setStart: vi.fn(),
-        setEnd: vi.fn(),
-      };
-
-      // Mock caretRangeFromPoint
-      const origCaretRange = document.caretRangeFromPoint;
-      (document as unknown as Record<string, unknown>).caretRangeFromPoint = vi.fn().mockReturnValue({
-        startContainer: textNode,
-        startOffset: 0,
+        rect: { top: 10, left: 10, bottom: 30, right: 60, width: 50, height: 20 },
       });
-      (document as unknown as Record<string, unknown>).createRange = vi.fn().mockReturnValue(mockWordRange);
+      const caretRangeMock = mockCaretRangeFromPoint(
+        caretRange,
+        'content.hoverFlow.caretRangeFromPoint',
+      );
+      const createRangeMock = mockDocumentCreateRange(
+        wordRange,
+        'content.hoverFlow.createRange',
+      );
 
       mockSendMessage.mockResolvedValue({ success: true, result: 'Hei' });
 
@@ -2206,8 +2118,8 @@ describe('Content Script', () => {
       // Release Alt
       document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
 
-      // Restore
-      (document as unknown as Record<string, unknown>).caretRangeFromPoint = origCaretRange;
+      caretRangeMock.restore();
+      createRangeMock.restore();
 
       // Tooltip may or may not appear depending on caretRangeFromPoint mock detail
       // The key test is that no crash occurred
