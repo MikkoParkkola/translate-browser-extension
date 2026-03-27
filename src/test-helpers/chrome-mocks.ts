@@ -131,6 +131,7 @@ export interface ChromeApiMockOptions {
     create?: ChromeMockFn;
     query?: ChromeMockFn;
     sendMessage?: ChromeMockFn;
+    captureVisibleTab?: ChromeMockFn;
     onUpdated?: Partial<ChromeEventMock>;
   };
   scripting?: {
@@ -187,6 +188,8 @@ export function createChromeApiMock(options: ChromeApiMockOptions = {}) {
       create: options.tabs?.create ?? vi.fn(),
       query: options.tabs?.query ?? vi.fn().mockResolvedValue([]),
       sendMessage: options.tabs?.sendMessage ?? vi.fn().mockResolvedValue({}),
+      captureVisibleTab:
+        options.tabs?.captureVisibleTab ?? vi.fn().mockResolvedValue(undefined),
       onUpdated: createChromeEventMock(options.tabs?.onUpdated),
     },
     scripting: {
@@ -281,6 +284,7 @@ export interface UiChromeMockOptions {
   storageSyncSet?: ChromeMockFn;
   tabsQuery?: ChromeMockFn;
   tabsSendMessage?: ChromeMockFn;
+  tabsCaptureVisibleTab?: ChromeMockFn;
   scriptingExecuteScript?: ChromeMockFn;
 }
 
@@ -308,6 +312,7 @@ export function createUiChromeMock(options: UiChromeMockOptions = {}) {
     tabs: {
       query: options.tabsQuery,
       sendMessage: options.tabsSendMessage,
+      captureVisibleTab: options.tabsCaptureVisibleTab,
     },
     scripting: {
       executeScript: options.scriptingExecuteScript,
@@ -327,6 +332,7 @@ export function setupUiChromeMock(options: UiChromeMockOptions = {}) {
     tabs: {
       query: chromeMock.tabs.query,
       sendMessage: chromeMock.tabs.sendMessage,
+      captureVisibleTab: chromeMock.tabs.captureVisibleTab,
     },
     scripting: chromeMock.scripting,
   });

@@ -7,6 +7,7 @@
 
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { setupChromeApiMock } from '../test-helpers/chrome-mocks';
+import { setupChromeTabsScriptingMocks } from '../test-helpers/chrome-tabs-scripting-mocks';
 
 const DEFAULT_TRANSLATED_RESPONSE = { success: true, result: 'translated' };
 const DEFAULT_TRANSLATED_TEXT_RESPONSE = {
@@ -60,11 +61,15 @@ const serviceWorkerChromeMock = setupChromeApiMock({
     create: vi.fn(),
     query: vi.fn().mockResolvedValue([]),
     sendMessage: vi.fn().mockResolvedValue(undefined),
+    captureVisibleTab: vi.fn().mockResolvedValue(undefined),
   },
   scripting: {
     executeScript: vi.fn().mockResolvedValue([]),
   },
 });
+const chromeTabsScriptingMocks = setupChromeTabsScriptingMocks(
+  serviceWorkerChromeMock.chrome,
+);
 
 const mockAddMessageListener = serviceWorkerChromeMock.events.runtime.onMessage.addListener;
 const mockAddInstalledListener = serviceWorkerChromeMock.events.runtime.onInstalled.addListener;
@@ -1880,7 +1885,9 @@ describe('Service Worker Extended Handler Coverage', () => {
   // --------------------------------------------------------------------------
   describe('captureScreenshot message', () => {
     it('captures visible tab without cropping', async () => {
-      vi.mocked(chrome.tabs).captureVisibleTab = vi.fn().mockResolvedValue('data:image/png;base64,screenshot');
+      chromeTabsScriptingMocks.queueCaptureVisibleTabResult(
+        'data:image/png;base64,screenshot',
+      );
 
       const response = await invoke({
         type: 'captureScreenshot',
@@ -1891,7 +1898,9 @@ describe('Service Worker Extended Handler Coverage', () => {
     });
 
     it('crops screenshot when rect is provided', async () => {
-      vi.mocked(chrome.tabs).captureVisibleTab = vi.fn().mockResolvedValue('data:image/png;base64,screenshot');
+      chromeTabsScriptingMocks.queueCaptureVisibleTabResult(
+        'data:image/png;base64,screenshot',
+      );
       mockSendMessage.mockReturnValue({ success: true, imageData: 'data:image/png;base64,cropped' });
 
       const response = await invoke({
@@ -1904,7 +1913,9 @@ describe('Service Worker Extended Handler Coverage', () => {
     });
 
     it('returns error when capture fails', async () => {
-      vi.mocked(chrome.tabs).captureVisibleTab = vi.fn().mockRejectedValue(new Error('Cannot capture'));
+      chromeTabsScriptingMocks.queueCaptureVisibleTabError(
+        new Error('Cannot capture'),
+      );
 
       const response = await invoke({
         type: 'captureScreenshot',
@@ -2182,16 +2193,12 @@ describe('Service Worker Extended Handler Coverage', () => {
   // --------------------------------------------------------------------------
   describe('translate message: chrome-builtin provider', () => {
     beforeEach(() => {
-      // Set up chrome.scripting mock
-      (chrome as unknown as Record<string, unknown>).scripting = {
-        executeScript: vi.fn(),
-      };
+      chromeTabsScriptingMocks.reset();
     });
 
     it('uses chrome.scripting.executeScript for chrome-builtin provider', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 99 }] as chrome.tabs.Tab[] as any);
-      const mockExecuteScript = vi.fn().mockResolvedValue([{ result: ['Hei'] }] as any);
-      (chrome as unknown as Record<string, unknown>).scripting = { executeScript: mockExecuteScript };
+      chromeTabsScriptingMocks.queueActiveTab({ id: 99 });
+      chromeTabsScriptingMocks.queueExecuteScriptResult(['Hei']);
 
       // Set provider to chrome-builtin first
       await invoke({ type: 'setProvider', provider: 'chrome-builtin' });
@@ -2208,7 +2215,7 @@ describe('Service Worker Extended Handler Coverage', () => {
       await invoke({ type: 'setProvider', provider: 'opus-mt' });
 
       // executeScript should have been called
-      expect(mockExecuteScript).toHaveBeenCalled();
+      expect(chromeTabsScriptingMocks.executeScriptMock).toHaveBeenCalled();
       expect(typeof response.success).toBe('boolean');
     });
 
@@ -2229,9 +2236,10 @@ describe('Service Worker Extended Handler Coverage', () => {
     });
 
     it('handles chrome-builtin executeScript failure', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 88 }] as chrome.tabs.Tab[] as any);
-      const mockExecuteScript = vi.fn().mockRejectedValue(new Error('Script injection failed'));
-      (chrome as unknown as Record<string, unknown>).scripting = { executeScript: mockExecuteScript };
+      chromeTabsScriptingMocks.queueActiveTab({ id: 88 });
+      chromeTabsScriptingMocks.queueExecuteScriptError(
+        new Error('Script injection failed'),
+      );
 
       const response = await invoke({
         type: 'translate',
@@ -2861,13 +2869,8 @@ describe('Service Worker Additional Coverage', () => {
   // --------------------------------------------------------------------------
   describe('Chrome Built-in Translator (handleTranslate chrome-builtin branch)', () => {
     it('translates text using chrome-builtin provider', async () => {
-      // Mock active tab
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 1 }] as any);
-      
-      // Mock executeScript to return translated text
-      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([
-        { result: ['Hola mundo'] }
-      ] as any);
+      chromeTabsScriptingMocks.queueActiveTab({ id: 1 });
+      chromeTabsScriptingMocks.queueExecuteScriptResult(['Hola mundo']);
 
       const response = await invoke({
         type: 'translate',
@@ -2897,10 +2900,8 @@ describe('Service Worker Additional Coverage', () => {
     });
 
     it('returns error when chrome translator api not available', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 1 }] as any);
-      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([
-        { result: undefined }
-      ] as any);
+      chromeTabsScriptingMocks.queueActiveTab({ id: 1 });
+      chromeTabsScriptingMocks.queueExecuteScriptResult(undefined);
 
       const response = await invoke({
         type: 'translate',
@@ -2914,10 +2915,8 @@ describe('Service Worker Additional Coverage', () => {
     });
 
     it('handles empty strings in chrome-builtin array response', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 1 }] as any);
-      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([
-        { result: [''] }
-      ] as any);
+      chromeTabsScriptingMocks.queueActiveTab({ id: 1 });
+      chromeTabsScriptingMocks.queueExecuteScriptResult(['']);
 
       const response = await invoke({
         type: 'translate',
@@ -3237,8 +3236,8 @@ describe('Service Worker Additional Coverage', () => {
   // --------------------------------------------------------------------------
   describe('captureScreenshot message', () => {
     it('captures full screenshot', async () => {
-      vi.mocked(chrome.tabs.captureVisibleTab).mockResolvedValueOnce(
-        'data:image/png;base64,iVBORw0KGgo...' as any
+      chromeTabsScriptingMocks.queueCaptureVisibleTabResult(
+        'data:image/png;base64,iVBORw0KGgo...',
       );
 
       const response = await invoke({
@@ -3250,8 +3249,8 @@ describe('Service Worker Additional Coverage', () => {
     });
 
     it('captures and crops screenshot with rect', async () => {
-      vi.mocked(chrome.tabs.captureVisibleTab).mockResolvedValueOnce(
-        'data:image/png;base64,iVBORw0KGgo...' as any
+      chromeTabsScriptingMocks.queueCaptureVisibleTabResult(
+        'data:image/png;base64,iVBORw0KGgo...',
       );
 
       mockSendMessage.mockReturnValueOnce({
@@ -3269,8 +3268,8 @@ describe('Service Worker Additional Coverage', () => {
     });
 
     it('handles screenshot capture failure', async () => {
-      vi.mocked(chrome.tabs.captureVisibleTab).mockRejectedValueOnce(
-        new Error('Cannot capture restricted page')
+      chromeTabsScriptingMocks.queueCaptureVisibleTabError(
+        new Error('Cannot capture restricted page'),
       );
 
       const response = await invoke({
@@ -5458,11 +5457,8 @@ describe('Coverage gap tests', () => {
     restoreRuntimeSendMessageWrapper();
     // mockReset clears both history AND the accumulated mockImplementationOnce/mockResolvedValueOnce queue
     resetTabSendMessageMock();
-    vi.mocked(chrome.scripting.executeScript).mockReset();
-    vi.mocked(chrome.scripting.executeScript).mockResolvedValue([]);
+    chromeTabsScriptingMocks.reset();
     resetStorageLocalGetMock();
-    vi.mocked(chrome.tabs.query).mockReset();
-    vi.mocked(chrome.tabs.query).mockResolvedValue([]);
     vi.mocked(chrome.runtime.getContexts).mockResolvedValue(DEFAULT_OFFSCREEN_CONTEXTS);
   });
 
@@ -5627,8 +5623,8 @@ describe('Coverage gap tests', () => {
   // ============================================================================
   describe('chrome-builtin translation: undefined script result', () => {
     it('returns error when executeScript result is undefined', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 42 }] as any);
-      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([{ result: undefined }] as any);
+      chromeTabsScriptingMocks.queueActiveTab({ id: 42 });
+      chromeTabsScriptingMocks.queueExecuteScriptResult(undefined);
       const response = await invoke({
         type: 'translate',
         text: 'Hello',
@@ -5982,11 +5978,8 @@ describe('Coverage gap tests — second wave', () => {
   beforeEach(() => {
     restoreRuntimeSendMessageWrapper();
     resetTabSendMessageMock();
-    vi.mocked(chrome.scripting.executeScript).mockReset();
-    vi.mocked(chrome.scripting.executeScript).mockResolvedValue([] as any);
+    chromeTabsScriptingMocks.reset();
     resetStorageLocalGetMock();
-    vi.mocked(chrome.tabs.query).mockReset();
-    vi.mocked(chrome.tabs.query).mockResolvedValue([]);
     vi.mocked(chrome.runtime.getContexts).mockResolvedValue(DEFAULT_OFFSCREEN_CONTEXTS);
     vi.mocked(chrome.offscreen.createDocument).mockResolvedValue(undefined);
   });
@@ -5996,24 +5989,26 @@ describe('Coverage gap tests — second wave', () => {
   // -----------------------------------------------------------------------
   describe('handleCheckChromeTranslator: tab exists paths', () => {
     it('returns available: true when executeScript result is true', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 42 }] as any);
-      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([{ result: true }] as any);
+      chromeTabsScriptingMocks.queueActiveTab({ id: 42 });
+      chromeTabsScriptingMocks.queueExecuteScriptResult(true);
       const response = await invoke({ type: 'checkChromeTranslator' }) as any;
       expect(response.success).toBe(true);
       expect(response.available).toBe(true);
     });
 
     it('returns available: false when executeScript result is false', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 42 }] as any);
-      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([{ result: false }] as any);
+      chromeTabsScriptingMocks.queueActiveTab({ id: 42 });
+      chromeTabsScriptingMocks.queueExecuteScriptResult(false);
       const response = await invoke({ type: 'checkChromeTranslator' }) as any;
       expect(response.success).toBe(true);
       expect(response.available).toBe(false);
     });
 
     it('returns available: false when executeScript throws (catch block, lines 676-679)', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 42 }] as any);
-      vi.mocked(chrome.scripting.executeScript).mockRejectedValueOnce(new Error('Cannot access restricted page'));
+      chromeTabsScriptingMocks.queueActiveTab({ id: 42 });
+      chromeTabsScriptingMocks.queueExecuteScriptError(
+        new Error('Cannot access restricted page'),
+      );
       const response = await invoke({ type: 'checkChromeTranslator' }) as any;
       expect(response.success).toBe(true);
       expect(response.available).toBe(false);
@@ -6077,41 +6072,45 @@ describe('Coverage gap tests — second wave', () => {
   // -----------------------------------------------------------------------
   describe('captureScreenshot', () => {
     it('returns imageData when no rect specified (line 1195)', async () => {
-      (chrome.tabs as any).captureVisibleTab = vi.fn().mockResolvedValue('data:image/png;base64,abc');
+      chromeTabsScriptingMocks.queueCaptureVisibleTabResult(
+        'data:image/png;base64,abc',
+      );
       const response = await invoke({ type: 'captureScreenshot' }) as any;
-      delete (chrome.tabs as any).captureVisibleTab;
       expect(response.success).toBe(true);
       expect(response.imageData).toBe('data:image/png;base64,abc');
     });
 
     it('returns cropped imageData when rect is specified (lines 1181-1192)', async () => {
-      (chrome.tabs as any).captureVisibleTab = vi.fn().mockResolvedValue('data:image/png;base64,full');
+      chromeTabsScriptingMocks.queueCaptureVisibleTabResult(
+        'data:image/png;base64,full',
+      );
       mockSendMessage.mockReturnValueOnce({ success: true, imageData: 'data:image/png;base64,crop' });
       const response = await invoke({
         type: 'captureScreenshot',
         rect: { x: 10, y: 20, width: 100, height: 80 },
         devicePixelRatio: 2,
       }) as any;
-      delete (chrome.tabs as any).captureVisibleTab;
       expect(response.success).toBe(true);
       expect(response.imageData).toBe('data:image/png;base64,crop');
     });
 
     it('uses devicePixelRatio=1 as default when not specified', async () => {
-      (chrome.tabs as any).captureVisibleTab = vi.fn().mockResolvedValue('data:image/png;base64,full2');
+      chromeTabsScriptingMocks.queueCaptureVisibleTabResult(
+        'data:image/png;base64,full2',
+      );
       mockSendMessage.mockReturnValueOnce({ success: true, imageData: 'data:image/png;base64,crop2' });
       const response = await invoke({
         type: 'captureScreenshot',
         rect: { x: 0, y: 0, width: 200, height: 150 },
       }) as any;
-      delete (chrome.tabs as any).captureVisibleTab;
       expect(response.success).toBe(true);
     });
 
     it('returns error when captureVisibleTab throws (lines 1196-1201)', async () => {
-      (chrome.tabs as any).captureVisibleTab = vi.fn().mockRejectedValue(new Error('No visible tab'));
+      chromeTabsScriptingMocks.queueCaptureVisibleTabError(
+        new Error('No visible tab'),
+      );
       const response = await invoke({ type: 'captureScreenshot' }) as any;
-      delete (chrome.tabs as any).captureVisibleTab;
       expect(response.success).toBe(false);
       expect(response.error).toContain('No visible tab');
     });
@@ -6186,8 +6185,8 @@ describe('Coverage gap tests — second wave', () => {
   // -----------------------------------------------------------------------
   describe('chrome-builtin translation: profiling paths', () => {
     it('covers profiler.startTiming/endTiming for chrome-builtin (line 905, 935, 942)', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 42 }] as any);
-      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([{ result: ['translated'] }] as any);
+      chromeTabsScriptingMocks.queueActiveTab({ id: 42 });
+      chromeTabsScriptingMocks.queueExecuteScriptResult(['translated']);
       const response = await invoke({
         type: 'translate',
         text: 'Hello chrome-builtin with profiling unique',
@@ -6201,8 +6200,8 @@ describe('Coverage gap tests — second wave', () => {
     });
 
     it('covers profiler.endTiming in catch when chrome-builtin throws with profiling (line 945)', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 42 }] as any);
-      vi.mocked(chrome.scripting.executeScript).mockRejectedValueOnce(new Error('Script failed'));
+      chromeTabsScriptingMocks.queueActiveTab({ id: 42 });
+      chromeTabsScriptingMocks.queueExecuteScriptError(new Error('Script failed'));
       const response = await invoke({
         type: 'translate',
         text: 'Hello chrome-builtin error with profiling unique 2222',
@@ -6215,10 +6214,8 @@ describe('Coverage gap tests — second wave', () => {
     });
 
     it('handles array text with chrome-builtin (Array.isArray branch, line 939)', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 42 }] as any);
-      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([
-        { result: ['hola', 'mundo'] },
-      ] as any);
+      chromeTabsScriptingMocks.queueActiveTab({ id: 42 });
+      chromeTabsScriptingMocks.queueExecuteScriptResult(['hola', 'mundo']);
       const response = await invoke({
         type: 'translate',
         text: ['hello', 'world'],
@@ -6726,10 +6723,11 @@ describe('Coverage gap tests — second wave', () => {
   // -----------------------------------------------------------------------
   describe('handleCheckChromeTranslator: executeScript callback', () => {
     it('executes injected function and returns result (line 674)', async () => {
-      vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([
-        { result: true, frameId: 0 }
-      ] as any);
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 123, url: 'https://example.com' }] as any);
+      chromeTabsScriptingMocks.queueExecuteScriptResult(true);
+      chromeTabsScriptingMocks.queueActiveTab({
+        id: 123,
+        url: 'https://example.com',
+      });
 
       const response = await invoke({
         type: 'checkChromeTranslator',
@@ -6741,10 +6739,13 @@ describe('Coverage gap tests — second wave', () => {
     });
 
     it('returns available: false when executeScript throws (line 678)', async () => {
-      vi.mocked(chrome.scripting.executeScript).mockRejectedValueOnce(
-        new Error('Script injection failed')
+      chromeTabsScriptingMocks.queueExecuteScriptError(
+        new Error('Script injection failed'),
       );
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 123, url: 'https://example.com' }] as any);
+      chromeTabsScriptingMocks.queueActiveTab({
+        id: 123,
+        url: 'https://example.com',
+      });
 
       const response = await invoke({
         type: 'checkChromeTranslator',
