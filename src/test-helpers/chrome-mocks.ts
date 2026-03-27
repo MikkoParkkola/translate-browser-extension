@@ -20,7 +20,7 @@ interface ChromeStorageAreaMock {
   clear: ChromeMockFn;
 }
 
-interface ChromeStorageAreaOptions {
+export interface ChromeStorageAreaOptions {
   get?: ChromeMockFn;
   set?: ChromeMockFn;
   remove?: ChromeMockFn;
@@ -62,7 +62,7 @@ function createChromeEventMock(
   };
 }
 
-function createStorageAreaMock(
+export function createStorageAreaMock(
   storageState: Record<string, unknown>,
   options: ChromeStorageAreaOptions = {},
 ): ChromeStorageAreaMock {
@@ -114,6 +114,7 @@ export interface ChromeApiMockOptions {
     openOptionsPage?: ChromeMockFn;
     getURL?: ChromeMockFn;
     getContexts?: ChromeMockFn;
+    getPlatformInfo?: ChromeMockFn;
     onMessage?: Partial<ChromeEventMock>;
     onInstalled?: Partial<ChromeEventMock>;
     onStartup?: Partial<ChromeEventMock>;
@@ -174,6 +175,15 @@ export function createChromeApiMock(options: ChromeApiMockOptions = {}) {
         options.runtime?.getURL ??
         vi.fn((path: string) => `chrome-extension://test-id/${path}`),
       getContexts: options.runtime?.getContexts ?? vi.fn().mockResolvedValue([]),
+      getPlatformInfo:
+        options.runtime?.getPlatformInfo ??
+        vi.fn((callback?: (info: unknown) => void) => {
+          const info = { os: 'mac', arch: 'arm' };
+          if (typeof callback === 'function') {
+            callback(info);
+          }
+          return Promise.resolve(info);
+        }),
       lastError: options.runtime?.lastError ?? null,
       ContextType: options.runtime?.ContextType ?? {},
     },

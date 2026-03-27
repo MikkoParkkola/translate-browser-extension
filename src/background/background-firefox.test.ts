@@ -6,43 +6,49 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll, afterEach } from 'vitest';
+import { setupChromeApiMock } from '../test-helpers/chrome-mocks';
+import { setupChromeRuntimeMessagingMocks } from '../test-helpers/chrome-runtime-messaging-mocks';
 
 // ============================================================================
 // Mocks — set up BEFORE any imports
 // ============================================================================
 
-const mockAddMessageListener = vi.fn();
-const mockAddInstalledListener = vi.fn();
-const mockStorageGet = vi.fn().mockResolvedValue({});
-const mockStorageSet = vi.fn().mockResolvedValue(undefined);
-const mockStorageRemove = vi.fn().mockResolvedValue(undefined);
 const mockSendMessage = vi.fn();
 const mockGetUILanguage = vi.fn().mockReturnValue('en-US');
-const mockBrowserActionAddListener = vi.fn();
-const mockCommandsAddListener = vi.fn();
 const mockTabsQuery = vi.fn().mockResolvedValue([]);
 const mockTabsSendMessage = vi.fn().mockResolvedValue(undefined);
 const mockGetURL = vi.fn((path: string) => `moz-extension://test-id/${path}`);
 
-vi.stubGlobal('chrome', {
+const backgroundFirefoxChromeMock = setupChromeApiMock({
   runtime: {
-    onMessage: { addListener: mockAddMessageListener },
-    onInstalled: { addListener: mockAddInstalledListener },
     sendMessage: mockSendMessage,
     getURL: mockGetURL,
   },
-  storage: {
-    local: {
-      get: mockStorageGet,
-      set: mockStorageSet,
-      remove: mockStorageRemove,
-    },
-  },
   i18n: { getUILanguage: mockGetUILanguage },
-  browserAction: { onClicked: { addListener: mockBrowserActionAddListener } },
-  commands: { onCommand: { addListener: mockCommandsAddListener } },
   tabs: { query: mockTabsQuery, sendMessage: mockTabsSendMessage },
 });
+
+const backgroundFirefoxRuntimeMocks = setupChromeRuntimeMessagingMocks({
+  chromeApi: backgroundFirefoxChromeMock.chrome as unknown as Record<string, any>,
+});
+
+const firefoxBrowserApi = backgroundFirefoxChromeMock.chrome as unknown as typeof chrome & {
+  browserAction: {
+    onClicked: {
+      addListener: ReturnType<typeof vi.fn>;
+    };
+  };
+};
+
+const mockAddMessageListener = backgroundFirefoxRuntimeMocks.runtime.onMessage.addListener;
+const mockAddInstalledListener = backgroundFirefoxRuntimeMocks.runtime.onInstalled.addListener;
+const mockStorageGet = backgroundFirefoxChromeMock.chrome.storage.local.get;
+const mockStorageSet = backgroundFirefoxChromeMock.chrome.storage.local.set;
+const mockStorageRemove = backgroundFirefoxChromeMock.chrome.storage.local.remove;
+const mockBrowserActionAddListener =
+  backgroundFirefoxRuntimeMocks.browserAction.onClicked.addListener;
+const mockCommandsAddListener =
+  backgroundFirefoxRuntimeMocks.commands.onCommand.addListener;
 
 // Mock @huggingface/transformers
 vi.mock('@huggingface/transformers', () => ({
@@ -120,24 +126,7 @@ vi.mock('../core/logger', () => ({
 }));
 
 vi.mock('../core/browser-api', () => ({
-  browserAPI: {
-    runtime: {
-      onMessage: { addListener: mockAddMessageListener },
-      onInstalled: { addListener: mockAddInstalledListener },
-      sendMessage: mockSendMessage,
-    },
-    storage: {
-      local: {
-        get: mockStorageGet,
-        set: mockStorageSet,
-        remove: mockStorageRemove,
-      },
-    },
-    i18n: { getUILanguage: mockGetUILanguage },
-    browserAction: { onClicked: { addListener: mockBrowserActionAddListener } },
-    commands: { onCommand: { addListener: mockCommandsAddListener } },
-    tabs: { query: mockTabsQuery, sendMessage: mockTabsSendMessage },
-  },
+  browserAPI: firefoxBrowserApi,
   getURL: mockGetURL,
 }));
 
