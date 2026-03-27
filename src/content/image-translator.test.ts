@@ -9,6 +9,11 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createBrowserApiModuleMock, createLoggerModuleMock } from '../test-helpers/module-mocks';
+import {
+  injectLoadedImage,
+  mockCanvasElement,
+  setupImageConstructorMock,
+} from '../test-helpers/dom-property-mocks';
 
 // Mock logger
 vi.mock('../core/logger', () => createLoggerModuleMock());
@@ -45,39 +50,6 @@ const defaultSettings = {
   autoTranslate: false,
   showBilingual: false,
 } as any as CurrentSettings;
-
-/** Helper: inject a canvas mock that returns a data URL immediately */
-function mockCanvas(): () => void {
-  const mockCtx = { drawImage: vi.fn() };
-  const realCreateElement = document.createElement.bind(document);
-  const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-    if (tag === 'canvas') {
-      return {
-        getContext: () => mockCtx,
-        toDataURL: () => 'data:image/png;base64,TEST',
-        width: 0,
-        height: 0,
-      } as unknown as HTMLElement;
-    }
-    return realCreateElement(tag);
-  });
-  return () => spy.mockRestore();
-}
-
-/** Helper: create a DOM img element that appears loaded */
-function injectLoadedImage(src: string): HTMLImageElement {
-  const img = document.createElement('img');
-  img.src = src;
-  Object.defineProperty(img, 'complete', { value: true, configurable: true });
-  Object.defineProperty(img, 'naturalWidth', { value: 200, configurable: true });
-  Object.defineProperty(img, 'naturalHeight', { value: 100, configurable: true });
-  Object.defineProperty(img, 'getBoundingClientRect', {
-    value: () => ({ top: 0, left: 0, width: 200, height: 100 }),
-    configurable: true,
-  });
-  document.body.appendChild(img);
-  return img;
-}
 
 describe('image-translator', () => {
   beforeEach(() => {
@@ -116,7 +88,7 @@ describe('image-translator', () => {
     it('removes manually added overlay elements tracked by the module', async () => {
       const imageUrl = 'https://example.com/img.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       mockSendMessage.mockResolvedValueOnce({
         success: true,
@@ -126,7 +98,6 @@ describe('image-translator', () => {
       mockSendMessage.mockResolvedValueOnce({ success: true, result: 'Hei' });
 
       await translateImage(imageUrl);
-      restore();
 
       const overlaysBefore = document.querySelectorAll('.translate-image-overlay');
       clearImageOverlays();
@@ -147,7 +118,7 @@ describe('image-translator', () => {
     it('shows error toast when OCR returns success=false', async () => {
       const imageUrl = 'https://example.com/img.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       mockSendMessage.mockResolvedValueOnce({
         success: false,
@@ -155,7 +126,6 @@ describe('image-translator', () => {
       });
 
       await translateImage(imageUrl);
-      restore();
 
       expect(mockShowErrorToast).toHaveBeenCalledWith(
         expect.stringContaining('Tesseract not available')
@@ -165,7 +135,7 @@ describe('image-translator', () => {
     it('shows "No text found" when OCR returns empty blocks', async () => {
       const imageUrl = 'https://example.com/empty.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       mockSendMessage.mockResolvedValueOnce({
         success: true,
@@ -174,7 +144,6 @@ describe('image-translator', () => {
       });
 
       await translateImage(imageUrl);
-      restore();
 
       expect(mockShowInfoToast).toHaveBeenCalledWith(
         expect.stringContaining('No text found in image')
@@ -184,7 +153,7 @@ describe('image-translator', () => {
     it('shows "Could not translate" when all blocks fail to translate', async () => {
       const imageUrl = 'https://example.com/notranslate.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       mockSendMessage.mockResolvedValueOnce({
         success: true,
@@ -195,7 +164,6 @@ describe('image-translator', () => {
       mockSendMessage.mockResolvedValueOnce({ success: false });
 
       await translateImage(imageUrl);
-      restore();
 
       expect(mockShowInfoToast).toHaveBeenCalledWith(
         expect.stringContaining('Could not translate')
@@ -211,7 +179,7 @@ describe('image-translator', () => {
     it('shows translated count toast when blocks succeed', async () => {
       const imageUrl = 'https://example.com/success.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       mockSendMessage.mockResolvedValueOnce({
         success: true,
@@ -225,7 +193,6 @@ describe('image-translator', () => {
       mockSendMessage.mockResolvedValueOnce({ success: true, result: 'Maailma' });
 
       await translateImage(imageUrl);
-      restore();
 
       // Should show "Translated N text blocks" or similar
       const infoCalls = mockShowInfoToast.mock.calls.map((c) => c[0] as string);
@@ -236,7 +203,7 @@ describe('image-translator', () => {
     it('skips blocks with confidence < 50', async () => {
       const imageUrl = 'https://example.com/lowconf.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       mockSendMessage.mockResolvedValueOnce({
         success: true,
@@ -249,7 +216,6 @@ describe('image-translator', () => {
       mockSendMessage.mockResolvedValueOnce({ success: true, result: 'Hyvä' });
 
       await translateImage(imageUrl);
-      restore();
 
       // Only 1 translation call (for 'Good', confidence 90)
       // First call is OCR, second is translate for 'Good' only
@@ -259,7 +225,7 @@ describe('image-translator', () => {
     it('skips blocks with text shorter than 2 chars', async () => {
       const imageUrl = 'https://example.com/short.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       mockSendMessage.mockResolvedValueOnce({
         success: true,
@@ -272,7 +238,6 @@ describe('image-translator', () => {
       mockSendMessage.mockResolvedValueOnce({ success: true, result: 'Hei' });
 
       await translateImage(imageUrl);
-      restore();
 
       // Only 'Hello' gets translated (1 OCR + 1 translate = 2 calls)
       expect(mockSendMessage).toHaveBeenCalledTimes(2);
@@ -282,7 +247,7 @@ describe('image-translator', () => {
       setGetCurrentSettings(() => null);
       const imageUrl = 'https://example.com/null-settings.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       mockSendMessage.mockResolvedValueOnce({
         success: true,
@@ -292,7 +257,6 @@ describe('image-translator', () => {
       mockSendMessage.mockResolvedValueOnce({ success: true, result: 'Testi' });
 
       await translateImage(imageUrl);
-      restore();
 
       const ocrCall = mockSendMessage.mock.calls[0][0];
       // sourceLang is 'auto' so lang should be undefined in OCR call
@@ -302,7 +266,7 @@ describe('image-translator', () => {
     it('creates image overlay when image is found in DOM', async () => {
       const imageUrl = 'https://example.com/overlay.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       mockSendMessage.mockResolvedValueOnce({
         success: true,
@@ -312,7 +276,6 @@ describe('image-translator', () => {
       mockSendMessage.mockResolvedValueOnce({ success: true, result: 'Hei' });
 
       await translateImage(imageUrl);
-      restore();
 
       // Overlay should be appended to body
       const overlay = document.querySelector('.translate-image-overlay');
@@ -322,7 +285,7 @@ describe('image-translator', () => {
     it('overlay contains translated text block', async () => {
       const imageUrl = 'https://example.com/block.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       mockSendMessage.mockResolvedValueOnce({
         success: true,
@@ -332,7 +295,6 @@ describe('image-translator', () => {
       mockSendMessage.mockResolvedValueOnce({ success: true, result: 'Hei' });
 
       await translateImage(imageUrl);
-      restore();
 
       const blockEl = document.querySelector('.translate-image-block');
       expect(blockEl).not.toBeNull();
@@ -342,7 +304,7 @@ describe('image-translator', () => {
     it('block has title with original text', async () => {
       const imageUrl = 'https://example.com/title.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       mockSendMessage.mockResolvedValueOnce({
         success: true,
@@ -352,7 +314,6 @@ describe('image-translator', () => {
       mockSendMessage.mockResolvedValueOnce({ success: true, result: 'Hei' });
 
       await translateImage(imageUrl);
-      restore();
 
       const blockEl = document.querySelector('.translate-image-block') as HTMLElement;
       expect(blockEl.title).toContain('Hello');
@@ -362,7 +323,7 @@ describe('image-translator', () => {
       // Verifies the final success path toast message
       const imageUrl = 'https://example.com/success2.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       mockSendMessage.mockResolvedValueOnce({
         success: true,
@@ -376,7 +337,6 @@ describe('image-translator', () => {
       mockSendMessage.mockResolvedValueOnce({ success: true, result: 'Kaksi' });
 
       await translateImage(imageUrl);
-      restore();
 
       // Last info toast should mention "2 text blocks"
       const infoCalls = mockShowInfoToast.mock.calls.map((c) => c[0] as string);
@@ -387,7 +347,7 @@ describe('image-translator', () => {
     it('translation block sendMessage throws — block is skipped', async () => {
       const imageUrl = 'https://example.com/throw.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       mockSendMessage.mockResolvedValueOnce({
         success: true,
@@ -401,7 +361,6 @@ describe('image-translator', () => {
       mockSendMessage.mockRejectedValueOnce(new Error('IPC error'));
 
       await translateImage(imageUrl);
-      restore();
 
       // 'Good' block succeeded, 'Bad' block threw — overlay should still be created
       const overlay = document.querySelector('.translate-image-overlay');
@@ -418,21 +377,11 @@ describe('image-translator', () => {
       const imageUrl = 'https://example.com/no-ctx.png';
       injectLoadedImage(imageUrl);
 
-      // Mock canvas to return null context
-      const realCreateElement = document.createElement.bind(document);
-      const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-        if (tag === 'canvas') {
-          return {
-            getContext: () => null,
-            width: 0,
-            height: 0,
-          } as unknown as HTMLElement;
-        }
-        return realCreateElement(tag);
+      mockCanvasElement({
+        context: null,
       });
 
       await translateImage(imageUrl);
-      spy.mockRestore();
 
       expect(mockShowErrorToast).toHaveBeenCalledWith(
         expect.stringContaining('Cannot access image')
@@ -448,24 +397,16 @@ describe('image-translator', () => {
     it('shows CORS error toast when imageUrlToDataUrl throws CORS error', async () => {
       // No DOM img → falls to fetch path → mock fetch to fail with CORS-style message
       const imageUrl = 'https://example.com/cors.png';
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       const mockFetch = vi.fn().mockRejectedValue(new TypeError('CORS error: cross-origin blocked'));
       vi.stubGlobal('fetch', mockFetch);
 
       // Image() fallback also fails
-      const OrigImage = globalThis.Image;
-      (globalThis as unknown as Record<string, unknown>).Image = class {
-        onerror: ((e: Event) => void) | null = null;
-        set src(_: string) {
-          setTimeout(() => this.onerror && this.onerror(new Event('error')), 0);
-        }
-      };
+      setupImageConstructorMock({ outcome: 'error', trigger: 'macrotask' });
 
       await translateImage(imageUrl);
-      restore();
       vi.unstubAllGlobals();
-      (globalThis as unknown as Record<string, unknown>).Image = OrigImage;
 
       expect(mockShowErrorToast).toHaveBeenCalledWith(
         expect.stringContaining('Cannot access image')
@@ -482,24 +423,14 @@ describe('image-translator', () => {
       const imageUrl = 'https://example.com/cors-data-url.png';
       injectLoadedImage(imageUrl);
 
-      // Mock canvas toDataURL to throw CORS error
-      const realCreateElement = document.createElement.bind(document);
-      const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-        if (tag === 'canvas') {
-          return {
-            getContext: () => ({ drawImage: vi.fn() }),
-            toDataURL: () => {
-              throw new Error('Cannot access image due to CORS policy');
-            },
-            width: 0,
-            height: 0,
-          } as unknown as HTMLElement;
-        }
-        return realCreateElement(tag);
+      mockCanvasElement({
+        context: { drawImage: vi.fn() } as unknown as CanvasRenderingContext2D,
+        toDataURL: () => {
+          throw new Error('Cannot access image due to CORS policy');
+        },
       });
 
       await translateImage(imageUrl);
-      spy.mockRestore();
 
       expect(mockShowErrorToast).toHaveBeenCalledWith(
         expect.stringContaining('Cannot access image')
@@ -510,22 +441,13 @@ describe('image-translator', () => {
       const imageUrl = 'https://example.com/canvas-ctx-throw.png';
       injectLoadedImage(imageUrl);
 
-      const realCreateElement = document.createElement.bind(document);
-      const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-        if (tag === 'canvas') {
-          return {
-            getContext: () => {
-              throw new Error('Canvas access denied');
-            },
-            width: 0,
-            height: 0,
-          } as unknown as HTMLElement;
-        }
-        return realCreateElement(tag);
+      mockCanvasElement({
+        getContext: () => {
+          throw new Error('Canvas access denied');
+        },
       });
 
       await translateImage(imageUrl);
-      spy.mockRestore();
 
       expect(mockShowErrorToast).toHaveBeenCalled();
     });
@@ -535,13 +457,12 @@ describe('image-translator', () => {
     it('shows CORS error message for CORS-related translation errors', async () => {
       const imageUrl = 'https://example.com/cors-error.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       // Create an error during OCR that contains CORS
       mockSendMessage.mockRejectedValueOnce(new Error('Request failed: CORS policy blocks this'));
 
       await translateImage(imageUrl);
-      restore();
 
       expect(mockShowErrorToast).toHaveBeenCalledWith(
         expect.stringContaining('Cannot translate: Image is from another website')
@@ -551,12 +472,11 @@ describe('image-translator', () => {
     it('shows Canvas security error message for Canvas/tainted errors from OCR', async () => {
       const imageUrl = 'https://example.com/tainted-canvas.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       mockSendMessage.mockRejectedValueOnce(new Error('Canvas tainted - security policy prevents export'));
 
       await translateImage(imageUrl);
-      restore();
 
       expect(mockShowErrorToast).toHaveBeenCalledWith(
         expect.stringContaining('Cannot translate: Browser security prevents accessing this image')
@@ -566,12 +486,11 @@ describe('image-translator', () => {
     it('shows timeout error message for timeout errors', async () => {
       const imageUrl = 'https://example.com/timeout.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       mockSendMessage.mockRejectedValueOnce(new Error('Timeout: OCR took too long (30s)'));
 
       await translateImage(imageUrl);
-      restore();
 
       expect(mockShowErrorToast).toHaveBeenCalledWith(
         expect.stringContaining('Image translation timed out')
@@ -581,13 +500,12 @@ describe('image-translator', () => {
     it('shows truncated generic error message for unknown errors', async () => {
       const imageUrl = 'https://example.com/unknown-error.png';
       injectLoadedImage(imageUrl);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       const longErrorMsg = 'This is a very long error message that should be truncated to 50 characters for display';
       mockSendMessage.mockRejectedValueOnce(new Error(longErrorMsg));
 
       await translateImage(imageUrl);
-      restore();
 
       expect(mockShowErrorToast).toHaveBeenCalledWith(
         expect.stringContaining('Image translation failed')
@@ -600,21 +518,14 @@ describe('image-translator', () => {
       const imageUrl = 'https://example.com/null-ctx.png';
       injectLoadedImage(imageUrl);
 
-      const realCreateElement = document.createElement.bind(document);
-      const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-        if (tag === 'canvas') {
-          return {
-            getContext: () => null,  // Line 117 condition
-            toDataURL: () => 'data:image/png;base64,TEST',
-            width: 200,
-            height: 200,
-          } as unknown as HTMLElement;
-        }
-        return realCreateElement(tag);
+      mockCanvasElement({
+        context: null,
+        toDataURL: 'data:image/png;base64,TEST',
+        width: 200,
+        height: 200,
       });
 
       await translateImage(imageUrl);
-      spy.mockRestore();
 
       expect(mockShowErrorToast).toHaveBeenCalledWith(
         expect.stringContaining('Cannot access image')
@@ -632,7 +543,7 @@ describe('image-translator', () => {
       const url2 = 'https://example.com/b.png';
       injectLoadedImage(url1);
       injectLoadedImage(url2);
-      const restore = mockCanvas();
+      mockCanvasElement();
 
       mockSendMessage
         .mockResolvedValueOnce({
@@ -650,7 +561,6 @@ describe('image-translator', () => {
 
       await translateImage(url1);
       await translateImage(url2);
-      restore();
 
       expect(document.querySelectorAll('.translate-image-overlay').length).toBe(2);
       clearImageOverlays();
@@ -663,20 +573,9 @@ describe('imageUrlToDataUrl fallback branches', () => {
   it('handles canvas.toDataURL exception (CORS policy error path)', async () => {
     const url = 'https://example.com/cors-image.png';
     injectLoadedImage(url);
-    const restore = mockCanvas();
-
-    // Mock canvas.toDataURL to throw (CORS issue)
-    const realCreateElement = document.createElement.bind(document);
-    const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-      if (tag === 'canvas') {
-        return {
-          getContext: () => ({ drawImage: vi.fn() }),
-          toDataURL: () => { throw new Error('CORS'); },
-          width: 0,
-          height: 0,
-        } as unknown as HTMLElement;
-      }
-      return realCreateElement(tag);
+    mockCanvasElement({
+      context: { drawImage: vi.fn() } as unknown as CanvasRenderingContext2D,
+      toDataURL: () => { throw new Error('CORS'); },
     });
 
     // Should call the Image fallback path
@@ -684,8 +583,6 @@ describe('imageUrlToDataUrl fallback branches', () => {
       setTimeout(() => resolve('ok'), 100);
     })).resolves.toBe('ok');
 
-    spy.mockRestore();
-    restore();
   });
 });
 
@@ -693,7 +590,7 @@ describe('translateImage image not found branch', () => {
   it('handles case when image element not found in DOM (line 289-290)', async () => {
     const url = 'https://example.com/not-in-dom.png';
     // Don't inject the image into DOM
-    const restore = mockCanvas();
+    mockCanvasElement();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       blob: async () => new Blob(['test-image'], { type: 'image/png' }),
     }));
@@ -712,7 +609,6 @@ describe('translateImage image not found branch', () => {
     await expect(translateImage(url)).resolves.not.toThrow();
 
     vi.unstubAllGlobals();
-    restore();
   }, 5000);
 });
 
@@ -720,105 +616,36 @@ describe('imageUrlToDataUrl Image fallback path (lines 112-127)', () => {
   it('handles Image.onload path with successful toDataURL (lines 113-125)', async () => {
     const imageUrl = 'https://example.com/image-fallback.png';
     // Don't inject into DOM to force fetch path, which fails, triggering Image fallback
-    const restore = mockCanvas();
+    mockCanvasElement();
 
     // Mock fetch to fail with CORS error
     const mockFetch = vi.fn().mockRejectedValue(new TypeError('CORS error'));
     vi.stubGlobal('fetch', mockFetch);
 
-    // Mock Image to trigger onload with proper context
-    let imageLoadHandler: (() => void) | null = null;
-    const OrigImage = globalThis.Image;
-    (globalThis as unknown as Record<string, unknown>).Image = class {
-      crossOrigin: string = '';
-      onload: (() => void) | null = null;
-      onerror: ((e: Event) => void) | null = null;
-      src: string = '';
-      naturalWidth = 200;
-      naturalHeight = 100;
-      
-      constructor() {
-        // Schedule onload to fire asynchronously
-        imageLoadHandler = () => {
-          if (this.onload) {
-            this.onload();
-          }
-        };
-      }
-    } as any;
+    setupImageConstructorMock({ outcome: 'load' });
 
-    // Start the translation
-    const translatePromise = translateImage(imageUrl);
-    
-    // Trigger Image.onload after a short delay
-    await new Promise(resolve => setTimeout(resolve, 50));
-    if (imageLoadHandler) {
-      (imageLoadHandler as any)();
-    }
+    await translateImage(imageUrl);
 
-    await translatePromise;
-    
-    restore();
     vi.unstubAllGlobals();
-    (globalThis as unknown as Record<string, unknown>).Image = OrigImage;
   });
 
   it('handles Image.onload with canvas getContext returning null (line 117-119)', async () => {
     const imageUrl = 'https://example.com/image-no-ctx.png';
-    const restore = mockCanvas();
+    mockCanvasElement({
+      context: null,
+      toDataURL: 'data:image/png;base64,TEST',
+      width: 200,
+      height: 100,
+    });
 
     // Mock fetch to fail
     const mockFetch = vi.fn().mockRejectedValue(new TypeError('CORS error'));
     vi.stubGlobal('fetch', mockFetch);
+    setupImageConstructorMock({ outcome: 'load' });
 
-    // Mock Image to trigger onload
-    let imageLoadHandler: (() => void) | null = null;
-    const OrigImage = globalThis.Image;
-    (globalThis as unknown as Record<string, unknown>).Image = class {
-      crossOrigin: string = '';
-      onload: (() => void) | null = null;
-      onerror: ((e: Event) => void) | null = null;
-      src: string = '';
-      naturalWidth = 200;
-      naturalHeight = 100;
-      
-      constructor() {
-        imageLoadHandler = () => {
-          if (this.onload) {
-            this.onload();
-          }
-        };
-      }
-    } as any;
+    await translateImage(imageUrl);
 
-    // Mock canvas.getContext to return null in the Image.onload path
-    const realCreateElement = document.createElement.bind(document);
-    const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-      if (tag === 'canvas') {
-        return {
-          getContext: () => null,  // Line 117 condition: ctx is null
-          toDataURL: () => 'data:image/png;base64,TEST',
-          width: 200,
-          height: 100,
-        } as unknown as HTMLElement;
-      }
-      return realCreateElement(tag);
-    });
-
-    const translatePromise = translateImage(imageUrl);
-    
-    // Trigger Image.onload
-    await new Promise(resolve => setTimeout(resolve, 50));
-    if (imageLoadHandler) {
-      (imageLoadHandler as any)();
-    }
-
-    await translatePromise;
-    
-    spy.mockRestore();
-    restore();
     vi.unstubAllGlobals();
-    (globalThis as unknown as Record<string, unknown>).Image = OrigImage;
 
     // Should show error for canvas context
     expect(mockShowErrorToast).toHaveBeenCalledWith(
@@ -828,62 +655,23 @@ describe('imageUrlToDataUrl Image fallback path (lines 112-127)', () => {
 
   it('handles Image.onload with toDataURL throwing CORS error (line 123-125)', async () => {
     const imageUrl = 'https://example.com/image-cors-dataurl.png';
-    const restore = mockCanvas();
+    mockCanvasElement({
+      context: { drawImage: vi.fn() } as unknown as CanvasRenderingContext2D,
+      toDataURL: () => {
+        throw new Error('Cannot access image due to CORS policy');
+      },
+      width: 200,
+      height: 100,
+    });
 
     // Mock fetch to fail
     const mockFetch = vi.fn().mockRejectedValue(new TypeError('CORS error'));
     vi.stubGlobal('fetch', mockFetch);
+    setupImageConstructorMock({ outcome: 'load' });
 
-    // Mock Image
-    let imageLoadHandler: (() => void) | null = null;
-    const OrigImage = globalThis.Image;
-    (globalThis as unknown as Record<string, unknown>).Image = class {
-      crossOrigin: string = '';
-      onload: (() => void) | null = null;
-      onerror: ((e: Event) => void) | null = null;
-      src: string = '';
-      naturalWidth = 200;
-      naturalHeight = 100;
-      
-      constructor() {
-        imageLoadHandler = () => {
-          if (this.onload) {
-            this.onload();
-          }
-        };
-      }
-    } as any;
+    await translateImage(imageUrl);
 
-    // Mock canvas.toDataURL to throw CORS error
-    const realCreateElement = document.createElement.bind(document);
-    const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-      if (tag === 'canvas') {
-        return {
-          getContext: () => ({ drawImage: vi.fn() }),
-          toDataURL: () => {
-            throw new Error('Cannot access image due to CORS policy');  // Line 125
-          },
-          width: 200,
-          height: 100,
-        } as unknown as HTMLElement;
-      }
-      return realCreateElement(tag);
-    });
-
-    const translatePromise = translateImage(imageUrl);
-    
-    // Trigger Image.onload
-    await new Promise(resolve => setTimeout(resolve, 50));
-    if (imageLoadHandler) {
-      (imageLoadHandler as any)();
-    }
-
-    await translatePromise;
-    
-    spy.mockRestore();
-    restore();
     vi.unstubAllGlobals();
-    (globalThis as unknown as Record<string, unknown>).Image = OrigImage;
 
     // Should show error for CORS
     expect(mockShowErrorToast).toHaveBeenCalledWith(

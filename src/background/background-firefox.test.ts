@@ -12,6 +12,7 @@ import {
   createBrowserApiModuleExports,
   createFirefoxBrowserApiModuleMock,
 } from '../test-helpers/browser-api-mocks';
+import { setupNavigatorGpuMock, setupNavigatorMlMock } from '../test-helpers/dom-property-mocks';
 
 // ============================================================================
 // Mocks — set up BEFORE any imports
@@ -424,11 +425,7 @@ describe('background-firefox message handler', () => {
 
   describe('checkWebGPU', () => {
     it('returns unsupported when navigator.gpu is unavailable', async () => {
-      Object.defineProperty(navigator, 'gpu', {
-        value: undefined,
-        configurable: true,
-        writable: true,
-      });
+      setupNavigatorGpuMock(undefined);
 
       const response = await invoke({ type: 'checkWebGPU' }) as Record<string, unknown>;
       expect(response.success).toBe(true);
@@ -437,14 +434,10 @@ describe('background-firefox message handler', () => {
     });
 
     it('reports fp16 support when the adapter exposes shader-f16', async () => {
-      Object.defineProperty(navigator, 'gpu', {
-        value: {
-          requestAdapter: vi.fn().mockResolvedValue({
-            features: new Set(['shader-f16']),
-          }),
-        },
-        configurable: true,
-        writable: true,
+      setupNavigatorGpuMock({
+        requestAdapter: vi.fn().mockResolvedValue({
+          features: new Set(['shader-f16']),
+        }),
       });
 
       const response = await invoke({ type: 'checkWebGPU' }) as Record<string, unknown>;
@@ -452,21 +445,12 @@ describe('background-firefox message handler', () => {
       expect(response.supported).toBe(true);
       expect(response.fp16).toBe(true);
 
-      Object.defineProperty(navigator, 'gpu', {
-        value: undefined,
-        configurable: true,
-        writable: true,
-      });
     });
   });
 
   describe('checkWebNN', () => {
     it('returns unsupported when navigator.ml is unavailable', async () => {
-      Object.defineProperty(navigator, 'ml', {
-        value: undefined,
-        configurable: true,
-        writable: true,
-      });
+      setupNavigatorMlMock(undefined);
 
       const response = await invoke({ type: 'checkWebNN' }) as Record<string, unknown>;
       expect(response.success).toBe(true);
@@ -474,23 +458,14 @@ describe('background-firefox message handler', () => {
     });
 
     it('returns supported when navigator.ml.createContext succeeds', async () => {
-      Object.defineProperty(navigator, 'ml', {
-        value: {
-          createContext: vi.fn().mockResolvedValue({}),
-        },
-        configurable: true,
-        writable: true,
+      setupNavigatorMlMock({
+        createContext: vi.fn().mockResolvedValue({}),
       });
 
       const response = await invoke({ type: 'checkWebNN' }) as Record<string, unknown>;
       expect(response.success).toBe(true);
       expect(response.supported).toBe(true);
 
-      Object.defineProperty(navigator, 'ml', {
-        value: undefined,
-        configurable: true,
-        writable: true,
-      });
     });
   });
 
@@ -2468,17 +2443,13 @@ describe('background-firefox translate: additional coverage', () => {
   });
 
   // ============================================================================
-  // Coverage: detectWebGPU with navigator.gpu defined (lines 272-277)
+  // Coverage: detectWebGPU with navigator.gpu helper-installed (lines 272-277)
   // ============================================================================
 
   describe('detectWebGPU with navigator.gpu present', () => {
     it('uses WebGPU when navigator.gpu.requestAdapter resolves to non-null', async () => {
       // Define navigator.gpu on the jsdom window
-      Object.defineProperty(navigator, 'gpu', {
-        value: { requestAdapter: vi.fn().mockResolvedValue({ isFallbackAdapter: false }) },
-        configurable: true,
-        writable: true,
-      });
+      setupNavigatorGpuMock({ requestAdapter: vi.fn().mockResolvedValue({ isFallbackAdapter: false }) });
 
       // Ensure fresh model load (not from cache) so getPipeline → detectWebGPU runs
       const pipelineCache = await import('../offscreen/pipeline-cache');
@@ -2492,16 +2463,10 @@ describe('background-firefox translate: additional coverage', () => {
       }) as Record<string, unknown>;
 
       expect(response).toMatchObject({ success: expect.any(Boolean) });
-      // Clean up
-      Object.defineProperty(navigator, 'gpu', { value: undefined, configurable: true });
     });
 
     it('falls back when navigator.gpu.requestAdapter throws (line 276)', async () => {
-      Object.defineProperty(navigator, 'gpu', {
-        value: { requestAdapter: vi.fn().mockRejectedValue(new Error('WebGPU unavailable')) },
-        configurable: true,
-        writable: true,
-      });
+      setupNavigatorGpuMock({ requestAdapter: vi.fn().mockRejectedValue(new Error('WebGPU unavailable')) });
 
       const pipelineCache = await import('../offscreen/pipeline-cache');
       (pipelineCache.getCachedPipeline as ReturnType<typeof vi.fn>).mockReturnValue(null);
@@ -2514,7 +2479,6 @@ describe('background-firefox translate: additional coverage', () => {
       }) as Record<string, unknown>;
 
       expect(response).toMatchObject({ success: expect.any(Boolean) });
-      Object.defineProperty(navigator, 'gpu', { value: undefined, configurable: true });
     });
   });
 
@@ -3077,16 +3041,6 @@ describe('background-firefox translate: additional coverage', () => {
       const configMod = await import('../config');
       (configMod.CONFIG.rateLimits as any).requestsPerMinute = savedReqLimit;
       (configMod.CONFIG.rateLimits as any).tokensPerMinute = savedTokenLimit;
-      // Restore navigator.gpu to undefined so WebGPU tests don't bleed into others
-      try {
-        Object.defineProperty(navigator, 'gpu', {
-          value: undefined,
-          configurable: true,
-          writable: true,
-        });
-      } catch {
-        // ignore if the property descriptor can't be changed
-      }
     });
 
     // -------------------------------------------------------------------------
@@ -3239,16 +3193,12 @@ describe('background-firefox translate: additional coverage', () => {
         await invoke({ type: 'clearCache' });
       }
     });
-    // These are only reachable when navigator.gpu is defined, which requires
-    // Object.defineProperty since jsdom does not expose navigator.gpu.
+    // These are only reachable when navigator.gpu is defined, which jsdom does
+    // not expose by default, so the shared DOM property helper installs it.
     // -------------------------------------------------------------------------
     describe('detectWebGPU with navigator.gpu defined (lines 272-277)', () => {
       it('returns true when requestAdapter resolves to a non-null adapter (line 274)', async () => {
-        Object.defineProperty(navigator, 'gpu', {
-          value: { requestAdapter: vi.fn().mockResolvedValue({}) },
-          configurable: true,
-          writable: true,
-        });
+        setupNavigatorGpuMock({ requestAdapter: vi.fn().mockResolvedValue({}) });
 
         const langDetect = await import('../offscreen/language-detection');
         (langDetect.detectLanguage as ReturnType<typeof vi.fn>).mockReturnValueOnce('en');
@@ -3271,11 +3221,7 @@ describe('background-firefox translate: additional coverage', () => {
       });
 
       it('returns false when requestAdapter resolves to null (line 274 null branch)', async () => {
-        Object.defineProperty(navigator, 'gpu', {
-          value: { requestAdapter: vi.fn().mockResolvedValue(null) },
-          configurable: true,
-          writable: true,
-        });
+        setupNavigatorGpuMock({ requestAdapter: vi.fn().mockResolvedValue(null) });
 
         const langDetect = await import('../offscreen/language-detection');
         (langDetect.detectLanguage as ReturnType<typeof vi.fn>).mockReturnValueOnce('en');
@@ -3298,11 +3244,7 @@ describe('background-firefox translate: additional coverage', () => {
       });
 
       it('returns false when requestAdapter throws (lines 275-276 catch branch)', async () => {
-        Object.defineProperty(navigator, 'gpu', {
-          value: { requestAdapter: vi.fn().mockRejectedValue(new Error('WebGPU unavailable')) },
-          configurable: true,
-          writable: true,
-        });
+        setupNavigatorGpuMock({ requestAdapter: vi.fn().mockRejectedValue(new Error('WebGPU unavailable')) });
 
         const langDetect = await import('../offscreen/language-detection');
         (langDetect.detectLanguage as ReturnType<typeof vi.fn>).mockReturnValueOnce('en');

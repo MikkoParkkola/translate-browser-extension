@@ -14,6 +14,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { mockCanvasElement, setupImageConstructorMock } from '../test-helpers/dom-property-mocks';
 import { selectOpusMtDtype } from './opus-runtime';
 
 // ---------------------------------------------------------------------------
@@ -1430,40 +1431,11 @@ describe('offscreen message handler', () => {
   // -------------------------------------------------------------------------
   describe('cropImage', () => {
     it('returns cropped image data URL', async () => {
-      const OriginalImage = globalThis.Image;
-
-      // Build a mock Image class where assigning src triggers onload via microtask
-      function MockImageLoad(this: Record<string, unknown>) {
-        this.onload = null;
-        this.onerror = null;
-        Object.defineProperty(this, 'src', {
-          set(val: string) {
-            this._src = val;
-            Promise.resolve().then(() => {
-              if (typeof this.onload === 'function') this.onload();
-            });
-          },
-          get() { return this._src ?? ''; },
-          configurable: true,
-        });
-      }
-      vi.stubGlobal('Image', MockImageLoad);
-
-      // Mock canvas so toDataURL returns a known value
-      const originalCreateElement = document.createElement.bind(document);
-      const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation(
-        (tag: string) => {
-          if (tag === 'canvas') {
-            const canvas = originalCreateElement('canvas') as HTMLCanvasElement;
-            vi.spyOn(canvas, 'getContext').mockReturnValue({
-              drawImage: vi.fn(),
-            } as any);
-            vi.spyOn(canvas, 'toDataURL').mockReturnValue('data:image/png;base64,CROPPED');
-            return canvas;
-          }
-          return originalCreateElement(tag);
-        }
-      );
+      setupImageConstructorMock({ outcome: 'load' });
+      mockCanvasElement({
+        context: { drawImage: vi.fn() } as unknown as CanvasRenderingContext2D,
+        toDataURL: 'data:image/png;base64,CROPPED',
+      });
 
       const r = await dispatch({
         type: 'cropImage',
@@ -1474,28 +1446,10 @@ describe('offscreen message handler', () => {
 
       expect(r.success).toBe(true);
       expect(r.imageData).toBe('data:image/png;base64,CROPPED');
-
-      createElementSpy.mockRestore();
-      vi.stubGlobal('Image', OriginalImage);
     });
 
     it('returns error when image fails to load', async () => {
-      const OriginalImage = globalThis.Image;
-
-      function MockImageFail(this: Record<string, unknown>) {
-        this.onload = null;
-        this.onerror = null;
-        Object.defineProperty(this, 'src', {
-          set(_val: string) {
-            Promise.resolve().then(() => {
-              if (typeof this.onerror === 'function') this.onerror();
-            });
-          },
-          get() { return ''; },
-          configurable: true,
-        });
-      }
-      vi.stubGlobal('Image', MockImageFail);
+      setupImageConstructorMock({ outcome: 'error' });
 
       const r = await dispatch({
         type: 'cropImage',
@@ -1505,8 +1459,6 @@ describe('offscreen message handler', () => {
 
       expect(r.success).toBe(false);
       expect((r.error as string)).toContain('Failed to load image');
-
-      vi.stubGlobal('Image', OriginalImage);
     });
   });
 
