@@ -94,6 +94,18 @@ export {
 } from './model-downloads';
 
 export type {
+  LifecycleLogger,
+  InstallationHandlerDependencies,
+  RestorePersistedProviderDependencies,
+} from './lifecycle-orchestration';
+export {
+  clearMatchingCaches,
+  clearMatchingIndexedDbDatabases,
+  createInstallationHandler,
+  restorePersistedProvider,
+} from './lifecycle-orchestration';
+
+export type {
   OffscreenRequest,
   OffscreenTransport,
   OffscreenTransportLogger,

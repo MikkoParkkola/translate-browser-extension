@@ -30,7 +30,7 @@ import { safeStorageGet, strictStorageSet } from '../core/storage';
 import { withTimeout } from '../core/async-utils';
 import { CONFIG } from '../config';
 import { browserAPI, getURL } from '../core/browser-api';
-import { DEFAULT_PROVIDER_ID, normalizeTranslationProviderId } from '../shared/provider-options';
+import { DEFAULT_PROVIDER_ID } from '../shared/provider-options';
 import {
   collectBatchTranslationInputs,
   mergeBatchTranslationResults,
@@ -72,6 +72,8 @@ import {
   handleGetCloudProviderStatus,
   handleSetCloudApiKey,
   handleSetCloudProviderEnabled,
+  createInstallationHandler,
+  restorePersistedProvider,
 } from './shared';
 
 const log = createLogger('Background-FF');
@@ -600,23 +602,18 @@ if (browserAPI.commands?.onCommand) {
 // Installation Handler
 // ============================================================================
 
-browserAPI.runtime.onInstalled.addListener((details) => {
-  if (details.reason === 'install') {
-    log.info('Extension installed');
-    const browserLang = browserAPI.i18n.getUILanguage().split('-')[0];
-    log.info('Browser language detected:', browserLang);
-    void strictStorageSet({
+browserAPI.runtime.onInstalled.addListener(createInstallationHandler({
+  log,
+  getUiLanguage: () => browserAPI.i18n.getUILanguage(),
+  persistInstallDefaults: async (browserLang) => {
+    await strictStorageSet({
       sourceLang: 'auto',
       targetLang: browserLang || 'en',
       strategy: 'smart',
       provider: DEFAULT_PROVIDER_ID,
-    }).catch((error) => {
-      log.error('Failed to persist install defaults:', error);
     });
-  } else if (details.reason === 'update') {
-    log.info('Extension updated from', details.previousVersion);
-  }
-});
+  },
+}));
 
 // ============================================================================
 // Startup
@@ -624,19 +621,16 @@ browserAPI.runtime.onInstalled.addListener((details) => {
 
 /* v8 ignore start — module-level IIFE runs at import time, before test mocks are configured */
 (async () => {
-  const result = await safeStorageGet<{ provider?: unknown }>(['provider']);
-  if (result.provider !== undefined) {
-    const restoredProvider = normalizeTranslationProviderId(result.provider);
-    if (result.provider === 'opus-mt-local') {
-      log.info('Migrated legacy stored provider alias to opus-mt');
-    } else if (restoredProvider !== result.provider) {
-      log.warn('Ignoring invalid stored provider:', result.provider);
-    }
-    setProvider(restoredProvider);
-    log.info('Restored provider:', getProvider());
-  } else {
-    log.info(`No stored provider found, using default ${DEFAULT_PROVIDER_ID}`);
-  }
+  await restorePersistedProvider({
+    log,
+    defaultProvider: DEFAULT_PROVIDER_ID,
+    readStoredProvider: async () => {
+      const result = await safeStorageGet<{ provider?: unknown }>(['provider']);
+      return result.provider;
+    },
+    setProvider,
+    getProvider,
+  });
 })();
 /* v8 ignore stop */
 

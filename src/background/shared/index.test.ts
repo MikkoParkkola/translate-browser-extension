@@ -108,4 +108,12 @@ describe('shared/index barrel export', () => {
     expect(barrel.createKeyboardShortcutHandler).toBeDefined();
     expect(barrel.resolveContentCommand).toBeDefined();
   });
+
+  it('re-exports all expected symbols from lifecycle-orchestration', async () => {
+    const barrel = await import('./index');
+    expect(barrel.clearMatchingCaches).toBeDefined();
+    expect(barrel.clearMatchingIndexedDbDatabases).toBeDefined();
+    expect(barrel.createInstallationHandler).toBeDefined();
+    expect(barrel.restorePersistedProvider).toBeDefined();
+  });
 });

@@ -30,7 +30,7 @@ import { CONFIG } from '../config';
 import { profiler, type AggregateStats } from '../core/profiler';
 import { sleep } from '../core/async-utils';
 import { splitIntoSentences } from '../core/text-utils';
-import { DEFAULT_PROVIDER_ID, normalizeTranslationProviderId } from '../shared/provider-options';
+import { DEFAULT_PROVIDER_ID } from '../shared/provider-options';
 import {
   assertNever,
   isExtensionMessage,
@@ -87,6 +87,10 @@ import {
   createOffscreenTransport,
   relayModelProgress,
   upsertDownloadedModelInventory,
+  clearMatchingCaches,
+  clearMatchingIndexedDbDatabases,
+  createInstallationHandler,
+  restorePersistedProvider,
 } from './shared';
 
 const log = createLogger('Background');
@@ -666,57 +670,6 @@ async function tryClearOffscreenPipelineCache(): Promise<void> {
     log.warn('Could not clear offscreen pipeline cache (may not be running)');
     /* v8 ignore stop */
   }
-}
-
-type IndexedDbWithDatabases = IDBFactory & {
-  databases?: () => Promise<Array<{ name?: string }>>;
-};
-
-function getCacheStorage(): CacheStorage | null {
-  return typeof globalThis.caches === 'undefined' ? null : globalThis.caches;
-}
-
-function getIndexedDbFactory(): IndexedDbWithDatabases | null {
-  return typeof globalThis.indexedDB === 'undefined'
-    ? null
-    : globalThis.indexedDB as IndexedDbWithDatabases;
-}
-
-async function clearMatchingCaches(patterns: readonly string[]): Promise<string[] | null> {
-  const cacheStorage = getCacheStorage();
-  if (!cacheStorage) {
-    return null;
-  }
-
-  const cacheNames = await cacheStorage.keys();
-  const cleared: string[] = [];
-  for (const name of cacheNames) {
-    if (patterns.some((pattern) => name.includes(pattern))) {
-      await cacheStorage.delete(name);
-      cleared.push(name);
-    }
-  }
-  return cleared;
-}
-
-async function clearMatchingIndexedDbDatabases(
-  patterns: readonly string[]
-): Promise<string[] | null> {
-  const indexedDbFactory = getIndexedDbFactory();
-  if (!indexedDbFactory || typeof indexedDbFactory.databases !== 'function') {
-    return null;
-  }
-
-  const databases = await indexedDbFactory.databases();
-  const cleared: string[] = [];
-  for (const db of databases) {
-    const name = db.name;
-    if (name && patterns.some((pattern) => name.includes(pattern))) {
-      indexedDbFactory.deleteDatabase(name);
-      cleared.push(name);
-    }
-  }
-  return cleared;
 }
 
 /**
@@ -1398,37 +1351,28 @@ chrome.action.onClicked.addListener(async (tab) => {
 // Installation Handler
 // ============================================================================
 
-chrome.runtime.onInstalled.addListener(async (details) => {
-  setupContextMenus();
-
-  if (details.reason === 'install') {
-    log.info('Extension installed');
-
+chrome.runtime.onInstalled.addListener(createInstallationHandler({
+  log,
+  setupContextMenus,
+  getUiLanguage: () => chrome.i18n.getUILanguage(),
+  getOnboardingComplete: async () => {
     const stored = await safeStorageGet<{ onboardingComplete?: boolean }>('onboardingComplete');
-    if (!stored.onboardingComplete) {
-      log.info('Opening onboarding page');
-      chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/index.html') });
-    }
-
-    const browserLang = chrome.i18n.getUILanguage().split('-')[0];
-    log.info('Browser language detected:', browserLang);
+    return stored.onboardingComplete === true;
+  },
+  openOnboardingPage: () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/index.html') });
+  },
+  persistInstallDefaults: async (browserLang) => {
     /* v8 ignore start -- browserLang || default */
-    try {
-      await strictStorageSet({
-        sourceLang: 'auto',
-        targetLang: browserLang || 'en',
-        strategy: 'smart',
-        provider: DEFAULT_PROVIDER_ID,
-      });
-    } catch (error) {
-      log.error('Failed to persist install defaults:', error);
-    }
+    await strictStorageSet({
+      sourceLang: 'auto',
+      targetLang: browserLang || 'en',
+      strategy: 'smart',
+      provider: DEFAULT_PROVIDER_ID,
+    });
     /* v8 ignore stop */
-  /* v8 ignore start -- else-if branch: update reason */
-  } else if (details.reason === 'update') {
-  /* v8 ignore stop */
-    log.info('Extension updated from', details.previousVersion);
-
+  },
+  onUpdate: async () => {
     try {
       const clearedCaches = await clearMatchingCaches(['transformers', 'onnx', 'huggingface']);
       if (clearedCaches === null) {
@@ -1452,8 +1396,8 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     } catch (error) {
       log.warn('Update cache cleanup failed:', error);
     }
-  }
-});
+  },
+}));
 
 // ============================================================================
 // Startup
@@ -1462,19 +1406,16 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 // Load saved provider on startup, auto-detect Chrome Built-in availability
 /* v8 ignore start — module-level IIFE runs at import time, before test mocks are configured */
 (async () => {
-  const result = await safeStorageGet<{ provider?: unknown }>(['provider']);
-  if (result.provider !== undefined) {
-    const restoredProvider = normalizeTranslationProviderId(result.provider);
-    if (result.provider === 'opus-mt-local') {
-      log.info('Migrated legacy stored provider alias to opus-mt');
-    } else if (restoredProvider !== result.provider) {
-      log.warn('Ignoring invalid stored provider:', result.provider);
-    }
-    setProvider(restoredProvider);
-    log.info('Restored provider:', getProvider());
-  } else {
-    log.info(`No stored provider found, using default ${DEFAULT_PROVIDER_ID}`);
-  }
+  await restorePersistedProvider({
+    log,
+    defaultProvider: DEFAULT_PROVIDER_ID,
+    readStoredProvider: async () => {
+      const result = await safeStorageGet<{ provider?: unknown }>(['provider']);
+      return result.provider;
+    },
+    setProvider,
+    getProvider,
+  });
 
   // Auto-detect Chrome Built-in Translator
   try {
