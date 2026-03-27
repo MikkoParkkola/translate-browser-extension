@@ -678,6 +678,7 @@ describe('handleGetSettings', () => {
     const { handleGetSettings } = await import('./message-handlers');
     const result = await handleGetSettings(storageGet) as Record<string, unknown>;
     expect(result.success).toBe(false);
+    expect(result.error).toBe('Failed to get settings');
   });
 });
 

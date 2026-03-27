@@ -46,7 +46,9 @@ import {
   CLOUD_PROVIDER_STORAGE_KEYS,
 } from './provider-management';
 import {
+  createErrorLogger,
   withMessageResponse,
+  withMessageResponseFixedError,
   withMessageResponseFallback,
 } from './handler-response';
 import type {
@@ -106,7 +108,7 @@ async function handleCloudProviderMutation<TResolved, TSuccess extends Record<st
 
   return withMessageResponse(
     () => run(resolved),
-    (error) => log.error(errorLogMessage, error)
+    createErrorLevelHandler(errorLogMessage)
   );
 }
 
@@ -130,8 +132,16 @@ function resolveCloudProviderEnabledField(provider: CloudProviderId): string | u
   );
 }
 
-function logCorrectionError(operation: string, error: unknown): void {
-  log.warn(`Failed to ${operation}:`, error);
+function createWarnErrorHandler(message: string): (error: unknown) => void {
+  return createErrorLogger(log.warn, message);
+}
+
+function createErrorLevelHandler(message: string): (error: unknown) => void {
+  return createErrorLogger(log.error, message);
+}
+
+function createCorrectionErrorHandler(operation: string): (error: unknown) => void {
+  return createWarnErrorHandler(`Failed to ${operation}:`);
 }
 
 // ============================================================================
@@ -196,7 +206,7 @@ export async function handleGetCloudProviderStatus(): Promise<
       return { status: buildCloudProviderConfiguredStatusRecord(stored) };
     },
     { status: createEmptyCloudProviderConfiguredStatus() },
-    (error) => log.warn('Failed to get cloud provider status:', error)
+    createWarnErrorHandler('Failed to get cloud provider status:')
   );
 }
 
@@ -229,7 +239,7 @@ export async function handleSetCloudApiKey(
       log.info(`API key set for ${message.provider}`);
       return { provider: message.provider };
     },
-    (error) => log.error('Failed to set API key:', error)
+    createErrorLevelHandler('Failed to set API key:')
   );
 }
 
@@ -275,7 +285,7 @@ export async function handleGetHistory(): Promise<{ success: boolean; history: H
   return withMessageResponseFallback(
     async () => ({ history: await getHistory() }),
     { history: [] },
-    (error) => log.warn('Failed to get history:', error)
+    createWarnErrorHandler('Failed to get history:')
   );
 }
 
@@ -285,7 +295,7 @@ export async function handleClearHistory(): Promise<{ success: boolean; error?: 
       await clearTranslationHistory();
       return {};
     },
-    (error) => log.warn('Failed to clear history:', error)
+    createWarnErrorHandler('Failed to clear history:')
   );
 }
 
@@ -319,7 +329,7 @@ export async function handleAddCorrection(message: AddCorrectionMessage): Promis
       );
       return {};
     },
-    (error) => logCorrectionError('add correction', error)
+    createCorrectionErrorHandler('add correction')
   );
 }
 
@@ -329,7 +339,7 @@ export async function handleGetCorrection(message: GetCorrectionMessage): Promis
       const correction = await getCorrection(message.original, message.sourceLang, message.targetLang);
       return { correction, hasCorrection: correction !== null };
     },
-    (error) => logCorrectionError('get correction', error)
+    createCorrectionErrorHandler('get correction')
   );
 }
 
@@ -337,7 +347,7 @@ export async function handleGetAllCorrections(): Promise<{ success: boolean; cor
   return withMessageResponseFallback(
     async () => ({ corrections: await getAllCorrections() }),
     { corrections: [] },
-    (error) => logCorrectionError('get corrections', error)
+    createCorrectionErrorHandler('get corrections')
   );
 }
 
@@ -345,7 +355,7 @@ export async function handleGetCorrectionStats(): Promise<{ success: boolean; st
   return withMessageResponseFallback(
     async () => ({ stats: await getCorrectionStats() }),
     { stats: { total: 0, totalUses: 0, topCorrections: [] } },
-    (error) => logCorrectionError('get correction stats', error)
+    createCorrectionErrorHandler('get correction stats')
   );
 }
 
@@ -355,7 +365,7 @@ export async function handleClearCorrections(): Promise<{ success: boolean; erro
       await clearCorrections();
       return {};
     },
-    (error) => logCorrectionError('clear corrections', error)
+    createCorrectionErrorHandler('clear corrections')
   );
 }
 
@@ -364,21 +374,21 @@ export async function handleDeleteCorrection(message: DeleteCorrectionMessage): 
     async () => ({
       deleted: await deleteCorrection(message.original, message.sourceLang, message.targetLang),
     }),
-    (error) => logCorrectionError('delete correction', error)
+    createCorrectionErrorHandler('delete correction')
   );
 }
 
 export async function handleExportCorrections(): Promise<{ success: boolean; json?: string; error?: string }> {
   return withMessageResponse(
     async () => ({ json: await exportCorrections() }),
-    (error) => logCorrectionError('export corrections', error)
+    createCorrectionErrorHandler('export corrections')
   );
 }
 
 export async function handleImportCorrections(message: ImportCorrectionsMessage): Promise<MessageResponse<{ importedCount: number }>> {
   return withMessageResponse(
     async () => ({ importedCount: await importCorrections(message.json) }),
-    (error) => logCorrectionError('import corrections', error)
+    createCorrectionErrorHandler('import corrections')
   );
 }
 
@@ -389,25 +399,25 @@ export async function handleImportCorrections(message: ImportCorrectionsMessage)
 export async function handleGetSettings(
   storageGet: (keys: string[]) => Promise<UserSettingsStorageRecord>,
 ): Promise<MessageResponse<{ data: { sourceLanguage: string; targetLanguage: string; provider: TranslationProviderId; strategy: string } }>> {
-  try {
-    const settings = normalizeUserSettings(
-      await storageGet(['sourceLang', 'targetLang', 'provider', 'strategy']),
-      'opus-mt',
-    );
-    return {
-      success: true,
-      data: {
-        // Keep the legacy response shape for existing getSettings consumers.
-        sourceLanguage: settings.sourceLang,
-        targetLanguage: settings.targetLang,
-        provider: settings.provider,
-        strategy: settings.strategy,
-      },
-    };
-  } catch (error) {
-    log.warn('Failed to get settings:', error);
-    return { success: false, error: 'Failed to get settings' };
-  }
+  return withMessageResponseFixedError(
+    async () => {
+      const settings = normalizeUserSettings(
+        await storageGet(['sourceLang', 'targetLang', 'provider', 'strategy']),
+        'opus-mt',
+      );
+      return {
+        data: {
+          // Keep the legacy response shape for existing getSettings consumers.
+          sourceLanguage: settings.sourceLang,
+          targetLanguage: settings.targetLang,
+          provider: settings.provider,
+          strategy: settings.strategy,
+        },
+      };
+    },
+    'Failed to get settings',
+    createWarnErrorHandler('Failed to get settings:')
+  );
 }
 
 // ============================================================================
