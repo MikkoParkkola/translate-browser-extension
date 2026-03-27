@@ -9,132 +9,15 @@ import {
   resetTranslationCache,
   type CacheEntry,
 } from './translation-cache';
+import { setupIndexedDbStorageMock } from '../test-helpers/indexeddb-storage-mocks';
 
-// Mock IndexedDB
-const mockEntries = new Map<string, CacheEntry>();
-let mockCursorIndex = 0;
-let mockCursorEntries: CacheEntry[] = [];
-
-const createMockCursor = (entries: CacheEntry[], deleteCallback?: () => void) => {
-  return {
-    value: entries[mockCursorIndex],
-    continue: () => {
-      mockCursorIndex++;
-      if (mockCursorIndex < entries.length) {
-        // Simulate async cursor continuation
-        setTimeout(() => {
-          const event = { target: { result: createMockCursor(entries, deleteCallback) } };
-          (mockStore.openCursor as ReturnType<typeof vi.fn>).mock.results[0]?.value?.onsuccess?.(event);
-        }, 0);
-      } else {
-        // End of cursor
-        const event = { target: { result: null } };
-        (mockStore.openCursor as ReturnType<typeof vi.fn>).mock.results[0]?.value?.onsuccess?.(event);
-      }
-    },
-    delete: () => {
-      const key = entries[mockCursorIndex]?.key;
-      if (key) {
-        mockEntries.delete(key);
-        deleteCallback?.();
-      }
-    },
-  };
-};
-
-const mockIndex = {
-  openCursor: vi.fn(() => {
-    mockCursorIndex = 0;
-    mockCursorEntries = Array.from(mockEntries.values()).sort((a, b) => a.timestamp - b.timestamp);
-    return {
-      onerror: null,
-      onsuccess: null,
-      result: mockCursorEntries.length > 0 ? createMockCursor(mockCursorEntries) : null,
-    };
-  }),
-};
-
-const mockStore = {
-  get: vi.fn((key: string) => {
-    const result = mockEntries.get(key);
-    return {
-      onerror: null,
-      onsuccess: null,
-      result,
-    };
-  }),
-  put: vi.fn((entry: CacheEntry) => {
-    mockEntries.set(entry.key, entry);
-    return {
-      onerror: null,
-      onsuccess: null,
-    };
-  }),
-  clear: vi.fn(() => {
-    mockEntries.clear();
-    return {
-      onerror: null,
-      onsuccess: null,
-    };
-  }),
-  openCursor: vi.fn(() => {
-    mockCursorIndex = 0;
-    mockCursorEntries = Array.from(mockEntries.values());
-    const request = {
-      onerror: null as ((ev: Event) => void) | null,
-      onsuccess: null as ((ev: Event) => void) | null,
-      result: null as ReturnType<typeof createMockCursor> | null,
-    };
-    // Return immediately, onsuccess will be called after setup
-    setTimeout(() => {
-      if (mockCursorEntries.length > 0) {
-        request.result = createMockCursor(mockCursorEntries) as ReturnType<typeof createMockCursor>;
-      }
-      const event = { target: { result: request.result } } as unknown as Event;
-      request.onsuccess?.(event);
-    }, 0);
-    return request;
-  }),
-  index: vi.fn(() => mockIndex),
-};
-
-const mockTransaction = {
-  objectStore: vi.fn(() => mockStore),
-};
-
-const mockDb = {
-  transaction: vi.fn(() => mockTransaction),
-  objectStoreNames: { contains: vi.fn(() => true) },
-  createObjectStore: vi.fn(() => ({
-    createIndex: vi.fn(),
-  })),
-  close: vi.fn(),
-};
-
-// Setup IndexedDB mock
-const mockIndexedDB = {
-  open: vi.fn(() => {
-    const request = {
-      onerror: null as ((ev: Event) => void) | null,
-      onsuccess: null as ((ev: Event) => void) | null,
-      onupgradeneeded: null as ((ev: IDBVersionChangeEvent) => void) | null,
-      result: mockDb,
-      error: null,
-    };
-    // Simulate async database open
-    setTimeout(() => {
-      request.onsuccess?.({ target: request } as unknown as Event);
-    }, 0);
-    return request;
-  }),
-  deleteDatabase: vi.fn(() => ({
-    onerror: null,
-    onsuccess: null,
-  })),
-};
-
-// Apply mock to global
-vi.stubGlobal('indexedDB', mockIndexedDB);
+const indexedDbMock = setupIndexedDbStorageMock<CacheEntry>();
+const mockEntries = indexedDbMock.entries;
+const mockStore = indexedDbMock.store;
+const mockIndex = indexedDbMock.index;
+const mockTransaction = indexedDbMock.transaction;
+const mockDb = indexedDbMock.db;
+const mockIndexedDB = indexedDbMock.indexedDB;
 
 const waitForCacheAsyncWork = (ms = 10): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -154,9 +37,7 @@ describe('TranslationCache', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockEntries.clear();
-    mockCursorIndex = 0;
-    mockCursorEntries = []; // Fix: Clear cursor entries
+    indexedDbMock.reset();
     resetTranslationCache();
   });
 
@@ -547,7 +428,7 @@ describe('Edge cases', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockEntries.clear();
+    indexedDbMock.reset();
     resetTranslationCache();
     cache = await createReadyCache();
   });
@@ -624,8 +505,7 @@ describe('LRU eviction', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockEntries.clear();
-    mockCursorIndex = 0;
+    indexedDbMock.reset();
     resetTranslationCache();
   });
 
@@ -728,7 +608,7 @@ describe('error paths', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockEntries.clear();
+    indexedDbMock.reset();
     resetTranslationCache();
     cache = await createReadyCache();
   });
@@ -1375,9 +1255,7 @@ describe('remaining uncovered branches', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockEntries.clear();
-    mockCursorIndex = 0;
-    mockCursorEntries = [];
+    indexedDbMock.reset();
     resetTranslationCache();
   });
 
@@ -1584,9 +1462,7 @@ describe('Cache-at-Capacity and LRU Ordering Tests', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockEntries.clear();
-    mockCursorIndex = 0;
-    mockCursorEntries = [];
+    indexedDbMock.reset();
     resetTranslationCache();
   });
 

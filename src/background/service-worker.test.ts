@@ -6,8 +6,10 @@
  */
 
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { setupCachesMock } from '../test-helpers/browser-mocks';
 import { setupChromeApiMock } from '../test-helpers/chrome-mocks';
 import { setupChromeTabsScriptingMocks } from '../test-helpers/chrome-tabs-scripting-mocks';
+import { setupIndexedDbDatabasesMock } from '../test-helpers/indexeddb-storage-mocks';
 
 const DEFAULT_TRANSLATED_RESPONSE = { success: true, result: 'translated' };
 const DEFAULT_TRANSLATED_TEXT_RESPONSE = {
@@ -82,6 +84,24 @@ const mockAddConnectListener = serviceWorkerChromeMock.events.runtime.onConnect.
 const mockStorageSet = serviceWorkerChromeMock.chrome.storage.local.set;
 const mockStorageRemove = serviceWorkerChromeMock.chrome.storage.local.remove;
 const waitForAsyncChromeWork = (ms = 50) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function setupTemporaryCachesMock() {
+  return setupCachesMock({ restore: 'original' });
+}
+
+function removeCachesForTest() {
+  setupTemporaryCachesMock();
+  delete (globalThis as Record<string, unknown>).caches;
+}
+
+function setupTemporaryIndexedDbMock(
+  options: Parameters<typeof setupIndexedDbDatabasesMock>[0] = {},
+) {
+  return setupIndexedDbDatabasesMock({
+    restore: 'original',
+    ...options,
+  });
+}
 
 function setMockSendMessageResponse(response = DEFAULT_TRANSLATED_RESPONSE) {
   mockSendMessage.mockReset();
@@ -2259,20 +2279,14 @@ describe('Service Worker Extended Handler Coverage', () => {
   // --------------------------------------------------------------------------
   describe('install handler: update cache clearing', () => {
     it('handles update when caches API exists', async () => {
-      // Mock the caches API (not available by default in jsdom)
-      const mockCachesKeys = vi.fn().mockResolvedValue(['transformers-cache-v1', 'other-cache'] as any);
-      const mockCachesDelete = vi.fn().mockResolvedValue(true);
-      const mockIndexedDBDatabases = vi.fn().mockResolvedValue([
-        { name: 'transformers-db', version: 1 },
-        { name: 'app-db', version: 1 },
-      ]);
-      const mockIndexedDBDeleteDatabase = vi.fn();
-
-      // Use Object.assign to avoid removing the chrome global
-      const origCaches = (globalThis as Record<string, unknown>).caches;
-      const origIndexedDB = (globalThis as Record<string, unknown>).indexedDB;
-      (globalThis as Record<string, unknown>).caches = { keys: mockCachesKeys, delete: mockCachesDelete };
-      (globalThis as Record<string, unknown>).indexedDB = { databases: mockIndexedDBDatabases, deleteDatabase: mockIndexedDBDeleteDatabase };
+      const cachesMock = setupTemporaryCachesMock();
+      cachesMock.keys.mockResolvedValue(['transformers-cache-v1', 'other-cache'] as any);
+      const indexedDbMock = setupTemporaryIndexedDbMock({
+        databases: [
+          { name: 'transformers-db', version: 1 },
+          { name: 'app-db', version: 1 },
+        ],
+      });
 
       const installHandler = mockAddInstalledListener.mock.calls[0]?.[0] as (
         details: { reason: string; previousVersion?: string }
@@ -2282,19 +2296,13 @@ describe('Service Worker Extended Handler Coverage', () => {
       await waitForAsyncChromeWork(50);
 
       // Should have attempted to clear model caches
-      expect(mockCachesKeys).toHaveBeenCalled();
-
-      // Restore
-      (globalThis as Record<string, unknown>).caches = origCaches;
-      (globalThis as Record<string, unknown>).indexedDB = origIndexedDB;
+      expect(cachesMock.keys).toHaveBeenCalled();
+      expect(indexedDbMock.databases).toHaveBeenCalled();
     });
 
     it('handles update when caches API throws', async () => {
-      const origCaches = (globalThis as Record<string, unknown>).caches;
-      (globalThis as Record<string, unknown>).caches = {
-        keys: vi.fn().mockRejectedValue(new Error('caches unavailable')),
-        delete: vi.fn(),
-      };
+      const cachesMock = setupTemporaryCachesMock();
+      cachesMock.keys.mockRejectedValue(new Error('caches unavailable'));
 
       const installHandler = mockAddInstalledListener.mock.calls[0]?.[0] as (
         details: { reason: string; previousVersion?: string }
@@ -2306,8 +2314,6 @@ describe('Service Worker Extended Handler Coverage', () => {
 
       // Verify it handled gracefully (no throw)
       expect(true).toBe(true);
-
-      (globalThis as Record<string, unknown>).caches = origCaches;
     });
   });
 
@@ -2707,18 +2713,12 @@ describe('Service Worker Additional Coverage', () => {
   // --------------------------------------------------------------------------
   describe('clearAllModels with caches API', () => {
     it('clears transformers model caches when caches API is available', async () => {
-      const mockCachesKeys = vi.fn().mockResolvedValue([
+      const cachesMock = setupTemporaryCachesMock();
+      cachesMock.keys.mockResolvedValue([
         'transformers-cache-v1',
         'onnx-model-cache',
         'unrelated-cache',
       ]);
-      const mockCachesDelete = vi.fn().mockResolvedValue(true);
-
-      const origCaches = (globalThis as Record<string, unknown>).caches;
-      (globalThis as Record<string, unknown>).caches = {
-        keys: mockCachesKeys,
-        delete: mockCachesDelete,
-      };
 
       mockSendMessage.mockReturnValue({ success: true });
       mockStorageRemove.mockClear();
@@ -2727,44 +2727,29 @@ describe('Service Worker Additional Coverage', () => {
 
       expect(response.success).toBe(true);
       // Should have cleared model-related caches (transformers, onnx)
-      expect(mockCachesKeys).toHaveBeenCalled();
-      expect(mockCachesDelete).toHaveBeenCalledTimes(2); // transformers + onnx but not unrelated
-
-      (globalThis as Record<string, unknown>).caches = origCaches;
+      expect(cachesMock.keys).toHaveBeenCalled();
+      expect(cachesMock.delete).toHaveBeenCalledTimes(2); // transformers + onnx but not unrelated
     });
 
     it('succeeds even when caches.keys() throws', async () => {
-      const origCaches = (globalThis as Record<string, unknown>).caches;
-      (globalThis as Record<string, unknown>).caches = {
-        keys: vi.fn().mockRejectedValue(new Error('caches unavailable')),
-        delete: vi.fn(),
-      };
+      const cachesMock = setupTemporaryCachesMock();
+      cachesMock.keys.mockRejectedValue(new Error('caches unavailable'));
 
       mockSendMessage.mockReturnValue({ success: true });
 
       const response = await invoke({ type: 'clearAllModels' }) as { success: boolean };
       expect(response.success).toBe(true);
-
-      (globalThis as Record<string, unknown>).caches = origCaches;
     });
 
     it('clears model caches matching "model" in name', async () => {
-      const mockCachesKeys = vi.fn().mockResolvedValue(['model-store-v2'] as any);
-      const mockCachesDelete = vi.fn().mockResolvedValue(true);
-
-      const origCaches = (globalThis as Record<string, unknown>).caches;
-      (globalThis as Record<string, unknown>).caches = {
-        keys: mockCachesKeys,
-        delete: mockCachesDelete,
-      };
+      const cachesMock = setupTemporaryCachesMock();
+      cachesMock.keys.mockResolvedValue(['model-store-v2'] as any);
 
       mockSendMessage.mockReturnValue({ success: true });
 
       const response = await invoke({ type: 'clearAllModels' }) as { success: boolean };
       expect(response.success).toBe(true);
-      expect(mockCachesDelete).toHaveBeenCalledWith('model-store-v2');
-
-      (globalThis as Record<string, unknown>).caches = origCaches;
+      expect(cachesMock.delete).toHaveBeenCalledWith('model-store-v2');
     });
   });
 
@@ -5557,33 +5542,26 @@ describe('Coverage gap tests', () => {
   // ============================================================================
   describe('handleClearAllModels: cache API branch', () => {
     it('clears model caches matching transformers/onnx/model patterns', async () => {
-      const mockCachesKeys = vi.fn().mockResolvedValue([
+      const cachesMock = setupTemporaryCachesMock();
+      cachesMock.keys.mockResolvedValue([
         'transformers-cache-v1',
         'onnx-models-v2',
         'model-storage',
         'app-general-cache', // should NOT be deleted
       ]);
-      const mockDelete = vi.fn().mockResolvedValue(true);
-      vi.stubGlobal('caches', { keys: mockCachesKeys, delete: mockDelete });
 
       const response = await invoke({ type: 'clearAllModels' }) as any;
 
-      // Restore only caches — avoid vi.unstubAllGlobals() which removes the chrome stub
-      (globalThis as any).caches = undefined;
-
       expect(response.success).toBe(true);
-      expect(mockDelete).toHaveBeenCalledTimes(3);
+      expect(cachesMock.delete).toHaveBeenCalledTimes(3);
     });
 
     it('handles caches.keys() throwing gracefully', async () => {
-      vi.stubGlobal('caches', {
-        keys: vi.fn().mockRejectedValue(new Error('Cache API unavailable')),
-        delete: vi.fn(),
-      });
+      const cachesMock = setupTemporaryCachesMock();
+      cachesMock.keys.mockRejectedValue(new Error('Cache API unavailable'));
 
       const response = await invoke({ type: 'clearAllModels' }) as any;
 
-      (globalThis as any).caches = undefined;
       expect(response.success).toBe(true);
     });
   });
@@ -6467,14 +6445,9 @@ describe('Coverage gap tests — second wave', () => {
   // -----------------------------------------------------------------------
   describe('install handler: update reason', () => {
     it('clears matching caches on update (lines 1415-1425)', async () => {
-      vi.stubGlobal('caches', {
-        keys: vi.fn().mockResolvedValue(['transformers-v1', 'onnx-models', 'app-cache'] as any),
-        delete: vi.fn().mockResolvedValue(true),
-      });
-      vi.stubGlobal('indexedDB', {
-        databases: vi.fn().mockResolvedValue([]),
-        deleteDatabase: vi.fn(),
-      });
+      const cachesMock = setupTemporaryCachesMock();
+      cachesMock.keys.mockResolvedValue(['transformers-v1', 'onnx-models', 'app-cache'] as any);
+      setupTemporaryIndexedDbMock();
 
       const installHandler = mockAddInstalledListener.mock.calls[0]?.[0];
       await installHandler({ reason: 'update', previousVersion: '1.0.0' });
@@ -6482,77 +6455,49 @@ describe('Coverage gap tests — second wave', () => {
       expect(vi.mocked((globalThis as any).caches.delete)).toHaveBeenCalledWith('transformers-v1');
       expect(vi.mocked((globalThis as any).caches.delete)).toHaveBeenCalledWith('onnx-models');
       expect(vi.mocked((globalThis as any).caches.delete)).not.toHaveBeenCalledWith('app-cache');
-
-      (globalThis as any).caches = undefined;
-      (globalThis as any).indexedDB = undefined;
     });
 
     it('logs cleared count when matched caches are deleted (line 1423)', async () => {
-      vi.stubGlobal('caches', {
-        keys: vi.fn().mockResolvedValue(['huggingface-cache'] as any),
-        delete: vi.fn().mockResolvedValue(true),
-      });
-      vi.stubGlobal('indexedDB', {
-        databases: vi.fn().mockResolvedValue([]),
-        deleteDatabase: vi.fn(),
-      });
+      const cachesMock = setupTemporaryCachesMock();
+      cachesMock.keys.mockResolvedValue(['huggingface-cache'] as any);
+      setupTemporaryIndexedDbMock();
 
       const installHandler = mockAddInstalledListener.mock.calls[0]?.[0];
       await installHandler({ reason: 'update', previousVersion: '2.0.0' });
 
       expect(vi.mocked((globalThis as any).caches.delete)).toHaveBeenCalledTimes(1);
-
-      (globalThis as any).caches = undefined;
-      (globalThis as any).indexedDB = undefined;
     });
 
     it('clears matching indexedDB databases on update (lines 1427-1432)', async () => {
-      vi.stubGlobal('caches', {
-        keys: vi.fn().mockResolvedValue([]),
-        delete: vi.fn(),
-      });
-      const mockDeleteDatabase = vi.fn();
-      vi.stubGlobal('indexedDB', {
-        databases: vi.fn().mockResolvedValue([
+      const cachesMock = setupTemporaryCachesMock();
+      cachesMock.keys.mockResolvedValue([]);
+      const indexedDbMock = setupTemporaryIndexedDbMock({
+        databases: [
           { name: 'transformers-model-cache', version: 1 },
           { name: 'unrelated-store', version: 1 },
-        ]),
-        deleteDatabase: mockDeleteDatabase,
+        ],
       });
 
       const installHandler = mockAddInstalledListener.mock.calls[0]?.[0];
       await installHandler({ reason: 'update', previousVersion: '1.5.0' });
 
-      expect(mockDeleteDatabase).toHaveBeenCalledWith('transformers-model-cache');
-      expect(mockDeleteDatabase).not.toHaveBeenCalledWith('unrelated-store');
-
-      (globalThis as any).caches = undefined;
-      (globalThis as any).indexedDB = undefined;
+      expect(indexedDbMock.deleteDatabase).toHaveBeenCalledWith('transformers-model-cache');
+      expect(indexedDbMock.deleteDatabase).not.toHaveBeenCalledWith('unrelated-store');
     });
 
     it('handles caches.keys() throwing on update (catch block, lines 1434-1436)', async () => {
-      vi.stubGlobal('caches', {
-        keys: vi.fn().mockRejectedValue(new Error('Cache API unavailable')),
-        delete: vi.fn(),
-      });
+      const cachesMock = setupTemporaryCachesMock();
+      cachesMock.keys.mockRejectedValue(new Error('Cache API unavailable'));
 
       const installHandler = mockAddInstalledListener.mock.calls[0]?.[0];
       await installHandler({ reason: 'update', previousVersion: '1.0.0' });
       // Should not throw; error is caught internally
-
-      (globalThis as any).caches = undefined;
     });
 
     it('skips update cache cleanup when CacheStorage is unavailable', async () => {
-      const origCaches = (globalThis as Record<string, unknown>).caches;
-      const origIndexedDB = (globalThis as Record<string, unknown>).indexedDB;
+      removeCachesForTest();
+      setupTemporaryIndexedDbMock();
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-      (globalThis as Record<string, unknown>).caches = undefined;
-      (globalThis as Record<string, unknown>).indexedDB = {
-        databases: vi.fn().mockResolvedValue([]),
-        deleteDatabase: vi.fn(),
-      };
 
       const installHandler = mockAddInstalledListener.mock.calls[0]?.[0];
       await installHandler({ reason: 'update', previousVersion: '1.0.0' });
@@ -6564,22 +6509,13 @@ describe('Coverage gap tests — second wave', () => {
       );
 
       warnSpy.mockRestore();
-      (globalThis as Record<string, unknown>).caches = origCaches;
-      (globalThis as Record<string, unknown>).indexedDB = origIndexedDB;
     });
 
     it('skips update database cleanup when indexedDB database listing is unavailable', async () => {
-      const origCaches = (globalThis as Record<string, unknown>).caches;
-      const origIndexedDB = (globalThis as Record<string, unknown>).indexedDB;
+      const cachesMock = setupTemporaryCachesMock();
+      cachesMock.keys.mockResolvedValue([]);
+      setupTemporaryIndexedDbMock({ includeDatabases: false });
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-      (globalThis as Record<string, unknown>).caches = {
-        keys: vi.fn().mockResolvedValue([]),
-        delete: vi.fn(),
-      };
-      (globalThis as Record<string, unknown>).indexedDB = {
-        deleteDatabase: vi.fn(),
-      };
 
       const installHandler = mockAddInstalledListener.mock.calls[0]?.[0];
       await installHandler({ reason: 'update', previousVersion: '1.0.0' });
@@ -6591,8 +6527,6 @@ describe('Coverage gap tests — second wave', () => {
       );
 
       warnSpy.mockRestore();
-      (globalThis as Record<string, unknown>).caches = origCaches;
-      (globalThis as Record<string, unknown>).indexedDB = origIndexedDB;
     });
   });
 
