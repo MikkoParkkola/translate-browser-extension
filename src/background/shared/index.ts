@@ -11,6 +11,19 @@ export type {
 } from './storage-ops';
 export { createTranslationCache } from './storage-ops';
 
+export type {
+  CommonBackgroundMessage,
+  CommonBackgroundResponse,
+} from './common-background';
+export {
+  COMMON_BACKGROUND_MESSAGE_TYPES,
+  createBackgroundMessageGuard,
+  createCommonBackgroundMessageDispatcher,
+  createPreloadModelHandler,
+  createSafeCapabilityHandler,
+  isCommonBackgroundMessage,
+} from './common-background';
+
 export {
   getStrategy,
   setStrategy,
@@ -70,6 +83,8 @@ export {
   getActionSettings,
 } from './message-handlers';
 export type { ActionSettings } from './message-handlers';
+
+export { createBackgroundMessageListener } from './background-message-listener';
 
 export type {
   UIEventCommandId,

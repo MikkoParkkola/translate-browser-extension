@@ -13,12 +13,11 @@ import type {
   BackgroundRequestMessage,
   BackgroundRequestMessageType,
   ExtensionMessage, ExtensionMessageResponse, TranslateResponse, Strategy, TranslationProviderId, ContentCommand,
-  PreloadModelMessage, PreloadModelResponsePayload, RecordLanguageDetectionMessage,
+  RecordLanguageDetectionMessage,
   GetCloudProviderUsageMessage, OCRImageMessage, CaptureScreenshotMessage,
   DeleteModelMessage, DownloadedModelRecord, MessageResponse,
 } from '../types';
 import {
-  createTranslationError,
   extractErrorMessage,
   withRetry,
   type TranslationError,
@@ -33,10 +32,6 @@ import { splitIntoSentences } from '../core/text-utils';
 import { DEFAULT_PROVIDER_ID } from '../shared/provider-options';
 import {
   assertNever,
-  isExtensionMessage,
-  isHandledExtensionMessage,
-  isAuthorizedExtensionSender,
-  routeHandledExtensionMessage,
 } from './shared/message-routing';
 
 // Shared modules — extracted from duplicated Chrome/Firefox logic
@@ -47,18 +42,10 @@ import {
   getProvider,
   setProvider,
   getStrategy,
-  formatUserError,
   getDownloadedModelInventory,
   clearDownloadedModelInventory,
   deleteDownloadedModelInventoryEntry,
-  handleSetProvider,
-  handleGetCacheStats,
   handleClearCache,
-  handleGetUsage,
-  handleGetCloudProviderStatus,
-  handleSetCloudApiKey,
-  handleClearCloudApiKey,
-  handleSetCloudProviderEnabled,
   handleGetHistory,
   handleClearHistory,
   recordTranslationToHistory,
@@ -91,6 +78,13 @@ import {
   clearMatchingIndexedDbDatabases,
   createInstallationHandler,
   restorePersistedProvider,
+  COMMON_BACKGROUND_MESSAGE_TYPES,
+  isCommonBackgroundMessage,
+  createBackgroundMessageGuard,
+  createBackgroundMessageListener,
+  createCommonBackgroundMessageDispatcher,
+  createPreloadModelHandler,
+  createSafeCapabilityHandler,
 } from './shared';
 
 const log = createLogger('Background');
@@ -268,17 +262,14 @@ function releaseKeepAlive(): void {
 // Message Handler
 // ============================================================================
 
-chrome.runtime.onMessage.addListener(
-  (
-    message: unknown,
-    sender: chrome.runtime.MessageSender,
-    sendResponse: (response: TranslateResponse | unknown) => void
-  ) => {
-    if (!isExtensionMessage(message)) return;
-
-    // Ignore messages from offscreen document
-    if ('target' in message && message.target === 'offscreen') return false;
-
+chrome.runtime.onMessage.addListener(createBackgroundMessageListener({
+  extensionUrlPrefix: 'chrome-extension://',
+  isHandledMessage: isServiceWorkerHandledMessage,
+  dispatch: handleMessage,
+  log,
+  errorLogPrefix: ' ',
+  logUnknownMessage: (type) => log.warn(` Unknown message type: ${type}`),
+  beforeRoute: ({ message, sender, sendResponse }) => {
     if (isOffscreenModelMessage(message)) {
       if (!offscreenTransport.isSender(sender)) {
         sendResponse({ success: false, error: 'Unauthorized sender' });
@@ -334,44 +325,20 @@ chrome.runtime.onMessage.addListener(
       }
     }
 
-    // For translation messages, validate text/sourceLang/targetLang are strings
     if (message.type === 'translate') {
-      // TypeScript narrows message to TranslateMessage here; validation is a runtime guard
-      // against malformed messages from content scripts (the union type ensures correct types
-      // for well-formed callers, but runtime messages are untyped).
-      if (typeof message.text !== 'string' && !Array.isArray(message.text) ||
-          typeof message.sourceLang !== 'string' ||
-          typeof message.targetLang !== 'string') {
+      if (
+        (typeof message.text !== 'string' && !Array.isArray(message.text))
+        || typeof message.sourceLang !== 'string'
+        || typeof message.targetLang !== 'string'
+      ) {
         sendResponse({ success: false, error: 'Invalid translation parameters' });
         return true;
       }
     }
 
-    // Validate sender for sensitive operations — only allow from extension pages (popup/options),
-    // not content scripts running on arbitrary web pages. Content scripts always have sender.url
-    // set to the web page URL; extension pages have chrome-extension:// URLs.
-    if (!isAuthorizedExtensionSender(message, sender.url, 'chrome-extension://')) {
-      sendResponse({ success: false, error: 'Unauthorized sender' });
-      return true;
-    }
-
-    return routeHandledExtensionMessage({
-      message,
-      sendResponse,
-      isHandledMessage: isServiceWorkerHandledMessage,
-      dispatch: handleMessage,
-      logUnknownMessage: (type) => log.warn(` Unknown message type: ${type}`),
-      createErrorResponse: (error) => {
-        const translationError = createTranslationError(error);
-        log.error(' Error:', translationError.technicalDetails);
-        return {
-          success: false,
-          error: formatUserError(translationError),
-        };
-      },
-    });
-  }
-);
+    return undefined;
+  },
+}));
 
 // ============================================================================
 // Streaming Translation via Port (chrome.runtime.connect)
@@ -482,23 +449,9 @@ chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
 
 
 const SERVICE_WORKER_MESSAGE_TYPES = [
-  'ping',
-  'translate',
-  'getUsage',
-  'getProviders',
-  'preloadModel',
-  'setProvider',
-  'getCacheStats',
-  'clearCache',
-  'checkChromeTranslator',
-  'checkWebGPU',
-  'checkWebNN',
+  ...COMMON_BACKGROUND_MESSAGE_TYPES,
   'getPredictionStats',
   'recordLanguageDetection',
-  'getCloudProviderStatus',
-  'setCloudApiKey',
-  'clearCloudApiKey',
-  'setCloudProviderEnabled',
   'getCloudProviderUsage',
   'getProfilingStats',
   'clearProfilingStats',
@@ -530,45 +483,91 @@ type ServiceWorkerHandledResponse = ExtensionMessageResponse<ServiceWorkerHandle
 function isServiceWorkerHandledMessage(
   message: ExtensionMessage
 ): message is ServiceWorkerHandledMessage {
-  return isHandledExtensionMessage(message, SERVICE_WORKER_MESSAGE_TYPES);
+  return createBackgroundMessageGuard(SERVICE_WORKER_MESSAGE_TYPES)(message);
 }
 
+const handlePreloadModel = createPreloadModelHandler({
+  log,
+  getProvider,
+  logPrefix: ' ',
+  preloadModel: async (message, provider) => offscreenTransport.send<'preloadModel'>({
+    type: 'preloadModel',
+    sourceLang: message.sourceLang,
+    targetLang: message.targetLang,
+    provider,
+  }),
+});
+
+const handleCheckChromeTranslator = createSafeCapabilityHandler({
+  log,
+  debugMessage: 'Chrome Translator check failed (restricted page?):',
+  fallback: { success: true, available: false } as const,
+  run: async () => {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tabId = tabs[0]?.id;
+    if (!tabId) {
+      return { success: true, available: false } as const;
+    }
+
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN' as chrome.scripting.ExecutionWorld,
+      /* v8 ignore start */
+      func: () => typeof self.Translator !== 'undefined',
+      /* v8 ignore stop */
+    });
+    return { success: true, available: results[0]?.result === true } as const;
+  },
+});
+
+const handleCheckWebGPU = createSafeCapabilityHandler({
+  log,
+  debugMessage: 'WebGPU check failed:',
+  fallback: { success: true, supported: false, fp16: false } as const,
+  run: async () => {
+    const response = await offscreenTransport.send<'checkWebGPU'>({ type: 'checkWebGPU' });
+    if (!response.success) {
+      throw new Error(response.error);
+    }
+    return response;
+  },
+});
+
+const handleCheckWebNN = createSafeCapabilityHandler({
+  log,
+  debugMessage: 'WebNN check failed:',
+  fallback: { success: true, supported: false } as const,
+  run: async () => {
+    const response = await offscreenTransport.send<'checkWebNN'>({ type: 'checkWebNN' });
+    if (!response.success) {
+      throw new Error(response.error);
+    }
+    return response;
+  },
+});
+
+const dispatchCommonMessage = createCommonBackgroundMessageDispatcher({
+  translationCache,
+  getProvider,
+  handleTranslate,
+  handleGetProviders,
+  handlePreloadModel,
+  handleClearCache: handleClearCacheWithOffscreen,
+  handleCheckChromeTranslator,
+  handleCheckWebGPU,
+  handleCheckWebNN,
+});
+
 async function handleMessage(message: ServiceWorkerHandledMessage): Promise<ServiceWorkerHandledResponse> {
+  if (isCommonBackgroundMessage(message)) {
+    return dispatchCommonMessage(message);
+  }
+
   switch (message.type) {
-    case 'ping':
-      return { success: true, status: 'ready', provider: getProvider() };
-    case 'translate':
-      return handleTranslate(message);
-    case 'getUsage':
-      return handleGetUsage(translationCache);
-    case 'getProviders':
-      return handleGetProviders();
-    case 'preloadModel':
-      return handlePreloadModel(message);
-    case 'setProvider':
-      return handleSetProvider(message);
-    case 'getCacheStats':
-      return handleGetCacheStats(translationCache);
-    case 'clearCache':
-      return handleClearCacheWithOffscreen();
-    case 'checkChromeTranslator':
-      return handleCheckChromeTranslator();
-    case 'checkWebGPU':
-      return handleCheckWebGPU();
-    case 'checkWebNN':
-      return handleCheckWebNN();
     case 'getPredictionStats':
       return handleGetPredictionStats();
     case 'recordLanguageDetection':
       return handleRecordLanguageDetection(message);
-    case 'getCloudProviderStatus':
-      return handleGetCloudProviderStatus();
-    case 'setCloudApiKey':
-      return handleSetCloudApiKey(message);
-    case 'clearCloudApiKey':
-      return handleClearCloudApiKey(message);
-    case 'setCloudProviderEnabled':
-      return handleSetCloudProviderEnabled(message);
     case 'getCloudProviderUsage':
       return handleGetCloudProviderUsage(message);
     case 'getProfilingStats':
@@ -617,31 +616,6 @@ async function handleMessage(message: ServiceWorkerHandledMessage): Promise<Serv
 // ============================================================================
 // Chrome-Specific Handlers
 // ============================================================================
-
-/**
- * Preload model for a language pair
- */
-async function handlePreloadModel(message: PreloadModelMessage): Promise<MessageResponse<PreloadModelResponsePayload>> {
-  const provider = message.provider || getProvider();
-  log.info(` Preloading ${provider} model: ${message.sourceLang} -> ${message.targetLang}`);
-  try {
-    const response = await offscreenTransport.send<'preloadModel'>({
-      type: 'preloadModel',
-      sourceLang: message.sourceLang,
-      targetLang: message.targetLang,
-      provider,
-    });
-    return response;
-  } catch (error) {
-    /* v8 ignore start -- preload failure fallback */
-    log.warn(' Preload failed:', error);
-    return {
-      success: false,
-      error: extractErrorMessage(error),
-    };
-    /* v8 ignore stop */
-  }
-}
 
 /**
  * Clear cache — also forwards to offscreen document's cache.
@@ -726,62 +700,6 @@ async function handleClearAllModels(): Promise<MessageResponse> {
       success: false,
       error: extractErrorMessage(error),
     };
-  }
-}
-
-/**
- * Check if Chrome Translator API is available (Chrome 138+)
- */
-async function handleCheckChromeTranslator(): Promise<{ success: true; available: boolean }> {
-  try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    const tabId = tabs[0]?.id;
-    if (!tabId) {
-      return { success: true, available: false };
-    }
-    const results = await chrome.scripting.executeScript({
-      target: { tabId },
-      world: 'MAIN' as chrome.scripting.ExecutionWorld,
-      /* v8 ignore start */
-      func: () => typeof self.Translator !== 'undefined',
-      /* v8 ignore stop */
-    });
-    return { success: true, available: results[0]?.result === true };
-  } catch (error) {
-    log.debug('Chrome Translator check failed (restricted page?):', error);
-    return { success: true, available: false };
-  }
-}
-
-/**
- * Check WebGPU availability via the offscreen document.
- */
-async function handleCheckWebGPU(): Promise<{ success: true; supported: boolean; fp16: boolean }> {
-  try {
-    const response = await offscreenTransport.send<'checkWebGPU'>({ type: 'checkWebGPU' });
-    if (!response.success) {
-      throw new Error(response.error);
-    }
-    return response;
-  } catch (error) {
-    log.debug('WebGPU check failed:', error);
-    return { success: true, supported: false, fp16: false };
-  }
-}
-
-/**
- * Check WebNN availability via the offscreen document.
- */
-async function handleCheckWebNN(): Promise<{ success: true; supported: boolean }> {
-  try {
-    const response = await offscreenTransport.send<'checkWebNN'>({ type: 'checkWebNN' });
-    if (!response.success) {
-      throw new Error(response.error);
-    }
-    return response;
-  } catch (error) {
-    log.debug('WebNN check failed:', error);
-    return { success: true, supported: false };
   }
 }
 

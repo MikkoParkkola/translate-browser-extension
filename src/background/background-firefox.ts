@@ -8,23 +8,12 @@
 
 import { pipeline, env } from '@huggingface/transformers';
 import type {
-  BackgroundRequestMessage,
-  BackgroundRequestMessageType,
-  ExtensionMessage,
-  ExtensionMessageResponse,
   TranslateResponse,
   Strategy,
   TranslationProviderId,
   TranslationPipeline,
-  PreloadModelMessage,
-  PreloadModelResponsePayload,
   TranslateMessage,
-  MessageResponse,
 } from '../types';
-import {
-  createTranslationError,
-  extractErrorMessage,
-} from '../core/errors';
 import { createLogger } from '../core/logger';
 import { safeStorageGet, strictStorageSet } from '../core/storage';
 import { withTimeout } from '../core/async-utils';
@@ -36,14 +25,6 @@ import {
   mergeBatchTranslationResults,
   translateArrayItems,
 } from '../offscreen/batch-translation';
-import {
-  assertNever,
-  isExtensionMessage,
-  isHandledExtensionMessage,
-  isAuthorizedExtensionSender,
-  routeHandledExtensionMessage,
-} from './shared/message-routing';
-
 // Extracted modules from offscreen (now used directly)
 import {
   getModelId,
@@ -61,19 +42,18 @@ import {
   getProvider,
   setProvider,
   getStrategy,
-  handleSetProvider,
-  handleGetCacheStats,
   handleClearCache,
-  handleGetUsage,
   handleTranslateCore,
-  formatUserError,
   PROVIDER_LIST,
-  handleClearCloudApiKey,
-  handleGetCloudProviderStatus,
-  handleSetCloudApiKey,
-  handleSetCloudProviderEnabled,
   createInstallationHandler,
   restorePersistedProvider,
+  COMMON_BACKGROUND_MESSAGE_TYPES,
+  type CommonBackgroundMessage,
+  type CommonBackgroundResponse,
+  createBackgroundMessageGuard,
+  createBackgroundMessageListener,
+  createCommonBackgroundMessageDispatcher,
+  createPreloadModelHandler,
 } from './shared';
 
 const log = createLogger('Background-FF');
@@ -370,77 +350,18 @@ function getSupportedLanguages(): Array<{ src: string; tgt: string; pivot?: bool
 // Message Handlers
 // ============================================================================
 
-const FIREFOX_MESSAGE_TYPES = [
-  'ping',
-  'translate',
-  'getUsage',
-  'getProviders',
-  'preloadModel',
-  'setProvider',
-  'getCacheStats',
-  'clearCache',
-  'checkChromeTranslator',
-  'checkWebGPU',
-  'checkWebNN',
-  'getCloudProviderStatus',
-  'setCloudApiKey',
-  'clearCloudApiKey',
-  'setCloudProviderEnabled',
-] as const satisfies readonly BackgroundRequestMessageType[];
+const FIREFOX_MESSAGE_TYPES = COMMON_BACKGROUND_MESSAGE_TYPES;
 
-type FirefoxHandledMessage = Extract<
-  BackgroundRequestMessage,
-  { type: (typeof FIREFOX_MESSAGE_TYPES)[number] }
->;
+type FirefoxHandledMessage = CommonBackgroundMessage;
 
-type FirefoxHandledResponse = ExtensionMessageResponse<FirefoxHandledMessage>;
+type FirefoxHandledResponse = CommonBackgroundResponse;
 
-function isFirefoxHandledMessage(message: ExtensionMessage): message is FirefoxHandledMessage {
-  return isHandledExtensionMessage(message, FIREFOX_MESSAGE_TYPES);
-}
+const isFirefoxHandledMessage = createBackgroundMessageGuard(FIREFOX_MESSAGE_TYPES);
 
-async function handleMessage(message: FirefoxHandledMessage): Promise<FirefoxHandledResponse> {
-  switch (message.type) {
-    case 'ping':
-      return { success: true, status: 'ready', provider: getProvider() };
-    case 'translate':
-      return handleTranslate(message);
-    case 'getUsage':
-      return handleGetUsage(translationCache);
-    case 'getProviders':
-      return handleGetProviders();
-    case 'preloadModel':
-      return handlePreloadModel(message);
-    case 'setProvider':
-      return handleSetProvider(message);
-    case 'getCacheStats':
-      return handleGetCacheStats(translationCache);
-    case 'clearCache':
-      return handleClearCache(translationCache);
-    case 'checkChromeTranslator':
-      return handleCheckChromeTranslator();
-    case 'checkWebGPU':
-      return handleCheckWebGPU();
-    case 'checkWebNN':
-      return handleCheckWebNN();
-    case 'getCloudProviderStatus':
-      return handleGetCloudProviderStatus();
-    case 'setCloudApiKey':
-      return handleSetCloudApiKey(message);
-    case 'clearCloudApiKey':
-      return handleClearCloudApiKey(message);
-    case 'setCloudProviderEnabled':
-      return handleSetCloudProviderEnabled(message);
-    default:
-      return assertNever(message);
-  }
-}
-
-async function handlePreloadModel(message: PreloadModelMessage): Promise<MessageResponse<PreloadModelResponsePayload>> {
-  const provider = message.provider || getProvider();
-  log.info(`Preloading ${provider} model: ${message.sourceLang} -> ${message.targetLang}`);
-
-  try {
+const handlePreloadModel = createPreloadModelHandler({
+  log,
+  getProvider,
+  preloadModel: async (message, provider) => {
     if (provider === 'translategemma') {
       await getTranslateGemmaPipeline();
       return { success: true, preloaded: true, available: true };
@@ -454,13 +375,23 @@ async function handlePreloadModel(message: PreloadModelMessage): Promise<Message
       success: true,
       ...(await preloadOpusMtModel(message.sourceLang, message.targetLang, getPipeline)),
     };
-  } catch (error) {
-    log.warn('Preload failed:', error);
-    return {
-      success: false,
-      error: extractErrorMessage(error),
-    };
-  }
+  },
+});
+
+const dispatchCommonMessage = createCommonBackgroundMessageDispatcher({
+  translationCache,
+  getProvider,
+  handleTranslate,
+  handleGetProviders,
+  handlePreloadModel,
+  handleClearCache: () => handleClearCache(translationCache),
+  handleCheckChromeTranslator,
+  handleCheckWebGPU,
+  handleCheckWebNN,
+});
+
+async function handleMessage(message: FirefoxHandledMessage): Promise<FirefoxHandledResponse> {
+  return dispatchCommonMessage(message);
 }
 
 async function handleCheckChromeTranslator(): Promise<{ success: true; available: boolean }> {
@@ -500,41 +431,12 @@ function handleGetProviders(): { providers: typeof PROVIDER_LIST; activeProvider
 // Message Listener
 // ============================================================================
 
-browserAPI.runtime.onMessage.addListener(
-  (
-    message: unknown,
-    sender: chrome.runtime.MessageSender,
-    sendResponse: (response: TranslateResponse | unknown) => void
-  ) => {
-    if (!isExtensionMessage(message)) return;
-
-    // Ignore messages meant for offscreen (Chrome compatibility)
-    if ('target' in message && (message as { target?: string }).target === 'offscreen') return false;
-
-    // Validate sender for sensitive operations — only allow from extension pages (popup/options),
-    // not content scripts running on arbitrary web pages.
-    if (!isAuthorizedExtensionSender(message, sender.url, 'moz-extension://')) {
-      sendResponse({ success: false, error: 'Unauthorized sender' });
-      return true;
-    }
-
-    return routeHandledExtensionMessage({
-      message,
-      sendResponse,
-      isHandledMessage: isFirefoxHandledMessage,
-      dispatch: handleMessage,
-      logUnknownMessage: (type) => log.warn(`Unknown message type: ${type}`),
-      createErrorResponse: (error) => {
-        const translationError = createTranslationError(error);
-        log.error('Error:', translationError.technicalDetails);
-        return {
-          success: false,
-          error: formatUserError(translationError),
-        };
-      },
-    });
-  }
-);
+browserAPI.runtime.onMessage.addListener(createBackgroundMessageListener({
+  extensionUrlPrefix: 'moz-extension://',
+  isHandledMessage: isFirefoxHandledMessage,
+  dispatch: handleMessage,
+  log,
+}));
 
 // ============================================================================
 // Browser Action (Firefox uses browserAction, not action)

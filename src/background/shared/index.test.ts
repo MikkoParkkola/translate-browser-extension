@@ -55,6 +55,16 @@ describe('shared/index barrel export', () => {
     expect(barrel.createTranslationCache).toBeDefined();
   });
 
+  it('re-exports all expected symbols from common-background', async () => {
+    const barrel = await import('./index');
+    expect(barrel.COMMON_BACKGROUND_MESSAGE_TYPES).toBeDefined();
+    expect(barrel.createBackgroundMessageGuard).toBeDefined();
+    expect(barrel.createCommonBackgroundMessageDispatcher).toBeDefined();
+    expect(barrel.createPreloadModelHandler).toBeDefined();
+    expect(barrel.createSafeCapabilityHandler).toBeDefined();
+    expect(barrel.isCommonBackgroundMessage).toBeDefined();
+  });
+
   it('re-exports all expected symbols from provider-management', async () => {
     const barrel = await import('./index');
     expect(barrel.getStrategy).toBeDefined();
@@ -107,6 +117,11 @@ describe('shared/index barrel export', () => {
     expect(barrel.createContextMenuClickHandler).toBeDefined();
     expect(barrel.createKeyboardShortcutHandler).toBeDefined();
     expect(barrel.resolveContentCommand).toBeDefined();
+  });
+
+  it('re-exports all expected symbols from background-message-listener', async () => {
+    const barrel = await import('./index');
+    expect(barrel.createBackgroundMessageListener).toBeDefined();
   });
 
   it('re-exports all expected symbols from lifecycle-orchestration', async () => {
