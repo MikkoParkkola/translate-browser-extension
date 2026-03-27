@@ -71,6 +71,17 @@ export {
 } from './message-handlers';
 export type { ActionSettings } from './message-handlers';
 
+export type {
+  UIEventCommandId,
+  UIEventHandlerDependencies,
+  UIEventLogger,
+} from './ui-event-handlers';
+export {
+  createContextMenuClickHandler,
+  createKeyboardShortcutHandler,
+  resolveContentCommand,
+} from './ui-event-handlers';
+
 export {
   clearDownloadedModelInventory,
   deleteDownloadedModelInventoryEntry,

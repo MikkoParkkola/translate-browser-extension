@@ -101,4 +101,11 @@ describe('shared/index barrel export', () => {
     expect(barrel.handleGetSettings).toBeDefined();
     expect(barrel.getActionSettings).toBeDefined();
   });
+
+  it('re-exports all expected symbols from ui-event-handlers', async () => {
+    const barrel = await import('./index');
+    expect(barrel.createContextMenuClickHandler).toBeDefined();
+    expect(barrel.createKeyboardShortcutHandler).toBeDefined();
+    expect(barrel.resolveContentCommand).toBeDefined();
+  });
 });

@@ -75,6 +75,8 @@ import {
   isOffscreenModelMessage,
   isOffscreenModelProgressMessage,
   getActionSettings,
+  createContextMenuClickHandler,
+  createKeyboardShortcutHandler,
   PROVIDER_LIST,
   NETWORK_RETRY_CONFIG,
   type PreparedTranslationExecution,
@@ -1356,95 +1358,21 @@ function setupContextMenus(): void {
   });
 }
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (!tab?.id) return;
-
-  const settings = await getActionSettings();
-
-  try {
-    switch (info.menuItemId) {
-      case 'translate-selection':
-        await sendMessageToTab(tab.id, {
-          type: 'translateSelection',
-          ...settings,
-        });
-        break;
-
-      case 'translate-page':
-        await sendMessageToTab(tab.id, {
-          type: 'translatePage',
-          ...settings,
-        });
-        break;
-
-      case 'undo-translation':
-        await sendMessageToTab(tab.id, {
-          type: 'undoTranslation',
-        });
-        break;
-
-      case 'translate-image':
-        await sendMessageToTab(tab.id, {
-          type: 'translateImage',
-          imageUrl: info.srcUrl,
-          ...settings,
-        });
-        break;
-    }
-  } catch (error) {
-    log.warn('Context menu action failed:', error);
-  }
-});
+chrome.contextMenus.onClicked.addListener(createContextMenuClickHandler({
+  getActionSettings,
+  sendMessageToTab,
+  log,
+}));
 
 // ============================================================================
 // Keyboard Shortcuts
 // ============================================================================
 
-chrome.commands.onCommand.addListener(async (command, tab) => {
-  log.info('Command received:', command);
-
-  if (!tab?.id) return;
-
-  const settings = await getActionSettings();
-
-  try {
-    switch (command) {
-      case 'translate-page':
-        await sendMessageToTab(tab.id, {
-          type: 'translatePage',
-          ...settings,
-        });
-        break;
-
-      case 'translate-selection':
-        await sendMessageToTab(tab.id, {
-          type: 'translateSelection',
-          ...settings,
-        });
-        break;
-
-      case 'undo-translation':
-        await sendMessageToTab(tab.id, {
-          type: 'undoTranslation',
-        });
-        break;
-
-      case 'toggle-widget':
-        await sendMessageToTab(tab.id, {
-          type: 'toggleWidget',
-        });
-        break;
-
-      case 'screenshot-translate':
-        await sendMessageToTab(tab.id, {
-          type: 'enterScreenshotMode',
-        });
-        break;
-    }
-  } catch (error) {
-    log.warn('Keyboard shortcut action failed:', error);
-  }
-});
+chrome.commands.onCommand.addListener(createKeyboardShortcutHandler({
+  getActionSettings,
+  sendMessageToTab,
+  log,
+}));
 
 // Tab update listener for predictive model preloading
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
