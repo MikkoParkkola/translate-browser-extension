@@ -22,7 +22,6 @@ import {
   extractErrorMessage,
   withRetry,
   type TranslationError,
-  type RetryConfig,
 } from '../core/errors';
 import { createLogger } from '../core/logger';
 import { safeStorageGet, safeStorageSet, strictStorageSet } from '../core/storage';
@@ -32,11 +31,6 @@ import { profiler, type AggregateStats } from '../core/profiler';
 import { sleep } from '../core/async-utils';
 import { splitIntoSentences } from '../core/text-utils';
 import { DEFAULT_PROVIDER_ID, normalizeTranslationProviderId } from '../shared/provider-options';
-import type {
-  OffscreenMessageByType,
-  OffscreenMessageResponseMap,
-  OffscreenMessageType,
-} from '../offscreen/message-routing';
 import {
   assertNever,
   isExtensionMessage,
@@ -83,9 +77,12 @@ import {
   getActionSettings,
   PROVIDER_LIST,
   NETWORK_RETRY_CONFIG,
+  type PreparedTranslationExecution,
+  type TranslateMessagePayload,
   prepareTranslationExecution,
   finalizeTranslationExecution,
   createTranslateErrorResponse,
+  createOffscreenTransport,
   relayModelProgress,
   upsertDownloadedModelInventory,
 } from './shared';
@@ -116,6 +113,20 @@ const translationCache: TranslationCache = createTranslationCache(
 // When multiple frames request the same translation simultaneously,
 // they share a single API call instead of making duplicate requests.
 const inFlightRequests = new Map<string, { promise: Promise<TranslateResponse>; reject: (error: Error) => void }>();
+
+function rejectInFlightRequestsForOffscreenReset(error: Error): number {
+  const rejectedCount = inFlightRequests.size;
+  for (const [, { reject }] of inFlightRequests) {
+    reject(error);
+  }
+  inFlightRequests.clear();
+  return rejectedCount;
+}
+
+const offscreenTransport = createOffscreenTransport({
+  log,
+  rejectInFlightRequests: rejectInFlightRequestsForOffscreenReset,
+});
 
 // Load cache on startup
 translationCache.load();
@@ -169,7 +180,7 @@ async function preloadPredictedModels(url: string): Promise<void> {
 
       log.info(`Preloading predicted model: ${key} (confidence: ${prediction.confidence.toFixed(2)})`);
 
-      sendToOffscreen<'preloadModel'>({
+      offscreenTransport.send<'preloadModel'>({
         type: 'preloadModel',
         sourceLang: prediction.sourceLang,
         targetLang: prediction.targetLang,
@@ -216,32 +227,6 @@ async function recordTranslation(targetLang: string): Promise<void> {
 }
 
 // ============================================================================
-// Offscreen Document Management (Chrome-specific)
-// ============================================================================
-
-let creatingOffscreen: Promise<void> | null = null;
-let offscreenFailureCount = 0;
-let offscreenResetCount = 0;
-
-let circuitBreakerCooldownTimer: ReturnType<typeof setTimeout> | null = null;
-
-function scheduleCircuitBreakerReset(): void {
-  if (circuitBreakerCooldownTimer) {
-    clearTimeout(circuitBreakerCooldownTimer);
-  }
-  /* v8 ignore start -- timer callback */
-  circuitBreakerCooldownTimer = setTimeout(() => {
-    if (offscreenFailureCount > 0 || offscreenResetCount > 0) {
-      log.info(`Circuit breaker cooldown: resetting counters (failures=${offscreenFailureCount}, resets=${offscreenResetCount})`);
-      offscreenFailureCount = 0;
-      offscreenResetCount = 0;
-    }
-    circuitBreakerCooldownTimer = null;
-  }, CONFIG.retry.offscreenCooldownMs);
-  /* v8 ignore stop */
-}
-
-// ============================================================================
 // Service Worker Keep-Alive (Chrome-specific)
 // ============================================================================
 
@@ -273,193 +258,6 @@ function releaseKeepAlive(): void {
   }
 }
 
-const OFFSCREEN_RETRY_CONFIG: Partial<RetryConfig> = {
-  maxRetries: CONFIG.retry.offscreen.maxRetries,
-  baseDelayMs: CONFIG.retry.offscreen.baseDelayMs,
-  maxDelayMs: CONFIG.retry.offscreen.maxDelayMs,
-};
-
-/**
- * Create or verify offscreen document exists
- */
-async function ensureOffscreenDocument(): Promise<void> {
-  /* v8 ignore start -- concurrent creation dedup */
-  if (creatingOffscreen) {
-    await creatingOffscreen;
-    return;
-  }
-  /* v8 ignore stop */
-
-  const offscreenUrl = chrome.runtime.getURL('src/offscreen/offscreen.html');
-
-  try {
-    const existingContexts = await chrome.runtime.getContexts({
-      contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT],
-      documentUrls: [offscreenUrl],
-    });
-
-    if (existingContexts.length > 0) {
-      offscreenFailureCount = 0;
-      return;
-    }
-
-    /* v8 ignore start -- concurrent creation dedup */
-    if (creatingOffscreen) {
-      await creatingOffscreen;
-      return;
-    }
-    /* v8 ignore stop */
-
-    log.info('Creating offscreen document...');
-
-    const createPromise = chrome.offscreen.createDocument({
-      url: offscreenUrl,
-      reasons: [chrome.offscreen.Reason.WORKERS],
-      justification: 'Run Transformers.js ML inference in document context',
-    });
-    creatingOffscreen = createPromise;
-
-    await createPromise;
-    creatingOffscreen = null;
-    offscreenFailureCount = 0;
-    log.info('Offscreen document created successfully');
-  } catch (error) {
-    creatingOffscreen = null;
-    offscreenFailureCount++;
-    scheduleCircuitBreakerReset();
-
-    const errMsg = extractErrorMessage(error);
-
-    log.error(' Failed to create offscreen document:', errMsg);
-
-    if (offscreenFailureCount >= CONFIG.retry.maxOffscreenFailures) {
-      throw new Error(
-        'Translation engine failed to start. Please reload the extension or restart Chrome.'
-      );
-    }
-
-    throw new Error(`Failed to initialize translation engine: ${errMsg}`);
-  }
-}
-
-/**
- * Close and recreate offscreen document (for recovery from errors).
- */
-/* v8 ignore start -- recovery function only triggered by repeated offscreen crashes */
-async function resetOffscreenDocument(): Promise<void> {
-  offscreenResetCount++;
-  scheduleCircuitBreakerReset();
-  if (offscreenResetCount > CONFIG.retry.maxOffscreenResets) {
-    const msg = 'Translation engine crashed repeatedly. Please reload the extension or restart Chrome.';
-    log.error(msg);
-    throw new Error(msg);
-  }
-
-  log.info(`Offscreen reset attempt ${offscreenResetCount}/${CONFIG.retry.maxOffscreenResets}`);
-
-  if (inFlightRequests.size > 0) {
-    log.info(`Rejecting ${inFlightRequests.size} in-flight requests before offscreen reset`);
-    const resetError = new Error('Translation engine reset — please retry');
-    for (const [, { reject }] of inFlightRequests) {
-      reject(resetError);
-    }
-    inFlightRequests.clear();
-  }
-
-  try {
-    const offscreenUrl = chrome.runtime.getURL('src/offscreen/offscreen.html');
-    const contexts = await chrome.runtime.getContexts({
-      contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT],
-      documentUrls: [offscreenUrl],
-    });
-
-    if (contexts.length > 0) {
-      await chrome.offscreen.closeDocument();
-      log.info('Closed existing offscreen document');
-    }
-  } catch (error) {
-    log.warn(' Error closing offscreen document:', error);
-  }
-
-  creatingOffscreen = null;
-
-  await sleep(500);
-  await ensureOffscreenDocument();
-
-  offscreenResetCount = 0;
-  log.info('Offscreen document reset successfully');
-}
-/* v8 ignore stop */
-
-/**
- * Send message to offscreen document with timeout and retry
- */
-type OffscreenRequest<TType extends OffscreenMessageType> = Omit<OffscreenMessageByType<TType>, 'target'>;
-type OffscreenTransportResponse<TType extends OffscreenMessageType> =
-  OffscreenMessageResponseMap[TType] | { success: false; error: string };
-
-async function sendToOffscreen<TType extends OffscreenMessageType>(
-  message: OffscreenRequest<TType>,
-  timeoutMs = CONFIG.timeouts.offscreenMs
-): Promise<OffscreenTransportResponse<TType>> {
-  return withRetry(
-    async () => {
-      await ensureOffscreenDocument();
-
-      return new Promise<OffscreenTransportResponse<TType>>((resolve, reject) => {
-        /* v8 ignore start -- timeout callback */
-        const timeout = setTimeout(() => {
-          reject(new Error('Offscreen communication timeout'));
-        }, timeoutMs);
-        /* v8 ignore stop */
-
-        try {
-          chrome.runtime.sendMessage(
-            { ...message, target: 'offscreen' },
-            (response) => {
-              clearTimeout(timeout);
-
-              if (chrome.runtime.lastError) {
-                reject(new Error(chrome.runtime.lastError.message));
-                return;
-              }
-
-              if (response === undefined) {
-                reject(new Error('No response from translation engine'));
-                return;
-              }
-
-              resolve(response as OffscreenTransportResponse<TType>);
-            }
-          );
-        } catch (error) {
-          clearTimeout(timeout);
-          reject(error);
-        }
-      });
-    },
-    OFFSCREEN_RETRY_CONFIG,
-    /* v8 ignore start -- retry handler with offscreen reset */
-    (error: TranslationError) => {
-      if (!error.retryable) return false;
-
-      if (error.technicalDetails.includes('offscreen')) {
-        log.info('Attempting offscreen document reset...');
-        resetOffscreenDocument().catch((resetError) => {
-          log.error('Offscreen reset failed:', extractErrorMessage(resetError));
-        });
-      }
-
-      return true;
-    /* v8 ignore stop */
-    }
-  );
-}
-
-function isOffscreenDocumentSender(sender: chrome.runtime.MessageSender): boolean {
-  return sender.url === chrome.runtime.getURL('src/offscreen/offscreen.html');
-}
-
 // ============================================================================
 // Message Handler
 // ============================================================================
@@ -476,7 +274,7 @@ chrome.runtime.onMessage.addListener(
     if ('target' in message && message.target === 'offscreen') return false;
 
     if (isOffscreenModelMessage(message)) {
-      if (!isOffscreenDocumentSender(sender)) {
+      if (!offscreenTransport.isSender(sender)) {
         sendResponse({ success: false, error: 'Unauthorized sender' });
         return true;
       }
@@ -821,7 +619,7 @@ async function handlePreloadModel(message: PreloadModelMessage): Promise<Message
   const provider = message.provider || getProvider();
   log.info(` Preloading ${provider} model: ${message.sourceLang} -> ${message.targetLang}`);
   try {
-    const response = await sendToOffscreen<'preloadModel'>({
+    const response = await offscreenTransport.send<'preloadModel'>({
       type: 'preloadModel',
       sourceLang: message.sourceLang,
       targetLang: message.targetLang,
@@ -847,7 +645,7 @@ async function handleClearCacheWithOffscreen(): Promise<{ success: boolean; clea
 
   // Also clear the offscreen document's translation cache
   try {
-    await sendToOffscreen({ type: 'clearCache' });
+    await offscreenTransport.send({ type: 'clearCache' });
   } catch {
     /* v8 ignore start */
     log.warn('Could not clear offscreen translation cache (may not be running)');
@@ -860,7 +658,7 @@ async function handleClearCacheWithOffscreen(): Promise<{ success: boolean; clea
 /** Best-effort clear of the offscreen pipeline cache (offscreen may not be running). */
 async function tryClearOffscreenPipelineCache(): Promise<void> {
   try {
-    await sendToOffscreen({ type: 'clearPipelineCache' });
+    await offscreenTransport.send({ type: 'clearPipelineCache' });
   } catch {
     /* v8 ignore start */
     log.warn('Could not clear offscreen pipeline cache (may not be running)');
@@ -1005,7 +803,7 @@ async function handleCheckChromeTranslator(): Promise<{ success: true; available
  */
 async function handleCheckWebGPU(): Promise<{ success: true; supported: boolean; fp16: boolean }> {
   try {
-    const response = await sendToOffscreen<'checkWebGPU'>({ type: 'checkWebGPU' });
+    const response = await offscreenTransport.send<'checkWebGPU'>({ type: 'checkWebGPU' });
     if (!response.success) {
       throw new Error(response.error);
     }
@@ -1021,7 +819,7 @@ async function handleCheckWebGPU(): Promise<{ success: true; supported: boolean;
  */
 async function handleCheckWebNN(): Promise<{ success: true; supported: boolean }> {
   try {
-    const response = await sendToOffscreen<'checkWebNN'>({ type: 'checkWebNN' });
+    const response = await offscreenTransport.send<'checkWebNN'>({ type: 'checkWebNN' });
     if (!response.success) {
       throw new Error(response.error);
     }
@@ -1061,7 +859,7 @@ async function handleRecordLanguageDetection(message: RecordLanguageDetectionMes
  */
 async function handleGetCloudProviderUsage(message: GetCloudProviderUsageMessage): Promise<MessageResponse<{ usage?: { tokens: number; cost: number; limitReached: boolean } }>> {
   try {
-    const result = await sendToOffscreen<'getCloudProviderUsage'>({
+    const result = await offscreenTransport.send<'getCloudProviderUsage'>({
       type: 'getCloudProviderUsage',
       provider: message.provider,
     });
@@ -1137,17 +935,110 @@ async function handleTranslate(message: {
   }
 }
 
+async function handleChromeBuiltinTranslation(
+  execution: PreparedTranslationExecution,
+  sessionId: string | undefined
+): Promise<TranslateResponse> {
+  if (sessionId) profiler.startTiming(sessionId, 'chrome_builtin_translate');
+
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tabId = tabs[0]?.id;
+    if (!tabId) throw new Error('No active tab for Chrome Translator');
+
+    const texts = Array.isArray(execution.text) ? execution.text : [execution.text];
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN' as chrome.scripting.ExecutionWorld,
+      /* v8 ignore start — runs in tab's main world via executeScript, not in service-worker context */
+      func: async (textsToTranslate: string[], srcLang: string, tgtLang: string) => {
+        const TranslatorAPI = self.Translator;
+        if (!TranslatorAPI) {
+          throw new Error('Chrome Translator API not available (requires Chrome 138+)');
+        }
+        const avail = await TranslatorAPI.availability({ sourceLanguage: srcLang, targetLanguage: tgtLang });
+        if (avail.available === 'no') {
+          throw new Error(`Language pair not supported: ${srcLang}-${tgtLang}`);
+        }
+        const t = await TranslatorAPI.create({ sourceLanguage: srcLang, targetLanguage: tgtLang });
+        const translated: string[] = [];
+        for (const txt of textsToTranslate) {
+          translated.push(txt.trim() ? await t.translate(txt) : txt);
+        }
+        t.destroy();
+        return translated;
+      },
+      /* v8 ignore stop */
+      args: [texts, execution.message.sourceLang, execution.message.targetLang],
+    });
+
+    if (sessionId) profiler.endTiming(sessionId, 'chrome_builtin_translate');
+    const translated = results[0]?.result as string[] | undefined;
+    if (!translated) throw new Error('Chrome Translator returned no result');
+
+    const result = Array.isArray(execution.text) ? translated : translated[0];
+    return finalizeTranslationExecution(
+      execution,
+      translationCache,
+      result,
+      {
+        responsePatch: { provider: 'chrome-builtin' },
+        recordUsage: false,
+        cacheSourceLang: execution.message.sourceLang,
+        onAfterCacheStore: () => {
+          if (sessionId) profiler.endTiming(sessionId, 'total');
+        },
+      },
+    );
+  } catch (error) {
+    if (sessionId) {
+      profiler.endTiming(sessionId, 'chrome_builtin_translate');
+      profiler.endTiming(sessionId, 'total');
+    }
+    const errMsg = extractErrorMessage(error);
+
+    log.error('Chrome Built-in translation failed:', errMsg);
+    return { success: false, error: errMsg, duration: Date.now() - execution.startTime };
+  }
+}
+
+async function requestOffscreenTranslation(
+  execution: PreparedTranslationExecution,
+  sessionId: string | undefined
+) {
+  return withRetry(
+    async () => {
+      const result = await offscreenTransport.send<'translate'>({
+        type: 'translate',
+        text: execution.text,
+        sourceLang: execution.message.sourceLang,
+        targetLang: execution.message.targetLang,
+        provider: execution.provider,
+        sessionId,
+        pageContext: execution.message.options?.context?.pageContext,
+      });
+
+      if (!result) {
+        throw new Error('No response from translation engine');
+      }
+
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      return result;
+    },
+    NETWORK_RETRY_CONFIG,
+    (error: TranslationError) => {
+      return error.retryable !== false && !!error.technicalDetails;
+    }
+  );
+}
+
 /**
  * Inner translation handler — Chrome-specific with offscreen IPC + profiling.
  */
-async function handleTranslateInner(message: {
-  text: string | string[];
-  sourceLang: string;
-  targetLang: string;
-  options?: { strategy?: Strategy; context?: { before: string; after: string; pageContext?: string } };
-  provider?: TranslationProviderId;
-  enableProfiling?: boolean;
-}): Promise<TranslateResponse> {
+async function handleTranslateInner(message: TranslateMessagePayload): Promise<TranslateResponse> {
   const startTime = Date.now();
 
   // Profiling session
@@ -1188,98 +1079,13 @@ async function handleTranslateInner(message: {
 
     // Chrome Built-in Translator: runs in tab's main world
     if (execution.provider === 'chrome-builtin') {
-      if (sessionId) profiler.startTiming(sessionId, 'chrome_builtin_translate');
-      try {
-        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-        const tabId = tabs[0]?.id;
-        if (!tabId) throw new Error('No active tab for Chrome Translator');
-
-        const texts = Array.isArray(execution.text) ? execution.text : [execution.text];
-        const results = await chrome.scripting.executeScript({
-          target: { tabId },
-          world: 'MAIN' as chrome.scripting.ExecutionWorld,
-          /* v8 ignore start — runs in tab's main world via executeScript, not in service-worker context */
-          func: async (textsToTranslate: string[], srcLang: string, tgtLang: string) => {
-            const TranslatorAPI = self.Translator;
-            if (!TranslatorAPI) {
-              throw new Error('Chrome Translator API not available (requires Chrome 138+)');
-            }
-            const avail = await TranslatorAPI.availability({ sourceLanguage: srcLang, targetLanguage: tgtLang });
-            if (avail.available === 'no') {
-              throw new Error(`Language pair not supported: ${srcLang}-${tgtLang}`);
-            }
-            const t = await TranslatorAPI.create({ sourceLanguage: srcLang, targetLanguage: tgtLang });
-            const translated: string[] = [];
-            for (const txt of textsToTranslate) {
-              translated.push(txt.trim() ? await t.translate(txt) : txt);
-            }
-            t.destroy();
-            return translated;
-          },
-          /* v8 ignore stop */
-          args: [texts, execution.message.sourceLang, execution.message.targetLang],
-        });
-
-        if (sessionId) profiler.endTiming(sessionId, 'chrome_builtin_translate');
-        const translated = results[0]?.result as string[] | undefined;
-        if (!translated) throw new Error('Chrome Translator returned no result');
-
-        const result = Array.isArray(execution.text) ? translated : translated[0];
-        return finalizeTranslationExecution(
-          execution,
-          translationCache,
-          result,
-          {
-            responsePatch: { provider: 'chrome-builtin' },
-            recordUsage: false,
-            cacheSourceLang: execution.message.sourceLang,
-            onAfterCacheStore: () => {
-              if (sessionId) profiler.endTiming(sessionId, 'total');
-            },
-          },
-        );
-      } catch (error) {
-        if (sessionId) {
-          profiler.endTiming(sessionId, 'chrome_builtin_translate');
-          profiler.endTiming(sessionId, 'total');
-        }
-        const errMsg = extractErrorMessage(error);
-
-        log.error('Chrome Built-in translation failed:', errMsg);
-        return { success: false, error: errMsg, duration: Date.now() - startTime };
-      }
+      return handleChromeBuiltinTranslation(execution, sessionId);
     }
 
     // Offscreen IPC translation
     if (sessionId) profiler.startTiming(sessionId, 'ipc_background_to_offscreen');
 
-    const response = await withRetry(
-      async () => {
-        const result = await sendToOffscreen<'translate'>({
-          type: 'translate',
-          text: execution.text,
-          sourceLang: execution.message.sourceLang,
-          targetLang: execution.message.targetLang,
-          provider: execution.provider,
-          sessionId,
-          pageContext: execution.message.options?.context?.pageContext,
-        });
-
-        if (!result) {
-          throw new Error('No response from translation engine');
-        }
-
-        if (!result.success) {
-          throw new Error(result.error);
-        }
-
-        return result;
-      },
-      NETWORK_RETRY_CONFIG,
-      (error: TranslationError) => {
-        return error.retryable !== false && !!(error.technicalDetails);
-      }
-    );
+    const response = await requestOffscreenTranslation(execution, sessionId);
 
     if (sessionId) {
       profiler.endTiming(sessionId, 'ipc_background_to_offscreen');
@@ -1355,7 +1161,7 @@ async function handleGetProfilingStats(): Promise<MessageResponse<{ aggregates: 
 
     let offscreenStats: Record<string, AggregateStats> = {};
     try {
-      const offscreenResult = await sendToOffscreen<'getProfilingStats'>({
+      const offscreenResult = await offscreenTransport.send<'getProfilingStats'>({
         type: 'getProfilingStats',
       });
       if (offscreenResult.success) {
@@ -1394,7 +1200,7 @@ function handleClearProfilingStats(): MessageResponse {
 
 async function handleGetProviders(): Promise<{ providers: typeof PROVIDER_LIST; activeProvider: TranslationProviderId; strategy: Strategy; supportedLanguages: Array<{ src: string; tgt: string }>; error?: string }> {
   try {
-    const response = await sendToOffscreen<'getSupportedLanguages'>({
+    const response = await offscreenTransport.send<'getSupportedLanguages'>({
       type: 'getSupportedLanguages',
     });
 
@@ -1427,7 +1233,7 @@ async function handleOCRImage(message: OCRImageMessage): Promise<MessageResponse
   try {
     log.info('Processing OCR request...');
 
-    const result = await sendToOffscreen<'ocrImage'>({
+    const result = await offscreenTransport.send<'ocrImage'>({
       type: 'ocrImage',
       imageData: message.imageData,
       lang: message.lang,
@@ -1453,7 +1259,7 @@ async function handleCaptureScreenshot(message: CaptureScreenshotMessage): Promi
     const dataUrl = await chrome.tabs.captureVisibleTab({ format: 'png' });
 
     if (message.rect) {
-      const cropResponse = await sendToOffscreen<'cropImage'>({
+      const cropResponse = await offscreenTransport.send<'cropImage'>({
         type: 'cropImage',
         imageData: dataUrl,
         rect: message.rect,
@@ -1771,7 +1577,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 // Pre-warm the offscreen document
 chrome.runtime.onStartup.addListener(() => {
   log.info('Extension startup, pre-warming offscreen document...');
-  ensureOffscreenDocument().catch((error) => {
+  offscreenTransport.ensureDocument().catch((error) => {
     log.warn(' Pre-warm failed (will retry on first use):', error);
   });
 });

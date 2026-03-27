@@ -81,3 +81,12 @@ export {
   relayModelProgress,
   upsertDownloadedModelInventory,
 } from './model-downloads';
+
+export type {
+  OffscreenRequest,
+  OffscreenTransport,
+  OffscreenTransportLogger,
+  OffscreenTransportResponse,
+  CreateOffscreenTransportOptions,
+} from './offscreen-transport';
+export { createOffscreenTransport } from './offscreen-transport';
