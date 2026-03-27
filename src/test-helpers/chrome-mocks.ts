@@ -1,4 +1,9 @@
 import { vi } from 'vitest';
+import {
+  collectMockResetters,
+  registerGlobalFixture,
+  resetMutableRecord,
+} from './global-fixture-registry';
 
 type ChromeMockFn = ReturnType<typeof vi.fn>;
 
@@ -250,6 +255,17 @@ export function createChromeApiMock(options: ChromeApiMockOptions = {}) {
 export function setupChromeApiMock(options: ChromeApiMockOptions = {}) {
   const chromeMock = createChromeApiMock(options);
   vi.stubGlobal('chrome', chromeMock.chrome);
+  const initialStorageState = {
+    local: { ...chromeMock.storageState.local },
+    sync: { ...chromeMock.storageState.sync },
+  };
+
+  registerGlobalFixture('chrome', () => {
+    resetMutableRecord(chromeMock.storageState.local, initialStorageState.local);
+    resetMutableRecord(chromeMock.storageState.sync, initialStorageState.sync);
+    vi.stubGlobal('chrome', chromeMock.chrome);
+  });
+
   return chromeMock;
 }
 
@@ -302,5 +318,23 @@ export function createUiChromeMock(options: UiChromeMockOptions = {}) {
 export function setupUiChromeMock(options: UiChromeMockOptions = {}) {
   const chromeMock = createUiChromeMock(options);
   vi.stubGlobal('chrome', chromeMock);
+  const mockResetters = collectMockResetters({
+    runtime: {
+      sendMessage: chromeMock.runtime.sendMessage,
+      openOptionsPage: chromeMock.runtime.openOptionsPage,
+    },
+    storage: chromeMock.storage,
+    tabs: {
+      query: chromeMock.tabs.query,
+      sendMessage: chromeMock.tabs.sendMessage,
+    },
+    scripting: chromeMock.scripting,
+  });
+
+  registerGlobalFixture('chrome', () => {
+    mockResetters.forEach((resetMock) => resetMock());
+    vi.stubGlobal('chrome', chromeMock);
+  });
+
   return chromeMock;
 }
