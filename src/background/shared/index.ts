@@ -84,6 +84,13 @@ export type {
 } from './diagnostics-handlers';
 export { createDiagnosticsHandlers } from './diagnostics-handlers';
 
+export type {
+  MediaHandlersLogger,
+  MediaHandlers,
+  CreateMediaHandlersOptions,
+} from './media-handlers';
+export { createMediaHandlers } from './media-handlers';
+
 export {
   handleGetCacheStats,
   handleClearCache,

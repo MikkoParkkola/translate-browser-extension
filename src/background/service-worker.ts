@@ -13,8 +13,7 @@ import type {
   BackgroundRequestMessage,
   BackgroundRequestMessageType,
   ExtensionMessage, ExtensionMessageResponse, TranslationProviderId, ContentCommand,
-  OCRImageMessage, CaptureScreenshotMessage,
-  DeleteModelMessage, DownloadedModelRecord, MessageResponse,
+  DownloadedModelRecord,
 } from '../types';
 import {
   extractErrorMessage,
@@ -65,6 +64,7 @@ import {
   type TranslationBackgroundHandler,
   createRuntimeInfoHandlers,
   createDiagnosticsHandlers,
+  createMediaHandlers,
   createOffscreenTransport,
   relayModelProgress,
   upsertDownloadedModelInventory,
@@ -574,6 +574,20 @@ const {
   log,
 });
 
+const {
+  handleDeleteModel,
+  handleClearAllModels,
+  handleOCRImage,
+  handleCaptureScreenshot,
+} = createMediaHandlers({
+  offscreenTransport,
+  captureVisibleTab: (options) => chrome.tabs.captureVisibleTab(options),
+  deleteDownloadedModelInventoryEntry,
+  clearDownloadedModelInventory,
+  clearMatchingCaches,
+  log,
+});
+
 const dispatchCommonMessage = createCommonBackgroundMessageDispatcher({
   translationCache,
   getProvider,
@@ -638,135 +652,6 @@ async function handleMessage(message: ServiceWorkerHandledMessage): Promise<Serv
       return handleGetSettings((keys) => safeStorageGet(keys));
     default:
       return assertNever(message);
-  }
-}
-
-// ============================================================================
-// Chrome-Specific Handlers
-// ============================================================================
-
-/** Best-effort clear of the offscreen pipeline cache (offscreen may not be running). */
-async function tryClearOffscreenPipelineCache(): Promise<void> {
-  try {
-    await offscreenTransport.send({ type: 'clearPipelineCache' });
-  } catch {
-    /* v8 ignore start */
-    log.warn('Could not clear offscreen pipeline cache (may not be running)');
-    /* v8 ignore stop */
-  }
-}
-
-/**
- * Delete a specific downloaded model.
- */
-async function handleDeleteModel(message: DeleteModelMessage): Promise<MessageResponse> {
-  const { modelId } = message;
-  log.info(`Deleting model: ${modelId}`);
-
-  try {
-    await tryClearOffscreenPipelineCache();
-    await deleteDownloadedModelInventoryEntry(modelId);
-
-    log.info(`Model ${modelId} deleted`);
-    return { success: true };
-  } catch (error) {
-    log.error('Failed to delete model:', error);
-    return {
-      success: false,
-      error: extractErrorMessage(error),
-    };
-  }
-}
-
-/**
- * Clear all downloaded models.
- */
-async function handleClearAllModels(): Promise<MessageResponse> {
-  log.info('Clearing all downloaded models...');
-
-  try {
-    await tryClearOffscreenPipelineCache();
-    await clearDownloadedModelInventory();
-
-    try {
-      const clearedCaches = await clearMatchingCaches(['transformers', 'onnx', 'model']);
-      if (clearedCaches === null) {
-        log.info('CacheStorage unavailable in service worker; skipping model cache cleanup');
-      } else {
-        for (const name of clearedCaches) {
-          log.info(`Cleared cache: ${name}`);
-        }
-        log.info(`Cleared ${clearedCaches.length} model caches`);
-      }
-    } catch (cacheError) {
-      log.warn('Model cache cleanup failed:', cacheError);
-    }
-
-    log.info('All models cleared');
-    return { success: true };
-  } catch (error) {
-    log.error('Failed to clear all models:', error);
-    return {
-      success: false,
-      error: extractErrorMessage(error),
-    };
-  }
-}
-
-// ============================================================================
-// OCR
-// ============================================================================
-
-async function handleOCRImage(message: OCRImageMessage): Promise<MessageResponse<{ text?: string; confidence?: number; blocks?: Array<{ text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } }> }>> {
-  try {
-    log.info('Processing OCR request...');
-
-    const result = await offscreenTransport.send<'ocrImage'>({
-      type: 'ocrImage',
-      imageData: message.imageData,
-      lang: message.lang,
-    });
-
-    if (result.success) {
-      log.info(`OCR completed: ${result.blocks?.length || 0} blocks, ${result.confidence?.toFixed(1)}% confidence`);
-    }
-
-    return result;
-  } catch (error) {
-    log.error('OCR failed:', error);
-    return { success: false, error: extractErrorMessage(error) };
-  }
-}
-
-// ============================================================================
-// Screenshot Capture
-// ============================================================================
-
-async function handleCaptureScreenshot(message: CaptureScreenshotMessage): Promise<MessageResponse<{ imageData: string }>> {
-  try {
-    const dataUrl = await chrome.tabs.captureVisibleTab({ format: 'png' });
-
-    if (message.rect) {
-      const cropResponse = await offscreenTransport.send<'cropImage'>({
-        type: 'cropImage',
-        imageData: dataUrl,
-        rect: message.rect,
-        devicePixelRatio: message.devicePixelRatio || 1,
-      });
-
-      return {
-        success: true,
-        imageData: cropResponse.success ? cropResponse.imageData : dataUrl,
-      };
-    }
-
-    return { success: true, imageData: dataUrl };
-  } catch (error) {
-    log.error('Screenshot capture failed:', error);
-    return {
-      success: false,
-      error: extractErrorMessage(error),
-    };
   }
 }
 
