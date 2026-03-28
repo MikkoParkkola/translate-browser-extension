@@ -12,15 +12,13 @@
 import type {
   BackgroundRequestMessage,
   BackgroundRequestMessageType,
-  ExtensionMessage, ExtensionMessageResponse, TranslateResponse, Strategy, TranslationProviderId, ContentCommand,
+  ExtensionMessage, ExtensionMessageResponse, Strategy, TranslationProviderId, ContentCommand,
   RecordLanguageDetectionMessage,
   GetCloudProviderUsageMessage, OCRImageMessage, CaptureScreenshotMessage,
   DeleteModelMessage, DownloadedModelRecord, MessageResponse,
 } from '../types';
 import {
   extractErrorMessage,
-  withRetry,
-  type TranslationError,
 } from '../core/errors';
 import { createLogger } from '../core/logger';
 import { safeStorageGet, safeStorageSet, strictStorageSet } from '../core/storage';
@@ -65,12 +63,8 @@ import {
   createContextMenuClickHandler,
   createKeyboardShortcutHandler,
   PROVIDER_LIST,
-  NETWORK_RETRY_CONFIG,
-  type PreparedTranslationExecution,
-  type TranslateMessagePayload,
-  prepareTranslationExecution,
-  finalizeTranslationExecution,
-  createTranslateErrorResponse,
+  createTranslationBackgroundHandler,
+  type TranslationBackgroundHandler,
   createOffscreenTransport,
   relayModelProgress,
   upsertDownloadedModelInventory,
@@ -109,23 +103,13 @@ const translationCache: TranslationCache = createTranslationCache(
   { enableVersioning: true },
 );
 
-// In-flight request deduplication map.
-// When multiple frames request the same translation simultaneously,
-// they share a single API call instead of making duplicate requests.
-const inFlightRequests = new Map<string, { promise: Promise<TranslateResponse>; reject: (error: Error) => void }>();
-
-function rejectInFlightRequestsForOffscreenReset(error: Error): number {
-  const rejectedCount = inFlightRequests.size;
-  for (const [, { reject }] of inFlightRequests) {
-    reject(error);
-  }
-  inFlightRequests.clear();
-  return rejectedCount;
-}
+// Translation request dedup/reset handling is managed by the shared background
+// translation handler so offscreen resets can reject any pending requests.
+let rejectInFlightRequestsForOffscreenReset: (error: Error) => number = () => 0;
 
 const offscreenTransport = createOffscreenTransport({
   log,
-  rejectInFlightRequests: rejectInFlightRequestsForOffscreenReset,
+  rejectInFlightRequests: (error) => rejectInFlightRequestsForOffscreenReset(error),
 });
 
 // Load cache on startup
@@ -257,6 +241,68 @@ function releaseKeepAlive(): void {
     log.info('Keep-alive stopped (no active translations)');
   }
 }
+
+async function runChromeBuiltinTranslation(
+  text: string | string[],
+  sourceLang: string,
+  targetLang: string
+): Promise<string | string[]> {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tabId = tabs[0]?.id;
+  if (!tabId) {
+    throw new Error('No active tab for Chrome Translator');
+  }
+
+  const texts = Array.isArray(text) ? text : [text];
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: 'MAIN' as chrome.scripting.ExecutionWorld,
+    /* v8 ignore start — runs in tab's main world via executeScript, not in service-worker context */
+    func: async (textsToTranslate: string[], srcLang: string, tgtLang: string) => {
+      const TranslatorAPI = self.Translator;
+      if (!TranslatorAPI) {
+        throw new Error('Chrome Translator API not available (requires Chrome 138+)');
+      }
+      const avail = await TranslatorAPI.availability({ sourceLanguage: srcLang, targetLanguage: tgtLang });
+      if (avail.available === 'no') {
+        throw new Error(`Language pair not supported: ${srcLang}-${tgtLang}`);
+      }
+      const t = await TranslatorAPI.create({ sourceLanguage: srcLang, targetLanguage: tgtLang });
+      const translated: string[] = [];
+      for (const txt of textsToTranslate) {
+        translated.push(txt.trim() ? await t.translate(txt) : txt);
+      }
+      t.destroy();
+      return translated;
+    },
+    /* v8 ignore stop */
+    args: [texts, sourceLang, targetLang],
+  });
+
+  const translated = results[0]?.result as string[] | undefined;
+  if (!translated) {
+    throw new Error('Chrome Translator returned no result');
+  }
+
+  return Array.isArray(text) ? translated : translated[0];
+}
+
+const translationBackgroundHandler: TranslationBackgroundHandler =
+  createTranslationBackgroundHandler({
+    cache: translationCache,
+    getProvider,
+    offscreenTransport,
+    profiler,
+    acquireKeepAlive,
+    releaseKeepAlive,
+    recordTranslation,
+    recordTranslationToHistory,
+    runChromeBuiltinTranslation,
+    log,
+  });
+
+const handleTranslate = translationBackgroundHandler.handleTranslate;
+rejectInFlightRequestsForOffscreenReset = translationBackgroundHandler.rejectInFlightRequests;
 
 // ============================================================================
 // Message Handler
@@ -743,284 +789,6 @@ async function handleGetCloudProviderUsage(message: GetCloudProviderUsageMessage
       success: false,
       error: extractErrorMessage(error),
     };
-  }
-}
-
-// ============================================================================
-// Translation Handler (Chrome — uses offscreen document)
-// ============================================================================
-
-async function handleTranslate(message: {
-  text: string | string[];
-  sourceLang: string;
-  targetLang: string;
-  options?: { strategy?: Strategy; context?: { before: string; after: string; pageContext?: string } };
-  provider?: TranslationProviderId;
-  enableProfiling?: boolean;
-}): Promise<TranslateResponse> {
-  await translationCache.load();
-  const provider = message.provider || getProvider();
-  const dedupKey = translationCache.getKey(message.text, message.sourceLang, message.targetLang, provider);
-
-  // Check if in-flight requests exceed limit
-  if (inFlightRequests.size >= CONFIG.inFlight.maxRequests) {
-    // Delete the oldest entry (first in Map)
-    const [oldestKey] = inFlightRequests.keys();
-    const oldestEntry = inFlightRequests.get(oldestKey);
-    if (oldestEntry) {
-      oldestEntry.reject(new Error('In-flight request limit exceeded'));
-      inFlightRequests.delete(oldestKey);
-    }
-  }
-
-  const existing = inFlightRequests.get(dedupKey);
-  if (existing) {
-    log.debug('Deduplicating in-flight request:', dedupKey.substring(0, 40));
-    return existing.promise;
-  }
-
-  let innerPromise: Promise<TranslateResponse>;
-  try {
-    innerPromise = handleTranslateInner(message);
-  } catch (syncError) {
-    /* v8 ignore start -- defensive sync throw handler */
-    log.error('handleTranslateInner threw synchronously:', syncError);
-    return {
-      success: false,
-      error: extractErrorMessage(syncError),
-    };
-    /* v8 ignore stop */
-  }
-
-  let rejectInFlight!: (error: Error) => void;
-  const controllablePromise = new Promise<TranslateResponse>((resolve, reject) => {
-    rejectInFlight = reject;
-    innerPromise.then(resolve, reject);
-  });
-  inFlightRequests.set(dedupKey, { promise: controllablePromise, reject: rejectInFlight });
-
-  acquireKeepAlive();
-  try {
-    return await controllablePromise;
-  } finally {
-    inFlightRequests.delete(dedupKey);
-    releaseKeepAlive();
-  }
-}
-
-async function handleChromeBuiltinTranslation(
-  execution: PreparedTranslationExecution,
-  sessionId: string | undefined
-): Promise<TranslateResponse> {
-  if (sessionId) profiler.startTiming(sessionId, 'chrome_builtin_translate');
-
-  try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    const tabId = tabs[0]?.id;
-    if (!tabId) throw new Error('No active tab for Chrome Translator');
-
-    const texts = Array.isArray(execution.text) ? execution.text : [execution.text];
-    const results = await chrome.scripting.executeScript({
-      target: { tabId },
-      world: 'MAIN' as chrome.scripting.ExecutionWorld,
-      /* v8 ignore start — runs in tab's main world via executeScript, not in service-worker context */
-      func: async (textsToTranslate: string[], srcLang: string, tgtLang: string) => {
-        const TranslatorAPI = self.Translator;
-        if (!TranslatorAPI) {
-          throw new Error('Chrome Translator API not available (requires Chrome 138+)');
-        }
-        const avail = await TranslatorAPI.availability({ sourceLanguage: srcLang, targetLanguage: tgtLang });
-        if (avail.available === 'no') {
-          throw new Error(`Language pair not supported: ${srcLang}-${tgtLang}`);
-        }
-        const t = await TranslatorAPI.create({ sourceLanguage: srcLang, targetLanguage: tgtLang });
-        const translated: string[] = [];
-        for (const txt of textsToTranslate) {
-          translated.push(txt.trim() ? await t.translate(txt) : txt);
-        }
-        t.destroy();
-        return translated;
-      },
-      /* v8 ignore stop */
-      args: [texts, execution.message.sourceLang, execution.message.targetLang],
-    });
-
-    if (sessionId) profiler.endTiming(sessionId, 'chrome_builtin_translate');
-    const translated = results[0]?.result as string[] | undefined;
-    if (!translated) throw new Error('Chrome Translator returned no result');
-
-    const result = Array.isArray(execution.text) ? translated : translated[0];
-    return finalizeTranslationExecution(
-      execution,
-      translationCache,
-      result,
-      {
-        responsePatch: { provider: 'chrome-builtin' },
-        recordUsage: false,
-        cacheSourceLang: execution.message.sourceLang,
-        onAfterCacheStore: () => {
-          if (sessionId) profiler.endTiming(sessionId, 'total');
-        },
-      },
-    );
-  } catch (error) {
-    if (sessionId) {
-      profiler.endTiming(sessionId, 'chrome_builtin_translate');
-      profiler.endTiming(sessionId, 'total');
-    }
-    const errMsg = extractErrorMessage(error);
-
-    log.error('Chrome Built-in translation failed:', errMsg);
-    return { success: false, error: errMsg, duration: Date.now() - execution.startTime };
-  }
-}
-
-async function requestOffscreenTranslation(
-  execution: PreparedTranslationExecution,
-  sessionId: string | undefined
-) {
-  return withRetry(
-    async () => {
-      const result = await offscreenTransport.send<'translate'>({
-        type: 'translate',
-        text: execution.text,
-        sourceLang: execution.message.sourceLang,
-        targetLang: execution.message.targetLang,
-        provider: execution.provider,
-        sessionId,
-        pageContext: execution.message.options?.context?.pageContext,
-      });
-
-      if (!result) {
-        throw new Error('No response from translation engine');
-      }
-
-      if (!result.success) {
-        throw new Error(result.error);
-      }
-
-      return result;
-    },
-    NETWORK_RETRY_CONFIG,
-    (error: TranslationError) => {
-      return error.retryable !== false && !!error.technicalDetails;
-    }
-  );
-}
-
-/**
- * Inner translation handler — Chrome-specific with offscreen IPC + profiling.
- */
-async function handleTranslateInner(message: TranslateMessagePayload): Promise<TranslateResponse> {
-  const startTime = Date.now();
-
-  // Profiling session
-  const sessionId = message.enableProfiling ? profiler.startSession() : undefined;
-  if (sessionId) {
-    profiler.startTiming(sessionId, 'total');
-  }
-
-  try {
-    const preparedResult = await prepareTranslationExecution(message, translationCache, {
-      startTime,
-      hooks: {
-        onValidationStart: () => {
-          if (sessionId) profiler.startTiming(sessionId, 'validation');
-        },
-        onValidationEnd: () => {
-          if (sessionId) profiler.endTiming(sessionId, 'validation');
-        },
-        onCacheLookupStart: () => {
-          if (sessionId) profiler.startTiming(sessionId, 'cache_lookup');
-        },
-        onCacheLookupEnd: () => {
-          if (sessionId) profiler.endTiming(sessionId, 'cache_lookup');
-        },
-        onEarlyReturn: () => {
-          if (sessionId) profiler.endTiming(sessionId, 'total');
-        },
-      },
-    });
-
-    if (preparedResult.kind === 'response') {
-      return preparedResult.response;
-    }
-
-    const { execution } = preparedResult;
-
-    log.info('Translating:', execution.message.sourceLang, '->', execution.message.targetLang);
-
-    // Chrome Built-in Translator: runs in tab's main world
-    if (execution.provider === 'chrome-builtin') {
-      return handleChromeBuiltinTranslation(execution, sessionId);
-    }
-
-    // Offscreen IPC translation
-    if (sessionId) profiler.startTiming(sessionId, 'ipc_background_to_offscreen');
-
-    const response = await requestOffscreenTranslation(execution, sessionId);
-
-    if (sessionId) {
-      profiler.endTiming(sessionId, 'ipc_background_to_offscreen');
-
-      if (response.profilingData) {
-        profiler.importSessionData(response.profilingData);
-      }
-    }
-    if (response.result === undefined) {
-      throw new Error('Translation engine returned no result');
-    }
-    return finalizeTranslationExecution(
-      execution,
-      translationCache,
-      response.result,
-      {
-        onBeforeCacheStore: () => {
-          if (sessionId) profiler.startTiming(sessionId, 'cache_store');
-        },
-        onAfterCacheStore: () => {
-          if (sessionId) {
-            profiler.endTiming(sessionId, 'cache_store');
-            profiler.endTiming(sessionId, 'total');
-          }
-        },
-        onSuccess: ({ execution: successfulExecution, result }) => {
-          /* v8 ignore start -- fire-and-forget */
-          recordTranslation(successfulExecution.message.targetLang).catch((err: unknown) => {
-            log.debug('recordTranslation skipped:', err);
-          });
-          /* v8 ignore stop */
-
-          if (typeof successfulExecution.text === 'string' && typeof result === 'string') {
-            recordTranslationToHistory(
-              successfulExecution.text,
-              result,
-              successfulExecution.message.sourceLang,
-              successfulExecution.message.targetLang,
-            );
-          }
-
-          if (!sessionId) {
-            return;
-          }
-
-          const report = profiler.getReport(sessionId);
-          if (!report) {
-            return;
-          }
-
-          log.info(profiler.formatReport(sessionId));
-          return { profilingReport: report };
-        },
-      },
-    );
-  } catch (error) {
-    if (sessionId) {
-      profiler.endTiming(sessionId, 'ipc_background_to_offscreen');
-      profiler.endTiming(sessionId, 'cache_store');
-      profiler.endTiming(sessionId, 'total');
-    }
-    return createTranslateErrorResponse(error, startTime);
   }
 }
 

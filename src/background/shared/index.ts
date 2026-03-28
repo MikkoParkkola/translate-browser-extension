@@ -60,6 +60,14 @@ export {
   handleTranslateCore,
 } from './translation-core';
 
+export type {
+  TranslationBackgroundLogger,
+  TranslationProfiler,
+  CreateTranslationBackgroundHandlerOptions,
+  TranslationBackgroundHandler,
+} from './translation-background-handler';
+export { createTranslationBackgroundHandler } from './translation-background-handler';
+
 export {
   handleGetCacheStats,
   handleClearCache,
