@@ -12,7 +12,7 @@
 import type {
   BackgroundRequestMessage,
   BackgroundRequestMessageType,
-  ExtensionMessage, ExtensionMessageResponse, TranslationProviderId, ContentCommand,
+  ExtensionMessage, ExtensionMessageResponse,
   DownloadedModelRecord,
 } from '../types';
 import {
@@ -78,6 +78,9 @@ import {
   createBackgroundMessageListener,
   createCommonBackgroundMessageDispatcher,
   createPreloadModelHandler,
+  createPredictionPreloadHandler,
+  createStreamPortHandler,
+  createTabMessageSender,
 } from './shared';
 
 const log = createLogger('Background');
@@ -120,72 +123,13 @@ translationCache.load();
 
 const predictionEngine = getPredictionEngine();
 
-// Track preloaded models to avoid duplicate preloads
-const preloadedModels = new Set<string>();
-
-/**
- * Preload models based on predictions (called on tab navigation)
- */
-async function preloadPredictedModels(url: string): Promise<void> {
-  try {
-    const hasActivity = await predictionEngine.hasRecentActivity();
-    if (!hasActivity) {
-      log.debug('No recent activity, skipping predictive preload');
-      return;
-    }
-
-    const predictions = await predictionEngine.predict(url);
-    if (predictions.length === 0) {
-      return;
-    }
-
-    log.info(`Predictive preload: ${predictions.length} candidates for ${url}`);
-
-    for (const prediction of predictions) {
-      const key = `${prediction.sourceLang}-${prediction.targetLang}`;
-
-      /* v8 ignore start -- preloaded check branch */
-      if (preloadedModels.has(key)) {
-        log.debug(`Model ${key} already preloaded`);
-        continue;
-      }
-      /* v8 ignore stop */
-
-      if (prediction.confidence < 0.3) {
-        log.debug(`Skipping low confidence prediction: ${key} (${prediction.confidence.toFixed(2)})`);
-        continue;
-      }
-
-      // Check if preloaded models exceed limit
-      if (preloadedModels.size >= CONFIG.inFlight.maxPreloaded) {
-        preloadedModels.clear();
-      }
-
-      log.info(`Preloading predicted model: ${key} (confidence: ${prediction.confidence.toFixed(2)})`);
-
-      offscreenTransport.send<'preloadModel'>({
-        type: 'preloadModel',
-        sourceLang: prediction.sourceLang,
-        targetLang: prediction.targetLang,
-        provider: getProvider(),
-        priority: 'low',
-      })
-        .then((response) => {
-          if (response.success && response.preloaded) {
-            preloadedModels.add(key);
-            log.info(`Predictive preload complete: ${key}`);
-          }
-        })
-        /* v8 ignore start */
-        .catch((error) => {
-          log.warn(`Predictive preload failed for ${key}:`, error);
-        });
-        /* v8 ignore stop */
-    }
-  } catch (error) {
-    log.warn('Predictive preload error:', error);
-  }
-}
+const { handleTabUpdated } = createPredictionPreloadHandler({
+  log,
+  predictionEngine,
+  getProvider,
+  maxPreloaded: CONFIG.inFlight.maxPreloaded,
+  preloadModel: async (message) => offscreenTransport.send<'preloadModel'>(message),
+});
 
 /**
  * Record translation for prediction engine
@@ -374,112 +318,14 @@ chrome.runtime.onMessage.addListener(createBackgroundMessageListener({
   },
 }));
 
-// ============================================================================
-// Streaming Translation via Port (chrome.runtime.connect)
-// ============================================================================
-//
-// Content scripts connect with name 'translate-stream' to receive incremental
-// translation tokens. This is used for long selected text so the tooltip can
-// show partial results as they arrive rather than waiting for the full response.
-//
-// Protocol:
-//   CS → SW  { type: 'startStream', text, sourceLang, targetLang, provider? }
-//   SW → CS  { type: 'chunk', partial: string }  (one or more)
-//   SW → CS  { type: 'done', result: string }
-//   SW → CS  { type: 'error', error: string }
-
-function createStreamPortSender(port: chrome.runtime.Port): (message: Record<string, unknown>) => boolean {
-  let closed = false;
-  port.onDisconnect.addListener(() => {
-    closed = true;
-  });
-
-  return (message: Record<string, unknown>) => {
-    if (closed) return false;
-    try {
-      port.postMessage(message);
-      return true;
-    } catch (error) {
-      closed = true;
-      log.debug('Stream port closed before message delivery:', error);
-      return false;
-    }
-  };
-}
-
-chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
-  if (port.name !== 'translate-stream') return;
-  const postToStream = createStreamPortSender(port);
-
-  port.onMessage.addListener(async (msg: {
-    type: string;
-    text?: string;
-    sourceLang?: string;
-    targetLang?: string;
-    provider?: string;
-  }) => {
-    if (msg.type !== 'startStream') return;
-    const { text, sourceLang, targetLang, provider: requestedProvider } = msg;
-
-    if (!text || !sourceLang || !targetLang) {
-      postToStream({ type: 'error', error: 'Missing required fields' });
-      return;
-    }
-
-    const provider = (requestedProvider || getProvider()) as TranslationProviderId;
-    acquireKeepAlive();
-
-    try {
-      // For chrome-builtin: translate sentence-by-sentence for progressive feedback.
-      // The Chrome Translator API only supports streaming within the main world of a tab
-      // (not from the service worker), so we approximate streaming by splitting on
-      // sentence boundaries and posting each translated sentence as a chunk.
-      if (provider === 'chrome-builtin') {
-        const sentences = splitIntoSentences(text);
-        const accumulated: string[] = [];
-
-        for (const sentence of sentences) {
-          if (!sentence.trim()) {
-            accumulated.push(sentence);
-            continue;
-          }
-
-          const response = await handleTranslate({
-            text: sentence,
-            sourceLang,
-            targetLang,
-            provider: 'chrome-builtin',
-          });
-
-          if (response.success && response.result) {
-            accumulated.push(response.result as string);
-            if (!postToStream({ type: 'chunk', partial: accumulated.join(' ') })) return;
-          } else {
-            throw new Error(response.error || 'Translation failed');
-          }
-        }
-
-        postToStream({ type: 'done', result: accumulated.join(' ') });
-        return;
-      }
-
-      // For all other providers: translate via offscreen IPC (they already batch-
-      // translate efficiently; send the whole text and return a single done message).
-      const response = await handleTranslate({ text, sourceLang, targetLang, provider });
-      if (response.success && response.result) {
-        if (!postToStream({ type: 'chunk', partial: response.result as string })) return;
-        postToStream({ type: 'done', result: response.result as string });
-      } else {
-        throw new Error(response.error || 'Translation failed');
-      }
-    } catch (error) {
-      const errMsg = extractErrorMessage(error);
-      postToStream({ type: 'error', error: errMsg });
-    } finally {
-      releaseKeepAlive();
-    }
-  });
-});
+chrome.runtime.onConnect.addListener(createStreamPortHandler({
+  getProvider,
+  handleTranslate,
+  acquireKeepAlive,
+  releaseKeepAlive,
+  splitIntoSentences,
+  log,
+}));
 
 
 const SERVICE_WORKER_MESSAGE_TYPES = [
@@ -659,35 +505,15 @@ async function handleMessage(message: ServiceWorkerHandledMessage): Promise<Serv
 // Reliable Tab Messaging (Chrome-specific)
 // ============================================================================
 
-async function sendMessageToTab(tabId: number, message: ContentCommand): Promise<void> {
-  try {
-    await chrome.tabs.sendMessage(tabId, message);
-  } catch (firstError) {
-    const errMsg = extractErrorMessage(firstError);
-
-    if (!errMsg.includes('establish connection') && !errMsg.includes('Receiving end does not exist')) {
-      throw firstError;
-    }
-
-    log.info(`Content script not ready in tab ${tabId}, injecting...`);
-
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        files: ['src/content/index.js'],
-      });
-
-      await sleep(200);
-
-      await chrome.tabs.sendMessage(tabId, message);
-      log.info(`Message delivered to tab ${tabId} after injection`);
-    } catch (injectError) {
-      const injectMsg = extractErrorMessage(injectError);
-      log.warn(`Cannot inject content script into tab ${tabId}: ${injectMsg}`);
-      throw new Error(`Translation not available on this page. ${injectMsg}`);
-    }
-  }
-}
+const sendMessageToTab = createTabMessageSender({
+  log,
+  sendMessage: (tabId, message) => chrome.tabs.sendMessage(tabId, message),
+  injectContentScript: (tabId) => chrome.scripting.executeScript({
+    target: { tabId },
+    files: ['src/content/index.js'],
+  }),
+  waitForContentScriptReady: () => sleep(200),
+});
 
 // ============================================================================
 // Context Menus
@@ -746,17 +572,7 @@ chrome.commands.onCommand.addListener(createKeyboardShortcutHandler({
 }));
 
 // Tab update listener for predictive model preloading
-chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url && !tab.url.startsWith('chrome://')) {
-    log.debug(`Tab updated: ${tab.url}`);
-
-    /* v8 ignore start */
-    preloadPredictedModels(tab.url).catch((error) => {
-      log.warn('Predictive preload trigger failed:', error);
-    });
-    /* v8 ignore stop */
-  }
-});
+chrome.tabs.onUpdated.addListener(handleTabUpdated);
 
 // Extension icon click handler
 chrome.action.onClicked.addListener(async (tab) => {

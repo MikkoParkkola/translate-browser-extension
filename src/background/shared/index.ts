@@ -159,3 +159,35 @@ export type {
   CreateOffscreenTransportOptions,
 } from './offscreen-transport';
 export { createOffscreenTransport } from './offscreen-transport';
+
+export type {
+  TabMessageDeliveryLogger,
+  CreateTabMessageSenderOptions,
+} from './tab-message-delivery';
+export {
+  createTabMessageSender,
+  isRecoverableContentScriptConnectionError,
+} from './tab-message-delivery';
+
+export type {
+  StreamPortHandlerLogger,
+  StreamPortMessage,
+  StreamTranslationRequest,
+  CreateStreamPortHandlerOptions,
+} from './stream-port-handler';
+export {
+  createStreamPortHandler,
+  createStreamPortSender,
+} from './stream-port-handler';
+
+export type {
+  PredictivePreloadLogger,
+  PredictionCandidate,
+  PredictionPreloadEngine,
+  PredictionPreloadResponse,
+  CreatePredictionPreloadHandlerOptions,
+} from './prediction-preload-handler';
+export {
+  createPredictionPreloadHandler,
+  isPredictivePreloadUrl,
+} from './prediction-preload-handler';
