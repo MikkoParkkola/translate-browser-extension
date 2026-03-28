@@ -16,15 +16,30 @@ const SRC_ROOT = path.resolve(__dirname, '..');
 const STORAGE_TS = path.join(SRC_ROOT, 'core', 'storage.ts');
 const SERVICE_WORKER_TS = path.join(SRC_ROOT, 'background', 'service-worker.ts');
 const SHARED_HANDLERS_TS = path.join(SRC_ROOT, 'background', 'shared', 'message-handlers.ts');
+// background-message-listener owns the onMessage routing guard and the
+// formatUserError call that prevents raw API keys leaking into responses.
+const BG_MESSAGE_LISTENER_TS = path.join(
+  SRC_ROOT,
+  'background',
+  'shared',
+  'background-message-listener.ts'
+);
 const CONTENT_INDEX_TS = path.join(SRC_ROOT, 'content', 'index.ts');
 
-// Read sources once for static analysis (include shared module where handlers were extracted)
+// Read sources once for static analysis (include shared modules where handlers
+// were extracted over successive refactoring waves).
 const storageSource = fs.readFileSync(STORAGE_TS, 'utf-8');
 const serviceWorkerSource = fs.readFileSync(SERVICE_WORKER_TS, 'utf-8');
 const sharedHandlersSource = fs.existsSync(SHARED_HANDLERS_TS)
   ? fs.readFileSync(SHARED_HANDLERS_TS, 'utf-8')
   : '';
-const backgroundSource = serviceWorkerSource + '\n' + sharedHandlersSource;
+const bgMessageListenerSource = fs.existsSync(BG_MESSAGE_LISTENER_TS)
+  ? fs.readFileSync(BG_MESSAGE_LISTENER_TS, 'utf-8')
+  : '';
+// Concatenate all background-layer sources so assertions remain valid
+// regardless of which module owns a given guard at any point in time.
+const backgroundSource =
+  serviceWorkerSource + '\n' + sharedHandlersSource + '\n' + bgMessageListenerSource;
 const contentSource = fs.readFileSync(CONTENT_INDEX_TS, 'utf-8');
 
 // Provider key names as declared in service-worker.ts
@@ -91,7 +106,9 @@ describe('API Key Storage Security', () => {
     it('service worker error handler uses formatUserError (no raw keys in responses)', () => {
       // The onMessage handler wraps errors through formatUserError before
       // sending to the content script, ensuring API keys are never leaked.
-      expect(serviceWorkerSource).toContain('formatUserError(translationError)');
+      // Ownership moved to background-message-listener.ts; assert against the
+      // full backgroundSource so the check remains valid after future moves.
+      expect(backgroundSource).toContain('formatUserError(translationError)');
     });
 
     it('storage module error messages do not include stored values', () => {

@@ -198,3 +198,6 @@ export type {
   KeepAliveController,
 } from './keep-alive-controller';
 export { createKeepAliveController } from './keep-alive-controller';
+
+export type { ChromeBuiltinTranslationDeps } from './chrome-builtin-translation';
+export { createChromeBuiltinTranslationRunner } from './chrome-builtin-translation';

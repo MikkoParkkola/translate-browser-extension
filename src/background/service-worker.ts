@@ -82,6 +82,7 @@ import {
   createStreamPortHandler,
   createTabMessageSender,
   createKeepAliveController,
+  createChromeBuiltinTranslationRunner,
 } from './shared';
 
 const log = createLogger('Background');
@@ -156,22 +157,27 @@ const { acquireKeepAlive, releaseKeepAlive } = createKeepAliveController({
   },
 });
 
-async function runChromeBuiltinTranslation(
-  text: string | string[],
+// ============================================================================
+// Chrome Built-in Translation — executeScript wrapper (Chrome-specific)
+//
+// The surrounding orchestration (tab lookup, array normalisation, result
+// validation) lives in shared/chrome-builtin-translation.ts so it can be
+// unit-tested without the Chrome scripting API.  The inline `func` that Chrome
+// serialises and injects into the tab's MAIN world must remain here.
+// ============================================================================
+
+/* v8 ignore start — executeTranslationScript runs in the tab's main world via
+   chrome.scripting.executeScript; the inline `func` is never called directly
+   in the service-worker context and cannot be exercised by unit tests. */
+async function executeTranslationScript(
+  tabId: number,
+  texts: string[],
   sourceLang: string,
   targetLang: string
-): Promise<string | string[]> {
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  const tabId = tabs[0]?.id;
-  if (!tabId) {
-    throw new Error('No active tab for Chrome Translator');
-  }
-
-  const texts = Array.isArray(text) ? text : [text];
+): Promise<string[] | undefined> {
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     world: 'MAIN' as chrome.scripting.ExecutionWorld,
-    /* v8 ignore start — runs in tab's main world via executeScript, not in service-worker context */
     func: async (textsToTranslate: string[], srcLang: string, tgtLang: string) => {
       const TranslatorAPI = self.Translator;
       if (!TranslatorAPI) {
@@ -189,17 +195,19 @@ async function runChromeBuiltinTranslation(
       t.destroy();
       return translated;
     },
-    /* v8 ignore stop */
     args: [texts, sourceLang, targetLang],
   });
-
-  const translated = results[0]?.result as string[] | undefined;
-  if (!translated) {
-    throw new Error('Chrome Translator returned no result');
-  }
-
-  return Array.isArray(text) ? translated : translated[0];
+  return results[0]?.result as string[] | undefined;
 }
+/* v8 ignore stop */
+
+const runChromeBuiltinTranslation = createChromeBuiltinTranslationRunner({
+  getActiveTabId: async () => {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tabs[0]?.id;
+  },
+  executeTranslationScript,
+});
 
 const translationBackgroundHandler: TranslationBackgroundHandler =
   createTranslationBackgroundHandler({

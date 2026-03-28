@@ -2850,10 +2850,11 @@ describe('Service Worker Additional Coverage', () => {
   });
 
   // --------------------------------------------------------------------------
-  // Chrome Built-in Translator
+  // Chrome Built-in Translator — wiring/integration only
+  // (Behaviour-specific edge-cases live in shared/chrome-builtin-translation.test.ts)
   // --------------------------------------------------------------------------
   describe('Chrome Built-in Translator (handleTranslate chrome-builtin branch)', () => {
-    it('translates text using chrome-builtin provider', async () => {
+    it('routes translate message through chrome-builtin provider end-to-end', async () => {
       chromeTabsScriptingMocks.queueActiveTab({ id: 1 });
       chromeTabsScriptingMocks.queueExecuteScriptResult(['Hola mundo']);
 
@@ -2867,51 +2868,6 @@ describe('Service Worker Additional Coverage', () => {
 
       expect(response.success).toBe(true);
       expect(response.result).toBe('Hola mundo');
-    });
-
-    it('returns error when no active tab for chrome-builtin', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([]);
-
-      const response = await invoke({
-        type: 'translate',
-        text: 'Hello',
-        sourceLang: 'en',
-        targetLang: 'es',
-        provider: 'chrome-builtin',
-      }) as { success: boolean; error?: string };
-
-      expect(response.success).toBe(false);
-      expect(response.error).toContain('No active tab');
-    });
-
-    it('returns error when chrome translator api not available', async () => {
-      chromeTabsScriptingMocks.queueActiveTab({ id: 1 });
-      chromeTabsScriptingMocks.queueExecuteScriptResult(undefined);
-
-      const response = await invoke({
-        type: 'translate',
-        text: 'Hello',
-        sourceLang: 'en',
-        targetLang: 'es',
-        provider: 'chrome-builtin',
-      }) as { success: boolean; error?: string };
-
-      expect(response.success).toBe(false);
-    });
-
-    it('handles empty strings in chrome-builtin array response', async () => {
-      chromeTabsScriptingMocks.queueActiveTab({ id: 1 });
-      chromeTabsScriptingMocks.queueExecuteScriptResult(['']);
-
-      const response = await invoke({
-        type: 'translate',
-        text: ['', 'Hello'],
-        sourceLang: 'en',
-        targetLang: 'es',
-        provider: 'chrome-builtin',
-      }) as { success: boolean; result?: string[] };
-
-      expect(response.success).toBe(true);
     });
   });
 
@@ -5575,43 +5531,6 @@ describe('Coverage gap tests', () => {
       const response = await invoke({ type: 'clearAllModels' }) as any;
       expect(response.success).toBe(false);
       expect(response.error).toContain('Remove failed');
-    });
-  });
-
-  // ============================================================================
-  // Chrome-builtin: no active tab (lines ~1028-1029)
-  // ============================================================================
-  describe('chrome-builtin translation: no active tab', () => {
-    it('returns error when no active tab found', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([]);
-      const response = await invoke({
-        type: 'translate',
-        text: 'Hello',
-        sourceLang: 'en',
-        targetLang: 'de',
-        provider: 'chrome-builtin',
-      }) as any;
-      expect(response.success).toBe(false);
-      expect(response.error).toContain('No active tab');
-    });
-  });
-
-  // ============================================================================
-  // Chrome-builtin: executeScript returns undefined result (line ~1040)
-  // ============================================================================
-  describe('chrome-builtin translation: undefined script result', () => {
-    it('returns error when executeScript result is undefined', async () => {
-      chromeTabsScriptingMocks.queueActiveTab({ id: 42 });
-      chromeTabsScriptingMocks.queueExecuteScriptResult(undefined);
-      const response = await invoke({
-        type: 'translate',
-        text: 'Hello',
-        sourceLang: 'en',
-        targetLang: 'de',
-        provider: 'chrome-builtin',
-      }) as any;
-      expect(response.success).toBe(false);
-      expect(response.error).toContain('returned no result');
     });
   });
 
