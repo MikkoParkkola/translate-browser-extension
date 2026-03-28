@@ -13,8 +13,7 @@ import type {
   BackgroundRequestMessage,
   BackgroundRequestMessageType,
   ExtensionMessage, ExtensionMessageResponse, TranslationProviderId, ContentCommand,
-  RecordLanguageDetectionMessage,
-  GetCloudProviderUsageMessage, OCRImageMessage, CaptureScreenshotMessage,
+  OCRImageMessage, CaptureScreenshotMessage,
   DeleteModelMessage, DownloadedModelRecord, MessageResponse,
 } from '../types';
 import {
@@ -43,7 +42,6 @@ import {
   getDownloadedModelInventory,
   clearDownloadedModelInventory,
   deleteDownloadedModelInventoryEntry,
-  handleClearCache,
   handleGetHistory,
   handleClearHistory,
   recordTranslationToHistory,
@@ -66,6 +64,7 @@ import {
   createTranslationBackgroundHandler,
   type TranslationBackgroundHandler,
   createRuntimeInfoHandlers,
+  createDiagnosticsHandlers,
   createOffscreenTransport,
   relayModelProgress,
   upsertDownloadedModelInventory,
@@ -185,17 +184,6 @@ async function preloadPredictedModels(url: string): Promise<void> {
     }
   } catch (error) {
     log.warn('Predictive preload error:', error);
-  }
-}
-
-/**
- * Record language detection for prediction engine
- */
-async function recordLanguageDetection(url: string, language: string): Promise<void> {
-  try {
-    await predictionEngine.recordDetection(url, language);
-  } catch (error) {
-    log.warn('Failed to record language detection:', error);
   }
 }
 
@@ -574,6 +562,18 @@ const {
   },
 });
 
+const {
+  handleClearCacheWithOffscreen,
+  handleGetPredictionStats,
+  handleRecordLanguageDetection,
+  handleGetCloudProviderUsage,
+} = createDiagnosticsHandlers({
+  cache: translationCache,
+  predictionEngine,
+  offscreenTransport,
+  log,
+});
+
 const dispatchCommonMessage = createCommonBackgroundMessageDispatcher({
   translationCache,
   getProvider,
@@ -645,24 +645,6 @@ async function handleMessage(message: ServiceWorkerHandledMessage): Promise<Serv
 // Chrome-Specific Handlers
 // ============================================================================
 
-/**
- * Clear cache — also forwards to offscreen document's cache.
- */
-async function handleClearCacheWithOffscreen(): Promise<{ success: boolean; clearedEntries: number }> {
-  const result = await handleClearCache(translationCache);
-
-  // Also clear the offscreen document's translation cache
-  try {
-    await offscreenTransport.send({ type: 'clearCache' });
-  } catch {
-    /* v8 ignore start */
-    log.warn('Could not clear offscreen translation cache (may not be running)');
-    /* v8 ignore stop */
-  }
-
-  return result;
-}
-
 /** Best-effort clear of the offscreen pipeline cache (offscreen may not be running). */
 async function tryClearOffscreenPipelineCache(): Promise<void> {
   try {
@@ -724,49 +706,6 @@ async function handleClearAllModels(): Promise<MessageResponse> {
     return { success: true };
   } catch (error) {
     log.error('Failed to clear all models:', error);
-    return {
-      success: false,
-      error: extractErrorMessage(error),
-    };
-  }
-}
-
-/**
- * Get prediction engine statistics
- */
-async function handleGetPredictionStats(): Promise<MessageResponse<{ prediction: { domainCount: number; totalTranslations: number; recentTranslations: number; preferredTarget: string; topDomains: Array<{ domain: string; detections: number }> } }>> {
-  try {
-    const stats = await predictionEngine.getStats();
-    return { success: true, prediction: stats };
-  } catch (error) {
-    log.warn('Failed to get prediction stats:', error);
-    return {
-      success: false,
-      error: extractErrorMessage(error),
-    };
-  }
-}
-
-/**
- * Handle language detection recording
- */
-async function handleRecordLanguageDetection(message: RecordLanguageDetectionMessage): Promise<MessageResponse> {
-  await recordLanguageDetection(message.url, message.language);
-  return { success: true };
-}
-
-/**
- * Get usage statistics for a cloud provider
- */
-async function handleGetCloudProviderUsage(message: GetCloudProviderUsageMessage): Promise<MessageResponse<{ usage?: { tokens: number; cost: number; limitReached: boolean } }>> {
-  try {
-    const result = await offscreenTransport.send<'getCloudProviderUsage'>({
-      type: 'getCloudProviderUsage',
-      provider: message.provider,
-    });
-    return result;
-  } catch (error) {
-    log.warn(' Failed to get cloud provider usage:', error);
     return {
       success: false,
       error: extractErrorMessage(error),

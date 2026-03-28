@@ -76,6 +76,14 @@ export type {
 } from './runtime-info-handlers';
 export { createRuntimeInfoHandlers } from './runtime-info-handlers';
 
+export type {
+  DiagnosticsLogger,
+  DiagnosticsPredictionEngine,
+  CreateDiagnosticsHandlersOptions,
+  DiagnosticsHandlers,
+} from './diagnostics-handlers';
+export { createDiagnosticsHandlers } from './diagnostics-handlers';
+
 export {
   handleGetCacheStats,
   handleClearCache,
