@@ -191,3 +191,10 @@ export {
   createPredictionPreloadHandler,
   isPredictivePreloadUrl,
 } from './prediction-preload-handler';
+
+export type {
+  KeepAliveLogger,
+  CreateKeepAliveControllerOptions,
+  KeepAliveController,
+} from './keep-alive-controller';
+export { createKeepAliveController } from './keep-alive-controller';

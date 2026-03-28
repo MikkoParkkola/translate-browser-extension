@@ -81,6 +81,7 @@ import {
   createPredictionPreloadHandler,
   createStreamPortHandler,
   createTabMessageSender,
+  createKeepAliveController,
 } from './shared';
 
 const log = createLogger('Background');
@@ -143,36 +144,17 @@ async function recordTranslation(targetLang: string): Promise<void> {
 }
 
 // ============================================================================
-// Service Worker Keep-Alive (Chrome-specific)
+// Service Worker Keep-Alive (Chrome-specific wiring)
 // ============================================================================
 
-let activeTranslationCount = 0;
-let keepAliveInterval: ReturnType<typeof setInterval> | null = null;
-
-function acquireKeepAlive(): void {
-  activeTranslationCount++;
-  if (activeTranslationCount === 1 && !keepAliveInterval) {
-    /* v8 ignore start -- timer callback */
-    keepAliveInterval = setInterval(() => {
-      if (activeTranslationCount > 0) {
-        chrome.runtime.getPlatformInfo(() => {
-          /* keep-alive ping */
-        });
-      }
-    }, 25000);
-    /* v8 ignore stop */
-    log.info(`Keep-alive started (${activeTranslationCount} active translations)`);
-  }
-}
-
-function releaseKeepAlive(): void {
-  activeTranslationCount = Math.max(0, activeTranslationCount - 1);
-  if (activeTranslationCount === 0 && keepAliveInterval) {
-    clearInterval(keepAliveInterval);
-    keepAliveInterval = null;
-    log.info('Keep-alive stopped (no active translations)');
-  }
-}
+const { acquireKeepAlive, releaseKeepAlive } = createKeepAliveController({
+  log,
+  ping: () => {
+    chrome.runtime.getPlatformInfo(() => {
+      /* keep-alive ping */
+    });
+  },
+});
 
 async function runChromeBuiltinTranslation(
   text: string | string[],

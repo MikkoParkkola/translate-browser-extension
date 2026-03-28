@@ -151,4 +151,9 @@ describe('shared/index barrel export', () => {
     expect(barrel.createInstallationHandler).toBeDefined();
     expect(barrel.restorePersistedProvider).toBeDefined();
   });
+
+  it('re-exports all expected symbols from keep-alive-controller', async () => {
+    const barrel = await import('./index');
+    expect(barrel.createKeepAliveController).toBeDefined();
+  });
 });
