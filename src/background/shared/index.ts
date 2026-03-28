@@ -68,6 +68,14 @@ export type {
 } from './translation-background-handler';
 export { createTranslationBackgroundHandler } from './translation-background-handler';
 
+export type {
+  RuntimeInfoLogger,
+  RuntimeInfoProfiler,
+  RuntimeInfoHandlers,
+  CreateRuntimeInfoHandlersOptions,
+} from './runtime-info-handlers';
+export { createRuntimeInfoHandlers } from './runtime-info-handlers';
+
 export {
   handleGetCacheStats,
   handleClearCache,

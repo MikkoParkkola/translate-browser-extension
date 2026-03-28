@@ -94,6 +94,11 @@ describe('shared/index barrel export', () => {
     expect(barrel.createTranslationBackgroundHandler).toBeDefined();
   });
 
+  it('re-exports all expected symbols from runtime-info-handlers', async () => {
+    const barrel = await import('./index');
+    expect(barrel.createRuntimeInfoHandlers).toBeDefined();
+  });
+
   it('re-exports all expected symbols from message-handlers', async () => {
     const barrel = await import('./index');
     expect(barrel.handleGetCacheStats).toBeDefined();

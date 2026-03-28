@@ -12,7 +12,7 @@
 import type {
   BackgroundRequestMessage,
   BackgroundRequestMessageType,
-  ExtensionMessage, ExtensionMessageResponse, Strategy, TranslationProviderId, ContentCommand,
+  ExtensionMessage, ExtensionMessageResponse, TranslationProviderId, ContentCommand,
   RecordLanguageDetectionMessage,
   GetCloudProviderUsageMessage, OCRImageMessage, CaptureScreenshotMessage,
   DeleteModelMessage, DownloadedModelRecord, MessageResponse,
@@ -24,7 +24,7 @@ import { createLogger } from '../core/logger';
 import { safeStorageGet, safeStorageSet, strictStorageSet } from '../core/storage';
 import { getPredictionEngine } from '../core/prediction-engine';
 import { CONFIG } from '../config';
-import { profiler, type AggregateStats } from '../core/profiler';
+import { profiler } from '../core/profiler';
 import { sleep } from '../core/async-utils';
 import { splitIntoSentences } from '../core/text-utils';
 import { DEFAULT_PROVIDER_ID } from '../shared/provider-options';
@@ -65,6 +65,7 @@ import {
   PROVIDER_LIST,
   createTranslationBackgroundHandler,
   type TranslationBackgroundHandler,
+  createRuntimeInfoHandlers,
   createOffscreenTransport,
   relayModelProgress,
   upsertDownloadedModelInventory,
@@ -78,7 +79,6 @@ import {
   createBackgroundMessageListener,
   createCommonBackgroundMessageDispatcher,
   createPreloadModelHandler,
-  createSafeCapabilityHandler,
 } from './shared';
 
 const log = createLogger('Background');
@@ -544,17 +544,25 @@ const handlePreloadModel = createPreloadModelHandler({
   }),
 });
 
-const handleCheckChromeTranslator = createSafeCapabilityHandler({
+const {
+  handleGetProfilingStats,
+  handleClearProfilingStats,
+  handleGetProviders,
+  handleCheckChromeTranslator,
+  handleCheckWebGPU,
+  handleCheckWebNN,
+} = createRuntimeInfoHandlers({
+  getProvider,
+  getStrategy,
+  providerList: PROVIDER_LIST,
+  offscreenTransport,
+  profiler,
   log,
-  debugMessage: 'Chrome Translator check failed (restricted page?):',
-  fallback: { success: true, available: false } as const,
-  run: async () => {
+  getActiveTabId: async () => {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    const tabId = tabs[0]?.id;
-    if (!tabId) {
-      return { success: true, available: false } as const;
-    }
-
+    return tabs[0]?.id;
+  },
+  probeChromeTranslator: async (tabId) => {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       world: 'MAIN' as chrome.scripting.ExecutionWorld,
@@ -563,32 +571,6 @@ const handleCheckChromeTranslator = createSafeCapabilityHandler({
       /* v8 ignore stop */
     });
     return { success: true, available: results[0]?.result === true } as const;
-  },
-});
-
-const handleCheckWebGPU = createSafeCapabilityHandler({
-  log,
-  debugMessage: 'WebGPU check failed:',
-  fallback: { success: true, supported: false, fp16: false } as const,
-  run: async () => {
-    const response = await offscreenTransport.send<'checkWebGPU'>({ type: 'checkWebGPU' });
-    if (!response.success) {
-      throw new Error(response.error);
-    }
-    return response;
-  },
-});
-
-const handleCheckWebNN = createSafeCapabilityHandler({
-  log,
-  debugMessage: 'WebNN check failed:',
-  fallback: { success: true, supported: false } as const,
-  run: async () => {
-    const response = await offscreenTransport.send<'checkWebNN'>({ type: 'checkWebNN' });
-    if (!response.success) {
-      throw new Error(response.error);
-    }
-    return response;
   },
 });
 
@@ -789,80 +771,6 @@ async function handleGetCloudProviderUsage(message: GetCloudProviderUsageMessage
       success: false,
       error: extractErrorMessage(error),
     };
-  }
-}
-
-// ============================================================================
-// Profiling Handlers (Chrome-specific — offscreen profiling)
-// ============================================================================
-
-async function handleGetProfilingStats(): Promise<MessageResponse<{ aggregates: Record<string, AggregateStats>; formatted: string }>> {
-  try {
-    const localStats = profiler.getAllAggregates();
-
-    let offscreenStats: Record<string, AggregateStats> = {};
-    try {
-      const offscreenResult = await offscreenTransport.send<'getProfilingStats'>({
-        type: 'getProfilingStats',
-      });
-      if (offscreenResult.success) {
-        offscreenStats = offscreenResult.aggregates;
-      }
-    } catch {
-      // Offscreen may not be available; continue with local stats only
-      log.debug('Offscreen not available for profiling stats merge');
-    }
-
-    const mergedStats = { ...localStats, ...offscreenStats };
-
-    return {
-      success: true,
-      aggregates: mergedStats,
-      formatted: profiler.formatAggregates(),
-    };
-  } catch (error) {
-    log.warn('Failed to get profiling stats:', error);
-    return {
-      success: false,
-      error: extractErrorMessage(error),
-    };
-  }
-}
-
-function handleClearProfilingStats(): MessageResponse {
-  profiler.clear();
-  log.info('Profiling stats cleared');
-  return { success: true };
-}
-
-// ============================================================================
-// Providers Handler (Chrome — gets languages from offscreen)
-// ============================================================================
-
-async function handleGetProviders(): Promise<{ providers: typeof PROVIDER_LIST; activeProvider: TranslationProviderId; strategy: Strategy; supportedLanguages: Array<{ src: string; tgt: string }>; error?: string }> {
-  try {
-    const response = await offscreenTransport.send<'getSupportedLanguages'>({
-      type: 'getSupportedLanguages',
-    });
-
-    return {
-      providers: [...PROVIDER_LIST],
-      activeProvider: getProvider(),
-      strategy: getStrategy(),
-      supportedLanguages: response.success ? (response.languages ?? []) : [],
-    };
-  } catch (error) {
-    /* v8 ignore start -- defensive fallback when offscreen language fetch fails */
-    log.warn(' Error getting providers:', error);
-
-    return {
-      providers: [...PROVIDER_LIST],
-      activeProvider: getProvider(),
-      strategy: getStrategy(),
-      supportedLanguages: [],
-      error: 'Could not load language list. Translation may still work.',
-    };
-    /* v8 ignore stop */
   }
 }
 
