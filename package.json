@@ -12,7 +12,7 @@
     "changeset": "changeset",
     "clean": "rimraf dist",
     "e2e": "npm run test:e2e",
-    "format": "prettier --check package.json",
+    "format": "prettier --check package.json package-lock.json vitest.config.ts vitest.e2e.config.ts .github/workflows/ci.yml .github/workflows/coverage.yml",
     "lint": "eslint .",
     "postinstall": "bash scripts/fetch-wasm-assets.sh",
     "pr": "bash scripts/pr.sh",
@@ -39,6 +39,9 @@
     "test:mutation:core": "stryker run --mutate \"src/core/**/*.ts\" --mutate \"!src/core/**/*.test.ts\" --mutate \"!src/core/index.ts\"",
     "typecheck": "tsc --noEmit",
     "typecheck:popup": "tsc --noEmit --project tsconfig.json",
+    "validate:ci": "npm run lint && npm run format && npm run typecheck && npm run typecheck:popup && npm test",
+    "validate:coverage": "npm run test:coverage",
+    "validate:build": "npm run build && npx size-limit",
     "zip": "bestzip dist/translate-by-mikko-v$npm_package_version.zip dist/*",
     "test:e2e:firefox": "playwright test e2e/firefox-compat.spec.ts",
     "test:e2e:webgpu": "playwright test e2e/translategemma-webgpu.spec.ts"

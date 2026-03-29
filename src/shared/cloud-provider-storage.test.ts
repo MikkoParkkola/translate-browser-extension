@@ -23,17 +23,29 @@ describe('cloud-provider-storage helpers', () => {
   it('reads booleans only when the stored value is a boolean', () => {
     expect(readStoredBoolean({ deepl_enabled: true }, 'deepl_enabled')).toBe(true);
     expect(readStoredBoolean({ deepl_enabled: 'true' }, 'deepl_enabled')).toBeUndefined();
+    expect(readStoredBoolean({}, undefined)).toBeUndefined();
   });
 
   it('reads non-empty strings only when the stored value is a string', () => {
     expect(readStoredString({ openai_model: 'gpt-4o' }, 'openai_model')).toBe('gpt-4o');
     expect(readStoredString({ openai_model: '' }, 'openai_model')).toBeUndefined();
     expect(readStoredString({ openai_model: 42 }, 'openai_model')).toBeUndefined();
+    expect(readStoredString({}, undefined)).toBeUndefined();
   });
 
   it('treats only non-empty strings as configured API keys', () => {
     expect(hasStoredApiKey({ deepl_api_key: 'key' }, 'deepl_api_key')).toBe(true);
     expect(hasStoredApiKey({ deepl_api_key: '' }, 'deepl_api_key')).toBe(false);
     expect(hasStoredApiKey({ deepl_api_key: true }, 'deepl_api_key')).toBe(false);
+  });
+
+  it('collects keys from providers without optional metadata', () => {
+    expect(
+      getCloudProviderStorageKeys([
+        {
+          keyField: 'google_cloud_api_key',
+        },
+      ]),
+    ).toEqual(['google_cloud_api_key']);
   });
 });

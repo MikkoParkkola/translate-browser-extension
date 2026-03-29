@@ -9,10 +9,12 @@ import {
   getProviderModelInfo,
   getProviderRuntimeRequirementLabel,
   getProviderUiBadgeLabel,
+  getPreferredLocalProvider,
   isBrowserManagedProviderId,
   isCloudProviderId,
   isDownloadableProviderId,
   isExperimentalProviderId,
+  resolveProviderFromModelId,
   isTranslationProviderId,
   normalizeCloudProviderFormalityValue,
   normalizeCloudProviderModelValue,
@@ -125,6 +127,21 @@ describe('provider-options guards', () => {
   it('normalizes legacy cloud provider formality aliases', () => {
     expect(normalizeCloudProviderFormalityValue('deepl', 'formal')).toBe('more');
     expect(normalizeCloudProviderFormalityValue('openai', 'default')).toBe('neutral');
+  });
+
+  it('prefers browser native translation when available', () => {
+    expect(getPreferredLocalProvider({ browserNativeAvailable: true })).toBe('chrome-builtin');
+    expect(getPreferredLocalProvider({ browserNativeAvailable: false })).toBe('opus-mt');
+    expect(getPreferredLocalProvider()).toBe('opus-mt');
+  });
+
+  it('resolves provider ids from model aliases and rejects unknown ids', () => {
+    expect(resolveProviderFromModelId(undefined)).toBeNull();
+    expect(resolveProviderFromModelId('deepl')).toBe('deepl');
+    expect(resolveProviderFromModelId('my-opus-mt-model')).toBe('opus-mt');
+    expect(resolveProviderFromModelId('gemma-4b')).toBe('translategemma');
+    expect(resolveProviderFromModelId('chrome-builtin-translator')).toBe('chrome-builtin');
+    expect(resolveProviderFromModelId('mystery-model')).toBeNull();
   });
 
   it('exports canonical anthropic model values', () => {

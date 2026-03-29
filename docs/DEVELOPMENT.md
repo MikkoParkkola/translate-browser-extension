@@ -2111,12 +2111,11 @@ Before submitting a pull request, ensure all checks pass:
 
 ```bash
 # Run full quality check suite
-npm run lint                    # ESLint checks
-npm run format                  # Prettier formatting
-npm test                       # Unit tests
-npm run test:e2e              # End-to-end tests
-npm run size                   # Bundle size checks
-npm run secrets               # Security scan
+npm run validate:ci            # Lint + format + typecheck + unit tests
+npm run validate:build         # Build + bundle size checks
+npm run test:e2e:web:smoke     # Browser-extension smoke coverage
+npm run test:coverage          # Coverage thresholds
+npm run secrets                # Security scan
 
 # Fix common issues
 npm run lint -- --fix         # Auto-fix lint issues

@@ -9,11 +9,8 @@ export default defineConfig({
     testTimeout: 120000, // 2 min timeout for model loading
     hookTimeout: 120000,
     pool: 'forks', // Better for Puppeteer
-    poolOptions: {
-      forks: {
-        singleFork: true, // Run tests sequentially (one browser instance)
-      },
-    },
+    fileParallelism: false, // Run files sequentially to keep one browser instance stable
+    maxWorkers: 1,
   },
   resolve: {
     alias: {

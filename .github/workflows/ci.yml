@@ -2,10 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [ "**" ]
+    branches: ['**']
   pull_request:
-    branches: [ "**" ]
+    branches: ['**']
   workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
@@ -34,29 +38,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Check formatting
-        run: npm run format
-
-      - name: Type check
-        run: npm run typecheck
-
-      - name: Type check popup
-        run: npm run typecheck:popup
-
-      - name: Run unit tests
-        run: npm test
+      - name: Validate core quality gates
+        run: npm run validate:ci
         env:
           CI: true
 
-      - name: Build dist
-        run: npm run build
-
-      - name: Check bundle size
-        run: npx size-limit
-        continue-on-error: false
+      - name: Build dist and check bundle size
+        run: npm run validate:build
 
       - name: Build ZIP artifact
         run: npm run zip

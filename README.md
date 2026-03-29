@@ -53,17 +53,14 @@ If built-in translation works reliably for your languages and pages, you probabl
 
 | Metric | Value |
 |--------|-------|
-| Unit tests | 5,038 (127 test files) |
-| Statement coverage | 100% |
-| Branch coverage | 99.9% |
-| Function coverage | 100% |
-| Line coverage | 100% |
+| Unit tests | 5k+ Vitest tests across 150+ files |
+| Coverage gates | Enforced in CI via `npm run test:coverage` |
 | Contract tests | 58 (provider interface conformance) |
 | Mutation testing | Stryker configured for core + providers |
-| E2E tests | Playwright (Chrome, Firefox, WebKit) |
-| CI | GitHub Actions: lint, typecheck, test, build, e2e, CodeQL, SBOM |
+| E2E tests | Playwright smoke, integration, and harness flows |
+| CI | GitHub Actions: consolidated CI, smoke e2e, coverage, CodeQL, SBOM |
 
-The test suite runs in ~40 seconds and covers every source file. Coverage thresholds (100/98/100/100) are enforced in CI — the build fails if coverage drops.
+The unit suite runs in about a minute locally, depending on cache state. Coverage thresholds are enforced in CI via `npm run test:coverage`; see `vitest.config.ts` for the current gate values.
 
 <!-- Screenshots: TODO — take fresh marketing screenshots showing:
   1. Popup translating a real page (before/after)

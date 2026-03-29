@@ -8,7 +8,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     pool: 'forks',
-    poolOptions: { forks: { singleFork: true } },
+    fileParallelism: false,
+    maxWorkers: 1,
     setupFiles: ['./src/test-setup.ts'],
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     exclude: ['node_modules', 'dist', '_legacy'],
@@ -30,6 +31,8 @@ export default defineConfig({
         'src/options/index.tsx', // Render entry point — no testable logic
         'src/**/*.test.tsx', // Test files
         'src/types/**', // Type definitions only
+        'src/test-helpers/**', // Test-only infrastructure, not shipped runtime
+        'src/test-setup.ts', // Test harness bootstrap
         'node_modules',
         'dist',
         '_legacy',
