@@ -22,6 +22,20 @@ const mockIndexedDB = indexedDbMock.indexedDB;
 const waitForCacheAsyncWork = (ms = 10): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
+const waitForRequestHandler = async (
+  request: { onsuccess: ((event: Event) => void) | null; onerror?: ((event: Event) => void) | null },
+  handler: 'onsuccess' | 'onerror' = 'onsuccess',
+  timeoutMs = 1000,
+): Promise<void> => {
+  const deadline = Date.now() + timeoutMs;
+  while (typeof request[handler] !== 'function') {
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for IndexedDB request ${handler} handler`);
+    }
+    await waitForCacheAsyncWork(1);
+  }
+};
+
 const createReadyCache = async (
   maxSize?: number,
   waitMs = 10
@@ -1479,11 +1493,9 @@ describe('Cache-at-Capacity and LRU Ordering Tests', () => {
     
     // Add an entry that should fit without triggering eviction
     const setPromise = cache.set('test', 'en', 'fi', 'opus-mt', 'translation');
-    
-    // Simulate successful storage
-    setTimeout(() => {
-      putRequest.onsuccess?.({});
-    }, 5);
+
+    await waitForRequestHandler(putRequest);
+    putRequest.onsuccess?.({} as Event);
     
     await setPromise;
 
@@ -1511,24 +1523,18 @@ describe('Cache-at-Capacity and LRU Ordering Tests', () => {
     mockStore.put.mockReturnValue(putRequest as any);
 
     const setPromise = cache.set('large-entry', 'en', 'fi', 'opus-mt', 'very long translation text');
-    
-    // Simulate operations completing
-    setTimeout(() => {
-      // Simulate getStats cursor
-      if (statsRequest.onsuccess) {
-        const cursor = {
-          value: { size: 200 }, // Over capacity
-          continue: vi.fn(() => {
-            statsRequest.onsuccess?.({ target: { result: null } } as unknown as Event);
-          })
-        };
-        statsRequest.onsuccess({ target: { result: cursor } } as unknown as Event);
-      }
-    }, 5);
 
-    setTimeout(() => {
-      putRequest.onsuccess?.({});
-    }, 10);
+    await waitForRequestHandler(statsRequest);
+    const cursor = {
+      value: { size: 200 }, // Over capacity
+      continue: vi.fn(() => {
+        statsRequest.onsuccess?.({ target: { result: null } } as unknown as Event);
+      }),
+    };
+    statsRequest.onsuccess?.({ target: { result: cursor } } as unknown as Event);
+
+    await waitForRequestHandler(putRequest);
+    putRequest.onsuccess?.({} as Event);
 
     await setPromise;
 
@@ -1541,14 +1547,12 @@ describe('Cache-at-Capacity and LRU Ordering Tests', () => {
     cache = await createReadyCache(1000);
 
     const putRequest = { onerror: null as any, onsuccess: null as any };
-    mockStore.put.mockImplementation(() => {
-      // Auto-resolve the put request on next tick
-      setTimeout(() => putRequest.onsuccess?.({}), 1);
-      return putRequest as any;
-    });
+    mockStore.put.mockReturnValue(putRequest as any);
 
     // Store a single entry and verify size is calculated
     const promise = cache.set('hello world', 'en', 'fi', 'opus-mt', 'hei maailma');
+    await waitForRequestHandler(putRequest);
+    putRequest.onsuccess?.({} as Event);
     await promise;
     await waitForCacheAsyncWork(5);
 
