@@ -10,6 +10,11 @@
 import { describe, it, expect } from 'vitest';
 import { walkShadowRoots } from '../content/shadow-dom-walker';
 
+const IS_COVERAGE_RUN =
+  process.argv.includes('--coverage') ||
+  process.env.npm_lifecycle_event === 'test:coverage' ||
+  process.env.npm_lifecycle_event === 'validate:coverage';
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -38,12 +43,16 @@ function buildDomFixture(textNodeCount: number): HTMLElement {
     const depth = i % 20 === 0 ? 3 : 1;
     let parent: HTMLElement = root;
     for (let d = 0; d < depth; d++) {
-      const wrapper = document.createElement(d === 0 ? 'div' : d === 1 ? 'section' : 'article');
+      const wrapper = document.createElement(
+        d === 0 ? 'div' : d === 1 ? 'section' : 'article',
+      );
       parent.appendChild(wrapper);
       parent = wrapper;
     }
     if (i % 10 === 0) {
-      const skip = document.createElement(SKIP_TAGS_LIST[i % SKIP_TAGS_LIST.length]);
+      const skip = document.createElement(
+        SKIP_TAGS_LIST[i % SKIP_TAGS_LIST.length],
+      );
       skip.textContent = `Skip this text node ${i}`;
       parent.appendChild(skip);
       continue;
@@ -55,7 +64,10 @@ function buildDomFixture(textNodeCount: number): HTMLElement {
   return root;
 }
 
-function buildShadowDomFixture(hostCount: number, nodesPerHost: number): HTMLElement {
+function buildShadowDomFixture(
+  hostCount: number,
+  nodesPerHost: number,
+): HTMLElement {
   const root = document.createElement('div');
   for (let h = 0; h < hostCount; h++) {
     const host = document.createElement('div');
@@ -93,9 +105,24 @@ function buildNestedShadowFixture(): HTMLElement {
 /** Simulates content/index.ts text node discovery via TreeWalker */
 function discoverTextNodes(root: Element): Text[] {
   const SKIP_TAGS = new Set([
-    'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'CODE', 'PRE',
-    'TEXTAREA', 'INPUT', 'SELECT', 'BUTTON', 'SVG', 'MATH',
-    'CANVAS', 'VIDEO', 'AUDIO', 'IFRAME', 'OBJECT', 'EMBED',
+    'SCRIPT',
+    'STYLE',
+    'NOSCRIPT',
+    'TEMPLATE',
+    'CODE',
+    'PRE',
+    'TEXTAREA',
+    'INPUT',
+    'SELECT',
+    'BUTTON',
+    'SVG',
+    'MATH',
+    'CANVAS',
+    'VIDEO',
+    'AUDIO',
+    'IFRAME',
+    'OBJECT',
+    'EMBED',
   ]);
   const nodes: Text[] = [];
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -103,7 +130,8 @@ function discoverTextNodes(root: Element): Text[] {
       const parent = node.parentElement;
       if (!parent) return NodeFilter.FILTER_REJECT;
       if (SKIP_TAGS.has(parent.tagName)) return NodeFilter.FILTER_REJECT;
-      if (parent.getAttribute('data-translated')) return NodeFilter.FILTER_REJECT;
+      if (parent.getAttribute('data-translated'))
+        return NodeFilter.FILTER_REJECT;
       const text = node.textContent?.trim();
       if (!text || text.length < 2) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
@@ -119,11 +147,17 @@ function discoverTextNodes(root: Element): Text[] {
 // ---------------------------------------------------------------------------
 
 describe('benchmark: text node discovery', () => {
-  for (const [count, limit] of [[100, 10], [1000, 50], [5000, 300]] as const) {
+  for (const [count, limit] of [
+    [100, 10],
+    [1000, 50],
+    [5000, 300],
+  ] as const) {
     it(`discovers text nodes in ${count}-node DOM in <${limit}ms`, () => {
       const iterations = count <= 1000 ? 30 : 5;
       // Build fixtures once outside timing loop
-      const fixtures = Array.from({ length: iterations }, () => buildDomFixture(count));
+      const fixtures = Array.from({ length: iterations }, () =>
+        buildDomFixture(count),
+      );
       const timings: number[] = [];
       for (let i = 0; i < iterations; i++) {
         document.body.appendChild(fixtures[i]);
@@ -148,11 +182,22 @@ describe('benchmark: text node discovery', () => {
 describe('benchmark: DOM replacement', () => {
   const TRANSLATED_ATTR = 'data-translated';
   const ORIGINAL_TEXT_ATTR = 'data-original-text';
+  const DOM_REPLACEMENT_LIMITS = IS_COVERAGE_RUN
+    ? ([
+        [100, 5],
+        [1000, 80],
+      ] as const)
+    : ([
+        [100, 5],
+        [1000, 50],
+      ] as const);
 
-  for (const [count, limit] of [[100, 5], [1000, 50]] as const) {
+  for (const [count, limit] of DOM_REPLACEMENT_LIMITS) {
     it(`replaces ${count} text nodes in <${limit}ms`, () => {
       const iterations = count <= 100 ? 20 : 10;
-      const fixtures = Array.from({ length: iterations }, () => buildDomFixture(count));
+      const fixtures = Array.from({ length: iterations }, () =>
+        buildDomFixture(count),
+      );
       const timings: number[] = [];
       for (let i = 0; i < iterations; i++) {
         document.body.appendChild(fixtures[i]);
@@ -226,7 +271,9 @@ describe('benchmark: MutationObserver callback processing', () => {
 
       const median = measureSync(() => processMutations(mutations), 100);
 
-      console.log(`  process ${mutationCount} mutations: ${median.toFixed(3)}ms`);
+      console.log(
+        `  process ${mutationCount} mutations: ${median.toFixed(3)}ms`,
+      );
       expect(median).toBeLessThan(limit);
     });
   }
@@ -237,7 +284,11 @@ describe('benchmark: MutationObserver callback processing', () => {
 // ---------------------------------------------------------------------------
 
 describe('benchmark: shadow DOM traversal', () => {
-  for (const [hosts, nodesPerHost] of [[10, 10], [50, 20], [100, 10]] as const) {
+  for (const [hosts, nodesPerHost] of [
+    [10, 10],
+    [50, 20],
+    [100, 10],
+  ] as const) {
     const totalNodes = hosts * nodesPerHost;
     it(`walks ${hosts} hosts × ${nodesPerHost} nodes (${totalNodes} total) in <${totalNodes <= 200 ? 30 : 200}ms`, () => {
       // Relaxed limits — coverage instrumentation adds overhead
@@ -250,12 +301,16 @@ describe('benchmark: shadow DOM traversal', () => {
         fixture.remove();
       }, 20);
 
-      console.log(`  walkShadowRoots (${hosts}×${nodesPerHost}): ${median.toFixed(2)}ms`);
+      console.log(
+        `  walkShadowRoots (${hosts}×${nodesPerHost}): ${median.toFixed(2)}ms`,
+      );
       expect(median).toBeLessThan(limit);
     });
   }
 
-  it('walks 3-level nested shadow DOM in <15ms', () => {
+  const nestedShadowTraversalBudgetMs = IS_COVERAGE_RUN ? 25 : 15;
+
+  it(`walks 3-level nested shadow DOM in <${nestedShadowTraversalBudgetMs}ms`, () => {
     const median = measureSync(() => {
       const fixture = buildNestedShadowFixture();
       document.body.appendChild(fixture);
@@ -265,7 +320,8 @@ describe('benchmark: shadow DOM traversal', () => {
     }, 20);
 
     console.log(`  walkShadowRoots (3-level nested): ${median.toFixed(2)}ms`);
-    // Relaxed from 5ms to 15ms — coverage instrumentation adds overhead
-    expect(median).toBeLessThan(15);
+    // Keep the default budget strict, but allow extra headroom under coverage
+    // where nested shadow traversal pays a disproportionate instrumentation tax.
+    expect(median).toBeLessThan(nestedShadowTraversalBudgetMs);
   });
 });
