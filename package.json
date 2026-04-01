@@ -111,6 +111,8 @@
     "rimraf": "^6.0.1",
     "size-limit": "^11.1.5",
     "typescript": "^5.9.3",
+    "vite": "^8.0.3",
+    "vite-plugin-solid": "^2.11.11",
     "vitest": "^4.1.0",
     "webpack": "^5.95.0",
     "webpack-bundle-analyzer": "^4.10.0"
@@ -121,8 +123,6 @@
     "franc-min": "^6.2.0",
     "mupdf": "^1.26.4",
     "pdfjs-dist": "^5.4.54",
-    "tesseract.js": "^7.0.0",
-    "vite": "^8.0.3",
-    "vite-plugin-solid": "^2.11.11"
+    "tesseract.js": "^7.0.0"
   }
 }

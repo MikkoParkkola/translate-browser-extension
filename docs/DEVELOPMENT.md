@@ -187,9 +187,9 @@ The extension follows a layered architecture:
 ```bash
 # Development
 npm run build:fast        # Quick build (no optimisations)
-npm run build             # Copy current src/ into dist/
+npm run build             # Production extension build into dist/
 npm run lint              # ESLint code checking
-npm run format            # Prettier code formatting
+npm run format            # Prettier check for tracked config/docs files
 
 # Testing
 npm test                         # Run unit tests

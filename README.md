@@ -75,7 +75,7 @@ The unit suite runs in about a minute locally, depending on cache state. Coverag
 | **Chrome** (116+) | Full support | Primary platform, Manifest V3 |
 | **Chromium-based** (Edge, Brave, etc.) | Full support | Load as unpacked extension |
 | **Safari** (macOS, iOS, iPadOS) | Full support | Built via Xcode converter |
-| **Firefox** | Supported | Separate build (`npm run build:firefox`) |
+| **Firefox** | Supported | Separate build flow documented below |
 
 ## Installation
 
@@ -114,11 +114,11 @@ See `safari/README.md` for detailed iOS/iPadOS deployment steps.
 ### Firefox
 
 ```sh
-npm run build:firefox
-npm run package:firefox
+npx vite build --config vite.config.firefox.ts
 ```
 
-Load `dist-firefox/` as a temporary extension or install the generated `.xpi`.
+This produces `dist-firefox/`, which you can load as a temporary extension in Firefox.
+The repository does not currently expose a dedicated `package:firefox` npm script.
 
 ## Uninstallation
 
@@ -224,9 +224,8 @@ Streams translations by default. Use `--no-stream` for batch mode, `-d` for debu
 ```sh
 npm install          # Install dependencies
 npm test             # Run 5,038 unit tests
-npm run test:e2e     # Playwright PDF visual comparison tests
+npm run test:e2e     # Run the full web + harness E2E suite
 npm run build        # Chrome production build (dist/)
-npm run build:firefox # Firefox build (dist-firefox/)
 npm run build:safari  # Safari via Xcode converter
 ```
 
