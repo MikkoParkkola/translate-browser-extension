@@ -350,4 +350,111 @@ describe('createTranslationBackgroundHandler', () => {
       provider: 'chrome-builtin',
     });
   });
+
+  it('keeps chrome-builtin profiling timings balanced on success', async () => {
+    const deps = createHandler();
+    prepareTranslationExecution.mockResolvedValue({
+      kind: 'prepared',
+      execution: createExecution({
+        provider: 'chrome-builtin',
+        enableProfiling: true,
+      }),
+    });
+    deps.runChromeBuiltinTranslation.mockResolvedValue('Hei maailma');
+
+    const { createTranslationBackgroundHandler } = await import('./translation-background-handler');
+    const handler = createTranslationBackgroundHandler({
+      cache: deps.cache as never,
+      getProvider: () => 'chrome-builtin',
+      offscreenTransport: deps.offscreenTransport as never,
+      profiler: deps.profiler,
+      acquireKeepAlive: deps.acquireKeepAlive,
+      releaseKeepAlive: deps.releaseKeepAlive,
+      recordTranslation: deps.recordTranslation,
+      recordTranslationToHistory: deps.recordTranslationToHistory,
+      runChromeBuiltinTranslation: deps.runChromeBuiltinTranslation,
+      log: deps.log,
+      maxInFlightRequests: 4,
+    });
+
+    const response = await handler.handleTranslate({
+      text: 'hello',
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'chrome-builtin',
+      enableProfiling: true,
+    });
+
+    expect(response).toMatchObject({
+      success: true,
+      result: 'Hei maailma',
+      provider: 'chrome-builtin',
+    });
+    expect(deps.profiler.startSession).toHaveBeenCalledTimes(1);
+    expect(deps.profiler.startTiming).toHaveBeenNthCalledWith(1, 'session-1', 'total');
+    expect(deps.profiler.startTiming).toHaveBeenNthCalledWith(
+      2,
+      'session-1',
+      'chrome_builtin_translate'
+    );
+    expect(deps.profiler.endTiming).toHaveBeenNthCalledWith(
+      1,
+      'session-1',
+      'chrome_builtin_translate'
+    );
+    expect(deps.profiler.endTiming).toHaveBeenNthCalledWith(2, 'session-1', 'total');
+  });
+
+  it('keeps chrome-builtin profiling timings balanced on failure', async () => {
+    const deps = createHandler();
+    prepareTranslationExecution.mockResolvedValue({
+      kind: 'prepared',
+      execution: createExecution({
+        provider: 'chrome-builtin',
+        enableProfiling: true,
+      }),
+    });
+    deps.runChromeBuiltinTranslation.mockRejectedValue(new Error('Script failed'));
+
+    const { createTranslationBackgroundHandler } = await import('./translation-background-handler');
+    const handler = createTranslationBackgroundHandler({
+      cache: deps.cache as never,
+      getProvider: () => 'chrome-builtin',
+      offscreenTransport: deps.offscreenTransport as never,
+      profiler: deps.profiler,
+      acquireKeepAlive: deps.acquireKeepAlive,
+      releaseKeepAlive: deps.releaseKeepAlive,
+      recordTranslation: deps.recordTranslation,
+      recordTranslationToHistory: deps.recordTranslationToHistory,
+      runChromeBuiltinTranslation: deps.runChromeBuiltinTranslation,
+      log: deps.log,
+      maxInFlightRequests: 4,
+    });
+
+    const response = await handler.handleTranslate({
+      text: 'hello',
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'chrome-builtin',
+      enableProfiling: true,
+    });
+
+    expect(response).toMatchObject({
+      success: false,
+      error: 'Script failed',
+    });
+    expect(deps.profiler.startSession).toHaveBeenCalledTimes(1);
+    expect(deps.profiler.startTiming).toHaveBeenNthCalledWith(1, 'session-1', 'total');
+    expect(deps.profiler.startTiming).toHaveBeenNthCalledWith(
+      2,
+      'session-1',
+      'chrome_builtin_translate'
+    );
+    expect(deps.profiler.endTiming).toHaveBeenNthCalledWith(
+      1,
+      'session-1',
+      'chrome_builtin_translate'
+    );
+    expect(deps.profiler.endTiming).toHaveBeenNthCalledWith(2, 'session-1', 'total');
+  });
 });

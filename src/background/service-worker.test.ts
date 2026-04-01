@@ -2209,72 +2209,6 @@ describe('Service Worker Extended Handler Coverage', () => {
   });
 
   // --------------------------------------------------------------------------
-  // chrome-builtin provider path
-  // --------------------------------------------------------------------------
-  describe('translate message: chrome-builtin provider', () => {
-    beforeEach(() => {
-      chromeTabsScriptingMocks.reset();
-    });
-
-    it('uses chrome.scripting.executeScript for chrome-builtin provider', async () => {
-      chromeTabsScriptingMocks.queueActiveTab({ id: 99 });
-      chromeTabsScriptingMocks.queueExecuteScriptResult(['Hei']);
-
-      // Set provider to chrome-builtin first
-      await invoke({ type: 'setProvider', provider: 'chrome-builtin' });
-
-      const response = await invoke({
-        type: 'translate',
-        text: `Chrome builtin test ${Math.random()}`,
-        sourceLang: 'en',
-        targetLang: 'fi',
-        provider: 'chrome-builtin',
-      }) as { success: boolean };
-
-      // Reset provider
-      await invoke({ type: 'setProvider', provider: 'opus-mt' });
-
-      // executeScript should have been called
-      expect(chromeTabsScriptingMocks.executeScriptMock).toHaveBeenCalled();
-      expect(typeof response.success).toBe('boolean');
-    });
-
-    it('returns error when no active tab for chrome-builtin', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([]);
-
-      const response = await invoke({
-        type: 'translate',
-        text: `Chrome builtin no tab ${Math.random()}`,
-        sourceLang: 'en',
-        targetLang: 'fi',
-        provider: 'chrome-builtin',
-      }) as { success: boolean; error?: string };
-
-      // Provider is set in-message via provider field — no need to reset global
-      expect(response.success).toBe(false);
-      expect(response.error).toBeDefined();
-    });
-
-    it('handles chrome-builtin executeScript failure', async () => {
-      chromeTabsScriptingMocks.queueActiveTab({ id: 88 });
-      chromeTabsScriptingMocks.queueExecuteScriptError(
-        new Error('Script injection failed'),
-      );
-
-      const response = await invoke({
-        type: 'translate',
-        text: `Chrome builtin fail ${Math.random()}`,
-        sourceLang: 'en',
-        targetLang: 'fi',
-        provider: 'chrome-builtin',
-      }) as { success: boolean; error?: string };
-
-      expect(response.success).toBe(false);
-      expect(response.error).toBeDefined();
-    });
-  });
-
-  // --------------------------------------------------------------------------
   // install handler update path: caches.keys() mock
   // --------------------------------------------------------------------------
   describe('install handler: update cache clearing', () => {
@@ -2851,7 +2785,8 @@ describe('Service Worker Additional Coverage', () => {
 
   // --------------------------------------------------------------------------
   // Chrome Built-in Translator — wiring/integration only
-  // (Behaviour-specific edge-cases live in shared/chrome-builtin-translation.test.ts)
+  // (Behaviour-specific edge-cases live in shared/chrome-builtin-translation.test.ts
+  //  and shared/translation-background-handler.test.ts.)
   // --------------------------------------------------------------------------
   describe('Chrome Built-in Translator (handleTranslate chrome-builtin branch)', () => {
     it('routes translate message through chrome-builtin provider end-to-end', async () => {
@@ -6074,54 +6009,6 @@ describe('Coverage gap tests — second wave', () => {
     it('clears profiling stats and returns success', async () => {
       const response = await invoke({ type: 'clearProfilingStats' }) as any;
       expect(response.success).toBe(true);
-    });
-  });
-
-  // -----------------------------------------------------------------------
-  // chrome-builtin with profiling (lines 905, 935, 942)
-  // -----------------------------------------------------------------------
-  describe('chrome-builtin translation: profiling paths', () => {
-    it('covers profiler.startTiming/endTiming for chrome-builtin (line 905, 935, 942)', async () => {
-      chromeTabsScriptingMocks.queueActiveTab({ id: 42 });
-      chromeTabsScriptingMocks.queueExecuteScriptResult(['translated']);
-      const response = await invoke({
-        type: 'translate',
-        text: 'Hello chrome-builtin with profiling unique',
-        sourceLang: 'en',
-        targetLang: 'de',
-        provider: 'chrome-builtin',
-        enableProfiling: true,
-      }) as any;
-      expect(response.success).toBe(true);
-      expect(response.provider).toBe('chrome-builtin');
-    });
-
-    it('covers profiler.endTiming in catch when chrome-builtin throws with profiling (line 945)', async () => {
-      chromeTabsScriptingMocks.queueActiveTab({ id: 42 });
-      chromeTabsScriptingMocks.queueExecuteScriptError(new Error('Script failed'));
-      const response = await invoke({
-        type: 'translate',
-        text: 'Hello chrome-builtin error with profiling unique 2222',
-        sourceLang: 'en',
-        targetLang: 'de',
-        provider: 'chrome-builtin',
-        enableProfiling: true,
-      }) as any;
-      expect(response.success).toBe(false);
-    });
-
-    it('handles array text with chrome-builtin (Array.isArray branch, line 939)', async () => {
-      chromeTabsScriptingMocks.queueActiveTab({ id: 42 });
-      chromeTabsScriptingMocks.queueExecuteScriptResult(['hola', 'mundo']);
-      const response = await invoke({
-        type: 'translate',
-        text: ['hello', 'world'],
-        sourceLang: 'en',
-        targetLang: 'es',
-        provider: 'chrome-builtin',
-      }) as any;
-      expect(response.success).toBe(true);
-      expect(Array.isArray(response.result)).toBe(true);
     });
   });
 
