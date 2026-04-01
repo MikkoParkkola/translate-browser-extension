@@ -10,6 +10,7 @@ import { CONFIG } from '../config';
 import type { LanguagePair } from '../types';
 
 const log = createLogger('ProviderUtils');
+const languagePairCache = new Map<string, LanguagePair[]>();
 
 /**
  * Extract error body from response, with fallback handling
@@ -56,27 +57,36 @@ export function estimateMaxTokens(texts: string[]): number {
 }
 
 /**
- * Generate all possible language pairs from available language codes.
- * Used by OpenAI, Anthropic, and Google Cloud providers.
- * Result is memoized since language codes are static at runtime.
+ * Generate all possible non-identity pairs from a provider language list.
+ * Results are memoized by language set because these lists are static at runtime.
  */
-let _cachedLanguagePairs: LanguagePair[] | null = null;
-
-export function generateAllLanguagePairs(): LanguagePair[] {
-  if (_cachedLanguagePairs) {
-    return _cachedLanguagePairs;
+export function generateLanguagePairs(languageCodes: readonly string[]): LanguagePair[] {
+  const uniqueCodes = [...new Set(languageCodes)];
+  const cacheKey = uniqueCodes.join('\0');
+  const cachedPairs = languagePairCache.get(cacheKey);
+  if (cachedPairs) {
+    return cachedPairs;
   }
-  const languages = getAllLanguageCodes();
+
   const pairs: LanguagePair[] = [];
-  for (const src of languages) {
-    for (const tgt of languages) {
+  for (const src of uniqueCodes) {
+    for (const tgt of uniqueCodes) {
       if (src !== tgt) {
         pairs.push({ src, tgt });
       }
     }
   }
-  _cachedLanguagePairs = pairs;
+
+  languagePairCache.set(cacheKey, pairs);
   return pairs;
+}
+
+/**
+ * Generate all possible language pairs from known ISO language codes.
+ * Used by OpenAI, Anthropic, and Google Cloud providers.
+ */
+export function generateAllLanguagePairs(): LanguagePair[] {
+  return generateLanguagePairs(getAllLanguageCodes());
 }
 /**
  * Parse a batch translation response that uses numbered XML tags.

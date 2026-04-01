@@ -23,8 +23,22 @@ import { BaseProvider } from './base-provider';
 import type { TranslationProviderId, ProviderConfig, LanguagePair } from '../types';
 import { createLogger } from '../core/logger';
 import { CONFIG } from '../config';
+import { generateLanguagePairs } from './provider-utils';
 
 const log = createLogger('ChromeTranslator');
+const COMMON_CHROME_LANGUAGES = [
+  'en',
+  'es',
+  'fr',
+  'de',
+  'it',
+  'pt',
+  'nl',
+  'ru',
+  'zh',
+  'ja',
+  'ko',
+] as const;
 
 /**
  * Chrome AI Translator API types (Chrome 138+)
@@ -164,18 +178,7 @@ export class ChromeTranslatorProvider extends BaseProvider {
   getSupportedLanguages(): LanguagePair[] {
     // Return common pairs that Chrome typically supports
     // Actual availability is checked via isPairSupported()
-    const commonLangs = ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'ru', 'zh', 'ja', 'ko'];
-    const pairs: LanguagePair[] = [];
-
-    for (const src of commonLangs) {
-      for (const tgt of commonLangs) {
-        if (src !== tgt) {
-          pairs.push({ src, tgt });
-        }
-      }
-    }
-
-    return pairs;
+    return generateLanguagePairs(COMMON_CHROME_LANGUAGES);
   }
 
   /**

@@ -6,7 +6,7 @@
 
 import { CloudProvider } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
-import { fetchProviderJson } from './provider-utils';
+import { fetchProviderJson, generateLanguagePairs } from './provider-utils';
 import { toDeepLCode, getDeepLSupportedLanguages } from '../core/language-map';
 import { CONFIG } from '../config';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
@@ -262,16 +262,7 @@ export class DeepLProvider extends CloudProvider<DeepLConfig> {
   }
 
   getSupportedLanguages(): LanguagePair[] {
-    const supportedLanguages = getDeepLSupportedLanguages();
-    const pairs: LanguagePair[] = [];
-    for (const src of supportedLanguages) {
-      for (const tgt of supportedLanguages) {
-        if (src !== tgt) {
-          pairs.push({ src, tgt });
-        }
-      }
-    }
-    return pairs;
+    return generateLanguagePairs(getDeepLSupportedLanguages());
   }
 
   getInfo(): ProviderConfig & { tier: string; formality: string } {
