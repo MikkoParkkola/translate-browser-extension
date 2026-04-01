@@ -21,6 +21,9 @@ npm run build     # Build extension to dist/
 - `npm run validate:ci` — Run the same lint/format/typecheck/unit-test contract used by CI
 - `npm run validate:build` — Build the extension bundle and enforce size limits
 
+Vitest is the unit / PDF runner for `src/**` tests. Browser E2E coverage lives under
+`e2e/` and is driven by Playwright via `playwright.config.ts`.
+
 ### Test patterns
 
 Tests live next to their source files (e.g., `glossary.test.ts` next to `glossary.ts`). Use `vi.mock()` for external dependencies. Coverage uses the V8 provider. For genuinely untestable code (browser-only APIs), use `/* v8 ignore start */` / `/* v8 ignore stop */`.
