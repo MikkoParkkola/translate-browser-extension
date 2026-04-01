@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildValidatedCloudProviderMutation,
+  extractAnthropicStoredRuntimeState,
+  extractDeepLStoredRuntimeState,
+  extractGoogleCloudStoredRuntimeState,
+  extractOpenAIStoredRuntimeState,
   normalizeUserSettings,
   validateAnthropicStoredConfig,
   validateDeepLStoredConfig,
@@ -132,6 +136,76 @@ describe('provider config validators', () => {
     ).toEqual({
       apiKey: 'key',
       charactersUsed: 0,
+    });
+  });
+});
+
+describe('provider runtime state extractors', () => {
+  it('hydrates DeepL runtime config from validated stored state', () => {
+    expect(
+      extractDeepLStoredRuntimeState({
+        deepl_api_key: 'key',
+        deepl_is_pro: true,
+        deepl_formality: 'formal',
+      })
+    ).toEqual({
+      config: {
+        apiKey: 'key',
+        isPro: true,
+        formality: 'more',
+      },
+    });
+  });
+
+  it('hydrates OpenAI runtime config and counters from validated stored state', () => {
+    expect(
+      extractOpenAIStoredRuntimeState({
+        openai_api_key: 'key',
+        openai_model: 'bogus',
+        openai_formality: 'bogus',
+        openai_temperature: 'bad',
+        openai_tokens_used: 42,
+      })
+    ).toEqual({
+      config: {
+        apiKey: 'key',
+        model: 'gpt-4o-mini',
+        formality: 'neutral',
+        temperature: 0.3,
+      },
+      tokensUsed: 42,
+    });
+  });
+
+  it('hydrates Anthropic runtime config and counters from validated stored state', () => {
+    expect(
+      extractAnthropicStoredRuntimeState({
+        anthropic_api_key: 'key',
+        anthropic_model: 'claude-3-5-haiku-latest',
+        anthropic_formality: 'bogus',
+        anthropic_tokens_used: 9,
+      })
+    ).toEqual({
+      config: {
+        apiKey: 'key',
+        model: 'claude-3-5-haiku-20241022',
+        formality: 'neutral',
+      },
+      tokensUsed: 9,
+    });
+  });
+
+  it('hydrates Google Cloud runtime config and counters from validated stored state', () => {
+    expect(
+      extractGoogleCloudStoredRuntimeState({
+        google_cloud_api_key: 'key',
+        google_cloud_chars_used: 128,
+      })
+    ).toEqual({
+      config: {
+        apiKey: 'key',
+      },
+      charactersUsed: 128,
     });
   });
 });

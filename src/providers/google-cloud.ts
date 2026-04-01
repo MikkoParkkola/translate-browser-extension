@@ -10,7 +10,7 @@ import { CONFIG } from '../config';
 import { fetchProviderJson, generateAllLanguagePairs } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
-import { validateGoogleCloudStoredConfig } from '../background/shared/config-validation';
+import { extractGoogleCloudStoredRuntimeState } from '../background/shared/config-validation';
 
 const GOOGLE_TRANSLATE_API = 'https://translation.googleapis.com/language/translate/v2';
 const GOOGLE_STORAGE_KEYS = ['google_cloud_api_key', 'google_cloud_chars_used'] as const;
@@ -61,14 +61,14 @@ export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
   }
 
   protected applyStoredConfig(stored: CloudProviderStorageRecord): void {
-    const config = validateGoogleCloudStoredConfig(stored);
-    if (!config) {
+    const runtimeState = extractGoogleCloudStoredRuntimeState(stored);
+    if (!runtimeState) {
       this.resetConfig();
       return;
     }
 
-    this.config = { apiKey: config.apiKey };
-    this.charactersUsed = config.charactersUsed;
+    this.config = runtimeState.config;
+    this.charactersUsed = runtimeState.charactersUsed;
     this.log.info('Initialized');
   }
 

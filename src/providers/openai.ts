@@ -11,7 +11,7 @@ import { CONFIG } from '../config';
 import { fetchProviderJson, estimateMaxTokens, generateAllLanguagePairs, parseBatchResponse } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
-import { validateOpenAIStoredConfig } from '../background/shared/config-validation';
+import { extractOpenAIStoredRuntimeState } from '../background/shared/config-validation';
 import {
   DEFAULT_OPENAI_FORMALITY,
   DEFAULT_OPENAI_MODEL,
@@ -82,19 +82,14 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
   }
 
   protected applyStoredConfig(stored: CloudProviderStorageRecord): void {
-    const config = validateOpenAIStoredConfig(stored);
-    if (!config) {
+    const runtimeState = extractOpenAIStoredRuntimeState(stored);
+    if (!runtimeState) {
       this.resetConfig();
       return;
     }
 
-    this.config = {
-      apiKey: config.apiKey,
-      model: config.model,
-      formality: config.formality,
-      temperature: config.temperature,
-    };
-    this.totalTokensUsed = config.tokensUsed;
+    this.config = runtimeState.config;
+    this.totalTokensUsed = runtimeState.tokensUsed;
     this.log.info('Initialized with model:', this.config.model);
   }
 

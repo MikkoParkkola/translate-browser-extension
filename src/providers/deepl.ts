@@ -11,7 +11,7 @@ import { toDeepLCode, getDeepLSupportedLanguages } from '../core/language-map';
 import { CONFIG } from '../config';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
-import { validateDeepLStoredConfig } from '../background/shared/config-validation';
+import { extractDeepLStoredRuntimeState } from '../background/shared/config-validation';
 import { DEFAULT_DEEPL_FORMALITY } from '../shared/cloud-provider-configs';
 
 // DeepL API endpoints
@@ -67,17 +67,13 @@ export class DeepLProvider extends CloudProvider<DeepLConfig> {
   }
 
   protected applyStoredConfig(stored: CloudProviderStorageRecord): void {
-    const config = validateDeepLStoredConfig(stored);
-    if (!config) {
+    const runtimeState = extractDeepLStoredRuntimeState(stored);
+    if (!runtimeState) {
       this.resetConfig();
       return;
     }
 
-    this.config = {
-      apiKey: config.apiKey,
-      isPro: config.isPro,
-      formality: config.formality,
-    };
+    this.config = runtimeState.config;
     this.log.info('Initialized with', this.config.isPro ? 'Pro' : 'Free', 'tier');
   }
 

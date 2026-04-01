@@ -11,7 +11,7 @@ import { CONFIG } from '../config';
 import { fetchProviderJson, estimateMaxTokens, generateAllLanguagePairs, parseBatchResponse } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
-import { validateAnthropicStoredConfig } from '../background/shared/config-validation';
+import { extractAnthropicStoredRuntimeState } from '../background/shared/config-validation';
 import {
   ANTHROPIC_MODEL_VALUES,
   DEFAULT_ANTHROPIC_FORMALITY,
@@ -79,18 +79,14 @@ export class AnthropicProvider extends CloudProvider<AnthropicConfig> {
   }
 
   protected applyStoredConfig(stored: CloudProviderStorageRecord): void {
-    const config = validateAnthropicStoredConfig(stored);
-    if (!config) {
+    const runtimeState = extractAnthropicStoredRuntimeState(stored);
+    if (!runtimeState) {
       this.resetConfig();
       return;
     }
 
-    this.config = {
-      apiKey: config.apiKey,
-      model: config.model,
-      formality: config.formality,
-    };
-    this.totalTokensUsed = config.tokensUsed;
+    this.config = runtimeState.config;
+    this.totalTokensUsed = runtimeState.tokensUsed;
     this.log.info('Initialized with model:', this.config.model);
   }
 

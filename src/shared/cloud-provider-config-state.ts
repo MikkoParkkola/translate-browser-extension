@@ -3,9 +3,10 @@
  */
 
 import type { CloudProviderConfiguredStatus, CloudProviderId } from '../types';
-import type { ClaudeFormality, ClaudeModel } from '../providers/anthropic';
-import type { DeepLFormality } from '../providers/deepl';
-import type { OpenAIFormality, OpenAIModel } from '../providers/openai';
+import type { AnthropicConfig, ClaudeFormality, ClaudeModel } from '../providers/anthropic';
+import type { DeepLConfig, DeepLFormality } from '../providers/deepl';
+import type { GoogleCloudConfig } from '../providers/google-cloud';
+import type { OpenAIConfig, OpenAIFormality, OpenAIModel } from '../providers/openai';
 import {
   ANTHROPIC_FORMALITY_VALUES,
   ANTHROPIC_MODEL_VALUES,
@@ -77,6 +78,25 @@ export interface ValidatedGoogleCloudConfig {
   charactersUsed: number;
 }
 
+export interface DeepLStoredRuntimeState {
+  config: DeepLConfig;
+}
+
+export interface OpenAIStoredRuntimeState {
+  config: OpenAIConfig;
+  tokensUsed: number;
+}
+
+export interface AnthropicStoredRuntimeState {
+  config: AnthropicConfig;
+  tokensUsed: number;
+}
+
+export interface GoogleCloudStoredRuntimeState {
+  config: GoogleCloudConfig;
+  charactersUsed: number;
+}
+
 interface StoredConfigSchema<TStored, TValidated extends { apiKey: string }> {
   readApiKey: (stored: TStored) => string | undefined;
   readFields: (stored: TStored) => Omit<TValidated, 'apiKey'>;
@@ -135,6 +155,15 @@ function validateStoredConfig<TStored, TValidated extends { apiKey: string }>(
   } as TValidated;
 }
 
+function extractValidatedStoredRuntimeState<TStored, TValidated extends { apiKey: string }, TRuntime>(
+  stored: TStored,
+  validate: (stored: TStored) => TValidated | null,
+  map: (validated: TValidated) => TRuntime
+): TRuntime | null {
+  const validated = validate(stored);
+  return validated ? map(validated) : null;
+}
+
 const DEEPL_STORED_CONFIG_SCHEMA: StoredConfigSchema<DeepLStoredConfig, ValidatedDeepLConfig> = {
   readApiKey: (stored) => readNonEmptyString(stored.deepl_api_key),
   readFields: (stored) => ({
@@ -190,6 +219,33 @@ export function validateAnthropicStoredConfig(stored: AnthropicStoredConfig): Va
 
 export function validateGoogleCloudStoredConfig(stored: GoogleCloudStoredConfig): ValidatedGoogleCloudConfig | null {
   return validateStoredConfig(stored, GOOGLE_CLOUD_STORED_CONFIG_SCHEMA);
+}
+
+export function extractDeepLStoredRuntimeState(stored: DeepLStoredConfig): DeepLStoredRuntimeState | null {
+  return extractValidatedStoredRuntimeState(stored, validateDeepLStoredConfig, (config) => ({ config }));
+}
+
+export function extractOpenAIStoredRuntimeState(stored: OpenAIStoredConfig): OpenAIStoredRuntimeState | null {
+  return extractValidatedStoredRuntimeState(stored, validateOpenAIStoredConfig, (validated) => {
+    const { tokensUsed, ...config } = validated;
+    return { config, tokensUsed };
+  });
+}
+
+export function extractAnthropicStoredRuntimeState(stored: AnthropicStoredConfig): AnthropicStoredRuntimeState | null {
+  return extractValidatedStoredRuntimeState(stored, validateAnthropicStoredConfig, (validated) => {
+    const { tokensUsed, ...config } = validated;
+    return { config, tokensUsed };
+  });
+}
+
+export function extractGoogleCloudStoredRuntimeState(
+  stored: GoogleCloudStoredConfig
+): GoogleCloudStoredRuntimeState | null {
+  return extractValidatedStoredRuntimeState(stored, validateGoogleCloudStoredConfig, (validated) => {
+    const { charactersUsed, ...config } = validated;
+    return { config, charactersUsed };
+  });
 }
 
 export function validateCloudProviderOptions(
@@ -266,30 +322,30 @@ export function extractCloudProviderConfigState(
 ): CloudProviderConfigState {
   switch (provider) {
     case 'deepl': {
-      const config = validateDeepLStoredConfig(stored);
+      const runtimeState = extractDeepLStoredRuntimeState(stored);
       return {
-        hasKey: config !== null,
-        isPro: config?.isPro,
+        hasKey: runtimeState !== null,
+        isPro: runtimeState?.config.isPro,
       };
     }
     case 'openai': {
-      const config = validateOpenAIStoredConfig(stored);
+      const runtimeState = extractOpenAIStoredRuntimeState(stored);
       return {
-        hasKey: config !== null,
-        model: config?.model,
+        hasKey: runtimeState !== null,
+        model: runtimeState?.config.model,
       };
     }
     case 'anthropic': {
-      const config = validateAnthropicStoredConfig(stored);
+      const runtimeState = extractAnthropicStoredRuntimeState(stored);
       return {
-        hasKey: config !== null,
-        model: config?.model,
+        hasKey: runtimeState !== null,
+        model: runtimeState?.config.model,
       };
     }
     case 'google-cloud': {
-      const config = validateGoogleCloudStoredConfig(stored);
+      const runtimeState = extractGoogleCloudStoredRuntimeState(stored);
       return {
-        hasKey: config !== null,
+        hasKey: runtimeState !== null,
       };
     }
   }
