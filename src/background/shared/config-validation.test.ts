@@ -97,6 +97,15 @@ describe('provider config validators', () => {
     });
   });
 
+  it('returns null when the OpenAI api key is missing', () => {
+    expect(
+      validateOpenAIStoredConfig({
+        openai_model: 'gpt-4o',
+        openai_temperature: 0.2,
+      })
+    ).toBeNull();
+  });
+
   it('falls back to defaults for invalid Anthropic option values', () => {
     expect(
       validateAnthropicStoredConfig({

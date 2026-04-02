@@ -25,6 +25,7 @@ import {
   normalizeCloudProviderFormalityValue,
   normalizeCloudProviderModelValue,
 } from './provider-options';
+import { readStoredString } from './cloud-provider-storage';
 import type {
   AnthropicStoredConfig,
   CloudProviderStorageMutation,
@@ -97,9 +98,28 @@ export interface GoogleCloudStoredRuntimeState {
   charactersUsed: number;
 }
 
-interface StoredConfigSchema<TStored, TValidated extends { apiKey: string }> {
-  readApiKey: (stored: TStored) => string | undefined;
-  readFields: (stored: TStored) => Omit<TValidated, 'apiKey'>;
+type StoredConfigFieldKey<TStored extends object> = Extract<keyof TStored, string>;
+type StoredConfigFields<TValidated extends { apiKey: string }> = Omit<TValidated, 'apiKey'>;
+
+interface StoredConfigFieldSpec<TStored extends object, TValue> {
+  key: StoredConfigFieldKey<TStored>;
+  parse: (value: unknown) => TValue | undefined;
+  fallback: TValue;
+}
+
+type StoredConfigFieldSpecs<
+  TStored extends object,
+  TValidated extends { apiKey: string },
+> = {
+  [K in keyof StoredConfigFields<TValidated>]: StoredConfigFieldSpec<
+    TStored,
+    StoredConfigFields<TValidated>[K]
+  >;
+};
+
+interface StoredConfigSchema<TStored extends object, TValidated extends { apiKey: string }> {
+  apiKeyField: StoredConfigFieldKey<TStored>;
+  fields: StoredConfigFieldSpecs<TStored, TValidated>;
 }
 
 export interface CloudProviderConfigState {
@@ -140,18 +160,20 @@ export function readClaudeModel(value: unknown): ClaudeModel | undefined {
   return model ? readEnumValue(model, ANTHROPIC_MODEL_VALUES) : undefined;
 }
 
-function validateStoredConfig<TStored, TValidated extends { apiKey: string }>(
+function validateStoredConfig<TStored extends object, TValidated extends { apiKey: string }>(
   stored: TStored,
   schema: StoredConfigSchema<TStored, TValidated>
 ): TValidated | null {
-  const apiKey = schema.readApiKey(stored);
+  const apiKey = readStoredString(stored, schema.apiKeyField);
   if (!apiKey) {
     return null;
   }
 
+  const validatedFields = readStoredConfigFields<TStored, TValidated>(stored, schema.fields);
+
   return {
     apiKey,
-    ...schema.readFields(stored),
+    ...validatedFields,
   } as TValidated;
 }
 
@@ -164,46 +186,99 @@ function extractValidatedStoredRuntimeState<TStored, TValidated extends { apiKey
   return validated ? map(validated) : null;
 }
 
-const DEEPL_STORED_CONFIG_SCHEMA: StoredConfigSchema<DeepLStoredConfig, ValidatedDeepLConfig> = {
-  readApiKey: (stored) => readNonEmptyString(stored.deepl_api_key),
-  readFields: (stored) => ({
-    isPro: readBoolean(stored.deepl_is_pro) ?? false,
-    formality: readDeepLFormality(stored.deepl_formality) ?? DEFAULT_DEEPL_FORMALITY,
-  }),
-};
+function readStoredConfigFields<TStored extends object, TValidated extends { apiKey: string }>(
+  stored: TStored,
+  fields: StoredConfigFieldSpecs<TStored, TValidated>
+): StoredConfigFields<TValidated> {
+  const storedRecord = stored as Record<string, unknown>;
+  const fieldEntries = Object.entries(fields) as Array<
+    [
+      keyof StoredConfigFields<TValidated>,
+      StoredConfigFieldSpecs<TStored, TValidated>[keyof StoredConfigFields<TValidated>],
+    ]
+  >;
 
-const OPENAI_STORED_CONFIG_SCHEMA: StoredConfigSchema<OpenAIStoredConfig, ValidatedOpenAIConfig> = {
-  readApiKey: (stored) => readNonEmptyString(stored.openai_api_key),
-  readFields: (stored) => ({
-    model: readOpenAIModel(stored.openai_model) ?? DEFAULT_OPENAI_MODEL,
-    formality: readOpenAIFormality(stored.openai_formality) ?? DEFAULT_OPENAI_FORMALITY,
-    temperature: readFiniteNumber(stored.openai_temperature) ?? DEFAULT_OPENAI_TEMPERATURE,
-    tokensUsed: readFiniteNumber(stored.openai_tokens_used) ?? 0,
-  }),
-};
+  return Object.fromEntries(
+    fieldEntries.map(([fieldName, fieldSpec]) => [
+      fieldName,
+      fieldSpec.parse(storedRecord[fieldSpec.key]) ?? fieldSpec.fallback,
+    ])
+  ) as StoredConfigFields<TValidated>;
+}
 
-const ANTHROPIC_STORED_CONFIG_SCHEMA: StoredConfigSchema<
-  AnthropicStoredConfig,
-  ValidatedAnthropicConfig
-> = {
-  readApiKey: (stored) => readNonEmptyString(stored.anthropic_api_key),
-  readFields: (stored) => ({
-    model: readClaudeModel(stored.anthropic_model) ?? DEFAULT_ANTHROPIC_MODEL,
-    formality:
-      readAnthropicFormality(stored.anthropic_formality) ?? DEFAULT_ANTHROPIC_FORMALITY,
-    tokensUsed: readFiniteNumber(stored.anthropic_tokens_used) ?? 0,
-  }),
-};
+const DEEPL_STORED_CONFIG_SCHEMA = {
+  apiKeyField: 'deepl_api_key',
+  fields: {
+    isPro: {
+      key: 'deepl_is_pro',
+      parse: readBoolean,
+      fallback: false,
+    },
+    formality: {
+      key: 'deepl_formality',
+      parse: readDeepLFormality,
+      fallback: DEFAULT_DEEPL_FORMALITY,
+    },
+  },
+} satisfies StoredConfigSchema<DeepLStoredConfig, ValidatedDeepLConfig>;
 
-const GOOGLE_CLOUD_STORED_CONFIG_SCHEMA: StoredConfigSchema<
-  GoogleCloudStoredConfig,
-  ValidatedGoogleCloudConfig
-> = {
-  readApiKey: (stored) => readNonEmptyString(stored.google_cloud_api_key),
-  readFields: (stored) => ({
-    charactersUsed: readFiniteNumber(stored.google_cloud_chars_used) ?? 0,
-  }),
-};
+const OPENAI_STORED_CONFIG_SCHEMA = {
+  apiKeyField: 'openai_api_key',
+  fields: {
+    model: {
+      key: 'openai_model',
+      parse: readOpenAIModel,
+      fallback: DEFAULT_OPENAI_MODEL,
+    },
+    formality: {
+      key: 'openai_formality',
+      parse: readOpenAIFormality,
+      fallback: DEFAULT_OPENAI_FORMALITY,
+    },
+    temperature: {
+      key: 'openai_temperature',
+      parse: readFiniteNumber,
+      fallback: DEFAULT_OPENAI_TEMPERATURE,
+    },
+    tokensUsed: {
+      key: 'openai_tokens_used',
+      parse: readFiniteNumber,
+      fallback: 0,
+    },
+  },
+} satisfies StoredConfigSchema<OpenAIStoredConfig, ValidatedOpenAIConfig>;
+
+const ANTHROPIC_STORED_CONFIG_SCHEMA = {
+  apiKeyField: 'anthropic_api_key',
+  fields: {
+    model: {
+      key: 'anthropic_model',
+      parse: readClaudeModel,
+      fallback: DEFAULT_ANTHROPIC_MODEL,
+    },
+    formality: {
+      key: 'anthropic_formality',
+      parse: readAnthropicFormality,
+      fallback: DEFAULT_ANTHROPIC_FORMALITY,
+    },
+    tokensUsed: {
+      key: 'anthropic_tokens_used',
+      parse: readFiniteNumber,
+      fallback: 0,
+    },
+  },
+} satisfies StoredConfigSchema<AnthropicStoredConfig, ValidatedAnthropicConfig>;
+
+const GOOGLE_CLOUD_STORED_CONFIG_SCHEMA = {
+  apiKeyField: 'google_cloud_api_key',
+  fields: {
+    charactersUsed: {
+      key: 'google_cloud_chars_used',
+      parse: readFiniteNumber,
+      fallback: 0,
+    },
+  },
+} satisfies StoredConfigSchema<GoogleCloudStoredConfig, ValidatedGoogleCloudConfig>;
 
 export function validateDeepLStoredConfig(stored: DeepLStoredConfig): ValidatedDeepLConfig | null {
   return validateStoredConfig(stored, DEEPL_STORED_CONFIG_SCHEMA);
