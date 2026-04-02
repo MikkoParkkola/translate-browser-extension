@@ -93,6 +93,43 @@ export function estimateMaxTokens(texts: string[]): number {
   return Math.min(4096, texts.join('').length * 2 + 500);
 }
 
+/**
+ * Normalize provider translation arrays to the public provider contract.
+ *
+ * Providers must return exactly one string translation for each requested text.
+ * Malformed "successful" responses fail loudly here instead of leaking
+ * `undefined`, partial arrays, or extra items into the rest of the pipeline.
+ */
+export function finalizeProviderTranslations(
+  providerName: string,
+  input: string | string[],
+  translations: readonly (string | null | undefined)[] | null | undefined,
+): string | string[] {
+  if (!Array.isArray(translations)) {
+    throw new Error(`${providerName} returned invalid response: no translations field`);
+  }
+
+  const expectedCount = Array.isArray(input) ? input.length : 1;
+  if (translations.length !== expectedCount) {
+    throw new Error(
+      `${providerName} returned invalid response: expected ${expectedCount} translations, received ${translations.length}`,
+    );
+  }
+
+  const normalized: string[] = [];
+  for (let index = 0; index < translations.length; index++) {
+    const translated = translations[index];
+    if (typeof translated !== 'string') {
+      throw new Error(
+        `${providerName} returned invalid response: translation ${index} is not a string`,
+      );
+    }
+    normalized.push(translated);
+  }
+
+  return Array.isArray(input) ? normalized : normalized[0];
+}
+
 function getTranslationFormalityInstruction(
   formality: TranslationPromptFormality,
   template: TranslationPromptTemplate,

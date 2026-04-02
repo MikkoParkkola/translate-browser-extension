@@ -6,7 +6,12 @@
 
 import { CloudProvider, updateCloudProviderApiKey } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
-import { detectProviderLanguageCode, fetchProviderJson, generateAllLanguagePairs } from './provider-utils';
+import {
+  detectProviderLanguageCode,
+  fetchProviderJson,
+  finalizeProviderTranslations,
+  generateAllLanguagePairs,
+} from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
 import { extractGoogleCloudStoredRuntimeState } from '../background/shared/config-validation';
@@ -125,7 +130,13 @@ export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
         body: JSON.stringify(body),
       });
 
-      // Track character usage
+      const results = finalizeProviderTranslations(
+        'Google Cloud',
+        text,
+        data.data?.translations?.map(t => t.translatedText),
+      );
+
+      // Track character usage only after the response satisfies the provider contract.
       const charsUsed = texts.reduce((sum, t) => sum + t.length, 0);
       this.charactersUsed += charsUsed;
       this.persistBestEffort(
@@ -133,8 +144,7 @@ export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
         'Failed to persist char usage:'
       );
 
-      const results = data.data.translations.map(t => t.translatedText);
-      return isArray ? results : results[0];
+      return results;
     } catch (error) {
       this.log.error('Translation error:', error);
       throw createTranslationError(error);

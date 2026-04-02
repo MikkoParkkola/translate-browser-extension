@@ -163,6 +163,37 @@ describe('GoogleCloudProvider', () => {
       const info = provider.getInfo();
       expect(info.charactersUsed).toBe(10); // 'Hello'.length + 'World'.length
     });
+
+    it('rejects invalid response cardinality for batch translation', async () => {
+      queueJsonResponse({
+        data: {
+          translations: [{ translatedText: 'Hei' }],
+        },
+      });
+
+      await expectProviderError(provider.translate(['Hello', 'World'], 'en', 'fi'), {
+        category: 'internal',
+        messagePattern: /translation failed unexpectedly/i,
+        technicalDetailsPattern: /expected 2 translations, received 1/i,
+      });
+    });
+
+    it('does not track character usage when translation response is invalid', async () => {
+      queueJsonResponse({
+        data: {
+          translations: [],
+        },
+      });
+
+      await expectProviderError(provider.translate('Hello', 'en', 'fi'), {
+        category: 'internal',
+        messagePattern: /translation failed unexpectedly/i,
+        technicalDetailsPattern: /expected 1 translations, received 0/i,
+      });
+
+      const info = provider.getInfo();
+      expect(info.charactersUsed).toBe(0);
+    });
   });
 
   describe('detectLanguage', () => {

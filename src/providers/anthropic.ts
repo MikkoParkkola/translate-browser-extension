@@ -12,6 +12,7 @@ import {
   detectProviderLanguageCode,
   fetchProviderJson,
   estimateMaxTokens,
+  finalizeProviderTranslations,
   generateAllLanguagePairs,
   parseBatchResponse,
   type TranslationPromptTemplate,
@@ -207,20 +208,21 @@ export class AnthropicProvider extends CloudProvider<AnthropicConfig> {
 
       const translated = data.content[0]?.text?.trim() || '';
 
-      // Parse XML response for batch
-      if (isArray && texts.length > 1) {
-        const results = parseBatchResponse(translated, texts.length, {
-          legacyXmlFallback: true,
-          newlineFallback: true,
-          allowExtras: true,
-        });
+      if (isArray) {
+        const results = texts.length > 1
+          ? parseBatchResponse(translated, texts.length, {
+            legacyXmlFallback: true,
+            newlineFallback: true,
+          })
+          : [translated];
+
         if (results.every(r => !r) && translated.length > 0) {
           this.log.warn('XML tag parsing produced no results, fell back to newline splitting');
         }
-        return results;
+        return finalizeProviderTranslations('Anthropic', text, results);
       }
 
-      return isArray ? [translated] : translated;
+      return translated;
     } catch (error) {
       this.log.error('Translation error:', error);
       throw createTranslationError(error);

@@ -485,9 +485,11 @@ describe('DeepLProvider', () => {
         translations: [], // Empty array
       });
 
-      const result = await provider.translate('Hello', 'en', 'fi');
-      // When empty, results[0] is undefined
-      expect(result).toBeUndefined();
+      await expectProviderError(provider.translate('Hello', 'en', 'fi'), {
+        category: 'internal',
+        messagePattern: /translation failed unexpectedly/i,
+        technicalDetailsPattern: /expected 1 translations, received 0/i,
+      });
     });
 
     it('handles API error response gracefully', async () => {

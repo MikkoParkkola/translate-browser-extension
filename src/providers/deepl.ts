@@ -6,7 +6,12 @@
 
 import { CloudProvider, createCloudProviderConfig } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
-import { detectProviderLanguageCode, fetchProviderJson, generateLanguagePairs } from './provider-utils';
+import {
+  detectProviderLanguageCode,
+  fetchProviderJson,
+  finalizeProviderTranslations,
+  generateLanguagePairs,
+} from './provider-utils';
 import { toDeepLCode, getDeepLSupportedLanguages } from '../core/language-map';
 import { CONFIG } from '../config';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
@@ -148,17 +153,11 @@ export class DeepLProvider extends CloudProvider<DeepLConfig> {
         body: JSON.stringify(body),
       });
 
-      if (!data.translations) {
-        throw new Error('DeepL returned invalid response: no translations field');
-      }
-
-      const results = data.translations.map(t => t.text);
-
-      if (!Array.isArray(text) && results.length === 0) {
-        this.log.warn('DeepL returned empty translations array');
-      }
-
-      return Array.isArray(text) ? results : results[0];
+      return finalizeProviderTranslations(
+        'DeepL',
+        text,
+        data.translations?.map(t => t.text),
+      );
     } catch (error) {
       this.log.error('Translation error:', error);
       throw createTranslationError(error);

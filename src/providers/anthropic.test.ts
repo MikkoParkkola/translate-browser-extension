@@ -486,7 +486,7 @@ describe('AnthropicProvider', () => {
       expect(result[2]).toBe(''); // Padded
     });
 
-    it('includes extra translations when batch returns more than input', async () => {
+    it('ignores extra translations when batch returns more than input', async () => {
       await provider.setApiKey('sk-key');
 
       queueJsonResponse({
@@ -506,12 +506,8 @@ describe('AnthropicProvider', () => {
 
       const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
 
-      // Provider returns all parsed results, doesn't truncate
       expect(Array.isArray(result)).toBe(true);
-      expect(result.length).toBe(3);
-      expect(result[0]).toBe('Hei');
-      expect(result[1]).toBe('Maailma');
-      expect(result[2]).toBe('Extra');
+      expect(result).toEqual(['Hei', 'Maailma']);
     });
   });
 
@@ -893,6 +889,23 @@ describe('AnthropicProvider', () => {
           {
             type: 'text',
             text: 'Hei\nMaailma',
+          },
+        ],
+        usage: { input_tokens: 20, output_tokens: 10 },
+      });
+
+      const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toEqual(['Hei', 'Maailma']);
+    });
+
+    it('does not leak extra tagged results beyond the requested batch size', async () => {
+      queueJsonResponse({
+        content: [
+          {
+            type: 'text',
+            text: '<t0>Hei</t0><t1>Maailma</t1><t2>Ignored</t2>',
           },
         ],
         usage: { input_tokens: 20, output_tokens: 10 },
