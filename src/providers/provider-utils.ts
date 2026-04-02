@@ -3,7 +3,7 @@
  * Contains common functions extracted from provider implementations
  */
 
-import { getAllLanguageCodes } from '../core/language-map';
+import { getAllLanguageCodes, getLanguageName } from '../core/language-map';
 import { createLogger } from '../core/logger';
 import { handleProviderHttpError } from '../core/http-errors';
 import { CONFIG } from '../config';
@@ -11,6 +11,17 @@ import type { LanguagePair } from '../types';
 
 const log = createLogger('ProviderUtils');
 const languagePairCache = new Map<string, LanguagePair[]>();
+
+export type TranslationPromptFormality = 'formal' | 'informal' | 'neutral';
+
+export interface TranslationPromptTemplate {
+  roleDescription: string;
+  translationInstruction: string;
+  formalInstruction: string;
+  informalInstruction: string;
+  trailingInstruction?: string;
+  rules?: readonly string[];
+}
 
 /**
  * Extract error body from response, with fallback handling
@@ -54,6 +65,39 @@ export async function fetchProviderJson<T>(
  */
 export function estimateMaxTokens(texts: string[]): number {
   return Math.min(4096, texts.join('').length * 2 + 500);
+}
+
+function getTranslationFormalityInstruction(
+  formality: TranslationPromptFormality,
+  template: TranslationPromptTemplate,
+): string {
+  switch (formality) {
+    case 'formal':
+      return template.formalInstruction;
+    case 'informal':
+      return template.informalInstruction;
+    default:
+      return '';
+  }
+}
+
+export function buildTranslationPrompt(
+  targetLang: string,
+  formality: TranslationPromptFormality,
+  template: TranslationPromptTemplate,
+): string {
+  const langName = getLanguageName(targetLang);
+  const basePrompt =
+    `${template.roleDescription} ${template.translationInstruction} ${langName}.`;
+  const formalityInstruction = getTranslationFormalityInstruction(formality, template);
+  const prompt =
+    formalityInstruction.length > 0 ? `${basePrompt} ${formalityInstruction}` : basePrompt;
+
+  if (template.rules && template.rules.length > 0) {
+    return `${prompt}\n\n${template.rules.join('\n')}`;
+  }
+
+  return template.trailingInstruction ? `${prompt} ${template.trailingInstruction}` : prompt;
 }
 
 /**

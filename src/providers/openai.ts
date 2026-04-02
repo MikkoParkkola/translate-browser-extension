@@ -8,7 +8,14 @@ import { CloudProvider, updateCloudProviderApiKey } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
 import { getLanguageName } from '../core/language-map';
 import { CONFIG } from '../config';
-import { fetchProviderJson, estimateMaxTokens, generateAllLanguagePairs, parseBatchResponse } from './provider-utils';
+import {
+  buildTranslationPrompt,
+  fetchProviderJson,
+  estimateMaxTokens,
+  generateAllLanguagePairs,
+  parseBatchResponse,
+  type TranslationPromptTemplate,
+} from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
 import { extractOpenAIStoredRuntimeState } from '../background/shared/config-validation';
@@ -27,6 +34,13 @@ const OPENAI_STORAGE_KEYS = [
   'openai_temperature',
   'openai_tokens_used',
 ] as const;
+const OPENAI_TRANSLATION_PROMPT_TEMPLATE: TranslationPromptTemplate = {
+  roleDescription: 'You are a professional translator.',
+  translationInstruction: 'Translate the following text to',
+  formalInstruction: 'Use formal language and polite forms.',
+  informalInstruction: 'Use casual, informal language.',
+  trailingInstruction: 'Provide only the translation, no explanations.',
+};
 
 export type OpenAIFormality = 'formal' | 'informal' | 'neutral';
 export type OpenAIModel = (typeof OPENAI_MODEL_VALUES)[number];
@@ -129,22 +143,6 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
     );
   }
 
-  private buildPrompt(targetLang: string, formality: OpenAIFormality): string {
-    const langName = getLanguageName(targetLang);
-    let formalityInst = '';
-
-    switch (formality) {
-      case 'formal':
-        formalityInst = ' Use formal language and polite forms.';
-        break;
-      case 'informal':
-        formalityInst = ' Use casual, informal language.';
-        break;
-    }
-
-    return `You are a professional translator. Translate the following text to ${langName}.${formalityInst} Provide only the translation, no explanations.`;
-  }
-
   /**
    * Translate text using OpenAI Chat API
    */
@@ -167,7 +165,11 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
       inputText = texts[0];
     }
 
-    const systemPrompt = this.buildPrompt(targetLang, config.formality);
+    const systemPrompt = buildTranslationPrompt(
+      targetLang,
+      config.formality,
+      OPENAI_TRANSLATION_PROMPT_TEMPLATE,
+    );
     let userPrompt = inputText;
 
     // Add source language hint if known

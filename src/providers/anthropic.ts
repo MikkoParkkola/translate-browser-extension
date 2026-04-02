@@ -8,7 +8,14 @@ import { CloudProvider, updateCloudProviderApiKey } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
 import { getLanguageName } from '../core/language-map';
 import { CONFIG } from '../config';
-import { fetchProviderJson, estimateMaxTokens, generateAllLanguagePairs, parseBatchResponse } from './provider-utils';
+import {
+  buildTranslationPrompt,
+  fetchProviderJson,
+  estimateMaxTokens,
+  generateAllLanguagePairs,
+  parseBatchResponse,
+  type TranslationPromptTemplate,
+} from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
 import { extractAnthropicStoredRuntimeState } from '../background/shared/config-validation';
@@ -25,6 +32,19 @@ const ANTHROPIC_STORAGE_KEYS = [
   'anthropic_formality',
   'anthropic_tokens_used',
 ] as const;
+const ANTHROPIC_TRANSLATION_PROMPT_TEMPLATE: TranslationPromptTemplate = {
+  roleDescription: 'You are an expert translator.',
+  translationInstruction: 'Translate the provided text to',
+  formalInstruction: 'Use formal register and polite forms where appropriate.',
+  informalInstruction: 'Use casual, conversational language.',
+  rules: [
+    'Rules:',
+    '- Output ONLY the translation, no explanations or notes',
+    '- Preserve formatting (line breaks, punctuation)',
+    '- Maintain the tone and style of the original',
+    '- For ambiguous terms, choose the most natural translation',
+  ],
+};
 
 export type ClaudeFormality = 'formal' | 'informal' | 'neutral';
 export type ClaudeModel = (typeof ANTHROPIC_MODEL_VALUES)[number];
@@ -124,28 +144,6 @@ export class AnthropicProvider extends CloudProvider<AnthropicConfig> {
     );
   }
 
-  private buildSystemPrompt(targetLang: string, formality: ClaudeFormality): string {
-    const langName = getLanguageName(targetLang);
-    let formalityInst = '';
-
-    switch (formality) {
-      case 'formal':
-        formalityInst = ' Use formal register and polite forms where appropriate.';
-        break;
-      case 'informal':
-        formalityInst = ' Use casual, conversational language.';
-        break;
-    }
-
-    return `You are an expert translator. Translate the provided text to ${langName}.${formalityInst}
-
-Rules:
-- Output ONLY the translation, no explanations or notes
-- Preserve formatting (line breaks, punctuation)
-- Maintain the tone and style of the original
-- For ambiguous terms, choose the most natural translation`;
-  }
-
   /**
    * Translate text using Anthropic Messages API
    */
@@ -174,7 +172,11 @@ Rules:
       userContent = `[Source language: ${getLanguageName(sourceLang)}]\n\n${userContent}`;
     }
 
-    const systemPrompt = this.buildSystemPrompt(targetLang, config.formality);
+    const systemPrompt = buildTranslationPrompt(
+      targetLang,
+      config.formality,
+      ANTHROPIC_TRANSLATION_PROMPT_TEMPLATE,
+    );
 
     try {
       const data = await fetchProviderJson<AnthropicMessageResponse>('Anthropic', ANTHROPIC_API, {
