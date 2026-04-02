@@ -106,7 +106,7 @@ export function createTranslationBackgroundHandler({
 
       if (sessionId) profiler.endTiming(sessionId, 'chrome_builtin_translate');
 
-      return finalizeTranslationExecution(
+      return await finalizeTranslationExecution(
         execution,
         cache,
         result,
@@ -224,7 +224,7 @@ export function createTranslationBackgroundHandler({
         throw new Error('Translation engine returned no result');
       }
 
-      return finalizeTranslationExecution(
+      return await finalizeTranslationExecution(
         execution,
         cache,
         response.result,

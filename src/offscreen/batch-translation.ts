@@ -1,3 +1,5 @@
+import { normalizeBatchTranslations } from '../shared/batch-translation-contract';
+
 type MaybePromise<T> = T | Promise<T>;
 
 export interface BatchTranslationItem {
@@ -48,28 +50,6 @@ export interface MergeBatchTranslationResultsOptions {
     error: unknown;
   }) => void;
   onIdentityTranslation?: (context: { index: number; text: string }) => void;
-}
-
-function normalizeBatchTranslations(
-  translations: string | string[],
-  expectedCount: number,
-): string[] {
-  if (Array.isArray(translations)) {
-    if (translations.length !== expectedCount) {
-      throw new Error(
-        `Expected ${expectedCount} batch translations, received ${translations.length}`,
-      );
-    }
-    return translations;
-  }
-
-  if (expectedCount === 1) {
-    return [translations];
-  }
-
-  throw new Error(
-    `Expected ${expectedCount} batch translations, received a single translation`,
-  );
 }
 
 export async function mergeBatchTranslationResults(

@@ -43,6 +43,7 @@ import { getPageContext } from './context';
 import { isTransientError, createBatches } from './translation-helpers';
 import { makeTranslatedElementEditable, showCorrectionHint } from './correction';
 import { applyBilingualToElement, getBilingualModeState } from './bilingual';
+import { normalizeBatchTranslations } from '../shared/batch-translation-contract';
 
 const log = createLogger('Content');
 
@@ -184,12 +185,21 @@ export function createPageTranslationOrchestrator(
         const ipcTime = performance.now() - ipcStart;
         recordContentTiming('ipcRoundtrip', ipcTime);
 
-        if (response.success && Array.isArray(response.result)) {
+        const batchResult = response.result ?? [];
+        if (response.success) {
+          let translatedResults: string[];
+          try {
+            translatedResults = normalizeBatchTranslations(batchResult, batch.nodes.length);
+          } catch (error) {
+            log.warn('Batch translation returned invalid result shape:', error);
+            return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime, domUpdateTime: 0 };
+          }
+
           const domUpdateStart = performance.now();
           let translatedCount = 0;
           let errorCount = 0;
 
-          response.result.forEach((translated, idx) => {
+          translatedResults.forEach((translated, idx) => {
             const node = batch.nodes[idx];
             // Guard: skip detached nodes (removed from DOM during translation).
             // A single rich text container can legitimately contain multiple sibling

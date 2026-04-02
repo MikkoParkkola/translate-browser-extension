@@ -440,10 +440,10 @@ describe('Content Script', () => {
       }
       document.body.innerHTML = html;
 
-      mockSendMessage.mockResolvedValue({
+      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => ({
         success: true,
-        result: Array(50).fill('Translated'),
-      });
+        result: (message.text ?? []).map(() => 'Translated'),
+      }));
 
       const sendResponse = vi.fn();
 
@@ -3316,10 +3316,10 @@ describe('Content Script', () => {
       }
       document.body.innerHTML = html;
 
-      mockSendMessage.mockResolvedValue({
+      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => ({
         success: true,
-        result: Array(50).fill('Käännetty'),
-      });
+        result: (message.text ?? []).map(() => 'Käännetty'),
+      }));
 
       const sendResponse = vi.fn();
       startPageTranslation(sendResponse);
@@ -3570,6 +3570,25 @@ describe('Content Script', () => {
         status: 'started',
       });
     });
+
+    it('does not partially apply truncated batch results', async () => {
+      document.body.innerHTML = '<p id="first">First</p><p id="second">Second</p>';
+
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Ensimmäinen'],
+      });
+
+      const sendResponse = vi.fn();
+      startPageTranslation(sendResponse);
+
+      await waitForAsyncContentWork(150);
+
+      expect(document.getElementById('first')?.textContent).toBe('First');
+      expect(document.getElementById('second')?.textContent).toBe('Second');
+      expect(document.getElementById('first')?.getAttribute('data-translated')).toBeNull();
+      expect(document.getElementById('second')?.getAttribute('data-translated')).toBeNull();
+    });
   });
 
   describe('Page context extraction in batch', () => {
@@ -3676,11 +3695,11 @@ describe('Content Script', () => {
       document.body.innerHTML = html;
 
       const calls: number[] = [];
-      mockSendMessage.mockImplementation(async () => {
+      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => {
         calls.push(Date.now());
         return {
           success: true,
-          result: Array(50).fill('Käännetty'),
+          result: (message.text ?? []).map(() => 'Käännetty'),
         };
       });
 
@@ -3834,12 +3853,18 @@ describe('Content Script', () => {
       document.body.innerHTML = html;
 
       let batchCount = 0;
-      mockSendMessage.mockImplementation(async () => {
+      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => {
         batchCount++;
         if (batchCount === 1) {
-          return { success: true, result: Array(50).fill('Käännetty') };
+          return {
+            success: true,
+            result: (message.text ?? []).map(() => 'Käännetty'),
+          };
         }
-        return { success: true, result: Array(50).fill('Käännetty') };
+        return {
+          success: true,
+          result: (message.text ?? []).map(() => 'Käännetty'),
+        };
       });
 
       const sendResponse = vi.fn();
@@ -4728,7 +4753,10 @@ describe('Content Script', () => {
 
       // 201 elements > MUTATION_BATCH_CAP(100) → else branch entered.
       // processNextChunk: offset=100, 100<201 → inner if → setTimeout (line 864).
-      mockSendMessage.mockResolvedValue({ success: true, result: [] });
+      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => ({
+        success: true,
+        result: (message.text ?? []).map(() => 'T'),
+      }));
       for (let i = 0; i < 201; i++) {
         const span = document.createElement('span');
         span.textContent = `Node ${i}`;
@@ -4752,7 +4780,10 @@ describe('Content Script', () => {
       await waitForAsyncContentWork(400);
 
       // 201 elements → deferred chunk scheduling uses requestIdleCallback for the tail work
-      mockSendMessage.mockResolvedValue({ success: true, result: [] });
+      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => ({
+        success: true,
+        result: (message.text ?? []).map(() => 'T'),
+      }));
       for (let i = 0; i < 201; i++) {
         const span = document.createElement('span');
         span.textContent = `RIC Node ${i}`;
@@ -4777,7 +4808,10 @@ describe('Content Script', () => {
 
         // 2200 synchronous appends produce one overflow burst in the shared mutation orchestrator.
         // maxPending=2000: first 2000 buffered, 200 dropped → first diagnostic warning boundary.
-        mockSendMessage.mockResolvedValue({ success: true, result: [] });
+        mockSendMessage.mockImplementation(async (message: { text?: string[] }) => ({
+          success: true,
+          result: (message.text ?? []).map(() => 'T'),
+        }));
         for (let i = 0; i < 2200; i++) {
           document.body.appendChild(document.createElement('span'));
         }

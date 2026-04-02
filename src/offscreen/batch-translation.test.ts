@@ -69,6 +69,19 @@ describe('batch-translation helpers', () => {
         error: expect.any(Error),
       });
     });
+
+    it('rejects malformed batch arrays before merging partial results', async () => {
+      const sparseTranslations = [] as unknown as string[];
+      sparseTranslations.length = 1;
+
+      await expect(
+        mergeBatchTranslationResults(
+          ['cached'],
+          [{ index: 1, text: 'Hello' }],
+          sparseTranslations,
+        ),
+      ).rejects.toThrow('invalid entry at index 0');
+    });
   });
 
   describe('translateArrayItems', () => {

@@ -20,6 +20,7 @@ import {
 import { getCorrection } from '../../core/corrections';
 import { createLogger } from '../../core/logger';
 import { CONFIG } from '../../config';
+import { normalizeBatchTranslations } from '../../shared/batch-translation-contract';
 import type { TranslationCache } from './storage-ops';
 import {
   setStrategy,
@@ -249,6 +250,10 @@ export async function finalizeTranslationExecution(
   result: string | string[],
   options: FinalizeTranslationExecutionOptions = {},
 ): Promise<TranslateResponse> {
+  const normalizedResult = Array.isArray(execution.text)
+    ? normalizeBatchTranslations(result, execution.text.length)
+    : result;
+
   log.info('Translation complete');
 
   if (options.recordUsage ?? true) {
@@ -260,22 +265,27 @@ export async function finalizeTranslationExecution(
     : options.cacheSourceLang;
 
   options.onBeforeCacheStore?.();
-  if (result && cacheSourceLang) {
-    cache.set(execution.cacheKey, result, cacheSourceLang, execution.message.targetLang);
+  if (normalizedResult && cacheSourceLang) {
+    cache.set(
+      execution.cacheKey,
+      normalizedResult,
+      cacheSourceLang,
+      execution.message.targetLang,
+    );
   }
   options.onAfterCacheStore?.();
 
   const duration = Date.now() - execution.startTime;
   let response: TranslateResponse = {
     success: true,
-    result,
+    result: normalizedResult,
     duration,
     ...options.responsePatch,
   };
 
   const responsePatch = await options.onSuccess?.({
     execution,
-    result,
+    result: normalizedResult,
     duration,
     response,
   });
@@ -341,7 +351,7 @@ export async function handleTranslateCore(
       },
     );
 
-    return finalizeTranslationExecution(
+    return await finalizeTranslationExecution(
       execution,
       cache,
       response.result,

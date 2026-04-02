@@ -194,17 +194,18 @@ describe('handleTranslateCore', () => {
     const { getCorrection } = await import('../../core/corrections');
     const { validateInput } = await import('../../core/errors');
     vi.mocked(validateInput).mockReturnValue({ valid: true, sanitizedText: ['hello', 'world'] as never });
+    const batchTranslateFn = vi.fn().mockResolvedValue({ result: ['hei', 'maailma'] });
 
     const { handleTranslateCore } = await import('./translation-core');
     await handleTranslateCore(
       { text: ['hello', 'world'], sourceLang: 'en', targetLang: 'fi' },
       cache as never,
-      translateFn,
+      batchTranslateFn,
     );
 
     // getCorrection only called for string input — array bypasses it
     expect(vi.mocked(getCorrection)).not.toHaveBeenCalled();
-    expect(translateFn).toHaveBeenCalled();
+    expect(batchTranslateFn).toHaveBeenCalled();
   });
 
   it('sets strategy when provided in options', async () => {
@@ -257,6 +258,28 @@ describe('handleTranslateCore', () => {
     );
 
     expect(cache.set).not.toHaveBeenCalled();
+  });
+
+  it('returns an error and skips caching for invalid batch result arity', async () => {
+    const { validateInput } = await import('../../core/errors');
+    const { recordUsage } = await import('./provider-management');
+    vi.mocked(validateInput).mockReturnValue({
+      valid: true,
+      sanitizedText: ['hello', 'world'] as never,
+    });
+
+    const batchTranslateFn = vi.fn().mockResolvedValue({ result: ['Hei'] });
+
+    const { handleTranslateCore } = await import('./translation-core');
+    const result = await handleTranslateCore(
+      { text: ['hello', 'world'], sourceLang: 'en', targetLang: 'fi' },
+      cache as never,
+      batchTranslateFn,
+    );
+
+    expect(result.success).toBe(false);
+    expect(cache.set).not.toHaveBeenCalled();
+    expect(vi.mocked(recordUsage)).not.toHaveBeenCalled();
   });
 
   it('handles translateFn error gracefully', async () => {
