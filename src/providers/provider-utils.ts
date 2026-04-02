@@ -182,6 +182,22 @@ export function parseBatchResponse(
   } = {},
 ): string[] {
   const results: string[] = new Array(count).fill('');
+  const assignResult = (idx: number, value: string): void => {
+    if (idx < count) {
+      results[idx] = value;
+      return;
+    }
+
+    if (!options.allowExtras) {
+      return;
+    }
+
+    while (results.length <= idx) {
+      results.push('');
+    }
+
+    results[idx] = value;
+  };
 
   // 1. Primary: <tN>…</tN>
   const xmlRegex = /<t(\d+)>([\s\S]*?)<\/t\1>/g;
@@ -190,11 +206,7 @@ export function parseBatchResponse(
 
   while ((match = xmlRegex.exec(translated)) !== null) {
     const idx = parseInt(match[1], 10);
-    if (idx < count) {
-      results[idx] = match[2].trim();
-    } else if (options.allowExtras) {
-      results[idx] = match[2].trim();
-    }
+    assignResult(idx, match[2].trim());
     found = true;
   }
   if (found) return results;
@@ -204,11 +216,7 @@ export function parseBatchResponse(
     const legacyRegex = /<text id="(\d+)">([\s\S]*?)<\/text>/g;
     while ((match = legacyRegex.exec(translated)) !== null) {
       const idx = parseInt(match[1], 10);
-      if (idx < count) {
-        results[idx] = match[2].trim();
-      } else if (options.allowExtras) {
-        results[idx] = match[2].trim();
-      }
+      assignResult(idx, match[2].trim());
       found = true;
     }
     if (found) return results;

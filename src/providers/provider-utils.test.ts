@@ -4,6 +4,7 @@ import {
   buildTranslationPrompt,
   detectProviderLanguageCode,
   generateLanguagePairs,
+  parseBatchResponse,
 } from './provider-utils';
 
 describe('generateLanguagePairs', () => {
@@ -140,5 +141,30 @@ describe('detectProviderLanguageCode', () => {
         logError,
       ),
     ).resolves.toBe('auto');
+  });
+});
+
+describe('parseBatchResponse', () => {
+  it('keeps allowExtras XML results dense when extra indices are non-consecutive', () => {
+    const results = parseBatchResponse('<t0>Hello</t0><t4>World</t4>', 2, {
+      allowExtras: true,
+    });
+
+    expect(results).toEqual(['Hello', '', '', '', 'World']);
+    expect(results.every(value => typeof value === 'string')).toBe(true);
+  });
+
+  it('keeps legacy XML extras dense when allowExtras is enabled', () => {
+    const results = parseBatchResponse(
+      '<text id="0">One</text><text id="3">Four</text>',
+      1,
+      {
+        allowExtras: true,
+        legacyXmlFallback: true,
+      },
+    );
+
+    expect(results).toEqual(['One', '', '', 'Four']);
+    expect(results.every(value => typeof value === 'string')).toBe(true);
   });
 });
