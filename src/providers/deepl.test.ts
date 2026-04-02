@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   defineProviderErrorTests,
+  expectProviderError,
   installCloudProviderTestHarness,
 } from '../__contract__/cloud-provider-test-harness';
 import { DeepLProvider } from './deepl';
@@ -101,9 +102,10 @@ describe('DeepLProvider', () => {
 
     it('throws when API key not configured', async () => {
       const noKeyProvider = new DeepLProvider();
-      await expect(
-        noKeyProvider.translate('Hello', 'en', 'fi'),
-      ).rejects.toThrow();
+      await expectProviderError(noKeyProvider.translate('Hello', 'en', 'fi'), {
+        category: 'auth',
+        technicalDetailsPattern: /DeepL API key not configured/,
+      });
     });
 
     it('sends correct request for single text', async () => {

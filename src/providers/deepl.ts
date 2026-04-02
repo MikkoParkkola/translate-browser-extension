@@ -73,10 +73,6 @@ export class DeepLProvider extends CloudProvider<DeepLConfig> {
     this.log.info('Initialized with', this.config.isPro ? 'Pro' : 'Free', 'tier');
   }
 
-  protected hasConfig(): boolean {
-    return !!this.config?.apiKey;
-  }
-
   protected resetConfig(): void {
     this.config = null;
   }
@@ -118,9 +114,7 @@ export class DeepLProvider extends CloudProvider<DeepLConfig> {
     targetLang: string,
     _options?: TranslationOptions
   ): Promise<string | string[]> {
-    if (!this.config?.apiKey) {
-      throw createTranslationError(new Error('DeepL API key not configured'));
-    }
+    const config = this.requireConfiguredConfig('DeepL');
 
     const texts = Array.isArray(text) ? text : [text];
     const targetLangCode = toDeepLCode(targetLang);
@@ -137,10 +131,10 @@ export class DeepLProvider extends CloudProvider<DeepLConfig> {
     }
 
     // Add formality if supported for target language
-    if (this.config.formality && this.config.formality !== 'default') {
+    if (config.formality && config.formality !== 'default') {
       const formalitySupported = ['DE', 'FR', 'IT', 'ES', 'NL', 'PL', 'PT', 'RU', 'JA'];
       if (formalitySupported.includes(targetLangCode)) {
-        body.formality = this.config.formality;
+        body.formality = config.formality;
       }
     }
 
@@ -148,7 +142,7 @@ export class DeepLProvider extends CloudProvider<DeepLConfig> {
       const data = await fetchProviderJson<DeepLTranslateResponse>('DeepL', `${this.apiBase}/translate`, {
         method: 'POST',
         headers: {
-          'Authorization': `DeepL-Auth-Key ${this.config.apiKey}`,
+          'Authorization': `DeepL-Auth-Key ${config.apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
@@ -175,7 +169,8 @@ export class DeepLProvider extends CloudProvider<DeepLConfig> {
    * Detect language using DeepL (by translating a small sample)
    */
   async detectLanguage(text: string): Promise<string> {
-    if (!this.config?.apiKey) {
+    const config = this.getConfiguredConfig();
+    if (!config) {
       return 'auto';
     }
 
@@ -183,7 +178,7 @@ export class DeepLProvider extends CloudProvider<DeepLConfig> {
       const response = await fetch(`${this.apiBase}/translate`, {
         method: 'POST',
         headers: {
-          'Authorization': `DeepL-Auth-Key ${this.config.apiKey}`,
+          'Authorization': `DeepL-Auth-Key ${config.apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -213,7 +208,8 @@ export class DeepLProvider extends CloudProvider<DeepLConfig> {
     cost: number;
     limitReached: boolean;
   }> {
-    if (!this.config?.apiKey) {
+    const config = this.getConfiguredConfig();
+    if (!config) {
       return { requests: 0, tokens: 0, cost: 0, limitReached: false };
     }
 
@@ -230,7 +226,7 @@ export class DeepLProvider extends CloudProvider<DeepLConfig> {
     try {
       const response = await fetch(`${this.apiBase}/usage`, {
         headers: {
-          'Authorization': `DeepL-Auth-Key ${this.config.apiKey}`,
+          'Authorization': `DeepL-Auth-Key ${config.apiKey}`,
         },
         signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });

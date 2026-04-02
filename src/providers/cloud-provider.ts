@@ -4,10 +4,12 @@
  * Extracts the three lifecycle methods that are structurally identical
  * across every cloud provider: initialize(), isAvailable(), and clearApiKey().
  *
- * Subclasses implement three hooks:
+ * Subclasses implement the storage/config hooks:
  *   - getStorageKeys()  – keys to load/clear from storage
  *   - applyStoredConfig() – populate internal config from loaded values
- *   - hasConfig()       – whether the provider is currently configured
+ *   - resetConfig()     – clear provider-specific in-memory state
+ *   - getConfigState()  – read the current config state
+ *   - setConfigState()  – replace the current config state
  */
 
 import { BaseProvider } from './base-provider';
@@ -16,6 +18,7 @@ import {
   strictStorageRemove,
   strictStorageSet,
 } from '../core/storage';
+import { createTranslationError } from '../core/errors';
 import { createLogger } from '../core/logger';
 import type { ProviderConfig } from '../types';
 import type {
@@ -40,7 +43,7 @@ export function updateCloudProviderApiKey<TDefaults extends object>(
   return current ? { ...current, apiKey } : createCloudProviderConfig(apiKey, defaults);
 }
 
-export abstract class CloudProvider<TConfig> extends BaseProvider {
+export abstract class CloudProvider<TConfig extends { apiKey: string }> extends BaseProvider {
   protected readonly log = createLogger(this.name);
 
   /**
@@ -54,11 +57,6 @@ export abstract class CloudProvider<TConfig> extends BaseProvider {
    * Called with a partial record — check for key presence before using values.
    */
   protected abstract applyStoredConfig(stored: CloudProviderStorageRecord): void;
-
-  /**
-   * Return true if the provider has a valid configuration (API key loaded).
-   */
-  protected abstract hasConfig(): boolean;
 
   /**
    * Hook called after clearApiKey() removes keys from storage.
@@ -75,6 +73,32 @@ export abstract class CloudProvider<TConfig> extends BaseProvider {
    * Replace the current in-memory config state.
    */
   protected abstract setConfigState(config: TConfig | null): void;
+
+  /**
+   * Read the current config only when it includes a usable API key.
+   */
+  protected getConfiguredConfig(): TConfig | null {
+    const config = this.getConfigState();
+    return config?.apiKey ? config : null;
+  }
+
+  /**
+   * Require credentials for request paths that cannot proceed without them.
+   */
+  protected requireConfiguredConfig(providerLabel: string): TConfig {
+    const config = this.getConfiguredConfig();
+    if (!config) {
+      throw createTranslationError(new Error(`${providerLabel} API key not configured`));
+    }
+    return config;
+  }
+
+  /**
+   * Return true if the provider has a valid configuration (API key loaded).
+   */
+  protected hasConfig(): boolean {
+    return this.getConfiguredConfig() !== null;
+  }
 
   async initialize(): Promise<void> {
     try {

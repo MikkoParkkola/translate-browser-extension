@@ -68,10 +68,6 @@ export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
     this.log.info('Initialized');
   }
 
-  protected hasConfig(): boolean {
-    return !!this.config?.apiKey;
-  }
-
   protected resetConfig(): void {
     this.config = null;
     this.charactersUsed = 0;
@@ -102,16 +98,14 @@ export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
     targetLang: string,
     _options?: TranslationOptions
   ): Promise<string | string[]> {
-    if (!this.config?.apiKey) {
-      throw createTranslationError(new Error('Google Cloud API key not configured'));
-    }
+    const config = this.requireConfiguredConfig('Google Cloud');
 
     const isArray = Array.isArray(text);
     const texts = isArray ? text : [text];
 
     // Build request URL — API key in query param per Google Cloud v2 API convention
     const url = new URL(GOOGLE_TRANSLATE_API);
-    url.searchParams.set('key', this.config.apiKey);
+    url.searchParams.set('key', config.apiKey);
 
     const body: Record<string, unknown> = {
       q: texts,
@@ -152,12 +146,13 @@ export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
    * Detect language using Google Cloud Translation API
    */
   async detectLanguage(text: string): Promise<string> {
-    if (!this.config?.apiKey) {
+    const config = this.getConfiguredConfig();
+    if (!config) {
       return 'auto';
     }
 
     const url = new URL(`${GOOGLE_TRANSLATE_API}/detect`);
-    url.searchParams.set('key', this.config.apiKey);
+    url.searchParams.set('key', config.apiKey);
 
     try {
       const response = await fetch(url.toString(), {

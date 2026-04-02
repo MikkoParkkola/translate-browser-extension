@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   defineProviderErrorTests,
+  expectProviderError,
   installCloudProviderTestHarness,
   okJsonResponse,
 } from '../__contract__/cloud-provider-test-harness';
@@ -37,9 +38,10 @@ describe('GoogleCloudProvider', () => {
 
     it('throws when API key not configured', async () => {
       const noKeyProvider = new GoogleCloudProvider();
-      await expect(
-        noKeyProvider.translate('Hello', 'en', 'fi'),
-      ).rejects.toThrow();
+      await expectProviderError(noKeyProvider.translate('Hello', 'en', 'fi'), {
+        category: 'auth',
+        technicalDetailsPattern: /Google Cloud API key not configured/,
+      });
     });
 
     it('sends correct request for single text', async () => {

@@ -87,10 +87,6 @@ export class AnthropicProvider extends CloudProvider<AnthropicConfig> {
     this.log.info('Initialized with model:', this.config.model);
   }
 
-  protected hasConfig(): boolean {
-    return !!this.config?.apiKey;
-  }
-
   protected resetConfig(): void {
     this.config = null;
     this.totalTokensUsed = 0;
@@ -159,9 +155,7 @@ Rules:
     targetLang: string,
     _options?: TranslationOptions
   ): Promise<string | string[]> {
-    if (!this.config?.apiKey) {
-      throw createTranslationError(new Error('Anthropic API key not configured'));
-    }
+    const config = this.requireConfiguredConfig('Anthropic');
 
     const isArray = Array.isArray(text);
     const texts = isArray ? text : [text];
@@ -180,18 +174,18 @@ Rules:
       userContent = `[Source language: ${getLanguageName(sourceLang)}]\n\n${userContent}`;
     }
 
-    const systemPrompt = this.buildSystemPrompt(targetLang, this.config.formality);
+    const systemPrompt = this.buildSystemPrompt(targetLang, config.formality);
 
     try {
       const data = await fetchProviderJson<AnthropicMessageResponse>('Anthropic', ANTHROPIC_API, {
         method: 'POST',
         headers: {
-          'x-api-key': this.config.apiKey,
+          'x-api-key': config.apiKey,
           'anthropic-version': '2023-06-01',
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          model: this.config.model,
+          model: config.model,
           max_tokens: estimateMaxTokens(texts),
           system: systemPrompt,
           messages: [
@@ -235,7 +229,8 @@ Rules:
    * Detect language using Claude
    */
   async detectLanguage(text: string): Promise<string> {
-    if (!this.config?.apiKey) {
+    const config = this.getConfiguredConfig();
+    if (!config) {
       return 'auto';
     }
 
@@ -243,7 +238,7 @@ Rules:
       const response = await fetch(ANTHROPIC_API, {
         method: 'POST',
         headers: {
-          'x-api-key': this.config.apiKey,
+          'x-api-key': config.apiKey,
           'anthropic-version': '2023-06-01',
           'content-type': 'application/json',
         },

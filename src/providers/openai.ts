@@ -90,10 +90,6 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
     this.log.info('Initialized with model:', this.config.model);
   }
 
-  protected hasConfig(): boolean {
-    return !!this.config?.apiKey;
-  }
-
   protected resetConfig(): void {
     this.config = null;
     this.totalTokensUsed = 0;
@@ -158,9 +154,7 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
     targetLang: string,
     _options?: TranslationOptions
   ): Promise<string | string[]> {
-    if (!this.config?.apiKey) {
-      throw createTranslationError(new Error('OpenAI API key not configured'));
-    }
+    const config = this.requireConfiguredConfig('OpenAI');
 
     const isArray = Array.isArray(text);
     const texts = isArray ? text : [text];
@@ -173,7 +167,7 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
       inputText = texts[0];
     }
 
-    const systemPrompt = this.buildPrompt(targetLang, this.config.formality);
+    const systemPrompt = this.buildPrompt(targetLang, config.formality);
     let userPrompt = inputText;
 
     // Add source language hint if known
@@ -190,16 +184,16 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
       const data = await fetchProviderJson<OpenAIChatResponse>('OpenAI', OPENAI_API, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
+          'Authorization': `Bearer ${config.apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: this.config.model,
+          model: config.model,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
-          temperature: this.config.temperature,
+          temperature: config.temperature,
           max_tokens: estimateMaxTokens(texts),
         }),
       });
@@ -231,7 +225,8 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
    * Detect language using OpenAI
    */
   async detectLanguage(text: string): Promise<string> {
-    if (!this.config?.apiKey) {
+    const config = this.getConfiguredConfig();
+    if (!config) {
       return 'auto';
     }
 
@@ -239,7 +234,7 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
       const response = await fetch(OPENAI_API, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
+          'Authorization': `Bearer ${config.apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
