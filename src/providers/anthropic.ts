@@ -4,7 +4,7 @@
  * https://docs.anthropic.com/en/api/messages
  */
 
-import { CloudProvider } from './cloud-provider';
+import { CloudProvider, updateCloudProviderApiKey } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
 import { getLanguageName } from '../core/language-map';
 import { CONFIG } from '../config';
@@ -51,13 +51,10 @@ interface AnthropicMessageResponse {
   };
 }
 
-function createAnthropicConfig(apiKey: string): AnthropicConfig {
-  return {
-    apiKey,
-    model: DEFAULT_ANTHROPIC_MODEL,
-    formality: DEFAULT_ANTHROPIC_FORMALITY,
-  };
-}
+const ANTHROPIC_DEFAULT_CONFIG: Omit<AnthropicConfig, 'apiKey'> = {
+  model: DEFAULT_ANTHROPIC_MODEL,
+  formality: DEFAULT_ANTHROPIC_FORMALITY,
+};
 
 export class AnthropicProvider extends CloudProvider<AnthropicConfig> {
   private config: AnthropicConfig | null = null;
@@ -111,7 +108,7 @@ export class AnthropicProvider extends CloudProvider<AnthropicConfig> {
   async setApiKey(apiKey: string): Promise<void> {
     await this.persistAndUpdateConfig(
       { anthropic_api_key: apiKey },
-      (config) => (config ? { ...config, apiKey } : createAnthropicConfig(apiKey))
+      (config) => updateCloudProviderApiKey(config, apiKey, ANTHROPIC_DEFAULT_CONFIG)
     );
   }
 

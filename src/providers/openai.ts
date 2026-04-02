@@ -4,7 +4,7 @@
  * https://platform.openai.com/docs/api-reference/chat
  */
 
-import { CloudProvider } from './cloud-provider';
+import { CloudProvider, updateCloudProviderApiKey } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
 import { getLanguageName } from '../core/language-map';
 import { CONFIG } from '../config';
@@ -53,14 +53,11 @@ interface OpenAIChatResponse {
   };
 }
 
-function createOpenAIConfig(apiKey: string): OpenAIConfig {
-  return {
-    apiKey,
-    model: DEFAULT_OPENAI_MODEL,
-    formality: DEFAULT_OPENAI_FORMALITY,
-    temperature: DEFAULT_OPENAI_TEMPERATURE,
-  };
-}
+const OPENAI_DEFAULT_CONFIG: Omit<OpenAIConfig, 'apiKey'> = {
+  model: DEFAULT_OPENAI_MODEL,
+  formality: DEFAULT_OPENAI_FORMALITY,
+  temperature: DEFAULT_OPENAI_TEMPERATURE,
+};
 
 export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
   private config: OpenAIConfig | null = null;
@@ -116,7 +113,7 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
   async setApiKey(apiKey: string): Promise<void> {
     await this.persistAndUpdateConfig(
       { openai_api_key: apiKey },
-      (config) => (config ? { ...config, apiKey } : createOpenAIConfig(apiKey))
+      (config) => updateCloudProviderApiKey(config, apiKey, OPENAI_DEFAULT_CONFIG)
     );
   }
 

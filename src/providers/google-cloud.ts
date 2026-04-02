@@ -4,7 +4,7 @@
  * https://cloud.google.com/translate/docs/reference/rest/v2/translate
  */
 
-import { CloudProvider } from './cloud-provider';
+import { CloudProvider, updateCloudProviderApiKey } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
 import { CONFIG } from '../config';
 import { fetchProviderJson, generateAllLanguagePairs } from './provider-utils';
@@ -35,10 +35,6 @@ interface GoogleDetectResponse {
       confidence: number;
     }>>;
   };
-}
-
-function createGoogleCloudConfig(apiKey: string): GoogleCloudConfig {
-  return { apiKey };
 }
 
 export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
@@ -93,7 +89,7 @@ export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
   async setApiKey(apiKey: string): Promise<void> {
     await this.persistAndUpdateConfig(
       { google_cloud_api_key: apiKey },
-      () => createGoogleCloudConfig(apiKey)
+      (config) => updateCloudProviderApiKey(config, apiKey, {})
     );
   }
 

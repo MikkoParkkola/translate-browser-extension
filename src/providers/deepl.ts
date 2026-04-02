@@ -4,7 +4,7 @@
  * https://www.deepl.com/docs-api
  */
 
-import { CloudProvider } from './cloud-provider';
+import { CloudProvider, createCloudProviderConfig } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
 import { fetchProviderJson, generateLanguagePairs } from './provider-utils';
 import { toDeepLCode, getDeepLSupportedLanguages } from '../core/language-map';
@@ -37,10 +37,6 @@ interface DeepLTranslateResponse {
 interface DeepLUsageResponse {
   character_count: number;
   character_limit: number;
-}
-
-function createDeepLConfig(apiKey: string, isPro: boolean, formality: DeepLFormality): DeepLConfig {
-  return { apiKey, isPro, formality };
 }
 
 export class DeepLProvider extends CloudProvider<DeepLConfig> {
@@ -97,7 +93,11 @@ export class DeepLProvider extends CloudProvider<DeepLConfig> {
   async setApiKey(apiKey: string, isPro: boolean = false): Promise<void> {
     await this.persistAndUpdateConfig(
       { deepl_api_key: apiKey, deepl_is_pro: isPro },
-      (config) => createDeepLConfig(apiKey, isPro, config?.formality ?? DEFAULT_DEEPL_FORMALITY)
+      (config) =>
+        createCloudProviderConfig(apiKey, {
+          isPro,
+          formality: config?.formality ?? DEFAULT_DEEPL_FORMALITY,
+        })
     );
   }
 

@@ -23,6 +23,23 @@ import type {
   CloudProviderStorageRecord,
 } from '../background/shared/provider-config-types';
 
+type ApiKeyConfig<TDefaults extends object> = { apiKey: string } & TDefaults;
+
+export function createCloudProviderConfig<TDefaults extends object>(
+  apiKey: string,
+  defaults: TDefaults
+): ApiKeyConfig<TDefaults> {
+  return { apiKey, ...defaults };
+}
+
+export function updateCloudProviderApiKey<TDefaults extends object>(
+  current: ApiKeyConfig<TDefaults> | null,
+  apiKey: string,
+  defaults: TDefaults
+): ApiKeyConfig<TDefaults> {
+  return current ? { ...current, apiKey } : createCloudProviderConfig(apiKey, defaults);
+}
+
 export abstract class CloudProvider<TConfig> extends BaseProvider {
   protected readonly log = createLogger(this.name);
 
