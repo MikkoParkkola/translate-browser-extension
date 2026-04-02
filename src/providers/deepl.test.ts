@@ -228,6 +228,15 @@ describe('DeepLProvider', () => {
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body.text[0].length).toBe(100);
     });
+
+    it('returns auto on HTTP error responses', async () => {
+      await provider.setApiKey('key:fx', false);
+
+      queueHttpError(456, 'Quota exceeded');
+
+      const result = await provider.detectLanguage('Hello');
+      expect(result).toBe('auto');
+    });
   });
 
   describe('getUsage', () => {

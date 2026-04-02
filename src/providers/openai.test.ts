@@ -306,6 +306,15 @@ describe('OpenAIProvider', () => {
       const result = await provider.detectLanguage('Hello');
       expect(result).toBe('auto');
     });
+
+    it('returns auto on HTTP error responses', async () => {
+      await provider.setApiKey('sk-key');
+
+      queueHttpError(401, 'Invalid API key');
+
+      const result = await provider.detectLanguage('Hello');
+      expect(result).toBe('auto');
+    });
   });
 
   describe('getUsage', () => {

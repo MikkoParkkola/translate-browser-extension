@@ -7,9 +7,9 @@
 import { CloudProvider, updateCloudProviderApiKey } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
 import { getLanguageName } from '../core/language-map';
-import { CONFIG } from '../config';
 import {
   buildTranslationPrompt,
+  detectProviderLanguageCode,
   fetchProviderJson,
   estimateMaxTokens,
   generateAllLanguagePairs,
@@ -232,8 +232,10 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
       return 'auto';
     }
 
-    try {
-      const response = await fetch(OPENAI_API, {
+    return detectProviderLanguageCode<OpenAIChatResponse>(
+      'OpenAI',
+      OPENAI_API,
+      {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${config.apiKey}`,
@@ -251,21 +253,10 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
           temperature: 0,
           max_tokens: 10,
         }),
-        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
-      });
-
-      if (response.ok) {
-        const data: OpenAIChatResponse = await response.json();
-        const detected = data.choices[0]?.message?.content?.trim().toLowerCase();
-        if (detected && detected.length === 2) {
-          return detected;
-        }
-      }
-    } catch (error) {
-      this.log.error('Language detection error:', error);
-    }
-
-    return 'auto';
+      },
+      (data) => data.choices[0]?.message?.content,
+      (message, error) => this.log.error(message, error),
+    );
   }
 
   async getUsage(): Promise<{

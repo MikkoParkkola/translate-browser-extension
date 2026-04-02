@@ -7,9 +7,9 @@
 import { CloudProvider, updateCloudProviderApiKey } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
 import { getLanguageName } from '../core/language-map';
-import { CONFIG } from '../config';
 import {
   buildTranslationPrompt,
+  detectProviderLanguageCode,
   fetchProviderJson,
   estimateMaxTokens,
   generateAllLanguagePairs,
@@ -236,8 +236,10 @@ export class AnthropicProvider extends CloudProvider<AnthropicConfig> {
       return 'auto';
     }
 
-    try {
-      const response = await fetch(ANTHROPIC_API, {
+    return detectProviderLanguageCode<AnthropicMessageResponse>(
+      'Anthropic',
+      ANTHROPIC_API,
+      {
         method: 'POST',
         headers: {
           'x-api-key': config.apiKey,
@@ -252,21 +254,10 @@ export class AnthropicProvider extends CloudProvider<AnthropicConfig> {
             { role: 'user', content: text.slice(0, 200) },
           ],
         }),
-        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
-      });
-
-      if (response.ok) {
-        const data: AnthropicMessageResponse = await response.json();
-        const detected = data.content[0]?.text?.trim().toLowerCase();
-        if (detected && detected.length === 2) {
-          return detected;
-        }
-      }
-    } catch (error) {
-      this.log.error('Language detection error:', error);
-    }
-
-    return 'auto';
+      },
+      (data) => data.content[0]?.text,
+      (message, error) => this.log.error(message, error),
+    );
   }
 
   async getUsage(): Promise<{

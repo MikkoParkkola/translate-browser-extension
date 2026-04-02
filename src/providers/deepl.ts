@@ -6,7 +6,7 @@
 
 import { CloudProvider, createCloudProviderConfig } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
-import { fetchProviderJson, generateLanguagePairs } from './provider-utils';
+import { detectProviderLanguageCode, fetchProviderJson, generateLanguagePairs } from './provider-utils';
 import { toDeepLCode, getDeepLSupportedLanguages } from '../core/language-map';
 import { CONFIG } from '../config';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
@@ -174,8 +174,10 @@ export class DeepLProvider extends CloudProvider<DeepLConfig> {
       return 'auto';
     }
 
-    try {
-      const response = await fetch(`${this.apiBase}/translate`, {
+    return detectProviderLanguageCode<DeepLTranslateResponse>(
+      'DeepL',
+      `${this.apiBase}/translate`,
+      {
         method: 'POST',
         headers: {
           'Authorization': `DeepL-Auth-Key ${config.apiKey}`,
@@ -185,21 +187,10 @@ export class DeepLProvider extends CloudProvider<DeepLConfig> {
           text: [text.slice(0, 100)], // Use small sample
           target_lang: 'EN',
         }),
-        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
-      });
-
-      if (response.ok) {
-        const data: DeepLTranslateResponse = await response.json();
-        const translation = data.translations?.[0];
-        if (translation?.detected_source_language) {
-          return translation.detected_source_language.toLowerCase();
-        }
-      }
-    } catch (error) {
-      this.log.error('Language detection error:', error);
-    }
-
-    return 'auto';
+      },
+      (data) => data.translations?.[0]?.detected_source_language,
+      (message, error) => this.log.error(message, error),
+    );
   }
 
   async getUsage(): Promise<{

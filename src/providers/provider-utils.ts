@@ -59,6 +59,32 @@ export async function fetchProviderJson<T>(
   return response.json() as Promise<T>;
 }
 
+function normalizeDetectedLanguageCode(detected: string | null | undefined): string {
+  const normalized = detected?.trim().toLowerCase();
+  return normalized && normalized.length === 2 ? normalized : 'auto';
+}
+
+/**
+ * Run provider-backed language detection through the shared fetch/error path.
+ * Detect-language callers intentionally fall back to "auto" on errors, but we
+ * still want those failures to flow through the same HTTP handling as translate().
+ */
+export async function detectProviderLanguageCode<T>(
+  providerName: string,
+  url: string,
+  options: RequestInit,
+  extractLanguageCode: (data: T) => string | null | undefined,
+  logError: (message: string, error: unknown) => void,
+): Promise<string> {
+  try {
+    const data = await fetchProviderJson<T>(providerName, url, options);
+    return normalizeDetectedLanguageCode(extractLanguageCode(data));
+  } catch (error) {
+    logError('Language detection error:', error);
+    return 'auto';
+  }
+}
+
 /**
  * Estimate maximum tokens needed for translation
  * Used by OpenAI and Anthropic providers for token limits

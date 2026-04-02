@@ -6,8 +6,7 @@
 
 import { CloudProvider, updateCloudProviderApiKey } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
-import { CONFIG } from '../config';
-import { fetchProviderJson, generateAllLanguagePairs } from './provider-utils';
+import { detectProviderLanguageCode, fetchProviderJson, generateAllLanguagePairs } from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
 import { extractGoogleCloudStoredRuntimeState } from '../background/shared/config-validation';
@@ -154,8 +153,10 @@ export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
     const url = new URL(`${GOOGLE_TRANSLATE_API}/detect`);
     url.searchParams.set('key', config.apiKey);
 
-    try {
-      const response = await fetch(url.toString(), {
+    return detectProviderLanguageCode<GoogleDetectResponse>(
+      'Google Cloud',
+      url.toString(),
+      {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -163,21 +164,10 @@ export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
         body: JSON.stringify({
           q: text.slice(0, 200),
         }),
-        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
-      });
-
-      if (response.ok) {
-        const data: GoogleDetectResponse = await response.json();
-        const detected = data.data.detections[0]?.[0]?.language;
-        if (detected) {
-          return detected;
-        }
-      }
-    } catch (error) {
-      this.log.error('Language detection error:', error);
-    }
-
-    return 'auto';
+      },
+      (data) => data.data.detections[0]?.[0]?.language,
+      (message, error) => this.log.error(message, error),
+    );
   }
 
   async getUsage(): Promise<{

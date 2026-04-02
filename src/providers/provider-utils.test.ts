@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { buildTranslationPrompt, generateLanguagePairs } from './provider-utils';
+import {
+  buildTranslationPrompt,
+  detectProviderLanguageCode,
+  generateLanguagePairs,
+} from './provider-utils';
 
 describe('generateLanguagePairs', () => {
   it('returns all non-identity pairs for the provided languages', () => {
@@ -60,5 +64,81 @@ describe('buildTranslationPrompt', () => {
     ).toBe(
       'You are an expert translator. Translate the provided text to Finnish.\n\nRules:\n- Output ONLY the translation, no explanations or notes\n- Preserve formatting (line breaks, punctuation)',
     );
+  });
+});
+
+describe('detectProviderLanguageCode', () => {
+  const fetchMock = vi.fn<typeof fetch>();
+  const logError = vi.fn<(message: string, error: unknown) => void>();
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockReset();
+    logError.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('normalizes detected provider codes to lowercase ISO-639-1 output', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ code: ' FI ' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await expect(
+      detectProviderLanguageCode<{ code: string }>(
+        'Example',
+        'https://example.test/detect',
+        { method: 'POST' },
+        (data) => data.code,
+        logError,
+      ),
+    ).resolves.toBe('fi');
+  });
+
+  it('returns auto and logs when the provider responds with an HTTP error', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response('Bad gateway', {
+        status: 502,
+        headers: { 'Content-Type': 'text/plain' },
+      }),
+    );
+
+    await expect(
+      detectProviderLanguageCode<{ code: string }>(
+        'Example',
+        'https://example.test/detect',
+        { method: 'POST' },
+        (data) => data.code,
+        logError,
+      ),
+    ).resolves.toBe('auto');
+    expect(logError).toHaveBeenCalledWith(
+      'Language detection error:',
+      expect.any(Error),
+    );
+  });
+
+  it('returns auto when the extracted language code is not ISO-639-1', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ code: 'English' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await expect(
+      detectProviderLanguageCode<{ code: string }>(
+        'Example',
+        'https://example.test/detect',
+        { method: 'POST' },
+        (data) => data.code,
+        logError,
+      ),
+    ).resolves.toBe('auto');
   });
 });
