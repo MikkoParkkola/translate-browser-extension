@@ -85,6 +85,7 @@ import {
   registerTranslationWebMcpTools,
   unregisterTranslationWebMcpTools,
   type PageToolSummary,
+  type TranslationWebMcpHandlers,
 } from './webmcp';
 
 const log = createLogger('Content');
@@ -305,7 +306,7 @@ function detectCurrentPageLanguage(text?: string): { lang: string; confidence: n
   return detectSampledLanguage(selectedText);
 }
 
-void registerTranslationWebMcpTools({
+const translationWebMcpHandlers: TranslationWebMcpHandlers = {
   translatePage: async ({ sourceLang, targetLang, strategy, provider }) => {
     const result = await translatePageContent(sourceLang, targetLang, strategy, provider, {
       agentInvoked: true,
@@ -321,7 +322,24 @@ void registerTranslationWebMcpTools({
       showTooltip: false,
     }),
   detectLanguage: async (text) => detectCurrentPageLanguage(text),
-});
+};
+
+function installWebMcpE2eHook(handlers: TranslationWebMcpHandlers): void {
+  if (!window.location.pathname.endsWith('/e2e/webmcp-harness.html')) return;
+
+  (window as Window & {
+    __translateWebMcpTest?: {
+      registerTools: () => Promise<boolean>;
+      unregisterTools: () => Promise<void>;
+    };
+  }).__translateWebMcpTest = {
+    registerTools: () => registerTranslationWebMcpTools(handlers),
+    unregisterTools: () => unregisterTranslationWebMcpTools(),
+  };
+}
+
+installWebMcpE2eHook(translationWebMcpHandlers);
+void registerTranslationWebMcpTools(translationWebMcpHandlers);
 
 // ============================================================================
 // MutationObserver for Dynamic Content

@@ -66,6 +66,40 @@ export async function sendExtensionMessage<T>(
   }, message);
 }
 
+export async function findTabIdByUrlFragment(
+  page: Page,
+  urlFragment: string
+): Promise<number> {
+  const tabId = await page.evaluate(async (fragment) => {
+    const tabs = await chrome.tabs.query({});
+    const tab = tabs.find((candidate) => typeof candidate.id === 'number' && candidate.url?.includes(fragment));
+    return tab?.id ?? null;
+  }, urlFragment);
+
+  expect(tabId).not.toBeNull();
+  return tabId as number;
+}
+
+export async function sendTabMessage<T>(
+  page: Page,
+  tabId: number,
+  message: Record<string, unknown>
+): Promise<T> {
+  const response = await page.evaluate(async ({ targetTabId, payload }) => {
+    return new Promise<unknown>((resolve, reject) => {
+      chrome.tabs.sendMessage(targetTabId, payload, (result) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(result);
+        }
+      });
+    });
+  }, { targetTabId: tabId, payload: message });
+
+  return response as T;
+}
+
 export async function setExtensionSettings(
   page: Page,
   settings: Record<string, unknown>
