@@ -13,6 +13,7 @@ interface OffscreenCloudProviderRuntimeUsage {
 interface OffscreenCloudProviderRuntime {
   initialize(): Promise<void>;
   isAvailable(): Promise<boolean>;
+  flush(): Promise<void>;
   translate(
     text: string | string[],
     sourceLang: string,
@@ -32,6 +33,7 @@ const OFFSCREEN_CLOUD_PROVIDER_RUNTIMES = {
   deepl: {
     initialize: () => deeplProvider.initialize(),
     isAvailable: () => deeplProvider.isAvailable(),
+    flush: () => deeplProvider.flush(),
     translate: (text, sourceLang, targetLang) => deeplProvider.translate(text, sourceLang, targetLang),
     getUsage: () => deeplProvider.getUsage(),
     unavailableMessage: 'DeepL API key not configured. Please configure in Settings.',
@@ -39,6 +41,7 @@ const OFFSCREEN_CLOUD_PROVIDER_RUNTIMES = {
   openai: {
     initialize: () => openaiProvider.initialize(),
     isAvailable: () => openaiProvider.isAvailable(),
+    flush: () => openaiProvider.flush(),
     translate: (text, sourceLang, targetLang) => openaiProvider.translate(text, sourceLang, targetLang),
     getUsage: () => openaiProvider.getUsage(),
     unavailableMessage: 'OpenAI API key not configured. Please configure in Settings.',
@@ -46,6 +49,7 @@ const OFFSCREEN_CLOUD_PROVIDER_RUNTIMES = {
   anthropic: {
     initialize: () => anthropicProvider.initialize(),
     isAvailable: () => anthropicProvider.isAvailable(),
+    flush: () => anthropicProvider.flush(),
     translate: (text, sourceLang, targetLang) => anthropicProvider.translate(text, sourceLang, targetLang),
     getUsage: () => anthropicProvider.getUsage(),
     unavailableMessage: 'Anthropic API key not configured. Please configure in Settings.',
@@ -53,6 +57,7 @@ const OFFSCREEN_CLOUD_PROVIDER_RUNTIMES = {
   'google-cloud': {
     initialize: () => googleCloudProvider.initialize(),
     isAvailable: () => googleCloudProvider.isAvailable(),
+    flush: () => googleCloudProvider.flush(),
     translate: (text, sourceLang, targetLang) => googleCloudProvider.translate(text, sourceLang, targetLang),
     getUsage: () => googleCloudProvider.getUsage(),
     unavailableMessage: 'Google Cloud API key not configured. Please configure in Settings.',
@@ -93,4 +98,10 @@ export async function getOffscreenCloudProviderUsage(
 
   await runtime.initialize();
   return runtime.getUsage();
+}
+
+export async function flushOffscreenCloudProviderTelemetry(): Promise<void> {
+  await Promise.all(
+    Object.values(OFFSCREEN_CLOUD_PROVIDER_RUNTIMES).map((runtime) => runtime.flush()),
+  );
 }

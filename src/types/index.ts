@@ -410,6 +410,11 @@ export interface GetCloudProviderUsageMessage {
   target?: string;
 }
 
+export interface FlushCloudProviderTelemetryMessage {
+  type: 'flushCloudProviderTelemetry';
+  target?: string;
+}
+
 // Profiling stats
 export interface GetProfilingStatsMessage {
   type: 'getProfilingStats';
@@ -545,6 +550,7 @@ export type ExtensionMessage =
   | ClearCloudApiKeyMessage
   | SetCloudProviderEnabledMessage
   | GetCloudProviderUsageMessage
+  | FlushCloudProviderTelemetryMessage
   | GetProfilingStatsMessage
   | ClearProfilingStatsMessage
   | GetHistoryMessage
@@ -589,6 +595,7 @@ export interface ExtensionMessageResponseMap {
   clearCloudApiKey: MessageResponse<{ provider: CloudProviderId }>;
   setCloudProviderEnabled: MessageResponse<{ provider: CloudProviderId; enabled: boolean }>;
   getCloudProviderUsage: MessageResponse<{ usage?: CloudProviderUsage }>;
+  flushCloudProviderTelemetry: MessageResponse;
   getProfilingStats: MessageResponse<{ aggregates: Record<string, unknown>; formatted: string }>;
   clearProfilingStats: MessageResponse;
   getHistory: { success: boolean; history: unknown[]; error?: string };

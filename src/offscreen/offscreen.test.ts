@@ -133,6 +133,7 @@ const mockDeeplInitialize = vi.fn().mockResolvedValue(undefined);
 const mockDeeplIsAvailable = vi.fn().mockResolvedValue(false);
 const mockDeeplTranslate = vi.fn().mockResolvedValue('deepl translated');
 const mockDeeplGetUsage = vi.fn().mockResolvedValue({ tokens: 100, cost: 0.002, limitReached: false });
+const mockDeeplFlush = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../providers/deepl', () => ({
   deeplProvider: {
@@ -140,6 +141,7 @@ vi.mock('../providers/deepl', () => ({
     isAvailable: (...args: unknown[]) => mockDeeplIsAvailable(...args),
     translate: (...args: unknown[]) => mockDeeplTranslate(...args),
     getUsage: (...args: unknown[]) => mockDeeplGetUsage(...args),
+    flush: (...args: unknown[]) => mockDeeplFlush(...args),
   },
 }));
 
@@ -148,6 +150,7 @@ const mockOpenaiInitialize = vi.fn().mockResolvedValue(undefined);
 const mockOpenaiIsAvailable = vi.fn().mockResolvedValue(false);
 const mockOpenaiTranslate = vi.fn().mockResolvedValue('openai translated');
 const mockOpenaiGetUsage = vi.fn().mockResolvedValue({ tokens: 200, cost: 0.004, limitReached: false });
+const mockOpenaiFlush = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../providers/openai', () => ({
   openaiProvider: {
@@ -155,6 +158,7 @@ vi.mock('../providers/openai', () => ({
     isAvailable: (...args: unknown[]) => mockOpenaiIsAvailable(...args),
     translate: (...args: unknown[]) => mockOpenaiTranslate(...args),
     getUsage: (...args: unknown[]) => mockOpenaiGetUsage(...args),
+    flush: (...args: unknown[]) => mockOpenaiFlush(...args),
   },
 }));
 
@@ -163,6 +167,7 @@ const mockAnthropicInitialize = vi.fn().mockResolvedValue(undefined);
 const mockAnthropicIsAvailable = vi.fn().mockResolvedValue(false);
 const mockAnthropicTranslate = vi.fn().mockResolvedValue('anthropic translated');
 const mockAnthropicGetUsage = vi.fn().mockResolvedValue({ tokens: 300, cost: 0.006, limitReached: false });
+const mockAnthropicFlush = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../providers/anthropic', () => ({
   anthropicProvider: {
@@ -170,6 +175,7 @@ vi.mock('../providers/anthropic', () => ({
     isAvailable: (...args: unknown[]) => mockAnthropicIsAvailable(...args),
     translate: (...args: unknown[]) => mockAnthropicTranslate(...args),
     getUsage: (...args: unknown[]) => mockAnthropicGetUsage(...args),
+    flush: (...args: unknown[]) => mockAnthropicFlush(...args),
   },
 }));
 
@@ -178,6 +184,7 @@ const mockGoogleInitialize = vi.fn().mockResolvedValue(undefined);
 const mockGoogleIsAvailable = vi.fn().mockResolvedValue(false);
 const mockGoogleTranslate = vi.fn().mockResolvedValue('google translated');
 const mockGoogleGetUsage = vi.fn().mockResolvedValue({ tokens: 400, cost: 0.008, limitReached: false });
+const mockGoogleFlush = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../providers/google-cloud', () => ({
   googleCloudProvider: {
@@ -185,6 +192,7 @@ vi.mock('../providers/google-cloud', () => ({
     isAvailable: (...args: unknown[]) => mockGoogleIsAvailable(...args),
     translate: (...args: unknown[]) => mockGoogleTranslate(...args),
     getUsage: (...args: unknown[]) => mockGoogleGetUsage(...args),
+    flush: (...args: unknown[]) => mockGoogleFlush(...args),
   },
 }));
 
@@ -302,18 +310,22 @@ beforeEach(() => {
   mockDeeplIsAvailable.mockResolvedValue(false);
   mockDeeplTranslate.mockResolvedValue('deepl translated');
   mockDeeplGetUsage.mockResolvedValue({ tokens: 100, cost: 0.002, limitReached: false });
+  mockDeeplFlush.mockResolvedValue(undefined);
   mockOpenaiInitialize.mockResolvedValue(undefined);
   mockOpenaiIsAvailable.mockResolvedValue(false);
   mockOpenaiTranslate.mockResolvedValue('openai translated');
   mockOpenaiGetUsage.mockResolvedValue({ tokens: 200, cost: 0.004, limitReached: false });
+  mockOpenaiFlush.mockResolvedValue(undefined);
   mockAnthropicInitialize.mockResolvedValue(undefined);
   mockAnthropicIsAvailable.mockResolvedValue(false);
   mockAnthropicTranslate.mockResolvedValue('anthropic translated');
   mockAnthropicGetUsage.mockResolvedValue({ tokens: 300, cost: 0.006, limitReached: false });
+  mockAnthropicFlush.mockResolvedValue(undefined);
   mockGoogleInitialize.mockResolvedValue(undefined);
   mockGoogleIsAvailable.mockResolvedValue(false);
   mockGoogleTranslate.mockResolvedValue('google translated');
   mockGoogleGetUsage.mockResolvedValue({ tokens: 400, cost: 0.008, limitReached: false });
+  mockGoogleFlush.mockResolvedValue(undefined);
   mockExtractTextFromImage.mockResolvedValue({ text: 'extracted text', confidence: 95, blocks: [] });
   mockTerminateOCR.mockResolvedValue(undefined);
   mockIsOnline.mockReturnValue(true);
@@ -1328,6 +1340,18 @@ describe('offscreen message handler', () => {
       expect(usage.tokens).toBe(0);
       expect(usage.cost).toBe(0);
       expect(usage.limitReached).toBe(false);
+    });
+  });
+
+  describe('flushCloudProviderTelemetry', () => {
+    it('flushes all offscreen cloud provider telemetry writers', async () => {
+      const response = await dispatch({ type: 'flushCloudProviderTelemetry' });
+
+      expect(response).toEqual({ success: true });
+      expect(mockDeeplFlush).toHaveBeenCalledTimes(1);
+      expect(mockOpenaiFlush).toHaveBeenCalledTimes(1);
+      expect(mockAnthropicFlush).toHaveBeenCalledTimes(1);
+      expect(mockGoogleFlush).toHaveBeenCalledTimes(1);
     });
   });
 

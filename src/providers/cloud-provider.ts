@@ -32,6 +32,11 @@ type UsageTrackedRuntimeState<TConfig extends { apiKey: string }, TUsageField ex
   config: TConfig;
 } & Record<TUsageField, number>;
 
+interface BestEffortPersistOperation {
+  items: CloudProviderStorageMutation;
+  failureMessage: string;
+}
+
 export function createCloudProviderConfig<TDefaults extends object>(
   apiKey: string,
   defaults: TDefaults
@@ -50,6 +55,8 @@ export function updateCloudProviderApiKey<TDefaults extends object>(
 export abstract class CloudProvider<TConfig extends { apiKey: string }> extends BaseProvider {
   protected readonly log = createLogger(this.name);
   private usageCounter = 0;
+  private pendingBestEffortPersist: Promise<void> | null = null;
+  private queuedBestEffortPersist: BestEffortPersistOperation | null = null;
 
   /**
    * Storage keys this provider reads during initialize() and removes during clearApiKey().
@@ -123,8 +130,15 @@ export abstract class CloudProvider<TConfig extends { apiKey: string }> extends 
   }
 
   async clearApiKey(): Promise<void> {
+    await this.flush();
     await strictStorageRemove(this.getStorageKeys());
     this.resetConfig();
+  }
+
+  async flush(): Promise<void> {
+    while (this.pendingBestEffortPersist) {
+      await this.pendingBestEffortPersist;
+    }
   }
 
   /**
@@ -159,11 +173,44 @@ export abstract class CloudProvider<TConfig extends { apiKey: string }> extends 
 
   /**
    * Best-effort persistence for counters/telemetry that must not fail the request path.
+   * Writes are serialized and coalesced so the latest counter value wins without
+   * firing overlapping storage writes.
    */
   protected persistBestEffort(items: CloudProviderStorageMutation, failureMessage: string): void {
-    /* v8 ignore start -- fire-and-forget persist */
-    void this.persist(items).catch((error) => this.log.warn(failureMessage, error));
-    /* v8 ignore stop */
+    const operation: BestEffortPersistOperation = { items, failureMessage };
+    if (this.pendingBestEffortPersist) {
+      this.queuedBestEffortPersist = operation;
+      return;
+    }
+
+    this.startBestEffortPersist(operation);
+  }
+
+  private startBestEffortPersist(operation: BestEffortPersistOperation): void {
+    this.pendingBestEffortPersist = (async () => {
+      let current: BestEffortPersistOperation | null = operation;
+
+      while (current) {
+        try {
+          await this.persist(current.items);
+        } catch (error) {
+          this.log.warn(current.failureMessage, error);
+        }
+
+        current = this.queuedBestEffortPersist;
+        this.queuedBestEffortPersist = null;
+      }
+    })().finally(() => {
+      this.pendingBestEffortPersist = null;
+
+      const queued = this.queuedBestEffortPersist;
+      if (!queued) {
+        return;
+      }
+
+      this.queuedBestEffortPersist = null;
+      this.startBestEffortPersist(queued);
+    });
   }
 
   /**

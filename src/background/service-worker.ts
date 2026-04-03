@@ -685,11 +685,30 @@ chrome.runtime.onStartup.addListener(() => {
   }
 })();
 
-// Flush pending cache writes when service worker is about to shut down.
+function flushCloudProviderTelemetryOnSuspend(): void {
+  void offscreenTransport
+    .send<'flushCloudProviderTelemetry'>({ type: 'flushCloudProviderTelemetry' })
+    .then((response) => {
+      if (response?.success === true) {
+        return;
+      }
+
+      log.warn(
+        'Cloud telemetry flush failed during suspend:',
+        response?.error ?? 'No response from offscreen document',
+      );
+    })
+    .catch((error) => {
+      log.debug('Cloud telemetry flush skipped during suspend:', error);
+    });
+}
+
+// Flush pending cache and telemetry writes when service worker is about to shut down.
 if (chrome.runtime.onSuspend) {
   chrome.runtime.onSuspend.addListener(() => {
-    log.info('Service worker suspending, flushing cache...');
+    log.info('Service worker suspending, flushing cache and cloud telemetry...');
     translationCache.flush();
+    flushCloudProviderTelemetryOnSuspend();
   });
 }
 /* v8 ignore stop */

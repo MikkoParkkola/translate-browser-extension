@@ -1,6 +1,7 @@
 import type {
   ClearCacheMessage,
   CloudProviderUsage,
+  FlushCloudProviderTelemetryMessage,
   GetCloudProviderUsageMessage,
   GetProfilingStatsMessage,
   GetSupportedLanguagesMessage,
@@ -81,6 +82,7 @@ export type OffscreenMessage =
   | TargetedOffscreenMessage<ClearCacheMessage>
   | OffscreenClearPipelineCacheMessage
   | TargetedOffscreenMessage<GetCloudProviderUsageMessage>
+  | TargetedOffscreenMessage<FlushCloudProviderTelemetryMessage>
   | TargetedOffscreenMessage<OCRImageMessage>
   | OffscreenTerminateOCRMessage
   | OffscreenCropImageMessage;
@@ -104,6 +106,7 @@ export interface OffscreenMessageResponseMap {
   clearCache: MessageResponse<{ cleared: true }>;
   clearPipelineCache: MessageResponse<{ cleared: true }>;
   getCloudProviderUsage: MessageResponse<{ usage: CloudProviderUsage }>;
+  flushCloudProviderTelemetry: MessageResponse;
   ocrImage: MessageResponse<{ text: string; confidence: number; blocks: OCRBlock[] }>;
   terminateOCR: MessageResponse;
   cropImage: MessageResponse<{ imageData: string }>;

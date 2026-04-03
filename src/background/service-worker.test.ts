@@ -35,7 +35,11 @@ const serviceWorkerChromeMock = setupChromeApiMock({
     sendMessage: vi.fn((message, callback) => {
       const response = mockSendMessage(message);
       if (callback && typeof callback === 'function') {
-        Promise.resolve(response).then(callback);
+        Promise.resolve(response).then(
+          (value) => callback(value),
+          () => callback(undefined),
+        );
+        return undefined;
       }
       return response;
     }),
@@ -72,6 +76,29 @@ const serviceWorkerChromeMock = setupChromeApiMock({
 const chromeTabsScriptingMocks = setupChromeTabsScriptingMocks(
   serviceWorkerChromeMock.chrome,
 );
+const suspendListeners: Array<() => void> = [];
+(
+  serviceWorkerChromeMock.chrome.runtime as typeof serviceWorkerChromeMock.chrome.runtime & {
+    onSuspend: {
+      addListener: ReturnType<typeof vi.fn>;
+      removeListener: ReturnType<typeof vi.fn>;
+      hasListener: ReturnType<typeof vi.fn>;
+      _listeners: Array<() => void>;
+    };
+  }
+).onSuspend = {
+  addListener: vi.fn((listener: () => void) => {
+    suspendListeners.push(listener);
+  }),
+  removeListener: vi.fn((listener: () => void) => {
+    const index = suspendListeners.indexOf(listener);
+    if (index >= 0) {
+      suspendListeners.splice(index, 1);
+    }
+  }),
+  hasListener: vi.fn((listener: () => void) => suspendListeners.includes(listener)),
+  _listeners: suspendListeners,
+};
 
 const mockAddMessageListener = serviceWorkerChromeMock.events.runtime.onMessage.addListener;
 const mockAddInstalledListener = serviceWorkerChromeMock.events.runtime.onInstalled.addListener;
@@ -81,6 +108,11 @@ const mockAddTabsUpdatedListener = serviceWorkerChromeMock.events.tabs.onUpdated
 const mockAddCommandListener = serviceWorkerChromeMock.events.commands.onCommand.addListener;
 const mockAddContextMenuClickedListener = serviceWorkerChromeMock.events.contextMenus.onClicked.addListener;
 const mockAddConnectListener = serviceWorkerChromeMock.events.runtime.onConnect.addListener;
+const mockAddSuspendListener = (
+  serviceWorkerChromeMock.chrome.runtime as typeof serviceWorkerChromeMock.chrome.runtime & {
+    onSuspend: { addListener: ReturnType<typeof vi.fn> };
+  }
+).onSuspend.addListener;
 const mockStorageSet = serviceWorkerChromeMock.chrome.storage.local.set;
 const mockStorageRemove = serviceWorkerChromeMock.chrome.storage.local.remove;
 const waitForAsyncChromeWork = (ms = 50) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -119,7 +151,11 @@ function restoreRuntimeSendMessageWrapper(response = DEFAULT_TRANSLATED_TEXT_RES
   vi.mocked(chrome.runtime.sendMessage).mockImplementation(((message: any, callback: any) => {
     const runtimeResponse = mockSendMessage(message);
     if (callback && typeof callback === 'function') {
-      Promise.resolve(runtimeResponse).then(callback);
+      Promise.resolve(runtimeResponse).then(
+        (value) => callback(value),
+        () => callback(undefined),
+      );
+      return undefined;
     }
     return runtimeResponse;
   }) as any);
@@ -186,6 +222,10 @@ describe('Service Worker', () => {
 
     it('registers startup handler', () => {
       expect(mockAddStartupListener).toHaveBeenCalled();
+    });
+
+    it('registers suspend handler', () => {
+      expect(mockAddSuspendListener).toHaveBeenCalled();
     });
 
     it('registers tabs updated handler for predictive preloading', () => {
@@ -2179,15 +2219,19 @@ describe('Service Worker Extended Handler Coverage', () => {
   // flushCacheSave via onSuspend
   // --------------------------------------------------------------------------
   describe('onSuspend handler', () => {
-    it('fires flush on suspend if chrome.runtime.onSuspend is present', async () => {
-      // The service worker registers an onSuspend listener. Simulate it.
-      // chrome.runtime.onSuspend is not mocked but the service worker code
-      // guards with `if (chrome.runtime.onSuspend)`. We test that the suspend
-      // machinery does not throw by invoking it through the captured mock.
+    it('fires cache flush and offscreen telemetry flush on suspend if chrome.runtime.onSuspend is present', async () => {
+      // The service worker registers an onSuspend listener. Simulate it through
+      // the captured event listeners and verify both shutdown flush paths run.
       mockStorageSet.mockClear();
+      restoreRuntimeSendMessageWrapper({ success: true });
+      mockSendMessage.mockImplementation((message: { type?: string }) => {
+        if (message.type === 'flushCloudProviderTelemetry') {
+          return { success: true };
+        }
+        return { success: true, result: 'suspend test' };
+      });
 
       // Trigger a translation to create a pending save timer
-      mockSendMessage.mockReturnValue({ success: true, result: 'suspend test' });
       await invoke({
         type: 'translate',
         text: `Suspend flush test unique alpha ${Math.random()}`,
@@ -2200,7 +2244,13 @@ describe('Service Worker Extended Handler Coverage', () => {
       const suspendHandler = (chrome.runtime as unknown as { onSuspend?: { addListener: (fn: () => void) => void; _listeners?: Array<() => void> } }).onSuspend;
       if (suspendHandler && typeof suspendHandler === 'object' && '_listeners' in suspendHandler) {
         // Implementation-defined listener storage
+        expect((suspendHandler._listeners as Array<() => void>).length).toBeGreaterThan(0);
         (suspendHandler._listeners as Array<() => void>).forEach((fn) => fn());
+        await waitForAsyncChromeWork();
+        expect(mockSendMessage).toHaveBeenCalledWith({
+          type: 'flushCloudProviderTelemetry',
+          target: 'offscreen',
+        });
       } else {
         // The onSuspend mock may not exist - just verify translate succeeded
         expect(true).toBe(true);

@@ -34,6 +34,7 @@ import { translateWithGemma, getTranslateGemmaPipeline, detectWebGPU, detectWebN
 import { getChromeTranslator, isChromeTranslatorAvailable } from '../providers/chrome-translator';
 import { DEFAULT_PROVIDER_ID } from '../shared/provider-options';
 import {
+  flushOffscreenCloudProviderTelemetry,
   getOffscreenCloudProviderUsage,
   isOffscreenCloudProviderRuntimeId,
   translateWithOffscreenCloudProvider,
@@ -647,6 +648,10 @@ const offscreenMessageHandlers: OffscreenMessageHandlers = {
     success: true,
     usage: await getOffscreenCloudProviderUsage(message.provider),
   }),
+  flushCloudProviderTelemetry: async () => {
+    await flushOffscreenCloudProviderTelemetry();
+    return { success: true };
+  },
   ocrImage: async (message) => {
     log.info('Processing OCR request...');
     const ocrResult: OCRResult = await extractTextFromImage(message.imageData, message.lang);
