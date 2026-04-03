@@ -24,9 +24,9 @@ import type {
 } from '../types';
 import { createLogger } from './logger';
 import { supportsOpusMtLanguagePair } from '../offscreen/model-maps';
+import { canonicalizeLegacyTranslationProviderId } from '../shared/provider-options';
 
 const log = createLogger('Router');
-const LEGACY_OPUS_PROVIDER_ID = 'opus-mt-local';
 
 interface ProviderCandidate {
   provider: TranslationProvider;
@@ -44,15 +44,13 @@ const DEFAULT_PREFERENCES: RouterPreferences = {
   primaryProvider: 'opus-mt',
 };
 
-function normalizeRouterProviderId(providerId: string): string {
-  return providerId === LEGACY_OPUS_PROVIDER_ID ? 'opus-mt' : providerId;
-}
-
 function normalizeRouterPreferences(preferences: RouterPreferences): RouterPreferences {
   return {
     ...preferences,
-    enabledProviders: [...new Set(preferences.enabledProviders.map(normalizeRouterProviderId))],
-    primaryProvider: normalizeRouterProviderId(preferences.primaryProvider),
+    enabledProviders: [
+      ...new Set(preferences.enabledProviders.map(canonicalizeLegacyTranslationProviderId)),
+    ],
+    primaryProvider: canonicalizeLegacyTranslationProviderId(preferences.primaryProvider),
   };
 }
 

@@ -11,10 +11,12 @@
 import type { TranslationProviderId, Strategy } from '../types';
 import { createLogger } from './logger';
 import { browserAPI } from './browser-api';
-import { isTranslationProviderId } from '../shared/provider-options';
+import {
+  canonicalizeLegacyTranslationProviderId,
+  isTranslationProviderId,
+} from '../shared/provider-options';
 
 const log = createLogger('SiteRules');
-const LEGACY_OPUS_PROVIDER_ID = 'opus-mt-local';
 
 export interface SiteRules {
   autoTranslate: boolean;
@@ -39,8 +41,8 @@ interface PersistedSiteRulesStore {
 const STORAGE_KEY = 'siteRules';
 
 function normalizeSiteRule(rule: PersistedSiteRules): SiteRules {
-  const preferredProvider = rule.preferredProvider === LEGACY_OPUS_PROVIDER_ID
-    ? 'opus-mt'
+  const preferredProvider = rule.preferredProvider
+    ? canonicalizeLegacyTranslationProviderId(rule.preferredProvider)
     : rule.preferredProvider;
 
   return {

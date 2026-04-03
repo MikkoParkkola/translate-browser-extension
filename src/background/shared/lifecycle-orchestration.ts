@@ -1,5 +1,9 @@
 import type { TranslationProviderId } from '../../types';
-import { normalizeTranslationProviderId } from '../../shared/provider-options';
+import {
+  canonicalizeLegacyTranslationProviderId,
+  LEGACY_OPUS_PROVIDER_ID,
+  normalizeTranslationProviderId,
+} from '../../shared/provider-options';
 
 export interface LifecycleLogger {
   info: (message: string, ...args: unknown[]) => void;
@@ -125,10 +129,13 @@ export async function restorePersistedProvider({
 }: RestorePersistedProviderDependencies): Promise<void> {
   const storedProvider = await readStoredProvider();
   if (storedProvider !== undefined) {
-    const restoredProvider = normalizeTranslationProviderId(storedProvider);
-    if (storedProvider === 'opus-mt-local') {
+    const canonicalStoredProvider = typeof storedProvider === 'string'
+      ? canonicalizeLegacyTranslationProviderId(storedProvider)
+      : storedProvider;
+    const restoredProvider = normalizeTranslationProviderId(canonicalStoredProvider);
+    if (storedProvider === LEGACY_OPUS_PROVIDER_ID) {
       log.info('Migrated legacy stored provider alias to opus-mt');
-    } else if (restoredProvider !== storedProvider) {
+    } else if (restoredProvider !== canonicalStoredProvider) {
       log.warn('Ignoring invalid stored provider:', storedProvider);
     }
     setProvider(restoredProvider);

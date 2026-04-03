@@ -28,6 +28,7 @@ export type ProviderUiBadge = 'recommended' | 'preferred-native' | 'api-key' | '
 export type ProviderRuntimeRequirement = 'webgpu-or-webnn' | 'chrome-138';
 
 export const DEFAULT_PROVIDER_ID: LocalProviderId = 'opus-mt';
+export const LEGACY_OPUS_PROVIDER_ID = 'opus-mt-local';
 
 export interface ModelInfo {
   id: TranslationProviderId;
@@ -539,14 +540,16 @@ export function isTranslationProviderId(value: unknown): value is TranslationPro
   return typeof value === 'string' && TRANSLATION_PROVIDER_ID_SET.has(value);
 }
 
+export function canonicalizeLegacyTranslationProviderId(value: string): string {
+  return value === LEGACY_OPUS_PROVIDER_ID ? 'opus-mt' : value;
+}
+
 export function normalizeTranslationProviderId(
   value: unknown,
   fallback: TranslationProviderId = DEFAULT_PROVIDER_ID
 ): TranslationProviderId {
-  // Legacy compatibility: older router/site-rule data persisted the internal
-  // OPUS implementation id instead of the canonical provider contract id.
-  if (value === 'opus-mt-local') {
-    return 'opus-mt';
+  if (typeof value === 'string') {
+    value = canonicalizeLegacyTranslationProviderId(value);
   }
   return isTranslationProviderId(value) ? value : fallback;
 }

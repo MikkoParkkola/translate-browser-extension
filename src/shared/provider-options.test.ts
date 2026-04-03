@@ -5,6 +5,8 @@ import {
   CLOUD_PROVIDER_IDS,
   MODEL_SELECTOR_DOWNLOADABLE_MODELS,
   TRANSLATION_PROVIDER_IDS,
+  canonicalizeLegacyTranslationProviderId,
+  LEGACY_OPUS_PROVIDER_ID,
   getProviderDefinition,
   getProviderModelInfo,
   getProviderRuntimeRequirementLabel,
@@ -55,6 +57,12 @@ describe('provider-options guards', () => {
 
   it('normalizes the legacy opus provider alias', () => {
     expect(normalizeTranslationProviderId('opus-mt-local')).toBe('opus-mt');
+  });
+
+  it('canonicalizes only the legacy provider alias without forcing validation', () => {
+    expect(canonicalizeLegacyTranslationProviderId(LEGACY_OPUS_PROVIDER_ID)).toBe('opus-mt');
+    expect(canonicalizeLegacyTranslationProviderId('deepl')).toBe('deepl');
+    expect(canonicalizeLegacyTranslationProviderId('invalid-provider')).toBe('invalid-provider');
   });
 
   it('accepts cloud provider ids only for cloud guard', () => {
