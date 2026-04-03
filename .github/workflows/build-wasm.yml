@@ -61,7 +61,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
-          git add -A src/wasm/vendor src/wllama-single.wasm src/wllama-multi.wasm src/wllama.bundle.js
+          git add -A src/wasm/vendor
           git commit -m "ci: refresh WASM vendor assets" || echo "No changes"
           git push || true
 
@@ -93,6 +93,3 @@ jobs:
           test -f src/wasm/vendor/pdf-lib.js
           test -f src/wasm/vendor/fonts/NotoSans-Regular.ttf
           test -f src/wasm/vendor/fonts/NotoSans-Bold.ttf
-          test -f src/wllama-single.wasm
-          test -f src/wllama-multi.wasm
-          test -f src/wllama.bundle.js

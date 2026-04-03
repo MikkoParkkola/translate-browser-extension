@@ -26,7 +26,7 @@ TRANSLATE! is a multi-provider browser translation extension that ships on Chrom
 #### Shipping status
 - **Stable**: `chrome-builtin`, `opus-mt`, and configured cloud providers
 - **Experimental**: `translategemma`
-- Legacy router / `llama.cpp` / `wllama` surfaces should not be treated as the canonical shipped runtime.
+- Legacy `localModel` / `llama.cpp` / `wllama` surfaces were removed after they were confirmed to be quarantined and unused by shipped entry points.
 
 ### Provider Routing System
 

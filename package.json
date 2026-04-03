@@ -119,7 +119,6 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
-    "@wllama/wllama": "^2.3.7",
     "franc-min": "^6.2.0",
     "mupdf": "^1.26.4",
     "pdfjs-dist": "^5.4.54",

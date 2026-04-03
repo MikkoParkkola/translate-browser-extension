@@ -8,7 +8,7 @@
 
 ## System Overview
 
-The Translate by Mikko Extension is a Chrome/Safari browser extension that provides real-time web page translation using multiple AI translation providers. The system has been refactored from a monolithic architecture to a modular, microservice-inspired design optimized for browser extension constraints. The shipped local inference path is the offscreen OPUS-MT + TranslateGemma stack; older `localModel` / `llama.cpp` surfaces remain experimental and are not wired into popup/provider routing.
+The Translate by Mikko Extension is a Chrome/Safari browser extension that provides real-time web page translation using multiple AI translation providers. The system has been refactored from a monolithic architecture to a modular, microservice-inspired design optimized for browser extension constraints. The shipped local inference path is the offscreen OPUS-MT + TranslateGemma stack; the previously quarantined `localModel` / `llama.cpp` prototype was removed after it was confirmed to be unused by shipped popup/background/offscreen entry points.
 
 ### Key Design Decisions
 

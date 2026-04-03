@@ -1,5 +1,7 @@
 # Translate Extension: WASM → WebGPU Migration
 
+> Historical note: this handoff refers to a removed `localModel` / `llama.cpp` prototype. It is kept for research context only; the shipped local runtime is the offscreen TranslateGemma path.
+
 ## Problem
 TranslateGemma model loading fails with `RangeError: Array buffer allocation failed` because:
 - `llamacpp-worker.js` loads entire GGUF model into single `Uint8Array` (line 23)
