@@ -16,6 +16,7 @@ export interface InspectableCloudProviderLifecycle {
   isAvailable(): Promise<boolean>;
   clearApiKey(): Promise<void>;
   getInfo(): object;
+  getUsage(): Promise<CloudProviderUsage>;
 }
 
 type InspectableCloudProvider = InspectableCloudProviderLifecycle &
@@ -38,6 +39,13 @@ export interface CloudProviderInfoExpectation {
   costPerMillion: number;
 }
 
+export interface CloudProviderUsage {
+  requests: number;
+  tokens: number;
+  cost: number;
+  limitReached: boolean;
+}
+
 export interface CloudProviderLifecycleContractSpec<
   TProvider extends InspectableCloudProvider,
 > {
@@ -52,6 +60,7 @@ export interface CloudProviderLifecycleContractSpec<
   expectedInfo: CloudProviderInfoExpectation;
   seedConfiguredStorage(storage: Record<string, unknown>): void;
   assertLoadedInfo(info: InspectableProviderInfo): void;
+  assertLoadedUsage?(usage: CloudProviderUsage): void;
   configure(provider: TProvider): Promise<void>;
   assertConfiguredStorage(storage: Record<string, unknown>): void;
   assertConfiguredInfo?(info: InspectableProviderInfo): void;
@@ -401,6 +410,7 @@ export function defineCloudProviderLifecycleContract<
       expect(provider.hasConfig()).toBe(true);
       expect(await provider.isAvailable()).toBe(true);
       spec.assertLoadedInfo(provider.getInfo() as InspectableProviderInfo);
+      spec.assertLoadedUsage?.(await provider.getUsage());
     });
 
     it('stores config through the provider mutation path', async () => {

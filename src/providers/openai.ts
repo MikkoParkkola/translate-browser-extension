@@ -75,7 +75,6 @@ const OPENAI_DEFAULT_CONFIG: Omit<OpenAIConfig, 'apiKey'> = {
 
 export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
   private config: OpenAIConfig | null = null;
-  private totalTokensUsed = 0;
 
   constructor() {
     super({
@@ -93,20 +92,20 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
   }
 
   protected applyStoredConfig(stored: CloudProviderStorageRecord): void {
-    const runtimeState = extractOpenAIStoredRuntimeState(stored);
-    if (!runtimeState) {
-      this.resetConfig();
+    const config = this.applyStoredUsageConfig(
+      extractOpenAIStoredRuntimeState(stored),
+      'tokensUsed',
+    );
+    if (!config) {
       return;
     }
 
-    this.config = runtimeState.config;
-    this.totalTokensUsed = runtimeState.tokensUsed;
-    this.log.info('Initialized with model:', this.config.model);
+    this.log.info('Initialized with model:', config.model);
   }
 
   protected resetConfig(): void {
     this.config = null;
-    this.totalTokensUsed = 0;
+    this.resetUsageCounter();
   }
 
   protected getConfigState(): OpenAIConfig | null {
@@ -202,9 +201,9 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
 
       // Track token usage
       if (data.usage) {
-        this.totalTokensUsed += data.usage.total_tokens;
-        this.persistBestEffort(
-          { openai_tokens_used: this.totalTokensUsed },
+        this.trackUsageCounter(
+          data.usage.total_tokens,
+          'openai_tokens_used',
           'Failed to persist token usage:'
         );
       }
@@ -273,15 +272,11 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
       'gpt-3.5-turbo': 0.0005,
     };
 
+    const totalTokensUsed = this.getUsageCounter();
     const rate = costPer1K[this.config?.model ?? DEFAULT_OPENAI_MODEL];
-    const cost = (this.totalTokensUsed / 1000) * rate;
+    const cost = (totalTokensUsed / 1000) * rate;
 
-    return {
-      requests: 0,
-      tokens: this.totalTokensUsed,
-      cost,
-      limitReached: false,
-    };
+    return this.buildTrackedUsage(cost);
   }
 
   getSupportedLanguages(): LanguagePair[] {

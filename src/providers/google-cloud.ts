@@ -43,7 +43,6 @@ interface GoogleDetectResponse {
 
 export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
   private config: GoogleCloudConfig | null = null;
-  private charactersUsed = 0;
 
   constructor() {
     super({
@@ -61,20 +60,16 @@ export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
   }
 
   protected applyStoredConfig(stored: CloudProviderStorageRecord): void {
-    const runtimeState = extractGoogleCloudStoredRuntimeState(stored);
-    if (!runtimeState) {
-      this.resetConfig();
+    if (!this.applyStoredUsageConfig(extractGoogleCloudStoredRuntimeState(stored), 'charactersUsed')) {
       return;
     }
 
-    this.config = runtimeState.config;
-    this.charactersUsed = runtimeState.charactersUsed;
     this.log.info('Initialized');
   }
 
   protected resetConfig(): void {
     this.config = null;
-    this.charactersUsed = 0;
+    this.resetUsageCounter();
   }
 
   protected getConfigState(): GoogleCloudConfig | null {
@@ -138,9 +133,9 @@ export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
 
       // Track character usage only after the response satisfies the provider contract.
       const charsUsed = texts.reduce((sum, t) => sum + t.length, 0);
-      this.charactersUsed += charsUsed;
-      this.persistBestEffort(
-        { google_cloud_chars_used: this.charactersUsed },
+      this.trackUsageCounter(
+        charsUsed,
+        'google_cloud_chars_used',
         'Failed to persist char usage:'
       );
 
@@ -186,12 +181,8 @@ export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
     cost: number;
     limitReached: boolean;
   }> {
-    return {
-      requests: 0,
-      tokens: this.charactersUsed,
-      cost: (this.charactersUsed / 1000000) * this.costPerMillion,
-      limitReached: false,
-    };
+    const charactersUsed = this.getUsageCounter();
+    return this.buildTrackedUsage((charactersUsed / 1000000) * this.costPerMillion);
   }
 
   getSupportedLanguages(): LanguagePair[] {
@@ -201,7 +192,7 @@ export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
   getInfo(): ProviderConfig & { charactersUsed: number } {
     return {
       ...super.getInfo(),
-      charactersUsed: this.charactersUsed,
+      charactersUsed: this.getUsageCounter(),
     };
   }
 }

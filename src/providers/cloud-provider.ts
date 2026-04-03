@@ -22,11 +22,15 @@ import { createTranslationError } from '../core/errors';
 import { createLogger } from '../core/logger';
 import type { ProviderConfig } from '../types';
 import type {
+  CloudProviderStorageKey,
   CloudProviderStorageMutation,
   CloudProviderStorageRecord,
 } from '../background/shared/provider-config-types';
 
 type ApiKeyConfig<TDefaults extends object> = { apiKey: string } & TDefaults;
+type UsageTrackedRuntimeState<TConfig extends { apiKey: string }, TUsageField extends string> = {
+  config: TConfig;
+} & Record<TUsageField, number>;
 
 export function createCloudProviderConfig<TDefaults extends object>(
   apiKey: string,
@@ -45,6 +49,7 @@ export function updateCloudProviderApiKey<TDefaults extends object>(
 
 export abstract class CloudProvider<TConfig extends { apiKey: string }> extends BaseProvider {
   protected readonly log = createLogger(this.name);
+  private usageCounter = 0;
 
   /**
    * Storage keys this provider reads during initialize() and removes during clearApiKey().
@@ -159,6 +164,71 @@ export abstract class CloudProvider<TConfig extends { apiKey: string }> extends 
     /* v8 ignore start -- fire-and-forget persist */
     void this.persist(items).catch((error) => this.log.warn(failureMessage, error));
     /* v8 ignore stop */
+  }
+
+  /**
+   * Hydrate provider config plus a persisted usage counter from validated runtime state.
+   */
+  protected applyStoredUsageConfig<TUsageField extends string>(
+    runtimeState: UsageTrackedRuntimeState<TConfig, TUsageField> | null,
+    usageField: TUsageField,
+  ): TConfig | null {
+    if (!runtimeState) {
+      this.resetConfig();
+      return null;
+    }
+
+    this.setConfigState(runtimeState.config);
+    this.usageCounter = runtimeState[usageField];
+
+    return runtimeState.config;
+  }
+
+  /**
+   * Reset the in-memory usage counter for providers that track persisted telemetry.
+   */
+  protected resetUsageCounter(): void {
+    this.usageCounter = 0;
+  }
+
+  /**
+   * Read the current in-memory usage counter.
+   */
+  protected getUsageCounter(): number {
+    return this.usageCounter;
+  }
+
+  /**
+   * Increment the usage counter and persist it best-effort without affecting the request path.
+   */
+  protected trackUsageCounter(
+    delta: number,
+    storageKey: CloudProviderStorageKey,
+    failureMessage: string,
+  ): number {
+    this.usageCounter += delta;
+    this.persistBestEffort(
+      { [storageKey]: this.usageCounter } as CloudProviderStorageMutation,
+      failureMessage,
+    );
+    return this.usageCounter;
+  }
+
+  /**
+   * Build the shared usage response shape for providers with a single persisted counter.
+   */
+  protected buildTrackedUsage(cost: number): {
+    requests: number;
+    tokens: number;
+    cost: number;
+    limitReached: boolean;
+  } {
+    return {
+      requests: 0,
+      tokens: this.usageCounter,
+      cost,
+      limitReached: false,
+    };
   }
 
   getInfo(): ProviderConfig {

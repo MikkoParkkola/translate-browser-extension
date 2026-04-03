@@ -35,6 +35,9 @@ defineCloudProviderLifecycleContract({
     expect(info.model).toBe('claude-sonnet-4-20250514');
     expect(info.formality).toBe('formal');
   },
+  assertLoadedUsage(usage) {
+    expect(usage.tokens).toBe(100);
+  },
   async configure(provider) {
     await provider.setApiKey('sk-ant-test');
   },
@@ -81,6 +84,9 @@ defineCloudProviderLifecycleContract({
   assertLoadedInfo(info) {
     expect(info.model).toBe('gpt-4o');
     expect(info.formality).toBe('formal');
+  },
+  assertLoadedUsage(usage) {
+    expect(usage.tokens).toBe(100);
   },
   async configure(provider) {
     await provider.setApiKey('sk-openai-test');
@@ -170,6 +176,9 @@ defineCloudProviderLifecycleContract({
   },
   assertLoadedInfo(info) {
     expect(info.charactersUsed).toBe(1000);
+  },
+  assertLoadedUsage(usage) {
+    expect(usage.tokens).toBe(1000);
   },
   async configure(provider) {
     await provider.setApiKey('AIza-test-key');

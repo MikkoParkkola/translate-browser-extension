@@ -79,7 +79,6 @@ const ANTHROPIC_DEFAULT_CONFIG: Omit<AnthropicConfig, 'apiKey'> = {
 
 export class AnthropicProvider extends CloudProvider<AnthropicConfig> {
   private config: AnthropicConfig | null = null;
-  private totalTokensUsed = 0;
 
   constructor() {
     super({
@@ -97,20 +96,20 @@ export class AnthropicProvider extends CloudProvider<AnthropicConfig> {
   }
 
   protected applyStoredConfig(stored: CloudProviderStorageRecord): void {
-    const runtimeState = extractAnthropicStoredRuntimeState(stored);
-    if (!runtimeState) {
-      this.resetConfig();
+    const config = this.applyStoredUsageConfig(
+      extractAnthropicStoredRuntimeState(stored),
+      'tokensUsed',
+    );
+    if (!config) {
       return;
     }
 
-    this.config = runtimeState.config;
-    this.totalTokensUsed = runtimeState.tokensUsed;
-    this.log.info('Initialized with model:', this.config.model);
+    this.log.info('Initialized with model:', config.model);
   }
 
   protected resetConfig(): void {
     this.config = null;
-    this.totalTokensUsed = 0;
+    this.resetUsageCounter();
   }
 
   protected getConfigState(): AnthropicConfig | null {
@@ -199,9 +198,9 @@ export class AnthropicProvider extends CloudProvider<AnthropicConfig> {
 
       // Track token usage
       if (data.usage) {
-        this.totalTokensUsed += data.usage.input_tokens + data.usage.output_tokens;
-        this.persistBestEffort(
-          { anthropic_tokens_used: this.totalTokensUsed },
+        this.trackUsageCounter(
+          data.usage.input_tokens + data.usage.output_tokens,
+          'anthropic_tokens_used',
           'Failed to persist token usage:'
         );
       }
@@ -274,15 +273,11 @@ export class AnthropicProvider extends CloudProvider<AnthropicConfig> {
       'claude-3-5-sonnet-20241022': 0.003,
     };
 
+    const totalTokensUsed = this.getUsageCounter();
     const rate = costPer1K[this.config?.model ?? DEFAULT_ANTHROPIC_MODEL];
-    const cost = (this.totalTokensUsed / 1000) * rate;
+    const cost = (totalTokensUsed / 1000) * rate;
 
-    return {
-      requests: 0,
-      tokens: this.totalTokensUsed,
-      cost,
-      limitReached: false,
-    };
+    return this.buildTrackedUsage(cost);
   }
 
   getSupportedLanguages(): LanguagePair[] {
