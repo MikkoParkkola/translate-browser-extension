@@ -76,8 +76,16 @@ import {
 } from './bilingual';
 import {
   resolveSourceLang,
+  detectSampledLanguage,
   translateWithStreaming,
 } from './translation-helpers';
+import {
+  maybeTranslatePageWithSiteTool,
+  maybeTranslateSelectionWithSiteTool,
+  registerTranslationWebMcpTools,
+  unregisterTranslationWebMcpTools,
+  type PageToolSummary,
+} from './webmcp';
 
 const log = createLogger('Content');
 
@@ -127,27 +135,51 @@ async function translateSelection(
   sourceLang: string,
   targetLang: string,
   strategy: Strategy,
-  provider?: string
-): Promise<void> {
+  provider?: TranslationProviderId,
+  options: {
+    agentInvoked?: boolean;
+    showTooltip?: boolean;
+  } = {}
+): Promise<string | null> {
+  const showTooltip = options.showTooltip ?? true;
+
   // Use deep selection to find text in shadow DOMs (e.g., LinkedIn chat)
   const selection = getDeepSelection();
   if (!selection || selection.isCollapsed) {
     log.info(' No text selected (checked main document + shadow roots)');
-    showInfoToast('Select text to translate');
-    return;
+    if (showTooltip) showInfoToast('Select text to translate');
+    return null;
   }
 
   const text = selection.toString().trim();
   if (!isValidText(text)) {
     log.info(' Selected text is not valid for translation');
-    showInfoToast('Select text to translate');
-    return;
+    if (showTooltip) showInfoToast('Select text to translate');
+    return null;
   }
 
   const sanitized = sanitizeText(text);
+  const range = selection.getRangeAt(0);
+
+  // Prevent recursive delegation when the extension's own WebMCP tool executes.
+  if (!options.agentInvoked) {
+    const siteToolResult = await maybeTranslateSelectionWithSiteTool({
+      sourceLang,
+      targetLang,
+      strategy,
+      provider: provider as TranslationProviderId | undefined,
+      text: sanitized,
+    });
+    if (siteToolResult) {
+      log.info(` Translated selection via site tool '${siteToolResult.toolName}'`);
+      if (showTooltip) showTranslationTooltip(siteToolResult.translatedText, range);
+      return siteToolResult.translatedText;
+    }
+  }
 
   // Get surrounding context for better translation of ambiguous words
   const context = getSelectionContext();
+  const resolvedSourceLang = resolveSourceLang(sourceLang, sanitized);
 
   log.info('Translating selection with context:', {
     text: sanitized.substring(0, 50),
@@ -160,22 +192,23 @@ async function translateSelection(
     const g = await pageOrchestrator.loadGlossary();
     const { processedText, restore } = await glossary.applyGlossary(sanitized, g);
 
-    const range = selection.getRangeAt(0);
-
     // Use port-based streaming for long texts so the tooltip updates progressively.
     if (processedText.length >= CONFIG.selection.streamThresholdChars) {
       try {
         const result = await translateWithStreaming(
           processedText,
-          sourceLang,
+          resolvedSourceLang,
           targetLang,
           provider,
           (partial) => {
-            showTranslationTooltip(restore(partial), range, /* streaming */ true);
+            if (showTooltip) {
+              showTranslationTooltip(restore(partial), range, /* streaming */ true);
+            }
           },
         );
-        showTranslationTooltip(restore(result), range);
-        return;
+        const finalResult = restore(result);
+        if (showTooltip) showTranslationTooltip(finalResult, range);
+        return finalResult;
       } catch (streamError) {
         log.debug('Streaming failed, falling back to sendMessage:', streamError);
         // Fall through to the regular sendMessage path below
@@ -185,7 +218,7 @@ async function translateSelection(
     const response = (await browserAPI.runtime.sendMessage({
       type: 'translate',
       text: processedText,
-      sourceLang,
+      sourceLang: resolvedSourceLang,
       targetLang,
       options: {
         strategy,
@@ -197,17 +230,98 @@ async function translateSelection(
     if (response.success && response.result) {
       // Apply glossary post-processing (restore placeholders)
       const finalResult = restore(response.result as string);
-      showTranslationTooltip(finalResult, range);
+      if (showTooltip) showTranslationTooltip(finalResult, range);
+      return finalResult;
     } else {
       log.error(' Translation failed:', response.error);
-      showErrorTooltip(response.error || 'Translation failed', range);
+      if (showTooltip) {
+        showErrorTooltip(response.error || 'Translation failed', range);
+        return null;
+      }
+      throw new Error(response.error || 'Translation failed');
     }
   } catch (error) {
     log.error(' Translation error:', error);
     const message = extractErrorMessage(error, 'Unknown error');
-    showErrorTooltip(message, selection.getRangeAt(0));
+    if (showTooltip) {
+      showErrorTooltip(message, range);
+      return null;
+    }
+    throw error;
   }
 }
+
+async function translatePageContent(
+  sourceLang: string,
+  targetLang: string,
+  strategy: Strategy,
+  provider?: TranslationProviderId,
+  options: {
+    agentInvoked?: boolean;
+  } = {}
+): Promise<PageToolSummary & { handledBy: 'extension' | 'site-tool' | 'pdf' }> {
+  if (isPdfPage()) {
+    await initPdfTranslation(targetLang);
+    return { translatedCount: 0, errorCount: 0, handledBy: 'pdf' };
+  }
+
+  // Prevent recursive self-invocation once the extension registers its own tools.
+  if (!options.agentInvoked) {
+    const siteToolResult = await maybeTranslatePageWithSiteTool({
+      sourceLang,
+      targetLang,
+      strategy,
+      provider,
+    });
+    if (siteToolResult) {
+      log.info(` Translated page via site tool '${siteToolResult.toolName}'`);
+      stopMutationObserver();
+      pageOrchestrator.setCurrentSettings(null);
+      return { translatedCount: 0, errorCount: 0, handledBy: 'site-tool' };
+    }
+  }
+
+  const resolvedSourceLang = resolveSourceLang(sourceLang);
+  pageOrchestrator.setCurrentSettings({
+    sourceLang: resolvedSourceLang,
+    targetLang,
+    strategy,
+    provider,
+  });
+
+  const summary = await pageOrchestrator.translatePage(
+    resolvedSourceLang,
+    targetLang,
+    strategy,
+    provider
+  );
+  startMutationObserver();
+  return { ...summary, handledBy: 'extension' };
+}
+
+function detectCurrentPageLanguage(text?: string): { lang: string; confidence: number } | null {
+  const selectionText = getDeepSelection()?.toString();
+  const selectedText = text ?? (selectionText?.trim() || undefined);
+  return detectSampledLanguage(selectedText);
+}
+
+void registerTranslationWebMcpTools({
+  translatePage: async ({ sourceLang, targetLang, strategy, provider }) => {
+    const result = await translatePageContent(sourceLang, targetLang, strategy, provider, {
+      agentInvoked: true,
+    });
+    return {
+      translatedCount: result.translatedCount,
+      errorCount: result.errorCount,
+    };
+  },
+  translateSelection: async ({ sourceLang, targetLang, strategy, provider }) =>
+    translateSelection(sourceLang, targetLang, strategy, provider, {
+      agentInvoked: true,
+      showTooltip: false,
+    }),
+  detectLanguage: async (text) => detectCurrentPageLanguage(text),
+});
 
 // ============================================================================
 // MutationObserver for Dynamic Content
@@ -283,8 +397,7 @@ const contentMessageHandlers: ContentMessageHandlers = {
   translateSelection: defineStartedContentHandler(
     'translateSelection',
     async (message) => {
-      const selSourceLang = resolveSourceLang(message.sourceLang);
-      await translateSelection(selSourceLang, message.targetLang, message.strategy, message.provider);
+      await translateSelection(message.sourceLang, message.targetLang, message.strategy, message.provider);
     },
     (error) => {
       logContentMessageFailure('translateSelection', error, 'Translation failed');
@@ -293,26 +406,12 @@ const contentMessageHandlers: ContentMessageHandlers = {
   translatePage: defineStartedContentHandler(
     'translatePage',
     async (message) => {
-      if (isPdfPage()) {
-        await initPdfTranslation(message.targetLang);
-        return;
-      }
-
-      const resolvedPageLang = resolveSourceLang(message.sourceLang);
-      pageOrchestrator.setCurrentSettings({
-        sourceLang: resolvedPageLang,
-        targetLang: message.targetLang,
-        strategy: message.strategy,
-        provider: message.provider,
-      });
-
-      await pageOrchestrator.translatePage(
-        resolvedPageLang,
+      await translatePageContent(
+        message.sourceLang,
         message.targetLang,
         message.strategy,
         message.provider
       );
-      startMutationObserver();
     },
     (error) => {
       logContentMessageFailure('translatePage', error, 'Page translation failed');
@@ -378,7 +477,6 @@ async function checkAutoTranslate(): Promise<void> {
   // Merge settings: site rules take precedence over global settings
   const shouldAutoTranslate = siteSpecificRules?.autoTranslate ?? settings.autoTranslate;
   const rawSourceLang = siteSpecificRules?.sourceLang || settings.sourceLang || 'auto';
-  const sourceLang = resolveSourceLang(rawSourceLang);
   const targetLang = siteSpecificRules?.targetLang || settings.targetLang || 'fi';
   const strategy = siteSpecificRules?.strategy || settings.strategy || 'smart';
   const provider = siteSpecificRules?.preferredProvider || settings.provider || 'opus-mt';
@@ -391,7 +489,7 @@ async function checkAutoTranslate(): Promise<void> {
     log.info(' Auto-translate enabled, waiting for page idle...');
 
     pageOrchestrator.setCurrentSettings({
-      sourceLang,
+      sourceLang: rawSourceLang,
       targetLang,
       strategy: strategy as Strategy,
       provider: provider as TranslationProviderId,
@@ -404,13 +502,13 @@ async function checkAutoTranslate(): Promise<void> {
       const liveSettings = pageOrchestrator.getCurrentSettings();
       if (!liveSettings) return; // User may have cancelled
       /* v8 ignore stop */
-      pageOrchestrator.translatePage(
+      void translatePageContent(
         liveSettings.sourceLang,
         liveSettings.targetLang,
         liveSettings.strategy,
         liveSettings.provider
-      ).then(() => {
-        startMutationObserver();
+      ).catch((error) => {
+        logContentMessageFailure('autoTranslate', error, 'Page translation failed');
       });
     };
 
@@ -434,6 +532,7 @@ if (document.readyState === 'complete') {
 // beforeunload fires BEFORE unload (which is unreliable on some browsers),
 // so we do full cleanup here to prevent resource leaks.
 window.addEventListener('beforeunload', () => {
+  void unregisterTranslationWebMcpTools();
   pageOrchestrator.cleanup();
   stopMutationObserver();
   removeProgressToast();

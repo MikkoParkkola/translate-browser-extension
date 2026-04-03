@@ -15,15 +15,24 @@ import { sanitizeText } from './dom-utils';
 
 const log = createLogger('Content');
 
+export interface DetectedPageLanguage {
+  lang: string;
+  confidence: number;
+}
+
+export function detectSampledLanguage(text?: string): DetectedPageLanguage | null {
+  const sample = sanitizeText(text || samplePageText(300));
+  if (!sample) return null;
+  return detectLanguage(sample);
+}
+
 /**
  * Resolve 'auto' source language using fast trigram-based detection.
  * Falls back to 'auto' if detection fails or confidence is too low.
  */
 export function resolveSourceLang(sourceLang: string, text?: string): string {
   if (sourceLang !== 'auto') return sourceLang;
-  const sample = text || samplePageText(300);
-  if (!sample) return 'auto';
-  const result = detectLanguage(sample);
+  const result = detectSampledLanguage(text);
   if (result && result.confidence >= 0.20) {
     log.info(`Detected language: ${result.lang} (confidence: ${result.confidence.toFixed(2)})`);
     return result.lang;

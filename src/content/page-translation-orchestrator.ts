@@ -58,7 +58,7 @@ export interface PageTranslationOrchestrator {
     strategy: Strategy,
     provider?: string,
     enableProfiling?: boolean
-  ): Promise<void>;
+  ): Promise<PageTranslationSummary>;
   translateDynamicContent(nodes: Node[]): Promise<void>;
   undoTranslation(): number;
   getCurrentSettings(): CurrentSettings | null;
@@ -75,6 +75,11 @@ export interface PageTranslationOrchestratorOptions {
    * Injected to avoid a cyclic dependency: orchestrator → index → orchestrator.
    */
   onStopMutationObserver: () => void;
+}
+
+export interface PageTranslationSummary {
+  translatedCount: number;
+  errorCount: number;
 }
 
 // ============================================================================
@@ -413,11 +418,11 @@ export function createPageTranslationOrchestrator(
     strategy: Strategy,
     provider?: string,
     enableProfiling = false
-  ): Promise<void> {
+  ): Promise<PageTranslationSummary> {
     // Fix race condition: set flag BEFORE any await/async operations
     if (isTranslatingPage) {
       log.info(' Translation already in progress');
-      return;
+      return { translatedCount: 0, errorCount: 0 };
     }
     isTranslatingPage = true;
 
@@ -444,7 +449,7 @@ export function createPageTranslationOrchestrator(
 
       if (textNodes.length === 0) {
         log.info(' No translatable text found');
-        return;
+        return { translatedCount: 0, errorCount: 0 };
       }
 
       // Sort nodes: viewport-visible first, then top-to-bottom by position
@@ -627,6 +632,7 @@ export function createPageTranslationOrchestrator(
         log.info('Timing Stats:', getContentTimingStats());
       }
       /* v8 ignore stop */
+      return { translatedCount, errorCount };
     } finally {
       isTranslatingPage = false;
 
