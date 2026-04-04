@@ -18,7 +18,7 @@ import {
   type BrowserContext,
   type Page,
 } from './fixtures';
-import { MOCK_HARNESS_URL } from './mock-harness';
+import { MOCK_HARNESS_TEXT, MOCK_HARNESS_URL } from './mock-harness';
 
 const FAST_AUTO_TRANSLATE_SETTINGS = {
   autoTranslate: true,
@@ -69,7 +69,7 @@ test.describe('Auto-translate', () => {
       },
     );
     await expect(page.locator('#mock-root')).toHaveText(
-      'Mock translation harness',
+      MOCK_HARNESS_TEXT,
     );
 
     await page.close();
@@ -183,7 +183,7 @@ test.describe('Auto-translate', () => {
 
     // Original content should be unchanged
     await expect(page.locator('#mock-root')).toHaveText(
-      'Mock translation harness',
+      MOCK_HARNESS_TEXT,
     );
 
     await page.close();
@@ -212,7 +212,7 @@ test.describe('Auto-translate', () => {
       },
     );
     await expect(page.locator('#mock-root')).toHaveText(
-      'Mock translation harness',
+      MOCK_HARNESS_TEXT,
     );
 
     await page.close();

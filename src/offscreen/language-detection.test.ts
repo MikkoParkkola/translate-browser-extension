@@ -220,6 +220,13 @@ describe('detectLanguage', () => {
   // exercising the FRANC_TO_ISO lookup + fallback.
   // ------------------------------------------------------------------
   describe('franc successful detection path', () => {
+    it('maps the smoke harness copy to English', async () => {
+      const result = await detectLanguage(
+        'Mock translation harness used for automated browser tests on an English page.'
+      );
+      expect(result).toBe('en');
+    });
+
     it('maps franc detection to ISO 639-1 for long English text', async () => {
       // 60+ chars → franc detects 'eng' → FRANC_TO_ISO['eng'] = 'en'
       const result = await detectLanguage(

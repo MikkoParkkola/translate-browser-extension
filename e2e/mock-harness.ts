@@ -2,6 +2,10 @@ import type { Page } from '@playwright/test';
 
 export const MOCK_HARNESS_URL = 'http://127.0.0.1:8080/e2e/mock.html';
 export const MOCK_HARNESS_FRAGMENT = '/e2e/mock.html';
+// Keep this sentence clearly English so auto-detect smoke tests short-circuit
+// without loading a real OPUS-MT route.
+export const MOCK_HARNESS_TEXT =
+  'Mock translation harness used for automated browser tests on an English page.';
 
 export interface MockTranslateRequest {
   provider: string;
