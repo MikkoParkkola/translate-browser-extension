@@ -11,41 +11,25 @@
  *   translate-selection→ Ctrl+Shift+T  → Translate selected text
  *   undo-translation   → Ctrl+Shift+U  → Undo translation
  */
-import { test, expect, popupUrl } from './fixtures';
+import {
+  test,
+  expect,
+  popupUrl,
+  findTabIdByUrlFragment,
+  sendTabMessage,
+} from './fixtures';
+import { MOCK_HARNESS_FRAGMENT, MOCK_HARNESS_URL } from './mock-harness';
 
 test.describe('Keyboard Shortcuts', () => {
   test.describe.configure({ timeout: 60_000 });
 
-  // ── 1. Ctrl+Shift+P → translate-page command fires ─────────────
-  test('Ctrl+Shift+P triggers page translation command', async ({ context, extensionId }) => {
-    const page = await context.newPage();
-    await page.goto('https://example.com');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(1500); // let content script inject
-
-    // Listen for the translate-page message arriving at the content script
-    const messageReceived = await page.evaluate(() => {
-      return new Promise<boolean>((resolve) => {
-        // Content script should respond to the command via chrome.runtime messages
-        const timer = setTimeout(() => resolve(false), 5000);
-        // Listen for DOM changes that indicate translation started
-        const observer = new MutationObserver(() => {
-          clearTimeout(timer);
-          observer.disconnect();
-          resolve(true);
-        });
-        observer.observe(document.body, { childList: true, subtree: true, attributes: true });
-
-        // Simulate the keyboard shortcut
-        document.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, shiftKey: true, bubbles: true }),
-        );
-      });
-    });
-
-    // Chrome extension shortcuts are registered at the browser level, not the page level.
-    // dispatchEvent won't trigger the extension command handler.
-    // Verify the command is registered in the manifest instead.
+  // ── 1. translate-page command is registered in the manifest ─────
+  test('translate-page command is registered in the manifest', async ({
+    context,
+    extensionId,
+  }) => {
+    // Chrome extension shortcuts are registered at the browser level, not the page level,
+    // so synthetic page keydown events cannot trigger the extension handler.
     const popupPage = await context.newPage();
     await popupPage.goto(popupUrl(extensionId));
     await popupPage.waitForLoadState('domcontentloaded');
@@ -63,11 +47,13 @@ test.describe('Keyboard Shortcuts', () => {
     expect(translatePageCmd!.description).toBeTruthy();
 
     await popupPage.close();
-    await page.close();
   });
 
   // ── 2. translate-selection command is registered ───────────────
-  test('translate-selection command is registered', async ({ context, extensionId }) => {
+  test('translate-selection command is registered', async ({
+    context,
+    extensionId,
+  }) => {
     const page = await context.newPage();
     await page.goto(popupUrl(extensionId));
     await page.waitForLoadState('domcontentloaded');
@@ -88,7 +74,10 @@ test.describe('Keyboard Shortcuts', () => {
   });
 
   // ── 3. undo-translation command is registered ─────────────────
-  test('undo-translation command is registered', async ({ context, extensionId }) => {
+  test('undo-translation command is registered', async ({
+    context,
+    extensionId,
+  }) => {
     const page = await context.newPage();
     await page.goto(popupUrl(extensionId));
     await page.waitForLoadState('domcontentloaded');
@@ -107,7 +96,10 @@ test.describe('Keyboard Shortcuts', () => {
   });
 
   // ── 4. Alt+T → _execute_action (open popup) registered ────────
-  test('Alt+T is registered for opening popup', async ({ context, extensionId }) => {
+  test('Alt+T is registered for opening popup', async ({
+    context,
+    extensionId,
+  }) => {
     const page = await context.newPage();
     await page.goto(popupUrl(extensionId));
     await page.waitForLoadState('domcontentloaded');
@@ -127,10 +119,13 @@ test.describe('Keyboard Shortcuts', () => {
   });
 
   // ── 5. Shortcuts work on a page with content ──────────────────
-  test('extension commands are accessible on a content page', async ({ context, extensionId }) => {
-    // Open a real page and verify content script is injected
+  test('extension commands are accessible on a content page', async ({
+    context,
+    extensionId,
+  }) => {
+    // Open a local content page and verify content script is injected
     const page = await context.newPage();
-    await page.goto('https://example.com');
+    await page.goto(MOCK_HARNESS_URL);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000); // let content script inject
 
@@ -145,12 +140,16 @@ test.describe('Keyboard Shortcuts', () => {
         chrome.commands.getAll((cmds) => resolve(cmds.length));
       });
     });
+    const tabId = await findTabIdByUrlFragment(
+      popupPage,
+      MOCK_HARNESS_FRAGMENT,
+    );
+    const ping = await sendTabMessage<{ loaded: boolean }>(popupPage, tabId, {
+      type: 'ping',
+    });
 
     expect(commandCount).toBeGreaterThanOrEqual(4);
-
-    // Also verify the page is reachable for translation
-    const pageTitle = await page.title();
-    expect(pageTitle).toContain('Example Domain');
+    expect(ping).toEqual({ loaded: true });
 
     await popupPage.close();
     await page.close();
