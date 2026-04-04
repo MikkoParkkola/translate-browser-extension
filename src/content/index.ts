@@ -471,6 +471,39 @@ browserAPI.runtime.onMessage.addListener(
 // Auto-Translate Check
 // ============================================================================
 
+function scheduleAutoTranslateStart(startTranslation: () => void): void {
+  let started = false;
+  let idleCallbackId: number | undefined;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const runStartTranslation = (): void => {
+    if (started) return;
+    started = true;
+
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+
+    if (idleCallbackId !== undefined && 'cancelIdleCallback' in window) {
+      window.cancelIdleCallback(idleCallbackId);
+    }
+
+    startTranslation();
+  };
+
+  if ('requestIdleCallback' in window) {
+    idleCallbackId = window.requestIdleCallback(runStartTranslation, {
+      timeout: 2000,
+    });
+    // Some browsers can indefinitely defer idle callbacks for hidden/background
+    // tabs even when the API exists, so keep a hard timeout fallback too.
+    timeoutId = setTimeout(runStartTranslation, 2000);
+    return;
+  }
+
+  timeoutId = setTimeout(runStartTranslation, 500);
+}
+
 async function checkAutoTranslate(): Promise<void> {
   // First check per-site rules
   const hostname = window.location.hostname;
@@ -514,7 +547,7 @@ async function checkAutoTranslate(): Promise<void> {
     });
 
     // Wait for browser idle to avoid competing with page rendering.
-    // requestIdleCallback fires when browser has spare cycles; fallback to 500ms for Firefox.
+    // Keep a bounded timeout fallback so hidden/background tabs still start.
     const startTranslation = () => {
       /* v8 ignore start -- defensive: user can't cancel before idle callback fires in tests */
       const liveSettings = pageOrchestrator.getCurrentSettings();
@@ -530,11 +563,7 @@ async function checkAutoTranslate(): Promise<void> {
       });
     };
 
-    if ('requestIdleCallback' in window) {
-      window.requestIdleCallback(startTranslation, { timeout: 2000 });
-    } else {
-      setTimeout(startTranslation, 500);
-    }
+    scheduleAutoTranslateStart(startTranslation);
   }
 }
 

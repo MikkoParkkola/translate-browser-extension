@@ -15,8 +15,7 @@ import {
   test,
   expect,
   popupUrl,
-  findTabIdByUrlFragment,
-  sendTabMessage,
+  waitForTabPing,
 } from './fixtures';
 import { MOCK_HARNESS_FRAGMENT, MOCK_HARNESS_URL } from './mock-harness';
 
@@ -140,16 +139,10 @@ test.describe('Keyboard Shortcuts', () => {
         chrome.commands.getAll((cmds) => resolve(cmds.length));
       });
     });
-    const tabId = await findTabIdByUrlFragment(
-      popupPage,
-      MOCK_HARNESS_FRAGMENT,
-    );
-    const ping = await sendTabMessage<{ loaded: boolean }>(popupPage, tabId, {
-      type: 'ping',
-    });
+    const tabId = await waitForTabPing(popupPage, MOCK_HARNESS_FRAGMENT);
 
     expect(commandCount).toBeGreaterThanOrEqual(4);
-    expect(ping).toEqual({ loaded: true });
+    expect(tabId).toBeGreaterThan(0);
 
     await popupPage.close();
     await page.close();

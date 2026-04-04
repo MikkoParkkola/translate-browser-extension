@@ -100,6 +100,34 @@ export async function sendTabMessage<T>(
   return response as T;
 }
 
+export async function waitForTabPing(
+  page: Page,
+  urlFragment: string
+): Promise<number> {
+  let tabId: number | null = null;
+
+  await expect.poll(async () => {
+    tabId = await page.evaluate(async (fragment) => {
+      const tabs = await chrome.tabs.query({});
+      const tab = tabs.find((candidate) => typeof candidate.id === 'number' && candidate.url?.includes(fragment));
+      return tab?.id ?? null;
+    }, urlFragment);
+    return tabId;
+  }, { timeout: 15_000 }).toBeTruthy();
+
+  await expect.poll(async () => {
+    try {
+      return await sendTabMessage<{ loaded: boolean }>(page, tabId as number, {
+        type: 'ping',
+      });
+    } catch {
+      return null;
+    }
+  }, { timeout: 15_000 }).toEqual({ loaded: true });
+
+  return tabId as number;
+}
+
 export async function setExtensionSettings(
   page: Page,
   settings: Record<string, unknown>

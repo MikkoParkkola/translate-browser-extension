@@ -15,16 +15,32 @@ import {
   expect,
   popupUrl,
   setExtensionSettings,
+  waitForTabPing,
   type BrowserContext,
   type Page,
 } from './fixtures';
-import { MOCK_HARNESS_TEXT, MOCK_HARNESS_URL } from './mock-harness';
+import {
+  MOCK_HARNESS_FRAGMENT,
+  MOCK_HARNESS_TEXT,
+  MOCK_HARNESS_URL,
+} from './mock-harness';
 
-const FAST_AUTO_TRANSLATE_SETTINGS = {
-  autoTranslate: true,
-  sourceLang: 'auto',
+const FAST_NOOP_TRANSLATION_SETTINGS = {
+  sourceLang: 'en',
   targetLang: 'en',
   provider: 'opus-mt',
+} as const;
+
+// Keep the smoke lane focused on auto-start orchestration instead of
+// auto-detect/model availability.
+const FAST_AUTO_TRANSLATE_SETTINGS = {
+  autoTranslate: true,
+  ...FAST_NOOP_TRANSLATION_SETTINGS,
+} as const;
+
+const FAST_DISABLED_AUTO_TRANSLATE_SETTINGS = {
+  autoTranslate: false,
+  ...FAST_NOOP_TRANSLATION_SETTINGS,
 } as const;
 
 async function configureAutoTranslate(
@@ -43,12 +59,25 @@ async function configureAutoTranslate(
   await setupPage.close();
 }
 
-async function gotoMockHarnessPage(page: Page): Promise<void> {
+async function gotoMockHarnessPage(
+  context: BrowserContext,
+  extensionId: string,
+  page: Page,
+): Promise<void> {
   await page.bringToFront();
   await page.goto(MOCK_HARNESS_URL);
+  await page.waitForLoadState('domcontentloaded');
+
+  const popupPage = await context.newPage();
+  try {
+    await popupPage.goto(popupUrl(extensionId));
+    await popupPage.waitForLoadState('domcontentloaded');
+    await waitForTabPing(popupPage, MOCK_HARNESS_FRAGMENT);
+  } finally {
+    await popupPage.close();
+  }
+
   await page.bringToFront();
-  await page.waitForLoadState('load');
-  await page.waitForFunction(() => document.visibilityState === 'visible');
 }
 
 test.describe('Auto-translate', () => {
@@ -66,7 +95,7 @@ test.describe('Auto-translate', () => {
     );
 
     const page = await context.newPage();
-    await gotoMockHarnessPage(page);
+    await gotoMockHarnessPage(context, extensionId, page);
 
     await expect(page.locator('main')).toHaveAttribute(
       'data-translated',
@@ -94,7 +123,7 @@ test.describe('Auto-translate', () => {
     );
 
     const page = await context.newPage();
-    await gotoMockHarnessPage(page);
+    await gotoMockHarnessPage(context, extensionId, page);
     await expect(page.locator('main')).toHaveAttribute(
       'data-translated',
       'true',
@@ -132,7 +161,7 @@ test.describe('Auto-translate', () => {
     );
 
     const page = await context.newPage();
-    await gotoMockHarnessPage(page);
+    await gotoMockHarnessPage(context, extensionId, page);
     await expect(page.locator('main')).toHaveAttribute(
       'data-translated',
       'true',
@@ -173,15 +202,14 @@ test.describe('Auto-translate', () => {
     context,
     extensionId,
   }) => {
-    await configureAutoTranslate(context, extensionId, {
-      autoTranslate: false,
-      sourceLang: 'auto',
-      targetLang: 'en',
-      provider: 'opus-mt',
-    });
+    await configureAutoTranslate(
+      context,
+      extensionId,
+      FAST_DISABLED_AUTO_TRANSLATE_SETTINGS,
+    );
 
     const page = await context.newPage();
-    await gotoMockHarnessPage(page);
+    await gotoMockHarnessPage(context, extensionId, page);
 
     // Wait a reasonable time for any unwanted auto-translation
     await page.waitForTimeout(1500);
@@ -208,7 +236,7 @@ test.describe('Auto-translate', () => {
     );
 
     const page = await context.newPage();
-    await gotoMockHarnessPage(page);
+    await gotoMockHarnessPage(context, extensionId, page);
 
     // Auto-translate still runs, but the visible English text remains unchanged.
     await expect(page.locator('main')).toHaveAttribute(

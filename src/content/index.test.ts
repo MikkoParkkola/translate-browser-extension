@@ -2937,10 +2937,10 @@ describe('Content Script', () => {
         result: ['Auto käännös'],
       });
 
-      // Use fake timers to fast-forward the 500ms setTimeout
+      // Use fake timers to fast-forward the 500ms fallback timer
       vi.useFakeTimers();
 
-      // Re-import the module — this triggers checkAutoTranslate which sets a 500ms timer
+      // Re-import the module — this triggers checkAutoTranslate which falls back to a 500ms timer
       await import('./index');
 
       // Let async checkAutoTranslate run (it uses real async/await internally)
@@ -2992,6 +2992,62 @@ describe('Content Script', () => {
 
       // Cleanup
       delete (window as any).requestIdleCallback;
+    });
+
+    it('falls back when requestIdleCallback does not run before the timeout', async () => {
+      vi.clearAllMocks();
+      vi.resetModules();
+      document.body.innerHTML = '<p>Idle fallback test</p>';
+      document.head.innerHTML = '';
+
+      mockStorageLocalGet.mockResolvedValueOnce({}); // site rules call
+      mockStorageLocalGet.mockResolvedValueOnce({
+        autoTranslate: true,
+        sourceLang: 'en',
+        targetLang: 'fi',
+        strategy: 'smart',
+      });
+
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Idle fallback testi'],
+      });
+
+      let idleCallback: IdleRequestCallback | undefined;
+      const idleCallbackFn = vi.fn((cb: IdleRequestCallback) => {
+        idleCallback = cb;
+        return 7;
+      });
+      const cancelIdleCallbackFn = vi.fn();
+      const idleWindow = window as unknown as Window & {
+        requestIdleCallback?: typeof idleCallbackFn;
+        cancelIdleCallback?: typeof cancelIdleCallbackFn;
+      };
+      idleWindow.requestIdleCallback = idleCallbackFn;
+      idleWindow.cancelIdleCallback = cancelIdleCallbackFn;
+
+      vi.useFakeTimers();
+
+      try {
+        await import('./index');
+        const initialCallCount = mockSendMessage.mock.calls.length;
+
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(mockSendMessage).toHaveBeenCalledTimes(initialCallCount + 1);
+        expect(cancelIdleCallbackFn).toHaveBeenCalledWith(7);
+
+        idleCallback?.({
+          didTimeout: false,
+          timeRemaining: () => 50,
+        } as IdleDeadline);
+        await vi.runAllTimersAsync();
+
+        expect(mockSendMessage).toHaveBeenCalledTimes(initialCallCount + 1);
+      } finally {
+        vi.useRealTimers();
+        Reflect.deleteProperty(idleWindow, 'requestIdleCallback');
+        Reflect.deleteProperty(idleWindow, 'cancelIdleCallback');
+      }
     });
 
     it('logs site-specific rules when they exist', async () => {
