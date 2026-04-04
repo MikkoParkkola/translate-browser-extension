@@ -12,6 +12,11 @@ import {
   mockDocumentCreateRange,
   setupSelectionMock,
 } from '../test-helpers/dom-property-mocks';
+import type { AutoTranslateDiagnostics } from './content-types';
+import {
+  AUTO_TRANSLATE_DIAGNOSTICS_ATTR,
+  CONTENT_SCRIPT_READY_ATTR,
+} from './content-types';
 
 const mockSendMessage = vi.fn();
 const contentChromeMock = setupChromeApiMock({
@@ -111,6 +116,10 @@ describe('Content Script', () => {
     document.body.style.cursor = '';
   };
 
+  const setLocationPath = (path: string): void => {
+    window.history.replaceState({}, '', path);
+  };
+
   const setupParagraphSelection = (
     fullText: string,
     options: {
@@ -169,6 +178,14 @@ describe('Content Script', () => {
       sendResponse,
     );
 
+  const readAutoTranslateDiagnostics = (): AutoTranslateDiagnostics => {
+    const raw = document.documentElement.getAttribute(
+      AUTO_TRANSLATE_DIAGNOSTICS_ATTR,
+    );
+    expect(raw).toBeTruthy();
+    return JSON.parse(raw!);
+  };
+
   const startPageTranslation = (
     sendResponse = vi.fn(),
     overrides: Partial<TranslatePageMessage> = {},
@@ -190,6 +207,7 @@ describe('Content Script', () => {
     // Reset document
     document.body.innerHTML = '';
     document.head.innerHTML = '';
+    setLocationPath('/e2e/mock.html');
 
     // Import module to trigger registration
     await import('./index');
@@ -206,6 +224,37 @@ describe('Content Script', () => {
   describe('initialization', () => {
     it('registers message handler', () => {
       expect(mockOnMessage.addListener).toHaveBeenCalled();
+    });
+
+    it('publishes a content-script readiness marker', () => {
+      expect(
+        document.documentElement.getAttribute(CONTENT_SCRIPT_READY_ATTR),
+      ).toBe('true');
+      expect(readAutoTranslateDiagnostics()).toEqual(
+        expect.objectContaining({
+          contentLoaded: true,
+          readyState: document.readyState,
+          visibilityState: document.visibilityState,
+          }),
+       );
+     });
+
+    it('keeps diagnostics off non-harness pages', async () => {
+      vi.clearAllMocks();
+      resetContentChromeMocks();
+      vi.resetModules();
+      document.body.innerHTML = '';
+      document.head.innerHTML = '';
+      setLocationPath('/');
+
+      await import('./index');
+
+      expect(
+        document.documentElement.hasAttribute(CONTENT_SCRIPT_READY_ATTR),
+      ).toBe(false);
+      expect(
+        document.documentElement.hasAttribute(AUTO_TRANSLATE_DIAGNOSTICS_ATTR),
+      ).toBe(false);
     });
 
     it('adds animation styles to head', () => {
@@ -2951,6 +3000,20 @@ describe('Content Script', () => {
 
       // Module should have been initialized (message handler registered again)
       expect(mockOnMessage.addListener).toHaveBeenCalled();
+      expect(readAutoTranslateDiagnostics()).toEqual(
+        expect.objectContaining({
+          checkStarted: true,
+          settingsLoaded: true,
+          shouldAutoTranslate: true,
+          currentSettingsApplied: true,
+          startScheduled: true,
+          startRan: true,
+          translationRequested: true,
+          translationCompleted: true,
+          sourceLang: 'en',
+          targetLang: 'fi',
+        }),
+      );
     });
 
     it('uses requestIdleCallback when available', async () => {
@@ -3035,6 +3098,15 @@ describe('Content Script', () => {
         await vi.advanceTimersByTimeAsync(2000);
         expect(mockSendMessage).toHaveBeenCalledTimes(initialCallCount + 1);
         expect(cancelIdleCallbackFn).toHaveBeenCalledWith(7);
+        expect(readAutoTranslateDiagnostics()).toEqual(
+          expect.objectContaining({
+            startScheduled: true,
+            scheduleMethod: 'requestIdleCallback',
+            startTriggeredBy: 'requestIdleCallbackTimeout',
+            startRan: true,
+            translationRequested: true,
+          }),
+        );
 
         idleCallback?.({
           didTimeout: false,

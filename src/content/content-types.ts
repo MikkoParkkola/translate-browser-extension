@@ -41,6 +41,8 @@ export const ORIGINAL_TEXT_NODES_ATTR = 'data-original-text-nodes';
 export const MACHINE_TRANSLATION_ATTR = 'data-machine-translation';
 export const SOURCE_LANG_ATTR = 'data-source-lang';
 export const TARGET_LANG_ATTR = 'data-target-lang';
+export const CONTENT_SCRIPT_READY_ATTR = 'data-translate-content-loaded';
+export const AUTO_TRANSLATE_DIAGNOSTICS_ATTR = 'data-auto-translate-diagnostics';
 
 // ============================================================================
 // Message Types
@@ -119,6 +121,34 @@ export interface ContentMessageResponseMap {
 }
 
 export type ContentMessageResponse = ContentMessageResponseMap[ContentMessageType];
+
+export interface AutoTranslateDiagnostics {
+  contentLoaded: boolean;
+  checkStarted: boolean;
+  settingsLoaded: boolean;
+  hasSiteSpecificRules: boolean;
+  shouldAutoTranslate: boolean;
+  currentSettingsApplied: boolean;
+  startScheduled: boolean;
+  scheduleMethod: 'requestIdleCallback' | 'setTimeoutFallback' | null;
+  startTriggeredBy:
+    | 'requestIdleCallback'
+    | 'requestIdleCallbackTimeout'
+    | 'setTimeoutFallback'
+    | null;
+  startRan: boolean;
+  translationRequested: boolean;
+  translationCompleted: boolean;
+  handledBy: 'extension' | 'site-tool' | 'pdf' | null;
+  translatedCount: number | null;
+  errorCount: number | null;
+  sourceLang: string | null;
+  targetLang: string | null;
+  provider: TranslationProviderId | null;
+  lastError: string | null;
+  readyState: DocumentReadyState;
+  visibilityState: DocumentVisibilityState;
+}
 
 // ============================================================================
 // Shared State Types

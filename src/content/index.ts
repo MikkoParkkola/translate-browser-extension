@@ -29,6 +29,9 @@ import { createMutationOrchestrator } from './mutation-orchestrator';
 // import { measureTimeAsync } from '../core/profiler';
 import { createPageTranslationOrchestrator } from './page-translation-orchestrator';
 import {
+  AUTO_TRANSLATE_DIAGNOSTICS_ATTR,
+  CONTENT_SCRIPT_READY_ATTR,
+  type AutoTranslateDiagnostics,
   type ContentMessageResponse,
 } from './content-types';
 import {
@@ -380,6 +383,82 @@ function logContentMessageFailure(action: string, error: unknown, fallbackMessag
   log.error(`${action} failed:`, msg);
 }
 
+type AutoTranslateStartTrigger =
+  | 'requestIdleCallback'
+  | 'requestIdleCallbackTimeout'
+  | 'setTimeoutFallback';
+
+const AUTO_TRANSLATE_E2E_DIAGNOSTICS_PATH = '/e2e/mock.html';
+
+function shouldPublishAutoTranslateDiagnostics(): boolean {
+  const { hostname, pathname } = window.location;
+  const isLocalE2eHost = hostname === '127.0.0.1' || hostname === 'localhost';
+  return isLocalE2eHost && pathname.endsWith(AUTO_TRANSLATE_E2E_DIAGNOSTICS_PATH);
+}
+
+function createAutoTranslateDiagnostics(): AutoTranslateDiagnostics {
+  return {
+    contentLoaded: true,
+    checkStarted: false,
+    settingsLoaded: false,
+    hasSiteSpecificRules: false,
+    shouldAutoTranslate: false,
+    currentSettingsApplied: false,
+    startScheduled: false,
+    scheduleMethod: null,
+    startTriggeredBy: null,
+    startRan: false,
+    translationRequested: false,
+    translationCompleted: false,
+    handledBy: null,
+    translatedCount: null,
+    errorCount: null,
+    sourceLang: null,
+    targetLang: null,
+    provider: null,
+    lastError: null,
+    readyState: document.readyState,
+    visibilityState: document.visibilityState,
+  };
+}
+
+let autoTranslateDiagnostics = createAutoTranslateDiagnostics();
+
+function publishAutoTranslateDiagnostics(): void {
+  const root = document.documentElement;
+  if (!root) return;
+
+  if (!shouldPublishAutoTranslateDiagnostics()) {
+    root.removeAttribute(CONTENT_SCRIPT_READY_ATTR);
+    root.removeAttribute(AUTO_TRANSLATE_DIAGNOSTICS_ATTR);
+    return;
+  }
+
+  root.setAttribute(CONTENT_SCRIPT_READY_ATTR, 'true');
+  root.setAttribute(
+    AUTO_TRANSLATE_DIAGNOSTICS_ATTR,
+    JSON.stringify(autoTranslateDiagnostics)
+  );
+}
+
+function resetAutoTranslateDiagnostics(): void {
+  autoTranslateDiagnostics = createAutoTranslateDiagnostics();
+  publishAutoTranslateDiagnostics();
+}
+
+function updateAutoTranslateDiagnostics(
+  update: Partial<AutoTranslateDiagnostics>
+): void {
+  autoTranslateDiagnostics = {
+    ...autoTranslateDiagnostics,
+    ...update,
+    contentLoaded: true,
+    readyState: document.readyState,
+    visibilityState: document.visibilityState,
+  };
+  publishAutoTranslateDiagnostics();
+}
+
 const contentMessageHandlers: ContentMessageHandlers = {
   ping: defineImmediateContentHandler('ping', () => ({ loaded: true })),
   stopAutoTranslate: defineImmediateContentHandler('stopAutoTranslate', () => {
@@ -466,17 +545,20 @@ browserAPI.runtime.onMessage.addListener(
     sendResponse: (response: ContentMessageResponse) => void
   ) => routeContentMessage(message, sendResponse, contentMessageHandlers)
 );
+publishAutoTranslateDiagnostics();
 
 // ============================================================================
 // Auto-Translate Check
 // ============================================================================
 
-function scheduleAutoTranslateStart(startTranslation: () => void): void {
+function scheduleAutoTranslateStart(
+  startTranslation: (trigger: AutoTranslateStartTrigger) => void
+): void {
   let started = false;
   let idleCallbackId: number | undefined;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-  const runStartTranslation = (): void => {
+  const runStartTranslation = (trigger: AutoTranslateStartTrigger): void => {
     if (started) return;
     started = true;
 
@@ -488,23 +570,46 @@ function scheduleAutoTranslateStart(startTranslation: () => void): void {
       window.cancelIdleCallback(idleCallbackId);
     }
 
-    startTranslation();
+    updateAutoTranslateDiagnostics({
+      startRan: true,
+      startTriggeredBy: trigger,
+    });
+    startTranslation(trigger);
   };
 
   if ('requestIdleCallback' in window) {
-    idleCallbackId = window.requestIdleCallback(runStartTranslation, {
+    updateAutoTranslateDiagnostics({
+      startScheduled: true,
+      scheduleMethod: 'requestIdleCallback',
+    });
+    idleCallbackId = window.requestIdleCallback(() => {
+      runStartTranslation('requestIdleCallback');
+    }, {
       timeout: 2000,
     });
     // Some browsers can indefinitely defer idle callbacks for hidden/background
     // tabs even when the API exists, so keep a hard timeout fallback too.
-    timeoutId = setTimeout(runStartTranslation, 2000);
+    timeoutId = setTimeout(() => {
+      runStartTranslation('requestIdleCallbackTimeout');
+    }, 2000);
     return;
   }
 
-  timeoutId = setTimeout(runStartTranslation, 500);
+  updateAutoTranslateDiagnostics({
+    startScheduled: true,
+    scheduleMethod: 'setTimeoutFallback',
+  });
+  timeoutId = setTimeout(() => {
+    runStartTranslation('setTimeoutFallback');
+  }, 500);
 }
 
 async function checkAutoTranslate(): Promise<void> {
+  resetAutoTranslateDiagnostics();
+  updateAutoTranslateDiagnostics({
+    checkStarted: true,
+  });
+
   // First check per-site rules
   const hostname = window.location.hostname;
   const siteSpecificRules = await siteRules.getRules(hostname);
@@ -532,6 +637,15 @@ async function checkAutoTranslate(): Promise<void> {
   const strategy = siteSpecificRules?.strategy || settings.strategy || 'smart';
   const provider = siteSpecificRules?.preferredProvider || settings.provider || 'opus-mt';
 
+  updateAutoTranslateDiagnostics({
+    settingsLoaded: true,
+    hasSiteSpecificRules: Boolean(siteSpecificRules),
+    shouldAutoTranslate: Boolean(shouldAutoTranslate),
+    sourceLang: rawSourceLang,
+    targetLang,
+    provider,
+  });
+
   if (siteSpecificRules) {
     log.info(' Site-specific rules found for', hostname, siteSpecificRules);
   }
@@ -545,22 +659,49 @@ async function checkAutoTranslate(): Promise<void> {
       strategy: strategy as Strategy,
       provider: provider as TranslationProviderId,
     });
+    updateAutoTranslateDiagnostics({
+      currentSettingsApplied: true,
+    });
 
     // Wait for browser idle to avoid competing with page rendering.
     // Keep a bounded timeout fallback so hidden/background tabs still start.
     const startTranslation = () => {
       /* v8 ignore start -- defensive: user can't cancel before idle callback fires in tests */
       const liveSettings = pageOrchestrator.getCurrentSettings();
-      if (!liveSettings) return; // User may have cancelled
+      if (!liveSettings) {
+        updateAutoTranslateDiagnostics({
+          lastError: 'Auto-translate settings were cleared before startup',
+        });
+        return; // User may have cancelled
+      }
       /* v8 ignore stop */
+      updateAutoTranslateDiagnostics({
+        translationRequested: true,
+        sourceLang: liveSettings.sourceLang,
+        targetLang: liveSettings.targetLang,
+        provider: liveSettings.provider ?? null,
+        lastError: null,
+      });
       void translatePageContent(
         liveSettings.sourceLang,
         liveSettings.targetLang,
         liveSettings.strategy,
         liveSettings.provider
-      ).catch((error) => {
-        logContentMessageFailure('autoTranslate', error, 'Page translation failed');
-      });
+      )
+        .then((summary) => {
+          updateAutoTranslateDiagnostics({
+            translationCompleted: true,
+            handledBy: summary.handledBy,
+            translatedCount: summary.translatedCount,
+            errorCount: summary.errorCount,
+          });
+        })
+        .catch((error) => {
+          updateAutoTranslateDiagnostics({
+            lastError: extractErrorMessage(error, 'Page translation failed'),
+          });
+          logContentMessageFailure('autoTranslate', error, 'Page translation failed');
+        });
     };
 
     scheduleAutoTranslateStart(startTranslation);
