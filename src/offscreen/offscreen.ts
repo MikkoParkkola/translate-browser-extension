@@ -279,12 +279,11 @@ async function translate(
       profiler.recordTiming(sessionId, 'language_detect', performance.now() - detectStart);
     }
     log.info(`Auto-detected source: ${actualSourceLang}`);
+  }
 
-    // Don't translate if source equals target
-    if (actualSourceLang === targetLang) {
-      log.info(' Source equals target, skipping translation');
-      return text;
-    }
+  if (actualSourceLang === targetLang) {
+    log.info(' Source equals target, skipping translation');
+    return text;
   }
 
   const cache = getTranslationCache();

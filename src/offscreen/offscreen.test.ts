@@ -770,6 +770,25 @@ describe('offscreen message handler', () => {
       expect(pipe).not.toHaveBeenCalled();
     });
 
+    it('returns original batch text when source language already matches target', async () => {
+      const pipe = vi.fn();
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: ['Mock translation harness used for automated browser tests on an English page.'],
+        sourceLang: 'en',
+        targetLang: 'en',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toEqual([
+        'Mock translation harness used for automated browser tests on an English page.',
+      ]);
+      expect(pipe).not.toHaveBeenCalled();
+    });
+
     it('builds a broader sample for array auto-detection', async () => {
       mockDetectLanguage.mockReturnValue('en');
       mockCacheGet.mockResolvedValue('vertaald');

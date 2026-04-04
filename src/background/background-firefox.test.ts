@@ -2253,6 +2253,34 @@ describe('background-firefox translate: additional coverage', () => {
       // Should return original text unchanged when auto-detected equals target
       expect(response.result).toBe('hello world');
     });
+
+    it('skips translation when explicit source already equals target', async () => {
+      const errorModule = await import('../core/errors');
+
+      (errorModule.validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+        valid: true,
+        sanitizedText: [
+          'Mock translation harness used for automated browser tests on an English page.',
+        ],
+      });
+      (errorModule.withRetry as ReturnType<typeof vi.fn>).mockImplementation(
+        async (fn: () => Promise<unknown>) => fn()
+      );
+
+      const response = await invoke({
+        type: 'translate',
+        text: [
+          'Mock translation harness used for automated browser tests on an English page.',
+        ],
+        sourceLang: 'en',
+        targetLang: 'en',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      expect(response.result).toEqual([
+        'Mock translation harness used for automated browser tests on an English page.',
+      ]);
+    });
   });
 
   // ============================================================================

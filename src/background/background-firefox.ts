@@ -263,11 +263,11 @@ async function translate(
     const sampleText = buildLanguageDetectionSample(text);
     actualSourceLang = await detectLanguage(sampleText);
     log.info(`Auto-detected source: ${actualSourceLang}`);
+  }
 
-    if (actualSourceLang === targetLang) {
-      log.info('Source equals target, skipping translation');
-      return text;
-    }
+  if (actualSourceLang === targetLang) {
+    log.info('Source equals target, skipping translation');
+    return text;
   }
 
   // Handle array of texts
