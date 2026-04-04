@@ -2328,6 +2328,8 @@ describe('background-firefox translate: additional coverage', () => {
 
   describe('translate result caching behavior', () => {
     it('caches translations and reuses them', async () => {
+      await invoke({ type: 'clearCache' });
+
       // First translation
       const response1 = await invoke({
         type: 'translate',
@@ -2337,7 +2339,7 @@ describe('background-firefox translate: additional coverage', () => {
       }) as Record<string, unknown>;
 
       expect(response1.success).toBe(true);
-      const duration1 = response1.duration as number;
+      expect(response1.cached).not.toBe(true);
 
       // Second identical translation (from cache)
       const response2 = await invoke({
@@ -2348,9 +2350,13 @@ describe('background-firefox translate: additional coverage', () => {
       }) as Record<string, unknown>;
 
       expect(response2.success).toBe(true);
-      const duration2 = response2.duration as number;
-      // Cache hit should be faster
-      expect(duration2).toBeLessThanOrEqual(duration1);
+      expect(response2.result).toBe(response1.result);
+      expect(response2.cached).toBe(true);
+
+      const cacheStats = await invoke({ type: 'getCacheStats' }) as Record<string, unknown>;
+      const cache = cacheStats.cache as Record<string, unknown>;
+      expect(cache.size).toBeGreaterThan(0);
+      expect(cache.totalHits).toBeGreaterThan(0);
     });
 
     it('does not cache when sourceLang is auto', async () => {

@@ -36,12 +36,19 @@ async function configureAutoTranslate(
   await setupPage.goto(popupUrl(extensionId));
   await setupPage.waitForLoadState('domcontentloaded');
   await setExtensionSettings(setupPage, settings);
+  const storedSettings = await setupPage.evaluate(async (keys) => {
+    return chrome.storage.local.get(keys);
+  }, Object.keys(settings));
+  expect(storedSettings).toMatchObject(settings);
   await setupPage.close();
 }
 
 async function gotoMockHarnessPage(page: Page): Promise<void> {
+  await page.bringToFront();
   await page.goto(MOCK_HARNESS_URL);
+  await page.bringToFront();
   await page.waitForLoadState('load');
+  await page.waitForFunction(() => document.visibilityState === 'visible');
 }
 
 test.describe('Auto-translate', () => {
