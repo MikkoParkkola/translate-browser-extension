@@ -100,7 +100,6 @@
     "@webgpu/types": "^0.1.69",
     "bestzip": "^2.2.1",
     "copyfiles": "^2.4.1",
-    "electron": "^37.3.1",
     "eslint": "^9.39.4",
     "eslint-plugin-import": "^2.29.0",
     "fake-indexeddb": "^6.1.0",

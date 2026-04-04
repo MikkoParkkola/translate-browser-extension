@@ -10,6 +10,10 @@ describe('content WebMCP helpers', () => {
     delete (navigator as Navigator & { modelContextTesting?: unknown }).modelContextTesting;
   });
 
+  function getRegisteredTool(registerTool: ReturnType<typeof vi.fn>, name: string) {
+    return registerTool.mock.calls.find(([tool]) => tool.name === name)?.[0];
+  }
+
   it('registers the three translation tools once and marks agent-invoked execution', async () => {
     const registerTool = vi.fn();
     (navigator as Navigator & { modelContext?: unknown }).modelContext = { registerTool };
@@ -32,9 +36,7 @@ describe('content WebMCP helpers', () => {
 
     expect(registerTool).toHaveBeenCalledTimes(3);
 
-    const selectionTool = registerTool.mock.calls.find(
-      ([tool]) => tool.name === 'translate_selection'
-    )?.[0];
+    const selectionTool = getRegisteredTool(registerTool, 'translate_selection');
     expect(selectionTool).toBeDefined();
     expect(selectionTool.description).toContain('[translate-browser-extension]');
 
@@ -52,7 +54,7 @@ describe('content WebMCP helpers', () => {
       agentInvoked: true,
     });
 
-    const pageTool = registerTool.mock.calls.find(([tool]) => tool.name === 'translate_page')?.[0];
+    const pageTool = getRegisteredTool(registerTool, 'translate_page');
     await pageTool.execute({ targetLang: 'fi' });
     expect(translatePage).toHaveBeenCalledWith({
       targetLang: 'fi',
@@ -62,9 +64,7 @@ describe('content WebMCP helpers', () => {
       agentInvoked: true,
     });
 
-    const languageTool = registerTool.mock.calls.find(
-      ([tool]) => tool.name === 'detect_language'
-    )?.[0];
+    const languageTool = getRegisteredTool(registerTool, 'detect_language');
     const languageResult = await languageTool.execute({ text: 'bonjour le monde' });
     expect(detectLanguage).toHaveBeenCalledWith('bonjour le monde');
     expect(languageResult.content[0]?.text).toContain('"lang":"fi"');
@@ -77,6 +77,139 @@ describe('content WebMCP helpers', () => {
       })
     ).toBe(true);
     expect(registerTool).toHaveBeenCalledTimes(3);
+  });
+
+  it('returns false when WebMCP registration is unavailable', async () => {
+    const { registerTranslationWebMcpTools } = await import('./webmcp');
+
+    await expect(
+      registerTranslationWebMcpTools({
+        translatePage: vi.fn(),
+        translateSelection: vi.fn(),
+        detectLanguage: vi.fn(),
+      })
+    ).resolves.toBe(false);
+  });
+
+  it('surfaces tool validation, empty-result, and failure states', async () => {
+    const registerTool = vi.fn();
+    (navigator as Navigator & { modelContext?: unknown }).modelContext = { registerTool };
+
+    const { registerTranslationWebMcpTools } = await import('./webmcp');
+
+    const translatePage = vi
+      .fn()
+      .mockResolvedValueOnce({ translatedCount: 0, errorCount: 0 })
+      .mockResolvedValueOnce({ translatedCount: 3, errorCount: 1 })
+      .mockResolvedValueOnce({ translatedCount: 0, errorCount: 2 })
+      .mockResolvedValueOnce({ translatedCount: 2, errorCount: 0 })
+      .mockRejectedValueOnce(new Error('page failed'));
+    const translateSelection = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockRejectedValueOnce(new Error('selection failed'));
+    const detectLanguage = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockRejectedValueOnce(new Error('detect failed'));
+
+    expect(
+      await registerTranslationWebMcpTools({
+        translatePage,
+        translateSelection,
+        detectLanguage,
+      })
+    ).toBe(true);
+
+    const selectionTool = getRegisteredTool(registerTool, 'translate_selection');
+    const pageTool = getRegisteredTool(registerTool, 'translate_page');
+    const languageTool = getRegisteredTool(registerTool, 'detect_language');
+
+    await expect(selectionTool.execute({})).resolves.toEqual({
+      content: [{ type: 'text', text: 'targetLang is required.' }],
+      isError: true,
+    });
+    await expect(selectionTool.execute({ targetLang: 'fi' })).resolves.toEqual({
+      content: [{ type: 'text', text: 'No translatable selection is available.' }],
+      isError: true,
+    });
+    await expect(selectionTool.execute({ targetLang: 'fi' })).resolves.toEqual({
+      content: [{ type: 'text', text: 'Selection translation failed.' }],
+      isError: true,
+    });
+
+    await expect(pageTool.execute({})).resolves.toEqual({
+      content: [{ type: 'text', text: 'targetLang is required.' }],
+      isError: true,
+    });
+    await expect(pageTool.execute({ targetLang: 'fi' })).resolves.toEqual({
+      content: [{ type: 'text', text: 'No translatable text was found on the page.' }],
+      isError: false,
+    });
+    await expect(pageTool.execute({ targetLang: 'fi' })).resolves.toEqual({
+      content: [{ type: 'text', text: 'Translated 3 page items (1 failed).' }],
+      isError: false,
+    });
+    await expect(pageTool.execute({ targetLang: 'fi' })).resolves.toEqual({
+      content: [{ type: 'text', text: 'Page translation failed for 2 items.' }],
+      isError: false,
+    });
+    await expect(pageTool.execute({ targetLang: 'fi' })).resolves.toEqual({
+      content: [{ type: 'text', text: 'Translated 2 page items.' }],
+      isError: false,
+    });
+    await expect(pageTool.execute({ targetLang: 'fi' })).resolves.toEqual({
+      content: [{ type: 'text', text: 'Page translation failed.' }],
+      isError: true,
+    });
+
+    await expect(languageTool.execute({})).resolves.toEqual({
+      content: [{ type: 'text', text: 'No text is available for language detection.' }],
+      isError: true,
+    });
+    await expect(languageTool.execute({ text: 'bonjour' })).resolves.toEqual({
+      content: [{ type: 'text', text: 'Language detection failed.' }],
+      isError: true,
+    });
+  });
+
+  it('retries registration after failure and tolerates unregister errors', async () => {
+    const registerTool = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('register failed'))
+      .mockResolvedValue(undefined);
+    const unregisterTool = vi.fn().mockRejectedValue(new Error('unregister failed'));
+    (navigator as Navigator & { modelContext?: unknown }).modelContext = {
+      registerTool,
+      unregisterTool,
+    };
+
+    const {
+      registerTranslationWebMcpTools,
+      unregisterTranslationWebMcpTools,
+    } = await import('./webmcp');
+
+    await expect(
+      registerTranslationWebMcpTools({
+        translatePage: vi.fn(),
+        translateSelection: vi.fn(),
+        detectLanguage: vi.fn(),
+      })
+    ).resolves.toBe(false);
+
+    await expect(
+      registerTranslationWebMcpTools({
+        translatePage: vi.fn(),
+        translateSelection: vi.fn(),
+        detectLanguage: vi.fn(),
+      })
+    ).resolves.toBe(true);
+
+    await expect(unregisterTranslationWebMcpTools()).resolves.toBeUndefined();
+    expect(unregisterTool).toHaveBeenCalledTimes(3);
+    expect(unregisterTool).toHaveBeenNthCalledWith(1, 'translate_page');
+    expect(unregisterTool).toHaveBeenNthCalledWith(2, 'translate_selection');
+    expect(unregisterTool).toHaveBeenNthCalledWith(3, 'detect_language');
   });
 
   it('prefers site selection tools and ignores the extension marker', async () => {
@@ -151,5 +284,209 @@ describe('content WebMCP helpers', () => {
     });
 
     expect(result?.translatedText).toBe('Bonjour le monde');
+  });
+
+  it('supports description-based site tool discovery and structured result parsing', async () => {
+    const executeTool = vi.fn(async (name: string, _inputArgsJson: string) => {
+      if (name === 'siteSelectionTool') {
+        return { structuredContent: { translatedText: 'Hola mundo' } };
+      }
+
+      return {
+        result: {
+          content: [{ type: 'text', text: 'Translated page in place.' }],
+        },
+      };
+    });
+    (navigator as Navigator & { modelContextTesting?: unknown }).modelContextTesting = {
+      listTools: vi.fn().mockResolvedValue([
+        'ignored-string-tool',
+        { invalid: true },
+        {
+          name: 'siteSelectionTool',
+          description: 'Translate the current selection inline.',
+        },
+        {
+          name: 'sitePageTool',
+          description: 'Translate the page content and document in place.',
+        },
+      ]),
+      executeTool,
+    };
+
+    const {
+      maybeTranslatePageWithSiteTool,
+      maybeTranslateSelectionWithSiteTool,
+    } = await import('./webmcp');
+
+    await expect(
+      maybeTranslateSelectionWithSiteTool({
+        sourceLang: 'en',
+        targetLang: 'es',
+        strategy: 'quality',
+        provider: 'deepl',
+        text: 'Hello world',
+      })
+    ).resolves.toEqual({
+      toolName: 'siteSelectionTool',
+      translatedText: 'Hola mundo',
+    });
+    expect(JSON.parse(executeTool.mock.calls[0][1])).toEqual({
+      sourceLang: 'en',
+      targetLang: 'es',
+      strategy: 'quality',
+      provider: 'deepl',
+      text: 'Hello world',
+    });
+
+    await expect(
+      maybeTranslatePageWithSiteTool({
+        sourceLang: 'auto',
+        targetLang: 'fi',
+        strategy: 'smart',
+      })
+    ).resolves.toEqual({
+      toolName: 'sitePageTool',
+      summaryText: 'Translated page in place.',
+    });
+  });
+
+  it('parses array, direct text, structured text, and output-wrapped site tool responses', async () => {
+    const executeTool = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { text: 'Hola' },
+        { structuredContent: { text: 'mundo' } },
+        '!',
+      ])
+      .mockResolvedValueOnce({
+        output: { structuredContent: { text: 'Translated whole page.' } },
+      });
+    (navigator as Navigator & { modelContextTesting?: unknown }).modelContextTesting = {
+      listTools: vi.fn().mockResolvedValue([
+        {
+          name: 'siteSelectionTool',
+          description: 'Translate the current selection inline.',
+        },
+        {
+          name: 'sitePageTool',
+          description: 'Translate the page content and document in place.',
+        },
+      ]),
+      executeTool,
+    };
+
+    const {
+      maybeTranslatePageWithSiteTool,
+      maybeTranslateSelectionWithSiteTool,
+    } = await import('./webmcp');
+
+    await expect(
+      maybeTranslateSelectionWithSiteTool({
+        sourceLang: 'en',
+        targetLang: 'es',
+        strategy: 'quality',
+        text: 'Hello world',
+      })
+    ).resolves.toEqual({
+      toolName: 'siteSelectionTool',
+      translatedText: 'Hola\nmundo\n!',
+    });
+
+    await expect(
+      maybeTranslatePageWithSiteTool({
+        sourceLang: 'auto',
+        targetLang: 'fi',
+        strategy: 'smart',
+      })
+    ).resolves.toEqual({
+      toolName: 'sitePageTool',
+      summaryText: 'Translated whole page.',
+    });
+  });
+
+  it('returns null when site tool lookup or execution fails', async () => {
+    const executeTool = vi
+      .fn()
+      .mockResolvedValueOnce({
+        isError: true,
+        content: [{ type: 'text', text: 'site tool failed' }],
+      })
+      .mockRejectedValueOnce(new Error('site page failed'));
+    (navigator as Navigator & { modelContextTesting?: unknown }).modelContextTesting = {
+      listTools: vi
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            name: 'siteSelectionTool',
+            description: 'Translate the current selection inside the page.',
+          },
+          {
+            name: 'sitePageTool',
+            description: 'Translate the page content in place.',
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            name: 'sitePageTool',
+            description: 'Translate the page content in place.',
+          },
+        ])
+        .mockRejectedValueOnce(new Error('list failed')),
+      executeTool,
+    };
+
+    const {
+      maybeTranslatePageWithSiteTool,
+      maybeTranslateSelectionWithSiteTool,
+    } = await import('./webmcp');
+
+    await expect(
+      maybeTranslateSelectionWithSiteTool({
+        sourceLang: 'en',
+        targetLang: 'fr',
+        strategy: 'quality',
+        text: 'Hello world',
+      })
+    ).resolves.toBeNull();
+
+    await expect(
+      maybeTranslatePageWithSiteTool({
+        sourceLang: 'auto',
+        targetLang: 'fi',
+        strategy: 'smart',
+      })
+    ).resolves.toBeNull();
+
+    await expect(
+      maybeTranslatePageWithSiteTool({
+        sourceLang: 'auto',
+        targetLang: 'fi',
+        strategy: 'smart',
+      })
+    ).resolves.toBeNull();
+  });
+
+  it('returns null when a site selection tool throws before producing a result', async () => {
+    (navigator as Navigator & { modelContextTesting?: unknown }).modelContextTesting = {
+      listTools: vi.fn().mockResolvedValue([
+        {
+          name: 'siteSelectionTool',
+          description: 'Translate the current selection inline.',
+        },
+      ]),
+      executeTool: vi.fn().mockRejectedValue(new Error('selection tool crashed')),
+    };
+
+    const { maybeTranslateSelectionWithSiteTool } = await import('./webmcp');
+
+    await expect(
+      maybeTranslateSelectionWithSiteTool({
+        sourceLang: 'en',
+        targetLang: 'fr',
+        strategy: 'quality',
+        text: 'Hello world',
+      })
+    ).resolves.toBeNull();
   });
 });
