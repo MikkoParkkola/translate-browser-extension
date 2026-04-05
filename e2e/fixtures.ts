@@ -15,6 +15,8 @@ interface MessageOptions {
   label?: string;
 }
 
+const EXTENSION_CONTEXT_LAUNCH_TIMEOUT_MS = 20_000;
+
 function withMessageTimeout<T>(
   promise: Promise<T>,
   timeoutMs?: number,
@@ -38,24 +40,95 @@ function withMessageTimeout<T>(
   });
 }
 
+function logExtensionFixtureDebug(label: string, details?: unknown): void {
+  const message =
+    details === undefined
+      ? `[extension:e2e:fixture] ${label}`
+      : `[extension:e2e:fixture] ${label}: ${
+          typeof details === 'string'
+            ? details
+            : JSON.stringify(details, null, 2)
+        }`;
+  console.error(message);
+}
+
+function getExtensionFixtureLabel(testInfo: { file: string; title: string }): string {
+  const fileName = testInfo.file.split(/[\\/]/).pop() ?? testInfo.file;
+  return `${fileName} > ${testInfo.title}`;
+}
+
 function createExtensionTest(options: ExtensionLaunchOptions = {}) {
   return base.extend<ExtensionFixtures>({
     // eslint-disable-next-line no-empty-pattern
-    context: async ({}, use) => {
-      const context = await chromium.launchPersistentContext(
-        '',
-        getExtensionLaunchSettings(options)
-      );
+    context: async ({}, use, testInfo) => {
+      const label = getExtensionFixtureLabel(testInfo);
+      const launchSettings = getExtensionLaunchSettings(options);
+      logExtensionFixtureDebug(`${label}:context:launch:start`, {
+        ...launchSettings,
+        timeout: EXTENSION_CONTEXT_LAUNCH_TIMEOUT_MS,
+      });
 
-      await use(context);
-      await context.close();
-    },
-    extensionId: async ({ context }, use) => {
-      let serviceWorker = context.serviceWorkers()[0];
-      if (!serviceWorker) {
-        serviceWorker = await context.waitForEvent('serviceworker', { timeout: 30_000 });
+      let context: BrowserContext;
+      try {
+        context = await chromium.launchPersistentContext('', {
+          ...launchSettings,
+          timeout: EXTENSION_CONTEXT_LAUNCH_TIMEOUT_MS,
+        });
+      } catch (error) {
+        logExtensionFixtureDebug(
+          `${label}:context:launch:error`,
+          error instanceof Error ? error.message : String(error)
+        );
+        throw error;
       }
 
+      logExtensionFixtureDebug(`${label}:context:launch:ready`, {
+        pages: context.pages().map((page) => page.url()),
+        serviceWorkers: context.serviceWorkers().map((worker) => worker.url()),
+      });
+
+      try {
+        await use(context);
+      } finally {
+        logExtensionFixtureDebug(`${label}:context:close:start`, {
+          pages: context.pages().map((page) => page.url()),
+          serviceWorkers: context.serviceWorkers().map((worker) => worker.url()),
+        });
+        try {
+          await context.close();
+          logExtensionFixtureDebug(`${label}:context:close:done`);
+        } catch (error) {
+          logExtensionFixtureDebug(
+            `${label}:context:close:error`,
+            error instanceof Error ? error.message : String(error)
+          );
+          throw error;
+        }
+      }
+    },
+    extensionId: async ({ context }, use, testInfo) => {
+      const label = getExtensionFixtureLabel(testInfo);
+      let serviceWorker = context.serviceWorkers()[0];
+      logExtensionFixtureDebug(`${label}:extension-id:start`, {
+        existingWorkers: context.serviceWorkers().map((worker) => worker.url()),
+      });
+      if (!serviceWorker) {
+        try {
+          serviceWorker = await context.waitForEvent('serviceworker', {
+            timeout: 30_000,
+          });
+        } catch (error) {
+          logExtensionFixtureDebug(`${label}:extension-id:error`, {
+            existingWorkers: context.serviceWorkers().map((worker) => worker.url()),
+            error: error instanceof Error ? error.message : String(error),
+          });
+          throw error;
+        }
+      }
+
+      logExtensionFixtureDebug(`${label}:extension-id:ready`, {
+        serviceWorkerUrl: serviceWorker.url(),
+      });
       const match = serviceWorker.url().match(/chrome-extension:\/\/([^/]+)/);
       if (!match) {
         throw new Error(`Could not extract extension ID from: ${serviceWorker.url()}`);
