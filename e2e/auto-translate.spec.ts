@@ -46,6 +46,8 @@ const FAST_TRANSLATE_PAGE_MESSAGE = {
   strategy: 'smart',
 } as const;
 
+const AUTO_TRANSLATE_E2E_RESPONSE_ATTR = 'data-auto-translate-e2e-response';
+
 type AutoTranslateBridgeResponse =
   | {
       requestId: string;
@@ -125,59 +127,74 @@ async function dispatchTranslatePageBridge(
   page: Page,
   label: string,
 ): Promise<void> {
-  const response = await page.evaluate(
-    async ({ requestEventName, responseEventName, message }) => {
-      return new Promise<AutoTranslateBridgeResponse>((resolve, reject) => {
-        const requestId = `bridge-${Date.now()}-${Math.random()
-          .toString(36)
-          .slice(2)}`;
-        const onResponse = (event: Event) => {
-          const detail = (event as CustomEvent<AutoTranslateBridgeResponse>)
-            .detail;
-          if (!detail || detail.requestId !== requestId) return;
+  const requestId = `bridge-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
 
-          window.clearTimeout(timeoutId);
-          document.removeEventListener(
-            responseEventName,
-            onResponse as EventListener,
-          );
-          resolve(detail);
-        };
-        const timeoutId = window.setTimeout(() => {
-          document.removeEventListener(
-            responseEventName,
-            onResponse as EventListener,
-          );
-          reject(
-            new Error(
-              'Timed out waiting for auto-translate bridge response',
-            ),
-          );
-        }, 10_000);
+  await page.evaluate(
+    ({ requestEventName, responseEventName, responseAttr, message, requestId }) => {
+      const root = document.documentElement;
+      root.removeAttribute(responseAttr);
 
-        document.addEventListener(
+      const onResponse = (event: Event) => {
+        const detail = (event as CustomEvent<AutoTranslateBridgeResponse>).detail;
+        if (!detail || detail.requestId !== requestId) return;
+
+        document.removeEventListener(
           responseEventName,
           onResponse as EventListener,
         );
-        document.dispatchEvent(
-          new CustomEvent(requestEventName, {
-            detail: {
-              requestId,
-              type: 'translatePage',
-              ...message,
-            },
-          }),
-        );
-      });
+        root.setAttribute(responseAttr, JSON.stringify(detail));
+      };
+
+      document.addEventListener(
+        responseEventName,
+        onResponse as EventListener,
+      );
+      document.dispatchEvent(
+        new CustomEvent(requestEventName, {
+          detail: {
+            requestId,
+            type: 'translatePage',
+            ...message,
+          },
+        }),
+      );
     },
     {
       requestEventName: AUTO_TRANSLATE_E2E_REQUEST_EVENT,
       responseEventName: AUTO_TRANSLATE_E2E_RESPONSE_EVENT,
+      responseAttr: AUTO_TRANSLATE_E2E_RESPONSE_ATTR,
       message: FAST_TRANSLATE_PAGE_MESSAGE,
+      requestId,
     },
   );
 
+  let response: AutoTranslateBridgeResponse | null = null;
+  try {
+    await expect
+      .poll(
+        async () => {
+          response = await page.evaluate((responseAttr) => {
+            const raw = document.documentElement.getAttribute(responseAttr);
+            return raw
+              ? (JSON.parse(raw) as AutoTranslateBridgeResponse)
+              : null;
+          }, AUTO_TRANSLATE_E2E_RESPONSE_ATTR);
+          return response;
+        },
+        { timeout: 10_000 },
+      )
+      .toMatchObject({ requestId });
+  } catch (error) {
+    await logAutoTranslateDebugState(page, `${label}:bridge:timeout`);
+    throw error;
+  }
+
   logAutoTranslateDebug(`${label}:bridge:response`, response);
+  if (!response) {
+    throw new Error('Timed out waiting for auto-translate bridge response');
+  }
   if (!response.success) {
     throw new Error(response.error);
   }
@@ -191,6 +208,7 @@ async function gotoMockHarnessPage(page: Page, label: string): Promise<void> {
   });
   await page.goto(MOCK_HARNESS_URL);
   await page.waitForLoadState('domcontentloaded');
+  await page.bringToFront();
   logAutoTranslateDebug(`${label}:harness:navigate:domcontentloaded`, {
     url: page.url(),
   });
@@ -213,6 +231,7 @@ async function gotoMockHarnessPage(page: Page, label: string): Promise<void> {
 type AutoTranslateSnapshot = {
   ready: string | null;
   translated: string | null;
+  bridgeResponse: AutoTranslateBridgeResponse | null;
   diagnostics:
     | AutoTranslateDiagnostics
     | { parseError: string; raw: string | null }
@@ -223,7 +242,7 @@ async function readAutoTranslateSnapshot(
   page: Page,
 ): Promise<AutoTranslateSnapshot> {
   return page.evaluate(
-    ({ diagnosticsAttr, readyAttr }) => {
+    ({ diagnosticsAttr, readyAttr, responseAttr }) => {
       const raw = document.documentElement.getAttribute(diagnosticsAttr);
       let diagnostics: AutoTranslateSnapshot['diagnostics'] = null;
 
@@ -243,12 +262,19 @@ async function readAutoTranslateSnapshot(
         translated: document
           .querySelector('main')
           ?.getAttribute('data-translated') ?? null,
+        bridgeResponse: (() => {
+          const bridgeRaw = document.documentElement.getAttribute(responseAttr);
+          return bridgeRaw
+            ? (JSON.parse(bridgeRaw) as AutoTranslateBridgeResponse)
+            : null;
+        })(),
         diagnostics,
       };
     },
     {
       diagnosticsAttr: AUTO_TRANSLATE_DIAGNOSTICS_ATTR,
       readyAttr: CONTENT_SCRIPT_READY_ATTR,
+      responseAttr: AUTO_TRANSLATE_E2E_RESPONSE_ATTR,
     },
   );
 }
@@ -262,13 +288,14 @@ async function logAutoTranslateDebugState(
       error instanceof Error ? error.message : String(error),
   }));
   const pageState = await page.evaluate(
-    ({ diagnosticsAttr, readyAttr }) => {
+    ({ diagnosticsAttr, readyAttr, responseAttr }) => {
       return {
         url: window.location.href,
         title: document.title,
         readyState: document.readyState,
         visibilityState: document.visibilityState,
         readyAttr: document.documentElement.getAttribute(readyAttr),
+        bridgeResponseRaw: document.documentElement.getAttribute(responseAttr),
         diagnosticsRaw: document.documentElement.getAttribute(diagnosticsAttr),
         rootText: document.querySelector('#mock-root')?.textContent ?? null,
         mainTranslated:
@@ -278,6 +305,7 @@ async function logAutoTranslateDebugState(
     {
       diagnosticsAttr: AUTO_TRANSLATE_DIAGNOSTICS_ATTR,
       readyAttr: CONTENT_SCRIPT_READY_ATTR,
+      responseAttr: AUTO_TRANSLATE_E2E_RESPONSE_ATTR,
     },
   ).catch((error) => ({
     pageReadError: error instanceof Error ? error.message : String(error),
@@ -307,6 +335,21 @@ async function expectPageTranslation(
   }
 }
 
+async function expectHarnessRootText(
+  page: Page,
+  label: string,
+  timeout = 5_000,
+): Promise<void> {
+  try {
+    await expect(page.locator('#mock-root')).toHaveText(MOCK_HARNESS_TEXT, {
+      timeout,
+    });
+  } catch (error) {
+    await logAutoTranslateDebugState(page, `${label}:root-text:timeout`);
+    throw error;
+  }
+}
+
 async function ensureHarnessPageTranslated(
   page: Page,
   label: string,
@@ -330,9 +373,7 @@ test.describe('Auto-translate', () => {
 
     try {
       await ensureHarnessPageTranslated(page, label);
-      await expect(page.locator('#mock-root')).toHaveText(
-        MOCK_HARNESS_TEXT,
-      );
+      await expectHarnessRootText(page, label);
     } finally {
       flushDebug();
       await page.close();
@@ -450,9 +491,7 @@ test.describe('Auto-translate', () => {
       await expect(page.locator('[data-translated]')).toHaveCount(0);
 
       // Original content should be unchanged
-      await expect(page.locator('#mock-root')).toHaveText(
-        MOCK_HARNESS_TEXT,
-      );
+      await expectHarnessRootText(page, label);
     } finally {
       flushDebug();
       await page.close();
@@ -470,9 +509,7 @@ test.describe('Auto-translate', () => {
 
     try {
       await ensureHarnessPageTranslated(page, label);
-      await expect(page.locator('#mock-root')).toHaveText(
-        MOCK_HARNESS_TEXT,
-      );
+      await expectHarnessRootText(page, label);
     } finally {
       flushDebug();
       await page.close();
