@@ -324,6 +324,29 @@ describe('Content Script', () => {
       expect(mockSendMessage).toHaveBeenCalled();
     });
 
+    it('short-circuits same-language harness bridge requests without background messaging', async () => {
+      document.body.innerHTML = '<main><p>Harness bridge content</p></main>';
+
+      const response = await dispatchAutoTranslateBridge({
+        sourceLang: 'en',
+        targetLang: 'en',
+      });
+
+      expect(response).toMatchObject({
+        success: true,
+        summary: expect.objectContaining({
+          handledBy: 'extension',
+          translatedCount: expect.any(Number),
+          errorCount: expect.any(Number),
+        }),
+      });
+      expect(
+        document.querySelectorAll('[data-translated="true"]').length,
+      ).toBeGreaterThan(0);
+      expect(document.body.textContent).toContain('Harness bridge content');
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
     it('keeps diagnostics off non-harness pages', async () => {
       vi.clearAllMocks();
       resetContentChromeMocks();

@@ -149,6 +149,63 @@ export function createPageTranslationOrchestrator(
   // Batch translation with retry
   // --------------------------------------------------------------------------
 
+  function applyTranslatedBatchResults(
+    batch: { nodes: Text[]; texts: string[]; restoreFns: Array<(text: string) => string> },
+    translatedResults: string[],
+    sourceLang: string,
+    targetLang: string
+  ): { translatedCount: number; errorCount: number; domUpdateTime: number } {
+    const domUpdateStart = performance.now();
+    let translatedCount = 0;
+    let errorCount = 0;
+
+    translatedResults.forEach((translated, idx) => {
+      const node = batch.nodes[idx];
+      // Guard: skip detached nodes (removed from DOM during translation).
+      // A single rich text container can legitimately contain multiple sibling
+      // text nodes, so reinjection must not stop after the first child update.
+      if (node && translated && node.parentElement && document.contains(node)) {
+        try {
+          const parent = node.parentElement;
+          const finalText = batch.restoreFns[idx](translated);
+          /* v8 ignore start */
+          const original = node.textContent || '';
+          /* v8 ignore stop */
+          const leadingSpace = original.match(/^\s*/)?.[0] || '';
+          const trailingSpace = original.match(/\s*$/)?.[0] || '';
+
+          // Debug: log first 3 replacements to verify translation is actually different
+          if (idx < 3) {
+            log.debug(`DOM Replace #${idx}: "${original.trim().substring(0, 40)}" -> "${finalText.substring(0, 40)}" (same=${original.trim() === finalText})`);
+          }
+
+          ensureOriginalTextSnapshot(parent);
+
+          node.textContent = leadingSpace + finalText + trailingSpace;
+          parent.setAttribute(MACHINE_TRANSLATION_ATTR, parent.textContent || '');
+          parent.setAttribute(SOURCE_LANG_ATTR, sourceLang);
+          parent.setAttribute(TARGET_LANG_ATTR, targetLang);
+          parent.setAttribute(TRANSLATED_ATTR, 'true');
+          makeTranslatedElementEditable(parent);
+
+          // Auto-apply bilingual annotation if bilingual mode is active
+          if (getBilingualModeState()) {
+            applyBilingualToElement(parent);
+          }
+
+          translatedCount++;
+        } catch {
+          errorCount++;
+        }
+      }
+    });
+
+    const domUpdateTime = performance.now() - domUpdateStart;
+    recordContentTiming('domUpdate', domUpdateTime);
+
+    return { translatedCount, errorCount, domUpdateTime };
+  }
+
   async function translateBatchWithRetry(
     batch: { nodes: Text[]; texts: string[]; restoreFns: Array<(text: string) => string> },
     sourceLang: string,
@@ -174,92 +231,60 @@ export function createPageTranslationOrchestrator(
         const pageContext = batch.nodes[0] ? getPageContext(batch.nodes[0]) : '';
         /* v8 ignore stop */
 
-        const ipcStart = performance.now();
-        const response = (await browserAPI.runtime.sendMessage({
-          type: 'translate',
-          text: batch.texts,
-          sourceLang,
-          targetLang,
-          options: {
-            strategy,
-            context: pageContext ? { before: '', after: '', pageContext } : undefined,
-          },
-          provider,
-          enableProfiling,
-        })) as TranslateResponse;
-        const ipcTime = performance.now() - ipcStart;
-        recordContentTiming('ipcRoundtrip', ipcTime);
+        let translatedResults: string[];
+        let ipcTime = 0;
 
-        const batchResult = response.result ?? [];
-        if (response.success) {
-          let translatedResults: string[];
-          try {
-            translatedResults = normalizeBatchTranslations(batchResult, batch.nodes.length);
-          } catch (error) {
-            log.warn('Batch translation returned invalid result shape:', error);
-            return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime, domUpdateTime: 0 };
-          }
+        if (sourceLang !== 'auto' && sourceLang === targetLang) {
+          // Matching-language page translation is a DOM-marking pass only.
+          // Skip the background roundtrip so hidden-tab/service-worker churn
+          // cannot stall an otherwise no-op batch.
+          translatedResults = batch.texts;
+          recordContentTiming('ipcRoundtrip', ipcTime);
+        } else {
+          const ipcStart = performance.now();
+          const response = (await browserAPI.runtime.sendMessage({
+            type: 'translate',
+            text: batch.texts,
+            sourceLang,
+            targetLang,
+            options: {
+              strategy,
+              context: pageContext ? { before: '', after: '', pageContext } : undefined,
+            },
+            provider,
+            enableProfiling,
+          })) as TranslateResponse;
+          ipcTime = performance.now() - ipcStart;
+          recordContentTiming('ipcRoundtrip', ipcTime);
 
-          const domUpdateStart = performance.now();
-          let translatedCount = 0;
-          let errorCount = 0;
-
-          translatedResults.forEach((translated, idx) => {
-            const node = batch.nodes[idx];
-            // Guard: skip detached nodes (removed from DOM during translation).
-            // A single rich text container can legitimately contain multiple sibling
-            // text nodes, so reinjection must not stop after the first child update.
-            if (node && translated && node.parentElement && document.contains(node)) {
-              try {
-                const parent = node.parentElement;
-                const finalText = batch.restoreFns[idx](translated);
-                /* v8 ignore start */
-                const original = node.textContent || '';
-                /* v8 ignore stop */
-                const leadingSpace = original.match(/^\s*/)?.[0] || '';
-                const trailingSpace = original.match(/\s*$/)?.[0] || '';
-
-                // Debug: log first 3 replacements to verify translation is actually different
-                if (idx < 3) {
-                  log.debug(`DOM Replace #${idx}: "${original.trim().substring(0, 40)}" -> "${finalText.substring(0, 40)}" (same=${original.trim() === finalText})`);
-                }
-
-                ensureOriginalTextSnapshot(parent);
-
-                node.textContent = leadingSpace + finalText + trailingSpace;
-                parent.setAttribute(MACHINE_TRANSLATION_ATTR, parent.textContent || '');
-                parent.setAttribute(SOURCE_LANG_ATTR, sourceLang);
-                parent.setAttribute(TARGET_LANG_ATTR, targetLang);
-                parent.setAttribute(TRANSLATED_ATTR, 'true');
-                makeTranslatedElementEditable(parent);
-
-                // Auto-apply bilingual annotation if bilingual mode is active
-                if (getBilingualModeState()) {
-                  applyBilingualToElement(parent);
-                }
-
-                translatedCount++;
-              } catch {
-                errorCount++;
-              }
+          if (response.success) {
+            try {
+              translatedResults = normalizeBatchTranslations(response.result ?? [], batch.nodes.length);
+            } catch (error) {
+              log.warn('Batch translation returned invalid result shape:', error);
+              return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime, domUpdateTime: 0 };
             }
-          });
+          } else {
+            /* v8 ignore start -- non-retryable IPC error; requires real extension messaging */
+            // Non-retryable error (e.g. unsupported language pair)
+            if (response.error && !isTransientError(response.error)) {
+              return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime, domUpdateTime: 0 };
+            }
 
-          const domUpdateTime = performance.now() - domUpdateStart;
-          recordContentTiming('domUpdate', domUpdateTime);
-
-          return { translatedCount, errorCount, ipcTime, domUpdateTime };
+            /* v8 ignore start -- OR default fallback */
+            lastError = response.error || 'Translation returned unsuccessful response';
+            /* v8 ignore stop */
+            continue;
+          }
         }
 
-        /* v8 ignore start -- non-retryable IPC error; requires real extension messaging */
-        // Non-retryable error (e.g. unsupported language pair)
-        if (response.error && !isTransientError(response.error)) {
-          return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime, domUpdateTime: 0 };
-        }
-
-        /* v8 ignore start -- OR default fallback */
-        lastError = response.error || 'Translation returned unsuccessful response';
-        /* v8 ignore stop */
+        const { translatedCount, errorCount, domUpdateTime } = applyTranslatedBatchResults(
+          batch,
+          translatedResults,
+          sourceLang,
+          targetLang
+        );
+        return { translatedCount, errorCount, ipcTime, domUpdateTime };
       } catch (error) {
         lastError = error;
         // Extension context invalidated = service worker restarted, not retryable
