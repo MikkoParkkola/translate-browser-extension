@@ -99,13 +99,85 @@ function attachAutoTranslateDebug(page: Page, label: string): () => void {
   };
 }
 
+function withAutoTranslateStepTimeout<T>(
+  promise: Promise<T>,
+  label: string,
+  timeoutMs = AUTO_TRANSLATE_STEP_TIMEOUT_MS,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  });
+}
+
+async function resolveAutoTranslateExtensionId(
+  context: BrowserContext,
+  label: string,
+): Promise<string> {
+  let serviceWorker = context.serviceWorkers()[0];
+  logAutoTranslateDebug(`${label}:extension-id:start`, {
+    existingWorkers: context.serviceWorkers().map((worker) => worker.url()),
+  });
+
+  if (!serviceWorker) {
+    try {
+      serviceWorker = await context.waitForEvent('serviceworker', {
+        timeout: AUTO_TRANSLATE_STEP_TIMEOUT_MS,
+      });
+    } catch (error) {
+      logAutoTranslateDebug(`${label}:extension-id:timeout`, {
+        existingWorkers: context.serviceWorkers().map((worker) => worker.url()),
+      });
+      throw error;
+    }
+  }
+
+  const serviceWorkerUrl = serviceWorker.url();
+  logAutoTranslateDebug(`${label}:extension-id:ready`, {
+    serviceWorkerUrl,
+  });
+
+  const match = serviceWorkerUrl.match(/chrome-extension:\/\/([^/]+)/);
+  if (!match) {
+    throw new Error(
+      `Could not extract extension ID from: ${serviceWorkerUrl}`,
+    );
+  }
+
+  return match[1];
+}
+
+function finalizeAutoTranslateAttempt(flushDebug: () => void): void {
+  // Let the test-scoped persistent-context fixture own browser cleanup. In CI,
+  // explicit page.close() here can hide the real failing step behind teardown hangs.
+  flushDebug();
+}
+
 async function acquireAutoTranslatePage(
   context: BrowserContext,
   extensionId: string,
   label: string,
 ): Promise<Page> {
   const existingPages = context.pages();
-  const page = existingPages[0] ?? (await context.newPage());
+  const page =
+    existingPages[0] ??
+    (await (() => {
+      logAutoTranslateDebug(`${label}:page:create:start`, {
+        extensionId,
+      });
+      return withAutoTranslateStepTimeout(
+        context.newPage(),
+        `${label}:page:create`,
+      );
+    })());
   logAutoTranslateDebug(`${label}:page:acquired`, {
     extensionId,
     existingPages: existingPages.length,
@@ -382,9 +454,9 @@ test.describe('Auto-translate', () => {
   // ── 1. Harness page translation ─────────────────────────────────
   test('translates the harness page with the content-script translation path', async ({
     context,
-    extensionId,
   }) => {
     const label = 'page-translation';
+    const extensionId = await resolveAutoTranslateExtensionId(context, label);
 
     const page = await acquireAutoTranslatePage(context, extensionId, label);
     const flushDebug = attachAutoTranslateDebug(page, label);
@@ -393,17 +465,14 @@ test.describe('Auto-translate', () => {
       await ensureHarnessPageTranslated(page, label);
       await expectHarnessRootText(page, label);
     } finally {
-      flushDebug();
-      await page.close();
+      finalizeAutoTranslateAttempt(flushDebug);
     }
   });
 
   // ── 2. Dynamic content (SPA simulation) ────────────────────────
-  test('translates dynamically loaded content', async ({
-    context,
-    extensionId,
-  }) => {
+  test('translates dynamically loaded content', async ({ context }) => {
     const label = 'dynamic-content';
+    const extensionId = await resolveAutoTranslateExtensionId(context, label);
 
     const page = await acquireAutoTranslatePage(context, extensionId, label);
     const flushDebug = attachAutoTranslateDebug(page, label);
@@ -441,14 +510,14 @@ test.describe('Auto-translate', () => {
         throw error;
       }
     } finally {
-      flushDebug();
-      await page.close();
+      finalizeAutoTranslateAttempt(flushDebug);
     }
   });
 
   // ── 3. Auto-translate with iframes ─────────────────────────────
-  test('handles pages with iframes', async ({ context, extensionId }) => {
+  test('handles pages with iframes', async ({ context }) => {
     const label = 'iframes';
+    const extensionId = await resolveAutoTranslateExtensionId(context, label);
 
     const page = await acquireAutoTranslatePage(context, extensionId, label);
     const flushDebug = attachAutoTranslateDebug(page, label);
@@ -480,17 +549,14 @@ test.describe('Auto-translate', () => {
         expect(iframeText).toContain('Iframe content');
       }
     } finally {
-      flushDebug();
-      await page.close();
+      finalizeAutoTranslateAttempt(flushDebug);
     }
   });
 
   // ── 4. Auto-translate disabled → no translation on page load ───
-  test('does not auto-translate when disabled', async ({
-    context,
-    extensionId,
-  }) => {
+  test('does not auto-translate when disabled', async ({ context }) => {
     const label = 'disabled';
+    const extensionId = await resolveAutoTranslateExtensionId(context, label);
     await configureAutoTranslate(
       context,
       extensionId,
@@ -512,17 +578,16 @@ test.describe('Auto-translate', () => {
       // Original content should be unchanged
       await expectHarnessRootText(page, label);
     } finally {
-      flushDebug();
-      await page.close();
+      finalizeAutoTranslateAttempt(flushDebug);
     }
   });
 
   // ── 5. Matching language → auto-translate becomes a no-op pass ───
   test('keeps page text unchanged when page language matches target', async ({
     context,
-    extensionId,
   }) => {
     const label = 'matching-language';
+    const extensionId = await resolveAutoTranslateExtensionId(context, label);
 
     const page = await acquireAutoTranslatePage(context, extensionId, label);
     const flushDebug = attachAutoTranslateDebug(page, label);
@@ -531,8 +596,7 @@ test.describe('Auto-translate', () => {
       await ensureHarnessPageTranslated(page, label);
       await expectHarnessRootText(page, label);
     } finally {
-      flushDebug();
-      await page.close();
+      finalizeAutoTranslateAttempt(flushDebug);
     }
   });
 });
