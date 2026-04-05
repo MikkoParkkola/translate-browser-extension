@@ -98,6 +98,21 @@ function attachAutoTranslateDebug(page: Page, label: string): () => void {
   };
 }
 
+async function acquireAutoTranslatePage(
+  context: BrowserContext,
+  extensionId: string,
+  label: string,
+): Promise<Page> {
+  const existingPages = context.pages();
+  const page = existingPages[0] ?? (await context.newPage());
+  logAutoTranslateDebug(`${label}:page:acquired`, {
+    extensionId,
+    existingPages: existingPages.length,
+    url: page.url(),
+  });
+  return page;
+}
+
 async function configureAutoTranslate(
   context: BrowserContext,
   extensionId: string,
@@ -363,10 +378,11 @@ test.describe('Auto-translate', () => {
   // ── 1. Harness page translation ─────────────────────────────────
   test('translates the harness page with the content-script translation path', async ({
     context,
+    extensionId,
   }) => {
     const label = 'page-translation';
 
-    const page = await context.newPage();
+    const page = await acquireAutoTranslatePage(context, extensionId, label);
     const flushDebug = attachAutoTranslateDebug(page, label);
 
     try {
@@ -381,10 +397,11 @@ test.describe('Auto-translate', () => {
   // ── 2. Dynamic content (SPA simulation) ────────────────────────
   test('translates dynamically loaded content', async ({
     context,
+    extensionId,
   }) => {
     const label = 'dynamic-content';
 
-    const page = await context.newPage();
+    const page = await acquireAutoTranslatePage(context, extensionId, label);
     const flushDebug = attachAutoTranslateDebug(page, label);
 
     try {
@@ -426,10 +443,10 @@ test.describe('Auto-translate', () => {
   });
 
   // ── 3. Auto-translate with iframes ─────────────────────────────
-  test('handles pages with iframes', async ({ context }) => {
+  test('handles pages with iframes', async ({ context, extensionId }) => {
     const label = 'iframes';
 
-    const page = await context.newPage();
+    const page = await acquireAutoTranslatePage(context, extensionId, label);
     const flushDebug = attachAutoTranslateDebug(page, label);
 
     try {
@@ -477,7 +494,7 @@ test.describe('Auto-translate', () => {
       label,
     );
 
-    const page = await context.newPage();
+    const page = await acquireAutoTranslatePage(context, extensionId, label);
     const flushDebug = attachAutoTranslateDebug(page, label);
 
     try {
@@ -499,10 +516,11 @@ test.describe('Auto-translate', () => {
   // ── 5. Matching language → auto-translate becomes a no-op pass ───
   test('keeps page text unchanged when page language matches target', async ({
     context,
+    extensionId,
   }) => {
     const label = 'matching-language';
 
-    const page = await context.newPage();
+    const page = await acquireAutoTranslatePage(context, extensionId, label);
     const flushDebug = attachAutoTranslateDebug(page, label);
 
     try {
