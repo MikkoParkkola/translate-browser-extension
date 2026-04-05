@@ -46,33 +46,90 @@ const FAST_DISABLED_AUTO_TRANSLATE_SETTINGS = {
   ...FAST_NOOP_TRANSLATION_SETTINGS,
 } as const;
 
+function logAutoTranslateDebug(label: string, details?: unknown): void {
+  if (details === undefined) {
+    console.log(`[auto-translate:e2e] ${label}`);
+    return;
+  }
+
+  const serialized =
+    typeof details === 'string'
+      ? details
+      : JSON.stringify(details, null, 2);
+  console.log(`[auto-translate:e2e] ${label}: ${serialized}`);
+}
+
+function attachAutoTranslateDebug(page: Page, label: string): () => void {
+  const events: string[] = [];
+  const onConsole = (message: { type(): string; text(): string }) => {
+    events.push(`[console:${message.type()}] ${message.text()}`);
+  };
+  const onPageError = (error: Error) => {
+    events.push(`[pageerror] ${error.message}`);
+  };
+
+  page.on('console', onConsole);
+  page.on('pageerror', onPageError);
+
+  return () => {
+    page.off('console', onConsole);
+    page.off('pageerror', onPageError);
+
+    if (events.length > 0) {
+      logAutoTranslateDebug(`${label}:page-events`, events);
+    }
+  };
+}
+
 async function configureAutoTranslate(
   context: BrowserContext,
   extensionId: string,
   settings: Record<string, unknown>,
+  label: string,
 ): Promise<void> {
+  logAutoTranslateDebug(`${label}:configure:start`, settings);
   const setupPage = await context.newPage();
-  await setupPage.goto(popupUrl(extensionId));
-  await setupPage.waitForLoadState('domcontentloaded');
-  await setExtensionSettings(setupPage, settings);
-  const storedSettings = await setupPage.evaluate(async (keys) => {
-    return chrome.storage.local.get(keys);
-  }, Object.keys(settings));
-  expect(storedSettings).toMatchObject(settings);
-  await setupPage.close();
+
+  try {
+    await setupPage.goto(popupUrl(extensionId));
+    await setupPage.waitForLoadState('domcontentloaded');
+    logAutoTranslateDebug(`${label}:configure:popup-ready`);
+
+    await setExtensionSettings(setupPage, settings);
+    const storedSettings = await setupPage.evaluate(async (keys) => {
+      return chrome.storage.local.get(keys);
+    }, Object.keys(settings));
+    logAutoTranslateDebug(`${label}:configure:stored-settings`, storedSettings);
+    expect(storedSettings).toMatchObject(settings);
+  } finally {
+    await setupPage.close();
+  }
 }
 
-async function gotoMockHarnessPage(page: Page): Promise<void> {
+async function gotoMockHarnessPage(page: Page, label: string): Promise<void> {
+  logAutoTranslateDebug(`${label}:harness:navigate:start`, {
+    url: MOCK_HARNESS_URL,
+  });
   await page.bringToFront();
   await page.goto(MOCK_HARNESS_URL);
   await page.waitForLoadState('domcontentloaded');
-  await page.waitForFunction(
-    (attrName) => {
-      return document.documentElement.getAttribute(attrName) === 'true';
-    },
-    CONTENT_SCRIPT_READY_ATTR,
-    { timeout: 15_000 },
-  );
+  logAutoTranslateDebug(`${label}:harness:navigate:domcontentloaded`, {
+    url: page.url(),
+  });
+
+  try {
+    await page.waitForFunction(
+      (attrName) => {
+        return document.documentElement.getAttribute(attrName) === 'true';
+      },
+      CONTENT_SCRIPT_READY_ATTR,
+      { timeout: 15_000 },
+    );
+    logAutoTranslateDebug(`${label}:harness:navigate:content-ready`);
+  } catch (error) {
+    await logAutoTranslateDebugState(page, `${label}:harness:navigate:timeout`);
+    throw error;
+  }
 }
 
 type AutoTranslateSnapshot = {
@@ -118,33 +175,78 @@ async function readAutoTranslateSnapshot(
   );
 }
 
-async function expectAutoTranslateToComplete(page: Page): Promise<void> {
-  await expect
-    .poll(
-      async () => {
-        return readAutoTranslateSnapshot(page);
-      },
-      { timeout: 30_000 },
-    )
-    .toMatchObject({
-      ready: 'true',
-      translated: 'true',
-      diagnostics: {
-        contentLoaded: true,
-        checkStarted: true,
-        settingsLoaded: true,
-        shouldAutoTranslate: true,
-        currentSettingsApplied: true,
-        startScheduled: true,
-        startRan: true,
-        translationRequested: true,
-        translationCompleted: true,
-        sourceLang: 'en',
-        targetLang: 'en',
-        provider: 'opus-mt',
-        lastError: null,
-      },
-    });
+async function logAutoTranslateDebugState(
+  page: Page,
+  label: string,
+): Promise<void> {
+  const snapshot = await readAutoTranslateSnapshot(page).catch((error) => ({
+    snapshotReadError:
+      error instanceof Error ? error.message : String(error),
+  }));
+  const pageState = await page.evaluate(
+    ({ diagnosticsAttr, readyAttr }) => {
+      return {
+        url: window.location.href,
+        title: document.title,
+        readyState: document.readyState,
+        visibilityState: document.visibilityState,
+        readyAttr: document.documentElement.getAttribute(readyAttr),
+        diagnosticsRaw: document.documentElement.getAttribute(diagnosticsAttr),
+        rootText: document.querySelector('#mock-root')?.textContent ?? null,
+        mainTranslated:
+          document.querySelector('main')?.getAttribute('data-translated') ?? null,
+      };
+    },
+    {
+      diagnosticsAttr: AUTO_TRANSLATE_DIAGNOSTICS_ATTR,
+      readyAttr: CONTENT_SCRIPT_READY_ATTR,
+    },
+  ).catch((error) => ({
+    pageReadError: error instanceof Error ? error.message : String(error),
+  }));
+
+  logAutoTranslateDebug(label, {
+    snapshot,
+    pageState,
+  });
+}
+
+async function expectAutoTranslateToComplete(
+  page: Page,
+  label: string,
+): Promise<void> {
+  try {
+    await expect
+      .poll(
+        async () => {
+          return readAutoTranslateSnapshot(page);
+        },
+        { timeout: 30_000 },
+      )
+      .toMatchObject({
+        ready: 'true',
+        translated: 'true',
+        diagnostics: {
+          contentLoaded: true,
+          checkStarted: true,
+          settingsLoaded: true,
+          shouldAutoTranslate: true,
+          currentSettingsApplied: true,
+          startScheduled: true,
+          startRan: true,
+          translationRequested: true,
+          translationCompleted: true,
+          sourceLang: 'en',
+          targetLang: 'en',
+          provider: 'opus-mt',
+          lastError: null,
+        },
+      });
+    logAutoTranslateDebug(`${label}:complete`);
+  } catch (error) {
+    await logAutoTranslateDebugState(page, `${label}:complete:timeout`);
+    throw error;
+  }
 }
 
 test.describe('Auto-translate', () => {
@@ -155,20 +257,27 @@ test.describe('Auto-translate', () => {
     context,
     extensionId,
   }) => {
+    const label = 'page-load';
     await configureAutoTranslate(
       context,
       extensionId,
       FAST_AUTO_TRANSLATE_SETTINGS,
+      label,
     );
 
     const page = await context.newPage();
-    await gotoMockHarnessPage(page);
-    await expectAutoTranslateToComplete(page);
-    await expect(page.locator('#mock-root')).toHaveText(
-      MOCK_HARNESS_TEXT,
-    );
+    const flushDebug = attachAutoTranslateDebug(page, label);
 
-    await page.close();
+    try {
+      await gotoMockHarnessPage(page, label);
+      await expectAutoTranslateToComplete(page, label);
+      await expect(page.locator('#mock-root')).toHaveText(
+        MOCK_HARNESS_TEXT,
+      );
+    } finally {
+      flushDebug();
+      await page.close();
+    }
   });
 
   // ── 2. Dynamic content (SPA simulation) ────────────────────────
@@ -176,91 +285,111 @@ test.describe('Auto-translate', () => {
     context,
     extensionId,
   }) => {
+    const label = 'dynamic-content';
     await configureAutoTranslate(
       context,
       extensionId,
       FAST_AUTO_TRANSLATE_SETTINGS,
+      label,
     );
 
     const page = await context.newPage();
-    await gotoMockHarnessPage(page);
-    await expectAutoTranslateToComplete(page);
-    await page.waitForTimeout(500);
+    const flushDebug = attachAutoTranslateDebug(page, label);
 
-    await page.evaluate(() => {
-      const div = document.createElement('div');
-      div.id = 'dynamic-content';
-      div.textContent =
-        'This is dynamically loaded content that should be translated.';
-      document.body.appendChild(div);
-    });
+    try {
+      await gotoMockHarnessPage(page, label);
+      await expectAutoTranslateToComplete(page, label);
+      await page.waitForTimeout(500);
 
-    await expect
-      .poll(
-        async () => {
-          const snapshot = await readAutoTranslateSnapshot(page);
-          return {
-            translated: await page
-              .locator('#dynamic-content')
-              .getAttribute('data-translated'),
-            diagnostics: snapshot.diagnostics,
-          };
-        },
-        { timeout: 15_000 },
-      )
-      .toMatchObject({
-        translated: 'true',
-        diagnostics: {
-          lastError: null,
-        },
+      await page.evaluate(() => {
+        const div = document.createElement('div');
+        div.id = 'dynamic-content';
+        div.textContent =
+          'This is dynamically loaded content that should be translated.';
+        document.body.appendChild(div);
       });
+      logAutoTranslateDebug(`${label}:dynamic-node:added`);
 
-    await page.close();
+      try {
+        await expect
+          .poll(
+            async () => {
+              const snapshot = await readAutoTranslateSnapshot(page);
+              return {
+                translated: await page
+                  .locator('#dynamic-content')
+                  .getAttribute('data-translated'),
+                diagnostics: snapshot.diagnostics,
+              };
+            },
+            { timeout: 15_000 },
+          )
+          .toMatchObject({
+            translated: 'true',
+            diagnostics: {
+              lastError: null,
+            },
+          });
+      } catch (error) {
+        await logAutoTranslateDebugState(page, `${label}:dynamic-node:timeout`);
+        throw error;
+      }
+    } finally {
+      flushDebug();
+      await page.close();
+    }
   });
 
   // ── 3. Auto-translate with iframes ─────────────────────────────
   test('handles pages with iframes', async ({ context, extensionId }) => {
+    const label = 'iframes';
     await configureAutoTranslate(
       context,
       extensionId,
       FAST_AUTO_TRANSLATE_SETTINGS,
+      label,
     );
 
     const page = await context.newPage();
-    await gotoMockHarnessPage(page);
-    await expect(page.locator('main')).toHaveAttribute(
-      'data-translated',
-      'true',
-      {
-        timeout: 10_000,
-      },
-    );
+    const flushDebug = attachAutoTranslateDebug(page, label);
 
-    // Inject an iframe into the page
-    await page.evaluate(() => {
-      const iframe = document.createElement('iframe');
-      iframe.srcdoc =
-        '<html><body><p>Iframe content to translate</p></body></html>';
-      iframe.id = 'test-iframe';
-      iframe.style.width = '400px';
-      iframe.style.height = '200px';
-      document.body.appendChild(iframe);
-    });
+    try {
+      await gotoMockHarnessPage(page, label);
+      await expect(page.locator('main')).toHaveAttribute(
+        'data-translated',
+        'true',
+        {
+          timeout: 10_000,
+        },
+      );
 
-    // Wait for iframe to load
-    await page.waitForTimeout(2000);
+      // Inject an iframe into the page
+      await page.evaluate(() => {
+        const iframe = document.createElement('iframe');
+        iframe.srcdoc =
+          '<html><body><p>Iframe content to translate</p></body></html>';
+        iframe.id = 'test-iframe';
+        iframe.style.width = '400px';
+        iframe.style.height = '200px';
+        document.body.appendChild(iframe);
+      });
 
-    // Verify iframe exists and has content
-    const iframeHandle = await page.locator('#test-iframe').elementHandle();
-    expect(iframeHandle).toBeTruthy();
+      // Wait for iframe to load
+      await page.waitForTimeout(2000);
 
-    const frame = await iframeHandle!.contentFrame();
-    if (frame) {
-      const iframeText = await frame.textContent('body');
-      expect(iframeText).toContain('Iframe content');
+      // Verify iframe exists and has content
+      const iframeHandle = await page.locator('#test-iframe').elementHandle();
+      expect(iframeHandle).toBeTruthy();
+
+      const frame = await iframeHandle!.contentFrame();
+      if (frame) {
+        const iframeText = await frame.textContent('body');
+        expect(iframeText).toContain('Iframe content');
+      }
+    } finally {
+      flushDebug();
+      await page.close();
     }
-
-    await page.close();
   });
 
   // ── 4. Auto-translate disabled → no translation on page load ───
@@ -268,26 +397,33 @@ test.describe('Auto-translate', () => {
     context,
     extensionId,
   }) => {
+    const label = 'disabled';
     await configureAutoTranslate(
       context,
       extensionId,
       FAST_DISABLED_AUTO_TRANSLATE_SETTINGS,
+      label,
     );
 
     const page = await context.newPage();
-    await gotoMockHarnessPage(page);
+    const flushDebug = attachAutoTranslateDebug(page, label);
 
-    // Wait a reasonable time for any unwanted auto-translation
-    await page.waitForTimeout(1500);
+    try {
+      await gotoMockHarnessPage(page, label);
 
-    await expect(page.locator('[data-translated]')).toHaveCount(0);
+      // Wait a reasonable time for any unwanted auto-translation
+      await page.waitForTimeout(1500);
 
-    // Original content should be unchanged
-    await expect(page.locator('#mock-root')).toHaveText(
-      MOCK_HARNESS_TEXT,
-    );
+      await expect(page.locator('[data-translated]')).toHaveCount(0);
 
-    await page.close();
+      // Original content should be unchanged
+      await expect(page.locator('#mock-root')).toHaveText(
+        MOCK_HARNESS_TEXT,
+      );
+    } finally {
+      flushDebug();
+      await page.close();
+    }
   });
 
   // ── 5. Matching language → auto-translate becomes a no-op pass ───
@@ -295,19 +431,26 @@ test.describe('Auto-translate', () => {
     context,
     extensionId,
   }) => {
+    const label = 'matching-language';
     await configureAutoTranslate(
       context,
       extensionId,
       FAST_AUTO_TRANSLATE_SETTINGS,
+      label,
     );
 
     const page = await context.newPage();
-    await gotoMockHarnessPage(page);
-    await expectAutoTranslateToComplete(page);
-    await expect(page.locator('#mock-root')).toHaveText(
-      MOCK_HARNESS_TEXT,
-    );
+    const flushDebug = attachAutoTranslateDebug(page, label);
 
-    await page.close();
+    try {
+      await gotoMockHarnessPage(page, label);
+      await expectAutoTranslateToComplete(page, label);
+      await expect(page.locator('#mock-root')).toHaveText(
+        MOCK_HARNESS_TEXT,
+      );
+    } finally {
+      flushDebug();
+      await page.close();
+    }
   });
 });
