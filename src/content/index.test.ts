@@ -14,6 +14,8 @@ import {
 } from '../test-helpers/dom-property-mocks';
 import type { AutoTranslateDiagnostics } from './content-types';
 import {
+  AUTO_TRANSLATE_E2E_REQUEST_EVENT,
+  AUTO_TRANSLATE_E2E_RESPONSE_EVENT,
   AUTO_TRANSLATE_DIAGNOSTICS_ATTR,
   CONTENT_SCRIPT_READY_ATTR,
 } from './content-types';
@@ -195,6 +197,66 @@ describe('Content Script', () => {
       sendResponse,
     );
 
+  type AutoTranslateE2eResponse =
+    | {
+        requestId: string;
+        success: true;
+        summary: {
+          translatedCount: number;
+          errorCount: number;
+          handledBy: 'extension' | 'site-tool' | 'pdf';
+        };
+      }
+    | {
+        requestId: string;
+        success: false;
+        error: string;
+      };
+
+  const dispatchAutoTranslateBridge = (
+    overrides: Partial<TranslatePageMessage> = {},
+  ): Promise<AutoTranslateE2eResponse> => {
+    const requestId = `bridge-${Math.random().toString(36).slice(2)}`;
+
+    return new Promise((resolve, reject) => {
+      const onResponse = (event: Event) => {
+        const detail = (event as CustomEvent<AutoTranslateE2eResponse>).detail;
+        if (!detail || detail.requestId !== requestId) return;
+
+        window.clearTimeout(timeoutId);
+        document.removeEventListener(
+          AUTO_TRANSLATE_E2E_RESPONSE_EVENT,
+          onResponse as EventListener,
+        );
+        resolve(detail);
+      };
+
+      const timeoutId = window.setTimeout(() => {
+        document.removeEventListener(
+          AUTO_TRANSLATE_E2E_RESPONSE_EVENT,
+          onResponse as EventListener,
+        );
+        reject(
+          new Error('Timed out waiting for auto-translate bridge response'),
+        );
+      }, 1_000);
+
+      document.addEventListener(
+        AUTO_TRANSLATE_E2E_RESPONSE_EVENT,
+        onResponse as EventListener,
+      );
+      document.dispatchEvent(
+        new CustomEvent(AUTO_TRANSLATE_E2E_REQUEST_EVENT, {
+          detail: {
+            requestId,
+            ...DEFAULT_TRANSLATE_PAGE_MESSAGE,
+            ...overrides,
+          },
+        }),
+      );
+    });
+  };
+
   const enterScreenshotMode = (sendResponse = vi.fn()) =>
     dispatchMessage({ type: 'enterScreenshotMode' }, sendResponse);
 
@@ -234,10 +296,33 @@ describe('Content Script', () => {
         expect.objectContaining({
           contentLoaded: true,
           readyState: document.readyState,
-          visibilityState: document.visibilityState,
-          }),
-       );
-     });
+           visibilityState: document.visibilityState,
+           }),
+        );
+      });
+
+    it('responds to harness translate bridge requests on the mock page', async () => {
+      document.body.innerHTML = '<main><p>Harness bridge content</p></main>';
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Valjastettu testisisalto'],
+      });
+
+      const response = await dispatchAutoTranslateBridge();
+
+      expect(response).toMatchObject({
+        success: true,
+        summary: expect.objectContaining({
+          handledBy: 'extension',
+          translatedCount: expect.any(Number),
+          errorCount: expect.any(Number),
+        }),
+      });
+      expect(
+        document.querySelectorAll('[data-translated="true"]').length,
+      ).toBeGreaterThan(0);
+      expect(mockSendMessage).toHaveBeenCalled();
+    });
 
     it('keeps diagnostics off non-harness pages', async () => {
       vi.clearAllMocks();
@@ -255,6 +340,24 @@ describe('Content Script', () => {
       expect(
         document.documentElement.hasAttribute(AUTO_TRANSLATE_DIAGNOSTICS_ATTR),
       ).toBe(false);
+
+      const onResponse = vi.fn();
+      document.addEventListener(
+        AUTO_TRANSLATE_E2E_RESPONSE_EVENT,
+        onResponse as EventListener,
+      );
+      document.dispatchEvent(
+        new CustomEvent(AUTO_TRANSLATE_E2E_REQUEST_EVENT, {
+          detail: {
+            requestId: 'non-harness-request',
+            ...DEFAULT_TRANSLATE_PAGE_MESSAGE,
+          },
+        }),
+      );
+      await waitForAsyncContentWork();
+
+      expect(onResponse).not.toHaveBeenCalled();
+      expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
     it('adds animation styles to head', () => {

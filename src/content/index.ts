@@ -29,6 +29,8 @@ import { createMutationOrchestrator } from './mutation-orchestrator';
 // import { measureTimeAsync } from '../core/profiler';
 import { createPageTranslationOrchestrator } from './page-translation-orchestrator';
 import {
+  AUTO_TRANSLATE_E2E_REQUEST_EVENT,
+  AUTO_TRANSLATE_E2E_RESPONSE_EVENT,
   AUTO_TRANSLATE_DIAGNOSTICS_ATTR,
   CONTENT_SCRIPT_READY_ATTR,
   type AutoTranslateDiagnostics,
@@ -342,6 +344,7 @@ function installWebMcpE2eHook(handlers: TranslationWebMcpHandlers): void {
 }
 
 installWebMcpE2eHook(translationWebMcpHandlers);
+installAutoTranslateE2eBridge();
 void registerTranslationWebMcpTools(translationWebMcpHandlers);
 
 // ============================================================================
@@ -388,12 +391,104 @@ type AutoTranslateStartTrigger =
   | 'requestIdleCallbackTimeout'
   | 'setTimeoutFallback';
 
+type AutoTranslateE2eRequest = {
+  requestId: string;
+  type: 'translatePage';
+  sourceLang: string;
+  targetLang: string;
+  strategy: Strategy;
+  provider?: TranslationProviderId;
+};
+
+type AutoTranslateE2eResponse =
+  | {
+      requestId: string;
+      success: true;
+      summary: {
+        translatedCount: number;
+        errorCount: number;
+        handledBy: 'extension' | 'site-tool' | 'pdf';
+      };
+    }
+  | {
+      requestId: string;
+      success: false;
+      error: string;
+    };
+
 const AUTO_TRANSLATE_E2E_DIAGNOSTICS_PATH = '/e2e/mock.html';
 
 function shouldPublishAutoTranslateDiagnostics(): boolean {
   const { hostname, pathname } = window.location;
   const isLocalE2eHost = hostname === '127.0.0.1' || hostname === 'localhost';
   return isLocalE2eHost && pathname.endsWith(AUTO_TRANSLATE_E2E_DIAGNOSTICS_PATH);
+}
+
+function dispatchAutoTranslateE2eResponse(
+  detail: AutoTranslateE2eResponse
+): void {
+  document.dispatchEvent(
+    new CustomEvent(AUTO_TRANSLATE_E2E_RESPONSE_EVENT, {
+      detail,
+    })
+  );
+}
+
+function installAutoTranslateE2eBridge(): void {
+  const bridgeWindow = window as Window &
+    typeof globalThis & {
+      __translateAutoTranslateE2eBridgeInstalled?: boolean;
+    };
+  if (bridgeWindow.__translateAutoTranslateE2eBridgeInstalled) return;
+  bridgeWindow.__translateAutoTranslateE2eBridgeInstalled = true;
+
+  document.addEventListener(AUTO_TRANSLATE_E2E_REQUEST_EVENT, (event) => {
+    if (!shouldPublishAutoTranslateDiagnostics()) return;
+
+    const detail = (event as CustomEvent<unknown>).detail;
+    if (!detail || typeof detail !== 'object') return;
+
+    const request = detail as Partial<AutoTranslateE2eRequest>;
+    if (
+      request.type !== 'translatePage' ||
+      typeof request.requestId !== 'string' ||
+      typeof request.sourceLang !== 'string' ||
+      typeof request.targetLang !== 'string' ||
+      typeof request.strategy !== 'string'
+    ) {
+      return;
+    }
+    const requestId = request.requestId;
+
+    void translatePageContent(
+      request.sourceLang,
+      request.targetLang,
+      request.strategy as Strategy,
+      typeof request.provider === 'string'
+        ? (request.provider as TranslationProviderId)
+        : undefined
+    )
+      .then((summary) => {
+        dispatchAutoTranslateE2eResponse({
+          requestId,
+          success: true,
+          summary,
+        });
+      })
+      .catch((error) => {
+        const message = extractErrorMessage(error, 'Page translation failed');
+        dispatchAutoTranslateE2eResponse({
+          requestId,
+          success: false,
+          error: message,
+        });
+        logContentMessageFailure(
+          'translatePageE2e',
+          error,
+          'Page translation failed'
+        );
+      });
+  });
 }
 
 function createAutoTranslateDiagnostics(): AutoTranslateDiagnostics {

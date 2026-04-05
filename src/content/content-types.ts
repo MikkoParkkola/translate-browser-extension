@@ -43,6 +43,8 @@ export const SOURCE_LANG_ATTR = 'data-source-lang';
 export const TARGET_LANG_ATTR = 'data-target-lang';
 export const CONTENT_SCRIPT_READY_ATTR = 'data-translate-content-loaded';
 export const AUTO_TRANSLATE_DIAGNOSTICS_ATTR = 'data-auto-translate-diagnostics';
+export const AUTO_TRANSLATE_E2E_REQUEST_EVENT = 'translate:auto-translate-e2e-request';
+export const AUTO_TRANSLATE_E2E_RESPONSE_EVENT = 'translate:auto-translate-e2e-response';
 
 // ============================================================================
 // Message Types

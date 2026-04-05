@@ -7,16 +7,14 @@
  * The browser-only load-time auto-start scheduler is unit-covered in
  * src/content/index.test.ts. In CI, hidden/background tab timing under Xvfb
  * can stall that scheduler even when the content-script translation path is
- * otherwise healthy, so the positive smoke cases use the already-supported
- * explicit `translatePage` content-script dispatch on the harness page.
+ * otherwise healthy, so the positive smoke cases use a harness-only DOM event
+ * bridge that triggers the explicit content-script translation path.
  */
 import {
   test,
   expect,
   popupUrl,
-  sendTabMessage,
   setExtensionSettings,
-  waitForTabPing,
   type BrowserContext,
   type Page,
 } from './fixtures';
@@ -25,6 +23,8 @@ import {
   MOCK_HARNESS_URL,
 } from './mock-harness';
 import {
+  AUTO_TRANSLATE_E2E_REQUEST_EVENT,
+  AUTO_TRANSLATE_E2E_RESPONSE_EVENT,
   AUTO_TRANSLATE_DIAGNOSTICS_ATTR,
   CONTENT_SCRIPT_READY_ATTR,
   type AutoTranslateDiagnostics,
@@ -46,17 +46,32 @@ const FAST_TRANSLATE_PAGE_MESSAGE = {
   strategy: 'smart',
 } as const;
 
-function logAutoTranslateDebug(label: string, details?: unknown): void {
-  if (details === undefined) {
-    console.log(`[auto-translate:e2e] ${label}`);
-    return;
-  }
+type AutoTranslateBridgeResponse =
+  | {
+      requestId: string;
+      success: true;
+      summary: {
+        translatedCount: number;
+        errorCount: number;
+        handledBy: 'extension' | 'site-tool' | 'pdf';
+      };
+    }
+  | {
+      requestId: string;
+      success: false;
+      error: string;
+    };
 
-  const serialized =
-    typeof details === 'string'
-      ? details
-      : JSON.stringify(details, null, 2);
-  console.log(`[auto-translate:e2e] ${label}: ${serialized}`);
+function logAutoTranslateDebug(label: string, details?: unknown): void {
+  const message =
+    details === undefined
+      ? `[auto-translate:e2e] ${label}`
+      : `[auto-translate:e2e] ${label}: ${
+          typeof details === 'string'
+            ? details
+            : JSON.stringify(details, null, 2)
+        }`;
+  process.stderr.write(`${message}\n`);
 }
 
 function attachAutoTranslateDebug(page: Page, label: string): () => void {
@@ -106,11 +121,74 @@ async function configureAutoTranslate(
   }
 }
 
+async function dispatchTranslatePageBridge(
+  page: Page,
+  label: string,
+): Promise<void> {
+  const response = await page.evaluate(
+    async ({ requestEventName, responseEventName, message }) => {
+      return new Promise<AutoTranslateBridgeResponse>((resolve, reject) => {
+        const requestId = `bridge-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2)}`;
+        const onResponse = (event: Event) => {
+          const detail = (event as CustomEvent<AutoTranslateBridgeResponse>)
+            .detail;
+          if (!detail || detail.requestId !== requestId) return;
+
+          window.clearTimeout(timeoutId);
+          document.removeEventListener(
+            responseEventName,
+            onResponse as EventListener,
+          );
+          resolve(detail);
+        };
+        const timeoutId = window.setTimeout(() => {
+          document.removeEventListener(
+            responseEventName,
+            onResponse as EventListener,
+          );
+          reject(
+            new Error(
+              'Timed out waiting for auto-translate bridge response',
+            ),
+          );
+        }, 10_000);
+
+        document.addEventListener(
+          responseEventName,
+          onResponse as EventListener,
+        );
+        document.dispatchEvent(
+          new CustomEvent(requestEventName, {
+            detail: {
+              requestId,
+              type: 'translatePage',
+              ...message,
+            },
+          }),
+        );
+      });
+    },
+    {
+      requestEventName: AUTO_TRANSLATE_E2E_REQUEST_EVENT,
+      responseEventName: AUTO_TRANSLATE_E2E_RESPONSE_EVENT,
+      message: FAST_TRANSLATE_PAGE_MESSAGE,
+    },
+  );
+
+  logAutoTranslateDebug(`${label}:bridge:response`, response);
+  if (!response.success) {
+    throw new Error(response.error);
+  }
+
+  expect(response.summary.handledBy).toBe('extension');
+}
+
 async function gotoMockHarnessPage(page: Page, label: string): Promise<void> {
   logAutoTranslateDebug(`${label}:harness:navigate:start`, {
     url: MOCK_HARNESS_URL,
   });
-  await page.bringToFront();
   await page.goto(MOCK_HARNESS_URL);
   await page.waitForLoadState('domcontentloaded');
   logAutoTranslateDebug(`${label}:harness:navigate:domcontentloaded`, {
@@ -123,7 +201,7 @@ async function gotoMockHarnessPage(page: Page, label: string): Promise<void> {
         return document.documentElement.getAttribute(attrName) === 'true';
       },
       CONTENT_SCRIPT_READY_ATTR,
-      { timeout: 15_000 },
+      { timeout: 10_000 },
     );
     logAutoTranslateDebug(`${label}:harness:navigate:content-ready`);
   } catch (error) {
@@ -214,7 +292,7 @@ async function logAutoTranslateDebugState(
 async function expectPageTranslation(
   page: Page,
   label: string,
-  timeout = 30_000,
+  timeout = 15_000,
 ): Promise<void> {
   try {
     await expect(page.locator('main')).toHaveAttribute(
@@ -229,53 +307,21 @@ async function expectPageTranslation(
   }
 }
 
-async function dispatchTranslatePageToHarness(
-  context: BrowserContext,
-  extensionId: string,
-  label: string,
-): Promise<void> {
-  const popupPage = await context.newPage();
-
-  try {
-    await popupPage.goto(popupUrl(extensionId));
-    await popupPage.waitForLoadState('domcontentloaded');
-    logAutoTranslateDebug(`${label}:fallback:popup-ready`);
-
-    const tabId = await waitForTabPing(popupPage, '/e2e/mock.html');
-    logAutoTranslateDebug(`${label}:fallback:tab-ping`, { tabId });
-
-    const response = await sendTabMessage<{
-      success: boolean;
-      status: string;
-    }>(popupPage, tabId, {
-      type: 'translatePage',
-      ...FAST_TRANSLATE_PAGE_MESSAGE,
-    });
-    logAutoTranslateDebug(`${label}:fallback:response`, response);
-    expect(response).toEqual({ success: true, status: 'started' });
-  } finally {
-    await popupPage.close();
-  }
-}
-
 async function ensureHarnessPageTranslated(
-  context: BrowserContext,
-  extensionId: string,
   page: Page,
   label: string,
 ): Promise<void> {
   await gotoMockHarnessPage(page, label);
-  await dispatchTranslatePageToHarness(context, extensionId, label);
+  await dispatchTranslatePageBridge(page, label);
   await expectPageTranslation(page, label);
 }
 
 test.describe('Auto-translate', () => {
-  test.describe.configure({ timeout: 90_000 });
+  test.describe.configure({ timeout: 45_000 });
 
   // ── 1. Harness page translation ─────────────────────────────────
   test('translates the harness page with the content-script translation path', async ({
     context,
-    extensionId,
   }) => {
     const label = 'page-translation';
 
@@ -283,7 +329,7 @@ test.describe('Auto-translate', () => {
     const flushDebug = attachAutoTranslateDebug(page, label);
 
     try {
-      await ensureHarnessPageTranslated(context, extensionId, page, label);
+      await ensureHarnessPageTranslated(page, label);
       await expect(page.locator('#mock-root')).toHaveText(
         MOCK_HARNESS_TEXT,
       );
@@ -296,7 +342,6 @@ test.describe('Auto-translate', () => {
   // ── 2. Dynamic content (SPA simulation) ────────────────────────
   test('translates dynamically loaded content', async ({
     context,
-    extensionId,
   }) => {
     const label = 'dynamic-content';
 
@@ -304,7 +349,7 @@ test.describe('Auto-translate', () => {
     const flushDebug = attachAutoTranslateDebug(page, label);
 
     try {
-      await ensureHarnessPageTranslated(context, extensionId, page, label);
+      await ensureHarnessPageTranslated(page, label);
       await page.waitForTimeout(500);
 
       await page.evaluate(() => {
@@ -326,7 +371,7 @@ test.describe('Auto-translate', () => {
                   .getAttribute('data-translated'),
               };
             },
-            { timeout: 15_000 },
+            { timeout: 10_000 },
           )
           .toMatchObject({
             translated: 'true',
@@ -342,14 +387,14 @@ test.describe('Auto-translate', () => {
   });
 
   // ── 3. Auto-translate with iframes ─────────────────────────────
-  test('handles pages with iframes', async ({ context, extensionId }) => {
+  test('handles pages with iframes', async ({ context }) => {
     const label = 'iframes';
 
     const page = await context.newPage();
     const flushDebug = attachAutoTranslateDebug(page, label);
 
     try {
-      await ensureHarnessPageTranslated(context, extensionId, page, label);
+      await ensureHarnessPageTranslated(page, label);
 
       // Inject an iframe into the page
       await page.evaluate(() => {
@@ -417,7 +462,6 @@ test.describe('Auto-translate', () => {
   // ── 5. Matching language → auto-translate becomes a no-op pass ───
   test('keeps page text unchanged when page language matches target', async ({
     context,
-    extensionId,
   }) => {
     const label = 'matching-language';
 
@@ -425,7 +469,7 @@ test.describe('Auto-translate', () => {
     const flushDebug = attachAutoTranslateDebug(page, label);
 
     try {
-      await ensureHarnessPageTranslated(context, extensionId, page, label);
+      await ensureHarnessPageTranslated(page, label);
       await expect(page.locator('#mock-root')).toHaveText(
         MOCK_HARNESS_TEXT,
       );
