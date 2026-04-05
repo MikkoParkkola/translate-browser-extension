@@ -206,9 +206,7 @@ async function gotoMockHarnessPage(page: Page, label: string): Promise<void> {
   logAutoTranslateDebug(`${label}:harness:navigate:start`, {
     url: MOCK_HARNESS_URL,
   });
-  await page.goto(MOCK_HARNESS_URL);
-  await page.waitForLoadState('domcontentloaded');
-  await page.bringToFront();
+  await page.goto(MOCK_HARNESS_URL, { waitUntil: 'domcontentloaded' });
   logAutoTranslateDebug(`${label}:harness:navigate:domcontentloaded`, {
     url: page.url(),
   });
