@@ -46,6 +46,7 @@ const FAST_TRANSLATE_PAGE_MESSAGE = {
   strategy: 'smart',
 } as const;
 
+const AUTO_TRANSLATE_STEP_TIMEOUT_MS = 10_000;
 const AUTO_TRANSLATE_E2E_RESPONSE_ATTR = 'data-auto-translate-e2e-response';
 
 type AutoTranslateBridgeResponse =
@@ -198,7 +199,7 @@ async function dispatchTranslatePageBridge(
           }, AUTO_TRANSLATE_E2E_RESPONSE_ATTR);
           return response;
         },
-        { timeout: 10_000 },
+        { timeout: AUTO_TRANSLATE_STEP_TIMEOUT_MS },
       )
       .toMatchObject({ requestId });
   } catch (error) {
@@ -221,7 +222,10 @@ async function gotoMockHarnessPage(page: Page, label: string): Promise<void> {
   logAutoTranslateDebug(`${label}:harness:navigate:start`, {
     url: MOCK_HARNESS_URL,
   });
-  await page.goto(MOCK_HARNESS_URL, { waitUntil: 'domcontentloaded' });
+  await page.goto(MOCK_HARNESS_URL, {
+    waitUntil: 'domcontentloaded',
+    timeout: AUTO_TRANSLATE_STEP_TIMEOUT_MS,
+  });
   logAutoTranslateDebug(`${label}:harness:navigate:domcontentloaded`, {
     url: page.url(),
   });
@@ -232,7 +236,7 @@ async function gotoMockHarnessPage(page: Page, label: string): Promise<void> {
         return document.documentElement.getAttribute(attrName) === 'true';
       },
       CONTENT_SCRIPT_READY_ATTR,
-      { timeout: 10_000 },
+      { timeout: AUTO_TRANSLATE_STEP_TIMEOUT_MS },
     );
     logAutoTranslateDebug(`${label}:harness:navigate:content-ready`);
   } catch (error) {
@@ -427,7 +431,7 @@ test.describe('Auto-translate', () => {
                   .getAttribute('data-translated'),
               };
             },
-            { timeout: 10_000 },
+            { timeout: AUTO_TRANSLATE_STEP_TIMEOUT_MS },
           )
           .toMatchObject({
             translated: 'true',
