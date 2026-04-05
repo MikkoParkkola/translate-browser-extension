@@ -128,6 +128,43 @@ describe('handleTranslateCore', () => {
     expect(translateFn).not.toHaveBeenCalled();
   });
 
+  it('returns original text immediately when source and target languages match', async () => {
+    const { handleTranslateCore } = await import('./translation-core');
+    const result = await handleTranslateCore(
+      { text: 'hello', sourceLang: 'en', targetLang: 'en' },
+      cache as never,
+      translateFn,
+    );
+
+    expect(result.success).toBe(true);
+    expect((result as unknown as Record<string, unknown>).result).toBe('hello');
+    expect(cache.get).not.toHaveBeenCalled();
+    expect(translateFn).not.toHaveBeenCalled();
+  });
+
+  it('returns original batch immediately when source and target languages match', async () => {
+    const { validateInput } = await import('../../core/errors');
+    vi.mocked(validateInput).mockReturnValue({
+      valid: true,
+      sanitizedText: ['hello', 'world'] as never,
+    });
+
+    const { handleTranslateCore } = await import('./translation-core');
+    const result = await handleTranslateCore(
+      { text: ['hello', 'world'], sourceLang: 'en', targetLang: 'en' },
+      cache as never,
+      translateFn,
+    );
+
+    expect(result.success).toBe(true);
+    expect((result as unknown as Record<string, unknown>).result).toEqual([
+      'hello',
+      'world',
+    ]);
+    expect(cache.get).not.toHaveBeenCalled();
+    expect(translateFn).not.toHaveBeenCalled();
+  });
+
   it('returns cached result when cache hit (non-auto source)', async () => {
     cache.get = vi.fn().mockReturnValue({ result: 'cached translation', sourceLang: 'en', targetLang: 'fi' });
 

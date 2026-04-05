@@ -96,6 +96,7 @@ export type PrepareTranslationExecutionResult =
 
 type EarlyReturnKind =
   | 'validationError'
+  | 'sameLanguage'
   | 'cacheHit'
   | 'correctionHit'
   | 'rateLimitExceeded';
@@ -168,6 +169,16 @@ export async function prepareTranslationExecution(
 
   if (message.options?.strategy) {
     setStrategy(message.options.strategy);
+  }
+
+  if (message.sourceLang !== 'auto' && message.sourceLang === message.targetLang) {
+    const response: TranslateResponse = {
+      success: true,
+      result: text,
+      duration: Date.now() - startTime,
+    };
+    options.hooks?.onEarlyReturn?.('sameLanguage', { response });
+    return { kind: 'response', response };
   }
 
   const provider = message.provider || getProvider();
