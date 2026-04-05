@@ -14,7 +14,6 @@ import {
   test,
   expect,
   popupUrl,
-  sendExtensionMessage,
   setExtensionSettings,
   type BrowserContext,
   type Page,
@@ -74,7 +73,7 @@ function logAutoTranslateDebug(label: string, details?: unknown): void {
             ? details
             : JSON.stringify(details, null, 2)
         }`;
-  process.stderr.write(`${message}\n`);
+  console.error(message);
 }
 
 function attachAutoTranslateDebug(page: Page, label: string): () => void {
@@ -119,34 +118,6 @@ async function configureAutoTranslate(
     }, Object.keys(settings));
     logAutoTranslateDebug(`${label}:configure:stored-settings`, storedSettings);
     expect(storedSettings).toMatchObject(settings);
-  } finally {
-    await setupPage.close();
-  }
-}
-
-async function warmExtensionBackground(
-  context: BrowserContext,
-  extensionId: string,
-  label: string,
-): Promise<void> {
-  const setupPage = await context.newPage();
-
-  try {
-    await setupPage.goto(popupUrl(extensionId));
-    await setupPage.waitForLoadState('domcontentloaded');
-
-    const response = await sendExtensionMessage<{
-      success: boolean;
-      status?: string;
-      provider?: string;
-      error?: string;
-    }>(setupPage, { type: 'ping' });
-
-    logAutoTranslateDebug(`${label}:background:warmup`, response);
-    expect(response).toMatchObject({
-      success: true,
-      status: 'ready',
-    });
   } finally {
     await setupPage.close();
   }
@@ -380,13 +351,10 @@ async function expectHarnessRootText(
 }
 
 async function ensureHarnessPageTranslated(
-  context: BrowserContext,
-  extensionId: string,
   page: Page,
   label: string,
 ): Promise<void> {
   await gotoMockHarnessPage(page, label);
-  await warmExtensionBackground(context, extensionId, label);
   await dispatchTranslatePageBridge(page, label);
   await expectPageTranslation(page, label);
 }
@@ -397,7 +365,6 @@ test.describe('Auto-translate', () => {
   // ── 1. Harness page translation ─────────────────────────────────
   test('translates the harness page with the content-script translation path', async ({
     context,
-    extensionId,
   }) => {
     const label = 'page-translation';
 
@@ -405,7 +372,7 @@ test.describe('Auto-translate', () => {
     const flushDebug = attachAutoTranslateDebug(page, label);
 
     try {
-      await ensureHarnessPageTranslated(context, extensionId, page, label);
+      await ensureHarnessPageTranslated(page, label);
       await expectHarnessRootText(page, label);
     } finally {
       flushDebug();
@@ -416,7 +383,6 @@ test.describe('Auto-translate', () => {
   // ── 2. Dynamic content (SPA simulation) ────────────────────────
   test('translates dynamically loaded content', async ({
     context,
-    extensionId,
   }) => {
     const label = 'dynamic-content';
 
@@ -424,7 +390,7 @@ test.describe('Auto-translate', () => {
     const flushDebug = attachAutoTranslateDebug(page, label);
 
     try {
-      await ensureHarnessPageTranslated(context, extensionId, page, label);
+      await ensureHarnessPageTranslated(page, label);
       await page.waitForTimeout(500);
 
       await page.evaluate(() => {
@@ -462,14 +428,14 @@ test.describe('Auto-translate', () => {
   });
 
   // ── 3. Auto-translate with iframes ─────────────────────────────
-  test('handles pages with iframes', async ({ context, extensionId }) => {
+  test('handles pages with iframes', async ({ context }) => {
     const label = 'iframes';
 
     const page = await context.newPage();
     const flushDebug = attachAutoTranslateDebug(page, label);
 
     try {
-      await ensureHarnessPageTranslated(context, extensionId, page, label);
+      await ensureHarnessPageTranslated(page, label);
 
       // Inject an iframe into the page
       await page.evaluate(() => {
@@ -535,7 +501,6 @@ test.describe('Auto-translate', () => {
   // ── 5. Matching language → auto-translate becomes a no-op pass ───
   test('keeps page text unchanged when page language matches target', async ({
     context,
-    extensionId,
   }) => {
     const label = 'matching-language';
 
@@ -543,7 +508,7 @@ test.describe('Auto-translate', () => {
     const flushDebug = attachAutoTranslateDebug(page, label);
 
     try {
-      await ensureHarnessPageTranslated(context, extensionId, page, label);
+      await ensureHarnessPageTranslated(page, label);
       await expectHarnessRootText(page, label);
     } finally {
       flushDebug();

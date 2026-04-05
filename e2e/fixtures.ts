@@ -10,6 +10,34 @@ interface ExtensionFixtures {
   extensionId: string;
 }
 
+interface MessageOptions {
+  timeoutMs?: number;
+  label?: string;
+}
+
+function withMessageTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs?: number,
+  label = 'message'
+): Promise<T> {
+  if (!timeoutMs || timeoutMs <= 0) {
+    return promise;
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  });
+}
+
 function createExtensionTest(options: ExtensionLaunchOptions = {}) {
   return base.extend<ExtensionFixtures>({
     // eslint-disable-next-line no-empty-pattern
@@ -51,9 +79,10 @@ export function offscreenUrl(extensionId: string): string {
 
 export async function sendExtensionMessage<T>(
   page: Page,
-  message: Record<string, unknown>
+  message: Record<string, unknown>,
+  options?: MessageOptions
 ): Promise<T> {
-  return page.evaluate(async (msg) => {
+  const promise = page.evaluate(async (msg) => {
     return new Promise<T>((resolve, reject) => {
       chrome.runtime.sendMessage(msg, (response: T) => {
         if (chrome.runtime.lastError) {
@@ -64,6 +93,12 @@ export async function sendExtensionMessage<T>(
       });
     });
   }, message);
+
+  return withMessageTimeout(
+    promise,
+    options?.timeoutMs,
+    options?.label ?? `extension message ${(message.type as string | undefined) ?? 'unknown'}`
+  );
 }
 
 export async function findTabIdByUrlFragment(
@@ -83,19 +118,24 @@ export async function findTabIdByUrlFragment(
 export async function sendTabMessage<T>(
   page: Page,
   tabId: number,
-  message: Record<string, unknown>
+  message: Record<string, unknown>,
+  options?: MessageOptions
 ): Promise<T> {
-  const response = await page.evaluate(async ({ targetTabId, payload }) => {
-    return new Promise<unknown>((resolve, reject) => {
-      chrome.tabs.sendMessage(targetTabId, payload, (result) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-        } else {
-          resolve(result);
-        }
+  const response = await withMessageTimeout(
+    page.evaluate(async ({ targetTabId, payload }) => {
+      return new Promise<unknown>((resolve, reject) => {
+        chrome.tabs.sendMessage(targetTabId, payload, (result) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(result);
+          }
+        });
       });
-    });
-  }, { targetTabId: tabId, payload: message });
+    }, { targetTabId: tabId, payload: message }),
+    options?.timeoutMs,
+    options?.label ?? `tab message ${(message.type as string | undefined) ?? 'unknown'}`
+  );
 
   return response as T;
 }
@@ -117,9 +157,12 @@ export async function waitForTabPing(
 
   await expect.poll(async () => {
     try {
-      return await sendTabMessage<{ loaded: boolean }>(page, tabId as number, {
-        type: 'ping',
-      });
+      return await sendTabMessage<{ loaded: boolean }>(
+        page,
+        tabId as number,
+        { type: 'ping' },
+        { timeoutMs: 2_000, label: 'tab ping' }
+      );
     } catch {
       return null;
     }
