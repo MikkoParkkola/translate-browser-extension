@@ -7,8 +7,8 @@
  * The browser-only load-time auto-start scheduler is unit-covered in
  * src/content/index.test.ts. In CI, hidden/background tab timing under Xvfb
  * can stall that scheduler even when the content-script translation path is
- * otherwise healthy, so the positive smoke cases fall back to an explicit
- * content-script dispatch after a short auto-start window.
+ * otherwise healthy, so the positive smoke cases use the already-supported
+ * explicit `translatePage` content-script dispatch on the harness page.
  */
 import {
   test,
@@ -34,13 +34,6 @@ const FAST_NOOP_TRANSLATION_SETTINGS = {
   sourceLang: 'en',
   targetLang: 'en',
   provider: 'opus-mt',
-} as const;
-
-// Keep the smoke lane focused on auto-start orchestration instead of
-// auto-detect/model availability.
-const FAST_AUTO_TRANSLATE_SETTINGS = {
-  autoTranslate: true,
-  ...FAST_NOOP_TRANSLATION_SETTINGS,
 } as const;
 
 const FAST_DISABLED_AUTO_TRANSLATE_SETTINGS = {
@@ -218,45 +211,6 @@ async function logAutoTranslateDebugState(
   });
 }
 
-async function expectAutoTranslateToComplete(
-  page: Page,
-  label: string,
-  timeout = 30_000,
-): Promise<void> {
-  try {
-    await expect
-      .poll(
-        async () => {
-          return readAutoTranslateSnapshot(page);
-        },
-        { timeout },
-      )
-      .toMatchObject({
-        ready: 'true',
-        translated: 'true',
-        diagnostics: {
-          contentLoaded: true,
-          checkStarted: true,
-          settingsLoaded: true,
-          shouldAutoTranslate: true,
-          currentSettingsApplied: true,
-          startScheduled: true,
-          startRan: true,
-          translationRequested: true,
-          translationCompleted: true,
-          sourceLang: 'en',
-          targetLang: 'en',
-          provider: 'opus-mt',
-          lastError: null,
-        },
-      });
-    logAutoTranslateDebug(`${label}:complete`);
-  } catch (error) {
-    await logAutoTranslateDebugState(page, `${label}:complete:timeout`);
-    throw error;
-  }
-}
-
 async function expectPageTranslation(
   page: Page,
   label: string,
@@ -311,16 +265,6 @@ async function ensureHarnessPageTranslated(
   label: string,
 ): Promise<void> {
   await gotoMockHarnessPage(page, label);
-
-  try {
-    await expectAutoTranslateToComplete(page, label, 8_000);
-    return;
-  } catch (error) {
-    logAutoTranslateDebug(`${label}:fallback:manual-translatePage`, {
-      reason: error instanceof Error ? error.message : String(error),
-    });
-  }
-
   await dispatchTranslatePageToHarness(context, extensionId, label);
   await expectPageTranslation(page, label);
 }
@@ -334,12 +278,6 @@ test.describe('Auto-translate', () => {
     extensionId,
   }) => {
     const label = 'page-translation';
-    await configureAutoTranslate(
-      context,
-      extensionId,
-      FAST_AUTO_TRANSLATE_SETTINGS,
-      label,
-    );
 
     const page = await context.newPage();
     const flushDebug = attachAutoTranslateDebug(page, label);
@@ -361,12 +299,6 @@ test.describe('Auto-translate', () => {
     extensionId,
   }) => {
     const label = 'dynamic-content';
-    await configureAutoTranslate(
-      context,
-      extensionId,
-      FAST_AUTO_TRANSLATE_SETTINGS,
-      label,
-    );
 
     const page = await context.newPage();
     const flushDebug = attachAutoTranslateDebug(page, label);
@@ -412,12 +344,6 @@ test.describe('Auto-translate', () => {
   // ── 3. Auto-translate with iframes ─────────────────────────────
   test('handles pages with iframes', async ({ context, extensionId }) => {
     const label = 'iframes';
-    await configureAutoTranslate(
-      context,
-      extensionId,
-      FAST_AUTO_TRANSLATE_SETTINGS,
-      label,
-    );
 
     const page = await context.newPage();
     const flushDebug = attachAutoTranslateDebug(page, label);
@@ -494,12 +420,6 @@ test.describe('Auto-translate', () => {
     extensionId,
   }) => {
     const label = 'matching-language';
-    await configureAutoTranslate(
-      context,
-      extensionId,
-      FAST_AUTO_TRANSLATE_SETTINGS,
-      label,
-    );
 
     const page = await context.newPage();
     const flushDebug = attachAutoTranslateDebug(page, label);
