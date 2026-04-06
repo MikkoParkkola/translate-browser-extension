@@ -20,11 +20,13 @@ export function buildExtensionArgs({ enableGpu = false }: ExtensionLaunchOptions
     `--load-extension=${EXTENSION_PATH}`,
     '--no-first-run',
     '--disable-component-update',
+    // Keep GPU-dependent coverage behind gpuTest; the default fixture should stay
+    // on the most stable launch path for CI-hosted extension smoke runs.
+    ...(enableGpu ? [] : ['--disable-gpu']),
     ...(BACKGROUND_MODE
       ? [
           '--window-position=-32000,-32000',
           '--window-size=1280,720',
-          ...(enableGpu ? [] : ['--disable-gpu']),
           '--mute-audio',
         ]
       : []),
