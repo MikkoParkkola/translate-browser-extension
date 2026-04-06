@@ -36,6 +36,24 @@ const waitForRequestHandler = async (
   }
 };
 
+const waitForMockValue = async <T>(
+  getValue: () => T | undefined,
+  description: string,
+  timeoutMs = 1000,
+): Promise<T> => {
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    const value = getValue();
+    if (value !== undefined) {
+      return value;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for ${description}`);
+    }
+    await waitForCacheAsyncWork(1);
+  }
+};
+
 const createReadyCache = async (
   maxSize?: number,
   waitMs = 10
@@ -221,16 +239,17 @@ describe('TranslationCache', () => {
         onsuccess: null,
       });
 
-      const setPromise = cache.set('hello', 'en', 'fi', 'opus-mt', 'hei');
+    const setPromise = cache.set('hello', 'en', 'fi', 'opus-mt', 'hei');
 
-      // Wait for stats check and then put
-      await waitForCacheAsyncWork(50);
-
-      // Trigger onsuccess for put
-      const putRequest = mockStore.put.mock.results[0]?.value;
-      if (putRequest) {
-        putRequest.onsuccess?.({});
-      }
+    const putRequest = await waitForMockValue(
+      () =>
+        mockStore.put.mock.results[0]?.value as
+          | { onerror: ((event: Event) => void) | null; onsuccess: ((event: Event) => void) | null }
+          | undefined,
+      'initial cache put request',
+    );
+    await waitForRequestHandler(putRequest);
+    putRequest.onsuccess?.({} as Event);
 
       await setPromise;
 
@@ -560,8 +579,7 @@ describe('LRU eviction', () => {
 
     const setPromise = cache.set('new', 'en', 'fi', 'opus-mt', 'uusi');
 
-    // Allow getStats to run (openCursor for stats)
-    await waitForCacheAsyncWork(10);
+    await waitForRequestHandler(evictRequest);
 
     // Trigger eviction cursor with the old entry, then end
     if (evictRequest.onsuccess && !evictCursorCalled) {
@@ -580,12 +598,15 @@ describe('LRU eviction', () => {
       evictRequest.onsuccess({ target: { result: mockCursor } } as unknown as Event);
     }
 
-    // Now trigger the actual put
-    await waitForCacheAsyncWork(20);
-    const putRequest = mockStore.put.mock.results[0]?.value;
-    if (putRequest) {
-      putRequest.onsuccess?.({});
-    }
+    const putRequest = await waitForMockValue(
+      () =>
+        mockStore.put.mock.results[0]?.value as
+          | { onerror: ((event: Event) => void) | null; onsuccess: ((event: Event) => void) | null }
+          | undefined,
+      'eviction follow-up cache put request',
+    );
+    await waitForRequestHandler(putRequest);
+    putRequest.onsuccess?.({} as Event);
 
     await setPromise;
 
@@ -604,15 +625,18 @@ describe('LRU eviction', () => {
 
     const setPromise = cache.set('hello', 'en', 'fi', 'opus-mt', 'hei');
 
-    await waitForCacheAsyncWork(20);
-
     // index.openCursor for eviction should NOT have been called since size is within limit
     expect(mockIndex.openCursor).not.toHaveBeenCalled();
 
-    const putRequest = mockStore.put.mock.results[0]?.value;
-    if (putRequest) {
-      putRequest.onsuccess?.({});
-    }
+    const putRequest = await waitForMockValue(
+      () =>
+        mockStore.put.mock.results[0]?.value as
+          | { onerror: ((event: Event) => void) | null; onsuccess: ((event: Event) => void) | null }
+          | undefined,
+      'non-evicting cache put request',
+    );
+    await waitForRequestHandler(putRequest);
+    putRequest.onsuccess?.({} as Event);
     await setPromise;
   });
 });

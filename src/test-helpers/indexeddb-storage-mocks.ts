@@ -78,8 +78,7 @@ export function setupIndexedDbStorageMock<T extends IndexedDbCacheLikeEntry>(opt
   const restoreMode = options.restore ?? 'baseline';
   const originalIndexedDB = (globalThis as Record<string, unknown>).indexedDB;
   const entries = new Map<string, T>();
-  let cursorIndex = 0;
-  let cursorEntries: T[] = [];
+  let resetGeneration = 0;
 
   let store: {
     get: ReturnType<typeof vi.fn>;
@@ -89,36 +88,58 @@ export function setupIndexedDbStorageMock<T extends IndexedDbCacheLikeEntry>(opt
     index: ReturnType<typeof vi.fn>;
   };
 
-  const createMockCursor = (sourceEntries: T[], deleteCallback?: () => void) => ({
-    value: sourceEntries[cursorIndex],
-    continue: () => {
-      cursorIndex++;
-      const event =
-        cursorIndex < sourceEntries.length
-          ? { target: { result: createMockCursor(sourceEntries, deleteCallback) } }
-          : { target: { result: null } };
-      setTimeout(() => {
-        store.openCursor.mock.results[0]?.value?.onsuccess?.(event);
-      }, 0);
-    },
-    delete: () => {
-      const key = sourceEntries[cursorIndex]?.key;
-      if (key) {
-        entries.delete(key);
-        deleteCallback?.();
+  const scheduleRequestDispatch = (generation: number, callback: () => void) => {
+    queueMicrotask(() => {
+      if (generation !== resetGeneration) {
+        return;
       }
-    },
-  });
+
+      callback();
+    });
+  };
+
+  const createCursorRequest = (sourceEntries: T[], deleteCallback?: () => void) => {
+    const generation = resetGeneration;
+    const request: IndexedDbRequest<{
+      value: T;
+      continue: () => void;
+      delete: () => void;
+    } | null> = {
+      onerror: null,
+      onsuccess: null,
+      result: null,
+    };
+
+    const createMockCursor = (index: number) => ({
+      value: sourceEntries[index],
+      continue: () => {
+        const nextIndex = index + 1;
+        scheduleRequestDispatch(generation, () => {
+          request.result = nextIndex < sourceEntries.length ? createMockCursor(nextIndex) : null;
+          request.onsuccess?.({ target: { result: request.result } } as unknown as Event);
+        });
+      },
+      delete: () => {
+        const key = sourceEntries[index]?.key;
+        if (key) {
+          entries.delete(key);
+          deleteCallback?.();
+        }
+      },
+    });
+
+    scheduleRequestDispatch(generation, () => {
+      request.result = sourceEntries.length > 0 ? createMockCursor(0) : null;
+      request.onsuccess?.({ target: { result: request.result } } as unknown as Event);
+    });
+
+    return request;
+  };
 
   const index = {
     openCursor: vi.fn(() => {
-      cursorIndex = 0;
-      cursorEntries = Array.from(entries.values()).sort((a, b) => a.timestamp - b.timestamp);
-      return {
-        onerror: null,
-        onsuccess: null,
-        result: cursorEntries.length > 0 ? createMockCursor(cursorEntries) : null,
-      };
+      const sortedEntries = Array.from(entries.values()).sort((a, b) => a.timestamp - b.timestamp);
+      return createCursorRequest(sortedEntries);
     }),
   };
 
@@ -143,22 +164,7 @@ export function setupIndexedDbStorageMock<T extends IndexedDbCacheLikeEntry>(opt
       };
     }),
     openCursor: vi.fn(() => {
-      cursorIndex = 0;
-      cursorEntries = Array.from(entries.values());
-      const request: IndexedDbRequest<ReturnType<typeof createMockCursor> | null> = {
-        onerror: null,
-        onsuccess: null,
-        result: null,
-      };
-
-      setTimeout(() => {
-        if (cursorEntries.length > 0) {
-          request.result = createMockCursor(cursorEntries);
-        }
-        request.onsuccess?.({ target: { result: request.result } } as unknown as Event);
-      }, 0);
-
-      return request;
+      return createCursorRequest(Array.from(entries.values()));
     }),
     index: vi.fn(() => index),
   };
@@ -186,9 +192,9 @@ export function setupIndexedDbStorageMock<T extends IndexedDbCacheLikeEntry>(opt
         error: null,
       };
 
-      setTimeout(() => {
+      scheduleRequestDispatch(resetGeneration, () => {
         request.onsuccess?.({ target: request } as unknown as Event);
-      }, 0);
+      });
 
       return request;
     }),
@@ -208,8 +214,7 @@ export function setupIndexedDbStorageMock<T extends IndexedDbCacheLikeEntry>(opt
 
   const reset = () => {
     entries.clear();
-    cursorIndex = 0;
-    cursorEntries = [];
+    resetGeneration++;
     mockResetters.forEach((resetMock) => resetMock());
 
     if (restoreMode === 'original') {
