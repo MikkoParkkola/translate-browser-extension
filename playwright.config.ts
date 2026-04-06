@@ -32,6 +32,7 @@ export default defineConfig({
         // Use Playwright's bundled Chromium (NOT system Chrome)
         // System Chrome 144+ silently ignores --load-extension on macOS
         headless: extensionLaunchSettings.headless,
+        channel: extensionLaunchSettings.channel,
         launchOptions: {
           args: extensionLaunchSettings.args,
           executablePath: extensionLaunchSettings.executablePath,

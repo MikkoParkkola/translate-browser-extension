@@ -111,7 +111,9 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run e2e web smoke
-        run: BACKGROUND=false xvfb-run -a npm run test:e2e:web:smoke
+        run: BACKGROUND=false npm run test:e2e:web:smoke
+        env:
+          CI: true
 
       - name: Upload Playwright report
         if: always()
