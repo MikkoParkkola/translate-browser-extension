@@ -112,7 +112,12 @@ describe('createTranslationBackgroundHandler', () => {
       async (execution, cache, result, options = {}) => {
         options.onBeforeCacheStore?.();
         if (result) {
-          const cacheSourceLang = options.cacheSourceLang ?? execution.message.sourceLang;
+          const cacheSourceLang =
+            options.cacheSourceLang === undefined
+              ? execution.message.sourceLang === 'auto'
+                ? null
+                : execution.message.sourceLang
+              : options.cacheSourceLang;
           if (cacheSourceLang) {
             cache.set(
               execution.cacheKey,
@@ -349,6 +354,51 @@ describe('createTranslationBackgroundHandler', () => {
       result: 'Hei maailma',
       provider: 'chrome-builtin',
     });
+  });
+
+  it('does not cache chrome-builtin translations when the source language is auto', async () => {
+    const deps = createHandler();
+    prepareTranslationExecution.mockResolvedValue({
+      kind: 'prepared',
+      execution: createExecution({
+        provider: 'chrome-builtin',
+        message: {
+          text: 'hello',
+          sourceLang: 'auto',
+          targetLang: 'fi',
+        },
+      }),
+    });
+    deps.runChromeBuiltinTranslation.mockResolvedValue('Hei maailma');
+
+    const { createTranslationBackgroundHandler } = await import('./translation-background-handler');
+    const handler = createTranslationBackgroundHandler({
+      cache: deps.cache as never,
+      getProvider: () => 'chrome-builtin',
+      offscreenTransport: deps.offscreenTransport as never,
+      profiler: deps.profiler,
+      acquireKeepAlive: deps.acquireKeepAlive,
+      releaseKeepAlive: deps.releaseKeepAlive,
+      recordTranslation: deps.recordTranslation,
+      recordTranslationToHistory: deps.recordTranslationToHistory,
+      runChromeBuiltinTranslation: deps.runChromeBuiltinTranslation,
+      log: deps.log,
+      maxInFlightRequests: 4,
+    });
+
+    const response = await handler.handleTranslate({
+      text: 'hello',
+      sourceLang: 'auto',
+      targetLang: 'fi',
+      provider: 'chrome-builtin',
+    });
+
+    expect(response).toMatchObject({
+      success: true,
+      result: 'Hei maailma',
+      provider: 'chrome-builtin',
+    });
+    expect(deps.cache.set).not.toHaveBeenCalled();
   });
 
   it('keeps chrome-builtin profiling timings balanced on success', async () => {

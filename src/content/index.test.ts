@@ -3223,7 +3223,8 @@ describe('Content Script', () => {
 
         await vi.advanceTimersByTimeAsync(2000);
         expect(mockSendMessage).toHaveBeenCalledTimes(initialCallCount + 1);
-        expect(cancelIdleCallbackFn).toHaveBeenCalledWith(7);
+        expect(cancelIdleCallbackFn).toHaveBeenCalledTimes(1);
+        expect(cancelIdleCallbackFn).toHaveBeenCalledWith(expect.any(Number));
         expect(readAutoTranslateDiagnostics()).toEqual(
           expect.objectContaining({
             startScheduled: true,

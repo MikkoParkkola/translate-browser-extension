@@ -116,7 +116,7 @@ export function createDiagnosticsHandlers({
         provider: message.provider,
       });
     } catch (error) {
-      log.warn(' Failed to get cloud provider usage:', error);
+      log.warn('Failed to get cloud provider usage:', error);
       return {
         success: false,
         error: extractErrorMessage(error),

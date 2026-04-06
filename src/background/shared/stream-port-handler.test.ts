@@ -181,6 +181,74 @@ describe('stream-port-handler', () => {
     });
   });
 
+  it('normalizes single-item array responses before streaming them', async () => {
+    const releaseKeepAlive = vi.fn();
+    const handler = createStreamPortHandler({
+      getProvider: () => 'opus-mt',
+      handleTranslate: vi.fn().mockResolvedValue({
+        success: true,
+        result: ['translated stream result'],
+      }),
+      acquireKeepAlive: vi.fn(),
+      releaseKeepAlive,
+      splitIntoSentences: (text) => [text],
+      log: createLogger(),
+    });
+
+    const stream = createStreamPort();
+    handler(stream.port as unknown as chrome.runtime.Port);
+
+    await stream.start({
+      type: 'startStream',
+      text: 'Hello stream',
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'opus-mt',
+    });
+
+    expect(stream.postMessage).toHaveBeenNthCalledWith(1, {
+      type: 'chunk',
+      partial: 'translated stream result',
+    });
+    expect(stream.postMessage).toHaveBeenNthCalledWith(2, {
+      type: 'done',
+      result: 'translated stream result',
+    });
+    expect(releaseKeepAlive).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports an explicit error when a stream translation returns multiple results', async () => {
+    const releaseKeepAlive = vi.fn();
+    const handler = createStreamPortHandler({
+      getProvider: () => 'opus-mt',
+      handleTranslate: vi.fn().mockResolvedValue({
+        success: true,
+        result: ['first', 'second'],
+      }),
+      acquireKeepAlive: vi.fn(),
+      releaseKeepAlive,
+      splitIntoSentences: (text) => [text],
+      log: createLogger(),
+    });
+
+    const stream = createStreamPort();
+    handler(stream.port as unknown as chrome.runtime.Port);
+
+    await stream.start({
+      type: 'startStream',
+      text: 'Hello stream',
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'opus-mt',
+    });
+
+    expect(stream.postMessage).toHaveBeenCalledWith({
+      type: 'error',
+      error: 'Stream translation returned 2 result(s) for 1 input text(s)',
+    });
+    expect(releaseKeepAlive).toHaveBeenCalledTimes(1);
+  });
+
   it('streams chrome built-in sentences progressively and skips empty sentences', async () => {
     const acquireKeepAlive = vi.fn();
     const releaseKeepAlive = vi.fn();

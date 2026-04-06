@@ -150,7 +150,7 @@ describe('createRuntimeInfoHandlers', () => {
       error: 'Could not load language list. Translation may still work.',
     });
     expect(deps.log.warn).toHaveBeenCalledWith(
-      ' Error getting providers:',
+      'Error getting providers:',
       expect.any(Error),
     );
   });

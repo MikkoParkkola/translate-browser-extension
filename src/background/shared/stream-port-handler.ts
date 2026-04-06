@@ -31,6 +31,20 @@ export interface CreateStreamPortHandlerOptions {
 
 type StreamPort = Pick<chrome.runtime.Port, 'name' | 'postMessage' | 'onMessage' | 'onDisconnect'>;
 
+function normalizeStreamResult(result: string | string[]): string {
+  if (typeof result === 'string') {
+    return result;
+  }
+
+  if (result.length !== 1) {
+    throw new Error(
+      `Stream translation returned ${result.length} result(s) for 1 input text(s)`
+    );
+  }
+
+  return result[0] ?? '';
+}
+
 export function createStreamPortSender(port: StreamPort, log: StreamPortHandlerLogger) {
   let closed = false;
   port.onDisconnect.addListener(() => {
@@ -99,8 +113,8 @@ export function createStreamPortHandler({
               provider: 'chrome-builtin',
             });
 
-            if (response.success && response.result) {
-              accumulated.push(response.result as string);
+            if (response.success && response.result !== undefined) {
+              accumulated.push(normalizeStreamResult(response.result));
               if (!postToStream({ type: 'chunk', partial: accumulated.join(' ') })) {
                 return;
               }
@@ -114,11 +128,13 @@ export function createStreamPortHandler({
         }
 
         const response = await handleTranslate({ text, sourceLang, targetLang, provider });
-        if (response.success && response.result) {
-          if (!postToStream({ type: 'chunk', partial: response.result as string })) {
+        if (response.success && response.result !== undefined) {
+          const translated = normalizeStreamResult(response.result);
+
+          if (!postToStream({ type: 'chunk', partial: translated })) {
             return;
           }
-          postToStream({ type: 'done', result: response.result as string });
+          postToStream({ type: 'done', result: translated });
         } else {
           throw new Error(response.error || 'Translation failed');
         }

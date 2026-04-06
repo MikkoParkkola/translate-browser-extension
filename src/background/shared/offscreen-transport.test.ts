@@ -211,6 +211,87 @@ describe('createOffscreenTransport', () => {
     expect(sleepFn).toHaveBeenCalledWith(500);
   });
 
+  it('waits for an in-flight offscreen reset before retrying the message send', async () => {
+    vi.mocked(withRetry).mockImplementation(
+      async <T>(
+        operation: () => Promise<T>,
+        _config: unknown,
+        shouldRetry?: (error: TranslationError) => boolean
+      ) => {
+        try {
+          return await operation();
+        } catch (error) {
+          const retryableError: TranslationError = {
+            category: 'internal',
+            message: 'offscreen disconnected',
+            retryable: true,
+            technicalDetails:
+              error instanceof Error ? error.message : String(error),
+          };
+          if (!shouldRetry?.(retryableError)) {
+            throw error;
+          }
+          return operation();
+        }
+      }
+    );
+
+    let resolveCloseDocument!: () => void;
+    let notifyCloseDocumentStarted!: () => void;
+    const closeDocumentStarted = new Promise<void>((resolve) => {
+      notifyCloseDocumentStarted = resolve;
+    });
+    const closeDocument = vi.fn().mockImplementation(
+      () => {
+        notifyCloseDocumentStarted();
+        return new Promise<void>((resolve) => {
+          resolveCloseDocument = resolve;
+        });
+      }
+    );
+    const getExistingContexts = vi
+      .fn()
+      .mockResolvedValueOnce([{ documentUrl: OFFSCREEN_URL }])
+      .mockResolvedValueOnce([{ documentUrl: OFFSCREEN_URL }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([{ documentUrl: OFFSCREEN_URL }]);
+    const sendMessage = vi
+      .fn()
+      .mockImplementationOnce((_message, callback) => {
+        callback(undefined);
+      })
+      .mockImplementationOnce((_message, callback) => {
+        callback({ success: true, status: 'ready' });
+      });
+    const getLastError = vi
+      .fn()
+      .mockReturnValueOnce({ message: 'offscreen disconnected' })
+      .mockReturnValue(undefined);
+    const createDocument = vi.fn().mockResolvedValue(undefined);
+    const sleepFn = vi.fn().mockResolvedValue(undefined);
+
+    const { transport } = createTransport({
+      getExistingContexts,
+      sendMessage,
+      getLastError,
+      closeDocument,
+      createDocument,
+      sleepFn,
+    });
+
+    const pending = transport.send<'ping'>({ type: 'ping' });
+    await closeDocumentStarted;
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(closeDocument).toHaveBeenCalledTimes(1);
+
+    resolveCloseDocument();
+
+    await expect(pending).resolves.toEqual({ success: true, status: 'ready' });
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(createDocument).toHaveBeenCalledTimes(1);
+  });
+
   it('matches senders against the offscreen document URL', () => {
     const { transport } = createTransport();
 

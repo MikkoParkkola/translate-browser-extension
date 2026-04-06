@@ -118,6 +118,7 @@ export function createOffscreenTransport(
     options.defaultTimeoutMs ?? CONFIG.timeouts.offscreenMs;
 
   let creatingOffscreen: Promise<void> | null = null;
+  let resettingOffscreen: Promise<void> | null = null;
   let offscreenFailureCount = 0;
   let offscreenResetCount = 0;
   let circuitBreakerCooldownTimer: ReturnType<typeof setTimeout> | null = null;
@@ -180,7 +181,7 @@ export function createOffscreenTransport(
 
       const errMsg = extractErrorMessage(error);
 
-      options.log.error(' Failed to create offscreen document:', errMsg);
+      options.log.error('Failed to create offscreen document:', errMsg);
 
       if (offscreenFailureCount >= maxFailures) {
         throw new Error(
@@ -224,7 +225,7 @@ export function createOffscreenTransport(
         options.log.info('Closed existing offscreen document');
       }
     } catch (error) {
-      options.log.warn(' Error closing offscreen document:', error);
+      options.log.warn('Error closing offscreen document:', error);
     }
 
     creatingOffscreen = null;
@@ -237,12 +238,34 @@ export function createOffscreenTransport(
   }
   /* v8 ignore stop */
 
+  function scheduleOffscreenReset(): void {
+    if (resettingOffscreen) {
+      return;
+    }
+
+    resettingOffscreen = resetDocument()
+      .catch((resetError) => {
+        options.log.error(
+          'Offscreen reset failed:',
+          extractErrorMessage(resetError)
+        );
+        throw resetError;
+      })
+      .finally(() => {
+        resettingOffscreen = null;
+      });
+  }
+
   async function send<TType extends OffscreenMessageType>(
     message: OffscreenRequest<TType>,
     timeoutMs = defaultTimeoutMs
   ): Promise<OffscreenTransportResponse<TType>> {
     return withRetry(
       async () => {
+        if (resettingOffscreen) {
+          await resettingOffscreen;
+        }
+
         await ensureDocument();
 
         return new Promise<OffscreenTransportResponse<TType>>(
@@ -284,12 +307,7 @@ export function createOffscreenTransport(
 
         if (error.technicalDetails.includes('offscreen')) {
           options.log.info('Attempting offscreen document reset...');
-          resetDocument().catch((resetError) => {
-            options.log.error(
-              'Offscreen reset failed:',
-              extractErrorMessage(resetError)
-            );
-          });
+          scheduleOffscreenReset();
         }
 
         return true;

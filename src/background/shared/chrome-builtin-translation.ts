@@ -71,6 +71,12 @@ export function createChromeBuiltinTranslationRunner({
       throw new Error('Chrome Translator returned no result');
     }
 
+    if (translated.length !== texts.length) {
+      throw new Error(
+        `Chrome Translator returned ${translated.length} result(s) for ${texts.length} input text(s)`
+      );
+    }
+
     return Array.isArray(text) ? translated : translated[0];
   };
 }

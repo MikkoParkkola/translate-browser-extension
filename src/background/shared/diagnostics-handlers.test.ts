@@ -225,7 +225,7 @@ describe('createDiagnosticsHandlers', () => {
       error: 'usage unavailable',
     });
     expect(deps.log.warn).toHaveBeenCalledWith(
-      ' Failed to get cloud provider usage:',
+      'Failed to get cloud provider usage:',
       expect.any(Error)
     );
   });

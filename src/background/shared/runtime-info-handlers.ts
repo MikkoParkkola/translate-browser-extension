@@ -135,7 +135,7 @@ export function createRuntimeInfoHandlers({
       };
     } catch (error) {
       /* v8 ignore start -- defensive fallback when offscreen language fetch fails */
-      log.warn(' Error getting providers:', error);
+      log.warn('Error getting providers:', error);
 
       return {
         ...providerSnapshot,

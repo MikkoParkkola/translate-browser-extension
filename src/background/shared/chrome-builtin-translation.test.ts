@@ -52,6 +52,26 @@ describe('createChromeBuiltinTranslationRunner', () => {
         'Chrome Translator returned no result'
       );
     });
+
+    it('throws when executeTranslationScript returns an empty array for a single text', async () => {
+      const run = createChromeBuiltinTranslationRunner(
+        createDeps({ executeTranslationScript: vi.fn().mockResolvedValue([]) })
+      );
+
+      await expect(run('Hello', 'en', 'de')).rejects.toThrow(
+        'Chrome Translator returned 0 result(s) for 1 input text(s)'
+      );
+    });
+
+    it('throws when executeTranslationScript returns a mismatched result count', async () => {
+      const run = createChromeBuiltinTranslationRunner(
+        createDeps({ executeTranslationScript: vi.fn().mockResolvedValue(['Hei']) })
+      );
+
+      await expect(run(['Hello', 'World'], 'en', 'fi')).rejects.toThrow(
+        'Chrome Translator returned 1 result(s) for 2 input text(s)'
+      );
+    });
   });
 
   describe('string input', () => {

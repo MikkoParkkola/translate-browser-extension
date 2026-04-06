@@ -113,7 +113,6 @@ export function createTranslationBackgroundHandler({
         {
           responsePatch: { provider: 'chrome-builtin' },
           recordUsage: false,
-          cacheSourceLang: execution.message.sourceLang,
           onAfterCacheStore: () => {
             if (sessionId) profiler.endTiming(sessionId, 'total');
           },
