@@ -356,6 +356,50 @@ describe('createTranslationBackgroundHandler', () => {
     });
   });
 
+  it('preserves history and usage side effects for chrome-builtin translations', async () => {
+    const deps = createHandler();
+    prepareTranslationExecution.mockResolvedValue({
+      kind: 'prepared',
+      execution: createExecution({ provider: 'chrome-builtin' }),
+    });
+    deps.runChromeBuiltinTranslation.mockResolvedValue('Hei maailma');
+
+    const { createTranslationBackgroundHandler } = await import('./translation-background-handler');
+    const handler = createTranslationBackgroundHandler({
+      cache: deps.cache as never,
+      getProvider: () => 'chrome-builtin',
+      offscreenTransport: deps.offscreenTransport as never,
+      profiler: deps.profiler,
+      acquireKeepAlive: deps.acquireKeepAlive,
+      releaseKeepAlive: deps.releaseKeepAlive,
+      recordTranslation: deps.recordTranslation,
+      recordTranslationToHistory: deps.recordTranslationToHistory,
+      runChromeBuiltinTranslation: deps.runChromeBuiltinTranslation,
+      log: deps.log,
+      maxInFlightRequests: 4,
+    });
+
+    const response = await handler.handleTranslate({
+      text: 'hello',
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'chrome-builtin',
+    });
+
+    expect(response).toMatchObject({
+      success: true,
+      result: 'Hei maailma',
+      provider: 'chrome-builtin',
+    });
+    expect(deps.recordTranslation).toHaveBeenCalledWith('fi');
+    expect(deps.recordTranslationToHistory).toHaveBeenCalledWith(
+      'hello',
+      'Hei maailma',
+      'en',
+      'fi'
+    );
+  });
+
   it('does not cache chrome-builtin translations when the source language is auto', async () => {
     const deps = createHandler();
     prepareTranslationExecution.mockResolvedValue({

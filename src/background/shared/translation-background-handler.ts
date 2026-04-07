@@ -91,6 +91,40 @@ export function createTranslationBackgroundHandler({
     return rejectedCount;
   }
 
+  function handleSuccessfulTranslationSideEffects(
+    successfulExecution: PreparedTranslationExecution,
+    result: string | string[],
+    sessionId: string | undefined,
+    includeProfilingReport = false,
+  ): Partial<TranslateResponse> | void {
+    /* v8 ignore start -- fire-and-forget */
+    recordTranslation(successfulExecution.message.targetLang).catch((error: unknown) => {
+      log.debug('recordTranslation skipped:', error);
+    });
+    /* v8 ignore stop */
+
+    if (typeof successfulExecution.text === 'string' && typeof result === 'string') {
+      recordTranslationToHistory(
+        successfulExecution.text,
+        result,
+        successfulExecution.message.sourceLang,
+        successfulExecution.message.targetLang
+      );
+    }
+
+    if (!includeProfilingReport || !sessionId) {
+      return;
+    }
+
+    const report = profiler.getReport(sessionId);
+    if (!report) {
+      return;
+    }
+
+    log.info(profiler.formatReport(sessionId));
+    return { profilingReport: report };
+  }
+
   async function handleChromeBuiltinTranslation(
     execution: PreparedTranslationExecution,
     sessionId: string | undefined
@@ -113,6 +147,12 @@ export function createTranslationBackgroundHandler({
         {
           responsePatch: { provider: 'chrome-builtin' },
           recordUsage: false,
+          onSuccess: ({ execution: successfulExecution, result: translatedResult }) =>
+            handleSuccessfulTranslationSideEffects(
+              successfulExecution,
+              translatedResult,
+              sessionId,
+            ),
           onAfterCacheStore: () => {
             if (sessionId) profiler.endTiming(sessionId, 'total');
           },
@@ -237,34 +277,13 @@ export function createTranslationBackgroundHandler({
               profiler.endTiming(sessionId, 'total');
             }
           },
-          onSuccess: ({ execution: successfulExecution, result }) => {
-            /* v8 ignore start -- fire-and-forget */
-            recordTranslation(successfulExecution.message.targetLang).catch((error: unknown) => {
-              log.debug('recordTranslation skipped:', error);
-            });
-            /* v8 ignore stop */
-
-            if (typeof successfulExecution.text === 'string' && typeof result === 'string') {
-              recordTranslationToHistory(
-                successfulExecution.text,
-                result,
-                successfulExecution.message.sourceLang,
-                successfulExecution.message.targetLang
-              );
-            }
-
-            if (!sessionId) {
-              return;
-            }
-
-            const report = profiler.getReport(sessionId);
-            if (!report) {
-              return;
-            }
-
-            log.info(profiler.formatReport(sessionId));
-            return { profilingReport: report };
-          },
+          onSuccess: ({ execution: successfulExecution, result }) =>
+            handleSuccessfulTranslationSideEffects(
+              successfulExecution,
+              result,
+              sessionId,
+              true,
+            ),
         }
       );
     } catch (error) {
