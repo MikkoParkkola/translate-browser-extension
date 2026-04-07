@@ -840,5 +840,4 @@ echo "Final model size: $(du -sh $OUTPUT_DIR/final/)"
 ---
 
 *Document Version: 1.0*
-*Last Updated: 2025-02-02*
 *Author: Claude + Mikko*

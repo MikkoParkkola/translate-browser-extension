@@ -33,6 +33,10 @@ function readProviderDocs(): string {
   return readFileSync(resolve(process.cwd(), 'docs/PROVIDERS.md'), 'utf8');
 }
 
+function readFutureArchitectureDoc(): string {
+  return readFileSync(resolve(process.cwd(), 'docs/FUTURE_ARCHITECTURE.md'), 'utf8');
+}
+
 function providerDocsLabel(providerId: (typeof TRANSLATION_PROVIDER_IDS)[number]): string {
   switch (providerId) {
     case 'chrome-builtin':
@@ -123,6 +127,12 @@ describe('provider-options guards', () => {
     for (const providerId of experimentalProviders) {
       expect(providerDocs).toContain(`- **${providerDocsLabel(providerId)}**`);
     }
+  });
+
+  it('avoids stale update footers in the future architecture doc', () => {
+    const futureArchitectureDoc = readFutureArchitectureDoc();
+
+    expect(futureArchitectureDoc).not.toContain('Last Updated:');
   });
 
   it('lists all cloud provider ids', () => {
