@@ -210,6 +210,7 @@ export async function prepareTranslationExecution(
       return { kind: 'response', response };
     }
   } else {
+    cache.recordMiss();
     options.hooks?.onCacheLookupEnd?.();
   }
 

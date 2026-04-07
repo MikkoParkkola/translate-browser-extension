@@ -56,6 +56,7 @@ function makeCache(overrides: Record<string, unknown> = {}) {
   return {
     load: vi.fn().mockResolvedValue(undefined),
     get: vi.fn().mockReturnValue(null),
+    recordMiss: vi.fn(),
     set: vi.fn(),
     getKey: vi.fn().mockReturnValue('cache-key-123'),
     size: 0,
@@ -191,6 +192,7 @@ describe('handleTranslateCore', () => {
 
     // Cache.get should NOT be called for auto source
     expect(cache.get).not.toHaveBeenCalled();
+    expect(cache.recordMiss).toHaveBeenCalledTimes(1);
     expect(translateFn).toHaveBeenCalled();
   });
 
