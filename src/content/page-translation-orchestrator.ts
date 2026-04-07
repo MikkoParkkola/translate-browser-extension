@@ -41,7 +41,11 @@ import {
 import { getTextNodes, getTextNodesFromNodes, clearSkipCacheEntry } from './dom-utils';
 import { getPageContext } from './context';
 import { isTransientError, createBatches } from './translation-helpers';
-import { makeTranslatedElementEditable, showCorrectionHint } from './correction';
+import {
+  clearTranslatedElementEditable,
+  makeTranslatedElementEditable,
+  showCorrectionHint,
+} from './correction';
 import { applyBilingualToElement, getBilingualModeState } from './bilingual';
 import { normalizeBatchTranslations } from '../shared/batch-translation-contract';
 
@@ -793,6 +797,12 @@ export function createPageTranslationOrchestrator(
       }
 
       // Clean up attributes and invalidate skip cache
+      if (element instanceof HTMLElement) {
+        clearTranslatedElementEditable(element);
+      }
+      element.removeAttribute(MACHINE_TRANSLATION_ATTR);
+      element.removeAttribute(SOURCE_LANG_ATTR);
+      element.removeAttribute(TARGET_LANG_ATTR);
       element.removeAttribute(TRANSLATED_ATTR);
       element.removeAttribute(ORIGINAL_TEXT_ATTR);
       element.removeAttribute(ORIGINAL_TEXT_NODES_ATTR);

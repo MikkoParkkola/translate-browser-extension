@@ -1460,6 +1460,41 @@ describe('Content Script', () => {
       const el = document.querySelector('[data-translated]');
       expect(el).toBeNull();
     });
+
+    it('undo clears translation metadata and correction affordances', async () => {
+      const { makeTranslatedElementEditable } = await import('./correction');
+
+      document.body.innerHTML = `
+        <p
+          id="undo-cleanup"
+          data-translated="true"
+          data-original-text="Original"
+          data-machine-translation="Translated"
+          data-source-lang="en"
+          data-target-lang="fi"
+        >Translated</p>
+      `;
+
+      const el = document.getElementById('undo-cleanup') as HTMLElement;
+      makeTranslatedElementEditable(el);
+
+      expect(el.getAttribute('data-correction-enabled')).toBe('true');
+      expect(el.style.cursor).toBe('text');
+
+      messageHandler(
+        { type: 'undoTranslation' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        vi.fn(),
+      );
+
+      expect(el.getAttribute('data-machine-translation')).toBeNull();
+      expect(el.getAttribute('data-source-lang')).toBeNull();
+      expect(el.getAttribute('data-target-lang')).toBeNull();
+      expect(el.getAttribute('data-correction-enabled')).toBeNull();
+      expect(el.style.cursor).toBe('');
+    });
   });
 
   // ============================================================
