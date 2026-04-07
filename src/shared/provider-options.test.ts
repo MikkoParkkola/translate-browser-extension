@@ -29,6 +29,32 @@ function readReadme(): string {
   return readFileSync(resolve(process.cwd(), 'README.md'), 'utf8');
 }
 
+function readProviderDocs(): string {
+  return readFileSync(resolve(process.cwd(), 'docs/PROVIDERS.md'), 'utf8');
+}
+
+function providerDocsLabel(providerId: (typeof TRANSLATION_PROVIDER_IDS)[number]): string {
+  switch (providerId) {
+    case 'chrome-builtin':
+      return 'Chrome Built-in';
+    case 'opus-mt':
+      return 'OPUS-MT';
+    case 'translategemma':
+      return 'TranslateGemma';
+    case 'deepl':
+      return 'DeepL';
+    case 'openai':
+      return 'OpenAI';
+    case 'anthropic':
+      return 'Anthropic';
+    case 'google-cloud':
+      return 'Google Cloud';
+  }
+
+  const exhaustiveCheck: never = providerId;
+  throw new Error(`Unhandled provider docs label: ${exhaustiveCheck}`);
+}
+
 describe('provider-options guards', () => {
   it('lists all translation provider ids', () => {
     expect(TRANSLATION_PROVIDER_IDS).toHaveLength(7);
@@ -73,6 +99,30 @@ describe('provider-options guards', () => {
     expect(readme).not.toContain('OpenRouter');
     expect(readme).not.toContain('Ollama');
     expect(readme).not.toContain('macOS translator');
+  });
+
+  it('documents provider shipping stability in docs/PROVIDERS.md', () => {
+    const providerDocs = readProviderDocs();
+    const stableProviders = TRANSLATION_PROVIDER_IDS.filter(
+      (providerId) => !isExperimentalProviderId(providerId),
+    );
+    const experimentalProviders = TRANSLATION_PROVIDER_IDS.filter((providerId) =>
+      isExperimentalProviderId(providerId),
+    );
+
+    expect(providerDocs).toContain('## Shipping status and stability');
+    expect(providerDocs).toContain('### Stable shipped providers');
+    expect(providerDocs).toContain('### Experimental shipped providers');
+    expect(providerDocs).not.toContain(
+      '**DeepL / OpenAI / Anthropic / Google Cloud**',
+    );
+
+    for (const providerId of stableProviders) {
+      expect(providerDocs).toContain(`- **${providerDocsLabel(providerId)}**`);
+    }
+    for (const providerId of experimentalProviders) {
+      expect(providerDocs).toContain(`- **${providerDocsLabel(providerId)}**`);
+    }
   });
 
   it('lists all cloud provider ids', () => {
