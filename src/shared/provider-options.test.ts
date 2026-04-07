@@ -37,6 +37,10 @@ function readFutureArchitectureDoc(): string {
   return readFileSync(resolve(process.cwd(), 'docs/FUTURE_ARCHITECTURE.md'), 'utf8');
 }
 
+function readInnovationReportDoc(): string {
+  return readFileSync(resolve(process.cwd(), 'docs/INNOVATION_REPORT.md'), 'utf8');
+}
+
 function providerDocsLabel(providerId: (typeof TRANSLATION_PROVIDER_IDS)[number]): string {
   switch (providerId) {
     case 'chrome-builtin':
@@ -133,6 +137,29 @@ describe('provider-options guards', () => {
     const futureArchitectureDoc = readFutureArchitectureDoc();
 
     expect(futureArchitectureDoc).not.toContain('Last Updated:');
+  });
+
+  it('avoids unsupported hype phrasing in strategy docs', () => {
+    const futureArchitectureDoc = readFutureArchitectureDoc();
+    const innovationReportDoc = readInnovationReportDoc();
+
+    expect(futureArchitectureDoc).not.toContain(
+      "The world's best browser translation extension",
+    );
+    expect(futureArchitectureDoc).not.toContain('best-in-class quality');
+
+    expect(innovationReportDoc).not.toContain('MARKET GAP');
+    expect(innovationReportDoc).not.toContain('#1 unmet need in the market');
+    expect(innovationReportDoc).not.toContain(
+      'MASSIVE — literally no competitor does this well',
+    );
+    expect(innovationReportDoc).not.toContain(
+      'This alone could make TRANSLATE! the #1 translation extension',
+    );
+    expect(innovationReportDoc).not.toContain('Why This Is Revolutionary');
+    expect(innovationReportDoc).not.toContain(
+      'Revolutionary personalization — no competitor offers this',
+    );
   });
 
   it('lists all cloud provider ids', () => {

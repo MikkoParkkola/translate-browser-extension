@@ -45,9 +45,9 @@
 
 ---
 
-### 🚀 MOONSHOT 1: PDF Layout-Preserving Translation (MARKET GAP)
+### 🚀 MOONSHOT 1: PDF Layout-Preserving Translation
 
-**The Problem**: No browser extension properly translates PDFs while preserving layout, fonts, tables, headers, footers, and formatting. Every attempt breaks the visual structure. This is the #1 unmet need in the market.
+**The Problem**: Browser extensions still struggle to translate PDFs while preserving layout, fonts, tables, headers, footers, and formatting. Visual structure often breaks during extraction and re-rendering.
 
 **Why It's Hard**: PDFs are not semantic documents — they're positioned glyphs. Text extraction loses structure. Re-rendering with different-length translated text breaks columns, tables, and visual hierarchy.
 
@@ -71,8 +71,8 @@
 - Structural heuristics (column detection, table grid detection)
 
 **Effort**: High (2-3 weeks for MVP)
-**Impact**: MASSIVE — literally no competitor does this well
-**ROI**: This alone could make TRANSLATE! the #1 translation extension
+**Impact**: Strong UX improvement for document translation
+**ROI**: Could materially improve TRANSLATE!'s PDF translation capability
 
 ---
 
@@ -87,7 +87,7 @@
 4. Where Gemma disagrees: use Gemma's token, continue from there
 5. Result: 2-4x speedup over pure Gemma, with Gemma-level quality
 
-**Why This Is Revolutionary**: Nobody is doing speculative decoding in a browser extension. The architecture is uniquely suited because we already have both model tiers loaded.
+**Why It Matters**: Speculative decoding is a strong fit for a browser extension that already has both model tiers loaded.
 
 **Effort**: Medium (1-2 weeks)
 **Impact**: 2-4x faster high-quality translation
@@ -116,7 +116,7 @@ Tab C (content script) ─┘    ├── OPUS-MT pipelines (shared GPU memory)
 - Eliminates offscreen document lifecycle issues (MV3 service worker suspension)
 
 **Effort**: Medium-High (2 weeks)
-**Impact**: Huge UX improvement + massive memory savings
+**Impact**: Large UX improvement + substantial memory savings
 **Feasibility**: 🟢 SharedWorker is shipping in all browsers, Chrome is deprecating offscreen docs
 
 ---
@@ -216,7 +216,7 @@ translate("Bank", context="Financial quarterly report") → "Pankki" (correct bo
 **Why Now**: Transformers.js is adding LoRA adapter support. ONNX Runtime supports LoRA weight merging.
 
 **Effort**: High (3-4 weeks, depends on Transformers.js LoRA readiness)
-**Impact**: Revolutionary personalization — no competitor offers this
+**Impact**: Strong personalization potential if adapter support lands
 **Feasibility**: 🔴 Requires training infrastructure and Transformers.js LoRA support
 
 ---

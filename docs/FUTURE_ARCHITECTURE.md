@@ -1,6 +1,6 @@
 # Translate Extension: Future Architecture Design
 
-> **Vision**: The world's best browser translation extension - local-first, provider-diverse, blazing fast, beautiful UX.
+> **Vision**: A local-first, provider-diverse browser translation extension with fast UX and clear user control.
 
 ## Executive Summary
 
@@ -666,7 +666,7 @@ Cost: DGX Spark time (~$5-10)
 ```
 
 ### Phase 3: Premium Quality (Week 5-6)
-**Goal**: TranslateGemma for best-in-class quality
+**Goal**: TranslateGemma for high-quality translation
 
 ```
 Tasks:
