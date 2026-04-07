@@ -166,7 +166,7 @@ describe('sendMessageToTab retry pattern', () => {
         throw firstError;
       }
 
-      await mockExecuteScript({ target: { tabId }, files: ['src/content/index.js'] });
+      await mockExecuteScript({ target: { tabId }, files: ['content.js'] });
       await new Promise(resolve => setTimeout(resolve, 10));
       await mockSendMessage(tabId, message);
     }
@@ -195,7 +195,7 @@ describe('sendMessageToTab retry pattern', () => {
     expect(mockSendMessage).toHaveBeenCalledTimes(2);
     expect(mockExecuteScript).toHaveBeenCalledWith({
       target: { tabId: 1 },
-      files: ['src/content/index.js'],
+      files: ['content.js'],
     });
   });
 
@@ -208,7 +208,7 @@ describe('sendMessageToTab retry pattern', () => {
     await sendMessageToTab(1, { type: 'translatePage' });
     expect(mockExecuteScript).toHaveBeenCalledWith({
       target: { tabId: 1 },
-      files: ['src/content/index.js'],
+      files: ['content.js'],
     });
   });
 

@@ -500,7 +500,7 @@ const sendMessageToTab = createTabMessageSender({
   sendMessage: (tabId, message) => chrome.tabs.sendMessage(tabId, message),
   injectContentScript: (tabId) => chrome.scripting.executeScript({
     target: { tabId },
-    files: ['src/content/index.js'],
+    files: ['content.js'],
   }),
   waitForContentScriptReady: () => sleep(200),
 });
