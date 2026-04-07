@@ -141,7 +141,7 @@ function setMockSendMessageResponse(response = DEFAULT_TRANSLATED_RESPONSE) {
 }
 
 function resetDefaultRuntimeMessageState(response = DEFAULT_TRANSLATED_RESPONSE) {
-  setMockSendMessageResponse(response);
+  restoreRuntimeSendMessageWrapper(response);
   vi.mocked(chrome.runtime.sendMessage).mockClear();
 }
 
@@ -5986,6 +5986,19 @@ describe('Coverage gap tests — second wave', () => {
         rect: { x: 0, y: 0, width: 200, height: 150 },
       }) as any;
       expect(response.success).toBe(true);
+    });
+
+    it('returns crop failure when a requested screenshot selection cannot be cropped', async () => {
+      chromeTabsScriptingMocks.queueCaptureVisibleTabResult(
+        'data:image/png;base64,full3',
+      );
+      mockSendMessage.mockReturnValueOnce({ success: false, error: 'crop failed' });
+      const response = await invoke({
+        type: 'captureScreenshot',
+        rect: { x: 5, y: 6, width: 70, height: 80 },
+      }) as any;
+      expect(response.success).toBe(false);
+      expect(response.error).toBe('crop failed');
     });
 
     it('returns error when captureVisibleTab throws (lines 1196-1201)', async () => {

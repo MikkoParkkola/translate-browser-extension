@@ -150,9 +150,23 @@ export function createMediaHandlers({
           devicePixelRatio: message.devicePixelRatio || 1,
         });
 
+        if (!cropResponse.success) {
+          return {
+            success: false,
+            error: cropResponse.error || 'Screenshot crop failed',
+          };
+        }
+
+        if (!cropResponse.imageData) {
+          return {
+            success: false,
+            error: 'Screenshot crop failed',
+          };
+        }
+
         return {
           success: true,
-          imageData: cropResponse.success ? cropResponse.imageData : dataUrl,
+          imageData: cropResponse.imageData,
         };
       }
 

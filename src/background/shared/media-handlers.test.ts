@@ -216,7 +216,7 @@ describe('createMediaHandlers', () => {
     });
   });
 
-  it('falls back to the original screenshot when cropImage returns failure', async () => {
+  it('fails when cropImage returns failure for a requested selection', async () => {
     const deps = createDependencies();
     deps.captureVisibleTab.mockResolvedValue('data:image/png;base64,full');
     deps.offscreenTransport.send.mockResolvedValue({
@@ -231,8 +231,8 @@ describe('createMediaHandlers', () => {
         rect: { x: 10, y: 20, width: 30, height: 40 },
       })
     ).resolves.toEqual({
-      success: true,
-      imageData: 'data:image/png;base64,full',
+      success: false,
+      error: 'crop failed',
     });
   });
 
