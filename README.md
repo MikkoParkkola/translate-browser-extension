@@ -51,14 +51,14 @@ If built-in translation works reliably for your languages and pages, you probabl
 
 ## Quality
 
-| Metric | Value |
-|--------|-------|
-| Unit tests | 5k+ Vitest tests across 150+ files |
-| Coverage gates | Enforced in CI via `npm run test:coverage` |
-| Contract tests | 58 (provider interface conformance) |
-| Mutation testing | Stryker configured for core + providers |
-| E2E tests | Playwright smoke, integration, and harness flows |
-| CI | GitHub Actions: consolidated CI, smoke e2e, coverage, CodeQL, SBOM |
+| Metric           | Value                                                              |
+| ---------------- | ------------------------------------------------------------------ |
+| Unit tests       | 5k+ Vitest tests across 150+ files                                 |
+| Coverage gates   | Enforced in CI via `npm run test:coverage`                         |
+| Contract tests   | 58 (provider interface conformance)                                |
+| Mutation testing | Stryker configured for core + providers                            |
+| E2E tests        | Playwright smoke, integration, and harness flows                   |
+| CI               | GitHub Actions: consolidated CI, smoke e2e, coverage, CodeQL, SBOM |
 
 The unit suite runs in about a minute locally, depending on cache state. Coverage thresholds are enforced in CI via `npm run test:coverage`; see `vitest.config.ts` for the current gate values.
 
@@ -70,12 +70,12 @@ The unit suite runs in about a minute locally, depending on cache state. Coverag
 
 ## Browser Support
 
-| Browser | Status | Notes |
-|---------|--------|-------|
-| **Chrome** (116+) | Full support | Primary platform, Manifest V3 |
-| **Chromium-based** (Edge, Brave, etc.) | Full support | Load as unpacked extension |
-| **Safari** (macOS, iOS, iPadOS) | Full support | Built via Xcode converter |
-| **Firefox** | Supported | Separate build flow documented below |
+| Browser                                | Status       | Notes                                |
+| -------------------------------------- | ------------ | ------------------------------------ |
+| **Chrome** (116+)                      | Full support | Primary platform, Manifest V3        |
+| **Chromium-based** (Edge, Brave, etc.) | Full support | Load as unpacked extension           |
+| **Safari** (macOS, iOS, iPadOS)        | Full support | Built via Xcode converter            |
+| **Firefox**                            | Supported    | Separate build flow documented below |
 
 ## Installation
 
@@ -148,26 +148,21 @@ npx -y crx pack dist -o translate-extension.crx --zip-output translate-extension
 Open the popup and click the gear button to access **Settings**. The settings page provides:
 
 - **General** -- toggle automatic language detection and manage the glossary.
-- **Providers** -- add, remove or reorder providers. Use **Edit** to supply API keys, endpoints, models and per-provider limits. Local providers such as Ollama or macOS can be added via **Add Local Provider**.
+- **Providers** -- enable, disable, or reorder the shipped providers. Use **Edit** to supply API keys, models, and per-provider limits for the supported cloud providers.
 - **Advanced** -- enable or clear the translation cache.
 
 Use the **Diagnostics** button on the home page to view usage metrics and run connectivity checks.
 
 ### Where to get API keys
 
-| Provider | API Keys | Notes |
-|----------|----------|-------|
-| DashScope (Qwen) | [dashscope.console.aliyun.com](https://dashscope.console.aliyun.com/) | Qwen-MT-Turbo, Qwen-MT-Plus |
-| OpenAI | [platform.openai.com](https://platform.openai.com/api-keys) | GPT models |
-| Gemini | [aistudio.google.com](https://aistudio.google.com/app/apikey) | Gemini Flash/Pro |
-| Anthropic (Claude) | [console.anthropic.com](https://console.anthropic.com/) | Claude models |
-| Mistral | [console.mistral.ai](https://console.mistral.ai/) | Mistral models |
-| DeepL | [deepl.com/pro-api](https://www.deepl.com/pro-api) | Document translation |
-| Google Cloud | [cloud.google.com/translate](https://cloud.google.com/translate/docs/setup) | Translation + Detection |
-| OpenRouter | [openrouter.ai](https://openrouter.ai/) | Multi-model hub |
-| Ollama | Local, no key required | Self-hosted models |
-| macOS translator | Built-in, no key required | System translation API |
-| Local WASM | Built-in, no key required | Offline, in-browser |
+| Provider           | API Keys                                                                    | Notes                   |
+| ------------------ | --------------------------------------------------------------------------- | ----------------------- |
+| OpenAI             | [platform.openai.com](https://platform.openai.com/api-keys)                 | GPT models              |
+| Claude (Anthropic) | [console.anthropic.com](https://console.anthropic.com/)                     | Claude models           |
+| DeepL              | [deepl.com/pro-api](https://www.deepl.com/pro-api)                          | Document translation    |
+| Google Cloud       | [cloud.google.com/translate](https://cloud.google.com/translate/docs/setup) | Translation + Detection |
+
+Chrome Built-in, OPUS-MT, and TranslateGemma are shipped local/native paths and do not require API keys.
 
 See also: [docs/PROVIDERS.md](docs/PROVIDERS.md)
 
@@ -207,6 +202,7 @@ Cost tracking is built in -- the popup shows 24-hour and 7-day spend per provide
 - **Frames**: Same-origin iframes and open Shadow DOM are supported. Cross-origin frames require host permissions.
 
 Use the **Diagnostics** panel (popup home page) for cache stats, connectivity checks, and a latency histogram. **Copy Report** generates a shareable summary for bug reports.
+
 </details>
 
 ## CLI

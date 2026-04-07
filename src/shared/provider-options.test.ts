@@ -48,6 +48,23 @@ describe('provider-options guards', () => {
     expect(readme).not.toContain('**100+ languages**');
   });
 
+  it('documents only the shipped cloud and local providers in the readme', () => {
+    const readme = readReadme();
+
+    expect(readme).toContain('Chrome Built-in, OPUS-MT, and TranslateGemma');
+    expect(readme).toContain('OpenAI');
+    expect(readme).toContain('Claude (Anthropic)');
+    expect(readme).toContain('DeepL');
+    expect(readme).toContain('Google Cloud');
+    expect(readme).not.toContain('Add Local Provider');
+    expect(readme).not.toContain('DashScope (Qwen)');
+    expect(readme).not.toContain('Gemini');
+    expect(readme).not.toContain('Mistral');
+    expect(readme).not.toContain('OpenRouter');
+    expect(readme).not.toContain('Ollama');
+    expect(readme).not.toContain('macOS translator');
+  });
+
   it('lists all cloud provider ids', () => {
     expect(CLOUD_PROVIDER_IDS).toHaveLength(4);
     expect(CLOUD_PROVIDER_IDS).toContain('openai');
@@ -66,7 +83,9 @@ describe('provider-options guards', () => {
 
   it('normalizes invalid provider ids to the fallback', () => {
     expect(normalizeTranslationProviderId('invalid-provider')).toBe('opus-mt');
-    expect(normalizeTranslationProviderId('invalid-provider', 'deepl')).toBe('deepl');
+    expect(normalizeTranslationProviderId('invalid-provider', 'deepl')).toBe(
+      'deepl',
+    );
   });
 
   it('exports the canonical default provider id', () => {
@@ -78,9 +97,13 @@ describe('provider-options guards', () => {
   });
 
   it('canonicalizes only the legacy provider alias without forcing validation', () => {
-    expect(canonicalizeLegacyTranslationProviderId(LEGACY_OPUS_PROVIDER_ID)).toBe('opus-mt');
+    expect(
+      canonicalizeLegacyTranslationProviderId(LEGACY_OPUS_PROVIDER_ID),
+    ).toBe('opus-mt');
     expect(canonicalizeLegacyTranslationProviderId('deepl')).toBe('deepl');
-    expect(canonicalizeLegacyTranslationProviderId('invalid-provider')).toBe('invalid-provider');
+    expect(canonicalizeLegacyTranslationProviderId('invalid-provider')).toBe(
+      'invalid-provider',
+    );
   });
 
   it('accepts cloud provider ids only for cloud guard', () => {
@@ -105,10 +128,9 @@ describe('provider-options guards', () => {
   });
 
   it('exports downloadable models separately from browser-managed ones', () => {
-    expect(MODEL_SELECTOR_DOWNLOADABLE_MODELS.map((model) => model.id)).toEqual([
-      'opus-mt',
-      'translategemma',
-    ]);
+    expect(MODEL_SELECTOR_DOWNLOADABLE_MODELS.map((model) => model.id)).toEqual(
+      ['opus-mt', 'translategemma'],
+    );
   });
 
   it('stores canonical runtime metadata for chrome-builtin', () => {
@@ -127,7 +149,9 @@ describe('provider-options guards', () => {
     expect(chromeBuiltin?.badges).toEqual(['preferred-native']);
     expect(deepl?.badges).toEqual(['api-key']);
     expect(getProviderUiBadgeLabel('recommended')).toBe('Recommended');
-    expect(getProviderUiBadgeLabel('preferred-native')).toBe('Preferred native');
+    expect(getProviderUiBadgeLabel('preferred-native')).toBe(
+      'Preferred native',
+    );
     expect(getProviderUiBadgeLabel('api-key')).toBe('API key');
   });
 
@@ -138,26 +162,38 @@ describe('provider-options guards', () => {
     expect(translateGemma.runtimeRequirement).toBe('webgpu-or-webnn');
     expect(chromeBuiltin.runtimeRequirement).toBe('chrome-138');
     expect(getProviderRuntimeRequirementLabel('webgpu-or-webnn')).toBe(
-      'Requires WebGPU or WebNN'
+      'Requires WebGPU or WebNN',
     );
-    expect(getProviderRuntimeRequirementLabel('chrome-138')).toBe('Chrome 138+ required');
+    expect(getProviderRuntimeRequirementLabel('chrome-138')).toBe(
+      'Chrome 138+ required',
+    );
   });
 
   it('normalizes legacy cloud provider model aliases', () => {
-    expect(normalizeCloudProviderModelValue('openai', 'gpt-4')).toBe('gpt-4-turbo');
-    expect(normalizeCloudProviderModelValue('anthropic', 'claude-3-5-sonnet')).toBe(
-      'claude-3-5-sonnet-20241022'
+    expect(normalizeCloudProviderModelValue('openai', 'gpt-4')).toBe(
+      'gpt-4-turbo',
     );
+    expect(
+      normalizeCloudProviderModelValue('anthropic', 'claude-3-5-sonnet'),
+    ).toBe('claude-3-5-sonnet-20241022');
   });
 
   it('normalizes legacy cloud provider formality aliases', () => {
-    expect(normalizeCloudProviderFormalityValue('deepl', 'formal')).toBe('more');
-    expect(normalizeCloudProviderFormalityValue('openai', 'default')).toBe('neutral');
+    expect(normalizeCloudProviderFormalityValue('deepl', 'formal')).toBe(
+      'more',
+    );
+    expect(normalizeCloudProviderFormalityValue('openai', 'default')).toBe(
+      'neutral',
+    );
   });
 
   it('prefers browser native translation when available', () => {
-    expect(getPreferredLocalProvider({ browserNativeAvailable: true })).toBe('chrome-builtin');
-    expect(getPreferredLocalProvider({ browserNativeAvailable: false })).toBe('opus-mt');
+    expect(getPreferredLocalProvider({ browserNativeAvailable: true })).toBe(
+      'chrome-builtin',
+    );
+    expect(getPreferredLocalProvider({ browserNativeAvailable: false })).toBe(
+      'opus-mt',
+    );
     expect(getPreferredLocalProvider()).toBe('opus-mt');
   });
 
@@ -166,7 +202,9 @@ describe('provider-options guards', () => {
     expect(resolveProviderFromModelId('deepl')).toBe('deepl');
     expect(resolveProviderFromModelId('my-opus-mt-model')).toBe('opus-mt');
     expect(resolveProviderFromModelId('gemma-4b')).toBe('translategemma');
-    expect(resolveProviderFromModelId('chrome-builtin-translator')).toBe('chrome-builtin');
+    expect(resolveProviderFromModelId('chrome-builtin-translator')).toBe(
+      'chrome-builtin',
+    );
     expect(resolveProviderFromModelId('mystery-model')).toBeNull();
   });
 
