@@ -48,6 +48,16 @@ describe('provider-options guards', () => {
     expect(readme).not.toContain('**100+ languages**');
   });
 
+  it('avoids pinning exact test-count claims in the readme', () => {
+    const readme = readReadme();
+
+    expect(readme).not.toMatch(
+      /!\[Tests]\(https:\/\/img\.shields\.io\/badge\/tests-[0-9][0-9%2C]*%20passed-brightgreen\)/,
+    );
+    expect(readme).not.toMatch(/npm test\s+# Run [0-9][0-9,]* unit tests/);
+    expect(readme).not.toMatch(/\| Contract tests\s+\|\s+[0-9][0-9,]* \(/);
+  });
+
   it('documents only the shipped cloud and local providers in the readme', () => {
     const readme = readReadme();
 

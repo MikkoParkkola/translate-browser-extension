@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/ci.yml/badge.svg)](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/codeql.yml/badge.svg)](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/codeql.yml)
-![Tests](https://img.shields.io/badge/tests-5%2C038%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-5k%2B%20passed-brightgreen)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue?logo=typescript&logoColor=white)
 ![License](https://img.shields.io/github/license/MikkoParkkola/translate-browser-extension)
 ![Chrome](https://img.shields.io/badge/Chrome-116%2B-brightgreen?logo=googlechrome&logoColor=white)
@@ -55,7 +55,7 @@ If built-in translation works reliably for your languages and pages, you probabl
 | ---------------- | ------------------------------------------------------------------ |
 | Unit tests       | 5k+ Vitest tests across 150+ files                                 |
 | Coverage gates   | Enforced in CI via `npm run test:coverage`                         |
-| Contract tests   | 58 (provider interface conformance)                                |
+| Contract tests   | Provider interface conformance checks                              |
 | Mutation testing | Stryker configured for core + providers                            |
 | E2E tests        | Playwright smoke, integration, and harness flows                   |
 | CI               | GitHub Actions: consolidated CI, smoke e2e, coverage, CodeQL, SBOM |
@@ -219,7 +219,7 @@ Streams translations by default. Use `--no-stream` for batch mode, `-d` for debu
 
 ```sh
 npm install          # Install dependencies
-npm test             # Run 5,038 unit tests
+npm test             # Run the Vitest suite
 npm run test:e2e     # Run the full web + harness E2E suite
 npm run build        # Chrome production build (dist/)
 npm run build:safari  # Safari via Xcode converter
