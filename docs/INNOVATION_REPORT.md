@@ -15,17 +15,17 @@
 | OCR image extraction | ✅ Typed | Tesseract.js integration |
 | Profiling/instrumentation | ✅ Comprehensive | 16 timing categories, p50/p95/p99 |
 
-### Competitor Landscape
-| Product | Tech | Local? | Quality | Gap |
+### Current Landscape
+| Product | Tech | Local? | Quality | Key distinction |
 |---|---|---|---|---|
 | **Google Translate ext** | Cloud API | No | Good | Privacy, offline |
 | **DeepL extension** | Cloud API | No | Excellent | Privacy, offline, cost |
 | **Firefox built-in** | Bergamot (WASM) | Yes | Decent | No WebGPU, no LLM |
 | **Edge Translator** | Cloud API | No | Good | Privacy, offline |
 | **Immersive Translate** | Multi-provider | Partial | Varies | No local LLM |
-| **TRANSLATE!** | OPUS-MT + Gemma + Chrome API | **Yes** | Good-Excellent | **Already leading** |
+| **TRANSLATE!** | OPUS-MT + Gemma + Chrome API | **Yes** | Good-Excellent | Shipped local + cloud mix |
 
-### Bleeding Edge Tech Available Now (🟢Shipping / 🟡Origin Trial / 🔴Experimental)
+### Emerging Tech Available Now (🟢Shipping / 🟡Origin Trial / 🔴Experimental)
 
 | Technology | Status | Impact |
 |---|---|---|
@@ -238,7 +238,7 @@ translate("Bank", context="Financial quarterly report") → "Pankki" (correct bo
 **Use cases**: Images with text, canvas-rendered content, PDF viewers, screenshots of apps
 
 **Effort**: Low-Medium (1 week, OCR infrastructure already exists)
-**Impact**: Unique capability — translate ANY visual text on screen
+**Impact**: Broad visual-text coverage — translate visual text on screen
 **Feasibility**: 🟢 Core tech already integrated
 
 ---
@@ -279,13 +279,13 @@ translate("Bank", context="Financial quarterly report") → "Pankki" (correct bo
 
 ## Recommended Execution Order (FINAL — All Validated)
 
-1. **Contextual page semantics** — Zero risk. Prompt engineering only. Immediate quality leap.
+1. **Contextual page semantics** — Low implementation risk. Prompt engineering only. Immediate quality improvement potential.
 2. **Screenshot OCR** — Tesseract.js v7 installed, types exist. Wire captureVisibleTab + OCR + translate + overlay.
-3. **PDF translation** — Add pdfjs-dist. Extract text with positions. Canvas overlay. Market differentiator.
+3. **PDF translation** — Add pdfjs-dist. Extract text with positions. Canvas overlay. Strong user-facing capability area.
 4. **Video subtitles** — Standard `<track>` + YouTube `.ytp-caption-segment`. New market.
 5. **Speculative decoding** — Pass `output_scores: true` to generate(). OPUS-MT draft + Gemma verify.
 6. **WebNN** — When Chrome ships it stable. Architecture ready (just add `'webnn'` to execution tier).
 
 ---
 
-*Generated: 2026-02-09 | Based on codebase analysis + bleeding edge tech mapping*
+*Generated: 2026-02-09 | Based on codebase analysis + emerging tech mapping*

@@ -160,6 +160,11 @@ describe('provider-options guards', () => {
     expect(innovationReportDoc).not.toContain(
       'Revolutionary personalization — no competitor offers this',
     );
+    expect(innovationReportDoc).not.toContain('Already leading');
+    expect(innovationReportDoc).not.toContain('Unique capability');
+    expect(innovationReportDoc).not.toContain('Immediate quality leap');
+    expect(innovationReportDoc).not.toContain('Market differentiator');
+    expect(innovationReportDoc).not.toContain('Bleeding Edge Tech Available Now');
   });
 
   it('lists all cloud provider ids', () => {
