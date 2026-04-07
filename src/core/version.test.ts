@@ -110,10 +110,10 @@ describe('version detection', () => {
       await expect(dismissUpdateNotice()).resolves.toBeUndefined();
     });
 
-    it('isUpdateDismissed returns true when storage.get throws', async () => {
+    it('isUpdateDismissed returns false when storage.get throws', async () => {
       (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('get error'));
       const result = await isUpdateDismissed();
-      expect(result).toBe(true);
+      expect(result).toBe(false);
     });
   });
 
