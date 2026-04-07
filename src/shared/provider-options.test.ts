@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_PROVIDER_ID,
@@ -23,11 +25,27 @@ import {
   normalizeTranslationProviderId,
 } from './provider-options';
 
+function readReadme(): string {
+  return readFileSync(resolve(process.cwd(), 'README.md'), 'utf8');
+}
+
 describe('provider-options guards', () => {
   it('lists all translation provider ids', () => {
     expect(TRANSLATION_PROVIDER_IDS).toHaveLength(7);
     expect(TRANSLATION_PROVIDER_IDS).toContain('opus-mt');
     expect(TRANSLATION_PROVIDER_IDS).toContain('deepl');
+  });
+
+  it('documents the shipped provider surface without overstating language coverage', () => {
+    const readme = readReadme();
+
+    expect(readme).toContain(
+      `**${TRANSLATION_PROVIDER_IDS.length} shipping translation providers**`,
+    );
+    expect(readme).toContain(
+      '**Source language auto-detection** -- browser-native detectors first, with offline trigram/script fallback when needed.',
+    );
+    expect(readme).not.toContain('**100+ languages**');
   });
 
   it('lists all cloud provider ids', () => {

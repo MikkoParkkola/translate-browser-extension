@@ -35,7 +35,7 @@ Built-in browser translation (Chrome, Safari, Firefox) works well for many pages
 - **Failover and load balancing** -- if your primary provider hits a rate limit or fails, requests automatically route to the next provider in your chain.
 - **Smart batching and caching** -- identical strings translated once and reused. Hidden elements skipped. Session cache minimizes repeat API calls.
 - **Auto-translate** -- optionally translate pages on load.
-- **100+ languages** -- source language auto-detection with trigram-based fallback.
+- **Source language auto-detection** -- browser-native detectors first, with offline trigram/script fallback when needed.
 - **Keyboard shortcuts** -- `Ctrl+Shift+P` translate page, `Ctrl+Shift+T` translate selection, `Ctrl+Shift+U` undo.
 - **Diagnostics dashboard** -- live usage metrics, cost tracking, latency histogram.
 
