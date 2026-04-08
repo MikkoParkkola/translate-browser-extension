@@ -43,8 +43,7 @@ export function resolveSourceLang(sourceLang: string, text?: string): string {
 /**
  * Translate text via a long-lived Port connection so partial results arrive
  * progressively. Calls `onChunk(partial)` as each sentence is translated, then
- * resolves with the final full translation. Falls back to `sendMessage` on any
- * port error.
+ * resolves with the final full translation. Rejects on port or callback errors.
  */
 export async function translateWithStreaming(
   text: string,
@@ -55,6 +54,30 @@ export async function translateWithStreaming(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     let port: chrome.runtime.Port;
+    let settled = false;
+
+    const disconnectPort = () => {
+      try {
+        port.disconnect();
+      } catch {
+        // Ignore double-disconnects from terminal races.
+      }
+    };
+
+    const rejectOnce = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      disconnectPort();
+      reject(error);
+    };
+
+    const resolveOnce = (result: string) => {
+      if (settled) return;
+      settled = true;
+      disconnectPort();
+      resolve(result);
+    };
+
     try {
       port = browserAPI.runtime.connect({ name: 'translate-stream' });
     } catch {
@@ -63,19 +86,22 @@ export async function translateWithStreaming(
     }
 
     port.onMessage.addListener((msg: { type: string; partial?: string; result?: string; error?: string }) => {
+      if (settled) return;
       if (msg.type === 'chunk' && msg.partial) {
-        onChunk(msg.partial);
+        try {
+          onChunk(msg.partial);
+        } catch (error) {
+          rejectOnce(error instanceof Error ? error : new Error('Streaming chunk handler failed'));
+        }
       } else if (msg.type === 'done') {
-        port.disconnect();
-        resolve(msg.result ?? '');
+        resolveOnce(msg.result ?? '');
       } else if (msg.type === 'error') {
-        port.disconnect();
-        reject(new Error(msg.error ?? 'Streaming translation failed'));
+        rejectOnce(new Error(msg.error ?? 'Streaming translation failed'));
       }
     });
 
     port.onDisconnect.addListener(() => {
-      reject(new Error('Port disconnected'));
+      rejectOnce(new Error('Port disconnected'));
     });
 
     port.postMessage({ type: 'startStream', text, sourceLang, targetLang, provider });

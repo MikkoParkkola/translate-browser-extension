@@ -146,6 +146,26 @@ describe('translation helpers', () => {
     expect(stream.port.disconnect).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects when the chunk callback throws and ignores later terminal events', async () => {
+    const stream = createStreamingPort();
+    const onChunk = vi.fn(() => {
+      throw new Error('Chunk render failed');
+    });
+    mocks.connect.mockReturnValueOnce(stream.port);
+
+    const pending = translateWithStreaming('Hello world', 'en', 'fi', undefined, onChunk);
+
+    stream.emitMessage({ type: 'chunk', partial: 'Hei' });
+
+    await expect(pending).rejects.toThrow('Chunk render failed');
+
+    stream.emitMessage({ type: 'done', result: 'ignored' });
+    stream.emitDisconnect();
+
+    expect(onChunk).toHaveBeenCalledWith('Hei');
+    expect(stream.port.disconnect).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects when the streaming layer reports an error or disconnects', async () => {
     const errorStream = createStreamingPort();
     mocks.connect.mockReturnValueOnce(errorStream.port);
