@@ -61,7 +61,8 @@ export function routeHandledExtensionMessage<TMessage extends ExtensionMessage, 
     return true;
   }
 
-  dispatch(message)
+  void Promise.resolve()
+    .then(() => dispatch(message))
     .then(sendResponse)
     .catch((error) => {
       sendResponse(createErrorResponse(error));

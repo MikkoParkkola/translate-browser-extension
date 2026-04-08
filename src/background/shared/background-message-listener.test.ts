@@ -189,15 +189,17 @@ describe('createBackgroundMessageListener', () => {
 
     await flushAsyncWork();
 
-    expect(mocks.createTranslationError).toHaveBeenCalledWith(expect.any(Error));
-    expect(mocks.formatUserError).toHaveBeenCalledWith({
-      message: 'boom',
-      technicalDetails: 'boom',
-    });
-    expect(log.error).toHaveBeenCalledWith(' Error:', 'boom');
-    expect(sendResponse).toHaveBeenCalledWith({
-      success: false,
-      error: 'Formatted error',
+    await vi.waitFor(() => {
+      expect(mocks.createTranslationError).toHaveBeenCalledWith(expect.any(Error));
+      expect(mocks.formatUserError).toHaveBeenCalledWith({
+        message: 'boom',
+        technicalDetails: 'boom',
+      });
+      expect(log.error).toHaveBeenCalledWith(' Error:', 'boom');
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: false,
+        error: 'Formatted error',
+      });
     });
   });
 });
