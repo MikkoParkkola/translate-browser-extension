@@ -208,7 +208,9 @@ export function showCorrectionHint(_element: HTMLElement): void {
 
     // Mark as shown in storage (fire-and-forget)
     /* v8 ignore start -- fire-and-forget */
-    browserAPI.storage?.local?.set({ [hintKey]: true }).catch(() => {});
+    browserAPI.storage?.local?.set({ [hintKey]: true }).catch((error) => {
+      log.warn('Failed to persist correction hint state:', error);
+    });
     /* v8 ignore stop */
 
     // Remove after a few seconds

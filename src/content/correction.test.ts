@@ -6,10 +6,32 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createBrowserApiModuleMock } from '../test-helpers/browser-api-mocks';
-import { createLoggerModuleMock } from '../test-helpers/module-mocks';
+
+const {
+  mockSendMessage,
+  mockStorageSet,
+  mockContentLogInfo,
+  mockContentLogWarn,
+  mockContentLogError,
+  mockContentLogDebug,
+} = vi.hoisted(() => ({
+  mockSendMessage: vi.fn().mockResolvedValue({ success: true }),
+  mockStorageSet: vi.fn().mockResolvedValue(undefined),
+  mockContentLogInfo: vi.fn(),
+  mockContentLogWarn: vi.fn(),
+  mockContentLogError: vi.fn(),
+  mockContentLogDebug: vi.fn(),
+}));
 
 // Mock logger
-vi.mock('../core/logger', () => createLoggerModuleMock());
+vi.mock('../core/logger', () => ({
+  createLogger: () => ({
+    info: mockContentLogInfo,
+    warn: mockContentLogWarn,
+    error: mockContentLogError,
+    debug: mockContentLogDebug,
+  }),
+}));
 
 // Mock toast to avoid DOM side effects
 vi.mock('./toast', () => ({
@@ -24,10 +46,6 @@ vi.mock('../core/storage', () => ({
 }));
 
 // Mock browserAPI
-const { mockSendMessage, mockStorageSet } = vi.hoisted(() => ({
-  mockSendMessage: vi.fn().mockResolvedValue({ success: true }),
-  mockStorageSet: vi.fn().mockResolvedValue(undefined),
-}));
 vi.mock('../core/browser-api', () => createBrowserApiModuleMock({
   runtime: {
     sendMessage: mockSendMessage,
@@ -285,7 +303,12 @@ describe('showCorrectionHint', () => {
     // Reset modules to clear correctionHintShown module-level variable
     vi.resetModules();
     vi.doMock('../core/logger', () => ({
-      createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+      createLogger: () => ({
+        info: mockContentLogInfo,
+        warn: mockContentLogWarn,
+        error: mockContentLogError,
+        debug: mockContentLogDebug,
+      }),
     }));
     vi.doMock('./toast', () => ({ showInfoToast: vi.fn(), showErrorToast: vi.fn() }));
     vi.doMock('../core/storage', () => ({
@@ -395,6 +418,22 @@ describe('showCorrectionHint', () => {
     // Second call should be a no-op since correctionHintShown is true
     showCorrectionHint(el);
     expect(document.getElementById('translate-correction-hint')).toBeNull();
+  });
+
+  it('logs a warning when persisting the hint state fails', async () => {
+    mockSafeStorageGet.mockResolvedValue({});
+    const persistError = new Error('set failed');
+    mockStorageSet.mockRejectedValueOnce(persistError);
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+
+    showCorrectionHint(el);
+    await flushPromises();
+
+    expect(mockContentLogWarn).toHaveBeenCalledWith(
+      'Failed to persist correction hint state:',
+      persistError,
+    );
   });
 
   it('makeTranslatedElementEditable sets up event handlers', () => {
