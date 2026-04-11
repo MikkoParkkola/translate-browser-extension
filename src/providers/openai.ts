@@ -213,7 +213,10 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
 
       // Split back if batch
       if (isArray && texts.length > 1) {
-        const results = parseBatchResponse(translated, texts.length, { separatorFallback: true });
+        const results = parseBatchResponse(translated, texts.length, {
+          separatorFallback: true,
+          newlineFallback: true,
+        });
         if (results.every(result => !result) && translated.length > 0) {
           this.log.warn('Separator/XML parsing produced no results for batch');
         }

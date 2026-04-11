@@ -145,6 +145,15 @@ describe('detectProviderLanguageCode', () => {
 });
 
 describe('parseBatchResponse', () => {
+  it('falls through when separator fallback is enabled but the separator is absent', () => {
+    const results = parseBatchResponse('Hei\nMaailma', 2, {
+      separatorFallback: true,
+      newlineFallback: true,
+    });
+
+    expect(results).toEqual(['Hei', 'Maailma']);
+  });
+
   it('keeps allowExtras XML results dense when extra indices are non-consecutive', () => {
     const results = parseBatchResponse('<t0>Hello</t0><t4>World</t4>', 2, {
       allowExtras: true,

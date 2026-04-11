@@ -293,6 +293,26 @@ describe('OpenAI response parsing contract', () => {
     expect(result[0]).toBe('Hei');
     expect(result[1]).toBe('Maailma');
   });
+
+  it('recovers plain-text batches when the separator is missing', async () => {
+    mockStorage['openai_api_key'] = 'sk-test';
+    await provider.initialize();
+
+    mockFetch.mockResolvedValueOnce(
+      okResponse({
+        choices: [
+          {
+            message: { content: 'Hei\nMaailma' },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 30, completion_tokens: 12, total_tokens: 42 },
+      }),
+    );
+
+    const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
+    expect(result).toEqual(['Hei', 'Maailma']);
+  });
 });
 
 // =========================================================================

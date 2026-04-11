@@ -259,11 +259,13 @@ export function parseBatchResponse(
     if (found) return results;
   }
 
-  // 3. Legacy OpenAI: ---TRANSLATE_SEPARATOR--- (or single result with no separator)
+  // 3. Legacy OpenAI: ---TRANSLATE_SEPARATOR---
   if (options.separatorFallback) {
     const parts = translated.split(/---TRANSLATE_SEPARATOR---/i).map(s => s.trim());
-    for (let i = 0; i < Math.min(parts.length, count); i++) results[i] = parts[i];
-    return results;
+    if (parts.length > 1) {
+      for (let i = 0; i < Math.min(parts.length, count); i++) results[i] = parts[i];
+      return results;
+    }
   }
 
   // 4. Newline split (last resort — only useful for short batches)
