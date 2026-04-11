@@ -8,6 +8,7 @@ import {
   type WorkerInfo,
 } from '@playwright/test';
 import {
+  assertBuiltExtensionExists,
   EXTENSION_PATH,
   getExtensionLaunchSettings,
   type ExtensionLaunchOptions,
@@ -78,6 +79,16 @@ async function launchExtensionWorkerContext(
   options: ExtensionLaunchOptions,
   label: string
 ): Promise<BrowserContext> {
+  try {
+    assertBuiltExtensionExists();
+  } catch (error) {
+    logExtensionFixtureDebug(
+      `${label}:extension-build:error`,
+      error instanceof Error ? error.message : String(error)
+    );
+    throw error;
+  }
+
   const launchSettings = getExtensionLaunchSettings(options);
   logExtensionFixtureDebug(`${label}:context:launch:start`, {
     ...launchSettings,

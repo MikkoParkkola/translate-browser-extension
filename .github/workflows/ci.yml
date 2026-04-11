@@ -105,7 +105,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dist
-          path: .
+          path: dist
+
+      - name: Verify unpacked extension build
+        run: test -f dist/manifest.json
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium

@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 
 export const EXTENSION_PATH = path.resolve(__dirname, '..', 'dist');
@@ -17,6 +18,25 @@ export interface ExtensionLaunchSettings {
   executablePath?: string;
 }
 
+export function getExtensionManifestPath(
+  extensionPath = EXTENSION_PATH,
+): string {
+  return path.join(extensionPath, 'manifest.json');
+}
+
+export function assertBuiltExtensionExists(
+  extensionPath = EXTENSION_PATH,
+): void {
+  const manifestPath = getExtensionManifestPath(extensionPath);
+  if (fs.existsSync(manifestPath)) {
+    return;
+  }
+
+  throw new Error(
+    `Built extension manifest not found at ${manifestPath}. Expected an unpacked extension build in ${extensionPath}; run \`npm run build\` locally or ensure CI downloads the dist artifact into dist/.`,
+  );
+}
+
 function shouldUseHeadlessExtensionMode(): boolean {
   if (process.env[FORCE_HEADED_EXTENSION_ENV] === 'true') {
     return false;
@@ -31,7 +51,7 @@ function shouldUseHeadlessExtensionMode(): boolean {
 
 export function buildExtensionArgs(
   { enableGpu = false }: ExtensionLaunchOptions = {},
-  headless = false
+  headless = false,
 ): string[] {
   return [
     `--disable-extensions-except=${EXTENSION_PATH}`,
@@ -59,7 +79,7 @@ function readChromiumExecutablePathOverride(): string | undefined {
 }
 
 export function getExtensionLaunchSettings(
-  options: ExtensionLaunchOptions = {}
+  options: ExtensionLaunchOptions = {},
 ): ExtensionLaunchSettings {
   const executablePath = readChromiumExecutablePathOverride();
   const headless = shouldUseHeadlessExtensionMode();
