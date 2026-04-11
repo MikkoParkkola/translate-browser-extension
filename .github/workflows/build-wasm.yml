@@ -62,8 +62,12 @@ jobs:
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
           git add -A src/wasm/vendor
-          git commit -m "ci: refresh WASM vendor assets" || echo "No changes"
-          git push || true
+          if git diff --cached --quiet; then
+            echo "No vendor asset changes to commit"
+          else
+            git commit -m "ci: refresh WASM vendor assets"
+            git push
+          fi
 
       - name: Upload segmenter artifacts
         uses: actions/upload-artifact@v4
