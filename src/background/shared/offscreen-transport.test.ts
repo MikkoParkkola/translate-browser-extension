@@ -60,7 +60,7 @@ describe('createOffscreenTransport', () => {
       async <T>(
         operation: () => Promise<T>,
         _config?: unknown,
-        _shouldRetry?: (error: TranslationError) => boolean
+        _shouldRetry?: (error: TranslationError) => boolean | Promise<boolean>
       ) => operation()
     );
   });
@@ -144,7 +144,7 @@ describe('createOffscreenTransport', () => {
       async <T>(
         operation: () => Promise<T>,
         _config: unknown,
-        shouldRetry?: (error: TranslationError) => boolean
+        shouldRetry?: (error: TranslationError) => boolean | Promise<boolean>
       ) => {
         try {
           return await operation();
@@ -216,7 +216,7 @@ describe('createOffscreenTransport', () => {
       async <T>(
         operation: () => Promise<T>,
         _config: unknown,
-        shouldRetry?: (error: TranslationError) => boolean
+        shouldRetry?: (error: TranslationError) => boolean | Promise<boolean>
       ) => {
         try {
           return await operation();
