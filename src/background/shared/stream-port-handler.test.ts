@@ -430,4 +430,86 @@ describe('stream-port-handler', () => {
     });
     expect(releaseKeepAlive).toHaveBeenCalledTimes(1);
   });
+
+  it('uses the requested provider from the message rather than the default provider', async () => {
+    const getProvider = vi.fn().mockReturnValue('opus-mt');
+    const handleTranslate = vi.fn().mockResolvedValue({ success: true, result: 'translated' });
+    const handler = createStreamPortHandler({
+      getProvider,
+      handleTranslate,
+      acquireKeepAlive: vi.fn(),
+      releaseKeepAlive: vi.fn(),
+      splitIntoSentences: (text) => [text],
+      log: createLogger(),
+    });
+
+    const stream = createStreamPort();
+    handler(stream.port as unknown as chrome.runtime.Port);
+
+    await stream.start({
+      type: 'startStream',
+      text: 'Hello',
+      sourceLang: 'en',
+      targetLang: 'fi',
+      provider: 'deepl',
+    });
+
+    expect(getProvider).not.toHaveBeenCalled();
+    expect(handleTranslate).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'deepl' })
+    );
+  });
+
+  it('falls back to the default provider when none is specified in the message', async () => {
+    const getProvider = vi.fn().mockReturnValue('opus-mt');
+    const handleTranslate = vi.fn().mockResolvedValue({ success: true, result: 'translated' });
+    const handler = createStreamPortHandler({
+      getProvider,
+      handleTranslate,
+      acquireKeepAlive: vi.fn(),
+      releaseKeepAlive: vi.fn(),
+      splitIntoSentences: (text) => [text],
+      log: createLogger(),
+    });
+
+    const stream = createStreamPort();
+    handler(stream.port as unknown as chrome.runtime.Port);
+
+    await stream.start({
+      type: 'startStream',
+      text: 'Hello',
+      sourceLang: 'en',
+      targetLang: 'fi',
+    });
+
+    expect(getProvider).toHaveBeenCalledTimes(1);
+    expect(handleTranslate).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'opus-mt' })
+    );
+  });
+
+  it('normalizeStreamResult handles a string result directly without treating it as an array', async () => {
+    const handleTranslate = vi.fn().mockResolvedValue({ success: true, result: 'plain string' });
+    const handler = createStreamPortHandler({
+      getProvider: () => 'opus-mt',
+      handleTranslate,
+      acquireKeepAlive: vi.fn(),
+      releaseKeepAlive: vi.fn(),
+      splitIntoSentences: (text) => [text],
+      log: createLogger(),
+    });
+
+    const stream = createStreamPort();
+    handler(stream.port as unknown as chrome.runtime.Port);
+
+    await stream.start({
+      type: 'startStream',
+      text: 'Hello',
+      sourceLang: 'en',
+      targetLang: 'fi',
+    });
+
+    expect(stream.postMessage).toHaveBeenNthCalledWith(1, { type: 'chunk', partial: 'plain string' });
+    expect(stream.postMessage).toHaveBeenNthCalledWith(2, { type: 'done', result: 'plain string' });
+  });
 });

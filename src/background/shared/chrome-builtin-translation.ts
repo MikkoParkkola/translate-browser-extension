@@ -77,6 +77,14 @@ export function createChromeBuiltinTranslationRunner({
       );
     }
 
-    return Array.isArray(text) ? translated : translated[0];
+    if (!Array.isArray(text)) {
+      const single = translated[0];
+      if (single === undefined) {
+        throw new Error('Chrome Translator returned an empty result array');
+      }
+      return single;
+    }
+
+    return translated;
   };
 }

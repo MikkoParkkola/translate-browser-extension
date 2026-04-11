@@ -147,6 +147,7 @@ export function createTranslationBackgroundHandler({
         {
           responsePatch: { provider: 'chrome-builtin' },
           recordUsage: false,
+          cacheSourceLang: execution.message.sourceLang !== 'auto' ? execution.message.sourceLang : null,
           onSuccess: ({ execution: successfulExecution, result: translatedResult }) =>
             handleSuccessfulTranslationSideEffects(
               successfulExecution,

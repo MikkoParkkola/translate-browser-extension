@@ -302,12 +302,15 @@ export function createOffscreenTransport(
       },
       retryConfig,
       /* v8 ignore start -- retry handler with offscreen reset */
-      (error: TranslationError) => {
+      async (error: TranslationError) => {
         if (!error.retryable) return false;
 
         if (error.technicalDetails.includes('offscreen')) {
           options.log.info('Attempting offscreen document reset...');
           scheduleOffscreenReset();
+          if (resettingOffscreen) {
+            await resettingOffscreen;
+          }
         }
 
         return true;
