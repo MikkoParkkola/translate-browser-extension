@@ -45,7 +45,7 @@ export const sharedTestConfig = {
       // Keep coverage gates close to the current repo-wide floor.
       // Tighten these as legacy/runtime cleanup closes the remaining gaps.
       statements: 97,
-      branches: 94,
+      branches: 95,
       functions: 98,
       lines: 97,
     },

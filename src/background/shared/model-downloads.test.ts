@@ -1,12 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   isOffscreenDownloadedModelUpdateMessage,
   isOffscreenModelMessage,
   isOffscreenModelProgressMessage,
+  relayModelProgress,
 } from './model-downloads';
 
 describe('model-downloads guards', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('accepts valid offscreen progress updates', () => {
     expect(
       isOffscreenModelProgressMessage({
@@ -56,5 +61,36 @@ describe('model-downloads guards', () => {
         modelId: 'opus-mt-en-fi',
       })
     ).toBe(true);
+  });
+
+  it('attaches a rejection handler when runtime messaging returns a promise', async () => {
+    const rejection = new Error('port closed');
+    const sendMessageSpy = vi.fn().mockReturnValue(Promise.reject(rejection));
+    vi.stubGlobal('chrome', {
+      runtime: {
+        sendMessage: sendMessageSpy,
+      },
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    relayModelProgress({
+      modelId: 'opus-mt-en-fi',
+      status: 'progress',
+      progress: 42,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(sendMessageSpy).toHaveBeenCalledWith({
+      type: 'modelProgress',
+      modelId: 'opus-mt-en-fi',
+      status: 'progress',
+      progress: 42,
+    });
+    expect(logSpy).toHaveBeenCalledWith(
+      '[ModelDownloads]',
+      'Model progress relay skipped:',
+      rejection
+    );
   });
 });

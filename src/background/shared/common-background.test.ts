@@ -51,6 +51,14 @@ describe('common-background', () => {
       cache: { hits: 0, misses: 0 },
       providers: {},
     });
+    mocks.handleGetCloudProviderStatus.mockResolvedValue({ success: true, status: {} });
+    mocks.handleSetCloudApiKey.mockResolvedValue({ success: true, provider: 'openai' });
+    mocks.handleClearCloudApiKey.mockResolvedValue({ success: true, provider: 'openai' });
+    mocks.handleSetCloudProviderEnabled.mockResolvedValue({
+      success: true,
+      provider: 'openai',
+      enabled: false,
+    });
     mocks.handleSetProvider.mockResolvedValue({ success: true, provider: 'translategemma' });
 
     const { createCommonBackgroundMessageDispatcher } = await import('./common-background');
@@ -101,6 +109,18 @@ describe('common-background', () => {
     await dispatch({ type: 'checkChromeTranslator' } as never);
     await dispatch({ type: 'checkWebGPU' } as never);
     await dispatch({ type: 'checkWebNN' } as never);
+    await dispatch({ type: 'getCloudProviderStatus' } as never);
+    await dispatch({
+      type: 'setCloudApiKey',
+      provider: 'openai',
+      apiKey: 'test-key',
+    } as never);
+    await dispatch({ type: 'clearCloudApiKey', provider: 'openai' } as never);
+    await dispatch({
+      type: 'setCloudProviderEnabled',
+      provider: 'openai',
+      enabled: false,
+    } as never);
 
     expect(handleTranslate).toHaveBeenCalledWith({
       type: 'translate',
@@ -124,6 +144,41 @@ describe('common-background', () => {
     expect(handleCheckChromeTranslator).toHaveBeenCalledOnce();
     expect(handleCheckWebGPU).toHaveBeenCalledOnce();
     expect(handleCheckWebNN).toHaveBeenCalledOnce();
+    expect(mocks.handleGetCloudProviderStatus).toHaveBeenCalledOnce();
+    expect(mocks.handleSetCloudApiKey).toHaveBeenCalledWith({
+      type: 'setCloudApiKey',
+      provider: 'openai',
+      apiKey: 'test-key',
+    });
+    expect(mocks.handleClearCloudApiKey).toHaveBeenCalledWith({
+      type: 'clearCloudApiKey',
+      provider: 'openai',
+    });
+    expect(mocks.handleSetCloudProviderEnabled).toHaveBeenCalledWith({
+      type: 'setCloudProviderEnabled',
+      provider: 'openai',
+      enabled: false,
+    });
+  });
+
+  it('throws for unhandled messages that bypass the type guard', async () => {
+    const { createCommonBackgroundMessageDispatcher } = await import('./common-background');
+
+    const dispatch = createCommonBackgroundMessageDispatcher({
+      translationCache: {} as never,
+      getProvider: () => 'translategemma',
+      handleTranslate: vi.fn(),
+      handleGetProviders: vi.fn(),
+      handlePreloadModel: vi.fn(),
+      handleClearCache: vi.fn(),
+      handleCheckChromeTranslator: vi.fn(),
+      handleCheckWebGPU: vi.fn(),
+      handleCheckWebNN: vi.fn(),
+    });
+
+    await expect(dispatch({ type: 'unexpected' } as never)).rejects.toThrow(
+      'Unhandled message type'
+    );
   });
 
   it('wraps preload handlers with provider resolution and error mapping', async () => {
