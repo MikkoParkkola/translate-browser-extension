@@ -14,11 +14,13 @@ import {
   TranslationCache,
   resetTranslationCache,
 } from '../core/translation-cache';
-
-const IS_COVERAGE_RUN =
-  process.argv.includes('--coverage') ||
-  process.env.npm_lifecycle_event === 'test:coverage' ||
-  process.env.npm_lifecycle_event === 'validate:coverage';
+import {
+  createRoundRobinIndexPicker,
+  hashTranslationCacheKey,
+  IS_COVERAGE_RUN,
+  measureAsync,
+  measureSync,
+} from './benchmark-helpers';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -58,49 +60,6 @@ async function seedCache(
     );
   }
   return cache;
-}
-
-async function measureAsync(
-  fn: () => Promise<void>,
-  iterations: number,
-): Promise<number> {
-  const timings: number[] = [];
-  for (let i = 0; i < Math.min(2, iterations); i++) await fn();
-  for (let i = 0; i < iterations; i++) {
-    const start = performance.now();
-    await fn();
-    timings.push(performance.now() - start);
-  }
-  timings.sort((a, b) => a - b);
-  return timings[Math.floor(timings.length / 2)];
-}
-
-function measureSync(fn: () => void, iterations: number): number {
-  const timings: number[] = [];
-  for (let i = 0; i < Math.min(5, iterations); i++) fn();
-  for (let i = 0; i < iterations; i++) {
-    const start = performance.now();
-    fn();
-    timings.push(performance.now() - start);
-  }
-  timings.sort((a, b) => a - b);
-  return timings[Math.floor(timings.length / 2)];
-}
-
-/** FNV-1a hash — mirrors translation-cache.ts */
-function hashKey(
-  text: string,
-  sourceLang: string,
-  targetLang: string,
-  provider: string,
-): string {
-  const input = `${text}|${sourceLang}|${targetLang}|${provider}`;
-  let hash = 2166136261;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
 // ---------------------------------------------------------------------------
@@ -155,12 +114,13 @@ describe('benchmark: cache get (hit rate)', () => {
       { timeout: 30_000 },
       async () => {
         const cache = await seedCache(filled);
+        const nextIndex = createRoundRobinIndexPicker(total);
 
         const median = await measureAsync(async () => {
-          const idx = Math.floor(Math.random() * total);
+          const idx = nextIndex();
           const e = makeEntry(idx);
           await cache.get(e.text, e.sourceLang, e.targetLang, e.provider);
-        }, 20);
+        }, 20, 2);
 
         cache.close();
         console.log(
@@ -290,7 +250,7 @@ describe('benchmark: deduplication efficiency', () => {
   function deduplicateBatch(texts: string[]): Map<string, string> {
     const seen = new Map<string, string>();
     for (const text of texts) {
-      const key = hashKey(text, 'en', 'fi', 'opus-mt');
+      const key = hashTranslationCacheKey(text, 'en', 'fi', 'opus-mt');
       if (!seen.has(key)) seen.set(key, text);
     }
     return seen;
@@ -342,7 +302,7 @@ describe('benchmark: deduplication efficiency', () => {
   it('FNV-1a hashes 1000 keys in <5ms', () => {
     const median = measureSync(() => {
       for (let i = 0; i < 1000; i++)
-        hashKey(`Text content ${i}`, 'en', 'fi', 'opus-mt');
+        hashTranslationCacheKey(`Text content ${i}`, 'en', 'fi', 'opus-mt');
     }, 200);
     console.log(`  FNV-1a 1000 keys: ${(median * 1000).toFixed(1)}µs`);
     expect(median).toBeLessThan(5);

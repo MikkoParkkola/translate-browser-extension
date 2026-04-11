@@ -25,6 +25,7 @@
     "size:analyze": "npm run build && webpack-bundle-analyzer dist --port 8888",
     "size:report": "npm run build && size-limit --json > size-report.json",
     "test": "vitest run",
+    "test:benchmarks": "vitest run --config vitest.benchmarks.config.ts",
     "test:coverage": "rimraf coverage && vitest run --coverage",
     "test:e2e": "npm run test:e2e:web && npm run test:e2e:harness",
     "test:e2e-pdf": "npm run test:pdf",

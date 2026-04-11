@@ -14,21 +14,16 @@ import { TranslationCache, resetTranslationCache } from '../core/translation-cac
 import { TranslationRouter } from '../core/translation-router';
 import { CircuitBreaker } from '../core/circuit-breaker';
 import type { TranslationProvider, LanguagePair, ProviderConfig } from '../types';
+import {
+  createRoundRobinIndexPicker,
+  hashTranslationCacheKey,
+  measureAsync,
+  measureSync,
+} from './benchmark-helpers';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** FNV-1a hash — mirrors translation-cache.ts implementation */
-function hashKey(text: string, sourceLang: string, targetLang: string, provider: string): string {
-  const input = `${text}|${sourceLang}|${targetLang}|${provider}`;
-  let hash = 2166136261;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0');
-}
 
 function makeEntry(i: number) {
   return {
@@ -71,34 +66,6 @@ function createMockProvider(overrides: Partial<TranslationProvider> = {}): Trans
   };
 }
 
-/** Run a sync function N times and return median duration in ms */
-function measureSync(fn: () => void, iterations: number): number {
-  const timings: number[] = [];
-  // Warmup
-  for (let i = 0; i < Math.min(10, iterations); i++) fn();
-  for (let i = 0; i < iterations; i++) {
-    const start = performance.now();
-    fn();
-    timings.push(performance.now() - start);
-  }
-  timings.sort((a, b) => a - b);
-  return timings[Math.floor(timings.length / 2)];
-}
-
-/** Run an async function N times and return median duration in ms */
-async function measureAsync(fn: () => Promise<void>, iterations: number): Promise<number> {
-  const timings: number[] = [];
-  // Warmup
-  for (let i = 0; i < Math.min(3, iterations); i++) await fn();
-  for (let i = 0; i < iterations; i++) {
-    const start = performance.now();
-    await fn();
-    timings.push(performance.now() - start);
-  }
-  timings.sort((a, b) => a - b);
-  return timings[Math.floor(timings.length / 2)];
-}
-
 // ---------------------------------------------------------------------------
 // 1. Cache Key Hashing & In-Memory Lookup
 // ---------------------------------------------------------------------------
@@ -108,15 +75,31 @@ describe('benchmark: cache lookup latency', () => {
     const cache = new Map<string, string>();
     for (let i = 0; i < count; i++) {
       const e = makeEntry(i);
-      cache.set(hashKey(e.text, e.sourceLang, e.targetLang, e.provider), e.translation);
+      cache.set(
+        hashTranslationCacheKey(
+          e.text,
+          e.sourceLang,
+          e.targetLang,
+          e.provider,
+        ),
+        e.translation,
+      );
     }
 
     it(`cache hit with ${count} entries completes in <0.05ms`, () => {
+      const nextIndex = createRoundRobinIndexPicker(count);
       const median = measureSync(() => {
-        const idx = Math.floor(Math.random() * count);
+        const idx = nextIndex();
         const e = makeEntry(idx);
-        cache.get(hashKey(e.text, e.sourceLang, e.targetLang, e.provider));
-      }, 1000);
+        cache.get(
+          hashTranslationCacheKey(
+            e.text,
+            e.sourceLang,
+            e.targetLang,
+            e.provider,
+          ),
+        );
+      }, 1000, 10);
 
       console.log(`  cache hit (${count} entries): ${(median * 1000).toFixed(1)}µs`);
       // Relaxed from 0.01ms to 0.05ms — coverage instrumentation adds overhead
@@ -125,8 +108,15 @@ describe('benchmark: cache lookup latency', () => {
 
     it(`cache miss with ${count} entries completes in <0.05ms`, () => {
       const median = measureSync(() => {
-        cache.get(hashKey('nonexistent text xyz', 'en', 'fi', 'opus-mt'));
-      }, 1000);
+        cache.get(
+          hashTranslationCacheKey(
+            'nonexistent text xyz',
+            'en',
+            'fi',
+            'opus-mt',
+          ),
+        );
+      }, 1000, 10);
 
       console.log(`  cache miss (${count} entries): ${(median * 1000).toFixed(1)}µs`);
       // Relaxed from 0.01ms to 0.05ms — coverage instrumentation adds overhead
@@ -156,7 +146,7 @@ describe('benchmark: IndexedDB cache round-trip', () => {
     const e = makeEntry(0);
     const median = await measureAsync(async () => {
       await cache.get(e.text, e.sourceLang, e.targetLang, e.provider);
-    }, 20);
+    }, 20, 3);
 
     console.log(`  IDB get hit: ${median.toFixed(2)}ms`);
     expect(median).toBeLessThan(5);
@@ -165,7 +155,7 @@ describe('benchmark: IndexedDB cache round-trip', () => {
   it('IDB get (miss) completes in <5ms median', async () => {
     const median = await measureAsync(async () => {
       await cache.get('nonexistent text xyz', 'en', 'fi', 'opus-mt');
-    }, 20);
+    }, 20, 3);
 
     console.log(`  IDB get miss: ${median.toFixed(2)}ms`);
     expect(median).toBeLessThan(5);
@@ -175,7 +165,7 @@ describe('benchmark: IndexedDB cache round-trip', () => {
     let idx = 0;
     const median = await measureAsync(async () => {
       await cache.set(`bench text ${idx++}`, 'en', 'fi', 'opus-mt', 'käännetty');
-    }, 20);
+    }, 20, 3);
 
     console.log(`  IDB set: ${median.toFixed(2)}ms`);
     // fake-indexeddb write timings vary more than reads across local/CI runners,
@@ -247,7 +237,7 @@ describe('benchmark: translation router selection', () => {
       router.setStrategy(strategy);
       const median = await measureAsync(async () => {
         await router.selectProvider('en', 'fi');
-      }, 20);
+      }, 20, 3);
 
       console.log(`  selectProvider (${strategy}): ${median.toFixed(2)}ms`);
       expect(median).toBeLessThan(5);

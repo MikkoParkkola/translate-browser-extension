@@ -9,27 +9,11 @@
 
 import { describe, it, expect } from 'vitest';
 import { walkShadowRoots } from '../content/shadow-dom-walker';
-
-const IS_COVERAGE_RUN =
-  process.argv.includes('--coverage') ||
-  process.env.npm_lifecycle_event === 'test:coverage' ||
-  process.env.npm_lifecycle_event === 'validate:coverage';
+import { IS_COVERAGE_RUN, measureSync } from './benchmark-helpers';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function measureSync(fn: () => void, iterations: number): number {
-  const timings: number[] = [];
-  for (let i = 0; i < Math.min(5, iterations); i++) fn();
-  for (let i = 0; i < iterations; i++) {
-    const start = performance.now();
-    fn();
-    timings.push(performance.now() - start);
-  }
-  timings.sort((a, b) => a - b);
-  return timings[Math.floor(timings.length / 2)];
-}
 
 // ---------------------------------------------------------------------------
 // DOM Fixture Builders

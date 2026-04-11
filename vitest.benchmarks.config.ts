@@ -10,8 +10,8 @@ export default defineConfig({
   plugins: [solidPlugin()],
   test: {
     ...sharedTestConfig,
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
-    exclude: [...defaultTestExclude, 'src/__benchmarks__/**'],
+    include: ['src/__benchmarks__/**/*.test.ts'],
+    exclude: defaultTestExclude,
   },
   resolve: sharedResolveConfig,
 });
