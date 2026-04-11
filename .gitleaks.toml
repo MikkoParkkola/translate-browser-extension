@@ -1,0 +1,47 @@
+# Gitleaks configuration
+# Allowlist for known historical false positives (test fixtures, example keys, docs).
+# All entries are fingerprint-scoped so new secrets in any file are still caught.
+
+[allowlist]
+description = "Historical test/example API keys pre-dating CI hardening (2025)"
+
+fingerprints = [
+    # service-worker.test.ts — test fixture API key
+    "e7d327cdd8667696d92de83df5c33cacab49f3ae:src/background/service-worker.test.ts:generic-api-key:4907",
+
+    # dist-firefox build artifact — bundled transformers.js token map (not a secret)
+    "17df4d58abd6309a5f1fce90e37d6f5369751688:dist-firefox/assets/transformers-CfU6IUa5.js:generic-api-key:2893",
+
+    # coverage report HTML — mirrors secureLogging.js test examples
+    "337d2a6da4d17626c95ee2a88a66e81ed39378c1:coverage/lcov-report/src/lib/secureLogging.js.html:generic-api-key:654",
+    "337d2a6da4d17626c95ee2a88a66e81ed39378c1:coverage/lcov-report/src/lib/secureLogging.js.html:generic-api-key:668",
+
+    # test fixtures — dummy API keys for secure-logging validation
+    "337d2a6da4d17626c95ee2a88a66e81ed39378c1:test/improvements.validation.test.js:generic-api-key:124",
+    "337d2a6da4d17626c95ee2a88a66e81ed39378c1:test/improvements.validation.test.js:generic-api-key:136",
+    "337d2a6da4d17626c95ee2a88a66e81ed39378c1:test/improvements.validation.test.js:generic-api-key:284",
+    "337d2a6da4d17626c95ee2a88a66e81ed39378c1:test/improvements.validation.test.js:generic-api-key:324",
+
+    # performance benchmark test — dummy API key strings
+    "337d2a6da4d17626c95ee2a88a66e81ed39378c1:test/performance.benchmark.test.js:generic-api-key:86",
+    "337d2a6da4d17626c95ee2a88a66e81ed39378c1:test/performance.benchmark.test.js:generic-api-key:89",
+
+    # secureLogging.js — example strings demonstrating redaction
+    "337d2a6da4d17626c95ee2a88a66e81ed39378c1:src/lib/secureLogging.js:generic-api-key:185",
+    "337d2a6da4d17626c95ee2a88a66e81ed39378c1:src/lib/secureLogging.js:generic-api-key:199",
+
+    # TROUBLESHOOTING.md — example curl command with placeholder auth header
+    "77bcd7512ca8ce7dc048270397d9df5d560b70bd:src/TROUBLESHOOTING.md:curl-auth-header:67",
+
+    # config-system.test.js — test fixture API keys
+    "c63b180ccb7b971f2771186d58b4ff5f2f8148b0:test/core/config-system.test.js:generic-api-key:214",
+    "c63b180ccb7b971f2771186d58b4ff5f2f8148b0:test/core/config-system.test.js:generic-api-key:338",
+    "c63b180ccb7b971f2771186d58b4ff5f2f8148b0:test/core/config-system.test.js:generic-api-key:347",
+    "c63b180ccb7b971f2771186d58b4ff5f2f8148b0:test/core/config-system.test.js:generic-api-key:449",
+    "c63b180ccb7b971f2771186d58b4ff5f2f8148b0:test/core/config-system.test.js:generic-api-key:470",
+
+    # docs/API.md and set-config.js — example API keys in documentation
+    "d4cb9cdc7c30950a8adf55571e5605db79d79ac6:test/core.logger.test.js:generic-api-key:169",
+    "d4cb9cdc7c30950a8adf55571e5605db79d79ac6:docs/API.md:generic-api-key:58",
+    "ace08e7b00cbbdc0f36391dedc8cc7077375e835:set-config.js:generic-api-key:8",
+]
