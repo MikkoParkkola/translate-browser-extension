@@ -613,6 +613,30 @@ describe('OpenAIProvider', () => {
       expect(result.length).toBe(2);
       expect(result).toEqual(['Hei', 'Maailma']);
     });
+
+    it('warns when non-empty batch output still parses to empty results', async () => {
+      await provider.setApiKey('sk-key');
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      queueJsonResponse({
+        choices: [
+          {
+            message: {
+              content: '---TRANSLATE_SEPARATOR---',
+            },
+          },
+        ],
+        usage: { total_tokens: 20, prompt_tokens: 10, completion_tokens: 10 },
+      });
+
+      const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
+
+      expect(result).toEqual(['', '']);
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[OpenAI]',
+        'Separator/XML parsing produced no results for batch',
+      );
+    });
   });
 
   describe('translate with missing usage data (line 228)', () => {

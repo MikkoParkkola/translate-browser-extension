@@ -12,6 +12,7 @@ import {
   detectProviderLanguageCode,
   fetchProviderJson,
   estimateMaxTokens,
+  finalizeProviderTranslations,
   generateAllLanguagePairs,
   parseBatchResponse,
   type TranslationPromptTemplate,
@@ -212,10 +213,14 @@ export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
 
       // Split back if batch
       if (isArray && texts.length > 1) {
-        return parseBatchResponse(translated, texts.length, { separatorFallback: true });
+        const results = parseBatchResponse(translated, texts.length, { separatorFallback: true });
+        if (results.every(result => !result) && translated.length > 0) {
+          this.log.warn('Separator/XML parsing produced no results for batch');
+        }
+        return finalizeProviderTranslations('OpenAI', text, results);
       }
 
-      return isArray ? [translated] : translated;
+      return finalizeProviderTranslations('OpenAI', text, [translated]);
     } catch (error) {
       this.log.error('Translation error:', error);
       throw createTranslationError(error);
