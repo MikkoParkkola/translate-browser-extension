@@ -49,8 +49,8 @@ WLLAMA_DIR="$ROOT_DIR/node_modules/@wllama/wllama/esm"
 if [ -d "$WLLAMA_DIR" ]; then
   cp "$WLLAMA_DIR/single-thread/wllama.wasm" "$ROOT_DIR/src/wllama-single.wasm"
   cp "$WLLAMA_DIR/multi-thread/wllama.wasm" "$ROOT_DIR/src/wllama-multi.wasm"
-  cp "$WLLAMA_DIR/index.min.js" "$ROOT_DIR/src/wllama.bundle.js"
-  echo "wllama assets copied."
+  # Keep the tracked JS shim stable; postinstall should not rewrite source files.
+  echo "wllama WASM assets copied."
 else
   echo "WARNING: wllama not found in node_modules. Run 'npm install' first."
 fi
