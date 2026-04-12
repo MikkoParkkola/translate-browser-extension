@@ -87,5 +87,7 @@ vitest-coverage-measure.config.ts
 coverage.json
 reports/
 
-# wllama bundle is auto-resolved from @wllama/wllama npm package via Vite alias
-src/wllama.bundle.js
+# Local packaging/report artifacts
+size-report.json
+key.pem
+/*.xpi

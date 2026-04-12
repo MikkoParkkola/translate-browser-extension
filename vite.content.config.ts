@@ -34,10 +34,6 @@ export default defineConfig({
       // Externalize pdfjs-dist so it's NOT bundled into content.js.
       // The pdf-loader.ts loads it from a separate chunk at runtime.
       external: ['pdfjs-dist'],
-      output: {
-        // Inline all dependencies (except externals above)
-        inlineDynamicImports: true,
-      },
     },
   },
 });

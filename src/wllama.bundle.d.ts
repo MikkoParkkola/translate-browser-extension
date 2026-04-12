@@ -1,4 +1,4 @@
-// Type declarations for the wllama bundle alias.
-// At build time Vite maps `./wllama.bundle.js` → @wllama/wllama/esm/index.min.js.
-// This file lets TypeScript resolve the import with proper types.
-export * from '@wllama/wllama';
+// Type declarations for the checked-in runtime shim.
+// The matching JS module re-exports the package entry so build and test
+// environments resolve the same file.
+export { Wllama } from '@wllama/wllama';

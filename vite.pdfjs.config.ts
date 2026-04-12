@@ -21,10 +21,5 @@ export default defineConfig({
       fileName: () => 'pdfjs.js',
       formats: ['es'],
     },
-    rollupOptions: {
-      output: {
-        inlineDynamicImports: true,
-      },
-    },
   },
 });
