@@ -16,7 +16,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
 
@@ -36,7 +36,7 @@ jobs:
           find .. -mindepth 1 -maxdepth 1 -print | sort | sed -n '1,200p'
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: safari-projects
           path: |
@@ -44,7 +44,7 @@ jobs:
 
       - name: Upload to GitHub Release (if tag)
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
             *.zip

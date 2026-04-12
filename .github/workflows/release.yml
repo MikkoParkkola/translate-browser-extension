@@ -12,17 +12,17 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
       - run: npm ci
       - name: Inject Extension ID
         run: sed -i "s/YOUR_EXTENSION_ID/${{ secrets.EXTENSION_ID }}/g" updates.xml
-      - uses: changesets/action@v1
+      - uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1 branch
         with:
           publish: npm publish
           createGithubRelease: true
