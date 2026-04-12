@@ -144,6 +144,7 @@ vi.mock('../config', () => ({
     timeouts: { opusMtDirectMs: 60000, translateGemmaMs: 300000 },
     rateLimits: { windowMs: 60000, requestsPerMinute: 100, tokensPerMinute: 10000 },
     retry: { network: { maxRetries: 3, baseDelayMs: 1000, maxDelayMs: 10000 } },
+    experimental: { opusMtWebgpuProbe: false },
   },
 }));
 

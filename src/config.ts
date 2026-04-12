@@ -3,6 +3,20 @@
  * All hardcoded values extracted here for maintainability.
  */
 
+function readBooleanEnvFlag(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+
+  switch (value.trim().toLowerCase()) {
+    case '1':
+    case 'true':
+    case 'yes':
+    case 'on':
+      return true;
+    default:
+      return false;
+  }
+}
+
 export const CONFIG = {
   /**
    * Translation cache settings (persistent LRU cache in service worker)
@@ -135,6 +149,17 @@ export const CONFIG = {
     hoverTimeoutMs: 10_000,
     /** Maximum entries in the hover translation LRU cache */
     hoverCacheSize: 100,
+  },
+
+  /**
+   * Explicit experimental gates.
+   */
+  experimental: {
+    /**
+     * Allow OPUS-MT to probe WebGPU on supported devices.
+     * Default stays on safe WASM+q8 until the v4 runtime is proven stable.
+     */
+    opusMtWebgpuProbe: readBooleanEnvFlag(import.meta.env?.VITE_OPUS_MT_WEBGPU_PROBE),
   },
 
   /**

@@ -14,6 +14,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { resolveOpusMtExecutionConfig, selectOpusMtDtype } from '../shared/opus-mt-runtime';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1774,14 +1775,42 @@ describe('getFallbackProviders logic', () => {
 });
 
 describe('selectOpusMtDtype', () => {
-  function selectOpusMtDtype(_webgpu: { supported: boolean; fp16: boolean }): string {
-    return 'q8';
-  }
-
   it('always returns q8 regardless of WebGPU capabilities', () => {
     expect(selectOpusMtDtype({ supported: true, fp16: true })).toBe('q8');
     expect(selectOpusMtDtype({ supported: true, fp16: false })).toBe('q8');
     expect(selectOpusMtDtype({ supported: false, fp16: false })).toBe('q8');
+  });
+});
+
+describe('resolveOpusMtExecutionConfig', () => {
+  it('defaults to safe WASM when probe flag is off', () => {
+    expect(
+      resolveOpusMtExecutionConfig({ supported: true, fp16: true }, false)
+    ).toEqual({
+      device: 'wasm',
+      dtype: 'q8',
+      reason: 'safe-default-wasm',
+    });
+  });
+
+  it('stays on WASM when probe is on but WebGPU is unavailable', () => {
+    expect(
+      resolveOpusMtExecutionConfig({ supported: false, fp16: false }, true)
+    ).toEqual({
+      device: 'wasm',
+      dtype: 'q8',
+      reason: 'safe-default-wasm',
+    });
+  });
+
+  it('allows WebGPU only when the experimental probe is enabled and supported', () => {
+    expect(
+      resolveOpusMtExecutionConfig({ supported: true, fp16: false }, true)
+    ).toEqual({
+      device: 'webgpu',
+      dtype: 'q8',
+      reason: 'experimental-webgpu-probe',
+    });
   });
 });
 

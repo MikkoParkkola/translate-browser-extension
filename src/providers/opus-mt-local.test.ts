@@ -226,8 +226,7 @@ describe('OpusMTProvider', () => {
   });
 
   describe('dtype selection', () => {
-    it('always uses q8 for OPUS-MT even when WebGPU + shader-f16 is available', async () => {
-      // OPUS-MT models only ship q8 ONNX variants. fp16 causes mixed-precision crash.
+    it('defaults to WASM+q8 even when WebGPU is available', async () => {
       const mockFactory = vi.fn().mockResolvedValue(
         vi.fn().mockResolvedValue([{ translation_text: 'testi' }])
       );
@@ -244,11 +243,11 @@ describe('OpusMTProvider', () => {
       expect(mockFactory).toHaveBeenCalledWith(
         'translation',
         expect.any(String),
-        expect.objectContaining({ device: 'webgpu', dtype: 'q8' })
+        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
       );
     });
 
-    it('uses q8 when WebGPU is available without shader-f16', async () => {
+    it('still uses q8 when WebGPU is available without shader-f16', async () => {
       const mockFactory = vi.fn().mockResolvedValue(
         vi.fn().mockResolvedValue([{ translation_text: 'testi' }])
       );
@@ -267,7 +266,7 @@ describe('OpusMTProvider', () => {
       expect(mockFactory).toHaveBeenCalledWith(
         'translation',
         expect.any(String),
-        expect.objectContaining({ device: 'webgpu', dtype: 'q8' })
+        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
       );
     });
 
@@ -352,14 +351,14 @@ describe('OpusMTProvider', () => {
       expect(info.device).toBe('WASM');
     });
 
-    it('shows WebGPU when supported', async () => {
+    it('shows probe availability when WebGPU is supported', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (provider as any).webgpuSupported = true;
 
       const info = provider.getInfo();
 
       expect(info.webgpu).toBe(true);
-      expect(info.device).toBe('WebGPU');
+      expect(info.device).toBe('WASM (WebGPU available via probe)');
     });
   });
 
@@ -377,7 +376,7 @@ describe('OpusMTProvider', () => {
   });
 
   describe('WebGPU supported path', () => {
-    it('calls pipeline factory with device webgpu when supported', async () => {
+    it('still defaults to WASM unless the experimental probe is enabled', async () => {
       const mockPipeInstance = vi
         .fn()
         .mockResolvedValue([{ translation_text: 'Hei' }]);
@@ -399,7 +398,7 @@ describe('OpusMTProvider', () => {
       expect(mockFactory).toHaveBeenCalledWith(
         'translation',
         expect.any(String),
-        expect.objectContaining({ device: 'webgpu' })
+        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
       );
     });
   });
@@ -575,7 +574,7 @@ describe('OpusMTProvider', () => {
   });
 
   describe('WebGPU initialization path (lines 98-99)', () => {
-    it('logs WebGPU support when detector reports webgpu supported', async () => {
+    it('records WebGPU support without initializing the device when probe is disabled', async () => {
       const freshProvider = new OpusMTProvider();
 
       // Mock webgpuDetector to return supported=true
@@ -587,8 +586,7 @@ describe('OpusMTProvider', () => {
 
       await freshProvider.initialize();
 
-      // Check that initialize() was called (which happens on line 99)
-      expect(vi.mocked(webgpuDetector.initialize)).toHaveBeenCalled();
+      expect(vi.mocked(webgpuDetector.initialize)).not.toHaveBeenCalled();
 
       // Verify WebGPU was detected
       expect((freshProvider as any).webgpuSupported).toBe(true);

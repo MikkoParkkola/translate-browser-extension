@@ -10,6 +10,8 @@ import { BaseProvider } from './base-provider';
 import { webgpuDetector } from '../core/webgpu-detector';
 import { createLogger } from '../core/logger';
 import { extractErrorMessage } from '../core/errors';
+import { CONFIG } from '../config';
+import { resolveOpusMtExecutionConfig } from '../shared/opus-mt-runtime';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 const log = createLogger('OPUS-MT');
@@ -102,7 +104,9 @@ export class OpusMTProvider extends BaseProvider {
 
       if (this.webgpuSupported) {
         log.info('WebGPU support detected');
-        await webgpuDetector.initialize();
+        if (CONFIG.experimental.opusMtWebgpuProbe) {
+          await webgpuDetector.initialize();
+        }
       } else {
         log.info('Using WASM acceleration');
       }
@@ -136,17 +140,21 @@ export class OpusMTProvider extends BaseProvider {
 
     log.info(`Loading model: ${modelId}`);
 
-    // Build fallback chain: most optimal first, safest last
-    // OPUS-MT Xenova models reliably ship q8 (quantized) variants.
-    // fp16 variants may not exist or cause mixed-precision ONNX errors,
-    // so we always prefer q8 even when shader-f16 is available.
-    const attempts: Array<{ device: 'webgpu' | 'wasm'; dtype: string; label: string }> = [];
+    const runtime = resolveOpusMtExecutionConfig(
+      { supported: this.webgpuSupported, fp16: false },
+      CONFIG.experimental.opusMtWebgpuProbe
+    );
+    const attempts: Array<{ device: 'webgpu' | 'wasm'; dtype: string; label: string }> = [
+      {
+        device: runtime.device,
+        dtype: runtime.dtype,
+        label: runtime.reason === 'experimental-webgpu-probe' ? 'WebGPU+q8 (probe)' : 'WASM+q8',
+      },
+    ];
 
-    if (this.webgpuSupported) {
-      attempts.push({ device: 'webgpu', dtype: 'q8', label: 'WebGPU+q8' });
+    if (runtime.device === 'webgpu') {
+      attempts.push({ device: 'wasm', dtype: 'q8', label: 'WASM+q8' });
     }
-    // WASM fallback always available
-    attempts.push({ device: 'wasm', dtype: 'q8', label: 'WASM+q8' });
 
     let lastError: Error | null = null;
 
@@ -307,12 +315,23 @@ export class OpusMTProvider extends BaseProvider {
    * Get provider info
    */
   getInfo(): ProviderConfig & { modelSize: string; speed: string; webgpu: boolean; device: string } {
+    const runtime = resolveOpusMtExecutionConfig(
+      { supported: this.webgpuSupported, fp16: false },
+      CONFIG.experimental.opusMtWebgpuProbe
+    );
+
     return {
       ...super.getInfo(),
       modelSize: '169MB (quantized EN-FI pair)',
-      speed: 'Fastest (~10ms/sentence with WebGPU)',
+      speed: runtime.device === 'webgpu'
+        ? 'Fastest (~10ms/sentence with experimental WebGPU probe)'
+        : 'Fast (safe WASM default)',
       webgpu: this.webgpuSupported,
-      device: this.webgpuSupported ? 'WebGPU' : 'WASM',
+      device: runtime.device === 'webgpu'
+        ? 'WebGPU (experimental probe)'
+        : this.webgpuSupported
+          ? 'WASM (WebGPU available via probe)'
+          : 'WASM',
     };
   }
 }

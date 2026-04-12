@@ -18,6 +18,7 @@ import { buildLanguageDetectionSample, detectLanguage } from './language-detecti
 import { translateWithGemma, getTranslateGemmaPipeline, detectWebGPU, detectWebNN } from './translategemma';
 import { getChromeTranslator, isChromeTranslatorAvailable } from '../providers/chrome-translator';
 import { DEFAULT_PROVIDER_ID } from '../shared/provider-options';
+import { resolveOpusMtExecutionConfig } from '../shared/opus-mt-runtime';
 
 // Cloud providers
 import { deeplProvider } from '../providers/deepl';
@@ -63,6 +64,7 @@ async function getTransformers(): Promise<TransformersLib> {
   lib.env.allowRemoteModels = true;
   lib.env.allowLocalModels = false;
   lib.env.useBrowserCache = true;
+  lib.env.useWasmCache = true;
   /* v8 ignore start */
   if (lib.env.backends?.onnx?.wasm) {
     lib.env.backends.onnx.wasm.wasmPaths = wasmBasePath;
@@ -70,22 +72,6 @@ async function getTransformers(): Promise<TransformersLib> {
   /* v8 ignore stop */
   _transformers = lib;
   return lib;
-}
-
-/**
- * Select optimal dtype for OPUS-MT models.
- *
- * Xenova/Helsinki-NLP OPUS-MT models only ship _quantized (q8) ONNX variants.
- * They do NOT have dedicated fp16 ONNX files. Requesting 'fp16' causes
- * ONNX Runtime to attempt mixed-precision (float16 + float32) which crashes:
- *   "Type parameter (T) of Optype (Mul) bound to different types"
- *
- * Always use 'q8' for OPUS-MT. fp16 dtype is only safe for models that
- * ship explicit fp16 ONNX files (e.g., TranslateGemma).
- */
-function selectOpusMtDtype(_webgpu: { supported: boolean; fp16: boolean }): string {
-  // Always q8 for OPUS-MT — fp16 causes mixed-precision crash
-  return 'q8';
 }
 
 /**
@@ -114,20 +100,22 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   log.info(` Loading model: ${modelId}`);
   const loadStart = performance.now();
 
-  // OPUS-MT models MUST use WASM device. WebGPU causes degenerate output
-  // (repeated words like "Figure Figure..." or "Switzerland Switzerland...")
-  // with q8-quantized Marian models. WebGPU is only viable for models with
-  // dedicated fp16 ONNX files (e.g., TranslateGemma).
-  const device = 'wasm';
-  const dtype = selectOpusMtDtype({ supported: false, fp16: false });
-  log.info(` Using device: ${device}, dtype: ${dtype}`);
+  const webgpu = CONFIG.experimental.opusMtWebgpuProbe
+    ? await detectWebGPU()
+    : { supported: false, fp16: false };
+  const runtime = resolveOpusMtExecutionConfig(webgpu, CONFIG.experimental.opusMtWebgpuProbe);
+  log.info(
+    ` Using device: ${runtime.device}, dtype: ${runtime.dtype}, reason: ${runtime.reason}`
+  );
 
   // Use optimized timeout for OPUS-MT direct models (~85MB quantized, typically loads in <30s)
-  // If WebGPU fails (GPU incompatibility), fall back to WASM+q8 automatically.
   let pipe;
   try {
     pipe = await withTimeout(
-      (await getTransformers()).pipeline('translation', modelId, { device, dtype } as Record<string, unknown>),
+      (await getTransformers()).pipeline('translation', modelId, {
+        device: runtime.device,
+        dtype: runtime.dtype,
+      } as Record<string, unknown>),
       CONFIG.timeouts.opusMtDirectMs,
       `Loading model ${modelId}`
     );
@@ -139,7 +127,11 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
 
   const loadDuration = performance.now() - loadStart;
   if (sessionId) {
-    profiler.recordTiming(sessionId, 'model_load', loadDuration, { cached: false, modelId, device });
+    profiler.recordTiming(sessionId, 'model_load', loadDuration, {
+      cached: false,
+      modelId,
+      device: runtime.device,
+    });
   }
   log.info(` Model loaded: ${modelId} in ${loadDuration.toFixed(0)}ms`);
 

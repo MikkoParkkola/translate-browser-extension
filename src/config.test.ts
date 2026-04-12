@@ -132,6 +132,12 @@ describe('CONFIG default values', () => {
     });
   });
 
+  describe('experimental', () => {
+    it('keeps the OPUS-MT WebGPU probe off by default', () => {
+      expect(CONFIG.experimental.opusMtWebgpuProbe).toBe(false);
+    });
+  });
+
   describe('throttle', () => {
     it('matches rateLimits values (consistency check)', () => {
       expect(CONFIG.throttle.requestLimit).toBe(CONFIG.rateLimits.requestsPerMinute);
@@ -158,6 +164,7 @@ describe('CONFIG immutability', () => {
     expect(keys).toEqual([
       'batching',
       'cache',
+      'experimental',
       'httpRetryDelays',
       'inFlight',
       'mutations',
@@ -181,13 +188,13 @@ describe('CONFIG type safety', () => {
     expect(_cfg).toBe(CONFIG);
   });
 
-  it('all leaf values are numbers or strings (no undefined/null)', () => {
+  it('all leaf values are numbers, strings, or booleans (no undefined/null)', () => {
     const leaves = collectLeafValues(CONFIG as unknown as Record<string, unknown>);
     expect(leaves.length).toBeGreaterThan(0);
     for (const { path, value } of leaves) {
       expect(
-        typeof value === 'number' || typeof value === 'string',
-        `${path} should be number|string, got ${typeof value}`,
+        typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean',
+        `${path} should be number|string|boolean, got ${typeof value}`,
       ).toBe(true);
     }
   });

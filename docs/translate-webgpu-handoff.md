@@ -1,39 +1,31 @@
-# Translate Extension: WASM → WebGPU Migration
+# OPUS-MT WebGPU Spike
 
-## Problem
-TranslateGemma model loading fails with `RangeError: Array buffer allocation failed` because:
-- `llamacpp-worker.js` loads entire GGUF model into single `Uint8Array` (line 23)
-- Browser ArrayBuffer limit ~2GB, TranslateGemma Q4 is ~2.5GB
-- `llama.cpp.js` is a PLACEHOLDER/mock (not real llama.cpp WASM)
-- Service worker dies → "message channel closed" cascade
+## Scope
 
-## Solution: web-llm (WebGPU)
-Use https://github.com/nicedayfor/web-llm or https://github.com/nicedayfor/wllama
+- Upgrade `@huggingface/transformers` to the v4 runtime.
+- Keep OPUS-MT on the current safe default: `wasm + q8`.
+- Allow explicit WebGPU probing behind `VITE_OPUS_MT_WEBGPU_PROBE=true`.
 
-### Key changes needed:
-1. **Replace `src/llama.cpp.js`** (284 lines, mock) → web-llm WebGPU engine
-2. **Replace `src/llamacpp-worker.js`** (239 lines) → WebGPU worker with chunked model loading
-3. **Update `src/lib/LocalModelManager.js`** (718 lines) → WebGPU model management, sharded downloads
-4. **Update `src/localModel.js`** → WebGPU-aware singleton
-5. **Update manifest.json** → Add WebGPU permissions if needed
+## What this spike changes
 
-### Architecture:
-- `n_gpu_layers: 99` (full GPU offload via WebGPU)
-- Sharded GGUF format (split into <500MB chunks for streaming download)
-- Progress callback for download UI
-- Fallback to WASM CPU if WebGPU unavailable
+- Chrome offscreen OPUS-MT path uses the same runtime policy as Firefox.
+- Firefox background OPUS-MT path now also defaults to `wasm + q8`.
+- Shared OPUS-MT runtime selection keeps q8 fixed and only opts into WebGPU when the probe flag is enabled and support is detected.
+- Transformers.js v4 enables `env.useWasmCache = true` so compiled WASM artifacts can be reused between loads.
 
-## Codebase
-- Location: `spark:~/translate-browser-extension/`
-- Also: `spark:~/transformers.js/` (may have relevant code)
-- Build: webpack (`webpack.config.js`)
-- Tests: Jest + Playwright (167+ test files)
+## Probe contract
 
-## Files to modify
-- `src/llama.cpp.js` - REPLACE entirely
-- `src/llamacpp-worker.js` - REPLACE entirely  
-- `src/lib/LocalModelManager.js` - Major refactor
-- `src/localModel.js` - Update for WebGPU
-- `src/localModelUI.js` - Update download progress for sharded
-- `package.json` - Add web-llm dependency
-- `src/manifest.json` - Permissions
+Set `VITE_OPUS_MT_WEBGPU_PROBE=true` only for manual evaluation builds.
+
+- `false` or unset: force `wasm + q8`
+- `true`: try `webgpu + q8` when supported, otherwise stay on `wasm + q8`
+
+## Manual GO / KILL checklist
+
+GO only if all of the following hold for a representative pair such as `en ↔ fi`:
+
+1. output is not degenerate or repetitive
+2. first load completes within the existing OPUS-MT timeout budget
+3. warm runs remain stable across repeated translations
+
+KILL the WebGPU path if output regresses, model load becomes flaky, or the runtime still falls back unpredictably.

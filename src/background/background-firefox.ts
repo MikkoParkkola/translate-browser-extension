@@ -37,6 +37,7 @@ import { withTimeout } from '../core/async-utils';
 import { CONFIG } from '../config';
 import { browserAPI, getURL } from '../core/browser-api';
 import { DEFAULT_PROVIDER_ID, normalizeTranslationProviderId } from '../shared/provider-options';
+import { resolveOpusMtExecutionConfig } from '../shared/opus-mt-runtime';
 import {
   assertNever,
   isExtensionMessage,
@@ -73,6 +74,7 @@ const log = createLogger('Background-FF');
 env.allowRemoteModels = true;  // Models from HuggingFace Hub
 env.allowLocalModels = false;  // No local filesystem
 env.useBrowserCache = true;    // Cache models in IndexedDB
+env.useWasmCache = true;       // Persist compiled WASM artifacts between loads
 
 // Point ONNX Runtime to bundled WASM files
 const wasmBasePath = getURL('assets/');
@@ -112,11 +114,6 @@ translationCache.load();
 // ============================================================================
 // ML Pipeline Management (Direct - no offscreen needed)
 // ============================================================================
-
-async function detectWebGPU(): Promise<boolean> {
-  const { supported } = await detectWebGPUCapabilities();
-  return supported;
-}
 
 async function detectWebGPUCapabilities(): Promise<{ supported: boolean; fp16: boolean }> {
   if (!navigator.gpu) return { supported: false, fp16: false };
@@ -167,12 +164,17 @@ async function getPipeline(sourceLang: string, targetLang: string): Promise<Tran
 
   log.info(`Loading model: ${modelId}`);
 
-  const webgpu = await detectWebGPU();
-  const device = webgpu ? 'webgpu' : 'wasm';
-  log.info(`Using device: ${device}`);
+  const webgpu = CONFIG.experimental.opusMtWebgpuProbe
+    ? await detectWebGPUCapabilities()
+    : { supported: false, fp16: false };
+  const runtime = resolveOpusMtExecutionConfig(webgpu, CONFIG.experimental.opusMtWebgpuProbe);
+  log.info(`Using device: ${runtime.device}, dtype: ${runtime.dtype}, reason: ${runtime.reason}`);
 
   const pipe = await withTimeout(
-    pipeline('translation', modelId, { device }),
+    pipeline('translation', modelId, {
+      device: runtime.device,
+      dtype: runtime.dtype,
+    } as Record<string, unknown>),
     CONFIG.timeouts.opusMtDirectMs,
     `Loading model ${modelId}`
   );
