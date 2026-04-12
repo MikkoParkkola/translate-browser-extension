@@ -55,3 +55,5 @@ export {
   getActionSettings,
 } from './message-handlers';
 export type { ActionSettings } from './message-handlers';
+export type { TabActionId, TabActionMessageOptions } from './tab-actions';
+export { buildTabActionMessage } from './tab-actions';

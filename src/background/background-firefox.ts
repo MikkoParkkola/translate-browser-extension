@@ -46,6 +46,8 @@ import {
   type DetailedCacheStats,
   type StorageAdapter,
   type TranslationCache,
+  type ActionSettings,
+  buildTabActionMessage,
   handleClearCloudApiKey,
   handleGetCloudProviderStatus,
   handleSetCloudApiKey,
@@ -651,27 +653,27 @@ if (browserAPI.commands?.onCommand) {
       provider?: TranslationProviderId;
     }>(['sourceLang', 'targetLang', 'strategy', 'provider']);
 
-    const sourceLang = settings.sourceLang || 'auto';
-    const targetLang = settings.targetLang || 'en';
-    const strategy = settings.strategy || 'smart';
-    const provider = settings.provider || currentProvider;
+    const actionSettings: ActionSettings = {
+      sourceLang: settings.sourceLang || 'auto',
+      targetLang: settings.targetLang || 'en',
+      strategy: settings.strategy || 'smart',
+      provider: settings.provider || currentProvider,
+    };
 
     try {
       switch (command) {
         case 'translate-selection':
-          await browserAPI.tabs.sendMessage(tab.id, {
-            type: 'translateSelection',
-            sourceLang,
-            targetLang,
-            strategy,
-            provider,
-          });
+          await browserAPI.tabs.sendMessage(
+            tab.id,
+            buildTabActionMessage('translate-selection', actionSettings)
+          );
           break;
 
         case 'toggle-widget':
-          await browserAPI.tabs.sendMessage(tab.id, {
-            type: 'toggleWidget',
-          });
+          await browserAPI.tabs.sendMessage(
+            tab.id,
+            buildTabActionMessage('toggle-widget', actionSettings)
+          );
           break;
       }
     } catch (error) {
