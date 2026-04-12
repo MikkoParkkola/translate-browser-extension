@@ -19,6 +19,7 @@ import { glossary, type GlossaryStore } from '../core/glossary';
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
 import { safeStorageGet } from '../core/storage';
+import { detectLanguage, samplePageText } from '../core/language-detector';
 import { browserAPI } from '../core/browser-api';
 import { initSubtitleTranslation, cleanupSubtitleTranslation } from './subtitle-translator';
 import { isPdfPage, initPdfTranslation, cleanupPdfTranslation } from './pdf-translator';
@@ -96,6 +97,10 @@ import {
   isTransientError,
   createBatches,
 } from './translation-helpers';
+import {
+  registerWebMcpTools,
+  type WebMcpDetectionResult,
+} from './webmcp';
 
 const log = createLogger('Content');
 
@@ -131,6 +136,14 @@ let currentSettings: CurrentSettings | null = null;
 
 // Cache for glossary terms (loaded once per page)
 let cachedGlossary: GlossaryStore | null = null;
+
+interface StoredSettings {
+  autoTranslate?: boolean;
+  sourceLang?: string;
+  targetLang?: string;
+  strategy?: Strategy;
+  provider?: TranslationProviderId;
+}
 
 
 // ============================================================================
@@ -1009,6 +1022,100 @@ function stopMutationObserver(): void {
   log.info(' MutationObserver stopped');
 }
 
+async function resolveEffectivePageSettings(): Promise<{
+  hostname: string;
+  siteSpecificRules: Awaited<ReturnType<typeof siteRules.getRules>>;
+  shouldAutoTranslate: boolean | undefined;
+  settings: CurrentSettings;
+}> {
+  const hostname = window.location.hostname;
+  const siteSpecificRules = await siteRules.getRules(hostname);
+  const settings = await safeStorageGet<StoredSettings>([
+    'autoTranslate',
+    'sourceLang',
+    'targetLang',
+    'strategy',
+    'provider',
+  ]);
+
+  const rawSourceLang = siteSpecificRules?.sourceLang || settings.sourceLang || 'auto';
+  const resolvedSettings: CurrentSettings = {
+    sourceLang: resolveSourceLang(rawSourceLang),
+    targetLang: siteSpecificRules?.targetLang || settings.targetLang || 'fi',
+    strategy: (siteSpecificRules?.strategy || settings.strategy || 'smart') as Strategy,
+    provider: (siteSpecificRules?.preferredProvider || settings.provider || 'opus-mt') as TranslationProviderId,
+  };
+
+  return {
+    hostname,
+    siteSpecificRules,
+    shouldAutoTranslate: siteSpecificRules?.autoTranslate ?? settings.autoTranslate,
+    settings: resolvedSettings,
+  };
+}
+
+function getDeepSelectionText(): string {
+  const selection = getDeepSelection();
+  if (!selection || selection.isCollapsed) return '';
+  return selection.toString().trim();
+}
+
+function detectWebMcpLanguage(scope: 'page' | 'selection'): WebMcpDetectionResult | null {
+  const sample = scope === 'selection' ? getDeepSelectionText() : samplePageText(500);
+  if (!sample) return null;
+
+  const detected = detectLanguage(sample);
+  if (!detected) return null;
+
+  return {
+    language: detected.lang,
+    confidence: detected.confidence,
+    sampleLength: sample.length,
+  };
+}
+
+async function startSelectionTranslation(settings: CurrentSettings): Promise<void> {
+  const sourceLang = resolveSourceLang(
+    settings.sourceLang,
+    getDeepSelectionText() || undefined
+  );
+  await translateSelection(
+    sourceLang,
+    settings.targetLang,
+    settings.strategy,
+    settings.provider
+  );
+}
+
+async function startPageTranslation(settings: CurrentSettings): Promise<void> {
+  const resolvedSettings: CurrentSettings = {
+    ...settings,
+    sourceLang: resolveSourceLang(settings.sourceLang),
+  };
+
+  if (isPdfPage()) {
+    await initPdfTranslation(resolvedSettings.targetLang);
+    return;
+  }
+
+  currentSettings = resolvedSettings;
+  await translatePage(
+    resolvedSettings.sourceLang,
+    resolvedSettings.targetLang,
+    resolvedSettings.strategy,
+    resolvedSettings.provider
+  );
+  startMutationObserver();
+}
+
+const cleanupWebMcp = registerWebMcpTools({
+  getCurrentSettings: async () => (await resolveEffectivePageSettings()).settings,
+  translatePage: startPageTranslation,
+  translateSelection: startSelectionTranslation,
+  hasSelectionText: () => getDeepSelectionText().length > 0,
+  detectLanguage: detectWebMcpLanguage,
+});
+
 
 // ============================================================================
 // Message Handling
@@ -1072,10 +1179,14 @@ browserAPI.runtime.onMessage.addListener(
     }
 
     if (message.type === 'translateSelection') {
-      const selSourceLang = resolveSourceLang(message.sourceLang);
       // Acknowledge immediately so the caller does not time out
       sendResponse({ success: true, status: 'started' });
-      translateSelection(selSourceLang, message.targetLang, message.strategy, message.provider)
+      startSelectionTranslation({
+        sourceLang: message.sourceLang,
+        targetLang: message.targetLang,
+        strategy: message.strategy,
+        provider: message.provider,
+      })
         .catch((error) => {
           const msg = extractErrorMessage(error, 'Translation failed');
           log.error('translateSelection failed:', msg);
@@ -1084,35 +1195,14 @@ browserAPI.runtime.onMessage.addListener(
     }
 
     if (message.type === 'translatePage') {
-      // For PDF pages, use the specialized PDF translator
-      if (isPdfPage()) {
-        // Acknowledge immediately so the caller does not time out
-        sendResponse({ success: true, status: 'started' });
-        initPdfTranslation(message.targetLang)
-          .catch((error) => {
-            const msg = extractErrorMessage(error, 'PDF translation failed');
-            log.error('initPdfTranslation failed:', msg);
-          });
-        return true;
-      }
-
-      // Store settings for dynamic content translation
-      const resolvedPageLang = resolveSourceLang(message.sourceLang);
-      currentSettings = {
-        sourceLang: resolvedPageLang,
+      // Acknowledge immediately so the caller does not time out
+      sendResponse({ success: true, status: 'started' });
+      startPageTranslation({
+        sourceLang: message.sourceLang,
         targetLang: message.targetLang,
         strategy: message.strategy,
         provider: message.provider,
-      };
-
-      // Acknowledge immediately so the caller does not time out
-      sendResponse({ success: true, status: 'started' });
-
-      translatePage(resolvedPageLang, message.targetLang, message.strategy, message.provider)
-        .then(() => {
-          // Start observing for dynamic content
-          startMutationObserver();
-        })
+      })
         .catch((error) => {
           const msg = extractErrorMessage(error, 'Page translation failed');
           log.error('translatePage failed:', msg);
@@ -1159,33 +1249,8 @@ browserAPI.runtime.onMessage.addListener(
 // ============================================================================
 
 async function checkAutoTranslate(): Promise<void> {
-  // First check per-site rules
-  const hostname = window.location.hostname;
-  const siteSpecificRules = await siteRules.getRules(hostname);
-
-  // Get global settings as fallback
-  interface StoredSettings {
-    autoTranslate?: boolean;
-    sourceLang?: string;
-    targetLang?: string;
-    strategy?: Strategy;
-    provider?: TranslationProviderId;
-  }
-  const settings = await safeStorageGet<StoredSettings>([
-    'autoTranslate',
-    'sourceLang',
-    'targetLang',
-    'strategy',
-    'provider',
-  ]);
-
-  // Merge settings: site rules take precedence over global settings
-  const shouldAutoTranslate = siteSpecificRules?.autoTranslate ?? settings.autoTranslate;
-  const rawSourceLang = siteSpecificRules?.sourceLang || settings.sourceLang || 'auto';
-  const sourceLang = resolveSourceLang(rawSourceLang);
-  const targetLang = siteSpecificRules?.targetLang || settings.targetLang || 'fi';
-  const strategy = siteSpecificRules?.strategy || settings.strategy || 'smart';
-  const provider = siteSpecificRules?.preferredProvider || settings.provider || 'opus-mt';
+  const { hostname, siteSpecificRules, shouldAutoTranslate, settings } =
+    await resolveEffectivePageSettings();
 
   if (siteSpecificRules) {
     log.info(' Site-specific rules found for', hostname, siteSpecificRules);
@@ -1194,12 +1259,7 @@ async function checkAutoTranslate(): Promise<void> {
   if (shouldAutoTranslate) {
     log.info(' Auto-translate enabled, waiting for page idle...');
 
-    currentSettings = {
-      sourceLang,
-      targetLang,
-      strategy: strategy as Strategy,
-      provider: provider as TranslationProviderId,
-    };
+    currentSettings = settings;
 
     // Wait for browser idle to avoid competing with page rendering.
     // requestIdleCallback fires when browser has spare cycles; fallback to 500ms for Firefox.
@@ -1207,14 +1267,11 @@ async function checkAutoTranslate(): Promise<void> {
       /* v8 ignore start -- defensive: user can't cancel before idle callback fires in tests */
       if (!currentSettings) return; // User may have cancelled
       /* v8 ignore stop */
-      translatePage(
-        currentSettings.sourceLang,
-        currentSettings.targetLang,
-        currentSettings.strategy,
-        currentSettings.provider
-      ).then(() => {
-        startMutationObserver();
-      });
+      startPageTranslation(currentSettings)
+        .catch((error) => {
+          const msg = extractErrorMessage(error, 'Auto-translate failed');
+          log.error('auto-translate failed:', msg);
+        });
     };
 
     if ('requestIdleCallback' in window) {
@@ -1237,6 +1294,7 @@ if (document.readyState === 'complete') {
 // beforeunload fires BEFORE unload (which is unreliable on some browsers),
 // so we do full cleanup here to prevent resource leaks.
 window.addEventListener('beforeunload', () => {
+  cleanupWebMcp?.();
   if (navigationAbortController) {
     navigationAbortController.abort();
     navigationAbortController = null;
@@ -1248,6 +1306,7 @@ window.addEventListener('beforeunload', () => {
 
 // Cleanup on unload - release all resources
 window.addEventListener('unload', () => {
+  cleanupWebMcp?.();
   // Ensure abort fires even if beforeunload didn't (e.g., some mobile browsers)
   if (navigationAbortController) {
     navigationAbortController.abort();
