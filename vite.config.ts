@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 import { resolve } from 'path';
-import { copyFileSync, mkdirSync, existsSync, cpSync } from 'fs';
+import { copyFileSync, mkdirSync, existsSync, cpSync, readdirSync } from 'fs';
 import { sharedManualChunks } from './vite.shared';
 
 // Plugin to copy manifest.json and ONNX Runtime files to dist
@@ -40,19 +40,18 @@ function copyExtensionFiles() {
         }
       }
 
-      // Copy ONNX Runtime WASM files from transformers package
-      // These are needed for local inference without CDN
-      const transformersDir = resolve(
+      // Copy ONNX Runtime WASM loader/runtime files from onnxruntime-web.
+      // Transformers.js dynamically imports these exact filenames at runtime.
+      const onnxRuntimeDir = resolve(
         __dirname,
-        'node_modules/@huggingface/transformers/dist'
+        'node_modules/onnxruntime-web/dist'
       );
-      const wasmFiles = [
-        'ort-wasm-simd-threaded.jsep.wasm',
-        'ort-wasm-simd-threaded.jsep.mjs',
-      ];
+      const wasmFiles = readdirSync(onnxRuntimeDir).filter((file) =>
+        file.startsWith('ort-wasm') && (file.endsWith('.wasm') || file.endsWith('.mjs'))
+      );
 
       for (const file of wasmFiles) {
-        const src = resolve(transformersDir, file);
+        const src = resolve(onnxRuntimeDir, file);
         const dest = resolve(assetsDir, file);
         if (existsSync(src)) {
           copyFileSync(src, dest);

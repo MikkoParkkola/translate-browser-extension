@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 import { resolve } from 'path';
-import { copyFileSync, mkdirSync, existsSync } from 'fs';
+import { copyFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
 import { sharedManualChunks } from './vite.shared';
 
 const __dirname = import.meta.dirname;
@@ -33,18 +33,17 @@ function copyFirefoxExtensionFiles() {
         resolve(distDir, 'background.html')
       );
 
-      // Copy ONNX Runtime WASM files
-      const transformersDir = resolve(
+      // Copy ONNX Runtime WASM loader/runtime files from onnxruntime-web.
+      const onnxRuntimeDir = resolve(
         __dirname,
-        'node_modules/@huggingface/transformers/dist'
+        'node_modules/onnxruntime-web/dist'
       );
-      const wasmFiles = [
-        'ort-wasm-simd-threaded.jsep.wasm',
-        'ort-wasm-simd-threaded.jsep.mjs',
-      ];
+      const wasmFiles = readdirSync(onnxRuntimeDir).filter((file) =>
+        file.startsWith('ort-wasm') && (file.endsWith('.wasm') || file.endsWith('.mjs'))
+      );
 
       for (const file of wasmFiles) {
-        const src = resolve(transformersDir, file);
+        const src = resolve(onnxRuntimeDir, file);
         const dest = resolve(assetsDir, file);
         if (existsSync(src)) {
           copyFileSync(src, dest);
