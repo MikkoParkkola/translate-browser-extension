@@ -6,7 +6,9 @@
   "scripts": {
     "bench": "vitest bench",
     "build": "vite build && vite build --config vite.pdfjs.config.ts && cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs dist/chunks/pdf.worker.min.mjs && vite build --config vite.content.config.ts",
+    "build:all": "npm run build && npm run build:firefox",
     "build:fast": "vite build && vite build --config vite.content.config.ts",
+    "build:firefox": "vite build --config vite.config.firefox.ts",
     "build:safari": "bash scripts/convert-safari.sh",
     "build:zip": "npm run build && npm run zip",
     "changeset": "changeset",
@@ -16,6 +18,7 @@
     "lint": "eslint .",
     "postinstall": "bash scripts/fetch-wasm-assets.sh",
     "pr": "bash scripts/pr.sh",
+    "package:firefox": "npm run build:firefox && cd dist-firefox && bestzip ../translate-by-mikko-firefox-v$npm_package_version.xpi *",
     "release": "changeset publish",
     "secrets": "gitleaks detect --no-git",
     "serve": "http-server dist -p 8080",
