@@ -33,7 +33,7 @@ jobs:
             name=$(echo "$d" | sed 's/[\/ ]/_/g; s/_$//')
             zip -r "../${name}.zip" "$d"
           done
-          ls -la .. | sed -n '1,200p'
+          find .. -mindepth 1 -maxdepth 1 -print | sort | sed -n '1,200p'
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

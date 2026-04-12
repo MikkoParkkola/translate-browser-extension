@@ -31,8 +31,8 @@ jobs:
         run: |
           VERSION=$(jq -r .version src/manifest.json)
           NAME="translate-by-mikko-extension-${VERSION}"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "NAME=$NAME" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "NAME=$NAME" >> "$GITHUB_ENV"
           npx -y crx pack dist -o "$NAME.crx" --zip-output "$NAME.zip" -p key.pem
       - name: Prepare update files
         run: |
