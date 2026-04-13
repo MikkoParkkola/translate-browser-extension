@@ -1,93 +1,115 @@
-/**
- * Logger utility unit tests
- */
-
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createLogger } from './logger';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 describe('createLogger', () => {
-  beforeEach(() => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
+    vi.resetModules();
   });
 
-  it('returns an object with debug, info, warn, error methods', () => {
-    const log = createLogger('TestModule');
-    expect(typeof log.debug).toBe('function');
-    expect(typeof log.info).toBe('function');
-    expect(typeof log.warn).toBe('function');
-    expect(typeof log.error).toBe('function');
+  it('returns an object with debug, info, warn, error methods', async () => {
+    vi.resetModules();
+
+    const { createLogger } = await import('./logger');
+    const logger = createLogger('TestModule');
+
+    expect(typeof logger.debug).toBe('function');
+    expect(typeof logger.info).toBe('function');
+    expect(typeof logger.warn).toBe('function');
+    expect(typeof logger.error).toBe('function');
   });
 
-  describe('debug', () => {
-    it('logs with module prefix via console.log', () => {
-      const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-      const log = createLogger('MyModule');
-      log.debug('test message');
-      expect(spy).toHaveBeenCalledWith('[MyModule]', 'test message');
-    });
+  it('prefixes messages and forwards extra arguments', async () => {
+    vi.stubEnv('VITE_LOG_LEVEL', 'debug');
+    vi.resetModules();
 
-    it('passes extra arguments through', () => {
-      const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-      const log = createLogger('Mod');
-      log.debug('msg', 42, { key: 'val' });
-      expect(spy).toHaveBeenCalledWith('[Mod]', 'msg', 42, { key: 'val' });
-    });
+    const { createLogger } = await import('./logger');
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logger = createLogger('My-Module.v2');
+
+    logger.debug('debug', 42, { key: 'val' });
+    logger.info('info');
+    logger.warn('warn', new Error('test'));
+    logger.error('error', 'detail');
+
+    expect(logSpy).toHaveBeenCalledWith('[My-Module.v2]', 'debug', 42, { key: 'val' });
+    expect(logSpy).toHaveBeenCalledWith('[My-Module.v2]', 'info');
+    expect(warnSpy).toHaveBeenCalledWith('[My-Module.v2]', 'warn', expect.any(Error));
+    expect(errorSpy).toHaveBeenCalledWith('[My-Module.v2]', 'error', 'detail');
   });
 
-  describe('info', () => {
-    it('logs with module prefix via console.log', () => {
-      const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-      const log = createLogger('Info');
-      log.info('info message');
-      expect(spy).toHaveBeenCalledWith('[Info]', 'info message');
-    });
+  it('supports empty module names', async () => {
+    vi.stubEnv('VITE_LOG_LEVEL', 'info');
+    vi.resetModules();
+
+    const { createLogger } = await import('./logger');
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const logger = createLogger('');
+
+    logger.info('test');
+
+    expect(logSpy).toHaveBeenCalledWith('[]', 'test');
   });
 
-  describe('warn', () => {
-    it('logs with module prefix via console.warn', () => {
-      const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      const log = createLogger('Warn');
-      log.warn('warning');
-      expect(spy).toHaveBeenCalledWith('[Warn]', 'warning');
-    });
+  it('logs all levels when debug logging is enabled', async () => {
+    vi.stubEnv('VITE_LOG_LEVEL', 'debug');
+    vi.resetModules();
 
-    it('passes extra arguments through', () => {
-      const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      const log = createLogger('W');
-      log.warn('msg', new Error('test'));
-      expect(spy).toHaveBeenCalledWith('[W]', 'msg', expect.any(Error));
-    });
+    const { createLogger } = await import('./logger');
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logger = createLogger('Test');
+
+    logger.debug('debug', 1);
+    logger.info('info', 2);
+    logger.warn('warn', 3);
+    logger.error('error', 4);
+
+    expect(logSpy).toHaveBeenCalledWith('[Test]', 'debug', 1);
+    expect(logSpy).toHaveBeenCalledWith('[Test]', 'info', 2);
+    expect(warnSpy).toHaveBeenCalledWith('[Test]', 'warn', 3);
+    expect(errorSpy).toHaveBeenCalledWith('[Test]', 'error', 4);
   });
 
-  describe('error', () => {
-    it('logs with module prefix via console.error', () => {
-      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const log = createLogger('Err');
-      log.error('error message');
-      expect(spy).toHaveBeenCalledWith('[Err]', 'error message');
-    });
+  it('suppresses debug/info when warn logging is enabled', async () => {
+    vi.stubEnv('VITE_LOG_LEVEL', 'warn');
+    vi.resetModules();
 
-    it('passes extra arguments through', () => {
-      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const log = createLogger('E');
-      log.error('failed', 'detail1', 'detail2');
-      expect(spy).toHaveBeenCalledWith('[E]', 'failed', 'detail1', 'detail2');
-    });
+    const { createLogger } = await import('./logger');
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logger = createLogger('Test');
+
+    logger.debug('debug');
+    logger.info('info');
+    logger.warn('warn');
+    logger.error('error');
+
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith('[Test]', 'warn');
+    expect(errorSpy).toHaveBeenCalledWith('[Test]', 'error');
   });
 
-  describe('module name handling', () => {
-    it('uses empty module name', () => {
-      const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-      const log = createLogger('');
-      log.info('test');
-      expect(spy).toHaveBeenCalledWith('[]', 'test');
-    });
+  it('falls back to production info level when env level is invalid', async () => {
+    vi.stubEnv('MODE', 'production');
+    vi.stubEnv('VITE_LOG_LEVEL', 'invalid');
+    vi.resetModules();
 
-    it('uses module name with special characters', () => {
-      const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-      const log = createLogger('My-Module.v2');
-      log.info('test');
-      expect(spy).toHaveBeenCalledWith('[My-Module.v2]', 'test');
-    });
+    const { createLogger } = await import('./logger');
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const logger = createLogger('Prod');
+
+    logger.debug('debug');
+    logger.info('info');
+    logger.warn('warn');
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy).toHaveBeenCalledWith('[Prod]', 'info');
+    expect(warnSpy).toHaveBeenCalledWith('[Prod]', 'warn');
   });
 });

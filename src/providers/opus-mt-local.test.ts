@@ -178,6 +178,64 @@ describe('OpusMTProvider', () => {
 
       expect(result).toEqual(['Hei', 'Maailma']);
     });
+
+    it('splits multi-sentence items inside arrays for probe builds', async () => {
+      (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = true;
+      const translations: Record<string, string> = {
+        'First sentence.': 'Ensimmäinen lause.',
+        'Second sentence.': 'Toinen lause.',
+        'Third sentence.': 'Kolmas lause.',
+        'Fourth sentence.': 'Neljäs lause.',
+      };
+      const mockPipeInstance = vi
+        .fn()
+        .mockImplementation((text: string) =>
+          Promise.resolve([{ translation_text: translations[text] ?? text }])
+        );
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).pipelineFactory = vi.fn().mockResolvedValue(mockPipeInstance);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).isInitialized = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).webgpuSupported = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).pipelines.clear();
+
+      const result = await provider.translate(
+        [
+          'First sentence. Second sentence.',
+          'Third sentence. Fourth sentence.',
+        ],
+        'en',
+        'fi'
+      );
+
+      expect(result).toEqual([
+        'Ensimmäinen lause. Toinen lause.',
+        'Kolmas lause. Neljäs lause.',
+      ]);
+      expect(mockPipeInstance).toHaveBeenCalledWith('First sentence.', {
+        src_lang: 'en',
+        tgt_lang: 'fi',
+        max_length: 512,
+      });
+      expect(mockPipeInstance).toHaveBeenCalledWith('Second sentence.', {
+        src_lang: 'en',
+        tgt_lang: 'fi',
+        max_length: 512,
+      });
+      expect(mockPipeInstance).toHaveBeenCalledWith('Third sentence.', {
+        src_lang: 'en',
+        tgt_lang: 'fi',
+        max_length: 512,
+      });
+      expect(mockPipeInstance).toHaveBeenCalledWith('Fourth sentence.', {
+        src_lang: 'en',
+        tgt_lang: 'fi',
+        max_length: 512,
+      });
+    });
   });
 
   describe('detectLanguage', () => {

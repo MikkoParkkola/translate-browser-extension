@@ -16,6 +16,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   buildOpusMtExecutionPlan,
+  describeOpusMtExecutionConfig,
   resolveOpusMtExecutionConfig,
   selectOpusMtDtype,
 } from '../shared/opus-mt-runtime';
@@ -501,6 +502,16 @@ describe('offscreen message handler', () => {
     });
   });
 
+  describe('checkWebNN', () => {
+    it('returns detected WebNN support status', async () => {
+      mockDetectWebNN.mockResolvedValue(true);
+
+      const r = await dispatch({ type: 'checkWebNN' });
+
+      expect(r).toEqual({ success: true, supported: true });
+    });
+  });
+
   // -------------------------------------------------------------------------
   // terminateOCR
   // -------------------------------------------------------------------------
@@ -578,6 +589,28 @@ describe('offscreen message handler', () => {
       const r = await dispatch({ type: 'translate', text: 'hi', sourceLang: 'en' });
       expect(r.success).toBe(false);
       expect((r.error as string)).toMatch(/targetLang/);
+    });
+
+    it('rejects sourceLang values that are blank after trimming', async () => {
+      const r = await dispatch({
+        type: 'translate',
+        text: 'hi',
+        sourceLang: '   ',
+        targetLang: 'de',
+      });
+      expect(r.success).toBe(false);
+      expect(r.error).toBe('Invalid sourceLang: must be non-empty string, max 20 characters');
+    });
+
+    it('rejects targetLang values that are blank after trimming', async () => {
+      const r = await dispatch({
+        type: 'translate',
+        text: 'hi',
+        sourceLang: 'en',
+        targetLang: '   ',
+      });
+      expect(r.success).toBe(false);
+      expect(r.error).toBe('Invalid targetLang: must be non-empty string, max 20 characters');
     });
   });
 
@@ -695,6 +728,95 @@ describe('offscreen message handler', () => {
 
       expect(r.success).toBe(true);
       expect(r.result).toEqual(['Hallo', 'Welt']);
+    });
+
+    it('splits multi-sentence items inside array translations for probe builds', async () => {
+      (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = true;
+      const translations: Record<string, string> = {
+        'First sentence.': 'Ensimmäinen lause.',
+        'Second sentence.': 'Toinen lause.',
+        'Third sentence.': 'Kolmas lause.',
+        'Fourth sentence.': 'Neljäs lause.',
+      };
+      const pipe = vi
+        .fn()
+        .mockImplementation((text: string) =>
+          Promise.resolve([{ translation_text: translations[text] ?? text }])
+        );
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: [
+          'First sentence. Second sentence.',
+          'Third sentence. Fourth sentence.',
+        ],
+        sourceLang: 'en',
+        targetLang: 'fi',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toEqual([
+        'Ensimmäinen lause. Toinen lause.',
+        'Kolmas lause. Neljäs lause.',
+      ]);
+      expect(pipe).toHaveBeenCalledWith('First sentence.', { max_length: 512 });
+      expect(pipe).toHaveBeenCalledWith('Second sentence.', { max_length: 512 });
+      expect(pipe).toHaveBeenCalledWith('Third sentence.', { max_length: 512 });
+      expect(pipe).toHaveBeenCalledWith('Fourth sentence.', { max_length: 512 });
+    });
+
+    it('keeps four single-sentence batch items stable in probe builds', async () => {
+      (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = true;
+      const translations: Record<string, string> = {
+        Alpha: 'Alfa',
+        Beta: 'Beeta',
+        Gamma: 'Gamma',
+        Delta: 'Delta',
+      };
+      const pipe = vi
+        .fn()
+        .mockImplementation((text: string) =>
+          Promise.resolve([{ translation_text: translations[text] ?? text }])
+        );
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: ['Alpha', 'Beta', 'Gamma', 'Delta'],
+        sourceLang: 'en',
+        targetLang: 'fi',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toEqual(['Alfa', 'Beeta', 'Gamma', 'Delta']);
+    });
+
+    it('returns degraded probe output verbatim when sentence-level translations lose punctuation', async () => {
+      (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = true;
+      const translations: Record<string, string> = {
+        'First sentence.': 'Ensimmäinen lause',
+        'Second sentence.': 'Toinen lause',
+      };
+      const pipe = vi
+        .fn()
+        .mockImplementation((text: string) =>
+          Promise.resolve([{ translation_text: translations[text] ?? text }])
+        );
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'First sentence. Second sentence.',
+        sourceLang: 'en',
+        targetLang: 'fi',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toBe('Ensimmäinen lause Toinen lause');
     });
 
     it('returns empty array without calling pipeline', async () => {
@@ -1521,6 +1643,42 @@ describe('offscreen message handler', () => {
         category: 'model',
       });
     });
+
+    it('captures attempted model file names in load failure diagnostics', async () => {
+      const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+      (mockPipeline as ReturnType<typeof vi.fn>)
+        .mockImplementationOnce(
+          async (_task: string, _modelId: string, options: Record<string, unknown>) => {
+            const progressCallback = options.progress_callback as
+              | ((progress: { file?: string | null }) => void)
+              | undefined;
+            progressCallback?.({ file: 'encoder_model_quantized.onnx' });
+            throw new Error('Missing required scale');
+          }
+        )
+        .mockImplementationOnce(
+          async (_task: string, _modelId: string, options: Record<string, unknown>) => {
+            const progressCallback = options.progress_callback as
+              | ((progress: { file?: string | null }) => void)
+              | undefined;
+            progressCallback?.({ file: 'encoder_model.onnx' });
+            throw new Error('Missing required scale');
+          }
+        );
+      mockGetCachedPipeline.mockReturnValue(null);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'fr',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(false);
+      expect(r.error).toContain('[files: encoder_model_quantized.onnx]');
+      expect(r.error).toContain('[files: encoder_model.onnx]');
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -1950,6 +2108,16 @@ describe('buildOpusMtExecutionPlan', () => {
         reason: 'wasm-fp32-diagnostic-fallback',
       },
     ]);
+  });
+
+  it('describes the WebGPU fallback WASM attempt label', () => {
+    expect(
+      describeOpusMtExecutionConfig({
+        device: 'wasm',
+        dtype: 'q8',
+        reason: 'webgpu-fallback-wasm-q8',
+      })
+    ).toBe('WASM+q8 fallback');
   });
 });
 
