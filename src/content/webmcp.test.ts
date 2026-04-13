@@ -262,6 +262,51 @@ describe('content WebMCP helpers', () => {
     expect(executeTool).not.toHaveBeenCalled();
   });
 
+  it('treats canonical page and selection tool names as self tools even with site descriptions', async () => {
+    const executeTool = vi.fn();
+    (navigator as Navigator & { modelContextTesting?: unknown }).modelContextTesting = {
+      listTools: vi
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            name: 'translate_page',
+            description: 'Translate the current page using the site tool.',
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            name: 'translate_selection',
+            description: 'Translate the current selection using the site tool.',
+          },
+        ]),
+      executeTool,
+    };
+
+    const {
+      maybeTranslatePageWithSiteTool,
+      maybeTranslateSelectionWithSiteTool,
+    } = await import('./webmcp');
+
+    await expect(
+      maybeTranslatePageWithSiteTool({
+        sourceLang: 'auto',
+        targetLang: 'fi',
+        strategy: 'smart',
+      })
+    ).resolves.toBeNull();
+
+    await expect(
+      maybeTranslateSelectionWithSiteTool({
+        sourceLang: 'en',
+        targetLang: 'fr',
+        strategy: 'quality',
+        text: 'Hello world',
+      })
+    ).resolves.toBeNull();
+
+    expect(executeTool).not.toHaveBeenCalled();
+  });
+
   it('parses JSON-string tool responses for site selection tools', async () => {
     (navigator as Navigator & { modelContextTesting?: unknown }).modelContextTesting = {
       listTools: vi.fn().mockResolvedValue([

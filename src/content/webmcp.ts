@@ -7,6 +7,11 @@ const EXTENSION_TOOL_MARKER = '[translate-browser-extension]';
 const TRANSLATE_PAGE_TOOL_NAME = 'translate_page';
 const TRANSLATE_SELECTION_TOOL_NAME = 'translate_selection';
 const DETECT_LANGUAGE_TOOL_NAME = 'detect_language';
+const RESERVED_EXTENSION_TOOL_NAMES = [
+  TRANSLATE_PAGE_TOOL_NAME,
+  TRANSLATE_SELECTION_TOOL_NAME,
+  DETECT_LANGUAGE_TOOL_NAME,
+] as const;
 const PAGE_TOOL_ALIASES = [TRANSLATE_PAGE_TOOL_NAME, 'translatePage'] as const;
 const SELECTION_TOOL_ALIASES = [TRANSLATE_SELECTION_TOOL_NAME, 'translateSelection'] as const;
 const STRATEGY_VALUES: readonly Strategy[] = ['smart', 'fast', 'quality', 'cost', 'balanced'];
@@ -260,15 +265,16 @@ function normalizeToolDescriptors(rawTools: unknown): WebMcpToolDescriptor[] {
 }
 
 function isExtensionTool(descriptor: WebMcpToolDescriptor): boolean {
-  const description = descriptor.description?.toLowerCase() ?? '';
-  if (description.includes(EXTENSION_TOOL_MARKER.toLowerCase())) {
+  if (
+    RESERVED_EXTENSION_TOOL_NAMES.includes(
+      descriptor.name as (typeof RESERVED_EXTENSION_TOOL_NAMES)[number]
+    )
+  ) {
     return true;
   }
 
-  const ambiguousCanonicalName =
-    (descriptor.name === TRANSLATE_PAGE_TOOL_NAME || descriptor.name === TRANSLATE_SELECTION_TOOL_NAME) &&
-    !descriptor.description;
-  return ambiguousCanonicalName;
+  const description = descriptor.description?.toLowerCase() ?? '';
+  return description.includes(EXTENSION_TOOL_MARKER.toLowerCase());
 }
 
 function matchesPageTool(descriptor: WebMcpToolDescriptor): boolean {
