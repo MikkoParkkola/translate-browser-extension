@@ -295,10 +295,13 @@ describe('OpusMTProvider', () => {
       );
     });
 
-    it('never uses fp32 (wasteful ~170MB per model)', async () => {
+    it('falls back to fp32 only after q8 load failure', async () => {
       const mockFactory = vi.fn().mockResolvedValue(
         vi.fn().mockResolvedValue([{ translation_text: 'testi' }])
       );
+      mockFactory
+        .mockRejectedValueOnce(new Error('Missing required scale'))
+        .mockResolvedValueOnce(vi.fn().mockResolvedValue([{ translation_text: 'testi' }]));
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (provider as any).pipelineFactory = mockFactory;
@@ -311,8 +314,18 @@ describe('OpusMTProvider', () => {
 
       await provider.translate('test', 'en', 'fi');
 
-      const calledDtype = mockFactory.mock.calls[0][2].dtype;
-      expect(calledDtype).not.toBe('fp32');
+      expect(mockFactory).toHaveBeenNthCalledWith(
+        1,
+        'translation',
+        expect.any(String),
+        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
+      );
+      expect(mockFactory).toHaveBeenNthCalledWith(
+        2,
+        'translation',
+        expect.any(String),
+        expect.objectContaining({ device: 'wasm', dtype: 'fp32' })
+      );
     });
 
     it('never uses q4/q4f16 (those are for TranslateGemma)', async () => {

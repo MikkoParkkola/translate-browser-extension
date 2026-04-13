@@ -3,16 +3,17 @@
 ## Scope
 
 - Upgrade `@huggingface/transformers` to the v4 runtime.
-- Keep OPUS-MT on the current safe default: `wasm + q8`.
+- Keep OPUS-MT on the current safe default: `wasm + q8`, but retry `wasm + fp32` after q8 load failures to isolate quantization-only regressions.
 - Allow explicit WebGPU probing behind `VITE_OPUS_MT_WEBGPU_PROBE=true`.
 
 ## What this spike changes
 
 - Chrome offscreen OPUS-MT path uses the same runtime policy as Firefox.
 - Firefox background OPUS-MT path now also defaults to `wasm + q8`.
-- Shared OPUS-MT runtime selection keeps q8 fixed and only opts into WebGPU when the probe flag is enabled and support is detected.
+- Shared OPUS-MT runtime selection keeps q8 fixed, only opts into WebGPU when the probe flag is enabled and support is detected, and now retries `wasm + fp32` after q8 load failures for diagnosis.
 - Transformers.js v4 enables `env.useWasmCache = true` so compiled WASM artifacts can be reused between loads.
 - Extension packaging now copies the ONNX Runtime `ort-wasm*` loader/runtime files from `onnxruntime-web/dist`, which v4 imports dynamically at runtime.
+- Probe builds now log OPUS-MT input/output sentence counts and head/tail excerpts so two-sentence truncation is easier to reproduce and compare across runtimes.
 
 ## Probe contract
 

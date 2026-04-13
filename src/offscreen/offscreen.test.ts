@@ -14,7 +14,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { resolveOpusMtExecutionConfig, selectOpusMtDtype } from '../shared/opus-mt-runtime';
+import {
+  buildOpusMtExecutionPlan,
+  resolveOpusMtExecutionConfig,
+  selectOpusMtDtype,
+} from '../shared/opus-mt-runtime';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1419,6 +1423,37 @@ describe('offscreen message handler', () => {
 
       expect(mockCachePipeline).toHaveBeenCalledWith('Xenova/opus-mt-en-fr', fakePipe);
     });
+
+    it('falls back to WASM+fp32 when WASM+q8 fails to load', async () => {
+      const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+      const fakePipe = vi.fn().mockResolvedValue([{ translation_text: 'Bonjour' }]);
+      (mockPipeline as ReturnType<typeof vi.fn>)
+        .mockRejectedValueOnce(new Error('Missing required scale'))
+        .mockResolvedValueOnce(fakePipe);
+      mockGetCachedPipeline.mockReturnValue(null);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'fr',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(mockPipeline).toHaveBeenNthCalledWith(
+        1,
+        'translation',
+        'Xenova/opus-mt-en-fr',
+        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
+      );
+      expect(mockPipeline).toHaveBeenNthCalledWith(
+        2,
+        'translation',
+        'Xenova/opus-mt-en-fr',
+        expect.objectContaining({ device: 'wasm', dtype: 'fp32' })
+      );
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -1811,6 +1846,43 @@ describe('resolveOpusMtExecutionConfig', () => {
       dtype: 'q8',
       reason: 'experimental-webgpu-probe',
     });
+  });
+});
+
+describe('buildOpusMtExecutionPlan', () => {
+  it('adds a diagnostic WASM+fp32 fallback after the safe default', () => {
+    expect(buildOpusMtExecutionPlan({ supported: false, fp16: false }, false)).toEqual([
+      {
+        device: 'wasm',
+        dtype: 'q8',
+        reason: 'safe-default-wasm',
+      },
+      {
+        device: 'wasm',
+        dtype: 'fp32',
+        reason: 'wasm-fp32-diagnostic-fallback',
+      },
+    ]);
+  });
+
+  it('keeps WebGPU probe first, then WASM q8, then WASM fp32', () => {
+    expect(buildOpusMtExecutionPlan({ supported: true, fp16: true }, true)).toEqual([
+      {
+        device: 'webgpu',
+        dtype: 'q8',
+        reason: 'experimental-webgpu-probe',
+      },
+      {
+        device: 'wasm',
+        dtype: 'q8',
+        reason: 'webgpu-fallback-wasm-q8',
+      },
+      {
+        device: 'wasm',
+        dtype: 'fp32',
+        reason: 'wasm-fp32-diagnostic-fallback',
+      },
+    ]);
   });
 });
 

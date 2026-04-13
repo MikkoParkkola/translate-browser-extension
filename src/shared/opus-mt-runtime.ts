@@ -5,8 +5,12 @@ export interface OpusMtWebGpuCapabilities {
 
 export interface OpusMtExecutionConfig {
   device: 'webgpu' | 'wasm';
-  dtype: 'q8';
-  reason: 'experimental-webgpu-probe' | 'safe-default-wasm';
+  dtype: 'q8' | 'fp32';
+  reason:
+    | 'experimental-webgpu-probe'
+    | 'safe-default-wasm'
+    | 'webgpu-fallback-wasm-q8'
+    | 'wasm-fp32-diagnostic-fallback';
 }
 
 /**
@@ -34,4 +38,41 @@ export function resolveOpusMtExecutionConfig(
     dtype: selectOpusMtDtype(webgpu),
     reason: 'safe-default-wasm',
   };
+}
+
+export function buildOpusMtExecutionPlan(
+  webgpu: OpusMtWebGpuCapabilities,
+  webgpuProbeEnabled: boolean
+): OpusMtExecutionConfig[] {
+  const primary = resolveOpusMtExecutionConfig(webgpu, webgpuProbeEnabled);
+  const attempts: OpusMtExecutionConfig[] = [primary];
+
+  if (primary.device === 'webgpu') {
+    attempts.push({
+      device: 'wasm',
+      dtype: 'q8',
+      reason: 'webgpu-fallback-wasm-q8',
+    });
+  }
+
+  attempts.push({
+    device: 'wasm',
+    dtype: 'fp32',
+    reason: 'wasm-fp32-diagnostic-fallback',
+  });
+
+  return attempts;
+}
+
+export function describeOpusMtExecutionConfig(config: OpusMtExecutionConfig): string {
+  switch (config.reason) {
+    case 'experimental-webgpu-probe':
+      return 'WebGPU+q8 (probe)';
+    case 'safe-default-wasm':
+      return 'WASM+q8';
+    case 'webgpu-fallback-wasm-q8':
+      return 'WASM+q8 fallback';
+    case 'wasm-fp32-diagnostic-fallback':
+      return 'WASM+fp32 diagnostic fallback';
+  }
 }

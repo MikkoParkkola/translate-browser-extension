@@ -11,7 +11,11 @@ import { webgpuDetector } from '../core/webgpu-detector';
 import { createLogger } from '../core/logger';
 import { extractErrorMessage } from '../core/errors';
 import { CONFIG } from '../config';
-import { resolveOpusMtExecutionConfig } from '../shared/opus-mt-runtime';
+import {
+  buildOpusMtExecutionPlan,
+  describeOpusMtExecutionConfig,
+  resolveOpusMtExecutionConfig,
+} from '../shared/opus-mt-runtime';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 
 const log = createLogger('OPUS-MT');
@@ -140,27 +144,17 @@ export class OpusMTProvider extends BaseProvider {
 
     log.info(`Loading model: ${modelId}`);
 
-    const runtime = resolveOpusMtExecutionConfig(
+    const attempts = buildOpusMtExecutionPlan(
       { supported: this.webgpuSupported, fp16: false },
       CONFIG.experimental.opusMtWebgpuProbe
     );
-    const attempts: Array<{ device: 'webgpu' | 'wasm'; dtype: string; label: string }> = [
-      {
-        device: runtime.device,
-        dtype: runtime.dtype,
-        label: runtime.reason === 'experimental-webgpu-probe' ? 'WebGPU+q8 (probe)' : 'WASM+q8',
-      },
-    ];
-
-    if (runtime.device === 'webgpu') {
-      attempts.push({ device: 'wasm', dtype: 'q8', label: 'WASM+q8' });
-    }
 
     let lastError: Error | null = null;
 
     for (const attempt of attempts) {
+      const label = describeOpusMtExecutionConfig(attempt);
       try {
-        log.info(`Trying ${attempt.label} for ${modelId}`);
+        log.info(`Trying ${label} for ${modelId}`);
         const pipe = await this.pipelineFactory('translation', modelId, {
           device: attempt.device,
           dtype: attempt.dtype,
@@ -170,11 +164,11 @@ export class OpusMTProvider extends BaseProvider {
         });
 
         this.pipelines.set(modelId, pipe);
-        log.info(`Model loaded: ${modelId} (${attempt.label})`);
+        log.info(`Model loaded: ${modelId} (${label})`);
         return pipe;
       } catch (error) {
         const errMsg = extractErrorMessage(error);
-        log.warn(`${attempt.label} failed: ${errMsg}`);
+        log.warn(`${label} failed: ${errMsg}`);
         lastError = error instanceof Error ? error : new Error(errMsg);
       }
     }

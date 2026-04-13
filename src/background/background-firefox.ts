@@ -37,7 +37,10 @@ import { withTimeout } from '../core/async-utils';
 import { CONFIG } from '../config';
 import { browserAPI, getURL } from '../core/browser-api';
 import { DEFAULT_PROVIDER_ID, normalizeTranslationProviderId } from '../shared/provider-options';
-import { resolveOpusMtExecutionConfig } from '../shared/opus-mt-runtime';
+import {
+  buildOpusMtExecutionPlan,
+  describeOpusMtExecutionConfig,
+} from '../shared/opus-mt-runtime';
 import {
   assertNever,
   isExtensionMessage,
@@ -167,20 +170,37 @@ async function getPipeline(sourceLang: string, targetLang: string): Promise<Tran
   const webgpu = CONFIG.experimental.opusMtWebgpuProbe
     ? await detectWebGPUCapabilities()
     : { supported: false, fp16: false };
-  const runtime = resolveOpusMtExecutionConfig(webgpu, CONFIG.experimental.opusMtWebgpuProbe);
-  log.info(`Using device: ${runtime.device}, dtype: ${runtime.dtype}, reason: ${runtime.reason}`);
+  const attempts = buildOpusMtExecutionPlan(webgpu, CONFIG.experimental.opusMtWebgpuProbe);
+  let pipe: unknown;
+  let lastError: unknown;
 
-  const pipe = await withTimeout(
-    pipeline('translation', modelId, {
-      device: runtime.device,
-      dtype: runtime.dtype,
-    } as Record<string, unknown>),
-    CONFIG.timeouts.opusMtDirectMs,
-    `Loading model ${modelId}`
-  );
+  for (const attempt of attempts) {
+    const label = describeOpusMtExecutionConfig(attempt);
+    log.info(`Trying ${label}: device=${attempt.device}, dtype=${attempt.dtype}, reason=${attempt.reason}`);
+    try {
+      pipe = await withTimeout(
+        pipeline('translation', modelId, {
+          device: attempt.device,
+          dtype: attempt.dtype,
+        } as Record<string, unknown>),
+        CONFIG.timeouts.opusMtDirectMs,
+        `Loading model ${modelId}`
+      );
+      log.info(`Model loaded: ${modelId} (${label})`);
+      break;
+    } catch (error) {
+      lastError = error;
+      log.warn(`${label} failed for ${modelId}: ${extractErrorMessage(error)}`);
+    }
+  }
+
+  if (!pipe) {
+    /* v8 ignore start */
+    throw lastError;
+    /* v8 ignore stop */
+  }
 
   cachePipeline(modelId, castAsPipeline(pipe));
-  log.info(`Model loaded: ${modelId}`);
 
   return castAsPipeline(pipe);
 }

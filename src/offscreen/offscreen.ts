@@ -18,7 +18,10 @@ import { buildLanguageDetectionSample, detectLanguage } from './language-detecti
 import { translateWithGemma, getTranslateGemmaPipeline, detectWebGPU, detectWebNN } from './translategemma';
 import { getChromeTranslator, isChromeTranslatorAvailable } from '../providers/chrome-translator';
 import { DEFAULT_PROVIDER_ID } from '../shared/provider-options';
-import { resolveOpusMtExecutionConfig } from '../shared/opus-mt-runtime';
+import {
+  buildOpusMtExecutionPlan,
+  describeOpusMtExecutionConfig,
+} from '../shared/opus-mt-runtime';
 
 // Cloud providers
 import { deeplProvider } from '../providers/deepl';
@@ -103,25 +106,37 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   const webgpu = CONFIG.experimental.opusMtWebgpuProbe
     ? await detectWebGPU()
     : { supported: false, fp16: false };
-  const runtime = resolveOpusMtExecutionConfig(webgpu, CONFIG.experimental.opusMtWebgpuProbe);
-  log.info(
-    ` Using device: ${runtime.device}, dtype: ${runtime.dtype}, reason: ${runtime.reason}`
-  );
+  const attempts = buildOpusMtExecutionPlan(webgpu, CONFIG.experimental.opusMtWebgpuProbe);
 
   // Use optimized timeout for OPUS-MT direct models (~85MB quantized, typically loads in <30s)
-  let pipe;
-  try {
-    pipe = await withTimeout(
-      (await getTransformers()).pipeline('translation', modelId, {
-        device: runtime.device,
-        dtype: runtime.dtype,
-      } as Record<string, unknown>),
-      CONFIG.timeouts.opusMtDirectMs,
-      `Loading model ${modelId}`
+  let pipe: unknown;
+  let loadedAttempt = attempts[0];
+  let lastError: unknown;
+  for (const attempt of attempts) {
+    const label = describeOpusMtExecutionConfig(attempt);
+    log.info(
+      ` Trying ${label}: device=${attempt.device}, dtype=${attempt.dtype}, reason=${attempt.reason}`
     );
-  } catch (error) {
+    try {
+      pipe = await withTimeout(
+        (await getTransformers()).pipeline('translation', modelId, {
+          device: attempt.device,
+          dtype: attempt.dtype,
+        } as Record<string, unknown>),
+        CONFIG.timeouts.opusMtDirectMs,
+        `Loading model ${modelId}`
+      );
+      loadedAttempt = attempt;
+      break;
+    } catch (error) {
+      lastError = error;
+      log.warn(` ${label} failed for ${modelId}: ${extractErrorMessage(error)}`);
+    }
+  }
+
+  if (!pipe) {
     /* v8 ignore start -- defensive rethrow */
-    throw error;
+    throw lastError;
     /* v8 ignore stop */
   }
 
@@ -130,15 +145,55 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
     profiler.recordTiming(sessionId, 'model_load', loadDuration, {
       cached: false,
       modelId,
-      device: runtime.device,
+      device: loadedAttempt.device,
+      dtype: loadedAttempt.dtype,
     });
   }
-  log.info(` Model loaded: ${modelId} in ${loadDuration.toFixed(0)}ms`);
+  log.info(
+    ` Model loaded: ${modelId} in ${loadDuration.toFixed(0)}ms (${describeOpusMtExecutionConfig(loadedAttempt)})`
+  );
 
   // Store in LRU cache (may evict old models)
   cachePipeline(modelId, castAsPipeline(pipe));
 
   return castAsPipeline(pipe);
+}
+
+function countDebugSentences(text: string): number {
+  return text
+    .split(/(?<=[.!?])\s+/u)
+    .map(sentence => sentence.trim())
+    .filter(Boolean).length;
+}
+
+function logOpusMtProbeTranslation(
+  input: string,
+  translated: string,
+  context: { index?: number }
+): void {
+  if (!CONFIG.experimental.opusMtWebgpuProbe) {
+    return;
+  }
+
+  const inputSentences = countDebugSentences(input);
+  const outputSentences = countDebugSentences(translated);
+  const suspicious = inputSentences > 1 && outputSentences < inputSentences;
+  const shouldLog = suspicious || context.index === undefined || context.index < 3;
+
+  if (!shouldLog) {
+    return;
+  }
+
+  const label = context.index === undefined ? 'single' : `batch#${context.index}`;
+  log.info(
+    `[OPUS-MT probe] ${label}: chars=${input.length}->${translated.length}, sentences=${inputSentences}->${outputSentences}, inHead=${JSON.stringify(input.slice(0, 80))}, outHead=${JSON.stringify(translated.slice(0, 80))}, outTail=${JSON.stringify(translated.slice(-80))}`
+  );
+
+  if (suspicious) {
+    log.warn(
+      `[OPUS-MT probe] Possible multi-sentence truncation for ${label}: input sentences=${inputSentences}, output sentences=${outputSentences}`
+    );
+  }
 }
 
 /**
@@ -168,12 +223,13 @@ async function translateDirect(
         try {
           const result = await pipe(t, { max_length: 512 });
           const translated = (result as Array<{ translation_text: string }>)[0].translation_text;
-          /* v8 ignore start -- debug logging branch */
-          // Debug: log first 3 to verify model output
-          if (i < 3) {
+          if (CONFIG.experimental.opusMtWebgpuProbe) {
+            logOpusMtProbeTranslation(t, translated, { index: i });
+          } else {
+            /* v8 ignore start -- debug logging branch */
             log.debug(`Model #${i}: "${t.substring(0, 40)}" -> "${translated.substring(0, 40)}" (same=${t === translated})`);
+            /* v8 ignore stop */
           }
-          /* v8 ignore stop */
           return translated;
         } catch (error) {
           // Per-item error: return original text instead of crashing entire batch
@@ -199,6 +255,8 @@ async function translateDirect(
   if (!text || text.trim().length === 0) return text;
   /* v8 ignore stop */
   const result = await pipe(text, { max_length: 512 });
+  const translated = (result as Array<{ translation_text: string }>)[0].translation_text;
+  logOpusMtProbeTranslation(text, translated, {});
 
   const inferenceDuration = performance.now() - inferenceStart;
   if (sessionId) {
@@ -208,7 +266,7 @@ async function translateDirect(
     });
   }
 
-  return (result as Array<{ translation_text: string }>)[0].translation_text;
+  return translated;
 }
 
 /**
