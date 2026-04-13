@@ -98,6 +98,8 @@ import {
   createBatches,
 } from './translation-helpers';
 import {
+  maybeTranslatePageWithSiteTool,
+  maybeTranslateSelectionWithSiteTool,
   registerWebMcpTools,
   type WebMcpDetectionResult,
 } from './webmcp';
@@ -204,7 +206,10 @@ async function translateSelection(
   sourceLang: string,
   targetLang: string,
   strategy: Strategy,
-  provider?: string
+  provider?: string,
+  options: {
+    agentInvoked?: boolean;
+  } = {}
 ): Promise<void> {
   // Use deep selection to find text in shadow DOMs (e.g., LinkedIn chat)
   const selection = getDeepSelection();
@@ -222,9 +227,26 @@ async function translateSelection(
   }
 
   const sanitized = sanitizeText(text);
+  const range = selection.getRangeAt(0);
+
+  if (!options.agentInvoked) {
+    const siteToolResult = await maybeTranslateSelectionWithSiteTool({
+      sourceLang,
+      targetLang,
+      strategy,
+      provider,
+      text: sanitized,
+    });
+    if (siteToolResult) {
+      log.info(` Translated selection via site tool '${siteToolResult.toolName}'`);
+      showTranslationTooltip(siteToolResult.translatedText, range);
+      return;
+    }
+  }
 
   // Get surrounding context for better translation of ambiguous words
   const context = getSelectionContext();
+  const resolvedSourceLang = resolveSourceLang(sourceLang, sanitized);
 
   log.info('Translating selection with context:', {
     text: sanitized.substring(0, 50),
@@ -237,14 +259,12 @@ async function translateSelection(
     const g = await loadGlossary();
     const { processedText, restore } = await glossary.applyGlossary(sanitized, g);
 
-    const range = selection.getRangeAt(0);
-
     // Use port-based streaming for long texts so the tooltip updates progressively.
     if (processedText.length >= CONFIG.selection.streamThresholdChars) {
       try {
         const result = await translateWithStreaming(
           processedText,
-          sourceLang,
+          resolvedSourceLang,
           targetLang,
           provider,
           (partial) => {
@@ -262,7 +282,7 @@ async function translateSelection(
     const response = (await browserAPI.runtime.sendMessage({
       type: 'translate',
       text: processedText,
-      sourceLang,
+      sourceLang: resolvedSourceLang,
       targetLang,
       options: {
         strategy,
@@ -282,7 +302,7 @@ async function translateSelection(
   } catch (error) {
     log.error(' Translation error:', error);
     const message = extractErrorMessage(error, 'Unknown error');
-    showErrorTooltip(message, selection.getRangeAt(0));
+    showErrorTooltip(message, range);
   }
 }
 
@@ -1074,29 +1094,51 @@ function detectWebMcpLanguage(scope: 'page' | 'selection'): WebMcpDetectionResul
   };
 }
 
-async function startSelectionTranslation(settings: CurrentSettings): Promise<void> {
-  const sourceLang = resolveSourceLang(
-    settings.sourceLang,
-    getDeepSelectionText() || undefined
-  );
+async function startSelectionTranslation(
+  settings: CurrentSettings,
+  options: {
+    agentInvoked?: boolean;
+  } = {}
+): Promise<void> {
   await translateSelection(
-    sourceLang,
+    settings.sourceLang,
     settings.targetLang,
     settings.strategy,
-    settings.provider
+    settings.provider,
+    options
   );
 }
 
-async function startPageTranslation(settings: CurrentSettings): Promise<void> {
+async function startPageTranslation(
+  settings: CurrentSettings,
+  options: {
+    agentInvoked?: boolean;
+  } = {}
+): Promise<void> {
+  if (isPdfPage()) {
+    await initPdfTranslation(settings.targetLang);
+    return;
+  }
+
+  if (!options.agentInvoked) {
+    const siteToolResult = await maybeTranslatePageWithSiteTool({
+      sourceLang: settings.sourceLang,
+      targetLang: settings.targetLang,
+      strategy: settings.strategy,
+      provider: settings.provider,
+    });
+    if (siteToolResult) {
+      log.info(` Translated page via site tool '${siteToolResult.toolName}'`);
+      stopMutationObserver();
+      currentSettings = null;
+      return;
+    }
+  }
+
   const resolvedSettings: CurrentSettings = {
     ...settings,
     sourceLang: resolveSourceLang(settings.sourceLang),
   };
-
-  if (isPdfPage()) {
-    await initPdfTranslation(resolvedSettings.targetLang);
-    return;
-  }
 
   currentSettings = resolvedSettings;
   await translatePage(
@@ -1110,8 +1152,9 @@ async function startPageTranslation(settings: CurrentSettings): Promise<void> {
 
 const cleanupWebMcp = registerWebMcpTools({
   getCurrentSettings: async () => (await resolveEffectivePageSettings()).settings,
-  translatePage: startPageTranslation,
-  translateSelection: startSelectionTranslation,
+  translatePage: (settings) => startPageTranslation(settings, { agentInvoked: true }),
+  translateSelection: (settings) =>
+    startSelectionTranslation(settings, { agentInvoked: true }),
   hasSelectionText: () => getDeepSelectionText().length > 0,
   detectLanguage: detectWebMcpLanguage,
 });

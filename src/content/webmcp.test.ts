@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 import type { CurrentSettings } from './content-types';
-import { registerWebMcpTools } from './webmcp';
+import {
+  maybeTranslatePageWithSiteTool,
+  maybeTranslateSelectionWithSiteTool,
+  registerWebMcpTools,
+} from './webmcp';
 
 describe('registerWebMcpTools', () => {
   const defaultSettings: CurrentSettings = {
@@ -41,6 +45,7 @@ describe('registerWebMcpTools', () => {
 
   afterEach(() => {
     Reflect.deleteProperty(window.navigator, 'modelContext');
+    Reflect.deleteProperty(window.navigator, 'modelContextTesting');
   });
 
   it('returns null when navigator.modelContext is unavailable', () => {
@@ -139,5 +144,174 @@ describe('registerWebMcpTools', () => {
     for (const [, options] of registerTool.mock.calls) {
       expect(options.signal.aborted).toBe(true);
     }
+  });
+
+  it('prefers site selection tools over extension-owned tools', async () => {
+    const executeTool = vi.fn().mockResolvedValue({
+      content: [{ type: 'text', text: 'Hei maailma' }],
+    });
+    Object.defineProperty(window.navigator, 'modelContextTesting', {
+      value: {
+        listTools: vi.fn().mockResolvedValue([
+          {
+            name: 'translate_selection',
+            description: 'Translate the current selection. [translate-browser-extension]',
+          },
+          {
+            name: 'translateSelection',
+            description: 'Translate the current selection inside the page.',
+          },
+        ]),
+        executeTool,
+      },
+      configurable: true,
+    });
+
+    const result = await maybeTranslateSelectionWithSiteTool({
+      sourceLang: 'auto',
+      targetLang: 'fi',
+      strategy: 'smart',
+      text: 'Hello world',
+    });
+
+    expect(result).toEqual({
+      toolName: 'translateSelection',
+      translatedText: 'Hei maailma',
+    });
+    expect(executeTool).toHaveBeenCalledWith(
+      'translateSelection',
+      JSON.stringify({
+        sourceLang: 'auto',
+        targetLang: 'fi',
+        strategy: 'smart',
+        text: 'Hello world',
+      })
+    );
+  });
+
+  it('reserves canonical extension tool names for page and selection discovery', async () => {
+    const executeTool = vi.fn();
+    const listTools = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          name: 'translate_page',
+          description: 'Translate the current page using the site tool.',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          name: 'translate_selection',
+          description: 'Translate the current selection using the site tool.',
+        },
+      ]);
+    Object.defineProperty(window.navigator, 'modelContextTesting', {
+      value: { listTools, executeTool },
+      configurable: true,
+    });
+
+    await expect(
+      maybeTranslatePageWithSiteTool({
+        sourceLang: 'auto',
+        targetLang: 'fi',
+        strategy: 'smart',
+      })
+    ).resolves.toBeNull();
+    await expect(
+      maybeTranslateSelectionWithSiteTool({
+        sourceLang: 'auto',
+        targetLang: 'fi',
+        strategy: 'smart',
+        text: 'Hello world',
+      })
+    ).resolves.toBeNull();
+
+    expect(executeTool).not.toHaveBeenCalled();
+  });
+
+  it('discovers a page tool by description and parses structured results', async () => {
+    const executeTool = vi.fn().mockResolvedValue({
+      structuredContent: {
+        text: 'Translated 12 page items.',
+      },
+    });
+    Object.defineProperty(window.navigator, 'modelContextTesting', {
+      value: {
+        listTools: vi.fn().mockResolvedValue([
+          {
+            name: 'site-page-tool',
+            description: 'Translate the current document content in place.',
+          },
+          {
+            name: 'detect_language',
+            description: 'Detect page language.',
+          },
+        ]),
+        executeTool,
+      },
+      configurable: true,
+    });
+
+    const result = await maybeTranslatePageWithSiteTool({
+      sourceLang: 'auto',
+      targetLang: 'fi',
+      strategy: 'balanced',
+      provider: 'openai',
+    });
+
+    expect(result).toEqual({
+      toolName: 'site-page-tool',
+      summaryText: 'Translated 12 page items.',
+    });
+    expect(executeTool).toHaveBeenCalledWith(
+      'site-page-tool',
+      JSON.stringify({
+        sourceLang: 'auto',
+        targetLang: 'fi',
+        strategy: 'balanced',
+        provider: 'openai',
+      })
+    );
+  });
+
+  it('returns null when helper discovery or execution fails', async () => {
+    const executeTool = vi.fn().mockRejectedValue(new Error('boom'));
+    Object.defineProperty(window.navigator, 'modelContextTesting', {
+      value: {
+        listTools: vi.fn().mockResolvedValue([
+          {
+            name: 'translateSelection',
+            description: 'Translate the current selection inside the page.',
+          },
+        ]),
+        executeTool,
+      },
+      configurable: true,
+    });
+
+    await expect(
+      maybeTranslateSelectionWithSiteTool({
+        sourceLang: 'auto',
+        targetLang: 'fi',
+        strategy: 'smart',
+        text: 'Hello world',
+      })
+    ).resolves.toBeNull();
+
+    Object.defineProperty(window.navigator, 'modelContextTesting', {
+      value: {
+        listTools: vi.fn().mockRejectedValue(new Error('list failed')),
+        executeTool,
+      },
+      configurable: true,
+    });
+
+    await expect(
+      maybeTranslatePageWithSiteTool({
+        sourceLang: 'auto',
+        targetLang: 'fi',
+        strategy: 'smart',
+      })
+    ).resolves.toBeNull();
   });
 });

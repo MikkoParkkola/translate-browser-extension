@@ -72,6 +72,8 @@ describe('Content Script', () => {
     // Clean up any tooltips
     const tooltip = document.getElementById('translate-tooltip');
     if (tooltip) tooltip.remove();
+    Reflect.deleteProperty(window.navigator, 'modelContext');
+    Reflect.deleteProperty(window.navigator, 'modelContextTesting');
   });
 
   describe('initialization', () => {
@@ -2101,6 +2103,168 @@ describe('Content Script', () => {
       expect(mockSendMessage).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'translate', targetLang: 'en' })
       );
+    });
+
+    it('delegates selection translation to a site WebMCP tool before extension scraping', async () => {
+      const p = document.createElement('p');
+      p.textContent = 'Bonjour le monde';
+      document.body.appendChild(p);
+      const textNode = p.firstChild!;
+
+      const mockRange = {
+        getBoundingClientRect: () => ({ top: 50, bottom: 70, left: 10, right: 200, width: 190, height: 20 }),
+        commonAncestorContainer: textNode,
+      };
+      const mockSelection = {
+        isCollapsed: false,
+        toString: () => 'Bonjour le monde',
+        getRangeAt: () => mockRange,
+        rangeCount: 1,
+      };
+      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+
+      const executeTool = vi.fn().mockResolvedValue({
+        content: [{ type: 'text', text: 'Hello world' }],
+      });
+      Object.defineProperty(window.navigator, 'modelContextTesting', {
+        value: {
+          listTools: vi.fn().mockResolvedValue([
+            {
+              name: 'translateSelection',
+              description: 'Translate the current selection inside the page.',
+            },
+          ]),
+          executeTool,
+        },
+        configurable: true,
+      });
+
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translateSelection', sourceLang: 'auto', targetLang: 'en', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+      await new Promise((r) => setTimeout(r, 80));
+
+      expect(executeTool).toHaveBeenCalledWith(
+        'translateSelection',
+        JSON.stringify({
+          sourceLang: 'auto',
+          targetLang: 'en',
+          strategy: 'balanced',
+          text: 'Bonjour le monde',
+        })
+      );
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect(document.getElementById('translate-tooltip')?.textContent).toContain('Hello world');
+    });
+
+    it('delegates page translation to a site WebMCP tool before extension DOM translation', async () => {
+      document.body.innerHTML = '<p id="page-text">Hello world</p>';
+      const executeTool = vi.fn().mockResolvedValue({
+        content: [{ type: 'text', text: 'Handled by site tool' }],
+      });
+      Object.defineProperty(window.navigator, 'modelContextTesting', {
+        value: {
+          listTools: vi.fn().mockResolvedValue([
+            {
+              name: 'site-page-tool',
+              description: 'Translate the current document content in place.',
+            },
+          ]),
+          executeTool,
+        },
+        configurable: true,
+      });
+
+      const sendResponse = vi.fn();
+      messageHandler(
+        { type: 'translatePage', sourceLang: 'auto', targetLang: 'fi', strategy: 'balanced' },
+        {},
+        sendResponse
+      );
+      await new Promise((r) => setTimeout(r, 80));
+
+      expect(executeTool).toHaveBeenCalledWith(
+        'site-page-tool',
+        JSON.stringify({
+          sourceLang: 'auto',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        })
+      );
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect(document.getElementById('page-text')?.textContent).toBe('Hello world');
+      expect(document.getElementById('page-text')?.getAttribute('data-translated')).toBeNull();
+    });
+
+    it('does not delegate back to site tools when extension WebMCP tools are invoked', async () => {
+      vi.resetModules();
+      vi.clearAllMocks();
+
+      document.body.innerHTML = '<p id="selection-text">Bonjour le monde</p><div>Page text</div>';
+      const textNode = document.getElementById('selection-text')?.firstChild as Text;
+      const mockRange = {
+        getBoundingClientRect: () => ({ top: 50, bottom: 70, left: 10, right: 200, width: 190, height: 20 }),
+        commonAncestorContainer: textNode,
+      };
+      const mockSelection = {
+        isCollapsed: false,
+        toString: () => 'Bonjour le monde',
+        getRangeAt: () => mockRange,
+        rangeCount: 1,
+      };
+      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+
+      const registerTool = vi.fn();
+      const executeTool = vi.fn().mockResolvedValue({
+        content: [{ type: 'text', text: 'Should not run' }],
+      });
+      Object.defineProperty(window.navigator, 'modelContext', {
+        value: { registerTool },
+        configurable: true,
+      });
+      Object.defineProperty(window.navigator, 'modelContextTesting', {
+        value: {
+          listTools: vi.fn().mockResolvedValue([
+            {
+              name: 'translatePage',
+              description: 'Translate the current document content in place.',
+            },
+            {
+              name: 'translateSelection',
+              description: 'Translate the current selection inside the page.',
+            },
+          ]),
+          executeTool,
+        },
+        configurable: true,
+      });
+
+      mockSendMessage.mockImplementation((message: { text?: string | string[] }) => {
+        if (Array.isArray(message.text)) {
+          return Promise.resolve({
+            success: true,
+            result: message.text.map(() => 'Käännetty'),
+          });
+        }
+        return Promise.resolve({ success: true, result: 'Hello world' });
+      });
+
+      await import('./index');
+
+      const translatePageTool = registerTool.mock.calls.find(([tool]) => tool.name === 'translate_page')?.[0];
+      const translateSelectionTool = registerTool.mock.calls.find(([tool]) => tool.name === 'translate_selection')?.[0];
+
+      expect(translatePageTool).toBeDefined();
+      expect(translateSelectionTool).toBeDefined();
+
+      await translatePageTool.execute({ sourceLanguage: 'auto', targetLanguage: 'fi' });
+      await translateSelectionTool.execute({ sourceLanguage: 'auto', targetLanguage: 'en' });
+
+      expect(executeTool).not.toHaveBeenCalled();
+      expect(mockSendMessage).toHaveBeenCalled();
     });
   });
 
