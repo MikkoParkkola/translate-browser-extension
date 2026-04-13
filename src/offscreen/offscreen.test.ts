@@ -19,6 +19,7 @@ import {
   resolveOpusMtExecutionConfig,
   selectOpusMtDtype,
 } from '../shared/opus-mt-runtime';
+import { CONFIG } from '../config';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -283,6 +284,7 @@ function dispatch(message: Record<string, unknown>): Promise<Record<string, unkn
 // ---------------------------------------------------------------------------
 beforeEach(() => {
   vi.clearAllMocks();
+  (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = false;
 
   // Re-apply defaults after clearAllMocks wipes return values
   mockGetCachedPipeline.mockReturnValue(null);
@@ -621,6 +623,27 @@ describe('offscreen message handler', () => {
       expect(r.success).toBe(true);
       expect(r.result).toBe('Hallo Welt');
       expect(pipe).toHaveBeenCalledWith('Hello World', { max_length: 512 });
+    });
+
+    it('splits multi-sentence probe input into per-sentence pipeline calls', async () => {
+      (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = true;
+      const pipe = vi.fn()
+        .mockResolvedValueOnce([{ translation_text: 'Ensimmäinen lause.' }])
+        .mockResolvedValueOnce([{ translation_text: 'Toinen lause.' }]);
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'First sentence. Second sentence.',
+        sourceLang: 'en',
+        targetLang: 'fi',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toBe('Ensimmäinen lause. Toinen lause.');
+      expect(pipe).toHaveBeenNthCalledWith(1, 'First sentence.', { max_length: 512 });
+      expect(pipe).toHaveBeenNthCalledWith(2, 'Second sentence.', { max_length: 512 });
     });
 
     it('returns empty string unchanged (no pipeline call)', async () => {

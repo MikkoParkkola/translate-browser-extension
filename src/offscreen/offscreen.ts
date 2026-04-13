@@ -22,6 +22,10 @@ import {
   buildOpusMtExecutionPlan,
   describeOpusMtExecutionConfig,
 } from '../shared/opus-mt-runtime';
+import {
+  countOpusMtSentences,
+  translateOpusMtText,
+} from '../shared/opus-mt-segmentation';
 
 // Cloud providers
 import { deeplProvider } from '../providers/deepl';
@@ -175,13 +179,6 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   return castAsPipeline(pipe);
 }
 
-function countDebugSentences(text: string): number {
-  return text
-    .split(/(?<=[.!?])\s+/u)
-    .map(sentence => sentence.trim())
-    .filter(Boolean).length;
-}
-
 function logOpusMtProbeTranslation(
   input: string,
   translated: string,
@@ -191,8 +188,8 @@ function logOpusMtProbeTranslation(
     return;
   }
 
-  const inputSentences = countDebugSentences(input);
-  const outputSentences = countDebugSentences(translated);
+  const inputSentences = countOpusMtSentences(input);
+  const outputSentences = countOpusMtSentences(translated);
   const suspicious = inputSentences > 1 && outputSentences < inputSentences;
   const shouldLog = suspicious || context.index === undefined || context.index < 3;
 
@@ -210,6 +207,22 @@ function logOpusMtProbeTranslation(
       `[OPUS-MT probe] Possible multi-sentence truncation for ${label}: input sentences=${inputSentences}, output sentences=${outputSentences}`
     );
   }
+}
+
+async function translateProbeAwareText(
+  pipe: TranslationPipeline,
+  text: string,
+  context: { index?: number }
+): Promise<string> {
+  return translateOpusMtText(pipe, text, {
+    splitMultiSentence: CONFIG.experimental.opusMtWebgpuProbe,
+    onSplit: (segmentCount) => {
+      const label = context.index === undefined ? 'single' : `batch#${context.index}`;
+      log.info(
+        `[OPUS-MT probe] ${label}: split ${segmentCount} input sentences into per-sentence inference calls`
+      );
+    },
+  });
 }
 
 /**
@@ -237,8 +250,7 @@ async function translateDirect(
         if (!t || t.trim().length === 0) return t;
         /* v8 ignore stop */
         try {
-          const result = await pipe(t, { max_length: 512 });
-          const translated = (result as Array<{ translation_text: string }>)[0].translation_text;
+          const translated = await translateProbeAwareText(pipe, t, { index: i });
           if (CONFIG.experimental.opusMtWebgpuProbe) {
             logOpusMtProbeTranslation(t, translated, { index: i });
           } else {
@@ -270,8 +282,7 @@ async function translateDirect(
   /* v8 ignore start -- empty string guard */
   if (!text || text.trim().length === 0) return text;
   /* v8 ignore stop */
-  const result = await pipe(text, { max_length: 512 });
-  const translated = (result as Array<{ translation_text: string }>)[0].translation_text;
+  const translated = await translateProbeAwareText(pipe, text, {});
   logOpusMtProbeTranslation(text, translated, {});
 
   const inferenceDuration = performance.now() - inferenceStart;

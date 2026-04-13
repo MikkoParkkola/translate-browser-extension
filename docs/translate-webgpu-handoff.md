@@ -15,6 +15,7 @@
 - The Vite build now patches the published `transformers.web.js` bundle so a failed browser-side ONNX session load does not poison later fallback attempts in the same extension context.
 - Extension packaging now copies the ONNX Runtime `ort-wasm*` loader/runtime files from `onnxruntime-web/dist`, which v4 imports dynamically at runtime.
 - Probe builds now log OPUS-MT input/output sentence counts and head/tail excerpts so two-sentence truncation is easier to reproduce and compare across runtimes.
+- Probe builds now route multi-sentence OPUS-MT inputs through sentence-level inference calls, which keeps the WebGPU probe active while avoiding the reproduced English→Finnish truncation/collapse pattern.
 
 ## Probe contract
 
@@ -40,10 +41,11 @@ Observed on this macOS machine in Chromium with a real extension build:
 - `checkWebGPU` reports `supported=true` and `fp16=true`
 - probe-enabled build (`VITE_OPUS_MT_WEBGPU_PROBE=true`) now loads and translates after the packaging fix
 - first probe translation took about 79s cold, and a same-session offline follow-up completed in about 0.5s
-- the probe output quality is not yet trustworthy enough to ship by default: a two-sentence input returned only the second translated sentence
+- before the sentence-level probe guard, the probe output quality was not trustworthy enough to ship by default: a two-sentence `en -> fi` input returned only one translated sentence, and a four-sentence sample collapsed into one merged sentence
 - the default v4 `wasm + q8` path is currently not safe on this machine: ONNX Runtime session creation fails with `Missing required scale: model.shared.weight_merged_0_scale`
 - the first retry investigation found an upstream Transformers.js v4 web-bundle bug: after one failed ONNX session load, `webInitChain` stays rejected and later fallback attempts inherit the same failure instead of starting a fresh load
 - after patching that published web bundle during the Vite build, the same Chrome offscreen probe succeeded via the intended `wasm + fp32` fallback (`Hello world. I like apples. This is a test.` → `Hallo Welt. Ich mag Äpfel. Dies ist ein Test.`)
 - a normal extension-page `type: 'translate'` request now also succeeds on the same build in about 50s cold, which confirms the workaround is active on the user-facing Chrome background/offscreen path as well
+- with the new sentence-level probe guard in place, the same live options-page path now returns full multi-sentence outputs for the previously bad `en -> fi` cases (`First sentence. Second sentence.` → `Ensimmäinen lause. Toinen lause.` and a four-sentence sample returning four Finnish sentences), while `en -> de` still returns a full three-sentence result on the probe build
 
-Current recommendation: keep this PR draft until the WebGPU truncation issue is understood well enough to decide whether v4 can ship with the new `q8 -> fp32` fallback path and its current cold-start cost.
+Current recommendation: keep this PR draft until a broader probe matrix is rerun, but the previously reproduced English→Finnish multi-sentence WebGPU failure is now mitigated well enough to keep evaluating the v4 probe path instead of treating that specific repro as an active blocker.

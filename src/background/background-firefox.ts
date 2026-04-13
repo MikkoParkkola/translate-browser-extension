@@ -41,6 +41,7 @@ import {
   buildOpusMtExecutionPlan,
   describeOpusMtExecutionConfig,
 } from '../shared/opus-mt-runtime';
+import { translateOpusMtText } from '../shared/opus-mt-segmentation';
 import {
   assertNever,
   isExtensionMessage,
@@ -224,8 +225,14 @@ async function translateDirect(
       text.map(async (t) => {
         /* v8 ignore start */
         if (!t || t.trim().length === 0) return t;
-        const result = await pipe(t, { max_length: 512 });
-        return (result as Array<{ translation_text: string }>)[0].translation_text;
+        return translateOpusMtText(pipe, t, {
+          splitMultiSentence: CONFIG.experimental.opusMtWebgpuProbe,
+          onSplit: (segmentCount) => {
+            log.info(
+              `Probe build: split ${sourceLang}->${targetLang} batch item into ${segmentCount} per-sentence inference calls`
+            );
+          },
+        });
         /* v8 ignore stop */
       })
     );
@@ -235,8 +242,14 @@ async function translateDirect(
   /* v8 ignore start */
   if (!text || text.trim().length === 0) return text;
   /* v8 ignore stop */
-  const result = await pipe(text, { max_length: 512 });
-  return (result as Array<{ translation_text: string }>)[0].translation_text;
+  return translateOpusMtText(pipe, text, {
+    splitMultiSentence: CONFIG.experimental.opusMtWebgpuProbe,
+    onSplit: (segmentCount) => {
+      log.info(
+        `Probe build: split ${sourceLang}->${targetLang} input into ${segmentCount} per-sentence inference calls`
+      );
+    },
+  });
 }
 
 async function translateWithProvider(

@@ -209,6 +209,9 @@ beforeEach(async () => {
   (translategemma.getTranslateGemmaPipeline as ReturnType<typeof vi.fn>).mockResolvedValue({
     model: {}, tokenizer: {},
   });
+
+  const { CONFIG } = await import('../config');
+  (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = false;
 });
 
 // ============================================================================

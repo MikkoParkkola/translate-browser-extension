@@ -16,12 +16,13 @@ import {
   describeOpusMtExecutionConfig,
   resolveOpusMtExecutionConfig,
 } from '../shared/opus-mt-runtime';
-import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
+import { translateOpusMtText } from '../shared/opus-mt-segmentation';
+import type { TranslationOptions, LanguagePair, ProviderConfig, TranslationPipeline } from '../types';
 
 const log = createLogger('OPUS-MT');
 
 // Dynamic imports for Transformers.js
-type Pipeline = (text: string, options?: Record<string, unknown>) => Promise<Array<{ translation_text: string }>>;
+type Pipeline = TranslationPipeline;
 
 // Supported language pairs with Xenova quantized models
 const SUPPORTED_PAIRS: Record<string, string> = {
@@ -245,13 +246,19 @@ export class OpusMTProvider extends BaseProvider {
     }
 
     try {
-      const result = await pipe(text, {
-        src_lang: sourceLang,
-        tgt_lang: targetLang,
-        max_length: 512,
+      return await translateOpusMtText(pipe, text, {
+        splitMultiSentence: CONFIG.experimental.opusMtWebgpuProbe,
+        onSplit: (segmentCount) => {
+          log.info(
+            `Probe build: split ${sourceLang}->${targetLang} input into ${segmentCount} per-sentence inference calls`
+          );
+        },
+        pipelineOptions: {
+          src_lang: sourceLang,
+          tgt_lang: targetLang,
+          max_length: 512,
+        },
       });
-
-      return result[0].translation_text;
     } catch (error) {
       log.error('Single translation error:', error);
       throw error;
