@@ -584,6 +584,7 @@ async function handleTranslate(message: TranslateMessage): Promise<TranslateResp
           success: true,
           result: cached.result,
           duration,
+          cached: true,
         } as TranslateResponse & { cached: boolean };
       }
 
