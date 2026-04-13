@@ -4,7 +4,7 @@
  */
 
 import type { TranslationProviderId, TranslationPipeline } from '../types';
-import { extractErrorMessage } from '../core/errors';
+import { createTranslationError, extractErrorMessage } from '../core/errors';
 import { getTranslationCache, type TranslationCacheStats } from '../core/translation-cache';
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
@@ -112,8 +112,10 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   let pipe: unknown;
   let loadedAttempt = attempts[0];
   let lastError: unknown;
+  const attemptErrors: string[] = [];
   for (const attempt of attempts) {
     const label = describeOpusMtExecutionConfig(attempt);
+    const attemptFiles = new Set<string>();
     log.info(
       ` Trying ${label}: device=${attempt.device}, dtype=${attempt.dtype}, reason=${attempt.reason}`
     );
@@ -122,6 +124,11 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
         (await getTransformers()).pipeline('translation', modelId, {
           device: attempt.device,
           dtype: attempt.dtype,
+          progress_callback: (progress: { file?: string | null }) => {
+            if (typeof progress.file === 'string' && progress.file.length > 0) {
+              attemptFiles.add(progress.file);
+            }
+          },
         } as Record<string, unknown>),
         CONFIG.timeouts.opusMtDirectMs,
         `Loading model ${modelId}`
@@ -130,13 +137,22 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
       break;
     } catch (error) {
       lastError = error;
-      log.warn(` ${label} failed for ${modelId}: ${extractErrorMessage(error)}`);
+      const errorMessage = extractErrorMessage(error);
+      const fileSuffix = attemptFiles.size > 0
+        ? ` [files: ${Array.from(attemptFiles).join(', ')}]`
+        : '';
+      attemptErrors.push(`${label}${fileSuffix}: ${errorMessage}`);
+      log.warn(` ${label} failed for ${modelId}: ${errorMessage}`);
     }
   }
 
   if (!pipe) {
     /* v8 ignore start -- defensive rethrow */
-    throw lastError;
+    throw new Error(
+      attemptErrors.length > 0
+        ? `Failed to load model ${modelId}. Attempts: ${attemptErrors.join(' | ')}`
+        : extractErrorMessage(lastError, `Failed to load model ${modelId}`)
+    );
     /* v8 ignore stop */
   }
 
@@ -806,20 +822,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           sendResponse({ success: false, error: `Unknown type: ${message.type}` });
       }
     } catch (error) {
-      log.error(' Error:', error);
+      const translationError = createTranslationError(error);
+      log.error(' Error:', translationError.technicalDetails);
       sendResponse({
         success: false,
-        /* v8 ignore start -- instanceof ternary */
-        error: extractErrorMessage(error)
-        /* v8 ignore stop */
+        error: translationError.technicalDetails,
+        translationError,
       });
     }
   })().catch((error) => {
-    log.error('Unhandled offscreen listener error:', error);
+    const translationError = createTranslationError(error);
+    log.error('Unhandled offscreen listener error:', translationError.technicalDetails);
     try {
       sendResponse({
         success: false,
-        error: extractErrorMessage(error),
+        error: translationError.technicalDetails,
+        translationError,
       });
     } catch (responseError) {
       log.error('Failed to send offscreen fallback error response:', responseError);

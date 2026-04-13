@@ -704,6 +704,27 @@ describe('offscreen message handler', () => {
       expect(r.error).toBeDefined();
     });
 
+    it('returns structured translationError details for pipeline failures', async () => {
+      const pipe = vi.fn().mockRejectedValue(new Error('operation timed out'));
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(false);
+      expect(r.error).toBe('operation timed out');
+      expect(r.translationError).toMatchObject({
+        category: 'timeout',
+        technicalDetails: 'operation timed out',
+        retryable: true,
+      });
+    });
+
     it('stores result in cache after translation', async () => {
       const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Bonjour' }]);
       mockGetCachedPipeline.mockReturnValue(pipe);
@@ -1453,6 +1474,29 @@ describe('offscreen message handler', () => {
         'Xenova/opus-mt-en-fr',
         expect.objectContaining({ device: 'wasm', dtype: 'fp32' })
       );
+    });
+
+    it('surfaces both q8 and fp32 load failures when all attempts fail', async () => {
+      const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+      (mockPipeline as ReturnType<typeof vi.fn>)
+        .mockRejectedValueOnce(new Error('Missing required scale'))
+        .mockRejectedValueOnce(new Error('Missing required scale'));
+      mockGetCachedPipeline.mockReturnValue(null);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'fr',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(false);
+      expect(r.error).toContain('WASM+q8: Missing required scale');
+      expect(r.error).toContain('WASM+fp32 diagnostic fallback: Missing required scale');
+      expect(r.translationError).toMatchObject({
+        category: 'model',
+      });
     });
   });
 

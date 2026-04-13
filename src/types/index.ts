@@ -2,6 +2,8 @@
  * Core type definitions for the translation extension
  */
 
+import type { TranslationError } from '../core/errors';
+
 // ML translation pipeline (Transformers.js OPUS-MT / TranslateGemma)
 export interface TranslationPipeline {
   (text: string, options?: { max_length?: number }): Promise<
@@ -161,6 +163,7 @@ export interface TranslateResponse {
   success: boolean;
   result?: string | string[];
   error?: string;
+  translationError?: TranslationError;
   provider?: TranslationProviderId;
   duration?: number;
   cached?: boolean;

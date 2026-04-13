@@ -1,8 +1,38 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+import type { TransformPluginContext } from 'rollup';
 import solidPlugin from 'vite-plugin-solid';
 import { resolve } from 'path';
 import { copyFileSync, mkdirSync, existsSync, cpSync, readdirSync } from 'fs';
 import { sharedManualChunks } from './vite.shared';
+
+// Transformers.js 4.0.1 poisons the browser-side init chain after a failed
+// ONNX session load, so later fallback attempts inherit the same rejection
+// instead of starting a fresh load. Patch the published web bundle at build
+// time until upstream ships a release with the fix.
+function patchTransformersWebInitChain(): Plugin {
+  const target = '/@huggingface/transformers/dist/transformers.web.js';
+  const search = 'webInitChain = webInitChain.then(load)';
+  const replacement = 'webInitChain = webInitChain.catch(() => void 0).then(load)';
+
+  return {
+    name: 'patch-transformers-web-init-chain',
+    enforce: 'pre' as const,
+    transform(this: TransformPluginContext, code: string, id: string) {
+      if (!id.includes(target)) {
+        return null;
+      }
+
+      if (!code.includes(search)) {
+        this.error('Expected Transformers.js web init chain not found for patching');
+      }
+
+      return {
+        code: code.replace(search, replacement),
+        map: null,
+      };
+    },
+  };
+}
 
 // Plugin to copy manifest.json and ONNX Runtime files to dist
 function copyExtensionFiles() {
@@ -89,7 +119,7 @@ function copyExtensionFiles() {
 }
 
 export default defineConfig({
-  plugins: [solidPlugin(), copyExtensionFiles()],
+  plugins: [patchTransformersWebInitChain(), solidPlugin(), copyExtensionFiles()],
   // Chrome extensions need relative paths, not root-absolute
   base: '',
   resolve: {

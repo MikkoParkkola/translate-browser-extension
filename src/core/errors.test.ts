@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   createTranslationError,
+  extractErrorMessage,
   calculateRetryDelay,
   withRetry,
   validateInput,
@@ -39,6 +40,14 @@ describe('createTranslationError', () => {
       const error = createTranslationError(new Error('model download failed'));
       expect(error.category).toBe('model');
       expect(error.retryable).toBe(true);
+      expect(error.message).toBe('Translation model failed to load');
+    });
+
+    it('categorizes missing-scale ONNX session errors as model failures', () => {
+      const error = createTranslationError(new Error(
+        "Can't create a session. ERROR_CODE: 1, ERROR_MESSAGE: qdq_actions.cc:137 TransposeDQWeightsForMatMulNBits Missing required scale"
+      ));
+      expect(error.category).toBe('model');
       expect(error.message).toBe('Translation model failed to load');
     });
 
@@ -157,6 +166,19 @@ describe('createTranslationError', () => {
       const error = createTranslationError({ code: 123, message: 'test' });
       // String() is used, not JSON.stringify, so we get [object Object]
       expect(error.technicalDetails).toBe('[object Object]');
+    });
+
+    it('passes through existing TranslationError objects', () => {
+      const existing = {
+        category: 'timeout',
+        message: 'Translation request timed out',
+        technicalDetails: 'Loading model Xenova/opus-mt-en-de timed out after 60000ms',
+        retryable: true,
+        suggestion: 'Try again.',
+      } as const;
+
+      expect(createTranslationError(existing)).toBe(existing);
+      expect(extractErrorMessage(existing)).toBe(existing.technicalDetails);
     });
   });
 });

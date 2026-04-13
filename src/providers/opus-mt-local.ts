@@ -150,6 +150,7 @@ export class OpusMTProvider extends BaseProvider {
     );
 
     let lastError: Error | null = null;
+    const attemptErrors: string[] = [];
 
     for (const attempt of attempts) {
       const label = describeOpusMtExecutionConfig(attempt);
@@ -168,6 +169,7 @@ export class OpusMTProvider extends BaseProvider {
         return pipe;
       } catch (error) {
         const errMsg = extractErrorMessage(error);
+        attemptErrors.push(`${label}: ${errMsg}`);
         log.warn(`${label} failed: ${errMsg}`);
         lastError = error instanceof Error ? error : new Error(errMsg);
       }
@@ -175,7 +177,11 @@ export class OpusMTProvider extends BaseProvider {
 
     log.error(`All attempts failed for ${modelId}`);
     /* v8 ignore start */
-    throw lastError ?? new Error(`Failed to load model ${modelId}`);
+    throw lastError ?? new Error(
+      attemptErrors.length > 0
+        ? `Failed to load model ${modelId}. Attempts: ${attemptErrors.join(' | ')}`
+        : `Failed to load model ${modelId}`
+    );
     /* v8 ignore stop */
   }
 

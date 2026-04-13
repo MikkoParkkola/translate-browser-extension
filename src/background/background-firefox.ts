@@ -173,6 +173,7 @@ async function getPipeline(sourceLang: string, targetLang: string): Promise<Tran
   const attempts = buildOpusMtExecutionPlan(webgpu, CONFIG.experimental.opusMtWebgpuProbe);
   let pipe: unknown;
   let lastError: unknown;
+  const attemptErrors: string[] = [];
 
   for (const attempt of attempts) {
     const label = describeOpusMtExecutionConfig(attempt);
@@ -190,13 +191,19 @@ async function getPipeline(sourceLang: string, targetLang: string): Promise<Tran
       break;
     } catch (error) {
       lastError = error;
-      log.warn(`${label} failed for ${modelId}: ${extractErrorMessage(error)}`);
+      const errorMessage = extractErrorMessage(error);
+      attemptErrors.push(`${label}: ${errorMessage}`);
+      log.warn(`${label} failed for ${modelId}: ${errorMessage}`);
     }
   }
 
   if (!pipe) {
     /* v8 ignore start */
-    throw lastError;
+    throw new Error(
+      attemptErrors.length > 0
+        ? `Failed to load model ${modelId}. Attempts: ${attemptErrors.join(' | ')}`
+        : extractErrorMessage(lastError, `Failed to load model ${modelId}`)
+    );
     /* v8 ignore stop */
   }
 
