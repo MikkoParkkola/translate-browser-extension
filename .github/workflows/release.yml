@@ -21,7 +21,12 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Inject Extension ID
-        run: sed -i "s/YOUR_EXTENSION_ID/${{ secrets.EXTENSION_ID }}/g" updates.xml
+        # TX-02: EXTENSION_ID passed via env var, not inline interpolation.
+        # Inline ${{ secrets.EXTENSION_ID }} in a run: string is a script-injection
+        # anti-pattern — special characters in the value break the sed command.
+        env:
+          EXTENSION_ID: ${{ secrets.EXTENSION_ID }}
+        run: sed -i "s/YOUR_EXTENSION_ID/${EXTENSION_ID}/g" updates.xml
       - uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1 branch
         with:
           publish: npm publish

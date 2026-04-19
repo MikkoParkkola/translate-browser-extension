@@ -22,18 +22,27 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Decode signing key
+      - name: Decode, sign, and clean
+        # TX-01: key.pem is removed via EXIT trap even if signing fails mid-step.
+        # Previously rm was a separate step; a signing failure would leave key.pem
+        # on disk and risk inclusion in any subsequent artifact upload.
         env:
           CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
         run: |
+          trap "rm -f key.pem" EXIT
           echo "$CRX_PRIVATE_KEY" | base64 -d > key.pem
-      - name: Package and sign extension
-        run: |
           VERSION=$(jq -r .version src/manifest.json)
           NAME="translate-by-mikko-extension-${VERSION}"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "NAME=$NAME" >> "$GITHUB_ENV"
           npx -y crx pack dist -o "$NAME.crx" --zip-output "$NAME.zip" -p key.pem
+          # NOTE: CRX_PRIVATE_KEY secret rotation steps (TX-01):
+          #   1. Generate new key: openssl genrsa -out new_key.pem 2048
+          #   2. base64-encode: base64 -i new_key.pem | tr -d '\n'
+          #   3. Update repo secret CRX_PRIVATE_KEY with the encoded value
+          #   4. Revoke/replace old key in Chrome Web Store developer settings
+          # The old key is not revocable from GHA; only the CWS developer
+          # dashboard controls which key is trusted for your extension ID.
       - name: Prepare update files
         run: |
           printf '%s\n' \
@@ -50,4 +59,4 @@ jobs:
           git add updates.xml "${NAME}.crx" "${NAME}.zip"
           git commit -m "chore: update dev build [skip ci]" || echo "No changes to commit"
           git push
-      - run: rm key.pem
+      # key.pem cleanup is handled by the EXIT trap in the 'Decode, sign, and clean' step above.
