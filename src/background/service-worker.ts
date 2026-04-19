@@ -34,7 +34,7 @@ import { CONFIG } from '../config';
 import { profiler, type AggregateStats } from '../core/profiler';
 import { sleep } from '../core/async-utils';
 import { splitIntoSentences } from '../core/text-utils';
-import { normalizeTranslationProviderId } from '../shared/provider-options';
+import { getProviderDefinition, normalizeTranslationProviderId } from '../shared/provider-options';
 import {
   assertNever,
   isExtensionMessage,
@@ -269,6 +269,26 @@ const OFFSCREEN_RETRY_CONFIG: Partial<RetryConfig> = {
   baseDelayMs: CONFIG.retry.offscreen.baseDelayMs,
   maxDelayMs: CONFIG.retry.offscreen.maxDelayMs,
 };
+
+function isRetriableLocalOffscreenFailure(error: TranslationError): boolean {
+  return /offscreen communication timeout|no response from translation engine|message port closed|receiving end does not exist|could not establish connection|extension context invalidated|translation engine reset/i
+    .test(error.technicalDetails);
+}
+
+function shouldRetryOffscreenTranslationError(
+  error: TranslationError,
+  provider: TranslationProviderId
+): boolean {
+  if (!error.retryable || !error.technicalDetails) {
+    return false;
+  }
+
+  if (getProviderDefinition(provider).type === 'local') {
+    return isRetriableLocalOffscreenFailure(error);
+  }
+
+  return true;
+}
 
 /**
  * Create or verify offscreen document exists
@@ -1243,6 +1263,7 @@ async function handleTranslateInner(message: {
           success: boolean;
           result?: string | string[];
           error?: unknown;
+          translationError?: TranslationError;
           profilingData?: object;
         }>({
           type: 'translate',
@@ -1259,6 +1280,10 @@ async function handleTranslateInner(message: {
         }
 
         if (!result.success) {
+          if (result.translationError) {
+            throw result.translationError;
+          }
+
           /* v8 ignore start -- typeof + instanceof ternary chain + || */
           const errorMsg = typeof result.error === 'string'
             ? result.error
@@ -1273,7 +1298,7 @@ async function handleTranslateInner(message: {
       },
       NETWORK_RETRY_CONFIG,
       (error: TranslationError) => {
-        return error.retryable !== false && !!(error.technicalDetails);
+        return shouldRetryOffscreenTranslationError(error, provider);
       }
     );
 

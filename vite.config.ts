@@ -1,8 +1,38 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+import type { TransformPluginContext } from 'rollup';
 import solidPlugin from 'vite-plugin-solid';
 import { resolve } from 'path';
-import { copyFileSync, mkdirSync, existsSync, cpSync } from 'fs';
+import { copyFileSync, mkdirSync, existsSync, cpSync, readdirSync } from 'fs';
 import { sharedManualChunks } from './vite.shared';
+
+// Transformers.js 4.0.1 poisons the browser-side init chain after a failed
+// ONNX session load, so later fallback attempts inherit the same rejection
+// instead of starting a fresh load. Patch the published web bundle at build
+// time until upstream ships a release with the fix.
+function patchTransformersWebInitChain(): Plugin {
+  const target = '/@huggingface/transformers/dist/transformers.web.js';
+  const search = 'webInitChain = webInitChain.then(load)';
+  const replacement = 'webInitChain = webInitChain.catch(() => void 0).then(load)';
+
+  return {
+    name: 'patch-transformers-web-init-chain',
+    enforce: 'pre' as const,
+    transform(this: TransformPluginContext, code: string, id: string) {
+      if (!id.includes(target)) {
+        return null;
+      }
+
+      if (!code.includes(search)) {
+        this.error('Expected Transformers.js web init chain not found for patching');
+      }
+
+      return {
+        code: code.replace(search, replacement),
+        map: null,
+      };
+    },
+  };
+}
 
 // Plugin to copy manifest.json and ONNX Runtime files to dist
 function copyExtensionFiles() {
@@ -40,19 +70,18 @@ function copyExtensionFiles() {
         }
       }
 
-      // Copy ONNX Runtime WASM files from transformers package
-      // These are needed for local inference without CDN
-      const transformersDir = resolve(
+      // Copy ONNX Runtime WASM loader/runtime files from onnxruntime-web.
+      // Transformers.js dynamically imports these exact filenames at runtime.
+      const onnxRuntimeDir = resolve(
         __dirname,
-        'node_modules/@huggingface/transformers/dist'
+        'node_modules/onnxruntime-web/dist'
       );
-      const wasmFiles = [
-        'ort-wasm-simd-threaded.jsep.wasm',
-        'ort-wasm-simd-threaded.jsep.mjs',
-      ];
+      const wasmFiles = readdirSync(onnxRuntimeDir).filter((file) =>
+        file.startsWith('ort-wasm') && (file.endsWith('.wasm') || file.endsWith('.mjs'))
+      );
 
       for (const file of wasmFiles) {
-        const src = resolve(transformersDir, file);
+        const src = resolve(onnxRuntimeDir, file);
         const dest = resolve(assetsDir, file);
         if (existsSync(src)) {
           copyFileSync(src, dest);
@@ -90,7 +119,7 @@ function copyExtensionFiles() {
 }
 
 export default defineConfig({
-  plugins: [solidPlugin(), copyExtensionFiles()],
+  plugins: [patchTransformersWebInitChain(), solidPlugin(), copyExtensionFiles()],
   // Chrome extensions need relative paths, not root-absolute
   base: '',
   resolve: {

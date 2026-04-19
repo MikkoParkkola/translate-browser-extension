@@ -4,7 +4,7 @@
  */
 
 import type { TranslationProviderId, TranslationPipeline } from '../types';
-import { extractErrorMessage } from '../core/errors';
+import { createTranslationError, extractErrorMessage } from '../core/errors';
 import { getTranslationCache, type TranslationCacheStats } from '../core/translation-cache';
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
@@ -18,6 +18,14 @@ import { buildLanguageDetectionSample, detectLanguage } from './language-detecti
 import { translateWithGemma, getTranslateGemmaPipeline, detectWebGPU, detectWebNN } from './translategemma';
 import { getChromeTranslator, isChromeTranslatorAvailable } from '../providers/chrome-translator';
 import { DEFAULT_PROVIDER_ID } from '../shared/provider-options';
+import {
+  buildOpusMtExecutionPlan,
+  describeOpusMtExecutionConfig,
+} from '../shared/opus-mt-runtime';
+import {
+  countOpusMtSentences,
+  translateOpusMtText,
+} from '../shared/opus-mt-segmentation';
 
 // Cloud providers
 import { deeplProvider } from '../providers/deepl';
@@ -63,6 +71,7 @@ async function getTransformers(): Promise<TransformersLib> {
   lib.env.allowRemoteModels = true;
   lib.env.allowLocalModels = false;
   lib.env.useBrowserCache = true;
+  lib.env.useWasmCache = true;
   /* v8 ignore start */
   if (lib.env.backends?.onnx?.wasm) {
     lib.env.backends.onnx.wasm.wasmPaths = wasmBasePath;
@@ -70,22 +79,6 @@ async function getTransformers(): Promise<TransformersLib> {
   /* v8 ignore stop */
   _transformers = lib;
   return lib;
-}
-
-/**
- * Select optimal dtype for OPUS-MT models.
- *
- * Xenova/Helsinki-NLP OPUS-MT models only ship _quantized (q8) ONNX variants.
- * They do NOT have dedicated fp16 ONNX files. Requesting 'fp16' causes
- * ONNX Runtime to attempt mixed-precision (float16 + float32) which crashes:
- *   "Type parameter (T) of Optype (Mul) bound to different types"
- *
- * Always use 'q8' for OPUS-MT. fp16 dtype is only safe for models that
- * ship explicit fp16 ONNX files (e.g., TranslateGemma).
- */
-function selectOpusMtDtype(_webgpu: { supported: boolean; fp16: boolean }): string {
-  // Always q8 for OPUS-MT — fp16 causes mixed-precision crash
-  return 'q8';
 }
 
 /**
@@ -114,39 +107,122 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   log.info(` Loading model: ${modelId}`);
   const loadStart = performance.now();
 
-  // OPUS-MT models MUST use WASM device. WebGPU causes degenerate output
-  // (repeated words like "Figure Figure..." or "Switzerland Switzerland...")
-  // with q8-quantized Marian models. WebGPU is only viable for models with
-  // dedicated fp16 ONNX files (e.g., TranslateGemma).
-  const device = 'wasm';
-  const dtype = selectOpusMtDtype({ supported: false, fp16: false });
-  log.info(` Using device: ${device}, dtype: ${dtype}`);
+  const webgpu = CONFIG.experimental.opusMtWebgpuProbe
+    ? await detectWebGPU()
+    : { supported: false, fp16: false };
+  const attempts = buildOpusMtExecutionPlan(webgpu, CONFIG.experimental.opusMtWebgpuProbe);
 
   // Use optimized timeout for OPUS-MT direct models (~85MB quantized, typically loads in <30s)
-  // If WebGPU fails (GPU incompatibility), fall back to WASM+q8 automatically.
-  let pipe;
-  try {
-    pipe = await withTimeout(
-      (await getTransformers()).pipeline('translation', modelId, { device, dtype } as Record<string, unknown>),
-      CONFIG.timeouts.opusMtDirectMs,
-      `Loading model ${modelId}`
+  let pipe: unknown;
+  let loadedAttempt = attempts[0];
+  let lastError: unknown;
+  const attemptErrors: string[] = [];
+  for (const attempt of attempts) {
+    const label = describeOpusMtExecutionConfig(attempt);
+    const attemptFiles = new Set<string>();
+    log.info(
+      ` Trying ${label}: device=${attempt.device}, dtype=${attempt.dtype}, reason=${attempt.reason}`
     );
-  } catch (error) {
+    try {
+      pipe = await withTimeout(
+        (await getTransformers()).pipeline('translation', modelId, {
+          device: attempt.device,
+          dtype: attempt.dtype,
+          progress_callback: (progress: { file?: string | null }) => {
+            if (typeof progress.file === 'string' && progress.file.length > 0) {
+              attemptFiles.add(progress.file);
+            }
+          },
+        } as Record<string, unknown>),
+        CONFIG.timeouts.opusMtDirectMs,
+        `Loading model ${modelId}`
+      );
+      loadedAttempt = attempt;
+      break;
+    } catch (error) {
+      lastError = error;
+      const errorMessage = extractErrorMessage(error);
+      const fileSuffix = attemptFiles.size > 0
+        ? ` [files: ${Array.from(attemptFiles).join(', ')}]`
+        : '';
+      attemptErrors.push(`${label}${fileSuffix}: ${errorMessage}`);
+      log.warn(` ${label} failed for ${modelId}: ${errorMessage}`);
+    }
+  }
+
+  if (!pipe) {
     /* v8 ignore start -- defensive rethrow */
-    throw error;
+    throw new Error(
+      attemptErrors.length > 0
+        ? `Failed to load model ${modelId}. Attempts: ${attemptErrors.join(' | ')}`
+        : extractErrorMessage(lastError, `Failed to load model ${modelId}`)
+    );
     /* v8 ignore stop */
   }
 
   const loadDuration = performance.now() - loadStart;
   if (sessionId) {
-    profiler.recordTiming(sessionId, 'model_load', loadDuration, { cached: false, modelId, device });
+    profiler.recordTiming(sessionId, 'model_load', loadDuration, {
+      cached: false,
+      modelId,
+      device: loadedAttempt.device,
+      dtype: loadedAttempt.dtype,
+    });
   }
-  log.info(` Model loaded: ${modelId} in ${loadDuration.toFixed(0)}ms`);
+  log.info(
+    ` Model loaded: ${modelId} in ${loadDuration.toFixed(0)}ms (${describeOpusMtExecutionConfig(loadedAttempt)})`
+  );
 
   // Store in LRU cache (may evict old models)
   cachePipeline(modelId, castAsPipeline(pipe));
 
   return castAsPipeline(pipe);
+}
+
+function logOpusMtProbeTranslation(
+  input: string,
+  translated: string,
+  context: { index?: number }
+): void {
+  if (!CONFIG.experimental.opusMtWebgpuProbe) {
+    return;
+  }
+
+  const inputSentences = countOpusMtSentences(input);
+  const outputSentences = countOpusMtSentences(translated);
+  const suspicious = inputSentences > 1 && outputSentences < inputSentences;
+  const shouldLog = suspicious || context.index === undefined || context.index < 3;
+
+  if (!shouldLog) {
+    return;
+  }
+
+  const label = context.index === undefined ? 'single' : `batch#${context.index}`;
+  log.info(
+    `[OPUS-MT probe] ${label}: chars=${input.length}->${translated.length}, sentences=${inputSentences}->${outputSentences}, inHead=${JSON.stringify(input.slice(0, 80))}, outHead=${JSON.stringify(translated.slice(0, 80))}, outTail=${JSON.stringify(translated.slice(-80))}`
+  );
+
+  if (suspicious) {
+    log.warn(
+      `[OPUS-MT probe] Possible multi-sentence truncation for ${label}: input sentences=${inputSentences}, output sentences=${outputSentences}`
+    );
+  }
+}
+
+async function translateProbeAwareText(
+  pipe: TranslationPipeline,
+  text: string,
+  context: { index?: number }
+): Promise<string> {
+  return translateOpusMtText(pipe, text, {
+    splitMultiSentence: CONFIG.experimental.opusMtWebgpuProbe,
+    onSplit: (segmentCount) => {
+      const label = context.index === undefined ? 'single' : `batch#${context.index}`;
+      log.info(
+        `[OPUS-MT probe] ${label}: split ${segmentCount} input sentences into per-sentence inference calls`
+      );
+    },
+  });
 }
 
 /**
@@ -174,14 +250,14 @@ async function translateDirect(
         if (!t || t.trim().length === 0) return t;
         /* v8 ignore stop */
         try {
-          const result = await pipe(t, { max_length: 512 });
-          const translated = (result as Array<{ translation_text: string }>)[0].translation_text;
-          /* v8 ignore start -- debug logging branch */
-          // Debug: log first 3 to verify model output
-          if (i < 3) {
+          const translated = await translateProbeAwareText(pipe, t, { index: i });
+          if (CONFIG.experimental.opusMtWebgpuProbe) {
+            logOpusMtProbeTranslation(t, translated, { index: i });
+          } else {
+            /* v8 ignore start -- debug logging branch */
             log.debug(`Model #${i}: "${t.substring(0, 40)}" -> "${translated.substring(0, 40)}" (same=${t === translated})`);
+            /* v8 ignore stop */
           }
-          /* v8 ignore stop */
           return translated;
         } catch (error) {
           // Per-item error: return original text instead of crashing entire batch
@@ -206,7 +282,8 @@ async function translateDirect(
   /* v8 ignore start -- empty string guard */
   if (!text || text.trim().length === 0) return text;
   /* v8 ignore stop */
-  const result = await pipe(text, { max_length: 512 });
+  const translated = await translateProbeAwareText(pipe, text, {});
+  logOpusMtProbeTranslation(text, translated, {});
 
   const inferenceDuration = performance.now() - inferenceStart;
   if (sessionId) {
@@ -216,7 +293,7 @@ async function translateDirect(
     });
   }
 
-  return (result as Array<{ translation_text: string }>)[0].translation_text;
+  return translated;
 }
 
 /**
@@ -756,20 +833,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           sendResponse({ success: false, error: `Unknown type: ${message.type}` });
       }
     } catch (error) {
-      log.error(' Error:', error);
+      const translationError = createTranslationError(error);
+      log.error(' Error:', translationError.technicalDetails);
       sendResponse({
         success: false,
-        /* v8 ignore start -- instanceof ternary */
-        error: extractErrorMessage(error)
-        /* v8 ignore stop */
+        error: translationError.technicalDetails,
+        translationError,
       });
     }
   })().catch((error) => {
-    log.error('Unhandled offscreen listener error:', error);
+    const translationError = createTranslationError(error);
+    log.error('Unhandled offscreen listener error:', translationError.technicalDetails);
     try {
       sendResponse({
         success: false,
-        error: extractErrorMessage(error),
+        error: translationError.technicalDetails,
+        translationError,
       });
     } catch (responseError) {
       log.error('Failed to send offscreen fallback error response:', responseError);

@@ -38,6 +38,11 @@ import { CONFIG } from '../config';
 import { browserAPI, getURL } from '../core/browser-api';
 import { DEFAULT_PROVIDER_ID, normalizeTranslationProviderId } from '../shared/provider-options';
 import {
+  buildOpusMtExecutionPlan,
+  describeOpusMtExecutionConfig,
+} from '../shared/opus-mt-runtime';
+import { translateOpusMtText } from '../shared/opus-mt-segmentation';
+import {
   assertNever,
   isExtensionMessage,
   isHandledExtensionMessage,
@@ -73,6 +78,7 @@ const log = createLogger('Background-FF');
 env.allowRemoteModels = true;  // Models from HuggingFace Hub
 env.allowLocalModels = false;  // No local filesystem
 env.useBrowserCache = true;    // Cache models in IndexedDB
+env.useWasmCache = true;       // Persist compiled WASM artifacts between loads
 
 // Point ONNX Runtime to bundled WASM files
 const wasmBasePath = getURL('assets/');
@@ -112,11 +118,6 @@ translationCache.load();
 // ============================================================================
 // ML Pipeline Management (Direct - no offscreen needed)
 // ============================================================================
-
-async function detectWebGPU(): Promise<boolean> {
-  const { supported } = await detectWebGPUCapabilities();
-  return supported;
-}
 
 async function detectWebGPUCapabilities(): Promise<{ supported: boolean; fp16: boolean }> {
   if (!navigator.gpu) return { supported: false, fp16: false };
@@ -167,18 +168,47 @@ async function getPipeline(sourceLang: string, targetLang: string): Promise<Tran
 
   log.info(`Loading model: ${modelId}`);
 
-  const webgpu = await detectWebGPU();
-  const device = webgpu ? 'webgpu' : 'wasm';
-  log.info(`Using device: ${device}`);
+  const webgpu = CONFIG.experimental.opusMtWebgpuProbe
+    ? await detectWebGPUCapabilities()
+    : { supported: false, fp16: false };
+  const attempts = buildOpusMtExecutionPlan(webgpu, CONFIG.experimental.opusMtWebgpuProbe);
+  let pipe: unknown;
+  let lastError: unknown;
+  const attemptErrors: string[] = [];
 
-  const pipe = await withTimeout(
-    pipeline('translation', modelId, { device }),
-    CONFIG.timeouts.opusMtDirectMs,
-    `Loading model ${modelId}`
-  );
+  for (const attempt of attempts) {
+    const label = describeOpusMtExecutionConfig(attempt);
+    log.info(`Trying ${label}: device=${attempt.device}, dtype=${attempt.dtype}, reason=${attempt.reason}`);
+    try {
+      pipe = await withTimeout(
+        pipeline('translation', modelId, {
+          device: attempt.device,
+          dtype: attempt.dtype,
+        } as Record<string, unknown>),
+        CONFIG.timeouts.opusMtDirectMs,
+        `Loading model ${modelId}`
+      );
+      log.info(`Model loaded: ${modelId} (${label})`);
+      break;
+    } catch (error) {
+      lastError = error;
+      const errorMessage = extractErrorMessage(error);
+      attemptErrors.push(`${label}: ${errorMessage}`);
+      log.warn(`${label} failed for ${modelId}: ${errorMessage}`);
+    }
+  }
+
+  if (!pipe) {
+    /* v8 ignore start */
+    throw new Error(
+      attemptErrors.length > 0
+        ? `Failed to load model ${modelId}. Attempts: ${attemptErrors.join(' | ')}`
+        : extractErrorMessage(lastError, `Failed to load model ${modelId}`)
+    );
+    /* v8 ignore stop */
+  }
 
   cachePipeline(modelId, castAsPipeline(pipe));
-  log.info(`Model loaded: ${modelId}`);
 
   return castAsPipeline(pipe);
 }
@@ -195,8 +225,14 @@ async function translateDirect(
       text.map(async (t) => {
         /* v8 ignore start */
         if (!t || t.trim().length === 0) return t;
-        const result = await pipe(t, { max_length: 512 });
-        return (result as Array<{ translation_text: string }>)[0].translation_text;
+        return translateOpusMtText(pipe, t, {
+          splitMultiSentence: CONFIG.experimental.opusMtWebgpuProbe,
+          onSplit: (segmentCount) => {
+            log.info(
+              `Probe build: split ${sourceLang}->${targetLang} batch item into ${segmentCount} per-sentence inference calls`
+            );
+          },
+        });
         /* v8 ignore stop */
       })
     );
@@ -206,8 +242,14 @@ async function translateDirect(
   /* v8 ignore start */
   if (!text || text.trim().length === 0) return text;
   /* v8 ignore stop */
-  const result = await pipe(text, { max_length: 512 });
-  return (result as Array<{ translation_text: string }>)[0].translation_text;
+  return translateOpusMtText(pipe, text, {
+    splitMultiSentence: CONFIG.experimental.opusMtWebgpuProbe,
+    onSplit: (segmentCount) => {
+      log.info(
+        `Probe build: split ${sourceLang}->${targetLang} input into ${segmentCount} per-sentence inference calls`
+      );
+    },
+  });
 }
 
 async function translateWithProvider(
@@ -542,6 +584,7 @@ async function handleTranslate(message: TranslateMessage): Promise<TranslateResp
           success: true,
           result: cached.result,
           duration,
+          cached: true,
         } as TranslateResponse & { cached: boolean };
       }
 

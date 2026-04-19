@@ -29,6 +29,16 @@ export interface TranslationError {
   suggestion?: string;    // Actionable advice for user
 }
 
+function isTranslationError(error: unknown): error is TranslationError {
+  if (!error || typeof error !== 'object') return false;
+
+  const candidate = error as Partial<TranslationError>;
+  return typeof candidate.category === 'string'
+    && typeof candidate.message === 'string'
+    && typeof candidate.technicalDetails === 'string'
+    && typeof candidate.retryable === 'boolean';
+}
+
 // Common error patterns to detect
 const ERROR_PATTERNS = {
   network: [
@@ -64,6 +74,11 @@ const ERROR_PATTERNS = {
     /ONNX/i,
     /wasm.*load/i,
     /WebGPU/i,
+    /Can't create a session/i,
+    /Missing required scale/i,
+    /DequantizeLinear/i,
+    /qdq_actions/i,
+    /TransposeDQWeightsForMatMulNBits/i,
   ],
   language: [
     /unsupported language/i,
@@ -112,6 +127,7 @@ const ERROR_PATTERNS = {
  * Optionally returns a custom fallback instead of String(error) for non-Error values.
  */
 export function extractErrorMessage(error: unknown, fallback?: string): string {
+  if (isTranslationError(error)) return error.technicalDetails;
   if (error instanceof Error) return error.message;
   return fallback !== undefined ? fallback : String(error);
 }
@@ -135,6 +151,10 @@ function categorizeError(error: unknown): ErrorCategory {
  * Create a user-friendly error from any thrown value
  */
 export function createTranslationError(error: unknown): TranslationError {
+  if (isTranslationError(error)) {
+    return error;
+  }
+
   const rawMessage = error instanceof Error ? error.message : String(error);
   const category = categorizeError(error);
 

@@ -144,6 +144,7 @@ vi.mock('../config', () => ({
     timeouts: { opusMtDirectMs: 60000, translateGemmaMs: 300000 },
     rateLimits: { windowMs: 60000, requestsPerMinute: 100, tokensPerMinute: 10000 },
     retry: { network: { maxRetries: 3, baseDelayMs: 1000, maxDelayMs: 10000 } },
+    experimental: { opusMtWebgpuProbe: false },
   },
 }));
 
@@ -208,6 +209,9 @@ beforeEach(async () => {
   (translategemma.getTranslateGemmaPipeline as ReturnType<typeof vi.fn>).mockResolvedValue({
     model: {}, tokenizer: {},
   });
+
+  const { CONFIG } = await import('../config');
+  (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = false;
 });
 
 // ============================================================================
@@ -2251,7 +2255,7 @@ describe('background-firefox translate: additional coverage', () => {
       }) as Record<string, unknown>;
 
       expect(response1.success).toBe(true);
-      const duration1 = response1.duration as number;
+      expect(response1.cached).not.toBe(true);
 
       // Second identical translation (from cache)
       const response2 = await invoke({
@@ -2262,9 +2266,8 @@ describe('background-firefox translate: additional coverage', () => {
       }) as Record<string, unknown>;
 
       expect(response2.success).toBe(true);
-      const duration2 = response2.duration as number;
-      // Cache hit should be faster
-      expect(duration2).toBeLessThanOrEqual(duration1);
+      expect(response2.cached).toBe(true);
+      expect(response2.result).toBe(response1.result);
     });
 
     it('does not cache when sourceLang is auto', async () => {

@@ -10,12 +10,19 @@ import { BaseProvider } from './base-provider';
 import { webgpuDetector } from '../core/webgpu-detector';
 import { createLogger } from '../core/logger';
 import { extractErrorMessage } from '../core/errors';
-import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
+import { CONFIG } from '../config';
+import {
+  buildOpusMtExecutionPlan,
+  describeOpusMtExecutionConfig,
+  resolveOpusMtExecutionConfig,
+} from '../shared/opus-mt-runtime';
+import { translateOpusMtText } from '../shared/opus-mt-segmentation';
+import type { TranslationOptions, LanguagePair, ProviderConfig, TranslationPipeline } from '../types';
 
 const log = createLogger('OPUS-MT');
 
 // Dynamic imports for Transformers.js
-type Pipeline = (text: string, options?: Record<string, unknown>) => Promise<Array<{ translation_text: string }>>;
+type Pipeline = TranslationPipeline;
 
 // Supported language pairs with Xenova quantized models
 const SUPPORTED_PAIRS: Record<string, string> = {
@@ -102,7 +109,9 @@ export class OpusMTProvider extends BaseProvider {
 
       if (this.webgpuSupported) {
         log.info('WebGPU support detected');
-        await webgpuDetector.initialize();
+        if (CONFIG.experimental.opusMtWebgpuProbe) {
+          await webgpuDetector.initialize();
+        }
       } else {
         log.info('Using WASM acceleration');
       }
@@ -136,23 +145,18 @@ export class OpusMTProvider extends BaseProvider {
 
     log.info(`Loading model: ${modelId}`);
 
-    // Build fallback chain: most optimal first, safest last
-    // OPUS-MT Xenova models reliably ship q8 (quantized) variants.
-    // fp16 variants may not exist or cause mixed-precision ONNX errors,
-    // so we always prefer q8 even when shader-f16 is available.
-    const attempts: Array<{ device: 'webgpu' | 'wasm'; dtype: string; label: string }> = [];
-
-    if (this.webgpuSupported) {
-      attempts.push({ device: 'webgpu', dtype: 'q8', label: 'WebGPU+q8' });
-    }
-    // WASM fallback always available
-    attempts.push({ device: 'wasm', dtype: 'q8', label: 'WASM+q8' });
+    const attempts = buildOpusMtExecutionPlan(
+      { supported: this.webgpuSupported, fp16: false },
+      CONFIG.experimental.opusMtWebgpuProbe
+    );
 
     let lastError: Error | null = null;
+    const attemptErrors: string[] = [];
 
     for (const attempt of attempts) {
+      const label = describeOpusMtExecutionConfig(attempt);
       try {
-        log.info(`Trying ${attempt.label} for ${modelId}`);
+        log.info(`Trying ${label} for ${modelId}`);
         const pipe = await this.pipelineFactory('translation', modelId, {
           device: attempt.device,
           dtype: attempt.dtype,
@@ -162,18 +166,23 @@ export class OpusMTProvider extends BaseProvider {
         });
 
         this.pipelines.set(modelId, pipe);
-        log.info(`Model loaded: ${modelId} (${attempt.label})`);
+        log.info(`Model loaded: ${modelId} (${label})`);
         return pipe;
       } catch (error) {
         const errMsg = extractErrorMessage(error);
-        log.warn(`${attempt.label} failed: ${errMsg}`);
+        attemptErrors.push(`${label}: ${errMsg}`);
+        log.warn(`${label} failed: ${errMsg}`);
         lastError = error instanceof Error ? error : new Error(errMsg);
       }
     }
 
     log.error(`All attempts failed for ${modelId}`);
     /* v8 ignore start */
-    throw lastError ?? new Error(`Failed to load model ${modelId}`);
+    throw lastError ?? new Error(
+      attemptErrors.length > 0
+        ? `Failed to load model ${modelId}. Attempts: ${attemptErrors.join(' | ')}`
+        : `Failed to load model ${modelId}`
+    );
     /* v8 ignore stop */
   }
 
@@ -237,13 +246,19 @@ export class OpusMTProvider extends BaseProvider {
     }
 
     try {
-      const result = await pipe(text, {
-        src_lang: sourceLang,
-        tgt_lang: targetLang,
-        max_length: 512,
+      return await translateOpusMtText(pipe, text, {
+        splitMultiSentence: CONFIG.experimental.opusMtWebgpuProbe,
+        onSplit: (segmentCount) => {
+          log.info(
+            `Probe build: split ${sourceLang}->${targetLang} input into ${segmentCount} per-sentence inference calls`
+          );
+        },
+        pipelineOptions: {
+          src_lang: sourceLang,
+          tgt_lang: targetLang,
+          max_length: 512,
+        },
       });
-
-      return result[0].translation_text;
     } catch (error) {
       log.error('Single translation error:', error);
       throw error;
@@ -307,12 +322,23 @@ export class OpusMTProvider extends BaseProvider {
    * Get provider info
    */
   getInfo(): ProviderConfig & { modelSize: string; speed: string; webgpu: boolean; device: string } {
+    const runtime = resolveOpusMtExecutionConfig(
+      { supported: this.webgpuSupported, fp16: false },
+      CONFIG.experimental.opusMtWebgpuProbe
+    );
+
     return {
       ...super.getInfo(),
       modelSize: '169MB (quantized EN-FI pair)',
-      speed: 'Fastest (~10ms/sentence with WebGPU)',
+      speed: runtime.device === 'webgpu'
+        ? 'Fastest (~10ms/sentence with experimental WebGPU probe)'
+        : 'Fast (safe WASM default)',
       webgpu: this.webgpuSupported,
-      device: this.webgpuSupported ? 'WebGPU' : 'WASM',
+      device: runtime.device === 'webgpu'
+        ? 'WebGPU (experimental probe)'
+        : this.webgpuSupported
+          ? 'WASM (WebGPU available via probe)'
+          : 'WASM',
     };
   }
 }
