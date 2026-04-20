@@ -2,14 +2,17 @@
 
 Manage provider selection from the extension popup and configure cloud credentials from the options page.
 
-## Shipping status
+## Shipping status and stability
 
 ### Stable shipped providers
 - **Chrome Built-in** - preferred native path when Chrome 138+ exposes the browser translator.
 - **OPUS-MT** - stable downloaded local baseline for offline translation.
-- **DeepL / OpenAI / Anthropic / Google Cloud** - supported cloud providers when configured with API keys.
+- **DeepL** - stable cloud translation provider when configured with an API key.
+- **OpenAI** - stable cloud translation provider when configured with an API key.
+- **Anthropic** - stable cloud translation provider when configured with an API key.
+- **Google Cloud** - stable cloud translation provider when configured with an API key.
 
-### Experimental provider
+### Experimental shipped providers
 - **TranslateGemma** - higher-quality local path, but still experimental because it depends on WebGPU/WebNN acceleration and a much larger download.
 
 ## Local translation paths

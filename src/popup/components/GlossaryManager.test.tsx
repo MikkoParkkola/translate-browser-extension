@@ -6,23 +6,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@solidjs/testing-library';
+import { setupUiChromeMock } from '../../test-helpers/chrome-mocks';
+import { TEST_GLOSSARY_TERMS } from '../../test-helpers/popup-test-fixtures';
 
-// Chrome API mock
-vi.stubGlobal('chrome', {
-  runtime: {
-    sendMessage: vi.fn().mockResolvedValue({}),
-    onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
-    openOptionsPage: vi.fn(),
-  },
-  storage: {
-    local: { get: vi.fn().mockResolvedValue({}), set: vi.fn().mockResolvedValue(undefined), remove: vi.fn().mockResolvedValue(undefined) },
-  },
-  tabs: {
-    query: vi.fn().mockResolvedValue([]),
-    sendMessage: vi.fn().mockResolvedValue({}),
-  },
-  scripting: { executeScript: vi.fn().mockResolvedValue(undefined) },
-});
+setupUiChromeMock();
 
 // Mock glossary core module
 vi.mock('../../core/glossary', () => ({
@@ -38,13 +25,6 @@ vi.mock('../../core/glossary', () => ({
 
 import { GlossaryManager } from './GlossaryManager';
 import { glossary } from '../../core/glossary';
-
-// Helper to mock glossary with terms
-const MOCK_TERMS = {
-  API: { replacement: 'rajapinta', caseSensitive: true, description: 'Technical term' },
-  cloud: { replacement: 'pilvi', caseSensitive: false },
-  server: { replacement: 'palvelin', caseSensitive: false, description: 'Backend server' },
-};
 
 describe('GlossaryManager', () => {
   beforeEach(() => {
@@ -144,7 +124,7 @@ describe('GlossaryManager', () => {
   // -----------------------------------------------------------------------
 
   it('glossary with terms shows search input', async () => {
-    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(TEST_GLOSSARY_TERMS);
 
     const { container } = render(() => <GlossaryManager />);
     await vi.waitFor(() => {
@@ -154,7 +134,7 @@ describe('GlossaryManager', () => {
   });
 
   it('glossary with terms shows term entries', async () => {
-    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(TEST_GLOSSARY_TERMS);
 
     render(() => <GlossaryManager />);
     await vi.waitFor(() => {
@@ -168,7 +148,7 @@ describe('GlossaryManager', () => {
   });
 
   it('glossary with terms shows correct stats', async () => {
-    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(TEST_GLOSSARY_TERMS);
 
     render(() => <GlossaryManager />);
     await vi.waitFor(() => {
@@ -181,7 +161,7 @@ describe('GlossaryManager', () => {
   // -----------------------------------------------------------------------
 
   it('search filters terms by term name', async () => {
-    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(TEST_GLOSSARY_TERMS);
 
     const { container } = render(() => <GlossaryManager />);
     await vi.waitFor(() => {
@@ -201,7 +181,7 @@ describe('GlossaryManager', () => {
   });
 
   it('search filters terms by replacement', async () => {
-    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(TEST_GLOSSARY_TERMS);
 
     const { container } = render(() => <GlossaryManager />);
     await vi.waitFor(() => {
@@ -220,7 +200,7 @@ describe('GlossaryManager', () => {
   });
 
   it('search shows "No matching terms found" for no results', async () => {
-    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(TEST_GLOSSARY_TERMS);
 
     const { container } = render(() => <GlossaryManager />);
     await vi.waitFor(() => {
@@ -257,7 +237,7 @@ describe('GlossaryManager', () => {
   });
 
   it('when glossary has terms, Clear All button appears', async () => {
-    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(TEST_GLOSSARY_TERMS);
 
     render(() => <GlossaryManager />);
     await vi.waitFor(() => {
@@ -355,7 +335,7 @@ describe('GlossaryManager', () => {
 
   it('delete button calls glossary.removeTerm', async () => {
     (glossary.getGlossary as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce(MOCK_TERMS) // initial load
+      .mockResolvedValueOnce(TEST_GLOSSARY_TERMS) // initial load
       .mockResolvedValueOnce({}); // after delete
 
     render(() => <GlossaryManager />);
@@ -377,7 +357,7 @@ describe('GlossaryManager', () => {
   // -----------------------------------------------------------------------
 
   it('clicking a term info row enters edit mode', async () => {
-    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(TEST_GLOSSARY_TERMS);
     render(() => <GlossaryManager />);
     await vi.waitFor(() => {
       expect(screen.getByText('API')).toBeTruthy();
@@ -395,7 +375,7 @@ describe('GlossaryManager', () => {
   });
 
   it('cancel button exits edit mode', async () => {
-    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(TEST_GLOSSARY_TERMS);
     render(() => <GlossaryManager />);
     await vi.waitFor(() => {
       expect(screen.getByText('API')).toBeTruthy();
@@ -417,7 +397,7 @@ describe('GlossaryManager', () => {
 
   it('save button with valid replacement calls glossary.addTerm and reloads', async () => {
     (glossary.getGlossary as ReturnType<typeof vi.fn>)
-      .mockResolvedValue(MOCK_TERMS);
+      .mockResolvedValue(TEST_GLOSSARY_TERMS);
     (glossary.addTerm as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
 
     const { container } = render(() => <GlossaryManager />);
@@ -446,7 +426,7 @@ describe('GlossaryManager', () => {
   });
 
   it('save button with empty replacement shows error', async () => {
-    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(TEST_GLOSSARY_TERMS);
 
     const { container } = render(() => <GlossaryManager />);
     await vi.waitFor(() => {
@@ -529,7 +509,7 @@ describe('GlossaryManager', () => {
   });
 
   it('delete error shows error message', async () => {
-    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+    (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(TEST_GLOSSARY_TERMS);
     (glossary.removeTerm as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('delete fail'));
 
     render(() => <GlossaryManager />);
@@ -886,7 +866,7 @@ describe('GlossaryManager', () => {
 
   describe('edit form — description and case sensitive handlers', () => {
     it('updating description in edit form passes new description to addTerm', async () => {
-      (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+      (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(TEST_GLOSSARY_TERMS);
       (glossary.addTerm as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
 
       const { container } = render(() => <GlossaryManager />);
@@ -933,7 +913,7 @@ describe('GlossaryManager', () => {
 
   describe('branch coverage — saveEdit without editing term', () => {
     it('no edit form is showing when editingTerm is null', async () => {
-      (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_TERMS);
+      (glossary.getGlossary as ReturnType<typeof vi.fn>).mockResolvedValue(TEST_GLOSSARY_TERMS);
 
       render(() => <GlossaryManager />);
 

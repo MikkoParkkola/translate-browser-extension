@@ -11,10 +11,8 @@
 
 import { test as base } from '@playwright/test';
 import { test, expect, popupUrl, offscreenUrl } from './fixtures';
-import path from 'path';
 import fs from 'fs';
-
-const EXTENSION_PATH = path.resolve(__dirname, '../dist');
+import { getExtensionManifestPath } from './extension-launch';
 
 interface ConsoleError {
   type: string;
@@ -24,7 +22,7 @@ interface ConsoleError {
 
 base.describe('Manifest CSP Validation', () => {
   base('manifest has correct CSP for HuggingFace CDNs', async () => {
-    const manifestPath = path.join(EXTENSION_PATH, 'manifest.json');
+    const manifestPath = getExtensionManifestPath();
     expect(fs.existsSync(manifestPath), 'Manifest should exist').toBe(true);
 
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
@@ -188,7 +186,7 @@ test.describe('CSP & Model Loading', () => {
     await page.close();
   });
 
-  test('model download does not trigger CSP violations', async ({ context, extensionId }) => {
+  test('model download does not trigger CSP violations @slow', async ({ context, extensionId }) => {
     test.setTimeout(180_000);
 
     const page = await context.newPage();

@@ -4,13 +4,17 @@
  * https://cloud.google.com/translate/docs/reference/rest/v2/translate
  */
 
-import { CloudProvider } from './cloud-provider';
+import { CloudProvider, updateCloudProviderApiKey } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
-import { CONFIG } from '../config';
-import { fetchProviderJson, generateAllLanguagePairs } from './provider-utils';
+import {
+  detectProviderLanguageCode,
+  fetchProviderJson,
+  finalizeProviderTranslations,
+  generateAllLanguagePairs,
+} from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
-import { validateGoogleCloudStoredConfig } from '../background/shared/config-validation';
+import { extractGoogleCloudStoredRuntimeState } from '../background/shared/config-validation';
 
 const GOOGLE_TRANSLATE_API = 'https://translation.googleapis.com/language/translate/v2';
 const GOOGLE_STORAGE_KEYS = ['google_cloud_api_key', 'google_cloud_chars_used'] as const;
@@ -37,9 +41,8 @@ interface GoogleDetectResponse {
   };
 }
 
-export class GoogleCloudProvider extends CloudProvider {
+export class GoogleCloudProvider extends CloudProvider<GoogleCloudConfig> {
   private config: GoogleCloudConfig | null = null;
-  private charactersUsed = 0;
 
   constructor() {
     super({
@@ -57,30 +60,32 @@ export class GoogleCloudProvider extends CloudProvider {
   }
 
   protected applyStoredConfig(stored: CloudProviderStorageRecord): void {
-    const config = validateGoogleCloudStoredConfig(stored);
-    if (!config) {
-      this.resetConfig();
+    if (!this.applyStoredUsageConfig(extractGoogleCloudStoredRuntimeState(stored), 'charactersUsed')) {
       return;
     }
 
-    this.config = { apiKey: config.apiKey };
-    this.charactersUsed = config.charactersUsed;
     this.log.info('Initialized');
-  }
-
-  protected hasConfig(): boolean {
-    return !!this.config?.apiKey;
   }
 
   protected resetConfig(): void {
     this.config = null;
-    this.charactersUsed = 0;
+    this.resetUsageCounter();
+  }
+
+  protected getConfigState(): GoogleCloudConfig | null {
+    return this.config;
+  }
+
+  protected setConfigState(config: GoogleCloudConfig | null): void {
+    this.config = config;
   }
 
   /** Store API key in storage */
   async setApiKey(apiKey: string): Promise<void> {
-    await this.persist({ google_cloud_api_key: apiKey });
-    this.config = { apiKey };
+    await this.persistAndUpdateConfig(
+      { google_cloud_api_key: apiKey },
+      (config) => updateCloudProviderApiKey(config, apiKey, {})
+    );
   }
 
   /**
@@ -92,16 +97,14 @@ export class GoogleCloudProvider extends CloudProvider {
     targetLang: string,
     _options?: TranslationOptions
   ): Promise<string | string[]> {
-    if (!this.config?.apiKey) {
-      throw createTranslationError(new Error('Google Cloud API key not configured'));
-    }
+    const config = this.requireConfiguredConfig('Google Cloud');
 
     const isArray = Array.isArray(text);
     const texts = isArray ? text : [text];
 
     // Build request URL — API key in query param per Google Cloud v2 API convention
     const url = new URL(GOOGLE_TRANSLATE_API);
-    url.searchParams.set('key', this.config.apiKey);
+    url.searchParams.set('key', config.apiKey);
 
     const body: Record<string, unknown> = {
       q: texts,
@@ -122,16 +125,21 @@ export class GoogleCloudProvider extends CloudProvider {
         body: JSON.stringify(body),
       });
 
-      // Track character usage
+      const results = finalizeProviderTranslations(
+        'Google Cloud',
+        text,
+        data.data?.translations?.map(t => t.translatedText),
+      );
+
+      // Track character usage only after the response satisfies the provider contract.
       const charsUsed = texts.reduce((sum, t) => sum + t.length, 0);
-      this.charactersUsed += charsUsed;
-      this.persistBestEffort(
-        { google_cloud_chars_used: this.charactersUsed },
+      this.trackUsageCounter(
+        charsUsed,
+        'google_cloud_chars_used',
         'Failed to persist char usage:'
       );
 
-      const results = data.data.translations.map(t => t.translatedText);
-      return isArray ? results : results[0];
+      return results;
     } catch (error) {
       this.log.error('Translation error:', error);
       throw createTranslationError(error);
@@ -142,15 +150,18 @@ export class GoogleCloudProvider extends CloudProvider {
    * Detect language using Google Cloud Translation API
    */
   async detectLanguage(text: string): Promise<string> {
-    if (!this.config?.apiKey) {
+    const config = this.getConfiguredConfig();
+    if (!config) {
       return 'auto';
     }
 
     const url = new URL(`${GOOGLE_TRANSLATE_API}/detect`);
-    url.searchParams.set('key', this.config.apiKey);
+    url.searchParams.set('key', config.apiKey);
 
-    try {
-      const response = await fetch(url.toString(), {
+    return detectProviderLanguageCode<GoogleDetectResponse>(
+      'Google Cloud',
+      url.toString(),
+      {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -158,21 +169,10 @@ export class GoogleCloudProvider extends CloudProvider {
         body: JSON.stringify({
           q: text.slice(0, 200),
         }),
-        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
-      });
-
-      if (response.ok) {
-        const data: GoogleDetectResponse = await response.json();
-        const detected = data.data.detections[0]?.[0]?.language;
-        if (detected) {
-          return detected;
-        }
-      }
-    } catch (error) {
-      this.log.error('Language detection error:', error);
-    }
-
-    return 'auto';
+      },
+      (data) => data.data.detections[0]?.[0]?.language,
+      (message, error) => this.log.error(message, error),
+    );
   }
 
   async getUsage(): Promise<{
@@ -181,12 +181,8 @@ export class GoogleCloudProvider extends CloudProvider {
     cost: number;
     limitReached: boolean;
   }> {
-    return {
-      requests: 0,
-      tokens: this.charactersUsed,
-      cost: (this.charactersUsed / 1000000) * this.costPerMillion,
-      limitReached: false,
-    };
+    const charactersUsed = this.getUsageCounter();
+    return this.buildTrackedUsage((charactersUsed / 1000000) * this.costPerMillion);
   }
 
   getSupportedLanguages(): LanguagePair[] {
@@ -196,7 +192,7 @@ export class GoogleCloudProvider extends CloudProvider {
   getInfo(): ProviderConfig & { charactersUsed: number } {
     return {
       ...super.getInfo(),
-      charactersUsed: this.charactersUsed,
+      charactersUsed: this.getUsageCounter(),
     };
   }
 }

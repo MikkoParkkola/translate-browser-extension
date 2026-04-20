@@ -6,39 +6,21 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import {
+  defineProviderErrorTests,
+  expectProviderError,
+  installCloudProviderTestHarness,
+} from '../__contract__/cloud-provider-test-harness';
 import { OpenAIProvider } from './openai';
 
-// Mock chrome.storage
-const mockStorage: Record<string, unknown> = {};
-vi.stubGlobal('chrome', {
-  storage: {
-    local: {
-      get: vi.fn((keys: string[]) => {
-        const result: Record<string, unknown> = {};
-        for (const key of keys) {
-          if (mockStorage[key] !== undefined) {
-            result[key] = mockStorage[key];
-          }
-        }
-        return Promise.resolve(result);
-      }),
-      set: vi.fn((items: Record<string, unknown>) => {
-        Object.assign(mockStorage, items);
-        return Promise.resolve();
-      }),
-      remove: vi.fn((keys: string[]) => {
-        for (const key of keys) {
-          delete mockStorage[key];
-        }
-        return Promise.resolve();
-      }),
-    },
-  },
-});
-
-// Mock fetch
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+const {
+  mockStorage,
+  resetCloudProviderState,
+  mockFetch,
+  queueJsonResponse,
+  queueRejectedFetch,
+  queueHttpError,
+} = installCloudProviderTestHarness();
 
 // Mock language-map module
 vi.mock('../core/language-map', () => ({
@@ -54,79 +36,26 @@ vi.mock('../core/language-map', () => ({
     };
     return map[code.toLowerCase()] || code;
   },
-  getAllLanguageCodes: () => ['en', 'fi', 'de', 'fr', 'es', 'it', 'ja', 'zh', 'ko', 'ru'],
+  getAllLanguageCodes: () => [
+    'en',
+    'fi',
+    'de',
+    'fr',
+    'es',
+    'it',
+    'ja',
+    'zh',
+    'ko',
+    'ru',
+  ],
 }));
 
 describe('OpenAIProvider', () => {
   let provider: OpenAIProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
+    resetCloudProviderState();
     provider = new OpenAIProvider();
-  });
-
-  describe('constructor', () => {
-    it('sets correct provider info', () => {
-      const info = provider.getInfo();
-      expect(info.id).toBe('openai');
-      expect(info.name).toBe('OpenAI');
-      expect(info.type).toBe('cloud');
-      expect(info.qualityTier).toBe('premium');
-    });
-
-    it('sets cost per million', () => {
-      expect(provider.costPerMillion).toBe(5000);
-    });
-  });
-
-  describe('initialize', () => {
-    it('loads config from storage when API key exists', async () => {
-      mockStorage['openai_api_key'] = 'sk-test-key';
-      mockStorage['openai_model'] = 'gpt-4o';
-      mockStorage['openai_formality'] = 'formal';
-      mockStorage['openai_temperature'] = 0.5;
-      mockStorage['openai_tokens_used'] = 2000;
-
-      await provider.initialize();
-
-      expect(await provider.isAvailable()).toBe(true);
-      const info = provider.getInfo();
-      expect(info.model).toBe('gpt-4o');
-      expect(info.formality).toBe('formal');
-    });
-
-    it('handles missing API key', async () => {
-      await provider.initialize();
-      expect(await provider.isAvailable()).toBe(false);
-    });
-
-    it('uses default settings when not set', async () => {
-      mockStorage['openai_api_key'] = 'sk-key';
-
-      await provider.initialize();
-
-      const info = provider.getInfo();
-      expect(info.model).toBe('gpt-4o-mini');
-      expect(info.formality).toBe('neutral');
-    });
-  });
-
-  describe('setApiKey', () => {
-    it('stores API key in storage', async () => {
-      await provider.setApiKey('sk-new-key');
-
-      expect(mockStorage['openai_api_key']).toBe('sk-new-key');
-      expect(await provider.isAvailable()).toBe(true);
-    });
-
-    it('initializes config with defaults', async () => {
-      await provider.setApiKey('sk-key');
-
-      const info = provider.getInfo();
-      expect(info.model).toBe('gpt-4o-mini');
-      expect(info.formality).toBe('neutral');
-    });
   });
 
   describe('setModel', () => {
@@ -147,20 +76,6 @@ describe('OpenAIProvider', () => {
     });
   });
 
-  describe('clearApiKey', () => {
-    it('removes all config from storage', async () => {
-      mockStorage['openai_api_key'] = 'sk-key';
-      mockStorage['openai_model'] = 'gpt-4o';
-      mockStorage['openai_formality'] = 'formal';
-      mockStorage['openai_temperature'] = 0.5;
-
-      await provider.setApiKey('sk-key');
-      await provider.clearApiKey();
-
-      expect(await provider.isAvailable()).toBe(false);
-    });
-  });
-
   describe('translate', () => {
     beforeEach(async () => {
       await provider.setApiKey('sk-test-key');
@@ -168,17 +83,16 @@ describe('OpenAIProvider', () => {
 
     it('throws when API key not configured', async () => {
       const noKeyProvider = new OpenAIProvider();
-      await expect(noKeyProvider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+      await expectProviderError(noKeyProvider.translate('Hello', 'en', 'fi'), {
+        category: 'auth',
+        technicalDetailsPattern: /OpenAI API key not configured/,
+      });
     });
 
     it('sends correct request for single text', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'Hei' }, finish_reason: 'stop' }],
-            usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'Hei' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 },
       });
 
       const result = await provider.translate('Hello', 'en', 'fi');
@@ -203,13 +117,9 @@ describe('OpenAIProvider', () => {
     it('includes formality instructions for formal', async () => {
       await provider.setFormality('formal');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'Test' } }],
-            usage: { total_tokens: 20 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'Test' } }],
+        usage: { total_tokens: 20 },
       });
 
       await provider.translate('Hello', 'en', 'fi');
@@ -221,13 +131,9 @@ describe('OpenAIProvider', () => {
     it('includes formality instructions for informal', async () => {
       await provider.setFormality('informal');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'Test' } }],
-            usage: { total_tokens: 20 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'Test' } }],
+        usage: { total_tokens: 20 },
       });
 
       await provider.translate('Hello', 'en', 'fi');
@@ -237,19 +143,15 @@ describe('OpenAIProvider', () => {
     });
 
     it('handles batch translation with separators', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [
-              {
-                message: {
-                  content: 'Hei\n---TRANSLATE_SEPARATOR---\nMaailma',
-                },
-              },
-            ],
-            usage: { total_tokens: 30 },
-          }),
+      queueJsonResponse({
+        choices: [
+          {
+            message: {
+              content: 'Hei\n---TRANSLATE_SEPARATOR---\nMaailma',
+            },
+          },
+        ],
+        usage: { total_tokens: 30 },
       });
 
       const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
@@ -259,17 +161,13 @@ describe('OpenAIProvider', () => {
     });
 
     it('fills missing results in batch', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [
-              {
-                message: { content: 'Only one result' },
-              },
-            ],
-            usage: { total_tokens: 20 },
-          }),
+      queueJsonResponse({
+        choices: [
+          {
+            message: { content: 'Only one result' },
+          },
+        ],
+        usage: { total_tokens: 20 },
       });
 
       const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
@@ -280,13 +178,9 @@ describe('OpenAIProvider', () => {
     });
 
     it('includes source language hint when not auto', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'Hei' } }],
-            usage: { total_tokens: 20 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'Hei' } }],
+        usage: { total_tokens: 20 },
       });
 
       await provider.translate('Hello', 'en', 'fi');
@@ -295,15 +189,34 @@ describe('OpenAIProvider', () => {
       expect(body.messages[1].content).toContain('English');
     });
 
-    it('handles API errors', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        text: () => Promise.resolve('Invalid API key'),
-        headers: { get: () => null },
-      });
-
-      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+    defineProviderErrorTests({
+      run: () => provider.translate('Hello', 'en', 'fi'),
+      cases: [
+        {
+          title: 'handles API errors',
+          arrange: () => {
+            queueHttpError(401, 'Invalid API key');
+          },
+          expected: {
+            category: 'auth',
+            messagePattern: /api.key|auth|unauthorized|invalid/i,
+            technicalDetailsPattern: /api.key|invalid/i,
+          },
+        },
+        {
+          title: 'handles rate limits',
+          arrange: () => {
+            queueHttpError(429, 'Rate limited', {
+              headers: { 'Retry-After': '30' },
+            });
+          },
+          expected: {
+            category: 'rate_limit',
+            retryable: true,
+            messagePattern: /rate.limit|too many requests/i,
+          },
+        },
+      ],
     });
 
     it('handles API errors when response.text() fails (line 215)', async () => {
@@ -317,25 +230,10 @@ describe('OpenAIProvider', () => {
       await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
     });
 
-    it('handles rate limits', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 429,
-        text: () => Promise.resolve('Rate limited'),
-        headers: { get: (k: string) => (k === 'Retry-After' ? '30' : null) },
-      });
-
-      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
-    });
-
     it('tracks token usage', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'Hei' } }],
-            usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'Hei' } }],
+        usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 },
       });
 
       await provider.translate('Hello', 'en', 'fi');
@@ -354,12 +252,8 @@ describe('OpenAIProvider', () => {
     it('detects language using chat API', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'fi' } }],
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'fi' } }],
       });
 
       const result = await provider.detectLanguage('Hei maailma');
@@ -370,12 +264,8 @@ describe('OpenAIProvider', () => {
       await provider.setApiKey('sk-key');
       await provider.setModel('gpt-4o');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'en' } }],
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'en' } }],
       });
 
       await provider.detectLanguage('Hello');
@@ -387,12 +277,8 @@ describe('OpenAIProvider', () => {
     it('uses temperature 0 for detection', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'en' } }],
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'en' } }],
       });
 
       await provider.detectLanguage('Hello');
@@ -404,12 +290,8 @@ describe('OpenAIProvider', () => {
     it('returns auto for non-2-letter responses', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'English' } }],
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'English' } }],
       });
 
       const result = await provider.detectLanguage('Hello');
@@ -419,7 +301,16 @@ describe('OpenAIProvider', () => {
     it('returns auto on API error', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      queueRejectedFetch(new Error('Network error'));
+
+      const result = await provider.detectLanguage('Hello');
+      expect(result).toBe('auto');
+    });
+
+    it('returns auto on HTTP error responses', async () => {
+      await provider.setApiKey('sk-key');
+
+      queueHttpError(401, 'Invalid API key');
 
       const result = await provider.detectLanguage('Hello');
       expect(result).toBe('auto');
@@ -485,13 +376,9 @@ describe('OpenAIProvider', () => {
     it('returns true on successful translation', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'Hei' } }],
-            usage: { total_tokens: 20 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'Hei' } }],
+        usage: { total_tokens: 20 },
       });
 
       const result = await provider.test();
@@ -501,7 +388,7 @@ describe('OpenAIProvider', () => {
     it('returns false on error', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      queueRejectedFetch(new Error('Network error'));
 
       const result = await provider.test();
       expect(result).toBe(false);
@@ -510,13 +397,9 @@ describe('OpenAIProvider', () => {
     it('returns false on empty response', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: '' } }],
-            usage: { total_tokens: 10 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: '' } }],
+        usage: { total_tokens: 10 },
       });
 
       const result = await provider.test();
@@ -541,9 +424,9 @@ describe('OpenAIProvider', () => {
 
   describe('initialize error', () => {
     it('does not crash when chrome.storage.local.get throws', async () => {
-      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-        new Error('Storage error')
-      );
+      (
+        chrome.storage.local.get as ReturnType<typeof vi.fn>
+      ).mockRejectedValueOnce(new Error('Storage error'));
 
       await expect(provider.initialize()).resolves.not.toThrow();
     });
@@ -587,13 +470,9 @@ describe('OpenAIProvider', () => {
 
       await freshProvider.initialize();
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'Formal translation' } }],
-            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'Formal translation' } }],
+        usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
       });
 
       await freshProvider.translate('hello', 'en', 'fi');
@@ -610,13 +489,9 @@ describe('OpenAIProvider', () => {
 
       await freshProvider.initialize();
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'Informal translation' } }],
-            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'Informal translation' } }],
+        usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
       });
 
       await freshProvider.translate('hello', 'en', 'fi');
@@ -633,13 +508,9 @@ describe('OpenAIProvider', () => {
 
       await freshProvider.initialize();
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'Neutral translation' } }],
-            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'Neutral translation' } }],
+        usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
       });
 
       await freshProvider.translate('hello', 'en', 'fi');
@@ -657,19 +528,15 @@ describe('OpenAIProvider', () => {
     it('parses <tN> XML tags for batch translations (primary format)', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [
-              {
-                message: {
-                  content: '<t0>Hei</t0>\n<t1>Maailma</t1>',
-                },
-              },
-            ],
-            usage: { total_tokens: 20, prompt_tokens: 10, completion_tokens: 10 },
-          }),
+      queueJsonResponse({
+        choices: [
+          {
+            message: {
+              content: '<t0>Hei</t0>\n<t1>Maailma</t1>',
+            },
+          },
+        ],
+        usage: { total_tokens: 20, prompt_tokens: 10, completion_tokens: 10 },
       });
 
       const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
@@ -681,19 +548,15 @@ describe('OpenAIProvider', () => {
     it('falls back to separator splitting when no XML tags found', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [
-              {
-                message: {
-                  content: 'Hei\n---TRANSLATE_SEPARATOR---\nMaailma',
-                },
-              },
-            ],
-            usage: { total_tokens: 20, prompt_tokens: 10, completion_tokens: 10 },
-          }),
+      queueJsonResponse({
+        choices: [
+          {
+            message: {
+              content: 'Hei\n---TRANSLATE_SEPARATOR---\nMaailma',
+            },
+          },
+        ],
+        usage: { total_tokens: 20, prompt_tokens: 10, completion_tokens: 10 },
       });
 
       const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
@@ -705,47 +568,43 @@ describe('OpenAIProvider', () => {
     it('pads results when batch returns fewer translations than input', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [
-              {
-                message: {
-                  content: 'Hei',  // Only one translation
-                },
-              },
-            ],
-            usage: { total_tokens: 20, prompt_tokens: 10, completion_tokens: 10 },
-          }),
+      queueJsonResponse({
+        choices: [
+          {
+            message: {
+              content: 'Hei', // Only one translation
+            },
+          },
+        ],
+        usage: { total_tokens: 20, prompt_tokens: 10, completion_tokens: 10 },
       });
 
-      const result = await provider.translate(['Hello', 'World', 'Test'], 'en', 'fi');
+      const result = await provider.translate(
+        ['Hello', 'World', 'Test'],
+        'en',
+        'fi',
+      );
 
       expect(Array.isArray(result)).toBe(true);
       expect(result.length).toBe(3);
       expect(result[0]).toBe('Hei');
-      expect(result[1]).toBe('');  // Padded
-      expect(result[2]).toBe('');  // Padded
+      expect(result[1]).toBe(''); // Padded
+      expect(result[2]).toBe(''); // Padded
     });
 
     it('truncates results when batch returns more translations than input', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [
-              {
-                message: {
-                  content:
-                    'Hei\n---TRANSLATE_SEPARATOR---\nMaailma\n---TRANSLATE_SEPARATOR---\nExtra',
-                },
-              },
-            ],
-            usage: { total_tokens: 20, prompt_tokens: 10, completion_tokens: 10 },
-          }),
+      queueJsonResponse({
+        choices: [
+          {
+            message: {
+              content:
+                'Hei\n---TRANSLATE_SEPARATOR---\nMaailma\n---TRANSLATE_SEPARATOR---\nExtra',
+            },
+          },
+        ],
+        usage: { total_tokens: 20, prompt_tokens: 10, completion_tokens: 10 },
       });
 
       const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
@@ -754,19 +613,39 @@ describe('OpenAIProvider', () => {
       expect(result.length).toBe(2);
       expect(result).toEqual(['Hei', 'Maailma']);
     });
+
+    it('warns when non-empty batch output still parses to empty results', async () => {
+      await provider.setApiKey('sk-key');
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      queueJsonResponse({
+        choices: [
+          {
+            message: {
+              content: '---TRANSLATE_SEPARATOR---',
+            },
+          },
+        ],
+        usage: { total_tokens: 20, prompt_tokens: 10, completion_tokens: 10 },
+      });
+
+      const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
+
+      expect(result).toEqual(['', '']);
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[OpenAI]',
+        'Separator/XML parsing produced no results for batch',
+      );
+    });
   });
 
   describe('translate with missing usage data (line 228)', () => {
     it('handles missing usage field gracefully', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'Hei' } }],
-            // No usage field
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'Hei' } }],
+        // No usage field
       });
 
       const result = await provider.translate('Hello', 'en', 'fi');
@@ -782,13 +661,9 @@ describe('OpenAIProvider', () => {
     it('handles null message content', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: null } }],
-            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: null } }],
+        usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
       });
 
       const result = await provider.translate('Hello', 'en', 'fi');
@@ -798,13 +673,9 @@ describe('OpenAIProvider', () => {
     it('handles missing message field', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: undefined }],
-            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: undefined }],
+        usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
       });
 
       const result = await provider.translate('Hello', 'en', 'fi');
@@ -814,13 +685,9 @@ describe('OpenAIProvider', () => {
     it('handles missing choices array', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [],
-            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
-          }),
+      queueJsonResponse({
+        choices: [],
+        usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
       });
 
       const result = await provider.translate('Hello', 'en', 'fi');
@@ -832,13 +699,9 @@ describe('OpenAIProvider', () => {
     it('returns auto when detected language is empty string', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: '' } }],
-            usage: { total_tokens: 5, prompt_tokens: 3, completion_tokens: 2 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: '' } }],
+        usage: { total_tokens: 5, prompt_tokens: 3, completion_tokens: 2 },
       });
 
       const result = await provider.detectLanguage('text');
@@ -848,29 +711,21 @@ describe('OpenAIProvider', () => {
     it('returns detected language when response is 2-letter code', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'FI' } }],  // Uppercase
-            usage: { total_tokens: 5, prompt_tokens: 3, completion_tokens: 2 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'FI' } }], // Uppercase
+        usage: { total_tokens: 5, prompt_tokens: 3, completion_tokens: 2 },
       });
 
       const result = await provider.detectLanguage('Terve');
-      expect(result).toBe('fi');  // Should be lowercased
+      expect(result).toBe('fi'); // Should be lowercased
     });
 
     it('returns auto when detected language is longer than 2 chars', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'English' } }],
-            usage: { total_tokens: 5, prompt_tokens: 3, completion_tokens: 2 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'English' } }],
+        usage: { total_tokens: 5, prompt_tokens: 3, completion_tokens: 2 },
       });
 
       const result = await provider.detectLanguage('Hello');
@@ -966,13 +821,9 @@ describe('OpenAIProvider', () => {
     it('includes source language in prompt for known languages', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'Hei' } }],
-            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'Hei' } }],
+        usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
       });
 
       await provider.translate('Hello', 'en', 'fi');
@@ -985,13 +836,9 @@ describe('OpenAIProvider', () => {
     it('omits source hint for auto-detection', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'Translated' } }],
-            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'Translated' } }],
+        usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
       });
 
       await provider.translate('Hello', 'auto', 'fi');
@@ -1028,13 +875,9 @@ describe('OpenAIProvider', () => {
     it('returns single translated text wrapped in array when input is array of length 1', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'Hei' } }],
-            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'Hei' } }],
+        usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
       });
 
       const result = await provider.translate(['Hello'], 'en', 'fi');
@@ -1048,21 +891,19 @@ describe('OpenAIProvider', () => {
     it('continues without throwing when storage.set fails during token tracking', async () => {
       await provider.setApiKey('sk-key');
 
-      vi.mocked(chrome.storage.local.set as any).mockImplementationOnce((items: Record<string, unknown>) => {
-        if ('openai_tokens_used' in items) {
-          return Promise.reject(new Error('Storage quota exceeded'));
-        }
-        Object.assign(mockStorage, items);
-        return Promise.resolve();
-      });
+      vi.mocked(chrome.storage.local.set as any).mockImplementationOnce(
+        (items: Record<string, unknown>) => {
+          if ('openai_tokens_used' in items) {
+            return Promise.reject(new Error('Storage quota exceeded'));
+          }
+          Object.assign(mockStorage, items);
+          return Promise.resolve();
+        },
+      );
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'Hei' } }],
-            usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'Hei' } }],
+        usage: { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
       });
 
       const result = await provider.translate('Hello', 'en', 'fi');
@@ -1075,10 +916,7 @@ describe('OpenAIProvider', () => {
     it('returns auto when detectLanguage response is not ok', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-      });
+      queueHttpError(500);
 
       const result = await provider.detectLanguage('Hello');
       expect(result).toBe('auto');
@@ -1087,13 +925,9 @@ describe('OpenAIProvider', () => {
     it('returns auto when detectLanguage detects invalid response', async () => {
       await provider.setApiKey('sk-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'invalid' } }],
-            usage: { total_tokens: 5, prompt_tokens: 3, completion_tokens: 2 },
-          }),
+      queueJsonResponse({
+        choices: [{ message: { content: 'invalid' } }],
+        usage: { total_tokens: 5, prompt_tokens: 3, completion_tokens: 2 },
       });
 
       const result = await provider.detectLanguage('Hello');

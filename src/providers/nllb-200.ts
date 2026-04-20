@@ -24,6 +24,7 @@ import { BaseProvider } from './base-provider';
 import { createLogger } from '../core/logger';
 import { withTimeout } from '../core/async-utils';
 import { CONFIG } from '../config';
+import { generateLanguagePairs } from './provider-utils';
 import type { TranslationOptions, LanguagePair } from '../types';
 
 const log = createLogger('NLLB-200');
@@ -143,13 +144,7 @@ export class NLLB200Provider extends BaseProvider {
   }
 
   getSupportedLanguages(): LanguagePair[] {
-    const pairs: LanguagePair[] = [];
-    for (const src of SUPPORTED_LANGS) {
-      for (const tgt of SUPPORTED_LANGS) {
-        if (src !== tgt) pairs.push({ src, tgt });
-      }
-    }
-    return pairs;
+    return generateLanguagePairs(SUPPORTED_LANGS);
   }
 
   supportsLanguagePair(src: string, tgt: string): boolean {

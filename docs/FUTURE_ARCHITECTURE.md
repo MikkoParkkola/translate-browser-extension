@@ -1,6 +1,6 @@
 # Translate Extension: Future Architecture Design
 
-> **Vision**: The world's best browser translation extension - local-first, provider-diverse, blazing fast, beautiful UX.
+> **Vision**: A local-first, provider-diverse browser translation extension with fast UX and clear user control.
 
 ## Executive Summary
 
@@ -317,7 +317,9 @@ interface TranslationProvider {
   translate(request: TranslationRequest): Promise<TranslationResult>;
   detectLanguage(text: string): Promise<string>;
   isAvailable(): Promise<boolean>;
-  getUsage(): Promise<UsageStats>;
+  // Optional provider-local diagnostics/cost snapshot.
+  // Extension-level background diagnostics are queried separately.
+  getUsage?(): Promise<UsageStats>;
 }
 
 interface TranslationRequest {
@@ -664,7 +666,7 @@ Cost: DGX Spark time (~$5-10)
 ```
 
 ### Phase 3: Premium Quality (Week 5-6)
-**Goal**: TranslateGemma for best-in-class quality
+**Goal**: TranslateGemma for high-quality translation
 
 ```
 Tasks:
@@ -838,5 +840,4 @@ echo "Final model size: $(du -sh $OUTPUT_DIR/final/)"
 ---
 
 *Document Version: 1.0*
-*Last Updated: 2025-02-02*
 *Author: Claude + Mikko*

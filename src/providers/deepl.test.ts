@@ -6,39 +6,21 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import {
+  defineProviderErrorTests,
+  expectProviderError,
+  installCloudProviderTestHarness,
+} from '../__contract__/cloud-provider-test-harness';
 import { DeepLProvider } from './deepl';
 
-// Mock chrome.storage
-const mockStorage: Record<string, unknown> = {};
-vi.stubGlobal('chrome', {
-  storage: {
-    local: {
-      get: vi.fn((keys: string[]) => {
-        const result: Record<string, unknown> = {};
-        for (const key of keys) {
-          if (mockStorage[key] !== undefined) {
-            result[key] = mockStorage[key];
-          }
-        }
-        return Promise.resolve(result);
-      }),
-      set: vi.fn((items: Record<string, unknown>) => {
-        Object.assign(mockStorage, items);
-        return Promise.resolve();
-      }),
-      remove: vi.fn((keys: string[]) => {
-        for (const key of keys) {
-          delete mockStorage[key];
-        }
-        return Promise.resolve();
-      }),
-    },
-  },
-});
-
-// Mock fetch
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+const {
+  mockStorage,
+  resetCloudProviderState,
+  mockFetch,
+  queueJsonResponse,
+  queueRejectedFetch,
+  queueHttpError,
+} = installCloudProviderTestHarness();
 
 // Mock language-map module
 vi.mock('../core/language-map', () => ({
@@ -52,76 +34,27 @@ vi.mock('../core/language-map', () => ({
     };
     return map[code.toLowerCase()] || code.toUpperCase();
   },
-  getDeepLSupportedLanguages: () => ['en', 'fi', 'de', 'fr', 'es', 'it', 'nl', 'pl', 'ru', 'ja', 'zh'],
+  getDeepLSupportedLanguages: () => [
+    'en',
+    'fi',
+    'de',
+    'fr',
+    'es',
+    'it',
+    'nl',
+    'pl',
+    'ru',
+    'ja',
+    'zh',
+  ],
 }));
 
 describe('DeepLProvider', () => {
   let provider: DeepLProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
+    resetCloudProviderState();
     provider = new DeepLProvider();
-  });
-
-  describe('constructor', () => {
-    it('sets correct provider info', () => {
-      const info = provider.getInfo();
-      expect(info.id).toBe('deepl');
-      expect(info.name).toBe('DeepL');
-      expect(info.type).toBe('cloud');
-      expect(info.qualityTier).toBe('premium');
-    });
-
-    it('sets cost per million', () => {
-      expect(provider.costPerMillion).toBe(20);
-    });
-  });
-
-  describe('initialize', () => {
-    it('loads config from storage when API key exists', async () => {
-      mockStorage['deepl_api_key'] = 'test-key:fx';
-      mockStorage['deepl_is_pro'] = false;
-      mockStorage['deepl_formality'] = 'more';
-
-      await provider.initialize();
-
-      expect(await provider.isAvailable()).toBe(true);
-      const info = provider.getInfo();
-      expect(info.tier).toBe('Free');
-      expect(info.formality).toBe('more');
-    });
-
-    it('handles Pro tier', async () => {
-      mockStorage['deepl_api_key'] = 'test-pro-key';
-      mockStorage['deepl_is_pro'] = true;
-
-      await provider.initialize();
-
-      const info = provider.getInfo();
-      expect(info.tier).toBe('Pro');
-    });
-
-    it('handles missing API key', async () => {
-      await provider.initialize();
-      expect(await provider.isAvailable()).toBe(false);
-    });
-  });
-
-  describe('setApiKey', () => {
-    it('stores API key with Free tier', async () => {
-      await provider.setApiKey('test-key:fx', false);
-
-      expect(mockStorage['deepl_api_key']).toBe('test-key:fx');
-      expect(mockStorage['deepl_is_pro']).toBe(false);
-    });
-
-    it('stores API key with Pro tier', async () => {
-      await provider.setApiKey('pro-key', true);
-
-      expect(mockStorage['deepl_api_key']).toBe('pro-key');
-      expect(mockStorage['deepl_is_pro']).toBe(true);
-    });
   });
 
   describe('setFormality', () => {
@@ -133,29 +66,12 @@ describe('DeepLProvider', () => {
     });
   });
 
-  describe('clearApiKey', () => {
-    it('removes all config from storage', async () => {
-      mockStorage['deepl_api_key'] = 'key';
-      mockStorage['deepl_is_pro'] = true;
-      mockStorage['deepl_formality'] = 'more';
-
-      await provider.setApiKey('key');
-      await provider.clearApiKey();
-
-      expect(await provider.isAvailable()).toBe(false);
-    });
-  });
-
   describe('API endpoints', () => {
     it('uses Free API for Free tier', async () => {
       await provider.setApiKey('key:fx', false);
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            translations: [{ detected_source_language: 'EN', text: 'Hei' }],
-          }),
+      queueJsonResponse({
+        translations: [{ detected_source_language: 'EN', text: 'Hei' }],
       });
 
       await provider.translate('Hello', 'en', 'fi');
@@ -167,12 +83,8 @@ describe('DeepLProvider', () => {
     it('uses Pro API for Pro tier', async () => {
       await provider.setApiKey('pro-key', true);
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            translations: [{ detected_source_language: 'EN', text: 'Hei' }],
-          }),
+      queueJsonResponse({
+        translations: [{ detected_source_language: 'EN', text: 'Hei' }],
       });
 
       await provider.translate('Hello', 'en', 'fi');
@@ -190,16 +102,15 @@ describe('DeepLProvider', () => {
 
     it('throws when API key not configured', async () => {
       const noKeyProvider = new DeepLProvider();
-      await expect(noKeyProvider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+      await expectProviderError(noKeyProvider.translate('Hello', 'en', 'fi'), {
+        category: 'auth',
+        technicalDetailsPattern: /DeepL API key not configured/,
+      });
     });
 
     it('sends correct request for single text', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            translations: [{ detected_source_language: 'EN', text: 'Hei' }],
-          }),
+      queueJsonResponse({
+        translations: [{ detected_source_language: 'EN', text: 'Hei' }],
       });
 
       const result = await provider.translate('Hello', 'en', 'fi');
@@ -210,7 +121,9 @@ describe('DeepLProvider', () => {
 
       const options = call[1];
       expect(options.method).toBe('POST');
-      expect(options.headers['Authorization']).toBe('DeepL-Auth-Key test-key:fx');
+      expect(options.headers['Authorization']).toBe(
+        'DeepL-Auth-Key test-key:fx',
+      );
 
       const body = JSON.parse(options.body);
       expect(body.text).toEqual(['Hello']);
@@ -221,15 +134,11 @@ describe('DeepLProvider', () => {
     });
 
     it('handles batch translation', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            translations: [
-              { detected_source_language: 'EN', text: 'Hei' },
-              { detected_source_language: 'EN', text: 'Maailma' },
-            ],
-          }),
+      queueJsonResponse({
+        translations: [
+          { detected_source_language: 'EN', text: 'Hei' },
+          { detected_source_language: 'EN', text: 'Maailma' },
+        ],
       });
 
       const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
@@ -239,12 +148,8 @@ describe('DeepLProvider', () => {
     });
 
     it('omits source_lang for auto-detect', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            translations: [{ detected_source_language: 'EN', text: 'Hei' }],
-          }),
+      queueJsonResponse({
+        translations: [{ detected_source_language: 'EN', text: 'Hei' }],
       });
 
       await provider.translate('Hello', 'auto', 'fi');
@@ -256,12 +161,8 @@ describe('DeepLProvider', () => {
     it('includes formality for supported languages', async () => {
       await provider.setFormality('more');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            translations: [{ detected_source_language: 'EN', text: 'Guten Tag' }],
-          }),
+      queueJsonResponse({
+        translations: [{ detected_source_language: 'EN', text: 'Guten Tag' }],
       });
 
       await provider.translate('Hello', 'en', 'de');
@@ -270,26 +171,31 @@ describe('DeepLProvider', () => {
       expect(body.formality).toBe('more');
     });
 
-    it('handles API errors', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 403,
-        text: () => Promise.resolve('Forbidden'),
-        headers: { get: () => null },
-      });
-
-      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
-    });
-
-    it('handles quota exceeded', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 456,
-        text: () => Promise.resolve('Quota exceeded'),
-        headers: { get: () => null },
-      });
-
-      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+    defineProviderErrorTests({
+      run: () => provider.translate('Hello', 'en', 'fi'),
+      cases: [
+        {
+          title: 'handles API errors',
+          arrange: () => {
+            queueHttpError(403, 'Forbidden');
+          },
+          expected: {
+            category: 'auth',
+            messagePattern: /api.key|auth|forbidden|unauthorized/i,
+            technicalDetailsPattern: /api.key|forbidden|unauthorized/i,
+          },
+        },
+        {
+          title: 'handles quota exceeded',
+          arrange: () => {
+            queueHttpError(456, 'Quota exceeded');
+          },
+          expected: {
+            messagePattern: /quota|limit|too many requests/i,
+            technicalDetailsPattern: /quota|limit|too many requests/i,
+          },
+        },
+      ],
     });
   });
 
@@ -302,12 +208,8 @@ describe('DeepLProvider', () => {
     it('detects language by translating sample', async () => {
       await provider.setApiKey('key:fx', false);
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            translations: [{ detected_source_language: 'FI', text: 'Hello' }],
-          }),
+      queueJsonResponse({
+        translations: [{ detected_source_language: 'FI', text: 'Hello' }],
       });
 
       const result = await provider.detectLanguage('Hei maailma');
@@ -317,18 +219,23 @@ describe('DeepLProvider', () => {
     it('uses only first 100 chars for detection', async () => {
       await provider.setApiKey('key:fx', false);
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            translations: [{ detected_source_language: 'EN', text: 'Test' }],
-          }),
+      queueJsonResponse({
+        translations: [{ detected_source_language: 'EN', text: 'Test' }],
       });
 
       await provider.detectLanguage('x'.repeat(500));
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body.text[0].length).toBe(100);
+    });
+
+    it('returns auto on HTTP error responses', async () => {
+      await provider.setApiKey('key:fx', false);
+
+      queueHttpError(456, 'Quota exceeded');
+
+      const result = await provider.detectLanguage('Hello');
+      expect(result).toBe('auto');
     });
   });
 
@@ -343,13 +250,9 @@ describe('DeepLProvider', () => {
     it('fetches usage from DeepL API', async () => {
       await provider.setApiKey('key:fx', false);
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            character_count: 100000,
-            character_limit: 500000,
-          }),
+      queueJsonResponse({
+        character_count: 100000,
+        character_limit: 500000,
       });
 
       const usage = await provider.getUsage();
@@ -362,13 +265,9 @@ describe('DeepLProvider', () => {
     it('detects limit reached', async () => {
       await provider.setApiKey('key:fx', false);
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            character_count: 500000,
-            character_limit: 500000,
-          }),
+      queueJsonResponse({
+        character_count: 500000,
+        character_limit: 500000,
       });
 
       const usage = await provider.getUsage();
@@ -378,13 +277,9 @@ describe('DeepLProvider', () => {
     it('caches usage for 5 minutes', async () => {
       await provider.setApiKey('key:fx', false);
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            character_count: 100,
-            character_limit: 500000,
-          }),
+      queueJsonResponse({
+        character_count: 100,
+        character_limit: 500000,
       });
 
       // First call fetches from API
@@ -416,12 +311,8 @@ describe('DeepLProvider', () => {
     it('returns true on successful translation', async () => {
       await provider.setApiKey('key:fx', false);
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            translations: [{ detected_source_language: 'EN', text: 'Hei' }],
-          }),
+      queueJsonResponse({
+        translations: [{ detected_source_language: 'EN', text: 'Hei' }],
       });
 
       const result = await provider.test();
@@ -431,7 +322,7 @@ describe('DeepLProvider', () => {
     it('returns false on error', async () => {
       await provider.setApiKey('key:fx', false);
 
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      queueRejectedFetch(new Error('Network error'));
 
       const result = await provider.test();
       expect(result).toBe(false);
@@ -455,7 +346,7 @@ describe('DeepLProvider', () => {
     it('returns auto when fetch throws during detectLanguage', async () => {
       await provider.setApiKey('test-key');
 
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      queueRejectedFetch(new Error('Network error'));
 
       const result = await provider.detectLanguage('Bonjour');
       expect(result).toBe('auto');
@@ -466,17 +357,24 @@ describe('DeepLProvider', () => {
     it('returns default usage when fetch throws', async () => {
       await provider.setApiKey('test-key');
 
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      queueRejectedFetch(new Error('Network error'));
 
       const result = await provider.getUsage();
-      expect(result).toEqual({ requests: 0, tokens: 0, cost: 0, limitReached: false });
+      expect(result).toEqual({
+        requests: 0,
+        tokens: 0,
+        cost: 0,
+        limitReached: false,
+      });
     });
   });
 
   describe('initialize with missing isPro and formality', () => {
     it('defaults isPro to false when deepl_is_pro is undefined', async () => {
       // Only set the API key, omit isPro and formality
-      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      (
+        chrome.storage.local.get as ReturnType<typeof vi.fn>
+      ).mockResolvedValueOnce({
         deepl_api_key: 'test-key-free',
         // deepl_is_pro is deliberately omitted → ?? false
         // deepl_formality is deliberately omitted → ?? 'default'
@@ -499,7 +397,9 @@ describe('DeepLProvider', () => {
       await freshProvider.setFormality('more');
 
       // Verify chrome.storage.local.set was called
-      expect(chrome.storage.local.set).toHaveBeenCalledWith({ deepl_formality: 'more' });
+      expect(chrome.storage.local.set).toHaveBeenCalledWith({
+        deepl_formality: 'more',
+      });
     });
   });
 
@@ -509,11 +409,8 @@ describe('DeepLProvider', () => {
       await provider.setFormality('more');
 
       // FI is not in the formalitySupported list
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          translations: [{ text: 'Hei maailma', detected_source_language: 'EN' }],
-        }),
+      queueJsonResponse({
+        translations: [{ text: 'Hei maailma', detected_source_language: 'EN' }],
       });
 
       await provider.translate('Hello world', 'en', 'fi');
@@ -528,11 +425,8 @@ describe('DeepLProvider', () => {
       await provider.setApiKey('test-key');
       await provider.setFormality('more');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          translations: [{ text: 'Hallo Welt', detected_source_language: 'EN' }],
-        }),
+      queueJsonResponse({
+        translations: [{ text: 'Hallo Welt', detected_source_language: 'EN' }],
       });
 
       await provider.translate('Hello world', 'en', 'de');
@@ -547,11 +441,8 @@ describe('DeepLProvider', () => {
     it('returns detected language when response is ok', async () => {
       await provider.setApiKey('test-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          translations: [{ text: 'Hello', detected_source_language: 'FR' }],
-        }),
+      queueJsonResponse({
+        translations: [{ text: 'Hello', detected_source_language: 'FR' }],
       });
 
       const result = await provider.detectLanguage('Bonjour le monde');
@@ -565,12 +456,9 @@ describe('DeepLProvider', () => {
       // Clear any cached usage
       (provider as any).usageCache = null;
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          character_count: 50000,
-          character_limit: 500000,
-        }),
+      queueJsonResponse({
+        character_count: 50000,
+        character_limit: 500000,
       });
 
       const result = await provider.getUsage();
@@ -585,42 +473,33 @@ describe('DeepLProvider', () => {
     });
 
     it('handles response with no translations array', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          translations: undefined,  // Missing translations
-        }),
+      queueJsonResponse({
+        translations: undefined, // Missing translations
       });
 
       await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
     });
 
     it('handles response with empty translations array', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          translations: [],  // Empty array
-        }),
+      queueJsonResponse({
+        translations: [], // Empty array
       });
 
-      const result = await provider.translate('Hello', 'en', 'fi');
-      // When empty, results[0] is undefined
-      expect(result).toBeUndefined();
+      await expectProviderError(provider.translate('Hello', 'en', 'fi'), {
+        category: 'internal',
+        messagePattern: /translation failed unexpectedly/i,
+        technicalDetailsPattern: /expected 1 translations, received 0/i,
+      });
     });
 
     it('handles API error response gracefully', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 403,
-        text: () => Promise.resolve('Unauthorized'),
-        headers: { get: () => null },
-      });
+      queueHttpError(403, 'Unauthorized');
 
       await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
     });
 
     it('handles fetch network error', async () => {
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      queueRejectedFetch(new Error('Network error'));
 
       await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
     });
@@ -638,11 +517,8 @@ describe('DeepLProvider', () => {
     });
 
     it('returns auto when translations is undefined', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          translations: undefined,
-        }),
+      queueJsonResponse({
+        translations: undefined,
       });
 
       const result = await provider.detectLanguage('Hello');
@@ -650,11 +526,8 @@ describe('DeepLProvider', () => {
     });
 
     it('returns auto when detected language is missing', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          translations: [{ text: 'Hei' }],  // No detected_source_language
-        }),
+      queueJsonResponse({
+        translations: [{ text: 'Hei' }], // No detected_source_language
       });
 
       const result = await provider.detectLanguage('Hello');
@@ -662,17 +535,14 @@ describe('DeepLProvider', () => {
     });
 
     it('handles response.ok=false gracefully', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-      });
+      queueHttpError(500);
 
       const result = await provider.detectLanguage('Hello');
       expect(result).toBe('auto');
     });
 
     it('handles fetch error during detection', async () => {
-      mockFetch.mockRejectedValueOnce(new Error('Network timeout'));
+      queueRejectedFetch(new Error('Network timeout'));
 
       const result = await provider.detectLanguage('Hello');
       expect(result).toBe('auto');
@@ -697,11 +567,8 @@ describe('DeepLProvider', () => {
     });
 
     it('handles single string translation', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          translations: [{ text: 'Hei' }],
-        }),
+      queueJsonResponse({
+        translations: [{ text: 'Hei' }],
       });
 
       const result = await provider.translate('Hello', 'en', 'fi');
@@ -710,14 +577,8 @@ describe('DeepLProvider', () => {
     });
 
     it('handles array translation', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          translations: [
-            { text: 'Hei' },
-            { text: 'Maailma' },
-          ],
-        }),
+      queueJsonResponse({
+        translations: [{ text: 'Hei' }, { text: 'Maailma' }],
       });
 
       const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
@@ -730,11 +591,8 @@ describe('DeepLProvider', () => {
     it('returns true on successful translation', async () => {
       await provider.setApiKey('test-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          translations: [{ text: 'Hei' }],
-        }),
+      queueJsonResponse({
+        translations: [{ text: 'Hei' }],
       });
 
       const result = await provider.test();
@@ -744,7 +602,7 @@ describe('DeepLProvider', () => {
     it('returns false on translation error', async () => {
       await provider.setApiKey('test-key');
 
-      mockFetch.mockRejectedValueOnce(new Error('API error'));
+      queueRejectedFetch(new Error('API error'));
 
       const result = await provider.test();
       expect(result).toBe(false);
@@ -777,7 +635,9 @@ describe('DeepLProvider', () => {
     it('isAvailable returns true when configured', async () => {
       const freshProvider = new DeepLProvider();
       // Mock storage to have a key
-      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      (
+        chrome.storage.local.get as ReturnType<typeof vi.fn>
+      ).mockResolvedValueOnce({
         deepl_api_key: 'test-key',
       });
 
@@ -788,7 +648,9 @@ describe('DeepLProvider', () => {
     it('isAvailable returns false when not configured', async () => {
       const freshProvider = new DeepLProvider();
       // Mock storage with no key
-      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({});
+      (
+        chrome.storage.local.get as ReturnType<typeof vi.fn>
+      ).mockResolvedValueOnce({});
 
       const available = await freshProvider.isAvailable();
       expect(available).toBe(false);
@@ -803,14 +665,14 @@ describe('DeepLProvider', () => {
     });
 
     it('caches usage results', async () => {
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
             character_count: 1000,
             character_limit: 500000,
           }),
-        });
+      });
 
       await provider.getUsage();
       const cachedUsage = (provider as any).usageCache;
@@ -821,12 +683,9 @@ describe('DeepLProvider', () => {
     });
 
     it('returns cached usage on second call', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          character_count: 2000,
-          character_limit: 500000,
-        }),
+      queueJsonResponse({
+        character_count: 2000,
+        character_limit: 500000,
       });
 
       // @ts-expect-error unused side-effect
@@ -842,12 +701,9 @@ describe('DeepLProvider', () => {
     it('handles limit reached', async () => {
       (provider as any).usageCache = null;
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          character_count: 490000,
-          character_limit: 500000,
-        }),
+      queueJsonResponse({
+        character_count: 490000,
+        character_limit: 500000,
       });
 
       const usage = await provider.getUsage();
@@ -870,13 +726,15 @@ describe('DeepLProvider', () => {
       await provider.setApiKey('test-key');
       (provider as any).usageCache = null;
 
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-      });
+      queueHttpError(500);
 
       const result = await provider.getUsage();
-      expect(result).toEqual({ requests: 0, tokens: 0, cost: 0, limitReached: false });
+      expect(result).toEqual({
+        requests: 0,
+        tokens: 0,
+        cost: 0,
+        limitReached: false,
+      });
     });
   });
 
@@ -901,7 +759,9 @@ describe('DeepLProvider', () => {
 
       // Mock chrome.storage to throw an error
       const mockGetError = new Error('Storage access denied');
-      vi.mocked(chrome.storage.local.get as any).mockRejectedValueOnce(mockGetError);
+      vi.mocked(chrome.storage.local.get as any).mockRejectedValueOnce(
+        mockGetError,
+      );
 
       // Should not throw — safeStorageGet handles the error at the storage layer
       await expect(freshProvider.initialize()).resolves.not.toThrow();

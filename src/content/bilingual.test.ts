@@ -7,16 +7,10 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { createLoggerModuleMock } from '../test-helpers/module-mocks';
 
 // Mock logger
-vi.mock('../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock('../core/logger', () => createLoggerModuleMock());
 
 // Mock toast
 vi.mock('./toast', () => ({

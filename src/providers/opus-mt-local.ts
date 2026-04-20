@@ -10,65 +10,18 @@ import { BaseProvider } from './base-provider';
 import { webgpuDetector } from '../core/webgpu-detector';
 import { createLogger } from '../core/logger';
 import { extractErrorMessage } from '../core/errors';
-import { CONFIG } from '../config';
+import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import {
-  buildOpusMtExecutionPlan,
-  describeOpusMtExecutionConfig,
-  resolveOpusMtExecutionConfig,
-} from '../shared/opus-mt-runtime';
-import { translateOpusMtText } from '../shared/opus-mt-segmentation';
-import type { TranslationOptions, LanguagePair, ProviderConfig, TranslationPipeline } from '../types';
+  getModelId,
+  getSupportedLanguagePairs,
+  getSupportedTargetsForSource,
+  resolveOpusMtTranslationRoute,
+} from '../offscreen/model-maps';
 
 const log = createLogger('OPUS-MT');
 
 // Dynamic imports for Transformers.js
-type Pipeline = TranslationPipeline;
-
-// Supported language pairs with Xenova quantized models
-const SUPPORTED_PAIRS: Record<string, string> = {
-  // English ↔ Finnish
-  'en-fi': 'Xenova/opus-mt-en-fi',
-  'fi-en': 'Xenova/opus-mt-fi-en',
-  // English ↔ German
-  'en-de': 'Xenova/opus-mt-en-de',
-  'de-en': 'Xenova/opus-mt-de-en',
-  // English ↔ French
-  'en-fr': 'Xenova/opus-mt-en-fr',
-  'fr-en': 'Xenova/opus-mt-fr-en',
-  // English ↔ Spanish
-  'en-es': 'Xenova/opus-mt-en-es',
-  'es-en': 'Xenova/opus-mt-es-en',
-  // English ↔ Swedish
-  'en-sv': 'Xenova/opus-mt-en-sv',
-  'sv-en': 'Xenova/opus-mt-sv-en',
-  // English ↔ Dutch
-  'en-nl': 'Xenova/opus-mt-en-nl',
-  'nl-en': 'Xenova/opus-mt-nl-en',
-  // English ↔ Russian
-  'en-ru': 'Xenova/opus-mt-en-ru',
-  'ru-en': 'Xenova/opus-mt-ru-en',
-  // English ↔ Chinese
-  'en-zh': 'Xenova/opus-mt-en-zh',
-  'zh-en': 'Xenova/opus-mt-zh-en',
-  // English ↔ Japanese
-  'en-ja': 'Xenova/opus-mt-en-jap',
-  'ja-en': 'Xenova/opus-mt-jap-en',
-  // English ↔ Italian
-  'en-it': 'Xenova/opus-mt-en-it',
-  'it-en': 'Xenova/opus-mt-it-en',
-  // English ↔ Portuguese
-  'en-pt': 'Xenova/opus-mt-en-pt',
-  'pt-en': 'Xenova/opus-mt-pt-en',
-  // English ↔ Polish
-  'en-pl': 'Xenova/opus-mt-en-pl',
-  'pl-en': 'Xenova/opus-mt-pl-en',
-  // English ↔ Danish
-  'en-da': 'Xenova/opus-mt-en-da',
-  'da-en': 'Xenova/opus-mt-da-en',
-  // English ↔ Norwegian
-  'en-no': 'Xenova/opus-mt-en-no',
-  'no-en': 'Xenova/opus-mt-no-en',
-};
+type Pipeline = (text: string, options?: Record<string, unknown>) => Promise<Array<{ translation_text: string }>>;
 
 export class OpusMTProvider extends BaseProvider {
   private pipelines = new Map<string, Pipeline>();
@@ -109,9 +62,7 @@ export class OpusMTProvider extends BaseProvider {
 
       if (this.webgpuSupported) {
         log.info('WebGPU support detected');
-        if (CONFIG.experimental.opusMtWebgpuProbe) {
-          await webgpuDetector.initialize();
-        }
+        await webgpuDetector.initialize();
       } else {
         log.info('Using WASM acceleration');
       }
@@ -121,14 +72,6 @@ export class OpusMTProvider extends BaseProvider {
       log.error('Initialization failed:', error);
       throw error;
     }
-  }
-
-  /**
-   * Get the model ID for a language pair
-   */
-  private getModelId(sourceLang: string, targetLang: string): string | null {
-    const pair = `${sourceLang}-${targetLang}`;
-    return SUPPORTED_PAIRS[pair] || null;
   }
 
   /**
@@ -145,18 +88,23 @@ export class OpusMTProvider extends BaseProvider {
 
     log.info(`Loading model: ${modelId}`);
 
-    const attempts = buildOpusMtExecutionPlan(
-      { supported: this.webgpuSupported, fp16: false },
-      CONFIG.experimental.opusMtWebgpuProbe
-    );
+    // Build fallback chain: most optimal first, safest last
+    // OPUS-MT Xenova models reliably ship q8 (quantized) variants.
+    // fp16 variants may not exist or cause mixed-precision ONNX errors,
+    // so we always prefer q8 even when shader-f16 is available.
+    const attempts: Array<{ device: 'webgpu' | 'wasm'; dtype: string; label: string }> = [];
+
+    if (this.webgpuSupported) {
+      attempts.push({ device: 'webgpu', dtype: 'q8', label: 'WebGPU+q8' });
+    }
+    // WASM fallback always available
+    attempts.push({ device: 'wasm', dtype: 'q8', label: 'WASM+q8' });
 
     let lastError: Error | null = null;
-    const attemptErrors: string[] = [];
 
     for (const attempt of attempts) {
-      const label = describeOpusMtExecutionConfig(attempt);
       try {
-        log.info(`Trying ${label} for ${modelId}`);
+        log.info(`Trying ${attempt.label} for ${modelId}`);
         const pipe = await this.pipelineFactory('translation', modelId, {
           device: attempt.device,
           dtype: attempt.dtype,
@@ -166,24 +114,56 @@ export class OpusMTProvider extends BaseProvider {
         });
 
         this.pipelines.set(modelId, pipe);
-        log.info(`Model loaded: ${modelId} (${label})`);
+        log.info(`Model loaded: ${modelId} (${attempt.label})`);
         return pipe;
       } catch (error) {
         const errMsg = extractErrorMessage(error);
-        attemptErrors.push(`${label}: ${errMsg}`);
-        log.warn(`${label} failed: ${errMsg}`);
+        log.warn(`${attempt.label} failed: ${errMsg}`);
         lastError = error instanceof Error ? error : new Error(errMsg);
       }
     }
 
     log.error(`All attempts failed for ${modelId}`);
     /* v8 ignore start */
-    throw lastError ?? new Error(
-      attemptErrors.length > 0
-        ? `Failed to load model ${modelId}. Attempts: ${attemptErrors.join(' | ')}`
-        : `Failed to load model ${modelId}`
-    );
+    throw lastError ?? new Error(`Failed to load model ${modelId}`);
     /* v8 ignore stop */
+  }
+
+  /**
+   * Translate text with a single OPUS-MT model.
+   */
+  private async translateWithModel(
+    text: string | string[],
+    modelId: string
+  ): Promise<string | string[]> {
+    const pipe = await this.getPipeline(modelId);
+
+    if (Array.isArray(text)) {
+      return Promise.all(text.map((value) => this.translateSingle(pipe, value)));
+    }
+
+    return this.translateSingle(pipe, text);
+  }
+
+  /**
+   * Translate text through a pivot route using two direct models.
+   */
+  private async translateWithPivotRoute(
+    text: string | string[],
+    firstHop: string,
+    secondHop: string
+  ): Promise<string | string[]> {
+    const [firstSrc, firstTgt] = firstHop.split('-');
+    const [secondSrc, secondTgt] = secondHop.split('-');
+    const firstModelId = getModelId(firstSrc, firstTgt);
+    const secondModelId = getModelId(secondSrc, secondTgt);
+
+    if (!firstModelId || !secondModelId) {
+      throw new Error(`Invalid OPUS-MT pivot route: ${firstHop} -> ${secondHop}`);
+    }
+
+    const intermediate = await this.translateWithModel(text, firstModelId);
+    return this.translateWithModel(intermediate, secondModelId);
   }
 
   /**
@@ -199,14 +179,9 @@ export class OpusMTProvider extends BaseProvider {
       await this.initialize();
     }
 
-    const modelId = this.getModelId(sourceLang, targetLang);
-    if (!modelId) {
-      // Get list of available target languages for this source
-      const availableTargets = Object.keys(SUPPORTED_PAIRS)
-        .filter(pair => pair.startsWith(`${sourceLang}-`))
-        .map(pair => pair.split('-')[1])
-        .join(', ');
-
+    const route = resolveOpusMtTranslationRoute(sourceLang, targetLang);
+    if (!route) {
+      const availableTargets = getSupportedTargetsForSource(sourceLang).join(', ');
       const hint = availableTargets
         ? `Available targets for ${sourceLang}: ${availableTargets}`
         : `${sourceLang} is not a supported source language`;
@@ -215,17 +190,14 @@ export class OpusMTProvider extends BaseProvider {
     }
 
     try {
-      const pipe = await this.getPipeline(modelId);
-
-      // Handle batch translation
-      if (Array.isArray(text)) {
-        const results = await Promise.all(
-          text.map((t) => this.translateSingle(pipe, t, sourceLang, targetLang))
-        );
-        return results;
+      if (route.kind === 'direct') {
+        return await this.translateWithModel(text, route.modelId);
       }
 
-      return await this.translateSingle(pipe, text, sourceLang, targetLang);
+      const [firstHop, secondHop] = route.route;
+      const [, pivotTarget] = firstHop.split('-');
+      log.info(`Pivot translation: ${sourceLang} -> ${pivotTarget} -> ${targetLang}`);
+      return await this.translateWithPivotRoute(text, firstHop, secondHop);
     } catch (error) {
       log.error('Translation error:', error);
       throw error;
@@ -237,28 +209,16 @@ export class OpusMTProvider extends BaseProvider {
    */
   private async translateSingle(
     pipe: Pipeline,
-    text: string,
-    sourceLang: string,
-    targetLang: string
+    text: string
   ): Promise<string> {
     if (!text || text.trim().length === 0) {
       return text;
     }
 
     try {
-      return await translateOpusMtText(pipe, text, {
-        splitMultiSentence: CONFIG.experimental.opusMtWebgpuProbe,
-        onSplit: (segmentCount) => {
-          log.info(
-            `Probe build: split ${sourceLang}->${targetLang} input into ${segmentCount} per-sentence inference calls`
-          );
-        },
-        pipelineOptions: {
-          src_lang: sourceLang,
-          tgt_lang: targetLang,
-          max_length: 512,
-        },
-      });
+      const result = await pipe(text, { max_length: 512 });
+
+      return result[0].translation_text;
     } catch (error) {
       log.error('Single translation error:', error);
       throw error;
@@ -293,10 +253,7 @@ export class OpusMTProvider extends BaseProvider {
    * Get supported language pairs
    */
   getSupportedLanguages(): LanguagePair[] {
-    return Object.keys(SUPPORTED_PAIRS).map((pair) => {
-      const [src, tgt] = pair.split('-');
-      return { src, tgt };
-    });
+    return getSupportedLanguagePairs().map(({ src, tgt }) => ({ src, tgt }));
   }
 
   /**
@@ -322,23 +279,12 @@ export class OpusMTProvider extends BaseProvider {
    * Get provider info
    */
   getInfo(): ProviderConfig & { modelSize: string; speed: string; webgpu: boolean; device: string } {
-    const runtime = resolveOpusMtExecutionConfig(
-      { supported: this.webgpuSupported, fp16: false },
-      CONFIG.experimental.opusMtWebgpuProbe
-    );
-
     return {
       ...super.getInfo(),
       modelSize: '169MB (quantized EN-FI pair)',
-      speed: runtime.device === 'webgpu'
-        ? 'Fastest (~10ms/sentence with experimental WebGPU probe)'
-        : 'Fast (safe WASM default)',
+      speed: 'Fastest (~10ms/sentence with WebGPU)',
       webgpu: this.webgpuSupported,
-      device: runtime.device === 'webgpu'
-        ? 'WebGPU (experimental probe)'
-        : this.webgpuSupported
-          ? 'WASM (WebGPU available via probe)'
-          : 'WASM',
+      device: this.webgpuSupported ? 'WebGPU' : 'WASM',
     };
   }
 }

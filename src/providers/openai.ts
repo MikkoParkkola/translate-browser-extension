@@ -4,14 +4,28 @@
  * https://platform.openai.com/docs/api-reference/chat
  */
 
-import { CloudProvider } from './cloud-provider';
+import { CloudProvider, updateCloudProviderApiKey } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
 import { getLanguageName } from '../core/language-map';
-import { CONFIG } from '../config';
-import { fetchProviderJson, estimateMaxTokens, generateAllLanguagePairs, parseBatchResponse } from './provider-utils';
+import {
+  buildTranslationPrompt,
+  detectProviderLanguageCode,
+  fetchProviderJson,
+  estimateMaxTokens,
+  finalizeProviderTranslations,
+  generateAllLanguagePairs,
+  parseBatchResponse,
+  type TranslationPromptTemplate,
+} from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
-import { validateOpenAIStoredConfig } from '../background/shared/config-validation';
+import { extractOpenAIStoredRuntimeState } from '../background/shared/config-validation';
+import {
+  DEFAULT_OPENAI_FORMALITY,
+  DEFAULT_OPENAI_MODEL,
+  DEFAULT_OPENAI_TEMPERATURE,
+  OPENAI_MODEL_VALUES,
+} from '../shared/cloud-provider-configs';
 
 const OPENAI_API = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_STORAGE_KEYS = [
@@ -21,9 +35,16 @@ const OPENAI_STORAGE_KEYS = [
   'openai_temperature',
   'openai_tokens_used',
 ] as const;
+const OPENAI_TRANSLATION_PROMPT_TEMPLATE: TranslationPromptTemplate = {
+  roleDescription: 'You are a professional translator.',
+  translationInstruction: 'Translate the following text to',
+  formalInstruction: 'Use formal language and polite forms.',
+  informalInstruction: 'Use casual, informal language.',
+  trailingInstruction: 'Provide only the translation, no explanations.',
+};
 
 export type OpenAIFormality = 'formal' | 'informal' | 'neutral';
-export type OpenAIModel = 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4-turbo' | 'gpt-3.5-turbo';
+export type OpenAIModel = (typeof OPENAI_MODEL_VALUES)[number];
 
 export interface OpenAIConfig {
   apiKey: string;
@@ -47,9 +68,14 @@ interface OpenAIChatResponse {
   };
 }
 
-export class OpenAIProvider extends CloudProvider {
+const OPENAI_DEFAULT_CONFIG: Omit<OpenAIConfig, 'apiKey'> = {
+  model: DEFAULT_OPENAI_MODEL,
+  formality: DEFAULT_OPENAI_FORMALITY,
+  temperature: DEFAULT_OPENAI_TEMPERATURE,
+};
+
+export class OpenAIProvider extends CloudProvider<OpenAIConfig> {
   private config: OpenAIConfig | null = null;
-  private totalTokensUsed = 0;
 
   constructor() {
     super({
@@ -67,78 +93,54 @@ export class OpenAIProvider extends CloudProvider {
   }
 
   protected applyStoredConfig(stored: CloudProviderStorageRecord): void {
-    const config = validateOpenAIStoredConfig(stored);
+    const config = this.applyStoredUsageConfig(
+      extractOpenAIStoredRuntimeState(stored),
+      'tokensUsed',
+    );
     if (!config) {
-      this.resetConfig();
       return;
     }
 
-    this.config = {
-      apiKey: config.apiKey,
-      model: config.model,
-      formality: config.formality,
-      temperature: config.temperature,
-    };
-    this.totalTokensUsed = config.tokensUsed;
-    this.log.info('Initialized with model:', this.config.model);
-  }
-
-  protected hasConfig(): boolean {
-    return !!this.config?.apiKey;
+    this.log.info('Initialized with model:', config.model);
   }
 
   protected resetConfig(): void {
     this.config = null;
-    this.totalTokensUsed = 0;
+    this.resetUsageCounter();
+  }
+
+  protected getConfigState(): OpenAIConfig | null {
+    return this.config;
+  }
+
+  protected setConfigState(config: OpenAIConfig | null): void {
+    this.config = config;
   }
 
   /**
    * Store API key and settings in storage
    */
   async setApiKey(apiKey: string): Promise<void> {
-    await this.persist({ openai_api_key: apiKey });
-    if (this.config) {
-      this.config.apiKey = apiKey;
-    } else {
-      this.config = {
-        apiKey,
-        model: 'gpt-4o-mini',
-        formality: 'neutral',
-        temperature: 0.3,
-      };
-    }
+    await this.persistAndUpdateConfig(
+      { openai_api_key: apiKey },
+      (config) => updateCloudProviderApiKey(config, apiKey, OPENAI_DEFAULT_CONFIG)
+    );
   }
 
   /** Set model preference */
   async setModel(model: OpenAIModel): Promise<void> {
-    await this.persist({ openai_model: model });
-    if (this.config) {
-      this.config.model = model;
-    }
+    await this.persistAndUpdateLoadedConfig(
+      { openai_model: model },
+      (config) => ({ ...config, model })
+    );
   }
 
   /** Set formality preference */
   async setFormality(formality: OpenAIFormality): Promise<void> {
-    await this.persist({ openai_formality: formality });
-    if (this.config) {
-      this.config.formality = formality;
-    }
-  }
-
-  private buildPrompt(targetLang: string, formality: OpenAIFormality): string {
-    const langName = getLanguageName(targetLang);
-    let formalityInst = '';
-
-    switch (formality) {
-      case 'formal':
-        formalityInst = ' Use formal language and polite forms.';
-        break;
-      case 'informal':
-        formalityInst = ' Use casual, informal language.';
-        break;
-    }
-
-    return `You are a professional translator. Translate the following text to ${langName}.${formalityInst} Provide only the translation, no explanations.`;
+    await this.persistAndUpdateLoadedConfig(
+      { openai_formality: formality },
+      (config) => ({ ...config, formality })
+    );
   }
 
   /**
@@ -150,9 +152,7 @@ export class OpenAIProvider extends CloudProvider {
     targetLang: string,
     _options?: TranslationOptions
   ): Promise<string | string[]> {
-    if (!this.config?.apiKey) {
-      throw createTranslationError(new Error('OpenAI API key not configured'));
-    }
+    const config = this.requireConfiguredConfig('OpenAI');
 
     const isArray = Array.isArray(text);
     const texts = isArray ? text : [text];
@@ -165,7 +165,11 @@ export class OpenAIProvider extends CloudProvider {
       inputText = texts[0];
     }
 
-    const systemPrompt = this.buildPrompt(targetLang, this.config.formality);
+    const systemPrompt = buildTranslationPrompt(
+      targetLang,
+      config.formality,
+      OPENAI_TRANSLATION_PROMPT_TEMPLATE,
+    );
     let userPrompt = inputText;
 
     // Add source language hint if known
@@ -182,25 +186,25 @@ export class OpenAIProvider extends CloudProvider {
       const data = await fetchProviderJson<OpenAIChatResponse>('OpenAI', OPENAI_API, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
+          'Authorization': `Bearer ${config.apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: this.config.model,
+          model: config.model,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
-          temperature: this.config.temperature,
+          temperature: config.temperature,
           max_tokens: estimateMaxTokens(texts),
         }),
       });
 
       // Track token usage
       if (data.usage) {
-        this.totalTokensUsed += data.usage.total_tokens;
-        this.persistBestEffort(
-          { openai_tokens_used: this.totalTokensUsed },
+        this.trackUsageCounter(
+          data.usage.total_tokens,
+          'openai_tokens_used',
           'Failed to persist token usage:'
         );
       }
@@ -209,10 +213,17 @@ export class OpenAIProvider extends CloudProvider {
 
       // Split back if batch
       if (isArray && texts.length > 1) {
-        return parseBatchResponse(translated, texts.length, { separatorFallback: true });
+        const results = parseBatchResponse(translated, texts.length, {
+          separatorFallback: true,
+          newlineFallback: true,
+        });
+        if (results.every(result => !result) && translated.length > 0) {
+          this.log.warn('Separator/XML parsing produced no results for batch');
+        }
+        return finalizeProviderTranslations('OpenAI', text, results);
       }
 
-      return isArray ? [translated] : translated;
+      return finalizeProviderTranslations('OpenAI', text, [translated]);
     } catch (error) {
       this.log.error('Translation error:', error);
       throw createTranslationError(error);
@@ -223,19 +234,22 @@ export class OpenAIProvider extends CloudProvider {
    * Detect language using OpenAI
    */
   async detectLanguage(text: string): Promise<string> {
-    if (!this.config?.apiKey) {
+    const config = this.getConfiguredConfig();
+    if (!config) {
       return 'auto';
     }
 
-    try {
-      const response = await fetch(OPENAI_API, {
+    return detectProviderLanguageCode<OpenAIChatResponse>(
+      'OpenAI',
+      OPENAI_API,
+      {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
+          'Authorization': `Bearer ${config.apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini', // Use cheaper model for detection
+          model: DEFAULT_OPENAI_MODEL, // Use cheaper model for detection
           messages: [
             {
               role: 'system',
@@ -246,21 +260,10 @@ export class OpenAIProvider extends CloudProvider {
           temperature: 0,
           max_tokens: 10,
         }),
-        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
-      });
-
-      if (response.ok) {
-        const data: OpenAIChatResponse = await response.json();
-        const detected = data.choices[0]?.message?.content?.trim().toLowerCase();
-        if (detected && detected.length === 2) {
-          return detected;
-        }
-      }
-    } catch (error) {
-      this.log.error('Language detection error:', error);
-    }
-
-    return 'auto';
+      },
+      (data) => data.choices[0]?.message?.content,
+      (message, error) => this.log.error(message, error),
+    );
   }
 
   async getUsage(): Promise<{
@@ -277,15 +280,11 @@ export class OpenAIProvider extends CloudProvider {
       'gpt-3.5-turbo': 0.0005,
     };
 
-    const rate = costPer1K[this.config?.model ?? 'gpt-4o-mini'];
-    const cost = (this.totalTokensUsed / 1000) * rate;
+    const totalTokensUsed = this.getUsageCounter();
+    const rate = costPer1K[this.config?.model ?? DEFAULT_OPENAI_MODEL];
+    const cost = (totalTokensUsed / 1000) * rate;
 
-    return {
-      requests: 0,
-      tokens: this.totalTokensUsed,
-      cost,
-      limitReached: false,
-    };
+    return this.buildTrackedUsage(cost);
   }
 
   getSupportedLanguages(): LanguagePair[] {
@@ -295,8 +294,8 @@ export class OpenAIProvider extends CloudProvider {
   getInfo(): ProviderConfig & { model: string; formality: string } {
     return {
       ...super.getInfo(),
-      model: this.config?.model ?? 'gpt-4o-mini',
-      formality: this.config?.formality ?? 'neutral',
+      model: this.config?.model ?? DEFAULT_OPENAI_MODEL,
+      formality: this.config?.formality ?? DEFAULT_OPENAI_FORMALITY,
     };
   }
 }

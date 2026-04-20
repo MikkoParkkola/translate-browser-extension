@@ -10,25 +10,17 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createBrowserApiModuleMock, createLoggerModuleMock } from '../test-helpers/module-mocks';
 
 // ============================================================================
 // Mocks
 // ============================================================================
 
-vi.mock('../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock('../core/logger', () => createLoggerModuleMock());
 
-vi.mock('../core/browser-api', () => ({
-  browserAPI: {
-    runtime: { sendMessage: vi.fn().mockResolvedValue({ success: true }) },
-    storage: { local: { set: vi.fn().mockResolvedValue(undefined) } },
-  },
+vi.mock('../core/browser-api', () => createBrowserApiModuleMock({
+  runtimeSendMessage: vi.fn().mockResolvedValue({ success: true }),
+  storageLocalSet: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../core/storage', () => ({

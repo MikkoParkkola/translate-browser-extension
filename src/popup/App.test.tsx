@@ -1,33 +1,35 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, within } from '@solidjs/testing-library';
+import { setupNavigatorMock } from '../test-helpers/browser-mocks';
+import { setupUiChromeMock } from '../test-helpers/chrome-mocks';
+import { createBrowserApiModuleMock, createLoggerModuleMock } from '../test-helpers/module-mocks';
 
 // ---------------------------------------------------------------------------
 // Mocks — must be declared before any imports that reference them
 // ---------------------------------------------------------------------------
 
-// Mock chrome global
-vi.stubGlobal('chrome', {
-  runtime: {
-    sendMessage: vi.fn().mockResolvedValue({}),
-    onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
-    openOptionsPage: vi.fn(),
-  },
-  storage: {
-    local: { get: vi.fn().mockResolvedValue({}), set: vi.fn().mockResolvedValue(undefined) },
-  },
-  tabs: {
-    query: vi.fn().mockResolvedValue([{ id: 1, url: 'https://example.com' }]),
-    sendMessage: vi.fn().mockResolvedValue({}),
-  },
-  scripting: { executeScript: vi.fn().mockResolvedValue(undefined) },
-});
+const createDefaultActiveTabs = () => [{ id: 1, url: 'https://example.com' }];
 
-// Mock navigator.gpu for WebGPU checks
-vi.stubGlobal('navigator', {
-  ...globalThis.navigator,
-  language: 'en-US',
-  gpu: undefined,
-});
+function setupPopupBrowserGlobals() {
+  setupUiChromeMock({
+    runtimeSendMessage: vi.fn().mockResolvedValue({}),
+    runtimeOnMessageAddListener: vi.fn(),
+    runtimeOnMessageRemoveListener: vi.fn(),
+    runtimeOpenOptionsPage: vi.fn(),
+    storageLocalGet: vi.fn().mockResolvedValue({}),
+    storageLocalSet: vi.fn().mockResolvedValue(undefined),
+    tabsQuery: vi.fn().mockResolvedValue(createDefaultActiveTabs()),
+    tabsSendMessage: vi.fn().mockResolvedValue({}),
+    scriptingExecuteScript: vi.fn().mockResolvedValue(undefined),
+  });
+
+  setupNavigatorMock({
+    language: 'en-US',
+    gpu: undefined,
+  });
+}
+
+setupPopupBrowserGlobals();
 
 vi.mock('../core/storage', () => ({
   safeStorageGet: vi.fn().mockResolvedValue({}),
@@ -36,24 +38,17 @@ vi.mock('../core/storage', () => ({
 
 vi.mock('../core/browser-api', () => {
   const runtimeSendMessage = vi.fn().mockResolvedValue({});
-  return {
-    browserAPI: {
-      runtime: {
-        sendMessage: runtimeSendMessage,
-        onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
-        openOptionsPage: vi.fn(),
-      },
-      storage: {
-        local: { get: vi.fn().mockResolvedValue({}) },
-      },
-      tabs: {
-        query: vi.fn().mockResolvedValue([{ id: 1, url: 'https://example.com' }]),
-        sendMessage: vi.fn().mockResolvedValue({}),
-      },
-      scripting: { executeScript: vi.fn().mockResolvedValue(undefined) },
-    },
-    sendMessage: runtimeSendMessage,
-  };
+  return createBrowserApiModuleMock({
+    runtimeSendMessage,
+    runtimeOnMessageAddListener: vi.fn(),
+    runtimeOnMessageRemoveListener: vi.fn(),
+    runtimeOpenOptionsPage: vi.fn(),
+    storageLocalGet: vi.fn().mockResolvedValue({}),
+    tabsQuery: vi.fn().mockResolvedValue([{ id: 1, url: 'https://example.com' }]),
+    tabsSendMessage: vi.fn().mockResolvedValue({}),
+    scriptingExecuteScript: vi.fn().mockResolvedValue(undefined),
+    includeSendMessageExport: true,
+  });
 });
 
 vi.mock('../core/version', () => ({
@@ -62,14 +57,7 @@ vi.mock('../core/version', () => ({
   isUpdateDismissed: vi.fn().mockResolvedValue(false),
 }));
 
-vi.mock('../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock('../core/logger', () => createLoggerModuleMock());
 
 // ---------------------------------------------------------------------------
 // Subject under test — imported AFTER mocks are wired
@@ -86,23 +74,50 @@ import { checkVersion, dismissUpdateNotice, isUpdateDismissed } from '../core/ve
 /** Flush microtasks so Solid's onMount effects resolve. */
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
+const runtimeSendMessage = browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>;
+const runtimeOnMessageAddListener = browserAPI.runtime.onMessage.addListener as ReturnType<typeof vi.fn>;
+const tabsQuery = browserAPI.tabs.query as ReturnType<typeof vi.fn>;
+const tabsSendMessage = browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>;
+const scriptingExecuteScript = browserAPI.scripting.executeScript as ReturnType<typeof vi.fn>;
+const safeStorageGetMock = safeStorageGet as ReturnType<typeof vi.fn>;
+const safeStorageSetMock = safeStorageSet as ReturnType<typeof vi.fn>;
+const checkVersionMock = checkVersion as ReturnType<typeof vi.fn>;
+const isUpdateDismissedMock = isUpdateDismissed as ReturnType<typeof vi.fn>;
+
+function resetPopupAppMocks() {
+  setupPopupBrowserGlobals();
+  runtimeSendMessage.mockResolvedValue({});
+  tabsQuery.mockResolvedValue(createDefaultActiveTabs());
+  tabsSendMessage.mockResolvedValue({});
+  scriptingExecuteScript.mockResolvedValue(undefined);
+  safeStorageGetMock.mockResolvedValue({});
+  safeStorageSetMock.mockResolvedValue(true);
+  checkVersionMock.mockResolvedValue({ isUpdate: false, current: '1.0.0' });
+  isUpdateDismissedMock.mockResolvedValue(false);
+}
+
+async function renderApp() {
+  const rendered = render(() => <App />);
+  await flush();
+  return rendered;
+}
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  resetPopupAppMocks();
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
 // ---------------------------------------------------------------------------
 // Test suites
 // ---------------------------------------------------------------------------
 
 describe('App component', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    // Re-set default resolved values after resetAllMocks
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-  });
-
-  afterEach(cleanup);
 
   it('renders without crashing', async () => {
     expect(() => render(() => <App />)).not.toThrow();
@@ -110,52 +125,44 @@ describe('App component', () => {
   });
 
   it('shows TRANSLATE! title', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByText('TRANSLATE!')).toBeTruthy();
   });
 
   it('shows brand author text', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByText('by Mikko')).toBeTruthy();
   });
 
   it('renders settings button', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByLabelText('Settings')).toBeTruthy();
   });
 
   it('renders language selector section', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByLabelText('Language selection')).toBeTruthy();
   });
 
   it('renders strategy selector section', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByLabelText('Translation strategy')).toBeTruthy();
   });
 
   it('renders translation action buttons', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByText('Page')).toBeTruthy();
     expect(screen.getByText('Selection')).toBeTruthy();
     expect(screen.getByText('Undo')).toBeTruthy();
   });
 
   it('renders auto-translate toggle', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByLabelText('Auto-translate pages')).toBeTruthy();
   });
 
   it('renders bilingual mode toggle', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByLabelText('Bilingual mode')).toBeTruthy();
   });
 });
@@ -163,22 +170,9 @@ describe('App component', () => {
 // ---------------------------------------------------------------------------
 
 describe('App action buttons', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.scripting.executeScript as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-  });
-
-  afterEach(cleanup);
 
   it('Translate Page button triggers translation', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
 
     const pageBtn = screen.getByLabelText('Translate entire page');
     fireEvent.click(pageBtn);
@@ -189,8 +183,7 @@ describe('App action buttons', () => {
   });
 
   it('Translate Selection button triggers selection translation', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
 
     const selBtn = screen.getByLabelText('Translate selected text');
     fireEvent.click(selBtn);
@@ -201,8 +194,7 @@ describe('App action buttons', () => {
   });
 
   it('Undo button sends undo message', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
 
     const undoBtn = screen.getByLabelText('Undo translation');
     fireEvent.click(undoBtn);
@@ -218,8 +210,7 @@ describe('App action buttons', () => {
       () => new Promise(() => {}), // never resolves
     );
 
-    render(() => <App />);
-    await flush();
+    await renderApp();
 
     const pageBtn = screen.getByLabelText('Translate entire page');
     fireEvent.click(pageBtn);
@@ -236,25 +227,14 @@ describe('App action buttons', () => {
 // ---------------------------------------------------------------------------
 
 describe('App error handling', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-  });
 
-  afterEach(cleanup);
 
   it('shows error banner when translation fails', async () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Something went wrong'),
     );
 
-    render(() => <App />);
-    await flush();
+    await renderApp();
 
     const pageBtn = screen.getByLabelText('Translate entire page');
     fireEvent.click(pageBtn);
@@ -270,8 +250,7 @@ describe('App error handling', () => {
       new Error('Something went wrong'),
     );
 
-    render(() => <App />);
-    await flush();
+    await renderApp();
 
     const pageBtn = screen.getByLabelText('Translate entire page');
     fireEvent.click(pageBtn);
@@ -285,21 +264,10 @@ describe('App error handling', () => {
 // ---------------------------------------------------------------------------
 
 describe('App settings', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-  });
 
-  afterEach(cleanup);
 
   it('settings button opens options page', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
 
     const settingsBtn = screen.getByLabelText('Settings');
     fireEvent.click(settingsBtn);
@@ -311,21 +279,10 @@ describe('App settings', () => {
 // ---------------------------------------------------------------------------
 
 describe('App initialization', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-  });
 
-  afterEach(cleanup);
 
   it('loads saved preferences on mount', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
 
     await vi.waitFor(() => {
       expect(safeStorageGet).toHaveBeenCalledWith([
@@ -339,8 +296,7 @@ describe('App initialization', () => {
   });
 
   it('checks chrome translator availability on mount', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
 
     await vi.waitFor(() => {
       expect(browserAPI.runtime.sendMessage).toHaveBeenCalledWith({
@@ -353,24 +309,13 @@ describe('App initialization', () => {
 // ---------------------------------------------------------------------------
 
 describe('App handleError branches', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-  });
 
-  afterEach(cleanup);
 
   it('shows "Cannot access" error for restricted page errors', async () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Cannot access this page'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('Cannot translate this page');
@@ -381,8 +326,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('API key not configured'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Open Settings')).toBeTruthy();
@@ -393,8 +337,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Invalid api key provided'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Open Settings')).toBeTruthy();
@@ -405,8 +348,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('No network available'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Use OPUS-MT')).toBeTruthy();
@@ -417,8 +359,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('You are offline'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Use OPUS-MT')).toBeTruthy();
@@ -429,8 +370,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Language pair en-xx not supported'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('Language pair');
@@ -441,8 +381,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Translation not available for this language'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('not available');
@@ -453,8 +392,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('unsupported language direction'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('unsupported');
@@ -465,8 +403,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('network request failed'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Retry')).toBeTruthy();
@@ -478,8 +415,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('connection refused'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Retry')).toBeTruthy();
@@ -490,8 +426,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('fetch failed'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Retry')).toBeTruthy();
@@ -503,8 +438,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Rate limit exceeded'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('Rate limited');
@@ -515,8 +449,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Request timed out'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('timed out');
@@ -527,8 +460,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('timeout after 30s'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('timeout');
@@ -539,8 +471,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('model not loaded yet'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Switch Provider')).toBeTruthy();
@@ -551,8 +482,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('pipeline initialization failed'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Switch Provider')).toBeTruthy();
@@ -563,8 +493,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Failed to load weights'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Switch Provider')).toBeTruthy();
@@ -575,8 +504,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Out of memory'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('Out of memory');
@@ -587,8 +515,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('OOM: allocation failed'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('OOM');
@@ -599,8 +526,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Some totally unknown error'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('Some totally unknown error');
@@ -609,8 +535,7 @@ describe('App handleError branches', () => {
 
   it('handles non-Error thrown values', async () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue('string error');
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert')).toBeTruthy();
@@ -622,8 +547,7 @@ describe('App handleError branches', () => {
       success: false,
       error: 'Content script error',
     });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert')).toBeTruthy();
@@ -634,8 +558,7 @@ describe('App handleError branches', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Some error'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert')).toBeTruthy();
@@ -650,18 +573,6 @@ describe('App handleError branches', () => {
 // ---------------------------------------------------------------------------
 
 describe('App onMount branches', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(true);
-  });
-
-  afterEach(cleanup);
 
   it('loads stored preferences when present', async () => {
     (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -671,15 +582,13 @@ describe('App onMount branches', () => {
       autoTranslate: true,
       provider: 'deepl',
     });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     // Just verify the component renders successfully after loading prefs
     expect(screen.getByText('TRANSLATE!')).toBeTruthy();
   });
 
   it('checks TranslateGemma hardware acceleration on mount', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     await vi.waitFor(() => {
       expect(browserAPI.runtime.sendMessage).toHaveBeenCalledWith({ type: 'checkWebGPU' });
       expect(browserAPI.runtime.sendMessage).toHaveBeenCalledWith({ type: 'checkWebNN' });
@@ -693,8 +602,7 @@ describe('App onMount branches', () => {
         if (msg.type === 'checkWebNN') return Promise.resolve({ supported: false });
         return Promise.resolve({});
       });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByText('TRANSLATE!')).toBeTruthy();
   });
 
@@ -705,8 +613,7 @@ describe('App onMount branches', () => {
         if (msg.type === 'checkWebNN') return Promise.reject(new Error('WebNN unavailable'));
         return Promise.resolve({});
       });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByText('TRANSLATE!')).toBeTruthy();
   });
 
@@ -716,8 +623,7 @@ describe('App onMount branches', () => {
         if (msg.type === 'checkChromeTranslator') return Promise.resolve({ available: true });
         return Promise.resolve({});
       });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByText('TRANSLATE!')).toBeTruthy();
   });
 
@@ -727,8 +633,7 @@ describe('App onMount branches', () => {
         if (msg.type === 'checkChromeTranslator') return Promise.reject(new Error('blocked'));
         return Promise.resolve({});
       });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByText('TRANSLATE!')).toBeTruthy();
   });
 
@@ -738,8 +643,7 @@ describe('App onMount branches', () => {
       current: '2.0.0',
     });
     (isUpdateDismissed as ReturnType<typeof vi.fn>).mockResolvedValue(false);
-    render(() => <App />);
-    await flush();
+    await renderApp();
     await vi.waitFor(() => {
       expect(screen.getByText('v2.0.0')).toBeTruthy();
     });
@@ -751,8 +655,7 @@ describe('App onMount branches', () => {
       current: '2.0.0',
     });
     (isUpdateDismissed as ReturnType<typeof vi.fn>).mockResolvedValue(true);
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.queryByText('v2.0.0')).toBeNull();
   });
 
@@ -761,15 +664,13 @@ describe('App onMount branches', () => {
       isUpdate: false,
       current: '1.0.0',
     });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.queryByText('v1.0.0')).toBeNull();
   });
 
   it('handles version check failure gracefully', async () => {
     (checkVersion as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('version check failed'));
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByText('TRANSLATE!')).toBeTruthy();
   });
 });
@@ -777,21 +678,12 @@ describe('App onMount branches', () => {
 // ---------------------------------------------------------------------------
 
 describe('App restricted URL handling', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-  });
-
-  afterEach(cleanup);
 
   it('shows error for chrome:// URLs on translate page', async () => {
     (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
       { id: 1, url: 'chrome://settings' },
     ]);
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('Cannot translate browser pages');
@@ -802,8 +694,7 @@ describe('App restricted URL handling', () => {
     (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
       { id: 1, url: 'about:blank' },
     ]);
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('Cannot translate browser pages');
@@ -812,8 +703,7 @@ describe('App restricted URL handling', () => {
 
   it('shows error when no tab id on translate page', async () => {
     (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([{ url: 'https://x.com' }]);
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('No active tab');
@@ -822,8 +712,7 @@ describe('App restricted URL handling', () => {
 
   it('shows error when no tab id on translate selection', async () => {
     (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([{ url: 'https://x.com' }]);
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate selected text'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('No active tab');
@@ -834,8 +723,7 @@ describe('App restricted URL handling', () => {
     (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
       { id: 1, url: 'chrome://extensions' },
     ]);
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate selected text'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('Cannot translate browser pages');
@@ -846,22 +734,9 @@ describe('App restricted URL handling', () => {
 // ---------------------------------------------------------------------------
 
 describe('App provider management', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(true);
-  });
-
-  afterEach(cleanup);
 
   it('toggles auto-translate and persists to storage', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     const toggle = screen.getByLabelText('Auto-translate pages');
     fireEvent.click(toggle);
     await vi.waitFor(() => {
@@ -875,8 +750,7 @@ describe('App provider management', () => {
       current: '2.0.0',
     });
     (isUpdateDismissed as ReturnType<typeof vi.fn>).mockResolvedValue(false);
-    render(() => <App />);
-    await flush();
+    await renderApp();
     await vi.waitFor(() => {
       expect(screen.getByText('v2.0.0')).toBeTruthy();
     });
@@ -890,8 +764,7 @@ describe('App provider management', () => {
     // First sendMessage (ping) rejects, then executeScript also rejects
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('not loaded'));
     (browserAPI.scripting.executeScript as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('cannot inject'));
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('Cannot access');
@@ -905,25 +778,15 @@ describe('App model progress handling', () => {
   let capturedListener: ((msg: Record<string, unknown>) => void) | null = null;
 
   beforeEach(() => {
-    vi.resetAllMocks();
     capturedListener = null;
-    (browserAPI.runtime.onMessage.addListener as ReturnType<typeof vi.fn>).mockImplementation(
-      (cb: (msg: Record<string, unknown>) => void) => { capturedListener = cb; },
-    );
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    runtimeOnMessageAddListener.mockImplementation((cb: (msg: Record<string, unknown>) => void) => {
+      capturedListener = cb;
+    });
   });
 
-  afterEach(cleanup);
 
   it('ignores messages with type !== modelProgress', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(capturedListener).toBeTruthy();
     // Should not throw
     capturedListener!({ type: 'somethingElse' });
@@ -931,8 +794,7 @@ describe('App model progress handling', () => {
   });
 
   it('handles initiate status for opus-mt model', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     capturedListener!({
       type: 'modelProgress',
       status: 'initiate',
@@ -945,8 +807,7 @@ describe('App model progress handling', () => {
   });
 
   it('handles download/progress status for opus-mt model', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     capturedListener!({
       type: 'modelProgress',
       status: 'download',
@@ -959,8 +820,7 @@ describe('App model progress handling', () => {
   });
 
   it('handles progress status', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     capturedListener!({
       type: 'modelProgress',
       status: 'progress',
@@ -972,8 +832,7 @@ describe('App model progress handling', () => {
   });
 
   it('handles done status', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     capturedListener!({
       type: 'modelProgress',
       status: 'done',
@@ -985,8 +844,7 @@ describe('App model progress handling', () => {
   });
 
   it('handles ready status', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     capturedListener!({
       type: 'modelProgress',
       status: 'ready',
@@ -998,8 +856,7 @@ describe('App model progress handling', () => {
   });
 
   it('handles error status with error message', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     capturedListener!({
       type: 'modelProgress',
       status: 'error',
@@ -1013,8 +870,7 @@ describe('App model progress handling', () => {
   });
 
   it('handles error status without error message', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     capturedListener!({
       type: 'modelProgress',
       status: 'error',
@@ -1025,8 +881,7 @@ describe('App model progress handling', () => {
   });
 
   it('handles translategemma model progress', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     capturedListener!({
       type: 'modelProgress',
       status: 'initiate',
@@ -1046,8 +901,7 @@ describe('App model progress handling', () => {
   });
 
   it('handles model with unknown provider ID', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     capturedListener!({
       type: 'modelProgress',
       status: 'initiate',
@@ -1059,8 +913,7 @@ describe('App model progress handling', () => {
   });
 
   it('handles progress without progress field (defaults to 0)', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     capturedListener!({
       type: 'modelProgress',
       status: 'download',
@@ -1071,8 +924,7 @@ describe('App model progress handling', () => {
   });
 
   it('messageListener catches errors in handleModelProgress', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     // Send a message that will cause an internal issue but not crash
     // The try/catch in messageListener should catch it
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -1085,22 +937,9 @@ describe('App model progress handling', () => {
 // ---------------------------------------------------------------------------
 
 describe('App language and strategy wrappers', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(true);
-  });
-
-  afterEach(cleanup);
 
   it('setSourceLang persists to storage when source language changed', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     const sourceSelect = screen.getByLabelText('Source language');
     fireEvent.change(sourceSelect, { target: { value: 'fi' } });
     await vi.waitFor(() => {
@@ -1109,8 +948,7 @@ describe('App language and strategy wrappers', () => {
   });
 
   it('setTargetLang persists to storage when target language changed', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     const targetSelect = screen.getByLabelText('Target language');
     fireEvent.change(targetSelect, { target: { value: 'de' } });
     await vi.waitFor(() => {
@@ -1119,8 +957,7 @@ describe('App language and strategy wrappers', () => {
   });
 
   it('setStrategy persists to storage when strategy changed', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     const strategySection = screen.getByLabelText('Translation strategy');
     const fastBtn = within(strategySection).getByText('Fast');
     fireEvent.click(fastBtn);
@@ -1134,8 +971,7 @@ describe('App language and strategy wrappers', () => {
       sourceLang: 'fi',
       targetLang: 'en',
     });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     const swapBtn = screen.getByLabelText('Swap languages');
     fireEvent.click(swapBtn);
     await vi.waitFor(() => {
@@ -1146,8 +982,7 @@ describe('App language and strategy wrappers', () => {
   });
 
   it('swapLanguages does nothing when source is auto', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     // Default sourceLang is 'auto', so swap should do nothing
     const swapBtn = screen.getByLabelText('Swap languages');
     fireEvent.click(swapBtn);
@@ -1165,22 +1000,9 @@ describe('App language and strategy wrappers', () => {
 // ---------------------------------------------------------------------------
 
 describe('App handleProviderChange', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(true);
-  });
-
-  afterEach(cleanup);
 
   it('changes provider via model selector', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     // Open the model selector dropdown
     const trigger = screen.getByLabelText(/Translation model:.*Click to change/);
     fireEvent.click(trigger);
@@ -1204,8 +1026,7 @@ describe('App handleProviderChange', () => {
         return Promise.resolve({});
       },
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     // Open model selector and try to select TranslateGemma
     const trigger = screen.getByLabelText(/Translation model:.*Click to change/);
     fireEvent.click(trigger);
@@ -1225,8 +1046,7 @@ describe('App handleProviderChange', () => {
         return Promise.resolve({});
       },
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     const trigger = screen.getByLabelText(/Translation model:.*Click to change/);
     fireEvent.click(trigger);
     await flush();
@@ -1250,8 +1070,7 @@ describe('App handleProviderChange', () => {
       },
     );
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    render(() => <App />);
-    await flush();
+    await renderApp();
     const trigger = screen.getByLabelText(/Translation model:.*Click to change/);
     fireEvent.click(trigger);
     await flush();
@@ -1267,23 +1086,10 @@ describe('App handleProviderChange', () => {
 // ---------------------------------------------------------------------------
 
 describe('App bilingual mode toggle', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(true);
-  });
-
-  afterEach(cleanup);
 
   it('toggles bilingual mode on success', async () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({ enabled: true });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     const toggle = screen.getByLabelText('Bilingual mode');
     fireEvent.click(toggle);
     await vi.waitFor(() => {
@@ -1296,8 +1102,7 @@ describe('App bilingual mode toggle', () => {
 
   it('handles no tab id for bilingual toggle', async () => {
     (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([{ url: 'https://x.com' }]);
-    render(() => <App />);
-    await flush();
+    await renderApp();
     const toggle = screen.getByLabelText('Bilingual mode');
     fireEvent.click(toggle);
     await flush();
@@ -1308,8 +1113,7 @@ describe('App bilingual mode toggle', () => {
   it('handles content script inject failure for bilingual toggle', async () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('not loaded'));
     (browserAPI.scripting.executeScript as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('cannot inject'));
-    render(() => <App />);
-    await flush();
+    await renderApp();
     const toggle = screen.getByLabelText('Bilingual mode');
     fireEvent.click(toggle);
     await vi.waitFor(() => {
@@ -1320,8 +1124,7 @@ describe('App bilingual mode toggle', () => {
   it('handles bilingual toggle error gracefully', async () => {
     (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('query failed'));
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    render(() => <App />);
-    await flush();
+    await renderApp();
     const toggle = screen.getByLabelText('Bilingual mode');
     fireEvent.click(toggle);
     await flush();
@@ -1331,8 +1134,7 @@ describe('App bilingual mode toggle', () => {
 
   it('handles bilingual toggle with undefined response', async () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-    render(() => <App />);
-    await flush();
+    await renderApp();
     const toggle = screen.getByLabelText('Bilingual mode');
     fireEvent.click(toggle);
     await flush();
@@ -1343,23 +1145,12 @@ describe('App bilingual mode toggle', () => {
 // ---------------------------------------------------------------------------
 
 describe('App handleTranslateSelection edge cases', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-  });
 
-  afterEach(cleanup);
 
   it('handles inject failure on translate selection', async () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('not loaded'));
     (browserAPI.scripting.executeScript as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('cannot inject'));
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate selected text'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('Cannot access');
@@ -1374,8 +1165,7 @@ describe('App handleTranslateSelection edge cases', () => {
       if (callCount === 1) return Promise.resolve({}); // ping
       return Promise.resolve({ success: false, error: 'Selection translation error' });
     });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate selected text'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert')).toBeTruthy();
@@ -1391,8 +1181,7 @@ describe('App handleTranslateSelection edge cases', () => {
       return Promise.reject(new Error('Network failure'));
     });
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate selected text'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert')).toBeTruthy();
@@ -1404,8 +1193,7 @@ describe('App handleTranslateSelection edge cases', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
       success: false,
     });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert')).toBeTruthy();
@@ -1416,8 +1204,7 @@ describe('App handleTranslateSelection edge cases', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
       success: false,
     });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate selected text'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert')).toBeTruthy();
@@ -1428,22 +1215,11 @@ describe('App handleTranslateSelection edge cases', () => {
 // ---------------------------------------------------------------------------
 
 describe('App handleUndo edge cases', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-  });
 
-  afterEach(cleanup);
 
   it('handles undo with no tab id', async () => {
     (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([{ url: 'https://x.com' }]);
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Undo translation'));
     await flush();
     expect(screen.getByText('TRANSLATE!')).toBeTruthy();
@@ -1452,8 +1228,7 @@ describe('App handleUndo edge cases', () => {
   it('handles undo inject failure', async () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('not loaded'));
     (browserAPI.scripting.executeScript as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('cannot inject'));
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Undo translation'));
     await flush();
     expect(screen.getByText('TRANSLATE!')).toBeTruthy();
@@ -1462,8 +1237,7 @@ describe('App handleUndo edge cases', () => {
   it('handles undo sendMessage error', async () => {
     (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('query failed'));
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Undo translation'));
     await flush();
     expect(screen.getByText('TRANSLATE!')).toBeTruthy();
@@ -1474,16 +1248,6 @@ describe('App handleUndo edge cases', () => {
 // ---------------------------------------------------------------------------
 
 describe('App WebGPU + TranslateGemma auto-switch', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(true);
-  });
-
-  afterEach(cleanup);
 
   it('auto-switches from TranslateGemma when no hardware acceleration is available', async () => {
     vi.useFakeTimers();
@@ -1525,8 +1289,7 @@ describe('App WebGPU + TranslateGemma auto-switch', () => {
         return Promise.resolve({});
       },
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
@@ -1538,8 +1301,7 @@ describe('App WebGPU + TranslateGemma auto-switch', () => {
         return Promise.resolve({});
       },
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByText('TRANSLATE!')).toBeTruthy();
   });
 });
@@ -1547,24 +1309,12 @@ describe('App WebGPU + TranslateGemma auto-switch', () => {
 // ---------------------------------------------------------------------------
 
 describe('App error action button handlers', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(true);
-  });
-
-  afterEach(cleanup);
 
   it('Open Settings action button opens options page', async () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('API key not configured'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Open Settings')).toBeTruthy();
@@ -1579,8 +1329,7 @@ describe('App error action button handlers', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('No network connection'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Use OPUS-MT')).toBeTruthy();
@@ -1598,8 +1347,7 @@ describe('App error action button handlers', () => {
       if (callCount <= 2) return Promise.reject(new Error('connection refused'));
       return Promise.resolve({});
     });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Retry')).toBeTruthy();
@@ -1624,8 +1372,7 @@ describe('App error action button handlers', () => {
       return Promise.resolve({});
     });
 
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate selected text'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Retry')).toBeTruthy();
@@ -1641,8 +1388,7 @@ describe('App error action button handlers', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('model loading failed'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Switch Provider')).toBeTruthy();
@@ -1660,8 +1406,7 @@ describe('App error action button handlers', () => {
       if (callCount <= 2) return Promise.reject(new Error('Request timed out'));
       return Promise.resolve({});
     });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Retry')).toBeTruthy();
@@ -1678,8 +1423,7 @@ describe('App error action button handlers', () => {
       if (callCount <= 2) return Promise.reject(new Error('Rate limit exceeded'));
       return Promise.resolve({});
     });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByLabelText('Retry')).toBeTruthy();
@@ -1693,17 +1437,6 @@ describe('App error action button handlers', () => {
 // ---------------------------------------------------------------------------
 
 describe('App providerName computed', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(true);
-  });
-
-  afterEach(cleanup);
 
   it('shows TranslateGemma 4B for translategemma provider', async () => {
     (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -1716,8 +1449,7 @@ describe('App providerName computed', () => {
         return Promise.resolve({});
       },
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     await vi.waitFor(() => {
       expect(screen.getByText('TranslateGemma 4B')).toBeTruthy();
     });
@@ -1727,8 +1459,7 @@ describe('App providerName computed', () => {
     (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({
       provider: 'chrome-builtin',
     });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     await vi.waitFor(() => {
       // ProviderStatus and ModelSelector both render "Chrome Built-in";
       // scope to the provider-status element
@@ -1741,8 +1472,7 @@ describe('App providerName computed', () => {
     (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({
       provider: 'deepl',
     });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     await vi.waitFor(() => {
       const status = screen.getByRole('status');
       expect(within(status).getByText('DeepL')).toBeTruthy();
@@ -1751,8 +1481,7 @@ describe('App providerName computed', () => {
 
   it('shows Helsinki-NLP OPUS-MT for default provider', async () => {
     (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByText('Helsinki-NLP OPUS-MT')).toBeTruthy();
   });
 
@@ -1760,8 +1489,7 @@ describe('App providerName computed', () => {
     (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({
       provider: 'invalid-provider',
     });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByText('Helsinki-NLP OPUS-MT')).toBeTruthy();
   });
 });
@@ -1769,18 +1497,6 @@ describe('App providerName computed', () => {
 // ---------------------------------------------------------------------------
 
 describe('App update badge and cleanup', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(true);
-  });
-
-  afterEach(cleanup);
 
   it('update badge click calls dismissUpdateNotice', async () => {
     (checkVersion as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -1788,8 +1504,7 @@ describe('App update badge and cleanup', () => {
       current: '3.0.0',
     });
     (isUpdateDismissed as ReturnType<typeof vi.fn>).mockResolvedValue(false);
-    render(() => <App />);
-    await flush();
+    await renderApp();
     await vi.waitFor(() => {
       expect(screen.getByText('v3.0.0')).toBeTruthy();
     });
@@ -1798,8 +1513,7 @@ describe('App update badge and cleanup', () => {
   });
 
   it('registers and cleans up message listener', async () => {
-    const { unmount } = render(() => <App />);
-    await flush();
+    const { unmount } = await renderApp();
     expect(browserAPI.runtime.onMessage.addListener).toHaveBeenCalled();
     unmount();
     expect(browserAPI.runtime.onMessage.removeListener).toHaveBeenCalled();
@@ -1809,8 +1523,7 @@ describe('App update badge and cleanup', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error(''),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('Translation failed');
@@ -1839,8 +1552,7 @@ describe('App update badge and cleanup', () => {
     (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({
       autoTranslate: false,
     });
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(screen.getByText('TRANSLATE!')).toBeTruthy();
   });
 
@@ -1848,8 +1560,7 @@ describe('App update badge and cleanup', () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('model fetch failed'),
     );
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       // "model" keyword matches first, so this should be a model error, not connection error
@@ -1859,8 +1570,7 @@ describe('App update badge and cleanup', () => {
 
   it('ensureContentScript returns true when ping succeeds', async () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    render(() => <App />);
-    await flush();
+    await renderApp();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
     await vi.waitFor(() => {
       // ping succeeded, so no inject was needed
@@ -1875,25 +1585,15 @@ describe('App model error without providerId', () => {
   let capturedListener: ((msg: Record<string, unknown>) => void) | null = null;
 
   beforeEach(() => {
-    vi.resetAllMocks();
     capturedListener = null;
-    (browserAPI.runtime.onMessage.addListener as ReturnType<typeof vi.fn>).mockImplementation(
-      (cb: (msg: Record<string, unknown>) => void) => { capturedListener = cb; },
-    );
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    runtimeOnMessageAddListener.mockImplementation((cb: (msg: Record<string, unknown>) => void) => {
+      capturedListener = cb;
+    });
   });
 
-  afterEach(cleanup);
 
   it('handles error status when modelId does not match any provider', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(capturedListener).toBeTruthy();
 
     // Send error with modelId that getProviderFromModelId can't match → providerId is null
@@ -1914,22 +1614,13 @@ describe('App model error without providerId', () => {
 
 describe('App toggleAutoTranslate save failure', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
     // safeStorageSet returns undefined (falsy) to exercise the `if (saved)` false branch
-    (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    safeStorageSetMock.mockResolvedValue(undefined);
   });
 
-  afterEach(cleanup);
 
   it('toggleAutoTranslate handles storage set returning falsy gracefully', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
 
     const toggle = screen.getByLabelText('Auto-translate pages');
     fireEvent.click(toggle);
@@ -1951,25 +1642,15 @@ describe('App model progress with null providerId', () => {
   let capturedListener: ((msg: Record<string, unknown>) => void) | null = null;
 
   beforeEach(() => {
-    vi.resetAllMocks();
     capturedListener = null;
-    (browserAPI.runtime.onMessage.addListener as ReturnType<typeof vi.fn>).mockImplementation(
-      (cb: (msg: Record<string, unknown>) => void) => { capturedListener = cb; },
-    );
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageSet as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    runtimeOnMessageAddListener.mockImplementation((cb: (msg: Record<string, unknown>) => void) => {
+      capturedListener = cb;
+    });
   });
 
-  afterEach(cleanup);
 
   it('handles download progress with unknown modelId (null providerId)', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(capturedListener).toBeTruthy();
 
     capturedListener!({
@@ -1987,8 +1668,7 @@ describe('App model progress with null providerId', () => {
   });
 
   it('handles done status with unknown modelId (null providerId)', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(capturedListener).toBeTruthy();
 
     capturedListener!({
@@ -2004,8 +1684,7 @@ describe('App model progress with null providerId', () => {
   });
 
   it('handles ready status with unknown modelId (null providerId)', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(capturedListener).toBeTruthy();
 
     capturedListener!({
@@ -2020,8 +1699,7 @@ describe('App model progress with null providerId', () => {
   });
 
   it('handles error status with unknown modelId (null providerId)', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(capturedListener).toBeTruthy();
 
     capturedListener!({
@@ -2037,8 +1715,7 @@ describe('App model progress with null providerId', () => {
   });
 
   it('handles initiate status with unknown modelId (null providerId)', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(capturedListener).toBeTruthy();
 
     capturedListener!({
@@ -2054,8 +1731,7 @@ describe('App model progress with null providerId', () => {
   });
 
   it('handles progress status with unknown modelId (null providerId)', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(capturedListener).toBeTruthy();
 
     capturedListener!({
@@ -2071,8 +1747,7 @@ describe('App model progress with null providerId', () => {
   });
 
   it('handles download status with null providerId', async () => {
-    render(() => <App />);
-    await flush();
+    await renderApp();
     expect(capturedListener).toBeTruthy();
 
     capturedListener!({
@@ -2092,21 +1767,10 @@ describe('App model progress with null providerId', () => {
 // ---------------------------------------------------------------------------
 
 describe('App Snapshot', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    (browserAPI.runtime.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (browserAPI.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: 'https://example.com' },
-    ]);
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    (safeStorageGet as ReturnType<typeof vi.fn>).mockResolvedValue({});
-  });
 
-  afterEach(cleanup);
 
   it('renders default state correctly', async () => {
-    const { container } = render(() => <App />);
-    await flush();
+    const { container } = await renderApp();
     expect(container.innerHTML).toMatchSnapshot();
   });
 });

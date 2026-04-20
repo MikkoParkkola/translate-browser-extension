@@ -4,14 +4,20 @@
  * https://www.deepl.com/docs-api
  */
 
-import { CloudProvider } from './cloud-provider';
+import { CloudProvider, createCloudProviderConfig } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
-import { fetchProviderJson } from './provider-utils';
+import {
+  detectProviderLanguageCode,
+  fetchProviderJson,
+  finalizeProviderTranslations,
+  generateLanguagePairs,
+} from './provider-utils';
 import { toDeepLCode, getDeepLSupportedLanguages } from '../core/language-map';
 import { CONFIG } from '../config';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
-import { validateDeepLStoredConfig } from '../background/shared/config-validation';
+import { extractDeepLStoredRuntimeState } from '../background/shared/config-validation';
+import { DEFAULT_DEEPL_FORMALITY } from '../shared/cloud-provider-configs';
 
 // DeepL API endpoints
 const DEEPL_FREE_API = 'https://api-free.deepl.com/v2';
@@ -38,7 +44,7 @@ interface DeepLUsageResponse {
   character_limit: number;
 }
 
-export class DeepLProvider extends CloudProvider {
+export class DeepLProvider extends CloudProvider<DeepLConfig> {
   private config: DeepLConfig | null = null;
   private usageCache: { count: number; limit: number; timestamp: number } | null = null;
 
@@ -62,40 +68,46 @@ export class DeepLProvider extends CloudProvider {
   }
 
   protected applyStoredConfig(stored: CloudProviderStorageRecord): void {
-    const config = validateDeepLStoredConfig(stored);
-    if (!config) {
+    const runtimeState = extractDeepLStoredRuntimeState(stored);
+    if (!runtimeState) {
       this.resetConfig();
       return;
     }
 
-    this.config = {
-      apiKey: config.apiKey,
-      isPro: config.isPro,
-      formality: config.formality,
-    };
+    this.config = runtimeState.config;
     this.log.info('Initialized with', this.config.isPro ? 'Pro' : 'Free', 'tier');
-  }
-
-  protected hasConfig(): boolean {
-    return !!this.config?.apiKey;
   }
 
   protected resetConfig(): void {
     this.config = null;
   }
 
+  protected getConfigState(): DeepLConfig | null {
+    return this.config;
+  }
+
+  protected setConfigState(config: DeepLConfig | null): void {
+    this.config = config;
+  }
+
   /** Store API key in storage */
   async setApiKey(apiKey: string, isPro: boolean = false): Promise<void> {
-    await this.persist({ deepl_api_key: apiKey, deepl_is_pro: isPro });
-    this.config = { apiKey, isPro, formality: this.config?.formality ?? 'default' };
+    await this.persistAndUpdateConfig(
+      { deepl_api_key: apiKey, deepl_is_pro: isPro },
+      (config) =>
+        createCloudProviderConfig(apiKey, {
+          isPro,
+          formality: config?.formality ?? DEFAULT_DEEPL_FORMALITY,
+        })
+    );
   }
 
   /** Set formality preference */
   async setFormality(formality: DeepLFormality): Promise<void> {
-    await this.persist({ deepl_formality: formality });
-    if (this.config) {
-      this.config.formality = formality;
-    }
+    await this.persistAndUpdateLoadedConfig(
+      { deepl_formality: formality },
+      (config) => ({ ...config, formality })
+    );
   }
 
   /**
@@ -107,9 +119,7 @@ export class DeepLProvider extends CloudProvider {
     targetLang: string,
     _options?: TranslationOptions
   ): Promise<string | string[]> {
-    if (!this.config?.apiKey) {
-      throw createTranslationError(new Error('DeepL API key not configured'));
-    }
+    const config = this.requireConfiguredConfig('DeepL');
 
     const texts = Array.isArray(text) ? text : [text];
     const targetLangCode = toDeepLCode(targetLang);
@@ -126,10 +136,10 @@ export class DeepLProvider extends CloudProvider {
     }
 
     // Add formality if supported for target language
-    if (this.config.formality && this.config.formality !== 'default') {
+    if (config.formality && config.formality !== 'default') {
       const formalitySupported = ['DE', 'FR', 'IT', 'ES', 'NL', 'PL', 'PT', 'RU', 'JA'];
       if (formalitySupported.includes(targetLangCode)) {
-        body.formality = this.config.formality;
+        body.formality = config.formality;
       }
     }
 
@@ -137,23 +147,17 @@ export class DeepLProvider extends CloudProvider {
       const data = await fetchProviderJson<DeepLTranslateResponse>('DeepL', `${this.apiBase}/translate`, {
         method: 'POST',
         headers: {
-          'Authorization': `DeepL-Auth-Key ${this.config.apiKey}`,
+          'Authorization': `DeepL-Auth-Key ${config.apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
       });
 
-      if (!data.translations) {
-        throw new Error('DeepL returned invalid response: no translations field');
-      }
-
-      const results = data.translations.map(t => t.text);
-
-      if (!Array.isArray(text) && results.length === 0) {
-        this.log.warn('DeepL returned empty translations array');
-      }
-
-      return Array.isArray(text) ? results : results[0];
+      return finalizeProviderTranslations(
+        'DeepL',
+        text,
+        data.translations?.map(t => t.text),
+      );
     } catch (error) {
       this.log.error('Translation error:', error);
       throw createTranslationError(error);
@@ -164,36 +168,28 @@ export class DeepLProvider extends CloudProvider {
    * Detect language using DeepL (by translating a small sample)
    */
   async detectLanguage(text: string): Promise<string> {
-    if (!this.config?.apiKey) {
+    const config = this.getConfiguredConfig();
+    if (!config) {
       return 'auto';
     }
 
-    try {
-      const response = await fetch(`${this.apiBase}/translate`, {
+    return detectProviderLanguageCode<DeepLTranslateResponse>(
+      'DeepL',
+      `${this.apiBase}/translate`,
+      {
         method: 'POST',
         headers: {
-          'Authorization': `DeepL-Auth-Key ${this.config.apiKey}`,
+          'Authorization': `DeepL-Auth-Key ${config.apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           text: [text.slice(0, 100)], // Use small sample
           target_lang: 'EN',
         }),
-        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
-      });
-
-      if (response.ok) {
-        const data: DeepLTranslateResponse = await response.json();
-        const translation = data.translations?.[0];
-        if (translation?.detected_source_language) {
-          return translation.detected_source_language.toLowerCase();
-        }
-      }
-    } catch (error) {
-      this.log.error('Language detection error:', error);
-    }
-
-    return 'auto';
+      },
+      (data) => data.translations?.[0]?.detected_source_language,
+      (message, error) => this.log.error(message, error),
+    );
   }
 
   async getUsage(): Promise<{
@@ -202,7 +198,8 @@ export class DeepLProvider extends CloudProvider {
     cost: number;
     limitReached: boolean;
   }> {
-    if (!this.config?.apiKey) {
+    const config = this.getConfiguredConfig();
+    if (!config) {
       return { requests: 0, tokens: 0, cost: 0, limitReached: false };
     }
 
@@ -219,7 +216,7 @@ export class DeepLProvider extends CloudProvider {
     try {
       const response = await fetch(`${this.apiBase}/usage`, {
         headers: {
-          'Authorization': `DeepL-Auth-Key ${this.config.apiKey}`,
+          'Authorization': `DeepL-Auth-Key ${config.apiKey}`,
         },
         signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
       });
@@ -247,23 +244,14 @@ export class DeepLProvider extends CloudProvider {
   }
 
   getSupportedLanguages(): LanguagePair[] {
-    const supportedLanguages = getDeepLSupportedLanguages();
-    const pairs: LanguagePair[] = [];
-    for (const src of supportedLanguages) {
-      for (const tgt of supportedLanguages) {
-        if (src !== tgt) {
-          pairs.push({ src, tgt });
-        }
-      }
-    }
-    return pairs;
+    return generateLanguagePairs(getDeepLSupportedLanguages());
   }
 
   getInfo(): ProviderConfig & { tier: string; formality: string } {
     return {
       ...super.getInfo(),
       tier: this.config?.isPro ? 'Pro' : 'Free',
-      formality: this.config?.formality ?? 'default',
+      formality: this.config?.formality ?? DEFAULT_DEEPL_FORMALITY,
     };
   }
 }

@@ -1,5 +1,14 @@
-import { test as base, expect, chromium, type BrowserContext, type Page } from '@playwright/test';
 import {
+  test as base,
+  expect,
+  chromium,
+  type BrowserContext,
+  type Page,
+  type TestInfo,
+  type WorkerInfo,
+} from '@playwright/test';
+import {
+  assertBuiltExtensionExists,
   EXTENSION_PATH,
   getExtensionLaunchSettings,
   type ExtensionLaunchOptions,
@@ -10,30 +19,273 @@ interface ExtensionFixtures {
   extensionId: string;
 }
 
+interface ExtensionWorkerFixtures {
+  workerContext: BrowserContext;
+  workerExtensionId: string;
+}
+
+interface MessageOptions {
+  timeoutMs?: number;
+  label?: string;
+}
+
+const EXTENSION_CONTEXT_LAUNCH_TIMEOUT_MS = 20_000;
+
+function withMessageTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs?: number,
+  label = 'message'
+): Promise<T> {
+  if (!timeoutMs || timeoutMs <= 0) {
+    return promise;
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  });
+}
+
+function logExtensionFixtureDebug(label: string, details?: unknown): void {
+  const message =
+    details === undefined
+      ? `[extension:e2e:fixture] ${label}`
+      : `[extension:e2e:fixture] ${label}: ${
+          typeof details === 'string'
+            ? details
+            : JSON.stringify(details, null, 2)
+        }`;
+  console.error(message);
+}
+
+function getExtensionFixtureLabel(testInfo: TestInfo): string {
+  const fileName = testInfo.file.split(/[\\/]/).pop() ?? testInfo.file;
+  return `${fileName} > ${testInfo.title}`;
+}
+
+function getExtensionWorkerLabel(workerInfo: WorkerInfo): string {
+  return `${workerInfo.project.name}:worker-${workerInfo.workerIndex}`;
+}
+
+async function launchExtensionWorkerContext(
+  options: ExtensionLaunchOptions,
+  label: string
+): Promise<BrowserContext> {
+  try {
+    assertBuiltExtensionExists();
+  } catch (error) {
+    logExtensionFixtureDebug(
+      `${label}:extension-build:error`,
+      error instanceof Error ? error.message : String(error)
+    );
+    throw error;
+  }
+
+  const launchSettings = getExtensionLaunchSettings(options);
+  logExtensionFixtureDebug(`${label}:context:launch:start`, {
+    ...launchSettings,
+    timeout: EXTENSION_CONTEXT_LAUNCH_TIMEOUT_MS,
+  });
+
+  let context: BrowserContext;
+  try {
+    context = await chromium.launchPersistentContext('', {
+      ...launchSettings,
+      timeout: EXTENSION_CONTEXT_LAUNCH_TIMEOUT_MS,
+    });
+  } catch (error) {
+    logExtensionFixtureDebug(
+      `${label}:context:launch:error`,
+      error instanceof Error ? error.message : String(error)
+    );
+    throw error;
+  }
+
+  logExtensionFixtureDebug(`${label}:context:launch:ready`, {
+    pages: context.pages().map((page) => page.url()),
+    serviceWorkers: context.serviceWorkers().map((worker) => worker.url()),
+  });
+
+  return context;
+}
+
+async function closeExtensionFixturePages(context: BrowserContext, label: string): Promise<void> {
+  const pages = context.pages().filter((page) => !page.isClosed());
+  logExtensionFixtureDebug(`${label}:pages:close:start`, {
+    pages: pages.map((page) => page.url()),
+  });
+
+  for (const page of pages) {
+    await page.close();
+  }
+
+  logExtensionFixtureDebug(`${label}:pages:close:done`, {
+    remainingPages: context.pages().map((page) => page.url()),
+  });
+}
+
+async function clearExtensionFixtureStorage(
+  context: BrowserContext,
+  extensionId: string,
+  label: string
+): Promise<void> {
+  logExtensionFixtureDebug(`${label}:storage:clear:start`, {
+    extensionId,
+  });
+
+  const page = await context.newPage();
+  try {
+    await page.goto(popupUrl(extensionId));
+    await page.waitForLoadState('domcontentloaded');
+    await page.evaluate(async () => {
+      const clearArea = (
+        area?: chrome.storage.StorageArea
+      ): Promise<void> =>
+        new Promise((resolve, reject) => {
+          if (!area) {
+            resolve();
+            return;
+          }
+
+          area.clear(() => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+              return;
+            }
+            resolve();
+          });
+        });
+
+      localStorage.clear();
+      sessionStorage.clear();
+      await clearArea(chrome.storage.local);
+      await clearArea(chrome.storage.sync);
+    });
+  } finally {
+    if (!page.isClosed()) {
+      await page.close();
+    }
+  }
+
+  logExtensionFixtureDebug(`${label}:storage:clear:done`);
+}
+
+async function resolveExtensionWorkerId(
+  context: BrowserContext,
+  label: string
+): Promise<string> {
+  let serviceWorker = context.serviceWorkers()[0];
+  logExtensionFixtureDebug(`${label}:extension-id:start`, {
+    existingWorkers: context.serviceWorkers().map((worker) => worker.url()),
+  });
+  if (!serviceWorker) {
+    try {
+      serviceWorker = await context.waitForEvent('serviceworker', {
+        timeout: 30_000,
+      });
+    } catch (error) {
+      logExtensionFixtureDebug(`${label}:extension-id:error`, {
+        existingWorkers: context.serviceWorkers().map((worker) => worker.url()),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  logExtensionFixtureDebug(`${label}:extension-id:ready`, {
+    serviceWorkerUrl: serviceWorker.url(),
+  });
+  const match = serviceWorker.url().match(/chrome-extension:\/\/([^/]+)/);
+  if (!match) {
+    throw new Error(`Could not extract extension ID from: ${serviceWorker.url()}`);
+  }
+
+  return match[1];
+}
+
+async function resetExtensionTestState(
+  context: BrowserContext,
+  extensionId: string,
+  label: string
+): Promise<void> {
+  logExtensionFixtureDebug(`${label}:context:reset:start`, {
+    pages: context.pages().map((page) => page.url()),
+    serviceWorkers: context.serviceWorkers().map((worker) => worker.url()),
+  });
+  await closeExtensionFixturePages(context, `${label}:context:reset`);
+  await context.clearCookies();
+  await clearExtensionFixtureStorage(context, extensionId, `${label}:context:reset`);
+  logExtensionFixtureDebug(`${label}:context:reset:done`, {
+    pages: context.pages().map((page) => page.url()),
+    serviceWorkers: context.serviceWorkers().map((worker) => worker.url()),
+  });
+}
+
 function createExtensionTest(options: ExtensionLaunchOptions = {}) {
-  return base.extend<ExtensionFixtures>({
-    // eslint-disable-next-line no-empty-pattern
-    context: async ({}, use) => {
-      const context = await chromium.launchPersistentContext(
-        '',
-        getExtensionLaunchSettings(options)
-      );
+  return base.extend<ExtensionFixtures, ExtensionWorkerFixtures>({
+    workerContext: [
+      // eslint-disable-next-line no-empty-pattern
+      async ({}, use, workerInfo) => {
+        const label = getExtensionWorkerLabel(workerInfo);
+        const context = await launchExtensionWorkerContext(options, label);
 
-      await use(context);
-      await context.close();
+        try {
+          await use(context);
+        } finally {
+          logExtensionFixtureDebug(`${label}:context:close:start`, {
+            pages: context.pages().map((page) => page.url()),
+            serviceWorkers: context.serviceWorkers().map((worker) => worker.url()),
+          });
+          try {
+            await context.close();
+            logExtensionFixtureDebug(`${label}:context:close:done`);
+          } catch (error) {
+            logExtensionFixtureDebug(
+              `${label}:context:close:error`,
+              error instanceof Error ? error.message : String(error)
+            );
+            throw error;
+          }
+        }
+      },
+      { scope: 'worker' },
+    ],
+    workerExtensionId: [
+      async ({ workerContext }, use, workerInfo) => {
+        const label = getExtensionWorkerLabel(workerInfo);
+        const extensionId = await resolveExtensionWorkerId(workerContext, label);
+        await use(extensionId);
+      },
+      { scope: 'worker' },
+    ],
+    context: async ({ workerContext, workerExtensionId }, use, testInfo) => {
+      const label = getExtensionFixtureLabel(testInfo);
+      await resetExtensionTestState(workerContext, workerExtensionId, label);
+
+      try {
+        await use(workerContext);
+      } finally {
+        logExtensionFixtureDebug(`${label}:context:cleanup:start`, {
+          pages: workerContext.pages().map((page) => page.url()),
+          serviceWorkers: workerContext.serviceWorkers().map((worker) => worker.url()),
+        });
+        await closeExtensionFixturePages(workerContext, `${label}:context:cleanup`);
+        logExtensionFixtureDebug(`${label}:context:cleanup:done`, {
+          pages: workerContext.pages().map((page) => page.url()),
+          serviceWorkers: workerContext.serviceWorkers().map((worker) => worker.url()),
+        });
+      }
     },
-    extensionId: async ({ context }, use) => {
-      let serviceWorker = context.serviceWorkers()[0];
-      if (!serviceWorker) {
-        serviceWorker = await context.waitForEvent('serviceworker', { timeout: 30_000 });
-      }
-
-      const match = serviceWorker.url().match(/chrome-extension:\/\/([^/]+)/);
-      if (!match) {
-        throw new Error(`Could not extract extension ID from: ${serviceWorker.url()}`);
-      }
-
-      await use(match[1]);
+    extensionId: async ({ workerExtensionId }, use) => {
+      await use(workerExtensionId);
     },
   });
 }
@@ -51,9 +303,10 @@ export function offscreenUrl(extensionId: string): string {
 
 export async function sendExtensionMessage<T>(
   page: Page,
-  message: Record<string, unknown>
+  message: Record<string, unknown>,
+  options?: MessageOptions
 ): Promise<T> {
-  return page.evaluate(async (msg) => {
+  const promise = page.evaluate(async (msg) => {
     return new Promise<T>((resolve, reject) => {
       chrome.runtime.sendMessage(msg, (response: T) => {
         if (chrome.runtime.lastError) {
@@ -64,6 +317,82 @@ export async function sendExtensionMessage<T>(
       });
     });
   }, message);
+
+  return withMessageTimeout(
+    promise,
+    options?.timeoutMs,
+    options?.label ?? `extension message ${(message.type as string | undefined) ?? 'unknown'}`
+  );
+}
+
+export async function findTabIdByUrlFragment(
+  page: Page,
+  urlFragment: string
+): Promise<number> {
+  const tabId = await page.evaluate(async (fragment) => {
+    const tabs = await chrome.tabs.query({});
+    const tab = tabs.find((candidate) => typeof candidate.id === 'number' && candidate.url?.includes(fragment));
+    return tab?.id ?? null;
+  }, urlFragment);
+
+  expect(tabId).not.toBeNull();
+  return tabId as number;
+}
+
+export async function sendTabMessage<T>(
+  page: Page,
+  tabId: number,
+  message: Record<string, unknown>,
+  options?: MessageOptions
+): Promise<T> {
+  const response = await withMessageTimeout(
+    page.evaluate(async ({ targetTabId, payload }) => {
+      return new Promise<unknown>((resolve, reject) => {
+        chrome.tabs.sendMessage(targetTabId, payload, (result) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(result);
+          }
+        });
+      });
+    }, { targetTabId: tabId, payload: message }),
+    options?.timeoutMs,
+    options?.label ?? `tab message ${(message.type as string | undefined) ?? 'unknown'}`
+  );
+
+  return response as T;
+}
+
+export async function waitForTabPing(
+  page: Page,
+  urlFragment: string
+): Promise<number> {
+  let tabId: number | null = null;
+
+  await expect.poll(async () => {
+    tabId = await page.evaluate(async (fragment) => {
+      const tabs = await chrome.tabs.query({});
+      const tab = tabs.find((candidate) => typeof candidate.id === 'number' && candidate.url?.includes(fragment));
+      return tab?.id ?? null;
+    }, urlFragment);
+    return tabId;
+  }, { timeout: 15_000 }).toBeTruthy();
+
+  await expect.poll(async () => {
+    try {
+      return await sendTabMessage<{ loaded: boolean }>(
+        page,
+        tabId as number,
+        { type: 'ping' },
+        { timeoutMs: 2_000, label: 'tab ping' }
+      );
+    } catch {
+      return null;
+    }
+  }, { timeout: 15_000 }).toEqual({ loaded: true });
+
+  return tabId as number;
 }
 
 export async function setExtensionSettings(

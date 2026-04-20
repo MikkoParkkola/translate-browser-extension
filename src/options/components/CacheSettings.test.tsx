@@ -4,45 +4,32 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@solidjs/testing-library';
+import { setupUiChromeMock } from '../../test-helpers/chrome-mocks';
 
 const mockSendMessage = vi.fn();
 
-vi.stubGlobal('chrome', {
-  runtime: {
-    sendMessage: mockSendMessage,
-    onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
-  },
-  storage: {
-    local: {
-      get: vi.fn().mockResolvedValue({}),
-      set: vi.fn().mockResolvedValue(undefined),
-    },
-  },
-});
-
-vi.stubGlobal('navigator', {
-  storage: {
-    estimate: vi.fn().mockResolvedValue({ usage: 0, quota: 0 }),
-  },
+setupUiChromeMock({
+  runtimeSendMessage: mockSendMessage,
 });
 
 import { CacheSettings } from './CacheSettings';
 
 const MOCK_STATS = {
-  entries: 42,
-  totalSize: 1024 * 1024 * 5,
-  maxSize: 1024 * 1024 * 100,
-  hits: 200,
-  misses: 50,
-  hitRate: 0.8,
-  oldestTimestamp: 1700000000000,
-  newestTimestamp: 1700086400000,
+  size: 42,
+  maxSize: 1000,
+  hitRate: '200/250 (80%)',
+  oldestEntry: 1700000000000,
+  totalHits: 200,
+  totalMisses: 50,
+  mostUsed: [],
+  memoryEstimate: '~5120KB',
+  languagePairs: { 'en-fi': 40, 'en-sv': 2 },
 };
 
 describe('CacheSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSendMessage.mockResolvedValue({ stats: MOCK_STATS });
+    mockSendMessage.mockResolvedValue({ cache: MOCK_STATS });
   });
 
   afterEach(cleanup);
@@ -63,12 +50,11 @@ describe('CacheSettings', () => {
       });
     });
 
-    it('shows Storage Used stat', async () => {
+    it('shows Estimated Memory stat', async () => {
       render(() => <CacheSettings />);
       await vi.waitFor(() => {
-        // parseFloat strips trailing zeros: 5.0 -> 5
         const body = document.body.textContent || '';
-        expect(body).toContain('5 MB');
+        expect(body).toContain('~5120KB');
       });
     });
 
@@ -92,15 +78,15 @@ describe('CacheSettings', () => {
     it('shows hit rate alert when hitRate > 0', async () => {
       render(() => <CacheSettings />);
       await vi.waitFor(() => {
-        expect(screen.getByText(/Your cache hit rate/)).toBeTruthy();
+        expect(screen.getByText(/Your cache served/)).toBeTruthy();
       });
     });
 
-    it('shows Oldest and Newest entry dates', async () => {
+    it('shows Oldest entry and language pair count', async () => {
       render(() => <CacheSettings />);
       await vi.waitFor(() => {
         expect(screen.getByText(/Oldest entry:/)).toBeTruthy();
-        expect(screen.getByText(/Newest entry:/)).toBeTruthy();
+        expect(screen.getByText(/Language pairs:/)).toBeTruthy();
       });
     });
 
@@ -126,6 +112,7 @@ describe('CacheSettings', () => {
         expect(screen.getByText('Cached Entries')).toBeTruthy();
         const body = document.body.textContent || '';
         expect(body).toContain('0');
+        expect(body).toContain('~0KB');
       });
     });
   });
@@ -168,9 +155,19 @@ describe('CacheSettings', () => {
 
     it('calls sendMessage clearCache when confirmed', async () => {
       mockSendMessage
-        .mockResolvedValueOnce({ stats: MOCK_STATS }) // initial load
+        .mockResolvedValueOnce({ cache: MOCK_STATS }) // initial load
         .mockResolvedValueOnce({}) // clearCache
-        .mockResolvedValue({ stats: { ...MOCK_STATS, entries: 0 } }); // reload
+        .mockResolvedValue({
+          cache: {
+            ...MOCK_STATS,
+            size: 0,
+            totalHits: 0,
+            totalMisses: 0,
+            hitRate: '0/0 (0%)',
+            memoryEstimate: '~0KB',
+            languagePairs: {},
+          },
+        }); // reload
 
       render(() => <CacheSettings />);
       await vi.waitFor(() => expect(screen.getAllByText('Clear Cache').length).toBeGreaterThan(0));
@@ -197,9 +194,19 @@ describe('CacheSettings', () => {
 
     it('shows success message after clearing', async () => {
       mockSendMessage
-        .mockResolvedValueOnce({ stats: MOCK_STATS })
+        .mockResolvedValueOnce({ cache: MOCK_STATS })
         .mockResolvedValueOnce({}) // clearCache
-        .mockResolvedValue({ stats: { ...MOCK_STATS, entries: 0 } });
+        .mockResolvedValue({
+          cache: {
+            ...MOCK_STATS,
+            size: 0,
+            totalHits: 0,
+            totalMisses: 0,
+            hitRate: '0/0 (0%)',
+            memoryEstimate: '~0KB',
+            languagePairs: {},
+          },
+        });
 
       render(() => <CacheSettings />);
       await vi.waitFor(() => expect(screen.getAllByText('Clear Cache').length).toBeGreaterThan(0));
@@ -213,7 +220,7 @@ describe('CacheSettings', () => {
 
     it('shows error when clearCache fails', async () => {
       mockSendMessage
-        .mockResolvedValueOnce({ stats: MOCK_STATS })
+        .mockResolvedValueOnce({ cache: MOCK_STATS })
         .mockRejectedValue(new Error('Storage error'));
 
       render(() => <CacheSettings />);
@@ -244,12 +251,12 @@ describe('CacheSettings', () => {
   describe('null timestamp handling', () => {
     it('shows N/A for null timestamps', async () => {
       mockSendMessage.mockResolvedValue({
-        stats: { ...MOCK_STATS, oldestTimestamp: null, newestTimestamp: null },
+        cache: { ...MOCK_STATS, oldestEntry: null },
       });
       render(() => <CacheSettings />);
       await vi.waitFor(() => {
         const nas = screen.getAllByText(/N\/A/);
-        expect(nas.length).toBeGreaterThanOrEqual(2);
+        expect(nas.length).toBeGreaterThanOrEqual(1);
       });
     });
   });
@@ -257,11 +264,11 @@ describe('CacheSettings', () => {
   describe('zero hit rate', () => {
     it('does not show hit rate alert when hitRate is 0', async () => {
       mockSendMessage.mockResolvedValue({
-        stats: { ...MOCK_STATS, hitRate: 0, hits: 0, misses: 0 },
+        cache: { ...MOCK_STATS, hitRate: '0/0 (0%)', totalHits: 0, totalMisses: 0 },
       });
       render(() => <CacheSettings />);
       await vi.waitFor(() => {
-        expect(screen.queryByText(/Your cache hit rate/)).toBeNull();
+        expect(screen.queryByText(/Your cache served/)).toBeNull();
       });
     });
   });
@@ -269,7 +276,7 @@ describe('CacheSettings', () => {
   describe('progress bar styling', () => {
     it('shows danger class for high usage >80%', async () => {
       mockSendMessage.mockResolvedValue({
-        stats: { ...MOCK_STATS, totalSize: 90 * 1024 * 1024, maxSize: 100 * 1024 * 1024 },
+        cache: { ...MOCK_STATS, size: 900, maxSize: 1000 },
       });
       render(() => <CacheSettings />);
       await vi.waitFor(() => {
@@ -280,7 +287,7 @@ describe('CacheSettings', () => {
 
     it('shows warning class for medium usage 50-80%', async () => {
       mockSendMessage.mockResolvedValue({
-        stats: { ...MOCK_STATS, totalSize: 60 * 1024 * 1024, maxSize: 100 * 1024 * 1024 },
+        cache: { ...MOCK_STATS, size: 600, maxSize: 1000 },
       });
       render(() => <CacheSettings />);
       await vi.waitFor(() => {
@@ -291,7 +298,7 @@ describe('CacheSettings', () => {
 
     it('shows no class for low usage <50%', async () => {
       mockSendMessage.mockResolvedValue({
-        stats: { ...MOCK_STATS, totalSize: 30 * 1024 * 1024, maxSize: 100 * 1024 * 1024 },
+        cache: { ...MOCK_STATS, size: 300, maxSize: 1000 },
       });
       render(() => <CacheSettings />);
       await vi.waitFor(() => {

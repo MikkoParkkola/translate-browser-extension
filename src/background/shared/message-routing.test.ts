@@ -32,7 +32,9 @@ describe('isHandledExtensionMessage', () => {
 });
 
 describe('SENSITIVE_EXTENSION_MESSAGE_TYPES', () => {
-  it('includes the cloud provider mutation messages', () => {
+  it('includes internal model-tracking and cloud provider mutation messages', () => {
+    expect(SENSITIVE_EXTENSION_MESSAGE_TYPES).toContain('offscreenModelProgress');
+    expect(SENSITIVE_EXTENSION_MESSAGE_TYPES).toContain('offscreenDownloadedModelUpdate');
     expect(SENSITIVE_EXTENSION_MESSAGE_TYPES).toContain('setCloudApiKey');
     expect(SENSITIVE_EXTENSION_MESSAGE_TYPES).toContain('clearCloudApiKey');
     expect(SENSITIVE_EXTENSION_MESSAGE_TYPES).toContain('setCloudProviderEnabled');
@@ -104,9 +106,9 @@ describe('routeHandledExtensionMessage', () => {
       createErrorResponse: vi.fn(),
     });
 
-    await Promise.resolve();
-
-    expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'ready' });
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'ready' });
+    });
   });
 
   it('uses the shared error factory when dispatch rejects', async () => {
@@ -121,11 +123,31 @@ describe('routeHandledExtensionMessage', () => {
       createErrorResponse,
     });
 
-    await Promise.resolve();
-    await Promise.resolve();
+    await vi.waitFor(() => {
+      expect(createErrorResponse).toHaveBeenCalled();
+      expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'boom' });
+    });
+  });
 
-    expect(createErrorResponse).toHaveBeenCalled();
-    expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'boom' });
+  it('uses the shared error factory when dispatch throws synchronously', async () => {
+    const sendResponse = vi.fn();
+    const createErrorResponse = vi.fn().mockReturnValue({ success: false, error: 'boom' });
+    const error = new Error('boom');
+
+    routeHandledExtensionMessage({
+      message: { type: 'ping' },
+      sendResponse,
+      isHandledMessage: (message): message is { type: 'ping' } => message.type === 'ping',
+      dispatch: vi.fn(() => {
+        throw error;
+      }),
+      createErrorResponse,
+    });
+
+    await vi.waitFor(() => {
+      expect(createErrorResponse).toHaveBeenCalledWith(error);
+      expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'boom' });
+    });
   });
 });
 

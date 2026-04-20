@@ -1,12 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createBrowserApiModuleMock } from '../test-helpers/module-mocks';
 
 const { mockSendMessage } = vi.hoisted(() => ({
   mockSendMessage: vi.fn(),
 }));
 
-vi.mock('../core/browser-api', () => ({
-  sendMessage: mockSendMessage,
-}));
+vi.mock('../core/browser-api', () =>
+  createBrowserApiModuleMock({
+    runtimeSendMessage: mockSendMessage,
+    includeSendMessageExport: true,
+  })
+);
 
 import {
   sendBackgroundMessage,

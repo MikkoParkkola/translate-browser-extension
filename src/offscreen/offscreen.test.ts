@@ -14,13 +14,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-  buildOpusMtExecutionPlan,
-  describeOpusMtExecutionConfig,
-  resolveOpusMtExecutionConfig,
-  selectOpusMtDtype,
-} from '../shared/opus-mt-runtime';
-import { CONFIG } from '../config';
+import { mockCanvasElement, setupImageConstructorMock } from '../test-helpers/dom-property-mocks';
+import { selectOpusMtDtype } from './opus-runtime';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -138,6 +133,7 @@ const mockDeeplInitialize = vi.fn().mockResolvedValue(undefined);
 const mockDeeplIsAvailable = vi.fn().mockResolvedValue(false);
 const mockDeeplTranslate = vi.fn().mockResolvedValue('deepl translated');
 const mockDeeplGetUsage = vi.fn().mockResolvedValue({ tokens: 100, cost: 0.002, limitReached: false });
+const mockDeeplFlush = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../providers/deepl', () => ({
   deeplProvider: {
@@ -145,6 +141,7 @@ vi.mock('../providers/deepl', () => ({
     isAvailable: (...args: unknown[]) => mockDeeplIsAvailable(...args),
     translate: (...args: unknown[]) => mockDeeplTranslate(...args),
     getUsage: (...args: unknown[]) => mockDeeplGetUsage(...args),
+    flush: (...args: unknown[]) => mockDeeplFlush(...args),
   },
 }));
 
@@ -153,6 +150,7 @@ const mockOpenaiInitialize = vi.fn().mockResolvedValue(undefined);
 const mockOpenaiIsAvailable = vi.fn().mockResolvedValue(false);
 const mockOpenaiTranslate = vi.fn().mockResolvedValue('openai translated');
 const mockOpenaiGetUsage = vi.fn().mockResolvedValue({ tokens: 200, cost: 0.004, limitReached: false });
+const mockOpenaiFlush = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../providers/openai', () => ({
   openaiProvider: {
@@ -160,6 +158,7 @@ vi.mock('../providers/openai', () => ({
     isAvailable: (...args: unknown[]) => mockOpenaiIsAvailable(...args),
     translate: (...args: unknown[]) => mockOpenaiTranslate(...args),
     getUsage: (...args: unknown[]) => mockOpenaiGetUsage(...args),
+    flush: (...args: unknown[]) => mockOpenaiFlush(...args),
   },
 }));
 
@@ -168,6 +167,7 @@ const mockAnthropicInitialize = vi.fn().mockResolvedValue(undefined);
 const mockAnthropicIsAvailable = vi.fn().mockResolvedValue(false);
 const mockAnthropicTranslate = vi.fn().mockResolvedValue('anthropic translated');
 const mockAnthropicGetUsage = vi.fn().mockResolvedValue({ tokens: 300, cost: 0.006, limitReached: false });
+const mockAnthropicFlush = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../providers/anthropic', () => ({
   anthropicProvider: {
@@ -175,6 +175,7 @@ vi.mock('../providers/anthropic', () => ({
     isAvailable: (...args: unknown[]) => mockAnthropicIsAvailable(...args),
     translate: (...args: unknown[]) => mockAnthropicTranslate(...args),
     getUsage: (...args: unknown[]) => mockAnthropicGetUsage(...args),
+    flush: (...args: unknown[]) => mockAnthropicFlush(...args),
   },
 }));
 
@@ -183,6 +184,7 @@ const mockGoogleInitialize = vi.fn().mockResolvedValue(undefined);
 const mockGoogleIsAvailable = vi.fn().mockResolvedValue(false);
 const mockGoogleTranslate = vi.fn().mockResolvedValue('google translated');
 const mockGoogleGetUsage = vi.fn().mockResolvedValue({ tokens: 400, cost: 0.008, limitReached: false });
+const mockGoogleFlush = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../providers/google-cloud', () => ({
   googleCloudProvider: {
@@ -190,6 +192,7 @@ vi.mock('../providers/google-cloud', () => ({
     isAvailable: (...args: unknown[]) => mockGoogleIsAvailable(...args),
     translate: (...args: unknown[]) => mockGoogleTranslate(...args),
     getUsage: (...args: unknown[]) => mockGoogleGetUsage(...args),
+    flush: (...args: unknown[]) => mockGoogleFlush(...args),
   },
 }));
 
@@ -285,7 +288,6 @@ function dispatch(message: Record<string, unknown>): Promise<Record<string, unkn
 // ---------------------------------------------------------------------------
 beforeEach(() => {
   vi.clearAllMocks();
-  (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = false;
 
   // Re-apply defaults after clearAllMocks wipes return values
   mockGetCachedPipeline.mockReturnValue(null);
@@ -308,18 +310,22 @@ beforeEach(() => {
   mockDeeplIsAvailable.mockResolvedValue(false);
   mockDeeplTranslate.mockResolvedValue('deepl translated');
   mockDeeplGetUsage.mockResolvedValue({ tokens: 100, cost: 0.002, limitReached: false });
+  mockDeeplFlush.mockResolvedValue(undefined);
   mockOpenaiInitialize.mockResolvedValue(undefined);
   mockOpenaiIsAvailable.mockResolvedValue(false);
   mockOpenaiTranslate.mockResolvedValue('openai translated');
   mockOpenaiGetUsage.mockResolvedValue({ tokens: 200, cost: 0.004, limitReached: false });
+  mockOpenaiFlush.mockResolvedValue(undefined);
   mockAnthropicInitialize.mockResolvedValue(undefined);
   mockAnthropicIsAvailable.mockResolvedValue(false);
   mockAnthropicTranslate.mockResolvedValue('anthropic translated');
   mockAnthropicGetUsage.mockResolvedValue({ tokens: 300, cost: 0.006, limitReached: false });
+  mockAnthropicFlush.mockResolvedValue(undefined);
   mockGoogleInitialize.mockResolvedValue(undefined);
   mockGoogleIsAvailable.mockResolvedValue(false);
   mockGoogleTranslate.mockResolvedValue('google translated');
   mockGoogleGetUsage.mockResolvedValue({ tokens: 400, cost: 0.008, limitReached: false });
+  mockGoogleFlush.mockResolvedValue(undefined);
   mockExtractTextFromImage.mockResolvedValue({ text: 'extracted text', confidence: 95, blocks: [] });
   mockTerminateOCR.mockResolvedValue(undefined);
   mockIsOnline.mockReturnValue(true);
@@ -460,7 +466,7 @@ describe('offscreen message handler', () => {
     it('returns stats from translation cache', async () => {
       const r = await dispatch({ type: 'getCacheStats' });
       expect(r.success).toBe(true);
-      expect(r.stats).toBeDefined();
+      expect(r.cache).toBeDefined();
       expect(mockCacheGetStats).toHaveBeenCalledOnce();
     });
   });
@@ -499,16 +505,6 @@ describe('offscreen message handler', () => {
       expect(r.aggregates).toBeDefined();
       expect(r.formatted).toBeDefined();
       expect(mockGetAllAggregates).toHaveBeenCalledOnce();
-    });
-  });
-
-  describe('checkWebNN', () => {
-    it('returns detected WebNN support status', async () => {
-      mockDetectWebNN.mockResolvedValue(true);
-
-      const r = await dispatch({ type: 'checkWebNN' });
-
-      expect(r).toEqual({ success: true, supported: true });
     });
   });
 
@@ -590,28 +586,6 @@ describe('offscreen message handler', () => {
       expect(r.success).toBe(false);
       expect((r.error as string)).toMatch(/targetLang/);
     });
-
-    it('rejects sourceLang values that are blank after trimming', async () => {
-      const r = await dispatch({
-        type: 'translate',
-        text: 'hi',
-        sourceLang: '   ',
-        targetLang: 'de',
-      });
-      expect(r.success).toBe(false);
-      expect(r.error).toBe('Invalid sourceLang: must be non-empty string, max 20 characters');
-    });
-
-    it('rejects targetLang values that are blank after trimming', async () => {
-      const r = await dispatch({
-        type: 'translate',
-        text: 'hi',
-        sourceLang: 'en',
-        targetLang: '   ',
-      });
-      expect(r.success).toBe(false);
-      expect(r.error).toBe('Invalid targetLang: must be non-empty string, max 20 characters');
-    });
   });
 
   // -------------------------------------------------------------------------
@@ -656,27 +630,6 @@ describe('offscreen message handler', () => {
       expect(r.success).toBe(true);
       expect(r.result).toBe('Hallo Welt');
       expect(pipe).toHaveBeenCalledWith('Hello World', { max_length: 512 });
-    });
-
-    it('splits multi-sentence probe input into per-sentence pipeline calls', async () => {
-      (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = true;
-      const pipe = vi.fn()
-        .mockResolvedValueOnce([{ translation_text: 'Ensimmäinen lause.' }])
-        .mockResolvedValueOnce([{ translation_text: 'Toinen lause.' }]);
-      mockGetCachedPipeline.mockReturnValue(pipe);
-
-      const r = await dispatch({
-        type: 'translate',
-        text: 'First sentence. Second sentence.',
-        sourceLang: 'en',
-        targetLang: 'fi',
-        provider: 'opus-mt',
-      });
-
-      expect(r.success).toBe(true);
-      expect(r.result).toBe('Ensimmäinen lause. Toinen lause.');
-      expect(pipe).toHaveBeenNthCalledWith(1, 'First sentence.', { max_length: 512 });
-      expect(pipe).toHaveBeenNthCalledWith(2, 'Second sentence.', { max_length: 512 });
     });
 
     it('returns empty string unchanged (no pipeline call)', async () => {
@@ -730,95 +683,6 @@ describe('offscreen message handler', () => {
       expect(r.result).toEqual(['Hallo', 'Welt']);
     });
 
-    it('splits multi-sentence items inside array translations for probe builds', async () => {
-      (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = true;
-      const translations: Record<string, string> = {
-        'First sentence.': 'Ensimmäinen lause.',
-        'Second sentence.': 'Toinen lause.',
-        'Third sentence.': 'Kolmas lause.',
-        'Fourth sentence.': 'Neljäs lause.',
-      };
-      const pipe = vi
-        .fn()
-        .mockImplementation((text: string) =>
-          Promise.resolve([{ translation_text: translations[text] ?? text }])
-        );
-      mockGetCachedPipeline.mockReturnValue(pipe);
-
-      const r = await dispatch({
-        type: 'translate',
-        text: [
-          'First sentence. Second sentence.',
-          'Third sentence. Fourth sentence.',
-        ],
-        sourceLang: 'en',
-        targetLang: 'fi',
-        provider: 'opus-mt',
-      });
-
-      expect(r.success).toBe(true);
-      expect(r.result).toEqual([
-        'Ensimmäinen lause. Toinen lause.',
-        'Kolmas lause. Neljäs lause.',
-      ]);
-      expect(pipe).toHaveBeenCalledWith('First sentence.', { max_length: 512 });
-      expect(pipe).toHaveBeenCalledWith('Second sentence.', { max_length: 512 });
-      expect(pipe).toHaveBeenCalledWith('Third sentence.', { max_length: 512 });
-      expect(pipe).toHaveBeenCalledWith('Fourth sentence.', { max_length: 512 });
-    });
-
-    it('keeps four single-sentence batch items stable in probe builds', async () => {
-      (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = true;
-      const translations: Record<string, string> = {
-        Alpha: 'Alfa',
-        Beta: 'Beeta',
-        Gamma: 'Gamma',
-        Delta: 'Delta',
-      };
-      const pipe = vi
-        .fn()
-        .mockImplementation((text: string) =>
-          Promise.resolve([{ translation_text: translations[text] ?? text }])
-        );
-      mockGetCachedPipeline.mockReturnValue(pipe);
-
-      const r = await dispatch({
-        type: 'translate',
-        text: ['Alpha', 'Beta', 'Gamma', 'Delta'],
-        sourceLang: 'en',
-        targetLang: 'fi',
-        provider: 'opus-mt',
-      });
-
-      expect(r.success).toBe(true);
-      expect(r.result).toEqual(['Alfa', 'Beeta', 'Gamma', 'Delta']);
-    });
-
-    it('returns degraded probe output verbatim when sentence-level translations lose punctuation', async () => {
-      (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = true;
-      const translations: Record<string, string> = {
-        'First sentence.': 'Ensimmäinen lause',
-        'Second sentence.': 'Toinen lause',
-      };
-      const pipe = vi
-        .fn()
-        .mockImplementation((text: string) =>
-          Promise.resolve([{ translation_text: translations[text] ?? text }])
-        );
-      mockGetCachedPipeline.mockReturnValue(pipe);
-
-      const r = await dispatch({
-        type: 'translate',
-        text: 'First sentence. Second sentence.',
-        sourceLang: 'en',
-        targetLang: 'fi',
-        provider: 'opus-mt',
-      });
-
-      expect(r.success).toBe(true);
-      expect(r.result).toBe('Ensimmäinen lause Toinen lause');
-    });
-
     it('returns empty array without calling pipeline', async () => {
       const pipe = vi.fn();
       mockGetCachedPipeline.mockReturnValue(pipe);
@@ -847,27 +711,6 @@ describe('offscreen message handler', () => {
       });
       expect(r.success).toBe(false);
       expect(r.error).toBeDefined();
-    });
-
-    it('returns structured translationError details for pipeline failures', async () => {
-      const pipe = vi.fn().mockRejectedValue(new Error('operation timed out'));
-      mockGetCachedPipeline.mockReturnValue(pipe);
-
-      const r = await dispatch({
-        type: 'translate',
-        text: 'Hello',
-        sourceLang: 'en',
-        targetLang: 'de',
-        provider: 'opus-mt',
-      });
-
-      expect(r.success).toBe(false);
-      expect(r.error).toBe('operation timed out');
-      expect(r.translationError).toMatchObject({
-        category: 'timeout',
-        technicalDetails: 'operation timed out',
-        retryable: true,
-      });
     });
 
     it('stores result in cache after translation', async () => {
@@ -924,6 +767,25 @@ describe('offscreen message handler', () => {
 
       expect(r.success).toBe(true);
       expect(r.result).toBe('Guten Tag');
+      expect(pipe).not.toHaveBeenCalled();
+    });
+
+    it('returns original batch text when source language already matches target', async () => {
+      const pipe = vi.fn();
+      mockGetCachedPipeline.mockReturnValue(pipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: ['Mock translation harness used for automated browser tests on an English page.'],
+        sourceLang: 'en',
+        targetLang: 'en',
+        provider: 'opus-mt',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toEqual([
+        'Mock translation harness used for automated browser tests on an English page.',
+      ]);
       expect(pipe).not.toHaveBeenCalled();
     });
 
@@ -1369,6 +1231,7 @@ describe('offscreen message handler', () => {
 
       expect(r.success).toBe(true);
       expect(r.preloaded).toBe(true);
+      expect(r.available).toBe(true);
     });
 
     it('returns preloaded:false for unsupported pair', async () => {
@@ -1381,6 +1244,7 @@ describe('offscreen message handler', () => {
 
       expect(r.success).toBe(true);
       expect(r.preloaded).toBe(false);
+      expect(r.available).toBe(false);
     });
 
     it('rejects TranslateGemma preload when WebGPU unavailable', async () => {
@@ -1410,6 +1274,7 @@ describe('offscreen message handler', () => {
 
       expect(r.success).toBe(true);
       expect(r.preloaded).toBe(true);
+      expect(r.available).toBe(true);
       expect(mockGetTranslateGemmaPipeline).toHaveBeenCalled();
     });
 
@@ -1441,6 +1306,7 @@ describe('offscreen message handler', () => {
 
       expect(r.success).toBe(true);
       expect(r.partial).toBe(true);
+      expect(r.available).toBe(true);
     });
   });
 
@@ -1493,6 +1359,18 @@ describe('offscreen message handler', () => {
       expect(usage.tokens).toBe(0);
       expect(usage.cost).toBe(0);
       expect(usage.limitReached).toBe(false);
+    });
+  });
+
+  describe('flushCloudProviderTelemetry', () => {
+    it('flushes all offscreen cloud provider telemetry writers', async () => {
+      const response = await dispatch({ type: 'flushCloudProviderTelemetry' });
+
+      expect(response).toEqual({ success: true });
+      expect(mockDeeplFlush).toHaveBeenCalledTimes(1);
+      expect(mockOpenaiFlush).toHaveBeenCalledTimes(1);
+      expect(mockAnthropicFlush).toHaveBeenCalledTimes(1);
+      expect(mockGoogleFlush).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1589,96 +1467,6 @@ describe('offscreen message handler', () => {
 
       expect(mockCachePipeline).toHaveBeenCalledWith('Xenova/opus-mt-en-fr', fakePipe);
     });
-
-    it('falls back to WASM+fp32 when WASM+q8 fails to load', async () => {
-      const { pipeline: mockPipeline } = await import('@huggingface/transformers');
-      const fakePipe = vi.fn().mockResolvedValue([{ translation_text: 'Bonjour' }]);
-      (mockPipeline as ReturnType<typeof vi.fn>)
-        .mockRejectedValueOnce(new Error('Missing required scale'))
-        .mockResolvedValueOnce(fakePipe);
-      mockGetCachedPipeline.mockReturnValue(null);
-
-      const r = await dispatch({
-        type: 'translate',
-        text: 'Hello',
-        sourceLang: 'en',
-        targetLang: 'fr',
-        provider: 'opus-mt',
-      });
-
-      expect(r.success).toBe(true);
-      expect(mockPipeline).toHaveBeenNthCalledWith(
-        1,
-        'translation',
-        'Xenova/opus-mt-en-fr',
-        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
-      );
-      expect(mockPipeline).toHaveBeenNthCalledWith(
-        2,
-        'translation',
-        'Xenova/opus-mt-en-fr',
-        expect.objectContaining({ device: 'wasm', dtype: 'fp32' })
-      );
-    });
-
-    it('surfaces both q8 and fp32 load failures when all attempts fail', async () => {
-      const { pipeline: mockPipeline } = await import('@huggingface/transformers');
-      (mockPipeline as ReturnType<typeof vi.fn>)
-        .mockRejectedValueOnce(new Error('Missing required scale'))
-        .mockRejectedValueOnce(new Error('Missing required scale'));
-      mockGetCachedPipeline.mockReturnValue(null);
-
-      const r = await dispatch({
-        type: 'translate',
-        text: 'Hello',
-        sourceLang: 'en',
-        targetLang: 'fr',
-        provider: 'opus-mt',
-      });
-
-      expect(r.success).toBe(false);
-      expect(r.error).toContain('WASM+q8: Missing required scale');
-      expect(r.error).toContain('WASM+fp32 diagnostic fallback: Missing required scale');
-      expect(r.translationError).toMatchObject({
-        category: 'model',
-      });
-    });
-
-    it('captures attempted model file names in load failure diagnostics', async () => {
-      const { pipeline: mockPipeline } = await import('@huggingface/transformers');
-      (mockPipeline as ReturnType<typeof vi.fn>)
-        .mockImplementationOnce(
-          async (_task: string, _modelId: string, options: Record<string, unknown>) => {
-            const progressCallback = options.progress_callback as
-              | ((progress: { file?: string | null }) => void)
-              | undefined;
-            progressCallback?.({ file: 'encoder_model_quantized.onnx' });
-            throw new Error('Missing required scale');
-          }
-        )
-        .mockImplementationOnce(
-          async (_task: string, _modelId: string, options: Record<string, unknown>) => {
-            const progressCallback = options.progress_callback as
-              | ((progress: { file?: string | null }) => void)
-              | undefined;
-            progressCallback?.({ file: 'encoder_model.onnx' });
-            throw new Error('Missing required scale');
-          }
-        );
-      mockGetCachedPipeline.mockReturnValue(null);
-
-      const r = await dispatch({
-        type: 'translate',
-        text: 'Hello',
-        sourceLang: 'en',
-        targetLang: 'fr',
-        provider: 'opus-mt',
-      });
-
-      expect(r.success).toBe(false);
-      expect(r.error).toContain('[files: encoder_model_quantized.onnx]');
-      expect(r.error).toContain('[files: encoder_model.onnx]');
-    });
   });
 
   // -------------------------------------------------------------------------
@@ -1686,40 +1474,11 @@ describe('offscreen message handler', () => {
   // -------------------------------------------------------------------------
   describe('cropImage', () => {
     it('returns cropped image data URL', async () => {
-      const OriginalImage = globalThis.Image;
-
-      // Build a mock Image class where assigning src triggers onload via microtask
-      function MockImageLoad(this: Record<string, unknown>) {
-        this.onload = null;
-        this.onerror = null;
-        Object.defineProperty(this, 'src', {
-          set(val: string) {
-            this._src = val;
-            Promise.resolve().then(() => {
-              if (typeof this.onload === 'function') this.onload();
-            });
-          },
-          get() { return this._src ?? ''; },
-          configurable: true,
-        });
-      }
-      vi.stubGlobal('Image', MockImageLoad);
-
-      // Mock canvas so toDataURL returns a known value
-      const originalCreateElement = document.createElement.bind(document);
-      const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation(
-        (tag: string) => {
-          if (tag === 'canvas') {
-            const canvas = originalCreateElement('canvas') as HTMLCanvasElement;
-            vi.spyOn(canvas, 'getContext').mockReturnValue({
-              drawImage: vi.fn(),
-            } as any);
-            vi.spyOn(canvas, 'toDataURL').mockReturnValue('data:image/png;base64,CROPPED');
-            return canvas;
-          }
-          return originalCreateElement(tag);
-        }
-      );
+      setupImageConstructorMock({ outcome: 'load' });
+      mockCanvasElement({
+        context: { drawImage: vi.fn() } as unknown as CanvasRenderingContext2D,
+        toDataURL: 'data:image/png;base64,CROPPED',
+      });
 
       const r = await dispatch({
         type: 'cropImage',
@@ -1730,28 +1489,10 @@ describe('offscreen message handler', () => {
 
       expect(r.success).toBe(true);
       expect(r.imageData).toBe('data:image/png;base64,CROPPED');
-
-      createElementSpy.mockRestore();
-      vi.stubGlobal('Image', OriginalImage);
     });
 
     it('returns error when image fails to load', async () => {
-      const OriginalImage = globalThis.Image;
-
-      function MockImageFail(this: Record<string, unknown>) {
-        this.onload = null;
-        this.onerror = null;
-        Object.defineProperty(this, 'src', {
-          set(_val: string) {
-            Promise.resolve().then(() => {
-              if (typeof this.onerror === 'function') this.onerror();
-            });
-          },
-          get() { return ''; },
-          configurable: true,
-        });
-      }
-      vi.stubGlobal('Image', MockImageFail);
+      setupImageConstructorMock({ outcome: 'error' });
 
       const r = await dispatch({
         type: 'cropImage',
@@ -1761,8 +1502,6 @@ describe('offscreen message handler', () => {
 
       expect(r.success).toBe(false);
       expect((r.error as string)).toContain('Failed to load image');
-
-      vi.stubGlobal('Image', OriginalImage);
     });
   });
 
@@ -2039,85 +1778,6 @@ describe('selectOpusMtDtype', () => {
     expect(selectOpusMtDtype({ supported: true, fp16: true })).toBe('q8');
     expect(selectOpusMtDtype({ supported: true, fp16: false })).toBe('q8');
     expect(selectOpusMtDtype({ supported: false, fp16: false })).toBe('q8');
-  });
-});
-
-describe('resolveOpusMtExecutionConfig', () => {
-  it('defaults to safe WASM when probe flag is off', () => {
-    expect(
-      resolveOpusMtExecutionConfig({ supported: true, fp16: true }, false)
-    ).toEqual({
-      device: 'wasm',
-      dtype: 'q8',
-      reason: 'safe-default-wasm',
-    });
-  });
-
-  it('stays on WASM when probe is on but WebGPU is unavailable', () => {
-    expect(
-      resolveOpusMtExecutionConfig({ supported: false, fp16: false }, true)
-    ).toEqual({
-      device: 'wasm',
-      dtype: 'q8',
-      reason: 'safe-default-wasm',
-    });
-  });
-
-  it('allows WebGPU only when the experimental probe is enabled and supported', () => {
-    expect(
-      resolveOpusMtExecutionConfig({ supported: true, fp16: false }, true)
-    ).toEqual({
-      device: 'webgpu',
-      dtype: 'q8',
-      reason: 'experimental-webgpu-probe',
-    });
-  });
-});
-
-describe('buildOpusMtExecutionPlan', () => {
-  it('adds a diagnostic WASM+fp32 fallback after the safe default', () => {
-    expect(buildOpusMtExecutionPlan({ supported: false, fp16: false }, false)).toEqual([
-      {
-        device: 'wasm',
-        dtype: 'q8',
-        reason: 'safe-default-wasm',
-      },
-      {
-        device: 'wasm',
-        dtype: 'fp32',
-        reason: 'wasm-fp32-diagnostic-fallback',
-      },
-    ]);
-  });
-
-  it('keeps WebGPU probe first, then WASM q8, then WASM fp32', () => {
-    expect(buildOpusMtExecutionPlan({ supported: true, fp16: true }, true)).toEqual([
-      {
-        device: 'webgpu',
-        dtype: 'q8',
-        reason: 'experimental-webgpu-probe',
-      },
-      {
-        device: 'wasm',
-        dtype: 'q8',
-        reason: 'webgpu-fallback-wasm-q8',
-      },
-      {
-        device: 'wasm',
-        dtype: 'fp32',
-        reason: 'wasm-fp32-diagnostic-fallback',
-      },
-    ]);
-  });
-
-  it('describes the WebGPU fallback WASM attempt label', () => {
-    expect(
-      describeOpusMtExecutionConfig({
-        device: 'wasm',
-        dtype: 'q8',
-        reason: 'webgpu-fallback-wasm-q8',
-      })
-    ).toBe('WASM+q8 fallback');
   });
 });
 

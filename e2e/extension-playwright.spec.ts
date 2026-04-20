@@ -8,7 +8,7 @@
 
 import { test as base } from '@playwright/test';
 import { test, expect, popupUrl } from './fixtures';
-import { gotoMockHarness } from './mock-harness';
+import { gotoMockHarness, MOCK_HARNESS_TEXT } from './mock-harness';
 
 // Skip in CI (extensions require headed mode)
 const SKIP_CI = process.env.CI === 'true';
@@ -146,7 +146,7 @@ test.describe('TRANSLATE! Extension E2E', () => {
 
     await expect(page).toHaveTitle('Playwright Mock Harness');
 
-    await expect(page.locator('#mock-root')).toContainText('Mock translation harness');
+    await expect(page.locator('#mock-root')).toContainText(MOCK_HARNESS_TEXT);
 
     await page.close();
   });

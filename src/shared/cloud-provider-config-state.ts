@@ -3,13 +3,20 @@
  */
 
 import type { CloudProviderConfiguredStatus, CloudProviderId } from '../types';
-import type { ClaudeFormality, ClaudeModel } from '../providers/anthropic';
-import type { DeepLFormality } from '../providers/deepl';
-import type { OpenAIFormality, OpenAIModel } from '../providers/openai';
+import type { AnthropicConfig, ClaudeFormality, ClaudeModel } from '../providers/anthropic';
+import type { DeepLConfig, DeepLFormality } from '../providers/deepl';
+import type { GoogleCloudConfig } from '../providers/google-cloud';
+import type { OpenAIConfig, OpenAIFormality, OpenAIModel } from '../providers/openai';
 import {
   ANTHROPIC_FORMALITY_VALUES,
   ANTHROPIC_MODEL_VALUES,
   CLOUD_PROVIDER_CONFIGS,
+  DEFAULT_ANTHROPIC_FORMALITY,
+  DEFAULT_ANTHROPIC_MODEL,
+  DEFAULT_DEEPL_FORMALITY,
+  DEFAULT_OPENAI_FORMALITY,
+  DEFAULT_OPENAI_MODEL,
+  DEFAULT_OPENAI_TEMPERATURE,
   DEEPL_FORMALITY_VALUES,
   OPENAI_FORMALITY_VALUES,
   OPENAI_MODEL_VALUES,
@@ -18,6 +25,7 @@ import {
   normalizeCloudProviderFormalityValue,
   normalizeCloudProviderModelValue,
 } from './provider-options';
+import { readStoredString } from './cloud-provider-storage';
 import type {
   AnthropicStoredConfig,
   CloudProviderStorageMutation,
@@ -71,6 +79,49 @@ export interface ValidatedGoogleCloudConfig {
   charactersUsed: number;
 }
 
+export interface DeepLStoredRuntimeState {
+  config: DeepLConfig;
+}
+
+export interface OpenAIStoredRuntimeState {
+  config: OpenAIConfig;
+  tokensUsed: number;
+}
+
+export interface AnthropicStoredRuntimeState {
+  config: AnthropicConfig;
+  tokensUsed: number;
+}
+
+export interface GoogleCloudStoredRuntimeState {
+  config: GoogleCloudConfig;
+  charactersUsed: number;
+}
+
+type StoredConfigFieldKey<TStored extends object> = Extract<keyof TStored, string>;
+type StoredConfigFields<TValidated extends { apiKey: string }> = Omit<TValidated, 'apiKey'>;
+
+interface StoredConfigFieldSpec<TStored extends object, TValue> {
+  key: StoredConfigFieldKey<TStored>;
+  parse: (value: unknown) => TValue | undefined;
+  fallback: TValue;
+}
+
+type StoredConfigFieldSpecs<
+  TStored extends object,
+  TValidated extends { apiKey: string },
+> = {
+  [K in keyof StoredConfigFields<TValidated>]: StoredConfigFieldSpec<
+    TStored,
+    StoredConfigFields<TValidated>[K]
+  >;
+};
+
+interface StoredConfigSchema<TStored extends object, TValidated extends { apiKey: string }> {
+  apiKeyField: StoredConfigFieldKey<TStored>;
+  fields: StoredConfigFieldSpecs<TStored, TValidated>;
+}
+
 export interface CloudProviderConfigState {
   hasKey: boolean;
   isPro?: boolean;
@@ -109,58 +160,167 @@ export function readClaudeModel(value: unknown): ClaudeModel | undefined {
   return model ? readEnumValue(model, ANTHROPIC_MODEL_VALUES) : undefined;
 }
 
-export function validateDeepLStoredConfig(stored: DeepLStoredConfig): ValidatedDeepLConfig | null {
-  const apiKey = readNonEmptyString(stored.deepl_api_key);
+function validateStoredConfig<TStored extends object, TValidated extends { apiKey: string }>(
+  stored: TStored,
+  schema: StoredConfigSchema<TStored, TValidated>
+): TValidated | null {
+  const apiKey = readStoredString(stored, schema.apiKeyField);
   if (!apiKey) {
     return null;
   }
 
+  const validatedFields = readStoredConfigFields<TStored, TValidated>(stored, schema.fields);
+
   return {
     apiKey,
-    isPro: readBoolean(stored.deepl_is_pro) ?? false,
-    formality: readDeepLFormality(stored.deepl_formality) ?? 'default',
-  };
+    ...validatedFields,
+  } as TValidated;
+}
+
+function extractValidatedStoredRuntimeState<TStored, TValidated extends { apiKey: string }, TRuntime>(
+  stored: TStored,
+  validate: (stored: TStored) => TValidated | null,
+  map: (validated: TValidated) => TRuntime
+): TRuntime | null {
+  const validated = validate(stored);
+  return validated ? map(validated) : null;
+}
+
+function readStoredConfigFields<TStored extends object, TValidated extends { apiKey: string }>(
+  stored: TStored,
+  fields: StoredConfigFieldSpecs<TStored, TValidated>
+): StoredConfigFields<TValidated> {
+  const storedRecord = stored as Record<string, unknown>;
+  const fieldEntries = Object.entries(fields) as Array<
+    [
+      keyof StoredConfigFields<TValidated>,
+      StoredConfigFieldSpecs<TStored, TValidated>[keyof StoredConfigFields<TValidated>],
+    ]
+  >;
+
+  return Object.fromEntries(
+    fieldEntries.map(([fieldName, fieldSpec]) => [
+      fieldName,
+      fieldSpec.parse(storedRecord[fieldSpec.key]) ?? fieldSpec.fallback,
+    ])
+  ) as StoredConfigFields<TValidated>;
+}
+
+const DEEPL_STORED_CONFIG_SCHEMA = {
+  apiKeyField: 'deepl_api_key',
+  fields: {
+    isPro: {
+      key: 'deepl_is_pro',
+      parse: readBoolean,
+      fallback: false,
+    },
+    formality: {
+      key: 'deepl_formality',
+      parse: readDeepLFormality,
+      fallback: DEFAULT_DEEPL_FORMALITY,
+    },
+  },
+} satisfies StoredConfigSchema<DeepLStoredConfig, ValidatedDeepLConfig>;
+
+const OPENAI_STORED_CONFIG_SCHEMA = {
+  apiKeyField: 'openai_api_key',
+  fields: {
+    model: {
+      key: 'openai_model',
+      parse: readOpenAIModel,
+      fallback: DEFAULT_OPENAI_MODEL,
+    },
+    formality: {
+      key: 'openai_formality',
+      parse: readOpenAIFormality,
+      fallback: DEFAULT_OPENAI_FORMALITY,
+    },
+    temperature: {
+      key: 'openai_temperature',
+      parse: readFiniteNumber,
+      fallback: DEFAULT_OPENAI_TEMPERATURE,
+    },
+    tokensUsed: {
+      key: 'openai_tokens_used',
+      parse: readFiniteNumber,
+      fallback: 0,
+    },
+  },
+} satisfies StoredConfigSchema<OpenAIStoredConfig, ValidatedOpenAIConfig>;
+
+const ANTHROPIC_STORED_CONFIG_SCHEMA = {
+  apiKeyField: 'anthropic_api_key',
+  fields: {
+    model: {
+      key: 'anthropic_model',
+      parse: readClaudeModel,
+      fallback: DEFAULT_ANTHROPIC_MODEL,
+    },
+    formality: {
+      key: 'anthropic_formality',
+      parse: readAnthropicFormality,
+      fallback: DEFAULT_ANTHROPIC_FORMALITY,
+    },
+    tokensUsed: {
+      key: 'anthropic_tokens_used',
+      parse: readFiniteNumber,
+      fallback: 0,
+    },
+  },
+} satisfies StoredConfigSchema<AnthropicStoredConfig, ValidatedAnthropicConfig>;
+
+const GOOGLE_CLOUD_STORED_CONFIG_SCHEMA = {
+  apiKeyField: 'google_cloud_api_key',
+  fields: {
+    charactersUsed: {
+      key: 'google_cloud_chars_used',
+      parse: readFiniteNumber,
+      fallback: 0,
+    },
+  },
+} satisfies StoredConfigSchema<GoogleCloudStoredConfig, ValidatedGoogleCloudConfig>;
+
+export function validateDeepLStoredConfig(stored: DeepLStoredConfig): ValidatedDeepLConfig | null {
+  return validateStoredConfig(stored, DEEPL_STORED_CONFIG_SCHEMA);
 }
 
 export function validateOpenAIStoredConfig(stored: OpenAIStoredConfig): ValidatedOpenAIConfig | null {
-  const apiKey = readNonEmptyString(stored.openai_api_key);
-  if (!apiKey) {
-    return null;
-  }
-
-  return {
-    apiKey,
-    model: readOpenAIModel(stored.openai_model) ?? 'gpt-4o-mini',
-    formality: readOpenAIFormality(stored.openai_formality) ?? 'neutral',
-    temperature: readFiniteNumber(stored.openai_temperature) ?? 0.3,
-    tokensUsed: readFiniteNumber(stored.openai_tokens_used) ?? 0,
-  };
+  return validateStoredConfig(stored, OPENAI_STORED_CONFIG_SCHEMA);
 }
 
 export function validateAnthropicStoredConfig(stored: AnthropicStoredConfig): ValidatedAnthropicConfig | null {
-  const apiKey = readNonEmptyString(stored.anthropic_api_key);
-  if (!apiKey) {
-    return null;
-  }
-
-  return {
-    apiKey,
-    model: readClaudeModel(stored.anthropic_model) ?? 'claude-3-5-haiku-20241022',
-    formality: readAnthropicFormality(stored.anthropic_formality) ?? 'neutral',
-    tokensUsed: readFiniteNumber(stored.anthropic_tokens_used) ?? 0,
-  };
+  return validateStoredConfig(stored, ANTHROPIC_STORED_CONFIG_SCHEMA);
 }
 
 export function validateGoogleCloudStoredConfig(stored: GoogleCloudStoredConfig): ValidatedGoogleCloudConfig | null {
-  const apiKey = readNonEmptyString(stored.google_cloud_api_key);
-  if (!apiKey) {
-    return null;
-  }
+  return validateStoredConfig(stored, GOOGLE_CLOUD_STORED_CONFIG_SCHEMA);
+}
 
-  return {
-    apiKey,
-    charactersUsed: readFiniteNumber(stored.google_cloud_chars_used) ?? 0,
-  };
+export function extractDeepLStoredRuntimeState(stored: DeepLStoredConfig): DeepLStoredRuntimeState | null {
+  return extractValidatedStoredRuntimeState(stored, validateDeepLStoredConfig, (config) => ({ config }));
+}
+
+export function extractOpenAIStoredRuntimeState(stored: OpenAIStoredConfig): OpenAIStoredRuntimeState | null {
+  return extractValidatedStoredRuntimeState(stored, validateOpenAIStoredConfig, (validated) => {
+    const { tokensUsed, ...config } = validated;
+    return { config, tokensUsed };
+  });
+}
+
+export function extractAnthropicStoredRuntimeState(stored: AnthropicStoredConfig): AnthropicStoredRuntimeState | null {
+  return extractValidatedStoredRuntimeState(stored, validateAnthropicStoredConfig, (validated) => {
+    const { tokensUsed, ...config } = validated;
+    return { config, tokensUsed };
+  });
+}
+
+export function extractGoogleCloudStoredRuntimeState(
+  stored: GoogleCloudStoredConfig
+): GoogleCloudStoredRuntimeState | null {
+  return extractValidatedStoredRuntimeState(stored, validateGoogleCloudStoredConfig, (validated) => {
+    const { charactersUsed, ...config } = validated;
+    return { config, charactersUsed };
+  });
 }
 
 export function validateCloudProviderOptions(
@@ -237,30 +397,30 @@ export function extractCloudProviderConfigState(
 ): CloudProviderConfigState {
   switch (provider) {
     case 'deepl': {
-      const config = validateDeepLStoredConfig(stored);
+      const runtimeState = extractDeepLStoredRuntimeState(stored);
       return {
-        hasKey: config !== null,
-        isPro: config?.isPro,
+        hasKey: runtimeState !== null,
+        isPro: runtimeState?.config.isPro,
       };
     }
     case 'openai': {
-      const config = validateOpenAIStoredConfig(stored);
+      const runtimeState = extractOpenAIStoredRuntimeState(stored);
       return {
-        hasKey: config !== null,
-        model: config?.model,
+        hasKey: runtimeState !== null,
+        model: runtimeState?.config.model,
       };
     }
     case 'anthropic': {
-      const config = validateAnthropicStoredConfig(stored);
+      const runtimeState = extractAnthropicStoredRuntimeState(stored);
       return {
-        hasKey: config !== null,
-        model: config?.model,
+        hasKey: runtimeState !== null,
+        model: runtimeState?.config.model,
       };
     }
     case 'google-cloud': {
-      const config = validateGoogleCloudStoredConfig(stored);
+      const runtimeState = extractGoogleCloudStoredRuntimeState(stored);
       return {
-        hasKey: config !== null,
+        hasKey: runtimeState !== null,
       };
     }
   }

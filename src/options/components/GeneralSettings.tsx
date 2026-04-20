@@ -7,17 +7,15 @@ import { Component, createSignal, onMount, For } from 'solid-js';
 import { safeStorageGet, safeStorageSet, lastStorageError } from '../../core/storage';
 import type { Strategy } from '../../types';
 import {
+  buildExtensionSettingsStorageMutation,
+  normalizeExtensionSettings,
+  type ExtensionSettingsStorageRecord,
+} from '../../shared/extension-settings';
+import {
   GENERAL_SETTINGS_LANGUAGES,
   GENERAL_SETTINGS_STRATEGIES,
   GENERAL_SETTINGS_TARGET_LANGUAGES,
 } from '../../shared/translation-options';
-
-interface StoredSettings {
-  sourceLang?: string;
-  targetLang?: string;
-  strategy?: Strategy;
-  autoTranslate?: boolean;
-}
 
 export const GeneralSettings: Component = () => {
   const [sourceLang, setSourceLang] = createSignal('auto');
@@ -28,17 +26,17 @@ export const GeneralSettings: Component = () => {
   const [saving, setSaving] = createSignal(false);
 
   onMount(async () => {
-    const stored = await safeStorageGet<StoredSettings>([
+    const settings = normalizeExtensionSettings(await safeStorageGet<ExtensionSettingsStorageRecord>([
       'sourceLang',
       'targetLang',
       'strategy',
       'autoTranslate',
-    ]);
+    ]));
 
-    if (stored.sourceLang) setSourceLang(stored.sourceLang);
-    if (stored.targetLang) setTargetLang(stored.targetLang);
-    if (stored.strategy) setStrategy(stored.strategy);
-    if (stored.autoTranslate !== undefined) setAutoTranslate(stored.autoTranslate);
+    setSourceLang(settings.sourceLang);
+    setTargetLang(settings.targetLang);
+    setStrategy(settings.strategy);
+    setAutoTranslate(settings.autoTranslate);
   });
 
   const [saveError, setSaveError] = createSignal<string | null>(null);
@@ -46,12 +44,12 @@ export const GeneralSettings: Component = () => {
   const saveSettings = async () => {
     setSaving(true);
     setSaveError(null);
-    const success = await safeStorageSet({
+    const success = await safeStorageSet(buildExtensionSettingsStorageMutation({
       sourceLang: sourceLang(),
       targetLang: targetLang(),
       strategy: strategy(),
       autoTranslate: autoTranslate(),
-    });
+    }));
 
     setSaving(false);
     if (success) {

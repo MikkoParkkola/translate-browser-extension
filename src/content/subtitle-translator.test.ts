@@ -6,25 +6,17 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
+import { createBrowserApiModuleMock, createLoggerModuleMock } from '../test-helpers/module-mocks';
 
 // Mock the logger
-vi.mock('../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock('../core/logger', () => createLoggerModuleMock());
 
 // Mock browserAPI
-const mockSendMessage = vi.fn();
-vi.mock('../core/browser-api', () => ({
-  browserAPI: {
-    runtime: {
-      sendMessage: (...args: unknown[]) => mockSendMessage(...args),
-    },
-  },
+const { mockSendMessage } = vi.hoisted(() => ({
+  mockSendMessage: vi.fn(),
+}));
+vi.mock('../core/browser-api', () => createBrowserApiModuleMock({
+  runtimeSendMessage: mockSendMessage,
 }));
 
 import {

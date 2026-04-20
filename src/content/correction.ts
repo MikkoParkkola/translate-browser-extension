@@ -50,6 +50,26 @@ export function makeTranslatedElementEditable(element: HTMLElement): void {
 }
 
 /**
+ * Remove correction-editing affordances from a previously translated element.
+ * Used when undoing page translation so the DOM returns to a clean pre-translation state.
+ */
+export function clearTranslatedElementEditable(element: HTMLElement): void {
+  const controller = correctionAbortControllers.get(element);
+  if (controller) {
+    controller.abort();
+    correctionAbortControllers.delete(element);
+  }
+
+  element.removeAttribute('data-correction-enabled');
+  element.removeAttribute('contenteditable');
+  element.style.cursor = '';
+  element.style.outline = '';
+  element.style.outlineOffset = '';
+  element.style.borderRadius = '';
+  element.style.minWidth = '';
+}
+
+/**
  * Enable inline editing for a translated element
  */
 function enableCorrectionEditing(element: HTMLElement): void {
@@ -188,7 +208,9 @@ export function showCorrectionHint(_element: HTMLElement): void {
 
     // Mark as shown in storage (fire-and-forget)
     /* v8 ignore start -- fire-and-forget */
-    browserAPI.storage?.local?.set({ [hintKey]: true }).catch(() => {});
+    browserAPI.storage?.local?.set({ [hintKey]: true }).catch((error) => {
+      log.warn('Failed to persist correction hint state:', error);
+    });
     /* v8 ignore stop */
 
     // Remove after a few seconds

@@ -3,13 +3,25 @@
  * Contains common functions extracted from provider implementations
  */
 
-import { getAllLanguageCodes } from '../core/language-map';
+import { getAllLanguageCodes, getLanguageName } from '../core/language-map';
 import { createLogger } from '../core/logger';
 import { handleProviderHttpError } from '../core/http-errors';
 import { CONFIG } from '../config';
 import type { LanguagePair } from '../types';
 
 const log = createLogger('ProviderUtils');
+const languagePairCache = new Map<string, LanguagePair[]>();
+
+export type TranslationPromptFormality = 'formal' | 'informal' | 'neutral';
+
+export interface TranslationPromptTemplate {
+  roleDescription: string;
+  translationInstruction: string;
+  formalInstruction: string;
+  informalInstruction: string;
+  trailingInstruction?: string;
+  rules?: readonly string[];
+}
 
 /**
  * Extract error body from response, with fallback handling
@@ -47,6 +59,32 @@ export async function fetchProviderJson<T>(
   return response.json() as Promise<T>;
 }
 
+function normalizeDetectedLanguageCode(detected: string | null | undefined): string {
+  const normalized = detected?.trim().toLowerCase();
+  return normalized && normalized.length === 2 ? normalized : 'auto';
+}
+
+/**
+ * Run provider-backed language detection through the shared fetch/error path.
+ * Detect-language callers intentionally fall back to "auto" on errors, but we
+ * still want those failures to flow through the same HTTP handling as translate().
+ */
+export async function detectProviderLanguageCode<T>(
+  providerName: string,
+  url: string,
+  options: RequestInit,
+  extractLanguageCode: (data: T) => string | null | undefined,
+  logError: (message: string, error: unknown) => void,
+): Promise<string> {
+  try {
+    const data = await fetchProviderJson<T>(providerName, url, options);
+    return normalizeDetectedLanguageCode(extractLanguageCode(data));
+  } catch (error) {
+    logError('Language detection error:', error);
+    return 'auto';
+  }
+}
+
 /**
  * Estimate maximum tokens needed for translation
  * Used by OpenAI and Anthropic providers for token limits
@@ -56,27 +94,106 @@ export function estimateMaxTokens(texts: string[]): number {
 }
 
 /**
- * Generate all possible language pairs from available language codes.
- * Used by OpenAI, Anthropic, and Google Cloud providers.
- * Result is memoized since language codes are static at runtime.
+ * Normalize provider translation arrays to the public provider contract.
+ *
+ * Providers must return exactly one string translation for each requested text.
+ * Malformed "successful" responses fail loudly here instead of leaking
+ * `undefined`, partial arrays, or extra items into the rest of the pipeline.
  */
-let _cachedLanguagePairs: LanguagePair[] | null = null;
-
-export function generateAllLanguagePairs(): LanguagePair[] {
-  if (_cachedLanguagePairs) {
-    return _cachedLanguagePairs;
+export function finalizeProviderTranslations(
+  providerName: string,
+  input: string | string[],
+  translations: readonly (string | null | undefined)[] | null | undefined,
+): string | string[] {
+  if (!Array.isArray(translations)) {
+    throw new Error(`${providerName} returned invalid response: no translations field`);
   }
-  const languages = getAllLanguageCodes();
+
+  const expectedCount = Array.isArray(input) ? input.length : 1;
+  if (translations.length !== expectedCount) {
+    throw new Error(
+      `${providerName} returned invalid response: expected ${expectedCount} translations, received ${translations.length}`,
+    );
+  }
+
+  const normalized: string[] = [];
+  for (let index = 0; index < translations.length; index++) {
+    const translated = translations[index];
+    if (typeof translated !== 'string') {
+      throw new Error(
+        `${providerName} returned invalid response: translation ${index} is not a string`,
+      );
+    }
+    normalized.push(translated);
+  }
+
+  return Array.isArray(input) ? normalized : normalized[0];
+}
+
+function getTranslationFormalityInstruction(
+  formality: TranslationPromptFormality,
+  template: TranslationPromptTemplate,
+): string {
+  switch (formality) {
+    case 'formal':
+      return template.formalInstruction;
+    case 'informal':
+      return template.informalInstruction;
+    default:
+      return '';
+  }
+}
+
+export function buildTranslationPrompt(
+  targetLang: string,
+  formality: TranslationPromptFormality,
+  template: TranslationPromptTemplate,
+): string {
+  const langName = getLanguageName(targetLang);
+  const basePrompt =
+    `${template.roleDescription} ${template.translationInstruction} ${langName}.`;
+  const formalityInstruction = getTranslationFormalityInstruction(formality, template);
+  const prompt =
+    formalityInstruction.length > 0 ? `${basePrompt} ${formalityInstruction}` : basePrompt;
+
+  if (template.rules && template.rules.length > 0) {
+    return `${prompt}\n\n${template.rules.join('\n')}`;
+  }
+
+  return template.trailingInstruction ? `${prompt} ${template.trailingInstruction}` : prompt;
+}
+
+/**
+ * Generate all possible non-identity pairs from a provider language list.
+ * Results are memoized by language set because these lists are static at runtime.
+ */
+export function generateLanguagePairs(languageCodes: readonly string[]): LanguagePair[] {
+  const uniqueCodes = [...new Set(languageCodes)];
+  const cacheKey = uniqueCodes.join('\0');
+  const cachedPairs = languagePairCache.get(cacheKey);
+  if (cachedPairs) {
+    return cachedPairs;
+  }
+
   const pairs: LanguagePair[] = [];
-  for (const src of languages) {
-    for (const tgt of languages) {
+  for (const src of uniqueCodes) {
+    for (const tgt of uniqueCodes) {
       if (src !== tgt) {
         pairs.push({ src, tgt });
       }
     }
   }
-  _cachedLanguagePairs = pairs;
+
+  languagePairCache.set(cacheKey, pairs);
   return pairs;
+}
+
+/**
+ * Generate all possible language pairs from known ISO language codes.
+ * Used by OpenAI, Anthropic, and Google Cloud providers.
+ */
+export function generateAllLanguagePairs(): LanguagePair[] {
+  return generateLanguagePairs(getAllLanguageCodes());
 }
 /**
  * Parse a batch translation response that uses numbered XML tags.
@@ -102,6 +219,22 @@ export function parseBatchResponse(
   } = {},
 ): string[] {
   const results: string[] = new Array(count).fill('');
+  const assignResult = (idx: number, value: string): void => {
+    if (idx < count) {
+      results[idx] = value;
+      return;
+    }
+
+    if (!options.allowExtras) {
+      return;
+    }
+
+    while (results.length <= idx) {
+      results.push('');
+    }
+
+    results[idx] = value;
+  };
 
   // 1. Primary: <tN>…</tN>
   const xmlRegex = /<t(\d+)>([\s\S]*?)<\/t\1>/g;
@@ -110,11 +243,7 @@ export function parseBatchResponse(
 
   while ((match = xmlRegex.exec(translated)) !== null) {
     const idx = parseInt(match[1], 10);
-    if (idx < count) {
-      results[idx] = match[2].trim();
-    } else if (options.allowExtras) {
-      results[idx] = match[2].trim();
-    }
+    assignResult(idx, match[2].trim());
     found = true;
   }
   if (found) return results;
@@ -124,21 +253,19 @@ export function parseBatchResponse(
     const legacyRegex = /<text id="(\d+)">([\s\S]*?)<\/text>/g;
     while ((match = legacyRegex.exec(translated)) !== null) {
       const idx = parseInt(match[1], 10);
-      if (idx < count) {
-        results[idx] = match[2].trim();
-      } else if (options.allowExtras) {
-        results[idx] = match[2].trim();
-      }
+      assignResult(idx, match[2].trim());
       found = true;
     }
     if (found) return results;
   }
 
-  // 3. Legacy OpenAI: ---TRANSLATE_SEPARATOR--- (or single result with no separator)
+  // 3. Legacy OpenAI: ---TRANSLATE_SEPARATOR---
   if (options.separatorFallback) {
     const parts = translated.split(/---TRANSLATE_SEPARATOR---/i).map(s => s.trim());
-    for (let i = 0; i < Math.min(parts.length, count); i++) results[i] = parts[i];
-    return results;
+    if (parts.length > 1) {
+      for (let i = 0; i < Math.min(parts.length, count); i++) results[i] = parts[i];
+      return results;
+    }
   }
 
   // 4. Newline split (last resort — only useful for short batches)

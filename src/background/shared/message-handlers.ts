@@ -7,6 +7,8 @@
  */
 
 import type {
+  CloudProviderId,
+  CloudProviderUsageSummary,
   TranslationProviderId, Strategy, DetailedCacheStats,
   SetCloudApiKeyMessage, ClearCloudApiKeyMessage,
   SetCloudProviderEnabledMessage,
@@ -44,7 +46,9 @@ import {
   CLOUD_PROVIDER_STORAGE_KEYS,
 } from './provider-management';
 import {
+  createErrorLogger,
   withMessageResponse,
+  withMessageResponseFixedError,
   withMessageResponseFallback,
 } from './handler-response';
 import type {
@@ -62,6 +66,83 @@ import {
 } from '../../shared/cloud-provider-config-state';
 
 const log = createLogger('SharedHandlers');
+
+function getCloudProviderValue<T>(
+  provider: CloudProviderId,
+  values: Readonly<Record<CloudProviderId, T>>
+): T | undefined {
+  return (values as Record<string, T | undefined>)[provider];
+}
+
+function resolveCloudProviderValueWithFallback<TPrimary, TFallback>(
+  provider: CloudProviderId,
+  primaryValues: Readonly<Record<CloudProviderId, TPrimary>>,
+  fallbackValues?: Readonly<Record<CloudProviderId, TFallback>>
+): TPrimary | TFallback | undefined {
+  const primaryValue = getCloudProviderValue(provider, primaryValues);
+  if (primaryValue !== undefined) {
+    return primaryValue;
+  }
+
+  return fallbackValues
+    ? getCloudProviderValue(provider, fallbackValues)
+    : undefined;
+}
+
+function createUnknownCloudProviderResponse<T extends Record<string, unknown>>(
+  provider: string
+): MessageResponse<T> {
+  return { success: false, error: `Unknown provider: ${provider}` };
+}
+
+async function handleCloudProviderMutation<TResolved, TSuccess extends Record<string, unknown>>(
+  provider: CloudProviderId,
+  resolve: (provider: CloudProviderId) => TResolved | undefined,
+  run: (resolved: TResolved) => Promise<TSuccess>,
+  errorLogMessage: string
+): Promise<MessageResponse<TSuccess>> {
+  const resolved = resolve(provider);
+  if (resolved === undefined) {
+    return createUnknownCloudProviderResponse<TSuccess>(provider);
+  }
+
+  return withMessageResponse(
+    () => run(resolved),
+    createErrorLevelHandler(errorLogMessage)
+  );
+}
+
+function resolveCloudProviderStorageKeys(provider: CloudProviderId): readonly string[] | undefined {
+  const resolved = resolveCloudProviderValueWithFallback(
+    provider,
+    CLOUD_PROVIDER_STORAGE_KEYS,
+    CLOUD_PROVIDER_KEYS
+  );
+  if (!resolved) {
+    return undefined;
+  }
+
+  return typeof resolved === 'string' ? [resolved] : resolved;
+}
+
+function resolveCloudProviderEnabledField(provider: CloudProviderId): string | undefined {
+  return resolveCloudProviderValueWithFallback(
+    provider,
+    CLOUD_PROVIDER_ENABLED_FIELDS
+  );
+}
+
+function createWarnErrorHandler(message: string): (error: unknown) => void {
+  return createErrorLogger(log.warn, message);
+}
+
+function createErrorLevelHandler(message: string): (error: unknown) => void {
+  return createErrorLogger(log.error, message);
+}
+
+function createCorrectionErrorHandler(operation: string): (error: unknown) => void {
+  return createWarnErrorHandler(`Failed to ${operation}:`);
+}
 
 // ============================================================================
 // Cache Handlers
@@ -92,18 +173,18 @@ export function handleGetUsage(
   cache: TranslationCache,
 ): ExtensionMessageResponseByType<'getUsage'> {
   const rl = getRateLimitState();
+  const providers: CloudProviderUsageSummary = {};
   return {
     throttle: {
       requests: rl.requests,
       tokens: rl.tokens,
       requestLimit: CONFIG_RL.requestsPerMinute,
       tokenLimit: CONFIG_RL.tokensPerMinute,
-      totalRequests: rl.requests,
-      totalTokens: rl.tokens,
-      queue: 0,
     },
     cache: cache.getStats(),
-    providers: {},
+    // Aggregate cloud/offscreen usage is intentionally not folded into this
+    // background-local snapshot; fetch provider usage separately.
+    providers,
   };
 }
 
@@ -125,17 +206,21 @@ export async function handleGetCloudProviderStatus(): Promise<
       return { status: buildCloudProviderConfiguredStatusRecord(stored) };
     },
     { status: createEmptyCloudProviderConfiguredStatus() },
-    (error) => log.warn('Failed to get cloud provider status:', error)
+    createWarnErrorHandler('Failed to get cloud provider status:')
   );
 }
 
 export async function handleSetCloudApiKey(
   message: SetCloudApiKeyMessage
 ): Promise<ExtensionMessageResponseByType<'setCloudApiKey'>> {
+  // Security-sensitive: keep this as a direct allow-list lookup so unknown providers
+  // cannot write arbitrary storage keys through broader cleanup metadata.
   const storageKey = CLOUD_PROVIDER_KEYS[message.provider];
   if (!storageKey) {
-    return { success: false, error: `Unknown provider: ${message.provider}` };
+    return createUnknownCloudProviderResponse<{ provider: CloudProviderId }>(message.provider);
   }
+
+  const optionFields = getCloudProviderValue(message.provider, CLOUD_PROVIDER_OPTION_FIELDS) ?? {};
 
   return withMessageResponse(
     async () => {
@@ -144,7 +229,6 @@ export async function handleSetCloudApiKey(
       };
 
       if (message.options) {
-        const optionFields = CLOUD_PROVIDER_OPTION_FIELDS[message.provider];
         Object.assign(
           dataToStore,
           buildValidatedCloudProviderMutation(message.provider, message.options, optionFields),
@@ -155,7 +239,7 @@ export async function handleSetCloudApiKey(
       log.info(`API key set for ${message.provider}`);
       return { provider: message.provider };
     },
-    (error) => log.error('Failed to set API key:', error)
+    createErrorLevelHandler('Failed to set API key:')
   );
 }
 
@@ -163,37 +247,33 @@ export async function handleClearCloudApiKey(
   message: ClearCloudApiKeyMessage,
   storageRemove: (keys: string[]) => Promise<void> = strictStorageRemove,
 ): Promise<ExtensionMessageResponseByType<'clearCloudApiKey'>> {
-  const storageKey = CLOUD_PROVIDER_KEYS[message.provider];
-  if (!storageKey) {
-    return { success: false, error: `Unknown provider: ${message.provider}` };
-  }
-
-  return withMessageResponse(
-    async () => {
-      const keysToRemove = [...(CLOUD_PROVIDER_STORAGE_KEYS[message.provider] ?? [storageKey])];
-      await storageRemove(keysToRemove);
+  // Clear prefers the full cleanup list when available, but falls back to the
+  // primary API-key entry so older provider metadata still remains removable.
+  return handleCloudProviderMutation(
+    message.provider,
+    resolveCloudProviderStorageKeys,
+    async (keysToRemove) => {
+      await storageRemove([...keysToRemove]);
       log.info(`API key cleared for ${message.provider}`);
       return { provider: message.provider };
     },
-    (error) => log.error('Failed to clear API key:', error)
+    'Failed to clear API key:'
   );
 }
 
 export async function handleSetCloudProviderEnabled(
   message: SetCloudProviderEnabledMessage
 ): Promise<ExtensionMessageResponseByType<'setCloudProviderEnabled'>> {
-  const enabledField = CLOUD_PROVIDER_ENABLED_FIELDS[message.provider];
-  if (!enabledField) {
-    return { success: false, error: `Unknown provider: ${message.provider}` };
-  }
-
-  return withMessageResponse(
-    async () => {
+  // Enabled-state writes intentionally resolve through the dedicated enabled-field map.
+  return handleCloudProviderMutation(
+    message.provider,
+    resolveCloudProviderEnabledField,
+    async (enabledField) => {
       await strictStorageSet({ [enabledField]: message.enabled });
       log.info(`Provider ${message.provider} enabled=${message.enabled}`);
       return { provider: message.provider, enabled: message.enabled };
     },
-    (error) => log.error('Failed to update cloud provider enabled state:', error)
+    'Failed to update cloud provider enabled state:'
   );
 }
 
@@ -205,7 +285,7 @@ export async function handleGetHistory(): Promise<{ success: boolean; history: H
   return withMessageResponseFallback(
     async () => ({ history: await getHistory() }),
     { history: [] },
-    (error) => log.warn('Failed to get history:', error)
+    createWarnErrorHandler('Failed to get history:')
   );
 }
 
@@ -215,7 +295,7 @@ export async function handleClearHistory(): Promise<{ success: boolean; error?: 
       await clearTranslationHistory();
       return {};
     },
-    (error) => log.warn('Failed to clear history:', error)
+    createWarnErrorHandler('Failed to clear history:')
   );
 }
 
@@ -249,7 +329,7 @@ export async function handleAddCorrection(message: AddCorrectionMessage): Promis
       );
       return {};
     },
-    (error) => log.warn('Failed to add correction:', error)
+    createCorrectionErrorHandler('add correction')
   );
 }
 
@@ -259,7 +339,7 @@ export async function handleGetCorrection(message: GetCorrectionMessage): Promis
       const correction = await getCorrection(message.original, message.sourceLang, message.targetLang);
       return { correction, hasCorrection: correction !== null };
     },
-    (error) => log.warn('Failed to get correction:', error)
+    createCorrectionErrorHandler('get correction')
   );
 }
 
@@ -267,7 +347,7 @@ export async function handleGetAllCorrections(): Promise<{ success: boolean; cor
   return withMessageResponseFallback(
     async () => ({ corrections: await getAllCorrections() }),
     { corrections: [] },
-    (error) => log.warn('Failed to get corrections:', error)
+    createCorrectionErrorHandler('get corrections')
   );
 }
 
@@ -275,7 +355,7 @@ export async function handleGetCorrectionStats(): Promise<{ success: boolean; st
   return withMessageResponseFallback(
     async () => ({ stats: await getCorrectionStats() }),
     { stats: { total: 0, totalUses: 0, topCorrections: [] } },
-    (error) => log.warn('Failed to get correction stats:', error)
+    createCorrectionErrorHandler('get correction stats')
   );
 }
 
@@ -285,7 +365,7 @@ export async function handleClearCorrections(): Promise<{ success: boolean; erro
       await clearCorrections();
       return {};
     },
-    (error) => log.warn('Failed to clear corrections:', error)
+    createCorrectionErrorHandler('clear corrections')
   );
 }
 
@@ -294,21 +374,21 @@ export async function handleDeleteCorrection(message: DeleteCorrectionMessage): 
     async () => ({
       deleted: await deleteCorrection(message.original, message.sourceLang, message.targetLang),
     }),
-    (error) => log.warn('Failed to delete correction:', error)
+    createCorrectionErrorHandler('delete correction')
   );
 }
 
 export async function handleExportCorrections(): Promise<{ success: boolean; json?: string; error?: string }> {
   return withMessageResponse(
     async () => ({ json: await exportCorrections() }),
-    (error) => log.warn('Failed to export corrections:', error)
+    createCorrectionErrorHandler('export corrections')
   );
 }
 
 export async function handleImportCorrections(message: ImportCorrectionsMessage): Promise<MessageResponse<{ importedCount: number }>> {
   return withMessageResponse(
     async () => ({ importedCount: await importCorrections(message.json) }),
-    (error) => log.warn('Failed to import corrections:', error)
+    createCorrectionErrorHandler('import corrections')
   );
 }
 
@@ -319,25 +399,25 @@ export async function handleImportCorrections(message: ImportCorrectionsMessage)
 export async function handleGetSettings(
   storageGet: (keys: string[]) => Promise<UserSettingsStorageRecord>,
 ): Promise<MessageResponse<{ data: { sourceLanguage: string; targetLanguage: string; provider: TranslationProviderId; strategy: string } }>> {
-  try {
-    const settings = normalizeUserSettings(
-      await storageGet(['sourceLang', 'targetLang', 'provider', 'strategy']),
-      'opus-mt',
-    );
-    return {
-      success: true,
-      data: {
-        // Keep the legacy response shape for existing getSettings consumers.
-        sourceLanguage: settings.sourceLang,
-        targetLanguage: settings.targetLang,
-        provider: settings.provider,
-        strategy: settings.strategy,
-      },
-    };
-  } catch (error) {
-    log.warn('Failed to get settings:', error);
-    return { success: false, error: 'Failed to get settings' };
-  }
+  return withMessageResponseFixedError(
+    async () => {
+      const settings = normalizeUserSettings(
+        await storageGet(['sourceLang', 'targetLang', 'provider', 'strategy']),
+        'opus-mt',
+      );
+      return {
+        data: {
+          // Keep the legacy response shape for existing getSettings consumers.
+          sourceLanguage: settings.sourceLang,
+          targetLanguage: settings.targetLang,
+          provider: settings.provider,
+          strategy: settings.strategy,
+        },
+      };
+    },
+    'Failed to get settings',
+    createWarnErrorHandler('Failed to get settings:')
+  );
 }
 
 // ============================================================================

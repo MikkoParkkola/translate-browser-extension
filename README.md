@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/ci.yml/badge.svg)](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/codeql.yml/badge.svg)](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/codeql.yml)
-![Tests](https://img.shields.io/badge/tests-5%2C038%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-5k%2B%20passed-brightgreen)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue?logo=typescript&logoColor=white)
 ![License](https://img.shields.io/github/license/MikkoParkkola/translate-browser-extension)
 ![Chrome](https://img.shields.io/badge/Chrome-116%2B-brightgreen?logo=googlechrome&logoColor=white)
@@ -21,21 +21,21 @@ Built-in browser translation (Chrome, Safari, Firefox) works well for many pages
 
 **You use Safari or iOS.** Safari has Apple's own translation (added in Safari 15 / macOS Monterey), but it supports fewer languages and isn't available on all pages. On iOS, options are even more limited. TRANSLATE! works across Chrome, Safari, Firefox, Edge, and Brave with the same feature set.
 
-**You work with less common languages.** Translation quality for major pairs like English-Spanish or English-French is good across most services. For less common pairs -- Finnish-Thai, Estonian-Korean, Latvian-Vietnamese -- quality varies significantly between providers. TRANSLATE! lets you route through whichever provider handles your language pair best, whether that's DeepL, a specialized LLM, or a dedicated translation API like Qwen-MT.
+**You work with less common languages.** Translation quality for major pairs like English-Spanish or English-French is good across most services. For less common pairs -- Finnish-Thai, Estonian-Korean, Latvian-Vietnamese -- quality varies significantly between providers. TRANSLATE! lets you route through whichever supported path handles your language pair best, whether that's Chrome Built-in, OPUS-MT, DeepL, or a configured cloud provider.
 
 **Pages with mixed languages don't translate correctly.** When a page contains text in multiple languages (e.g., a German forum on an English-tagged site), built-in translation often either skips it entirely or translates everything as if it were one language. TRANSLATE! detects language per text node using trigram analysis.
 
-**You want control over where your text goes.** Built-in translation sends your page text to Google (Chrome), Apple (Safari), or Mozilla's servers (Firefox). TRANSLATE! lets you choose: use your own API keys with any provider, run OPUS-MT models locally in the browser via WebAssembly, or self-host with Ollama. Your text, your choice.
+**You want control over where your text goes.** Built-in translation sends your page text to Google (Chrome), Apple (Safari), or Mozilla's servers (Firefox). TRANSLATE! lets you choose: use Chrome Built-in when available, use your own API keys with supported cloud providers, or run OPUS-MT locally in the browser via WebAssembly. Your text, your choice.
 
 ## What it does
 
 - **Full-page translation** -- translates visible text on a page, including dynamically loaded content and iframes. A MutationObserver watches for DOM changes so content added after page load is caught.
 - **PDF translation** -- built-in PDF viewer with layout-preserving translation. Supports provider document APIs (Google Cloud, DeepL) and a local WASM pipeline. Save translated PDFs.
-- **10 translation providers** -- DashScope (Qwen-MT), OpenAI, Anthropic, Mistral, Gemini, DeepL, Google Cloud, OpenRouter, Ollama, and in-browser OPUS-MT. Switch on the fly.
+- **7 shipping translation providers** -- Chrome Built-in, OPUS-MT, TranslateGemma (experimental), DeepL, OpenAI, Anthropic, and Google Cloud. Switch on the fly between the available native, local, and cloud paths.
 - **Failover and load balancing** -- if your primary provider hits a rate limit or fails, requests automatically route to the next provider in your chain.
 - **Smart batching and caching** -- identical strings translated once and reused. Hidden elements skipped. Session cache minimizes repeat API calls.
 - **Auto-translate** -- optionally translate pages on load.
-- **100+ languages** -- source language auto-detection with trigram-based fallback.
+- **Source language auto-detection** -- browser-native detectors first, with offline trigram/script fallback when needed.
 - **Keyboard shortcuts** -- `Ctrl+Shift+P` translate page, `Ctrl+Shift+T` translate selection, `Ctrl+Shift+U` undo.
 - **Diagnostics dashboard** -- live usage metrics, cost tracking, latency histogram.
 
@@ -44,26 +44,23 @@ Built-in browser translation (Chrome, Safari, Firefox) works well for many pages
 TRANSLATE! is not a drop-in replacement for built-in translation in every scenario:
 
 - **Setup required.** Most providers need an API key. Built-in translation works with zero configuration.
-- **API costs.** Providers charge per character or token. Built-in translation is free. (The local OPUS-MT option is free but lower quality for most pairs.)
+- **API costs.** Cloud providers charge per character or token. Chrome Built-in and OPUS-MT avoid per-request API billing, but OPUS-MT usually has lower quality than the best cloud pairs.
 - **Not instant.** Built-in translation is tightly integrated with the browser engine. TRANSLATE! works as a content script, which means a short delay on large pages.
 
 If built-in translation works reliably for your languages and pages, you probably don't need this. TRANSLATE! is for the cases where it doesn't.
 
 ## Quality
 
-| Metric | Value |
-|--------|-------|
-| Unit tests | 5,038 (127 test files) |
-| Statement coverage | 100% |
-| Branch coverage | 99.9% |
-| Function coverage | 100% |
-| Line coverage | 100% |
-| Contract tests | 58 (provider interface conformance) |
-| Mutation testing | Stryker configured for core + providers |
-| E2E tests | Playwright (Chrome, Firefox, WebKit) |
-| CI | GitHub Actions: lint, typecheck, test, build, e2e, CodeQL, SBOM |
+| Metric           | Value                                                              |
+| ---------------- | ------------------------------------------------------------------ |
+| Unit tests       | 5k+ Vitest tests across 150+ files                                 |
+| Coverage gates   | Enforced in CI via `npm run test:coverage`                         |
+| Contract tests   | Provider interface conformance checks                              |
+| Mutation testing | Stryker configured for core + providers                            |
+| E2E tests        | Playwright smoke, integration, and harness flows                   |
+| CI               | GitHub Actions: consolidated CI, smoke e2e, coverage, CodeQL, SBOM |
 
-The test suite runs in ~40 seconds and covers every source file. Coverage thresholds (100/98/100/100) are enforced in CI — the build fails if coverage drops.
+The unit suite runs in about a minute locally, depending on cache state. Coverage thresholds are enforced in CI via `npm run test:coverage`; see `vitest.config.ts` for the current gate values.
 
 <!-- Screenshots: TODO — take fresh marketing screenshots showing:
   1. Popup translating a real page (before/after)
@@ -73,12 +70,12 @@ The test suite runs in ~40 seconds and covers every source file. Coverage thresh
 
 ## Browser Support
 
-| Browser | Status | Notes |
-|---------|--------|-------|
-| **Chrome** (116+) | Full support | Primary platform, Manifest V3 |
-| **Chromium-based** (Edge, Brave, etc.) | Full support | Load as unpacked extension |
-| **Safari** (macOS, iOS, iPadOS) | Full support | Built via Xcode converter |
-| **Firefox** | Supported | Separate build (`npm run build:firefox`) |
+| Browser                                | Status       | Notes                                |
+| -------------------------------------- | ------------ | ------------------------------------ |
+| **Chrome** (116+)                      | Full support | Primary platform, Manifest V3        |
+| **Chromium-based** (Edge, Brave, etc.) | Full support | Load as unpacked extension           |
+| **Safari** (macOS, iOS, iPadOS)        | Full support | Built via Xcode converter            |
+| **Firefox**                            | Supported    | Separate build flow documented below |
 
 ## Installation
 
@@ -117,11 +114,11 @@ See `safari/README.md` for detailed iOS/iPadOS deployment steps.
 ### Firefox
 
 ```sh
-npm run build:firefox
-npm run package:firefox
+npx vite build --config vite.config.firefox.ts
 ```
 
-Load `dist-firefox/` as a temporary extension or install the generated `.xpi`.
+This produces `dist-firefox/`, which you can load as a temporary extension in Firefox.
+The repository does not currently expose a dedicated `package:firefox` npm script.
 
 ## Uninstallation
 
@@ -151,26 +148,21 @@ npx -y crx pack dist -o translate-extension.crx --zip-output translate-extension
 Open the popup and click the gear button to access **Settings**. The settings page provides:
 
 - **General** -- toggle automatic language detection and manage the glossary.
-- **Providers** -- add, remove or reorder providers. Use **Edit** to supply API keys, endpoints, models and per-provider limits. Local providers such as Ollama or macOS can be added via **Add Local Provider**.
+- **Providers** -- enable, disable, or reorder the shipped providers. Use **Edit** to supply API keys, models, and per-provider limits for the supported cloud providers.
 - **Advanced** -- enable or clear the translation cache.
 
 Use the **Diagnostics** button on the home page to view usage metrics and run connectivity checks.
 
 ### Where to get API keys
 
-| Provider | API Keys | Notes |
-|----------|----------|-------|
-| DashScope (Qwen) | [dashscope.console.aliyun.com](https://dashscope.console.aliyun.com/) | Qwen-MT-Turbo, Qwen-MT-Plus |
-| OpenAI | [platform.openai.com](https://platform.openai.com/api-keys) | GPT models |
-| Gemini | [aistudio.google.com](https://aistudio.google.com/app/apikey) | Gemini Flash/Pro |
-| Anthropic (Claude) | [console.anthropic.com](https://console.anthropic.com/) | Claude models |
-| Mistral | [console.mistral.ai](https://console.mistral.ai/) | Mistral models |
-| DeepL | [deepl.com/pro-api](https://www.deepl.com/pro-api) | Document translation |
-| Google Cloud | [cloud.google.com/translate](https://cloud.google.com/translate/docs/setup) | Translation + Detection |
-| OpenRouter | [openrouter.ai](https://openrouter.ai/) | Multi-model hub |
-| Ollama | Local, no key required | Self-hosted models |
-| macOS translator | Built-in, no key required | System translation API |
-| Local WASM | Built-in, no key required | Offline, in-browser |
+| Provider           | API Keys                                                                    | Notes                   |
+| ------------------ | --------------------------------------------------------------------------- | ----------------------- |
+| OpenAI             | [platform.openai.com](https://platform.openai.com/api-keys)                 | GPT models              |
+| Claude (Anthropic) | [console.anthropic.com](https://console.anthropic.com/)                     | Claude models           |
+| DeepL              | [deepl.com/pro-api](https://www.deepl.com/pro-api)                          | Document translation    |
+| Google Cloud       | [cloud.google.com/translate](https://cloud.google.com/translate/docs/setup) | Translation + Detection |
+
+Chrome Built-in, OPUS-MT, and TranslateGemma are shipped local/native paths and do not require API keys.
 
 See also: [docs/PROVIDERS.md](docs/PROVIDERS.md)
 
@@ -210,6 +202,7 @@ Cost tracking is built in -- the popup shows 24-hour and 7-day spend per provide
 - **Frames**: Same-origin iframes and open Shadow DOM are supported. Cross-origin frames require host permissions.
 
 Use the **Diagnostics** panel (popup home page) for cache stats, connectivity checks, and a latency histogram. **Copy Report** generates a shareable summary for bug reports.
+
 </details>
 
 ## CLI
@@ -226,10 +219,9 @@ Streams translations by default. Use `--no-stream` for batch mode, `-d` for debu
 
 ```sh
 npm install          # Install dependencies
-npm test             # Run 5,038 unit tests
-npm run test:e2e     # Playwright PDF visual comparison tests
+npm test             # Run the Vitest suite
+npm run test:e2e     # Run the full web + harness E2E suite
 npm run build        # Chrome production build (dist/)
-npm run build:firefox # Firefox build (dist-firefox/)
 npm run build:safari  # Safari via Xcode converter
 ```
 

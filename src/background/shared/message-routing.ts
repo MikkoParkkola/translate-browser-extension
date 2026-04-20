@@ -1,12 +1,8 @@
 import type { ExtensionMessage, MessageResponse } from '../../types';
+import { hasStringMessageType } from '../../shared/message-guards';
 
 export function isExtensionMessage(message: unknown): message is ExtensionMessage {
-  return (
-    typeof message === 'object'
-    && message !== null
-    && 'type' in message
-    && typeof (message as { type?: unknown }).type === 'string'
-  );
+  return hasStringMessageType(message);
 }
 
 export function isHandledExtensionMessage<TType extends ExtensionMessage['type']>(
@@ -17,6 +13,8 @@ export function isHandledExtensionMessage<TType extends ExtensionMessage['type']
 }
 
 export const SENSITIVE_EXTENSION_MESSAGE_TYPES = [
+  'offscreenModelProgress',
+  'offscreenDownloadedModelUpdate',
   'setCloudApiKey',
   'clearCloudApiKey',
   'setCloudProviderEnabled',
@@ -63,7 +61,8 @@ export function routeHandledExtensionMessage<TMessage extends ExtensionMessage, 
     return true;
   }
 
-  dispatch(message)
+  void Promise.resolve()
+    .then(() => dispatch(message))
     .then(sendResponse)
     .catch((error) => {
       sendResponse(createErrorResponse(error));

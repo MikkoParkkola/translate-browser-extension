@@ -8,65 +8,53 @@
 
 import { pipeline, env } from '@huggingface/transformers';
 import type {
-  BackgroundRequestMessage,
-  BackgroundRequestMessageType,
-  ExtensionMessage,
-  ExtensionMessageResponse,
-  ExtensionMessageResponseByType,
   TranslateResponse,
   Strategy,
   TranslationProviderId,
   TranslationPipeline,
-  SetProviderMessage,
-  PreloadModelMessage,
   TranslateMessage,
-  MessageResponse,
 } from '../types';
-import {
-  createTranslationError,
-  validateInput,
-  withRetry,
-  isNetworkError,
-  extractErrorMessage,
-  type TranslationError,
-} from '../core/errors';
 import { createLogger } from '../core/logger';
 import { safeStorageGet, strictStorageSet } from '../core/storage';
-import { getCorrection } from '../core/corrections';
 import { withTimeout } from '../core/async-utils';
 import { CONFIG } from '../config';
 import { browserAPI, getURL } from '../core/browser-api';
-import { DEFAULT_PROVIDER_ID, normalizeTranslationProviderId } from '../shared/provider-options';
+import { DEFAULT_PROVIDER_ID } from '../shared/provider-options';
 import {
-  buildOpusMtExecutionPlan,
-  describeOpusMtExecutionConfig,
-} from '../shared/opus-mt-runtime';
-import { translateOpusMtText } from '../shared/opus-mt-segmentation';
-import {
-  assertNever,
-  isExtensionMessage,
-  isHandledExtensionMessage,
-  isAuthorizedExtensionSender,
-  routeHandledExtensionMessage,
-} from './shared/message-routing';
-
+  collectBatchTranslationInputs,
+  mergeBatchTranslationResults,
+  translateArrayItems,
+} from '../offscreen/batch-translation';
 // Extracted modules from offscreen (now used directly)
-import { MODEL_MAP, PIVOT_ROUTES } from '../offscreen/model-maps';
+import {
+  getModelId,
+  getSupportedLanguagePairs,
+  resolveOpusMtTranslationRoute,
+} from '../offscreen/model-maps';
+import { getOpusMtPipelineConfig, preloadOpusMtModel } from '../offscreen/opus-runtime';
 import { getCachedPipeline, cachePipeline, castAsPipeline } from '../offscreen/pipeline-cache';
 import { buildLanguageDetectionSample, detectLanguage } from '../offscreen/language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline } from '../offscreen/translategemma';
 import {
   createTranslationCache,
-  type DetailedCacheStats,
   type StorageAdapter,
   type TranslationCache,
-  handleClearCloudApiKey,
-  handleGetCloudProviderStatus,
-  handleSetCloudApiKey,
-  handleSetCloudProviderEnabled,
+  getProvider,
+  setProvider,
+  getStrategy,
+  handleClearCache,
+  handleTranslateCore,
+  PROVIDER_LIST,
+  createInstallationHandler,
+  restorePersistedProvider,
+  COMMON_BACKGROUND_MESSAGE_TYPES,
+  type CommonBackgroundMessage,
+  type CommonBackgroundResponse,
+  createBackgroundMessageGuard,
+  createBackgroundMessageListener,
+  createCommonBackgroundMessageDispatcher,
+  createPreloadModelHandler,
 } from './shared';
-import { estimateTokens, formatUserError, PROVIDER_LIST } from './shared/provider-management';
-import { NETWORK_RETRY_CONFIG } from './shared/translation-core';
 
 const log = createLogger('Background-FF');
 
@@ -78,7 +66,6 @@ const log = createLogger('Background-FF');
 env.allowRemoteModels = true;  // Models from HuggingFace Hub
 env.allowLocalModels = false;  // No local filesystem
 env.useBrowserCache = true;    // Cache models in IndexedDB
-env.useWasmCache = true;       // Persist compiled WASM artifacts between loads
 
 // Point ONNX Runtime to bundled WASM files
 const wasmBasePath = getURL('assets/');
@@ -89,13 +76,6 @@ if (env.backends?.onnx?.wasm) {
 /* v8 ignore stop */
 
 log.info('WASM path configured:', wasmBasePath);
-
-// ============================================================================
-// State Management
-// ============================================================================
-
-let currentStrategy: Strategy = 'smart';
-let currentProvider: TranslationProviderId = DEFAULT_PROVIDER_ID;
 
 // ============================================================================
 // Shared Translation Cache (Persistent LRU)
@@ -109,11 +89,35 @@ const firefoxStorageAdapter: StorageAdapter = {
 
 const translationCache: TranslationCache = createTranslationCache(
   firefoxStorageAdapter,
-  () => currentProvider
+  getProvider,
 );
 
 // Load cache on startup
 translationCache.load();
+
+// Firefox keeps cache ownership in the background layer, but still benefits from
+// per-item batch reuse so partially overlapping arrays avoid repeated inference.
+function getCachedBatchItemTranslation(
+  text: string,
+  sourceLang: string,
+  targetLang: string,
+  provider: TranslationProviderId,
+): string | null {
+  const cacheKey = translationCache.getKey(text, sourceLang, targetLang, provider);
+  const cachedResult = translationCache.get(cacheKey)?.result;
+  return typeof cachedResult === 'string' ? cachedResult : null;
+}
+
+function storeCachedBatchItemTranslation(
+  text: string,
+  translation: string,
+  sourceLang: string,
+  targetLang: string,
+  provider: TranslationProviderId,
+): void {
+  const cacheKey = translationCache.getKey(text, sourceLang, targetLang, provider);
+  translationCache.set(cacheKey, translation, sourceLang, targetLang);
+}
 
 // ============================================================================
 // ML Pipeline Management (Direct - no offscreen needed)
@@ -149,14 +153,13 @@ async function detectWebNN(): Promise<boolean> {
 }
 
 async function getPipeline(sourceLang: string, targetLang: string): Promise<TranslationPipeline> {
-  const key = `${sourceLang}-${targetLang}`;
-  const modelId = MODEL_MAP[key];
+  const modelId = getModelId(sourceLang, targetLang);
 
   /* v8 ignore start */
   if (!modelId) {
     // getPipeline is only called from translateDirect, which is only called after
-    // MODEL_MAP[key] has already been verified to exist in translateWithProvider.
-    throw new Error(`Unsupported language pair: ${key}`);
+    // a direct route has already been verified to exist in translateWithProvider.
+    throw new Error(`Unsupported language pair: ${sourceLang}-${targetLang}`);
   }
   /* v8 ignore stop */
 
@@ -168,47 +171,17 @@ async function getPipeline(sourceLang: string, targetLang: string): Promise<Tran
 
   log.info(`Loading model: ${modelId}`);
 
-  const webgpu = CONFIG.experimental.opusMtWebgpuProbe
-    ? await detectWebGPUCapabilities()
-    : { supported: false, fp16: false };
-  const attempts = buildOpusMtExecutionPlan(webgpu, CONFIG.experimental.opusMtWebgpuProbe);
-  let pipe: unknown;
-  let lastError: unknown;
-  const attemptErrors: string[] = [];
+  const { device, dtype } = getOpusMtPipelineConfig(await detectWebGPUCapabilities());
+  log.info(`Using device: ${device}, dtype: ${dtype}`);
 
-  for (const attempt of attempts) {
-    const label = describeOpusMtExecutionConfig(attempt);
-    log.info(`Trying ${label}: device=${attempt.device}, dtype=${attempt.dtype}, reason=${attempt.reason}`);
-    try {
-      pipe = await withTimeout(
-        pipeline('translation', modelId, {
-          device: attempt.device,
-          dtype: attempt.dtype,
-        } as Record<string, unknown>),
-        CONFIG.timeouts.opusMtDirectMs,
-        `Loading model ${modelId}`
-      );
-      log.info(`Model loaded: ${modelId} (${label})`);
-      break;
-    } catch (error) {
-      lastError = error;
-      const errorMessage = extractErrorMessage(error);
-      attemptErrors.push(`${label}: ${errorMessage}`);
-      log.warn(`${label} failed for ${modelId}: ${errorMessage}`);
-    }
-  }
-
-  if (!pipe) {
-    /* v8 ignore start */
-    throw new Error(
-      attemptErrors.length > 0
-        ? `Failed to load model ${modelId}. Attempts: ${attemptErrors.join(' | ')}`
-        : extractErrorMessage(lastError, `Failed to load model ${modelId}`)
-    );
-    /* v8 ignore stop */
-  }
+  const pipe = await withTimeout(
+    pipeline('translation', modelId, { device, dtype }),
+    CONFIG.timeouts.opusMtDirectMs,
+    `Loading model ${modelId}`
+  );
 
   cachePipeline(modelId, castAsPipeline(pipe));
+  log.info(`Model loaded: ${modelId}`);
 
   return castAsPipeline(pipe);
 }
@@ -221,35 +194,25 @@ async function translateDirect(
   const pipe = await getPipeline(sourceLang, targetLang);
 
   if (Array.isArray(text)) {
-    const results = await Promise.all(
-      text.map(async (t) => {
-        /* v8 ignore start */
-        if (!t || t.trim().length === 0) return t;
-        return translateOpusMtText(pipe, t, {
-          splitMultiSentence: CONFIG.experimental.opusMtWebgpuProbe,
-          onSplit: (segmentCount) => {
-            log.info(
-              `Probe build: split ${sourceLang}->${targetLang} batch item into ${segmentCount} per-sentence inference calls`
-            );
-          },
-        });
-        /* v8 ignore stop */
-      })
+    return translateArrayItems(
+      text,
+      async (value) => {
+        const result = await pipe(value, { max_length: 512 });
+        return (result as Array<{ translation_text: string }>)[0].translation_text;
+      },
+      {
+        onItemError: ({ text: originalText, error }) => {
+          log.warn(` Translation failed for item (${originalText.substring(0, 30)}...):`, error);
+        },
+      }
     );
-    return results;
   }
 
   /* v8 ignore start */
   if (!text || text.trim().length === 0) return text;
   /* v8 ignore stop */
-  return translateOpusMtText(pipe, text, {
-    splitMultiSentence: CONFIG.experimental.opusMtWebgpuProbe,
-    onSplit: (segmentCount) => {
-      log.info(
-        `Probe build: split ${sourceLang}->${targetLang} input into ${segmentCount} per-sentence inference calls`
-      );
-    },
-  });
+  const result = await pipe(text, { max_length: 512 });
+  return (result as Array<{ translation_text: string }>)[0].translation_text;
 }
 
 async function translateWithProvider(
@@ -265,16 +228,15 @@ async function translateWithProvider(
   }
 
   // OPUS-MT: check for direct model or pivot route
-  const key = `${sourceLang}-${targetLang}`;
+  const route = resolveOpusMtTranslationRoute(sourceLang, targetLang);
 
-  if (MODEL_MAP[key]) {
-    log.info(`Direct translation: ${key}`);
+  if (route?.kind === 'direct') {
+    log.info(`Direct translation: ${sourceLang}-${targetLang}`);
     return translateDirect(text, sourceLang, targetLang);
   }
 
-  const pivotRoute = PIVOT_ROUTES[key];
-  if (pivotRoute) {
-    const [firstHop, secondHop] = pivotRoute;
+  if (route?.kind === 'pivot') {
+    const [firstHop, secondHop] = route.route;
     const [firstSrc, firstTgt] = firstHop.split('-');
     const [secondSrc, secondTgt] = secondHop.split('-');
 
@@ -286,7 +248,7 @@ async function translateWithProvider(
     return finalResult;
   }
 
-  throw new Error(`Unsupported language pair: ${key}`);
+  throw new Error(`Unsupported language pair: ${sourceLang}-${targetLang}`);
 }
 
 async function translate(
@@ -301,30 +263,30 @@ async function translate(
     const sampleText = buildLanguageDetectionSample(text);
     actualSourceLang = await detectLanguage(sampleText);
     log.info(`Auto-detected source: ${actualSourceLang}`);
+  }
 
-    if (actualSourceLang === targetLang) {
-      log.info('Source equals target, skipping translation');
-      return text;
-    }
+  if (actualSourceLang === targetLang) {
+    log.info('Source equals target, skipping translation');
+    return text;
   }
 
   // Handle array of texts
   if (Array.isArray(text)) {
-    const results: string[] = [];
-    const uncachedItems: Array<{ index: number; text: string }> = [];
-
-    for (let i = 0; i < text.length; i++) {
-      const t = text[i];
-      /* v8 ignore start */
-      if (!t || t.trim().length === 0) {
-      /* v8 ignore stop */
-        results[i] = t;
-        continue;
-      }
-
-      // Skip cache for now - use in-memory cache above
-      uncachedItems.push({ index: i, text: t });
-    }
+    const { results, uncachedItems } = await collectBatchTranslationInputs(text, {
+      getCached: (value) => getCachedBatchItemTranslation(
+        value,
+        actualSourceLang,
+        targetLang,
+        provider,
+      ),
+      onCacheHit: ({ index, text: originalText, cached }) => {
+        /* v8 ignore start -- debug logging branch */
+        if (index < 3) {
+          log.debug(`Cache #${index}: "${originalText.substring(0, 30)}" -> "${cached.substring(0, 30)}"${cached === originalText ? ' (identity)' : ''}`);
+        }
+        /* v8 ignore stop */
+      },
+    });
 
     /* v8 ignore start */
     if (uncachedItems.length > 0) {
@@ -337,10 +299,34 @@ async function translate(
         provider
       );
 
-      const translationArray = Array.isArray(translations) ? translations : [translations];
-      for (let i = 0; i < uncachedItems.length; i++) {
-        results[uncachedItems[i].index] = translationArray[i];
+      const { results: mergedResults, cacheFailures } = await mergeBatchTranslationResults(
+        results,
+        uncachedItems,
+        translations,
+        {
+          storeCached: (originalText, translation) => {
+            storeCachedBatchItemTranslation(
+              originalText,
+              translation,
+              actualSourceLang,
+              targetLang,
+              provider,
+            );
+          },
+          onCacheStoreFailure: ({ failureCount, error }) => {
+            if (failureCount <= 2) {
+              log.warn(`Failed to cache translation (${failureCount}):`, error);
+            }
+          },
+          onIdentityTranslation: ({ text: originalText }) => {
+            log.debug(`Identity translation cached for "${originalText.substring(0, 30)}"`);
+          },
+        },
+      );
+      if (cacheFailures > 2) {
+        log.warn(`Cache write failed for ${cacheFailures}/${uncachedItems.length} items`);
       }
+      return mergedResults;
     }
 
     return results;
@@ -357,175 +343,55 @@ async function translate(
 }
 
 function getSupportedLanguages(): Array<{ src: string; tgt: string; pivot?: boolean }> {
-  const direct = Object.keys(MODEL_MAP).map((key) => {
-    const [src, tgt] = key.split('-');
-    return { src, tgt };
-  });
-
-  const pivot = Object.keys(PIVOT_ROUTES).map((key) => {
-    const [src, tgt] = key.split('-');
-    return { src, tgt, pivot: true };
-  });
-
-  return [...direct, ...pivot];
+  return getSupportedLanguagePairs();
 }
-
-// ============================================================================
-// Rate limiting
-// ============================================================================
-
-interface RateLimitState {
-  requests: number;
-  tokens: number;
-  windowStart: number;
-}
-
-const rateLimit: RateLimitState = {
-  requests: 0,
-  tokens: 0,
-  windowStart: Date.now(),
-};
-
-function checkRateLimit(tokenEstimate: number): boolean {
-  const now = Date.now();
-  if (now - rateLimit.windowStart > CONFIG.rateLimits.windowMs) {
-    rateLimit.requests = 0;
-    rateLimit.tokens = 0;
-    rateLimit.windowStart = now;
-  }
-
-  if (rateLimit.requests >= CONFIG.rateLimits.requestsPerMinute) return false;
-  if (rateLimit.tokens + tokenEstimate > CONFIG.rateLimits.tokensPerMinute) return false;
-
-  return true;
-}
-
-function recordUsage(tokens: number): void {
-  rateLimit.requests++;
-  rateLimit.tokens += tokens;
-}
-
-// ============================================================================
-// Retry Configuration
-// ============================================================================
 
 // ============================================================================
 // Message Handlers
 // ============================================================================
 
-const FIREFOX_MESSAGE_TYPES = [
-  'ping',
-  'translate',
-  'getUsage',
-  'getProviders',
-  'preloadModel',
-  'setProvider',
-  'getCacheStats',
-  'clearCache',
-  'checkChromeTranslator',
-  'checkWebGPU',
-  'checkWebNN',
-  'getCloudProviderStatus',
-  'setCloudApiKey',
-  'clearCloudApiKey',
-  'setCloudProviderEnabled',
-] as const satisfies readonly BackgroundRequestMessageType[];
+const FIREFOX_MESSAGE_TYPES = COMMON_BACKGROUND_MESSAGE_TYPES;
 
-type FirefoxHandledMessage = Extract<
-  BackgroundRequestMessage,
-  { type: (typeof FIREFOX_MESSAGE_TYPES)[number] }
->;
+type FirefoxHandledMessage = CommonBackgroundMessage;
 
-type FirefoxHandledResponse = ExtensionMessageResponse<FirefoxHandledMessage>;
+type FirefoxHandledResponse = CommonBackgroundResponse;
 
-function isFirefoxHandledMessage(message: ExtensionMessage): message is FirefoxHandledMessage {
-  return isHandledExtensionMessage(message, FIREFOX_MESSAGE_TYPES);
-}
+const isFirefoxHandledMessage = createBackgroundMessageGuard(FIREFOX_MESSAGE_TYPES);
 
-async function handleMessage(message: FirefoxHandledMessage): Promise<FirefoxHandledResponse> {
-  switch (message.type) {
-    case 'ping':
-      return { success: true, status: 'ready', provider: currentProvider };
-    case 'translate':
-      return handleTranslate(message);
-    case 'getUsage':
-      return handleGetUsage();
-    case 'getProviders':
-      return handleGetProviders();
-    case 'preloadModel':
-      return handlePreloadModel(message);
-    case 'setProvider':
-      return handleSetProvider(message);
-    case 'getCacheStats':
-      return handleGetCacheStats();
-    case 'clearCache':
-      return handleClearCache();
-    case 'checkChromeTranslator':
-      return handleCheckChromeTranslator();
-    case 'checkWebGPU':
-      return handleCheckWebGPU();
-    case 'checkWebNN':
-      return handleCheckWebNN();
-    case 'getCloudProviderStatus':
-      return handleGetCloudProviderStatus();
-    case 'setCloudApiKey':
-      return handleSetCloudApiKey(message);
-    case 'clearCloudApiKey':
-      return handleClearCloudApiKey(message);
-    case 'setCloudProviderEnabled':
-      return handleSetCloudProviderEnabled(message);
-    default:
-      return assertNever(message);
-  }
-}
-
-async function handleSetProvider(message: SetProviderMessage): Promise<MessageResponse<{ provider: TranslationProviderId }>> {
-  currentProvider = message.provider;
-  log.info(`Provider set to: ${currentProvider}`);
-  await strictStorageSet({ provider: currentProvider });
-  return { success: true, provider: currentProvider };
-}
-
-async function handlePreloadModel(message: PreloadModelMessage): Promise<MessageResponse<{ preloaded: boolean }>> {
-  const provider = message.provider || currentProvider;
-  log.info(`Preloading ${provider} model: ${message.sourceLang} -> ${message.targetLang}`);
-
-  try {
+const handlePreloadModel = createPreloadModelHandler({
+  log,
+  getProvider,
+  preloadModel: async (message, provider) => {
     if (provider === 'translategemma') {
       await getTranslateGemmaPipeline();
-      return { success: true, preloaded: true };
-    } else {
-      const pair = `${message.sourceLang}-${message.targetLang}`;
-      if (MODEL_MAP[pair]) {
-        await getPipeline(message.sourceLang, message.targetLang);
-        return { success: true, preloaded: true };
-      }
-      return { success: true, preloaded: false };
+      return { success: true, preloaded: true, available: true };
     }
-  } catch (error) {
-    log.warn('Preload failed:', error);
+
+    if (provider === 'chrome-builtin') {
+      return { success: true, preloaded: false, available: false };
+    }
+
     return {
-      success: false,
-      error: extractErrorMessage(error),
+      success: true,
+      ...(await preloadOpusMtModel(message.sourceLang, message.targetLang, getPipeline)),
     };
-  }
-}
+  },
+});
 
-async function handleGetCacheStats(): Promise<MessageResponse<{ cache: DetailedCacheStats }>> {
-  await translationCache.load();
-  return {
-    success: true,
-    cache: translationCache.getStats(),
-  };
-}
+const dispatchCommonMessage = createCommonBackgroundMessageDispatcher({
+  translationCache,
+  getProvider,
+  handleTranslate,
+  handleGetProviders,
+  handlePreloadModel,
+  handleClearCache: () => handleClearCache(translationCache),
+  handleCheckChromeTranslator,
+  handleCheckWebGPU,
+  handleCheckWebNN,
+});
 
-async function handleClearCache(): Promise<{ success: true; clearedEntries: number }> {
-  const previousSize = translationCache.size;
-  await translationCache.clear();
-  return {
-    success: true,
-    clearedEntries: previousSize,
-  };
+async function handleMessage(message: FirefoxHandledMessage): Promise<FirefoxHandledResponse> {
+  return dispatchCommonMessage(message);
 }
 
 async function handleCheckChromeTranslator(): Promise<{ success: true; available: boolean }> {
@@ -542,136 +408,21 @@ async function handleCheckWebNN(): Promise<{ success: true; supported: boolean }
 }
 
 async function handleTranslate(message: TranslateMessage): Promise<TranslateResponse> {
-  const startTime = Date.now();
-
-  try {
-    await translationCache.load();
-
-    const validation = validateInput(
-      message.text,
-      message.sourceLang,
-      message.targetLang
-    );
-
-    if (!validation.valid) {
-      return {
-        success: false,
-        error: formatUserError(validation.error!),
-        duration: Date.now() - startTime,
-      };
-    }
-
-    const text = validation.sanitizedText!;
-
-    if (message.options?.strategy) {
-      currentStrategy = message.options.strategy;
-    }
-
-    const provider = message.provider || currentProvider;
-
-    // Check cache first
-    const cacheKey = translationCache.getKey(
-      text,
-      message.sourceLang,
-      message.targetLang,
-      provider
-    );
-    if (message.sourceLang !== 'auto') {
-      const cached = translationCache.get(cacheKey);
-      if (cached) {
-        const duration = Date.now() - startTime;
-        return {
-          success: true,
-          result: cached.result,
-          duration,
-          cached: true,
-        } as TranslateResponse & { cached: boolean };
-      }
-
-      if (typeof text === 'string') {
-        const userCorrection = await getCorrection(text, message.sourceLang, message.targetLang);
-        if (userCorrection) {
-          const duration = Date.now() - startTime;
-          log.info(`Using user correction, returning in ${duration}ms`);
-          translationCache.set(cacheKey, userCorrection, message.sourceLang, message.targetLang);
-          return {
-            success: true,
-            result: userCorrection,
-            duration,
-            fromCorrection: true,
-          };
-        }
-      }
-    }
-
-    const tokenEstimate = estimateTokens(text);
-
-    if (!checkRateLimit(tokenEstimate)) {
-      return {
-        success: false,
-        error: 'Too many requests. Please wait a moment and try again.',
-        duration: Date.now() - startTime,
-      };
-    }
-
-    log.info(`Translating: ${message.sourceLang} -> ${message.targetLang}`);
-
-    const result = await withRetry(
-      async () => {
-        return translate(text, message.sourceLang, message.targetLang, provider);
-      },
-      NETWORK_RETRY_CONFIG,
-      (error: TranslationError) => {
-        return isNetworkError(error.technicalDetails);
-      }
-    );
-
-    log.info('Translation complete');
-    recordUsage(tokenEstimate);
-
-    // Cache the result
-    if (result && message.sourceLang !== 'auto') {
-      translationCache.set(cacheKey, result, message.sourceLang, message.targetLang);
-    }
-
-    return {
-      success: true,
-      result,
-      duration: Date.now() - startTime,
-    };
-  } catch (error) {
-    const translationError = createTranslationError(error);
-    log.error('Translation error:', translationError.technicalDetails);
-
-    return {
-      success: false,
-      error: formatUserError(translationError),
-      duration: Date.now() - startTime,
-    };
-  }
-}
-
-function handleGetUsage(): ExtensionMessageResponseByType<'getUsage'> {
-  return {
-    throttle: {
-      requests: rateLimit.requests,
-      tokens: rateLimit.tokens,
-      requestLimit: CONFIG.rateLimits.requestsPerMinute,
-      tokenLimit: CONFIG.rateLimits.tokensPerMinute,
-      totalRequests: rateLimit.requests,
-      totalTokens: rateLimit.tokens,
-      queue: 0,
-    },
-    cache: translationCache.getStats(),
-    providers: {},
-  };
+  await translationCache.load();
+  return handleTranslateCore(
+    message,
+    translationCache,
+    async (text, sourceLang, targetLang, provider) => ({
+      result: await translate(text, sourceLang, targetLang, provider),
+    }),
+  );
 }
 
 function handleGetProviders(): { providers: typeof PROVIDER_LIST; activeProvider: TranslationProviderId; strategy: Strategy; supportedLanguages: Array<{ src: string; tgt: string; pivot?: boolean }> } {
   return {
-    providers: PROVIDER_LIST,
-    activeProvider: currentProvider,
-    strategy: currentStrategy,
+    providers: [...PROVIDER_LIST],
+    activeProvider: getProvider(),
+    strategy: getStrategy(),
     supportedLanguages: getSupportedLanguages(),
   };
 }
@@ -680,41 +431,12 @@ function handleGetProviders(): { providers: typeof PROVIDER_LIST; activeProvider
 // Message Listener
 // ============================================================================
 
-browserAPI.runtime.onMessage.addListener(
-  (
-    message: unknown,
-    sender: chrome.runtime.MessageSender,
-    sendResponse: (response: TranslateResponse | unknown) => void
-  ) => {
-    if (!isExtensionMessage(message)) return;
-
-    // Ignore messages meant for offscreen (Chrome compatibility)
-    if ('target' in message && (message as { target?: string }).target === 'offscreen') return false;
-
-    // Validate sender for sensitive operations — only allow from extension pages (popup/options),
-    // not content scripts running on arbitrary web pages.
-    if (!isAuthorizedExtensionSender(message, sender.url, 'moz-extension://')) {
-      sendResponse({ success: false, error: 'Unauthorized sender' });
-      return true;
-    }
-
-    return routeHandledExtensionMessage({
-      message,
-      sendResponse,
-      isHandledMessage: isFirefoxHandledMessage,
-      dispatch: handleMessage,
-      logUnknownMessage: (type) => log.warn(`Unknown message type: ${type}`),
-      createErrorResponse: (error) => {
-        const translationError = createTranslationError(error);
-        log.error('Error:', translationError.technicalDetails);
-        return {
-          success: false,
-          error: formatUserError(translationError),
-        };
-      },
-    });
-  }
-);
+browserAPI.runtime.onMessage.addListener(createBackgroundMessageListener({
+  extensionUrlPrefix: 'moz-extension://',
+  isHandledMessage: isFirefoxHandledMessage,
+  dispatch: handleMessage,
+  log,
+}));
 
 // ============================================================================
 // Browser Action (Firefox uses browserAction, not action)
@@ -752,7 +474,7 @@ if (browserAPI.commands?.onCommand) {
     const sourceLang = settings.sourceLang || 'auto';
     const targetLang = settings.targetLang || 'en';
     const strategy = settings.strategy || 'smart';
-    const provider = settings.provider || currentProvider;
+    const provider = settings.provider || getProvider();
 
     try {
       switch (command) {
@@ -782,23 +504,18 @@ if (browserAPI.commands?.onCommand) {
 // Installation Handler
 // ============================================================================
 
-browserAPI.runtime.onInstalled.addListener((details) => {
-  if (details.reason === 'install') {
-    log.info('Extension installed');
-    const browserLang = browserAPI.i18n.getUILanguage().split('-')[0];
-    log.info('Browser language detected:', browserLang);
-    void strictStorageSet({
+browserAPI.runtime.onInstalled.addListener(createInstallationHandler({
+  log,
+  getUiLanguage: () => browserAPI.i18n.getUILanguage(),
+  persistInstallDefaults: async (browserLang) => {
+    await strictStorageSet({
       sourceLang: 'auto',
       targetLang: browserLang || 'en',
       strategy: 'smart',
-      provider: 'opus-mt',
-    }).catch((error) => {
-      log.error('Failed to persist install defaults:', error);
+      provider: DEFAULT_PROVIDER_ID,
     });
-  } else if (details.reason === 'update') {
-    log.info('Extension updated from', details.previousVersion);
-  }
-});
+  },
+}));
 
 // ============================================================================
 // Startup
@@ -806,19 +523,16 @@ browserAPI.runtime.onInstalled.addListener((details) => {
 
 /* v8 ignore start — module-level IIFE runs at import time, before test mocks are configured */
 (async () => {
-  const result = await safeStorageGet<{ provider?: unknown }>(['provider']);
-  if (result.provider !== undefined) {
-    const restoredProvider = normalizeTranslationProviderId(result.provider);
-    if (result.provider === 'opus-mt-local') {
-      log.info('Migrated legacy stored provider alias to opus-mt');
-    } else if (restoredProvider !== result.provider) {
-      log.warn('Ignoring invalid stored provider:', result.provider);
-    }
-    currentProvider = restoredProvider;
-    log.info('Restored provider:', currentProvider);
-  } else {
-    log.info('No stored provider found, using default opus-mt');
-  }
+  await restorePersistedProvider({
+    log,
+    defaultProvider: DEFAULT_PROVIDER_ID,
+    readStoredProvider: async () => {
+      const result = await safeStorageGet<{ provider?: unknown }>(['provider']);
+      return result.provider;
+    },
+    setProvider,
+    getProvider,
+  });
 })();
 /* v8 ignore stop */
 

@@ -3,25 +3,15 @@
  * Manages API keys for cloud translation providers
  */
 
-import { Component, createSignal, For, Show, onMount } from 'solid-js';
+import { Component, For, Show } from 'solid-js';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
 import {
   CLOUD_PROVIDER_CONFIGS,
-  getCloudProviderConfig,
 } from '../../shared/cloud-provider-configs';
-import { sendBackgroundMessageWithUiError } from '../../shared/background-message';
-import { reportUiError, showTemporaryMessage } from '../../shared/ui-feedback';
+import { createCloudProviderUiController } from '../../shared/cloud-provider-ui-controller';
 import {
-  createRemovedCloudProviderStatus,
-  getCloudProviderEditDefaults,
-  loadCloudProviderUiStatus,
-  applySavedCloudProviderStatus,
   type CloudProviderUiStatus,
 } from '../../shared/cloud-provider-ui-state';
-import { createLogger } from '../../core/logger';
-import type { CloudProviderId } from '../../types';
-
-const log = createLogger('ApiKeyManager');
 
 // Cloud provider definitions sourced from shared config
 
@@ -30,144 +20,27 @@ interface Props {
 }
 
 export const ApiKeyManager: Component<Props> = (props) => {
-  const [providerStatus, setProviderStatus] = createSignal<Partial<Record<CloudProviderId, CloudProviderUiStatus>>>({});
-  const [editingProvider, setEditingProvider] = createSignal<CloudProviderId | null>(null);
-  const [apiKeyInput, setApiKeyInput] = createSignal('');
-  const [isProTier, setIsProTier] = createSignal(false);
-  const [saving, setSaving] = createSignal(false);
-  const [error, setError] = createSignal<string | null>(null);
-  const [success, setSuccess] = createSignal<string | null>(null);
-  const [confirmRemove, setConfirmRemove] = createSignal<CloudProviderId | null>(null);
-
-  // Load current status on mount
-  onMount(async () => {
-    await loadProviderStatus();
+  const {
+    providerStatus,
+    editingProvider,
+    apiKeyInput,
+    isProTier,
+    saving,
+    error,
+    success,
+    confirmRemove,
+    setApiKeyInput,
+    setIsProTier,
+    setConfirmRemove,
+    startEditing,
+    cancelEditing,
+    saveApiKey,
+    removeApiKey,
+  } = createCloudProviderUiController({
+    providers: CLOUD_PROVIDER_CONFIGS,
+    logName: 'ApiKeyManager',
+    successMessageDurationMs: 1500,
   });
-
-  const loadProviderStatus = async () => {
-    try {
-      setProviderStatus(await loadCloudProviderUiStatus(CLOUD_PROVIDER_CONFIGS));
-    } catch (error) {
-      log.error('Failed to load status:', error);
-      setProviderStatus({});
-    }
-  };
-
-  const startEditing = (providerId: CloudProviderId) => {
-    const defaults = getCloudProviderEditDefaults(
-      CLOUD_PROVIDER_CONFIGS.find((provider) => provider.id === providerId),
-      providerStatus()[providerId],
-    );
-
-    setEditingProvider(providerId);
-    setApiKeyInput('');
-    setIsProTier(defaults.isProTier);
-    setError(null);
-    setSuccess(null);
-  };
-
-  const cancelEditing = () => {
-    setEditingProvider(null);
-    setApiKeyInput('');
-    setError(null);
-    setSuccess(null);
-  };
-
-  const saveApiKey = async (providerId: CloudProviderId) => {
-    const provider = getCloudProviderConfig(providerId);
-    /* v8 ignore start -- guard: provider always found from own button handlers */
-    if (!provider) return;
-    /* v8 ignore stop */
-
-    const key = apiKeyInput().trim();
-    if (!key) {
-      setError('Please enter an API key');
-      return;
-    }
-
-    setSaving(true);
-    setError(null);
-
-    try {
-      const response = await sendBackgroundMessageWithUiError({
-        type: 'setCloudApiKey',
-        provider: providerId,
-        apiKey: key,
-        options: {
-          isPro: isProTier(),
-        },
-      }, {
-        setError,
-        logger: log,
-        userMessage: 'Failed to save API key',
-        logMessage: 'Failed to save key:',
-      });
-
-      if (!response) {
-        return;
-      }
-
-      if (!response.success) {
-        setError(response.error ?? 'Failed to save API key');
-        return;
-      }
-
-      setProviderStatus(prev => ({
-        ...prev,
-        [providerId]: applySavedCloudProviderStatus(prev[providerId], provider, {
-          isPro: isProTier(),
-        }),
-      }));
-
-      showTemporaryMessage(
-        setSuccess,
-        `${provider.name} API key saved successfully`,
-        1500,
-        () => setEditingProvider(null)
-      );
-    } catch (error) {
-      reportUiError(setError, log, 'Failed to save API key', 'Failed to save key:', error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const removeApiKey = async (providerId: CloudProviderId) => {
-    const provider = getCloudProviderConfig(providerId);
-    /* v8 ignore start -- guard */
-    if (!provider) return;
-    /* v8 ignore stop */
-
-    try {
-      const response = await sendBackgroundMessageWithUiError({
-        type: 'clearCloudApiKey',
-        provider: providerId,
-      }, {
-        setError,
-        logger: log,
-        userMessage: 'Failed to remove API key',
-        logMessage: 'Failed to remove key:',
-      });
-
-      if (!response) {
-        return;
-      }
-
-      if (!response.success) {
-        setError(response.error ?? 'Failed to remove API key');
-        return;
-      }
-
-      setProviderStatus(prev => ({
-        ...prev,
-        [providerId]: createRemovedCloudProviderStatus(prev[providerId]),
-      }));
-
-      showTemporaryMessage(setSuccess, `${provider.name} API key removed`, 1500);
-    } catch (error) {
-      reportUiError(setError, log, 'Failed to remove API key', 'Failed to remove key:', error);
-    }
-  };
 
   return (
     <div class="api-key-manager">

@@ -45,6 +45,12 @@ vi.mock('../core/logger', () => ({
 
 vi.stubGlobal('chrome', {
   runtime: { sendMessage: (...args: unknown[]) => mockSendMessage(...args) },
+  storage: {
+    local: {
+      get: vi.fn().mockResolvedValue({}),
+      set: vi.fn().mockResolvedValue(undefined),
+    },
+  },
 });
 
 // ============================================================================
@@ -174,11 +180,15 @@ describe('getTranslateGemmaPipeline — no WebGPU', () => {
     expect(isTranslateGemmaLoaded()).toBe(false);
   });
 
-  it('sends error progress update via chrome.runtime.sendMessage', async () => {
+  it('routes error progress update through background message contract', async () => {
     const { getTranslateGemmaPipeline } = await import('./translategemma');
     try { await getTranslateGemmaPipeline(); } catch { /* expected */ }
     expect(mockSendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'modelProgress', status: 'error' })
+      expect.objectContaining({
+        type: 'offscreenModelProgress',
+        target: 'background',
+        status: 'error',
+      })
     );
   });
 });
@@ -200,7 +210,12 @@ describe('getTranslateGemmaPipeline — no fp16, q4 path', () => {
     const { getTranslateGemmaPipeline } = await import('./translategemma');
     await getTranslateGemmaPipeline();
     expect(mockSendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'modelProgress', status: 'ready', progress: 100 })
+      expect.objectContaining({
+        type: 'offscreenModelProgress',
+        target: 'background',
+        status: 'ready',
+        progress: 100,
+      })
     );
   });
 
@@ -479,7 +494,8 @@ describe('getTranslateGemmaPipeline — progress callback coverage', () => {
 
     expect(mockSendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: 'modelProgress',
+        type: 'offscreenModelProgress',
+        target: 'background',
         status: 'downloading',
         progress: 50,
         file: 'model.onnx',
@@ -504,7 +520,8 @@ describe('getTranslateGemmaPipeline — progress callback coverage', () => {
 
     expect(mockSendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: 'modelProgress',
+        type: 'offscreenModelProgress',
+        target: 'background',
         status: 'progress',  // default from || 'progress'
         progress: 0,         // default from ?? 0
         file: null,          // default from || null

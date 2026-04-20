@@ -6,100 +6,29 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import {
+  defineProviderErrorTests,
+  expectProviderError,
+  installCloudProviderTestHarness,
+  okJsonResponse,
+} from '../__contract__/cloud-provider-test-harness';
 import { GoogleCloudProvider } from './google-cloud';
 
-// Mock chrome.storage
-const mockStorage: Record<string, unknown> = {};
-vi.stubGlobal('chrome', {
-  storage: {
-    local: {
-      get: vi.fn((keys: string[]) => {
-        const result: Record<string, unknown> = {};
-        for (const key of keys) {
-          if (mockStorage[key] !== undefined) {
-            result[key] = mockStorage[key];
-          }
-        }
-        return Promise.resolve(result);
-      }),
-      set: vi.fn((items: Record<string, unknown>) => {
-        Object.assign(mockStorage, items);
-        return Promise.resolve();
-      }),
-      remove: vi.fn((keys: string[]) => {
-        for (const key of keys) {
-          delete mockStorage[key];
-        }
-        return Promise.resolve();
-      }),
-    },
-  },
-});
-
-// Mock fetch
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+const {
+  mockStorage,
+  resetCloudProviderState,
+  mockFetch,
+  queueJsonResponse,
+  queueRejectedFetch,
+  queueHttpError,
+} = installCloudProviderTestHarness();
 
 describe('GoogleCloudProvider', () => {
   let provider: GoogleCloudProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
+    resetCloudProviderState();
     provider = new GoogleCloudProvider();
-  });
-
-  describe('constructor', () => {
-    it('sets correct provider info', () => {
-      const info = provider.getInfo();
-      expect(info.id).toBe('google-cloud');
-      expect(info.name).toBe('Google Cloud Translation');
-      expect(info.type).toBe('cloud');
-      expect(info.qualityTier).toBe('standard');
-    });
-
-    it('sets cost per million', () => {
-      expect(provider.costPerMillion).toBe(20);
-    });
-  });
-
-  describe('initialize', () => {
-    it('loads config from storage when API key exists', async () => {
-      mockStorage['google_cloud_api_key'] = 'AIza-test-key';
-      mockStorage['google_cloud_chars_used'] = 5000;
-
-      await provider.initialize();
-
-      expect(await provider.isAvailable()).toBe(true);
-      const info = provider.getInfo();
-      expect(info.charactersUsed).toBe(5000);
-    });
-
-    it('handles missing API key', async () => {
-      await provider.initialize();
-      expect(await provider.isAvailable()).toBe(false);
-    });
-  });
-
-  describe('setApiKey', () => {
-    it('stores API key in storage', async () => {
-      await provider.setApiKey('AIza-new-key');
-
-      expect(mockStorage['google_cloud_api_key']).toBe('AIza-new-key');
-      expect(await provider.isAvailable()).toBe(true);
-    });
-  });
-
-  describe('clearApiKey', () => {
-    it('removes all config from storage', async () => {
-      mockStorage['google_cloud_api_key'] = 'key';
-      mockStorage['google_cloud_chars_used'] = 1000;
-
-      await provider.setApiKey('key');
-      await provider.clearApiKey();
-
-      expect(await provider.isAvailable()).toBe(false);
-    });
   });
 
   describe('translate', () => {
@@ -109,18 +38,19 @@ describe('GoogleCloudProvider', () => {
 
     it('throws when API key not configured', async () => {
       const noKeyProvider = new GoogleCloudProvider();
-      await expect(noKeyProvider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+      await expectProviderError(noKeyProvider.translate('Hello', 'en', 'fi'), {
+        category: 'auth',
+        technicalDetailsPattern: /Google Cloud API key not configured/,
+      });
     });
 
     it('sends correct request for single text', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            data: {
-              translations: [{ translatedText: 'Hei', detectedSourceLanguage: 'en' }],
-            },
-          }),
+      queueJsonResponse({
+        data: {
+          translations: [
+            { translatedText: 'Hei', detectedSourceLanguage: 'en' },
+          ],
+        },
       });
 
       const result = await provider.translate('Hello', 'en', 'fi');
@@ -146,17 +76,13 @@ describe('GoogleCloudProvider', () => {
     });
 
     it('handles batch translation', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            data: {
-              translations: [
-                { translatedText: 'Hei' },
-                { translatedText: 'Maailma' },
-              ],
-            },
-          }),
+      queueJsonResponse({
+        data: {
+          translations: [
+            { translatedText: 'Hei' },
+            { translatedText: 'Maailma' },
+          ],
+        },
       });
 
       const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
@@ -169,14 +95,12 @@ describe('GoogleCloudProvider', () => {
     });
 
     it('omits source for auto-detect', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            data: {
-              translations: [{ translatedText: 'Hei', detectedSourceLanguage: 'en' }],
-            },
-          }),
+      queueJsonResponse({
+        data: {
+          translations: [
+            { translatedText: 'Hei', detectedSourceLanguage: 'en' },
+          ],
+        },
       });
 
       await provider.translate('Hello', 'auto', 'fi');
@@ -185,26 +109,28 @@ describe('GoogleCloudProvider', () => {
       expect(body.source).toBeUndefined();
     });
 
-    it('handles API errors', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 403,
-        text: () => Promise.resolve('API key invalid'),
-        headers: { get: () => null },
-      });
-
-      await expect(provider.translate('Hello', 'en', 'fi')).rejects.toThrow();
+    defineProviderErrorTests({
+      run: () => provider.translate('Hello', 'en', 'fi'),
+      cases: [
+        {
+          title: 'handles API errors',
+          arrange: () => {
+            queueHttpError(403, 'API key invalid');
+          },
+          expected: {
+            category: 'auth',
+            messagePattern: /api.key|auth|forbidden|invalid/i,
+            technicalDetailsPattern: /api.key|invalid/i,
+          },
+        },
+      ],
     });
 
     it('tracks character usage', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            data: {
-              translations: [{ translatedText: 'Hei' }],
-            },
-          }),
+      queueJsonResponse({
+        data: {
+          translations: [{ translatedText: 'Hei' }],
+        },
       });
 
       await provider.translate('Hello', 'en', 'fi');
@@ -237,6 +163,37 @@ describe('GoogleCloudProvider', () => {
       const info = provider.getInfo();
       expect(info.charactersUsed).toBe(10); // 'Hello'.length + 'World'.length
     });
+
+    it('rejects invalid response cardinality for batch translation', async () => {
+      queueJsonResponse({
+        data: {
+          translations: [{ translatedText: 'Hei' }],
+        },
+      });
+
+      await expectProviderError(provider.translate(['Hello', 'World'], 'en', 'fi'), {
+        category: 'internal',
+        messagePattern: /translation failed unexpectedly/i,
+        technicalDetailsPattern: /expected 2 translations, received 1/i,
+      });
+    });
+
+    it('does not track character usage when translation response is invalid', async () => {
+      queueJsonResponse({
+        data: {
+          translations: [],
+        },
+      });
+
+      await expectProviderError(provider.translate('Hello', 'en', 'fi'), {
+        category: 'internal',
+        messagePattern: /translation failed unexpectedly/i,
+        technicalDetailsPattern: /expected 1 translations, received 0/i,
+      });
+
+      const info = provider.getInfo();
+      expect(info.charactersUsed).toBe(0);
+    });
   });
 
   describe('detectLanguage', () => {
@@ -248,14 +205,10 @@ describe('GoogleCloudProvider', () => {
     it('detects language using detection endpoint', async () => {
       await provider.setApiKey('AIza-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            data: {
-              detections: [[{ language: 'fi', confidence: 0.98 }]],
-            },
-          }),
+      queueJsonResponse({
+        data: {
+          detections: [[{ language: 'fi', confidence: 0.98 }]],
+        },
       });
 
       const result = await provider.detectLanguage('Hei maailma');
@@ -265,14 +218,10 @@ describe('GoogleCloudProvider', () => {
     it('uses correct detection endpoint', async () => {
       await provider.setApiKey('AIza-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            data: {
-              detections: [[{ language: 'en', confidence: 0.99 }]],
-            },
-          }),
+      queueJsonResponse({
+        data: {
+          detections: [[{ language: 'en', confidence: 0.99 }]],
+        },
       });
 
       await provider.detectLanguage('Hello');
@@ -284,14 +233,10 @@ describe('GoogleCloudProvider', () => {
     it('uses only first 200 chars for detection', async () => {
       await provider.setApiKey('AIza-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            data: {
-              detections: [[{ language: 'en', confidence: 0.9 }]],
-            },
-          }),
+      queueJsonResponse({
+        data: {
+          detections: [[{ language: 'en', confidence: 0.9 }]],
+        },
       });
 
       await provider.detectLanguage('x'.repeat(500));
@@ -303,10 +248,7 @@ describe('GoogleCloudProvider', () => {
     it('returns auto on API error', async () => {
       await provider.setApiKey('AIza-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-      });
+      queueHttpError(500);
 
       const result = await provider.detectLanguage('Hello');
       expect(result).toBe('auto');
@@ -336,13 +278,11 @@ describe('GoogleCloudProvider', () => {
     it('tracks accumulated usage', async () => {
       await provider.setApiKey('key');
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            data: { translations: [{ translatedText: 'Test' }] },
-          }),
-      });
+      mockFetch.mockResolvedValue(
+        okJsonResponse({
+          data: { translations: [{ translatedText: 'Test' }] },
+        }),
+      );
 
       await provider.translate('Hello', 'en', 'fi');
       await provider.translate('World', 'en', 'fi');
@@ -378,12 +318,8 @@ describe('GoogleCloudProvider', () => {
     it('returns true on successful translation', async () => {
       await provider.setApiKey('AIza-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            data: { translations: [{ translatedText: 'Hei' }] },
-          }),
+      queueJsonResponse({
+        data: { translations: [{ translatedText: 'Hei' }] },
       });
 
       const result = await provider.test();
@@ -393,7 +329,7 @@ describe('GoogleCloudProvider', () => {
     it('returns false on error', async () => {
       await provider.setApiKey('AIza-key');
 
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      queueRejectedFetch(new Error('Network error'));
 
       const result = await provider.test();
       expect(result).toBe(false);
@@ -416,9 +352,9 @@ describe('GoogleCloudProvider', () => {
   describe('initialize error', () => {
     it('does not crash when chrome.storage.local.get throws', async () => {
       const originalGet = chrome.storage.local.get;
-      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-        new Error('Storage error')
-      );
+      (
+        chrome.storage.local.get as ReturnType<typeof vi.fn>
+      ).mockRejectedValueOnce(new Error('Storage error'));
 
       await expect(provider.initialize()).resolves.not.toThrow();
 
@@ -431,7 +367,7 @@ describe('GoogleCloudProvider', () => {
     it('returns auto when fetch throws during detectLanguage', async () => {
       await provider.setApiKey('test-key');
 
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+      queueRejectedFetch(new Error('Network error'));
 
       const result = await provider.detectLanguage('Bonjour');
       expect(result).toBe('auto');
@@ -441,7 +377,9 @@ describe('GoogleCloudProvider', () => {
   describe('initialize with missing chars_used', () => {
     it('defaults charactersUsed to 0 when google_cloud_chars_used is undefined', async () => {
       // Only set api key, omit chars_used to exercise nullish coalescing
-      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      (
+        chrome.storage.local.get as ReturnType<typeof vi.fn>
+      ).mockResolvedValueOnce({
         google_cloud_api_key: 'test-key',
         // google_cloud_chars_used is deliberately omitted → ?? 0
       });
@@ -459,11 +397,8 @@ describe('GoogleCloudProvider', () => {
       await provider.setApiKey('test-key');
 
       // Simulate response.ok=true but detection is empty/null
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          data: { detections: [[{ language: '' }]] },
-        }),
+      queueJsonResponse({
+        data: { detections: [[{ language: '' }]] },
       });
 
       const result = await provider.detectLanguage('Some text here');
@@ -473,11 +408,8 @@ describe('GoogleCloudProvider', () => {
     it('returns auto when API returns null detection', async () => {
       await provider.setApiKey('test-key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          data: { detections: [[{ language: null }]] },
-        }),
+      queueJsonResponse({
+        data: { detections: [[{ language: null }]] },
       });
 
       const result = await provider.detectLanguage('Some text here');
@@ -502,21 +434,19 @@ describe('GoogleCloudProvider', () => {
     it('persistChar usage failure does not crash translate', async () => {
       await provider.setApiKey('AIza-test-key');
       // @ts-expect-error unused side-effect
-      const _consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const _consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
 
       // Make storage.set fail
-      (chrome.storage.local.set as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-        new Error('Storage failed')
-      );
+      (
+        chrome.storage.local.set as ReturnType<typeof vi.fn>
+      ).mockRejectedValueOnce(new Error('Storage failed'));
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            data: {
-              translations: [{ translatedText: 'Hei' }],
-            },
-          }),
+      queueJsonResponse({
+        data: {
+          translations: [{ translatedText: 'Hei' }],
+        },
       });
 
       // Should still succeed despite storage error
@@ -555,14 +485,10 @@ describe('GoogleCloudProvider', () => {
     it('handles missing language in detection response', async () => {
       await provider.setApiKey('key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            data: {
-              detections: [[]],  // Empty detection array
-            },
-          }),
+      queueJsonResponse({
+        data: {
+          detections: [[]], // Empty detection array
+        },
       });
 
       const result = await provider.detectLanguage('text');
@@ -572,10 +498,7 @@ describe('GoogleCloudProvider', () => {
     it('handles response.ok=false during detectLanguage silently', async () => {
       await provider.setApiKey('key');
 
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 429,
-      });
+      queueHttpError(429);
 
       const result = await provider.detectLanguage('text');
       expect(result).toBe('auto');

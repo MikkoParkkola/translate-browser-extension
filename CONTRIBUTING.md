@@ -8,16 +8,21 @@ Thanks for your interest in contributing to TRANSLATE!
 git clone https://github.com/MikkoParkkola/translate-browser-extension.git
 cd translate-browser-extension
 npm install
-npm test          # Run 5,038 unit tests
+npm test          # Run the full unit suite
 npm run build     # Build extension to dist/
 ```
 
 ## Testing
 
 - `npm test` — Run all unit tests (Vitest)
-- `npm run test:coverage` — Run with coverage (thresholds: 100/98/100/100)
+- `npm run test:coverage` — Run with coverage gates enforced from `vitest.config.ts`
 - `npm run test:mutation` — Mutation testing (Stryker, core + providers)
 - `npm run test:e2e` — E2E tests (Playwright, requires `npm run build` first)
+- `npm run validate:ci` — Run the same lint/format/typecheck/unit-test contract used by CI
+- `npm run validate:build` — Build the extension bundle and enforce size limits
+
+Vitest is the unit / PDF runner for `src/**` tests. Browser E2E coverage lives under
+`e2e/` and is driven by Playwright via `playwright.config.ts`.
 
 ### Test patterns
 

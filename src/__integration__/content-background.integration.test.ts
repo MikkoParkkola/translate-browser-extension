@@ -7,36 +7,12 @@
  */
 
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
+import { setupChromeApiMock } from '../test-helpers/chrome-mocks';
+import { setupChromeRuntimeMessagingMocks } from '../test-helpers/chrome-runtime-messaging-mocks';
 
 // ---------------------------------------------------------------------------
 // Chrome API mock (must precede all module imports)
 // ---------------------------------------------------------------------------
-const messageListeners: Array<
-  (msg: unknown, sender: unknown, sendResponse: (r: unknown) => void) => boolean | void
-> = [];
-
-const storageStore: Record<string, unknown> = {};
-
-const mockStorageGet = vi.fn((keys: string | string[]) => {
-  const result: Record<string, unknown> = {};
-  const keyArr = Array.isArray(keys) ? keys : [keys];
-  for (const k of keyArr) {
-    if (k in storageStore) result[k] = storageStore[k];
-  }
-  return Promise.resolve(result);
-});
-
-const mockStorageSet = vi.fn((items: Record<string, unknown>) => {
-  Object.assign(storageStore, items);
-  return Promise.resolve();
-});
-
-const mockStorageRemove = vi.fn((keys: string | string[]) => {
-  const keyArr = Array.isArray(keys) ? keys : [keys];
-  for (const k of keyArr) delete storageStore[k];
-  return Promise.resolve();
-});
-
 /**
  * Offscreen document simulation.
  * sendToOffscreen() uses chrome.runtime.sendMessage(msg, callback) — callback pattern.
@@ -73,14 +49,8 @@ const mockRuntimeSendMessage = vi.fn().mockImplementation(
   },
 );
 
-vi.stubGlobal('chrome', {
+const contentBackgroundChromeMock = setupChromeApiMock({
   runtime: {
-    onMessage: {
-      addListener: vi.fn((fn: (typeof messageListeners)[0]) => messageListeners.push(fn)),
-    },
-    onInstalled: { addListener: vi.fn() },
-    onStartup: { addListener: vi.fn() },
-    onConnect: { addListener: vi.fn() },
     getURL: vi.fn((p: string) => `chrome-extension://test/${p}`),
     getContexts: vi.fn().mockResolvedValue([
       { documentUrl: 'chrome-extension://test/src/offscreen/offscreen.html' },
@@ -99,27 +69,27 @@ vi.stubGlobal('chrome', {
     closeDocument: vi.fn().mockResolvedValue(undefined),
     Reason: { WORKERS: 'WORKERS' },
   },
-  action: { onClicked: { addListener: vi.fn() } },
   contextMenus: {
     create: vi.fn(),
     removeAll: vi.fn((cb?: () => void) => cb?.()),
-    onClicked: { addListener: vi.fn() },
   },
-  commands: { onCommand: { addListener: vi.fn() } },
   tabs: {
     create: vi.fn(),
     query: vi.fn().mockResolvedValue([]),
-    onUpdated: { addListener: vi.fn() },
   },
   scripting: { executeScript: vi.fn().mockResolvedValue([]) },
   storage: {
-    local: {
-      get: mockStorageGet,
-      set: mockStorageSet,
-      remove: mockStorageRemove,
-    },
+    localState: {},
   },
 });
+
+const contentBackgroundRuntimeMocks = setupChromeRuntimeMessagingMocks({
+  chromeApi: contentBackgroundChromeMock.chrome as unknown as Record<string, any>,
+});
+
+const messageListeners = contentBackgroundRuntimeMocks.runtime.onMessage.listeners;
+const storageStore = contentBackgroundChromeMock.storageState.local;
+const mockStorageGet = contentBackgroundChromeMock.chrome.storage.local.get;
 
 // ---------------------------------------------------------------------------
 // Import the service worker to register its message handler
@@ -145,14 +115,6 @@ function sendToBg(msg: Record<string, unknown>): Promise<unknown> {
 
 describe('Content ↔ Background messaging integration', () => {
   beforeEach(async () => {
-    // Reset mocks but keep the listener registration
-    mockRuntimeSendMessage.mockClear();
-    mockStorageSet.mockClear();
-    (mockStorageGet as Mock).mockClear();
-
-    // Clear storage between tests
-    for (const k of Object.keys(storageStore)) delete storageStore[k];
-
     // Load module once (vitest caches), grab the handler
     if (messageListeners.length === 0) {
       await import('../background/service-worker');

@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { createBrowserApiModuleMock } from '../test-helpers/browser-api-mocks';
 
 // ---------------------------------------------------------------------------
 // Shared mock fns — re-used across module resets
@@ -37,13 +38,13 @@ async function freshModule() {
     showInfoToast: (...args: unknown[]) => mockShowInfoToast(...args),
     showErrorToast: (...args: unknown[]) => mockShowErrorToast(...args),
   }));
-  vi.doMock('../core/browser-api', () => ({
-    browserAPI: {
+  vi.doMock('../core/browser-api', () =>
+    createBrowserApiModuleMock({
       runtime: {
-        sendMessage: (...args: unknown[]) => mockSendMessage(...args),
+        sendMessage: mockSendMessage,
       },
-    },
-  }));
+    })
+  );
   return import('./screenshot-ocr');
 }
 

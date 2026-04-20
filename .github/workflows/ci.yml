@@ -2,10 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [ "**" ]
+    branches: ['**']
   pull_request:
-    branches: [ "**" ]
+    branches: ['**']
   workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
@@ -18,7 +22,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
@@ -34,32 +38,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Check formatting
-        run: npm run format
-
-      - name: Type check
-        run: npm run typecheck
-
-      - name: Type check popup
-        run: npm run typecheck:popup
-
-      - name: Run unit tests
-        run: npm test
+      - name: Validate core quality gates
+        run: npm run validate:ci
         env:
           CI: true
 
-      - name: Build dist
-        run: npm run build
-
-      - name: Check bundle size
-        run: npm run size
-        continue-on-error: false
+      - name: Build dist and check bundle size
+        run: npm run validate:build
 
       - name: Build ZIP artifact
-        run: npm run build:zip
+        run: npm run zip
 
       - name: Upload dist
         uses: actions/upload-artifact@v4
@@ -82,7 +70,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v3
         id: filter
         with:
           filters: |
@@ -99,12 +87,13 @@ jobs:
   e2e-web:
     needs: build-and-test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
@@ -125,7 +114,9 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run e2e web smoke
-        run: xvfb-run -a npm run test:e2e:web
+        run: BACKGROUND=false npm run test:e2e:web:smoke
+        env:
+          CI: true
 
       - name: Upload Playwright report
         if: always()
@@ -143,7 +134,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'

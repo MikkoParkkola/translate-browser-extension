@@ -4,34 +4,50 @@
  */
 
 import type { TranslationProviderId, TranslationPipeline } from '../types';
-import { createTranslationError, extractErrorMessage } from '../core/errors';
-import { getTranslationCache, type TranslationCacheStats } from '../core/translation-cache';
+import { extractErrorMessage } from '../core/errors';
+import { getTranslationCache } from '../core/translation-cache';
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
 import { profiler } from '../core/profiler';
 import { withTimeout } from '../core/async-utils';
 
 // Extracted modules
-import { MODEL_MAP, PIVOT_ROUTES } from './model-maps';
+import {
+  getModelId,
+  getSupportedLanguagePairs,
+  resolveOpusMtTranslationRoute,
+} from './model-maps';
+import { getOpusMtPipelineConfig, preloadOpusMtModel } from './opus-runtime';
+import {
+  collectBatchTranslationInputs,
+  mergeBatchTranslationResults,
+  translateArrayItems,
+} from './batch-translation';
+import {
+  logDownloadedModelTrackingFailure,
+  reportModelProgress,
+  trackDownloadedModel,
+} from './model-download-tracker';
 import { getCachedPipeline, cachePipeline, clearCache as clearPipelineCache, castAsPipeline } from './pipeline-cache';
 import { buildLanguageDetectionSample, detectLanguage } from './language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline, detectWebGPU, detectWebNN } from './translategemma';
 import { getChromeTranslator, isChromeTranslatorAvailable } from '../providers/chrome-translator';
 import { DEFAULT_PROVIDER_ID } from '../shared/provider-options';
 import {
-  buildOpusMtExecutionPlan,
-  describeOpusMtExecutionConfig,
-} from '../shared/opus-mt-runtime';
+  flushOffscreenCloudProviderTelemetry,
+  getOffscreenCloudProviderUsage,
+  isOffscreenCloudProviderRuntimeId,
+  translateWithOffscreenCloudProvider,
+} from './cloud-provider-runtime';
 import {
-  countOpusMtSentences,
-  translateOpusMtText,
-} from '../shared/opus-mt-segmentation';
-
-// Cloud providers
-import { deeplProvider } from '../providers/deepl';
-import { openaiProvider } from '../providers/openai';
-import { anthropicProvider } from '../providers/anthropic';
-import { googleCloudProvider } from '../providers/google-cloud';
+  isOffscreenTargetedMessage,
+  routeOffscreenMessage,
+  type OffscreenMessageByType,
+  type OffscreenMessageHandlers,
+  type OffscreenMessageResponseMap,
+  type OffscreenRoutedResponse,
+} from './message-routing';
+import { cropImageToDataUrl } from './image-crop';
 
 // OCR service
 import { extractTextFromImage, terminateOCR, type OCRResult } from '../core/ocr-service';
@@ -71,7 +87,6 @@ async function getTransformers(): Promise<TransformersLib> {
   lib.env.allowRemoteModels = true;
   lib.env.allowLocalModels = false;
   lib.env.useBrowserCache = true;
-  lib.env.useWasmCache = true;
   /* v8 ignore start */
   if (lib.env.backends?.onnx?.wasm) {
     lib.env.backends.onnx.wasm.wasmPaths = wasmBasePath;
@@ -81,16 +96,26 @@ async function getTransformers(): Promise<TransformersLib> {
   return lib;
 }
 
+function normalizeProgressStatus(value: unknown): 'initiate' | 'download' | 'progress' | 'done' {
+  switch (value) {
+    case 'initiate':
+    case 'download':
+    case 'done':
+      return value;
+    default:
+      return 'progress';
+  }
+}
+
 /**
  * Get or create pipeline for a language pair with LRU caching.
  */
 async function getPipeline(sourceLang: string, targetLang: string, sessionId?: string): Promise<TranslationPipeline> {
-  const key = `${sourceLang}-${targetLang}`;
-  const modelId = MODEL_MAP[key];
+  const modelId = getModelId(sourceLang, targetLang);
 
   /* v8 ignore start -- defensive guard for unsupported language pair */
   if (!modelId) {
-    throw new Error(`Unsupported language pair: ${key}`);
+    throw new Error(`Unsupported language pair: ${sourceLang}-${targetLang}`);
   }
   /* v8 ignore stop */
 
@@ -101,128 +126,67 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
     if (sessionId) {
       profiler.recordTiming(sessionId, 'model_load', 0, { cached: true, modelId });
     }
+    reportModelProgress(modelId, { status: 'ready', progress: 100 });
+    void trackDownloadedModel(modelId).catch((error) => {
+      logDownloadedModelTrackingFailure('refresh downloaded model inventory', error);
+    });
     return cached;
   }
 
   log.info(` Loading model: ${modelId}`);
   const loadStart = performance.now();
 
-  const webgpu = CONFIG.experimental.opusMtWebgpuProbe
-    ? await detectWebGPU()
-    : { supported: false, fp16: false };
-  const attempts = buildOpusMtExecutionPlan(webgpu, CONFIG.experimental.opusMtWebgpuProbe);
+  // OPUS-MT models MUST use WASM device. WebGPU causes degenerate output
+  // (repeated words like "Figure Figure..." or "Switzerland Switzerland...")
+  // with q8-quantized Marian models. WebGPU is only viable for models with
+  // dedicated fp16 ONNX files (e.g., TranslateGemma).
+  const { device, dtype } = getOpusMtPipelineConfig({ supported: false, fp16: false });
+  log.info(` Using device: ${device}, dtype: ${dtype}`);
 
   // Use optimized timeout for OPUS-MT direct models (~85MB quantized, typically loads in <30s)
-  let pipe: unknown;
-  let loadedAttempt = attempts[0];
-  let lastError: unknown;
-  const attemptErrors: string[] = [];
-  for (const attempt of attempts) {
-    const label = describeOpusMtExecutionConfig(attempt);
-    const attemptFiles = new Set<string>();
-    log.info(
-      ` Trying ${label}: device=${attempt.device}, dtype=${attempt.dtype}, reason=${attempt.reason}`
+  // If WebGPU fails (GPU incompatibility), fall back to WASM+q8 automatically.
+  let pipe;
+  try {
+    reportModelProgress(modelId, { status: 'initiate', progress: 0 });
+    pipe = await withTimeout(
+      (await getTransformers()).pipeline('translation', modelId, {
+        device,
+        dtype,
+        progress_callback: (progress: Record<string, unknown>) => {
+          reportModelProgress(modelId, {
+            status: normalizeProgressStatus(progress.status),
+            progress: typeof progress.progress === 'number' ? progress.progress : undefined,
+            file: typeof progress.file === 'string' ? progress.file : undefined,
+            loaded: typeof progress.loaded === 'number' ? progress.loaded : undefined,
+            total: typeof progress.total === 'number' ? progress.total : undefined,
+          });
+        },
+      } as Record<string, unknown>),
+      CONFIG.timeouts.opusMtDirectMs,
+      `Loading model ${modelId}`
     );
-    try {
-      pipe = await withTimeout(
-        (await getTransformers()).pipeline('translation', modelId, {
-          device: attempt.device,
-          dtype: attempt.dtype,
-          progress_callback: (progress: { file?: string | null }) => {
-            if (typeof progress.file === 'string' && progress.file.length > 0) {
-              attemptFiles.add(progress.file);
-            }
-          },
-        } as Record<string, unknown>),
-        CONFIG.timeouts.opusMtDirectMs,
-        `Loading model ${modelId}`
-      );
-      loadedAttempt = attempt;
-      break;
-    } catch (error) {
-      lastError = error;
-      const errorMessage = extractErrorMessage(error);
-      const fileSuffix = attemptFiles.size > 0
-        ? ` [files: ${Array.from(attemptFiles).join(', ')}]`
-        : '';
-      attemptErrors.push(`${label}${fileSuffix}: ${errorMessage}`);
-      log.warn(` ${label} failed for ${modelId}: ${errorMessage}`);
-    }
-  }
-
-  if (!pipe) {
+  } catch (error) {
     /* v8 ignore start -- defensive rethrow */
-    throw new Error(
-      attemptErrors.length > 0
-        ? `Failed to load model ${modelId}. Attempts: ${attemptErrors.join(' | ')}`
-        : extractErrorMessage(lastError, `Failed to load model ${modelId}`)
-    );
+    throw error;
     /* v8 ignore stop */
   }
 
   const loadDuration = performance.now() - loadStart;
   if (sessionId) {
-    profiler.recordTiming(sessionId, 'model_load', loadDuration, {
-      cached: false,
-      modelId,
-      device: loadedAttempt.device,
-      dtype: loadedAttempt.dtype,
-    });
+    profiler.recordTiming(sessionId, 'model_load', loadDuration, { cached: false, modelId, device });
   }
-  log.info(
-    ` Model loaded: ${modelId} in ${loadDuration.toFixed(0)}ms (${describeOpusMtExecutionConfig(loadedAttempt)})`
-  );
+  log.info(` Model loaded: ${modelId} in ${loadDuration.toFixed(0)}ms`);
 
   // Store in LRU cache (may evict old models)
   cachePipeline(modelId, castAsPipeline(pipe));
+  reportModelProgress(modelId, { status: 'ready', progress: 100 });
+  try {
+    await trackDownloadedModel(modelId);
+  } catch (error) {
+    logDownloadedModelTrackingFailure('persist downloaded model inventory', error);
+  }
 
   return castAsPipeline(pipe);
-}
-
-function logOpusMtProbeTranslation(
-  input: string,
-  translated: string,
-  context: { index?: number }
-): void {
-  if (!CONFIG.experimental.opusMtWebgpuProbe) {
-    return;
-  }
-
-  const inputSentences = countOpusMtSentences(input);
-  const outputSentences = countOpusMtSentences(translated);
-  const suspicious = inputSentences > 1 && outputSentences < inputSentences;
-  const shouldLog = suspicious || context.index === undefined || context.index < 3;
-
-  if (!shouldLog) {
-    return;
-  }
-
-  const label = context.index === undefined ? 'single' : `batch#${context.index}`;
-  log.info(
-    `[OPUS-MT probe] ${label}: chars=${input.length}->${translated.length}, sentences=${inputSentences}->${outputSentences}, inHead=${JSON.stringify(input.slice(0, 80))}, outHead=${JSON.stringify(translated.slice(0, 80))}, outTail=${JSON.stringify(translated.slice(-80))}`
-  );
-
-  if (suspicious) {
-    log.warn(
-      `[OPUS-MT probe] Possible multi-sentence truncation for ${label}: input sentences=${inputSentences}, output sentences=${outputSentences}`
-    );
-  }
-}
-
-async function translateProbeAwareText(
-  pipe: TranslationPipeline,
-  text: string,
-  context: { index?: number }
-): Promise<string> {
-  return translateOpusMtText(pipe, text, {
-    splitMultiSentence: CONFIG.experimental.opusMtWebgpuProbe,
-    onSplit: (segmentCount) => {
-      const label = context.index === undefined ? 'single' : `batch#${context.index}`;
-      log.info(
-        `[OPUS-MT probe] ${label}: split ${segmentCount} input sentences into per-sentence inference calls`
-      );
-    },
-  });
 }
 
 /**
@@ -244,27 +208,26 @@ async function translateDirect(
     if (text.length === 0) return [];
     /* v8 ignore stop */
 
-    const results = await Promise.all(
-      text.map(async (t, i) => {
-        /* v8 ignore start -- empty string guard */
-        if (!t || t.trim().length === 0) return t;
-        /* v8 ignore stop */
-        try {
-          const translated = await translateProbeAwareText(pipe, t, { index: i });
-          if (CONFIG.experimental.opusMtWebgpuProbe) {
-            logOpusMtProbeTranslation(t, translated, { index: i });
-          } else {
-            /* v8 ignore start -- debug logging branch */
-            log.debug(`Model #${i}: "${t.substring(0, 40)}" -> "${translated.substring(0, 40)}" (same=${t === translated})`);
-            /* v8 ignore stop */
+    const results = await translateArrayItems(
+      text,
+      async (value) => {
+        const result = await pipe(value, { max_length: 512 });
+        return (result as Array<{ translation_text: string }>)[0].translation_text;
+      },
+      {
+        onItemTranslated: ({ index, text: originalText, translation }) => {
+          /* v8 ignore start -- debug logging branch */
+          // Debug: log first 3 to verify model output
+          if (index < 3) {
+            log.debug(`Model #${index}: "${originalText.substring(0, 40)}" -> "${translation.substring(0, 40)}" (same=${originalText === translation})`);
           }
-          return translated;
-        } catch (error) {
+          /* v8 ignore stop */
+        },
+        onItemError: ({ text: originalText, error }) => {
           // Per-item error: return original text instead of crashing entire batch
-          log.warn(` Translation failed for item (${t.substring(0, 30)}...):`, error);
-          return t;
-        }
-      })
+          log.warn(` Translation failed for item (${originalText.substring(0, 30)}...):`, error);
+        },
+      }
     );
 
     const inferenceDuration = performance.now() - inferenceStart;
@@ -282,8 +245,7 @@ async function translateDirect(
   /* v8 ignore start -- empty string guard */
   if (!text || text.trim().length === 0) return text;
   /* v8 ignore stop */
-  const translated = await translateProbeAwareText(pipe, text, {});
-  logOpusMtProbeTranslation(text, translated, {});
+  const result = await pipe(text, { max_length: 512 });
 
   const inferenceDuration = performance.now() - inferenceStart;
   if (sessionId) {
@@ -293,7 +255,7 @@ async function translateDirect(
     });
   }
 
-  return translated;
+  return (result as Array<{ translation_text: string }>)[0].translation_text;
 }
 
 /**
@@ -317,44 +279,30 @@ async function translate(
       profiler.recordTiming(sessionId, 'language_detect', performance.now() - detectStart);
     }
     log.info(`Auto-detected source: ${actualSourceLang}`);
+  }
 
-    // Don't translate if source equals target
-    if (actualSourceLang === targetLang) {
-      log.info(' Source equals target, skipping translation');
-      return text;
-    }
+  if (actualSourceLang === targetLang) {
+    log.info(' Source equals target, skipping translation');
+    return text;
   }
 
   const cache = getTranslationCache();
 
   // Handle array of texts
   if (Array.isArray(text)) {
-    const results: string[] = [];
-    const uncachedItems: Array<{ index: number; text: string }> = [];
-
-    // Check cache for each text
-    for (let i = 0; i < text.length; i++) {
-      const t = text[i];
-      if (!t || t.trim().length === 0) {
-        results[i] = t;
-        continue;
-      }
-
-      const cached = await cache.get(t, actualSourceLang, targetLang, provider);
-      if (cached !== null) {
+    const { results, uncachedItems } = await collectBatchTranslationInputs(text, {
+      getCached: (value) => cache.get(value, actualSourceLang, targetLang, provider),
+      onCacheHit: ({ index, text: originalText, cached }) => {
         // Identity translations (cached === original) are valid: OPUS-MT legitimately
         // returns the original text for proper nouns, brand names, loanwords, etc.
         // Serve them from cache to avoid repeated expensive model inference.
         /* v8 ignore start -- debug logging branch */
-        if (i < 3) {
-          log.debug(`Cache #${i}: "${t.substring(0, 30)}" -> "${cached.substring(0, 30)}"${cached === t ? ' (identity)' : ''}`);
+        if (index < 3) {
+          log.debug(`Cache #${index}: "${originalText.substring(0, 30)}" -> "${cached.substring(0, 30)}"${cached === originalText ? ' (identity)' : ''}`);
         }
         /* v8 ignore stop */
-        results[i] = cached;
-      } else {
-        uncachedItems.push({ index: i, text: t });
-      }
-    }
+      },
+    });
 
     // Translate uncached items
     if (uncachedItems.length > 0) {
@@ -369,35 +317,31 @@ async function translate(
         pageContext
       );
 
-      // Store results and cache them.
-      // Results are always returned to the user even if caching fails.
-      /* v8 ignore start -- ternary: Array.isArray */
-      const translationArray = Array.isArray(translations) ? translations : [translations];
-      /* v8 ignore stop */
-      let cacheFails = 0;
-      for (let i = 0; i < uncachedItems.length; i++) {
-        const { index, text: originalText } = uncachedItems[i];
-        const translation = translationArray[i];
-        results[index] = translation;
-
-        // Cache all translations including identity translations (output === input).
-        // OPUS-MT legitimately returns original text for proper nouns, brand names,
-        // loanwords, and short words. Caching these prevents repeated model inference.
-        try {
-          await cache.set(originalText, actualSourceLang, targetLang, provider, translation);
-        } catch (error) {
-          cacheFails++;
-          if (cacheFails <= 2) {
-            log.warn(`Failed to cache translation (${cacheFails}):`, error);
-          }
+      const { results: mergedResults, cacheFailures } = await mergeBatchTranslationResults(
+        results,
+        uncachedItems,
+        translations,
+        {
+          // Cache all translations including identity translations (output === input).
+          // OPUS-MT legitimately returns original text for proper nouns, brand names,
+          // loanwords, and short words. Caching these prevents repeated model inference.
+          storeCached: (originalText, translation) => (
+            cache.set(originalText, actualSourceLang, targetLang, provider, translation)
+          ),
+          onCacheStoreFailure: ({ failureCount, error }) => {
+            if (failureCount <= 2) {
+              log.warn(`Failed to cache translation (${failureCount}):`, error);
+            }
+          },
+          onIdentityTranslation: ({ text: originalText }) => {
+            log.debug(`Identity translation cached for "${originalText.substring(0, 30)}"`);
+          },
         }
-        if (translation === originalText) {
-          log.debug(`Identity translation cached for "${originalText.substring(0, 30)}"`);
-        }
+      );
+      if (cacheFailures > 2) {
+        log.warn(`Cache write failed for ${cacheFailures}/${uncachedItems.length} items`);
       }
-      if (cacheFails > 2) {
-        log.warn(`Cache write failed for ${cacheFails}/${uncachedItems.length} items`);
-      }
+      return mergedResults;
     }
 
     return results;
@@ -466,52 +410,19 @@ async function executeProvider(
     return translateWithGemma(text, sourceLang, targetLang, pageContext);
   }
 
-  // DeepL Cloud Provider
-  if (provider === 'deepl') {
-    await deeplProvider.initialize();
-    if (!(await deeplProvider.isAvailable())) {
-      throw new Error('DeepL API key not configured. Please configure in Settings.');
-    }
-    return deeplProvider.translate(text, sourceLang, targetLang);
-  }
-
-  // OpenAI Cloud Provider
-  if (provider === 'openai') {
-    await openaiProvider.initialize();
-    if (!(await openaiProvider.isAvailable())) {
-      throw new Error('OpenAI API key not configured. Please configure in Settings.');
-    }
-    return openaiProvider.translate(text, sourceLang, targetLang);
-  }
-
-  // Anthropic Cloud Provider
-  if (provider === 'anthropic') {
-    await anthropicProvider.initialize();
-    if (!(await anthropicProvider.isAvailable())) {
-      throw new Error('Anthropic API key not configured. Please configure in Settings.');
-    }
-    return anthropicProvider.translate(text, sourceLang, targetLang);
-  }
-
-  // Google Cloud Provider
-  if (provider === 'google-cloud') {
-    await googleCloudProvider.initialize();
-    if (!(await googleCloudProvider.isAvailable())) {
-      throw new Error('Google Cloud API key not configured. Please configure in Settings.');
-    }
-    return googleCloudProvider.translate(text, sourceLang, targetLang);
+  if (isOffscreenCloudProviderRuntimeId(provider)) {
+    return translateWithOffscreenCloudProvider(provider, text, sourceLang, targetLang);
   }
 
   // OPUS-MT: check for direct model or pivot route
-  const key = `${sourceLang}-${targetLang}`;
+  const route = resolveOpusMtTranslationRoute(sourceLang, targetLang);
 
-  if (MODEL_MAP[key]) {
+  if (route?.kind === 'direct') {
     return translateDirect(text, sourceLang, targetLang, sessionId);
   }
 
-  const pivotRoute = PIVOT_ROUTES[key];
-  if (pivotRoute) {
-    const [firstHop, secondHop] = pivotRoute;
+  if (route?.kind === 'pivot') {
+    const [firstHop, secondHop] = route.route;
     const [firstSrc, firstTgt] = firstHop.split('-');
     const [secondSrc, secondTgt] = secondHop.split('-');
 
@@ -520,7 +431,7 @@ async function executeProvider(
     return translateDirect(intermediateResult, secondSrc, secondTgt, sessionId);
   }
 
-  throw new Error(`Unsupported language pair: ${key}`);
+  throw new Error(`Unsupported language pair: ${sourceLang}-${targetLang}`);
 }
 
 /**
@@ -602,253 +513,183 @@ async function translateWithProvider(
  * Get supported language pairs (direct + pivot).
  */
 function getSupportedLanguages(): Array<{ src: string; tgt: string; pivot?: boolean }> {
-  const direct = Object.keys(MODEL_MAP).map((key) => {
-    const [src, tgt] = key.split('-');
-    return { src, tgt };
-  });
-
-  const pivot = Object.keys(PIVOT_ROUTES).map((key) => {
-    const [src, tgt] = key.split('-');
-    return { src, tgt, pivot: true };
-  });
-
-  return [...direct, ...pivot];
+  return getSupportedLanguagePairs();
 }
 
+function validateTranslateMessage(message: OffscreenMessageByType<'translate'>): string | undefined {
+  if (message.text === undefined || message.text === null) {
+    return 'Missing required field: text';
+  }
+  if (!message.sourceLang || !message.targetLang) {
+    return 'Missing required field: sourceLang or targetLang';
+  }
+  if (!isValidLangCode(message.sourceLang)) {
+    return 'Invalid sourceLang: must be non-empty string, max 20 characters';
+  }
+  if (!isValidLangCode(message.targetLang)) {
+    return 'Invalid targetLang: must be non-empty string, max 20 characters';
+  }
+
+  return undefined;
+}
+
+async function handleOffscreenTranslate(
+  message: OffscreenMessageByType<'translate'>
+): Promise<OffscreenMessageResponseMap['translate']> {
+  const validationError = validateTranslateMessage(message);
+  if (validationError) {
+    return { success: false, error: validationError };
+  }
+
+  const sessionId = message.sessionId;
+  if (sessionId) {
+    profiler.startTiming(sessionId, 'offscreen_processing');
+  }
+
+  const pageContext = typeof message.pageContext === 'string' ? message.pageContext : undefined;
+
+  const result = await translate(
+    message.text,
+    message.sourceLang,
+    message.targetLang,
+    message.provider ?? 'opus-mt',
+    sessionId,
+    pageContext
+  );
+
+  let profilingData = undefined;
+  if (sessionId) {
+    profiler.endTiming(sessionId, 'offscreen_processing');
+    profilingData = profiler.getSessionData(sessionId);
+  }
+
+  return { success: true, result, profilingData };
+}
+
+async function handleOffscreenPreloadModel(
+  message: OffscreenMessageByType<'preloadModel'>
+): Promise<OffscreenMessageResponseMap['preloadModel']> {
+  const isLowPriority = message.priority === 'low';
+  if (isLowPriority) {
+    log.debug(`Low-priority preload: ${message.sourceLang}->${message.targetLang}`);
+  }
+
+  if (message.provider === 'translategemma') {
+    const [gpu, webnn] = await Promise.all([detectWebGPU(), detectWebNN()]);
+    if (!gpu.supported && !webnn) {
+      return {
+        success: false,
+        error: 'TranslateGemma requires WebNN or WebGPU. Neither is available.',
+      };
+    }
+    await getTranslateGemmaPipeline();
+    return { success: true, preloaded: true, available: true };
+  }
+
+  if (message.provider === 'chrome-builtin') {
+    const available = await isChromeTranslatorAvailable();
+    return { success: true, preloaded: available, available };
+  }
+
+  return {
+    success: true,
+    ...(await preloadOpusMtModel(message.sourceLang, message.targetLang, getPipeline)),
+  };
+}
+
+async function handleOffscreenCropImage(
+  message: OffscreenMessageByType<'cropImage'>
+): Promise<OffscreenMessageResponseMap['cropImage']> {
+  return {
+    success: true,
+    imageData: await cropImageToDataUrl(
+      message.imageData,
+      message.rect,
+      message.devicePixelRatio
+    ),
+  };
+}
+
+const offscreenMessageHandlers: OffscreenMessageHandlers = {
+  translate: handleOffscreenTranslate,
+  getProfilingStats: async () => ({
+    success: true,
+    aggregates: profiler.getAllAggregates(),
+    formatted: profiler.formatAggregates(),
+  }),
+  preloadModel: handleOffscreenPreloadModel,
+  getSupportedLanguages: async () => ({
+    success: true,
+    languages: getSupportedLanguages(),
+  }),
+  ping: async () => ({ success: true, status: 'ready' }),
+  checkWebGPU: async () => {
+    const gpu = await detectWebGPU();
+    return { success: true, ...gpu };
+  },
+  checkWebNN: async () => ({
+    success: true,
+    supported: await detectWebNN(),
+  }),
+  getCacheStats: async () => ({
+    success: true,
+    cache: await getTranslationCache().getStats(),
+  }),
+  clearCache: async () => {
+    await getTranslationCache().clear();
+    return { success: true, cleared: true };
+  },
+  clearPipelineCache: async () => {
+    await clearPipelineCache();
+    return { success: true, cleared: true };
+  },
+  getCloudProviderUsage: async (message) => ({
+    success: true,
+    usage: await getOffscreenCloudProviderUsage(message.provider),
+  }),
+  flushCloudProviderTelemetry: async () => {
+    await flushOffscreenCloudProviderTelemetry();
+    return { success: true };
+  },
+  ocrImage: async (message) => {
+    log.info('Processing OCR request...');
+    const ocrResult: OCRResult = await extractTextFromImage(message.imageData, message.lang);
+    return {
+      success: true,
+      text: ocrResult.text,
+      confidence: ocrResult.confidence,
+      blocks: ocrResult.blocks,
+    };
+  },
+  terminateOCR: async () => {
+    await terminateOCR();
+    return { success: true };
+  },
+  cropImage: handleOffscreenCropImage,
+};
+
 // Message handler
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.target !== 'offscreen') return false;
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse: (response: OffscreenRoutedResponse) => void) => {
+  if (!isOffscreenTargetedMessage(message)) return false;
 
   (async () => {
     try {
-      switch (message.type) {
-        case 'translate': {
-          // Validate required fields to prevent cryptic downstream errors
-          if (message.text === undefined || message.text === null) {
-            sendResponse({ success: false, error: 'Missing required field: text' });
-            return;
-          }
-          if (!message.sourceLang || !message.targetLang) {
-            sendResponse({ success: false, error: 'Missing required field: sourceLang or targetLang' });
-            return;
-          }
-
-          // Validate sourceLang/targetLang: non-empty strings, max length 20 chars
-          if (!isValidLangCode(message.sourceLang)) {
-            sendResponse({ success: false, error: 'Invalid sourceLang: must be non-empty string, max 20 characters' });
-            return;
-          }
-          if (!isValidLangCode(message.targetLang)) {
-            sendResponse({ success: false, error: 'Invalid targetLang: must be non-empty string, max 20 characters' });
-            return;
-          }
-
-          // Support profiling sessions passed from background
-          const sessionId = message.sessionId;
-          if (sessionId) {
-            profiler.startTiming(sessionId, 'offscreen_processing');
-          }
-
-          // Extract page context from translation options if provided
-          const pageContext = message.pageContext as string | undefined;
-
-          const result = await translate(
-            message.text,
-            message.sourceLang,
-            message.targetLang,
-            /* v8 ignore start -- OR default */
-            message.provider || 'opus-mt',
-            /* v8 ignore stop */
-            sessionId,
-            pageContext
-          );
-
-          // Collect profiling data to send back
-          let profilingData = undefined;
-          if (sessionId) {
-            profiler.endTiming(sessionId, 'offscreen_processing');
-            profilingData = profiler.getSessionData(sessionId);
-          }
-
-          sendResponse({ success: true, result, profilingData });
-          break;
-        }
-        case 'getProfilingStats': {
-          // Return aggregate profiling statistics
-          sendResponse({
-            success: true,
-            aggregates: profiler.getAllAggregates(),
-            formatted: profiler.formatAggregates(),
-          });
-          break;
-        }
-        case 'preloadModel': {
-          // Preload the requested provider's model
-          // Priority: 'low' for background/predictive preloads, 'high' for user-initiated
-          const isLowPriority = message.priority === 'low';
-
-          if (isLowPriority) {
-            log.debug(`Low-priority preload: ${message.sourceLang}->${message.targetLang}`);
-          }
-
-          if (message.provider === 'translategemma') {
-            const [gpu, webnn] = await Promise.all([detectWebGPU(), detectWebNN()]);
-            if (!gpu.supported && !webnn) {
-              sendResponse({ success: false, error: 'TranslateGemma requires WebNN or WebGPU. Neither is available.' });
-              break;
-            }
-            await getTranslateGemmaPipeline();
-            sendResponse({ success: true, preloaded: true });
-          } else if (message.provider === 'chrome-builtin') {
-            // Chrome Built-in doesn't need preloading, just check availability
-            const available = await isChromeTranslatorAvailable();
-            sendResponse({ success: true, preloaded: available, available });
-          } else {
-            // OPUS-MT: preload the pipeline for the language pair
-            const pair = `${message.sourceLang}-${message.targetLang}`;
-            if (MODEL_MAP[pair]) {
-              await getPipeline(message.sourceLang, message.targetLang);
-              sendResponse({ success: true, preloaded: true });
-            } else if (PIVOT_ROUTES[pair]) {
-              // For pivot routes, preload the first hop model (source -> English)
-              const [firstHop] = PIVOT_ROUTES[pair];
-              const [firstSrc, firstTgt] = firstHop.split('-');
-              await getPipeline(firstSrc, firstTgt);
-              sendResponse({ success: true, preloaded: true, partial: true });
-            } else {
-              sendResponse({ success: true, preloaded: false });
-            }
-          }
-          break;
-        }
-        case 'getSupportedLanguages': {
-          sendResponse({ success: true, languages: getSupportedLanguages() });
-          break;
-        }
-        case 'ping': {
-          sendResponse({ success: true, status: 'ready' });
-          break;
-        }
-        case 'checkWebGPU': {
-          const gpu = await detectWebGPU();
-          sendResponse({ success: true, ...gpu });
-          break;
-        }
-        case 'checkWebNN': {
-          const supported = await detectWebNN();
-          sendResponse({ success: true, supported });
-          break;
-        }
-        case 'getCacheStats': {
-          const cache = getTranslationCache();
-          const stats: TranslationCacheStats = await cache.getStats();
-          sendResponse({ success: true, stats });
-          break;
-        }
-        case 'clearCache': {
-          const cache = getTranslationCache();
-          await cache.clear();
-          sendResponse({ success: true, cleared: true });
-          break;
-        }
-        case 'clearPipelineCache': {
-          // Clear all loaded ML pipelines (frees GPU/WASM memory)
-          await clearPipelineCache();
-          sendResponse({ success: true, cleared: true });
-          break;
-        }
-        // checkChromeTranslator: handled directly in service-worker via
-        // chrome.scripting.executeScript (MAIN world) — offscreen cannot
-        // see the Translator API.
-        case 'getCloudProviderUsage': {
-          // Get usage stats for a specific cloud provider
-          const providerId = message.provider;
-          let usage = { tokens: 0, cost: 0, limitReached: false };
-
-          if (providerId === 'deepl') {
-            await deeplProvider.initialize();
-            usage = await deeplProvider.getUsage();
-          } else if (providerId === 'openai') {
-            await openaiProvider.initialize();
-            usage = await openaiProvider.getUsage();
-          } else if (providerId === 'anthropic') {
-            await anthropicProvider.initialize();
-            usage = await anthropicProvider.getUsage();
-          } else if (providerId === 'google-cloud') {
-            await googleCloudProvider.initialize();
-            usage = await googleCloudProvider.getUsage();
-          }
-
-          sendResponse({ success: true, usage });
-          break;
-        }
-        case 'ocrImage': {
-          // Extract text from image using Tesseract.js
-          log.info('Processing OCR request...');
-          const ocrResult: OCRResult = await extractTextFromImage(
-            message.imageData,
-            message.lang
-          );
-          sendResponse({
-            success: true,
-            text: ocrResult.text,
-            confidence: ocrResult.confidence,
-            blocks: ocrResult.blocks,
-          });
-          break;
-        }
-        case 'terminateOCR': {
-          // Clean up OCR worker
-          await terminateOCR();
-          sendResponse({ success: true });
-          break;
-        }
-        case 'cropImage': {
-          // Crop a screenshot image to a specified rectangle
-          const { imageData: cropSrc, rect, devicePixelRatio = 1 } = message;
-          const img = new Image();
-          img.src = cropSrc;
-          await new Promise<void>((resolve, reject) => {
-            img.onload = () => resolve();
-            img.onerror = () => reject(new Error('Failed to load image for cropping'));
-          });
-
-          const canvas = document.createElement('canvas');
-          const dpr = devicePixelRatio as number;
-          canvas.width = rect.width * dpr;
-          canvas.height = rect.height * dpr;
-          const ctx = canvas.getContext('2d')!;
-          ctx.drawImage(
-            img,
-            rect.x * dpr, rect.y * dpr,
-            rect.width * dpr, rect.height * dpr,
-            0, 0,
-            canvas.width, canvas.height
-          );
-
-          sendResponse({ success: true, imageData: canvas.toDataURL('image/png') });
-          break;
-        }
-        default:
-          sendResponse({ success: false, error: `Unknown type: ${message.type}` });
-      }
+      sendResponse(await routeOffscreenMessage(message, offscreenMessageHandlers));
     } catch (error) {
-      const translationError = createTranslationError(error);
-      log.error(' Error:', translationError.technicalDetails);
+      log.error(' Error:', error);
       sendResponse({
         success: false,
-        error: translationError.technicalDetails,
-        translationError,
+        /* v8 ignore start -- instanceof ternary */
+        error: extractErrorMessage(error)
+        /* v8 ignore stop */
       });
     }
   })().catch((error) => {
-    const translationError = createTranslationError(error);
-    log.error('Unhandled offscreen listener error:', translationError.technicalDetails);
+    log.error('Unhandled offscreen listener error:', error);
     try {
       sendResponse({
         success: false,
-        error: translationError.technicalDetails,
-        translationError,
+        error: extractErrorMessage(error),
       });
     } catch (responseError) {
       log.error('Failed to send offscreen fallback error response:', responseError);

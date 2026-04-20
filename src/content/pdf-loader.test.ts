@@ -6,27 +6,23 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-
+import { createBrowserApiModuleMock } from '../test-helpers/browser-api-mocks';
+import {
+  createLoggerModuleMock,
+} from '../test-helpers/module-mocks';
 
 // Mock the logger
-vi.mock('../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock('../core/logger', () => createLoggerModuleMock());
 
 // Mock browserAPI
 const mockGetURL = vi.fn((path: string) => `chrome-extension://test-id/${path}`);
-vi.mock('../core/browser-api', () => ({
-  browserAPI: {
+vi.mock('../core/browser-api', () =>
+  createBrowserApiModuleMock({
     runtime: {
-      getURL: (path: string) => mockGetURL(path),
+      getURL: mockGetURL,
     },
-  },
-}));
+  })
+);
 
 // Note: PdfjsLib type import used only in injectScript tests where
 // we verify module-level behavior without needing mock pdfjs instances.
@@ -48,21 +44,14 @@ describe('pdf-loader', () => {
     vi.resetModules();
 
     // Re-mock logger and browserAPI for fresh modules
-    vi.doMock('../core/logger', () => ({
-      createLogger: () => ({
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        debug: vi.fn(),
-      }),
-    }));
-    vi.doMock('../core/browser-api', () => ({
-      browserAPI: {
+    vi.doMock('../core/logger', () => createLoggerModuleMock());
+    vi.doMock('../core/browser-api', () =>
+      createBrowserApiModuleMock({
         runtime: {
-          getURL: (path: string) => mockGetURL(path),
+          getURL: mockGetURL,
         },
-      },
-    }));
+      })
+    );
 
     const mod = await import('./pdf-loader');
     loadPdfjs = mod.loadPdfjs;
@@ -221,18 +210,14 @@ describe('pdf-loader', () => {
     async function freshImport(mockModule: Record<string, unknown>) {
       vi.resetModules();
 
-      vi.doMock('../core/logger', () => ({
-        createLogger: () => ({
-          info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(),
-        }),
-      }));
-      vi.doMock('../core/browser-api', () => ({
-        browserAPI: {
+      vi.doMock('../core/logger', () => createLoggerModuleMock());
+      vi.doMock('../core/browser-api', () =>
+        createBrowserApiModuleMock({
           runtime: {
-            getURL: (path: string) => `chrome-extension://test-id/${path}`,
+            getURL: vi.fn((path: string) => `chrome-extension://test-id/${path}`),
           },
-        },
-      }));
+        })
+      );
 
       const mod = await import('./pdf-loader');
       vi.spyOn(mod._deps, 'dynamicImport').mockResolvedValue(mockModule);

@@ -5,17 +5,28 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { setupChromeApiMock } from '../test-helpers/chrome-mocks';
+import {
+  createMockRange,
+  mockCaretRangeFromPoint,
+  mockDocumentCreateRange,
+  setupSelectionMock,
+} from '../test-helpers/dom-property-mocks';
+import type { AutoTranslateDiagnostics } from './content-types';
+import {
+  AUTO_TRANSLATE_E2E_REQUEST_EVENT,
+  AUTO_TRANSLATE_E2E_RESPONSE_EVENT,
+  AUTO_TRANSLATE_DIAGNOSTICS_ATTR,
+  CONTENT_SCRIPT_READY_ATTR,
+} from './content-types';
 
-// Mock chrome API
 const mockSendMessage = vi.fn();
-const mockOnMessage = {
-  addListener: vi.fn(),
-};
-
-vi.stubGlobal('chrome', {
+const contentChromeMock = setupChromeApiMock({
   runtime: {
     sendMessage: mockSendMessage,
-    onMessage: mockOnMessage,
+    onMessage: {
+      addListener: vi.fn(),
+    },
   },
   storage: {
     local: {
@@ -24,6 +35,22 @@ vi.stubGlobal('chrome', {
     },
   },
 });
+const mockOnMessage = contentChromeMock.events.runtime.onMessage;
+const mockStorageLocalGet = contentChromeMock.chrome.storage.local.get;
+const mockStorageLocalSet = contentChromeMock.chrome.storage.local.set;
+const IS_COVERAGE_RUN =
+  process.argv.includes('--coverage') ||
+  process.env.npm_lifecycle_event === 'test:coverage' ||
+  process.env.npm_lifecycle_event === 'validate:coverage';
+
+const resetContentChromeMocks = () => {
+  mockSendMessage.mockReset();
+  mockOnMessage.addListener.mockReset();
+  mockStorageLocalGet.mockReset();
+  mockStorageLocalGet.mockResolvedValue({});
+  mockStorageLocalSet.mockReset();
+  mockStorageLocalSet.mockResolvedValue(undefined);
+};
 
 // Mock glossary module - functions are async, must return Promises
 vi.mock('../core/glossary', () => ({
@@ -45,21 +72,204 @@ vi.mock('../core/glossary', () => ({
 // The shadow DOM test resets to this original to avoid a deep broken chain.
 const realElementAttachShadow = Element.prototype.attachShadow;
 
-
 describe('Content Script', () => {
   let messageHandler: (
-    message: { type: string; sourceLang: string; targetLang: string; strategy: string },
+    message: {
+      type: string;
+      sourceLang: string;
+      targetLang: string;
+      strategy: string;
+    },
     sender: unknown,
-    sendResponse: (response: unknown) => void
+    sendResponse: (response: unknown) => void,
   ) => boolean | undefined;
+
+  type TranslatePageMessage = {
+    type: 'translatePage';
+    sourceLang: string;
+    targetLang: string;
+    strategy: string;
+  };
+
+  const DEFAULT_TRANSLATE_PAGE_MESSAGE: TranslatePageMessage = {
+    type: 'translatePage',
+    sourceLang: 'en',
+    targetLang: 'fi',
+    strategy: 'balanced',
+  };
+
+  const waitForAsyncContentWork = (ms = 50): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
+  const removeElementById = (id: string): void => {
+    document.getElementById(id)?.remove();
+  };
+
+  const exitScreenshotMode = (): void => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  };
+
+  const cleanupContentArtifacts = (): void => {
+    removeElementById('translate-tooltip');
+    removeElementById('translate-floating-widget');
+    removeElementById('translate-hover-tooltip');
+    removeElementById('translate-ext-progress-toast');
+    exitScreenshotMode();
+    document.body.style.cursor = '';
+  };
+
+  const setLocationPath = (path: string): void => {
+    window.history.replaceState({}, '', path);
+  };
+
+  const setupParagraphSelection = (
+    fullText: string,
+    options: {
+      selectedText?: string;
+      startOffset?: number;
+      endOffset?: number;
+      rect?: Partial<DOMRect>;
+      selection?: Partial<Selection>;
+      isCollapsed?: boolean;
+      rangeCount?: number;
+    } = {},
+  ) => {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = fullText;
+    document.body.appendChild(paragraph);
+    const textNode = paragraph.firstChild as Text;
+    const startOffset = options.startOffset ?? 0;
+    const endOffset = options.endOffset ?? fullText.length;
+    const { range } = createMockRange({
+      startContainer: textNode,
+      startOffset,
+      endContainer: textNode,
+      endOffset,
+      rect: {
+        top: 100,
+        bottom: 120,
+        left: 50,
+        right: 200,
+        width: 150,
+        height: 20,
+        ...options.rect,
+      },
+    });
+    const selectionText =
+      options.selectedText ?? fullText.slice(startOffset, endOffset);
+    const selectionMock = setupSelectionMock({
+      range,
+      text: selectionText,
+      isCollapsed: options.isCollapsed,
+      rangeCount: options.rangeCount,
+      selection: options.selection,
+    });
+
+    return {
+      paragraph,
+      textNode,
+      range,
+      selection: selectionMock.selection,
+    };
+  };
+
+  const dispatchMessage = (message: unknown, sendResponse = vi.fn()) =>
+    messageHandler(
+      message as Parameters<typeof messageHandler>[0],
+      {},
+      sendResponse,
+    );
+
+  const readAutoTranslateDiagnostics = (): AutoTranslateDiagnostics => {
+    const raw = document.documentElement.getAttribute(
+      AUTO_TRANSLATE_DIAGNOSTICS_ATTR,
+    );
+    expect(raw).toBeTruthy();
+    return JSON.parse(raw!);
+  };
+
+  const startPageTranslation = (
+    sendResponse = vi.fn(),
+    overrides: Partial<TranslatePageMessage> = {},
+  ) =>
+    dispatchMessage(
+      { ...DEFAULT_TRANSLATE_PAGE_MESSAGE, ...overrides },
+      sendResponse,
+    );
+
+  type AutoTranslateE2eResponse =
+    | {
+        requestId: string;
+        success: true;
+        summary: {
+          translatedCount: number;
+          errorCount: number;
+          handledBy: 'extension' | 'site-tool' | 'pdf';
+        };
+      }
+    | {
+        requestId: string;
+        success: false;
+        error: string;
+      };
+
+  const dispatchAutoTranslateBridge = (
+    overrides: Partial<TranslatePageMessage> = {},
+  ): Promise<AutoTranslateE2eResponse> => {
+    const requestId = `bridge-${Math.random().toString(36).slice(2)}`;
+
+    return new Promise((resolve, reject) => {
+      const onResponse = (event: Event) => {
+        const detail = (event as CustomEvent<AutoTranslateE2eResponse>).detail;
+        if (!detail || detail.requestId !== requestId) return;
+
+        window.clearTimeout(timeoutId);
+        document.removeEventListener(
+          AUTO_TRANSLATE_E2E_RESPONSE_EVENT,
+          onResponse as EventListener,
+        );
+        resolve(detail);
+      };
+
+      const timeoutId = window.setTimeout(() => {
+        document.removeEventListener(
+          AUTO_TRANSLATE_E2E_RESPONSE_EVENT,
+          onResponse as EventListener,
+        );
+        reject(
+          new Error('Timed out waiting for auto-translate bridge response'),
+        );
+      }, 1_000);
+
+      document.addEventListener(
+        AUTO_TRANSLATE_E2E_RESPONSE_EVENT,
+        onResponse as EventListener,
+      );
+      document.dispatchEvent(
+        new CustomEvent(AUTO_TRANSLATE_E2E_REQUEST_EVENT, {
+          detail: {
+            requestId,
+            ...DEFAULT_TRANSLATE_PAGE_MESSAGE,
+            ...overrides,
+          },
+        }),
+      );
+    });
+  };
+
+  const enterScreenshotMode = (sendResponse = vi.fn()) =>
+    dispatchMessage({ type: 'enterScreenshotMode' }, sendResponse);
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    resetContentChromeMocks();
     vi.resetModules();
+    cleanupContentArtifacts();
 
     // Reset document
     document.body.innerHTML = '';
     document.head.innerHTML = '';
+    setLocationPath('/e2e/mock.html');
 
     // Import module to trigger registration
     await import('./index');
@@ -69,14 +279,108 @@ describe('Content Script', () => {
   });
 
   afterEach(() => {
-    // Clean up any tooltips
-    const tooltip = document.getElementById('translate-tooltip');
-    if (tooltip) tooltip.remove();
+    cleanupContentArtifacts();
+    vi.useRealTimers();
   });
 
   describe('initialization', () => {
     it('registers message handler', () => {
       expect(mockOnMessage.addListener).toHaveBeenCalled();
+    });
+
+    it('publishes a content-script readiness marker', () => {
+      expect(
+        document.documentElement.getAttribute(CONTENT_SCRIPT_READY_ATTR),
+      ).toBe('true');
+      expect(readAutoTranslateDiagnostics()).toEqual(
+        expect.objectContaining({
+          contentLoaded: true,
+          readyState: document.readyState,
+           visibilityState: document.visibilityState,
+           }),
+        );
+      });
+
+    it('responds to harness translate bridge requests on the mock page', async () => {
+      document.body.innerHTML = '<main><p>Harness bridge content</p></main>';
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Valjastettu testisisalto'],
+      });
+
+      const response = await dispatchAutoTranslateBridge();
+
+      expect(response).toMatchObject({
+        success: true,
+        summary: expect.objectContaining({
+          handledBy: 'extension',
+          translatedCount: expect.any(Number),
+          errorCount: expect.any(Number),
+        }),
+      });
+      expect(
+        document.querySelectorAll('[data-translated="true"]').length,
+      ).toBeGreaterThan(0);
+      expect(mockSendMessage).toHaveBeenCalled();
+    });
+
+    it('short-circuits same-language harness bridge requests without background messaging', async () => {
+      document.body.innerHTML = '<main><p>Harness bridge content</p></main>';
+
+      const response = await dispatchAutoTranslateBridge({
+        sourceLang: 'en',
+        targetLang: 'en',
+      });
+
+      expect(response).toMatchObject({
+        success: true,
+        summary: expect.objectContaining({
+          handledBy: 'extension',
+          translatedCount: expect.any(Number),
+          errorCount: expect.any(Number),
+        }),
+      });
+      expect(
+        document.querySelectorAll('[data-translated="true"]').length,
+      ).toBeGreaterThan(0);
+      expect(document.body.textContent).toContain('Harness bridge content');
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('keeps diagnostics off non-harness pages', async () => {
+      vi.clearAllMocks();
+      resetContentChromeMocks();
+      vi.resetModules();
+      document.body.innerHTML = '';
+      document.head.innerHTML = '';
+      setLocationPath('/');
+
+      await import('./index');
+
+      expect(
+        document.documentElement.hasAttribute(CONTENT_SCRIPT_READY_ATTR),
+      ).toBe(false);
+      expect(
+        document.documentElement.hasAttribute(AUTO_TRANSLATE_DIAGNOSTICS_ATTR),
+      ).toBe(false);
+
+      const onResponse = vi.fn();
+      document.addEventListener(
+        AUTO_TRANSLATE_E2E_RESPONSE_EVENT,
+        onResponse as EventListener,
+      );
+      document.dispatchEvent(
+        new CustomEvent(AUTO_TRANSLATE_E2E_REQUEST_EVENT, {
+          detail: {
+            requestId: 'non-harness-request',
+            ...DEFAULT_TRANSLATE_PAGE_MESSAGE,
+          },
+        }),
+      );
+      await waitForAsyncContentWork();
+
+      expect(onResponse).not.toHaveBeenCalled();
+      expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
     it('adds animation styles to head', () => {
@@ -104,13 +408,9 @@ describe('Content Script', () => {
 
       const sendResponse = vi.fn();
 
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitForAsyncContentWork(50);
 
       expect(mockSendMessage).toHaveBeenCalled();
     });
@@ -128,13 +428,9 @@ describe('Content Script', () => {
 
       const sendResponse = vi.fn();
 
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitForAsyncContentWork(50);
 
       // Only one batch should be sent (excluding script)
       const calls = mockSendMessage.mock.calls;
@@ -158,13 +454,9 @@ describe('Content Script', () => {
 
       const sendResponse = vi.fn();
 
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitForAsyncContentWork(50);
     });
 
     it('skips code and pre tags', async () => {
@@ -181,13 +473,9 @@ describe('Content Script', () => {
 
       const sendResponse = vi.fn();
 
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitForAsyncContentWork(50);
     });
 
     it('skips already translated elements', async () => {
@@ -203,13 +491,9 @@ describe('Content Script', () => {
 
       const sendResponse = vi.fn();
 
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitForAsyncContentWork(50);
     });
 
     it('skips input and textarea', async () => {
@@ -226,68 +510,44 @@ describe('Content Script', () => {
 
       const sendResponse = vi.fn();
 
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitForAsyncContentWork(50);
     });
   });
 
   describe('translateSelection', () => {
     it('does nothing when no selection', async () => {
-      // Mock empty selection
-      const mockSelection = {
+      setupSelectionMock({
+        range: null,
+        text: '',
         isCollapsed: true,
-        toString: () => '',
-        getRangeAt: vi.fn(),
-      };
-
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+        rangeCount: 0,
+        selection: {
+          getRangeAt: vi.fn(),
+        },
+      });
 
       const sendResponse = vi.fn();
 
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitForAsyncContentWork(50);
 
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
     it('sends translate message for selected text', async () => {
-      // Create a real DOM text node inside a block element for getSelectionContext
-      const p = document.createElement('p');
-      p.textContent = 'Selected text here';
-      document.body.appendChild(p);
-      const textNode = p.firstChild!;
-
-      // Create a mock range with getBoundingClientRect
-      const mockRange = {
-        getBoundingClientRect: () => ({
-          top: 100,
-          bottom: 120,
-          left: 50,
-          right: 200,
-          width: 150,
-          height: 20,
-        }),
-        commonAncestorContainer: textNode,
-      };
-
-      const mockSelection = {
-        isCollapsed: false,
-        toString: () => 'Selected text here',
-        getRangeAt: () => mockRange,
-        rangeCount: 1,
-      };
-
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      setupParagraphSelection('Selected text here');
 
       mockSendMessage.mockResolvedValue({
         success: true,
@@ -297,48 +557,28 @@ describe('Content Script', () => {
       const sendResponse = vi.fn();
 
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitForAsyncContentWork(50);
 
       expect(mockSendMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'translate',
           text: 'Selected text here',
-        })
+        }),
       );
     });
 
     it('creates tooltip after successful translation', async () => {
-      // Create a real DOM text node inside a block element for getSelectionContext
-      const p = document.createElement('p');
-      p.textContent = 'Text';
-      document.body.appendChild(p);
-      const textNode = p.firstChild!;
-
-      const mockRange = {
-        getBoundingClientRect: () => ({
-          top: 100,
-          bottom: 120,
-          left: 50,
-          right: 200,
-          width: 150,
-          height: 20,
-        }),
-        commonAncestorContainer: textNode,
-      };
-
-      const mockSelection = {
-        isCollapsed: false,
-        toString: () => 'Text',
-        getRangeAt: () => mockRange,
-        rangeCount: 1,
-      };
-
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      setupParagraphSelection('Text');
 
       mockSendMessage.mockResolvedValue({
         success: true,
@@ -348,12 +588,17 @@ describe('Content Script', () => {
       const sendResponse = vi.fn();
 
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForAsyncContentWork(100);
 
       const tooltip = document.getElementById('translate-tooltip');
       expect(tooltip).not.toBeNull();
@@ -370,24 +615,20 @@ describe('Content Script', () => {
       }
       document.body.innerHTML = html;
 
-      mockSendMessage.mockResolvedValue({
+      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => ({
         success: true,
-        result: Array(50).fill('Translated'),
-      });
+        result: (message.text ?? []).map(() => 'Translated'),
+      }));
 
       const sendResponse = vi.fn();
 
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForAsyncContentWork(100);
 
       // Should have been called multiple times for batches
       const translateCalls = mockSendMessage.mock.calls.filter(
-        (c) => c[0]?.type === 'translate'
+        (c) => c[0]?.type === 'translate',
       );
 
       expect(translateCalls.length).toBeGreaterThan(0);
@@ -403,13 +644,9 @@ describe('Content Script', () => {
 
       const sendResponse = vi.fn();
 
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitForAsyncContentWork(50);
 
       const div = document.getElementById('test');
       expect(div?.textContent).toBe('Translated text');
@@ -437,19 +674,26 @@ describe('Content Script', () => {
       const sendResponse = vi.fn();
 
       messageHandler(
-        { type: 'translatePage', sourceLang: 'nl', targetLang: 'en', strategy: 'balanced' },
+        {
+          type: 'translatePage',
+          sourceLang: 'nl',
+          targetLang: 'en',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 80));
+      await waitForAsyncContentWork(80);
 
       const paragraph = document.getElementById('test');
       const textNodes = Array.from(paragraph?.childNodes || []).filter(
-        (node): node is Text => node.nodeType === Node.TEXT_NODE
+        (node): node is Text => node.nodeType === Node.TEXT_NODE,
       );
 
-      expect(textNodes.map((node) => node.textContent?.trim()).filter(Boolean)).toEqual([
+      expect(
+        textNodes.map((node) => node.textContent?.trim()).filter(Boolean),
+      ).toEqual([
         'Fancy a fun adventurous date?',
         'I am a Dutch woman of 29 years.',
         'Want to meet? Send me a WhatsApp message',
@@ -471,27 +715,39 @@ describe('Content Script', () => {
       });
 
       messageHandler(
-        { type: 'translatePage', sourceLang: 'nl', targetLang: 'en', strategy: 'balanced' },
+        {
+          type: 'translatePage',
+          sourceLang: 'nl',
+          targetLang: 'en',
+          strategy: 'balanced',
+        },
         {},
-        vi.fn()
+        vi.fn(),
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 80));
+      await waitForAsyncContentWork(80);
 
       const undoResponse = vi.fn();
-      messageHandler({ type: 'undoTranslation' } as unknown as Parameters<typeof messageHandler>[0], {}, undoResponse);
+      messageHandler(
+        { type: 'undoTranslation' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        undoResponse,
+      );
 
       const paragraph = document.getElementById('rich');
       const textNodes = Array.from(paragraph?.childNodes || []).filter(
-        (node): node is Text => node.nodeType === Node.TEXT_NODE
+        (node): node is Text => node.nodeType === Node.TEXT_NODE,
       );
 
-      expect(textNodes.map((node) => node.textContent?.trim()).filter(Boolean)).toEqual([
-        'Eerste regel',
-        'Tweede regel',
-        'Derde regel',
-      ]);
-      expect(undoResponse).toHaveBeenCalledWith({ success: true, restoredCount: 1 });
+      expect(
+        textNodes.map((node) => node.textContent?.trim()).filter(Boolean),
+      ).toEqual(['Eerste regel', 'Tweede regel', 'Derde regel']);
+      expect(undoResponse).toHaveBeenCalledWith({
+        success: true,
+        restoredCount: 1,
+      });
     });
 
     it('preserves whitespace', async () => {
@@ -504,13 +760,9 @@ describe('Content Script', () => {
 
       const sendResponse = vi.fn();
 
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitForAsyncContentWork(50);
 
       const div = document.getElementById('test');
       // Whitespace should be preserved
@@ -528,11 +780,7 @@ describe('Content Script', () => {
 
       vi.useFakeTimers();
 
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
       // Advance timers to flush retry backoff delays and async operations
       for (let i = 0; i < 10; i++) {
@@ -554,55 +802,40 @@ describe('Content Script', () => {
 
       const sendResponse = vi.fn();
 
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
       // sendResponse should be called synchronously with started status
       expect(sendResponse).toHaveBeenCalledTimes(1);
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
 
     it('sends immediate acknowledgment for translateSelection', () => {
-      document.body.innerHTML = '<p>Selected text</p>';
-
-      // Mock window.getSelection
-      const mockRange = {
-        getBoundingClientRect: () => ({ top: 0, left: 0, bottom: 10, right: 50, width: 50, height: 10 }),
-        cloneContents: () => {
-          const frag = document.createDocumentFragment();
-          frag.appendChild(document.createTextNode('Selected text'));
-          return frag;
-        },
-        commonAncestorContainer: document.body,
-        startContainer: document.body.firstChild!,
-        endContainer: document.body.firstChild!,
-        startOffset: 0,
-        endOffset: 1,
-      };
-      const mockSelection = {
-        rangeCount: 1,
-        getRangeAt: () => mockRange,
-        toString: () => 'Selected text',
-        isCollapsed: false,
-        anchorNode: document.body.firstChild,
-        focusNode: document.body.firstChild,
-      };
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      setupParagraphSelection('Selected text', {
+        rect: { top: 0, left: 0, bottom: 10, right: 50, width: 50, height: 10 },
+      });
 
       const sendResponse = vi.fn();
 
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
 
       // sendResponse should be called synchronously with started status
       expect(sendResponse).toHaveBeenCalledTimes(1);
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -613,32 +846,7 @@ describe('Content Script', () => {
       existingTooltip.id = 'translate-tooltip';
       document.body.appendChild(existingTooltip);
 
-      // Create a real DOM text node inside a block element for getSelectionContext
-      const p = document.createElement('p');
-      p.textContent = 'New text';
-      document.body.appendChild(p);
-      const textNode = p.firstChild!;
-
-      const mockRange = {
-        getBoundingClientRect: () => ({
-          top: 100,
-          bottom: 120,
-          left: 50,
-          right: 200,
-          width: 150,
-          height: 20,
-        }),
-        commonAncestorContainer: textNode,
-      };
-
-      const mockSelection = {
-        isCollapsed: false,
-        toString: () => 'New text',
-        getRangeAt: () => mockRange,
-        rangeCount: 1,
-      };
-
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      setupParagraphSelection('New text');
 
       mockSendMessage.mockResolvedValue({
         success: true,
@@ -648,12 +856,17 @@ describe('Content Script', () => {
       const sendResponse = vi.fn();
 
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForAsyncContentWork(100);
 
       // Should only be one tooltip
       const tooltips = document.querySelectorAll('#translate-tooltip');
@@ -661,32 +874,7 @@ describe('Content Script', () => {
     });
 
     it('creates tooltip with correct structure', async () => {
-      // Create a real DOM text node inside a block element for getSelectionContext
-      const p = document.createElement('p');
-      p.textContent = 'Text';
-      document.body.appendChild(p);
-      const textNode = p.firstChild!;
-
-      const mockRange = {
-        getBoundingClientRect: () => ({
-          top: 100,
-          bottom: 120,
-          left: 50,
-          right: 200,
-          width: 150,
-          height: 20,
-        }),
-        commonAncestorContainer: textNode,
-      };
-
-      const mockSelection = {
-        isCollapsed: false,
-        toString: () => 'Text',
-        getRangeAt: () => mockRange,
-        rangeCount: 1,
-      };
-
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      setupParagraphSelection('Text');
 
       mockSendMessage.mockResolvedValue({
         success: true,
@@ -696,12 +884,17 @@ describe('Content Script', () => {
       const sendResponse = vi.fn();
 
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForAsyncContentWork(100);
 
       const tooltip = document.getElementById('translate-tooltip');
       expect(tooltip).not.toBeNull();
@@ -711,32 +904,7 @@ describe('Content Script', () => {
     });
 
     it('has close button that removes tooltip', async () => {
-      // Create a real DOM text node inside a block element for getSelectionContext
-      const p = document.createElement('p');
-      p.textContent = 'Text';
-      document.body.appendChild(p);
-      const textNode = p.firstChild!;
-
-      const mockRange = {
-        getBoundingClientRect: () => ({
-          top: 100,
-          bottom: 120,
-          left: 50,
-          right: 200,
-          width: 150,
-          height: 20,
-        }),
-        commonAncestorContainer: textNode,
-      };
-
-      const mockSelection = {
-        isCollapsed: false,
-        toString: () => 'Text',
-        getRangeAt: () => mockRange,
-        rangeCount: 1,
-      };
-
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      setupParagraphSelection('Text');
 
       mockSendMessage.mockResolvedValue({
         success: true,
@@ -746,12 +914,17 @@ describe('Content Script', () => {
       const sendResponse = vi.fn();
 
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForAsyncContentWork(100);
 
       const tooltip = document.getElementById('translate-tooltip');
       const closeBtn = tooltip?.querySelector('button');
@@ -772,32 +945,40 @@ describe('Content Script', () => {
         toString: () => '',
         getRangeAt: vi.fn(),
       };
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      vi.spyOn(window, 'getSelection').mockReturnValue(
+        mockSelection as unknown as Selection,
+      );
 
       const result = messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        vi.fn()
+        vi.fn(),
       );
 
       expect(result).toBe(true);
     });
 
     it('returns true for translatePage', () => {
-      const result = messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        vi.fn()
-      );
+      const result = startPageTranslation();
 
       expect(result).toBe(true);
     });
 
     it('returns false for unknown message types', () => {
       const result = messageHandler(
-        { type: 'unknown', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'unknown',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        vi.fn()
+        vi.fn(),
       );
 
       expect(result).toBe(false);
@@ -810,7 +991,11 @@ describe('Content Script', () => {
   describe('ping message', () => {
     it('responds with loaded:true', () => {
       const sendResponse = vi.fn();
-      const result = messageHandler({ type: 'ping' } as Parameters<typeof messageHandler>[0], {}, sendResponse);
+      const result = messageHandler(
+        { type: 'ping' } as Parameters<typeof messageHandler>[0],
+        {},
+        sendResponse,
+      );
       expect(result).toBe(true);
       expect(sendResponse).toHaveBeenCalledWith({ loaded: true });
     });
@@ -822,18 +1007,24 @@ describe('Content Script', () => {
   describe('undoTranslation message', () => {
     it('restores translated elements to their original text', async () => {
       // Set up a translated element
-      document.body.innerHTML = '<div id="t" data-translated="true" data-original-text="Original">Translated</div>';
+      document.body.innerHTML =
+        '<div id="t" data-translated="true" data-original-text="Original">Translated</div>';
 
       const sendResponse = vi.fn();
       const result = messageHandler(
-        { type: 'undoTranslation' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'undoTranslation' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
 
       expect(result).toBe(true);
       expect(sendResponse).toHaveBeenCalledWith(
-        expect.objectContaining({ success: true, restoredCount: expect.any(Number) })
+        expect.objectContaining({
+          success: true,
+          restoredCount: expect.any(Number),
+        }),
       );
 
       // The element should no longer carry data-translated
@@ -845,9 +1036,18 @@ describe('Content Script', () => {
       document.body.innerHTML = '<div>No translations here</div>';
 
       const sendResponse = vi.fn();
-      messageHandler({ type: 'undoTranslation' } as unknown as Parameters<typeof messageHandler>[0], {}, sendResponse);
+      messageHandler(
+        { type: 'undoTranslation' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        sendResponse,
+      );
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, restoredCount: 0 });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        restoredCount: 0,
+      });
     });
   });
 
@@ -858,9 +1058,11 @@ describe('Content Script', () => {
     it('responds with true and clears state', () => {
       const sendResponse = vi.fn();
       const result = messageHandler(
-        { type: 'stopAutoTranslate' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'stopAutoTranslate' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
       expect(result).toBe(true);
       expect(sendResponse).toHaveBeenCalledWith(true);
@@ -874,30 +1076,52 @@ describe('Content Script', () => {
     it('getBilingualMode returns current state', () => {
       const sendResponse = vi.fn();
       const result = messageHandler(
-        { type: 'getBilingualMode' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'getBilingualMode' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
       expect(result).toBe(true);
-      expect(sendResponse).toHaveBeenCalledWith({ enabled: expect.any(Boolean) });
+      expect(sendResponse).toHaveBeenCalledWith({
+        enabled: expect.any(Boolean),
+      });
     });
 
     it('toggleBilingualMode flips state and returns new value', () => {
       const sendResponse1 = vi.fn();
-      messageHandler({ type: 'getBilingualMode' } as unknown as Parameters<typeof messageHandler>[0], {}, sendResponse1);
-      const initialState = (sendResponse1.mock.calls[0][0] as { enabled: boolean }).enabled;
+      messageHandler(
+        { type: 'getBilingualMode' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        sendResponse1,
+      );
+      const initialState = (
+        sendResponse1.mock.calls[0][0] as { enabled: boolean }
+      ).enabled;
 
       const sendResponseToggle = vi.fn();
-      messageHandler({ type: 'toggleBilingualMode' } as unknown as Parameters<typeof messageHandler>[0], {}, sendResponseToggle);
-      expect(sendResponseToggle).toHaveBeenCalledWith({ enabled: !initialState });
+      messageHandler(
+        { type: 'toggleBilingualMode' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        sendResponseToggle,
+      );
+      expect(sendResponseToggle).toHaveBeenCalledWith({
+        enabled: !initialState,
+      });
     });
 
     it('setBilingualMode enables bilingual mode', () => {
       const sendResponse = vi.fn();
       const result = messageHandler(
-        { type: 'setBilingualMode', enabled: true } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'setBilingualMode', enabled: true } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
       expect(result).toBe(true);
       expect(sendResponse).toHaveBeenCalledWith({ enabled: true });
@@ -906,16 +1130,20 @@ describe('Content Script', () => {
     it('setBilingualMode disables bilingual mode', () => {
       // First enable
       messageHandler(
-        { type: 'setBilingualMode', enabled: true } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'setBilingualMode', enabled: true } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        vi.fn()
+        vi.fn(),
       );
       // Now disable
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'setBilingualMode', enabled: false } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'setBilingualMode', enabled: false } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
       expect(sendResponse).toHaveBeenCalledWith({ enabled: false });
     });
@@ -928,9 +1156,11 @@ describe('Content Script', () => {
 
       // Enable bilingual mode
       messageHandler(
-        { type: 'setBilingualMode', enabled: true } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'setBilingualMode', enabled: true } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        vi.fn()
+        vi.fn(),
       );
 
       const el = document.getElementById('el')!;
@@ -941,9 +1171,11 @@ describe('Content Script', () => {
 
       // Disable cleans it up
       messageHandler(
-        { type: 'setBilingualMode', enabled: false } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'setBilingualMode', enabled: false } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        vi.fn()
+        vi.fn(),
       );
       expect(el.querySelector('.translate-bilingual-original')).toBeNull();
       expect(el.classList.contains('translate-bilingual')).toBe(false);
@@ -954,8 +1186,20 @@ describe('Content Script', () => {
         <div id="el" data-translated="true" data-original-text="Original">Translated</div>
       `;
 
-      messageHandler({ type: 'setBilingualMode', enabled: true } as unknown as Parameters<typeof messageHandler>[0], {}, vi.fn());
-      messageHandler({ type: 'setBilingualMode', enabled: true } as unknown as Parameters<typeof messageHandler>[0], {}, vi.fn());
+      messageHandler(
+        { type: 'setBilingualMode', enabled: true } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        vi.fn(),
+      );
+      messageHandler(
+        { type: 'setBilingualMode', enabled: true } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        vi.fn(),
+      );
 
       const el = document.getElementById('el')!;
       const annotations = el.querySelectorAll('.translate-bilingual-original');
@@ -966,22 +1210,23 @@ describe('Content Script', () => {
     it('bilingual mode auto-applies to newly translated elements', async () => {
       // Enable bilingual mode first
       messageHandler(
-        { type: 'setBilingualMode', enabled: true } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'setBilingualMode', enabled: true } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        vi.fn()
+        vi.fn(),
       );
 
       // Now translate a page element — the translation result should carry the annotation
       document.body.innerHTML = '<div id="new">New text to translate</div>';
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Uusi teksti'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Uusi teksti'],
+      });
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      await new Promise((r) => setTimeout(r, 80));
+      startPageTranslation(sendResponse);
+      await waitForAsyncContentWork(80);
 
       const el = document.getElementById('new');
       // After translation with bilingual mode on, annotation should exist
@@ -996,56 +1241,96 @@ describe('Content Script', () => {
   // widget messages
   // ============================================================
   describe('widget messages', () => {
-    afterEach(() => {
-      // Clean up any widget
-      const widget = document.getElementById('translate-floating-widget');
-      if (widget) widget.remove();
-    });
-
     it('showWidget creates widget in DOM', () => {
       const sendResponse = vi.fn();
       const result = messageHandler(
-        { type: 'showWidget' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'showWidget' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
       expect(result).toBe(true);
       expect(sendResponse).toHaveBeenCalledWith({ visible: true });
-      expect(document.getElementById('translate-floating-widget')).not.toBeNull();
+      expect(
+        document.getElementById('translate-floating-widget'),
+      ).not.toBeNull();
     });
 
     it('toggleWidget shows widget when hidden', () => {
       const sendResponse = vi.fn();
-      messageHandler({ type: 'toggleWidget' } as unknown as Parameters<typeof messageHandler>[0], {}, sendResponse);
+      messageHandler(
+        { type: 'toggleWidget' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        sendResponse,
+      );
       // Widget should now be visible
       expect(sendResponse).toHaveBeenCalledWith({ visible: true });
     });
 
     it('toggleWidget hides widget when visible', () => {
       // Show first
-      messageHandler({ type: 'showWidget' } as unknown as Parameters<typeof messageHandler>[0], {}, vi.fn());
+      messageHandler(
+        { type: 'showWidget' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        vi.fn(),
+      );
 
       const sendResponse = vi.fn();
-      messageHandler({ type: 'toggleWidget' } as unknown as Parameters<typeof messageHandler>[0], {}, sendResponse);
+      messageHandler(
+        { type: 'toggleWidget' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        sendResponse,
+      );
       // Should now be hidden
       expect(sendResponse).toHaveBeenCalledWith({ visible: false });
     });
 
     it('showWidget a second time re-shows a hidden widget', () => {
       // Show widget
-      messageHandler({ type: 'showWidget' } as unknown as Parameters<typeof messageHandler>[0], {}, vi.fn());
+      messageHandler(
+        { type: 'showWidget' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        vi.fn(),
+      );
       // Hide via toggle
-      messageHandler({ type: 'toggleWidget' } as unknown as Parameters<typeof messageHandler>[0], {}, vi.fn());
+      messageHandler(
+        { type: 'toggleWidget' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        vi.fn(),
+      );
 
       const sendResponse = vi.fn();
-      messageHandler({ type: 'showWidget' } as unknown as Parameters<typeof messageHandler>[0], {}, sendResponse);
+      messageHandler(
+        { type: 'showWidget' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        sendResponse,
+      );
       expect(sendResponse).toHaveBeenCalledWith({ visible: true });
       const widget = document.getElementById('translate-floating-widget');
       expect(widget?.style.display).not.toBe('none');
     });
 
     it('created widget has correct structure', () => {
-      messageHandler({ type: 'showWidget' } as unknown as Parameters<typeof messageHandler>[0], {}, vi.fn());
+      messageHandler(
+        { type: 'showWidget' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        vi.fn(),
+      );
       const widget = document.getElementById('translate-floating-widget');
       expect(widget?.querySelector('.widget-header')).not.toBeNull();
       expect(widget?.querySelector('.widget-input')).not.toBeNull();
@@ -1067,15 +1352,22 @@ describe('Content Script', () => {
         getRangeAt: vi.fn(),
         rangeCount: 1,
       };
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockEmptySelection as unknown as Selection);
-
-      messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        vi.fn()
+      vi.spyOn(window, 'getSelection').mockReturnValue(
+        mockEmptySelection as unknown as Selection,
       );
 
-      await new Promise((r) => setTimeout(r, 50));
+      messageHandler(
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
+        {},
+        vi.fn(),
+      );
+
+      await waitForAsyncContentWork(50);
 
       const toast = document.getElementById('translate-ext-toast');
       expect(toast).not.toBeNull();
@@ -1090,21 +1382,33 @@ describe('Content Script', () => {
         getRangeAt: vi.fn(),
         rangeCount: 1,
       };
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockEmptySelection as unknown as Selection);
+      vi.spyOn(window, 'getSelection').mockReturnValue(
+        mockEmptySelection as unknown as Selection,
+      );
 
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        vi.fn()
+        vi.fn(),
       );
-      await new Promise((r) => setTimeout(r, 20));
+      await waitForAsyncContentWork(20);
 
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        vi.fn()
+        vi.fn(),
       );
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncContentWork(50);
 
       const toasts = document.querySelectorAll('#translate-ext-toast');
       expect(toasts.length).toBe(1);
@@ -1125,9 +1429,18 @@ describe('Content Script', () => {
       document.getElementById('b')!.childNodes[0].textContent = 'Maailma';
 
       const sendResponse = vi.fn();
-      messageHandler({ type: 'undoTranslation' } as unknown as Parameters<typeof messageHandler>[0], {}, sendResponse);
+      messageHandler(
+        { type: 'undoTranslation' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        sendResponse,
+      );
 
-      const response = sendResponse.mock.calls[0][0] as { success: boolean; restoredCount: number };
+      const response = sendResponse.mock.calls[0][0] as {
+        success: boolean;
+        restoredCount: number;
+      };
       expect(response.success).toBe(true);
       expect(response.restoredCount).toBeGreaterThanOrEqual(2);
     });
@@ -1136,10 +1449,51 @@ describe('Content Script', () => {
       document.body.innerHTML = `
         <div data-translated="true" data-original-text="Original">Translated</div>
       `;
-      messageHandler({ type: 'undoTranslation' } as unknown as Parameters<typeof messageHandler>[0], {}, vi.fn());
+      messageHandler(
+        { type: 'undoTranslation' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        vi.fn(),
+      );
 
       const el = document.querySelector('[data-translated]');
       expect(el).toBeNull();
+    });
+
+    it('undo clears translation metadata and correction affordances', async () => {
+      const { makeTranslatedElementEditable } = await import('./correction');
+
+      document.body.innerHTML = `
+        <p
+          id="undo-cleanup"
+          data-translated="true"
+          data-original-text="Original"
+          data-machine-translation="Translated"
+          data-source-lang="en"
+          data-target-lang="fi"
+        >Translated</p>
+      `;
+
+      const el = document.getElementById('undo-cleanup') as HTMLElement;
+      makeTranslatedElementEditable(el);
+
+      expect(el.getAttribute('data-correction-enabled')).toBe('true');
+      expect(el.style.cursor).toBe('text');
+
+      messageHandler(
+        { type: 'undoTranslation' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        vi.fn(),
+      );
+
+      expect(el.getAttribute('data-machine-translation')).toBeNull();
+      expect(el.getAttribute('data-source-lang')).toBeNull();
+      expect(el.getAttribute('data-target-lang')).toBeNull();
+      expect(el.getAttribute('data-correction-enabled')).toBeNull();
+      expect(el.style.cursor).toBe('');
     });
   });
 
@@ -1152,14 +1506,13 @@ describe('Content Script', () => {
         <noscript>Enable JS</noscript>
         <div>Real text here</div>
       `;
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Real teksti täällä'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Real teksti täällä'],
+      });
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      await new Promise((r) => setTimeout(r, 60));
+      startPageTranslation(sendResponse);
+      await waitForAsyncContentWork(60);
 
       const calls = mockSendMessage.mock.calls;
       const translateCall = calls.find((c) => c[0]?.type === 'translate');
@@ -1178,14 +1531,13 @@ describe('Content Script', () => {
         <button>Click me</button>
         <div>Body text</div>
       `;
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Body teksti'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Body teksti'],
+      });
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      await new Promise((r) => setTimeout(r, 60));
+      startPageTranslation(sendResponse);
+      await waitForAsyncContentWork(60);
 
       const calls = mockSendMessage.mock.calls;
       const translateCall = calls.find((c) => c[0]?.type === 'translate');
@@ -1204,14 +1556,13 @@ describe('Content Script', () => {
         <div data-no-translate>Do not translate this</div>
         <div>Translate this</div>
       `;
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Käännetty'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Käännetty'],
+      });
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      await new Promise((r) => setTimeout(r, 60));
+      startPageTranslation(sendResponse);
+      await waitForAsyncContentWork(60);
 
       const calls = mockSendMessage.mock.calls;
       const translateCall = calls.find((c) => c[0]?.type === 'translate');
@@ -1230,14 +1581,13 @@ describe('Content Script', () => {
         <span translate="no">no-translate content</span>
         <p>Normal text</p>
       `;
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Normaali teksti'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Normaali teksti'],
+      });
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      await new Promise((r) => setTimeout(r, 60));
+      startPageTranslation(sendResponse);
+      await waitForAsyncContentWork(60);
 
       const calls = mockSendMessage.mock.calls;
       const translateCall = calls.find((c) => c[0]?.type === 'translate');
@@ -1257,14 +1607,13 @@ describe('Content Script', () => {
         <div>12345</div>
         <div>Normal readable text</div>
       `;
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Normaali luettava teksti'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Normaali luettava teksti'],
+      });
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      await new Promise((r) => setTimeout(r, 60));
+      startPageTranslation(sendResponse);
+      await waitForAsyncContentWork(60);
 
       const calls = mockSendMessage.mock.calls;
       const translateCall = calls.find((c) => c[0]?.type === 'translate');
@@ -1284,14 +1633,13 @@ describe('Content Script', () => {
         <div>A</div>
         <div>Some longer text here</div>
       `;
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Hieman pidempi teksti täällä'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Hieman pidempi teksti täällä'],
+      });
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      await new Promise((r) => setTimeout(r, 60));
+      startPageTranslation(sendResponse);
+      await waitForAsyncContentWork(60);
 
       const calls = mockSendMessage.mock.calls;
       const translateCall = calls.find((c) => c[0]?.type === 'translate');
@@ -1315,15 +1663,13 @@ describe('Content Script', () => {
       document.body.innerHTML = '';
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 60));
+      await waitForAsyncContentWork(60);
       // sendMessage should NOT have been called with type='translate'
-      const translateCalls = mockSendMessage.mock.calls.filter((c) => c[0]?.type === 'translate');
+      const translateCalls = mockSendMessage.mock.calls.filter(
+        (c) => c[0]?.type === 'translate',
+      );
       expect(translateCalls.length).toBe(0);
     });
   });
@@ -1335,14 +1681,13 @@ describe('Content Script', () => {
     it('stores original text in data-original-text', async () => {
       document.body.innerHTML = '<p id="p">Original content</p>';
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Alkuperäinen sisältö'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Alkuperäinen sisältö'],
+      });
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      await new Promise((r) => setTimeout(r, 60));
+      startPageTranslation(sendResponse);
+      await waitForAsyncContentWork(60);
 
       const p = document.getElementById('p');
       if (p?.getAttribute('data-translated')) {
@@ -1358,17 +1703,18 @@ describe('Content Script', () => {
         <div id="new">New text</div>
       `;
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Uusi teksti'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Uusi teksti'],
+      });
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      await new Promise((r) => setTimeout(r, 60));
+      startPageTranslation(sendResponse);
+      await waitForAsyncContentWork(60);
 
       // Only 'New text' should have been sent for translation
-      const translateCalls = mockSendMessage.mock.calls.filter((c) => c[0]?.type === 'translate');
+      const translateCalls = mockSendMessage.mock.calls.filter(
+        (c) => c[0]?.type === 'translate',
+      );
       if (translateCalls.length > 0) {
         const allTexts = translateCalls
           .flatMap((c) => (Array.isArray(c[0].text) ? c[0].text : [c[0].text]))
@@ -1390,7 +1736,14 @@ describe('Content Script', () => {
       const textNode = p.firstChild!;
 
       const mockRange = {
-        getBoundingClientRect: () => ({ top: 50, bottom: 70, left: 10, right: 200, width: 190, height: 20 }),
+        getBoundingClientRect: () => ({
+          top: 50,
+          bottom: 70,
+          left: 10,
+          right: 200,
+          width: 190,
+          height: 20,
+        }),
         commonAncestorContainer: textNode,
       };
       const mockSelection = {
@@ -1399,19 +1752,33 @@ describe('Content Script', () => {
         getRangeAt: () => mockRange,
         rangeCount: 1,
       };
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      vi.spyOn(window, 'getSelection').mockReturnValue(
+        mockSelection as unknown as Selection,
+      );
 
-      mockSendMessage.mockResolvedValue({ success: true, result: 'valittu sana esimerkki' });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: 'valittu sana esimerkki',
+      });
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
-      await new Promise((r) => setTimeout(r, 80));
+      await waitForAsyncContentWork(80);
 
       expect(mockSendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'translate', sourceLang: 'en', targetLang: 'fi' })
+        expect.objectContaining({
+          type: 'translate',
+          sourceLang: 'en',
+          targetLang: 'fi',
+        }),
       );
     });
 
@@ -1422,7 +1789,14 @@ describe('Content Script', () => {
       const textNode = p.firstChild!;
 
       const mockRange = {
-        getBoundingClientRect: () => ({ top: 50, bottom: 70, left: 10, right: 200, width: 190, height: 20 }),
+        getBoundingClientRect: () => ({
+          top: 50,
+          bottom: 70,
+          left: 10,
+          right: 200,
+          width: 190,
+          height: 20,
+        }),
         commonAncestorContainer: textNode,
       };
       const mockSelection = {
@@ -1431,16 +1805,26 @@ describe('Content Script', () => {
         getRangeAt: () => mockRange,
         rangeCount: 1,
       };
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      vi.spyOn(window, 'getSelection').mockReturnValue(
+        mockSelection as unknown as Selection,
+      );
 
       // Return failure response
-      mockSendMessage.mockResolvedValue({ success: false, error: 'Model not loaded' });
+      mockSendMessage.mockResolvedValue({
+        success: false,
+        error: 'Model not loaded',
+      });
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        vi.fn()
+        vi.fn(),
       );
-      await new Promise((r) => setTimeout(r, 80));
+      await waitForAsyncContentWork(80);
 
       // An error tooltip should be inserted into DOM
       const tooltip = document.getElementById('translate-tooltip');
@@ -1464,10 +1848,13 @@ describe('Content Script', () => {
           targetLang: 'fi',
         } as unknown as Parameters<typeof messageHandler>[0],
         {},
-        sendResponse
+        sendResponse,
       );
       expect(result).toBe(true);
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -1477,11 +1864,7 @@ describe('Content Script', () => {
   describe('enterScreenshotMode message', () => {
     it('returns true and adds crosshair cursor to body', () => {
       const sendResponse = vi.fn();
-      const result = messageHandler(
-        { type: 'enterScreenshotMode' } as unknown as Parameters<typeof messageHandler>[0],
-        {},
-        sendResponse
-      );
+      const result = enterScreenshotMode(sendResponse);
       expect(result).toBe(true);
       expect(sendResponse).toHaveBeenCalledWith(true);
       expect(document.body.style.cursor).toBe('crosshair');
@@ -1491,18 +1874,10 @@ describe('Content Script', () => {
     });
 
     it('is idempotent — second call does nothing extra', () => {
-      messageHandler(
-        { type: 'enterScreenshotMode' } as unknown as Parameters<typeof messageHandler>[0],
-        {},
-        vi.fn()
-      );
+      enterScreenshotMode();
       const cursorAfterFirst = document.body.style.cursor;
 
-      messageHandler(
-        { type: 'enterScreenshotMode' } as unknown as Parameters<typeof messageHandler>[0],
-        {},
-        vi.fn()
-      );
+      enterScreenshotMode();
       expect(document.body.style.cursor).toBe(cursorAfterFirst);
 
       // Clean up
@@ -1517,17 +1892,18 @@ describe('Content Script', () => {
     it('starts mutation observer after translatePage completes', async () => {
       document.body.innerHTML = '<div>Content to translate</div>';
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Käännetty sisältö'] });
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        vi.fn()
-      );
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Käännetty sisältö'],
+      });
+      startPageTranslation();
       // Wait for page translation to complete
-      await new Promise((r) => setTimeout(r, 150));
+      await waitForAsyncContentWork(150);
 
       // Translation must have been called (proves the flow ran)
-      const translateCalls = mockSendMessage.mock.calls.filter((c) => c[0]?.type === 'translate');
+      const translateCalls = mockSendMessage.mock.calls.filter(
+        (c) => c[0]?.type === 'translate',
+      );
       expect(translateCalls.length).toBeGreaterThan(0);
     });
   });
@@ -1540,9 +1916,9 @@ describe('Content Script', () => {
       // storage mock returns {} (no autoTranslate key) — nothing should fire
       // The beforeEach already called vi.clearAllMocks(), so callCount starts at 0.
       // Give async initiation a moment to settle.
-      await new Promise((r) => setTimeout(r, 30));
+      await waitForAsyncContentWork(30);
       const translateCalls = mockSendMessage.mock.calls.filter(
-        (c) => c[0]?.type === 'translate'
+        (c) => c[0]?.type === 'translate',
       );
       // No translate message should have been sent without a manual trigger
       expect(translateCalls.length).toBe(0);
@@ -1556,14 +1932,13 @@ describe('Content Script', () => {
     it('preserves leading and trailing whitespace on parent element', async () => {
       document.body.innerHTML = '<p id="ws">   Leading and trailing   </p>';
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Johtava ja lopussa'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Johtava ja lopussa'],
+      });
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      await new Promise((r) => setTimeout(r, 60));
+      startPageTranslation(sendResponse);
+      await waitForAsyncContentWork(60);
 
       const p = document.getElementById('ws');
       if (p?.getAttribute('data-translated')) {
@@ -1579,21 +1954,23 @@ describe('Content Script', () => {
   describe('timing stats via profiling flag', () => {
     it('translatePage with enableProfiling does not throw', async () => {
       document.body.innerHTML = '<p>Some text</p>';
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Jotain tekstiä'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Jotain tekstiä'],
+      });
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
       const sendResponse = vi.fn();
       // enableProfiling is passed via translatePage message — we verify no crash
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      await new Promise((r) => setTimeout(r, 80));
+      startPageTranslation(sendResponse);
+      await waitForAsyncContentWork(80);
 
       consoleSpy.mockRestore();
       // Just ensure it completed without error
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -1601,21 +1978,20 @@ describe('Content Script', () => {
   // Screenshot mode mouse events
   // ============================================================
   describe('screenshot mode mouse interactions', () => {
-    afterEach(() => {
-      // Exit screenshot mode via Escape
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    });
-
     it('mousedown starts selection overlay', () => {
-      messageHandler(
-        { type: 'enterScreenshotMode' } as unknown as Parameters<typeof messageHandler>[0],
-        {},
-        vi.fn()
-      );
+      enterScreenshotMode();
 
-      const overlay = document.querySelector('div[style*="dashed"]') as HTMLDivElement | null;
+      const overlay = document.querySelector(
+        'div[style*="dashed"]',
+      ) as HTMLDivElement | null;
       // Fire mousedown to start selection
-      document.dispatchEvent(new MouseEvent('mousedown', { clientX: 100, clientY: 200, bubbles: true }));
+      document.dispatchEvent(
+        new MouseEvent('mousedown', {
+          clientX: 100,
+          clientY: 200,
+          bubbles: true,
+        }),
+      );
       // Overlay should become visible (display: block)
       if (overlay) {
         expect(overlay.style.display).toBe('block');
@@ -1626,14 +2002,22 @@ describe('Content Script', () => {
     });
 
     it('mousemove updates overlay dimensions', () => {
-      messageHandler(
-        { type: 'enterScreenshotMode' } as unknown as Parameters<typeof messageHandler>[0],
-        {},
-        vi.fn()
-      );
+      enterScreenshotMode();
 
-      document.dispatchEvent(new MouseEvent('mousedown', { clientX: 50, clientY: 50, bubbles: true }));
-      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 150, clientY: 200, bubbles: true }));
+      document.dispatchEvent(
+        new MouseEvent('mousedown', {
+          clientX: 50,
+          clientY: 50,
+          bubbles: true,
+        }),
+      );
+      document.dispatchEvent(
+        new MouseEvent('mousemove', {
+          clientX: 150,
+          clientY: 200,
+          bubbles: true,
+        }),
+      );
 
       const overlays = document.querySelectorAll('div[style*="dashed"]');
       if (overlays.length > 0) {
@@ -1644,11 +2028,7 @@ describe('Content Script', () => {
     });
 
     it('Escape key exits screenshot mode', () => {
-      messageHandler(
-        { type: 'enterScreenshotMode' } as unknown as Parameters<typeof messageHandler>[0],
-        {},
-        vi.fn()
-      );
+      enterScreenshotMode();
       expect(document.body.style.cursor).toBe('crosshair');
 
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
@@ -1656,20 +2036,24 @@ describe('Content Script', () => {
     });
 
     it('mouseup with tiny selection does not send message', async () => {
-      messageHandler(
-        { type: 'enterScreenshotMode' } as unknown as Parameters<typeof messageHandler>[0],
-        {},
-        vi.fn()
-      );
+      enterScreenshotMode();
 
-      document.dispatchEvent(new MouseEvent('mousedown', { clientX: 50, clientY: 50, bubbles: true }));
+      document.dispatchEvent(
+        new MouseEvent('mousedown', {
+          clientX: 50,
+          clientY: 50,
+          bubbles: true,
+        }),
+      );
       // Tiny movement — less than 20x20
-      document.dispatchEvent(new MouseEvent('mouseup', { clientX: 55, clientY: 55, bubbles: true }));
-      await new Promise((r) => setTimeout(r, 30));
+      document.dispatchEvent(
+        new MouseEvent('mouseup', { clientX: 55, clientY: 55, bubbles: true }),
+      );
+      await waitForAsyncContentWork(30);
 
       // captureScreenshot should NOT have been called since rect too small
       const captureCalls = mockSendMessage.mock.calls.filter(
-        (c) => c[0]?.type === 'captureScreenshot'
+        (c) => c[0]?.type === 'captureScreenshot',
       );
       expect(captureCalls.length).toBe(0);
     });
@@ -1691,19 +2075,17 @@ describe('Content Script', () => {
       mockSendMessage.mockResolvedValue({ success: true, result: batchResult });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
       // Progress toast should appear during translation
-      await new Promise((r) => setTimeout(r, 20));
+      await waitForAsyncContentWork(20);
       // (It may already be gone if translation finishes fast; just ensure no throw)
 
-      await new Promise((r) => setTimeout(r, 200));
+      await waitForAsyncContentWork(200);
       // After completion, progress toast should be gone
-      const progressToast = document.getElementById('translate-ext-progress-toast');
+      const progressToast = document.getElementById(
+        'translate-ext-progress-toast',
+      );
       if (progressToast) {
         expect(progressToast.style.opacity).toBe('0');
       } else {
@@ -1718,16 +2100,24 @@ describe('Content Script', () => {
   // ============================================================
   describe('hover translation (Alt+hover) path', () => {
     it('Alt keydown changes body cursor to help', () => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }),
+      );
       expect(document.body.style.cursor).toBe('help');
 
       // Clean up — Alt keyup
-      document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+      document.dispatchEvent(
+        new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }),
+      );
     });
 
     it('Alt keyup resets cursor', () => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
-      document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }),
+      );
+      document.dispatchEvent(
+        new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }),
+      );
       expect(document.body.style.cursor).toBe('');
     });
 
@@ -1737,17 +2127,29 @@ describe('Content Script', () => {
       tooltip.id = 'translate-hover-tooltip';
       document.body.appendChild(tooltip);
 
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
-      document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }),
+      );
+      document.dispatchEvent(
+        new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }),
+      );
 
       expect(document.getElementById('translate-hover-tooltip')).toBeNull();
     });
 
     it('mousemove without Alt key pressed does nothing', () => {
       // Alt is not pressed, so mousemove should not trigger hover translation
-      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 100, bubbles: true }));
+      document.dispatchEvent(
+        new MouseEvent('mousemove', {
+          clientX: 100,
+          clientY: 100,
+          bubbles: true,
+        }),
+      );
       // No translate message should have been sent
-      const translateCalls = mockSendMessage.mock.calls.filter((c) => c[0]?.type === 'translate');
+      const translateCalls = mockSendMessage.mock.calls.filter(
+        (c) => c[0]?.type === 'translate',
+      );
       expect(translateCalls.length).toBe(0);
     });
   });
@@ -1764,15 +2166,16 @@ describe('Content Script', () => {
         </article>
       `;
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Artikkelin otsikko', 'Artikkelin sisältö'] });
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        vi.fn()
-      );
-      await new Promise((r) => setTimeout(r, 80));
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Artikkelin otsikko', 'Artikkelin sisältö'],
+      });
+      startPageTranslation();
+      await waitForAsyncContentWork(80);
 
-      const translateCalls = mockSendMessage.mock.calls.filter((c) => c[0]?.type === 'translate');
+      const translateCalls = mockSendMessage.mock.calls.filter(
+        (c) => c[0]?.type === 'translate',
+      );
       expect(translateCalls.length).toBeGreaterThan(0);
     });
 
@@ -1786,15 +2189,16 @@ describe('Content Script', () => {
         </main>
       `;
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Koti', 'Pääsisältö'] });
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        vi.fn()
-      );
-      await new Promise((r) => setTimeout(r, 80));
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Koti', 'Pääsisältö'],
+      });
+      startPageTranslation();
+      await waitForAsyncContentWork(80);
 
-      const translateCalls = mockSendMessage.mock.calls.filter((c) => c[0]?.type === 'translate');
+      const translateCalls = mockSendMessage.mock.calls.filter(
+        (c) => c[0]?.type === 'translate',
+      );
       expect(translateCalls.length).toBeGreaterThan(0);
     });
 
@@ -1804,15 +2208,16 @@ describe('Content Script', () => {
         <footer><p>Copyright notice text</p></footer>
       `;
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Sivun otsikko', 'Tekijänoikeus'] });
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        vi.fn()
-      );
-      await new Promise((r) => setTimeout(r, 80));
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Sivun otsikko', 'Tekijänoikeus'],
+      });
+      startPageTranslation();
+      await waitForAsyncContentWork(80);
 
-      const translateCalls = mockSendMessage.mock.calls.filter((c) => c[0]?.type === 'translate');
+      const translateCalls = mockSendMessage.mock.calls.filter(
+        (c) => c[0]?.type === 'translate',
+      );
       expect(translateCalls.length).toBeGreaterThan(0);
     });
   });
@@ -1824,22 +2229,29 @@ describe('Content Script', () => {
     it('undo during active translation stops cleanly', async () => {
       document.body.innerHTML = '<p>Some text to translate</p>';
       // Slow mock to simulate in-flight request
-      mockSendMessage.mockImplementation(() => new Promise((r) => setTimeout(() => r({ success: true, result: ['Käännetty'] }), 500)));
-
-      const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
+      mockSendMessage.mockImplementation(
+        () =>
+          new Promise((r) =>
+            setTimeout(() => r({ success: true, result: ['Käännetty'] }), 500),
+          ),
       );
 
+      const sendResponse = vi.fn();
+      startPageTranslation(sendResponse);
+
       // Immediately undo before translation completes
-      await new Promise((r) => setTimeout(r, 20));
+      await waitForAsyncContentWork(20);
       const undoResponse = vi.fn();
-      messageHandler({ type: 'undoTranslation' } as unknown as Parameters<typeof messageHandler>[0], {}, undoResponse);
+      messageHandler(
+        { type: 'undoTranslation' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        undoResponse,
+      );
 
       expect(undoResponse).toHaveBeenCalledWith(
-        expect.objectContaining({ success: true })
+        expect.objectContaining({ success: true }),
       );
     });
   });
@@ -1862,13 +2274,12 @@ describe('Content Script', () => {
 
     it('unload after active translation cleans up state', async () => {
       document.body.innerHTML = '<p>Text to translate</p>';
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Käännetty'] });
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        vi.fn()
-      );
-      await new Promise((r) => setTimeout(r, 80));
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Käännetty'],
+      });
+      startPageTranslation();
+      await waitForAsyncContentWork(80);
 
       expect(() => {
         window.dispatchEvent(new Event('unload'));
@@ -1877,13 +2288,12 @@ describe('Content Script', () => {
 
     it('beforeunload after active translation aborts it', async () => {
       document.body.innerHTML = '<p>Translation in progress</p>';
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Käännetty'] });
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        vi.fn()
-      );
-      await new Promise((r) => setTimeout(r, 10));
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Käännetty'],
+      });
+      startPageTranslation();
+      await waitForAsyncContentWork(10);
 
       expect(() => {
         window.dispatchEvent(new Event('beforeunload'));
@@ -1908,18 +2318,19 @@ describe('Content Script', () => {
         return { success: true, result: ['Käännetty'] };
       });
 
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      await new Promise((r) => setTimeout(r, 200));
+      startPageTranslation(sendResponse);
+      await waitForAsyncContentWork(200);
       consoleSpy.mockRestore();
 
       // Even with a transient error, sendResponse was called immediately
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -1929,14 +2340,13 @@ describe('Content Script', () => {
   describe('translation completion toasts', () => {
     it('shows info toast when translation completes', async () => {
       document.body.innerHTML = '<p>Hello world text here</p>';
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Hei maailma täällä'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Hei maailma täällä'],
+      });
 
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        vi.fn()
-      );
-      await new Promise((r) => setTimeout(r, 100));
+      startPageTranslation();
+      await waitForAsyncContentWork(100);
 
       // Info toast should have been shown (it may have auto-faded, just verify no crash)
       // The toast element creation path was exercised
@@ -1948,38 +2358,71 @@ describe('Content Script', () => {
   // Widget drag listener management
   // ============================================================
   describe('widget drag listener lifecycle', () => {
-    afterEach(() => {
-      const widget = document.getElementById('translate-floating-widget');
-      if (widget) widget.remove();
-    });
-
     it('closing widget removes drag listeners', () => {
       // Show widget (adds listeners)
-      messageHandler({ type: 'showWidget' } as unknown as Parameters<typeof messageHandler>[0], {}, vi.fn());
+      messageHandler(
+        { type: 'showWidget' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        vi.fn(),
+      );
 
       // Hide via toggle (removes listeners)
-      messageHandler({ type: 'toggleWidget' } as unknown as Parameters<typeof messageHandler>[0], {}, vi.fn());
+      messageHandler(
+        { type: 'toggleWidget' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        vi.fn(),
+      );
 
       // Show again (re-adds listeners)
       const sendResponse = vi.fn();
-      messageHandler({ type: 'showWidget' } as unknown as Parameters<typeof messageHandler>[0], {}, sendResponse);
+      messageHandler(
+        { type: 'showWidget' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        sendResponse,
+      );
       expect(sendResponse).toHaveBeenCalledWith({ visible: true });
     });
 
     it('widget header mousedown initiates dragging', () => {
-      messageHandler({ type: 'showWidget' } as unknown as Parameters<typeof messageHandler>[0], {}, vi.fn());
+      messageHandler(
+        { type: 'showWidget' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        vi.fn(),
+      );
       const widget = document.getElementById('translate-floating-widget')!;
       const header = widget.querySelector('.widget-header') as HTMLElement;
 
       // Fire mousedown on header to start drag
-      header.dispatchEvent(new MouseEvent('mousedown', { clientX: 100, clientY: 50, bubbles: true }));
+      header.dispatchEvent(
+        new MouseEvent('mousedown', {
+          clientX: 100,
+          clientY: 50,
+          bubbles: true,
+        }),
+      );
       // Fire mousemove on document to simulate drag
-      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 200, clientY: 150, bubbles: true }));
+      document.dispatchEvent(
+        new MouseEvent('mousemove', {
+          clientX: 200,
+          clientY: 150,
+          bubbles: true,
+        }),
+      );
       // Fire mouseup to end drag
       document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
 
       // Widget should still exist (no throw)
-      expect(document.getElementById('translate-floating-widget')).not.toBeNull();
+      expect(
+        document.getElementById('translate-floating-widget'),
+      ).not.toBeNull();
     });
   });
 
@@ -1997,34 +2440,34 @@ describe('Content Script', () => {
       });
 
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        vi.fn()
-      );
-      await new Promise((r) => setTimeout(r, 100));
+      startPageTranslation();
+      await waitForAsyncContentWork(100);
       consoleSpy.mockRestore();
 
       // Should complete without error
-      const translateCalls = mockSendMessage.mock.calls.filter((c) => c[0]?.type === 'translate');
+      const translateCalls = mockSendMessage.mock.calls.filter(
+        (c) => c[0]?.type === 'translate',
+      );
       expect(translateCalls.length).toBeGreaterThan(0);
     });
 
     it('shows error toast when all translations fail', async () => {
       document.body.innerHTML = '<p>Some text here</p>';
 
-      mockSendMessage.mockResolvedValue({ success: false, error: 'Service unavailable' });
+      mockSendMessage.mockResolvedValue({
+        success: false,
+        error: 'Service unavailable',
+      });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      await new Promise((r) => setTimeout(r, 200));
+      startPageTranslation(sendResponse);
+      await waitForAsyncContentWork(200);
 
       // The translation request was made
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -2034,39 +2477,60 @@ describe('Content Script', () => {
   describe('auto source language resolution', () => {
     it('translatePage with sourceLang=auto still initiates translation', async () => {
       document.body.innerHTML = '<p>Hello world</p>';
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Hei maailma'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Hei maailma'],
+      });
 
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'translatePage', sourceLang: 'auto', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translatePage',
+          sourceLang: 'auto',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
-      await new Promise((r) => setTimeout(r, 80));
+      await waitForAsyncContentWork(80);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
 
     it('resolveSourceLang falls back to auto when detection returns null', async () => {
       // Fill the page with gibberish so detectLanguage returns null
       document.body.innerHTML = '<p>xyz123 abc456 !!@@## %%^^&&</p>';
-      mockSendMessage.mockResolvedValue({ success: true, result: ['translated'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['translated'],
+      });
 
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'translatePage', sourceLang: 'auto', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translatePage',
+          sourceLang: 'auto',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
-      await new Promise((r) => setTimeout(r, 80));
+      await waitForAsyncContentWork(80);
 
       // The translate message should have sourceLang='auto' (detection failed)
       if (mockSendMessage.mock.calls.length > 0) {
         const translateCall = mockSendMessage.mock.calls.find(
-          (c: unknown[]) => (c[0] as { type: string }).type === 'translate'
+          (c: unknown[]) => (c[0] as { type: string }).type === 'translate',
         );
         if (translateCall) {
-          expect((translateCall[0] as { sourceLang: string }).sourceLang).toBe('auto');
+          expect((translateCall[0] as { sourceLang: string }).sourceLang).toBe(
+            'auto',
+          );
         }
       }
     });
@@ -2078,7 +2542,14 @@ describe('Content Script', () => {
       const textNode = p.firstChild!;
 
       const mockRange = {
-        getBoundingClientRect: () => ({ top: 50, bottom: 70, left: 10, right: 200, width: 190, height: 20 }),
+        getBoundingClientRect: () => ({
+          top: 50,
+          bottom: 70,
+          left: 10,
+          right: 200,
+          width: 190,
+          height: 20,
+        }),
         commonAncestorContainer: textNode,
       };
       const mockSelection = {
@@ -2087,19 +2558,29 @@ describe('Content Script', () => {
         getRangeAt: () => mockRange,
         rangeCount: 1,
       };
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
-      mockSendMessage.mockResolvedValue({ success: true, result: 'Hello the world' });
+      vi.spyOn(window, 'getSelection').mockReturnValue(
+        mockSelection as unknown as Selection,
+      );
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: 'Hello the world',
+      });
 
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'auto', targetLang: 'en', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'auto',
+          targetLang: 'en',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
-      await new Promise((r) => setTimeout(r, 80));
+      await waitForAsyncContentWork(80);
 
       expect(mockSendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'translate', targetLang: 'en' })
+        expect.objectContaining({ type: 'translate', targetLang: 'en' }),
       );
     });
   });
@@ -2111,32 +2592,37 @@ describe('Content Script', () => {
     it('translated element has bilingual class when mode enabled before translation', async () => {
       // Enable bilingual mode first
       messageHandler(
-        { type: 'setBilingualMode', enabled: true } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'setBilingualMode', enabled: true } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        vi.fn()
+        vi.fn(),
       );
 
       document.body.innerHTML = '<p id="txt">Hello world translation test</p>';
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Hei maailma käännöstesti'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Hei maailma käännöstesti'],
+      });
 
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        vi.fn()
-      );
-      await new Promise((r) => setTimeout(r, 100));
+      startPageTranslation();
+      await waitForAsyncContentWork(100);
 
       const el = document.getElementById('txt');
       if (el?.getAttribute('data-translated')) {
         expect(el.classList.contains('translate-bilingual')).toBe(true);
-        expect(el.querySelector('.translate-bilingual-original')).not.toBeNull();
+        expect(
+          el.querySelector('.translate-bilingual-original'),
+        ).not.toBeNull();
       }
 
       // Clean up
       messageHandler(
-        { type: 'setBilingualMode', enabled: false } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'setBilingualMode', enabled: false } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        vi.fn()
+        vi.fn(),
       );
     });
   });
@@ -2148,18 +2634,26 @@ describe('Content Script', () => {
     it('responds with started and returns true', async () => {
       const sendResponse = vi.fn();
       const result = messageHandler(
-        { type: 'translatePdf', targetLang: 'fi' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'translatePdf', targetLang: 'fi' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
       expect(result).toBe(true);
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
   describe('translateImage message handler', () => {
     it('responds with started and returns true', async () => {
-      mockSendMessage.mockResolvedValue({ success: true, result: 'Translated alt text' });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: 'Translated alt text',
+      });
       const sendResponse = vi.fn();
       const result = messageHandler(
         {
@@ -2170,21 +2664,20 @@ describe('Content Script', () => {
           provider: 'opus-mt',
         } as unknown as Parameters<typeof messageHandler>[0],
         {},
-        sendResponse
+        sendResponse,
       );
       expect(result).toBe(true);
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
   describe('enterScreenshotMode message handler', () => {
     it('responds with true and returns true', () => {
       const sendResponse = vi.fn();
-      const result = messageHandler(
-        { type: 'enterScreenshotMode' } as unknown as Parameters<typeof messageHandler>[0],
-        {},
-        sendResponse
-      );
+      const result = enterScreenshotMode(sendResponse);
       expect(result).toBe(true);
       expect(sendResponse).toHaveBeenCalledWith(true);
     });
@@ -2194,9 +2687,11 @@ describe('Content Script', () => {
     it('returns false for unrecognised type', () => {
       const sendResponse = vi.fn();
       const result = messageHandler(
-        { type: 'notARealMessage' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'notARealMessage' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
       expect(result).toBe(false);
       expect(sendResponse).not.toHaveBeenCalled();
@@ -2208,13 +2703,12 @@ describe('Content Script', () => {
       // Simulate a PDF page by injecting an embed element
       document.body.innerHTML = '<embed type="application/pdf" src="doc.pdf">';
       const sendResponse = vi.fn();
-      const result = messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' } as unknown as Parameters<typeof messageHandler>[0],
-        {},
-        sendResponse
-      );
+      const result = startPageTranslation(sendResponse);
       expect(result).toBe(true);
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -2235,12 +2729,8 @@ describe('Content Script', () => {
 
       // translatePage won't set up correction editing unless enableCorrectionMode is on
       // Directly simulate what translatePage does: translate then set data attributes
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        vi.fn()
-      );
-      await new Promise((r) => setTimeout(r, 100));
+      startPageTranslation();
+      await waitForAsyncContentWork(100);
 
       // The element should exist in DOM — no crash from the correction path
       expect(document.body.contains(el)).toBe(true);
@@ -2268,18 +2758,19 @@ describe('Content Script', () => {
   describe('translateDynamicContent via mutation observer', () => {
     it('mutation observer starts after page translation', async () => {
       document.body.innerHTML = '<p>Hello world content</p>';
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Käännetty sisältö'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Käännetty sisältö'],
+      });
 
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        vi.fn()
-      );
+      startPageTranslation();
       // Wait for page translation to complete
-      await new Promise((r) => setTimeout(r, 150));
+      await waitForAsyncContentWork(150);
 
       // Translation must have been called (proves the flow ran)
-      const translateCalls = mockSendMessage.mock.calls.filter((c) => c[0]?.type === 'translate');
+      const translateCalls = mockSendMessage.mock.calls.filter(
+        (c) => c[0]?.type === 'translate',
+      );
       expect(translateCalls.length).toBeGreaterThan(0);
     });
   });
@@ -2290,7 +2781,10 @@ describe('Content Script', () => {
   describe('content timing stats via profiling', () => {
     it('profiling flag triggers timing stats logging', async () => {
       document.body.innerHTML = '<p>Text to profile translate here</p>';
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Profiloitu käännös'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Profiloitu käännös'],
+      });
 
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
@@ -2303,9 +2797,9 @@ describe('Content Script', () => {
           enableProfiling: true,
         } as unknown as Parameters<typeof messageHandler>[0],
         {},
-        vi.fn()
+        vi.fn(),
       );
-      await new Promise((r) => setTimeout(r, 200));
+      await waitForAsyncContentWork(200);
 
       consoleSpy.mockRestore();
 
@@ -2324,42 +2818,62 @@ describe('Content Script', () => {
       p.textContent = 'Hello world example text';
       document.body.appendChild(p);
 
-      // Mock caretRangeFromPoint to return a range at the text node
       const textNode = p.firstChild as Text;
-      const mockWordRange = {
+      const { range: caretRange } = createMockRange({
+        startContainer: textNode,
+        startOffset: 0,
+        endContainer: textNode,
+        endOffset: 0,
+      });
+      const { range: wordRange } = createMockRange({
         startContainer: textNode,
         startOffset: 0,
         endContainer: textNode,
         endOffset: 5,
-        getBoundingClientRect: () => ({ top: 10, left: 10, bottom: 30, right: 60, width: 50, height: 20 }),
-        setStart: vi.fn(),
-        setEnd: vi.fn(),
-      };
-
-      // Mock caretRangeFromPoint
-      const origCaretRange = document.caretRangeFromPoint;
-      (document as unknown as Record<string, unknown>).caretRangeFromPoint = vi.fn().mockReturnValue({
-        startContainer: textNode,
-        startOffset: 0,
+        rect: {
+          top: 10,
+          left: 10,
+          bottom: 30,
+          right: 60,
+          width: 50,
+          height: 20,
+        },
       });
-      (document as unknown as Record<string, unknown>).createRange = vi.fn().mockReturnValue(mockWordRange);
+      const caretRangeMock = mockCaretRangeFromPoint(
+        caretRange,
+        'content.hoverFlow.caretRangeFromPoint',
+      );
+      const createRangeMock = mockDocumentCreateRange(
+        wordRange,
+        'content.hoverFlow.createRange',
+      );
 
       mockSendMessage.mockResolvedValue({ success: true, result: 'Hei' });
 
       // Press Alt
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }));
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Alt', bubbles: true }),
+      );
 
       // Fire mousemove
-      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 20, clientY: 20, bubbles: true }));
+      document.dispatchEvent(
+        new MouseEvent('mousemove', {
+          clientX: 20,
+          clientY: 20,
+          bubbles: true,
+        }),
+      );
 
       // Wait for debounce (150ms) + async translation
-      await new Promise((r) => setTimeout(r, 300));
+      await waitForAsyncContentWork(300);
 
       // Release Alt
-      document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }));
+      document.dispatchEvent(
+        new KeyboardEvent('keyup', { key: 'Alt', bubbles: true }),
+      );
 
-      // Restore
-      (document as unknown as Record<string, unknown>).caretRangeFromPoint = origCaretRange;
+      caretRangeMock.restore();
+      createRangeMock.restore();
 
       // Tooltip may or may not appear depending on caretRangeFromPoint mock detail
       // The key test is that no crash occurred
@@ -2386,7 +2900,7 @@ describe('Content Script', () => {
 
       // Simulate blur event
       el.dispatchEvent(new Event('blur', { bubbles: true }));
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncContentWork(50);
 
       // No crash expected
       expect(document.body.contains(el)).toBe(true);
@@ -2401,29 +2915,32 @@ describe('Content Script', () => {
       document.body.innerHTML = '<p>First paragraph text content here</p>';
 
       // First call - start translating with a slow sendMessage
-      mockSendMessage.mockImplementation(() => new Promise(r => setTimeout(() => r({ success: true, result: ['Translated'] }), 500)));
-
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' } as unknown as Parameters<typeof messageHandler>[0],
-        {},
-        vi.fn()
+      mockSendMessage.mockImplementation(
+        () =>
+          new Promise((r) =>
+            setTimeout(() => r({ success: true, result: ['Translated'] }), 500),
+          ),
       );
 
+      startPageTranslation();
+
       // Wait a tick so the first translation starts and sets isTranslatingPage = true
-      await new Promise((r) => setTimeout(r, 20));
+      await waitForAsyncContentWork(20);
 
       // Second call immediately — should hit the early return (isTranslatingPage = true)
       const sendResponse2 = vi.fn();
-      const result = messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' } as unknown as Parameters<typeof messageHandler>[0],
-        {},
-        sendResponse2
-      );
+      const result = startPageTranslation(sendResponse2);
       expect(result).toBe(true);
 
       // Wait for cleanup
-      await new Promise((r) => setTimeout(r, 600));
-      messageHandler({ type: 'stopAutoTranslate' } as unknown as Parameters<typeof messageHandler>[0], {}, vi.fn());
+      await waitForAsyncContentWork(600);
+      messageHandler(
+        { type: 'stopAutoTranslate' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        vi.fn(),
+      );
     });
   });
 
@@ -2435,19 +2952,20 @@ describe('Content Script', () => {
       document.body.innerHTML = '<p>Content to translate here</p>';
 
       // Simulate extension context invalidated error
-      mockSendMessage.mockRejectedValue(new Error('Extension context invalidated'));
-
-      const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' } as unknown as Parameters<typeof messageHandler>[0],
-        {},
-        sendResponse
+      mockSendMessage.mockRejectedValue(
+        new Error('Extension context invalidated'),
       );
 
-      await new Promise((r) => setTimeout(r, 200));
+      const sendResponse = vi.fn();
+      startPageTranslation(sendResponse);
+
+      await waitForAsyncContentWork(200);
 
       // No crash, sendResponse was called with started status
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -2457,25 +2975,36 @@ describe('Content Script', () => {
   describe('translateSelection error handling', () => {
     it('logs error when translateSelection promise rejects', async () => {
       // Select some text
-      document.body.innerHTML = '<p id="sel-target">Hello world selection test</p>';
+      document.body.innerHTML =
+        '<p id="sel-target">Hello world selection test</p>';
 
       // Make sendMessage reject so translateSelection throws
       mockSendMessage.mockRejectedValue(new Error('translate selection error'));
 
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
 
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
 
       // Should have responded immediately
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
 
       // Wait for async catch to fire
-      await new Promise((r) => setTimeout(r, 200));
+      await waitForAsyncContentWork(200);
 
       consoleSpy.mockRestore();
     });
@@ -2492,14 +3021,19 @@ describe('Content Script', () => {
 
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'translatePdf', targetLang: 'fi' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'translatePdf', targetLang: 'fi' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
       // No crash expected
       expect(true).toBe(true);
     });
@@ -2514,14 +3048,22 @@ describe('Content Script', () => {
 
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'translateImage', imageUrl: 'http://example.com/img.jpg', sourceLang: 'en', targetLang: 'fi' } as unknown as Parameters<typeof messageHandler>[0],
+        {
+          type: 'translateImage',
+          imageUrl: 'http://example.com/img.jpg',
+          sourceLang: 'en',
+          targetLang: 'fi',
+        } as unknown as Parameters<typeof messageHandler>[0],
         {},
-        sendResponse
+        sendResponse,
       );
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
       expect(true).toBe(true);
     });
   });
@@ -2532,11 +3074,7 @@ describe('Content Script', () => {
   describe('enterScreenshotMode handler', () => {
     it('responds with true when entering screenshot mode', () => {
       const sendResponse = vi.fn();
-      const result = messageHandler(
-        { type: 'enterScreenshotMode' } as unknown as Parameters<typeof messageHandler>[0],
-        {},
-        sendResponse
-      );
+      const result = enterScreenshotMode(sendResponse);
       expect(result).toBe(true);
       expect(sendResponse).toHaveBeenCalledWith(true);
     });
@@ -2548,7 +3086,10 @@ describe('Content Script', () => {
   describe('translatePage with enableProfiling', () => {
     it('invokes profiling stats when enableProfiling is true', async () => {
       document.body.innerHTML = '<p>Profiling test content paragraph</p>';
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Profiilin testi'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Profiilin testi'],
+      });
 
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
@@ -2561,12 +3102,18 @@ describe('Content Script', () => {
           enableProfiling: true,
         } as unknown as Parameters<typeof messageHandler>[0],
         {},
-        vi.fn()
+        vi.fn(),
       );
 
-      await new Promise((r) => setTimeout(r, 300));
+      await waitForAsyncContentWork(300);
       consoleSpy.mockRestore();
-      messageHandler({ type: 'stopAutoTranslate' } as unknown as Parameters<typeof messageHandler>[0], {}, vi.fn());
+      messageHandler(
+        { type: 'stopAutoTranslate' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
+        {},
+        vi.fn(),
+      );
       expect(true).toBe(true);
     });
   });
@@ -2587,21 +3134,23 @@ describe('Content Script', () => {
       // Override storage.get to return autoTranslate: true
       // siteRules.getRules calls storage.get first (returns {}=no site rules),
       // then safeStorageGet calls storage.get with autoTranslate settings.
-      const storageGet = (globalThis as unknown as Record<string, { storage: { local: { get: ReturnType<typeof vi.fn> } } }>).chrome.storage.local.get;
-      storageGet.mockResolvedValueOnce({}); // site rules call (no site rules)
-      storageGet.mockResolvedValueOnce({
+      mockStorageLocalGet.mockResolvedValueOnce({}); // site rules call (no site rules)
+      mockStorageLocalGet.mockResolvedValueOnce({
         autoTranslate: true,
         sourceLang: 'en',
         targetLang: 'fi',
         strategy: 'smart',
       }); // global settings call
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Auto käännös'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Auto käännös'],
+      });
 
-      // Use fake timers to fast-forward the 500ms setTimeout
+      // Use fake timers to fast-forward the 500ms fallback timer
       vi.useFakeTimers();
 
-      // Re-import the module — this triggers checkAutoTranslate which sets a 500ms timer
+      // Re-import the module — this triggers checkAutoTranslate which falls back to a 500ms timer
       await import('./index');
 
       // Let async checkAutoTranslate run (it uses real async/await internally)
@@ -2612,6 +3161,20 @@ describe('Content Script', () => {
 
       // Module should have been initialized (message handler registered again)
       expect(mockOnMessage.addListener).toHaveBeenCalled();
+      expect(readAutoTranslateDiagnostics()).toEqual(
+        expect.objectContaining({
+          checkStarted: true,
+          settingsLoaded: true,
+          shouldAutoTranslate: true,
+          currentSettingsApplied: true,
+          startScheduled: true,
+          startRan: true,
+          translationRequested: true,
+          translationCompleted: true,
+          sourceLang: 'en',
+          targetLang: 'fi',
+        }),
+      );
     });
 
     it('uses requestIdleCallback when available', async () => {
@@ -2620,23 +3183,29 @@ describe('Content Script', () => {
       document.body.innerHTML = '<p>Idle callback test</p>';
       document.head.innerHTML = '';
 
-      const storageGet = (globalThis as unknown as Record<string, { storage: { local: { get: ReturnType<typeof vi.fn> } } }>).chrome.storage.local.get;
-      storageGet.mockResolvedValueOnce({}); // site rules call
-      storageGet.mockResolvedValueOnce({
+      mockStorageLocalGet.mockResolvedValueOnce({}); // site rules call
+      mockStorageLocalGet.mockResolvedValueOnce({
         autoTranslate: true,
         sourceLang: 'en',
         targetLang: 'fi',
         strategy: 'smart',
       });
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Idle testi'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Idle testi'],
+      });
 
       // Stub requestIdleCallback on window
       const idleCallbackFn = vi.fn((cb: IdleRequestCallback) => {
         cb({ didTimeout: false, timeRemaining: () => 50 } as IdleDeadline);
         return 1;
       });
-      (window as unknown as Window & { requestIdleCallback: typeof idleCallbackFn }).requestIdleCallback = idleCallbackFn;
+      (
+        window as unknown as Window & {
+          requestIdleCallback: typeof idleCallbackFn;
+        }
+      ).requestIdleCallback = idleCallbackFn;
 
       vi.useFakeTimers();
       await import('./index');
@@ -2649,17 +3218,82 @@ describe('Content Script', () => {
       delete (window as any).requestIdleCallback;
     });
 
+    it('falls back when requestIdleCallback does not run before the timeout', async () => {
+      vi.clearAllMocks();
+      vi.resetModules();
+      document.body.innerHTML = '<p>Idle fallback test</p>';
+      document.head.innerHTML = '';
+
+      mockStorageLocalGet.mockResolvedValueOnce({}); // site rules call
+      mockStorageLocalGet.mockResolvedValueOnce({
+        autoTranslate: true,
+        sourceLang: 'en',
+        targetLang: 'fi',
+        strategy: 'smart',
+      });
+
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Idle fallback testi'],
+      });
+
+      let idleCallback: IdleRequestCallback | undefined;
+      const idleCallbackFn = vi.fn((cb: IdleRequestCallback) => {
+        idleCallback = cb;
+        return 7;
+      });
+      const cancelIdleCallbackFn = vi.fn();
+      const idleWindow = window as unknown as Window & {
+        requestIdleCallback?: typeof idleCallbackFn;
+        cancelIdleCallback?: typeof cancelIdleCallbackFn;
+      };
+      idleWindow.requestIdleCallback = idleCallbackFn;
+      idleWindow.cancelIdleCallback = cancelIdleCallbackFn;
+
+      vi.useFakeTimers();
+
+      try {
+        await import('./index');
+        const initialCallCount = mockSendMessage.mock.calls.length;
+
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(mockSendMessage).toHaveBeenCalledTimes(initialCallCount + 1);
+        expect(cancelIdleCallbackFn).toHaveBeenCalledTimes(1);
+        expect(cancelIdleCallbackFn).toHaveBeenCalledWith(expect.any(Number));
+        expect(readAutoTranslateDiagnostics()).toEqual(
+          expect.objectContaining({
+            startScheduled: true,
+            scheduleMethod: 'requestIdleCallback',
+            startTriggeredBy: 'requestIdleCallbackTimeout',
+            startRan: true,
+            translationRequested: true,
+          }),
+        );
+
+        idleCallback?.({
+          didTimeout: false,
+          timeRemaining: () => 50,
+        } as IdleDeadline);
+        await vi.runAllTimersAsync();
+
+        expect(mockSendMessage).toHaveBeenCalledTimes(initialCallCount + 1);
+      } finally {
+        vi.useRealTimers();
+        Reflect.deleteProperty(idleWindow, 'requestIdleCallback');
+        Reflect.deleteProperty(idleWindow, 'cancelIdleCallback');
+      }
+    });
+
     it('logs site-specific rules when they exist', async () => {
       vi.clearAllMocks();
       vi.resetModules();
       document.body.innerHTML = '<p>Site rules test</p>';
       document.head.innerHTML = '';
 
-      const storageGet = (globalThis as unknown as Record<string, { storage: { local: { get: ReturnType<typeof vi.fn> } } }>).chrome.storage.local.get;
       // Return site rules (first call from siteRules.getRules returns raw rules)
-      storageGet.mockResolvedValueOnce({
+      mockStorageLocalGet.mockResolvedValueOnce({
         siteRules: {
-          'localhost': {
+          localhost: {
             autoTranslate: true,
             sourceLang: 'de',
             targetLang: 'fi',
@@ -2669,9 +3303,12 @@ describe('Content Script', () => {
         },
       });
       // Second call for global settings
-      storageGet.mockResolvedValueOnce({});
+      mockStorageLocalGet.mockResolvedValueOnce({});
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Sivukohtainen'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Sivukohtainen'],
+      });
 
       vi.useFakeTimers();
       await import('./index');
@@ -2687,8 +3324,7 @@ describe('Content Script', () => {
       document.body.innerHTML = '';
       document.head.innerHTML = '';
 
-      const storageGet = (globalThis as unknown as Record<string, { storage: { local: { get: ReturnType<typeof vi.fn> } } }>).chrome.storage.local.get;
-      storageGet.mockResolvedValue({});
+      mockStorageLocalGet.mockResolvedValue({});
 
       // Override document.readyState to 'loading'
       Object.defineProperty(document, 'readyState', {
@@ -2705,7 +3341,9 @@ describe('Content Script', () => {
       vi.useRealTimers();
 
       // Should have registered a 'load' listener
-      expect(addEventSpy.mock.calls.some(([event]) => event === 'load')).toBe(true);
+      expect(addEventSpy.mock.calls.some(([event]) => event === 'load')).toBe(
+        true,
+      );
       addEventSpy.mockRestore();
 
       // Restore readyState
@@ -2727,69 +3365,64 @@ describe('Content Script', () => {
       mockSendMessage.mockResolvedValue({ success: true, result: ['Testi'] });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      await new Promise((r) => setTimeout(r, 100));
+      startPageTranslation(sendResponse);
+      await waitForAsyncContentWork(100);
 
       // Second call should use cached glossary (no duplicate loads)
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        vi.fn()
-      );
-      await new Promise((r) => setTimeout(r, 50));
+      startPageTranslation();
+      await waitForAsyncContentWork(50);
 
       expect(true).toBe(true);
     });
 
     it('handles glossary load errors gracefully', async () => {
       document.body.innerHTML = '<p>With error handling</p>';
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Käännetty'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Käännetty'],
+      });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 100));
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      await waitForAsyncContentWork(100);
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
 
     it('drains queued dynamic nodes after page translation completes', async () => {
       document.body.innerHTML = '<p>Main content</p><div id="dynamic"></div>';
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Käännetty'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Käännetty'],
+      });
 
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        vi.fn()
+      startPageTranslation();
+
+      await waitForAsyncContentWork(150);
+
+      const translateCalls = mockSendMessage.mock.calls.filter(
+        (c) => c[0]?.type === 'translate',
       );
-
-      await new Promise((r) => setTimeout(r, 150));
-
-      const translateCalls = mockSendMessage.mock.calls.filter((c) => c[0]?.type === 'translate');
       expect(translateCalls.length).toBeGreaterThan(0);
     });
   });
 
   describe('PDF translation message handling', () => {
     it('handles PDF translation via isPdfPage check', async () => {
-      document.body.innerHTML = '<embed type="application/pdf" src="document.pdf">';
+      document.body.innerHTML =
+        '<embed type="application/pdf" src="document.pdf">';
 
       const sendResponse = vi.fn();
-      const result = messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' } as unknown as Parameters<typeof messageHandler>[0],
-        {},
-        sendResponse
-      );
+      const result = startPageTranslation(sendResponse);
 
       expect(result).toBe(true);
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -2804,11 +3437,14 @@ describe('Content Script', () => {
           targetLang: 'fi',
         } as unknown as Parameters<typeof messageHandler>[0],
         {},
-        sendResponse
+        sendResponse,
       );
 
       expect(result).toBe(true);
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -2838,24 +3474,34 @@ describe('Content Script', () => {
         rangeCount: 1,
       };
 
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      vi.spyOn(window, 'getSelection').mockReturnValue(
+        mockSelection as unknown as Selection,
+      );
 
-      mockSendMessage.mockResolvedValue({ success: true, result: 'valittu keskella' });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: 'valittu keskella',
+      });
 
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
 
       expect(mockSendMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'translate',
           text: 'selected middle',
-        })
+        }),
       );
     });
   });
@@ -2863,7 +3509,8 @@ describe('Content Script', () => {
   describe('Batch creation with large text nodes', () => {
     it('handles multiple large text nodes in batch', async () => {
       const p1 = document.createElement('p');
-      p1.textContent = 'First paragraph with moderate length text that is easy to translate for testing purposes.';
+      p1.textContent =
+        'First paragraph with moderate length text that is easy to translate for testing purposes.';
       document.body.appendChild(p1);
 
       const p2 = document.createElement('p');
@@ -2871,18 +3518,20 @@ describe('Content Script', () => {
       p2.textContent = longText;
       document.body.appendChild(p2);
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Ensimmäinen kappale', 'Käännetty'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Ensimmäinen kappale', 'Käännetty'],
+      });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -2898,15 +3547,14 @@ describe('Content Script', () => {
       });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
 
     it('counts errors correctly when translations partially fail', async () => {
@@ -2918,15 +3566,14 @@ describe('Content Script', () => {
       });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -2942,15 +3589,14 @@ describe('Content Script', () => {
       mockSendMessage.mockResolvedValue({ success: true, result: batchResult });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 200));
+      await waitForAsyncContentWork(200);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
 
     it('translates medium below-fold pages immediately without deferring', async () => {
@@ -2960,22 +3606,21 @@ describe('Content Script', () => {
       }
       document.body.innerHTML = html;
 
-      mockSendMessage.mockResolvedValue({
+      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => ({
         success: true,
-        result: Array(50).fill('Käännetty'),
-      });
+        result: (message.text ?? []).map(() => 'Käännetty'),
+      }));
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 200));
+      await waitForAsyncContentWork(200);
 
       expect(document.querySelector('[data-translate-chunk]')).toBeNull();
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
 
     it('filters already-translated nodes in scroll-aware callback', async () => {
@@ -2984,18 +3629,20 @@ describe('Content Script', () => {
         <p>New content</p>
       `;
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Uusi käännös'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Uusi käännös'],
+      });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -3003,31 +3650,32 @@ describe('Content Script', () => {
     it('buffers mutations and handles overflow', async () => {
       document.body.innerHTML = '<div id="container"></div>';
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Käännetty'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Käännetty'],
+      });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
 
     it('processes mutations in chunks via requestIdleCallback', async () => {
       document.body.innerHTML = '<p>Initial content</p>';
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Käännetty'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Käännetty'],
+      });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
       const container = document.createElement('div');
       for (let i = 0; i < 120; i++) {
@@ -3037,7 +3685,7 @@ describe('Content Script', () => {
       }
       document.body.appendChild(container);
 
-      await new Promise((r) => setTimeout(r, 150));
+      await waitForAsyncContentWork(150);
 
       expect(true).toBe(true);
     });
@@ -3056,19 +3704,20 @@ describe('Content Script', () => {
         return { success: true, result: ['Käännetty'] };
       });
 
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 200));
+      await waitForAsyncContentWork(200);
 
       consoleSpy.mockRestore();
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
 
     it('recognizes network errors as transient', async () => {
@@ -3084,15 +3733,14 @@ describe('Content Script', () => {
       });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 200));
+      await waitForAsyncContentWork(200);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -3105,21 +3753,22 @@ describe('Content Script', () => {
       });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
       messageHandler(
-        { type: 'stopAutoTranslate' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'stopAutoTranslate' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        vi.fn()
+        vi.fn(),
       );
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -3134,14 +3783,22 @@ describe('Content Script', () => {
 
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'translatePage', sourceLang: 'xx', targetLang: 'yy', strategy: 'balanced' },
+        {
+          type: 'translatePage',
+          sourceLang: 'xx',
+          targetLang: 'yy',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
 
-      await new Promise((r) => setTimeout(r, 200));
+      await waitForAsyncContentWork(200);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -3152,15 +3809,14 @@ describe('Content Script', () => {
       mockSendMessage.mockResolvedValue({ success: true, result: [] });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 80));
+      await waitForAsyncContentWork(80);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
 
     it('handles elements with no parent during translation', async () => {
@@ -3174,15 +3830,14 @@ describe('Content Script', () => {
       });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -3196,22 +3851,41 @@ describe('Content Script', () => {
       });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 200));
+      await waitForAsyncContentWork(200);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
+    });
+
+    it('does not partially apply truncated batch results', async () => {
+      document.body.innerHTML = '<p id="first">First</p><p id="second">Second</p>';
+
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Ensimmäinen'],
+      });
+
+      const sendResponse = vi.fn();
+      startPageTranslation(sendResponse);
+
+      await waitForAsyncContentWork(150);
+
+      expect(document.getElementById('first')?.textContent).toBe('First');
+      expect(document.getElementById('second')?.textContent).toBe('Second');
+      expect(document.getElementById('first')?.getAttribute('data-translated')).toBeNull();
+      expect(document.getElementById('second')?.getAttribute('data-translated')).toBeNull();
     });
   });
 
   describe('Page context extraction in batch', () => {
     it('extracts page context from first node for disambiguation', async () => {
       const article = document.createElement('article');
-      article.innerHTML = '<h2>Article title</h2><p>First paragraph</p><p>Second paragraph</p>';
+      article.innerHTML =
+        '<h2>Article title</h2><p>First paragraph</p><p>Second paragraph</p>';
       document.body.appendChild(article);
 
       mockSendMessage.mockResolvedValue({
@@ -3220,15 +3894,13 @@ describe('Content Script', () => {
       });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
+      startPageTranslation(sendResponse);
+
+      await waitForAsyncContentWork(100);
+
+      const translateCalls = mockSendMessage.mock.calls.filter(
+        (c) => c[0]?.type === 'translate',
       );
-
-      await new Promise((r) => setTimeout(r, 100));
-
-      const translateCalls = mockSendMessage.mock.calls.filter((c) => c[0]?.type === 'translate');
       expect(translateCalls.length).toBeGreaterThan(0);
     });
   });
@@ -3243,13 +3915,9 @@ describe('Content Script', () => {
       });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
 
       const p = document.querySelector('p');
       if (p?.getAttribute('data-translated')) {
@@ -3260,16 +3928,24 @@ describe('Content Script', () => {
     it('stores source and target language attributes', async () => {
       document.body.innerHTML = '<p id="lang-test">Language test content</p>';
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Kielitesti'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Kielitesti'],
+      });
 
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'translatePage', sourceLang: 'fr', targetLang: 'de', strategy: 'balanced' },
+        {
+          type: 'translatePage',
+          sourceLang: 'fr',
+          targetLang: 'de',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
 
       const p = document.getElementById('lang-test');
       if (p?.getAttribute('data-translated')) {
@@ -3289,15 +3965,14 @@ describe('Content Script', () => {
       });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -3310,24 +3985,23 @@ describe('Content Script', () => {
       document.body.innerHTML = html;
 
       const calls: number[] = [];
-      mockSendMessage.mockImplementation(async () => {
+      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => {
         calls.push(Date.now());
         return {
           success: true,
-          result: Array(50).fill('Käännetty'),
+          result: (message.text ?? []).map(() => 'Käännetty'),
         };
       });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 200));
+      await waitForAsyncContentWork(200);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -3345,15 +4019,14 @@ describe('Content Script', () => {
       });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 150));
+      await waitForAsyncContentWork(150);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
 
     it('shows appropriate summary when all translations complete without errors', async () => {
@@ -3365,15 +4038,14 @@ describe('Content Script', () => {
       });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -3381,7 +4053,10 @@ describe('Content Script', () => {
     it('passes provider parameter through batch translation', async () => {
       document.body.innerHTML = '<p>Provider test</p>';
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Käännetty'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Käännetty'],
+      });
 
       const sendResponse = vi.fn();
       messageHandler(
@@ -3393,12 +4068,15 @@ describe('Content Script', () => {
           provider: 'custom-provider',
         } as unknown as Parameters<typeof messageHandler>[0],
         {},
-        sendResponse
+        sendResponse,
       );
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
 
     it('passes provider parameter in selection translation', async () => {
@@ -3426,7 +4104,9 @@ describe('Content Script', () => {
         rangeCount: 1,
       };
 
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      vi.spyOn(window, 'getSelection').mockReturnValue(
+        mockSelection as unknown as Selection,
+      );
 
       mockSendMessage.mockResolvedValue({ success: true, result: 'Käännetty' });
 
@@ -3440,16 +4120,16 @@ describe('Content Script', () => {
           provider: 'specific-provider',
         } as unknown as Parameters<typeof messageHandler>[0],
         {},
-        sendResponse
+        sendResponse,
       );
 
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
 
       expect(mockSendMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'translate',
           provider: 'specific-provider',
-        })
+        }),
       );
     });
   });
@@ -3463,62 +4143,78 @@ describe('Content Script', () => {
       document.body.innerHTML = html;
 
       let batchCount = 0;
-      mockSendMessage.mockImplementation(async () => {
+      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => {
         batchCount++;
         if (batchCount === 1) {
-          return { success: true, result: Array(50).fill('Käännetty') };
+          return {
+            success: true,
+            result: (message.text ?? []).map(() => 'Käännetty'),
+          };
         }
-        return { success: true, result: Array(50).fill('Käännetty') };
+        return {
+          success: true,
+          result: (message.text ?? []).map(() => 'Käännetty'),
+        };
       });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 200));
+      await waitForAsyncContentWork(200);
 
       expect(batchCount).toBeGreaterThan(1);
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
-
 
   describe('Message handler edge cases', () => {
     it('handles message with missing optional fields', async () => {
       document.body.innerHTML = '<p>Test</p>';
-      
+
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'translatePage' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'translatePage' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
 
     it('handles translateImage with missing imageUrl', async () => {
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'translateImage' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'translateImage' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
 
     it('handles unknown message type returns false', () => {
       const sendResponse = vi.fn();
       const result = messageHandler(
-        { type: 'unknownMessageType' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'unknownMessageType' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
+
       expect(result).toBe(false);
     });
   });
@@ -3526,43 +4222,43 @@ describe('Content Script', () => {
   describe('stopAutoTranslate edge cases', () => {
     it('stops mutation observer when called', async () => {
       document.body.innerHTML = '<p>Test content for mutation observer</p>';
-      
+
       const sendResponse = vi.fn();
-      
+
       // First start a translation to initialize observer
       mockSendMessage.mockResolvedValue({
         success: true,
         result: ['Käännetty'],
       });
-      
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      
-      await new Promise((r) => setTimeout(r, 100));
-      
+
+      startPageTranslation(sendResponse);
+
+      await waitForAsyncContentWork(100);
+
       // Now stop auto translate
       const stopResponse = vi.fn();
       messageHandler(
-        { type: 'stopAutoTranslate' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'stopAutoTranslate' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        stopResponse
+        stopResponse,
       );
-      
+
       expect(stopResponse).toHaveBeenCalledWith(true);
     });
 
     it('clears current settings when stopping auto translate', () => {
       const sendResponse = vi.fn();
-      
+
       messageHandler(
-        { type: 'stopAutoTranslate' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'stopAutoTranslate' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
+
       expect(sendResponse).toHaveBeenCalledWith(true);
     });
   });
@@ -3570,63 +4266,79 @@ describe('Content Script', () => {
   describe('Bilingual mode edge cases', () => {
     it('getBilingualMode returns state without modifying it', () => {
       const sendResponse = vi.fn();
-      
+
       messageHandler(
-        { type: 'getBilingualMode' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'getBilingualMode' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
-      expect(sendResponse).toHaveBeenCalledWith({ enabled: expect.any(Boolean) });
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        enabled: expect.any(Boolean),
+      });
     });
 
     it('setBilingualMode to false disables mode', () => {
       const sendResponse = vi.fn();
-      
+
       messageHandler(
-        { type: 'setBilingualMode', enabled: false } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'setBilingualMode', enabled: false } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
-      expect(sendResponse).toHaveBeenCalledWith({ enabled: expect.any(Boolean) });
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        enabled: expect.any(Boolean),
+      });
     });
 
     it('setBilingualMode to true enables mode', () => {
       const sendResponse = vi.fn();
-      
+
       messageHandler(
-        { type: 'setBilingualMode', enabled: true } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'setBilingualMode', enabled: true } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
-      expect(sendResponse).toHaveBeenCalledWith({ enabled: expect.any(Boolean) });
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        enabled: expect.any(Boolean),
+      });
     });
   });
 
   describe('Widget message handlers', () => {
     it('toggleWidget returns boolean', () => {
       const sendResponse = vi.fn();
-      
+
       const result = messageHandler(
-        { type: 'toggleWidget' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'toggleWidget' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
+
       expect(result).toBe(true);
     });
 
     it('showWidget handles undefined state', () => {
       const sendResponse = vi.fn();
-      
+
       const result = messageHandler(
-        { type: 'showWidget' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'showWidget' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
+
       expect(result).toBe(true);
     });
   });
@@ -3634,54 +4346,58 @@ describe('Content Script', () => {
   describe('Undo translation with edge cases', () => {
     it('undoTranslation returns success structure', () => {
       document.body.innerHTML = '<p data-translated="true">Käännetty</p>';
-      
+
       const sendResponse = vi.fn();
-      
+
       messageHandler(
-        { type: 'undoTranslation' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'undoTranslation' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
-      expect(sendResponse).toHaveBeenCalledWith({ 
-        success: true, 
-        restoredCount: expect.any(Number) 
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        restoredCount: expect.any(Number),
       });
     });
 
     it('undoTranslation returns 0 when nothing translated', () => {
       document.body.innerHTML = '<p>Untranslated content</p>';
-      
+
       const sendResponse = vi.fn();
-      
+
       messageHandler(
-        { type: 'undoTranslation' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'undoTranslation' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
-      expect(sendResponse).toHaveBeenCalledWith({ 
-        success: true, 
-        restoredCount: 0 
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        restoredCount: 0,
       });
     });
   });
 
   describe('Edge cases in translatePage with DOM conditions', () => {
     it('handles empty page without translatable content', async () => {
-      document.body.innerHTML = '<script>alert("test")</script><style>.test{}</style>';
-      
-      const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      document.body.innerHTML =
+        '<script>alert("test")</script><style>.test{}</style>';
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
-      
+      const sendResponse = vi.fn();
+      startPageTranslation(sendResponse);
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
+
       // Wait for async completion
-      await new Promise((r) => setTimeout(r, 150));
+      await waitForAsyncContentWork(150);
       expect(true).toBe(true);
     });
 
@@ -3692,47 +4408,53 @@ describe('Content Script', () => {
       // @ts-expect-error unused side-effect
       const _textNode = document.createTextNode('Detached content');
       // Note: not appending to DOM, so parent exists but getBoundingClientRect may fail
-      
-      document.body.innerHTML = '<div>Regular content</div>';
-      
-      const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
-      await new Promise((r) => setTimeout(r, 150));
+      document.body.innerHTML = '<div>Regular content</div>';
+
+      const sendResponse = vi.fn();
+      startPageTranslation(sendResponse);
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
+      await waitForAsyncContentWork(150);
     });
   });
 
   describe('Multiple concurrent operations', () => {
     it('prevents concurrent page translations', async () => {
       document.body.innerHTML = '<p>Content 1</p>';
-      
+
       const sendResponse1 = vi.fn();
       const sendResponse2 = vi.fn();
-      
+
       // Start first translation
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse1
-      );
-      
-      expect(sendResponse1).toHaveBeenCalledWith({ success: true, status: 'started' });
-      
+      startPageTranslation(sendResponse1);
+
+      expect(sendResponse1).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
+
       // Try to start second translation immediately (should be prevented by guard)
       messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'de', strategy: 'balanced' },
+        {
+          type: 'translatePage',
+          sourceLang: 'en',
+          targetLang: 'de',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse2
+        sendResponse2,
       );
-      
-      expect(sendResponse2).toHaveBeenCalledWith({ success: true, status: 'started' });
-      
-      await new Promise((r) => setTimeout(r, 150));
+
+      expect(sendResponse2).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
+
+      await waitForAsyncContentWork(150);
     });
   });
 
@@ -3740,11 +4462,13 @@ describe('Content Script', () => {
     it('returns false for unknown message type', () => {
       const sendResponse = vi.fn();
       const result = messageHandler(
-        { type: 'unknownType' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'unknownType' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
+
       expect(result).toBe(false);
       expect(sendResponse).not.toHaveBeenCalled();
     });
@@ -3754,9 +4478,9 @@ describe('Content Script', () => {
       const result = messageHandler(
         { type: null } as unknown as Parameters<typeof messageHandler>[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
+
       expect(result).toBe(false);
     });
   });
@@ -3768,15 +4492,14 @@ describe('Content Script', () => {
         <script>console.log('hidden')</script>
         <div>More text</div>
       `;
-      
+
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      startPageTranslation(sendResponse);
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
 
     it('handles nested elements with mixed text', () => {
@@ -3789,29 +4512,30 @@ describe('Content Script', () => {
           </div>
         </div>
       `;
-      
+
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      startPageTranslation(sendResponse);
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
   describe('Undo translation with various states', () => {
     it('handles undo when no translations exist', () => {
       document.body.innerHTML = '<p>Untranslated content</p>';
-      
+
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'undoTranslation' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'undoTranslation' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
+
       expect(sendResponse).toHaveBeenCalledWith({
         success: true,
         restoredCount: expect.any(Number),
@@ -3824,14 +4548,16 @@ describe('Content Script', () => {
         <p>Untranslated paragraph</p>
         <span data-translated="true" data-original-text="Alkuperäinen">Käännetty</span>
       `;
-      
+
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'undoTranslation' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'undoTranslation' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
+
       expect(sendResponse).toHaveBeenCalledWith({
         success: true,
         restoredCount: expect.any(Number),
@@ -3842,14 +4568,16 @@ describe('Content Script', () => {
   describe('Stop auto-translate with mutation observer state', () => {
     it('clears current settings and stops observer', () => {
       document.body.innerHTML = '<p>Content</p>';
-      
+
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'stopAutoTranslate' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'stopAutoTranslate' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
+
       expect(sendResponse).toHaveBeenCalledWith(true);
     });
   });
@@ -3857,7 +4585,7 @@ describe('Content Script', () => {
   describe('Provider and strategy combinations', () => {
     it('handles translateSelection with explicit provider', () => {
       document.body.innerHTML = '<p id="target">Text to translate</p>';
-      
+
       const sendResponse = vi.fn();
       messageHandler(
         {
@@ -3868,17 +4596,20 @@ describe('Content Script', () => {
           provider: 'openai',
         } as unknown as Parameters<typeof messageHandler>[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
 
     it('handles translatePage with different strategies', async () => {
       document.body.innerHTML = '<div>Content to translate</div>';
-      
+
       const strategies = ['fast', 'balanced', 'thorough'] as const;
-      
+
       for (const strategy of strategies) {
         const sendResponse = vi.fn();
         messageHandler(
@@ -3889,10 +4620,13 @@ describe('Content Script', () => {
             strategy,
           } as unknown as Parameters<typeof messageHandler>[0],
           {},
-          sendResponse
+          sendResponse,
         );
-        
-        expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+
+        expect(sendResponse).toHaveBeenCalledWith({
+          success: true,
+          status: 'started',
+        });
       }
     });
   });
@@ -3901,11 +4635,13 @@ describe('Content Script', () => {
     it('toggleBilingualMode returns true', () => {
       const sendResponse = vi.fn();
       const result = messageHandler(
-        { type: 'toggleBilingualMode' } as unknown as Parameters<typeof messageHandler>[0],
+        { type: 'toggleBilingualMode' } as unknown as Parameters<
+          typeof messageHandler
+        >[0],
         {},
-        sendResponse
+        sendResponse,
       );
-      
+
       expect(result).toBe(true);
       expect(sendResponse).toHaveBeenCalled();
     });
@@ -3914,19 +4650,27 @@ describe('Content Script', () => {
   describe('Error message extraction utility function coverage', () => {
     it('handles Error instances in catch handlers by using error.message', async () => {
       document.body.innerHTML = '<p>Content</p>';
-      
+
       const errorMessage = 'Test translation error';
       mockSendMessage.mockRejectedValue(new Error(errorMessage));
-      
+
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        sendResponse
+        sendResponse,
       );
-      
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
-      await new Promise((r) => setTimeout(r, 150));
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
+      await waitForAsyncContentWork(150);
     });
   });
 
@@ -3934,38 +4678,36 @@ describe('Content Script', () => {
     it('handles text exceeding maximum batch length', async () => {
       const veryLongText = 'a'.repeat(500);
       document.body.innerHTML = `<p>${veryLongText}</p>`;
-      
+
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
-      await new Promise((r) => setTimeout(r, 150));
+      startPageTranslation(sendResponse);
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
+      await waitForAsyncContentWork(150);
     });
   });
 
   describe('Transient error recognition', () => {
     it('recognizes network errors as transient', async () => {
       document.body.innerHTML = '<p>Content</p>';
-      
+
       mockSendMessage.mockRejectedValueOnce(new Error('Network error'));
-      mockSendMessage.mockResolvedValueOnce({ 
-        success: true, 
-        result: ['Käännetty'] 
+      mockSendMessage.mockResolvedValueOnce({
+        success: true,
+        result: ['Käännetty'],
       });
-      
+
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
-      
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
-      await new Promise((r) => setTimeout(r, 200));
+      startPageTranslation(sendResponse);
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
+      await waitForAsyncContentWork(200);
     });
   });
 
@@ -3976,20 +4718,21 @@ describe('Content Script', () => {
   describe('loadGlossary error path', () => {
     it('logs error and continues with empty glossary when getGlossary rejects', async () => {
       const { glossary: g } = await import('../core/glossary');
-      vi.mocked(g.getGlossary).mockRejectedValueOnce(new Error('DB read error'));
+      vi.mocked(g.getGlossary).mockRejectedValueOnce(
+        new Error('DB read error'),
+      );
 
       document.body.innerHTML = '<p>Hello world</p>';
       mockSendMessage.mockResolvedValueOnce({ success: true, result: ['Hei'] });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
-      await new Promise((r) => setTimeout(r, 300));
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
+      await waitForAsyncContentWork(300);
     });
   });
 
@@ -4005,13 +4748,21 @@ describe('Content Script', () => {
 
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' } as unknown as Parameters<typeof messageHandler>[0],
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        } as unknown as Parameters<typeof messageHandler>[0],
         {},
-        sendResponse
+        sendResponse,
       );
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
-      await new Promise((r) => setTimeout(r, 50));
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
+      await waitForAsyncContentWork(50);
     });
   });
 
@@ -4023,18 +4774,24 @@ describe('Content Script', () => {
     it('fires .catch when translateImage rejects', async () => {
       const imageTranslator = await import('./image-translator');
       vi.spyOn(imageTranslator, 'translateImage').mockRejectedValueOnce(
-        new Error('Image decoding failed')
+        new Error('Image decoding failed'),
       );
 
       const sendResponse = vi.fn();
       messageHandler(
-        { type: 'translateImage', imageUrl: 'data:image/png;base64,abc' } as unknown as Parameters<typeof messageHandler>[0],
+        {
+          type: 'translateImage',
+          imageUrl: 'data:image/png;base64,abc',
+        } as unknown as Parameters<typeof messageHandler>[0],
         {},
-        sendResponse
+        sendResponse,
       );
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
-      await new Promise((r) => setTimeout(r, 50));
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
+      await waitForAsyncContentWork(50);
     });
   });
 
@@ -4045,8 +4802,14 @@ describe('Content Script', () => {
 
     it('routes nodes to viewportNodes when getBoundingClientRect returns visible rect', async () => {
       vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
-        top: 0, bottom: 100, left: 0, right: 100,
-        width: 100, height: 100, x: 0, y: 0,
+        top: 0,
+        bottom: 100,
+        left: 0,
+        right: 100,
+        width: 100,
+        height: 100,
+        x: 0,
+        y: 0,
         toJSON: () => ({}),
       } as DOMRect);
 
@@ -4054,18 +4817,20 @@ describe('Content Script', () => {
       mockSendMessage.mockResolvedValueOnce({ success: true, result: ['Hei'] });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
-      await new Promise((r) => setTimeout(r, 400));
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
+      await waitForAsyncContentWork(400);
     });
 
     it('falls back to Infinity top position when getBoundingClientRect throws', async () => {
-      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => {
+      vi.spyOn(
+        HTMLElement.prototype,
+        'getBoundingClientRect',
+      ).mockImplementation(() => {
         throw new Error('Layout not available');
       });
 
@@ -4073,14 +4838,13 @@ describe('Content Script', () => {
       mockSendMessage.mockResolvedValueOnce({ success: true, result: ['Hei'] });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
-      await new Promise((r) => setTimeout(r, 400));
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
+      await waitForAsyncContentWork(400);
     });
   });
 
@@ -4088,113 +4852,136 @@ describe('Content Script', () => {
     it('shows partial-success toast when some batch nodes fail during DOM update', async () => {
       const { glossary: g } = await import('../core/glossary');
       // Make the first restoreFn throw so node 0 fails; the rest succeed
-      vi.mocked(g.applyGlossaryBatch).mockImplementationOnce(async (texts: string[]) => ({
-        processedTexts: texts,
-        restoreFns: texts.map((_, i) => (result: string) => {
-          if (i === 0) throw new Error('Restore failed for node 0');
-          return result;
+      vi.mocked(g.applyGlossaryBatch).mockImplementationOnce(
+        async (texts: string[]) => ({
+          processedTexts: texts,
+          restoreFns: texts.map((_, i) => (result: string) => {
+            if (i === 0) throw new Error('Restore failed for node 0');
+            return result;
+          }),
         }),
-      }));
+      );
 
-      mockSendMessage.mockResolvedValueOnce({ success: true, result: ['X', 'Y', 'Z'] });
+      mockSendMessage.mockResolvedValueOnce({
+        success: true,
+        result: ['X', 'Y', 'Z'],
+      });
       document.body.innerHTML = '<p>One</p><p>Two</p><p>Three</p>';
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 400));
+      await waitForAsyncContentWork(400);
     });
   });
 
   describe('IntersectionObserver scroll-aware translation', () => {
     // Use direct window property assignment to avoid vi.stubGlobal touching chrome
-    let mockIOObserver: { observe: ReturnType<typeof vi.fn>; unobserve: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> };
-    let capturedIOCallback: (entries: IntersectionObserverEntry[]) => Promise<void>;
+    let mockIOObserver: {
+      observe: ReturnType<typeof vi.fn>;
+      unobserve: ReturnType<typeof vi.fn>;
+      disconnect: ReturnType<typeof vi.fn>;
+    };
+    let capturedIOCallback: (
+      entries: IntersectionObserverEntry[],
+    ) => Promise<void>;
 
     beforeEach(() => {
-      mockIOObserver = { observe: vi.fn(), unobserve: vi.fn(), disconnect: vi.fn() };
+      mockIOObserver = {
+        observe: vi.fn(),
+        unobserve: vi.fn(),
+        disconnect: vi.fn(),
+      };
       capturedIOCallback = async () => {};
       // vi.stubGlobal makes IntersectionObserver accessible as a bare identifier in module code.
       // Do NOT call vi.unstubAllGlobals() in afterEach — it removes the chrome stub too.
       // IMPORTANT: Use a regular function (not arrow) — vi.fn uses Reflect.construct when called
       // with `new`, and arrow functions cannot be constructors (Reflect.construct throws TypeError).
       const observer = mockIOObserver;
-      let captureFn = (cb: (entries: IntersectionObserverEntry[]) => Promise<void>) => { capturedIOCallback = cb; };
+      let captureFn = (
+        cb: (entries: IntersectionObserverEntry[]) => Promise<void>,
+      ) => {
+        capturedIOCallback = cb;
+      };
       vi.stubGlobal(
         'IntersectionObserver',
-        vi.fn(function(this: unknown, cb: (entries: IntersectionObserverEntry[]) => Promise<void>) {
+        vi.fn(function (
+          this: unknown,
+          cb: (entries: IntersectionObserverEntry[]) => Promise<void>,
+        ) {
           captureFn(cb);
           return observer;
-        })
+        }),
       );
     });
 
     afterEach(() => {
       vi.restoreAllMocks();
       // Manually remove the IntersectionObserver global without vi.unstubAllGlobals()
-      delete (globalThis as unknown as Record<string, unknown>).IntersectionObserver;
+      delete (globalThis as unknown as Record<string, unknown>)
+        .IntersectionObserver;
     });
 
     it('creates IntersectionObserver for deferred nodes and fires callback on intersection', async () => {
       // 220 paragraphs: all go to below-fold in jsdom (getBoundingClientRect returns all zeros,
       // so rect.bottom=0 which fails the rect.bottom>0 check).
       // immediateBelowFoldCount = min(220, 200) = 200; deferredNodes = 20 → setupScrollAwareTranslation.
-      const paragraphs = Array.from({ length: 220 }, (_, i) => `<p>Content item ${i}</p>`).join('');
+      const paragraphs = Array.from(
+        { length: 220 },
+        (_, i) => `<p>Content item ${i}</p>`,
+      ).join('');
       document.body.innerHTML = paragraphs;
 
-      mockSendMessage.mockImplementation(async (msg: { type: string; text?: string[] }) =>
-        msg.type === 'translate'
-          ? { success: true, result: (msg.text ?? []).map(() => 'T') }
-          : {}
+      mockSendMessage.mockImplementation(
+        async (msg: { type: string; text?: string[] }) =>
+          msg.type === 'translate'
+            ? { success: true, result: (msg.text ?? []).map(() => 'T') }
+            : {},
       );
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
-      );
+      startPageTranslation(sendResponse);
 
-      await new Promise((r) => setTimeout(r, 1000));
+      await waitForAsyncContentWork(1000);
 
       expect(mockIOObserver.observe).toHaveBeenCalled();
 
       // Fire the IO callback with a non-intersecting entry (exercises the `continue` path)
       await capturedIOCallback([
-        { isIntersecting: false, target: document.body } as unknown as IntersectionObserverEntry,
+        {
+          isIntersecting: false,
+          target: document.body,
+        } as unknown as IntersectionObserverEntry,
       ]);
 
       // Fire with an intersecting sentinel to translate the deferred chunk
       const sentinels = document.querySelectorAll('[data-translate-chunk]');
       if (sentinels.length > 0) {
-        mockSendMessage.mockImplementation(async (msg: { type: string; text?: string[] }) =>
-          msg.type === 'translate'
-            ? { success: true, result: (msg.text ?? []).map(() => 'V') }
-            : {}
+        mockSendMessage.mockImplementation(
+          async (msg: { type: string; text?: string[] }) =>
+            msg.type === 'translate'
+              ? { success: true, result: (msg.text ?? []).map(() => 'V') }
+              : {},
         );
         await capturedIOCallback([
-          { isIntersecting: true, target: sentinels[0] } as unknown as IntersectionObserverEntry,
+          {
+            isIntersecting: true,
+            target: sentinels[0],
+          } as unknown as IntersectionObserverEntry,
         ]);
-        await new Promise((r) => setTimeout(r, 200));
+        await waitForAsyncContentWork(200);
       }
 
       // A second translatePage call invokes stopBelowFoldObserver → belowFoldObserver.disconnect()
-      mockSendMessage.mockImplementation(async (msg: { type: string; text?: string[] }) =>
-        msg.type === 'translate'
-          ? { success: true, result: (msg.text ?? []).map(() => 'W') }
-          : {}
+      mockSendMessage.mockImplementation(
+        async (msg: { type: string; text?: string[] }) =>
+          msg.type === 'translate'
+            ? { success: true, result: (msg.text ?? []).map(() => 'W') }
+            : {},
       );
       const sendResponse2 = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse2
-      );
-      await new Promise((r) => setTimeout(r, 1000));
+      startPageTranslation(sendResponse2);
+      await waitForAsyncContentWork(1000);
 
       expect(mockIOObserver.disconnect).toHaveBeenCalled();
     });
@@ -4207,17 +4994,16 @@ describe('Content Script', () => {
 
       // First translatePage completes → startMutationObserver
       const sr1 = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sr1
-      );
-      await new Promise((r) => setTimeout(r, 400));
+      startPageTranslation(sr1);
+      await waitForAsyncContentWork(400);
 
       // Second translatePage uses a manually-resolved promise so we control when it finishes
       let resolveSecond!: (value: unknown) => void;
       mockSendMessage.mockImplementationOnce(
-        () => new Promise((res) => { resolveSecond = res; })
+        () =>
+          new Promise((res) => {
+            resolveSecond = res;
+          }),
       );
       // All subsequent sendMessage calls (from the drained dynamic content) succeed quickly
       mockSendMessage.mockResolvedValue({ success: true, result: ['T'] });
@@ -4229,18 +5015,14 @@ describe('Content Script', () => {
 
       // Start second translatePage immediately so isTranslatingPage=true before debounce fires
       const sr2 = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sr2
-      );
+      startPageTranslation(sr2);
 
       // Wait for debounce to fire (500ms from DOM change); second translatePage still running
-      await new Promise((r) => setTimeout(r, 600));
+      await waitForAsyncContentWork(600);
 
       // Resolve second translatePage → finally block drains queuedDynamicNodes
       resolveSecond?.({ success: true, result: ['Translated'] });
-      await new Promise((r) => setTimeout(r, 400));
+      await waitForAsyncContentWork(400);
     });
   });
 
@@ -4256,16 +5038,15 @@ describe('Content Script', () => {
       mockSendMessage.mockResolvedValueOnce({ success: true, result: ['T'] });
 
       const sr = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sr
-      );
-      await new Promise((r) => setTimeout(r, 400));
+      startPageTranslation(sr);
+      await waitForAsyncContentWork(400);
 
       // 201 elements > MUTATION_BATCH_CAP(100) → else branch entered.
       // processNextChunk: offset=100, 100<201 → inner if → setTimeout (line 864).
-      mockSendMessage.mockResolvedValue({ success: true, result: [] });
+      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => ({
+        success: true,
+        result: (message.text ?? []).map(() => 'T'),
+      }));
       for (let i = 0; i < 201; i++) {
         const span = document.createElement('span');
         span.textContent = `Node ${i}`;
@@ -4273,62 +5054,66 @@ describe('Content Script', () => {
       }
 
       // Wait: 500ms debounce + first chunk + 50ms inner setTimeout + remaining chunks
-      await new Promise((r) => setTimeout(r, 900));
+      await waitForAsyncContentWork(900);
     });
 
     it('uses requestIdleCallback for subsequent chunks when available', async () => {
-      (window as unknown as Record<string, unknown>).requestIdleCallback = (cb: () => void) => setTimeout(cb, 0);
+      (window as unknown as Record<string, unknown>).requestIdleCallback = (
+        cb: () => void,
+      ) => setTimeout(cb, 0);
 
       document.body.innerHTML = '<p>Seed</p>';
       mockSendMessage.mockResolvedValueOnce({ success: true, result: ['T'] });
 
       const sr = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sr
-      );
-      await new Promise((r) => setTimeout(r, 400));
+      startPageTranslation(sr);
+      await waitForAsyncContentWork(400);
 
-      // 201 elements → outer requestIdleCallback (line 869), inner requestIdleCallback (line 862)
-      mockSendMessage.mockResolvedValue({ success: true, result: [] });
+      // 201 elements → deferred chunk scheduling uses requestIdleCallback for the tail work
+      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => ({
+        success: true,
+        result: (message.text ?? []).map(() => 'T'),
+      }));
       for (let i = 0; i < 201; i++) {
         const span = document.createElement('span');
         span.textContent = `RIC Node ${i}`;
         document.body.appendChild(span);
       }
 
-      await new Promise((r) => setTimeout(r, 900));
+      await waitForAsyncContentWork(900);
     });
   });
 
-  describe('handleMutations overflow protection', () => {
-    it('drops mutations beyond maxPending limit and logs at 200-mutation intervals', async () => {
-      document.body.innerHTML = '<p>Seed</p>';
-      mockSendMessage.mockResolvedValueOnce({ success: true, result: ['T'] });
+  describe('mutation orchestrator overflow protection', () => {
+    it(
+      'drops mutations beyond maxPending limit and logs at 200-mutation intervals',
+      { timeout: IS_COVERAGE_RUN ? 60_000 : 30_000 },
+      async () => {
+        document.body.innerHTML = '<p>Seed</p>';
+        mockSendMessage.mockResolvedValueOnce({ success: true, result: ['T'] });
 
-      const sr = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sr
-      );
-      await new Promise((r) => setTimeout(r, 400));
+        const sr = vi.fn();
+        startPageTranslation(sr);
+        await waitForAsyncContentWork(400);
 
-      // 2200 synchronous appends produce one handleMutations call with 2200 records.
-      // maxPending=2000: first 2000 pushed, 200 dropped → droppedCount=200, 200%200=0 → line 893.
-      mockSendMessage.mockResolvedValue({ success: true, result: [] });
-      for (let i = 0; i < 2200; i++) {
-        document.body.appendChild(document.createElement('span'));
-      }
+        // 2200 synchronous appends produce one overflow burst in the shared mutation orchestrator.
+        // maxPending=2000: first 2000 buffered, 200 dropped → first diagnostic warning boundary.
+        mockSendMessage.mockImplementation(async (message: { text?: string[] }) => ({
+          success: true,
+          result: (message.text ?? []).map(() => 'T'),
+        }));
+        for (let i = 0; i < 2200; i++) {
+          document.body.appendChild(document.createElement('span'));
+        }
 
-      // Flush microtasks so MutationObserver callback runs
-      await Promise.resolve();
-      await Promise.resolve();
+        // Flush microtasks so MutationObserver callback runs
+        await Promise.resolve();
+        await Promise.resolve();
 
-      // Allow debounce timer to fire
-      await new Promise((r) => setTimeout(r, 600));
-    });
+        // Allow debounce timer to fire
+        await waitForAsyncContentWork(IS_COVERAGE_RUN ? 1200 : 600);
+      },
+    );
   });
 
   describe('shadow root observation callback', () => {
@@ -4346,20 +5131,16 @@ describe('Content Script', () => {
       mockSendMessage.mockResolvedValueOnce({ success: true, result: ['T'] });
 
       const sr = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sr
-      );
-      await new Promise((r) => setTimeout(r, 400));
+      startPageTranslation(sr);
+      await waitForAsyncContentWork(400);
 
       // attachShadow triggers the interceptor installed by observeShadowRoots in startMutationObserver
-      // → the callback at line 924 (observeShadowRoot) fires
+      // → the shared shadow-root observer callback fires
       const host = document.createElement('div');
       document.body.appendChild(host);
       host.attachShadow({ mode: 'open' });
 
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForAsyncContentWork(50);
     });
   });
 
@@ -4369,17 +5150,13 @@ describe('Content Script', () => {
       mockSendMessage.mockResolvedValueOnce({ success: true, result: ['T'] });
 
       const sr = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sr
-      );
-      await new Promise((r) => setTimeout(r, 400));
+      startPageTranslation(sr);
+      await waitForAsyncContentWork(400);
 
       // Make applyGlossaryBatch reject for the next call — this will be from translateDynamicContent
       const { glossary: g } = await import('../core/glossary');
       vi.mocked(g.applyGlossaryBatch).mockRejectedValueOnce(
-        new Error('non-transient batch failure')
+        new Error('non-transient batch failure'),
       );
 
       // Add a text node → mutation debounce → translateDynamicContent → createBatches → throws
@@ -4388,7 +5165,7 @@ describe('Content Script', () => {
       document.body.appendChild(p);
 
       // Wait for debounce (500ms) plus processing time
-      await new Promise((r) => setTimeout(r, 700));
+      await waitForAsyncContentWork(700);
     });
   });
 
@@ -4403,7 +5180,14 @@ describe('Content Script', () => {
       const textNode = p.firstChild!;
 
       const mockRange = {
-        getBoundingClientRect: () => ({ top: 50, bottom: 70, left: 10, right: 200, width: 190, height: 20 }),
+        getBoundingClientRect: () => ({
+          top: 50,
+          bottom: 70,
+          left: 10,
+          right: 200,
+          width: 190,
+          height: 20,
+        }),
         commonAncestorContainer: textNode,
       };
       const mockSelection = {
@@ -4412,17 +5196,24 @@ describe('Content Script', () => {
         getRangeAt: () => mockRange,
         rangeCount: 1,
       };
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      vi.spyOn(window, 'getSelection').mockReturnValue(
+        mockSelection as unknown as Selection,
+      );
 
       // Return success: false with NO error field → fallback to 'Translation failed'
       mockSendMessage.mockResolvedValue({ success: false });
 
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        vi.fn()
+        vi.fn(),
       );
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
 
       const tooltip = document.getElementById('translate-tooltip');
       expect(tooltip).not.toBeNull();
@@ -4441,7 +5232,14 @@ describe('Content Script', () => {
       const textNode = p.firstChild!;
 
       const mockRange = {
-        getBoundingClientRect: () => ({ top: 50, bottom: 70, left: 10, right: 200, width: 190, height: 20 }),
+        getBoundingClientRect: () => ({
+          top: 50,
+          bottom: 70,
+          left: 10,
+          right: 200,
+          width: 190,
+          height: 20,
+        }),
         commonAncestorContainer: textNode,
       };
       const mockSelection = {
@@ -4450,17 +5248,24 @@ describe('Content Script', () => {
         getRangeAt: () => mockRange,
         rangeCount: 1,
       };
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      vi.spyOn(window, 'getSelection').mockReturnValue(
+        mockSelection as unknown as Selection,
+      );
 
       // Reject with a string (not an Error instance) → catch branch uses 'Unknown error'
       mockSendMessage.mockRejectedValue('string-rejection');
 
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        vi.fn()
+        vi.fn(),
       );
-      await new Promise((r) => setTimeout(r, 100));
+      await waitForAsyncContentWork(100);
 
       const tooltip = document.getElementById('translate-tooltip');
       expect(tooltip).not.toBeNull();
@@ -4479,47 +5284,59 @@ describe('Content Script', () => {
     it('stops translation when signal is aborted between batches', async () => {
       // Mock getBoundingClientRect so all nodes are in viewport
       vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
-        top: 0, bottom: 50, left: 0, right: 100,
-        width: 100, height: 50, x: 0, y: 0,
+        top: 0,
+        bottom: 50,
+        left: 0,
+        right: 100,
+        width: 100,
+        height: 50,
+        x: 0,
+        y: 0,
         toJSON: () => ({}),
       } as DOMRect);
 
       // Create enough nodes for >1 viewport batch (maxSize=50)
-      const paragraphs = Array.from({ length: 55 }, (_, i) => `<p>Abort test node ${i}</p>`).join('');
+      const paragraphs = Array.from(
+        { length: 55 },
+        (_, i) => `<p>Abort test node ${i}</p>`,
+      ).join('');
       document.body.innerHTML = paragraphs;
 
       let callCount = 0;
-      mockSendMessage.mockImplementation(async (msg: { type: string; text?: string[] }) => {
-        if (msg.type === 'translate') {
-          callCount++;
-          if (callCount === 1) {
-            // After first batch resolves, trigger undo to abort the signal
-            // Use setTimeout(0) so it fires between batch iterations
-            setTimeout(() => {
-              messageHandler(
-                { type: 'undoTranslation' } as unknown as Parameters<typeof messageHandler>[0],
-                {},
-                vi.fn()
-              );
-            }, 0);
+      mockSendMessage.mockImplementation(
+        async (msg: { type: string; text?: string[] }) => {
+          if (msg.type === 'translate') {
+            callCount++;
+            if (callCount === 1) {
+              // After first batch resolves, trigger undo to abort the signal
+              // Use setTimeout(0) so it fires between batch iterations
+              setTimeout(() => {
+                messageHandler(
+                  { type: 'undoTranslation' } as unknown as Parameters<
+                    typeof messageHandler
+                  >[0],
+                  {},
+                  vi.fn(),
+                );
+              }, 0);
+              return { success: true, result: (msg.text ?? []).map(() => 'T') };
+            }
             return { success: true, result: (msg.text ?? []).map(() => 'T') };
           }
-          return { success: true, result: (msg.text ?? []).map(() => 'T') };
-        }
-        return {};
-      });
-
-      const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
+          return {};
+        },
       );
 
-      await new Promise((r) => setTimeout(r, 500));
+      const sendResponse = vi.fn();
+      startPageTranslation(sendResponse);
+
+      await waitForAsyncContentWork(500);
 
       // Translation should have started but aborted after first batch
-      expect(sendResponse).toHaveBeenCalledWith({ success: true, status: 'started' });
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: true,
+        status: 'started',
+      });
     });
   });
 
@@ -4534,34 +5351,41 @@ describe('Content Script', () => {
     it('shows progress toast when totalBatches > 1', async () => {
       // Mock getBoundingClientRect so all nodes are in viewport
       vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
-        top: 0, bottom: 50, left: 0, right: 100,
-        width: 100, height: 50, x: 0, y: 0,
+        top: 0,
+        bottom: 50,
+        left: 0,
+        right: 100,
+        width: 100,
+        height: 50,
+        x: 0,
+        y: 0,
         toJSON: () => ({}),
       } as DOMRect);
 
       // Create enough nodes for >1 viewport batch (maxSize=50, so 55 nodes → 2 batches)
-      const paragraphs = Array.from({ length: 55 }, (_, i) => `<p>Progress node ${i}</p>`).join('');
+      const paragraphs = Array.from(
+        { length: 55 },
+        (_, i) => `<p>Progress node ${i}</p>`,
+      ).join('');
       document.body.innerHTML = paragraphs;
 
-      mockSendMessage.mockImplementation(async (msg: { type: string; text?: string[] }) => {
-        if (msg.type === 'translate') {
-          return { success: true, result: (msg.text ?? []).map(() => 'T') };
-        }
-        return {};
-      });
-
-      const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
+      mockSendMessage.mockImplementation(
+        async (msg: { type: string; text?: string[] }) => {
+          if (msg.type === 'translate') {
+            return { success: true, result: (msg.text ?? []).map(() => 'T') };
+          }
+          return {};
+        },
       );
 
-      await new Promise((r) => setTimeout(r, 500));
+      const sendResponse = vi.fn();
+      startPageTranslation(sendResponse);
+
+      await waitForAsyncContentWork(500);
 
       // Verify that translation was called with multiple batches
       const translateCalls = mockSendMessage.mock.calls.filter(
-        (c) => c[0]?.type === 'translate'
+        (c) => c[0]?.type === 'translate',
       );
       expect(translateCalls.length).toBeGreaterThan(1);
     });
@@ -4577,7 +5401,10 @@ describe('Content Script', () => {
       // Make getGlossary take a while so two calls overlap
       let resolveGlossary!: (value: Record<string, string>) => void;
       vi.mocked(g.getGlossary).mockImplementationOnce(
-        () => new Promise((res) => { resolveGlossary = res as any; })
+        () =>
+          new Promise((res) => {
+            resolveGlossary = res as any;
+          }),
       );
 
       // Two rapid translatePage calls will both trigger loadGlossary
@@ -4585,21 +5412,24 @@ describe('Content Script', () => {
       mockSendMessage.mockResolvedValue({ success: true, result: ['T'] });
 
       const sr1 = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sr1
-      );
+      startPageTranslation(sr1);
 
       // Small delay, then trigger selection which also calls loadGlossary
-      await new Promise((r) => setTimeout(r, 10));
+      await waitForAsyncContentWork(10);
 
       const p = document.createElement('p');
       p.textContent = 'Dedup text two';
       document.body.appendChild(p);
       const textNode = p.firstChild!;
       const mockRange = {
-        getBoundingClientRect: () => ({ top: 50, bottom: 70, left: 10, right: 200, width: 190, height: 20 }),
+        getBoundingClientRect: () => ({
+          top: 50,
+          bottom: 70,
+          left: 10,
+          right: 200,
+          width: 190,
+          height: 20,
+        }),
         commonAncestorContainer: textNode,
       };
       const mockSelection = {
@@ -4608,20 +5438,27 @@ describe('Content Script', () => {
         getRangeAt: () => mockRange,
         rangeCount: 1,
       };
-      vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as unknown as Selection);
+      vi.spyOn(window, 'getSelection').mockReturnValue(
+        mockSelection as unknown as Selection,
+      );
 
       const sr2 = vi.fn();
       messageHandler(
-        { type: 'translateSelection', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
+        {
+          type: 'translateSelection',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          strategy: 'balanced',
+        },
         {},
-        sr2
+        sr2,
       );
 
       // Resolve the glossary after both calls have started
-      await new Promise((r) => setTimeout(r, 20));
+      await waitForAsyncContentWork(20);
       resolveGlossary?.({});
 
-      await new Promise((r) => setTimeout(r, 200));
+      await waitForAsyncContentWork(200);
 
       // getGlossary should have been called only once (dedup guard returned same promise)
       expect(g.getGlossary).toHaveBeenCalledTimes(1);
@@ -4638,18 +5475,19 @@ describe('Content Script', () => {
       // confirming both branches of the ternary are reachable code paths.
       document.body.innerHTML = '<p>Single batch node</p>';
 
-      mockSendMessage.mockResolvedValue({ success: true, result: ['Yksittäinen'] });
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Yksittäinen'],
+      });
 
       const sendResponse = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sendResponse
+      startPageTranslation(sendResponse);
+
+      await waitForAsyncContentWork(100);
+
+      const translateCalls = mockSendMessage.mock.calls.filter(
+        (c) => c[0]?.type === 'translate',
       );
-
-      await new Promise((r) => setTimeout(r, 100));
-
-      const translateCalls = mockSendMessage.mock.calls.filter((c) => c[0]?.type === 'translate');
       expect(translateCalls.length).toBeGreaterThan(0);
       // The context field should be populated (nodes[0] exists)
       if (translateCalls[0]) {
@@ -4661,18 +5499,14 @@ describe('Content Script', () => {
   // ============================================================================
   // Branch coverage: processPendingMutations early return (line 828)
   // ============================================================================
-  describe('processPendingMutations with empty pending array', () => {
-    it('returns early when no mutations are pending', async () => {
+  describe('mutation orchestrator no-op flush', () => {
+    it('returns early when no buffered mutations are pending', async () => {
       document.body.innerHTML = '<p>Seed for empty mutations</p>';
       mockSendMessage.mockResolvedValueOnce({ success: true, result: ['T'] });
 
       const sr = vi.fn();
-      messageHandler(
-        { type: 'translatePage', sourceLang: 'en', targetLang: 'fi', strategy: 'balanced' },
-        {},
-        sr
-      );
-      await new Promise((r) => setTimeout(r, 400));
+      startPageTranslation(sr);
+      await waitForAsyncContentWork(400);
 
       // MutationObserver is now active. Add nodes that produce only comment/PI nodes
       // (no ELEMENT_NODE or TEXT_NODE), so addedNodes is empty after filtering.
@@ -4680,7 +5514,7 @@ describe('Content Script', () => {
       document.body.appendChild(comment);
 
       // Wait for debounce to fire
-      await new Promise((r) => setTimeout(r, 600));
+      await waitForAsyncContentWork(600);
 
       // The comment node should not cause additional translation calls beyond
       // what the page translation already triggered. We just verify the test

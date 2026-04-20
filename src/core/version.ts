@@ -6,7 +6,6 @@
  */
 
 import { safeStorageGet, safeStorageSet } from './storage';
-import { browserAPI } from './browser-api';
 
 export interface VersionInfo {
   current: string;
@@ -47,12 +46,10 @@ export async function dismissUpdateNotice(): Promise<void> {
  * Check if the update notice has been dismissed.
  */
 export async function isUpdateDismissed(): Promise<boolean> {
-  try {
-    const stored = await browserAPI.storage.local.get(['extension_update_dismissed']) as { extension_update_dismissed?: boolean };
-    return !!stored.extension_update_dismissed;
-  } catch {
-    return true; // assume dismissed on storage error
-  }
+  const stored = await safeStorageGet<{ extension_update_dismissed?: boolean }>(
+    ['extension_update_dismissed'],
+  );
+  return stored.extension_update_dismissed === true;
 }
 
 /**

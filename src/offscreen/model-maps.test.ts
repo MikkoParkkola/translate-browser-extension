@@ -8,10 +8,14 @@ import { describe, it, expect } from 'vitest';
 import {
   MODEL_MAP,
   PIVOT_ROUTES,
+  getSupportedLanguagePairs,
+  getSupportedTargetsForSource,
   hasDirectModel,
   hasPivotRoute,
   getModelId,
   getPivotRoute,
+  resolveOpusMtTranslationRoute,
+  supportsOpusMtLanguagePair,
 } from './model-maps';
 
 describe('MODEL_MAP', () => {
@@ -232,6 +236,71 @@ describe('getPivotRoute', () => {
 
   it('returns null for unsupported pairs', () => {
     expect(getPivotRoute('xx', 'yy')).toBeNull();
+  });
+});
+
+describe('supportsOpusMtLanguagePair', () => {
+  it('returns true for direct pairs', () => {
+    expect(supportsOpusMtLanguagePair('en', 'fi')).toBe(true);
+    expect(supportsOpusMtLanguagePair('fr', 'es')).toBe(true);
+  });
+
+  it('returns true for pivot pairs', () => {
+    expect(supportsOpusMtLanguagePair('nl', 'fi')).toBe(true);
+    expect(supportsOpusMtLanguagePair('ja', 'de')).toBe(true);
+  });
+
+  it('returns false for unsupported pairs', () => {
+    expect(supportsOpusMtLanguagePair('xx', 'yy')).toBe(false);
+  });
+});
+
+describe('resolveOpusMtTranslationRoute', () => {
+  it('resolves direct routes with model ids', () => {
+    expect(resolveOpusMtTranslationRoute('en', 'fi')).toEqual({
+      kind: 'direct',
+      modelId: 'Xenova/opus-mt-en-fi',
+    });
+  });
+
+  it('resolves pivot routes with both hops', () => {
+    expect(resolveOpusMtTranslationRoute('nl', 'fi')).toEqual({
+      kind: 'pivot',
+      route: ['nl-en', 'en-fi'],
+    });
+  });
+
+  it('returns null for unsupported pairs', () => {
+    expect(resolveOpusMtTranslationRoute('xx', 'yy')).toBeNull();
+  });
+});
+
+describe('getSupportedLanguagePairs', () => {
+  it('includes both direct and pivot pairs', () => {
+    const pairs = getSupportedLanguagePairs();
+
+    expect(pairs).toContainEqual({ src: 'en', tgt: 'fi' });
+    expect(pairs).toContainEqual({ src: 'nl', tgt: 'fi', pivot: true });
+  });
+
+  it('returns fresh objects', () => {
+    const first = getSupportedLanguagePairs();
+    const second = getSupportedLanguagePairs();
+
+    first[0].src = 'mutated';
+    expect(second[0].src).not.toBe('mutated');
+  });
+});
+
+describe('getSupportedTargetsForSource', () => {
+  it('includes direct and pivot targets for a source language', () => {
+    expect(getSupportedTargetsForSource('en')).toContain('fi');
+    expect(getSupportedTargetsForSource('en')).toContain('pl');
+    expect(getSupportedTargetsForSource('nl')).toContain('fi');
+  });
+
+  it('returns an empty list for unsupported source languages', () => {
+    expect(getSupportedTargetsForSource('xx')).toEqual([]);
   });
 });
 

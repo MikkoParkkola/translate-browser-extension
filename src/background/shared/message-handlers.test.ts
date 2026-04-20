@@ -6,20 +6,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createLoggerModuleMock } from '../../test-helpers/module-mocks';
 import type { ExtensionMessageResponseByType } from '../../types';
 
 // ============================================================================
 // Mocks
 // ============================================================================
 
-vi.mock('../../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock('../../core/logger', () => createLoggerModuleMock());
 
 vi.mock('../../core/storage', () => ({
   safeStorageGet: vi.fn().mockResolvedValue({}),
@@ -141,6 +135,7 @@ describe('handleGetUsage', () => {
 
     expect(result).toHaveProperty('throttle');
     expect(result).toHaveProperty('cache');
+    expect(result.providers).toEqual({});
     expect(result.throttle.requests).toBe(0);
     expect(result.throttle.tokens).toBe(0);
   });
@@ -225,6 +220,29 @@ describe('handleSetCloudApiKey', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('Unknown provider');
+  });
+
+  it('does not fall back to cleanup metadata when the allow-list key is missing', async () => {
+    const { CLOUD_PROVIDER_STORAGE_KEYS } = await import('./provider-management');
+    const { strictStorageSet } = await import('../../core/storage');
+    const storageKeys = CLOUD_PROVIDER_STORAGE_KEYS as Record<string, readonly string[]>;
+    storageKeys['custom-provider'] = ['custom_api_key'];
+    vi.mocked(strictStorageSet).mockClear();
+
+    try {
+      const { handleSetCloudApiKey } = await import('./message-handlers');
+      const result = await handleSetCloudApiKey({
+        type: 'setCloudApiKey',
+        provider: 'custom-provider' as never,
+        apiKey: 'test-key',
+      }) as Record<string, unknown>;
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Unknown provider');
+      expect(vi.mocked(strictStorageSet)).not.toHaveBeenCalled();
+    } finally {
+      delete storageKeys['custom-provider'];
+    }
   });
 
   it('stores deepl-specific options', async () => {
@@ -385,12 +403,11 @@ describe('handleClearCloudApiKey', () => {
     expect(mockRemove).not.toHaveBeenCalled();
   });
 
-  it('removes only base key for provider without extra cleanup rules', async () => {
+  it('falls back to the base key when cleanup metadata is missing', async () => {
     const { CLOUD_PROVIDER_KEYS, CLOUD_PROVIDER_STORAGE_KEYS } = await import('./provider-management');
     const keys = CLOUD_PROVIDER_KEYS as Record<string, string>;
     const storageKeys = CLOUD_PROVIDER_STORAGE_KEYS as Record<string, readonly string[]>;
     keys['custom-provider'] = 'custom_api_key';
-    storageKeys['custom-provider'] = ['custom_api_key'];
 
     try {
       const { handleClearCloudApiKey } = await import('./message-handlers');
@@ -661,6 +678,7 @@ describe('handleGetSettings', () => {
     const { handleGetSettings } = await import('./message-handlers');
     const result = await handleGetSettings(storageGet) as Record<string, unknown>;
     expect(result.success).toBe(false);
+    expect(result.error).toBe('Failed to get settings');
   });
 });
 
@@ -961,6 +979,23 @@ describe('handleSetCloudProviderEnabled', () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it('handles storage failure gracefully', async () => {
+    const { strictStorageSet } = await import('../../core/storage');
+    vi.mocked(strictStorageSet).mockRejectedValueOnce(new Error('Enable failed'));
+
+    const { handleSetCloudProviderEnabled } = await import('./message-handlers');
+    const result = await handleSetCloudProviderEnabled({
+      type: 'setCloudProviderEnabled',
+      provider: 'deepl',
+      enabled: false,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toBe('Enable failed');
+    }
   });
 });
 

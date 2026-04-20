@@ -1,8 +1,14 @@
 import { render } from 'solid-js/web';
 import { createSignal, Show, For, onMount } from 'solid-js';
 import { safeStorageSet } from '../core/storage';
+import { sendBackgroundMessage } from '../shared/background-message';
+import { buildExtensionSettingsStorageMutation } from '../shared/extension-settings';
 import { ONBOARDING_LANGUAGES } from '../shared/translation-options';
-import { DEFAULT_PROVIDER_ID, ONBOARDING_MODELS as MODELS } from '../shared/provider-options';
+import {
+  DEFAULT_PROVIDER_ID,
+  ONBOARDING_MODELS as MODELS,
+  getProviderUiBadgeLabel,
+} from '../shared/provider-options';
 import type { TranslationProviderId } from '../types';
 import './styles.css';
 
@@ -48,10 +54,12 @@ export function OnboardingApp() {
 
   const saveSettings = async () => {
     await safeStorageSet({
-      targetLang: targetLang(),
-      provider: model(),
-      sourceLang: 'auto',
-      strategy: 'smart',
+      ...buildExtensionSettingsStorageMutation({
+        targetLang: targetLang(),
+        provider: model(),
+        sourceLang: 'auto',
+        strategy: 'smart',
+      }),
       onboardingComplete: true,
     });
   };
@@ -73,7 +81,7 @@ export function OnboardingApp() {
         : 'Hello, world! This is a test translation.';
       const sourceLang = isEnglishTarget ? 'de' : 'en';
 
-      const response = await chrome.runtime.sendMessage({
+      const response = await sendBackgroundMessage({
         type: 'translate',
         text: testText,
         sourceLang: sourceLang,
@@ -166,7 +174,7 @@ export function OnboardingApp() {
               </div>
             </div>
             <h1>Welcome to TRANSLATE!</h1>
-            <p class="subtitle">The privacy-first translation extension that works offline.</p>
+            <p class="subtitle">The privacy-first translation extension with local, browser-native, and cloud options.</p>
 
             <ul class="features">
               <li>
@@ -183,7 +191,7 @@ export function OnboardingApp() {
                     <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10" />
                   </svg>
                 </span>
-                <span>Works offline after initial setup</span>
+                <span>Supports offline translation after local model setup</span>
               </li>
               <li>
                 <span class="feature-icon">
@@ -264,17 +272,16 @@ export function OnboardingApp() {
                     onClick={() => setModel(m.id)}
                     aria-pressed={model() === m.id}
                   >
-                    <div class="model-header">
-                      <span class="model-name">{m.name}</span>
-                      <div class="model-badges">
-                        <Show when={m.recommended}>
-                          <span class="badge">Recommended</span>
-                        </Show>
-                        <Show when={m.badge}>
-                          <span class="badge">{m.badge}</span>
-                        </Show>
+                      <div class="model-header">
+                        <span class="model-name">{m.name}</span>
+                        <div class="model-badges">
+                          <For each={m.badges ?? []}>
+                            {(badge) => (
+                              <span class="badge">{getProviderUiBadgeLabel(badge)}</span>
+                            )}
+                          </For>
+                        </div>
                       </div>
-                    </div>
                     <div class="model-desc">{m.desc}</div>
                     <Show when={m.availabilityNote}>
                       <div class="model-note">{m.availabilityNote}</div>

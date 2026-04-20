@@ -11,56 +11,47 @@
  * - Glossary support for custom term replacements
  */
 
-import type { Strategy, TranslationProviderId, TranslateResponse } from '../types';
-import { extractErrorMessage, calculateRetryDelay } from '../core/errors';
-import { sleep } from '../core/async-utils';
+import type { Strategy, TranslationProviderId } from '../types';
+import { extractErrorMessage } from '../core/errors';
 import { siteRules } from '../core/site-rules';
-import { glossary, type GlossaryStore } from '../core/glossary';
+import { glossary } from '../core/glossary';
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
 import { safeStorageGet } from '../core/storage';
 import { browserAPI } from '../core/browser-api';
-import { initSubtitleTranslation, cleanupSubtitleTranslation } from './subtitle-translator';
 import { isPdfPage, initPdfTranslation, cleanupPdfTranslation } from './pdf-translator';
 import {
-  observeShadowRoots,
-  observeShadowRoot,
-  cleanupShadowObservers,
   getDeepSelection,
   installAttachShadowInterceptor,
 } from './shadow-dom-walker';
+import { createMutationOrchestrator } from './mutation-orchestrator';
 // measureTimeAsync imported for future use in async profiling
 // import { measureTimeAsync } from '../core/profiler';
+import { createPageTranslationOrchestrator } from './page-translation-orchestrator';
 import {
-  recordContentTiming,
-  getContentTimingStats,
-} from './timing';
-import {
-  TRANSLATED_ATTR,
-  ORIGINAL_TEXT_ATTR,
-  ORIGINAL_TEXT_NODES_ATTR,
-  MACHINE_TRANSLATION_ATTR,
-  SOURCE_LANG_ATTR,
-  TARGET_LANG_ATTR,
-  type ContentMessage,
-  type CurrentSettings,
+  AUTO_TRANSLATE_E2E_REQUEST_EVENT,
+  AUTO_TRANSLATE_E2E_RESPONSE_EVENT,
+  AUTO_TRANSLATE_DIAGNOSTICS_ATTR,
+  CONTENT_SCRIPT_READY_ATTR,
+  type AutoTranslateDiagnostics,
+  type ContentMessageResponse,
 } from './content-types';
 import {
+  defineImmediateContentHandler,
+  defineStartedContentHandler,
+  routeContentMessage,
+  type ContentMessageHandlers,
+} from './message-routing';
+import {
   showInfoToast,
-  showProgressToast,
-  updateProgressToast,
   removeProgressToast,
-  showErrorToast,
 } from './toast';
 import { injectContentStyles } from './styles';
 import {
   isValidText,
   sanitizeText,
-  getTextNodes,
-  getTextNodesFromNodes,
-  clearSkipCacheEntry,
 } from './dom-utils';
-import { getPageContext, getSelectionContext } from './context';
+import { getSelectionContext } from './context';
 import { showTranslationTooltip, showErrorTooltip } from './tooltip';
 import {
   setResolveSourceLang as widgetSetResolveSourceLang,
@@ -82,9 +73,7 @@ import {
   initHoverListeners,
   cleanupHoverListeners,
 } from './hover';
-import { makeTranslatedElementEditable, showCorrectionHint } from './correction';
 import {
-  applyBilingualToElement,
   enableBilingualMode,
   disableBilingualMode,
   toggleBilingualMode,
@@ -92,10 +81,17 @@ import {
 } from './bilingual';
 import {
   resolveSourceLang,
+  detectSampledLanguage,
   translateWithStreaming,
-  isTransientError,
-  createBatches,
 } from './translation-helpers';
+import {
+  maybeTranslatePageWithSiteTool,
+  maybeTranslateSelectionWithSiteTool,
+  registerTranslationWebMcpTools,
+  unregisterTranslationWebMcpTools,
+  type PageToolSummary,
+  type TranslationWebMcpHandlers,
+} from './webmcp';
 
 const log = createLogger('Content');
 
@@ -106,32 +102,15 @@ const log = createLogger('Content');
 installAttachShadowInterceptor();
 
 // ============================================================================
-// State
+// Page Translation Orchestrator
 // ============================================================================
 
-let isTranslatingPage = false;
-let isTranslatingDynamic = false;
-let pendingMutations: MutationRecord[] = [];
-let mutationDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-let mutationObserver: MutationObserver | null = null;
-/** Cleanup function returned by observeShadowRoots */
-let shadowRootCleanup: (() => void) | null = null;
-/** Queued dynamic nodes that arrived during page translation, translated after page completes */
-let queuedDynamicNodes: Node[] = [];
-
-/**
- * Navigation abort controller: signals in-flight translation batches to stop.
- * Created fresh when a page translation starts; aborted on beforeunload or
- * when the user triggers undo. Prevents wasted API calls and DOM writes to
- * nodes that no longer exist after navigation.
- */
-let navigationAbortController: AbortController | null = null;
-
-let currentSettings: CurrentSettings | null = null;
-
-// Cache for glossary terms (loaded once per page)
-let cachedGlossary: GlossaryStore | null = null;
-
+// pageOrchestrator owns all page-translation state and the full state machine.
+// stopMutationObserver is a function declaration (hoisted), so it can be passed
+// as a callback here before its own body runs at module evaluation time.
+const pageOrchestrator = createPageTranslationOrchestrator({
+  onStopMutationObserver: stopMutationObserver,
+});
 
 // ============================================================================
 // Module Dependency Injection
@@ -139,8 +118,8 @@ let cachedGlossary: GlossaryStore | null = null;
 
 // Provide currentSettings getter to modules that need it
 /* v8 ignore start -- DI closures */
-screenshotSetGetCurrentSettings(() => currentSettings);
-imageSetGetCurrentSettings(() => currentSettings);
+screenshotSetGetCurrentSettings(() => pageOrchestrator.getCurrentSettings());
+imageSetGetCurrentSettings(() => pageOrchestrator.getCurrentSettings());
 /* v8 ignore stop */
 
 // Provide resolveSourceLang to modules that need it
@@ -156,62 +135,57 @@ injectContentStyles();
 // ============================================================================
 
 /**
- * Load glossary if not cached
- */
-// Promise guard: prevents concurrent glossary loads from racing.
-// Without this, two batches starting simultaneously both see null,
-// both load, and the second overwrites the first (benign but wasteful).
-let glossaryLoadingPromise: Promise<GlossaryStore> | null = null;
-
-async function loadGlossary(): Promise<GlossaryStore> {
-  if (cachedGlossary !== null) return cachedGlossary;
-  /* v8 ignore start -- dedup guard: mock resolves synchronously so concurrent loads never race */
-  if (glossaryLoadingPromise) return glossaryLoadingPromise;
-  /* v8 ignore stop */
-
-  glossaryLoadingPromise = (async () => {
-    try {
-      cachedGlossary = await glossary.getGlossary();
-    } catch (error) {
-      log.error(' Failed to load glossary:', error);
-      cachedGlossary = {};
-    }
-    glossaryLoadingPromise = null;
-    return cachedGlossary;
-  })();
-
-  return glossaryLoadingPromise;
-}
-
-
-/**
  * Translate selected text with error handling
  */
 async function translateSelection(
   sourceLang: string,
   targetLang: string,
   strategy: Strategy,
-  provider?: string
-): Promise<void> {
+  provider?: TranslationProviderId,
+  options: {
+    agentInvoked?: boolean;
+    showTooltip?: boolean;
+  } = {}
+): Promise<string | null> {
+  const showTooltip = options.showTooltip ?? true;
+
   // Use deep selection to find text in shadow DOMs (e.g., LinkedIn chat)
   const selection = getDeepSelection();
   if (!selection || selection.isCollapsed) {
     log.info(' No text selected (checked main document + shadow roots)');
-    showInfoToast('Select text to translate');
-    return;
+    if (showTooltip) showInfoToast('Select text to translate');
+    return null;
   }
 
   const text = selection.toString().trim();
   if (!isValidText(text)) {
     log.info(' Selected text is not valid for translation');
-    showInfoToast('Select text to translate');
-    return;
+    if (showTooltip) showInfoToast('Select text to translate');
+    return null;
   }
 
   const sanitized = sanitizeText(text);
+  const range = selection.getRangeAt(0);
+
+  // Prevent recursive delegation when the extension's own WebMCP tool executes.
+  if (!options.agentInvoked) {
+    const siteToolResult = await maybeTranslateSelectionWithSiteTool({
+      sourceLang,
+      targetLang,
+      strategy,
+      provider: provider as TranslationProviderId | undefined,
+      text: sanitized,
+    });
+    if (siteToolResult) {
+      log.info(` Translated selection via site tool '${siteToolResult.toolName}'`);
+      if (showTooltip) showTranslationTooltip(siteToolResult.translatedText, range);
+      return siteToolResult.translatedText;
+    }
+  }
 
   // Get surrounding context for better translation of ambiguous words
   const context = getSelectionContext();
+  const resolvedSourceLang = resolveSourceLang(sourceLang, sanitized);
 
   log.info('Translating selection with context:', {
     text: sanitized.substring(0, 50),
@@ -221,25 +195,26 @@ async function translateSelection(
 
   try {
     // Apply glossary pre-processing
-    const g = await loadGlossary();
+    const g = await pageOrchestrator.loadGlossary();
     const { processedText, restore } = await glossary.applyGlossary(sanitized, g);
-
-    const range = selection.getRangeAt(0);
 
     // Use port-based streaming for long texts so the tooltip updates progressively.
     if (processedText.length >= CONFIG.selection.streamThresholdChars) {
       try {
         const result = await translateWithStreaming(
           processedText,
-          sourceLang,
+          resolvedSourceLang,
           targetLang,
           provider,
           (partial) => {
-            showTranslationTooltip(restore(partial), range, /* streaming */ true);
+            if (showTooltip) {
+              showTranslationTooltip(restore(partial), range, /* streaming */ true);
+            }
           },
         );
-        showTranslationTooltip(restore(result), range);
-        return;
+        const finalResult = restore(result);
+        if (showTooltip) showTranslationTooltip(finalResult, range);
+        return finalResult;
       } catch (streamError) {
         log.debug('Streaming failed, falling back to sendMessage:', streamError);
         // Fall through to the regular sendMessage path below
@@ -249,714 +224,140 @@ async function translateSelection(
     const response = (await browserAPI.runtime.sendMessage({
       type: 'translate',
       text: processedText,
-      sourceLang,
+      sourceLang: resolvedSourceLang,
       targetLang,
       options: {
         strategy,
         context: context || undefined,
       },
       provider,
-    })) as TranslateResponse;
+    })) as { success: boolean; result?: unknown; error?: string };
 
     if (response.success && response.result) {
       // Apply glossary post-processing (restore placeholders)
       const finalResult = restore(response.result as string);
-      showTranslationTooltip(finalResult, range);
+      if (showTooltip) showTranslationTooltip(finalResult, range);
+      return finalResult;
     } else {
       log.error(' Translation failed:', response.error);
-      showErrorTooltip(response.error || 'Translation failed', range);
+      if (showTooltip) {
+        showErrorTooltip(response.error || 'Translation failed', range);
+        return null;
+      }
+      throw new Error(response.error || 'Translation failed');
     }
   } catch (error) {
     log.error(' Translation error:', error);
     const message = extractErrorMessage(error, 'Unknown error');
-    showErrorTooltip(message, selection.getRangeAt(0));
+    if (showTooltip) {
+      showErrorTooltip(message, range);
+      return null;
+    }
+    throw error;
   }
 }
 
-/**
- * Translate entire page with batching and error handling
- */
-/**
- * Translate a single batch with retry logic for transient failures.
- * Returns { translatedCount, errorCount } for the batch.
- */
-async function translateBatchWithRetry(
-  batch: { nodes: Text[]; texts: string[]; restoreFns: Array<(text: string) => string> },
+async function translatePageContent(
   sourceLang: string,
   targetLang: string,
   strategy: Strategy,
-  provider?: string,
-  enableProfiling = false,
-  maxRetries = 2
-): Promise<{ translatedCount: number; errorCount: number; ipcTime: number; domUpdateTime: number }> {
-  let lastError: unknown = null;
+  provider?: TranslationProviderId,
+  options: {
+    agentInvoked?: boolean;
+  } = {}
+): Promise<PageToolSummary & { handledBy: 'extension' | 'site-tool' | 'pdf' }> {
+  if (isPdfPage()) {
+    await initPdfTranslation(targetLang);
+    return { translatedCount: 0, errorCount: 0, handledBy: 'pdf' };
+  }
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      // Exponential backoff on retry
-      if (attempt > 0) {
-        const delay = calculateRetryDelay(attempt);
-        await sleep(delay);
-        log.info(`Retry attempt ${attempt} for batch`);
-      }
-
-      // Extract page context from the first node in the batch for disambiguation
-      /* v8 ignore start */
-      const pageContext = batch.nodes[0] ? getPageContext(batch.nodes[0]) : '';
-      /* v8 ignore stop */
-
-      const ipcStart = performance.now();
-      const response = (await browserAPI.runtime.sendMessage({
-        type: 'translate',
-        text: batch.texts,
-        sourceLang,
-        targetLang,
-        options: {
-          strategy,
-          context: pageContext ? { before: '', after: '', pageContext } : undefined,
-        },
-        provider,
-        enableProfiling,
-      })) as TranslateResponse;
-      const ipcTime = performance.now() - ipcStart;
-      recordContentTiming('ipcRoundtrip', ipcTime);
-
-      if (response.success && Array.isArray(response.result)) {
-        const domUpdateStart = performance.now();
-        let translatedCount = 0;
-        let errorCount = 0;
-
-        response.result.forEach((translated, idx) => {
-          const node = batch.nodes[idx];
-          // Guard: skip detached nodes (removed from DOM during translation).
-          // A single rich text container can legitimately contain multiple sibling
-          // text nodes, so reinjection must not stop after the first child update.
-          if (node && translated && node.parentElement && document.contains(node)) {
-            try {
-              const parent = node.parentElement;
-              const finalText = batch.restoreFns[idx](translated);
-              /* v8 ignore start */
-              const original = node.textContent || '';
-              /* v8 ignore stop */
-              const leadingSpace = original.match(/^\s*/)?.[0] || '';
-              const trailingSpace = original.match(/\s*$/)?.[0] || '';
-
-              // Debug: log first 3 replacements to verify translation is actually different
-              if (idx < 3) {
-                log.debug(`DOM Replace #${idx}: "${original.trim().substring(0, 40)}" -> "${finalText.substring(0, 40)}" (same=${original.trim() === finalText})`);
-              }
-
-              ensureOriginalTextSnapshot(parent);
-
-              node.textContent = leadingSpace + finalText + trailingSpace;
-              parent.setAttribute(MACHINE_TRANSLATION_ATTR, parent.textContent || '');
-              parent.setAttribute(SOURCE_LANG_ATTR, sourceLang);
-              parent.setAttribute(TARGET_LANG_ATTR, targetLang);
-              parent.setAttribute(TRANSLATED_ATTR, 'true');
-              makeTranslatedElementEditable(parent);
-
-              // Auto-apply bilingual annotation if bilingual mode is active
-              if (getBilingualModeState()) {
-                applyBilingualToElement(parent);
-              }
-
-              translatedCount++;
-            } catch {
-              errorCount++;
-            }
-          }
-        });
-
-        const domUpdateTime = performance.now() - domUpdateStart;
-        recordContentTiming('domUpdate', domUpdateTime);
-
-        return { translatedCount, errorCount, ipcTime, domUpdateTime };
-      }
-
-      /* v8 ignore start -- non-retryable IPC error; requires real extension messaging */
-      // Non-retryable error (e.g. unsupported language pair)
-      if (response.error && !isTransientError(response.error)) {
-        return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime, domUpdateTime: 0 };
-      }
-
-      /* v8 ignore start -- OR default fallback */
-      lastError = response.error || 'Translation returned unsuccessful response';
-      /* v8 ignore stop */
-    } catch (error) {
-      lastError = error;
-      // Extension context invalidated = service worker restarted, not retryable
-      if (error instanceof Error && error.message.includes('Extension context invalidated')) {
-        log.warn('Extension context invalidated — stopping translation. Reload the page.');
-        stopMutationObserver();
-        currentSettings = null;
-        return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime: 0, domUpdateTime: 0 };
-      }
-      // Other errors are retryable
-      if (attempt === maxRetries) break;
+  // Prevent recursive self-invocation once the extension registers its own tools.
+  if (!options.agentInvoked) {
+    const siteToolResult = await maybeTranslatePageWithSiteTool({
+      sourceLang,
+      targetLang,
+      strategy,
+      provider,
+    });
+    if (siteToolResult) {
+      log.info(` Translated page via site tool '${siteToolResult.toolName}'`);
+      stopMutationObserver();
+      pageOrchestrator.setCurrentSettings(null);
+      return { translatedCount: 0, errorCount: 0, handledBy: 'site-tool' };
     }
   }
 
-  log.error(`Batch failed after ${maxRetries + 1} attempts:`, lastError);
-  return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime: 0, domUpdateTime: 0 };
-}
-
-/** Active IntersectionObserver for scroll-aware below-fold translation */
-let belowFoldObserver: IntersectionObserver | null = null;
-
-function getDirectTextChildren(element: Element): Text[] {
-  return Array.from(element.childNodes).filter((node): node is Text => node.nodeType === Node.TEXT_NODE);
-}
-
-function ensureOriginalTextSnapshot(element: Element): void {
-  if (!element.hasAttribute(ORIGINAL_TEXT_ATTR)) {
-    element.setAttribute(ORIGINAL_TEXT_ATTR, element.textContent || '');
-  }
-
-  if (!element.hasAttribute(ORIGINAL_TEXT_NODES_ATTR)) {
-    element.setAttribute(
-      ORIGINAL_TEXT_NODES_ATTR,
-      JSON.stringify(getDirectTextChildren(element).map((node) => node.textContent || ''))
-    );
-  }
-}
-
-/**
- * Clean up scroll-aware translation observer
- */
-function stopBelowFoldObserver(): void {
-  if (belowFoldObserver) {
-    belowFoldObserver.disconnect();
-    belowFoldObserver = null;
-  }
-}
-
-async function translatePage(
-  sourceLang: string,
-  targetLang: string,
-  strategy: Strategy,
-  provider?: string,
-  enableProfiling = false
-): Promise<void> {
-  // Fix race condition: set flag BEFORE any await/async operations
-  if (isTranslatingPage) {
-    log.info(' Translation already in progress');
-    return;
-  }
-  isTranslatingPage = true;
-
-  // Abort any previous translation if running
-  if (navigationAbortController) navigationAbortController.abort();
-  
-  stopBelowFoldObserver();
-
-  // Create abort controller for this translation session.
-  // Aborted on navigation (beforeunload) or undo to stop wasting API calls.
-  navigationAbortController = new AbortController();
-  const { signal } = navigationAbortController;
-
-  log.info(' Translating page...');
-  const pageStart = performance.now();
-
-  try {
-    // Time DOM scanning
-    const scanStart = performance.now();
-    const textNodes = getTextNodes(document.body);
-    const scanDuration = performance.now() - scanStart;
-    recordContentTiming('domScan', scanDuration);
-    log.info(`Found ${textNodes.length} text nodes in ${scanDuration.toFixed(2)}ms`);
-
-    if (textNodes.length === 0) {
-      log.info(' No translatable text found');
-      return;
-    }
-
-    // Sort nodes: viewport-visible first, then top-to-bottom by position
-    // Users read rendered content top-down, so translate what they see first
-    // Performance: cache getBoundingClientRect() results to avoid redundant layout thrashing
-    const viewportHeight = window.innerHeight;
-    const viewportNodes: Text[] = [];
-    const belowFoldWithPos: Array<{ node: Text; top: number }> = [];
-
-    for (const node of textNodes) {
-      const parent = node.parentElement;
-      /* v8 ignore start -- text nodes from DOM scan always have a parent */
-      if (!parent) continue;
-      /* v8 ignore stop */
-      try {
-        const rect = parent.getBoundingClientRect();
-        if (rect.top < viewportHeight && rect.bottom > 0) {
-          viewportNodes.push(node);
-        } else {
-          belowFoldWithPos.push({ node, top: rect.top });
-        }
-      } catch {
-        belowFoldWithPos.push({ node, top: Infinity });
-      }
-    }
-
-    // Sort below-fold by cached Y position (no second getBoundingClientRect pass)
-    belowFoldWithPos.sort((a, b) => a.top - b.top);
-    const belowFoldNodes = belowFoldWithPos.map(item => item.node);
-
-    log.info(`Viewport: ${viewportNodes.length} nodes, below fold: ${belowFoldNodes.length} nodes`);
-
-    // Time glossary loading
-    const glossaryStart = performance.now();
-    const g = await loadGlossary();
-    const glossaryDuration = performance.now() - glossaryStart;
-    recordContentTiming('glossaryApply', glossaryDuration);
-
-    // --- Phase 1: Translate viewport content immediately ---
-    const viewportBatches = await createBatches(viewportNodes, g);
-    const totalBatches = viewportBatches.length;
-    const hasBelowFold = belowFoldNodes.length > 0;
-
-    // Show progress for multi-batch translations
-    if (totalBatches > 1 || hasBelowFold) {
-      showProgressToast(`Translating visible content...`);
-    }
-
-    let translatedCount = 0;
-    let errorCount = 0;
-    let totalIpcTime = 0;
-    let totalDomUpdateTime = 0;
-    let firstTranslation = true;
-
-    // Translate viewport batches with concurrency limit — pipelines IPC round-trips
-    // while model processes previous batch. DOM updates happen in-order per batch.
-    for (let i = 0; i < viewportBatches.length; i += CONFIG.batching.concurrencyLimit) {
-      // Check abort signal between batches to stop on navigation
-      /* v8 ignore start -- abort timing is non-deterministic in jsdom async */
-      if (signal.aborted) {
-        log.info('Translation aborted (navigation or undo)');
-        break;
-      }
-      /* v8 ignore stop */
-
-      const chunk = viewportBatches.slice(i, i + CONFIG.batching.concurrencyLimit);
-
-      if (totalBatches > 1) {
-        updateProgressToast(`Translating... ${i + 1}/${totalBatches}`);
-      }
-
-      const results = await Promise.all(
-        chunk.map((batch) =>
-          translateBatchWithRetry(batch, sourceLang, targetLang, strategy, provider, enableProfiling)
-        )
-      );
-
-      for (let j = 0; j < results.length; j++) {
-        const result = results[j];
-        // Show correction hint on first successful translation
-        if (firstTranslation && result.translatedCount > 0) {
-          const firstNode = chunk[j].nodes[0];
-          if (firstNode?.parentElement) {
-            showCorrectionHint(firstNode.parentElement);
-          }
-          firstTranslation = false;
-        }
-
-        translatedCount += result.translatedCount;
-        errorCount += result.errorCount;
-        totalIpcTime += result.ipcTime;
-        totalDomUpdateTime += result.domUpdateTime;
-      }
-    }
-
-    // --- Phase 2: Translate below-fold content progressively as user scrolls ---
-    if (belowFoldNodes.length > 0) {
-      updateProgressToast(`Translating remaining content...`);
-
-      // Finish modest pages immediately so long descriptions below the fold
-      // are translated in the first pass. Only defer the tail of very large pages.
-      const immediateBelowFoldCount = Math.min(
-        belowFoldNodes.length,
-        CONFIG.batching.immediateBelowFoldMaxNodes
-      );
-      const immediateNodes = belowFoldNodes.slice(0, immediateBelowFoldCount);
-      const deferredNodes = belowFoldNodes.slice(immediateBelowFoldCount);
-
-      // Translate the first section below fold immediately
-      const immediateBatches = await createBatches(immediateNodes, g);
-      for (const batch of immediateBatches) {
-        /* v8 ignore start -- abort between below-fold batches; covered at viewport level */
-        if (signal.aborted) break;
-        /* v8 ignore stop */
-        const result = await translateBatchWithRetry(
-          batch, sourceLang, targetLang, strategy, provider, enableProfiling
-        );
-        translatedCount += result.translatedCount;
-        errorCount += result.errorCount;
-        totalIpcTime += result.ipcTime;
-        totalDomUpdateTime += result.domUpdateTime;
-      }
-
-      // Defer remaining nodes: use IntersectionObserver to translate when approaching viewport
-      if (deferredNodes.length > 0) {
-        setupScrollAwareTranslation(deferredNodes, sourceLang, targetLang, strategy, g, provider, enableProfiling);
-      }
-    }
-
-    removeProgressToast();
-
-    // Start translating video subtitles/captions alongside page text
-    initSubtitleTranslation(targetLang);
-
-    const totalTime = performance.now() - pageStart;
-    log.info(
-      `Page translation complete: ${translatedCount} translated, ${errorCount} errors\n` +
-      `  Total: ${totalTime.toFixed(2)}ms\n` +
-      `  DOM Scan: ${scanDuration.toFixed(2)}ms (${((scanDuration / totalTime) * 100).toFixed(1)}%)\n` +
-      `  IPC Total: ${totalIpcTime.toFixed(2)}ms (${((totalIpcTime / totalTime) * 100).toFixed(1)}%)\n` +
-      `  DOM Update: ${totalDomUpdateTime.toFixed(2)}ms (${((totalDomUpdateTime / totalTime) * 100).toFixed(1)}%)`
-    );
-
-    // Show summary
-    if (errorCount > 0 && translatedCount > 0) {
-      showInfoToast(`Translated ${translatedCount} items (${errorCount} failed)`);
-    } else if (translatedCount > 0 && errorCount === 0) {
-      const deferredMsg = belowFoldNodes.length > CONFIG.batching.immediateBelowFoldMaxNodes
-        ? ' (more translates as you scroll)' : '';
-      showInfoToast(`Translated ${translatedCount} items${deferredMsg}`);
-    } else if (errorCount > 0 && translatedCount === 0) {
-      showErrorToast('Translation failed. Please try again.');
-    }
-
-    // Log content timing stats
-    /* v8 ignore start -- enableProfiling param never passed true from message handler */
-    if (enableProfiling) {
-      log.info('Timing Stats:', getContentTimingStats());
-    }
-    /* v8 ignore stop */
-  } finally {
-    isTranslatingPage = false;
-
-    // Drain any dynamic nodes that were queued during page translation
-    if (queuedDynamicNodes.length > 0 && currentSettings) {
-      const queued = queuedDynamicNodes;
-      queuedDynamicNodes = [];
-      log.info(` Draining ${queued.length} queued dynamic nodes`);
-      translateDynamicContent(queued);
-    }
-  }
-}
-
-/**
- * Set up IntersectionObserver to translate deferred below-fold content
- * as the user scrolls near it. Translates in chunks using sentinel elements.
- *
- * IMPORTANT: Uses currentSettings at callback time (not closure-captured params)
- * to avoid stale language settings if the user changes language mid-scroll.
- */
-function setupScrollAwareTranslation(
-  deferredNodes: Text[],
-  _sourceLang: string,
-  _targetLang: string,
-  _strategy: Strategy,
-  glossaryStore: GlossaryStore,
-  _provider?: string,
-  enableProfiling = false
-): void {
-  // Split deferred nodes into chunks of ~2 batches worth
-  const chunkSize = CONFIG.batching.maxSize * 2;
-  const chunks: Text[][] = [];
-  for (let i = 0; i < deferredNodes.length; i += chunkSize) {
-    chunks.push(deferredNodes.slice(i, i + chunkSize));
-  }
-
-  log.info(`Deferring ${deferredNodes.length} nodes in ${chunks.length} scroll-triggered chunks`);
-
-  const translatedChunks = new Set<number>();
-
-  belowFoldObserver = new IntersectionObserver(
-    async (entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-
-        const chunkIndex = Number((entry.target as HTMLElement).dataset.translateChunk);
-        /* v8 ignore start -- IntersectionObserver in jsdom doesn't fire; scroll guards untestable */
-        if (isNaN(chunkIndex) || translatedChunks.has(chunkIndex)) continue;
-        /* v8 ignore stop */
-
-        translatedChunks.add(chunkIndex);
-        belowFoldObserver?.unobserve(entry.target);
-
-        const chunk = chunks[chunkIndex];
-        // Read live settings to avoid stale language/strategy from closure
-        /* v8 ignore start -- scroll observer callback not triggered in jsdom */
-        if (!chunk || !currentSettings) return;
-        /* v8 ignore stop */
-        const { sourceLang, targetLang, strategy, provider } = currentSettings;
-
-        // Filter out nodes that are no longer in the DOM or already translated
-        const validNodes = chunk.filter(
-          (n) => n.parentElement && document.contains(n) && !n.parentElement.hasAttribute(TRANSLATED_ATTR)
-        );
-        /* v8 ignore start -- scroll observer body: IntersectionObserver not available in jsdom */
-        if (validNodes.length === 0) return;
-
-        log.info(`Scroll-triggered: translating chunk ${chunkIndex + 1}/${chunks.length} (${validNodes.length} nodes)`);
-
-        try {
-          const batches = await createBatches(validNodes, glossaryStore);
-          for (const batch of batches) {
-            await translateBatchWithRetry(
-              batch, sourceLang, targetLang, strategy, provider, enableProfiling
-            );
-          }
-        } catch (error) {
-          log.error(`Scroll-triggered translation error for chunk ${chunkIndex}:`, error);
-        }
-        /* v8 ignore stop */
-      }
-    },
-    { rootMargin: '200% 0px' } // Start translating 2 viewports before the user scrolls there
-  );
-
-  // Observe a sentinel element near the first node of each chunk
-  for (let i = 0; i < chunks.length; i++) {
-    const firstNode = chunks[i][0];
-    const parent = firstNode?.parentElement;
-    /* v8 ignore start -- sentinel parents always in DOM during observer setup */
-    if (!parent || !document.contains(parent)) continue;
-    /* v8 ignore stop */
-
-    // Use the parent element as the observation target, tag it with chunk index
-    parent.dataset.translateChunk = String(i);
-    belowFoldObserver.observe(parent);
-  }
-}
-
-/**
- * Translate dynamically added content (with batching to respect MAX_BATCH_SIZE)
- */
-async function translateDynamicContent(nodes: Node[]): Promise<void> {
-  if (!currentSettings) return;
-
-  // If page translation is running, queue these nodes instead of dropping them
-  if (isTranslatingPage) {
-    queuedDynamicNodes.push(...nodes);
-    return;
-  }
-
-  if (isTranslatingDynamic) return;
-  isTranslatingDynamic = true;
-
-  try {
-    // P0 FIX: Moved inside try/finally so isTranslatingDynamic is always
-    // cleared even if getTextNodesFromNodes() throws unexpectedly.
-    const textNodes = getTextNodesFromNodes(nodes);
-    if (textNodes.length === 0) {
-      return; // finally block handles cleanup
-    }
-
-    log.info(`Translating ${textNodes.length} dynamic text nodes`);
-
-    const g = await loadGlossary();
-    const batches = await createBatches(textNodes, g);
-
-    for (const batch of batches) {
-      /* v8 ignore start -- defensive: settings always set when dynamic translation runs */
-      if (!currentSettings) return; // Settings cleared (e.g. undo called)
-      /* v8 ignore stop */
-
-      const result = await translateBatchWithRetry(
-        batch,
-        currentSettings.sourceLang,
-        currentSettings.targetLang,
-        currentSettings.strategy,
-        currentSettings.provider,
-        false, // enableProfiling
-        1      // maxRetries: fewer retries for dynamic content to avoid blocking
-      );
-
-      if (result.errorCount > 0 && result.translatedCount === 0) {
-        log.error(` Dynamic batch fully failed (${result.errorCount} nodes)`);
-      }
-    }
-  } catch (error) {
-    log.error(' Dynamic translation error:', error);
-    // Only show error toast for non-transient failures to avoid spamming the user
-    /* v8 ignore start */
-    if (error instanceof Error && !isTransientError(error.message)) {
-      showErrorToast(error.message);
-    }
-    /* v8 ignore stop */
-  } finally {
-    isTranslatingDynamic = false;
-  }
-}
-
-// ============================================================================
-// Undo Translation
-// ============================================================================
-
-/**
- * Undo all translations on the page, restoring original text
- */
-function undoTranslation(): number {
-  // Abort any in-flight translation batches
-  if (navigationAbortController) {
-    navigationAbortController.abort();
-    navigationAbortController = null;
-  }
-
-  // Stop any ongoing mutation observation
-  stopMutationObserver();
-  currentSettings = null;
-
-  // Clean up subtitle translation overlays and observers
-  cleanupSubtitleTranslation();
-
-  // Count and clear image translation overlays
-  clearImageOverlays();
-
-  // Find all translated elements
-  const translatedElements = document.querySelectorAll(`[${TRANSLATED_ATTR}]`);
-  let restoredCount = 0;
-
-  translatedElements.forEach((element) => {
-    const originalText = element.getAttribute(ORIGINAL_TEXT_ATTR);
-    const originalNodeTexts = element.getAttribute(ORIGINAL_TEXT_NODES_ATTR);
-    let restoredViaNodes = false;
-    if (originalNodeTexts !== null) {
-      try {
-        const originals = JSON.parse(originalNodeTexts) as unknown;
-        if (Array.isArray(originals)) {
-          const textNodes = getDirectTextChildren(element);
-          textNodes.forEach((textNode, index) => {
-            if (typeof originals[index] === 'string') {
-              textNode.textContent = originals[index];
-            }
-          });
-          restoredCount++;
-          restoredViaNodes = true;
-        }
-      } catch {
-        // Fall back to the legacy single-text-node restoration path below.
-      }
-    }
-
-    if (!restoredViaNodes && originalText !== null) {
-      // Find the text node and restore original
-      const textNode = Array.from(element.childNodes).find(
-        (node) => node.nodeType === Node.TEXT_NODE
-      );
-      /* v8 ignore start */
-      if (textNode) {
-      /* v8 ignore stop */
-        textNode.textContent = originalText;
-        restoredCount++;
-      }
-    }
-
-    // Clean up attributes and invalidate skip cache
-    element.removeAttribute(TRANSLATED_ATTR);
-    element.removeAttribute(ORIGINAL_TEXT_ATTR);
-    element.removeAttribute(ORIGINAL_TEXT_NODES_ATTR);
-    clearSkipCacheEntry(element);
+  const resolvedSourceLang = resolveSourceLang(sourceLang);
+  pageOrchestrator.setCurrentSettings({
+    sourceLang: resolvedSourceLang,
+    targetLang,
+    strategy,
+    provider,
   });
 
-  log.info(` Restored ${restoredCount} elements to original text`);
-  showInfoToast(`Restored ${restoredCount} translations`);
-  return restoredCount;
+  const summary = await pageOrchestrator.translatePage(
+    resolvedSourceLang,
+    targetLang,
+    strategy,
+    provider
+  );
+  startMutationObserver();
+  return { ...summary, handledBy: 'extension' };
 }
+
+function detectCurrentPageLanguage(text?: string): { lang: string; confidence: number } | null {
+  const selectionText = getDeepSelection()?.toString();
+  const selectedText = text ?? (selectionText?.trim() || undefined);
+  return detectSampledLanguage(selectedText);
+}
+
+const translationWebMcpHandlers: TranslationWebMcpHandlers = {
+  translatePage: async ({ sourceLang, targetLang, strategy, provider }) => {
+    const result = await translatePageContent(sourceLang, targetLang, strategy, provider, {
+      agentInvoked: true,
+    });
+    return {
+      translatedCount: result.translatedCount,
+      errorCount: result.errorCount,
+    };
+  },
+  translateSelection: async ({ sourceLang, targetLang, strategy, provider }) =>
+    translateSelection(sourceLang, targetLang, strategy, provider, {
+      agentInvoked: true,
+      showTooltip: false,
+    }),
+  detectLanguage: async (text) => detectCurrentPageLanguage(text),
+};
+
+function installWebMcpE2eHook(handlers: TranslationWebMcpHandlers): void {
+  if (!window.location.pathname.endsWith('/e2e/webmcp-harness.html')) return;
+
+  (window as Window & {
+    __translateWebMcpTest?: {
+      registerTools: () => Promise<boolean>;
+      unregisterTools: () => Promise<void>;
+    };
+  }).__translateWebMcpTest = {
+    registerTools: () => registerTranslationWebMcpTools(handlers),
+    unregisterTools: () => unregisterTranslationWebMcpTools(),
+  };
+}
+
+installWebMcpE2eHook(translationWebMcpHandlers);
+installAutoTranslateE2eBridge();
+void registerTranslationWebMcpTools(translationWebMcpHandlers);
 
 // ============================================================================
 // MutationObserver for Dynamic Content
 // ============================================================================
 
-/**
- * Process pending mutations with debouncing and chunked processing.
- * Caps per-cycle processing to avoid blocking the main thread on
- * content-heavy pages that generate hundreds of mutations.
- */
-function processPendingMutations(): void {
-  /* v8 ignore start -- debounce timer always fires with pending mutations */
-  if (pendingMutations.length === 0) return;
-  /* v8 ignore stop */
-
-  // Collect all added nodes
-  const addedNodes: Node[] = [];
-  for (const mutation of pendingMutations) {
-    for (const node of mutation.addedNodes) {
-      if (
-        node.nodeType === Node.ELEMENT_NODE ||
-        node.nodeType === Node.TEXT_NODE
-      ) {
-        addedNodes.push(node);
-      }
-    }
-  }
-
-  pendingMutations = [];
-
-  if (addedNodes.length === 0) return;
-
-  // Process in capped chunks to avoid main-thread jank
-  if (addedNodes.length <= CONFIG.mutations.batchCapPerCycle) {
-    translateDynamicContent(addedNodes);
-  } else {
-    // Process first chunk immediately
-    translateDynamicContent(addedNodes.slice(0, CONFIG.mutations.batchCapPerCycle));
-    // Defer remaining chunks via requestIdleCallback / setTimeout
-    let offset = CONFIG.mutations.batchCapPerCycle;
-    const processNextChunk = () => {
-      /* v8 ignore start -- chunk boundary guard in deferred processing */
-      if (offset >= addedNodes.length) return;
-      /* v8 ignore stop */
-      const chunk = addedNodes.slice(offset, offset + CONFIG.mutations.batchCapPerCycle);
-      offset += CONFIG.mutations.batchCapPerCycle;
-      translateDynamicContent(chunk);
-      if (offset < addedNodes.length) {
-        if ('requestIdleCallback' in window) {
-          window.requestIdleCallback(processNextChunk);
-        } else {
-          setTimeout(processNextChunk, 50);
-        }
-      }
-    };
-    /* v8 ignore start -- requestIdleCallback: chunked processing not reachable in jsdom */
-    if ('requestIdleCallback' in window) {
-      window.requestIdleCallback(processNextChunk);
-    } else {
-      setTimeout(processNextChunk, 50);
-    }
-    /* v8 ignore stop */
-  }
-}
-
-/** Counter for mutations dropped due to buffer overflow (diagnostic) */
-let droppedMutationCount = 0;
-
-/**
- * Shared mutation callback for both the main observer and shadow root observers.
- */
-function handleMutations(mutations: MutationRecord[]): void {
-  for (const mutation of mutations) {
-    if (pendingMutations.length < CONFIG.mutations.maxPending) {
-      pendingMutations.push(mutation);
-    } else {
-      droppedMutationCount++;
-    }
-  }
-
-  // Log dropped mutations periodically so heavy SPAs are diagnosable
-  /* v8 ignore start -- requires exactly 200 dropped mutations; diagnostic-only */
-  if (droppedMutationCount > 0 && droppedMutationCount % 200 === 0) {
-    log.warn(`Dropped ${droppedMutationCount} mutations (maxPending=${CONFIG.mutations.maxPending})`);
-  }
-  /* v8 ignore stop */
-
-  if (mutationDebounceTimer !== null) {
-    clearTimeout(mutationDebounceTimer);
-  }
-
-  mutationDebounceTimer = setTimeout(() => {
-    mutationDebounceTimer = null;
-    processPendingMutations();
-  }, CONFIG.mutations.debounceMs);
-}
+const mutationOrchestrator = createMutationOrchestrator({
+  log,
+  config: CONFIG,
+  onNodesAdded: (nodes) => {
+    void pageOrchestrator.translateDynamicContent(nodes);
+  },
+});
 
 /**
  * Start observing DOM mutations for auto-translation.
@@ -964,201 +365,346 @@ function handleMutations(mutations: MutationRecord[]): void {
  * are captured for dynamic translation.
  */
 function startMutationObserver(): void {
-  if (mutationObserver) return;
-
-  mutationObserver = new MutationObserver(handleMutations);
-
-  mutationObserver.observe(document.body, {
-    childList: true,
-    subtree: true,
-  });
-
-  // Observe shadow roots: when a new shadow root appears, attach a
-  // MutationObserver inside it so dynamic content is translated.
-  shadowRootCleanup = observeShadowRoots(document, (shadowRoot) => {
-    observeShadowRoot(shadowRoot, handleMutations);
-  });
-
-  log.info(' MutationObserver started (with shadow DOM support)');
+  mutationOrchestrator.start();
 }
 
 /**
  * Stop observing DOM mutations (including shadow root observers)
  */
 function stopMutationObserver(): void {
-  if (mutationObserver) {
-    mutationObserver.disconnect();
-    mutationObserver = null;
-  }
-
-  // Clean up shadow root observers and interceptor
-  if (shadowRootCleanup) {
-    shadowRootCleanup();
-    shadowRootCleanup = null;
-  }
-  cleanupShadowObservers();
-
-  if (mutationDebounceTimer !== null) {
-    clearTimeout(mutationDebounceTimer);
-    mutationDebounceTimer = null;
-  }
-
-  pendingMutations = [];
-  stopBelowFoldObserver();
+  mutationOrchestrator.stop();
+  pageOrchestrator.stopBelowFoldObserver();
   removeProgressToast();
-  log.info(' MutationObserver stopped');
 }
-
 
 // ============================================================================
 // Message Handling
 // ============================================================================
 
+function logContentMessageFailure(action: string, error: unknown, fallbackMessage: string): void {
+  const msg = extractErrorMessage(error, fallbackMessage);
+  log.error(`${action} failed:`, msg);
+}
+
+type AutoTranslateStartTrigger =
+  | 'requestIdleCallback'
+  | 'requestIdleCallbackTimeout'
+  | 'setTimeoutFallback';
+
+type AutoTranslateE2eRequest = {
+  requestId: string;
+  type: 'translatePage';
+  sourceLang: string;
+  targetLang: string;
+  strategy: Strategy;
+  provider?: TranslationProviderId;
+};
+
+type AutoTranslateE2eResponse =
+  | {
+      requestId: string;
+      success: true;
+      summary: {
+        translatedCount: number;
+        errorCount: number;
+        handledBy: 'extension' | 'site-tool' | 'pdf';
+      };
+    }
+  | {
+      requestId: string;
+      success: false;
+      error: string;
+    };
+
+const AUTO_TRANSLATE_E2E_DIAGNOSTICS_PATH = '/e2e/mock.html';
+
+function shouldPublishAutoTranslateDiagnostics(): boolean {
+  const { hostname, pathname } = window.location;
+  const isLocalE2eHost = hostname === '127.0.0.1' || hostname === 'localhost';
+  return isLocalE2eHost && pathname.endsWith(AUTO_TRANSLATE_E2E_DIAGNOSTICS_PATH);
+}
+
+function dispatchAutoTranslateE2eResponse(
+  detail: AutoTranslateE2eResponse
+): void {
+  document.dispatchEvent(
+    new CustomEvent(AUTO_TRANSLATE_E2E_RESPONSE_EVENT, {
+      detail,
+    })
+  );
+}
+
+function installAutoTranslateE2eBridge(): void {
+  const bridgeWindow = window as Window &
+    typeof globalThis & {
+      __translateAutoTranslateE2eBridgeInstalled?: boolean;
+    };
+  if (bridgeWindow.__translateAutoTranslateE2eBridgeInstalled) return;
+  bridgeWindow.__translateAutoTranslateE2eBridgeInstalled = true;
+
+  document.addEventListener(AUTO_TRANSLATE_E2E_REQUEST_EVENT, (event) => {
+    if (!shouldPublishAutoTranslateDiagnostics()) return;
+
+    const detail = (event as CustomEvent<unknown>).detail;
+    if (!detail || typeof detail !== 'object') return;
+
+    const request = detail as Partial<AutoTranslateE2eRequest>;
+    if (
+      request.type !== 'translatePage' ||
+      typeof request.requestId !== 'string' ||
+      typeof request.sourceLang !== 'string' ||
+      typeof request.targetLang !== 'string' ||
+      typeof request.strategy !== 'string'
+    ) {
+      return;
+    }
+    const requestId = request.requestId;
+
+    void translatePageContent(
+      request.sourceLang,
+      request.targetLang,
+      request.strategy as Strategy,
+      typeof request.provider === 'string'
+        ? (request.provider as TranslationProviderId)
+        : undefined
+    )
+      .then((summary) => {
+        dispatchAutoTranslateE2eResponse({
+          requestId,
+          success: true,
+          summary,
+        });
+      })
+      .catch((error) => {
+        const message = extractErrorMessage(error, 'Page translation failed');
+        dispatchAutoTranslateE2eResponse({
+          requestId,
+          success: false,
+          error: message,
+        });
+        logContentMessageFailure(
+          'translatePageE2e',
+          error,
+          'Page translation failed'
+        );
+      });
+  });
+}
+
+function createAutoTranslateDiagnostics(): AutoTranslateDiagnostics {
+  return {
+    contentLoaded: true,
+    checkStarted: false,
+    settingsLoaded: false,
+    hasSiteSpecificRules: false,
+    shouldAutoTranslate: false,
+    currentSettingsApplied: false,
+    startScheduled: false,
+    scheduleMethod: null,
+    startTriggeredBy: null,
+    startRan: false,
+    translationRequested: false,
+    translationCompleted: false,
+    handledBy: null,
+    translatedCount: null,
+    errorCount: null,
+    sourceLang: null,
+    targetLang: null,
+    provider: null,
+    lastError: null,
+    readyState: document.readyState,
+    visibilityState: document.visibilityState,
+  };
+}
+
+let autoTranslateDiagnostics = createAutoTranslateDiagnostics();
+
+function publishAutoTranslateDiagnostics(): void {
+  const root = document.documentElement;
+  if (!root) return;
+
+  if (!shouldPublishAutoTranslateDiagnostics()) {
+    root.removeAttribute(CONTENT_SCRIPT_READY_ATTR);
+    root.removeAttribute(AUTO_TRANSLATE_DIAGNOSTICS_ATTR);
+    return;
+  }
+
+  root.setAttribute(CONTENT_SCRIPT_READY_ATTR, 'true');
+  root.setAttribute(
+    AUTO_TRANSLATE_DIAGNOSTICS_ATTR,
+    JSON.stringify(autoTranslateDiagnostics)
+  );
+}
+
+function resetAutoTranslateDiagnostics(): void {
+  autoTranslateDiagnostics = createAutoTranslateDiagnostics();
+  publishAutoTranslateDiagnostics();
+}
+
+function updateAutoTranslateDiagnostics(
+  update: Partial<AutoTranslateDiagnostics>
+): void {
+  autoTranslateDiagnostics = {
+    ...autoTranslateDiagnostics,
+    ...update,
+    contentLoaded: true,
+    readyState: document.readyState,
+    visibilityState: document.visibilityState,
+  };
+  publishAutoTranslateDiagnostics();
+}
+
+const contentMessageHandlers: ContentMessageHandlers = {
+  ping: defineImmediateContentHandler('ping', () => ({ loaded: true })),
+  stopAutoTranslate: defineImmediateContentHandler('stopAutoTranslate', () => {
+    stopMutationObserver();
+    pageOrchestrator.setCurrentSettings(null);
+    return true;
+  }),
+  undoTranslation: defineImmediateContentHandler('undoTranslation', () => {
+    const restoredCount = pageOrchestrator.undoTranslation();
+    return { success: true, restoredCount };
+  }),
+  toggleBilingualMode: defineImmediateContentHandler('toggleBilingualMode', () => ({
+    enabled: toggleBilingualMode(),
+  })),
+  setBilingualMode: defineImmediateContentHandler('setBilingualMode', (message) => {
+    if (message.enabled) {
+      enableBilingualMode();
+    } else {
+      disableBilingualMode();
+    }
+    return { enabled: getBilingualModeState() };
+  }),
+  getBilingualMode: defineImmediateContentHandler('getBilingualMode', () => ({
+    enabled: getBilingualModeState(),
+  })),
+  toggleWidget: defineImmediateContentHandler('toggleWidget', () => ({
+    visible: toggleFloatingWidget(),
+  })),
+  showWidget: defineImmediateContentHandler('showWidget', () => {
+    showFloatingWidget();
+    return { visible: true };
+  }),
+  translateSelection: defineStartedContentHandler(
+    'translateSelection',
+    async (message) => {
+      await translateSelection(message.sourceLang, message.targetLang, message.strategy, message.provider);
+    },
+    (error) => {
+      logContentMessageFailure('translateSelection', error, 'Translation failed');
+    }
+  ),
+  translatePage: defineStartedContentHandler(
+    'translatePage',
+    async (message) => {
+      await translatePageContent(
+        message.sourceLang,
+        message.targetLang,
+        message.strategy,
+        message.provider
+      );
+    },
+    (error) => {
+      logContentMessageFailure('translatePage', error, 'Page translation failed');
+    }
+  ),
+  translatePdf: defineStartedContentHandler(
+    'translatePdf',
+    async (message) => {
+      await initPdfTranslation(message.targetLang);
+    },
+    (error) => {
+      logContentMessageFailure('translatePdf', error, 'PDF translation failed');
+    }
+  ),
+  translateImage: defineStartedContentHandler(
+    'translateImage',
+    async (message) => {
+      await translateImage(message.imageUrl);
+    },
+    (error) => {
+      logContentMessageFailure('translateImage', error, 'Image translation failed');
+    }
+  ),
+  enterScreenshotMode: defineImmediateContentHandler('enterScreenshotMode', () => {
+    enterScreenshotMode();
+    return true;
+  }),
+};
+
 browserAPI.runtime.onMessage.addListener(
   (
-    message: ContentMessage,
+    message: unknown,
     _sender,
-    sendResponse: (response: boolean | { loaded: boolean } | { success: boolean; restoredCount: number } | { enabled: boolean } | { visible: boolean } | { success: boolean; status: string } | { success: boolean; error: string }) => void
-  ) => {
-    if (message.type === 'ping') {
-      sendResponse({ loaded: true });
-      return true;
-    }
-
-    if (message.type === 'stopAutoTranslate') {
-      stopMutationObserver();
-      currentSettings = null;
-      sendResponse(true);
-      return true;
-    }
-
-    if (message.type === 'undoTranslation') {
-      const restoredCount = undoTranslation();
-      sendResponse({ success: true, restoredCount });
-      return true;
-    }
-
-    if (message.type === 'toggleBilingualMode') {
-      const enabled = toggleBilingualMode();
-      sendResponse({ enabled });
-      return true;
-    }
-
-    if (message.type === 'setBilingualMode') {
-      if (message.enabled) {
-        enableBilingualMode();
-      } else {
-        disableBilingualMode();
-      }
-      sendResponse({ enabled: getBilingualModeState() });
-      return true;
-    }
-
-    if (message.type === 'getBilingualMode') {
-      sendResponse({ enabled: getBilingualModeState() });
-      return true;
-    }
-
-    if (message.type === 'toggleWidget') {
-      const visible = toggleFloatingWidget();
-      sendResponse({ visible });
-      return true;
-    }
-
-    if (message.type === 'showWidget') {
-      showFloatingWidget();
-      sendResponse({ visible: true });
-      return true;
-    }
-
-    if (message.type === 'translateSelection') {
-      const selSourceLang = resolveSourceLang(message.sourceLang);
-      // Acknowledge immediately so the caller does not time out
-      sendResponse({ success: true, status: 'started' });
-      translateSelection(selSourceLang, message.targetLang, message.strategy, message.provider)
-        .catch((error) => {
-          const msg = extractErrorMessage(error, 'Translation failed');
-          log.error('translateSelection failed:', msg);
-        });
-      return true;
-    }
-
-    if (message.type === 'translatePage') {
-      // For PDF pages, use the specialized PDF translator
-      if (isPdfPage()) {
-        // Acknowledge immediately so the caller does not time out
-        sendResponse({ success: true, status: 'started' });
-        initPdfTranslation(message.targetLang)
-          .catch((error) => {
-            const msg = extractErrorMessage(error, 'PDF translation failed');
-            log.error('initPdfTranslation failed:', msg);
-          });
-        return true;
-      }
-
-      // Store settings for dynamic content translation
-      const resolvedPageLang = resolveSourceLang(message.sourceLang);
-      currentSettings = {
-        sourceLang: resolvedPageLang,
-        targetLang: message.targetLang,
-        strategy: message.strategy,
-        provider: message.provider,
-      };
-
-      // Acknowledge immediately so the caller does not time out
-      sendResponse({ success: true, status: 'started' });
-
-      translatePage(resolvedPageLang, message.targetLang, message.strategy, message.provider)
-        .then(() => {
-          // Start observing for dynamic content
-          startMutationObserver();
-        })
-        .catch((error) => {
-          const msg = extractErrorMessage(error, 'Page translation failed');
-          log.error('translatePage failed:', msg);
-        });
-      return true;
-    }
-
-    if (message.type === 'translatePdf') {
-      // Acknowledge immediately so the caller does not time out
-      sendResponse({ success: true, status: 'started' });
-      initPdfTranslation(message.targetLang)
-        .catch((error) => {
-          const msg = extractErrorMessage(error, 'PDF translation failed');
-          log.error('translatePdf failed:', msg);
-        });
-      return true;
-    }
-
-    if (message.type === 'translateImage') {
-      // Acknowledge immediately so the caller does not time out
-      sendResponse({ success: true, status: 'started' });
-      translateImage(
-        message.imageUrl
-      )
-        .catch((error) => {
-          const msg = extractErrorMessage(error, 'Image translation failed');
-          log.error('translateImage failed:', msg);
-        });
-      return true;
-    }
-
-    if (message.type === 'enterScreenshotMode') {
-      enterScreenshotMode();
-      sendResponse(true);
-      return true;
-    }
-
-    return false;
-  }
+    sendResponse: (response: ContentMessageResponse) => void
+  ) => routeContentMessage(message, sendResponse, contentMessageHandlers)
 );
+publishAutoTranslateDiagnostics();
 
 // ============================================================================
 // Auto-Translate Check
 // ============================================================================
 
+function scheduleAutoTranslateStart(
+  startTranslation: (trigger: AutoTranslateStartTrigger) => void
+): void {
+  let started = false;
+  let idleCallbackId: number | undefined;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const runStartTranslation = (trigger: AutoTranslateStartTrigger): void => {
+    if (started) return;
+    started = true;
+
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+
+    if (idleCallbackId !== undefined && 'cancelIdleCallback' in window) {
+      window.cancelIdleCallback(idleCallbackId);
+    }
+
+    updateAutoTranslateDiagnostics({
+      startRan: true,
+      startTriggeredBy: trigger,
+    });
+    startTranslation(trigger);
+  };
+
+  if ('requestIdleCallback' in window) {
+    updateAutoTranslateDiagnostics({
+      startScheduled: true,
+      scheduleMethod: 'requestIdleCallback',
+    });
+    idleCallbackId = window.requestIdleCallback(() => {
+      runStartTranslation('requestIdleCallback');
+    }, {
+      timeout: 2000,
+    });
+    // Some browsers can indefinitely defer idle callbacks for hidden/background
+    // tabs even when the API exists, so keep a hard timeout fallback too.
+    timeoutId = setTimeout(() => {
+      runStartTranslation('requestIdleCallbackTimeout');
+    }, 2000);
+    return;
+  }
+
+  updateAutoTranslateDiagnostics({
+    startScheduled: true,
+    scheduleMethod: 'setTimeoutFallback',
+  });
+  timeoutId = setTimeout(() => {
+    runStartTranslation('setTimeoutFallback');
+  }, 500);
+}
+
 async function checkAutoTranslate(): Promise<void> {
+  resetAutoTranslateDiagnostics();
+  updateAutoTranslateDiagnostics({
+    checkStarted: true,
+  });
+
   // First check per-site rules
   const hostname = window.location.hostname;
   const siteSpecificRules = await siteRules.getRules(hostname);
@@ -1182,10 +728,18 @@ async function checkAutoTranslate(): Promise<void> {
   // Merge settings: site rules take precedence over global settings
   const shouldAutoTranslate = siteSpecificRules?.autoTranslate ?? settings.autoTranslate;
   const rawSourceLang = siteSpecificRules?.sourceLang || settings.sourceLang || 'auto';
-  const sourceLang = resolveSourceLang(rawSourceLang);
   const targetLang = siteSpecificRules?.targetLang || settings.targetLang || 'fi';
   const strategy = siteSpecificRules?.strategy || settings.strategy || 'smart';
   const provider = siteSpecificRules?.preferredProvider || settings.provider || 'opus-mt';
+
+  updateAutoTranslateDiagnostics({
+    settingsLoaded: true,
+    hasSiteSpecificRules: Boolean(siteSpecificRules),
+    shouldAutoTranslate: Boolean(shouldAutoTranslate),
+    sourceLang: rawSourceLang,
+    targetLang,
+    provider,
+  });
 
   if (siteSpecificRules) {
     log.info(' Site-specific rules found for', hostname, siteSpecificRules);
@@ -1194,34 +748,58 @@ async function checkAutoTranslate(): Promise<void> {
   if (shouldAutoTranslate) {
     log.info(' Auto-translate enabled, waiting for page idle...');
 
-    currentSettings = {
-      sourceLang,
+    pageOrchestrator.setCurrentSettings({
+      sourceLang: rawSourceLang,
       targetLang,
       strategy: strategy as Strategy,
       provider: provider as TranslationProviderId,
-    };
+    });
+    updateAutoTranslateDiagnostics({
+      currentSettingsApplied: true,
+    });
 
     // Wait for browser idle to avoid competing with page rendering.
-    // requestIdleCallback fires when browser has spare cycles; fallback to 500ms for Firefox.
+    // Keep a bounded timeout fallback so hidden/background tabs still start.
     const startTranslation = () => {
       /* v8 ignore start -- defensive: user can't cancel before idle callback fires in tests */
-      if (!currentSettings) return; // User may have cancelled
+      const liveSettings = pageOrchestrator.getCurrentSettings();
+      if (!liveSettings) {
+        updateAutoTranslateDiagnostics({
+          lastError: 'Auto-translate settings were cleared before startup',
+        });
+        return; // User may have cancelled
+      }
       /* v8 ignore stop */
-      translatePage(
-        currentSettings.sourceLang,
-        currentSettings.targetLang,
-        currentSettings.strategy,
-        currentSettings.provider
-      ).then(() => {
-        startMutationObserver();
+      updateAutoTranslateDiagnostics({
+        translationRequested: true,
+        sourceLang: liveSettings.sourceLang,
+        targetLang: liveSettings.targetLang,
+        provider: liveSettings.provider ?? null,
+        lastError: null,
       });
+      void translatePageContent(
+        liveSettings.sourceLang,
+        liveSettings.targetLang,
+        liveSettings.strategy,
+        liveSettings.provider
+      )
+        .then((summary) => {
+          updateAutoTranslateDiagnostics({
+            translationCompleted: true,
+            handledBy: summary.handledBy,
+            translatedCount: summary.translatedCount,
+            errorCount: summary.errorCount,
+          });
+        })
+        .catch((error) => {
+          updateAutoTranslateDiagnostics({
+            lastError: extractErrorMessage(error, 'Page translation failed'),
+          });
+          logContentMessageFailure('autoTranslate', error, 'Page translation failed');
+        });
     };
 
-    if ('requestIdleCallback' in window) {
-      window.requestIdleCallback(startTranslation, { timeout: 2000 });
-    } else {
-      setTimeout(startTranslation, 500);
-    }
+    scheduleAutoTranslateStart(startTranslation);
   }
 }
 
@@ -1237,11 +815,8 @@ if (document.readyState === 'complete') {
 // beforeunload fires BEFORE unload (which is unreliable on some browsers),
 // so we do full cleanup here to prevent resource leaks.
 window.addEventListener('beforeunload', () => {
-  if (navigationAbortController) {
-    navigationAbortController.abort();
-    navigationAbortController = null;
-  }
-  stopBelowFoldObserver();
+  void unregisterTranslationWebMcpTools();
+  pageOrchestrator.cleanup();
   stopMutationObserver();
   removeProgressToast();
 });
@@ -1249,21 +824,13 @@ window.addEventListener('beforeunload', () => {
 // Cleanup on unload - release all resources
 window.addEventListener('unload', () => {
   // Ensure abort fires even if beforeunload didn't (e.g., some mobile browsers)
-  if (navigationAbortController) {
-    navigationAbortController.abort();
-    navigationAbortController = null;
-  }
+  pageOrchestrator.cleanup();
 
   stopMutationObserver();
-  stopBelowFoldObserver();
   removeProgressToast();
   clearImageOverlays();
   cleanupPdfTranslation();
   cleanupHoverListeners();
-  queuedDynamicNodes = [];
-  currentSettings = null;
-  cachedGlossary = null;
-  glossaryLoadingPromise = null;
 
   removeWidgetDragListeners();
 });

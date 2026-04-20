@@ -3,7 +3,6 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { CONFIG } from '../config';
 import { OpusMTProvider } from './opus-mt-local';
 
 // Mock webgpu-detector
@@ -28,7 +27,6 @@ describe('OpusMTProvider', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = false;
     provider = new OpusMTProvider();
   });
 
@@ -65,6 +63,8 @@ describe('OpusMTProvider', () => {
       expect(languages).toContainEqual({ src: 'fi', tgt: 'en' });
       expect(languages).toContainEqual({ src: 'en', tgt: 'de' });
       expect(languages).toContainEqual({ src: 'de', tgt: 'en' });
+      expect(languages).toContainEqual({ src: 'nl', tgt: 'fi' });
+      expect(languages).toContainEqual({ src: 'ja', tgt: 'de' });
       expect(languages.length).toBeGreaterThan(10);
     });
   });
@@ -127,37 +127,6 @@ describe('OpusMTProvider', () => {
       expect(result).toBe('Hei maailma');
     });
 
-    it('splits multi-sentence probe input into per-sentence pipeline calls', async () => {
-      (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = true;
-      const mockPipeInstance = vi
-        .fn()
-        .mockResolvedValueOnce([{ translation_text: 'Ensimmäinen lause.' }])
-        .mockResolvedValueOnce([{ translation_text: 'Toinen lause.' }]);
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (provider as any).pipelineFactory = vi.fn().mockResolvedValue(mockPipeInstance);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (provider as any).isInitialized = true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (provider as any).webgpuSupported = true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (provider as any).pipelines.clear();
-
-      const result = await provider.translate('First sentence. Second sentence.', 'en', 'fi');
-
-      expect(result).toBe('Ensimmäinen lause. Toinen lause.');
-      expect(mockPipeInstance).toHaveBeenNthCalledWith(1, 'First sentence.', {
-        src_lang: 'en',
-        tgt_lang: 'fi',
-        max_length: 512,
-      });
-      expect(mockPipeInstance).toHaveBeenNthCalledWith(2, 'Second sentence.', {
-        src_lang: 'en',
-        tgt_lang: 'fi',
-        max_length: 512,
-      });
-    });
-
     it('translates array of texts', async () => {
       const mockPipeInstance = vi
         .fn()
@@ -179,62 +148,37 @@ describe('OpusMTProvider', () => {
       expect(result).toEqual(['Hei', 'Maailma']);
     });
 
-    it('splits multi-sentence items inside arrays for probe builds', async () => {
-      (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = true;
-      const translations: Record<string, string> = {
-        'First sentence.': 'Ensimmäinen lause.',
-        'Second sentence.': 'Toinen lause.',
-        'Third sentence.': 'Kolmas lause.',
-        'Fourth sentence.': 'Neljäs lause.',
-      };
-      const mockPipeInstance = vi
+    it('translates pivot-only pairs via two model hops', async () => {
+      const firstHopPipe = vi
         .fn()
-        .mockImplementation((text: string) =>
-          Promise.resolve([{ translation_text: translations[text] ?? text }])
-        );
+        .mockImplementation((text: string) => Promise.resolve([{ translation_text: `${text}-via-en` }]));
+      const secondHopPipe = vi
+        .fn()
+        .mockImplementation((text: string) => Promise.resolve([{ translation_text: `${text}-final` }]));
+      const mockFactory = vi
+        .fn()
+        .mockResolvedValueOnce(firstHopPipe)
+        .mockResolvedValueOnce(secondHopPipe);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (provider as any).pipelineFactory = vi.fn().mockResolvedValue(mockPipeInstance);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (provider as any).pipelineFactory = mockFactory;
       (provider as any).isInitialized = true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (provider as any).webgpuSupported = true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (provider as any).pipelines.clear();
+      (provider as any).pipelines = new Map();
 
-      const result = await provider.translate(
-        [
-          'First sentence. Second sentence.',
-          'Third sentence. Fourth sentence.',
-        ],
-        'en',
-        'fi'
+      const result = await provider.translate('Hallo', 'nl', 'fi');
+
+      expect(result).toBe('Hallo-via-en-final');
+      expect(mockFactory).toHaveBeenNthCalledWith(
+        1,
+        'translation',
+        'Xenova/opus-mt-nl-en',
+        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
       );
-
-      expect(result).toEqual([
-        'Ensimmäinen lause. Toinen lause.',
-        'Kolmas lause. Neljäs lause.',
-      ]);
-      expect(mockPipeInstance).toHaveBeenCalledWith('First sentence.', {
-        src_lang: 'en',
-        tgt_lang: 'fi',
-        max_length: 512,
-      });
-      expect(mockPipeInstance).toHaveBeenCalledWith('Second sentence.', {
-        src_lang: 'en',
-        tgt_lang: 'fi',
-        max_length: 512,
-      });
-      expect(mockPipeInstance).toHaveBeenCalledWith('Third sentence.', {
-        src_lang: 'en',
-        tgt_lang: 'fi',
-        max_length: 512,
-      });
-      expect(mockPipeInstance).toHaveBeenCalledWith('Fourth sentence.', {
-        src_lang: 'en',
-        tgt_lang: 'fi',
-        max_length: 512,
-      });
+      expect(mockFactory).toHaveBeenNthCalledWith(
+        2,
+        'translation',
+        'Xenova/opus-mt-en-fi',
+        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
+      );
     });
   });
 
@@ -317,7 +261,8 @@ describe('OpusMTProvider', () => {
   });
 
   describe('dtype selection', () => {
-    it('defaults to WASM+q8 even when WebGPU is available', async () => {
+    it('always uses q8 for OPUS-MT even when WebGPU + shader-f16 is available', async () => {
+      // OPUS-MT models only ship q8 ONNX variants. fp16 causes mixed-precision crash.
       const mockFactory = vi.fn().mockResolvedValue(
         vi.fn().mockResolvedValue([{ translation_text: 'testi' }])
       );
@@ -334,11 +279,11 @@ describe('OpusMTProvider', () => {
       expect(mockFactory).toHaveBeenCalledWith(
         'translation',
         expect.any(String),
-        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
+        expect.objectContaining({ device: 'webgpu', dtype: 'q8' })
       );
     });
 
-    it('still uses q8 when WebGPU is available without shader-f16', async () => {
+    it('uses q8 when WebGPU is available without shader-f16', async () => {
       const mockFactory = vi.fn().mockResolvedValue(
         vi.fn().mockResolvedValue([{ translation_text: 'testi' }])
       );
@@ -357,7 +302,7 @@ describe('OpusMTProvider', () => {
       expect(mockFactory).toHaveBeenCalledWith(
         'translation',
         expect.any(String),
-        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
+        expect.objectContaining({ device: 'webgpu', dtype: 'q8' })
       );
     });
 
@@ -386,13 +331,10 @@ describe('OpusMTProvider', () => {
       );
     });
 
-    it('falls back to fp32 only after q8 load failure', async () => {
+    it('never uses fp32 (wasteful ~170MB per model)', async () => {
       const mockFactory = vi.fn().mockResolvedValue(
         vi.fn().mockResolvedValue([{ translation_text: 'testi' }])
       );
-      mockFactory
-        .mockRejectedValueOnce(new Error('Missing required scale'))
-        .mockResolvedValueOnce(vi.fn().mockResolvedValue([{ translation_text: 'testi' }]));
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (provider as any).pipelineFactory = mockFactory;
@@ -405,18 +347,8 @@ describe('OpusMTProvider', () => {
 
       await provider.translate('test', 'en', 'fi');
 
-      expect(mockFactory).toHaveBeenNthCalledWith(
-        1,
-        'translation',
-        expect.any(String),
-        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
-      );
-      expect(mockFactory).toHaveBeenNthCalledWith(
-        2,
-        'translation',
-        expect.any(String),
-        expect.objectContaining({ device: 'wasm', dtype: 'fp32' })
-      );
+      const calledDtype = mockFactory.mock.calls[0][2].dtype;
+      expect(calledDtype).not.toBe('fp32');
     });
 
     it('never uses q4/q4f16 (those are for TranslateGemma)', async () => {
@@ -455,14 +387,14 @@ describe('OpusMTProvider', () => {
       expect(info.device).toBe('WASM');
     });
 
-    it('shows probe availability when WebGPU is supported', async () => {
+    it('shows WebGPU when supported', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (provider as any).webgpuSupported = true;
 
       const info = provider.getInfo();
 
       expect(info.webgpu).toBe(true);
-      expect(info.device).toBe('WASM (WebGPU available via probe)');
+      expect(info.device).toBe('WebGPU');
     });
   });
 
@@ -480,7 +412,7 @@ describe('OpusMTProvider', () => {
   });
 
   describe('WebGPU supported path', () => {
-    it('still defaults to WASM unless the experimental probe is enabled', async () => {
+    it('calls pipeline factory with device webgpu when supported', async () => {
       const mockPipeInstance = vi
         .fn()
         .mockResolvedValue([{ translation_text: 'Hei' }]);
@@ -502,34 +434,7 @@ describe('OpusMTProvider', () => {
       expect(mockFactory).toHaveBeenCalledWith(
         'translation',
         expect.any(String),
-        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
-      );
-    });
-
-    it('uses WebGPU for probe builds while keeping multi-sentence inference segmented', async () => {
-      (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = true;
-      const mockPipeInstance = vi
-        .fn()
-        .mockResolvedValueOnce([{ translation_text: 'Ensimmäinen lause.' }])
-        .mockResolvedValueOnce([{ translation_text: 'Toinen lause.' }]);
-      const mockFactory = vi.fn().mockResolvedValue(mockPipeInstance);
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (provider as any).pipelineFactory = mockFactory;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (provider as any).isInitialized = true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (provider as any).webgpuSupported = true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (provider as any).pipelines = new Map();
-
-      const result = await provider.translate('First sentence. Second sentence.', 'en', 'fi');
-
-      expect(result).toBe('Ensimmäinen lause. Toinen lause.');
-      expect(mockFactory).toHaveBeenCalledWith(
-        'translation',
-        expect.any(String),
-        expect.objectContaining({ device: 'webgpu', dtype: 'q8' })
+        expect.objectContaining({ device: 'webgpu' })
       );
     });
   });
@@ -705,7 +610,7 @@ describe('OpusMTProvider', () => {
   });
 
   describe('WebGPU initialization path (lines 98-99)', () => {
-    it('records WebGPU support without initializing the device when probe is disabled', async () => {
+    it('logs WebGPU support when detector reports webgpu supported', async () => {
       const freshProvider = new OpusMTProvider();
 
       // Mock webgpuDetector to return supported=true
@@ -717,7 +622,8 @@ describe('OpusMTProvider', () => {
 
       await freshProvider.initialize();
 
-      expect(vi.mocked(webgpuDetector.initialize)).not.toHaveBeenCalled();
+      // Check that initialize() was called (which happens on line 99)
+      expect(vi.mocked(webgpuDetector.initialize)).toHaveBeenCalled();
 
       // Verify WebGPU was detected
       expect((freshProvider as any).webgpuSupported).toBe(true);

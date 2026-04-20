@@ -4,14 +4,27 @@
  * https://docs.anthropic.com/en/api/messages
  */
 
-import { CloudProvider } from './cloud-provider';
+import { CloudProvider, updateCloudProviderApiKey } from './cloud-provider';
 import { createTranslationError } from '../core/errors';
 import { getLanguageName } from '../core/language-map';
-import { CONFIG } from '../config';
-import { fetchProviderJson, estimateMaxTokens, generateAllLanguagePairs, parseBatchResponse } from './provider-utils';
+import {
+  buildTranslationPrompt,
+  detectProviderLanguageCode,
+  fetchProviderJson,
+  estimateMaxTokens,
+  finalizeProviderTranslations,
+  generateAllLanguagePairs,
+  parseBatchResponse,
+  type TranslationPromptTemplate,
+} from './provider-utils';
 import type { TranslationOptions, LanguagePair, ProviderConfig } from '../types';
 import type { CloudProviderStorageRecord } from '../background/shared/provider-config-types';
-import { validateAnthropicStoredConfig } from '../background/shared/config-validation';
+import { extractAnthropicStoredRuntimeState } from '../background/shared/config-validation';
+import {
+  ANTHROPIC_MODEL_VALUES,
+  DEFAULT_ANTHROPIC_FORMALITY,
+  DEFAULT_ANTHROPIC_MODEL,
+} from '../shared/cloud-provider-configs';
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_STORAGE_KEYS = [
@@ -20,9 +33,22 @@ const ANTHROPIC_STORAGE_KEYS = [
   'anthropic_formality',
   'anthropic_tokens_used',
 ] as const;
+const ANTHROPIC_TRANSLATION_PROMPT_TEMPLATE: TranslationPromptTemplate = {
+  roleDescription: 'You are an expert translator.',
+  translationInstruction: 'Translate the provided text to',
+  formalInstruction: 'Use formal register and polite forms where appropriate.',
+  informalInstruction: 'Use casual, conversational language.',
+  rules: [
+    'Rules:',
+    '- Output ONLY the translation, no explanations or notes',
+    '- Preserve formatting (line breaks, punctuation)',
+    '- Maintain the tone and style of the original',
+    '- For ambiguous terms, choose the most natural translation',
+  ],
+};
 
 export type ClaudeFormality = 'formal' | 'informal' | 'neutral';
-export type ClaudeModel = 'claude-sonnet-4-20250514' | 'claude-3-5-haiku-20241022' | 'claude-3-5-sonnet-20241022';
+export type ClaudeModel = (typeof ANTHROPIC_MODEL_VALUES)[number];
 
 export interface AnthropicConfig {
   apiKey: string;
@@ -46,9 +72,13 @@ interface AnthropicMessageResponse {
   };
 }
 
-export class AnthropicProvider extends CloudProvider {
+const ANTHROPIC_DEFAULT_CONFIG: Omit<AnthropicConfig, 'apiKey'> = {
+  model: DEFAULT_ANTHROPIC_MODEL,
+  formality: DEFAULT_ANTHROPIC_FORMALITY,
+};
+
+export class AnthropicProvider extends CloudProvider<AnthropicConfig> {
   private config: AnthropicConfig | null = null;
-  private totalTokensUsed = 0;
 
   constructor() {
     super({
@@ -66,80 +96,52 @@ export class AnthropicProvider extends CloudProvider {
   }
 
   protected applyStoredConfig(stored: CloudProviderStorageRecord): void {
-    const config = validateAnthropicStoredConfig(stored);
+    const config = this.applyStoredUsageConfig(
+      extractAnthropicStoredRuntimeState(stored),
+      'tokensUsed',
+    );
     if (!config) {
-      this.resetConfig();
       return;
     }
 
-    this.config = {
-      apiKey: config.apiKey,
-      model: config.model,
-      formality: config.formality,
-    };
-    this.totalTokensUsed = config.tokensUsed;
-    this.log.info('Initialized with model:', this.config.model);
-  }
-
-  protected hasConfig(): boolean {
-    return !!this.config?.apiKey;
+    this.log.info('Initialized with model:', config.model);
   }
 
   protected resetConfig(): void {
     this.config = null;
-    this.totalTokensUsed = 0;
+    this.resetUsageCounter();
+  }
+
+  protected getConfigState(): AnthropicConfig | null {
+    return this.config;
+  }
+
+  protected setConfigState(config: AnthropicConfig | null): void {
+    this.config = config;
   }
 
   /** Store API key in storage */
   async setApiKey(apiKey: string): Promise<void> {
-    await this.persist({ anthropic_api_key: apiKey });
-    if (this.config) {
-      this.config.apiKey = apiKey;
-    } else {
-      this.config = {
-        apiKey,
-        model: 'claude-3-5-haiku-20241022',
-        formality: 'neutral',
-      };
-    }
+    await this.persistAndUpdateConfig(
+      { anthropic_api_key: apiKey },
+      (config) => updateCloudProviderApiKey(config, apiKey, ANTHROPIC_DEFAULT_CONFIG)
+    );
   }
 
   /** Set model preference */
   async setModel(model: ClaudeModel): Promise<void> {
-    await this.persist({ anthropic_model: model });
-    if (this.config) {
-      this.config.model = model;
-    }
+    await this.persistAndUpdateLoadedConfig(
+      { anthropic_model: model },
+      (config) => ({ ...config, model })
+    );
   }
 
   /** Set formality preference */
   async setFormality(formality: ClaudeFormality): Promise<void> {
-    await this.persist({ anthropic_formality: formality });
-    if (this.config) {
-      this.config.formality = formality;
-    }
-  }
-
-  private buildSystemPrompt(targetLang: string, formality: ClaudeFormality): string {
-    const langName = getLanguageName(targetLang);
-    let formalityInst = '';
-
-    switch (formality) {
-      case 'formal':
-        formalityInst = ' Use formal register and polite forms where appropriate.';
-        break;
-      case 'informal':
-        formalityInst = ' Use casual, conversational language.';
-        break;
-    }
-
-    return `You are an expert translator. Translate the provided text to ${langName}.${formalityInst}
-
-Rules:
-- Output ONLY the translation, no explanations or notes
-- Preserve formatting (line breaks, punctuation)
-- Maintain the tone and style of the original
-- For ambiguous terms, choose the most natural translation`;
+    await this.persistAndUpdateLoadedConfig(
+      { anthropic_formality: formality },
+      (config) => ({ ...config, formality })
+    );
   }
 
   /**
@@ -151,9 +153,7 @@ Rules:
     targetLang: string,
     _options?: TranslationOptions
   ): Promise<string | string[]> {
-    if (!this.config?.apiKey) {
-      throw createTranslationError(new Error('Anthropic API key not configured'));
-    }
+    const config = this.requireConfiguredConfig('Anthropic');
 
     const isArray = Array.isArray(text);
     const texts = isArray ? text : [text];
@@ -172,18 +172,22 @@ Rules:
       userContent = `[Source language: ${getLanguageName(sourceLang)}]\n\n${userContent}`;
     }
 
-    const systemPrompt = this.buildSystemPrompt(targetLang, this.config.formality);
+    const systemPrompt = buildTranslationPrompt(
+      targetLang,
+      config.formality,
+      ANTHROPIC_TRANSLATION_PROMPT_TEMPLATE,
+    );
 
     try {
       const data = await fetchProviderJson<AnthropicMessageResponse>('Anthropic', ANTHROPIC_API, {
         method: 'POST',
         headers: {
-          'x-api-key': this.config.apiKey,
+          'x-api-key': config.apiKey,
           'anthropic-version': '2023-06-01',
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          model: this.config.model,
+          model: config.model,
           max_tokens: estimateMaxTokens(texts),
           system: systemPrompt,
           messages: [
@@ -194,29 +198,30 @@ Rules:
 
       // Track token usage
       if (data.usage) {
-        this.totalTokensUsed += data.usage.input_tokens + data.usage.output_tokens;
-        this.persistBestEffort(
-          { anthropic_tokens_used: this.totalTokensUsed },
+        this.trackUsageCounter(
+          data.usage.input_tokens + data.usage.output_tokens,
+          'anthropic_tokens_used',
           'Failed to persist token usage:'
         );
       }
 
       const translated = data.content[0]?.text?.trim() || '';
 
-      // Parse XML response for batch
-      if (isArray && texts.length > 1) {
-        const results = parseBatchResponse(translated, texts.length, {
-          legacyXmlFallback: true,
-          newlineFallback: true,
-          allowExtras: true,
-        });
+      if (isArray) {
+        const results = texts.length > 1
+          ? parseBatchResponse(translated, texts.length, {
+            legacyXmlFallback: true,
+            newlineFallback: true,
+          })
+          : [translated];
+
         if (results.every(r => !r) && translated.length > 0) {
           this.log.warn('XML tag parsing produced no results, fell back to newline splitting');
         }
-        return results;
+        return finalizeProviderTranslations('Anthropic', text, results);
       }
 
-      return isArray ? [translated] : translated;
+      return translated;
     } catch (error) {
       this.log.error('Translation error:', error);
       throw createTranslationError(error);
@@ -227,41 +232,33 @@ Rules:
    * Detect language using Claude
    */
   async detectLanguage(text: string): Promise<string> {
-    if (!this.config?.apiKey) {
+    const config = this.getConfiguredConfig();
+    if (!config) {
       return 'auto';
     }
 
-    try {
-      const response = await fetch(ANTHROPIC_API, {
+    return detectProviderLanguageCode<AnthropicMessageResponse>(
+      'Anthropic',
+      ANTHROPIC_API,
+      {
         method: 'POST',
         headers: {
-          'x-api-key': this.config.apiKey,
+          'x-api-key': config.apiKey,
           'anthropic-version': '2023-06-01',
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'claude-3-5-haiku-20241022', // Use cheaper model for detection
+          model: DEFAULT_ANTHROPIC_MODEL, // Use cheaper model for detection
           max_tokens: 10,
           system: 'Identify the language of the text. Respond with ONLY the ISO 639-1 code (2 lowercase letters).',
           messages: [
             { role: 'user', content: text.slice(0, 200) },
           ],
         }),
-        signal: AbortSignal.timeout(CONFIG.timeouts.cloudApiMs),
-      });
-
-      if (response.ok) {
-        const data: AnthropicMessageResponse = await response.json();
-        const detected = data.content[0]?.text?.trim().toLowerCase();
-        if (detected && detected.length === 2) {
-          return detected;
-        }
-      }
-    } catch (error) {
-      this.log.error('Language detection error:', error);
-    }
-
-    return 'auto';
+      },
+      (data) => data.content[0]?.text,
+      (message, error) => this.log.error(message, error),
+    );
   }
 
   async getUsage(): Promise<{
@@ -276,15 +273,11 @@ Rules:
       'claude-3-5-sonnet-20241022': 0.003,
     };
 
-    const rate = costPer1K[this.config?.model ?? 'claude-3-5-haiku-20241022'];
-    const cost = (this.totalTokensUsed / 1000) * rate;
+    const totalTokensUsed = this.getUsageCounter();
+    const rate = costPer1K[this.config?.model ?? DEFAULT_ANTHROPIC_MODEL];
+    const cost = (totalTokensUsed / 1000) * rate;
 
-    return {
-      requests: 0,
-      tokens: this.totalTokensUsed,
-      cost,
-      limitReached: false,
-    };
+    return this.buildTrackedUsage(cost);
   }
 
   getSupportedLanguages(): LanguagePair[] {
@@ -294,8 +287,8 @@ Rules:
   getInfo(): ProviderConfig & { model: string; formality: string } {
     return {
       ...super.getInfo(),
-      model: this.config?.model ?? 'claude-3-5-haiku-20241022',
-      formality: this.config?.formality ?? 'neutral',
+      model: this.config?.model ?? DEFAULT_ANTHROPIC_MODEL,
+      formality: this.config?.formality ?? DEFAULT_ANTHROPIC_FORMALITY,
     };
   }
 }

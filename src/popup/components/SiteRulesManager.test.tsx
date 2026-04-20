@@ -7,23 +7,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@solidjs/testing-library';
 import type { TranslationProviderId } from '../../types';
+import { setupUiChromeMock } from '../../test-helpers/chrome-mocks';
+import {
+  TEST_LANGUAGES,
+  TEST_PROVIDERS,
+  TEST_SITE_RULES,
+} from '../../test-helpers/popup-test-fixtures';
 
-// Chrome API mock
-vi.stubGlobal('chrome', {
-  runtime: {
-    sendMessage: vi.fn().mockResolvedValue({}),
-    onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
-    openOptionsPage: vi.fn(),
-  },
-  storage: {
-    local: { get: vi.fn().mockResolvedValue({}), set: vi.fn().mockResolvedValue(undefined), remove: vi.fn().mockResolvedValue(undefined) },
-  },
-  tabs: {
-    query: vi.fn().mockResolvedValue([]),
-    sendMessage: vi.fn().mockResolvedValue({}),
-  },
-  scripting: { executeScript: vi.fn().mockResolvedValue(undefined) },
-});
+setupUiChromeMock();
 
 // Mock site-rules core module
 vi.mock('../../core/site-rules', () => ({
@@ -40,28 +31,9 @@ vi.mock('../../core/site-rules', () => ({
 import { SiteRulesManager } from './SiteRulesManager';
 import { siteRules } from '../../core/site-rules';
 
-// Common test props
-const DEFAULT_PROVIDERS: Array<{ id: TranslationProviderId; name: string }> = [
-  { id: 'opus-mt', name: 'OPUS-MT' },
-  { id: 'deepl', name: 'DeepL' },
-  { id: 'openai', name: 'OpenAI' },
-];
-
-const DEFAULT_LANGUAGES = [
-  { code: 'en', name: 'English' },
-  { code: 'fi', name: 'Finnish' },
-  { code: 'de', name: 'German' },
-];
-
 const DEFAULT_PROPS = {
-  providers: DEFAULT_PROVIDERS,
-  languages: DEFAULT_LANGUAGES,
-};
-
-// Mock rules
-const MOCK_RULES = {
-  'example.com': { autoTranslate: true, preferredProvider: 'deepl' as TranslationProviderId, targetLang: 'fi' },
-  '*.wikipedia.org': { autoTranslate: false },
+  providers: TEST_PROVIDERS,
+  languages: TEST_LANGUAGES,
 };
 
 describe('SiteRulesManager', () => {
@@ -278,7 +250,7 @@ describe('SiteRulesManager', () => {
   // -----------------------------------------------------------------------
 
   it('rules list shows entries when rules exist', async () => {
-    (siteRules.getAllRules as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_RULES);
+    (siteRules.getAllRules as ReturnType<typeof vi.fn>).mockResolvedValue(TEST_SITE_RULES);
 
     render(() => <SiteRulesManager {...DEFAULT_PROPS} />);
     await vi.waitFor(() => {
@@ -288,7 +260,7 @@ describe('SiteRulesManager', () => {
   });
 
   it('rules list shows auto-translate details', async () => {
-    (siteRules.getAllRules as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_RULES);
+    (siteRules.getAllRules as ReturnType<typeof vi.fn>).mockResolvedValue(TEST_SITE_RULES);
 
     render(() => <SiteRulesManager {...DEFAULT_PROPS} />);
     await vi.waitFor(() => {
@@ -302,7 +274,7 @@ describe('SiteRulesManager', () => {
 
   it('delete button on rule calls siteRules.clearRules', async () => {
     (siteRules.getAllRules as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce(MOCK_RULES) // initial load
+      .mockResolvedValueOnce(TEST_SITE_RULES) // initial load
       .mockResolvedValueOnce({}); // after delete
 
     render(() => <SiteRulesManager {...DEFAULT_PROPS} />);

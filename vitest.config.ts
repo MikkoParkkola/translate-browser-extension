@@ -1,54 +1,17 @@
 import { defineConfig } from 'vitest/config';
 import solidPlugin from 'vite-plugin-solid';
-import { resolve } from 'path';
+import {
+  defaultTestExclude,
+  sharedResolveConfig,
+  sharedTestConfig,
+} from './vitest.shared';
 
 export default defineConfig({
   plugins: [solidPlugin()],
   test: {
-    globals: true,
-    environment: 'jsdom',
-    pool: 'forks',
-    poolOptions: { forks: { singleFork: true } },
-    setupFiles: ['./src/test-setup.ts'],
+    ...sharedTestConfig,
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
-    exclude: ['node_modules', 'dist', '_legacy'],
-    testTimeout: 30000, // 30s default — coverage instrumentation adds overhead
-    hookTimeout: 30000,
-    coverage: {
-      provider: 'v8',
-      reportsDirectory: './coverage',
-      reporter: ['text', 'text-summary', 'json-summary', 'json'],
-      include: ['src/**/*.ts', 'src/**/*.tsx'],
-      exclude: [
-        'src/**/*.test.ts',
-        'src/**/*.d.ts',
-        'src/core/index.ts', // Barrel export
-        'src/providers/index.ts', // Barrel export
-        'src/popup/components/index.ts', // Barrel export
-        'src/background/shared/index.ts', // Barrel export
-        'src/popup/index.tsx', // Render entry point — no testable logic
-        'src/options/index.tsx', // Render entry point — no testable logic
-        'src/**/*.test.tsx', // Test files
-        'src/types/**', // Type definitions only
-        'node_modules',
-        'dist',
-        '_legacy',
-      ],
-      thresholds: {
-        // Keep coverage gates close to the current repo-wide floor.
-        // Tighten these as legacy/runtime cleanup closes the remaining gaps.
-        statements: 97,
-        branches: 95,
-        functions: 98,
-        lines: 97,
-      },
-    },
+    exclude: [...defaultTestExclude, 'src/__benchmarks__/**'],
   },
-  resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src'),
-      '@core': resolve(__dirname, 'src/core'),
-      '@providers': resolve(__dirname, 'src/providers'),
-    },
-  },
+  resolve: sharedResolveConfig,
 });

@@ -8,12 +8,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Check signing configuration
+        env:
+          CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
+        run: |
+          if [ -z "$CRX_PRIVATE_KEY" ]; then
+            echo "CRX_PRIVATE_KEY secret is required to sign the extension" >&2
+            exit 1
+          fi
       - name: Decode signing key
         env:
           CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
@@ -21,7 +29,7 @@ jobs:
           echo "$CRX_PRIVATE_KEY" | base64 -d > key.pem
       - name: Pack and sign
         run: |
-          npx -y crx pack dist -o translate-by-mikko-extension.crx --zip-output translate-by-mikko-extension.zip -p key.pem
+          bash scripts/pack-extension.sh translate-by-mikko-extension key.pem
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -29,4 +37,4 @@ jobs:
           path: |
             translate-by-mikko-extension.crx
             translate-by-mikko-extension.zip
-      - run: rm key.pem
+      - run: rm -f key.pem

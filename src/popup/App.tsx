@@ -13,8 +13,16 @@ import { sleep } from '../core/async-utils';
 import { extractErrorMessage } from '../core/errors';
 import { sendBackgroundMessage, trySendBackgroundMessage } from '../shared/background-message';
 import {
+  buildExtensionSettingsStorageMutation,
+  normalizeExtensionSettings,
+  type ExtensionSettingsStorageRecord,
+} from '../shared/extension-settings';
+import {
+  DEFAULT_PROVIDER_ID,
   PROVIDER_STATUS_NAMES,
-  normalizeTranslationProviderId,
+  getProviderModelInfo,
+  getProviderRuntimeRequirementLabel,
+  resolveProviderFromModelId,
 } from '../shared/provider-options';
 
 const log = createLogger('Popup');
@@ -26,6 +34,19 @@ const getBrowserLanguage = () => {
   /* v8 ignore stop */
   return lang;
 };
+
+const chromeBuiltinRequirement = getProviderModelInfo('chrome-builtin').runtimeRequirement;
+const chromeBuiltinRequirementLabel = chromeBuiltinRequirement
+  ? getProviderRuntimeRequirementLabel(chromeBuiltinRequirement)
+  : 'Chrome 138+ required';
+const translateGemmaRequirement = getProviderModelInfo('translategemma').runtimeRequirement;
+const translateGemmaRequirementLabel = translateGemmaRequirement
+  ? getProviderRuntimeRequirementLabel(translateGemmaRequirement)
+  : 'Requires WebGPU or WebNN';
+const translateGemmaRequirementSentence = translateGemmaRequirementLabel.replace(
+  /^Requires /,
+  'requires '
+);
 
 type TranslationCommand = 'translatePage' | 'translateSelection';
 
@@ -45,7 +66,7 @@ export default function App() {
   const [sourceLang, setSourceLangInternal] = createSignal('auto');
   const [targetLang, setTargetLangInternal] = createSignal(getBrowserLanguage());
   const [strategy, setStrategyInternal] = createSignal<Strategy>('smart');
-  const [activeProvider, setActiveProvider] = createSignal<TranslationProviderId>('opus-mt');
+  const [activeProvider, setActiveProvider] = createSignal<TranslationProviderId>(DEFAULT_PROVIDER_ID);
   const [providerStatus, setProviderStatus] = createSignal<'ready' | 'loading' | 'error'>('ready');
 
   const providerName = () => PROVIDER_STATUS_NAMES[activeProvider()] ?? activeProvider();
@@ -82,28 +103,24 @@ export default function App() {
     'anthropic': { isDownloading: false, progress: 100, isDownloaded: true, error: null },
   });
 
+  const persistSettings = (patch: Partial<ExtensionSettingsStorageRecord>) =>
+    safeStorageSet(buildExtensionSettingsStorageMutation(patch));
+
   // Wrapper functions that persist language preferences to storage
   const setSourceLang = (lang: string) => {
     setSourceLangInternal(lang);
-    safeStorageSet({ sourceLang: lang });
+    void persistSettings({ sourceLang: lang });
   };
 
   const setTargetLang = (lang: string) => {
     setTargetLangInternal(lang);
-    safeStorageSet({ targetLang: lang });
+    void persistSettings({ targetLang: lang });
     log.info('Target language saved:', lang);
   };
 
   const setStrategy = (s: Strategy) => {
     setStrategyInternal(s);
-    safeStorageSet({ strategy: s });
-  };
-
-  // Determine provider from model ID (e.g., "Xenova/opus-mt-en-fi" -> "opus-mt")
-  const getProviderFromModelId = (modelId: string): TranslationProviderId | null => {
-    if (modelId.includes('opus-mt')) return 'opus-mt';
-    if (modelId.includes('gemma') || modelId.includes('translategemma')) return 'translategemma';
-    return null;
+    void persistSettings({ strategy: s });
   };
 
   // Update per-model download status
@@ -125,7 +142,7 @@ export default function App() {
     setCurrentModelId(message.modelId);
 
     // Determine which provider this model belongs to
-    const providerId = getProviderFromModelId(message.modelId);
+    const providerId = resolveProviderFromModelId(message.modelId);
 
     switch (message.status) {
       case 'initiate':
@@ -213,21 +230,21 @@ export default function App() {
     });
 
     // Load saved preferences (use internal setters to avoid re-saving)
-    interface StoredPrefs {
-      sourceLang?: string;
-      targetLang?: string;
-      strategy?: Strategy;
-      autoTranslate?: boolean;
-      provider?: unknown;
-    }
-    const stored = await safeStorageGet<StoredPrefs>(['sourceLang', 'targetLang', 'strategy', 'autoTranslate', 'provider']);
-    if (stored.sourceLang) setSourceLangInternal(stored.sourceLang);
-    if (stored.targetLang) setTargetLangInternal(stored.targetLang);
-    if (stored.strategy) setStrategyInternal(stored.strategy);
-    if (stored.autoTranslate !== undefined) setAutoTranslate(stored.autoTranslate);
-    if (stored.provider !== undefined) {
-      setActiveProvider(normalizeTranslationProviderId(stored.provider));
-    }
+    const stored = normalizeExtensionSettings(
+      await safeStorageGet<ExtensionSettingsStorageRecord>([
+        'sourceLang',
+        'targetLang',
+        'strategy',
+        'autoTranslate',
+        'provider',
+      ]),
+      { targetLang: getBrowserLanguage() },
+    );
+    setSourceLangInternal(stored.sourceLang);
+    setTargetLangInternal(stored.targetLang);
+    setStrategyInternal(stored.strategy);
+    setAutoTranslate(stored.autoTranslate);
+    setActiveProvider(stored.provider);
     log.info('Loaded preferences:', { source: stored.sourceLang, target: stored.targetLang });
 
     // Check Chrome Translator API availability (Chrome 138+)
@@ -245,7 +262,7 @@ export default function App() {
       updateModelStatus('chrome-builtin', { isDownloaded: true, error: null });
     } else if (response) {
       log.info('Chrome Translator API not available (Chrome 138+ required)');
-      updateModelStatus('chrome-builtin', { isDownloaded: false, error: 'Chrome 138+ required' });
+      updateModelStatus('chrome-builtin', { isDownloaded: false, error: chromeBuiltinRequirementLabel });
     }
 
     // Check TranslateGemma hardware acceleration availability.
@@ -282,13 +299,13 @@ export default function App() {
       if (!available) {
         updateModelStatus('translategemma', {
           isDownloaded: false,
-          error: 'Requires WebGPU or WebNN (hardware acceleration not available)',
+          error: `${translateGemmaRequirementLabel} (hardware acceleration not available)`,
         });
         // Auto-switch away from TranslateGemma if it was saved from a previous session
         if (activeProvider() === 'translategemma') {
-          log.info('TranslateGemma acceleration unavailable, switching to OPUS-MT');
-          handleProviderChange('opus-mt');
-          setError('TranslateGemma requires WebGPU or WebNN. Switched to OPUS-MT.');
+          log.info(`TranslateGemma acceleration unavailable, switching to ${DEFAULT_PROVIDER_ID}`);
+          handleProviderChange(DEFAULT_PROVIDER_ID);
+          setError(`TranslateGemma ${translateGemmaRequirementSentence}. Switched to OPUS-MT.`);
           setTimeout(() => clearError(), 8000);
         }
       } else {
@@ -316,12 +333,7 @@ export default function App() {
   const toggleAutoTranslate = async () => {
     const newValue = !autoTranslate();
     setAutoTranslate(newValue);
-    const saved = await safeStorageSet({
-      autoTranslate: newValue,
-      sourceLang: sourceLang(),
-      targetLang: targetLang(),
-      strategy: strategy(),
-    });
+    const saved = await persistSettings({ autoTranslate: newValue });
     if (saved) {
       log.info('Auto-translate:', newValue);
     }
@@ -330,7 +342,9 @@ export default function App() {
   const handleProviderChange = async (provider: TranslationProviderId) => {
     // Block TranslateGemma when hardware acceleration is unavailable.
     if (provider === 'translategemma' && translateGemmaAvailable() === false) {
-      setError('TranslateGemma requires WebGPU or WebNN (hardware acceleration). Your browser supports neither. Use OPUS-MT for local translation instead.');
+      setError(
+        `TranslateGemma ${translateGemmaRequirementSentence}. Your browser supports neither. Use OPUS-MT for local translation instead.`
+      );
       setClearingErrorAction('Use OPUS-MT', () => handleProviderChange('opus-mt'));
       return;
     }
@@ -339,7 +353,7 @@ export default function App() {
     setProviderStatus('ready');
     setError(null);
 
-    await safeStorageSet({ provider });
+    await persistSettings({ provider });
     try {
       await sendBackgroundMessage({ type: 'setProvider', provider });
       log.info('Provider changed to:', provider);

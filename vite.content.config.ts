@@ -35,8 +35,9 @@ export default defineConfig({
       // The pdf-loader.ts loads it from a separate chunk at runtime.
       external: ['pdfjs-dist'],
       output: {
-        // Inline all dependencies (except externals above)
-        inlineDynamicImports: true,
+        // Vite 8 disables code splitting for IIFE output; declare it explicitly
+        // to avoid deprecated/ignored inlineDynamicImports behavior.
+        codeSplitting: false,
       },
     },
   },

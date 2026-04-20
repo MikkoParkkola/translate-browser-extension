@@ -9,141 +9,67 @@ import {
   resetTranslationCache,
   type CacheEntry,
 } from './translation-cache';
+import { setupIndexedDbStorageMock } from '../test-helpers/indexeddb-storage-mocks';
 
-// Mock IndexedDB
-const mockEntries = new Map<string, CacheEntry>();
-let mockCursorIndex = 0;
-let mockCursorEntries: CacheEntry[] = [];
+const indexedDbMock = setupIndexedDbStorageMock<CacheEntry>();
+const mockEntries = indexedDbMock.entries;
+const mockStore = indexedDbMock.store;
+const mockIndex = indexedDbMock.index;
+const mockTransaction = indexedDbMock.transaction;
+const mockDb = indexedDbMock.db;
+const mockIndexedDB = indexedDbMock.indexedDB;
 
-const createMockCursor = (entries: CacheEntry[], deleteCallback?: () => void) => {
-  return {
-    value: entries[mockCursorIndex],
-    continue: () => {
-      mockCursorIndex++;
-      if (mockCursorIndex < entries.length) {
-        // Simulate async cursor continuation
-        setTimeout(() => {
-          const event = { target: { result: createMockCursor(entries, deleteCallback) } };
-          (mockStore.openCursor as ReturnType<typeof vi.fn>).mock.results[0]?.value?.onsuccess?.(event);
-        }, 0);
-      } else {
-        // End of cursor
-        const event = { target: { result: null } };
-        (mockStore.openCursor as ReturnType<typeof vi.fn>).mock.results[0]?.value?.onsuccess?.(event);
-      }
-    },
-    delete: () => {
-      const key = entries[mockCursorIndex]?.key;
-      if (key) {
-        mockEntries.delete(key);
-        deleteCallback?.();
-      }
-    },
-  };
+const waitForCacheAsyncWork = (ms = 10): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+const waitForRequestHandler = async (
+  request: { onsuccess: ((event: Event) => void) | null; onerror?: ((event: Event) => void) | null },
+  handler: 'onsuccess' | 'onerror' = 'onsuccess',
+  timeoutMs = 1000,
+): Promise<void> => {
+  const deadline = Date.now() + timeoutMs;
+  while (typeof request[handler] !== 'function') {
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for IndexedDB request ${handler} handler`);
+    }
+    await waitForCacheAsyncWork(1);
+  }
 };
 
-const mockIndex = {
-  openCursor: vi.fn(() => {
-    mockCursorIndex = 0;
-    mockCursorEntries = Array.from(mockEntries.values()).sort((a, b) => a.timestamp - b.timestamp);
-    return {
-      onerror: null,
-      onsuccess: null,
-      result: mockCursorEntries.length > 0 ? createMockCursor(mockCursorEntries) : null,
-    };
-  }),
+const waitForMockValue = async <T>(
+  getValue: () => T | undefined,
+  description: string,
+  timeoutMs = 1000,
+): Promise<T> => {
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    const value = getValue();
+    if (value !== undefined) {
+      return value;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for ${description}`);
+    }
+    await waitForCacheAsyncWork(1);
+  }
 };
 
-const mockStore = {
-  get: vi.fn((key: string) => {
-    const result = mockEntries.get(key);
-    return {
-      onerror: null,
-      onsuccess: null,
-      result,
-    };
-  }),
-  put: vi.fn((entry: CacheEntry) => {
-    mockEntries.set(entry.key, entry);
-    return {
-      onerror: null,
-      onsuccess: null,
-    };
-  }),
-  clear: vi.fn(() => {
-    mockEntries.clear();
-    return {
-      onerror: null,
-      onsuccess: null,
-    };
-  }),
-  openCursor: vi.fn(() => {
-    mockCursorIndex = 0;
-    mockCursorEntries = Array.from(mockEntries.values());
-    const request = {
-      onerror: null as ((ev: Event) => void) | null,
-      onsuccess: null as ((ev: Event) => void) | null,
-      result: null as ReturnType<typeof createMockCursor> | null,
-    };
-    // Return immediately, onsuccess will be called after setup
-    setTimeout(() => {
-      if (mockCursorEntries.length > 0) {
-        request.result = createMockCursor(mockCursorEntries) as ReturnType<typeof createMockCursor>;
-      }
-      const event = { target: { result: request.result } } as unknown as Event;
-      request.onsuccess?.(event);
-    }, 0);
-    return request;
-  }),
-  index: vi.fn(() => mockIndex),
+const createReadyCache = async (
+  maxSize?: number,
+  waitMs = 10
+): Promise<TranslationCache> => {
+  const translationCache =
+    typeof maxSize === 'number' ? new TranslationCache(maxSize) : new TranslationCache();
+  await waitForCacheAsyncWork(waitMs);
+  return translationCache;
 };
-
-const mockTransaction = {
-  objectStore: vi.fn(() => mockStore),
-};
-
-const mockDb = {
-  transaction: vi.fn(() => mockTransaction),
-  objectStoreNames: { contains: vi.fn(() => true) },
-  createObjectStore: vi.fn(() => ({
-    createIndex: vi.fn(),
-  })),
-  close: vi.fn(),
-};
-
-// Setup IndexedDB mock
-const mockIndexedDB = {
-  open: vi.fn(() => {
-    const request = {
-      onerror: null as ((ev: Event) => void) | null,
-      onsuccess: null as ((ev: Event) => void) | null,
-      onupgradeneeded: null as ((ev: IDBVersionChangeEvent) => void) | null,
-      result: mockDb,
-      error: null,
-    };
-    // Simulate async database open
-    setTimeout(() => {
-      request.onsuccess?.({ target: request } as unknown as Event);
-    }, 0);
-    return request;
-  }),
-  deleteDatabase: vi.fn(() => ({
-    onerror: null,
-    onsuccess: null,
-  })),
-};
-
-// Apply mock to global
-vi.stubGlobal('indexedDB', mockIndexedDB);
 
 describe('TranslationCache', () => {
   let cache: TranslationCache;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockEntries.clear();
-    mockCursorIndex = 0;
-    mockCursorEntries = []; // Fix: Clear cursor entries
+    indexedDbMock.reset();
     resetTranslationCache();
   });
 
@@ -155,7 +81,7 @@ describe('TranslationCache', () => {
     it('opens IndexedDB on creation', async () => {
       cache = new TranslationCache();
       // Wait for db to be ready
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await waitForCacheAsyncWork(10);
       expect(mockIndexedDB.open).toHaveBeenCalledWith('translate-extension-cache', 1);
     });
 
@@ -173,8 +99,7 @@ describe('TranslationCache', () => {
 
   describe('get', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('returns null for cache miss', async () => {
@@ -305,8 +230,7 @@ describe('TranslationCache', () => {
 
   describe('set', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('stores translation in cache', async () => {
@@ -315,16 +239,17 @@ describe('TranslationCache', () => {
         onsuccess: null,
       });
 
-      const setPromise = cache.set('hello', 'en', 'fi', 'opus-mt', 'hei');
+    const setPromise = cache.set('hello', 'en', 'fi', 'opus-mt', 'hei');
 
-      // Wait for stats check and then put
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      // Trigger onsuccess for put
-      const putRequest = mockStore.put.mock.results[0]?.value;
-      if (putRequest) {
-        putRequest.onsuccess?.({});
-      }
+    const putRequest = await waitForMockValue(
+      () =>
+        mockStore.put.mock.results[0]?.value as
+          | { onerror: ((event: Event) => void) | null; onsuccess: ((event: Event) => void) | null }
+          | undefined,
+      'initial cache put request',
+    );
+    await waitForRequestHandler(putRequest);
+    putRequest.onsuccess?.({} as Event);
 
       await setPromise;
 
@@ -343,7 +268,7 @@ describe('TranslationCache', () => {
 
       cache.set('hello', 'en', 'fi', 'opus-mt', 'hei');
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitForCacheAsyncWork(50);
 
       const entry = mockStore.put.mock.calls[0]?.[0] as CacheEntry;
       // "hello" (5 chars) + "hei" (3 chars) = 8 chars * 2 bytes + 100 overhead = 116
@@ -353,8 +278,7 @@ describe('TranslationCache', () => {
 
   describe('clear', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('clears all entries', async () => {
@@ -398,8 +322,7 @@ describe('TranslationCache', () => {
 
   describe('getStats', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('returns correct statistics', async () => {
@@ -464,8 +387,7 @@ describe('TranslationCache', () => {
 
   describe('hash key generation', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('generates different keys for different inputs', async () => {
@@ -539,10 +461,9 @@ describe('Edge cases', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockEntries.clear();
+    indexedDbMock.reset();
     resetTranslationCache();
-    cache = new TranslationCache();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache();
   });
 
   afterEach(() => {
@@ -557,7 +478,7 @@ describe('Edge cases', () => {
 
     cache.set('', 'en', 'fi', 'opus-mt', '');
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitForCacheAsyncWork(50);
 
     expect(mockStore.put).toHaveBeenCalled();
   });
@@ -570,7 +491,7 @@ describe('Edge cases', () => {
 
     cache.set('Hello World!', 'en', 'fi', 'opus-mt', 'Hei maailma!');
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitForCacheAsyncWork(50);
 
     const entry = mockStore.put.mock.calls[0]?.[0] as CacheEntry;
     expect(entry?.text).toBe('Hello World!');
@@ -588,7 +509,7 @@ describe('Edge cases', () => {
 
     cache.set(longText, 'en', 'fi', 'opus-mt', longTranslation);
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitForCacheAsyncWork(50);
 
     const entry = mockStore.put.mock.calls[0]?.[0] as CacheEntry;
     // 10000 + 10000 chars * 2 bytes + 100 overhead = 40100
@@ -605,7 +526,7 @@ describe('Edge cases', () => {
 
     cache.set(specialText, 'en', 'fi', 'opus-mt', 'translation');
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitForCacheAsyncWork(50);
 
     const entry = mockStore.put.mock.calls[0]?.[0] as CacheEntry;
     expect(entry?.text).toBe(specialText);
@@ -617,8 +538,7 @@ describe('LRU eviction', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockEntries.clear();
-    mockCursorIndex = 0;
+    indexedDbMock.reset();
     resetTranslationCache();
   });
 
@@ -628,8 +548,7 @@ describe('LRU eviction', () => {
 
   it('evicts oldest entries when cache exceeds capacity', async () => {
     // Create a cache with a very small max size (500 bytes) so entries trigger eviction
-    cache = new TranslationCache(500);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache(500);
 
     // Pre-fill mockEntries to exceed the 80% target (400 bytes)
     const oldEntry: CacheEntry = {
@@ -660,8 +579,7 @@ describe('LRU eviction', () => {
 
     const setPromise = cache.set('new', 'en', 'fi', 'opus-mt', 'uusi');
 
-    // Allow getStats to run (openCursor for stats)
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitForRequestHandler(evictRequest);
 
     // Trigger eviction cursor with the old entry, then end
     if (evictRequest.onsuccess && !evictCursorCalled) {
@@ -680,12 +598,15 @@ describe('LRU eviction', () => {
       evictRequest.onsuccess({ target: { result: mockCursor } } as unknown as Event);
     }
 
-    // Now trigger the actual put
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    const putRequest = mockStore.put.mock.results[0]?.value;
-    if (putRequest) {
-      putRequest.onsuccess?.({});
-    }
+    const putRequest = await waitForMockValue(
+      () =>
+        mockStore.put.mock.results[0]?.value as
+          | { onerror: ((event: Event) => void) | null; onsuccess: ((event: Event) => void) | null }
+          | undefined,
+      'eviction follow-up cache put request',
+    );
+    await waitForRequestHandler(putRequest);
+    putRequest.onsuccess?.({} as Event);
 
     await setPromise;
 
@@ -695,8 +616,7 @@ describe('LRU eviction', () => {
 
   it('skips eviction when cache has enough space', async () => {
     // Small cache but no existing entries
-    cache = new TranslationCache(100 * 1024 * 1024);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache(100 * 1024 * 1024);
 
     mockStore.put.mockReturnValue({
       onerror: null,
@@ -705,15 +625,18 @@ describe('LRU eviction', () => {
 
     const setPromise = cache.set('hello', 'en', 'fi', 'opus-mt', 'hei');
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
-
     // index.openCursor for eviction should NOT have been called since size is within limit
     expect(mockIndex.openCursor).not.toHaveBeenCalled();
 
-    const putRequest = mockStore.put.mock.results[0]?.value;
-    if (putRequest) {
-      putRequest.onsuccess?.({});
-    }
+    const putRequest = await waitForMockValue(
+      () =>
+        mockStore.put.mock.results[0]?.value as
+          | { onerror: ((event: Event) => void) | null; onsuccess: ((event: Event) => void) | null }
+          | undefined,
+      'non-evicting cache put request',
+    );
+    await waitForRequestHandler(putRequest);
+    putRequest.onsuccess?.({} as Event);
     await setPromise;
   });
 });
@@ -723,10 +646,9 @@ describe('error paths', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockEntries.clear();
+    indexedDbMock.reset();
     resetTranslationCache();
-    cache = new TranslationCache();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache();
   });
 
   afterEach(() => {
@@ -794,7 +716,7 @@ describe('error paths', () => {
 
     const getPromise = cache.get('hello', 'en', 'fi', 'opus-mt');
 
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await waitForCacheAsyncWork(5);
     // Trigger onabort
     abortTransaction.onabort?.({} as Event);
 
@@ -906,8 +828,7 @@ describe('error paths', () => {
       };
 
       resetTranslationCache();
-      const upgradeCache = new TranslationCache();
-      await new Promise((r) => setTimeout(r, 20));
+      const upgradeCache = await createReadyCache(undefined, 20);
       expect(upgradeCache).toBeDefined();
 
       (globalThis as Record<string, unknown>).indexedDB = origIndexedDB;
@@ -916,8 +837,7 @@ describe('error paths', () => {
 
   describe('get() transaction error paths', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('returns null when transaction fires onerror', async () => {
@@ -992,8 +912,7 @@ describe('error paths', () => {
 
   describe('set() transaction error paths', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('does not throw when set transaction fires onerror', async () => {
@@ -1077,8 +996,7 @@ describe('error paths', () => {
 
   describe('eviction error paths', () => {
     beforeEach(async () => {
-      cache = new TranslationCache(100); // Very small max size to trigger eviction
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache(100); // Very small max size to trigger eviction
     });
 
     it('handles eviction transaction onerror gracefully', async () => {
@@ -1126,8 +1044,7 @@ describe('error paths', () => {
 
   describe('clear() error paths', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('throws when clear transaction fires onerror', async () => {
@@ -1198,8 +1115,7 @@ describe('error paths', () => {
 
   describe('getStats() error paths', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('rejects when getStats transaction fires onerror', async () => {
@@ -1284,8 +1200,7 @@ describe('error paths', () => {
 
   describe('get() outer catch path', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('returns null when dbReady rejects', async () => {
@@ -1299,8 +1214,7 @@ describe('error paths', () => {
 
   describe('set() outer catch path', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('silently catches when dbReady rejects in set()', async () => {
@@ -1315,8 +1229,7 @@ describe('error paths', () => {
 
   describe('transaction abort handlers', () => {
     beforeEach(async () => {
-      cache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      cache = await createReadyCache();
     });
 
     it('rejects on get() transaction abort', async () => {
@@ -1365,8 +1278,7 @@ describe('error paths', () => {
 
   describe('clear() error paths', () => {
     it('throws when dbReady rejects in clear()', async () => {
-      const failCache = new TranslationCache();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      const failCache = await createReadyCache();
 
       // Replace dbReady with a rejected promise to trigger the catch block
       (failCache as unknown as Record<string, unknown>).dbReady = Promise.reject(new Error('clear db fail'));
@@ -1381,9 +1293,7 @@ describe('remaining uncovered branches', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockEntries.clear();
-    mockCursorIndex = 0;
-    mockCursorEntries = [];
+    indexedDbMock.reset();
     resetTranslationCache();
   });
 
@@ -1418,8 +1328,7 @@ describe('remaining uncovered branches', () => {
     };
 
     resetTranslationCache();
-    cache = new TranslationCache();
-    await new Promise((r) => setTimeout(r, 20));
+    cache = await createReadyCache(undefined, 20);
 
     // createObjectStore should NOT have been called since the store already exists
     expect(createObjectStoreSpy).not.toHaveBeenCalled();
@@ -1428,8 +1337,7 @@ describe('remaining uncovered branches', () => {
   });
 
   it('eviction transaction onabort rejects with transaction.error', async () => {
-    cache = new TranslationCache(100);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache(100);
 
     const bigEntry: CacheEntry = {
       key: 'big1',
@@ -1472,8 +1380,7 @@ describe('remaining uncovered branches', () => {
   });
 
   it('eviction transaction onabort uses fallback Error when transaction.error is null', async () => {
-    cache = new TranslationCache(100);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache(100);
 
     const bigEntry: CacheEntry = {
       key: 'big1',
@@ -1514,8 +1421,7 @@ describe('remaining uncovered branches', () => {
   });
 
   it('eviction cursor request onerror rejects', async () => {
-    cache = new TranslationCache(100);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache(100);
 
     const bigEntry: CacheEntry = {
       key: 'big1',
@@ -1560,8 +1466,7 @@ describe('remaining uncovered branches', () => {
   });
 
   it('getStats newestTimestamp else branch when later entry has older timestamp', async () => {
-    cache = new TranslationCache();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache();
 
     const now = Date.now();
     // Insert entries so iteration order produces a non-ascending timestamp sequence
@@ -1595,9 +1500,7 @@ describe('Cache-at-Capacity and LRU Ordering Tests', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockEntries.clear();
-    mockCursorIndex = 0;
-    mockCursorEntries = [];
+    indexedDbMock.reset();
     resetTranslationCache();
   });
 
@@ -1606,8 +1509,7 @@ describe('Cache-at-Capacity and LRU Ordering Tests', () => {
   });
 
   it('handles cache near capacity without premature eviction', async () => {
-    cache = new TranslationCache(1000);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache(1000);
 
     // Mock a successful put operation
     const putRequest: { onerror: ((e: any) => void) | null; onsuccess: ((e: any) => void) | null } = { onerror: null, onsuccess: null };
@@ -1615,11 +1517,9 @@ describe('Cache-at-Capacity and LRU Ordering Tests', () => {
     
     // Add an entry that should fit without triggering eviction
     const setPromise = cache.set('test', 'en', 'fi', 'opus-mt', 'translation');
-    
-    // Simulate successful storage
-    setTimeout(() => {
-      putRequest.onsuccess?.({});
-    }, 5);
+
+    await waitForRequestHandler(putRequest);
+    putRequest.onsuccess?.({} as Event);
     
     await setPromise;
 
@@ -1637,8 +1537,7 @@ describe('Cache-at-Capacity and LRU Ordering Tests', () => {
   });
 
   it('triggers eviction process when cache exceeds capacity', async () => {
-    cache = new TranslationCache(100); // Very small cache
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache(100); // Very small cache
 
     // Mock getStats to return high usage that would trigger eviction
     const statsRequest: { onerror: ((e: any) => void) | null; onsuccess: ((e: any) => void) | null } = { onerror: null, onsuccess: null };
@@ -1648,24 +1547,18 @@ describe('Cache-at-Capacity and LRU Ordering Tests', () => {
     mockStore.put.mockReturnValue(putRequest as any);
 
     const setPromise = cache.set('large-entry', 'en', 'fi', 'opus-mt', 'very long translation text');
-    
-    // Simulate operations completing
-    setTimeout(() => {
-      // Simulate getStats cursor
-      if (statsRequest.onsuccess) {
-        const cursor = {
-          value: { size: 200 }, // Over capacity
-          continue: vi.fn(() => {
-            statsRequest.onsuccess?.({ target: { result: null } } as unknown as Event);
-          })
-        };
-        statsRequest.onsuccess({ target: { result: cursor } } as unknown as Event);
-      }
-    }, 5);
 
-    setTimeout(() => {
-      putRequest.onsuccess?.({});
-    }, 10);
+    await waitForRequestHandler(statsRequest);
+    const cursor = {
+      value: { size: 200 }, // Over capacity
+      continue: vi.fn(() => {
+        statsRequest.onsuccess?.({ target: { result: null } } as unknown as Event);
+      }),
+    };
+    statsRequest.onsuccess?.({ target: { result: cursor } } as unknown as Event);
+
+    await waitForRequestHandler(putRequest);
+    putRequest.onsuccess?.({} as Event);
 
     await setPromise;
 
@@ -1675,20 +1568,17 @@ describe('Cache-at-Capacity and LRU Ordering Tests', () => {
   });
 
   it('calculates entry sizes correctly for boundary conditions', async () => {
-    cache = new TranslationCache(1000);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    cache = await createReadyCache(1000);
 
     const putRequest = { onerror: null as any, onsuccess: null as any };
-    mockStore.put.mockImplementation(() => {
-      // Auto-resolve the put request on next tick
-      setTimeout(() => putRequest.onsuccess?.({}), 1);
-      return putRequest as any;
-    });
+    mockStore.put.mockReturnValue(putRequest as any);
 
     // Store a single entry and verify size is calculated
     const promise = cache.set('hello world', 'en', 'fi', 'opus-mt', 'hei maailma');
+    await waitForRequestHandler(putRequest);
+    putRequest.onsuccess?.({} as Event);
     await promise;
-    await new Promise(resolve => setTimeout(resolve, 5));
+    await waitForCacheAsyncWork(5);
 
     expect(mockStore.put).toHaveBeenCalled();
     const call = mockStore.put.mock.calls[0];

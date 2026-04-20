@@ -6,6 +6,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { detectLanguage, samplePageText } from './language-detector';
 import type { LanguageDetectionResult } from './language-detector';
 
+const IS_COVERAGE_RUN =
+  process.argv.includes('--coverage') ||
+  process.env.npm_lifecycle_event === 'test:coverage' ||
+  process.env.npm_lifecycle_event === 'validate:coverage';
+
 describe('Language Detector', () => {
   describe('detectLanguage', () => {
     // ======================================================================
@@ -14,7 +19,7 @@ describe('Language Detector', () => {
 
     it('detects English text', () => {
       const result = detectLanguage(
-        'The quick brown fox jumps over the lazy dog and runs through the forest'
+        'The quick brown fox jumps over the lazy dog and runs through the forest',
       );
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('en');
@@ -23,7 +28,7 @@ describe('Language Detector', () => {
 
     it('detects Finnish text', () => {
       const result = detectLanguage(
-        'Suomen tasavalta on valtio Pohjois-Euroopassa ja yksi Pohjoismaista'
+        'Suomen tasavalta on valtio Pohjois-Euroopassa ja yksi Pohjoismaista',
       );
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('fi');
@@ -32,7 +37,7 @@ describe('Language Detector', () => {
 
     it('detects German text', () => {
       const result = detectLanguage(
-        'Die Bundesrepublik Deutschland ist ein demokratischer und sozialer Bundesstaat'
+        'Die Bundesrepublik Deutschland ist ein demokratischer und sozialer Bundesstaat',
       );
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('de');
@@ -41,7 +46,7 @@ describe('Language Detector', () => {
 
     it('detects French text', () => {
       const result = detectLanguage(
-        'Les institutions de la Republique sont les organes du pouvoir politique qui constituent le gouvernement et les collectivites territoriales. Le parlement est compose de deux chambres qui representent les citoyens et les communes de la nation.'
+        'Les institutions de la Republique sont les organes du pouvoir politique qui constituent le gouvernement et les collectivites territoriales. Le parlement est compose de deux chambres qui representent les citoyens et les communes de la nation.',
       );
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('fr');
@@ -50,7 +55,7 @@ describe('Language Detector', () => {
 
     it('detects Spanish text', () => {
       const result = detectLanguage(
-        'El gobierno de la nacion se constituye como una monarquia parlamentaria con las cortes generales que representan al pueblo y aprueban los presupuestos del estado y las leyes que regulan la convivencia de los ciudadanos.'
+        'El gobierno de la nacion se constituye como una monarquia parlamentaria con las cortes generales que representan al pueblo y aprueban los presupuestos del estado y las leyes que regulan la convivencia de los ciudadanos.',
       );
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('es');
@@ -59,7 +64,7 @@ describe('Language Detector', () => {
 
     it('detects Swedish text', () => {
       const result = detectLanguage(
-        'Sverige ar ett nordiskt land som har en liten och oppen ekonomi och handlar mycket med andra lander'
+        'Sverige ar ett nordiskt land som har en liten och oppen ekonomi och handlar mycket med andra lander',
       );
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('sv');
@@ -68,7 +73,7 @@ describe('Language Detector', () => {
 
     it('detects Italian text', () => {
       const result = detectLanguage(
-        'La costituzione della repubblica italiana stabilisce che il parlamento e composto di due camere che rappresentano il popolo e le regioni. Il presidente del consiglio dei ministri dirige la politica generale del governo e ne coordina le attivita.'
+        'La costituzione della repubblica italiana stabilisce che il parlamento e composto di due camere che rappresentano il popolo e le regioni. Il presidente del consiglio dei ministri dirige la politica generale del governo e ne coordina le attivita.',
       );
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('it');
@@ -77,7 +82,7 @@ describe('Language Detector', () => {
 
     it('detects Portuguese text', () => {
       const result = detectLanguage(
-        'A constituicao da republica portuguesa estabelece que o estado se organiza em parlamento e governo para representar os cidadaos. Os partidos politicos participam nos orgaos do poder e contribuem para a formacao da vontade popular.'
+        'A constituicao da republica portuguesa estabelece que o estado se organiza em parlamento e governo para representar os cidadaos. Os partidos politicos participam nos orgaos do poder e contribuem para a formacao da vontade popular.',
       );
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('pt');
@@ -86,7 +91,7 @@ describe('Language Detector', () => {
 
     it('detects Dutch text', () => {
       const result = detectLanguage(
-        'Nederland is een land dat aan de Noordzee in het westen van Europa ligt'
+        'Nederland is een land dat aan de Noordzee in het westen van Europa ligt',
       );
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('nl');
@@ -95,7 +100,7 @@ describe('Language Detector', () => {
 
     it('detects Turkish text', () => {
       const result = detectLanguage(
-        'Turkiye Cumhuriyeti bir devlet olarak bati ile dogu arasinda bir koprudur ve buyuk bir ulkedir'
+        'Turkiye Cumhuriyeti bir devlet olarak bati ile dogu arasinda bir koprudur ve buyuk bir ulkedir',
       );
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('tr');
@@ -107,42 +112,54 @@ describe('Language Detector', () => {
     // ======================================================================
 
     it('detects Japanese text via script', () => {
-      const result = detectLanguage('これは日本語のテキストです。東京は日本の首都です。');
+      const result = detectLanguage(
+        'これは日本語のテキストです。東京は日本の首都です。',
+      );
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('ja');
-      expect(result!.confidence).toBeGreaterThanOrEqual(0.90);
+      expect(result!.confidence).toBeGreaterThanOrEqual(0.9);
     });
 
     it('detects Korean text via script', () => {
-      const result = detectLanguage('대한민국은 동아시아에 위치한 민주공화국입니다');
+      const result = detectLanguage(
+        '대한민국은 동아시아에 위치한 민주공화국입니다',
+      );
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('ko');
-      expect(result!.confidence).toBeGreaterThanOrEqual(0.90);
+      expect(result!.confidence).toBeGreaterThanOrEqual(0.9);
     });
 
     it('detects Chinese text via script', () => {
-      const result = detectLanguage('中华人民共和国是一个位于东亚的社会主义国家');
+      const result = detectLanguage(
+        '中华人民共和国是一个位于东亚的社会主义国家',
+      );
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('zh');
       expect(result!.confidence).toBeGreaterThanOrEqual(0.85);
     });
 
     it('detects Russian text via script', () => {
-      const result = detectLanguage('Россия является крупнейшим государством мира по площади территории');
+      const result = detectLanguage(
+        'Россия является крупнейшим государством мира по площади территории',
+      );
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('ru');
-      expect(result!.confidence).toBeGreaterThanOrEqual(0.80);
+      expect(result!.confidence).toBeGreaterThanOrEqual(0.8);
     });
 
     it('detects Arabic text via script', () => {
-      const result = detectLanguage('المملكة العربية السعودية هي دولة عربية تقع في شبه الجزيرة العربية');
+      const result = detectLanguage(
+        'المملكة العربية السعودية هي دولة عربية تقع في شبه الجزيرة العربية',
+      );
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('ar');
       expect(result!.confidence).toBeGreaterThanOrEqual(0.85);
     });
 
     it('detects Hindi text via script', () => {
-      const result = detectLanguage('भारत दक्षिण एशिया में स्थित एक देश है जो विश्व का सातवां सबसे बड़ा देश है');
+      const result = detectLanguage(
+        'भारत दक्षिण एशिया में स्थित एक देश है जो विश्व का सातवां सबसे बड़ा देश है',
+      );
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('hi');
       expect(result!.confidence).toBeGreaterThanOrEqual(0.85);
@@ -182,7 +199,9 @@ describe('Language Detector', () => {
 
     it('handles text with many numbers and punctuation', () => {
       // Should either detect or gracefully return null
-      const result = detectLanguage('12345 67890 !@#$% ^&*() more text here please');
+      const result = detectLanguage(
+        '12345 67890 !@#$% ^&*() more text here please',
+      );
       // Might detect English from "more text here please" or return null - both acceptable
       if (result !== null) {
         expect(result.lang).toBeTruthy();
@@ -193,7 +212,7 @@ describe('Language Detector', () => {
     it('handles mixed-language text (returns dominant language)', () => {
       // Mostly English with a German word
       const result = detectLanguage(
-        'The architecture of this building is beautiful and the Wanderlust is real here today'
+        'The architecture of this building is beautiful and the Wanderlust is real here today',
       );
       expect(result).not.toBeNull();
       // Should detect English as dominant
@@ -206,7 +225,7 @@ describe('Language Detector', () => {
 
     it('returns correct shape with lang and confidence', () => {
       const result = detectLanguage(
-        'This is a sample text that should be long enough for detection'
+        'This is a sample text that should be long enough for detection',
       ) as LanguageDetectionResult;
       expect(result).toHaveProperty('lang');
       expect(result).toHaveProperty('confidence');
@@ -218,10 +237,11 @@ describe('Language Detector', () => {
 
     it('confidence is rounded to 2 decimal places', () => {
       const result = detectLanguage(
-        'This is a test sentence that is long enough for the detector to process'
+        'This is a test sentence that is long enough for the detector to process',
       );
       if (result) {
-        const decimalPlaces = (result.confidence.toString().split('.')[1] || '').length;
+        const decimalPlaces = (result.confidence.toString().split('.')[1] || '')
+          .length;
         expect(decimalPlaces).toBeLessThanOrEqual(2);
       }
     });
@@ -246,12 +266,18 @@ describe('Language Detector', () => {
 describe('samplePageText', () => {
   it('returns empty string when document.body is null', () => {
     const origBody = document.body;
-    Object.defineProperty(document, 'body', { value: null, configurable: true });
-    
+    Object.defineProperty(document, 'body', {
+      value: null,
+      configurable: true,
+    });
+
     const result = samplePageText();
     expect(result).toBe('');
-    
-    Object.defineProperty(document, 'body', { value: origBody, configurable: true });
+
+    Object.defineProperty(document, 'body', {
+      value: origBody,
+      configurable: true,
+    });
   });
 
   it('extracts visible text from body', () => {
@@ -261,21 +287,24 @@ describe('samplePageText', () => {
   });
 
   it('skips SCRIPT tags', () => {
-    document.body.innerHTML = '<p>Visible text content</p><script>var x = 1;</script>';
+    document.body.innerHTML =
+      '<p>Visible text content</p><script>var x = 1;</script>';
     const result = samplePageText();
     expect(result).toContain('Visible text content');
     expect(result).not.toContain('var x');
   });
 
   it('skips STYLE tags', () => {
-    document.body.innerHTML = '<p>Visible text here</p><style>.foo { color: red }</style>';
+    document.body.innerHTML =
+      '<p>Visible text here</p><style>.foo { color: red }</style>';
     const result = samplePageText();
     expect(result).toContain('Visible text here');
     expect(result).not.toContain('color');
   });
 
   it('skips NOSCRIPT tags', () => {
-    document.body.innerHTML = '<p>Visible paragraph</p><noscript>Enable JavaScript</noscript>';
+    document.body.innerHTML =
+      '<p>Visible paragraph</p><noscript>Enable JavaScript</noscript>';
     const result = samplePageText();
     expect(result).toContain('Visible paragraph');
   });
@@ -311,7 +340,8 @@ describe('detectByScript edge cases', () => {
   it('falls through to trigram detection for mixed-script text below threshold', () => {
     // Mix of Latin + a few Cyrillic chars, none reaching 30% threshold
     // This exercises detectByScript returning null for non-empty text with total > 0
-    const mixedText = 'Hello world this is a test абв and some more English text here for good measure';
+    const mixedText =
+      'Hello world this is a test абв and some more English text here for good measure';
     const result = detectLanguage(mixedText);
     // Should still detect as English via trigram analysis
     expect(result).not.toBeNull();
@@ -328,7 +358,8 @@ describe('detectByScript edge cases', () => {
 
 describe('profile caching', () => {
   it('returns same result on repeated calls (uses cached profiles)', () => {
-    const text = 'The quick brown fox jumps over the lazy dog and runs through the forest meadow';
+    const text =
+      'The quick brown fox jumps over the lazy dog and runs through the forest meadow';
     const result1 = detectLanguage(text);
     const result2 = detectLanguage(text);
     expect(result1).toEqual(result2);
@@ -339,7 +370,9 @@ describe('detectByScript: total === 0 path (line 118)', () => {
   it('returns null for purely ASCII punctuation text (detectByScript sees no script chars)', () => {
     // All chars are Latin/punctuation — detectByScript returns null (no script threshold met),
     // then trigram detection runs. Exercises detectByScript with total > 0 but no script matches.
-    const result = detectLanguage('!@#$%^&*()_+-=[]{}|;:,.<>?/~`!@#$%^&*()_+-=[]{}');
+    const result = detectLanguage(
+      '!@#$%^&*()_+-=[]{}|;:,.<>?/~`!@#$%^&*()_+-=[]{}',
+    );
     // Punctuation-only text won't match any trigram profile well
     expect(result === null || result!.confidence < 0.5).toBe(true);
   });
@@ -348,7 +381,9 @@ describe('detectByScript: total === 0 path (line 118)', () => {
 describe('detectLanguage: very low confidence (line 169)', () => {
   it('returns null when trigram confidence is below 0.10 threshold', () => {
     // Random consonant clusters that don't match any language profile
-    const result = detectLanguage('xqzjwxqzjw xqzjwxqzjw xqzjwxqzjw xqzjwxqzjw');
+    const result = detectLanguage(
+      'xqzjwxqzjw xqzjwxqzjw xqzjwxqzjw xqzjwxqzjw',
+    );
     // Should return null due to very low confidence from random gibberish
     expect(result === null || result!.confidence < 0.15).toBe(true);
   });
@@ -369,12 +404,14 @@ describe('samplePageText: acceptNode and walker edge cases', () => {
       (root: Node, whatToShow?: number, filter?: NodeFilter | null) => {
         // Test the filter with our orphan node (parentElement is null)
         if (filter && typeof filter === 'object' && 'acceptNode' in filter) {
-          const result = (filter as { acceptNode: (node: Text) => number }).acceptNode(orphanNode as Text);
+          const result = (
+            filter as { acceptNode: (node: Text) => number }
+          ).acceptNode(orphanNode as Text);
           expect(result).toBe(NodeFilter.FILTER_REJECT);
           filterTested = true;
         }
         return origCTW(root, whatToShow, filter);
-      }
+      },
     );
 
     samplePageText();
@@ -409,7 +446,7 @@ describe('samplePageText: acceptNode and walker edge cases', () => {
         });
 
         return realWalker;
-      }
+      },
     );
 
     const result = samplePageText();
@@ -423,7 +460,9 @@ describe('samplePageText: acceptNode and walker edge cases', () => {
 describe('Additional language detection coverage', () => {
   it('detects Czech text with multiple words', () => {
     // Czech has unique trigrams like "ska", "pro", "ost"
-    const result = detectLanguage('Ceska republika je narod v Evrope s bogatou historii a kulturou');
+    const result = detectLanguage(
+      'Ceska republika je narod v Evrope s bogatou historii a kulturou',
+    );
     if (result) {
       expect(result.lang).toBeTruthy();
       expect(result.confidence).toBeGreaterThan(0);
@@ -431,7 +470,9 @@ describe('Additional language detection coverage', () => {
   });
 
   it('detects Danish text with Nordic characters', () => {
-    const result = detectLanguage('Danmark er et land i Nordeuropa med en lang maritime tradition og kultur');
+    const result = detectLanguage(
+      'Danmark er et land i Nordeuropa med en lang maritime tradition og kultur',
+    );
     if (result) {
       expect(result.lang).toBeTruthy();
       expect(result.confidence).toBeGreaterThan(0);
@@ -439,7 +480,9 @@ describe('Additional language detection coverage', () => {
   });
 
   it('detects Norwegian text with Nordic features', () => {
-    const result = detectLanguage('Norge ligger pa den vestlige siden av Skandinavia og har fjellkjeder og fjorder');
+    const result = detectLanguage(
+      'Norge ligger pa den vestlige siden av Skandinavia og har fjellkjeder og fjorder',
+    );
     if (result) {
       expect(result.lang).toBeTruthy();
       expect(result.confidence).toBeGreaterThan(0);
@@ -447,7 +490,9 @@ describe('Additional language detection coverage', () => {
   });
 
   it('detects Polish text with distinctive trigrams', () => {
-    const result = detectLanguage('Polska jest krajem w Europie Srodkowej z bogatą historią i kulturą');
+    const result = detectLanguage(
+      'Polska jest krajem w Europie Srodkowej z bogatą historią i kulturą',
+    );
     if (result) {
       expect(result.lang).toBeTruthy();
       expect(result.confidence).toBeGreaterThan(0);
@@ -455,7 +500,9 @@ describe('Additional language detection coverage', () => {
   });
 
   it('handles text with mixed scripts (Latin + numbers)', () => {
-    const result = detectLanguage('HTML5 and CSS3 are web technologies used by developers 2024');
+    const result = detectLanguage(
+      'HTML5 and CSS3 are web technologies used by developers 2024',
+    );
     // Should detect dominant Latin script or return null
     if (result) {
       expect(result.lang).toBe('en');
@@ -463,7 +510,9 @@ describe('Additional language detection coverage', () => {
   });
 
   it('confidence is between 0 and 1', () => {
-    const result = detectLanguage('This is a sample text that should be long enough for detection');
+    const result = detectLanguage(
+      'This is a sample text that should be long enough for detection',
+    );
     if (result) {
       expect(result.confidence).toBeGreaterThanOrEqual(0);
       expect(result.confidence).toBeLessThanOrEqual(1);
@@ -471,35 +520,43 @@ describe('Additional language detection coverage', () => {
   });
 
   it('handles text with special characters and punctuation', () => {
-    const result = detectLanguage('Hello! How are you? I am fine, thank you very much for asking.');
+    const result = detectLanguage(
+      'Hello! How are you? I am fine, thank you very much for asking.',
+    );
     expect(result).not.toBeNull();
     expect(result!.lang).toBe('en');
   });
 
   it('detects language when text ends at maxLength boundary', () => {
     // @ts-expect-error unused side-effect
-    const _text = 'This is a very long text that we will be testing with the samplePageText function to ensure it respects the maxLength parameter correctly and does not exceed it under any circumstances';
+    const _text =
+      'This is a very long text that we will be testing with the samplePageText function to ensure it respects the maxLength parameter correctly and does not exceed it under any circumstances';
     const result = samplePageText(50);
     // Result should be at most 50 chars
     expect(result.length).toBeLessThanOrEqual(50);
   });
 
   it('samplePageText handles nested elements correctly', () => {
-    document.body.innerHTML = '<div><p>Nested text content</p><span>more text</span></div>';
+    document.body.innerHTML =
+      '<div><p>Nested text content</p><span>more text</span></div>';
     const result = samplePageText();
     expect(result).toContain('Nested text content');
     expect(result).toContain('more text');
   });
 
   it('samplePageText stops collecting after reaching maxLength', () => {
-    document.body.innerHTML = '<p>' + 'A'.repeat(100) + '</p><p>Extra content should not be included</p>';
+    document.body.innerHTML =
+      '<p>' +
+      'A'.repeat(100) +
+      '</p><p>Extra content should not be included</p>';
     const result = samplePageText(30);
     expect(result.length).toBeLessThanOrEqual(30);
     expect(result).not.toContain('Extra content');
   });
 
   it('detects language from body with various element types', () => {
-    document.body.innerHTML = '<h1>Title here</h1><p>This is paragraph text that should be detected</p><span>more content</span>';
+    document.body.innerHTML =
+      '<h1>Title here</h1><p>This is paragraph text that should be detected</p><span>more content</span>';
     const sample = samplePageText();
     expect(sample.length).toBeGreaterThan(0);
   });
@@ -508,7 +565,7 @@ describe('Additional language detection coverage', () => {
     // Empty string
     const result1 = detectLanguage('');
     expect(result1).toBeNull();
-    
+
     // String shorter than minimum
     const result2 = detectLanguage('short');
     expect(result2).toBeNull();
@@ -516,7 +573,9 @@ describe('Additional language detection coverage', () => {
 
   it('detects when multiple language candidates have similar scores', () => {
     // Text that could be ambiguous between languages
-    const result = detectLanguage('The test system provides information about the status and details');
+    const result = detectLanguage(
+      'The test system provides information about the status and details',
+    );
     if (result) {
       expect(result.lang).toBeTruthy();
       expect(result.confidence).toBeGreaterThanOrEqual(0);
@@ -535,11 +594,17 @@ describe('Additional language detection coverage', () => {
     it('samplePageText returns empty when document.body is null', () => {
       const originalBody = document.body;
       try {
-        Object.defineProperty(document, 'body', { value: null, writable: true });
+        Object.defineProperty(document, 'body', {
+          value: null,
+          writable: true,
+        });
         const text = samplePageText();
         expect(text).toBe('');
       } finally {
-        Object.defineProperty(document, 'body', { value: originalBody, writable: true });
+        Object.defineProperty(document, 'body', {
+          value: originalBody,
+          writable: true,
+        });
       }
     });
 
@@ -557,7 +622,7 @@ describe('Additional language detection coverage', () => {
       document.body.removeChild(div);
     });
 
-  it('samplePageText skips short text nodes', () => {
+    it('samplePageText skips short text nodes', () => {
       const container = document.createElement('div');
       container.id = 'test-short-text-container';
       const shortDiv = document.createElement('div');
@@ -610,7 +675,6 @@ describe('Additional language detection coverage', () => {
   });
 });
 
-
 describe('Language Detector — boundary conditions', () => {
   it('detects common Latin-script languages', () => {
     // Test boundary between similar languages
@@ -633,7 +697,7 @@ describe('Language Detector — boundary conditions', () => {
   it('returns non-null result for any sufficiently long text', () => {
     const randomText = 'abcdefghijklmnopqrstuvwxyz' + ' '.repeat(20);
     const result = detectLanguage(randomText);
-    
+
     // Should return some result for long text
     expect(result !== null || result === null).toBe(true); // Test that function runs without error
   });
@@ -655,9 +719,10 @@ describe('Language Detector — boundary conditions', () => {
 
     it('handles mixed-script text gracefully', () => {
       // Mix of Latin and non-Latin scripts
-      const mixedText = 'Hello world こんにちは sekai 世界 and some more English text for context';
+      const mixedText =
+        'Hello world こんにちは sekai 世界 and some more English text for context';
       const result = detectLanguage(mixedText);
-      
+
       // Should detect one of the scripts present (either Latin-based or Japanese)
       expect(result).not.toBeNull();
       expect(result!.confidence).toBeGreaterThan(0.1);
@@ -667,9 +732,10 @@ describe('Language Detector — boundary conditions', () => {
 
     it('handles number-heavy text with minimal alphabetic content', () => {
       // Text that is mostly numbers and symbols
-      const numberHeavyText = '12345 67890 $1,234.56 +10% 2023-12-31 100.5kg 99.9% success rate 42';
+      const numberHeavyText =
+        '12345 67890 $1,234.56 +10% 2023-12-31 100.5kg 99.9% success rate 42';
       const result = detectLanguage(numberHeavyText);
-      
+
       // Should either return null or a valid detection
       if (result !== null) {
         expect(typeof result.lang).toBe('string');
@@ -682,20 +748,21 @@ describe('Language Detector — boundary conditions', () => {
     });
 
     it('maintains detection reproducibility for identical inputs', () => {
-      const testText = 'This is a consistent test string with sufficient length for reliable language detection. It should always produce the same result.';
-      
+      const testText =
+        'This is a consistent test string with sufficient length for reliable language detection. It should always produce the same result.';
+
       // Run detection multiple times
       const results = [];
       for (let i = 0; i < 5; i++) {
         results.push(detectLanguage(testText));
       }
-      
+
       // All results should be identical
       const firstResult = results[0];
       for (let i = 1; i < results.length; i++) {
         expect(results[i]).toEqual(firstResult);
       }
-      
+
       // Should consistently detect English
       expect(firstResult).not.toBeNull();
       expect(firstResult!.lang).toBe('en');
@@ -705,14 +772,14 @@ describe('Language Detector — boundary conditions', () => {
       // Test boundary values for different Unicode ranges
       const tests = [
         { text: '\u4E00\u9FFF', expected: 'zh' }, // CJK boundaries
-        { text: '\u3040\u309F', expected: 'ja' }, // Hiragana boundaries  
+        { text: '\u3040\u309F', expected: 'ja' }, // Hiragana boundaries
         { text: '\u30A0\u30FF', expected: 'ja' }, // Katakana boundaries
         { text: '\uAC00\uD7AF', expected: 'ko' }, // Hangul boundaries
         { text: '\u0400\u04FF', expected: 'ru' }, // Cyrillic boundaries
         { text: '\u0600\u06FF', expected: 'ar' }, // Arabic boundaries
         { text: '\u0900\u097F', expected: 'hi' }, // Devanagari boundaries
       ];
-      
+
       tests.forEach(({ text, expected }) => {
         const paddedText = text.repeat(20); // Ensure above threshold
         const result = detectLanguage(paddedText);
@@ -724,14 +791,17 @@ describe('Language Detector — boundary conditions', () => {
 
     it('handles very long text without performance issues', () => {
       // Generate very long text to test performance bounds
-      const longText = 'The quick brown fox jumps over the lazy dog. '.repeat(1000); // ~45KB
-      
+      const longText = 'The quick brown fox jumps over the lazy dog. '.repeat(
+        1000,
+      ); // ~45KB
+      const performanceBudgetMs = IS_COVERAGE_RUN ? 150 : 100;
+
       const startTime = performance.now();
       const result = detectLanguage(longText);
       const endTime = performance.now();
-      
-      // Should complete within reasonable time (less than 100ms)
-      expect(endTime - startTime).toBeLessThan(100);
+
+      // Keep a strict default budget while allowing modest extra coverage overhead.
+      expect(endTime - startTime).toBeLessThan(performanceBudgetMs);
       expect(result).not.toBeNull();
       expect(result!.lang).toBe('en');
       expect(result!.confidence).toBeGreaterThan(0.5); // Lower threshold for repetitive text
@@ -756,9 +826,9 @@ describe('Language Detector — boundary conditions', () => {
         </div>
       `;
       document.body.appendChild(container);
-      
+
       const result = samplePageText();
-      
+
       // Should include visible text but not script/style/noscript content
       expect(result).toContain('Visible paragraph text');
       expect(result).toContain('Nested visible text');
@@ -767,7 +837,7 @@ describe('Language Detector — boundary conditions', () => {
       expect(result).not.toContain('color: red');
       expect(result).not.toContain('No script content');
       expect(result).not.toContain('more script content');
-      
+
       document.body.removeChild(container);
     });
 
@@ -776,14 +846,14 @@ describe('Language Detector — boundary conditions', () => {
       const longDiv = document.createElement('div');
       longDiv.textContent = 'A'.repeat(1000);
       document.body.appendChild(longDiv);
-      
+
       const shortResult = samplePageText(50);
       const longResult = samplePageText(200);
-      
+
       expect(shortResult.length).toBeLessThanOrEqual(50);
       expect(longResult.length).toBeLessThanOrEqual(200);
       expect(longResult.length).toBeGreaterThan(shortResult.length);
-      
+
       document.body.removeChild(longDiv);
     });
   });

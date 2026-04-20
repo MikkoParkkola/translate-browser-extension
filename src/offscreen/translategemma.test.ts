@@ -26,10 +26,16 @@ vi.mock('../core/logger', () => ({
   }),
 }));
 
-// Mock chrome.runtime.sendMessage
+// Mock chrome APIs used by progress reporting and model inventory tracking
 vi.stubGlobal('chrome', {
   runtime: {
     sendMessage: vi.fn(),
+  },
+  storage: {
+    local: {
+      get: vi.fn().mockResolvedValue({}),
+      set: vi.fn().mockResolvedValue(undefined),
+    },
   },
 });
 

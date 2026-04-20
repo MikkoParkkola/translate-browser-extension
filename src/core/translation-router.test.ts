@@ -357,6 +357,24 @@ describe('TranslationRouter', () => {
       expect(usage).toBe(5);
     });
 
+    it('selects opus-mt for canonical direct pairs outside the mocked provider list', async () => {
+      const freshRouter = new TranslationRouter();
+      await freshRouter.initialize();
+      await freshRouter.savePreferences({ enabledProviders: ['opus-mt'], prioritize: 'balanced' });
+
+      const selected = await freshRouter.selectProvider('fr', 'es');
+      expect(selected.id).toBe('opus-mt');
+    });
+
+    it('selects opus-mt for canonical pivot pairs outside the mocked provider list', async () => {
+      const freshRouter = new TranslationRouter();
+      await freshRouter.initialize();
+      await freshRouter.savePreferences({ enabledProviders: ['opus-mt'], prioritize: 'balanced' });
+
+      const selected = await freshRouter.selectProvider('nl', 'fi');
+      expect(selected.id).toBe('opus-mt');
+    });
+
     it('returns true for non-opus-mt providers regardless of language pair', async () => {
       // A non-opus-mt provider should pass supportsLanguagePair for any pair.
       // Use a fresh router: initialize() first, then set preferences (avoids loadPreferences overwrite).

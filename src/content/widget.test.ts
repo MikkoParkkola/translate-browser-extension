@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createBrowserApiModuleMock, createLoggerModuleMock } from '../test-helpers/module-mocks';
 
 // ============================================================================
 // Mocks — must be declared at top level (vi.mock hoisting)
@@ -15,12 +16,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockSendMessage = vi.fn();
 
-vi.mock('../core/browser-api', () => ({
-  browserAPI: {
-    runtime: {
-      sendMessage: (...args: unknown[]) => mockSendMessage(...args),
-    },
-  },
+vi.mock('../core/browser-api', () => createBrowserApiModuleMock({
+  runtimeSendMessage: mockSendMessage,
 }));
 
 const mockSafeStorageGet = vi.fn();
@@ -28,14 +25,7 @@ vi.mock('../core/storage', () => ({
   safeStorageGet: (...args: unknown[]) => mockSafeStorageGet(...args),
 }));
 
-vi.mock('../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock('../core/logger', () => createLoggerModuleMock());
 
 vi.mock('./sanitize', () => ({
   escapeHtml: (s: string) => s.replace(/</g, '&lt;').replace(/>/g, '&gt;'),

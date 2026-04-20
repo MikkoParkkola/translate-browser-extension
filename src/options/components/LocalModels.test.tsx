@@ -4,35 +4,20 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@solidjs/testing-library';
+import { setupNavigatorStorageEstimateMock, setupCachesMock } from '../../test-helpers/browser-mocks';
+import { setupUiChromeMock } from '../../test-helpers/chrome-mocks';
 
 const mockSendMessage = vi.fn();
 const mockStorageGet = vi.fn().mockResolvedValue({});
 
-vi.stubGlobal('chrome', {
-  runtime: {
-    sendMessage: mockSendMessage,
-    onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
-  },
-  storage: {
-    local: {
-      get: mockStorageGet,
-      set: vi.fn().mockResolvedValue(undefined),
-    },
-  },
+setupUiChromeMock({
+  runtimeSendMessage: mockSendMessage,
+  storageLocalGet: mockStorageGet,
 });
 
-// Stub navigator.storage.estimate
-const mockEstimate = vi.fn().mockResolvedValue({ usage: 0, quota: 0 });
-Object.defineProperty(navigator, 'storage', {
-  value: { estimate: mockEstimate },
-  writable: true,
-  configurable: true,
-});
+const mockEstimate = setupNavigatorStorageEstimateMock();
 
-vi.stubGlobal('caches', {
-  keys: vi.fn().mockResolvedValue([]),
-  delete: vi.fn().mockResolvedValue(true),
-});
+setupCachesMock();
 
 import { LocalModels } from './LocalModels';
 
@@ -54,7 +39,7 @@ describe('LocalModels', () => {
     it('renders section title', async () => {
       render(() => <LocalModels />);
       await vi.waitFor(() => {
-        expect(screen.getByText('Offline Translation')).toBeTruthy();
+        expect(screen.getByText('Local Translation Runtimes')).toBeTruthy();
       });
     });
 
@@ -79,10 +64,10 @@ describe('LocalModels', () => {
       });
     });
 
-    it('shows About Offline Translation section', async () => {
+    it('shows Runtime Overview section', async () => {
       render(() => <LocalModels />);
       await vi.waitFor(() => {
-        expect(screen.getByText('About Offline Translation')).toBeTruthy();
+        expect(screen.getByText('Runtime Overview')).toBeTruthy();
       });
     });
   });
@@ -145,6 +130,7 @@ describe('LocalModels', () => {
       await vi.waitFor(() => {
         expect(screen.getByText('OPUS-MT English-German')).toBeTruthy();
       });
+      expect(screen.getByText(/Background inventory was unavailable/)).toBeTruthy();
     });
   });
 

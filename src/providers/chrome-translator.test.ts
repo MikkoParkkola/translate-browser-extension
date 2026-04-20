@@ -6,15 +6,28 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ChromeTranslatorProvider, getChromeTranslator, isChromeTranslatorAvailable } from './chrome-translator';
+import {
+  ChromeTranslatorProvider,
+  getChromeTranslator,
+  isChromeTranslatorAvailable,
+} from './chrome-translator';
 
 // Mock Translator API
 const mockTranslate = vi.fn();
+const mockTranslateStreaming = vi.fn();
 const mockDestroy = vi.fn();
 const mockDetect = vi.fn();
 
 const mockTranslatorInstance = {
   translate: mockTranslate,
+  translateStreaming: undefined as
+    | undefined
+    | ((text: string) => {
+        getReader: () => {
+          read: () => Promise<{ done: boolean; value?: string }>;
+          releaseLock: () => void;
+        };
+      }),
   destroy: mockDestroy,
 };
 
@@ -40,7 +53,11 @@ describe('ChromeTranslatorProvider', () => {
     // Reset mocks
     vi.clearAllMocks();
     mockTranslate.mockResolvedValue('translated text');
-    mockDetect.mockResolvedValue([{ detectedLanguage: 'en', confidence: 0.95 }]);
+    mockTranslateStreaming.mockReset();
+    mockTranslatorInstance.translateStreaming = undefined;
+    mockDetect.mockResolvedValue([
+      { detectedLanguage: 'en', confidence: 0.95 },
+    ]);
     mockTranslatorAPI.availability.mockResolvedValue({ available: 'readily' });
     mockTranslatorAPI.create.mockResolvedValue(mockTranslatorInstance);
     mockDetectorAPI.availability.mockResolvedValue({ available: 'readily' });
@@ -112,7 +129,9 @@ describe('ChromeTranslatorProvider', () => {
     });
 
     it('returns false for unsupported language pair', async () => {
-      mockTranslatorAPI.availability.mockResolvedValueOnce({ available: 'readily' }); // Initial check
+      mockTranslatorAPI.availability.mockResolvedValueOnce({
+        available: 'readily',
+      }); // Initial check
       mockTranslatorAPI.availability.mockResolvedValueOnce({ available: 'no' }); // Pair check
 
       const result = await provider.isPairSupported('xx', 'yy');
@@ -158,7 +177,11 @@ describe('ChromeTranslatorProvider', () => {
     it('preserves empty strings in array', async () => {
       mockTranslate.mockResolvedValue('Hallo');
 
-      const result = await provider.translate(['Hello', '', 'World'], 'en', 'de');
+      const result = await provider.translate(
+        ['Hello', '', 'World'],
+        'en',
+        'de',
+      );
 
       expect(result).toEqual(['Hallo', '', 'Hallo']);
     });
@@ -180,7 +203,9 @@ describe('ChromeTranslatorProvider', () => {
     });
 
     it('handles auto language detection', async () => {
-      mockDetect.mockResolvedValue([{ detectedLanguage: 'fr', confidence: 0.9 }]);
+      mockDetect.mockResolvedValue([
+        { detectedLanguage: 'fr', confidence: 0.9 },
+      ]);
 
       await provider.translate('Bonjour', 'auto', 'en');
 
@@ -196,7 +221,7 @@ describe('ChromeTranslatorProvider', () => {
       const unavailableProvider = new ChromeTranslatorProvider();
 
       await expect(
-        unavailableProvider.translate('Hello', 'en', 'de')
+        unavailableProvider.translate('Hello', 'en', 'de'),
       ).rejects.toThrow('Chrome Translator API not available');
     });
 
@@ -205,9 +230,9 @@ describe('ChromeTranslatorProvider', () => {
         .mockResolvedValueOnce({ available: 'readily' }) // Initial check
         .mockResolvedValueOnce({ available: 'no' }); // Pair check
 
-      await expect(
-        provider.translate('Hello', 'xx', 'yy')
-      ).rejects.toThrow('Language pair not supported: xx-yy');
+      await expect(provider.translate('Hello', 'xx', 'yy')).rejects.toThrow(
+        'Language pair not supported: xx-yy',
+      );
     });
 
     it('returns original text on translation error', async () => {
@@ -225,7 +250,9 @@ describe('ChromeTranslatorProvider', () => {
     it('detects language using LanguageDetector API', async () => {
       vi.stubGlobal('Translator', mockTranslatorAPI);
       vi.stubGlobal('LanguageDetector', mockDetectorAPI);
-      mockDetect.mockResolvedValue([{ detectedLanguage: 'es', confidence: 0.85 }]);
+      mockDetect.mockResolvedValue([
+        { detectedLanguage: 'es', confidence: 0.85 },
+      ]);
 
       const result = await provider.detectLanguage('Hola mundo');
 
@@ -235,7 +262,9 @@ describe('ChromeTranslatorProvider', () => {
     it('returns "en" when confidence is low', async () => {
       vi.stubGlobal('Translator', mockTranslatorAPI);
       vi.stubGlobal('LanguageDetector', mockDetectorAPI);
-      mockDetect.mockResolvedValue([{ detectedLanguage: 'es', confidence: 0.5 }]);
+      mockDetect.mockResolvedValue([
+        { detectedLanguage: 'es', confidence: 0.5 },
+      ]);
 
       const result = await provider.detectLanguage('Hola');
 
@@ -258,7 +287,9 @@ describe('ChromeTranslatorProvider', () => {
     });
 
     it('returns "readily" for immediately available pairs', async () => {
-      mockTranslatorAPI.availability.mockResolvedValue({ available: 'readily' });
+      mockTranslatorAPI.availability.mockResolvedValue({
+        available: 'readily',
+      });
 
       const status = await provider.getAvailabilityStatus('en', 'es');
 
@@ -289,7 +320,10 @@ describe('ChromeTranslatorProvider', () => {
       vi.unstubAllGlobals(); // Remove Translator global
       const unavailableProvider = new ChromeTranslatorProvider();
 
-      const status = await unavailableProvider.getAvailabilityStatus('en', 'de');
+      const status = await unavailableProvider.getAvailabilityStatus(
+        'en',
+        'de',
+      );
 
       expect(status).toBe('unavailable');
     });
@@ -359,7 +393,11 @@ describe('ChromeTranslatorProvider additional coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockTranslate.mockResolvedValue('translated text');
-    mockDetect.mockResolvedValue([{ detectedLanguage: 'en', confidence: 0.95 }]);
+    mockTranslateStreaming.mockReset();
+    mockTranslatorInstance.translateStreaming = undefined;
+    mockDetect.mockResolvedValue([
+      { detectedLanguage: 'en', confidence: 0.95 },
+    ]);
     mockTranslatorAPI.availability.mockResolvedValue({ available: 'readily' });
     mockTranslatorAPI.create.mockResolvedValue(mockTranslatorInstance);
     mockDetectorAPI.availability.mockResolvedValue({ available: 'readily' });
@@ -450,7 +488,9 @@ describe('ChromeTranslatorProvider additional coverage', () => {
 
       await provider.isPairSupported('en', 'fr');
       // No additional calls for the pair (cached)
-      expect(mockTranslatorAPI.availability.mock.calls.length).toBe(callsBefore);
+      expect(mockTranslatorAPI.availability.mock.calls.length).toBe(
+        callsBefore,
+      );
     });
 
     it('handles availability API throwing for pair check', async () => {
@@ -476,7 +516,9 @@ describe('ChromeTranslatorProvider additional coverage', () => {
 
       await provider.getAvailabilityStatus('en', 'fr');
       // No new calls — cached
-      expect(mockTranslatorAPI.availability.mock.calls.length).toBe(callsBefore);
+      expect(mockTranslatorAPI.availability.mock.calls.length).toBe(
+        callsBefore,
+      );
     });
 
     it('returns "no" when availability API throws for pair check', async () => {
@@ -529,10 +571,100 @@ describe('ChromeTranslatorProvider additional coverage', () => {
     it('handles whitespace-only text in array by preserving it', async () => {
       vi.stubGlobal('Translator', mockTranslatorAPI);
 
-      const result = await provider.translate(['hello', '   ', 'world'], 'en', 'de');
+      const result = await provider.translate(
+        ['hello', '   ', 'world'],
+        'en',
+        'de',
+      );
 
       expect(result).toHaveLength(3);
       expect((result as string[])[1]).toBe('   '); // whitespace preserved
+    });
+
+    it('uses streaming translation for long text and releases the reader lock', async () => {
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+
+      const releaseLock = vi.fn();
+      const read = vi
+        .fn()
+        .mockResolvedValueOnce({ done: false, value: 'Hallo ' })
+        .mockResolvedValueOnce({ done: false, value: 'Welt' })
+        .mockResolvedValueOnce({ done: true, value: undefined });
+      mockTranslatorInstance.translateStreaming =
+        mockTranslateStreaming.mockReturnValue({
+          getReader: () => ({ read, releaseLock }),
+        });
+
+      const result = await provider.translate('x'.repeat(250), 'en', 'de');
+
+      expect(result).toBe('Hallo Welt');
+      expect(mockTranslateStreaming).toHaveBeenCalledTimes(1);
+      expect(mockTranslate).not.toHaveBeenCalled();
+      expect(releaseLock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('translateStreaming', () => {
+    beforeEach(() => {
+      vi.stubGlobal('Translator', mockTranslatorAPI);
+      vi.stubGlobal('LanguageDetector', mockDetectorAPI);
+    });
+
+    it('throws when the Chrome Translator API is unavailable', async () => {
+      vi.unstubAllGlobals();
+      const unavailableProvider = new ChromeTranslatorProvider();
+
+      await expect(
+        unavailableProvider.translateStreaming('Hello', 'en', 'de', vi.fn()),
+      ).rejects.toThrow('Chrome Translator API not available');
+    });
+
+    it('falls back to regular translation when streaming is unavailable', async () => {
+      mockDetect.mockResolvedValue([
+        { detectedLanguage: 'fr', confidence: 0.91 },
+      ]);
+      mockTranslate.mockResolvedValue('Hello from fallback');
+      const onChunk = vi.fn();
+
+      const result = await provider.translateStreaming(
+        'Bonjour',
+        'auto',
+        'en',
+        onChunk,
+      );
+
+      expect(result).toBe('Hello from fallback');
+      expect(mockDetect).toHaveBeenCalledWith('Bonjour');
+      expect(mockTranslatorAPI.create).toHaveBeenCalledWith({
+        sourceLanguage: 'fr',
+        targetLanguage: 'en',
+      });
+      expect(onChunk).toHaveBeenCalledWith('Hello from fallback');
+    });
+
+    it('streams partial results and releases the reader lock', async () => {
+      const onChunk = vi.fn();
+      const releaseLock = vi.fn();
+      const read = vi
+        .fn()
+        .mockResolvedValueOnce({ done: false, value: 'Hal' })
+        .mockResolvedValueOnce({ done: false, value: 'lo' })
+        .mockResolvedValueOnce({ done: true, value: undefined });
+      mockTranslatorInstance.translateStreaming =
+        mockTranslateStreaming.mockReturnValue({
+          getReader: () => ({ read, releaseLock }),
+        });
+
+      const result = await provider.translateStreaming(
+        'Hello',
+        'en',
+        'de',
+        onChunk,
+      );
+
+      expect(result).toBe('Hallo');
+      expect(onChunk.mock.calls).toEqual([['Hal'], ['Hallo']]);
+      expect(releaseLock).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -23,7 +23,7 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        inlineDynamicImports: true,
+        codeSplitting: false,
       },
     },
   },

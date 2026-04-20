@@ -14,18 +14,14 @@ import { DeepLProvider } from '../providers/deepl';
 import { GoogleCloudProvider } from '../providers/google-cloud';
 import { ChromeTranslatorProvider } from '../providers/chrome-translator';
 import { OpusMTProvider } from '../providers/opus-mt-local';
-import { installChromeStorageMock } from './shared-provider-mocks';
+import {
+  installCloudProviderTestHarness,
+  okJsonResponse,
+} from './cloud-provider-test-harness';
 
-// ---------------------------------------------------------------------------
-// Chrome storage mock (shared by all cloud providers)
-// ---------------------------------------------------------------------------
-const { mockStorage, resetStorage } = installChromeStorageMock();
+const { mockStorage, resetCloudProviderState, mockFetch } = installCloudProviderTestHarness();
 
-// ---------------------------------------------------------------------------
-// Fetch mock
-// ---------------------------------------------------------------------------
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+const okResponse = okJsonResponse;
 
 // ---------------------------------------------------------------------------
 // Module mocks (same as the individual test files)
@@ -54,21 +50,6 @@ vi.mock('../core/webgpu-detector', () => ({
 vi.mock('@huggingface/transformers', () => ({
   pipeline: vi.fn(),
 }));
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Build a minimal successful fetch response */
-function okResponse(body: unknown) {
-  return {
-    ok: true,
-    status: 200,
-    json: () => Promise.resolve(body),
-    text: () => Promise.resolve(JSON.stringify(body)),
-    headers: { get: () => null },
-  };
-}
 
 // =========================================================================
 // 1. BaseProvider abstract contract
@@ -172,8 +153,7 @@ describe('Anthropic response parsing contract', () => {
   let provider: AnthropicProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
+    resetCloudProviderState();
     provider = new AnthropicProvider();
   });
 
@@ -255,8 +235,7 @@ describe('OpenAI response parsing contract', () => {
   let provider: OpenAIProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
+    resetCloudProviderState();
     provider = new OpenAIProvider();
   });
 
@@ -314,6 +293,26 @@ describe('OpenAI response parsing contract', () => {
     expect(result[0]).toBe('Hei');
     expect(result[1]).toBe('Maailma');
   });
+
+  it('recovers plain-text batches when the separator is missing', async () => {
+    mockStorage['openai_api_key'] = 'sk-test';
+    await provider.initialize();
+
+    mockFetch.mockResolvedValueOnce(
+      okResponse({
+        choices: [
+          {
+            message: { content: 'Hei\nMaailma' },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 30, completion_tokens: 12, total_tokens: 42 },
+      }),
+    );
+
+    const result = await provider.translate(['Hello', 'World'], 'en', 'fi');
+    expect(result).toEqual(['Hei', 'Maailma']);
+  });
 });
 
 // =========================================================================
@@ -323,8 +322,7 @@ describe('DeepL response parsing contract', () => {
   let provider: DeepLProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
+    resetCloudProviderState();
     provider = new DeepLProvider();
   });
 
@@ -385,8 +383,7 @@ describe('Google Cloud response parsing contract', () => {
   let provider: GoogleCloudProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
+    resetCloudProviderState();
     provider = new GoogleCloudProvider();
   });
 
@@ -449,8 +446,7 @@ describe('Google Cloud response parsing contract', () => {
 // =========================================================================
 describe('Cloud providers throw on missing API key', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
+    resetCloudProviderState();
   });
 
   it('AnthropicProvider throws when no API key', async () => {
@@ -481,8 +477,7 @@ describe('OpusMT local provider contract', () => {
   let provider: OpusMTProvider;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resetStorage();
+    resetCloudProviderState();
     provider = new OpusMTProvider();
   });
 

@@ -4,10 +4,12 @@
  * Extracts the three lifecycle methods that are structurally identical
  * across every cloud provider: initialize(), isAvailable(), and clearApiKey().
  *
- * Subclasses implement three hooks:
+ * Subclasses implement the storage/config hooks:
  *   - getStorageKeys()  – keys to load/clear from storage
  *   - applyStoredConfig() – populate internal config from loaded values
- *   - hasConfig()       – whether the provider is currently configured
+ *   - resetConfig()     – clear provider-specific in-memory state
+ *   - getConfigState()  – read the current config state
+ *   - setConfigState()  – replace the current config state
  */
 
 import { BaseProvider } from './base-provider';
@@ -16,15 +18,45 @@ import {
   strictStorageRemove,
   strictStorageSet,
 } from '../core/storage';
+import { createTranslationError } from '../core/errors';
 import { createLogger } from '../core/logger';
 import type { ProviderConfig } from '../types';
 import type {
+  CloudProviderStorageKey,
   CloudProviderStorageMutation,
   CloudProviderStorageRecord,
 } from '../background/shared/provider-config-types';
 
-export abstract class CloudProvider extends BaseProvider {
+type ApiKeyConfig<TDefaults extends object> = { apiKey: string } & TDefaults;
+type UsageTrackedRuntimeState<TConfig extends { apiKey: string }, TUsageField extends string> = {
+  config: TConfig;
+} & Record<TUsageField, number>;
+
+interface BestEffortPersistOperation {
+  items: CloudProviderStorageMutation;
+  failureMessage: string;
+}
+
+export function createCloudProviderConfig<TDefaults extends object>(
+  apiKey: string,
+  defaults: TDefaults
+): ApiKeyConfig<TDefaults> {
+  return { apiKey, ...defaults };
+}
+
+export function updateCloudProviderApiKey<TDefaults extends object>(
+  current: ApiKeyConfig<TDefaults> | null,
+  apiKey: string,
+  defaults: TDefaults
+): ApiKeyConfig<TDefaults> {
+  return current ? { ...current, apiKey } : createCloudProviderConfig(apiKey, defaults);
+}
+
+export abstract class CloudProvider<TConfig extends { apiKey: string }> extends BaseProvider {
   protected readonly log = createLogger(this.name);
+  private usageCounter = 0;
+  private pendingBestEffortPersist: Promise<void> | null = null;
+  private queuedBestEffortPersist: BestEffortPersistOperation | null = null;
 
   /**
    * Storage keys this provider reads during initialize() and removes during clearApiKey().
@@ -39,15 +71,46 @@ export abstract class CloudProvider extends BaseProvider {
   protected abstract applyStoredConfig(stored: CloudProviderStorageRecord): void;
 
   /**
-   * Return true if the provider has a valid configuration (API key loaded).
-   */
-  protected abstract hasConfig(): boolean;
-
-  /**
    * Hook called after clearApiKey() removes keys from storage.
    * Subclasses reset their internal config state here.
    */
   protected abstract resetConfig(): void;
+
+  /**
+   * Read the current in-memory config state.
+   */
+  protected abstract getConfigState(): TConfig | null;
+
+  /**
+   * Replace the current in-memory config state.
+   */
+  protected abstract setConfigState(config: TConfig | null): void;
+
+  /**
+   * Read the current config only when it includes a usable API key.
+   */
+  protected getConfiguredConfig(): TConfig | null {
+    const config = this.getConfigState();
+    return config?.apiKey ? config : null;
+  }
+
+  /**
+   * Require credentials for request paths that cannot proceed without them.
+   */
+  protected requireConfiguredConfig(providerLabel: string): TConfig {
+    const config = this.getConfiguredConfig();
+    if (!config) {
+      throw createTranslationError(new Error(`${providerLabel} API key not configured`));
+    }
+    return config;
+  }
+
+  /**
+   * Return true if the provider has a valid configuration (API key loaded).
+   */
+  protected hasConfig(): boolean {
+    return this.getConfiguredConfig() !== null;
+  }
 
   async initialize(): Promise<void> {
     try {
@@ -67,8 +130,15 @@ export abstract class CloudProvider extends BaseProvider {
   }
 
   async clearApiKey(): Promise<void> {
+    await this.flush();
     await strictStorageRemove(this.getStorageKeys());
     this.resetConfig();
+  }
+
+  async flush(): Promise<void> {
+    while (this.pendingBestEffortPersist) {
+      await this.pendingBestEffortPersist;
+    }
   }
 
   /**
@@ -80,12 +150,132 @@ export abstract class CloudProvider extends BaseProvider {
   }
 
   /**
+   * Persist storage updates, then refresh in-memory config using the current local state.
+   */
+  protected async persistAndUpdateConfig(
+    items: CloudProviderStorageMutation,
+    update: (config: TConfig | null) => TConfig | null
+  ): Promise<void> {
+    await this.persist(items);
+    this.setConfigState(update(this.getConfigState()));
+  }
+
+  /**
+   * Persist settings even before the provider is configured, but only mutate in-memory state when
+   * a config is already loaded.
+   */
+  protected async persistAndUpdateLoadedConfig(
+    items: CloudProviderStorageMutation,
+    update: (config: TConfig) => TConfig
+  ): Promise<void> {
+    await this.persistAndUpdateConfig(items, (config) => (config ? update(config) : null));
+  }
+
+  /**
    * Best-effort persistence for counters/telemetry that must not fail the request path.
+   * Writes are serialized and coalesced so the latest counter value wins without
+   * firing overlapping storage writes.
    */
   protected persistBestEffort(items: CloudProviderStorageMutation, failureMessage: string): void {
-    /* v8 ignore start -- fire-and-forget persist */
-    void this.persist(items).catch((error) => this.log.warn(failureMessage, error));
-    /* v8 ignore stop */
+    const operation: BestEffortPersistOperation = { items, failureMessage };
+    if (this.pendingBestEffortPersist) {
+      this.queuedBestEffortPersist = operation;
+      return;
+    }
+
+    this.startBestEffortPersist(operation);
+  }
+
+  private startBestEffortPersist(operation: BestEffortPersistOperation): void {
+    this.pendingBestEffortPersist = (async () => {
+      let current: BestEffortPersistOperation | null = operation;
+
+      while (current) {
+        try {
+          await this.persist(current.items);
+        } catch (error) {
+          this.log.warn(current.failureMessage, error);
+        }
+
+        current = this.queuedBestEffortPersist;
+        this.queuedBestEffortPersist = null;
+      }
+    })().finally(() => {
+      this.pendingBestEffortPersist = null;
+
+      const queued = this.queuedBestEffortPersist;
+      if (!queued) {
+        return;
+      }
+
+      this.queuedBestEffortPersist = null;
+      this.startBestEffortPersist(queued);
+    });
+  }
+
+  /**
+   * Hydrate provider config plus a persisted usage counter from validated runtime state.
+   */
+  protected applyStoredUsageConfig<TUsageField extends string>(
+    runtimeState: UsageTrackedRuntimeState<TConfig, TUsageField> | null,
+    usageField: TUsageField,
+  ): TConfig | null {
+    if (!runtimeState) {
+      this.resetConfig();
+      return null;
+    }
+
+    this.setConfigState(runtimeState.config);
+    this.usageCounter = runtimeState[usageField];
+
+    return runtimeState.config;
+  }
+
+  /**
+   * Reset the in-memory usage counter for providers that track persisted telemetry.
+   */
+  protected resetUsageCounter(): void {
+    this.usageCounter = 0;
+  }
+
+  /**
+   * Read the current in-memory usage counter.
+   */
+  protected getUsageCounter(): number {
+    return this.usageCounter;
+  }
+
+  /**
+   * Increment the usage counter and persist it best-effort without affecting the request path.
+   */
+  protected trackUsageCounter(
+    delta: number,
+    storageKey: CloudProviderStorageKey,
+    failureMessage: string,
+  ): number {
+    this.usageCounter += delta;
+    this.persistBestEffort(
+      { [storageKey]: this.usageCounter } as CloudProviderStorageMutation,
+      failureMessage,
+    );
+    return this.usageCounter;
+  }
+
+  /**
+   * Build the shared usage response shape for providers with a single persisted counter.
+   */
+  protected buildTrackedUsage(cost: number): {
+    requests: number;
+    tokens: number;
+    cost: number;
+    limitReached: boolean;
+  } {
+    return {
+      requests: 0,
+      tokens: this.usageCounter,
+      cost,
+      limitReached: false,
+    };
   }
 
   getInfo(): ProviderConfig {

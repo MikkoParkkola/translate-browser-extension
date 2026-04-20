@@ -23,7 +23,8 @@ Ensure you have the following tools installed:
 - **Node.js**: v18.x or later (LTS recommended)
 - **npm**: v8.x or later (comes with Node.js)
 - **Git**: Latest version
-- **Chrome/Chromium**: For testing (any recent version)
+- **Playwright Chromium**: Preferred for extension E2E (`npm run playwright:install:chromium`)
+- **Chrome/Chromium**: Optional for manual debugging only
 - **VSCode**: Recommended IDE with extensions (optional but recommended)
 
 ### Initial Setup
@@ -186,15 +187,17 @@ The extension follows a layered architecture:
 ```bash
 # Development
 npm run build:fast        # Quick build (no optimisations)
-npm run build             # Copy current src/ into dist/
+npm run build             # Production extension build into dist/
 npm run lint              # ESLint code checking
-npm run format            # Prettier code formatting
+npm run format            # Prettier check for tracked config/docs files
 
 # Testing
-npm test                  # Run unit tests
-npm run test:e2e         # Run end-to-end tests
-npm run test:e2e-web     # Web-specific E2E tests
-npm run test:e2e-pdf     # PDF-specific E2E tests
+npm test                         # Run unit tests
+npm run test:e2e                # Run the full web + harness E2E surface
+npm run test:e2e:web            # Run the full extension-backed browser E2E suite
+npm run test:e2e:web:smoke      # Run the fast extension smoke subset used in CI
+npm run test:e2e:web:integration # Run the slower extension integration/model checks
+npm run test:e2e-pdf            # PDF-specific regression tests
 
 # Size Analysis
 npm run size             # Bundle size analysis
@@ -1071,172 +1074,47 @@ describe('QwenProvider', () => {
 
 #### E2E Test Setup
 
-Configuration in `playwright.config.js`:
+The current repo uses a single extension-backed Playwright project defined in
+`playwright.config.ts`, plus a separate synthetic harness surface served from
+`npm run serve:e2e`.
 
-```javascript
-import { defineConfig, devices } from '@playwright/test';
+Install the bundled browser once per machine:
 
-export default defineConfig({
-  testDir: './e2e',
-  fullyParallel: true,
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
-  use: {
-    baseURL: 'http://localhost:8080',
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure'
-  },
-  projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] }
-    },
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] }
-    }
-  ],
-  webServer: {
-    command: 'npm run serve',
-    port: 8080,
-    reuseExistingServer: !process.env.CI
-  }
-});
+```bash
+npm run playwright:install:chromium
 ```
+
+The main Playwright entry points are:
+
+```bash
+npm run test:e2e:web:smoke        # Fast extension-backed smoke subset
+npm run test:e2e:web:integration  # Slower extension-backed integration/model checks
+npm run test:e2e:harness          # Synthetic harness-only Playwright tests
+```
+
+The extension project intentionally prefers Playwright's bundled Chromium /
+Chrome for Testing. On macOS, recent system Chrome builds may silently ignore
+`--load-extension`, so the bundled browser is the reliable path for extension
+smoke validation.
 
 #### Extension Testing
 
-```javascript
-// e2e/extension-workflow.spec.js
+Extension-backed tests should reuse the shared launch helpers instead of
+open-coding browser arguments or scraping `chrome://extensions/`:
 
-import { test, expect } from '@playwright/test';
-import { readFile } from 'fs/promises';
-import path from 'path';
+- `playwright.config.ts`
+- `e2e/extension-launch.ts`
+- `e2e/fixtures.ts`
 
-test.describe('Extension Workflow', () => {
-  let extensionId;
-  
-  test.beforeAll(async ({ browser }) => {
-    // Load extension
-    const pathToExtension = path.resolve('./dist');
-    const context = await browser.newContext({
-      args: [
-        `--disable-extensions-except=${pathToExtension}`,
-        `--load-extension=${pathToExtension}`
-      ]
-    });
-    
-    // Get extension ID
-    const page = await context.newPage();
-    await page.goto('chrome://extensions/');
-    const extensions = await page.locator('.extension-list-item').all();
-    
-    for (const ext of extensions) {
-      const name = await ext.locator('.extension-name').textContent();
-      if (name.includes('Translate by Mikko')) {
-        extensionId = await ext.getAttribute('id');
-        break;
-      }
-    }
-  });
-  
-  test('should open popup and display providers', async ({ page }) => {
-    // Navigate to extension popup
-    await page.goto(`chrome-extension://${extensionId}/popup.html`);
-    
-    // Check that popup loads
-    await expect(page.locator('h1')).toContainText('Translate by Mikko');
-    
-    // Check provider grid
-    const providerCards = page.locator('.provider-card');
-    await expect(providerCards).toHaveCount.greaterThan(0);
-    
-    // Check language selectors
-    const sourceSelect = page.locator('#source-language');
-    const targetSelect = page.locator('#target-language');
-    
-    await expect(sourceSelect).toBeVisible();
-    await expect(targetSelect).toBeVisible();
-    
-    // Verify default selections
-    expect(await sourceSelect.inputValue()).toBe('auto');
-    expect(await targetSelect.inputValue()).toBe('en');
-  });
-  
-  test('should configure provider and save settings', async ({ page }) => {
-    await page.goto(`chrome-extension://${extensionId}/options.html`);
-    
-    // Wait for options page to load
-    await expect(page.locator('h1')).toContainText('Settings');
-    
-    // Configure Qwen provider
-    const qwenTab = page.locator('[data-provider="qwen"]');
-    await qwenTab.click();
-    
-    // Fill in API key
-    const apiKeyInput = page.locator('#qwen-api-key');
-    await apiKeyInput.fill('sk-test-api-key');
-    
-    // Enable provider
-    const enabledCheckbox = page.locator('#qwen-enabled');
-    await enabledCheckbox.check();
-    
-    // Save settings
-    const saveButton = page.locator('#save-settings');
-    await saveButton.click();
-    
-    // Verify success message
-    await expect(page.locator('.success-message')).toBeVisible();
-    await expect(page.locator('.success-message')).toContainText('Settings saved');
-  });
-  
-  test('should translate page content', async ({ page, context }) => {
-    // Create a test page with content to translate
-    const testPage = await context.newPage();
-    await testPage.setContent(`
-      <html>
-        <head><title>Test Page</title></head>
-        <body>
-          <h1>Welcome to our website</h1>
-          <p>This is a test paragraph that should be translated.</p>
-          <button>Click here</button>
-        </body>
-      </html>
-    `);
-    
-    // Inject content script (simulating extension injection)
-    await testPage.addScriptTag({
-      path: './dist/contentScript.js'
-    });
-    
-    // Trigger translation
-    await testPage.evaluate(() => {
-      window.postMessage({
-        action: 'translatePage',
-        sourceLanguage: 'en',
-        targetLanguage: 'es',
-        provider: 'qwen'
-      }, '*');
-    });
-    
-    // Wait for translation to complete
-    await testPage.waitForFunction(() => {
-      return document.querySelector('[data-translated="true"]') !== null;
-    });
-    
-    // Verify that elements were translated
-    const translatedElements = await testPage.locator('[data-translated="true"]').count();
-    expect(translatedElements).toBeGreaterThan(0);
-    
-    // Check specific translations (would require mock API responses)
-    const heading = testPage.locator('h1');
-    const headingText = await heading.textContent();
-    expect(headingText).not.toBe('Welcome to our website');
-  });
-});
+For local investigation only, you can override the browser executable:
+
+```bash
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="/path/to/chrome-or-chromium" npm run test:e2e:web:smoke
 ```
+
+That override is useful for browser-startup debugging, but it should not
+replace the bundled-browser contract in routine validation because macOS system
+Chrome 144+ may start without actually loading the unpacked extension.
 
 #### PDF Translation Testing
 
@@ -2233,12 +2111,11 @@ Before submitting a pull request, ensure all checks pass:
 
 ```bash
 # Run full quality check suite
-npm run lint                    # ESLint checks
-npm run format                  # Prettier formatting
-npm test                       # Unit tests
-npm run test:e2e              # End-to-end tests
-npm run size                   # Bundle size checks
-npm run secrets               # Security scan
+npm run validate:ci            # Lint + format + typecheck + unit tests
+npm run validate:build         # Build + bundle size checks
+npm run test:e2e:web:smoke     # Browser-extension smoke coverage
+npm run test:coverage          # Coverage thresholds
+npm run secrets                # Security scan
 
 # Fix common issues
 npm run lint -- --fix         # Auto-fix lint issues

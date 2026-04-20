@@ -6,48 +6,62 @@
  *      to execute signal initialization, onMount, and tab/icon logic)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@solidjs/testing-library';
 import {
   GENERAL_SETTINGS_LANGUAGES,
   GENERAL_SETTINGS_STRATEGIES,
   GENERAL_SETTINGS_TARGET_LANGUAGES,
 } from '../shared/translation-options';
+import { setupNavigatorStorageEstimateMock } from '../test-helpers/browser-mocks';
+import { setupUiChromeMock } from '../test-helpers/chrome-mocks';
 
 // ---------------------------------------------------------------------------
 // Chrome API mock
 // ---------------------------------------------------------------------------
 
-const mockChrome = {
-  storage: {
-    local: {
-      get: vi.fn().mockResolvedValue({}),
-      set: vi.fn().mockResolvedValue(undefined),
-      remove: vi.fn().mockResolvedValue(undefined),
-    },
-    sync: {
-      get: vi.fn().mockResolvedValue({}),
-      set: vi.fn().mockResolvedValue(undefined),
-    },
-  },
-  runtime: {
-    sendMessage: vi.fn().mockResolvedValue({}),
-    onMessage: {
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-    },
-    openOptionsPage: vi.fn(),
-  },
-};
+let mockChrome: ReturnType<typeof setupUiChromeMock>;
+let mockStorageLocalSet: Mock<(value: unknown) => Promise<void>>;
 
-// @ts-expect-error - mock chrome global
-globalThis.chrome = mockChrome;
+function setupOptionsBrowserMocks() {
+  mockStorageLocalSet = vi.fn<(value: unknown) => Promise<void>>().mockResolvedValue(undefined);
 
-Object.defineProperty(navigator, 'storage', {
-  value: {
-    estimate: vi.fn().mockResolvedValue({ usage: 50 * 1024 * 1024, quota: 100 * 1024 * 1024 }),
-  },
-  writable: true,
+  mockChrome = setupUiChromeMock({
+    storageLocalGet: vi.fn().mockResolvedValue({}),
+    storageLocalSet: mockStorageLocalSet,
+    storageLocalRemove: vi.fn().mockResolvedValue(undefined),
+    storageSyncGet: vi.fn().mockResolvedValue({}),
+    storageSyncSet: vi.fn().mockResolvedValue(undefined),
+    runtimeSendMessage: vi.fn().mockResolvedValue({}),
+    runtimeOnMessageAddListener: vi.fn(),
+    runtimeOnMessageRemoveListener: vi.fn(),
+    runtimeOpenOptionsPage: vi.fn(),
+  });
+
+  setupNavigatorStorageEstimateMock({
+    usage: 50 * 1024 * 1024,
+    quota: 100 * 1024 * 1024,
+  });
+}
+
+async function loadOptionsPage() {
+  const { default: Options } = await import('./Options');
+  return Options;
+}
+
+async function renderOptionsPage() {
+  const Options = await loadOptionsPage();
+  return render(() => <Options />);
+}
+
+beforeEach(() => {
+  setupOptionsBrowserMocks();
+});
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  vi.resetAllMocks();
 });
 
 // ---------------------------------------------------------------------------
@@ -55,14 +69,6 @@ Object.defineProperty(navigator, 'storage', {
 // ---------------------------------------------------------------------------
 
 describe('Options Components', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.resetAllMocks();
-  });
-
   describe('GeneralSettings', () => {
     it('should load saved preferences on mount', async () => {
       mockChrome.storage.local.get.mockResolvedValue({
@@ -210,16 +216,16 @@ describe('Options Components', () => {
 
 describe('Options Page Integration', () => {
   it('should export default Options component', async () => {
-    const Options = await import('./Options');
+    const Options = await loadOptionsPage();
 
-    expect(Options.default).toBeDefined();
-    expect(typeof Options.default).toBe('function');
+    expect(Options).toBeDefined();
+    expect(typeof Options).toBe('function');
   });
 
   it('should have correct tab definitions', async () => {
-    const Options = await import('./Options');
+    const Options = await loadOptionsPage();
 
-    expect(Options.default).toBeDefined();
+    expect(Options).toBeDefined();
   });
 });
 
@@ -830,9 +836,9 @@ describe('Storage Integration', () => {
   it('should use chrome.storage.local for large data', async () => {
     const testData = { glossary: { term: { replacement: 'test', caseSensitive: false } } };
 
-    await mockChrome.storage.local.set(testData);
+    await mockStorageLocalSet(testData);
 
-    expect(mockChrome.storage.local.set).toHaveBeenCalledWith(testData);
+    expect(mockStorageLocalSet).toHaveBeenCalledWith(testData);
   });
 
   it('should handle storage errors gracefully', async () => {
@@ -851,12 +857,12 @@ describe('Storage Integration', () => {
 
 describe('Options component invocation', () => {
   it('Options default export is a callable function', async () => {
-    const { default: Options } = await import('./Options');
+    const Options = await loadOptionsPage();
     expect(typeof Options).toBe('function');
   });
 
   it('calling Options() with no props returns a defined value', async () => {
-    const { default: Options } = await import('./Options');
+    const Options = await loadOptionsPage();
     const result = (Options as any)();
     expect(result).toBeDefined();
   });
@@ -904,43 +910,35 @@ describe('Options component invocation', () => {
 // ---------------------------------------------------------------------------
 
 describe('Options render — basic', () => {
-  afterEach(cleanup);
-
   it('renders the settings page heading', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     expect(screen.getByText('TRANSLATE! Settings')).toBeTruthy();
   });
 
   it('renders all six tab navigation buttons', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     const tabs = screen.getAllByRole('tab');
     expect(tabs.length).toBe(6);
   });
 
   it('renders General tab as active by default', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     const generalTab = screen.getByRole('tab', { name: /General/ });
     expect(generalTab.getAttribute('aria-selected')).toBe('true');
   });
 
   it('renders footer with version info', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     expect(screen.getByText(/TRANSLATE! v2.0/)).toBeTruthy();
   });
 
   it('renders navigation with tablist role', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     expect(screen.getByRole('tablist')).toBeTruthy();
   });
 
   it('renders all six tab labels', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     expect(screen.getByText('General')).toBeTruthy();
     expect(screen.getByText('Cloud Providers')).toBeTruthy();
     expect(screen.getByText('Offline Translation')).toBeTruthy();
@@ -951,51 +949,43 @@ describe('Options render — basic', () => {
 });
 
 describe('Options render — tab switching', () => {
-  afterEach(cleanup);
-
   it('clicking Cloud Providers tab makes it active', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     const cloudTab = screen.getByRole('tab', { name: /Cloud Providers/ });
     fireEvent.click(cloudTab);
     expect(cloudTab.getAttribute('aria-selected')).toBe('true');
   });
 
   it('clicking Offline Translation tab makes it active', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     const localTab = screen.getByRole('tab', { name: /Offline Translation/ });
     fireEvent.click(localTab);
     expect(localTab.getAttribute('aria-selected')).toBe('true');
   });
 
   it('clicking Glossary tab makes it active', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     const glossaryTab = screen.getByRole('tab', { name: /Glossary/ });
     fireEvent.click(glossaryTab);
     expect(glossaryTab.getAttribute('aria-selected')).toBe('true');
   });
 
   it('clicking Site Rules tab makes it active', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     const sitesTab = screen.getByRole('tab', { name: /Site Rules/ });
     fireEvent.click(sitesTab);
     expect(sitesTab.getAttribute('aria-selected')).toBe('true');
   });
 
   it('clicking Cache tab makes it active', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     const cacheTab = screen.getByRole('tab', { name: /Cache/ });
     fireEvent.click(cacheTab);
     expect(cacheTab.getAttribute('aria-selected')).toBe('true');
   });
 
   it('previously active tab becomes inactive on switch', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     const generalTab = screen.getByRole('tab', { name: /General/ });
     const cloudTab = screen.getByRole('tab', { name: /Cloud Providers/ });
     fireEvent.click(cloudTab);
@@ -1004,11 +994,8 @@ describe('Options render — tab switching', () => {
 });
 
 describe('Options render — keyboard navigation', () => {
-  afterEach(cleanup);
-
   it('ArrowDown advances tab selection', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     const nav = screen.getByRole('tablist');
     fireEvent.keyDown(nav, { key: 'ArrowDown' });
     // After ArrowDown from 'general', 'cloud' should be active
@@ -1017,8 +1004,7 @@ describe('Options render — keyboard navigation', () => {
   });
 
   it('ArrowRight advances tab selection', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     const nav = screen.getByRole('tablist');
     fireEvent.keyDown(nav, { key: 'ArrowRight' });
     const cloudTab = screen.getByRole('tab', { name: /Cloud Providers/ });
@@ -1026,8 +1012,7 @@ describe('Options render — keyboard navigation', () => {
   });
 
   it('ArrowUp from General wraps to Cache', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     const nav = screen.getByRole('tablist');
     fireEvent.keyDown(nav, { key: 'ArrowUp' });
     const cacheTab = screen.getByRole('tab', { name: /Cache/ });
@@ -1035,8 +1020,7 @@ describe('Options render — keyboard navigation', () => {
   });
 
   it('End key jumps to Cache tab', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     const nav = screen.getByRole('tablist');
     fireEvent.keyDown(nav, { key: 'End' });
     const cacheTab = screen.getByRole('tab', { name: /Cache/ });
@@ -1044,8 +1028,7 @@ describe('Options render — keyboard navigation', () => {
   });
 
   it('Home key jumps to General tab from any position', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     const nav = screen.getByRole('tablist');
     // First go to End (Cache)
     fireEvent.keyDown(nav, { key: 'End' });
@@ -1056,8 +1039,7 @@ describe('Options render — keyboard navigation', () => {
   });
 
   it('ArrowLeft from Cloud goes back to General', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     const nav = screen.getByRole('tablist');
     fireEvent.keyDown(nav, { key: 'ArrowRight' }); // → Cloud
     fireEvent.keyDown(nav, { key: 'ArrowLeft' });  // ← back to General
@@ -1066,8 +1048,7 @@ describe('Options render — keyboard navigation', () => {
   });
 
   it('unhandled keys do not change active tab', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     const nav = screen.getByRole('tablist');
     fireEvent.keyDown(nav, { key: 'Tab' });
     const generalTab = screen.getByRole('tab', { name: /General/ });
@@ -1081,8 +1062,7 @@ describe('Options render — keyboard navigation', () => {
       return origGet.call(this, key);
     };
 
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
 
     await vi.waitFor(() => {
       const cloudTab = screen.getByRole('tab', { name: /Cloud Providers/ });
@@ -1099,8 +1079,7 @@ describe('Options render — keyboard navigation', () => {
       return origGet.call(this, key);
     };
 
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
 
     await vi.waitFor(() => {
       const generalTab = screen.getByRole('tab', { name: /General/ });
@@ -1116,11 +1095,8 @@ describe('Options render — keyboard navigation', () => {
 // ---------------------------------------------------------------------------
 
 describe('Options render — renderIcon default branch', () => {
-  afterEach(cleanup);
-
   it('all six tabs render an SVG icon (known icon names)', async () => {
-    const { default: Options } = await import('./Options');
-    render(() => <Options />);
+    await renderOptionsPage();
     const tabs = screen.getAllByRole('tab');
     // Every tab button should contain an SVG element for a known icon
     for (const tab of tabs) {
@@ -1152,8 +1128,7 @@ describe('Options render — renderIcon default branch', () => {
     // This test exercises the getIconSvg function's default case (line 142: return null)
     // We can't directly call it, but we can verify the component handles null icon gracefully
     // by testing that the tab rendering works without error
-    const { default: Options } = await import('./Options');
-    const { container } = render(() => <Options />);
+    const { container } = await renderOptionsPage();
     
     // Verify that the component renders without crashing
     // All tabs should be rendered with SVG icons (none are unknown)
@@ -1170,11 +1145,8 @@ describe('Options render — renderIcon default branch', () => {
 // ---------------------------------------------------------------------------
 
 describe('Options Snapshot', () => {
-  afterEach(cleanup);
-
   it('renders default state correctly', async () => {
-    const { default: Options } = await import('./Options');
-    const { container } = render(() => <Options />);
+    const { container } = await renderOptionsPage();
     expect(container.innerHTML).toMatchSnapshot();
   });
 });

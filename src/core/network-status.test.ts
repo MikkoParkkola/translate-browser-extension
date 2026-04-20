@@ -261,4 +261,15 @@ describe('initNetworkMonitoring', () => {
       configurable: true,
     });
   });
+
+  it('registers listeners only once after initialization', () => {
+    const addSpy = vi.spyOn(globalThis, 'addEventListener');
+    _resetNetworkMonitoring();
+
+    initNetworkMonitoring();
+    initNetworkMonitoring();
+
+    expect(addSpy).toHaveBeenCalledTimes(2);
+    addSpy.mockRestore();
+  });
 });

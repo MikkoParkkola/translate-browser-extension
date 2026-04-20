@@ -6,43 +6,54 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll, afterEach } from 'vitest';
+import { setupChromeApiMock } from '../test-helpers/chrome-mocks';
+import { setupChromeRuntimeMessagingMocks } from '../test-helpers/chrome-runtime-messaging-mocks';
+import {
+  createBrowserApiModuleExports,
+  createFirefoxBrowserApiModuleMock,
+} from '../test-helpers/browser-api-mocks';
+import { setupNavigatorGpuMock, setupNavigatorMlMock } from '../test-helpers/dom-property-mocks';
 
 // ============================================================================
 // Mocks — set up BEFORE any imports
 // ============================================================================
 
-const mockAddMessageListener = vi.fn();
-const mockAddInstalledListener = vi.fn();
-const mockStorageGet = vi.fn().mockResolvedValue({});
-const mockStorageSet = vi.fn().mockResolvedValue(undefined);
-const mockStorageRemove = vi.fn().mockResolvedValue(undefined);
 const mockSendMessage = vi.fn();
 const mockGetUILanguage = vi.fn().mockReturnValue('en-US');
-const mockBrowserActionAddListener = vi.fn();
-const mockCommandsAddListener = vi.fn();
 const mockTabsQuery = vi.fn().mockResolvedValue([]);
 const mockTabsSendMessage = vi.fn().mockResolvedValue(undefined);
 const mockGetURL = vi.fn((path: string) => `moz-extension://test-id/${path}`);
 
-vi.stubGlobal('chrome', {
+const backgroundFirefoxChromeMock = setupChromeApiMock({
   runtime: {
-    onMessage: { addListener: mockAddMessageListener },
-    onInstalled: { addListener: mockAddInstalledListener },
     sendMessage: mockSendMessage,
     getURL: mockGetURL,
   },
-  storage: {
-    local: {
-      get: mockStorageGet,
-      set: mockStorageSet,
-      remove: mockStorageRemove,
-    },
-  },
   i18n: { getUILanguage: mockGetUILanguage },
-  browserAction: { onClicked: { addListener: mockBrowserActionAddListener } },
-  commands: { onCommand: { addListener: mockCommandsAddListener } },
   tabs: { query: mockTabsQuery, sendMessage: mockTabsSendMessage },
 });
+
+const backgroundFirefoxRuntimeMocks = setupChromeRuntimeMessagingMocks({
+  chromeApi: backgroundFirefoxChromeMock.chrome as unknown as Record<string, any>,
+});
+
+const firefoxBrowserApi = backgroundFirefoxChromeMock.chrome as unknown as typeof chrome & {
+  browserAction: {
+    onClicked: {
+      addListener: ReturnType<typeof vi.fn>;
+    };
+  };
+};
+
+const mockAddMessageListener = backgroundFirefoxRuntimeMocks.runtime.onMessage.addListener;
+const mockAddInstalledListener = backgroundFirefoxRuntimeMocks.runtime.onInstalled.addListener;
+const mockStorageGet = backgroundFirefoxChromeMock.chrome.storage.local.get;
+const mockStorageSet = backgroundFirefoxChromeMock.chrome.storage.local.set;
+const mockStorageRemove = backgroundFirefoxChromeMock.chrome.storage.local.remove;
+const mockBrowserActionAddListener =
+  backgroundFirefoxRuntimeMocks.browserAction.onClicked.addListener;
+const mockCommandsAddListener =
+  backgroundFirefoxRuntimeMocks.commands.onCommand.addListener;
 
 // Mock @huggingface/transformers
 vi.mock('@huggingface/transformers', () => ({
@@ -56,16 +67,41 @@ vi.mock('@huggingface/transformers', () => ({
 }));
 
 // Mock offscreen modules
-vi.mock('../offscreen/model-maps', () => ({
-  MODEL_MAP: {
+vi.mock('../offscreen/model-maps', () => {
+  const MODEL_MAP: Record<string, string> = {
     'en-fi': 'Helsinki-NLP/opus-mt-en-fi',
     'fi-en': 'Helsinki-NLP/opus-mt-fi-en',
     'en-de': 'Helsinki-NLP/opus-mt-en-de',
-  },
-  PIVOT_ROUTES: {
+  };
+  const PIVOT_ROUTES: Record<string, [string, string]> = {
     'fi-de': ['fi-en', 'en-de'],
-  },
-}));
+  };
+
+  return {
+    MODEL_MAP,
+    PIVOT_ROUTES,
+    getModelId: vi.fn((sourceLang: string, targetLang: string) => MODEL_MAP[`${sourceLang}-${targetLang}`] || null),
+    getSupportedLanguagePairs: vi.fn(() => [
+      ...Object.keys(MODEL_MAP).map((pair) => {
+        const [src, tgt] = pair.split('-');
+        return { src, tgt };
+      }),
+      ...Object.keys(PIVOT_ROUTES).map((pair) => {
+        const [src, tgt] = pair.split('-');
+        return { src, tgt, pivot: true };
+      }),
+    ]),
+    resolveOpusMtTranslationRoute: vi.fn((sourceLang: string, targetLang: string) => {
+      const modelId = MODEL_MAP[`${sourceLang}-${targetLang}`];
+      if (modelId) {
+        return { kind: 'direct', modelId };
+      }
+
+      const route = PIVOT_ROUTES[`${sourceLang}-${targetLang}`];
+      return route ? { kind: 'pivot', route } : null;
+    }),
+  };
+});
 
 vi.mock('../offscreen/pipeline-cache', () => ({
   getCachedPipeline: vi.fn().mockReturnValue(null),
@@ -94,27 +130,14 @@ vi.mock('../core/logger', () => ({
   }),
 }));
 
-vi.mock('../core/browser-api', () => ({
-  browserAPI: {
-    runtime: {
-      onMessage: { addListener: mockAddMessageListener },
-      onInstalled: { addListener: mockAddInstalledListener },
-      sendMessage: mockSendMessage,
-    },
-    storage: {
-      local: {
-        get: mockStorageGet,
-        set: mockStorageSet,
-        remove: mockStorageRemove,
-      },
-    },
-    i18n: { getUILanguage: mockGetUILanguage },
-    browserAction: { onClicked: { addListener: mockBrowserActionAddListener } },
-    commands: { onCommand: { addListener: mockCommandsAddListener } },
-    tabs: { query: mockTabsQuery, sendMessage: mockTabsSendMessage },
-  },
-  getURL: mockGetURL,
-}));
+vi.mock('../core/browser-api', () =>
+  createBrowserApiModuleExports({
+    browserAPI: firefoxBrowserApi as unknown as Record<string, unknown>,
+    getURL: mockGetURL,
+    isFirefox: true,
+    isChrome: false,
+  })
+);
 
 // Mock core utilities
 vi.mock('../core/errors', () => ({
@@ -144,7 +167,6 @@ vi.mock('../config', () => ({
     timeouts: { opusMtDirectMs: 60000, translateGemmaMs: 300000 },
     rateLimits: { windowMs: 60000, requestsPerMinute: 100, tokensPerMinute: 10000 },
     retry: { network: { maxRetries: 3, baseDelayMs: 1000, maxDelayMs: 10000 } },
-    experimental: { opusMtWebgpuProbe: false },
   },
 }));
 
@@ -152,11 +174,13 @@ vi.mock('../config', () => ({
 // Module import + handler capture
 // ============================================================================
 
-let messageHandler: (
+type FirefoxMessageHandler = (
   msg: Record<string, unknown>,
   sender: unknown,
   sendResponse: (r: unknown) => void
 ) => boolean;
+
+let messageHandler: FirefoxMessageHandler;
 
 let capturedInstalledHandler: ((details: { reason: string; previousVersion?: string }) => void) | null = null;
 let capturedCommandHandler: ((command: string) => Promise<void>) | null = null;
@@ -205,23 +229,66 @@ beforeEach(async () => {
   const pipelineCache = await import('../offscreen/pipeline-cache');
   (pipelineCache.getCachedPipeline as ReturnType<typeof vi.fn>).mockReturnValue(null);
 
+  const languageDetection = await import('../offscreen/language-detection');
+  (languageDetection.buildLanguageDetectionSample as ReturnType<typeof vi.fn>).mockImplementation(
+    (text: string | string[]) => Array.isArray(text) ? text.join(' ') : text
+  );
+  (languageDetection.detectLanguage as ReturnType<typeof vi.fn>).mockReturnValue('en');
+
   const translategemma = await import('../offscreen/translategemma');
   (translategemma.getTranslateGemmaPipeline as ReturnType<typeof vi.fn>).mockResolvedValue({
     model: {}, tokenizer: {},
   });
 
-  const { CONFIG } = await import('../config');
-  (CONFIG.experimental as { opusMtWebgpuProbe: boolean }).opusMtWebgpuProbe = false;
+  const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+  (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValue(
+    vi.fn().mockResolvedValue([{ translation_text: 'translated' }])
+  );
 });
 
 // ============================================================================
 // Helper
 // ============================================================================
 
-function invoke(message: Record<string, unknown>): Promise<unknown> {
+const waitForAsyncFirefoxWork = (ms = 10): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+function invokeWithHandler(
+  handler: FirefoxMessageHandler,
+  message: Record<string, unknown>
+): Promise<unknown> {
   return new Promise((resolve) => {
-    messageHandler(message, {}, (response) => resolve(response));
+    handler(message, {}, (response) => resolve(response));
   });
+}
+
+function getLatestMessageHandler(): FirefoxMessageHandler {
+  const calls = mockAddMessageListener.mock.calls;
+  const latestHandler = calls[calls.length - 1]?.[0];
+
+  if (typeof latestHandler !== 'function') {
+    throw new Error('Expected background-firefox message handler registration');
+  }
+
+  return latestHandler;
+}
+
+async function importFreshMessageHandler(
+  options: { settleMs?: number; runAllTimers?: boolean } = {}
+): Promise<FirefoxMessageHandler> {
+  await import('./background-firefox');
+
+  if (options.runAllTimers) {
+    await vi.runAllTimersAsync();
+  } else if (options.settleMs !== 0) {
+    await waitForAsyncFirefoxWork(options.settleMs ?? 20);
+  }
+
+  return getLatestMessageHandler();
+}
+
+function invoke(message: Record<string, unknown>): Promise<unknown> {
+  return invokeWithHandler(messageHandler, message);
 }
 
 // ============================================================================
@@ -247,6 +314,7 @@ describe('background-firefox message handler', () => {
       const response = await invoke({ type: 'getUsage' }) as Record<string, unknown>;
       expect(response.throttle).toEqual(expect.any(Object));
       expect(response.cache).toEqual(expect.any(Object));
+      expect(response.providers).toEqual({});
     });
 
     it('throttle stats include requests and tokens', async () => {
@@ -357,11 +425,7 @@ describe('background-firefox message handler', () => {
 
   describe('checkWebGPU', () => {
     it('returns unsupported when navigator.gpu is unavailable', async () => {
-      Object.defineProperty(navigator, 'gpu', {
-        value: undefined,
-        configurable: true,
-        writable: true,
-      });
+      setupNavigatorGpuMock(undefined);
 
       const response = await invoke({ type: 'checkWebGPU' }) as Record<string, unknown>;
       expect(response.success).toBe(true);
@@ -370,14 +434,10 @@ describe('background-firefox message handler', () => {
     });
 
     it('reports fp16 support when the adapter exposes shader-f16', async () => {
-      Object.defineProperty(navigator, 'gpu', {
-        value: {
-          requestAdapter: vi.fn().mockResolvedValue({
-            features: new Set(['shader-f16']),
-          }),
-        },
-        configurable: true,
-        writable: true,
+      setupNavigatorGpuMock({
+        requestAdapter: vi.fn().mockResolvedValue({
+          features: new Set(['shader-f16']),
+        }),
       });
 
       const response = await invoke({ type: 'checkWebGPU' }) as Record<string, unknown>;
@@ -385,21 +445,12 @@ describe('background-firefox message handler', () => {
       expect(response.supported).toBe(true);
       expect(response.fp16).toBe(true);
 
-      Object.defineProperty(navigator, 'gpu', {
-        value: undefined,
-        configurable: true,
-        writable: true,
-      });
     });
   });
 
   describe('checkWebNN', () => {
     it('returns unsupported when navigator.ml is unavailable', async () => {
-      Object.defineProperty(navigator, 'ml', {
-        value: undefined,
-        configurable: true,
-        writable: true,
-      });
+      setupNavigatorMlMock(undefined);
 
       const response = await invoke({ type: 'checkWebNN' }) as Record<string, unknown>;
       expect(response.success).toBe(true);
@@ -407,31 +458,19 @@ describe('background-firefox message handler', () => {
     });
 
     it('returns supported when navigator.ml.createContext succeeds', async () => {
-      Object.defineProperty(navigator, 'ml', {
-        value: {
-          createContext: vi.fn().mockResolvedValue({}),
-        },
-        configurable: true,
-        writable: true,
+      setupNavigatorMlMock({
+        createContext: vi.fn().mockResolvedValue({}),
       });
 
       const response = await invoke({ type: 'checkWebNN' }) as Record<string, unknown>;
       expect(response.success).toBe(true);
       expect(response.supported).toBe(true);
 
-      Object.defineProperty(navigator, 'ml', {
-        value: undefined,
-        configurable: true,
-        writable: true,
-      });
     });
   });
 
   describe('translate', () => {
     it('returns success:true for valid translation', async () => {
-      const { withRetry } = await import('../core/errors');
-      (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('translated text');
-
       const response = await invoke({
         type: 'translate',
         text: 'hello',
@@ -442,9 +481,6 @@ describe('background-firefox message handler', () => {
     });
 
     it('returns duration in response', async () => {
-      const { withRetry } = await import('../core/errors');
-      (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('translated');
-
       const response = await invoke({
         type: 'translate',
         text: 'hello',
@@ -486,9 +522,6 @@ describe('background-firefox message handler', () => {
     });
 
     it('accepts strategy in options', async () => {
-      const { withRetry } = await import('../core/errors');
-      (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('ok');
-
       const response = await invoke({
         type: 'translate',
         text: 'hello',
@@ -548,6 +581,8 @@ describe('background-firefox message handler', () => {
         provider: 'opus-mt',
       }) as Record<string, unknown>;
       expect(response.success).toBe(true);
+      expect(response.preloaded).toBe(true);
+      expect(response.available).toBe(true);
     });
 
     it('returns preloaded:false for unknown pair', async () => {
@@ -559,6 +594,7 @@ describe('background-firefox message handler', () => {
       }) as Record<string, unknown>;
       expect(response.success).toBe(true);
       expect(response.preloaded).toBe(false);
+      expect(response.available).toBe(false);
     });
 
     it('handles translategemma preload', async () => {
@@ -574,6 +610,8 @@ describe('background-firefox message handler', () => {
         provider: 'translategemma',
       }) as Record<string, unknown>;
       expect(response.success).toBe(true);
+      expect(response.preloaded).toBe(true);
+      expect(response.available).toBe(true);
     });
 
     it('handles preload failure gracefully', async () => {
@@ -590,6 +628,20 @@ describe('background-firefox message handler', () => {
       }) as Record<string, unknown>;
       expect(response.success).toBe(false);
       expect(response.error).toEqual(expect.any(String));
+    });
+
+    it('reports partial:true for pivot preload pairs', async () => {
+      const response = await invoke({
+        type: 'preloadModel',
+        sourceLang: 'fi',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      expect(response.preloaded).toBe(true);
+      expect(response.partial).toBe(true);
+      expect(response.available).toBe(true);
     });
   });
 
@@ -654,7 +706,7 @@ describe('background-firefox installation handler', () => {
     capturedInstalledHandler({ reason: 'install' });
 
     // strictStorageSet is called asynchronously on install
-    await new Promise((r) => setTimeout(r, 10));
+    await waitForAsyncFirefoxWork(10);
     expect(strictStorageSet).toHaveBeenCalledWith(
       expect.objectContaining({ sourceLang: 'auto', strategy: 'smart' })
     );
@@ -676,7 +728,7 @@ describe('background-firefox installation handler', () => {
     mockGetUILanguage.mockReturnValue(''); // '' → split('-')[0] = '' → browserLang || 'en' = 'en'
     const { strictStorageSet } = await import('../core/storage');
     capturedInstalledHandler({ reason: 'install' });
-    await new Promise((r) => setTimeout(r, 10));
+    await waitForAsyncFirefoxWork(10);
     expect(strictStorageSet).toHaveBeenCalledWith(expect.objectContaining({ targetLang: 'en' }));
   });
 
@@ -781,9 +833,6 @@ describe('background-firefox token estimation', () => {
 
 describe('background-firefox getCacheKey', () => {
   it('generateCacheKey is called with correct arguments', async () => {
-    const { withRetry } = await import('../core/errors');
-    (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('ok');
-
     const { generateCacheKey } = await import('../core/hash');
 
     await invoke({
@@ -947,9 +996,6 @@ describe('background-firefox translate: additional coverage', () => {
     // state is module-level and persists across tests.
     // Instead, verify the rate limit error message format by checking the
     // formatUserError code path via a direct translation error scenario.
-    const { withRetry } = await import('../core/errors');
-    (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('translated text');
-
     const response = await invoke({
       type: 'translate',
       text: 'hello',
@@ -962,9 +1008,6 @@ describe('background-firefox translate: additional coverage', () => {
   });
 
   it('handles translate with explicit provider option', async () => {
-    const { withRetry } = await import('../core/errors');
-    (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('gemma result');
-
     const response = await invoke({
       type: 'translate',
       text: 'hello',
@@ -977,9 +1020,6 @@ describe('background-firefox translate: additional coverage', () => {
   });
 
   it('handles translate with array text input', async () => {
-    const { withRetry } = await import('../core/errors');
-    (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce(['hei', 'maailma']);
-
     const response = await invoke({
       type: 'translate',
       text: ['hello', 'world'],
@@ -991,9 +1031,6 @@ describe('background-firefox translate: additional coverage', () => {
   });
 
   it('handles translate with sourceLang=auto', async () => {
-    const { withRetry } = await import('../core/errors');
-    (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('autodetected translation');
-
     const { validateInput } = await import('../core/errors');
     (validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
       valid: true,
@@ -1013,9 +1050,6 @@ describe('background-firefox translate: additional coverage', () => {
   });
 
   it('translate with sourceLang=auto and result not cached', async () => {
-    const { withRetry } = await import('../core/errors');
-    (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('result');
-
     const { validateInput } = await import('../core/errors');
     (validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
       valid: true,
@@ -1063,9 +1097,6 @@ describe('background-firefox translate: additional coverage', () => {
 
   it('clearCache after translations clears stored entries', async () => {
     // First do a translation to populate cache
-    const { withRetry } = await import('../core/errors');
-    (withRetry as ReturnType<typeof vi.fn>).mockResolvedValueOnce('translation');
-
     await invoke({
       type: 'translate',
       text: 'hello',
@@ -1280,6 +1311,28 @@ describe('background-firefox translate: additional coverage', () => {
 
       expect(response.success).toBe(true);
       // This should use the pivot route fi-en, en-de
+    });
+
+    it('loads OPUS-MT with canonical wasm/q8 runtime options', async () => {
+      const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+      const pipelineCache = await import('../offscreen/pipeline-cache');
+      const fakePipe = vi.fn().mockResolvedValue([{ translation_text: 'Hei' }]);
+      (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fakePipe);
+      (pipelineCache.getCachedPipeline as ReturnType<typeof vi.fn>).mockReturnValue(null);
+
+      const response = await invoke({
+        type: 'preloadModel',
+        sourceLang: 'en',
+        targetLang: 'fi',
+        provider: 'opus-mt',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      expect(mockPipeline).toHaveBeenCalledWith(
+        'translation',
+        'Helsinki-NLP/opus-mt-en-fi',
+        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
+      );
     });
 
     it('throws for unsupported language pair', async () => {
@@ -1649,7 +1702,7 @@ describe('background-firefox translate: additional coverage', () => {
       expect(response).toMatchObject({ success: true });
       
       // Wait for potential async operations
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await waitForAsyncFirefoxWork(50);
       
       // The translation itself exercises the cache storage paths
     });
@@ -1798,7 +1851,7 @@ describe('background-firefox translate: additional coverage', () => {
       expect(response).toMatchObject({ success: true });
       
       // Wait for async save attempt
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await waitForAsyncFirefoxWork(100);
     });
   });
 
@@ -2159,14 +2212,15 @@ describe('background-firefox translate: additional coverage', () => {
 
       expect(response.throttle).toEqual(expect.any(Object));
       expect(response.cache).toEqual(expect.any(Object));
-      expect(response.providers).toEqual(expect.any(Object));
+      expect(response.providers).toEqual({});
 
       const throttle = (response.throttle as Record<string, unknown>);
       expect(throttle.requests).toEqual(expect.any(Number));
       expect(throttle.tokens).toEqual(expect.any(Number));
       expect(throttle.requestLimit).toEqual(expect.any(Number));
       expect(throttle.tokenLimit).toEqual(expect.any(Number));
-      expect(throttle.queue).toEqual(expect.any(Number));
+      expect(throttle).not.toHaveProperty('queue');
+      expect(throttle).not.toHaveProperty('totalRequests');
     });
   });
 
@@ -2198,6 +2252,34 @@ describe('background-firefox translate: additional coverage', () => {
       expect(response.success).toBe(true);
       // Should return original text unchanged when auto-detected equals target
       expect(response.result).toBe('hello world');
+    });
+
+    it('skips translation when explicit source already equals target', async () => {
+      const errorModule = await import('../core/errors');
+
+      (errorModule.validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+        valid: true,
+        sanitizedText: [
+          'Mock translation harness used for automated browser tests on an English page.',
+        ],
+      });
+      (errorModule.withRetry as ReturnType<typeof vi.fn>).mockImplementation(
+        async (fn: () => Promise<unknown>) => fn()
+      );
+
+      const response = await invoke({
+        type: 'translate',
+        text: [
+          'Mock translation harness used for automated browser tests on an English page.',
+        ],
+        sourceLang: 'en',
+        targetLang: 'en',
+      }) as Record<string, unknown>;
+
+      expect(response.success).toBe(true);
+      expect(response.result).toEqual([
+        'Mock translation harness used for automated browser tests on an English page.',
+      ]);
     });
   });
 
@@ -2246,6 +2328,8 @@ describe('background-firefox translate: additional coverage', () => {
 
   describe('translate result caching behavior', () => {
     it('caches translations and reuses them', async () => {
+      await invoke({ type: 'clearCache' });
+
       // First translation
       const response1 = await invoke({
         type: 'translate',
@@ -2266,8 +2350,13 @@ describe('background-firefox translate: additional coverage', () => {
       }) as Record<string, unknown>;
 
       expect(response2.success).toBe(true);
-      expect(response2.cached).toBe(true);
       expect(response2.result).toBe(response1.result);
+      expect(response2.cached).toBe(true);
+
+      const cacheStats = await invoke({ type: 'getCacheStats' }) as Record<string, unknown>;
+      const cache = cacheStats.cache as Record<string, unknown>;
+      expect(cache.size).toBeGreaterThan(0);
+      expect(cache.totalHits).toBeGreaterThan(0);
     });
 
     it('does not cache when sourceLang is auto', async () => {
@@ -2388,17 +2477,13 @@ describe('background-firefox translate: additional coverage', () => {
   });
 
   // ============================================================================
-  // Coverage: detectWebGPU with navigator.gpu defined (lines 272-277)
+  // Coverage: detectWebGPU with navigator.gpu helper-installed (lines 272-277)
   // ============================================================================
 
   describe('detectWebGPU with navigator.gpu present', () => {
     it('uses WebGPU when navigator.gpu.requestAdapter resolves to non-null', async () => {
       // Define navigator.gpu on the jsdom window
-      Object.defineProperty(navigator, 'gpu', {
-        value: { requestAdapter: vi.fn().mockResolvedValue({ isFallbackAdapter: false }) },
-        configurable: true,
-        writable: true,
-      });
+      setupNavigatorGpuMock({ requestAdapter: vi.fn().mockResolvedValue({ isFallbackAdapter: false }) });
 
       // Ensure fresh model load (not from cache) so getPipeline → detectWebGPU runs
       const pipelineCache = await import('../offscreen/pipeline-cache');
@@ -2412,16 +2497,10 @@ describe('background-firefox translate: additional coverage', () => {
       }) as Record<string, unknown>;
 
       expect(response).toMatchObject({ success: expect.any(Boolean) });
-      // Clean up
-      Object.defineProperty(navigator, 'gpu', { value: undefined, configurable: true });
     });
 
     it('falls back when navigator.gpu.requestAdapter throws (line 276)', async () => {
-      Object.defineProperty(navigator, 'gpu', {
-        value: { requestAdapter: vi.fn().mockRejectedValue(new Error('WebGPU unavailable')) },
-        configurable: true,
-        writable: true,
-      });
+      setupNavigatorGpuMock({ requestAdapter: vi.fn().mockRejectedValue(new Error('WebGPU unavailable')) });
 
       const pipelineCache = await import('../offscreen/pipeline-cache');
       (pipelineCache.getCachedPipeline as ReturnType<typeof vi.fn>).mockReturnValue(null);
@@ -2434,7 +2513,6 @@ describe('background-firefox translate: additional coverage', () => {
       }) as Record<string, unknown>;
 
       expect(response).toMatchObject({ success: expect.any(Boolean) });
-      Object.defineProperty(navigator, 'gpu', { value: undefined, configurable: true });
     });
   });
 
@@ -2464,6 +2542,43 @@ describe('background-firefox translate: additional coverage', () => {
       expect(response).toMatchObject({ success: expect.any(Boolean) });
       expect('success' in response).toBe(true);
     });
+
+    it('keeps the original item when one array translation fails', async () => {
+      const errors = await import('../core/errors');
+      (errors.validateInput as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+        valid: true,
+        sanitizedText: ['hello', 'boom'],
+      });
+
+      const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+      const fakePipe = vi.fn(async (value: string) => {
+        if (value === 'boom') {
+          throw new Error('inference failed');
+        }
+        return [{ translation_text: 'hei' }];
+      });
+      (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValue(fakePipe);
+
+      const pipelineCache = await import('../offscreen/pipeline-cache');
+      (pipelineCache.getCachedPipeline as ReturnType<typeof vi.fn>).mockReturnValue(null);
+
+      try {
+        await invoke({ type: 'clearCache' });
+
+        const response = await invoke({
+          type: 'translate',
+          text: ['hello', 'boom'],
+          sourceLang: 'auto',
+          targetLang: 'fi',
+          provider: 'opus-mt',
+        }) as Record<string, unknown>;
+
+        expect(response.success).toBe(true);
+        expect(response.result).toEqual(['hei', 'boom']);
+      } finally {
+        await invoke({ type: 'clearCache' });
+      }
+    });
   });
 
   // ============================================================================
@@ -2490,6 +2605,66 @@ describe('background-firefox translate: additional coverage', () => {
 
       expect(response).toMatchObject({ success: expect.any(Boolean) });
       expect('success' in response).toBe(true);
+    });
+
+    it('reuses cached batch items after auto-detecting the source language', async () => {
+      const errors = await import('../core/errors');
+      (errors.validateInput as ReturnType<typeof vi.fn>)
+        .mockReturnValueOnce({
+          valid: true,
+          sanitizedText: ['hello'],
+        })
+        .mockReturnValueOnce({
+          valid: true,
+          sanitizedText: ['hello', 'world'],
+        });
+
+      const hashMod = await import('../core/hash');
+      (hashMod.generateCacheKey as ReturnType<typeof vi.fn>).mockImplementation(
+        (text: string | string[], sourceLang: string, targetLang: string, provider?: string) => (
+          `${provider ?? 'default'}:${sourceLang}:${targetLang}:${Array.isArray(text) ? text.join('|') : text}`
+        )
+      );
+
+      const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+      const fakePipe = vi.fn(async (value: string) => [
+        { translation_text: value === 'hello' ? 'hei' : 'maailma' },
+      ]);
+      (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValue(fakePipe);
+
+      try {
+        await invoke({ type: 'clearCache' });
+
+        const firstResponse = await invoke({
+          type: 'translate',
+          text: ['hello'],
+          sourceLang: 'auto',
+          targetLang: 'fi',
+          provider: 'opus-mt',
+        }) as Record<string, unknown>;
+
+        expect(firstResponse.success).toBe(true);
+        expect(firstResponse.result).toEqual(['hei']);
+
+        const secondResponse = await invoke({
+          type: 'translate',
+          text: ['hello', 'world'],
+          sourceLang: 'auto',
+          targetLang: 'fi',
+          provider: 'opus-mt',
+        }) as Record<string, unknown>;
+
+        expect(secondResponse.success).toBe(true);
+        expect(secondResponse.result).toEqual(['hei', 'maailma']);
+
+        const statsResponse = await invoke({ type: 'getCacheStats' }) as Record<string, unknown>;
+        const cache = statsResponse.cache as Record<string, unknown>;
+        expect(cache.size).toBe(2);
+        expect(cache.totalHits).toBeGreaterThanOrEqual(1);
+      } finally {
+        (hashMod.generateCacheKey as ReturnType<typeof vi.fn>).mockReturnValue('mock-cache-key');
+        await invoke({ type: 'clearCache' });
+      }
     });
 
     it('handles array with mixed empty and non-empty items (lines 398-399)', async () => {
@@ -2695,14 +2870,7 @@ describe('background-firefox translate: additional coverage', () => {
   // ============================================================================
 
   describe('loadPersistentCache with stored cache data (fresh module)', () => {
-    let freshMessageHandler: (
-      msg: Record<string, unknown>,
-      sender: unknown,
-      sendResponse: (r: unknown) => void
-    ) => boolean;
-
-    const freshInvoke = (message: Record<string, unknown>): Promise<unknown> =>
-      new Promise((resolve) => freshMessageHandler(message, {}, (r) => resolve(r)));
+    let freshMessageHandler: FirefoxMessageHandler;
 
     beforeAll(async () => {
       // Reset module registry so the next import re-runs module-level code
@@ -2736,19 +2904,13 @@ describe('background-firefox translate: additional coverage', () => {
       });
 
       // Re-import the module — this re-runs loadPersistentCache() with stored data
-      await import('./background-firefox');
-
-      // Allow the async loadPersistentCache() promise to settle
-      await new Promise((resolve) => setTimeout(resolve, 20));
-
-      // Capture the handler registered by the fresh module instance
-      const calls = mockAddMessageListener.mock.calls;
-      const lastCall = calls[calls.length - 1];
-      freshMessageHandler = lastCall[0];
+      freshMessageHandler = await importFreshMessageHandler();
     });
 
     it('loads cache entries from storage into translationCache (lines 84-88)', async () => {
-      const response = await freshInvoke({ type: 'getCacheStats' }) as Record<string, unknown>;
+      const response = await invokeWithHandler(freshMessageHandler, {
+        type: 'getCacheStats',
+      }) as Record<string, unknown>;
       expect(response.success).toBe(true);
       const cache = response.cache as Record<string, unknown>;
       // The two entries we seeded should be loaded
@@ -2756,7 +2918,9 @@ describe('background-firefox translate: additional coverage', () => {
     });
 
     it('restores cacheHits and cacheMisses from stored stats (lines 92-94)', async () => {
-      const response = await freshInvoke({ type: 'getCacheStats' }) as Record<string, unknown>;
+      const response = await invokeWithHandler(freshMessageHandler, {
+        type: 'getCacheStats',
+      }) as Record<string, unknown>;
       expect(response.success).toBe(true);
       const cache = response.cache as Record<string, unknown>;
       // hits=7 misses=4 were stored; verify they influenced the hit-rate string
@@ -2765,14 +2929,7 @@ describe('background-firefox translate: additional coverage', () => {
   });
 
   describe('loadPersistentCache error path (lines 99-100)', () => {
-    let freshMessageHandler2: (
-      msg: Record<string, unknown>,
-      sender: unknown,
-      sendResponse: (r: unknown) => void
-    ) => boolean;
-
-    const freshInvoke2 = (message: Record<string, unknown>): Promise<unknown> =>
-      new Promise((resolve) => freshMessageHandler2(message, {}, (r) => resolve(r)));
+    let freshMessageHandler2: FirefoxMessageHandler;
 
     beforeAll(async () => {
       vi.resetModules();
@@ -2781,29 +2938,20 @@ describe('background-firefox translate: additional coverage', () => {
       mockStorageGet.mockRejectedValueOnce(new Error('Storage failure during init'));
 
       // Import — loadPersistentCache will catch the error (lines 99-100)
-      await import('./background-firefox');
-      await new Promise((resolve) => setTimeout(resolve, 20));
-
-      const calls = mockAddMessageListener.mock.calls;
-      freshMessageHandler2 = calls[calls.length - 1][0];
+      freshMessageHandler2 = await importFreshMessageHandler();
     });
 
     it('sets cacheInitialized=true even after storage error (lines 99-100)', async () => {
       // Module should still be functional despite the init error
-      const response = await freshInvoke2({ type: 'ping' }) as Record<string, unknown>;
+      const response = await invokeWithHandler(freshMessageHandler2, {
+        type: 'ping',
+      }) as Record<string, unknown>;
       expect(response.success).toBe(true);
     });
   });
 
   describe('scheduleCacheSave timer callback (lines 111-121)', () => {
-    let freshMessageHandler3: (
-      msg: Record<string, unknown>,
-      sender: unknown,
-      sendResponse: (r: unknown) => void
-    ) => boolean;
-
-    const freshInvoke3 = (message: Record<string, unknown>): Promise<unknown> =>
-      new Promise((resolve) => freshMessageHandler3(message, {}, (r) => resolve(r)));
+    let freshMessageHandler3: FirefoxMessageHandler;
 
     beforeAll(async () => {
       vi.useFakeTimers();
@@ -2812,11 +2960,7 @@ describe('background-firefox translate: additional coverage', () => {
       // Empty storage so loadPersistentCache succeeds quickly
       mockStorageGet.mockResolvedValue({});
 
-      await import('./background-firefox');
-      await vi.runAllTimersAsync(); // settle the async init
-
-      const calls = mockAddMessageListener.mock.calls;
-      freshMessageHandler3 = calls[calls.length - 1][0];
+      freshMessageHandler3 = await importFreshMessageHandler({ runAllTimers: true });
     });
 
     afterAll(() => {
@@ -2828,7 +2972,7 @@ describe('background-firefox translate: additional coverage', () => {
       mockStorageSet.mockResolvedValue(undefined);
 
       // Translation → setCachedTranslation → scheduleCacheSave (timer = null in fresh module)
-      await freshInvoke3({
+      await invokeWithHandler(freshMessageHandler3, {
         type: 'translate',
         text: 'hello',
         sourceLang: 'en',
@@ -2848,11 +2992,11 @@ describe('background-firefox translate: additional coverage', () => {
       // Make storage.set reject to exercise the catch branch
       mockStorageSet.mockRejectedValueOnce(new Error('Disk full'));
 
-      await freshInvoke3({
+      await invokeWithHandler(freshMessageHandler3, {
         type: 'clearCache', // clears timer so scheduleCacheSave runs on next translate
       });
 
-      await freshInvoke3({
+      await invokeWithHandler(freshMessageHandler3, {
         type: 'translate',
         text: 'world',
         sourceLang: 'fi',
@@ -2865,14 +3009,7 @@ describe('background-firefox translate: additional coverage', () => {
   });
 
   describe('cache readiness gating', () => {
-    let freshMessageHandler4: (
-      msg: Record<string, unknown>,
-      sender: unknown,
-      sendResponse: (r: unknown) => void
-    ) => boolean;
-
-    const freshInvoke4 = (message: Record<string, unknown>): Promise<unknown> =>
-      new Promise((resolve) => freshMessageHandler4(message, {}, (r) => resolve(r)));
+    let freshMessageHandler4: FirefoxMessageHandler;
 
     it('waits for startup cache load before handling the first translation', async () => {
       vi.resetModules();
@@ -2884,14 +3021,12 @@ describe('background-firefox translate: additional coverage', () => {
 
       mockStorageGet.mockImplementation(() => pendingLoad);
 
-      await import('./background-firefox');
-      const calls = mockAddMessageListener.mock.calls;
-      freshMessageHandler4 = calls[calls.length - 1][0];
+      freshMessageHandler4 = await importFreshMessageHandler({ settleMs: 0 });
 
       const errors = await import('../core/errors');
       (errors.withRetry as ReturnType<typeof vi.fn>).mockClear();
 
-      const responsePromise = freshInvoke4({
+      const responsePromise = invokeWithHandler(freshMessageHandler4, {
         type: 'translate',
         text: 'cache readiness',
         sourceLang: 'en',
@@ -2940,16 +3075,6 @@ describe('background-firefox translate: additional coverage', () => {
       const configMod = await import('../config');
       (configMod.CONFIG.rateLimits as any).requestsPerMinute = savedReqLimit;
       (configMod.CONFIG.rateLimits as any).tokensPerMinute = savedTokenLimit;
-      // Restore navigator.gpu to undefined so WebGPU tests don't bleed into others
-      try {
-        Object.defineProperty(navigator, 'gpu', {
-          value: undefined,
-          configurable: true,
-          writable: true,
-        });
-      } catch {
-        // ignore if the property descriptor can't be changed
-      }
     });
 
     // -------------------------------------------------------------------------
@@ -3102,16 +3227,12 @@ describe('background-firefox translate: additional coverage', () => {
         await invoke({ type: 'clearCache' });
       }
     });
-    // These are only reachable when navigator.gpu is defined, which requires
-    // Object.defineProperty since jsdom does not expose navigator.gpu.
+    // These are only reachable when navigator.gpu is defined, which jsdom does
+    // not expose by default, so the shared DOM property helper installs it.
     // -------------------------------------------------------------------------
     describe('detectWebGPU with navigator.gpu defined (lines 272-277)', () => {
       it('returns true when requestAdapter resolves to a non-null adapter (line 274)', async () => {
-        Object.defineProperty(navigator, 'gpu', {
-          value: { requestAdapter: vi.fn().mockResolvedValue({}) },
-          configurable: true,
-          writable: true,
-        });
+        setupNavigatorGpuMock({ requestAdapter: vi.fn().mockResolvedValue({}) });
 
         const langDetect = await import('../offscreen/language-detection');
         (langDetect.detectLanguage as ReturnType<typeof vi.fn>).mockReturnValueOnce('en');
@@ -3134,11 +3255,7 @@ describe('background-firefox translate: additional coverage', () => {
       });
 
       it('returns false when requestAdapter resolves to null (line 274 null branch)', async () => {
-        Object.defineProperty(navigator, 'gpu', {
-          value: { requestAdapter: vi.fn().mockResolvedValue(null) },
-          configurable: true,
-          writable: true,
-        });
+        setupNavigatorGpuMock({ requestAdapter: vi.fn().mockResolvedValue(null) });
 
         const langDetect = await import('../offscreen/language-detection');
         (langDetect.detectLanguage as ReturnType<typeof vi.fn>).mockReturnValueOnce('en');
@@ -3161,11 +3278,7 @@ describe('background-firefox translate: additional coverage', () => {
       });
 
       it('returns false when requestAdapter throws (lines 275-276 catch branch)', async () => {
-        Object.defineProperty(navigator, 'gpu', {
-          value: { requestAdapter: vi.fn().mockRejectedValue(new Error('WebGPU unavailable')) },
-          configurable: true,
-          writable: true,
-        });
+        setupNavigatorGpuMock({ requestAdapter: vi.fn().mockRejectedValue(new Error('WebGPU unavailable')) });
 
         const langDetect = await import('../offscreen/language-detection');
         (langDetect.detectLanguage as ReturnType<typeof vi.fn>).mockReturnValueOnce('en');
@@ -3237,13 +3350,13 @@ describe('background-firefox translate: additional coverage', () => {
 
       // Re-mock browser-api WITHOUT browserAction or commands so both optional-
       // chain guards evaluate to false when the module is re-imported.
-      vi.doMock('../core/browser-api', () => ({
-        getURL: vi.fn().mockReturnValue('mocked://assets/'),
-        browserAPI: {
+      vi.doMock('../core/browser-api', () =>
+        createFirefoxBrowserApiModuleMock({
+          omit: ['browserAction', 'commands'],
+          getURL: vi.fn().mockReturnValue('mocked://assets/'),
           runtime: {
             onInstalled: { addListener: vi.fn() },
             onMessage: { addListener: vi.fn() },
-            // no browserAction, no commands
           },
           storage: {
             local: {
@@ -3252,13 +3365,17 @@ describe('background-firefox translate: additional coverage', () => {
               remove: vi.fn().mockResolvedValue(undefined),
             },
           },
-          tabs: { query: vi.fn().mockResolvedValue([]) },
-          i18n: { getUILanguage: vi.fn().mockReturnValue('en') },
-        },
-      }));
+          tabs: {
+            query: vi.fn().mockResolvedValue([]),
+          },
+          i18n: {
+            getUILanguage: vi.fn().mockReturnValue('en'),
+          },
+        })
+      );
 
       await import('./background-firefox');
-      await new Promise((r) => setTimeout(r, 20));
+      await waitForAsyncFirefoxWork(20);
     });
 
     afterAll(() => {

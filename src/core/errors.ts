@@ -287,7 +287,7 @@ export function calculateRetryDelay(
 export async function withRetry<T>(
   fn: () => Promise<T>,
   config: Partial<RetryConfig> = {},
-  shouldRetry?: (error: TranslationError) => boolean
+  shouldRetry?: (error: TranslationError) => boolean | Promise<boolean>
 ): Promise<T> {
   const fullConfig = { ...DEFAULT_RETRY_CONFIG, ...config };
   let lastError: TranslationError | null = null;
@@ -300,7 +300,7 @@ export async function withRetry<T>(
 
       // Check if we should retry
       const canRetry = shouldRetry
-        ? shouldRetry(lastError)
+        ? await shouldRetry(lastError)
         : lastError.retryable;
 
       if (!canRetry || attempt === fullConfig.maxRetries) {

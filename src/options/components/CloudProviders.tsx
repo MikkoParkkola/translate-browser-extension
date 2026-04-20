@@ -3,254 +3,40 @@
  * API key management for DeepL, OpenAI, Google Cloud, Anthropic
  */
 
-import { Component, createSignal, onMount, For, Show } from 'solid-js';
+import { Component, For, Show } from 'solid-js';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
-import { getCloudProviderConfig } from '../../shared/cloud-provider-configs';
+import { createCloudProviderUiController } from '../../shared/cloud-provider-ui-controller';
 import {
   OPTIONS_CLOUD_PROVIDERS as CLOUD_PROVIDERS,
 } from '../../shared/provider-options';
-import { reportUiError } from '../../shared/ui-feedback';
-import {
-  sendBackgroundMessage,
-  sendBackgroundMessageWithUiError,
-} from '../../shared/background-message';
-import {
-  applySavedCloudProviderStatus,
-  createRemovedCloudProviderStatus,
-  getCloudProviderEditDefaults,
-  loadCloudProviderUiStatus,
-  type CloudProviderUiStatus,
-} from '../../shared/cloud-provider-ui-state';
-import { createLogger } from '../../core/logger';
-import { extractErrorMessage } from '../../core/errors';
-import type { CloudProviderId } from '../../types';
-
-const log = createLogger('CloudProviders');
+import type { CloudProviderUiStatus } from '../../shared/cloud-provider-ui-state';
 
 export const CloudProviders: Component = () => {
-  const [providerStatus, setProviderStatus] = createSignal<Partial<Record<CloudProviderId, CloudProviderUiStatus>>>({});
-  const [editingProvider, setEditingProvider] = createSignal<CloudProviderId | null>(null);
-  const [apiKeyInput, setApiKeyInput] = createSignal('');
-  const [isProTier, setIsProTier] = createSignal(false);
-  const [selectedModel, setSelectedModel] = createSignal('');
-  const [saving, setSaving] = createSignal(false);
-  const [error, setError] = createSignal<string | null>(null);
-  const [confirmRemove, setConfirmRemove] = createSignal<CloudProviderId | null>(null);
-
-  onMount(async () => {
-    await loadProviderStatus();
+  const {
+    providerStatus,
+    editingProvider,
+    apiKeyInput,
+    isProTier,
+    selectedModel,
+    saving,
+    error,
+    confirmRemove,
+    setApiKeyInput,
+    setIsProTier,
+    setSelectedModel,
+    setConfirmRemove,
+    startEditing,
+    cancelEditing,
+    saveApiKey,
+    removeApiKey,
+    toggleProvider,
+    testProvider,
+  } = createCloudProviderUiController({
+    providers: CLOUD_PROVIDERS,
+    logName: 'CloudProviders',
+    enableOnSave: true,
+    includeModelOption: true,
   });
-
-  const loadProviderStatus = async () => {
-    try {
-      setProviderStatus(await loadCloudProviderUiStatus(CLOUD_PROVIDERS));
-    } catch (error) {
-      log.error('Failed to load status:', error);
-      setProviderStatus({});
-    }
-  };
-
-  const startEditing = (providerId: CloudProviderId) => {
-    const provider = CLOUD_PROVIDERS.find((p) => p.id === providerId);
-    const defaults = getCloudProviderEditDefaults(provider, providerStatus()[providerId]);
-
-    setEditingProvider(providerId);
-    setApiKeyInput('');
-    setIsProTier(defaults.isProTier);
-    setSelectedModel(defaults.selectedModel);
-    setError(null);
-  };
-
-  const cancelEditing = () => {
-    setEditingProvider(null);
-    setApiKeyInput('');
-    setError(null);
-  };
-
-  const saveApiKey = async (providerId: CloudProviderId) => {
-    const provider = getCloudProviderConfig(providerId);
-    /* v8 ignore start -- guard: provider always found from own button handlers */
-    if (!provider) return;
-    /* v8 ignore stop */
-
-    const key = apiKeyInput().trim();
-    if (!key) {
-      setError('Please enter an API key');
-      return;
-    }
-
-    setSaving(true);
-    setError(null);
-
-    try {
-      const response = await sendBackgroundMessageWithUiError({
-        type: 'setCloudApiKey',
-        provider: providerId,
-        apiKey: key,
-        options: {
-          enabled: true,
-          isPro: isProTier(),
-          model: selectedModel(),
-        },
-      }, {
-        setError,
-        logger: log,
-        userMessage: 'Failed to save API key',
-        logMessage: 'Failed to save key:',
-      });
-
-      if (!response) {
-        return;
-      }
-
-      if (!response.success) {
-        setError(response.error ?? 'Failed to save API key');
-        return;
-      }
-
-      setProviderStatus((prev) => ({
-        ...prev,
-        [providerId]: applySavedCloudProviderStatus(prev[providerId], provider, {
-          enabled: true,
-          isPro: isProTier(),
-          model: selectedModel(),
-        }),
-      }));
-
-      setEditingProvider(null);
-    } catch (error) {
-      reportUiError(setError, log, 'Failed to save API key', 'Failed to save key:', error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const removeApiKey = async (providerId: CloudProviderId) => {
-    const provider = getCloudProviderConfig(providerId);
-    /* v8 ignore start -- guard: provider always found from own button handlers */
-    if (!provider) return;
-    /* v8 ignore stop */
-
-    setConfirmRemove(null);
-    try {
-      const response = await sendBackgroundMessageWithUiError({
-        type: 'clearCloudApiKey',
-        provider: providerId,
-      }, {
-        setError,
-        logger: log,
-        userMessage: 'Failed to remove API key',
-        logMessage: 'Failed to remove key:',
-      });
-
-      if (!response) {
-        return;
-      }
-
-      if (!response.success) {
-        setError(response.error ?? 'Failed to remove API key');
-        return;
-      }
-
-      setProviderStatus((prev) => ({
-        ...prev,
-        [providerId]: createRemovedCloudProviderStatus(prev[providerId]),
-      }));
-    } catch (error) {
-      log.error('Failed to remove key:', error);
-    }
-  };
-
-  const toggleProvider = async (providerId: CloudProviderId) => {
-    const provider = getCloudProviderConfig(providerId);
-    const status = providerStatus()[providerId];
-    /* v8 ignore start -- guard: toggle only rendered when hasKey is true */
-    if (!provider || !status?.hasKey) return;
-    /* v8 ignore stop */
-
-    const newEnabled = !status.enabled;
-
-    try {
-      const response = await sendBackgroundMessageWithUiError({
-        type: 'setCloudProviderEnabled',
-        provider: providerId,
-        enabled: newEnabled,
-      }, {
-        setError,
-        logger: log,
-        userMessage: 'Failed to update provider state',
-        logMessage: 'Failed to toggle provider:',
-      });
-
-      if (!response) {
-        return;
-      }
-
-      if (!response.success) {
-        setError(response.error ?? 'Failed to update provider state');
-        return;
-      }
-
-      setProviderStatus((prev) => ({
-        ...prev,
-        [providerId]: { ...prev[providerId], enabled: newEnabled },
-      }));
-    } catch (error) {
-      log.error('Failed to toggle provider:', error);
-    }
-  };
-
-  const testProvider = async (providerId: CloudProviderId) => {
-    const provider = CLOUD_PROVIDERS.find((p) => p.id === providerId);
-    /* v8 ignore start -- guard: provider always found from own button handlers */
-    if (!provider) return;
-    /* v8 ignore stop */
-
-    setProviderStatus((prev) => ({
-      ...prev,
-      [providerId]: { ...prev[providerId], testing: true, testResult: null },
-    }));
-
-    try {
-      const response = await sendBackgroundMessage<{ success?: boolean; message?: string }>({
-        type: 'testProvider',
-        provider: providerId,
-      });
-
-      setProviderStatus((prev) => ({
-        ...prev,
-        [providerId]: {
-          ...prev[providerId],
-          testing: false,
-          testResult: response?.success ? 'success' : 'error',
-          /* v8 ignore start -- fallback message when response lacks .message */
-          testMessage: response?.message || (response?.success ? 'Connection successful' : 'Test failed'),
-          /* v8 ignore stop */
-        },
-      }));
-
-      // Clear result after 3 seconds
-      setTimeout(() => {
-        setProviderStatus((prev) => ({
-          ...prev,
-          [providerId]: { ...prev[providerId], testResult: null, testMessage: undefined },
-        }));
-      }, 3000);
-    } catch (error) {
-      log.error('Test failed:', error);
-      setProviderStatus((prev) => ({
-        ...prev,
-        [providerId]: {
-          ...prev[providerId],
-          testing: false,
-          testResult: 'error',
-          /* v8 ignore start */
-          testMessage: 'Test failed: ' + extractErrorMessage(error, 'Unknown error'),
-          /* v8 ignore stop */
-        },
-      }));
-    }
-  };
 
   return (
     <div>

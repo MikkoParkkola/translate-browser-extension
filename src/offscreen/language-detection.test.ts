@@ -6,25 +6,22 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import {
+  createBrowserApiModuleMock,
+  createLoggerModuleMock,
+} from '../test-helpers/module-mocks';
 import { buildLanguageDetectionSample, FRANC_TO_ISO, detectLanguage } from './language-detection';
 
 // Mock the logger to avoid console output in tests
-vi.mock('../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock('../core/logger', () => createLoggerModuleMock());
 
 // Mock browserAPI — language-detection uses it for Firefox i18n.detectLanguage
 // which is never available in test environments
-vi.mock('../core/browser-api', () => ({
-  browserAPI: {
-    i18n: { getUILanguage: () => 'en' },
-  },
-}));
+vi.mock('../core/browser-api', () =>
+  createBrowserApiModuleMock({
+    i18nGetUILanguage: () => 'en',
+  })
+);
 
 describe('FRANC_TO_ISO', () => {
   describe('structure', () => {
@@ -223,6 +220,13 @@ describe('detectLanguage', () => {
   // exercising the FRANC_TO_ISO lookup + fallback.
   // ------------------------------------------------------------------
   describe('franc successful detection path', () => {
+    it('maps the smoke harness copy to English', async () => {
+      const result = await detectLanguage(
+        'Mock translation harness used for automated browser tests on an English page.'
+      );
+      expect(result).toBe('en');
+    });
+
     it('maps franc detection to ISO 639-1 for long English text', async () => {
       // 60+ chars → franc detects 'eng' → FRANC_TO_ISO['eng'] = 'en'
       const result = await detectLanguage(

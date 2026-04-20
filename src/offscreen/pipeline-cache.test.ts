@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { createLoggerModuleMock } from '../test-helpers/module-mocks';
 import {
   MAX_CACHED_PIPELINES,
   evictLRUPipelines,
@@ -16,14 +17,19 @@ import {
 import type { TranslationPipeline } from '../types';
 
 // Mock the logger to avoid console output in tests
-vi.mock('../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+vi.mock('../core/logger', () => createLoggerModuleMock());
+
+const waitForPipelineCacheAsyncWork = (ms = 10): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+const cachePipelineWithDelay = async (
+  modelId: string,
+  pipeline: TranslationPipeline,
+  delayMs = 10
+): Promise<void> => {
+  cachePipeline(modelId, pipeline);
+  await waitForPipelineCacheAsyncWork(delayMs);
+};
 
 describe('Pipeline Cache', () => {
   beforeEach(async () => {
@@ -95,7 +101,7 @@ describe('Pipeline Cache', () => {
       cachePipeline('model-1', { id: 1 } as unknown as TranslationPipeline);
 
       // Wait a bit to ensure timestamp changes
-      await new Promise((r) => setTimeout(r, 10));
+      await waitForPipelineCacheAsyncWork(10);
 
       // Access should update timestamp (used for LRU)
       getCachedPipeline('model-1');
@@ -119,12 +125,10 @@ describe('Pipeline Cache', () => {
 
     it('evicts oldest pipeline when at limit', async () => {
       // Cache first pipeline
-      cachePipeline('oldest', { id: 'oldest' } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
+      await cachePipelineWithDelay('oldest', { id: 'oldest' } as unknown as TranslationPipeline);
 
       // Cache second pipeline
-      cachePipeline('middle', { id: 'middle' } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
+      await cachePipelineWithDelay('middle', { id: 'middle' } as unknown as TranslationPipeline);
 
       // Cache third pipeline
       cachePipeline('newest', { id: 'newest' } as unknown as TranslationPipeline);
@@ -141,18 +145,15 @@ describe('Pipeline Cache', () => {
 
     it('evicts least recently used, not oldest cached', async () => {
       // Cache three pipelines
-      cachePipeline('first', { id: 1 } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
+      await cachePipelineWithDelay('first', { id: 1 } as unknown as TranslationPipeline);
 
-      cachePipeline('second', { id: 2 } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
+      await cachePipelineWithDelay('second', { id: 2 } as unknown as TranslationPipeline);
 
-      cachePipeline('third', { id: 3 } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
+      await cachePipelineWithDelay('third', { id: 3 } as unknown as TranslationPipeline);
 
       // Access the first one to make it recently used
       getCachedPipeline('first');
-      await new Promise((r) => setTimeout(r, 10));
+      await waitForPipelineCacheAsyncWork(10);
 
       // Add fourth - should evict 'second' (least recently used)
       cachePipeline('fourth', { id: 4 } as unknown as TranslationPipeline);
@@ -259,17 +260,14 @@ describe('Pipeline Cache', () => {
     it('calls dispose on evicted pipeline that has dispose()', async () => {
       const disposeFn = vi.fn().mockResolvedValue(undefined);
       // Fill cache: slot 1 with dispose method, slots 2-3 plain
-      cachePipeline('disp-1', { id: 1, dispose: disposeFn } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
-      cachePipeline('disp-2', { id: 2 } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
-      cachePipeline('disp-3', { id: 3 } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
+      await cachePipelineWithDelay('disp-1', { id: 1, dispose: disposeFn } as unknown as TranslationPipeline);
+      await cachePipelineWithDelay('disp-2', { id: 2 } as unknown as TranslationPipeline);
+      await cachePipelineWithDelay('disp-3', { id: 3 } as unknown as TranslationPipeline);
 
       // 4th entry evicts disp-1 (LRU) — its .dispose() should be called
       cachePipeline('disp-4', { id: 4 } as unknown as TranslationPipeline);
       // Wait for fire-and-forget disposePipeline to complete
-      await new Promise((r) => setTimeout(r, 50));
+      await waitForPipelineCacheAsyncWork(50);
 
       expect(disposeFn).toHaveBeenCalled();
       expect(getCacheSize()).toBe(3);
@@ -278,16 +276,12 @@ describe('Pipeline Cache', () => {
 
     it('handles evicted pipeline without dispose method', async () => {
       // Pipeline that has NO dispose() method at all
-      cachePipeline('no-dispose-1', { id: 1 } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
-      cachePipeline('no-dispose-2', { id: 2 } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
-      cachePipeline('no-dispose-3', { id: 3 } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
+      await cachePipelineWithDelay('no-dispose-1', { id: 1 } as unknown as TranslationPipeline);
+      await cachePipelineWithDelay('no-dispose-2', { id: 2 } as unknown as TranslationPipeline);
+      await cachePipelineWithDelay('no-dispose-3', { id: 3 } as unknown as TranslationPipeline);
 
       // 4th entry evicts no-dispose-1 — no dispose() to call, should not throw
-      cachePipeline('no-dispose-4', { id: 4 } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 50));
+      await cachePipelineWithDelay('no-dispose-4', { id: 4 } as unknown as TranslationPipeline, 50);
 
       expect(getCacheSize()).toBe(3);
       expect(getCachedPipeline('no-dispose-1')).toBeNull();
@@ -295,16 +289,12 @@ describe('Pipeline Cache', () => {
 
     it('gracefully handles dispose() that throws', async () => {
       const disposeFn = vi.fn().mockRejectedValue(new Error('Dispose failed'));
-      cachePipeline('throw-1', { id: 1, dispose: disposeFn } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
-      cachePipeline('throw-2', { id: 2 } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
-      cachePipeline('throw-3', { id: 3 } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
+      await cachePipelineWithDelay('throw-1', { id: 1, dispose: disposeFn } as unknown as TranslationPipeline);
+      await cachePipelineWithDelay('throw-2', { id: 2 } as unknown as TranslationPipeline);
+      await cachePipelineWithDelay('throw-3', { id: 3 } as unknown as TranslationPipeline);
 
       // Evicts throw-1 — dispose() rejects but error is caught
-      cachePipeline('throw-4', { id: 4 } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 50));
+      await cachePipelineWithDelay('throw-4', { id: 4 } as unknown as TranslationPipeline, 50);
 
       expect(disposeFn).toHaveBeenCalled();
       expect(getCacheSize()).toBe(3);
@@ -320,16 +310,12 @@ describe('Pipeline Cache', () => {
   describe('null pipeline defensive guards', () => {
     it('evicts entry whose pipeline is null without calling dispose', async () => {
       // Cache a null pipeline as the oldest entry
-      cachePipeline('null-pipe', null as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
-      cachePipeline('real-2', { id: 2 } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
-      cachePipeline('real-3', { id: 3 } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 10));
+      await cachePipelineWithDelay('null-pipe', null as unknown as TranslationPipeline);
+      await cachePipelineWithDelay('real-2', { id: 2 } as unknown as TranslationPipeline);
+      await cachePipelineWithDelay('real-3', { id: 3 } as unknown as TranslationPipeline);
 
       // 4th entry evicts null-pipe — evicted.pipeline is null → falsy branch
-      cachePipeline('real-4', { id: 4 } as unknown as TranslationPipeline);
-      await new Promise((r) => setTimeout(r, 50));
+      await cachePipelineWithDelay('real-4', { id: 4 } as unknown as TranslationPipeline, 50);
 
       expect(getCacheSize()).toBe(3);
       expect(getCachedPipeline('null-pipe')).toBeNull();

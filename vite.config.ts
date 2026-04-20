@@ -1,38 +1,8 @@
-import { defineConfig, type Plugin } from 'vite';
-import type { TransformPluginContext } from 'rollup';
+import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 import { resolve } from 'path';
 import { copyFileSync, mkdirSync, existsSync, cpSync, readdirSync } from 'fs';
 import { sharedManualChunks } from './vite.shared';
-
-// Transformers.js 4.0.1 poisons the browser-side init chain after a failed
-// ONNX session load, so later fallback attempts inherit the same rejection
-// instead of starting a fresh load. Patch the published web bundle at build
-// time until upstream ships a release with the fix.
-function patchTransformersWebInitChain(): Plugin {
-  const target = '/@huggingface/transformers/dist/transformers.web.js';
-  const search = 'webInitChain = webInitChain.then(load)';
-  const replacement = 'webInitChain = webInitChain.catch(() => void 0).then(load)';
-
-  return {
-    name: 'patch-transformers-web-init-chain',
-    enforce: 'pre' as const,
-    transform(this: TransformPluginContext, code: string, id: string) {
-      if (!id.includes(target)) {
-        return null;
-      }
-
-      if (!code.includes(search)) {
-        this.error('Expected Transformers.js web init chain not found for patching');
-      }
-
-      return {
-        code: code.replace(search, replacement),
-        map: null,
-      };
-    },
-  };
-}
 
 // Plugin to copy manifest.json and ONNX Runtime files to dist
 function copyExtensionFiles() {
@@ -119,7 +89,7 @@ function copyExtensionFiles() {
 }
 
 export default defineConfig({
-  plugins: [patchTransformersWebInitChain(), solidPlugin(), copyExtensionFiles()],
+  plugins: [solidPlugin(), copyExtensionFiles()],
   // Chrome extensions need relative paths, not root-absolute
   base: '',
   resolve: {
@@ -128,8 +98,6 @@ export default defineConfig({
       '@core': resolve(__dirname, 'src/core'),
       '@providers': resolve(__dirname, 'src/providers'),
       '@components': resolve(__dirname, 'src/popup/components'),
-      // Map the checked-in bundle to the npm package so updates flow automatically
-      './wllama.bundle.js': resolve(__dirname, 'node_modules/@wllama/wllama/esm/index.min.js'),
     },
   },
   build: {

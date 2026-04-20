@@ -3,13 +3,10 @@
  * Importing from the barrel exercises all re-export paths.
  */
 import { describe, it, expect, vi } from 'vitest';
+import { createLoggerModuleMock } from '../../test-helpers/module-mocks';
 
 // Mock all downstream dependencies before importing the barrel
-vi.mock('../../core/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(),
-  }),
-}));
+vi.mock('../../core/logger', () => createLoggerModuleMock());
 
 vi.mock('../../core/storage', () => ({
   safeStorageGet: vi.fn().mockResolvedValue({}),
@@ -58,6 +55,16 @@ describe('shared/index barrel export', () => {
     expect(barrel.createTranslationCache).toBeDefined();
   });
 
+  it('re-exports all expected symbols from common-background', async () => {
+    const barrel = await import('./index');
+    expect(barrel.COMMON_BACKGROUND_MESSAGE_TYPES).toBeDefined();
+    expect(barrel.createBackgroundMessageGuard).toBeDefined();
+    expect(barrel.createCommonBackgroundMessageDispatcher).toBeDefined();
+    expect(barrel.createPreloadModelHandler).toBeDefined();
+    expect(barrel.createSafeCapabilityHandler).toBeDefined();
+    expect(barrel.isCommonBackgroundMessage).toBeDefined();
+  });
+
   it('re-exports all expected symbols from provider-management', async () => {
     const barrel = await import('./index');
     expect(barrel.getStrategy).toBeDefined();
@@ -82,6 +89,26 @@ describe('shared/index barrel export', () => {
     expect(barrel.handleTranslateCore).toBeDefined();
   });
 
+  it('re-exports all expected symbols from translation-background-handler', async () => {
+    const barrel = await import('./index');
+    expect(barrel.createTranslationBackgroundHandler).toBeDefined();
+  });
+
+  it('re-exports all expected symbols from runtime-info-handlers', async () => {
+    const barrel = await import('./index');
+    expect(barrel.createRuntimeInfoHandlers).toBeDefined();
+  });
+
+  it('re-exports all expected symbols from diagnostics-handlers', async () => {
+    const barrel = await import('./index');
+    expect(barrel.createDiagnosticsHandlers).toBeDefined();
+  });
+
+  it('re-exports all expected symbols from media-handlers', async () => {
+    const barrel = await import('./index');
+    expect(barrel.createMediaHandlers).toBeDefined();
+  });
+
   it('re-exports all expected symbols from message-handlers', async () => {
     const barrel = await import('./index');
     expect(barrel.handleGetCacheStats).toBeDefined();
@@ -103,5 +130,30 @@ describe('shared/index barrel export', () => {
     expect(barrel.handleImportCorrections).toBeDefined();
     expect(barrel.handleGetSettings).toBeDefined();
     expect(barrel.getActionSettings).toBeDefined();
+  });
+
+  it('re-exports all expected symbols from ui-event-handlers', async () => {
+    const barrel = await import('./index');
+    expect(barrel.createContextMenuClickHandler).toBeDefined();
+    expect(barrel.createKeyboardShortcutHandler).toBeDefined();
+    expect(barrel.resolveContentCommand).toBeDefined();
+  });
+
+  it('re-exports all expected symbols from background-message-listener', async () => {
+    const barrel = await import('./index');
+    expect(barrel.createBackgroundMessageListener).toBeDefined();
+  });
+
+  it('re-exports all expected symbols from lifecycle-orchestration', async () => {
+    const barrel = await import('./index');
+    expect(barrel.clearMatchingCaches).toBeDefined();
+    expect(barrel.clearMatchingIndexedDbDatabases).toBeDefined();
+    expect(barrel.createInstallationHandler).toBeDefined();
+    expect(barrel.restorePersistedProvider).toBeDefined();
+  });
+
+  it('re-exports all expected symbols from keep-alive-controller', async () => {
+    const barrel = await import('./index');
+    expect(barrel.createKeepAliveController).toBeDefined();
   });
 });

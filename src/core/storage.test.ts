@@ -3,27 +3,34 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createBrowserApiModuleMock } from '../test-helpers/module-mocks';
 
-// Use vi.hoisted so mock objects are available in vi.mock factory
-const mockStorage = vi.hoisted(() => ({
-  local: {
-    get: vi.fn(),
-    set: vi.fn(),
+vi.mock('./browser-api', () =>
+  createBrowserApiModuleMock({
+    storageLocalGet: vi.fn(),
+    storageLocalSet: vi.fn(),
+    storageLocalRemove: vi.fn(),
+  })
+);
+
+import { browserAPI } from './browser-api';
+import {
+  safeStorageGet,
+  safeStorageSet,
+  safeStorageRemove,
+  strictStorageGet,
+  strictStorageSet,
+  strictStorageRemove,
+  lastStorageError,
+} from './storage';
+
+const mockStorage = {
+  local: browserAPI.storage.local as unknown as {
+    get: ReturnType<typeof vi.fn>;
+    set: ReturnType<typeof vi.fn>;
+    remove: ReturnType<typeof vi.fn>;
   },
-}));
-
-vi.mock('./browser-api', () => ({
-  browserAPI: {
-    runtime: {
-      getURL: vi.fn(),
-      sendMessage: vi.fn(),
-      onMessage: { addListener: vi.fn() },
-    },
-    storage: mockStorage,
-  },
-}));
-
-import { safeStorageGet, safeStorageSet, lastStorageError } from './storage';
+};
 
 describe('safeStorageGet', () => {
   beforeEach(() => {
@@ -228,5 +235,138 @@ describe('safeStorageSet - branch coverage', () => {
     const result = await safeStorageSet({ key: 'val' });
     expect(result).toBe(false);
     expect(lastStorageError).toContain('raw string error');
+  });
+});
+
+describe('strictStorageGet', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  it('returns data on success', async () => {
+    mockStorage.local.get.mockResolvedValue({ key: 'val' });
+    const result = await strictStorageGet('key');
+    expect(result).toEqual({ key: 'val' });
+    expect(lastStorageError).toBeNull();
+  });
+
+  it('rethrows the original error on failure', async () => {
+    const err = new Error('hard fail');
+    mockStorage.local.get.mockRejectedValue(err);
+    await expect(strictStorageGet('key')).rejects.toThrow('hard fail');
+  });
+
+  it('records lastStorageError before rethrowing', async () => {
+    mockStorage.local.get.mockRejectedValue(new Error('boom'));
+    await expect(strictStorageGet('key')).rejects.toThrow();
+    expect(lastStorageError).toContain('Failed to read settings');
+    expect(lastStorageError).toContain('boom');
+  });
+});
+
+describe('strictStorageSet', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  it('resolves without error on success', async () => {
+    mockStorage.local.set.mockResolvedValue(undefined);
+    await expect(strictStorageSet({ key: 'val' })).resolves.toBeUndefined();
+    expect(lastStorageError).toBeNull();
+  });
+
+  it('rethrows the original error on failure', async () => {
+    const err = new Error('write fail');
+    mockStorage.local.set.mockRejectedValue(err);
+    await expect(strictStorageSet({ key: 'val' })).rejects.toThrow('write fail');
+  });
+
+  it('records lastStorageError before rethrowing', async () => {
+    mockStorage.local.set.mockRejectedValue(new Error('quota'));
+    await expect(strictStorageSet({ theme: 'dark' })).rejects.toThrow();
+    expect(lastStorageError).toContain('Failed to save settings');
+    expect(lastStorageError).toContain('theme');
+    expect(lastStorageError).toContain('quota');
+  });
+});
+
+describe('safeStorageRemove', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  it('returns true on successful remove', async () => {
+    mockStorage.local.remove.mockResolvedValue(undefined);
+    const result = await safeStorageRemove('key');
+    expect(mockStorage.local.remove).toHaveBeenCalledWith('key');
+    expect(result).toBe(true);
+    expect(lastStorageError).toBeNull();
+  });
+
+  it('accepts array of keys', async () => {
+    mockStorage.local.remove.mockResolvedValue(undefined);
+    const result = await safeStorageRemove(['a', 'b']);
+    expect(mockStorage.local.remove).toHaveBeenCalledWith(['a', 'b']);
+    expect(result).toBe(true);
+  });
+
+  it('returns false on error', async () => {
+    mockStorage.local.remove.mockRejectedValue(new Error('remove fail'));
+    const result = await safeStorageRemove('key');
+    expect(result).toBe(false);
+  });
+
+  it('logs error and records lastStorageError on failure', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockStorage.local.remove.mockRejectedValue(new Error('remove fail'));
+    await safeStorageRemove('key');
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[Storage]',
+      'Storage remove failed for keys [key]:',
+      'remove fail',
+    );
+    expect(lastStorageError).toContain('Failed to remove settings');
+    expect(lastStorageError).toContain('key');
+    expect(lastStorageError).toContain('remove fail');
+  });
+
+  it('formats array keys in error messages', async () => {
+    mockStorage.local.remove.mockRejectedValue(new Error('fail'));
+    await safeStorageRemove(['x', 'y']);
+    expect(lastStorageError).toContain('x, y');
+  });
+});
+
+describe('strictStorageRemove', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  it('resolves without error on success', async () => {
+    mockStorage.local.remove.mockResolvedValue(undefined);
+    await expect(strictStorageRemove('key')).resolves.toBeUndefined();
+    expect(lastStorageError).toBeNull();
+  });
+
+  it('rethrows the original error on failure', async () => {
+    const err = new Error('remove hard fail');
+    mockStorage.local.remove.mockRejectedValue(err);
+    await expect(strictStorageRemove('key')).rejects.toThrow('remove hard fail');
+  });
+
+  it('records lastStorageError before rethrowing', async () => {
+    mockStorage.local.remove.mockRejectedValue(new Error('gone'));
+    await expect(strictStorageRemove(['a', 'b'])).rejects.toThrow();
+    expect(lastStorageError).toContain('Failed to remove settings');
+    expect(lastStorageError).toContain('a, b');
+    expect(lastStorageError).toContain('gone');
   });
 });
