@@ -119,7 +119,7 @@ function copyExtensionFiles() {
 }
 
 export default defineConfig({
-  plugins: [patchTransformersWebInitChain(), solidPlugin(), copyExtensionFiles()],
+  plugins: [solidPlugin(), copyExtensionFiles()],
   // Chrome extensions need relative paths, not root-absolute
   base: '',
   resolve: {
