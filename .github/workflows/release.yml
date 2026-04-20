@@ -15,12 +15,24 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
       - run: npm ci
-      - uses: changesets/action@v1
+      - name: Inject Extension ID
+        # TX-02: EXTENSION_ID passed via env var, not inline interpolation.
+        # Inline ${{ secrets.EXTENSION_ID }} in a run: string is a script-injection
+        # anti-pattern — special characters in the value break the sed command.
+        # Additionally escape sed replacement metacharacters (`/`, `&`, `\`) so a
+        # value containing them cannot terminate the substitution early or inject
+        # additional sed commands.
+        env:
+          EXTENSION_ID: ${{ secrets.EXTENSION_ID }}
+        run: |
+          escaped_id=$(printf '%s' "$EXTENSION_ID" | sed -e 's/[\/&\\]/\\&/g')
+          sed -i "s/YOUR_EXTENSION_ID/${escaped_id}/g" updates.xml
+      - uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1 branch
         with:
           publish: npm publish
           createGithubRelease: true

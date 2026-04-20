@@ -1668,6 +1668,32 @@ describe('Service Worker Extended Handler Coverage', () => {
       expect(response.success).toBe(false);
       expect(response.error).toBeDefined();
     }, 20000);
+
+    it('does not retry structured local model failures from offscreen', async () => {
+      mockSendMessage.mockReturnValue({
+        success: false,
+        error: 'Loading model Xenova/opus-mt-en-de timed out after 60000ms',
+        translationError: {
+          category: 'timeout',
+          message: 'Translation request timed out',
+          technicalDetails: 'Loading model Xenova/opus-mt-en-de timed out after 60000ms',
+          retryable: true,
+          suggestion: 'The service may be slow. Try again, or use a shorter text.',
+        },
+      });
+
+      const response = await invoke({
+        type: 'translate',
+        text: 'Fail once only',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'opus-mt',
+      }) as { success: boolean; error?: string };
+
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('Translation request timed out');
+      expect(mockSendMessage).toHaveBeenCalledTimes(1);
+    });
   });
 
   // --------------------------------------------------------------------------

@@ -14,45 +14,36 @@ jobs:
     runs-on: ubuntu-latest
     env:
       EXTENSION_ID: ${{ secrets.EXTENSION_ID }}
-      CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Check signing configuration
-        id: signing
+      - name: Decode, sign, and clean
+        # TX-01: key.pem is removed via EXIT trap even if signing fails mid-step.
+        # Previously rm was a separate step; a signing failure would leave key.pem
+        # on disk and risk inclusion in any subsequent artifact upload.
+        env:
+          CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
         run: |
-          missing=()
-          if [ -z "$EXTENSION_ID" ]; then
-            missing+=("EXTENSION_ID")
-          fi
-          if [ -z "$CRX_PRIVATE_KEY" ]; then
-            missing+=("CRX_PRIVATE_KEY")
-          fi
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Skipping signed dev build::Missing required secrets: ${missing[*]}"
-            exit 0
-          fi
-          echo "enabled=true" >> "$GITHUB_OUTPUT"
-      - name: Decode signing key
-        if: steps.signing.outputs.enabled == 'true'
-        run: |
+          trap "rm -f key.pem" EXIT
           echo "$CRX_PRIVATE_KEY" | base64 -d > key.pem
-      - name: Package and sign extension
-        if: steps.signing.outputs.enabled == 'true'
-        run: |
           VERSION=$(jq -r .version src/manifest.json)
           NAME="translate-by-mikko-extension-${VERSION}"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "NAME=$NAME" >> "$GITHUB_ENV"
-          bash scripts/pack-extension.sh "$NAME" key.pem
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "NAME=$NAME" >> $GITHUB_ENV
+          npx -y crx pack dist -o "$NAME.crx" --zip-output "$NAME.zip" -p key.pem
+          # NOTE: CRX_PRIVATE_KEY secret rotation steps (TX-01):
+          #   1. Generate new key: openssl genrsa -out new_key.pem 2048
+          #   2. base64-encode: base64 -i new_key.pem | tr -d '\n'
+          #   3. Update repo secret CRX_PRIVATE_KEY with the encoded value
+          #   4. Revoke/replace old key in Chrome Web Store developer settings
+          # The old key is not revocable from GHA; only the CWS developer
+          # dashboard controls which key is trusted for your extension ID.
       - name: Prepare update files
-        if: steps.signing.outputs.enabled == 'true'
         run: |
           printf '%s\n' \
             '<?xml version="1.0" encoding="UTF-8"?>' \
@@ -62,11 +53,10 @@ jobs:
             '  </app>' \
             '</gupdate>' > updates.xml
       - name: Commit update files
-        if: steps.signing.outputs.enabled == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add updates.xml "${NAME}.crx" "${NAME}.zip"
           git commit -m "chore: update dev build [skip ci]" || echo "No changes to commit"
           git push
-      - run: rm -f key.pem
+      # key.pem cleanup is handled by the EXIT trap in the 'Decode, sign, and clean' step above.

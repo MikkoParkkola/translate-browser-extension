@@ -107,8 +107,8 @@ jobs:
           name: dist
           path: dist
 
-      - name: Verify unpacked extension build
-        run: test -f dist/manifest.json
+      - name: Verify dist artifact layout
+        run: test -f dist/manifest.json && test -f dist/src/popup/index.html
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
