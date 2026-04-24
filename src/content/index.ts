@@ -800,11 +800,15 @@ async function translateDynamicContent(nodes: Node[]): Promise<void> {
         currentSettings.strategy,
         currentSettings.provider,
         false, // enableProfiling
-        1      // maxRetries: fewer retries for dynamic content to avoid blocking
+        2      // maxRetries: 3 attempts total. Dynamic content on SPAs (trainline etc)
+               // hits transient frame-destroyed errors; a second retry recovers most cases
+               // once the background falls back to opus-mt for chrome-builtin transients.
       );
 
       if (result.errorCount > 0 && result.translatedCount === 0) {
-        log.error(` Dynamic batch fully failed (${result.errorCount} nodes)`);
+        // Downgraded to warn: with background fallback + 3 retries, remaining failures
+        // are usually benign (unmounted SPA nodes) and not user-actionable.
+        log.warn(` Dynamic batch fully failed (${result.errorCount} nodes)`);
       }
     }
   } catch (error) {
@@ -1334,8 +1338,7 @@ if (document.readyState === 'complete') {
 }
 
 // Abort in-flight translations and release observers on navigation.
-// beforeunload fires BEFORE unload (which is unreliable on some browsers),
-// so we do full cleanup here to prevent resource leaks.
+// beforeunload fires BEFORE pagehide and is allowed on most pages.
 window.addEventListener('beforeunload', () => {
   cleanupWebMcp?.();
   if (navigationAbortController) {
@@ -1347,10 +1350,13 @@ window.addEventListener('beforeunload', () => {
   removeProgressToast();
 });
 
-// Cleanup on unload - release all resources
-window.addEventListener('unload', () => {
+// Full resource cleanup on pagehide.
+// Replaces the deprecated `unload` listener: `unload` is blocked by
+// Permissions-Policy on many modern sites (thetrainline.com, gmail.com etc.),
+// produces console warnings, and never fires. `pagehide` is the modern
+// replacement — always allowed, covers both real navigation and bfcache entry.
+window.addEventListener('pagehide', () => {
   cleanupWebMcp?.();
-  // Ensure abort fires even if beforeunload didn't (e.g., some mobile browsers)
   if (navigationAbortController) {
     navigationAbortController.abort();
     navigationAbortController = null;

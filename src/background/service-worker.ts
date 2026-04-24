@@ -1110,7 +1110,10 @@ async function handleTranslateInner(message: {
       setStrategy(message.options.strategy);
     }
 
-    const provider = message.provider || getProvider();
+    // `let` so the chrome-builtin branch can reassign to 'opus-mt' when it
+    // hits a transient failure (frame destroyed on SPAs). The offscreen path
+    // below then handles the fallback translation transparently.
+    let provider = message.provider || getProvider();
 
     // Check cache
     if (sessionId) profiler.startTiming(sessionId, 'cache_lookup');
@@ -1164,6 +1167,13 @@ async function handleTranslateInner(message: {
 
     log.info('Translating:', message.sourceLang, '->', message.targetLang);
 
+    // Chrome Built-in Translator transient failure patterns.
+    // SPAs destroy the target frame between the executeScript call and the
+    // injection firing; fall back to opus-mt instead of failing the batch.
+    // Kept inline (vs imported from content layer) to avoid cross-context
+    // import; mirrors CHROME_BUILTIN_TRANSIENT_RE in content/translation-helpers.ts.
+    const CHROME_BUILTIN_TRANSIENT_RE = /frame with id|frame .* was removed|frame .* detached|returned no result|no active tab/i;
+
     // Chrome Built-in Translator: runs in tab's main world
     if (provider === 'chrome-builtin') {
       if (sessionId) profiler.startTiming(sessionId, 'chrome_builtin_translate');
@@ -1208,11 +1218,24 @@ async function handleTranslateInner(message: {
         if (sessionId) profiler.endTiming(sessionId, 'total');
         return { success: true, result, duration, provider: 'chrome-builtin' };
       } catch (error) {
-        if (sessionId) profiler.endTiming(sessionId, 'total');
         const errMsg = extractErrorMessage(error);
 
-        log.error('Chrome Built-in translation failed:', errMsg);
-        return { success: false, error: errMsg, duration: Date.now() - startTime };
+        // SPAs (trainline, gmail) tear down the target frame between the
+        // executeScript call and the injection firing. Chrome reports this as
+        // "Frame with ID 0 was removed" or the injected function returns
+        // nothing -> "Chrome Translator returned no result". Fall back to the
+        // local opus-mt provider via the offscreen path so the user still sees
+        // translations instead of a silent failure (and a red log line).
+        if (CHROME_BUILTIN_TRANSIENT_RE.test(errMsg)) {
+          log.warn(`Chrome Built-in transient error (${errMsg}) — falling back to opus-mt`);
+          provider = 'opus-mt';
+          if (sessionId) profiler.endTiming(sessionId, 'chrome_builtin_translate');
+          // Fall through to the offscreen IPC path below.
+        } else {
+          if (sessionId) profiler.endTiming(sessionId, 'total');
+          log.error('Chrome Built-in translation failed:', errMsg);
+          return { success: false, error: errMsg, duration: Date.now() - startTime };
+        }
       }
     }
 

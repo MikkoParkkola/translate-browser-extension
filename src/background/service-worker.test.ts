@@ -2019,7 +2019,7 @@ describe('Service Worker Extended Handler Coverage', () => {
       expect(typeof response.success).toBe('boolean');
     });
 
-    it('returns error when no active tab for chrome-builtin', async () => {
+    it('falls back to opus-mt when no active tab for chrome-builtin', async () => {
       vi.mocked(chrome.tabs.query).mockResolvedValueOnce([]);
 
       const response = await invoke({
@@ -2028,11 +2028,11 @@ describe('Service Worker Extended Handler Coverage', () => {
         sourceLang: 'en',
         targetLang: 'fi',
         provider: 'chrome-builtin',
-      }) as { success: boolean; error?: string };
+      }) as { success: boolean; result?: string };
 
-      // Provider is set in-message via provider field — no need to reset global
-      expect(response.success).toBe(false);
-      expect(response.error).toBeDefined();
+      // Transient chrome-builtin failure -> fallback to opus-mt via offscreen (mocked success).
+      expect(response.success).toBe(true);
+      expect(typeof response.result).toBe('string');
     });
 
     it('handles chrome-builtin executeScript failure', async () => {
@@ -2686,7 +2686,8 @@ describe('Service Worker Additional Coverage', () => {
       expect(response.result).toBe('Hola mundo');
     });
 
-    it('returns error when no active tab for chrome-builtin', async () => {
+    it('falls back to opus-mt when no active tab for chrome-builtin', async () => {
+      // Transient: no tab = fallback via offscreen (mocked to succeed).
       vi.mocked(chrome.tabs.query).mockResolvedValueOnce([]);
 
       const response = await invoke({
@@ -2695,13 +2696,14 @@ describe('Service Worker Additional Coverage', () => {
         sourceLang: 'en',
         targetLang: 'es',
         provider: 'chrome-builtin',
-      }) as { success: boolean; error?: string };
+      }) as { success: boolean; result?: string };
 
-      expect(response.success).toBe(false);
-      expect(response.error).toContain('No active tab');
+      expect(response.success).toBe(true);
+      expect(typeof response.result).toBe('string');
     });
 
-    it('returns error when chrome translator api not available', async () => {
+    it('falls back to opus-mt when chrome translator returns undefined ("returned no result")', async () => {
+      // Transient: empty/undefined result = fallback via offscreen.
       vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 1 }] as any);
       vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([
         { result: undefined }
@@ -2713,9 +2715,10 @@ describe('Service Worker Additional Coverage', () => {
         sourceLang: 'en',
         targetLang: 'es',
         provider: 'chrome-builtin',
-      }) as { success: boolean; error?: string };
+      }) as { success: boolean; result?: string };
 
-      expect(response.success).toBe(false);
+      expect(response.success).toBe(true);
+      expect(typeof response.result).toBe('string');
     });
 
     it('handles empty strings in chrome-builtin array response', async () => {
@@ -3638,20 +3641,21 @@ describe('Service Worker Deep Coverage', () => {
       expect(vi.mocked(chrome.scripting.executeScript)).not.toHaveBeenCalled();
     });
 
-    it('handles tab query empty result', async () => {
+    it('handles tab query empty result via chrome-builtin fallback', async () => {
       vi.mocked(chrome.tabs.query).mockResolvedValueOnce([]);
 
-      // This would happen in chrome-builtin path with no tabs
+      // With chrome-builtin, empty tabs triggers "No active tab" error, which
+      // is now classified as transient -> falls back to opus-mt via offscreen.
       const response = await invoke({
         type: 'translate',
         text: 'test',
         sourceLang: 'en',
         targetLang: 'fi',
         provider: 'chrome-builtin',
-      }) as { success: boolean; error?: string };
+      }) as { success: boolean; error?: string; result?: string };
 
-      // Should return error when no active tab
-      expect(response.success).toBe(false);
+      // Fallback path succeeds (offscreen mock returns success).
+      expect(response.success).toBe(true);
     });
 
     it('handles non-connection related errors immediately', async () => {
@@ -5421,10 +5425,19 @@ describe('Coverage gap tests', () => {
   });
 
   // ============================================================================
-  // Chrome-builtin: no active tab (lines ~1028-1029)
+  // Chrome-builtin transient failures -> fall back to opus-mt via offscreen.
+  // Regression: trainline.com SPA destroyed the frame between executeScript
+  // and injection firing; without the fallback, dynamic batches failed wholesale.
   // ============================================================================
-  describe('chrome-builtin translation: no active tab', () => {
-    it('returns error when no active tab found', async () => {
+  describe('chrome-builtin translation: transient failure fallback', () => {
+    // Reset chrome.tabs.query between tests so stale `mockResolvedValueOnce`
+    // from earlier coverage-gap tests doesn't leak in and change the code path.
+    beforeEach(() => {
+      vi.mocked(chrome.tabs.query).mockReset();
+      vi.mocked(chrome.tabs.query).mockResolvedValue([{ id: 42 }] as any);
+    });
+
+    it('falls back to opus-mt when no active tab found', async () => {
       vi.mocked(chrome.tabs.query).mockResolvedValueOnce([]);
       const response = await invoke({
         type: 'translate',
@@ -5433,17 +5446,13 @@ describe('Coverage gap tests', () => {
         targetLang: 'de',
         provider: 'chrome-builtin',
       }) as any;
-      expect(response.success).toBe(false);
-      expect(response.error).toContain('No active tab');
+      // Fallback via offscreen (mocked to succeed). Result text varies by
+      // outer describe mockSendMessage setup — just assert success.
+      expect(response.success).toBe(true);
+      expect(typeof response.result).toBe('string');
     });
-  });
 
-  // ============================================================================
-  // Chrome-builtin: executeScript returns undefined result (line ~1040)
-  // ============================================================================
-  describe('chrome-builtin translation: undefined script result', () => {
-    it('returns error when executeScript result is undefined', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValueOnce([{ id: 42 }] as any);
+    it('falls back to opus-mt when executeScript result is undefined ("returned no result")', async () => {
       vi.mocked(chrome.scripting.executeScript).mockResolvedValueOnce([{ result: undefined }] as any);
       const response = await invoke({
         type: 'translate',
@@ -5452,8 +5461,43 @@ describe('Coverage gap tests', () => {
         targetLang: 'de',
         provider: 'chrome-builtin',
       }) as any;
+      expect(response.success).toBe(true);
+      expect(typeof response.result).toBe('string');
+    });
+
+    it('falls back to opus-mt when Chrome reports "Frame with ID 0 was removed"', async () => {
+      vi.mocked(chrome.scripting.executeScript).mockRejectedValueOnce(
+        new Error('Frame with ID 0 was removed.')
+      );
+      const response = await invoke({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'chrome-builtin',
+      }) as any;
+      expect(response.success).toBe(true);
+      expect(typeof response.result).toBe('string');
+    });
+
+    it('does NOT fall back on non-transient errors (e.g. language pair unsupported)', async () => {
+      // "Language pair not supported" is not a frame/result transient, so
+      // the failure propagates instead of silently switching providers.
+      // Use unique text to avoid cache hits from earlier tests.
+      const uniqueText = `untransient-probe-${Date.now()}-${Math.random()}`;
+      vi.mocked(chrome.scripting.executeScript).mockReset();
+      vi.mocked(chrome.scripting.executeScript).mockRejectedValue(
+        new Error('Language pair not supported: en-xx')
+      );
+      const response = await invoke({
+        type: 'translate',
+        text: uniqueText,
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'chrome-builtin',
+      }) as any;
       expect(response.success).toBe(false);
-      expect(response.error).toContain('returned no result');
+      expect(response.error).toContain('Language pair not supported');
     });
   });
 

@@ -76,11 +76,27 @@ export async function translateWithStreaming(
 /**
  * Check if an error is likely transient and worth retrying.
  * Pre-compiled regex for performance (called on every retry).
+ *
+ * Includes Chrome Built-in Translator failure modes that surface on SPAs
+ * (trainline, gmail etc): the target frame can be torn down between the
+ * executeScript call and the injection firing. Classifying these as
+ * transient lets the retry loop recover instead of failing the batch wholesale.
  */
-const TRANSIENT_ERROR_RE = /timeout|network|connection|econnreset|fetch failed|service worker|disconnected|offscreen|loading model/i;
+const TRANSIENT_ERROR_RE = /timeout|network|connection|econnreset|fetch failed|service worker|disconnected|offscreen|loading model|frame with id|frame .* was removed|frame .* detached|returned no result|chrome translator/i;
 
 export function isTransientError(errorMsg: string): boolean {
   return TRANSIENT_ERROR_RE.test(errorMsg);
+}
+
+/**
+ * Chrome Built-in Translator transient failure patterns.
+ * When these match, the background falls back to opus-mt transparently
+ * so the user still sees translations on SPAs with aggressive DOM churn.
+ */
+export const CHROME_BUILTIN_TRANSIENT_RE = /frame with id|frame .* was removed|frame .* detached|returned no result|no active tab/i;
+
+export function isChromeBuiltinTransientError(errorMsg: string): boolean {
+  return CHROME_BUILTIN_TRANSIENT_RE.test(errorMsg);
 }
 
 /**
