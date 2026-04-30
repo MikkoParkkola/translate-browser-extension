@@ -965,6 +965,7 @@ function processPendingMutations(): void {
 
 /** Counter for mutations dropped due to buffer overflow (diagnostic) */
 let droppedMutationCount = 0;
+let lastDroppedMutationLogCount = 0;
 
 /**
  * Shared mutation callback for both the main observer and shadow root observers.
@@ -978,9 +979,10 @@ function handleMutations(mutations: MutationRecord[]): void {
     }
   }
 
-  // Log dropped mutations periodically so heavy SPAs are diagnosable
-  /* v8 ignore start -- requires exactly 200 dropped mutations; diagnostic-only */
-  if (droppedMutationCount > 0 && droppedMutationCount % 200 === 0) {
+  // Log dropped mutations periodically so heavy SPAs are diagnosable.
+  /* v8 ignore start -- diagnostic-only */
+  if (droppedMutationCount - lastDroppedMutationLogCount >= 200) {
+    lastDroppedMutationLogCount = droppedMutationCount;
     log.warn(`Dropped ${droppedMutationCount} mutations (maxPending=${CONFIG.mutations.maxPending})`);
   }
   /* v8 ignore stop */
@@ -1041,6 +1043,8 @@ function stopMutationObserver(): void {
   }
 
   pendingMutations = [];
+  droppedMutationCount = 0;
+  lastDroppedMutationLogCount = 0;
   stopBelowFoldObserver();
   removeProgressToast();
   log.info(' MutationObserver stopped');

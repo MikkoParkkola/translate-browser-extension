@@ -136,6 +136,88 @@ const mockIndexedDB = {
 // Apply mock to global
 vi.stubGlobal('indexedDB', mockIndexedDB);
 
+function resetIndexedDbMocks(): void {
+  mockIndex.openCursor.mockImplementation(() => {
+    mockCursorIndex = 0;
+    mockCursorEntries = Array.from(mockEntries.values()).sort((a, b) => a.timestamp - b.timestamp);
+    return {
+      onerror: null,
+      onsuccess: null,
+      result: mockCursorEntries.length > 0 ? createMockCursor(mockCursorEntries) : null,
+    };
+  });
+
+  mockStore.get.mockImplementation((key: string) => {
+    const result = mockEntries.get(key);
+    return {
+      onerror: null,
+      onsuccess: null,
+      result,
+    };
+  });
+
+  mockStore.put.mockImplementation((entry: CacheEntry) => {
+    mockEntries.set(entry.key, entry);
+    return {
+      onerror: null,
+      onsuccess: null,
+    };
+  });
+
+  mockStore.clear.mockImplementation(() => {
+    mockEntries.clear();
+    return {
+      onerror: null,
+      onsuccess: null,
+    };
+  });
+
+  mockStore.openCursor.mockImplementation(() => {
+    mockCursorIndex = 0;
+    mockCursorEntries = Array.from(mockEntries.values());
+    const request = {
+      onerror: null as ((ev: Event) => void) | null,
+      onsuccess: null as ((ev: Event) => void) | null,
+      result: null as ReturnType<typeof createMockCursor> | null,
+    };
+    setTimeout(() => {
+      if (mockCursorEntries.length > 0) {
+        request.result = createMockCursor(mockCursorEntries) as ReturnType<typeof createMockCursor>;
+      }
+      const event = { target: { result: request.result } } as unknown as Event;
+      request.onsuccess?.(event);
+    }, 0);
+    return request;
+  });
+
+  mockStore.index.mockImplementation(() => mockIndex);
+  mockTransaction.objectStore.mockImplementation(() => mockStore);
+  mockDb.transaction.mockImplementation(() => mockTransaction);
+  mockDb.objectStoreNames.contains.mockImplementation(() => true);
+  mockDb.createObjectStore.mockImplementation(() => ({
+    createIndex: vi.fn(),
+  }));
+
+  mockIndexedDB.open.mockImplementation(() => {
+    const request = {
+      onerror: null as ((ev: Event) => void) | null,
+      onsuccess: null as ((ev: Event) => void) | null,
+      onupgradeneeded: null as ((ev: IDBVersionChangeEvent) => void) | null,
+      result: mockDb,
+      error: null,
+    };
+    setTimeout(() => {
+      request.onsuccess?.({ target: request } as unknown as Event);
+    }, 0);
+    return request;
+  });
+
+  mockIndexedDB.deleteDatabase.mockImplementation(() => ({
+    onerror: null,
+    onsuccess: null,
+  }));
+}
+
 describe('TranslationCache', () => {
   let cache: TranslationCache;
 
@@ -144,6 +226,7 @@ describe('TranslationCache', () => {
     mockEntries.clear();
     mockCursorIndex = 0;
     mockCursorEntries = []; // Fix: Clear cursor entries
+    resetIndexedDbMocks();
     resetTranslationCache();
   });
 
@@ -1384,6 +1467,7 @@ describe('remaining uncovered branches', () => {
     mockEntries.clear();
     mockCursorIndex = 0;
     mockCursorEntries = [];
+    resetIndexedDbMocks();
     resetTranslationCache();
   });
 

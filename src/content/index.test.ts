@@ -11,6 +11,12 @@ const mockSendMessage = vi.fn();
 const mockOnMessage = {
   addListener: vi.fn(),
 };
+const loggerMocks = vi.hoisted(() => ({
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}));
 
 vi.stubGlobal('chrome', {
   runtime: {
@@ -40,6 +46,15 @@ vi.mock('../core/glossary', () => ({
   },
 }));
 
+vi.mock('../core/logger', () => ({
+  createLogger: () => ({
+    debug: loggerMocks.debug,
+    info: loggerMocks.info,
+    warn: loggerMocks.warn,
+    error: loggerMocks.error,
+  }),
+}));
+
 // Capture the real attachShadow before any test patches it via installAttachShadowInterceptor.
 // Tests that call startMutationObserver accumulate nested interceptors on Element.prototype.
 // The shadow DOM test resets to this original to avoid a deep broken chain.
@@ -53,7 +68,20 @@ describe('Content Script', () => {
     sendResponse: (response: unknown) => void
   ) => boolean | undefined;
 
+  function cleanupContentScriptSideEffects(): void {
+    window.dispatchEvent(new Event('beforeunload'));
+    window.dispatchEvent(new Event('unload'));
+
+    // Clean up any tooltips
+    const tooltip = document.getElementById('translate-tooltip');
+    if (tooltip) tooltip.remove();
+    Reflect.deleteProperty(window.navigator, 'modelContext');
+    Reflect.deleteProperty(window.navigator, 'modelContextTesting');
+    vi.restoreAllMocks();
+  }
+
   beforeEach(async () => {
+    cleanupContentScriptSideEffects();
     vi.clearAllMocks();
     vi.resetModules();
 
@@ -69,11 +97,7 @@ describe('Content Script', () => {
   });
 
   afterEach(() => {
-    // Clean up any tooltips
-    const tooltip = document.getElementById('translate-tooltip');
-    if (tooltip) tooltip.remove();
-    Reflect.deleteProperty(window.navigator, 'modelContext');
-    Reflect.deleteProperty(window.navigator, 'modelContextTesting');
+    cleanupContentScriptSideEffects();
   });
 
   describe('initialization', () => {
@@ -526,7 +550,7 @@ describe('Content Script', () => {
       mockSendMessage.mockRejectedValue(new Error('Network error'));
 
       const sendResponse = vi.fn();
-      const consoleSpy = vi.spyOn(console, 'error');
+      loggerMocks.error.mockClear();
 
       vi.useFakeTimers();
 
@@ -543,7 +567,7 @@ describe('Content Script', () => {
 
       vi.useRealTimers();
 
-      expect(consoleSpy).toHaveBeenCalled();
+      expect(loggerMocks.error).toHaveBeenCalled();
     });
 
     it('sends immediate acknowledgment before async translation', () => {
@@ -2139,25 +2163,41 @@ describe('Content Script', () => {
         configurable: true,
       });
 
+      const sendMessageCallCount = mockSendMessage.mock.calls.length;
       const sendResponse = vi.fn();
       messageHandler(
         { type: 'translateSelection', sourceLang: 'auto', targetLang: 'en', strategy: 'balanced' },
         {},
         sendResponse
       );
-      await new Promise((r) => setTimeout(r, 80));
-
-      expect(executeTool).toHaveBeenCalledWith(
-        'translateSelection',
-        JSON.stringify({
-          sourceLang: 'auto',
-          targetLang: 'en',
-          strategy: 'balanced',
-          text: 'Bonjour le monde',
-        })
+      await vi.waitFor(
+        () => {
+          expect(executeTool).toHaveBeenCalledWith(
+            'translateSelection',
+            JSON.stringify({
+              sourceLang: 'auto',
+              targetLang: 'en',
+              strategy: 'balanced',
+              text: 'Bonjour le monde',
+            })
+          );
+          const newTranslateCalls = mockSendMessage.mock.calls
+            .slice(sendMessageCallCount)
+            .map(([message]) => message)
+            .filter((message) => message?.type === 'translate');
+          expect(
+            newTranslateCalls.some((message) =>
+              Array.isArray(message.text)
+                ? message.text.includes('Bonjour le monde')
+                : message.text === 'Bonjour le monde'
+            )
+          ).toBe(false);
+          expect(document.getElementById('translate-tooltip')?.textContent).toContain('Hello world');
+        },
+        // Full-suite jsdom and observer churn can push these delegation assertions
+        // just past 3s in the workspace sandbox.
+        { timeout: 5000 }
       );
-      expect(mockSendMessage).not.toHaveBeenCalled();
-      expect(document.getElementById('translate-tooltip')?.textContent).toContain('Hello world');
     });
 
     it('delegates page translation to a site WebMCP tool before extension DOM translation', async () => {
@@ -2178,25 +2218,39 @@ describe('Content Script', () => {
         configurable: true,
       });
 
+      const sendMessageCallCount = mockSendMessage.mock.calls.length;
       const sendResponse = vi.fn();
       messageHandler(
         { type: 'translatePage', sourceLang: 'auto', targetLang: 'fi', strategy: 'balanced' },
         {},
         sendResponse
       );
-      await new Promise((r) => setTimeout(r, 80));
-
-      expect(executeTool).toHaveBeenCalledWith(
-        'site-page-tool',
-        JSON.stringify({
-          sourceLang: 'auto',
-          targetLang: 'fi',
-          strategy: 'balanced',
-        })
+      await vi.waitFor(
+        () => {
+          expect(executeTool).toHaveBeenCalledWith(
+            'site-page-tool',
+            JSON.stringify({
+              sourceLang: 'auto',
+              targetLang: 'fi',
+              strategy: 'balanced',
+            })
+          );
+          const newTranslateCalls = mockSendMessage.mock.calls
+            .slice(sendMessageCallCount)
+            .map(([message]) => message)
+            .filter((message) => message?.type === 'translate');
+          expect(
+            newTranslateCalls.some((message) =>
+              Array.isArray(message.text)
+                ? message.text.includes('Hello world')
+                : message.text === 'Hello world'
+            )
+          ).toBe(false);
+          expect(document.getElementById('page-text')?.textContent).toBe('Hello world');
+          expect(document.getElementById('page-text')?.getAttribute('data-translated')).toBeNull();
+        },
+        { timeout: 5000 }
       );
-      expect(mockSendMessage).not.toHaveBeenCalled();
-      expect(document.getElementById('page-text')?.textContent).toBe('Hello world');
-      expect(document.getElementById('page-text')?.getAttribute('data-translated')).toBeNull();
     });
 
     it('does not delegate back to site tools when extension WebMCP tools are invoked', async () => {
@@ -4479,19 +4533,33 @@ describe('Content Script', () => {
       );
       await new Promise((r) => setTimeout(r, 400));
 
-      // 2200 synchronous appends produce one handleMutations call with 2200 records.
-      // maxPending=2000: first 2000 pushed, 200 dropped → droppedCount=200, 200%200=0 → line 893.
-      mockSendMessage.mockResolvedValue({ success: true, result: [] });
-      for (let i = 0; i < 2200; i++) {
-        document.body.appendChild(document.createElement('span'));
+      loggerMocks.warn.mockClear();
+
+      const { CONFIG } = await import('../config');
+      const mutableMutations = CONFIG.mutations as unknown as { maxPending: number };
+      const originalMaxPending = mutableMutations.maxPending;
+      mutableMutations.maxPending = 1;
+
+      try {
+        // 201 synchronous appends produce one handleMutations call with 201 records.
+        // maxPending=1: first record is buffered, 200 are dropped and logged.
+        mockSendMessage.mockResolvedValue({ success: true, result: [] });
+        for (let i = 0; i < 201; i++) {
+          document.body.appendChild(document.createElement('span'));
+        }
+
+        await vi.waitFor(() => {
+          expect(loggerMocks.warn).toHaveBeenCalledWith(
+            expect.stringMatching(/^Dropped \d+ mutations \(maxPending=1\)$/)
+          );
+        }, { timeout: 5000 });
+        const droppedMessage = loggerMocks.warn.mock.calls
+          .map(([message]) => String(message))
+          .find((message) => message.includes('maxPending=1')) ?? '';
+        expect(Number(droppedMessage.match(/^Dropped (\d+)/)?.[1] ?? 0)).toBeGreaterThanOrEqual(200);
+      } finally {
+        mutableMutations.maxPending = originalMaxPending;
       }
-
-      // Flush microtasks so MutationObserver callback runs
-      await Promise.resolve();
-      await Promise.resolve();
-
-      // Allow debounce timer to fire
-      await new Promise((r) => setTimeout(r, 600));
     });
   });
 

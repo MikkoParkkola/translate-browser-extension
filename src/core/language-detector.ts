@@ -32,6 +32,25 @@ const PROFILES: Record<string, string[]> = {
   tr: [' bi',' de',' bu',' ba',' ve',' da',' ge',' en',' ya',' an','lar','bir','ler','eri','ile','ini','ara','dan',' ol',' ka',' ak',' er',' ir',' il',' al',' ha',' ta',' si','lik','eki'],
 };
 
+const MAX_DETECTION_CHARS = 5000;
+
+function sampleTextForDetection(text: string): string {
+  if (text.length <= MAX_DETECTION_CHARS) return text;
+
+  const segmentLength = Math.floor(MAX_DETECTION_CHARS / 3);
+  const tailLength = MAX_DETECTION_CHARS - segmentLength * 2;
+  const middleStart = Math.max(
+    segmentLength,
+    Math.floor(text.length / 2 - segmentLength / 2)
+  );
+
+  return [
+    text.slice(0, segmentLength),
+    text.slice(middleStart, middleStart + segmentLength),
+    text.slice(text.length - tailLength),
+  ].join(' ');
+}
+
 /**
  * Extract trigram frequency map from text.
  */
@@ -141,12 +160,14 @@ function detectByScript(text: string): LanguageDetectionResult | null {
 export function detectLanguage(text: string): LanguageDetectionResult | null {
   if (!text || text.trim().length < 10) return null;
 
+  const detectionText = sampleTextForDetection(text);
+
   // Fast path: non-Latin script detection
-  const scriptResult = detectByScript(text);
+  const scriptResult = detectByScript(detectionText);
   if (scriptResult) return scriptResult;
 
   // Trigram-based detection for Latin-script languages
-  const inputProfile = buildTrigramProfile(text);
+  const inputProfile = buildTrigramProfile(detectionText);
   const profiles = getParsedProfiles();
 
   let bestLang = '';

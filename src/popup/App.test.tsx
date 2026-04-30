@@ -365,6 +365,17 @@ describe('App handleError branches', () => {
 
   afterEach(cleanup);
 
+  const rejectTranslateCommand = (error: unknown) => {
+    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      (_tabId: number, message: { type?: string }) => {
+        if (message?.type === 'ping') {
+          return Promise.resolve({});
+        }
+        return Promise.reject(error);
+      },
+    );
+  };
+
   it('shows "Cannot access" error for restricted page errors', async () => {
     (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('Cannot access this page'),
@@ -450,9 +461,7 @@ describe('App handleError branches', () => {
   });
 
   it('shows error for "unsupported" errors', async () => {
-    (browserAPI.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new Error('unsupported language direction'),
-    );
+    rejectTranslateCommand(new Error('unsupported language direction'));
     render(() => <App />);
     await flush();
     fireEvent.click(screen.getByLabelText('Translate entire page'));
