@@ -4,42 +4,37 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-**TRANSLATE!** is a browser extension for local-first translation across Chrome (MV3) and Firefox (MV2). The shipped paths are Chrome Built-in (native, Chrome 138+), OPUS-MT (stable downloaded local baseline), TranslateGemma (experimental accelerated local path), and optional cloud providers.
+**TRANSLATE!** is a browser extension for local-first translation across Chrome (MV3) and Firefox (MV2). The shipped paths are Chrome Built-in (native, Chrome 138+), OPUS-MT (stable downloaded local baseline), TranslateGemma (experimental accelerated local path via offscreen WebGPU/WebNN at `src/offscreen/translategemma.ts`), and optional cloud providers (DeepL, OpenAI, Anthropic, Google Cloud). NLLB-200 is in tree at `src/providers/nllb-200.ts` as an opt-in research path. The content script also exposes the extension as MCP tools (`translate_page`, `translate_selection`, `detect_language`) via `src/content/webmcp.ts` for in-page agent integrations.
 
-## Architecture (v2.0)
+## Architecture (v2.0+)
 
 ```
 src/
 ├── types/                 # TypeScript type definitions
-│   └── index.ts
-├── core/                  # Core translation infrastructure
-│   ├── throttle.ts        # Rate limiting with exponential backoff
-│   ├── webgpu-detector.ts # WebGPU detection and setup
-│   └── translation-router.ts # Legacy routing surface (not the canonical popup path)
-├── providers/             # Translation provider implementations
-│   ├── base-provider.ts   # Abstract base class
-│   └── opus-mt-local.ts   # Helsinki-NLP OPUS-MT via Transformers.js
+├── core/                  # Core translation infrastructure (~25 modules: throttle, circuit-breaker, glossary, language-detector, prediction-engine, translation-cache, translation-router, webgpu-detector, ...)
+├── providers/             # 7 translation provider implementations + base abstract
+│   ├── base-provider.ts
+│   ├── opus-mt-local.ts   # Helsinki-NLP OPUS-MT via Transformers.js
+│   ├── chrome-translator.ts # Chrome Built-in (Chrome 138+)
+│   ├── deepl.ts
+│   ├── openai.ts
+│   ├── anthropic.ts
+│   ├── google-cloud.ts
+│   ├── nllb-200.ts        # opt-in NLLB research path (not exported from index.ts)
+│   └── cloud-provider.ts  # shared cloud-provider helpers
+├── offscreen/
+│   └── translategemma.ts  # experimental WebGPU/WebNN local accelerated path
+├── content/
+│   ├── index.ts           # main content script (DOM walking, MutationObserver)
+│   └── webmcp.ts          # MCP tool surface for in-page agent integrations (~553 LOC, e2e harness in e2e/webmcp-harness.html)
 ├── popup/                 # Solid.js popup UI
-│   ├── App.tsx
-│   ├── index.tsx
-│   ├── index.html
-│   ├── styles/popup.css
-│   └── components/
-│       ├── ProviderStatus.tsx
-│       ├── LanguageSelector.tsx
-│       ├── StrategySelector.tsx
-│       ├── UsageBar.tsx
-│       └── CostMonitor.tsx
 ├── options/               # Settings page
-│   └── index.html
-├── background/            # Background scripts
-│   ├── service-worker.ts  # Chrome MV3 service worker
-│   └── background-firefox.ts # Firefox MV2 background page
-├── content/               # Content script
-│   └── index.ts
-├── manifest.json          # Chrome manifest (MV3)
-└── manifest.firefox.json  # Firefox manifest (MV2)
+├── background/            # MV3 service worker + Firefox MV2 background page
+├── manifest.json          # Chrome (MV3)
+└── manifest.firefox.json  # Firefox (MV2)
 ```
+
+The src/ tree is far richer than this skeleton; treat the listing above as the load-bearing surfaces for agent onboarding. For a full file inventory run `fd -t f . src/` rather than asking the doc.
 
 ## Canonical shipped runtime paths
 
@@ -62,6 +57,7 @@ src/
 - Treat `chrome-builtin` and `opus-mt` as the canonical shipped user-facing translation paths.
 - Treat `translategemma` as experimental.
 - Do not treat `translation-router`, `localModel`, `llama.cpp`, or `wllama` surfaces as the canonical shipped runtime unless a task explicitly targets those legacy/experimental paths.
+- The content-script WebMCP surface in `src/content/webmcp.ts` is canonical for in-page MCP-aware agent integrations (Claude.ai, agent harnesses). Do not assume agents only reach the extension via the popup.
 
 ## Tech Stack
 
