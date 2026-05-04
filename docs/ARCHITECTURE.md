@@ -8,6 +8,7 @@ TRANSLATE! is a multi-provider browser translation extension that ships on Chrom
 
 - **Background Service Worker** - Provider routing, rate limiting, caching, message hub
 - **Content Script** - DOM scanning, text extraction, translation injection, MutationObserver
+- **WebMCP Content Surface** - PR #509 added in-page MCP tool registration from the content script via `src/content/webmcp.ts`
 - **Popup UI** - Translation controls, language selection, provider status
 - **Options UI** - Provider configuration, API keys, settings management
 
@@ -26,6 +27,7 @@ TRANSLATE! is a multi-provider browser translation extension that ships on Chrom
 #### Shipping status
 - **Stable**: `chrome-builtin`, `opus-mt`, and configured cloud providers
 - **Experimental**: `translategemma`
+- **Agent integration**: WebMCP tools `translate_page`, `translate_selection`, and `detect_language` ship from `src/content/webmcp.ts` with coverage in `src/content/webmcp.test.ts` and `e2e/webmcp-integration.spec.ts`.
 - Legacy `localModel` / `llama.cpp` / `wllama` surfaces were removed after they were confirmed to be quarantined and unused by shipped entry points.
 
 ### Provider Routing System
@@ -44,6 +46,17 @@ The extension routes translation requests through the browser-appropriate backgr
 3. **Route** - Send to primary provider, fail over if rate-limited or unavailable
 4. **Cache** - Store results for session, reuse across matching nodes
 5. **Inject** - Replace original text preserving whitespace and structure
+
+### WebMCP Agent Pipeline
+
+PR #509 also made the content script an MCP-aware integration point for pages that expose `navigator.modelContext`.
+
+1. **Register** - `src/content/webmcp.ts` registers `translate_page`, `translate_selection`, and `detect_language` with MCP annotations. Selection translation and language detection are read-only; page translation is not read-only because it updates page content.
+2. **Invoke** - an in-page MCP-aware agent calls one of those tools with source/target language, strategy, and optional provider hints.
+3. **Dispatch** - the content script reuses the same translation handlers as user-driven popup/content actions.
+4. **Return** - the tool returns a text response or compact page summary without exposing API keys or background internals.
+
+The WebMCP e2e harness lives in `e2e/webmcp-harness.html` and `e2e/webmcp-integration.spec.ts`.
 
 ### Offline Integration
 
@@ -102,6 +115,8 @@ interface ITranslationProvider {
 ```
 
 Providers are registered at runtime, no core code changes required.
+
+Agent-facing integrations should use the WebMCP surface instead of inventing a second page-automation API. Additions to that surface belong in `src/content/webmcp.ts` and should include unit coverage plus the e2e harness path from PR #509.
 
 ## Full Details
 

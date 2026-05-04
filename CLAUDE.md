@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-**TRANSLATE!** is a browser extension for local-first translation across Chrome (MV3) and Firefox (MV2). The shipped paths are Chrome Built-in (native, Chrome 138+), OPUS-MT (stable downloaded local baseline), TranslateGemma (experimental accelerated local path via offscreen WebGPU/WebNN at `src/offscreen/translategemma.ts`), and optional cloud providers (DeepL, OpenAI, Anthropic, Google Cloud). NLLB-200 is in tree at `src/providers/nllb-200.ts` as an opt-in research path. The content script also exposes the extension as MCP tools (`translate_page`, `translate_selection`, `detect_language`) via `src/content/webmcp.ts` for in-page agent integrations.
+**TRANSLATE!** is a browser extension for local-first translation across Chrome (MV3) and Firefox (MV2). The shipped paths are Chrome Built-in (native, Chrome 138+), OPUS-MT (stable downloaded local baseline), TranslateGemma (experimental accelerated local path via offscreen WebGPU/WebNN at `src/offscreen/translategemma.ts`), and optional cloud providers (DeepL, OpenAI, Anthropic, Google Cloud). NLLB-200 is in tree at `src/providers/nllb-200.ts` as an opt-in research path. PR #509 shipped the content-script WebMCP surface, which exposes the extension as MCP tools (`translate_page`, `translate_selection`, `detect_language`) via `src/content/webmcp.ts` for in-page agent integrations.
 
 ## Architecture (v2.0+)
 
