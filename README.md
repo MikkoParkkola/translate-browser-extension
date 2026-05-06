@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/ci.yml/badge.svg)](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/codeql.yml/badge.svg)](https://github.com/MikkoParkkola/translate-browser-extension/actions/workflows/codeql.yml)
-![Tests](https://img.shields.io/badge/tests-5k%2B%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-6.5k%2B%20passed-brightgreen)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue?logo=typescript&logoColor=white)
 ![License](https://img.shields.io/github/license/MikkoParkkola/translate-browser-extension)
 ![Chrome](https://img.shields.io/badge/Chrome-116%2B-brightgreen?logo=googlechrome&logoColor=white)
@@ -31,7 +31,8 @@ Built-in browser translation (Chrome, Safari, Firefox) works well for many pages
 
 - **Full-page translation** -- translates visible text on a page, including dynamically loaded content and iframes. A MutationObserver watches for DOM changes so content added after page load is caught.
 - **PDF translation** -- built-in PDF viewer with layout-preserving translation. Supports provider document APIs (Google Cloud, DeepL) and a local WASM pipeline. Save translated PDFs.
-- **7 shipping translation providers** -- Chrome Built-in, OPUS-MT, TranslateGemma (experimental), DeepL, OpenAI, Anthropic, and Google Cloud. Switch on the fly between the available native, local, and cloud paths.
+- **7 shipping translation providers** -- Chrome Built-in, OPUS-MT, TranslateGemma (experimental, offscreen WebGPU/WebNN path in `src/offscreen/translategemma.ts`), DeepL, OpenAI, Anthropic, and Google Cloud. NLLB-200 (`src/providers/nllb-200.ts`) is in tree as an opt-in research path. Switch on the fly between the available native, local, and cloud paths.
+- **WebMCP integration** -- shipped in PR #509, the content script exposes the extension as Model Context Protocol tools (`translate_page`, `translate_selection`, `detect_language`) to any in-page MCP-aware agent via `src/content/webmcp.ts`. Compatible MCP clients (Claude.ai, agent harnesses) can drive translation directly without going through the popup. End-to-end harness lives in `e2e/webmcp-harness.html` + `e2e/webmcp-integration.spec.ts`.
 - **Failover and load balancing** -- if your primary provider hits a rate limit or fails, requests automatically route to the next provider in your chain.
 - **Smart batching and caching** -- identical strings translated once and reused. Hidden elements skipped. Session cache minimizes repeat API calls.
 - **Auto-translate** -- optionally translate pages on load.
@@ -53,7 +54,7 @@ If built-in translation works reliably for your languages and pages, you probabl
 
 | Metric           | Value                                                              |
 | ---------------- | ------------------------------------------------------------------ |
-| Unit tests       | 5k+ Vitest tests across 150+ files                                 |
+| Unit tests       | 6.5k+ Vitest cases across 160+ files                               |
 | Coverage gates   | Enforced in CI via `npm run test:coverage`                         |
 | Contract tests   | Provider interface conformance checks                              |
 | Mutation testing | Stryker configured for core + providers                            |
