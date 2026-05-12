@@ -7,6 +7,7 @@ This index is for the TranslateGemma quantization planning set, not the full ext
 - **WebMCP shipped in PR #509**: `src/content/webmcp.ts` exposes `translate_page`, `translate_selection`, and `detect_language` as in-page MCP tools for agent integrations. Coverage lives in `src/content/webmcp.test.ts`, `e2e/webmcp-integration.spec.ts`, and `e2e/webmcp-harness.html`.
 - **TranslateGemma status**: experimental offscreen WebGPU/WebNN path at `src/offscreen/translategemma.ts`; the quantization docs below remain planning material until their follow-up tracker verifies the current model-format and deployment assumptions.
 - **NLLB-200 status**: `src/providers/nllb-200.ts` exists as an opt-in research path and is not the replacement for TranslateGemma in shipped provider docs.
+- **Ternary Bonsai 4B status**: `docs/TERNARY_BONSAI_EVALUATION.md` records the #511 NO-GO decision for a direct browser-extension replacement because the public 4B artifacts target MLX or GGUF, not the current `@huggingface/transformers` WebGPU/WebNN runtime.
 
 ## Quick Navigation
 
