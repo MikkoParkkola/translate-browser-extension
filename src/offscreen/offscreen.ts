@@ -17,7 +17,7 @@ import {
   getSupportedLanguagePairs,
   resolveOpusMtTranslationRoute,
 } from './model-maps';
-import { getOpusMtPipelineConfig, preloadOpusMtModel } from './opus-runtime';
+import { getOpusMtPipelineAttempts, preloadOpusMtModel } from './opus-runtime';
 import {
   collectBatchTranslationInputs,
   mergeBatchTranslationResults,
@@ -87,6 +87,7 @@ async function getTransformers(): Promise<TransformersLib> {
   lib.env.allowRemoteModels = true;
   lib.env.allowLocalModels = false;
   lib.env.useBrowserCache = true;
+  lib.env.useWasmCache = true;
   /* v8 ignore start */
   if (lib.env.backends?.onnx?.wasm) {
     lib.env.backends.onnx.wasm.wasmPaths = wasmBasePath;
@@ -136,46 +137,59 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   log.info(` Loading model: ${modelId}`);
   const loadStart = performance.now();
 
-  // OPUS-MT models MUST use WASM device. WebGPU causes degenerate output
-  // (repeated words like "Figure Figure..." or "Switzerland Switzerland...")
-  // with q8-quantized Marian models. WebGPU is only viable for models with
-  // dedicated fp16 ONNX files (e.g., TranslateGemma).
-  const { device, dtype } = getOpusMtPipelineConfig({ supported: false, fp16: false });
-  log.info(` Using device: ${device}, dtype: ${dtype}`);
+  const webgpuProbe = CONFIG.experimental.opusMtWebgpuProbe;
+  const capabilities = webgpuProbe ? await detectWebGPU() : { supported: false, fp16: false };
+  const attempts = getOpusMtPipelineAttempts(capabilities, { webgpuProbe });
+  log.info(
+    ` Runtime attempts: ${attempts.map((attempt) => `${attempt.device}/${attempt.dtype}`).join(', ')}`
+  );
 
   // Use optimized timeout for OPUS-MT direct models (~85MB quantized, typically loads in <30s)
   // If WebGPU fails (GPU incompatibility), fall back to WASM+q8 automatically.
-  let pipe;
-  try {
-    reportModelProgress(modelId, { status: 'initiate', progress: 0 });
-    pipe = await withTimeout(
-      (await getTransformers()).pipeline('translation', modelId, {
-        device,
-        dtype,
-        progress_callback: (progress: Record<string, unknown>) => {
-          reportModelProgress(modelId, {
-            status: normalizeProgressStatus(progress.status),
-            progress: typeof progress.progress === 'number' ? progress.progress : undefined,
-            file: typeof progress.file === 'string' ? progress.file : undefined,
-            loaded: typeof progress.loaded === 'number' ? progress.loaded : undefined,
-            total: typeof progress.total === 'number' ? progress.total : undefined,
-          });
-        },
-      } as Record<string, unknown>),
-      CONFIG.timeouts.opusMtDirectMs,
-      `Loading model ${modelId}`
-    );
-  } catch (error) {
-    /* v8 ignore start -- defensive rethrow */
-    throw error;
-    /* v8 ignore stop */
+  let pipe: unknown;
+  let loadedDevice: 'wasm' | 'webgpu' = 'wasm';
+  let lastError: unknown;
+
+  for (const attempt of attempts) {
+    try {
+      log.info(` Trying ${attempt.label} for ${modelId}`);
+      reportModelProgress(modelId, { status: 'initiate', progress: 0 });
+      pipe = await withTimeout(
+        (await getTransformers()).pipeline('translation', modelId, {
+          device: attempt.device,
+          dtype: attempt.dtype,
+          progress_callback: (progress: Record<string, unknown>) => {
+            reportModelProgress(modelId, {
+              status: normalizeProgressStatus(progress.status),
+              progress: typeof progress.progress === 'number' ? progress.progress : undefined,
+              file: typeof progress.file === 'string' ? progress.file : undefined,
+              loaded: typeof progress.loaded === 'number' ? progress.loaded : undefined,
+              total: typeof progress.total === 'number' ? progress.total : undefined,
+            });
+          },
+        } as Record<string, unknown>),
+        CONFIG.timeouts.opusMtDirectMs,
+        `Loading model ${modelId}`
+      );
+      loadedDevice = attempt.device;
+      break;
+    } catch (error) {
+      lastError = error;
+      log.warn(`${attempt.label} failed for ${modelId}: ${extractErrorMessage(error)}`);
+    }
+  }
+
+  if (!pipe) {
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(`Failed to load model ${modelId}: ${extractErrorMessage(lastError)}`);
   }
 
   const loadDuration = performance.now() - loadStart;
   if (sessionId) {
-    profiler.recordTiming(sessionId, 'model_load', loadDuration, { cached: false, modelId, device });
+    profiler.recordTiming(sessionId, 'model_load', loadDuration, { cached: false, modelId, device: loadedDevice });
   }
-  log.info(` Model loaded: ${modelId} in ${loadDuration.toFixed(0)}ms`);
+  log.info(` Model loaded: ${modelId} in ${loadDuration.toFixed(0)}ms on ${loadedDevice}`);
 
   // Store in LRU cache (may evict old models)
   cachePipeline(modelId, castAsPipeline(pipe));

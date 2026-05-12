@@ -15,7 +15,12 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mockCanvasElement, setupImageConstructorMock } from '../test-helpers/dom-property-mocks';
-import { selectOpusMtDtype } from './opus-runtime';
+import {
+  getDefaultOpusMtPipelineConfig,
+  getOpusMtPipelineAttempts,
+  getOpusMtPipelineConfig,
+  selectOpusMtDtype,
+} from './opus-runtime';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1778,6 +1783,47 @@ describe('selectOpusMtDtype', () => {
     expect(selectOpusMtDtype({ supported: true, fp16: true })).toBe('q8');
     expect(selectOpusMtDtype({ supported: true, fp16: false })).toBe('q8');
     expect(selectOpusMtDtype({ supported: false, fp16: false })).toBe('q8');
+  });
+});
+
+describe('OPUS-MT runtime attempts', () => {
+  it('uses wasm/q8 by default even when WebGPU is supported', () => {
+    expect(getOpusMtPipelineConfig({ supported: true, fp16: true })).toEqual({
+      device: 'wasm',
+      dtype: 'q8',
+      label: 'WASM+q8',
+    });
+  });
+
+  it('adds a WebGPU probe attempt only when explicitly enabled', () => {
+    expect(
+      getOpusMtPipelineAttempts(
+        { supported: true, fp16: true },
+        { webgpuProbe: true }
+      )
+    ).toEqual([
+      { device: 'webgpu', dtype: 'q8', label: 'WebGPU+q8 probe' },
+      { device: 'wasm', dtype: 'q8', label: 'WASM+q8' },
+    ]);
+  });
+
+  it('falls back to wasm/q8 when the probe flag is enabled but WebGPU is unavailable', () => {
+    expect(
+      getOpusMtPipelineAttempts(
+        { supported: false, fp16: false },
+        { webgpuProbe: true }
+      )
+    ).toEqual([
+      { device: 'wasm', dtype: 'q8', label: 'WASM+q8' },
+    ]);
+  });
+
+  it('exposes the production default as a stable helper', () => {
+    expect(getDefaultOpusMtPipelineConfig()).toEqual({
+      device: 'wasm',
+      dtype: 'q8',
+      label: 'WASM+q8',
+    });
   });
 });
 

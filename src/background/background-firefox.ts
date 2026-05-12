@@ -31,7 +31,7 @@ import {
   getSupportedLanguagePairs,
   resolveOpusMtTranslationRoute,
 } from '../offscreen/model-maps';
-import { getOpusMtPipelineConfig, preloadOpusMtModel } from '../offscreen/opus-runtime';
+import { getOpusMtPipelineAttempts, preloadOpusMtModel } from '../offscreen/opus-runtime';
 import { getCachedPipeline, cachePipeline, castAsPipeline } from '../offscreen/pipeline-cache';
 import { buildLanguageDetectionSample, detectLanguage } from '../offscreen/language-detection';
 import { translateWithGemma, getTranslateGemmaPipeline } from '../offscreen/translategemma';
@@ -66,6 +66,7 @@ const log = createLogger('Background-FF');
 env.allowRemoteModels = true;  // Models from HuggingFace Hub
 env.allowLocalModels = false;  // No local filesystem
 env.useBrowserCache = true;    // Cache models in IndexedDB
+env.useWasmCache = true;       // Reuse compiled WASM artifacts when supported
 
 // Point ONNX Runtime to bundled WASM files
 const wasmBasePath = getURL('assets/');
@@ -171,17 +172,39 @@ async function getPipeline(sourceLang: string, targetLang: string): Promise<Tran
 
   log.info(`Loading model: ${modelId}`);
 
-  const { device, dtype } = getOpusMtPipelineConfig(await detectWebGPUCapabilities());
-  log.info(`Using device: ${device}, dtype: ${dtype}`);
-
-  const pipe = await withTimeout(
-    pipeline('translation', modelId, { device, dtype }),
-    CONFIG.timeouts.opusMtDirectMs,
-    `Loading model ${modelId}`
+  const webgpuProbe = CONFIG.experimental?.opusMtWebgpuProbe === true;
+  const capabilities = webgpuProbe ? await detectWebGPUCapabilities() : { supported: false, fp16: false };
+  const attempts = getOpusMtPipelineAttempts(capabilities, { webgpuProbe });
+  log.info(
+    `Runtime attempts: ${attempts.map((attempt) => `${attempt.device}/${attempt.dtype}`).join(', ')}`
   );
 
+  let pipe: unknown;
+  let loadedDevice: 'wasm' | 'webgpu' = 'wasm';
+  let lastError: unknown;
+
+  for (const attempt of attempts) {
+    try {
+      log.info(`Trying ${attempt.label} for ${modelId}`);
+      pipe = await withTimeout(
+        pipeline('translation', modelId, { device: attempt.device, dtype: attempt.dtype }),
+        CONFIG.timeouts.opusMtDirectMs,
+        `Loading model ${modelId}`
+      );
+      loadedDevice = attempt.device;
+      break;
+    } catch (error) {
+      lastError = error;
+      log.warn(`${attempt.label} failed for ${modelId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  if (!pipe) {
+    throw lastError instanceof Error ? lastError : new Error(`Failed to load model ${modelId}`);
+  }
+
   cachePipeline(modelId, castAsPipeline(pipe));
-  log.info(`Model loaded: ${modelId}`);
+  log.info(`Model loaded: ${modelId} on ${loadedDevice}`);
 
   return castAsPipeline(pipe);
 }

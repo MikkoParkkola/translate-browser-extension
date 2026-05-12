@@ -21,6 +21,7 @@
     "secrets": "gitleaks detect --no-git",
     "serve": "http-server dist -p 8080",
     "serve:e2e": "http-server . -p 8080",
+    "spike:transformers-v4": "node scripts/transformers-v4-webgpu-spike.mjs",
     "size": "npm run build && size-limit",
     "size:analyze": "npm run build && webpack-bundle-analyzer dist --port 8888",
     "size:report": "npm run build && size-limit --json > size-report.json",
@@ -118,13 +119,14 @@
     "webpack-bundle-analyzer": "^4.10.0"
   },
   "dependencies": {
-    "@huggingface/transformers": "^3.8.1",
+    "@huggingface/transformers": "^4.2.0",
     "franc-min": "^6.2.0",
     "mupdf": "^1.26.4",
     "pdfjs-dist": "^5.4.54",
     "tesseract.js": "^7.0.0"
   },
   "overrides": {
+    "fast-uri": "^3.1.2",
     "protobufjs": "^7.5.5"
   }
 }
