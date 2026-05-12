@@ -43,6 +43,24 @@ describe('Profiler', () => {
       expect(id).toMatch(/^session_/);
     });
 
+    it('uses a monotonic fallback ID when crypto.randomUUID is unavailable', () => {
+      const originalCrypto = globalThis.crypto;
+      vi.stubGlobal('crypto', undefined);
+
+      try {
+        const id1 = profiler.startSession();
+        const id2 = profiler.startSession();
+
+        expect(id1).toMatch(/^session_\d+_[0-9a-z]+$/);
+        expect(id2).toMatch(/^session_\d+_[0-9a-z]+$/);
+        expect(id1).not.toBe(id2);
+        expect(profiler.getSessionData(id1)).not.toBeNull();
+        expect(profiler.getSessionData(id2)).not.toBeNull();
+      } finally {
+        vi.stubGlobal('crypto', originalCrypto);
+      }
+    });
+
     it('returns empty string when disabled', () => {
       profiler.setEnabled(false);
       const id = profiler.startSession();
@@ -149,9 +167,13 @@ describe('Profiler', () => {
     it('times an async operation and returns its result', async () => {
       const id = profiler.startSession('async-test');
 
-      const result = await profiler.timeAsync(id, 'model_inference', async () => {
-        return 'translated text';
-      });
+      const result = await profiler.timeAsync(
+        id,
+        'model_inference',
+        async () => {
+          return 'translated text';
+        },
+      );
 
       expect(result).toBe('translated text');
     });
@@ -162,7 +184,7 @@ describe('Profiler', () => {
       await expect(
         profiler.timeAsync(id, 'model_inference', async () => {
           throw new Error('inference failed');
-        })
+        }),
       ).rejects.toThrow('inference failed');
 
       // Timing should still be recorded in aggregates
@@ -174,12 +196,9 @@ describe('Profiler', () => {
     it('passes metadata through', async () => {
       const id = profiler.startSession('async-meta');
 
-      await profiler.timeAsync(
-        id,
-        'dom_update',
-        async () => 'done',
-        { batchSize: 10 }
-      );
+      await profiler.timeAsync(id, 'dom_update', async () => 'done', {
+        batchSize: 10,
+      });
 
       const data = profiler.getSessionData(id) as {
         timings: Record<string, { metadata?: Record<string, unknown> }>;
@@ -205,7 +224,7 @@ describe('Profiler', () => {
       expect(() =>
         profiler.timeSync(id, 'validation', () => {
           throw new Error('validation failed');
-        })
+        }),
       ).toThrow('validation failed');
 
       const stats = profiler.getAggregateStats('validation');
@@ -215,12 +234,7 @@ describe('Profiler', () => {
     it('passes metadata through', () => {
       const id = profiler.startSession('sync-meta');
 
-      profiler.timeSync(
-        id,
-        'cache_store',
-        () => 'cached',
-        { size: 1024 }
-      );
+      profiler.timeSync(id, 'cache_store', () => 'cached', { size: 1024 });
 
       const data = profiler.getSessionData(id) as {
         timings: Record<string, { metadata?: Record<string, unknown> }>;
@@ -242,12 +256,19 @@ describe('Profiler', () => {
 
     it('stores metadata with recorded timing', () => {
       const id = profiler.startSession('record-meta');
-      profiler.recordTiming(id, 'chrome_builtin_translate', 50, { provider: 'chrome' });
+      profiler.recordTiming(id, 'chrome_builtin_translate', 50, {
+        provider: 'chrome',
+      });
 
       const data = profiler.getSessionData(id) as {
-        timings: Record<string, { metadata?: Record<string, unknown>; duration: number }>;
+        timings: Record<
+          string,
+          { metadata?: Record<string, unknown>; duration: number }
+        >;
       };
-      expect(data.timings['chrome_builtin_translate'].metadata).toEqual({ provider: 'chrome' });
+      expect(data.timings['chrome_builtin_translate'].metadata).toEqual({
+        provider: 'chrome',
+      });
       expect(data.timings['chrome_builtin_translate'].duration).toBe(50);
     });
 
@@ -411,7 +432,7 @@ describe('Profiler', () => {
       for (const item of report.breakdown) {
         expect(item.percentOfTotal).toBeCloseTo(
           (item.durationMs / totalMs) * 100,
-          1
+          1,
         );
       }
     });
@@ -535,7 +556,10 @@ describe('Profiler', () => {
         startTime: number;
         endTime: number;
         totalDuration: number;
-        timings: Record<string, { name: string; duration: number; metadata?: Record<string, unknown> }>;
+        timings: Record<
+          string,
+          { name: string; duration: number; metadata?: Record<string, unknown> }
+        >;
       };
 
       expect(data).not.toBeNull();
@@ -767,7 +791,11 @@ describe('Profiler', () => {
     });
 
     it('timeAsync still executes fn and returns result when disabled', async () => {
-      const result = await profiler.timeAsync('no-session', 'test', async () => 'hello');
+      const result = await profiler.timeAsync(
+        'no-session',
+        'test',
+        async () => 'hello',
+      );
       expect(result).toBe('hello');
     });
 
@@ -821,7 +849,7 @@ describe('Profiler', () => {
       await expect(
         profiler.timeAsync(id, 'failing_op', async () => {
           throw new Error('async failure');
-        })
+        }),
       ).rejects.toThrow('async failure');
       // endTiming should still have been called (finally block)
     });
@@ -831,7 +859,7 @@ describe('Profiler', () => {
       expect(() =>
         profiler.timeSync(id, 'failing_op', () => {
           throw new Error('sync failure');
-        })
+        }),
       ).toThrow('sync failure');
     });
   });
@@ -882,9 +910,12 @@ describe('measureTimeAsync', () => {
   });
 
   it('executes the async function and returns result with duration', async () => {
-    const { result, duration } = await measureTimeAsync('async-test', async () => {
-      return 'hello';
-    });
+    const { result, duration } = await measureTimeAsync(
+      'async-test',
+      async () => {
+        return 'hello';
+      },
+    );
 
     expect(result).toBe('hello');
     expect(duration).toBeGreaterThanOrEqual(0);

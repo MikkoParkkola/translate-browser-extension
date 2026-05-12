@@ -11,6 +11,7 @@ import type {
   PingMessage,
   PreloadModelMessage,
   SupportedLanguageInfo,
+  TranslationContextInput,
   TranslationProviderId,
 } from '../types';
 import type { AggregateStats } from '../core/profiler';
@@ -25,6 +26,7 @@ export interface OffscreenTranslateMessage {
   targetLang: string;
   provider?: TranslationProviderId;
   sessionId?: string;
+  context?: TranslationContextInput;
   pageContext?: string;
 }
 
@@ -89,15 +91,23 @@ export type OffscreenMessage =
 
 export type OffscreenMessageType = OffscreenMessage['type'];
 
-export type OffscreenMessageByType<TType extends OffscreenMessageType> = Extract<
-  OffscreenMessage,
-  { type: TType }
->;
+export type OffscreenMessageByType<TType extends OffscreenMessageType> =
+  Extract<OffscreenMessage, { type: TType }>;
 
 export interface OffscreenMessageResponseMap {
-  translate: MessageResponse<{ result: string | string[]; profilingData?: unknown }>;
-  getProfilingStats: MessageResponse<{ aggregates: Record<string, AggregateStats>; formatted: string }>;
-  preloadModel: MessageResponse<{ preloaded: boolean; available?: boolean; partial?: boolean }>;
+  translate: MessageResponse<{
+    result: string | string[];
+    profilingData?: unknown;
+  }>;
+  getProfilingStats: MessageResponse<{
+    aggregates: Record<string, AggregateStats>;
+    formatted: string;
+  }>;
+  preloadModel: MessageResponse<{
+    preloaded: boolean;
+    available?: boolean;
+    partial?: boolean;
+  }>;
   getSupportedLanguages: { success: true; languages: SupportedLanguageInfo[] };
   ping: { success: true; status: 'ready' };
   checkWebGPU: { success: true; supported: boolean; fp16: boolean };
@@ -107,16 +117,23 @@ export interface OffscreenMessageResponseMap {
   clearPipelineCache: MessageResponse<{ cleared: true }>;
   getCloudProviderUsage: MessageResponse<{ usage: CloudProviderUsage }>;
   flushCloudProviderTelemetry: MessageResponse;
-  ocrImage: MessageResponse<{ text: string; confidence: number; blocks: OCRBlock[] }>;
+  ocrImage: MessageResponse<{
+    text: string;
+    confidence: number;
+    blocks: OCRBlock[];
+  }>;
   terminateOCR: MessageResponse;
   cropImage: MessageResponse<{ imageData: string }>;
 }
 
-export type OffscreenMessageResponse = OffscreenMessageResponseMap[OffscreenMessageType];
-export type OffscreenRoutedResponse = OffscreenMessageResponse | MessageResponse;
+export type OffscreenMessageResponse =
+  OffscreenMessageResponseMap[OffscreenMessageType];
+export type OffscreenRoutedResponse =
+  | OffscreenMessageResponse
+  | MessageResponse;
 
 export type OffscreenMessageHandler<TType extends OffscreenMessageType> = (
-  message: OffscreenMessageByType<TType>
+  message: OffscreenMessageByType<TType>,
 ) => Promise<OffscreenMessageResponseMap[TType]>;
 
 export type OffscreenMessageHandlers = {
@@ -128,20 +145,25 @@ export interface OffscreenTargetedMessageRecord {
   type?: unknown;
 }
 
-export function isOffscreenTargetedMessage(value: unknown): value is OffscreenTargetedMessageRecord {
+export function isOffscreenTargetedMessage(
+  value: unknown,
+): value is OffscreenTargetedMessageRecord {
   return isObjectRecord(value) && value.target === 'offscreen';
 }
 
 export function isHandledOffscreenMessage(
   message: OffscreenTargetedMessageRecord,
-  handlers: OffscreenMessageHandlers
+  handlers: OffscreenMessageHandlers,
 ): message is OffscreenMessage {
-  return hasStringMessageType(message) && Object.prototype.hasOwnProperty.call(handlers, message.type);
+  return (
+    hasStringMessageType(message) &&
+    Object.prototype.hasOwnProperty.call(handlers, message.type)
+  );
 }
 
 export async function routeOffscreenMessage(
   message: OffscreenTargetedMessageRecord,
-  handlers: OffscreenMessageHandlers
+  handlers: OffscreenMessageHandlers,
 ): Promise<OffscreenRoutedResponse> {
   if (!isHandledOffscreenMessage(message, handlers)) {
     return {
@@ -151,7 +173,7 @@ export async function routeOffscreenMessage(
   }
 
   const handler = handlers[message.type as OffscreenMessageType] as (
-    message: OffscreenMessage
+    message: OffscreenMessage,
   ) => Promise<OffscreenMessageResponse>;
 
   return handler(message);

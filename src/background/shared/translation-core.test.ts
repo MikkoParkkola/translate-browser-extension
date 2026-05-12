@@ -20,8 +20,12 @@ vi.mock('../../core/errors', () => ({
     suggestion: undefined,
     technicalDetails: err instanceof Error ? err.message : String(err),
   }),
-  validateInput: vi.fn().mockReturnValue({ valid: true, sanitizedText: 'hello' }),
-  withRetry: vi.fn().mockImplementation(async (fn: () => Promise<unknown>) => fn()),
+  validateInput: vi
+    .fn()
+    .mockReturnValue({ valid: true, sanitizedText: 'hello' }),
+  withRetry: vi
+    .fn()
+    .mockImplementation(async (fn: () => Promise<unknown>) => fn()),
   isNetworkError: vi.fn().mockReturnValue(false),
 }));
 
@@ -36,15 +40,22 @@ vi.mock('./provider-management', () => ({
   checkRateLimit: vi.fn().mockReturnValue(true),
   recordUsage: vi.fn(),
   estimateTokens: vi.fn().mockReturnValue(5),
-  formatUserError: vi.fn().mockImplementation((err: { message?: string } | undefined) =>
-    err?.message || 'Translation failed'
-  ),
+  formatUserError: vi
+    .fn()
+    .mockImplementation(
+      (err: { message?: string } | undefined) =>
+        err?.message || 'Translation failed',
+    ),
 }));
 
 vi.mock('../../config', () => ({
   CONFIG: {
     retry: { network: { maxRetries: 3, baseDelayMs: 1000, maxDelayMs: 10000 } },
-    rateLimits: { windowMs: 60000, requestsPerMinute: 100, tokensPerMinute: 10000 },
+    rateLimits: {
+      windowMs: 60000,
+      requestsPerMinute: 100,
+      tokensPerMinute: 10000,
+    },
   },
 }));
 
@@ -85,14 +96,23 @@ describe('handleTranslateCore', () => {
 
     // Re-apply defaults after clearAllMocks
     const { validateInput, withRetry } = await import('../../core/errors');
-    vi.mocked(validateInput).mockReturnValue({ valid: true, sanitizedText: 'hello' });
-    vi.mocked(withRetry).mockImplementation(async (fn: () => Promise<unknown>) => fn());
+    vi.mocked(validateInput).mockReturnValue({
+      valid: true,
+      sanitizedText: 'hello',
+    });
+    vi.mocked(withRetry).mockImplementation(
+      async (fn: () => Promise<unknown>) => fn(),
+    );
 
-    const { checkRateLimit, getProvider, estimateTokens, formatUserError } = await import('./provider-management');
+    const { checkRateLimit, getProvider, estimateTokens, formatUserError } =
+      await import('./provider-management');
     vi.mocked(checkRateLimit).mockReturnValue(true);
     vi.mocked(getProvider).mockReturnValue('opus-mt');
     vi.mocked(estimateTokens).mockReturnValue(5);
-    vi.mocked(formatUserError).mockImplementation((err: { message?: string } | undefined) => err?.message || 'Translation failed');
+    vi.mocked(formatUserError).mockImplementation(
+      (err: { message?: string } | undefined) =>
+        err?.message || 'Translation failed',
+    );
 
     const { getCorrection } = await import('../../core/corrections');
     vi.mocked(getCorrection).mockResolvedValue(null);
@@ -107,8 +127,12 @@ describe('handleTranslateCore', () => {
     );
 
     expect(result.success).toBe(true);
-    expect((result as unknown as Record<string, unknown>).result).toBe('translated text');
-    expect(typeof (result as unknown as Record<string, unknown>).duration).toBe('number');
+    expect((result as unknown as Record<string, unknown>).result).toBe(
+      'translated text',
+    );
+    expect(typeof (result as unknown as Record<string, unknown>).duration).toBe(
+      'number',
+    );
   });
 
   it('returns error when validation fails', async () => {
@@ -167,7 +191,11 @@ describe('handleTranslateCore', () => {
   });
 
   it('returns cached result when cache hit (non-auto source)', async () => {
-    cache.get = vi.fn().mockReturnValue({ result: 'cached translation', sourceLang: 'en', targetLang: 'fi' });
+    cache.get = vi.fn().mockReturnValue({
+      result: 'cached translation',
+      sourceLang: 'en',
+      targetLang: 'fi',
+    });
 
     const { handleTranslateCore } = await import('./translation-core');
     const result = await handleTranslateCore(
@@ -177,9 +205,58 @@ describe('handleTranslateCore', () => {
     );
 
     expect(result.success).toBe(true);
-    expect((result as unknown as Record<string, unknown>).result).toBe('cached translation');
+    expect((result as unknown as Record<string, unknown>).result).toBe(
+      'cached translation',
+    );
     expect((result as unknown as Record<string, unknown>).cached).toBe(true);
     expect(translateFn).not.toHaveBeenCalled();
+  });
+
+  it('bypasses text-only background cache for contextual TranslateGemma requests', async () => {
+    cache.get = vi.fn().mockReturnValue({
+      result: 'cached translation without context',
+      sourceLang: 'en',
+      targetLang: 'fi',
+    });
+
+    const { handleTranslateCore } = await import('./translation-core');
+    const result = await handleTranslateCore(
+      {
+        text: 'hello',
+        sourceLang: 'en',
+        targetLang: 'fi',
+        provider: 'translategemma',
+        options: {
+          context: {
+            before: 'Context before',
+            after: 'Context after',
+            pageContext: 'Context page',
+          },
+        },
+      },
+      cache as never,
+      translateFn,
+    );
+
+    expect(result.success).toBe(true);
+    expect((result as unknown as Record<string, unknown>).result).toBe(
+      'translated text',
+    );
+    expect(cache.get).not.toHaveBeenCalled();
+    expect(cache.set).not.toHaveBeenCalled();
+    expect(translateFn).toHaveBeenCalledWith(
+      'hello',
+      'en',
+      'fi',
+      'translategemma',
+      expect.objectContaining({
+        context: {
+          before: 'Context before',
+          after: 'Context after',
+          pageContext: 'Context page',
+        },
+      }),
+    );
   });
 
   it('skips cache check when sourceLang is auto', async () => {
@@ -208,7 +285,9 @@ describe('handleTranslateCore', () => {
     );
 
     expect(result.success).toBe(false);
-    expect((result as unknown as Record<string, unknown>).error).toContain('Too many requests');
+    expect((result as unknown as Record<string, unknown>).error).toContain(
+      'Too many requests',
+    );
     expect(translateFn).not.toHaveBeenCalled();
   });
 
@@ -224,16 +303,25 @@ describe('handleTranslateCore', () => {
     );
 
     expect(result.success).toBe(true);
-    expect((result as unknown as Record<string, unknown>).result).toBe('user corrected text');
-    expect((result as unknown as Record<string, unknown>).fromCorrection).toBe(true);
+    expect((result as unknown as Record<string, unknown>).result).toBe(
+      'user corrected text',
+    );
+    expect((result as unknown as Record<string, unknown>).fromCorrection).toBe(
+      true,
+    );
     expect(translateFn).not.toHaveBeenCalled(); // Should not call translate when correction exists
   });
 
   it('skips correction lookup for array text input', async () => {
     const { getCorrection } = await import('../../core/corrections');
     const { validateInput } = await import('../../core/errors');
-    vi.mocked(validateInput).mockReturnValue({ valid: true, sanitizedText: ['hello', 'world'] as never });
-    const batchTranslateFn = vi.fn().mockResolvedValue({ result: ['hei', 'maailma'] });
+    vi.mocked(validateInput).mockReturnValue({
+      valid: true,
+      sanitizedText: ['hello', 'world'] as never,
+    });
+    const batchTranslateFn = vi
+      .fn()
+      .mockResolvedValue({ result: ['hei', 'maailma'] });
 
     const { handleTranslateCore } = await import('./translation-core');
     await handleTranslateCore(
@@ -252,7 +340,12 @@ describe('handleTranslateCore', () => {
 
     const { handleTranslateCore } = await import('./translation-core');
     await handleTranslateCore(
-      { text: 'hello', sourceLang: 'en', targetLang: 'fi', options: { strategy: 'quality' } },
+      {
+        text: 'hello',
+        sourceLang: 'en',
+        targetLang: 'fi',
+        options: { strategy: 'quality' },
+      },
       cache as never,
       translateFn,
     );
@@ -273,7 +366,7 @@ describe('handleTranslateCore', () => {
       'en',
       'fi',
       'deepl',
-      expect.anything()
+      expect.anything(),
     );
   });
 
@@ -322,7 +415,9 @@ describe('handleTranslateCore', () => {
   });
 
   it('handles translateFn error gracefully', async () => {
-    const failingFn = vi.fn().mockRejectedValue(new Error('Translation service unavailable'));
+    const failingFn = vi
+      .fn()
+      .mockRejectedValue(new Error('Translation service unavailable'));
 
     const { handleTranslateCore } = await import('./translation-core');
     const result = await handleTranslateCore(
@@ -338,18 +433,24 @@ describe('handleTranslateCore', () => {
   it('logs context debug info when context provided', async () => {
     const { handleTranslateCore } = await import('./translation-core');
     // Should not throw even with context
-    await expect(handleTranslateCore(
-      {
-        text: 'hello',
-        sourceLang: 'en',
-        targetLang: 'fi',
-        options: {
-          context: { before: 'Previous sentence.', after: 'Next sentence.', pageContext: 'article' },
+    await expect(
+      handleTranslateCore(
+        {
+          text: 'hello',
+          sourceLang: 'en',
+          targetLang: 'fi',
+          options: {
+            context: {
+              before: 'Previous sentence.',
+              after: 'Next sentence.',
+              pageContext: 'article',
+            },
+          },
         },
-      },
-      cache as never,
-      translateFn,
-    )).resolves.toBeDefined();
+        cache as never,
+        translateFn,
+      ),
+    ).resolves.toBeDefined();
   });
 
   it('records usage after successful translation', async () => {
@@ -367,10 +468,14 @@ describe('handleTranslateCore', () => {
 
   it('calls the retry predicate via withRetry', async () => {
     const { withRetry, isNetworkError } = await import('../../core/errors');
-    
+
     // Capture the retry predicate
     let capturedPredicate: ((error: unknown) => boolean) | null = null;
-    vi.mocked(withRetry).mockImplementation((async (fn: () => Promise<unknown>, _config: unknown, predicate?: (error: unknown) => boolean) => {
+    vi.mocked(withRetry).mockImplementation((async (
+      fn: () => Promise<unknown>,
+      _config: unknown,
+      predicate?: (error: unknown) => boolean,
+    ) => {
       capturedPredicate = predicate || null;
       return fn();
     }) as any);

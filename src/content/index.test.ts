@@ -89,6 +89,7 @@ describe('Content Script', () => {
     sourceLang: string;
     targetLang: string;
     strategy: string;
+    provider?: string;
   };
 
   const DEFAULT_TRANSLATE_PAGE_MESSAGE: TranslatePageMessage = {
@@ -296,10 +297,10 @@ describe('Content Script', () => {
         expect.objectContaining({
           contentLoaded: true,
           readyState: document.readyState,
-           visibilityState: document.visibilityState,
-           }),
-        );
-      });
+          visibilityState: document.visibilityState,
+        }),
+      );
+    });
 
     it('responds to harness translate bridge requests on the mock page', async () => {
       document.body.innerHTML = '<main><p>Harness bridge content</p></main>';
@@ -615,10 +616,12 @@ describe('Content Script', () => {
       }
       document.body.innerHTML = html;
 
-      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => ({
-        success: true,
-        result: (message.text ?? []).map(() => 'Translated'),
-      }));
+      mockSendMessage.mockImplementation(
+        async (message: { text?: string[] }) => ({
+          success: true,
+          result: (message.text ?? []).map(() => 'Translated'),
+        }),
+      );
 
       const sendResponse = vi.fn();
 
@@ -3606,10 +3609,12 @@ describe('Content Script', () => {
       }
       document.body.innerHTML = html;
 
-      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => ({
-        success: true,
-        result: (message.text ?? []).map(() => 'Käännetty'),
-      }));
+      mockSendMessage.mockImplementation(
+        async (message: { text?: string[] }) => ({
+          success: true,
+          result: (message.text ?? []).map(() => 'Käännetty'),
+        }),
+      );
 
       const sendResponse = vi.fn();
       startPageTranslation(sendResponse);
@@ -3862,7 +3867,8 @@ describe('Content Script', () => {
     });
 
     it('does not partially apply truncated batch results', async () => {
-      document.body.innerHTML = '<p id="first">First</p><p id="second">Second</p>';
+      document.body.innerHTML =
+        '<p id="first">First</p><p id="second">Second</p>';
 
       mockSendMessage.mockResolvedValue({
         success: true,
@@ -3876,25 +3882,29 @@ describe('Content Script', () => {
 
       expect(document.getElementById('first')?.textContent).toBe('First');
       expect(document.getElementById('second')?.textContent).toBe('Second');
-      expect(document.getElementById('first')?.getAttribute('data-translated')).toBeNull();
-      expect(document.getElementById('second')?.getAttribute('data-translated')).toBeNull();
+      expect(
+        document.getElementById('first')?.getAttribute('data-translated'),
+      ).toBeNull();
+      expect(
+        document.getElementById('second')?.getAttribute('data-translated'),
+      ).toBeNull();
     });
   });
 
   describe('Page context extraction in batch', () => {
-    it('extracts page context from first node for disambiguation', async () => {
+    it('sends per-segment contextual prompt data for TranslateGemma only', async () => {
       const article = document.createElement('article');
       article.innerHTML =
-        '<h2>Article title</h2><p>First paragraph</p><p>Second paragraph</p>';
+        '<p>River bank rises quickly</p><p>Investment bank earnings fell</p>';
       document.body.appendChild(article);
 
       mockSendMessage.mockResolvedValue({
         success: true,
-        result: ['Artikkelin otsikko', 'Ensimmäinen kappale', 'Toinen kappale'],
+        result: ['Joen ranta nousee nopeasti', 'Investointipankin tulos laski'],
       });
 
       const sendResponse = vi.fn();
-      startPageTranslation(sendResponse);
+      startPageTranslation(sendResponse, { provider: 'translategemma' });
 
       await waitForAsyncContentWork(100);
 
@@ -3902,6 +3912,47 @@ describe('Content Script', () => {
         (c) => c[0]?.type === 'translate',
       );
       expect(translateCalls.length).toBeGreaterThan(0);
+
+      const context = translateCalls[0][0].options?.context;
+      expect(Array.isArray(context)).toBe(true);
+      expect(context).toHaveLength(2);
+      expect(context[0]).toEqual(
+        expect.objectContaining({
+          before: '',
+          after: '',
+          pageContext: expect.stringContaining('article body'),
+        }),
+      );
+      expect(context[1]).toEqual(
+        expect.objectContaining({
+          before: '',
+          after: '',
+          pageContext: expect.stringContaining('article body'),
+        }),
+      );
+    });
+
+    it('does not attach TranslateGemma contextual prompt data to other providers', async () => {
+      const article = document.createElement('article');
+      article.innerHTML = '<p>Provider scoped context</p>';
+      document.body.appendChild(article);
+
+      mockSendMessage.mockResolvedValue({
+        success: true,
+        result: ['Palveluntarjoajaan rajattu konteksti'],
+      });
+
+      const sendResponse = vi.fn();
+      startPageTranslation(sendResponse, { provider: 'opus-mt' });
+
+      await waitForAsyncContentWork(100);
+
+      const translateCalls = mockSendMessage.mock.calls.filter(
+        (c) => c[0]?.type === 'translate',
+      );
+      expect(translateCalls.length).toBeGreaterThan(0);
+      expect(translateCalls[0][0].provider).toBe('opus-mt');
+      expect(translateCalls[0][0].options?.context).toBeUndefined();
     });
   });
 
@@ -3985,13 +4036,15 @@ describe('Content Script', () => {
       document.body.innerHTML = html;
 
       const calls: number[] = [];
-      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => {
-        calls.push(Date.now());
-        return {
-          success: true,
-          result: (message.text ?? []).map(() => 'Käännetty'),
-        };
-      });
+      mockSendMessage.mockImplementation(
+        async (message: { text?: string[] }) => {
+          calls.push(Date.now());
+          return {
+            success: true,
+            result: (message.text ?? []).map(() => 'Käännetty'),
+          };
+        },
+      );
 
       const sendResponse = vi.fn();
       startPageTranslation(sendResponse);
@@ -4143,19 +4196,21 @@ describe('Content Script', () => {
       document.body.innerHTML = html;
 
       let batchCount = 0;
-      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => {
-        batchCount++;
-        if (batchCount === 1) {
+      mockSendMessage.mockImplementation(
+        async (message: { text?: string[] }) => {
+          batchCount++;
+          if (batchCount === 1) {
+            return {
+              success: true,
+              result: (message.text ?? []).map(() => 'Käännetty'),
+            };
+          }
           return {
             success: true,
             result: (message.text ?? []).map(() => 'Käännetty'),
           };
-        }
-        return {
-          success: true,
-          result: (message.text ?? []).map(() => 'Käännetty'),
-        };
-      });
+        },
+      );
 
       const sendResponse = vi.fn();
       startPageTranslation(sendResponse);
@@ -5043,10 +5098,12 @@ describe('Content Script', () => {
 
       // 201 elements > MUTATION_BATCH_CAP(100) → else branch entered.
       // processNextChunk: offset=100, 100<201 → inner if → setTimeout (line 864).
-      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => ({
-        success: true,
-        result: (message.text ?? []).map(() => 'T'),
-      }));
+      mockSendMessage.mockImplementation(
+        async (message: { text?: string[] }) => ({
+          success: true,
+          result: (message.text ?? []).map(() => 'T'),
+        }),
+      );
       for (let i = 0; i < 201; i++) {
         const span = document.createElement('span');
         span.textContent = `Node ${i}`;
@@ -5070,10 +5127,12 @@ describe('Content Script', () => {
       await waitForAsyncContentWork(400);
 
       // 201 elements → deferred chunk scheduling uses requestIdleCallback for the tail work
-      mockSendMessage.mockImplementation(async (message: { text?: string[] }) => ({
-        success: true,
-        result: (message.text ?? []).map(() => 'T'),
-      }));
+      mockSendMessage.mockImplementation(
+        async (message: { text?: string[] }) => ({
+          success: true,
+          result: (message.text ?? []).map(() => 'T'),
+        }),
+      );
       for (let i = 0; i < 201; i++) {
         const span = document.createElement('span');
         span.textContent = `RIC Node ${i}`;
@@ -5098,10 +5157,12 @@ describe('Content Script', () => {
 
         // 2200 synchronous appends produce one overflow burst in the shared mutation orchestrator.
         // maxPending=2000: first 2000 buffered, 200 dropped → first diagnostic warning boundary.
-        mockSendMessage.mockImplementation(async (message: { text?: string[] }) => ({
-          success: true,
-          result: (message.text ?? []).map(() => 'T'),
-        }));
+        mockSendMessage.mockImplementation(
+          async (message: { text?: string[] }) => ({
+            success: true,
+            result: (message.text ?? []).map(() => 'T'),
+          }),
+        );
         for (let i = 0; i < 2200; i++) {
           document.body.appendChild(document.createElement('span'));
         }

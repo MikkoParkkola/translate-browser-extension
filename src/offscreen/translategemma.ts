@@ -13,6 +13,7 @@ import type {
   PreTrainedTokenizer,
   Tensor,
 } from '@huggingface/transformers';
+import type { TranslationContext, TranslationContextInput } from '../types';
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
 import { extractErrorMessage } from '../core/errors';
@@ -25,33 +26,92 @@ import {
 
 const log = createLogger('TranslateGemma');
 
-export const TRANSLATEGEMMA_MODEL = 'm1cc0z/translategemma-4b-it-onnx-q4-webgpu';
+export const TRANSLATEGEMMA_MODEL =
+  'm1cc0z/translategemma-4b-it-onnx-q4-webgpu';
+export const TRANSLATEGEMMA_CONTEXT_FIELD_LIMIT = 180;
+export const TRANSLATEGEMMA_MAX_BATCH_SIZE = 8;
 
 // Language names for TranslateGemma prompt (ISO 639-1 -> English name)
 export const LANG_NAMES: Record<string, string> = {
-  en: 'English', fi: 'Finnish', de: 'German', fr: 'French', es: 'Spanish',
-  sv: 'Swedish', ru: 'Russian', zh: 'Chinese', ja: 'Japanese', nl: 'Dutch',
-  cs: 'Czech', da: 'Danish', no: 'Norwegian', pl: 'Polish', pt: 'Portuguese',
-  it: 'Italian', ko: 'Korean', ar: 'Arabic', hi: 'Hindi', tr: 'Turkish',
-  uk: 'Ukrainian', vi: 'Vietnamese', th: 'Thai', el: 'Greek', hu: 'Hungarian',
-  ro: 'Romanian', bg: 'Bulgarian', hr: 'Croatian', sk: 'Slovak', sl: 'Slovenian',
-  et: 'Estonian', lv: 'Latvian', lt: 'Lithuanian', id: 'Indonesian', ms: 'Malay',
-  he: 'Hebrew', fa: 'Persian', ur: 'Urdu', bn: 'Bengali', ta: 'Tamil',
-  te: 'Telugu', ml: 'Malayalam', ka: 'Georgian', hy: 'Armenian', sq: 'Albanian',
-  mk: 'Macedonian', sr: 'Serbian', bs: 'Bosnian', is: 'Icelandic', mt: 'Maltese',
-  ga: 'Irish', cy: 'Welsh', eu: 'Basque', ca: 'Catalan', gl: 'Galician',
-  af: 'Afrikaans', sw: 'Swahili',
+  en: 'English',
+  fi: 'Finnish',
+  de: 'German',
+  fr: 'French',
+  es: 'Spanish',
+  sv: 'Swedish',
+  ru: 'Russian',
+  zh: 'Chinese',
+  ja: 'Japanese',
+  nl: 'Dutch',
+  cs: 'Czech',
+  da: 'Danish',
+  no: 'Norwegian',
+  pl: 'Polish',
+  pt: 'Portuguese',
+  it: 'Italian',
+  ko: 'Korean',
+  ar: 'Arabic',
+  hi: 'Hindi',
+  tr: 'Turkish',
+  uk: 'Ukrainian',
+  vi: 'Vietnamese',
+  th: 'Thai',
+  el: 'Greek',
+  hu: 'Hungarian',
+  ro: 'Romanian',
+  bg: 'Bulgarian',
+  hr: 'Croatian',
+  sk: 'Slovak',
+  sl: 'Slovenian',
+  et: 'Estonian',
+  lv: 'Latvian',
+  lt: 'Lithuanian',
+  id: 'Indonesian',
+  ms: 'Malay',
+  he: 'Hebrew',
+  fa: 'Persian',
+  ur: 'Urdu',
+  bn: 'Bengali',
+  ta: 'Tamil',
+  te: 'Telugu',
+  ml: 'Malayalam',
+  ka: 'Georgian',
+  hy: 'Armenian',
+  sq: 'Albanian',
+  mk: 'Macedonian',
+  sr: 'Serbian',
+  bs: 'Bosnian',
+  is: 'Icelandic',
+  mt: 'Maltese',
+  ga: 'Irish',
+  cy: 'Welsh',
+  eu: 'Basque',
+  ca: 'Catalan',
+  gl: 'Galician',
+  af: 'Afrikaans',
+  sw: 'Swahili',
 };
 
 // TranslateGemma model + tokenizer (loaded directly, not via pipeline)
 let tgModel: PreTrainedModel | null = null;
 let tgTokenizer: PreTrainedTokenizer | null = null;
-let tgLoading: Promise<{ model: PreTrainedModel; tokenizer: PreTrainedTokenizer }> | null = null;
+let tgLoading: Promise<{
+  model: PreTrainedModel;
+  tokenizer: PreTrainedTokenizer;
+}> | null = null;
 
 // Flag: set to true when TranslateGemma WebGPU load fails with ONNX type mismatch.
 // This indicates the ONNX Runtime WebGPU state is corrupted, so subsequent WebGPU
 // loads (e.g., OPUS-MT) should skip straight to WASM.
 let _webGpuOnnxTainted = false;
+
+type GenerateCapableModel = PreTrainedModel & {
+  generate(params: Record<string, unknown>): Promise<Tensor>;
+};
+
+type TokenizerBatchOutput = Record<string, unknown> & {
+  input_ids: Tensor;
+};
 
 /**
  * Check if the ONNX Runtime WebGPU state is tainted by a failed TranslateGemma load.
@@ -69,7 +129,11 @@ export function isWebGpuOnnxTainted(): boolean {
 export async function detectWebNN(): Promise<boolean> {
   try {
     // navigator.ml is the WebNN entry point; not yet in TS lib defs
-    const ml = (navigator as unknown as { ml?: { createContext(opts: object): Promise<unknown> } }).ml;
+    const ml = (
+      navigator as unknown as {
+        ml?: { createContext(opts: object): Promise<unknown> };
+      }
+    ).ml;
     if (!ml) return false;
     // Request a GPU-backed context; falls back to CPU if GPU unavailable
     const ctx = await ml.createContext({ deviceType: 'gpu' });
@@ -82,7 +146,10 @@ export async function detectWebNN(): Promise<boolean> {
 /**
  * Check WebGPU support and capabilities.
  */
-export async function detectWebGPU(): Promise<{ supported: boolean; fp16: boolean }> {
+export async function detectWebGPU(): Promise<{
+  supported: boolean;
+  fp16: boolean;
+}> {
   if (!navigator.gpu) return { supported: false, fp16: false };
   try {
     const adapter = await navigator.gpu.requestAdapter();
@@ -94,6 +161,49 @@ export async function detectWebGPU(): Promise<{ supported: boolean; fp16: boolea
   }
 }
 
+type TranslateGemmaPromptContext = string | TranslationContext;
+
+function normalizePromptContext(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function limitPromptContextField(value: string): string {
+  const normalized = normalizePromptContext(value);
+  if (normalized.length <= TRANSLATEGEMMA_CONTEXT_FIELD_LIMIT)
+    return normalized;
+  return `${normalized.slice(0, TRANSLATEGEMMA_CONTEXT_FIELD_LIMIT).trimEnd()}...`;
+}
+
+function formatTranslateGemmaContext(
+  context?: TranslateGemmaPromptContext,
+): string {
+  if (!context) return '';
+
+  if (typeof context === 'string') {
+    const boundedContext = limitPromptContextField(context);
+    if (!boundedContext) return '';
+    return `This text appears in "${boundedContext}". Use this context for disambiguation.`;
+  }
+
+  const fields: string[] = [];
+  const pageContext = context.pageContext
+    ? limitPromptContextField(context.pageContext)
+    : '';
+  const before = context.before ? limitPromptContextField(context.before) : '';
+  const after = context.after ? limitPromptContextField(context.after) : '';
+
+  if (pageContext) fields.push(`Page: ${pageContext}`);
+  if (before) fields.push(`Before: ${before}`);
+  if (after) fields.push(`After: ${after}`);
+
+  if (fields.length === 0) return '';
+
+  return (
+    'Use this bounded page context for disambiguation. Do not translate the context:\n' +
+    fields.map((field) => `- ${field}`).join('\n')
+  );
+}
+
 /**
  * Format the TranslateGemma prompt from the official chat template.
  */
@@ -101,13 +211,14 @@ export function formatTranslateGemmaPrompt(
   text: string,
   sourceLang: string,
   targetLang: string,
-  context?: string
+  context?: TranslateGemmaPromptContext,
 ): string {
   const srcName = LANG_NAMES[sourceLang] || sourceLang;
   const tgtName = LANG_NAMES[targetLang] || targetLang;
 
-  const contextLine = context
-    ? `\nContext: This text appears in "${context}". Use this context for disambiguation.\n`
+  const formattedContext = formatTranslateGemmaContext(context);
+  const contextLine = formattedContext
+    ? `\nContext: ${formattedContext}\n`
     : '';
 
   return (
@@ -137,7 +248,10 @@ function sendProgress(update: Record<string, unknown>): void {
  */
 export function isOnnxTypeMismatch(error: unknown): boolean {
   const errorMsg = extractErrorMessage(error);
-  return errorMsg.includes('Type parameter') || errorMsg.includes('bound to different types');
+  return (
+    errorMsg.includes('Type parameter') ||
+    errorMsg.includes('bound to different types')
+  );
 }
 
 /**
@@ -152,10 +266,16 @@ export function isOnnxTypeMismatch(error: unknown): boolean {
  * model_type auto-detection issue: the model declares model_type "gemma3"
  * but Transformers.js only maps "gemma3_text" to the causal LM class.
  */
-export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedModel; tokenizer: PreTrainedTokenizer }> {
+export async function getTranslateGemmaPipeline(): Promise<{
+  model: PreTrainedModel;
+  tokenizer: PreTrainedTokenizer;
+}> {
   if (tgModel && tgTokenizer) {
     void trackDownloadedModel(TRANSLATEGEMMA_MODEL).catch((error) => {
-      logDownloadedModelTrackingFailure('refresh TranslateGemma inventory', error);
+      logDownloadedModelTrackingFailure(
+        'refresh TranslateGemma inventory',
+        error,
+      );
     });
     return { model: tgModel, tokenizer: tgTokenizer };
   }
@@ -177,9 +297,15 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       });
     };
 
-    const loadModel = async (device: 'webnn' | 'webgpu' | 'wasm', dtype: string) => {
-      log.info(`Loading TranslateGemma with device: ${device}, dtype: ${dtype}`);
-      const { Gemma3ForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
+    const loadModel = async (
+      device: 'webnn' | 'webgpu' | 'wasm',
+      dtype: string,
+    ) => {
+      log.info(
+        `Loading TranslateGemma with device: ${device}, dtype: ${dtype}`,
+      );
+      const { Gemma3ForCausalLM, AutoTokenizer } =
+        await import('@huggingface/transformers');
       // Load model and tokenizer in parallel for faster startup.
       // Gemma3ForCausalLM is used directly to avoid pipeline model_type
       // resolution failure (model declares "gemma3", TJS only maps "gemma3_text").
@@ -195,13 +321,19 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
             progress_callback: progressCallback,
           }),
         ]),
-        CONFIG.timeouts.translateGemmaMs,  // 5 min for ~3.6GB model
-        `Loading TranslateGemma model (${device}/${dtype})`
+        CONFIG.timeouts.translateGemmaMs, // 5 min for ~3.6GB model
+        `Loading TranslateGemma model (${device}/${dtype})`,
       );
-      return { model: model as PreTrainedModel, tokenizer: tokenizer as PreTrainedTokenizer };
+      return {
+        model: model as PreTrainedModel,
+        tokenizer: tokenizer as PreTrainedTokenizer,
+      };
     };
 
-    const setResult = async (result: { model: PreTrainedModel; tokenizer: PreTrainedTokenizer }) => {
+    const setResult = async (result: {
+      model: PreTrainedModel;
+      tokenizer: PreTrainedTokenizer;
+    }) => {
       tgModel = result.model;
       tgTokenizer = result.tokenizer;
       tgLoading = null;
@@ -209,7 +341,10 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       try {
         await trackDownloadedModel(TRANSLATEGEMMA_MODEL);
       } catch (error) {
-        logDownloadedModelTrackingFailure('persist TranslateGemma inventory', error);
+        logDownloadedModelTrackingFailure(
+          'persist TranslateGemma inventory',
+          error,
+        );
       }
       return { model: tgModel, tokenizer: tgTokenizer };
     };
@@ -219,7 +354,8 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
     // corrupts the ONNX Runtime and breaks all subsequent model loads.
     if (!webnn && !gpu.supported) {
       tgLoading = null;
-      const msg = 'TranslateGemma requires WebNN or WebGPU. The 3.6GB model cannot run without GPU acceleration.';
+      const msg =
+        'TranslateGemma requires WebNN or WebGPU. The 3.6GB model cannot run without GPU acceleration.';
       log.error(msg);
       sendProgress({ status: 'error', error: msg });
       throw new Error(msg);
@@ -238,7 +374,9 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
         return await setResult(result);
       } catch (error) {
         const errorMsg = extractErrorMessage(error);
-        log.warn(`TranslateGemma: WebNN failed (${errorMsg}), falling back to WebGPU...`);
+        log.warn(
+          `TranslateGemma: WebNN failed (${errorMsg}), falling back to WebGPU...`,
+        );
       }
     }
 
@@ -252,7 +390,9 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
         /* v8 ignore start -- defensive error type narrowing */
         const errorMsg = extractErrorMessage(error);
         /* v8 ignore stop */
-        log.warn(`TranslateGemma: WebGPU q4f16 failed (${errorMsg}), trying WebGPU q4 (fp32)...`);
+        log.warn(
+          `TranslateGemma: WebGPU q4f16 failed (${errorMsg}), trying WebGPU q4 (fp32)...`,
+        );
       }
     } else {
       log.info('WebGPU lacks shader-f16, skipping q4f16, trying q4 (fp32)...');
@@ -267,7 +407,9 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       /* v8 ignore start -- defensive error type narrowing */
       const errorMsg = extractErrorMessage(error);
       /* v8 ignore stop */
-      log.warn(`TranslateGemma: WebGPU q4 also failed (${errorMsg}), final fallback to WASM + q4`);
+      log.warn(
+        `TranslateGemma: WebGPU q4 also failed (${errorMsg}), final fallback to WASM + q4`,
+      );
 
       // Both WebGPU attempts failed — mark WebGPU ONNX state as tainted
       // so subsequent model loads (e.g., OPUS-MT) skip WebGPU directly.
@@ -276,7 +418,8 @@ export async function getTranslateGemmaPipeline(): Promise<{ model: PreTrainedMo
       // Do NOT fall back to WASM: the 3.6GB model exceeds the 4GB WASM heap
       // and attempting it corrupts ONNX Runtime, breaking ALL subsequent models.
       tgLoading = null;
-      const msg = 'TranslateGemma WebGPU loading failed. The model is too large for CPU fallback.';
+      const msg =
+        'TranslateGemma WebGPU loading failed. The model is too large for CPU fallback.';
       log.error(msg);
       sendProgress({ status: 'error', error: msg });
       throw new Error(msg);
@@ -293,56 +436,116 @@ export async function translateWithGemma(
   text: string | string[],
   sourceLang: string,
   targetLang: string,
-  context?: string
+  context?: TranslationContextInput | string,
 ): Promise<string | string[]> {
   const { model, tokenizer } = await getTranslateGemmaPipeline();
+  const generateModel = model as GenerateCapableModel;
 
-  const translateSingle = async (t: string): Promise<string> => {
-    if (!t || t.trim().length === 0) return t;
-
-    const prompt = formatTranslateGemmaPrompt(t, sourceLang, targetLang, context);
-    const inputs = tokenizer(prompt);
-
-    // Generate translation
-    const outputIds = await (model as PreTrainedModel & {
-      generate(params: Record<string, unknown>): Promise<Tensor>;
-    }).generate({
-      ...inputs,
-      max_new_tokens: 1024,
-      do_sample: false,
-    });
-
-    // Decode only the generated tokens (skip input prompt tokens)
-    const inputLength = (inputs.input_ids as Tensor).dims[1];
-    const allTokenIds = (outputIds as Tensor).tolist() as number[][];
-    /* v8 ignore start -- defensive nullish coalescing for output array */
-    const generatedTokenIds = (allTokenIds[0] ?? []).slice(inputLength);
-    /* v8 ignore stop */
-    let translation = tokenizer.decode(
-      generatedTokenIds,
-      { skip_special_tokens: true }
-    );
-
-    // Clean up: remove any trailing special tokens / template artifacts
-    translation = translation
+  const decodeTranslation = (generatedTokenIds: number[]): string =>
+    tokenizer
+      .decode(generatedTokenIds, {
+        skip_special_tokens: true,
+      })
       .replace(/<end_of_turn>/g, '')
       .replace(/<start_of_turn>/g, '')
       .replace(/model\n?$/g, '')
       .trim();
 
-    return translation;
+  const generateFromPrompts = async (
+    prompts: string | string[],
+    tokenizerOptions?: Record<string, unknown>,
+  ): Promise<string[]> => {
+    const promptList = Array.isArray(prompts) ? prompts : [prompts];
+    const inputs = tokenizer(prompts, tokenizerOptions) as TokenizerBatchOutput;
+
+    // Generate translation
+    const outputIds = await generateModel.generate({
+      ...inputs,
+      max_new_tokens: 1024,
+      do_sample: false,
+    });
+
+    // Decode only the generated tokens (skip padded input prompt tokens)
+    const inputLength = inputs.input_ids.dims[1];
+    const allTokenIds = outputIds.tolist() as number[][];
+    return promptList.map((_, index) =>
+      decodeTranslation((allTokenIds[index] ?? []).slice(inputLength)),
+    );
+  };
+
+  const translateSingle = async (
+    t: string,
+    segmentContext?: TranslateGemmaPromptContext,
+  ): Promise<string> => {
+    if (!t || t.trim().length === 0) return t;
+
+    const prompt = formatTranslateGemmaPrompt(
+      t,
+      sourceLang,
+      targetLang,
+      segmentContext,
+    );
+    const [translation] = await generateFromPrompts(prompt);
+    return translation ?? '';
   };
 
   if (Array.isArray(text)) {
-    // Sequential to avoid OOM on large batches
-    const results: string[] = [];
-    for (const t of text) {
-      results.push(await translateSingle(t));
+    const results = new Array<string>(text.length);
+    const pending: Array<{
+      index: number;
+      sourceText: string;
+      prompt: string;
+      segmentContext?: TranslateGemmaPromptContext;
+    }> = [];
+
+    for (let i = 0; i < text.length; i++) {
+      const sourceText = text[i];
+      const segmentContext = Array.isArray(context) ? context[i] : context;
+      if (!sourceText || sourceText.trim().length === 0) {
+        results[i] = sourceText;
+        continue;
+      }
+
+      pending.push({
+        index: i,
+        sourceText,
+        prompt: formatTranslateGemmaPrompt(
+          sourceText,
+          sourceLang,
+          targetLang,
+          segmentContext,
+        ),
+        segmentContext,
+      });
     }
+
+    for (let i = 0; i < pending.length; i += TRANSLATEGEMMA_MAX_BATCH_SIZE) {
+      const batch = pending.slice(i, i + TRANSLATEGEMMA_MAX_BATCH_SIZE);
+      try {
+        const translations = await generateFromPrompts(
+          batch.map((item) => item.prompt),
+          { padding: true, truncation: true },
+        );
+        batch.forEach((item, index) => {
+          results[item.index] = translations[index] ?? '';
+        });
+      } catch (error) {
+        log.warn(
+          `TranslateGemma batched generation failed (${extractErrorMessage(error)}); falling back to per-segment generation.`,
+        );
+        for (const item of batch) {
+          results[item.index] = await translateSingle(
+            item.sourceText,
+            item.segmentContext,
+          );
+        }
+      }
+    }
+
     return results;
   }
 
-  return translateSingle(text);
+  return translateSingle(text, Array.isArray(context) ? context[0] : context);
 }
 
 /**

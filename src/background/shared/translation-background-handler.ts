@@ -44,12 +44,12 @@ export interface CreateTranslationBackgroundHandlerOptions {
     sourceText: string,
     translatedText: string,
     sourceLang: string,
-    targetLang: string
+    targetLang: string,
   ) => void;
   runChromeBuiltinTranslation: (
     text: string | string[],
     sourceLang: string,
-    targetLang: string
+    targetLang: string,
   ) => Promise<string | string[]>;
   log: TranslationBackgroundLogger;
   maxInFlightRequests?: number;
@@ -57,7 +57,9 @@ export interface CreateTranslationBackgroundHandlerOptions {
 }
 
 export interface TranslationBackgroundHandler {
-  handleTranslate: (message: TranslateMessagePayload) => Promise<TranslateResponse>;
+  handleTranslate: (
+    message: TranslateMessagePayload,
+  ) => Promise<TranslateResponse>;
   rejectInFlightRequests: (error: Error) => number;
 }
 
@@ -98,17 +100,22 @@ export function createTranslationBackgroundHandler({
     includeProfilingReport = false,
   ): Partial<TranslateResponse> | void {
     /* v8 ignore start -- fire-and-forget */
-    recordTranslation(successfulExecution.message.targetLang).catch((error: unknown) => {
-      log.debug('recordTranslation skipped:', error);
-    });
+    recordTranslation(successfulExecution.message.targetLang).catch(
+      (error: unknown) => {
+        log.debug('recordTranslation skipped:', error);
+      },
+    );
     /* v8 ignore stop */
 
-    if (typeof successfulExecution.text === 'string' && typeof result === 'string') {
+    if (
+      typeof successfulExecution.text === 'string' &&
+      typeof result === 'string'
+    ) {
       recordTranslationToHistory(
         successfulExecution.text,
         result,
         successfulExecution.message.sourceLang,
-        successfulExecution.message.targetLang
+        successfulExecution.message.targetLang,
       );
     }
 
@@ -127,7 +134,7 @@ export function createTranslationBackgroundHandler({
 
   async function handleChromeBuiltinTranslation(
     execution: PreparedTranslationExecution,
-    sessionId: string | undefined
+    sessionId: string | undefined,
   ): Promise<TranslateResponse> {
     if (sessionId) profiler.startTiming(sessionId, 'chrome_builtin_translate');
 
@@ -135,30 +142,31 @@ export function createTranslationBackgroundHandler({
       const result = await runChromeBuiltinTranslation(
         execution.text,
         execution.message.sourceLang,
-        execution.message.targetLang
+        execution.message.targetLang,
       );
 
       if (sessionId) profiler.endTiming(sessionId, 'chrome_builtin_translate');
 
-      return await finalizeTranslationExecution(
-        execution,
-        cache,
-        result,
-        {
-          responsePatch: { provider: 'chrome-builtin' },
-          recordUsage: false,
-          cacheSourceLang: execution.message.sourceLang !== 'auto' ? execution.message.sourceLang : null,
-          onSuccess: ({ execution: successfulExecution, result: translatedResult }) =>
-            handleSuccessfulTranslationSideEffects(
-              successfulExecution,
-              translatedResult,
-              sessionId,
-            ),
-          onAfterCacheStore: () => {
-            if (sessionId) profiler.endTiming(sessionId, 'total');
-          },
-        }
-      );
+      return await finalizeTranslationExecution(execution, cache, result, {
+        responsePatch: { provider: 'chrome-builtin' },
+        recordUsage: false,
+        cacheSourceLang:
+          execution.message.sourceLang !== 'auto'
+            ? execution.message.sourceLang
+            : null,
+        onSuccess: ({
+          execution: successfulExecution,
+          result: translatedResult,
+        }) =>
+          handleSuccessfulTranslationSideEffects(
+            successfulExecution,
+            translatedResult,
+            sessionId,
+          ),
+        onAfterCacheStore: () => {
+          if (sessionId) profiler.endTiming(sessionId, 'total');
+        },
+      });
     } catch (error) {
       if (sessionId) {
         profiler.endTiming(sessionId, 'chrome_builtin_translate');
@@ -167,16 +175,21 @@ export function createTranslationBackgroundHandler({
       const errMsg = extractErrorMessage(error);
 
       log.error('Chrome Built-in translation failed:', errMsg);
-      return { success: false, error: errMsg, duration: Date.now() - execution.startTime };
+      return {
+        success: false,
+        error: errMsg,
+        duration: Date.now() - execution.startTime,
+      };
     }
   }
 
   async function requestOffscreenTranslation(
     execution: PreparedTranslationExecution,
-    sessionId: string | undefined
+    sessionId: string | undefined,
   ) {
     return withRetry(
       async () => {
+        const context = execution.message.options?.context;
         const result = await offscreenTransport.send<'translate'>({
           type: 'translate',
           text: execution.text,
@@ -184,7 +197,10 @@ export function createTranslationBackgroundHandler({
           targetLang: execution.message.targetLang,
           provider: execution.provider,
           sessionId,
-          pageContext: execution.message.options?.context?.pageContext,
+          context,
+          pageContext: Array.isArray(context)
+            ? undefined
+            : context?.pageContext,
         });
 
         if (!result) {
@@ -200,15 +216,17 @@ export function createTranslationBackgroundHandler({
       networkRetryConfig,
       (error: TranslationError) => {
         return error.retryable !== false && !!error.technicalDetails;
-      }
+      },
     );
   }
 
   async function handleTranslateInner(
-    message: TranslateMessagePayload
+    message: TranslateMessagePayload,
   ): Promise<TranslateResponse> {
     const startTime = Date.now();
-    const sessionId = message.enableProfiling ? profiler.startSession() : undefined;
+    const sessionId = message.enableProfiling
+      ? profiler.startSession()
+      : undefined;
 
     if (sessionId) {
       profiler.startTiming(sessionId, 'total');
@@ -242,13 +260,19 @@ export function createTranslationBackgroundHandler({
 
       const { execution } = preparedResult;
 
-      log.info('Translating:', execution.message.sourceLang, '->', execution.message.targetLang);
+      log.info(
+        'Translating:',
+        execution.message.sourceLang,
+        '->',
+        execution.message.targetLang,
+      );
 
       if (execution.provider === 'chrome-builtin') {
         return handleChromeBuiltinTranslation(execution, sessionId);
       }
 
-      if (sessionId) profiler.startTiming(sessionId, 'ipc_background_to_offscreen');
+      if (sessionId)
+        profiler.startTiming(sessionId, 'ipc_background_to_offscreen');
 
       const response = await requestOffscreenTranslation(execution, sessionId);
 
@@ -285,7 +309,7 @@ export function createTranslationBackgroundHandler({
               sessionId,
               true,
             ),
-        }
+        },
       );
     } catch (error) {
       if (sessionId) {
@@ -297,7 +321,9 @@ export function createTranslationBackgroundHandler({
     }
   }
 
-  async function handleTranslate(message: TranslateMessagePayload): Promise<TranslateResponse> {
+  async function handleTranslate(
+    message: TranslateMessagePayload,
+  ): Promise<TranslateResponse> {
     await cache.load();
 
     const provider = message.provider || getProvider();
@@ -305,7 +331,7 @@ export function createTranslationBackgroundHandler({
       message.text,
       message.sourceLang,
       message.targetLang,
-      provider
+      provider,
     );
 
     if (inFlightRequests.size >= maxInFlightRequests) {
@@ -337,10 +363,12 @@ export function createTranslationBackgroundHandler({
     }
 
     let rejectInFlight!: (error: Error) => void;
-    const controllablePromise = new Promise<TranslateResponse>((resolve, reject) => {
-      rejectInFlight = reject;
-      innerPromise.then(resolve, reject);
-    });
+    const controllablePromise = new Promise<TranslateResponse>(
+      (resolve, reject) => {
+        rejectInFlight = reject;
+        innerPromise.then(resolve, reject);
+      },
+    );
     inFlightRequests.set(dedupKey, {
       promise: controllablePromise,
       reject: rejectInFlight,

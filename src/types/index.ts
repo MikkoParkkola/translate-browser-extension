@@ -6,9 +6,10 @@ import type { TranslationError } from '../core/errors';
 
 // ML translation pipeline (Transformers.js OPUS-MT / TranslateGemma)
 export interface TranslationPipeline {
-  (text: string, options?: Record<string, unknown> & { max_length?: number }): Promise<
-    Array<{ translation_text: string }>
-  >;
+  (
+    text: string,
+    options?: Record<string, unknown> & { max_length?: number },
+  ): Promise<Array<{ translation_text: string }>>;
   dispose?(): Promise<void>;
 }
 
@@ -16,8 +17,18 @@ export interface TranslationPipeline {
 export type ProviderType = 'local' | 'cloud' | 'hybrid';
 export type QualityTier = 'basic' | 'standard' | 'premium';
 export type Strategy = 'smart' | 'fast' | 'quality' | 'cost' | 'balanced';
-export type TranslationProviderId = 'opus-mt' | 'translategemma' | 'chrome-builtin' | 'deepl' | 'openai' | 'google-cloud' | 'anthropic';
-export type CloudProviderId = Exclude<TranslationProviderId, 'opus-mt' | 'translategemma' | 'chrome-builtin'>;
+export type TranslationProviderId =
+  | 'opus-mt'
+  | 'translategemma'
+  | 'chrome-builtin'
+  | 'deepl'
+  | 'openai'
+  | 'google-cloud'
+  | 'anthropic';
+export type CloudProviderId = Exclude<
+  TranslationProviderId,
+  'opus-mt' | 'translategemma' | 'chrome-builtin'
+>;
 export type CloudProviderConfiguredStatus = Record<CloudProviderId, boolean>;
 /**
  * Reserved placeholder for future aggregate provider diagnostics in `getUsage`.
@@ -35,15 +46,13 @@ export type CloudProviderUsageSummary = Partial<Record<CloudProviderId, never>>;
  *   // resolves to  { success: true; available: boolean }
  *              // | { success: false; error: string }
  */
-export type MessageResponse<T extends Record<string, unknown> = Record<string, unknown>> =
-  | ({ success: true } & T)
-  | { success: false; error: string };
+export type MessageResponse<
+  T extends Record<string, unknown> = Record<string, unknown>,
+> = ({ success: true } & T) | { success: false; error: string };
 
 export type MessageResponseWithFallback<
   T extends Record<string, unknown> = Record<string, unknown>,
-> =
-  | ({ success: true } & T)
-  | ({ success: false; error: string } & T);
+> = ({ success: true } & T) | ({ success: false; error: string } & T);
 
 export interface ProviderConfig {
   id: string;
@@ -64,14 +73,18 @@ export interface TranslationResult {
 export interface TranslationContext {
   before: string;
   after: string;
-  pageContext?: string;  // Page structure context for better disambiguation
+  pageContext?: string; // Page structure context for better disambiguation
 }
+
+export type TranslationContextInput =
+  | TranslationContext
+  | Array<TranslationContext | undefined>;
 
 export interface TranslationOptions {
   strategy?: Strategy;
   maxRetries?: number;
   timeout?: number;
-  context?: TranslationContext;
+  context?: TranslationContextInput;
 }
 
 // Language detection
@@ -138,7 +151,12 @@ export interface TranslationProvider {
   icon: string;
 
   initialize(): Promise<void>;
-  translate(text: string | string[], sourceLang: string, targetLang: string, options?: TranslationOptions): Promise<string | string[]>;
+  translate(
+    text: string | string[],
+    sourceLang: string,
+    targetLang: string,
+    options?: TranslationOptions,
+  ): Promise<string | string[]>;
   detectLanguage(text: string): Promise<string>;
   isAvailable(): Promise<boolean>;
   getSupportedLanguages(): LanguagePair[];
@@ -233,9 +251,9 @@ export interface ModelProgressMessage {
   status: 'initiate' | 'download' | 'progress' | 'done' | 'ready' | 'error';
   modelId: string;
   progress?: number; // 0-100
-  loaded?: number;   // bytes loaded
-  total?: number;    // bytes total
-  file?: string;     // current file being downloaded
+  loaded?: number; // bytes loaded
+  total?: number; // bytes total
+  file?: string; // current file being downloaded
   error?: string;
 }
 
@@ -593,19 +611,34 @@ export interface ExtensionMessageResponseMap {
   checkWebNN: { success: true; supported: boolean };
   getPredictionStats: MessageResponse<{ prediction: PredictionStats }>;
   recordLanguageDetection: MessageResponse;
-  getCloudProviderStatus: MessageResponseWithFallback<{ status: CloudProviderConfiguredStatus }>;
+  getCloudProviderStatus: MessageResponseWithFallback<{
+    status: CloudProviderConfiguredStatus;
+  }>;
   setCloudApiKey: MessageResponse<{ provider: CloudProviderId }>;
   clearCloudApiKey: MessageResponse<{ provider: CloudProviderId }>;
-  setCloudProviderEnabled: MessageResponse<{ provider: CloudProviderId; enabled: boolean }>;
+  setCloudProviderEnabled: MessageResponse<{
+    provider: CloudProviderId;
+    enabled: boolean;
+  }>;
   getCloudProviderUsage: MessageResponse<{ usage?: CloudProviderUsage }>;
   flushCloudProviderTelemetry: MessageResponse;
-  getProfilingStats: MessageResponse<{ aggregates: Record<string, unknown>; formatted: string }>;
+  getProfilingStats: MessageResponse<{
+    aggregates: Record<string, unknown>;
+    formatted: string;
+  }>;
   clearProfilingStats: MessageResponse;
   getHistory: { success: boolean; history: unknown[]; error?: string };
   clearHistory: MessageResponse;
   addCorrection: MessageResponse;
-  getCorrection: MessageResponse<{ correction: string | null; hasCorrection: boolean }>;
-  getAllCorrections: { success: boolean; corrections: unknown[]; error?: string };
+  getCorrection: MessageResponse<{
+    correction: string | null;
+    hasCorrection: boolean;
+  }>;
+  getAllCorrections: {
+    success: boolean;
+    corrections: unknown[];
+    error?: string;
+  };
   getCorrectionStats: {
     success: boolean;
     stats: { total: number; totalUses: number; topCorrections: unknown[] };
@@ -615,7 +648,11 @@ export interface ExtensionMessageResponseMap {
   deleteCorrection: MessageResponse<{ deleted: boolean }>;
   exportCorrections: { success: boolean; json?: string; error?: string };
   importCorrections: MessageResponse<{ importedCount: number }>;
-  ocrImage: MessageResponse<{ text?: string; confidence?: number; blocks?: OCRBlock[] }>;
+  ocrImage: MessageResponse<{
+    text?: string;
+    confidence?: number;
+    blocks?: OCRBlock[];
+  }>;
   captureScreenshot: MessageResponse<{ imageData: string }>;
   getDownloadedModels: MessageResponse<{ models: DownloadedModelRecord[] }>;
   deleteModel: MessageResponse;
@@ -630,8 +667,9 @@ export type BackgroundRequestMessage = Extract<
 
 export type BackgroundRequestMessageType = BackgroundRequestMessage['type'];
 
-export type ExtensionMessageResponse<TMessage extends BackgroundRequestMessage> =
-  ExtensionMessageResponseMap[TMessage['type']];
+export type ExtensionMessageResponse<
+  TMessage extends BackgroundRequestMessage,
+> = ExtensionMessageResponseMap[TMessage['type']];
 
 export type ExtensionMessageResponseByType<
   TType extends keyof ExtensionMessageResponseMap,
@@ -644,9 +682,28 @@ export type ExtensionMessageResponseByType<
  * the commands that the background initiates.
  */
 export type ContentCommand =
-  | { type: 'translatePage'; sourceLang: string; targetLang: string; strategy: Strategy; provider?: TranslationProviderId }
-  | { type: 'translateSelection'; sourceLang: string; targetLang: string; strategy: Strategy; provider?: TranslationProviderId }
-  | { type: 'translateImage'; imageUrl?: string; sourceLang: string; targetLang: string; strategy: Strategy; provider?: TranslationProviderId }
+  | {
+      type: 'translatePage';
+      sourceLang: string;
+      targetLang: string;
+      strategy: Strategy;
+      provider?: TranslationProviderId;
+    }
+  | {
+      type: 'translateSelection';
+      sourceLang: string;
+      targetLang: string;
+      strategy: Strategy;
+      provider?: TranslationProviderId;
+    }
+  | {
+      type: 'translateImage';
+      imageUrl?: string;
+      sourceLang: string;
+      targetLang: string;
+      strategy: Strategy;
+      provider?: TranslationProviderId;
+    }
   | { type: 'undoTranslation' }
   | { type: 'toggleWidget' }
   | { type: 'enterScreenshotMode' };

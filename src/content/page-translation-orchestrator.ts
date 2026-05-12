@@ -19,7 +19,10 @@ import { glossary, type GlossaryStore } from '../core/glossary';
 import { CONFIG } from '../config';
 import { createLogger } from '../core/logger';
 import { browserAPI } from '../core/browser-api';
-import { initSubtitleTranslation, cleanupSubtitleTranslation } from './subtitle-translator';
+import {
+  initSubtitleTranslation,
+  cleanupSubtitleTranslation,
+} from './subtitle-translator';
 import { clearImageOverlays } from './image-translator';
 import { recordContentTiming, getContentTimingStats } from './timing';
 import {
@@ -38,8 +41,12 @@ import {
   removeProgressToast,
   showErrorToast,
 } from './toast';
-import { getTextNodes, getTextNodesFromNodes, clearSkipCacheEntry } from './dom-utils';
-import { getPageContext } from './context';
+import {
+  getTextNodes,
+  getTextNodesFromNodes,
+  clearSkipCacheEntry,
+} from './dom-utils';
+import { getSegmentTranslationContext } from './context';
 import { isTransientError, createBatches } from './translation-helpers';
 import {
   clearTranslatedElementEditable,
@@ -61,7 +68,7 @@ export interface PageTranslationOrchestrator {
     targetLang: string,
     strategy: Strategy,
     provider?: string,
-    enableProfiling?: boolean
+    enableProfiling?: boolean,
   ): Promise<PageTranslationSummary>;
   translateDynamicContent(nodes: Node[]): Promise<void>;
   undoTranslation(): number;
@@ -91,7 +98,7 @@ export interface PageTranslationSummary {
 // ============================================================================
 
 export function createPageTranslationOrchestrator(
-  options: PageTranslationOrchestratorOptions
+  options: PageTranslationOrchestratorOptions,
 ): PageTranslationOrchestrator {
   const { onStopMutationObserver } = options;
 
@@ -154,10 +161,14 @@ export function createPageTranslationOrchestrator(
   // --------------------------------------------------------------------------
 
   function applyTranslatedBatchResults(
-    batch: { nodes: Text[]; texts: string[]; restoreFns: Array<(text: string) => string> },
+    batch: {
+      nodes: Text[];
+      texts: string[];
+      restoreFns: Array<(text: string) => string>;
+    },
     translatedResults: string[],
     sourceLang: string,
-    targetLang: string
+    targetLang: string,
   ): { translatedCount: number; errorCount: number; domUpdateTime: number } {
     const domUpdateStart = performance.now();
     let translatedCount = 0;
@@ -180,13 +191,18 @@ export function createPageTranslationOrchestrator(
 
           // Debug: log first 3 replacements to verify translation is actually different
           if (idx < 3) {
-            log.debug(`DOM Replace #${idx}: "${original.trim().substring(0, 40)}" -> "${finalText.substring(0, 40)}" (same=${original.trim() === finalText})`);
+            log.debug(
+              `DOM Replace #${idx}: "${original.trim().substring(0, 40)}" -> "${finalText.substring(0, 40)}" (same=${original.trim() === finalText})`,
+            );
           }
 
           ensureOriginalTextSnapshot(parent);
 
           node.textContent = leadingSpace + finalText + trailingSpace;
-          parent.setAttribute(MACHINE_TRANSLATION_ATTR, parent.textContent || '');
+          parent.setAttribute(
+            MACHINE_TRANSLATION_ATTR,
+            parent.textContent || '',
+          );
           parent.setAttribute(SOURCE_LANG_ATTR, sourceLang);
           parent.setAttribute(TARGET_LANG_ATTR, targetLang);
           parent.setAttribute(TRANSLATED_ATTR, 'true');
@@ -211,14 +227,23 @@ export function createPageTranslationOrchestrator(
   }
 
   async function translateBatchWithRetry(
-    batch: { nodes: Text[]; texts: string[]; restoreFns: Array<(text: string) => string> },
+    batch: {
+      nodes: Text[];
+      texts: string[];
+      restoreFns: Array<(text: string) => string>;
+    },
     sourceLang: string,
     targetLang: string,
     strategy: Strategy,
     provider?: string,
     enableProfiling = false,
-    maxRetries = 2
-  ): Promise<{ translatedCount: number; errorCount: number; ipcTime: number; domUpdateTime: number }> {
+    maxRetries = 2,
+  ): Promise<{
+    translatedCount: number;
+    errorCount: number;
+    ipcTime: number;
+    domUpdateTime: number;
+  }> {
     let lastError: unknown = null;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -230,10 +255,11 @@ export function createPageTranslationOrchestrator(
           log.info(`Retry attempt ${attempt} for batch`);
         }
 
-        // Extract page context from the first node in the batch for disambiguation
-        /* v8 ignore start */
-        const pageContext = batch.nodes[0] ? getPageContext(batch.nodes[0]) : '';
-        /* v8 ignore stop */
+        const context =
+          provider === 'translategemma'
+            ? batch.nodes.map((node) => getSegmentTranslationContext(node))
+            : undefined;
+        const translationContext = context?.some(Boolean) ? context : undefined;
 
         let translatedResults: string[];
         let ipcTime = 0;
@@ -253,7 +279,7 @@ export function createPageTranslationOrchestrator(
             targetLang,
             options: {
               strategy,
-              context: pageContext ? { before: '', after: '', pageContext } : undefined,
+              context: translationContext,
             },
             provider,
             enableProfiling,
@@ -263,40 +289,68 @@ export function createPageTranslationOrchestrator(
 
           if (response.success) {
             try {
-              translatedResults = normalizeBatchTranslations(response.result ?? [], batch.nodes.length);
+              translatedResults = normalizeBatchTranslations(
+                response.result ?? [],
+                batch.nodes.length,
+              );
             } catch (error) {
-              log.warn('Batch translation returned invalid result shape:', error);
-              return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime, domUpdateTime: 0 };
+              log.warn(
+                'Batch translation returned invalid result shape:',
+                error,
+              );
+              return {
+                translatedCount: 0,
+                errorCount: batch.nodes.length,
+                ipcTime,
+                domUpdateTime: 0,
+              };
             }
           } else {
             /* v8 ignore start -- non-retryable IPC error; requires real extension messaging */
             // Non-retryable error (e.g. unsupported language pair)
             if (response.error && !isTransientError(response.error)) {
-              return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime, domUpdateTime: 0 };
+              return {
+                translatedCount: 0,
+                errorCount: batch.nodes.length,
+                ipcTime,
+                domUpdateTime: 0,
+              };
             }
 
             /* v8 ignore start -- OR default fallback */
-            lastError = response.error || 'Translation returned unsuccessful response';
+            lastError =
+              response.error || 'Translation returned unsuccessful response';
             /* v8 ignore stop */
             continue;
           }
         }
 
-        const { translatedCount, errorCount, domUpdateTime } = applyTranslatedBatchResults(
-          batch,
-          translatedResults,
-          sourceLang,
-          targetLang
-        );
+        const { translatedCount, errorCount, domUpdateTime } =
+          applyTranslatedBatchResults(
+            batch,
+            translatedResults,
+            sourceLang,
+            targetLang,
+          );
         return { translatedCount, errorCount, ipcTime, domUpdateTime };
       } catch (error) {
         lastError = error;
         // Extension context invalidated = service worker restarted, not retryable
-        if (error instanceof Error && error.message.includes('Extension context invalidated')) {
-          log.warn('Extension context invalidated — stopping translation. Reload the page.');
+        if (
+          error instanceof Error &&
+          error.message.includes('Extension context invalidated')
+        ) {
+          log.warn(
+            'Extension context invalidated — stopping translation. Reload the page.',
+          );
           onStopMutationObserver();
           currentSettings = null;
-          return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime: 0, domUpdateTime: 0 };
+          return {
+            translatedCount: 0,
+            errorCount: batch.nodes.length,
+            ipcTime: 0,
+            domUpdateTime: 0,
+          };
         }
         // Other errors are retryable
         if (attempt === maxRetries) break;
@@ -304,7 +358,12 @@ export function createPageTranslationOrchestrator(
     }
 
     log.error(`Batch failed after ${maxRetries + 1} attempts:`, lastError);
-    return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime: 0, domUpdateTime: 0 };
+    return {
+      translatedCount: 0,
+      errorCount: batch.nodes.length,
+      ipcTime: 0,
+      domUpdateTime: 0,
+    };
   }
 
   // --------------------------------------------------------------------------
@@ -313,7 +372,7 @@ export function createPageTranslationOrchestrator(
 
   function getDirectTextChildren(element: Element): Text[] {
     return Array.from(element.childNodes).filter(
-      (node): node is Text => node.nodeType === Node.TEXT_NODE
+      (node): node is Text => node.nodeType === Node.TEXT_NODE,
     );
   }
 
@@ -325,7 +384,9 @@ export function createPageTranslationOrchestrator(
     if (!element.hasAttribute(ORIGINAL_TEXT_NODES_ATTR)) {
       element.setAttribute(
         ORIGINAL_TEXT_NODES_ATTR,
-        JSON.stringify(getDirectTextChildren(element).map((node) => node.textContent || ''))
+        JSON.stringify(
+          getDirectTextChildren(element).map((node) => node.textContent || ''),
+        ),
       );
     }
   }
@@ -355,7 +416,7 @@ export function createPageTranslationOrchestrator(
     _strategy: Strategy,
     glossaryStore: GlossaryStore,
     _provider?: string,
-    enableProfiling = false
+    enableProfiling = false,
   ): void {
     // Split deferred nodes into chunks of ~2 batches worth
     const chunkSize = CONFIG.batching.maxSize * 2;
@@ -364,7 +425,9 @@ export function createPageTranslationOrchestrator(
       chunks.push(deferredNodes.slice(i, i + chunkSize));
     }
 
-    log.info(`Deferring ${deferredNodes.length} nodes in ${chunks.length} scroll-triggered chunks`);
+    log.info(
+      `Deferring ${deferredNodes.length} nodes in ${chunks.length} scroll-triggered chunks`,
+    );
 
     const translatedChunks = new Set<number>();
 
@@ -373,7 +436,9 @@ export function createPageTranslationOrchestrator(
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
 
-          const chunkIndex = Number((entry.target as HTMLElement).dataset.translateChunk);
+          const chunkIndex = Number(
+            (entry.target as HTMLElement).dataset.translateChunk,
+          );
           /* v8 ignore start -- IntersectionObserver in jsdom doesn't fire; scroll guards untestable */
           if (isNaN(chunkIndex) || translatedChunks.has(chunkIndex)) continue;
           /* v8 ignore stop */
@@ -386,20 +451,21 @@ export function createPageTranslationOrchestrator(
           /* v8 ignore start -- scroll observer callback not triggered in jsdom */
           if (!chunk || !currentSettings) return;
           /* v8 ignore stop */
-          const { sourceLang, targetLang, strategy, provider } = currentSettings;
+          const { sourceLang, targetLang, strategy, provider } =
+            currentSettings;
 
           // Filter out nodes that are no longer in the DOM or already translated
           const validNodes = chunk.filter(
             (n) =>
               n.parentElement &&
               document.contains(n) &&
-              !n.parentElement.hasAttribute(TRANSLATED_ATTR)
+              !n.parentElement.hasAttribute(TRANSLATED_ATTR),
           );
           /* v8 ignore start -- scroll observer body: IntersectionObserver not available in jsdom */
           if (validNodes.length === 0) return;
 
           log.info(
-            `Scroll-triggered: translating chunk ${chunkIndex + 1}/${chunks.length} (${validNodes.length} nodes)`
+            `Scroll-triggered: translating chunk ${chunkIndex + 1}/${chunks.length} (${validNodes.length} nodes)`,
           );
 
           try {
@@ -411,16 +477,19 @@ export function createPageTranslationOrchestrator(
                 targetLang,
                 strategy,
                 provider,
-                enableProfiling
+                enableProfiling,
               );
             }
           } catch (error) {
-            log.error(`Scroll-triggered translation error for chunk ${chunkIndex}:`, error);
+            log.error(
+              `Scroll-triggered translation error for chunk ${chunkIndex}:`,
+              error,
+            );
           }
           /* v8 ignore stop */
         }
       },
-      { rootMargin: '200% 0px' } // Start translating 2 viewports before the user scrolls there
+      { rootMargin: '200% 0px' }, // Start translating 2 viewports before the user scrolls there
     );
 
     // Observe a sentinel element near the first node of each chunk
@@ -446,7 +515,7 @@ export function createPageTranslationOrchestrator(
     targetLang: string,
     strategy: Strategy,
     provider?: string,
-    enableProfiling = false
+    enableProfiling = false,
   ): Promise<PageTranslationSummary> {
     // Fix race condition: set flag BEFORE any await/async operations
     if (isTranslatingPage) {
@@ -474,7 +543,9 @@ export function createPageTranslationOrchestrator(
       const textNodes = getTextNodes(document.body);
       const scanDuration = performance.now() - scanStart;
       recordContentTiming('domScan', scanDuration);
-      log.info(`Found ${textNodes.length} text nodes in ${scanDuration.toFixed(2)}ms`);
+      log.info(
+        `Found ${textNodes.length} text nodes in ${scanDuration.toFixed(2)}ms`,
+      );
 
       if (textNodes.length === 0) {
         log.info(' No translatable text found');
@@ -509,7 +580,9 @@ export function createPageTranslationOrchestrator(
       belowFoldWithPos.sort((a, b) => a.top - b.top);
       const belowFoldNodes = belowFoldWithPos.map((item) => item.node);
 
-      log.info(`Viewport: ${viewportNodes.length} nodes, below fold: ${belowFoldNodes.length} nodes`);
+      log.info(
+        `Viewport: ${viewportNodes.length} nodes, below fold: ${belowFoldNodes.length} nodes`,
+      );
 
       // Time glossary loading
       const glossaryStart = performance.now();
@@ -535,7 +608,11 @@ export function createPageTranslationOrchestrator(
 
       // Translate viewport batches with concurrency limit — pipelines IPC round-trips
       // while model processes previous batch. DOM updates happen in-order per batch.
-      for (let i = 0; i < viewportBatches.length; i += CONFIG.batching.concurrencyLimit) {
+      for (
+        let i = 0;
+        i < viewportBatches.length;
+        i += CONFIG.batching.concurrencyLimit
+      ) {
         // Check abort signal between batches to stop on navigation
         /* v8 ignore start -- abort timing is non-deterministic in jsdom async */
         if (signal.aborted) {
@@ -544,7 +621,10 @@ export function createPageTranslationOrchestrator(
         }
         /* v8 ignore stop */
 
-        const chunk = viewportBatches.slice(i, i + CONFIG.batching.concurrencyLimit);
+        const chunk = viewportBatches.slice(
+          i,
+          i + CONFIG.batching.concurrencyLimit,
+        );
 
         if (totalBatches > 1) {
           updateProgressToast(`Translating... ${i + 1}/${totalBatches}`);
@@ -558,9 +638,9 @@ export function createPageTranslationOrchestrator(
               targetLang,
               strategy,
               provider,
-              enableProfiling
-            )
-          )
+              enableProfiling,
+            ),
+          ),
         );
 
         for (let j = 0; j < results.length; j++) {
@@ -589,7 +669,7 @@ export function createPageTranslationOrchestrator(
         // are translated in the first pass. Only defer the tail of very large pages.
         const immediateBelowFoldCount = Math.min(
           belowFoldNodes.length,
-          CONFIG.batching.immediateBelowFoldMaxNodes
+          CONFIG.batching.immediateBelowFoldMaxNodes,
         );
         const immediateNodes = belowFoldNodes.slice(0, immediateBelowFoldCount);
         const deferredNodes = belowFoldNodes.slice(immediateBelowFoldCount);
@@ -606,7 +686,7 @@ export function createPageTranslationOrchestrator(
             targetLang,
             strategy,
             provider,
-            enableProfiling
+            enableProfiling,
           );
           translatedCount += result.translatedCount;
           errorCount += result.errorCount;
@@ -623,7 +703,7 @@ export function createPageTranslationOrchestrator(
             strategy,
             g,
             provider,
-            enableProfiling
+            enableProfiling,
           );
         }
       }
@@ -639,12 +719,14 @@ export function createPageTranslationOrchestrator(
           `  Total: ${totalTime.toFixed(2)}ms\n` +
           `  DOM Scan: ${scanDuration.toFixed(2)}ms (${((scanDuration / totalTime) * 100).toFixed(1)}%)\n` +
           `  IPC Total: ${totalIpcTime.toFixed(2)}ms (${((totalIpcTime / totalTime) * 100).toFixed(1)}%)\n` +
-          `  DOM Update: ${totalDomUpdateTime.toFixed(2)}ms (${((totalDomUpdateTime / totalTime) * 100).toFixed(1)}%)`
+          `  DOM Update: ${totalDomUpdateTime.toFixed(2)}ms (${((totalDomUpdateTime / totalTime) * 100).toFixed(1)}%)`,
       );
 
       // Show summary
       if (errorCount > 0 && translatedCount > 0) {
-        showInfoToast(`Translated ${translatedCount} items (${errorCount} failed)`);
+        showInfoToast(
+          `Translated ${translatedCount} items (${errorCount} failed)`,
+        );
       } else if (translatedCount > 0 && errorCount === 0) {
         const deferredMsg =
           belowFoldNodes.length > CONFIG.batching.immediateBelowFoldMaxNodes
@@ -716,7 +798,7 @@ export function createPageTranslationOrchestrator(
           currentSettings.strategy,
           currentSettings.provider,
           false, // enableProfiling
-          1 // maxRetries: fewer retries for dynamic content to avoid blocking
+          1, // maxRetries: fewer retries for dynamic content to avoid blocking
         );
 
         if (result.errorCount > 0 && result.translatedCount === 0) {
@@ -758,7 +840,9 @@ export function createPageTranslationOrchestrator(
     clearImageOverlays();
 
     // Find all translated elements
-    const translatedElements = document.querySelectorAll(`[${TRANSLATED_ATTR}]`);
+    const translatedElements = document.querySelectorAll(
+      `[${TRANSLATED_ATTR}]`,
+    );
     let restoredCount = 0;
 
     translatedElements.forEach((element) => {
@@ -786,7 +870,7 @@ export function createPageTranslationOrchestrator(
       if (!restoredViaNodes && originalText !== null) {
         // Find the text node and restore original
         const textNode = Array.from(element.childNodes).find(
-          (node) => node.nodeType === Node.TEXT_NODE
+          (node) => node.nodeType === Node.TEXT_NODE,
         );
         /* v8 ignore start */
         if (textNode) {

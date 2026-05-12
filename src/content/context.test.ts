@@ -24,7 +24,11 @@ vi.mock('./shadow-dom-walker', () => ({
   cleanupShadowObservers: vi.fn(),
 }));
 
-import { getPageContext, getSelectionContext } from './context';
+import {
+  getPageContext,
+  getSegmentTranslationContext,
+  getSelectionContext,
+} from './context';
 import { getDeepSelection } from './shadow-dom-walker';
 
 const mockGetDeepSelection = vi.mocked(getDeepSelection);
@@ -221,6 +225,96 @@ describe('getPageContext', () => {
     // Max 3 sections
     const sectionCount = (result.match(/ > /g) || []).length;
     expect(sectionCount).toBeLessThanOrEqual(2); // 3 sections = 2 separators
+  });
+});
+
+// ============================================================================
+// getSegmentTranslationContext
+// ============================================================================
+
+describe('getSegmentTranslationContext', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    document.title = '';
+  });
+
+  it('extracts bounded visible surrounding text without hidden script or style content', () => {
+    document.title = 'Finance Guide';
+    const article = document.createElement('article');
+    article.innerHTML = `
+      <p>
+        Visible lead before <span id="target">bank</span> visible trail after.
+        <script>leaked script context</script>
+        <style>.leaked { content: "style context"; }</style>
+        <span hidden>hidden context</span>
+        <span aria-hidden="true">aria hidden context</span>
+        <span style="display: none">display none context</span>
+      </p>
+    `;
+    document.body.appendChild(article);
+
+    const target = document.getElementById('target')!.firstChild as Text;
+    const context = getSegmentTranslationContext(target, {
+      surroundingChars: 40,
+    });
+
+    expect(context).toEqual(
+      expect.objectContaining({
+        before: expect.stringContaining('Visible lead before'),
+        after: expect.stringContaining('visible trail after'),
+        pageContext: expect.stringContaining('Finance Guide'),
+      }),
+    );
+    expect(context!.pageContext).toContain('article body');
+    expect(`${context!.before} ${context!.after}`).not.toContain(
+      'leaked script context',
+    );
+    expect(`${context!.before} ${context!.after}`).not.toContain(
+      'style context',
+    );
+    expect(`${context!.before} ${context!.after}`).not.toContain(
+      'hidden context',
+    );
+    expect(`${context!.before} ${context!.after}`).not.toContain(
+      'aria hidden context',
+    );
+    expect(`${context!.before} ${context!.after}`).not.toContain(
+      'display none context',
+    );
+  });
+
+  it('caps before and after context to the requested budget', () => {
+    const paragraph = document.createElement('p');
+    paragraph.append(
+      document.createTextNode('A'.repeat(80)),
+      document.createTextNode('TARGET'),
+      document.createTextNode('B'.repeat(80)),
+    );
+    document.body.appendChild(paragraph);
+
+    const target = paragraph.childNodes[1] as Text;
+    const context = getSegmentTranslationContext(target, {
+      surroundingChars: 20,
+    });
+
+    expect(context).not.toBeUndefined();
+    expect(context!.before).toHaveLength(20);
+    expect(context!.after).toHaveLength(20);
+  });
+
+  it('falls back to page-only context when the segment has no neighbors', () => {
+    document.title = 'Standalone Article';
+    const article = document.createElement('article');
+    article.appendChild(document.createTextNode('Solo'));
+    document.body.appendChild(article);
+
+    const context = getSegmentTranslationContext(article.firstChild as Text);
+
+    expect(context).toEqual({
+      before: '',
+      after: '',
+      pageContext: 'Standalone Article > article body',
+    });
   });
 });
 

@@ -24,7 +24,8 @@ vi.mock('@huggingface/transformers', () => ({
     from_pretrained: (...args: unknown[]) => mockGemmaFromPretrained(...args),
   },
   AutoTokenizer: {
-    from_pretrained: (...args: unknown[]) => mockTokenizerFromPretrained(...args),
+    from_pretrained: (...args: unknown[]) =>
+      mockTokenizerFromPretrained(...args),
   },
 }));
 
@@ -69,7 +70,7 @@ const mockTokenizerFn = Object.assign(
   }),
   {
     decode: vi.fn().mockReturnValue('translated text'),
-  }
+  },
 );
 
 beforeEach(() => {
@@ -77,6 +78,15 @@ beforeEach(() => {
   mockSendMessage.mockReset();
   mockGemmaFromPretrained.mockReset();
   mockTokenizerFromPretrained.mockReset();
+  mockModel.generate.mockReset();
+  mockModel.generate.mockResolvedValue({
+    tolist: vi.fn().mockReturnValue([[1, 2, 3, 4, 5, 6, 7]]),
+  });
+  mockTokenizerFn.mockReset();
+  mockTokenizerFn.mockReturnValue({
+    input_ids: { dims: [1, 5] }, // inputLength = 5
+  });
+  mockTokenizerFn.decode = vi.fn().mockReturnValue('translated text');
 
   // Default: successful load
   mockGemmaFromPretrained.mockResolvedValue(mockModel);
@@ -169,26 +179,40 @@ describe('getTranslateGemmaPipeline — no WebGPU', () => {
   });
 
   it('leaves isTranslateGemmaLoading as false after rejection', async () => {
-    const { getTranslateGemmaPipeline, isTranslateGemmaLoading } = await import('./translategemma');
-    try { await getTranslateGemmaPipeline(); } catch { /* expected */ }
+    const { getTranslateGemmaPipeline, isTranslateGemmaLoading } =
+      await import('./translategemma');
+    try {
+      await getTranslateGemmaPipeline();
+    } catch {
+      /* expected */
+    }
     expect(isTranslateGemmaLoading()).toBe(false);
   });
 
   it('leaves isTranslateGemmaLoaded as false after rejection', async () => {
-    const { getTranslateGemmaPipeline, isTranslateGemmaLoaded } = await import('./translategemma');
-    try { await getTranslateGemmaPipeline(); } catch { /* expected */ }
+    const { getTranslateGemmaPipeline, isTranslateGemmaLoaded } =
+      await import('./translategemma');
+    try {
+      await getTranslateGemmaPipeline();
+    } catch {
+      /* expected */
+    }
     expect(isTranslateGemmaLoaded()).toBe(false);
   });
 
   it('routes error progress update through background message contract', async () => {
     const { getTranslateGemmaPipeline } = await import('./translategemma');
-    try { await getTranslateGemmaPipeline(); } catch { /* expected */ }
+    try {
+      await getTranslateGemmaPipeline();
+    } catch {
+      /* expected */
+    }
     expect(mockSendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'offscreenModelProgress',
         target: 'background',
         status: 'error',
-      })
+      }),
     );
   });
 });
@@ -199,7 +223,8 @@ describe('getTranslateGemmaPipeline — no WebGPU', () => {
 
 describe('getTranslateGemmaPipeline — no fp16, q4 path', () => {
   it('loads successfully via q4 when no shader-f16', async () => {
-    const { getTranslateGemmaPipeline, isTranslateGemmaLoaded } = await import('./translategemma');
+    const { getTranslateGemmaPipeline, isTranslateGemmaLoaded } =
+      await import('./translategemma');
     const result = await getTranslateGemmaPipeline();
     expect(result.model).toBe(mockModel);
     expect(result.tokenizer).toBe(mockTokenizerFn);
@@ -215,7 +240,7 @@ describe('getTranslateGemmaPipeline — no fp16, q4 path', () => {
         target: 'background',
         status: 'ready',
         progress: 100,
-      })
+      }),
     );
   });
 
@@ -231,7 +256,8 @@ describe('getTranslateGemmaPipeline — no fp16, q4 path', () => {
   });
 
   it('marks isTranslateGemmaLoading as false after successful load', async () => {
-    const { getTranslateGemmaPipeline, isTranslateGemmaLoading } = await import('./translategemma');
+    const { getTranslateGemmaPipeline, isTranslateGemmaLoading } =
+      await import('./translategemma');
     await getTranslateGemmaPipeline();
     expect(isTranslateGemmaLoading()).toBe(false);
   });
@@ -253,7 +279,8 @@ describe('getTranslateGemmaPipeline — fp16 path', () => {
   });
 
   it('loads via q4f16 when shader-f16 is supported', async () => {
-    const { getTranslateGemmaPipeline, isTranslateGemmaLoaded } = await import('./translategemma');
+    const { getTranslateGemmaPipeline, isTranslateGemmaLoaded } =
+      await import('./translategemma');
     const result = await getTranslateGemmaPipeline();
     expect(result.model).toBe(mockModel);
     expect(isTranslateGemmaLoaded()).toBe(true);
@@ -277,10 +304,13 @@ describe('getTranslateGemmaPipeline — q4f16 fallback to q4', () => {
 
   it('falls back to q4 when q4f16 throws type mismatch', async () => {
     mockGemmaFromPretrained
-      .mockRejectedValueOnce(new Error('Type parameter (T) bound to different types'))
+      .mockRejectedValueOnce(
+        new Error('Type parameter (T) bound to different types'),
+      )
       .mockResolvedValueOnce(mockModel);
 
-    const { getTranslateGemmaPipeline, isTranslateGemmaLoaded } = await import('./translategemma');
+    const { getTranslateGemmaPipeline, isTranslateGemmaLoaded } =
+      await import('./translategemma');
     const result = await getTranslateGemmaPipeline();
     expect(result.model).toBe(mockModel);
     expect(isTranslateGemmaLoaded()).toBe(true);
@@ -291,7 +321,8 @@ describe('getTranslateGemmaPipeline — q4f16 fallback to q4', () => {
       .mockRejectedValueOnce(new Error('q4f16 fail'))
       .mockResolvedValueOnce(mockModel);
 
-    const { getTranslateGemmaPipeline, isWebGpuOnnxTainted } = await import('./translategemma');
+    const { getTranslateGemmaPipeline, isWebGpuOnnxTainted } =
+      await import('./translategemma');
     await getTranslateGemmaPipeline();
     expect(isWebGpuOnnxTainted()).toBe(false);
   });
@@ -315,15 +346,21 @@ describe('getTranslateGemmaPipeline — both WebGPU attempts fail', () => {
   it('sets _webGpuOnnxTainted when both q4f16 and q4 fail', async () => {
     mockGemmaFromPretrained.mockRejectedValue(new Error('GPU crash'));
 
-    const { getTranslateGemmaPipeline, isWebGpuOnnxTainted } = await import('./translategemma');
-    try { await getTranslateGemmaPipeline(); } catch { /* expected */ }
+    const { getTranslateGemmaPipeline, isWebGpuOnnxTainted } =
+      await import('./translategemma');
+    try {
+      await getTranslateGemmaPipeline();
+    } catch {
+      /* expected */
+    }
     expect(isWebGpuOnnxTainted()).toBe(true);
   });
 
   it('throws and leaves isTranslateGemmaLoaded as false', async () => {
     mockGemmaFromPretrained.mockRejectedValue(new Error('GPU crash'));
 
-    const { getTranslateGemmaPipeline, isTranslateGemmaLoaded } = await import('./translategemma');
+    const { getTranslateGemmaPipeline, isTranslateGemmaLoaded } =
+      await import('./translategemma');
     await expect(getTranslateGemmaPipeline()).rejects.toThrow();
     expect(isTranslateGemmaLoaded()).toBe(false);
   });
@@ -335,14 +372,16 @@ describe('getTranslateGemmaPipeline — both WebGPU attempts fail', () => {
 
 describe('translateWithGemma', () => {
   it('returns empty string unchanged', async () => {
-    const { translateWithGemma, getTranslateGemmaPipeline } = await import('./translategemma');
+    const { translateWithGemma, getTranslateGemmaPipeline } =
+      await import('./translategemma');
     await getTranslateGemmaPipeline(); // Load model
     const result = await translateWithGemma('', 'en', 'fi');
     expect(result).toBe('');
   });
 
   it('returns whitespace-only text unchanged', async () => {
-    const { translateWithGemma, getTranslateGemmaPipeline } = await import('./translategemma');
+    const { translateWithGemma, getTranslateGemmaPipeline } =
+      await import('./translategemma');
     await getTranslateGemmaPipeline();
     const result = await translateWithGemma('   ', 'en', 'fi');
     expect(result).toBe('   ');
@@ -355,7 +394,8 @@ describe('translateWithGemma', () => {
     });
     mockTokenizerFn.decode = vi.fn().mockReturnValue('translated');
 
-    const { translateWithGemma, getTranslateGemmaPipeline } = await import('./translategemma');
+    const { translateWithGemma, getTranslateGemmaPipeline } =
+      await import('./translategemma');
     await getTranslateGemmaPipeline();
     await translateWithGemma('hello', 'en', 'fi');
     expect(mockModel.generate).toHaveBeenCalled();
@@ -368,11 +408,51 @@ describe('translateWithGemma', () => {
     });
     mockTokenizerFn.decode = vi.fn().mockReturnValue('translated');
 
-    const { translateWithGemma, getTranslateGemmaPipeline } = await import('./translategemma');
+    const { translateWithGemma, getTranslateGemmaPipeline } =
+      await import('./translategemma');
     await getTranslateGemmaPipeline();
     const result = await translateWithGemma(['hello', 'world'], 'en', 'fi');
     expect(Array.isArray(result)).toBe(true);
     expect((result as string[]).length).toBe(2);
+  });
+
+  it('uses one batched Generate call for non-empty arrays and preserves response order', async () => {
+    mockModel.generate.mockReset();
+    mockTokenizerFn.mockReset();
+    mockTokenizerFn.mockImplementation((input: string | string[]) => ({
+      input_ids: { dims: [Array.isArray(input) ? input.length : 1, 3] },
+    }));
+    mockModel.generate.mockResolvedValue({
+      tolist: vi.fn().mockReturnValue([
+        [1, 2, 3, 101],
+        [1, 2, 3, 202],
+        [1, 2, 3, 303],
+      ]),
+    });
+    mockTokenizerFn.decode = vi.fn(
+      (ids: number[]) => `decoded:${ids.join(',')}`,
+    );
+
+    const { translateWithGemma, getTranslateGemmaPipeline } =
+      await import('./translategemma');
+    await getTranslateGemmaPipeline();
+    const result = await translateWithGemma(
+      ['first', 'second', 'third'],
+      'en',
+      'fi',
+    );
+
+    expect(mockTokenizerFn).toHaveBeenCalledTimes(1);
+    expect(mockTokenizerFn).toHaveBeenCalledWith(
+      [
+        expect.stringContaining('first'),
+        expect.stringContaining('second'),
+        expect.stringContaining('third'),
+      ],
+      expect.objectContaining({ padding: true, truncation: true }),
+    );
+    expect(mockModel.generate).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(['decoded:101', 'decoded:202', 'decoded:303']);
   });
 
   it('skips empty items in array', async () => {
@@ -382,11 +462,56 @@ describe('translateWithGemma', () => {
     });
     mockTokenizerFn.decode = vi.fn().mockReturnValue('translated');
 
-    const { translateWithGemma, getTranslateGemmaPipeline } = await import('./translategemma');
+    const { translateWithGemma, getTranslateGemmaPipeline } =
+      await import('./translategemma');
     await getTranslateGemmaPipeline();
-    const result = await translateWithGemma(['hello', '', 'world'], 'en', 'fi') as string[];
+    const result = (await translateWithGemma(
+      ['hello', '', 'world'],
+      'en',
+      'fi',
+    )) as string[];
     expect(result.length).toBe(3);
     expect(result[1]).toBe(''); // Empty preserved
+  });
+
+  it('falls back to per-segment generation when batched generation fails', async () => {
+    mockModel.generate.mockReset();
+    mockTokenizerFn.mockReset();
+    mockTokenizerFn.mockImplementation((input: string | string[]) => ({
+      input_ids: { dims: [Array.isArray(input) ? input.length : 1, 2] },
+    }));
+    mockModel.generate
+      .mockRejectedValueOnce(new Error('WebGPU batch OOM'))
+      .mockResolvedValueOnce({ tolist: vi.fn().mockReturnValue([[1, 2, 101]]) })
+      .mockResolvedValueOnce({
+        tolist: vi.fn().mockReturnValue([[1, 2, 202]]),
+      });
+    mockTokenizerFn.decode = vi.fn(
+      (ids: number[]) => `decoded:${ids.join(',')}`,
+    );
+
+    const { translateWithGemma, getTranslateGemmaPipeline } =
+      await import('./translategemma');
+    await getTranslateGemmaPipeline();
+    const result = await translateWithGemma(['first', 'second'], 'en', 'fi');
+
+    expect(mockModel.generate).toHaveBeenCalledTimes(3);
+    expect(mockTokenizerFn).toHaveBeenNthCalledWith(
+      1,
+      [expect.stringContaining('first'), expect.stringContaining('second')],
+      expect.objectContaining({ padding: true, truncation: true }),
+    );
+    expect(mockTokenizerFn).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('first'),
+      undefined,
+    );
+    expect(mockTokenizerFn).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining('second'),
+      undefined,
+    );
+    expect(result).toEqual(['decoded:101', 'decoded:202']);
   });
 
   it('strips <end_of_turn> from decoded output', async () => {
@@ -394,11 +519,14 @@ describe('translateWithGemma', () => {
     mockModel.generate.mockResolvedValue({
       tolist: vi.fn().mockReturnValue([[1, 2, 3, 4, 5, 6, 7]]),
     });
-    mockTokenizerFn.decode = vi.fn().mockReturnValue('translated text<end_of_turn>');
+    mockTokenizerFn.decode = vi
+      .fn()
+      .mockReturnValue('translated text<end_of_turn>');
 
-    const { translateWithGemma, getTranslateGemmaPipeline } = await import('./translategemma');
+    const { translateWithGemma, getTranslateGemmaPipeline } =
+      await import('./translategemma');
     await getTranslateGemmaPipeline();
-    const result = await translateWithGemma('hello', 'en', 'fi') as string;
+    const result = (await translateWithGemma('hello', 'en', 'fi')) as string;
     expect(result).not.toContain('<end_of_turn>');
   });
 
@@ -407,11 +535,14 @@ describe('translateWithGemma', () => {
     mockModel.generate.mockResolvedValue({
       tolist: vi.fn().mockReturnValue([[1, 2, 3, 4, 5, 6, 7]]),
     });
-    mockTokenizerFn.decode = vi.fn().mockReturnValue('<start_of_turn>translated');
+    mockTokenizerFn.decode = vi
+      .fn()
+      .mockReturnValue('<start_of_turn>translated');
 
-    const { translateWithGemma, getTranslateGemmaPipeline } = await import('./translategemma');
+    const { translateWithGemma, getTranslateGemmaPipeline } =
+      await import('./translategemma');
     await getTranslateGemmaPipeline();
-    const result = await translateWithGemma('hello', 'en', 'fi') as string;
+    const result = (await translateWithGemma('hello', 'en', 'fi')) as string;
     expect(result).not.toContain('<start_of_turn>');
   });
 
@@ -422,10 +553,16 @@ describe('translateWithGemma', () => {
     });
     mockTokenizerFn.decode = vi.fn().mockReturnValue('translated');
 
-    const { translateWithGemma, getTranslateGemmaPipeline } = await import('./translategemma');
+    const { translateWithGemma, getTranslateGemmaPipeline } =
+      await import('./translategemma');
     await getTranslateGemmaPipeline();
     // Should not throw
-    const result = await translateWithGemma('hello', 'en', 'fi', 'financial article');
+    const result = await translateWithGemma(
+      'hello',
+      'en',
+      'fi',
+      'financial article',
+    );
     expect(result).toBeDefined();
   });
 });
@@ -439,7 +576,9 @@ describe('getTranslateGemmaPipeline — concurrent load deduplication', () => {
     // Delay the load so we can test concurrent calls
     let resolveLoad!: (v: unknown) => void;
     mockGemmaFromPretrained.mockReturnValue(
-      new Promise((r) => { resolveLoad = r; })
+      new Promise((r) => {
+        resolveLoad = r;
+      }),
     );
 
     const { getTranslateGemmaPipeline } = await import('./translategemma');
@@ -481,13 +620,23 @@ describe('getTranslateGemmaPipeline — progress callback coverage', () => {
   });
 
   it('invokes progress callback with all fields populated', async () => {
-    mockGemmaFromPretrained.mockImplementation((_model: string, opts: Record<string, unknown>) => {
-      const cb = opts.progress_callback as (p: Record<string, unknown>) => void;
-      if (cb) {
-        cb({ status: 'downloading', progress: 50, file: 'model.onnx', loaded: 100, total: 200 });
-      }
-      return Promise.resolve(mockModel);
-    });
+    mockGemmaFromPretrained.mockImplementation(
+      (_model: string, opts: Record<string, unknown>) => {
+        const cb = opts.progress_callback as (
+          p: Record<string, unknown>,
+        ) => void;
+        if (cb) {
+          cb({
+            status: 'downloading',
+            progress: 50,
+            file: 'model.onnx',
+            loaded: 100,
+            total: 200,
+          });
+        }
+        return Promise.resolve(mockModel);
+      },
+    );
 
     const { getTranslateGemmaPipeline } = await import('./translategemma');
     await getTranslateGemmaPipeline();
@@ -501,19 +650,23 @@ describe('getTranslateGemmaPipeline — progress callback coverage', () => {
         file: 'model.onnx',
         loaded: 100,
         total: 200,
-      })
+      }),
     );
   });
 
   it('uses default values when progress fields are missing', async () => {
-    mockGemmaFromPretrained.mockImplementation((_model: string, opts: Record<string, unknown>) => {
-      const cb = opts.progress_callback as (p: Record<string, unknown>) => void;
-      if (cb) {
-        // Empty object — all || and ?? defaults kick in
-        cb({});
-      }
-      return Promise.resolve(mockModel);
-    });
+    mockGemmaFromPretrained.mockImplementation(
+      (_model: string, opts: Record<string, unknown>) => {
+        const cb = opts.progress_callback as (
+          p: Record<string, unknown>,
+        ) => void;
+        if (cb) {
+          // Empty object — all || and ?? defaults kick in
+          cb({});
+        }
+        return Promise.resolve(mockModel);
+      },
+    );
 
     const { getTranslateGemmaPipeline } = await import('./translategemma');
     await getTranslateGemmaPipeline();
@@ -522,12 +675,12 @@ describe('getTranslateGemmaPipeline — progress callback coverage', () => {
       expect.objectContaining({
         type: 'offscreenModelProgress',
         target: 'background',
-        status: 'progress',  // default from || 'progress'
-        progress: 0,         // default from ?? 0
-        file: null,          // default from || null
-        loaded: null,        // default from || null
-        total: null,         // default from || null
-      })
+        status: 'progress', // default from || 'progress'
+        progress: 0, // default from ?? 0
+        file: null, // default from || null
+        loaded: null, // default from || null
+        total: null, // default from || null
+      }),
     );
   });
 
@@ -535,11 +688,15 @@ describe('getTranslateGemmaPipeline — progress callback coverage', () => {
     mockSendMessage.mockImplementation(() => {
       throw new Error('Could not establish connection');
     });
-    mockGemmaFromPretrained.mockImplementation((_model: string, opts: Record<string, unknown>) => {
-      const cb = opts.progress_callback as (p: Record<string, unknown>) => void;
-      if (cb) cb({ status: 'downloading', progress: 25 });
-      return Promise.resolve(mockModel);
-    });
+    mockGemmaFromPretrained.mockImplementation(
+      (_model: string, opts: Record<string, unknown>) => {
+        const cb = opts.progress_callback as (
+          p: Record<string, unknown>,
+        ) => void;
+        if (cb) cb({ status: 'downloading', progress: 25 });
+        return Promise.resolve(mockModel);
+      },
+    );
 
     const { getTranslateGemmaPipeline } = await import('./translategemma');
     // Should not throw even though sendMessage throws — sendProgress catches

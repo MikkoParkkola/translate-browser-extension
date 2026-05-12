@@ -75,6 +75,7 @@ class Profiler {
   private aggregateData: Map<string, number[]> = new Map();
   private enabled = true;
   private maxHistorySize = 1000;
+  private sessionCounter = 0;
 
   /**
    * Enable or disable profiling (for production)
@@ -89,9 +90,7 @@ class Profiler {
   startSession(sessionId?: string): string {
     if (!this.enabled) return sessionId || '';
 
-    const id = sessionId || (typeof crypto !== 'undefined' && crypto.randomUUID
-      ? `session_${crypto.randomUUID()}`
-      : `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+    const id = sessionId || this.createSessionId();
     this.sessions.set(id, {
       id,
       startTime: performance.now(),
@@ -99,6 +98,18 @@ class Profiler {
       children: [],
     });
     return id;
+  }
+
+  private createSessionId(): string {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return `session_${crypto.randomUUID()}`;
+    }
+
+    this.sessionCounter =
+      this.sessionCounter >= Number.MAX_SAFE_INTEGER
+        ? 1
+        : this.sessionCounter + 1;
+    return `session_${Date.now()}_${this.sessionCounter.toString(36)}`;
   }
 
   /**
@@ -118,7 +129,11 @@ class Profiler {
   /**
    * Start timing a specific operation within a session
    */
-  startTiming(sessionId: string, name: TimingCategory | string, metadata?: Record<string, unknown>): void {
+  startTiming(
+    sessionId: string,
+    name: TimingCategory | string,
+    metadata?: Record<string, unknown>,
+  ): void {
     if (!this.enabled) return;
 
     const session = this.sessions.get(sessionId);
@@ -169,7 +184,7 @@ class Profiler {
     sessionId: string,
     name: TimingCategory | string,
     fn: () => Promise<T>,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
   ): Promise<T> {
     this.startTiming(sessionId, name, metadata);
     try {
@@ -186,7 +201,7 @@ class Profiler {
     sessionId: string,
     name: TimingCategory | string,
     fn: () => T,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
   ): T {
     this.startTiming(sessionId, name, metadata);
     try {
@@ -199,7 +214,12 @@ class Profiler {
   /**
    * Record a timing directly (for when start/end are in different contexts)
    */
-  recordTiming(sessionId: string, name: TimingCategory | string, durationMs: number, metadata?: Record<string, unknown>): void {
+  recordTiming(
+    sessionId: string,
+    name: TimingCategory | string,
+    durationMs: number,
+    metadata?: Record<string, unknown>,
+  ): void {
     if (!this.enabled) return;
 
     const session = this.sessions.get(sessionId);
@@ -242,8 +262,12 @@ class Profiler {
       max: sorted[sorted.length - 1],
       avg: sum / sorted.length,
       p50: sorted[Math.min(Math.floor(sorted.length * 0.5), sorted.length - 1)],
-      p95: sorted[Math.min(Math.floor(sorted.length * 0.95), sorted.length - 1)],
-      p99: sorted[Math.min(Math.floor(sorted.length * 0.99), sorted.length - 1)],
+      p95: sorted[
+        Math.min(Math.floor(sorted.length * 0.95), sorted.length - 1)
+      ],
+      p99: sorted[
+        Math.min(Math.floor(sorted.length * 0.99), sorted.length - 1)
+      ],
       total: sum,
     };
   }
@@ -275,7 +299,7 @@ class Profiler {
       const stats = this.getAggregateStats(name);
       /* v8 ignore start */
       if (stats) {
-      /* v8 ignore stop */
+        /* v8 ignore stop */
         aggregates.set(name, stats);
       }
     });
@@ -310,16 +334,20 @@ class Profiler {
     for (const item of report.breakdown) {
       const bar = '|'.repeat(Math.round(item.percentOfTotal / 2));
       lines.push(
-        `  ${item.name.padEnd(30)} ${item.durationMs.toFixed(2).padStart(10)}ms (${item.percentOfTotal.toFixed(1).padStart(5)}%) ${bar}`
+        `  ${item.name.padEnd(30)} ${item.durationMs.toFixed(2).padStart(10)}ms (${item.percentOfTotal.toFixed(1).padStart(5)}%) ${bar}`,
       );
     }
 
     // Calculate IPC overhead
-    const ipcCategories = report.breakdown.filter(b => b.name.startsWith('ipc_'));
+    const ipcCategories = report.breakdown.filter((b) =>
+      b.name.startsWith('ipc_'),
+    );
     if (ipcCategories.length > 0) {
       const ipcTotal = ipcCategories.reduce((sum, b) => sum + b.durationMs, 0);
       lines.push('');
-      lines.push(`IPC Overhead: ${ipcTotal.toFixed(2)}ms (${((ipcTotal / report.totalMs) * 100).toFixed(1)}%)`);
+      lines.push(
+        `IPC Overhead: ${ipcTotal.toFixed(2)}ms (${((ipcTotal / report.totalMs) * 100).toFixed(1)}%)`,
+      );
     }
 
     lines.push('');
@@ -346,7 +374,7 @@ class Profiler {
       const stats = this.getAggregateStats(name);
       /* v8 ignore start */
       if (stats) {
-      /* v8 ignore stop */
+        /* v8 ignore stop */
         lines.push(`${name}:`);
         lines.push(`  Count: ${stats.count}`);
         lines.push(`  Min:   ${stats.min.toFixed(2)}ms`);
@@ -436,7 +464,7 @@ class Profiler {
       const stats = this.getAggregateStats(name);
       /* v8 ignore start */
       if (stats) {
-      /* v8 ignore stop */
+        /* v8 ignore stop */
         result[name] = stats;
       }
     });
@@ -461,7 +489,10 @@ export function measureTime(label: string, fn: () => void): number {
 /**
  * Quick async timing helper
  */
-export async function measureTimeAsync<T>(label: string, fn: () => Promise<T>): Promise<{ result: T; duration: number }> {
+export async function measureTimeAsync<T>(
+  label: string,
+  fn: () => Promise<T>,
+): Promise<{ result: T; duration: number }> {
   const start = performance.now();
   const result = await fn();
   const duration = performance.now() - start;

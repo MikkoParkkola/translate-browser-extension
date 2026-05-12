@@ -8,7 +8,13 @@
  * injected via the `translateFn` callback.
  */
 
-import type { TranslateResponse, Strategy, TranslationProviderId } from '../../types';
+import type {
+  TranslateResponse,
+  Strategy,
+  TranslationContext,
+  TranslationContextInput,
+  TranslationProviderId,
+} from '../../types';
 import {
   createTranslationError,
   validateInput,
@@ -32,6 +38,30 @@ import {
 } from './provider-management';
 
 const log = createLogger('TranslationCore');
+
+function hasText(value: string | undefined): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function hasTranslationContext(context?: TranslationContextInput): boolean {
+  if (!context) return false;
+
+  const contexts = Array.isArray(context) ? context : [context];
+  return contexts.some(
+    (item) =>
+      Boolean(item) &&
+      (hasText(item?.before) ||
+        hasText(item?.after) ||
+        hasText(item?.pageContext)),
+  );
+}
+
+function shouldUseTranslationCache(
+  provider: TranslationProviderId,
+  context?: TranslationContextInput,
+): boolean {
+  return !(provider === 'translategemma' && hasTranslationContext(context));
+}
 
 // ============================================================================
 // Retry Configuration
@@ -57,7 +87,7 @@ export type TranslateFn = (
   targetLang: string,
   provider: TranslationProviderId,
   options?: {
-    context?: { before: string; after: string; pageContext?: string };
+    context?: TranslationContextInput;
     enableProfiling?: boolean;
     sessionId?: string;
   },
@@ -72,7 +102,7 @@ export interface TranslateMessagePayload {
   targetLang: string;
   options?: {
     strategy?: Strategy;
-    context?: { before: string; after: string; pageContext?: string };
+    context?: TranslationContextInput;
   };
   provider?: TranslationProviderId;
   enableProfiling?: boolean;
@@ -108,7 +138,10 @@ export interface PrepareTranslationExecutionHooks {
   onCacheLookupEnd?: () => void;
   onEarlyReturn?: (
     kind: EarlyReturnKind,
-    context: { response: TranslateResponse; execution?: TranslationExecutionContext },
+    context: {
+      response: TranslateResponse;
+      execution?: TranslationExecutionContext;
+    },
   ) => void;
 }
 
@@ -128,7 +161,10 @@ export interface FinalizeTranslationExecutionOptions {
     result: string | string[];
     duration: number;
     response: TranslateResponse;
-  }) => Partial<TranslateResponse> | void | Promise<Partial<TranslateResponse> | void>;
+  }) =>
+    | Partial<TranslateResponse>
+    | void
+    | Promise<Partial<TranslateResponse> | void>;
 }
 
 export async function prepareTranslationExecution(
@@ -139,11 +175,18 @@ export async function prepareTranslationExecution(
   const startTime = options.startTime ?? Date.now();
 
   if (message.options?.context) {
-    const { before, after, pageContext } = message.options.context;
+    const context = Array.isArray(message.options.context)
+      ? message.options.context.find((item): item is TranslationContext =>
+          Boolean(item),
+        )
+      : message.options.context;
     log.debug('Translation context:', {
-      before: before?.substring(0, 50),
-      after: after?.substring(0, 50),
-      pageContext: pageContext?.substring(0, 80),
+      entries: Array.isArray(message.options.context)
+        ? message.options.context.length
+        : 1,
+      before: context?.before?.substring(0, 50),
+      after: context?.after?.substring(0, 50),
+      pageContext: context?.pageContext?.substring(0, 80),
     });
   }
 
@@ -171,7 +214,10 @@ export async function prepareTranslationExecution(
     setStrategy(message.options.strategy);
   }
 
-  if (message.sourceLang !== 'auto' && message.sourceLang === message.targetLang) {
+  if (
+    message.sourceLang !== 'auto' &&
+    message.sourceLang === message.targetLang
+  ) {
     const response: TranslateResponse = {
       success: true,
       result: text,
@@ -182,7 +228,16 @@ export async function prepareTranslationExecution(
   }
 
   const provider = message.provider || getProvider();
-  const cacheKey = cache.getKey(text, message.sourceLang, message.targetLang, provider);
+  const cacheKey = cache.getKey(
+    text,
+    message.sourceLang,
+    message.targetLang,
+    provider,
+  );
+  const useTranslationCache = shouldUseTranslationCache(
+    provider,
+    message.options?.context,
+  );
   const executionContext: TranslationExecutionContext = {
     startTime,
     message,
@@ -191,31 +246,37 @@ export async function prepareTranslationExecution(
     cacheKey,
   };
 
-  options.hooks?.onCacheLookupStart?.();
-  if (message.sourceLang !== 'auto') {
-    const cached = cache.get(cacheKey);
-    options.hooks?.onCacheLookupEnd?.();
-    if (cached) {
-      const response: TranslateResponse = {
-        success: true,
-        result: cached.result,
-        duration: Date.now() - startTime,
-        cached: true,
-      };
-      log.info(`Cache hit, returning in ${response.duration}ms`);
-      options.hooks?.onEarlyReturn?.('cacheHit', {
-        response,
-        execution: executionContext,
-      });
-      return { kind: 'response', response };
+  if (useTranslationCache) {
+    options.hooks?.onCacheLookupStart?.();
+    if (message.sourceLang !== 'auto') {
+      const cached = cache.get(cacheKey);
+      options.hooks?.onCacheLookupEnd?.();
+      if (cached) {
+        const response: TranslateResponse = {
+          success: true,
+          result: cached.result,
+          duration: Date.now() - startTime,
+          cached: true,
+        };
+        log.info(`Cache hit, returning in ${response.duration}ms`);
+        options.hooks?.onEarlyReturn?.('cacheHit', {
+          response,
+          execution: executionContext,
+        });
+        return { kind: 'response', response };
+      }
+    } else {
+      cache.recordMiss();
+      options.hooks?.onCacheLookupEnd?.();
     }
-  } else {
-    cache.recordMiss();
-    options.hooks?.onCacheLookupEnd?.();
   }
 
   if (typeof text === 'string' && message.sourceLang !== 'auto') {
-    const userCorrection = await getCorrection(text, message.sourceLang, message.targetLang);
+    const userCorrection = await getCorrection(
+      text,
+      message.sourceLang,
+      message.targetLang,
+    );
     if (userCorrection) {
       const response: TranslateResponse = {
         success: true,
@@ -224,7 +285,12 @@ export async function prepareTranslationExecution(
         fromCorrection: true,
       };
       log.info(`Using user correction, returning in ${response.duration}ms`);
-      cache.set(cacheKey, userCorrection, message.sourceLang, message.targetLang);
+      cache.set(
+        cacheKey,
+        userCorrection,
+        message.sourceLang,
+        message.targetLang,
+      );
       options.hooks?.onEarlyReturn?.('correctionHit', {
         response,
         execution: executionContext,
@@ -272,12 +338,19 @@ export async function finalizeTranslationExecution(
     recordUsage(execution.tokenEstimate);
   }
 
-  const cacheSourceLang = options.cacheSourceLang === undefined
-    ? (execution.message.sourceLang === 'auto' ? null : execution.message.sourceLang)
-    : options.cacheSourceLang;
+  const cacheSourceLang =
+    options.cacheSourceLang === undefined
+      ? execution.message.sourceLang === 'auto'
+        ? null
+        : execution.message.sourceLang
+      : options.cacheSourceLang;
+  const useTranslationCache = shouldUseTranslationCache(
+    execution.provider,
+    execution.message.options?.context,
+  );
 
   options.onBeforeCacheStore?.();
-  if (normalizedResult && cacheSourceLang) {
+  if (useTranslationCache && normalizedResult && cacheSourceLang) {
     cache.set(
       execution.cacheKey,
       normalizedResult,
@@ -341,7 +414,12 @@ export async function handleTranslateCore(
   const { execution } = preparedResult;
 
   try {
-    log.info('Translating:', execution.message.sourceLang, '->', execution.message.targetLang);
+    log.info(
+      'Translating:',
+      execution.message.sourceLang,
+      '->',
+      execution.message.targetLang,
+    );
 
     // Delegate to platform-specific translation
     const response = await withRetry(

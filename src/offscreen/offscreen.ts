@@ -3,7 +3,11 @@
  * Service workers can't use window/document, so we run ML here.
  */
 
-import type { TranslationProviderId, TranslationPipeline } from '../types';
+import type {
+  TranslationContextInput,
+  TranslationProviderId,
+  TranslationPipeline,
+} from '../types';
 import { extractErrorMessage } from '../core/errors';
 import { getTranslationCache } from '../core/translation-cache';
 import { CONFIG } from '../config';
@@ -28,10 +32,26 @@ import {
   reportModelProgress,
   trackDownloadedModel,
 } from './model-download-tracker';
-import { getCachedPipeline, cachePipeline, clearCache as clearPipelineCache, castAsPipeline } from './pipeline-cache';
-import { buildLanguageDetectionSample, detectLanguage } from './language-detection';
-import { translateWithGemma, getTranslateGemmaPipeline, detectWebGPU, detectWebNN } from './translategemma';
-import { getChromeTranslator, isChromeTranslatorAvailable } from '../providers/chrome-translator';
+import {
+  getCachedPipeline,
+  cachePipeline,
+  clearCache as clearPipelineCache,
+  castAsPipeline,
+} from './pipeline-cache';
+import {
+  buildLanguageDetectionSample,
+  detectLanguage,
+} from './language-detection';
+import {
+  translateWithGemma,
+  getTranslateGemmaPipeline,
+  detectWebGPU,
+  detectWebNN,
+} from './translategemma';
+import {
+  getChromeTranslator,
+  isChromeTranslatorAvailable,
+} from '../providers/chrome-translator';
 import { DEFAULT_PROVIDER_ID } from '../shared/provider-options';
 import {
   flushOffscreenCloudProviderTelemetry,
@@ -50,10 +70,18 @@ import {
 import { cropImageToDataUrl } from './image-crop';
 
 // OCR service
-import { extractTextFromImage, terminateOCR, type OCRResult } from '../core/ocr-service';
+import {
+  extractTextFromImage,
+  terminateOCR,
+  type OCRResult,
+} from '../core/ocr-service';
 
 // Network status
-import { isOnline, isCloudProvider, initNetworkMonitoring } from '../core/network-status';
+import {
+  isOnline,
+  isCloudProvider,
+  initNetworkMonitoring,
+} from '../core/network-status';
 
 const log = createLogger('Offscreen');
 
@@ -62,7 +90,9 @@ const log = createLogger('Offscreen');
  * non-empty, no surrounding whitespace, max 20 characters.
  */
 function isValidLangCode(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0 && value.length <= 20;
+  return (
+    typeof value === 'string' && value.trim().length > 0 && value.length <= 20
+  );
 }
 
 // Initialize network monitoring in offscreen context
@@ -96,7 +126,9 @@ async function getTransformers(): Promise<TransformersLib> {
   return lib;
 }
 
-function normalizeProgressStatus(value: unknown): 'initiate' | 'download' | 'progress' | 'done' {
+function normalizeProgressStatus(
+  value: unknown,
+): 'initiate' | 'download' | 'progress' | 'done' {
   switch (value) {
     case 'initiate':
     case 'download':
@@ -107,10 +139,41 @@ function normalizeProgressStatus(value: unknown): 'initiate' | 'download' | 'pro
   }
 }
 
+function hasText(value: string | undefined): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function hasTranslationContext(
+  context?: TranslationContextInput | string,
+): boolean {
+  if (!context) return false;
+  if (typeof context === 'string') return hasText(context);
+
+  const contexts = Array.isArray(context) ? context : [context];
+  return contexts.some(
+    (item) =>
+      Boolean(item) &&
+      (hasText(item?.before) ||
+        hasText(item?.after) ||
+        hasText(item?.pageContext)),
+  );
+}
+
+function shouldUseTranslationCache(
+  provider: TranslationProviderId,
+  context?: TranslationContextInput | string,
+): boolean {
+  return !(provider === 'translategemma' && hasTranslationContext(context));
+}
+
 /**
  * Get or create pipeline for a language pair with LRU caching.
  */
-async function getPipeline(sourceLang: string, targetLang: string, sessionId?: string): Promise<TranslationPipeline> {
+async function getPipeline(
+  sourceLang: string,
+  targetLang: string,
+  sessionId?: string,
+): Promise<TranslationPipeline> {
   const modelId = getModelId(sourceLang, targetLang);
 
   /* v8 ignore start -- defensive guard for unsupported language pair */
@@ -124,11 +187,17 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   if (cached) {
     log.info(` Pipeline cache HIT: ${modelId}`);
     if (sessionId) {
-      profiler.recordTiming(sessionId, 'model_load', 0, { cached: true, modelId });
+      profiler.recordTiming(sessionId, 'model_load', 0, {
+        cached: true,
+        modelId,
+      });
     }
     reportModelProgress(modelId, { status: 'ready', progress: 100 });
     void trackDownloadedModel(modelId).catch((error) => {
-      logDownloadedModelTrackingFailure('refresh downloaded model inventory', error);
+      logDownloadedModelTrackingFailure(
+        'refresh downloaded model inventory',
+        error,
+      );
     });
     return cached;
   }
@@ -140,7 +209,10 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   // (repeated words like "Figure Figure..." or "Switzerland Switzerland...")
   // with q8-quantized Marian models. WebGPU is only viable for models with
   // dedicated fp16 ONNX files (e.g., TranslateGemma).
-  const { device, dtype } = getOpusMtPipelineConfig({ supported: false, fp16: false });
+  const { device, dtype } = getOpusMtPipelineConfig({
+    supported: false,
+    fp16: false,
+  });
   log.info(` Using device: ${device}, dtype: ${dtype}`);
 
   // Use optimized timeout for OPUS-MT direct models (~85MB quantized, typically loads in <30s)
@@ -155,15 +227,20 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
         progress_callback: (progress: Record<string, unknown>) => {
           reportModelProgress(modelId, {
             status: normalizeProgressStatus(progress.status),
-            progress: typeof progress.progress === 'number' ? progress.progress : undefined,
+            progress:
+              typeof progress.progress === 'number'
+                ? progress.progress
+                : undefined,
             file: typeof progress.file === 'string' ? progress.file : undefined,
-            loaded: typeof progress.loaded === 'number' ? progress.loaded : undefined,
-            total: typeof progress.total === 'number' ? progress.total : undefined,
+            loaded:
+              typeof progress.loaded === 'number' ? progress.loaded : undefined,
+            total:
+              typeof progress.total === 'number' ? progress.total : undefined,
           });
         },
       } as Record<string, unknown>),
       CONFIG.timeouts.opusMtDirectMs,
-      `Loading model ${modelId}`
+      `Loading model ${modelId}`,
     );
   } catch (error) {
     /* v8 ignore start -- defensive rethrow */
@@ -173,7 +250,11 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
 
   const loadDuration = performance.now() - loadStart;
   if (sessionId) {
-    profiler.recordTiming(sessionId, 'model_load', loadDuration, { cached: false, modelId, device });
+    profiler.recordTiming(sessionId, 'model_load', loadDuration, {
+      cached: false,
+      modelId,
+      device,
+    });
   }
   log.info(` Model loaded: ${modelId} in ${loadDuration.toFixed(0)}ms`);
 
@@ -183,7 +264,10 @@ async function getPipeline(sourceLang: string, targetLang: string, sessionId?: s
   try {
     await trackDownloadedModel(modelId);
   } catch (error) {
-    logDownloadedModelTrackingFailure('persist downloaded model inventory', error);
+    logDownloadedModelTrackingFailure(
+      'persist downloaded model inventory',
+      error,
+    );
   }
 
   return castAsPipeline(pipe);
@@ -196,7 +280,7 @@ async function translateDirect(
   text: string | string[],
   sourceLang: string,
   targetLang: string,
-  sessionId?: string
+  sessionId?: string,
 ): Promise<string | string[]> {
   const pipe = await getPipeline(sourceLang, targetLang, sessionId);
 
@@ -212,31 +296,37 @@ async function translateDirect(
       text,
       async (value) => {
         const result = await pipe(value, { max_length: 512 });
-        return (result as Array<{ translation_text: string }>)[0].translation_text;
+        return (result as Array<{ translation_text: string }>)[0]
+          .translation_text;
       },
       {
         onItemTranslated: ({ index, text: originalText, translation }) => {
           /* v8 ignore start -- debug logging branch */
           // Debug: log first 3 to verify model output
           if (index < 3) {
-            log.debug(`Model #${index}: "${originalText.substring(0, 40)}" -> "${translation.substring(0, 40)}" (same=${originalText === translation})`);
+            log.debug(
+              `Model #${index}: "${originalText.substring(0, 40)}" -> "${translation.substring(0, 40)}" (same=${originalText === translation})`,
+            );
           }
           /* v8 ignore stop */
         },
         onItemError: ({ text: originalText, error }) => {
           // Per-item error: return original text instead of crashing entire batch
-          log.warn(` Translation failed for item (${originalText.substring(0, 30)}...):`, error);
+          log.warn(
+            ` Translation failed for item (${originalText.substring(0, 30)}...):`,
+            error,
+          );
         },
-      }
+      },
     );
 
     const inferenceDuration = performance.now() - inferenceStart;
     if (sessionId) {
       profiler.recordTiming(sessionId, 'model_inference', inferenceDuration, {
         batchSize: text.length,
-      /* v8 ignore start -- optional chaining + OR fallback */
+        /* v8 ignore start -- optional chaining + OR fallback */
         totalChars: text.reduce((sum, t) => sum + (t?.length || 0), 0),
-      /* v8 ignore stop */
+        /* v8 ignore stop */
       });
     }
     return results;
@@ -267,7 +357,7 @@ async function translate(
   targetLang: string,
   provider: TranslationProviderId = DEFAULT_PROVIDER_ID,
   sessionId?: string,
-  pageContext?: string
+  context?: TranslationContextInput | string,
 ): Promise<string | string[]> {
   // Handle auto-detection
   let actualSourceLang = sourceLang;
@@ -276,7 +366,11 @@ async function translate(
     const sampleText = buildLanguageDetectionSample(text);
     actualSourceLang = await detectLanguage(sampleText);
     if (sessionId) {
-      profiler.recordTiming(sessionId, 'language_detect', performance.now() - detectStart);
+      profiler.recordTiming(
+        sessionId,
+        'language_detect',
+        performance.now() - detectStart,
+      );
     }
     log.info(`Auto-detected source: ${actualSourceLang}`);
   }
@@ -287,59 +381,85 @@ async function translate(
   }
 
   const cache = getTranslationCache();
+  const useTranslationCache = shouldUseTranslationCache(provider, context);
 
   // Handle array of texts
   if (Array.isArray(text)) {
-    const { results, uncachedItems } = await collectBatchTranslationInputs(text, {
-      getCached: (value) => cache.get(value, actualSourceLang, targetLang, provider),
-      onCacheHit: ({ index, text: originalText, cached }) => {
-        // Identity translations (cached === original) are valid: OPUS-MT legitimately
-        // returns the original text for proper nouns, brand names, loanwords, etc.
-        // Serve them from cache to avoid repeated expensive model inference.
-        /* v8 ignore start -- debug logging branch */
-        if (index < 3) {
-          log.debug(`Cache #${index}: "${originalText.substring(0, 30)}" -> "${cached.substring(0, 30)}"${cached === originalText ? ' (identity)' : ''}`);
-        }
-        /* v8 ignore stop */
+    const { results, uncachedItems } = await collectBatchTranslationInputs(
+      text,
+      {
+        getCached: useTranslationCache
+          ? (value) => cache.get(value, actualSourceLang, targetLang, provider)
+          : undefined,
+        onCacheHit: ({ index, text: originalText, cached }) => {
+          // Identity translations (cached === original) are valid: OPUS-MT legitimately
+          // returns the original text for proper nouns, brand names, loanwords, etc.
+          // Serve them from cache to avoid repeated expensive model inference.
+          /* v8 ignore start -- debug logging branch */
+          if (index < 3) {
+            log.debug(
+              `Cache #${index}: "${originalText.substring(0, 30)}" -> "${cached.substring(0, 30)}"${cached === originalText ? ' (identity)' : ''}`,
+            );
+          }
+          /* v8 ignore stop */
+        },
       },
-    });
+    );
 
     // Translate uncached items
     if (uncachedItems.length > 0) {
       log.info(`Translating ${uncachedItems.length} uncached items`);
       const uncachedTexts = uncachedItems.map((item) => item.text);
+      const uncachedContext = Array.isArray(context)
+        ? uncachedItems.map((item) => context[item.index])
+        : context;
       const translations = await translateWithProvider(
         uncachedTexts,
         actualSourceLang,
         targetLang,
         provider,
         sessionId,
-        pageContext
+        uncachedContext,
       );
 
-      const { results: mergedResults, cacheFailures } = await mergeBatchTranslationResults(
-        results,
-        uncachedItems,
-        translations,
-        {
-          // Cache all translations including identity translations (output === input).
-          // OPUS-MT legitimately returns original text for proper nouns, brand names,
-          // loanwords, and short words. Caching these prevents repeated model inference.
-          storeCached: (originalText, translation) => (
-            cache.set(originalText, actualSourceLang, targetLang, provider, translation)
-          ),
-          onCacheStoreFailure: ({ failureCount, error }) => {
-            if (failureCount <= 2) {
-              log.warn(`Failed to cache translation (${failureCount}):`, error);
-            }
+      const { results: mergedResults, cacheFailures } =
+        await mergeBatchTranslationResults(
+          results,
+          uncachedItems,
+          translations,
+          {
+            // Cache all translations including identity translations (output === input).
+            // OPUS-MT legitimately returns original text for proper nouns, brand names,
+            // loanwords, and short words. Caching these prevents repeated model inference.
+            storeCached: useTranslationCache
+              ? (originalText, translation) =>
+                  cache.set(
+                    originalText,
+                    actualSourceLang,
+                    targetLang,
+                    provider,
+                    translation,
+                  )
+              : undefined,
+            onCacheStoreFailure: ({ failureCount, error }) => {
+              if (failureCount <= 2) {
+                log.warn(
+                  `Failed to cache translation (${failureCount}):`,
+                  error,
+                );
+              }
+            },
+            onIdentityTranslation: ({ text: originalText }) => {
+              log.debug(
+                `Identity translation cached for "${originalText.substring(0, 30)}"`,
+              );
+            },
           },
-          onIdentityTranslation: ({ text: originalText }) => {
-            log.debug(`Identity translation cached for "${originalText.substring(0, 30)}"`);
-          },
-        }
-      );
+        );
       if (cacheFailures > 2) {
-        log.warn(`Cache write failed for ${cacheFailures}/${uncachedItems.length} items`);
+        log.warn(
+          `Cache write failed for ${cacheFailures}/${uncachedItems.length} items`,
+        );
       }
       return mergedResults;
     }
@@ -353,23 +473,39 @@ async function translate(
   }
 
   // Check cache first
-  const cached = await cache.get(text, actualSourceLang, targetLang, provider);
-  if (cached !== null) {
-    log.info(' Cache hit');
-    return cached;
+  if (useTranslationCache) {
+    const cached = await cache.get(
+      text,
+      actualSourceLang,
+      targetLang,
+      provider,
+    );
+    if (cached !== null) {
+      log.info(' Cache hit');
+      return cached;
+    }
   }
 
   // Translate and cache
-  const result = await translateWithProvider(text, actualSourceLang, targetLang, provider, sessionId, pageContext);
+  const result = await translateWithProvider(
+    text,
+    actualSourceLang,
+    targetLang,
+    provider,
+    sessionId,
+    context,
+  );
 
   // Cache the translation (best-effort, don't block response)
   /* v8 ignore start -- ternary: Array.isArray */
   const resultText = Array.isArray(result) ? result[0] : result;
   /* v8 ignore stop */
-  try {
-    await cache.set(text, actualSourceLang, targetLang, provider, resultText);
-  } catch (error) {
-    log.warn('Failed to cache translation:', error);
+  if (useTranslationCache) {
+    try {
+      await cache.set(text, actualSourceLang, targetLang, provider, resultText);
+    } catch (error) {
+      log.warn('Failed to cache translation:', error);
+    }
   }
 
   return result;
@@ -384,18 +520,22 @@ async function executeProvider(
   targetLang: string,
   provider: TranslationProviderId,
   sessionId?: string,
-  pageContext?: string
+  context?: TranslationContextInput | string,
 ): Promise<string | string[]> {
   // Fast-fail: reject cloud providers immediately when offline
   if (isCloudProvider(provider) && !isOnline()) {
-    throw new Error(`${provider} unavailable: no network connection. Use a local model instead.`);
+    throw new Error(
+      `${provider} unavailable: no network connection. Use a local model instead.`,
+    );
   }
 
   // Chrome Built-in Translator (Chrome 138+)
   if (provider === 'chrome-builtin') {
     const chromeTranslator = getChromeTranslator();
     if (!(await chromeTranslator.isAvailable())) {
-      throw new Error('Chrome Translator API not available (requires Chrome 138+)');
+      throw new Error(
+        'Chrome Translator API not available (requires Chrome 138+)',
+      );
     }
     return chromeTranslator.translate(text, sourceLang, targetLang);
   }
@@ -405,13 +545,20 @@ async function executeProvider(
   if (provider === 'translategemma') {
     const [gpu, webnn] = await Promise.all([detectWebGPU(), detectWebNN()]);
     if (!gpu.supported && !webnn) {
-      throw new Error('TranslateGemma requires WebNN or WebGPU (GPU/NPU acceleration). This browser does not support either. Please use OPUS-MT instead.');
+      throw new Error(
+        'TranslateGemma requires WebNN or WebGPU (GPU/NPU acceleration). This browser does not support either. Please use OPUS-MT instead.',
+      );
     }
-    return translateWithGemma(text, sourceLang, targetLang, pageContext);
+    return translateWithGemma(text, sourceLang, targetLang, context);
   }
 
   if (isOffscreenCloudProviderRuntimeId(provider)) {
-    return translateWithOffscreenCloudProvider(provider, text, sourceLang, targetLang);
+    return translateWithOffscreenCloudProvider(
+      provider,
+      text,
+      sourceLang,
+      targetLang,
+    );
   }
 
   // OPUS-MT: check for direct model or pivot route
@@ -426,8 +573,15 @@ async function executeProvider(
     const [firstSrc, firstTgt] = firstHop.split('-');
     const [secondSrc, secondTgt] = secondHop.split('-');
 
-    log.info(`Pivot translation: ${sourceLang} -> ${firstTgt} -> ${targetLang}`);
-    const intermediateResult = await translateDirect(text, firstSrc, firstTgt, sessionId);
+    log.info(
+      `Pivot translation: ${sourceLang} -> ${firstTgt} -> ${targetLang}`,
+    );
+    const intermediateResult = await translateDirect(
+      text,
+      firstSrc,
+      firstTgt,
+      sessionId,
+    );
     return translateDirect(intermediateResult, secondSrc, secondTgt, sessionId);
   }
 
@@ -439,7 +593,7 @@ async function executeProvider(
  * Returns available fallback providers in priority order.
  */
 async function getFallbackProviders(
-  primary: TranslationProviderId
+  primary: TranslationProviderId,
 ): Promise<TranslationProviderId[]> {
   const fallbacks: TranslationProviderId[] = [];
 
@@ -468,12 +622,19 @@ async function translateWithProvider(
   targetLang: string,
   provider: TranslationProviderId,
   _sessionId?: string,
-  pageContext?: string
+  context?: TranslationContextInput | string,
 ): Promise<string | string[]> {
   log.info(`${provider} translation: ${sourceLang} -> ${targetLang}`);
 
   try {
-    return await executeProvider(text, sourceLang, targetLang, provider, _sessionId, pageContext);
+    return await executeProvider(
+      text,
+      sourceLang,
+      targetLang,
+      provider,
+      _sessionId,
+      context,
+    );
   } catch (primaryError) {
     /* v8 ignore start -- instanceof ternary */
     const errorMsg = extractErrorMessage(primaryError);
@@ -484,7 +645,9 @@ async function translateWithProvider(
       throw primaryError;
     }
 
-    log.warn(`Primary provider ${provider} failed: ${errorMsg}. Trying fallbacks...`);
+    log.warn(
+      `Primary provider ${provider} failed: ${errorMsg}. Trying fallbacks...`,
+    );
 
     const fallbacks = await getFallbackProviders(provider);
     if (fallbacks.length === 0) {
@@ -494,29 +657,46 @@ async function translateWithProvider(
     for (const fallback of fallbacks) {
       try {
         log.info(`Fallback attempt: ${fallback}`);
-        const result = await executeProvider(text, sourceLang, targetLang, fallback, _sessionId, pageContext);
+        const result = await executeProvider(
+          text,
+          sourceLang,
+          targetLang,
+          fallback,
+          _sessionId,
+          context,
+        );
         log.info(`Fallback ${fallback} succeeded`);
         return result;
       } catch (fallbackError) {
         /* v8 ignore start -- instanceof ternary */
-        log.warn(`Fallback ${fallback} also failed: ${extractErrorMessage(fallbackError)}`);
+        log.warn(
+          `Fallback ${fallback} also failed: ${extractErrorMessage(fallbackError)}`,
+        );
         /* v8 ignore stop */
       }
     }
 
     // All fallbacks exhausted — throw original error with context
-    throw new Error(`Translation failed (${provider} + ${fallbacks.length} fallbacks): ${errorMsg}`);
+    throw new Error(
+      `Translation failed (${provider} + ${fallbacks.length} fallbacks): ${errorMsg}`,
+    );
   }
 }
 
 /**
  * Get supported language pairs (direct + pivot).
  */
-function getSupportedLanguages(): Array<{ src: string; tgt: string; pivot?: boolean }> {
+function getSupportedLanguages(): Array<{
+  src: string;
+  tgt: string;
+  pivot?: boolean;
+}> {
   return getSupportedLanguagePairs();
 }
 
-function validateTranslateMessage(message: OffscreenMessageByType<'translate'>): string | undefined {
+function validateTranslateMessage(
+  message: OffscreenMessageByType<'translate'>,
+): string | undefined {
   if (message.text === undefined || message.text === null) {
     return 'Missing required field: text';
   }
@@ -534,7 +714,7 @@ function validateTranslateMessage(message: OffscreenMessageByType<'translate'>):
 }
 
 async function handleOffscreenTranslate(
-  message: OffscreenMessageByType<'translate'>
+  message: OffscreenMessageByType<'translate'>,
 ): Promise<OffscreenMessageResponseMap['translate']> {
   const validationError = validateTranslateMessage(message);
   if (validationError) {
@@ -546,7 +726,9 @@ async function handleOffscreenTranslate(
     profiler.startTiming(sessionId, 'offscreen_processing');
   }
 
-  const pageContext = typeof message.pageContext === 'string' ? message.pageContext : undefined;
+  const context =
+    message.context ??
+    (typeof message.pageContext === 'string' ? message.pageContext : undefined);
 
   const result = await translate(
     message.text,
@@ -554,7 +736,7 @@ async function handleOffscreenTranslate(
     message.targetLang,
     message.provider ?? 'opus-mt',
     sessionId,
-    pageContext
+    context,
   );
 
   let profilingData = undefined;
@@ -567,11 +749,13 @@ async function handleOffscreenTranslate(
 }
 
 async function handleOffscreenPreloadModel(
-  message: OffscreenMessageByType<'preloadModel'>
+  message: OffscreenMessageByType<'preloadModel'>,
 ): Promise<OffscreenMessageResponseMap['preloadModel']> {
   const isLowPriority = message.priority === 'low';
   if (isLowPriority) {
-    log.debug(`Low-priority preload: ${message.sourceLang}->${message.targetLang}`);
+    log.debug(
+      `Low-priority preload: ${message.sourceLang}->${message.targetLang}`,
+    );
   }
 
   if (message.provider === 'translategemma') {
@@ -593,19 +777,23 @@ async function handleOffscreenPreloadModel(
 
   return {
     success: true,
-    ...(await preloadOpusMtModel(message.sourceLang, message.targetLang, getPipeline)),
+    ...(await preloadOpusMtModel(
+      message.sourceLang,
+      message.targetLang,
+      getPipeline,
+    )),
   };
 }
 
 async function handleOffscreenCropImage(
-  message: OffscreenMessageByType<'cropImage'>
+  message: OffscreenMessageByType<'cropImage'>,
 ): Promise<OffscreenMessageResponseMap['cropImage']> {
   return {
     success: true,
     imageData: await cropImageToDataUrl(
       message.imageData,
       message.rect,
-      message.devicePixelRatio
+      message.devicePixelRatio,
     ),
   };
 }
@@ -653,7 +841,10 @@ const offscreenMessageHandlers: OffscreenMessageHandlers = {
   },
   ocrImage: async (message) => {
     log.info('Processing OCR request...');
-    const ocrResult: OCRResult = await extractTextFromImage(message.imageData, message.lang);
+    const ocrResult: OCRResult = await extractTextFromImage(
+      message.imageData,
+      message.lang,
+    );
     return {
       success: true,
       text: ocrResult.text,
@@ -669,34 +860,45 @@ const offscreenMessageHandlers: OffscreenMessageHandlers = {
 };
 
 // Message handler
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse: (response: OffscreenRoutedResponse) => void) => {
-  if (!isOffscreenTargetedMessage(message)) return false;
+chrome.runtime.onMessage.addListener(
+  (
+    message,
+    _sender,
+    sendResponse: (response: OffscreenRoutedResponse) => void,
+  ) => {
+    if (!isOffscreenTargetedMessage(message)) return false;
 
-  (async () => {
-    try {
-      sendResponse(await routeOffscreenMessage(message, offscreenMessageHandlers));
-    } catch (error) {
-      log.error(' Error:', error);
-      sendResponse({
-        success: false,
-        /* v8 ignore start -- instanceof ternary */
-        error: extractErrorMessage(error)
-        /* v8 ignore stop */
-      });
-    }
-  })().catch((error) => {
-    log.error('Unhandled offscreen listener error:', error);
-    try {
-      sendResponse({
-        success: false,
-        error: extractErrorMessage(error),
-      });
-    } catch (responseError) {
-      log.error('Failed to send offscreen fallback error response:', responseError);
-    }
-  });
+    (async () => {
+      try {
+        sendResponse(
+          await routeOffscreenMessage(message, offscreenMessageHandlers),
+        );
+      } catch (error) {
+        log.error(' Error:', error);
+        sendResponse({
+          success: false,
+          /* v8 ignore start -- instanceof ternary */
+          error: extractErrorMessage(error),
+          /* v8 ignore stop */
+        });
+      }
+    })().catch((error) => {
+      log.error('Unhandled offscreen listener error:', error);
+      try {
+        sendResponse({
+          success: false,
+          error: extractErrorMessage(error),
+        });
+      } catch (responseError) {
+        log.error(
+          'Failed to send offscreen fallback error response:',
+          responseError,
+        );
+      }
+    });
 
-  return true; // Keep channel open for async response
-});
+    return true; // Keep channel open for async response
+  },
+);
 
 log.info(' Document ready - v2.4 with predictive preloading support');
