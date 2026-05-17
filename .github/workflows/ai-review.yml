@@ -3,6 +3,13 @@ name: AI Review
 on:
   pull_request:
 
+# TX-04 (MIK-2973): explicit minimal permissions block.
+# Without this, the GITHUB_TOKEN defaults to write-all under classic repos.
+# This workflow only needs to post a PR comment, so grant only what's needed.
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   ai_review:
     if: ${{ vars.AI_REVIEW_ENABLED == 'true' }}
