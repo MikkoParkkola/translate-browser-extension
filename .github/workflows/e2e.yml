@@ -16,6 +16,10 @@ on:
       - '.github/workflows/e2e.yml'
       - 'package.json'
 
+# TX-04-shape (MIK-2973 follow-up): explicit workflow-level least-privilege permissions
+permissions:
+  contents: read
+
 jobs:
   e2e:
     runs-on: ubuntu-latest

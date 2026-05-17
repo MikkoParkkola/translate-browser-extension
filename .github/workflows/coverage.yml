@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+# TX-04-shape (MIK-2973 follow-up): explicit workflow-level least-privilege permissions
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
