@@ -5,9 +5,12 @@ on:
 
 # TX-04 (MIK-2973): explicit minimal permissions block.
 # Without this, the GITHUB_TOKEN defaults to write-all under classic repos.
-# This workflow only needs to post a PR comment, so grant only what's needed.
+# This workflow posts a PR comment via github.rest.issues.createComment,
+# which requires issues:write (PRs are issues under the hood). pull-requests:write
+# is retained for any PR-specific API additions (labels, review state).
 permissions:
   contents: read
+  issues: write
   pull-requests: write
 
 jobs:
