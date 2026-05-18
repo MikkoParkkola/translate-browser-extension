@@ -23,7 +23,7 @@ jobs:
             exit 1
           fi
       - name: Decode, sign, and clean
-        # TX-01 (MIK-2973): key.pem is removed via EXIT trap even if signing
+        # TX-03 (MIK-2973): key.pem is removed via EXIT trap even if signing
         # fails mid-step. Previously decode + pack + rm were three separate
         # steps; a failure in `bash scripts/pack-extension.sh ...` would leave
         # key.pem on disk and risk inclusion in subsequent artifact upload.
