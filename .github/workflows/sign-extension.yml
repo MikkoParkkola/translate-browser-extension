@@ -22,14 +22,25 @@ jobs:
             echo "CRX_PRIVATE_KEY secret is required to sign the extension" >&2
             exit 1
           fi
-      - name: Decode signing key
+      - name: Decode, sign, and clean
+        # TX-03 (MIK-2973): key.pem is removed via EXIT trap even if signing
+        # fails mid-step. Previously decode + pack + rm were three separate
+        # steps; a failure in `bash scripts/pack-extension.sh ...` would leave
+        # key.pem on disk and risk inclusion in subsequent artifact upload.
+        # Matches the pattern already in publish.yml.
         env:
           CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
         run: |
+          trap "rm -f key.pem" EXIT
           echo "$CRX_PRIVATE_KEY" | base64 -d > key.pem
-      - name: Pack and sign
-        run: |
           bash scripts/pack-extension.sh translate-by-mikko-extension key.pem
+          # NOTE: CRX_PRIVATE_KEY secret rotation steps (TX-01):
+          #   1. Generate new key: openssl genrsa -out new_key.pem 2048
+          #   2. base64-encode: base64 -i new_key.pem | tr -d '\n'
+          #   3. Update repo secret CRX_PRIVATE_KEY with the encoded value
+          #   4. Revoke/replace old key in Chrome Web Store developer settings
+          # The old key is not revocable from GHA; only the CWS developer
+          # dashboard controls which key is trusted for your extension ID.
       - name: Upload artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -37,4 +48,4 @@ jobs:
           path: |
             translate-by-mikko-extension.crx
             translate-by-mikko-extension.zip
-      - run: rm -f key.pem
+      # key.pem cleanup is handled by the EXIT trap in the 'Decode, sign, and clean' step above.
