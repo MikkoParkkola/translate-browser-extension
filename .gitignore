@@ -86,3 +86,4 @@ generate_icons.py
 vitest-coverage-measure.config.ts
 coverage.json
 reports/
+.claude/worktrees/
