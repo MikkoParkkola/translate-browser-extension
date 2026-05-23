@@ -19,6 +19,44 @@
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## 0. 2026-05 Browser AI API Review
+
+This document is a future-roadmap snapshot, not the current shipped runtime contract. The canonical current architecture is `docs/ARCHITECTURE.md`; use this document for roadmap direction only.
+
+### 0.1 Evidence Checked
+
+- Chrome built-in AI API status and overview: <https://developer.chrome.com/docs/ai/built-in-apis>
+- Chrome Translator API: <https://developer.chrome.com/docs/ai/translator-api>
+- Chrome Prompt API: <https://developer.chrome.com/docs/ai/prompt-api>
+- Chrome Summarizer API: <https://developer.chrome.com/docs/ai/summarizer-api>
+- MDN Translator and Language Detector APIs: <https://developer.mozilla.org/en-US/docs/Web/API/Translator_and_Language_Detector_APIs>
+- MDN Summarizer API: <https://developer.mozilla.org/en-US/docs/Web/API/Summarizer_API>
+- MDN WebGPU API: <https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API>
+- WebKit Safari 26.0 feature notes: <https://webkit.org/blog/17333/webkit-features-in-safari-26-0/>
+
+### 0.2 Direction Status Matrix
+
+| Direction | Original precondition | 2026-05 status | Roadmap action |
+|-----------|-----------------------|----------------|----------------|
+| Chrome native translation and language detection | Browser exposes local Translator and LanguageDetector APIs | Achievable and partly shipped. Chrome lists Translator and Language Detector as Chrome 138 stable, and the repo ships `chrome-builtin`; the main-world path still needs source-language auto-detection parity. | Treat `chrome-builtin` as the primary Chrome-native path. Follow-up filed as MIK-3470. |
+| Prompt API as a generic local LLM provider | Browser exposes an on-device prompt-capable model to extensions/pages | Achievable only as a Chrome-specific experiment. Chrome extension support starts at Chrome 138, broader web availability is later and hardware/storage gated. | Prototype only for adjunct workflows; do not replace dedicated translation providers. |
+| Summarization / page understanding | Browser exposes a built-in summarizer | Achievable in Chrome, but MDN still marks the API limited availability and experimental. It is not a core translation dependency. | Keep as optional product exploration, not a translation runtime dependency. |
+| Firefox native browser AI provider | Firefox exposes a stable built-in translation or prompt API to extensions | Blocked for this roadmap. MDN marks Translator/Language Detector limited availability and not Baseline, and the repo's Firefox path remains background page plus OPUS-MT, TranslateGemma, or cloud providers. | Continue Firefox support through existing local/cloud provider paths. |
+| Safari native browser AI provider | Safari exposes a compatible Translator, LanguageDetector, Prompt, or Summarizer API | Speculative. WebKit's Safari 26.0 notes include WebGPU and WebExtensions updates, but no compatible built-in translation/prompt API in the sources checked. | If Safari support is added, start with WebGPU/local providers and feature detection, not a Safari-native AI provider. |
+| WebGPU local inference | Browser exposes enough WebGPU for model inference | Achievable but still feature-gated. Safari 26.0 ships WebGPU and Transformers.js is listed among working frameworks, while MDN still marks WebGPU limited availability. | Keep WebGPU acceleration behind detection with WASM fallback. |
+| NLLB-200 local fallback | Browser model storage, quantization, and runtime quality are acceptable | Speculative for production. Storage, quantization quality, and startup cost remain product risks. | Keep as research until a measured browser package exists. |
+| TranslateGemma local premium path | Quantized model can fit browser storage and run acceptably with WebGPU/WebNN | Experimental. The repo treats TranslateGemma as experimental, and this document's size/performance targets still need measured evidence. | Keep experimental; require a measured evaluation before promotion. |
+| Ollama / native helper path | Users accept native messaging or local helper setup | Product/security blocked. This is outside the browser-only extension contract and overlaps MIK-3467. | Defer until the native-helper vs browser-only architecture decision is resolved. |
+
+### 0.3 Current Shipped Baseline
+
+The shipped provider baseline has moved since this document was written:
+
+- Stable Chrome paths: `chrome-builtin`, `opus-mt`, and configured cloud providers.
+- Stable Firefox paths: `opus-mt` and configured cloud providers; Firefox does not ship `chrome-builtin`.
+- Experimental path: `translategemma`.
+- Roadmap-only paths in this document: `nllb-200`, `ollama`, broad Prompt API routing, and Safari-native browser AI.
+
 ## 1. Architecture Overview
 
 ### 1.1 Core Components
@@ -117,6 +155,8 @@ User views page
 | **3** | TranslateGemma-4B | 500MB-1GB | 55 | ⚡ | ★★★★★ | Premium local quality |
 | **4** | Ollama (local) | Varies | Varies | ⚡ | ★★★★★ | Power user custom models |
 
+> **2026-05 review status**: OPUS-MT is shipped; TranslateGemma is experimental; NLLB-200 and Ollama remain roadmap-only. This older local-model table omits `chrome-builtin`, which is now a primary Chrome runtime path but is browser-managed rather than extension-managed model storage.
+
 ### 2.2 Quantization Strategy (DGX Spark)
 
 We'll quantize models on DGX Spark for optimal browser deployment:
@@ -187,6 +227,8 @@ class ModelLoader {
 ```
 
 ## 3. WebGPU Acceleration
+
+> **2026-05 review status**: WebGPU acceleration is achievable but must stay behind feature detection with a WASM fallback. Browser support has improved, including Safari 26.0, but MDN still marks WebGPU limited availability.
 
 ### 3.1 WebGPU Integration
 
@@ -291,6 +333,8 @@ class LocalTranslator {
 | Full page (100 segments) | ~5s | ~1s | <2s |
 
 ## 4. Provider Ecosystem
+
+> **2026-05 review status**: The registry below is aspirational. Current shipped provider truth lives in `docs/ARCHITECTURE.md` and `docs/PROVIDERS.md`. Any future registry model should include `chrome-builtin` as a first-class Chrome-only local provider and should mark `nllb-200`, `ollama`, and `qwen-mt` as unshipped unless implemented.
 
 ### 4.1 Unified Provider Interface
 
@@ -628,6 +672,8 @@ const DEFAULT_SETTINGS = {
 
 ## 6. Implementation Roadmap
 
+> **2026-05 review status**: These phases are historical planning notes, not the active delivery plan. Achieved or partly achieved areas include Chrome native translation, OPUS-MT local translation, WebGPU detection, and cloud-provider configuration. NLLB-200, Ollama, DGX Spark quantization, and production TranslateGemma promotion remain future work.
+
 ### Phase 1: Foundation (Week 1-2) - FAST & CHEAP
 **Goal**: Working local translation with OPUS-MT
 
@@ -839,5 +885,6 @@ echo "Final model size: $(du -sh $OUTPUT_DIR/final/)"
 
 ---
 
-*Document Version: 1.0*
+*Document Version: 1.1*
 *Author: Claude + Mikko*
+*Last reviewed: 2026-05-12 for MIK-3338*
