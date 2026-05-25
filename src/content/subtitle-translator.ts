@@ -65,8 +65,23 @@ export function initSubtitleTranslation(tgtLang: string): void {
   log.info('Subtitle translation initialized', { targetLang: tgtLang });
 }
 
-function isYouTube(): boolean {
-  return window.location.hostname.includes('youtube.com');
+export function isYouTube(): boolean {
+  const host = window.location.hostname;
+  return host === 'youtube.com' || host.endsWith('.youtube.com');
+}
+
+// Strip HTML tags by repeatedly applying the regex until it reaches a fixpoint.
+// A single pass can leave residual tags when removals reveal new ones
+// (e.g. "<scr<script>ipt>"); looping to a stable result avoids that gap
+// (CodeQL js/incomplete-multi-character-sanitization).
+export function stripHtmlTags(input: string): string {
+  let prev: string;
+  let out = input;
+  do {
+    prev = out;
+    out = out.replace(/<[^>]*>/g, '');
+  } while (out !== prev);
+  return out;
 }
 
 /**
@@ -173,7 +188,7 @@ async function onCueChange(state: SubtitleState, track: TextTrack): Promise<void
   try {
     const response = (await browserAPI.runtime.sendMessage({
       type: 'translate',
-      text: originalText.replace(/<[^>]*>/g, ''), // Strip HTML tags from cues
+      text: stripHtmlTags(originalText), // Strip HTML tags from cues
       sourceLang: 'auto',
       targetLang,
     })) as TranslateResponse;
@@ -298,7 +313,7 @@ export function pretranslateUpcomingCues(video: HTMLVideoElement, bufferSeconds 
           // Fire and forget - pre-translate
           browserAPI.runtime.sendMessage({
             type: 'translate',
-            text: cue.text.replace(/<[^>]*>/g, ''),
+            text: stripHtmlTags(cue.text),
             sourceLang: 'auto',
             targetLang,
           }).then((resp: unknown) => {

@@ -89,9 +89,9 @@ class Profiler {
   startSession(sessionId?: string): string {
     if (!this.enabled) return sessionId || '';
 
-    const id = sessionId || (typeof crypto !== 'undefined' && crypto.randomUUID
+    const id = sessionId || (crypto.randomUUID
       ? `session_${crypto.randomUUID()}`
-      : `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+      : `session_${Date.now()}_${Array.from(crypto.getRandomValues(new Uint8Array(7)), (b) => b.toString(16).padStart(2, '0')).join('')}`);
     this.sessions.set(id, {
       id,
       startTime: performance.now(),
