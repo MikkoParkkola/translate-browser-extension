@@ -265,13 +265,23 @@ export function createPageTranslationOrchestrator(
             try {
               translatedResults = normalizeBatchTranslations(response.result ?? [], batch.nodes.length);
             } catch (error) {
-              log.warn('Batch translation returned invalid result shape:', error);
+              log.warn(
+                `Batch translation returned invalid result shape (${sourceLang} -> ${targetLang}, provider=${provider}):`,
+                error,
+                'raw response.result:',
+                response.result
+              );
               return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime, domUpdateTime: 0 };
             }
           } else {
             /* v8 ignore start -- non-retryable IPC error; requires real extension messaging */
-            // Non-retryable error (e.g. unsupported language pair)
+            // Non-retryable error (e.g. unsupported language pair, model load failure).
+            // Surface the actual backend error — without this the batch only logs
+            // "fully failed (N nodes)" and the real cause stays invisible.
             if (response.error && !isTransientError(response.error)) {
+              log.error(
+                `Batch failed, non-retryable (${sourceLang} -> ${targetLang}, provider=${provider}): ${response.error}`
+              );
               return { translatedCount: 0, errorCount: batch.nodes.length, ipcTime, domUpdateTime: 0 };
             }
 
