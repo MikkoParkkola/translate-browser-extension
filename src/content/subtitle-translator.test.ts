@@ -23,6 +23,8 @@ import {
   initSubtitleTranslation,
   cleanupSubtitleTranslation,
   pretranslateUpcomingCues,
+  isYouTube,
+  stripHtmlTags,
 } from './subtitle-translator';
 
 // Helper: create a mock HTMLVideoElement with TextTracks
@@ -1096,5 +1098,47 @@ describe('Subtitle Translator', () => {
       // Should not attempt to translate whitespace-only text
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('isYouTube host matching', () => {
+  const originalLocation = window.location;
+  afterEach(() => {
+    Object.defineProperty(window, 'location', { value: originalLocation, configurable: true });
+  });
+  function setHost(hostname: string): void {
+    Object.defineProperty(window, 'location', {
+      value: { ...originalLocation, hostname },
+      configurable: true,
+    });
+  }
+
+  it('matches youtube.com and its subdomains', () => {
+    for (const h of ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com']) {
+      setHost(h);
+      expect(isYouTube()).toBe(true);
+    }
+  });
+
+  it('rejects lookalike and suffixed hosts', () => {
+    for (const h of ['youtube.com.attacker.test', 'notyoutube.com', 'evilyoutube.com', 'vimeo.com']) {
+      setHost(h);
+      expect(isYouTube()).toBe(false);
+    }
+  });
+});
+
+describe('stripHtmlTags fixpoint sanitization', () => {
+  it('strips simple tags', () => {
+    expect(stripHtmlTags('<b>hi</b> there')).toBe('hi there');
+  });
+
+  it('strips nested/obfuscated tags that survive a single pass', () => {
+    expect(stripHtmlTags('<scr<script>ipt>alert(1)</scr</script>ipt>')).not.toContain('script');
+    expect(stripHtmlTags('<<b>>x')).toBe('>x');
+  });
+
+  it('leaves plain text untouched', () => {
+    expect(stripHtmlTags('no tags here')).toBe('no tags here');
   });
 });

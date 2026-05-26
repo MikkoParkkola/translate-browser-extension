@@ -75,6 +75,26 @@ class Profiler {
   private aggregateData: Map<string, number[]> = new Map();
   private enabled = true;
   private maxHistorySize = 1000;
+  private sessionCounter = 0;
+
+  /**
+   * Generate a unique session id without weak randomness.
+   * Prefers WebCrypto (randomUUID, then getRandomValues) when a global
+   * `crypto` is present, and falls back to a monotonic counter so the id
+   * stays unique even in runtimes that lack WebCrypto. Never uses
+   * Math.random() (CodeQL js/insecure-randomness).
+   */
+  private generateSessionId(): string {
+    const c = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+    if (c?.randomUUID) return `session_${c.randomUUID()}`;
+    if (c?.getRandomValues) {
+      const hex = Array.from(c.getRandomValues(new Uint8Array(8)), (b) =>
+        b.toString(16).padStart(2, '0'),
+      ).join('');
+      return `session_${hex}`;
+    }
+    return `session_${Date.now()}_${(this.sessionCounter += 1)}`;
+  }
 
   /**
    * Enable or disable profiling (for production)
@@ -89,9 +109,9 @@ class Profiler {
   startSession(sessionId?: string): string {
     if (!this.enabled) return sessionId || '';
 
-    const id = sessionId || (typeof crypto !== 'undefined' && crypto.randomUUID
-      ? `session_${crypto.randomUUID()}`
-      : `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+    // Reuse a caller-supplied id when present, otherwise mint a unique one
+    // via generateSessionId() (WebCrypto-preferred, no weak randomness).
+    const id = sessionId || this.generateSessionId();
     this.sessions.set(id, {
       id,
       startTime: performance.now(),
