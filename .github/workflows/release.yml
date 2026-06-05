@@ -9,7 +9,27 @@ permissions:
   packages: write
 
 jobs:
+  # Dependency-vulnerability backstop. ci.yml gates PRs on
+  # `npm audit --audit-level=high` (HIGH+ only). This gate has no severity
+  # threshold — it fails on ANY known, fixable vuln in package-lock.json — and
+  # runs on the push-to-main release path so nothing publishes to npm / cuts a
+  # GitHub release while a fix is available but unmerged. Accepted/unfixable
+  # vulns are time-boxed in .github/osv-scanner.toml.
+  security-gate:
+    name: Security gate (block release on known vulns)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Scan npm dependencies against OSV
+        uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+        with:
+          scan-args: |-
+            --config=.github/osv-scanner.toml
+            --recursive
+            ./
+
   release:
+    needs: security-gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
