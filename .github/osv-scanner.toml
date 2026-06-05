@@ -1,0 +1,39 @@
+# osv-scanner allowlist — the pressure valve for the CI/release security gate.
+#
+# This gate fails the build on ANY known, fixable vulnerability in the npm
+# dependency tree. It runs at the release/publish layer as a backstop:
+#   - release.yml `security-gate` job -> blocks `npm publish` + GitHub release
+#   - publish.yml `security-gate` job -> blocks the signed CRX dev build that
+#     users pull via updates.xml
+#
+# It is COMPLEMENTARY to, not a replacement for, the existing pre-merge gate.
+# ci.yml runs `npm audit --audit-level=high` on every PR — fast feedback, but it
+# only fails on HIGH+ severity. osv-scanner has NO severity threshold: it flags
+# every dep with a known OSV advisory, including moderate/low ones that
+# `--audit-level=high` deliberately lets through. So the release gate is the
+# stricter backstop that catches what slips past CI before anything ships.
+#
+# Scope: npm — osv-scanner reads package-lock.json (auto-detected) and checks
+# every dependency in the locked tree against the OSV database. NOT covered:
+# github-actions advisories (our actions are SHA-pinned, which is itself the
+# mitigation, and osv-scanner does not map SHA pins to advisory versions). There
+# is no Docker image in this repo, so no image-layer scan is needed.
+#
+# Failing on any fixable vuln is intentional: a new build must include the
+# security fixes that are available. Dependabot PROPOSES the bump PR; this gate
+# DISPOSES — it refuses to ship until the fix is merged.
+#
+# When a vulnerability has NO upstream fix yet, or is verified unreachable, it
+# would otherwise block every release indefinitely. Add a time-boxed exception
+# here instead of weakening the gate. Each entry MUST carry a reason and an
+# ignoreUntil review date — expired entries re-trigger the gate automatically.
+#
+# Format (https://google.github.io/osv-scanner/configuration/):
+#
+#   [[IgnoredVulns]]
+#   id = "GHSA-xxxx-xxxx-xxxx"
+#   ignoreUntil = 2026-07-01   # review by this date; after it the gate fires again
+#   reason = "No patched release upstream yet; reviewed 2026-06-05 by <who>."
+#
+# Keep this list EMPTY unless a vuln genuinely has no fix. The right fix for a
+# fixable vuln is to bump the dependency, not to ignore it.
