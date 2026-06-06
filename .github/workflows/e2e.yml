@@ -16,12 +16,16 @@ on:
       - '.github/workflows/e2e.yml'
       - 'package.json'
 
+# TX-04-shape (MIK-2973 follow-up): explicit workflow-level least-privilege permissions
+permissions:
+  contents: read
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -31,7 +35,7 @@ jobs:
 
       - name: Cache WASM assets
         id: wasm-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: src/wasm/vendor
           key: ${{ runner.os }}-wasm-${{ hashFiles('scripts/fetch-wasm-assets.sh') }}

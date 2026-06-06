@@ -9,13 +9,33 @@ permissions:
   packages: write
 
 jobs:
-  release:
+  # Dependency-vulnerability backstop. ci.yml gates PRs on
+  # `npm audit --audit-level=high` (HIGH+ only). This gate has no severity
+  # threshold — it fails on ANY known, fixable vuln in package-lock.json — and
+  # runs on the push-to-main release path so nothing publishes to npm / cuts a
+  # GitHub release while a fix is available but unmerged. Accepted/unfixable
+  # vulns are time-boxed in .github/osv-scanner.toml.
+  security-gate:
+    name: Security gate (block release on known vulns)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Scan npm dependencies against OSV
+        uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+        with:
+          scan-args: |-
+            --config=.github/osv-scanner.toml
+            --recursive
+            ./
+
+  release:
+    needs: security-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 20
           cache: npm
@@ -32,7 +52,7 @@ jobs:
         run: |
           escaped_id=$(printf '%s' "$EXTENSION_ID" | sed -e 's/[\/&\\]/\\&/g')
           sed -i "s/YOUR_EXTENSION_ID/${escaped_id}/g" updates.xml
-      - uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1 branch
+      - uses: changesets/action@63a615b9cd06ba9a3e6d13796c7fbcb080a60a0b # v1 branch
         with:
           publish: npm publish
           createGithubRelease: true

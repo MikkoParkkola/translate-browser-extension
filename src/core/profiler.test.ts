@@ -79,6 +79,36 @@ describe('Profiler', () => {
     });
   });
 
+  describe('generateSessionId fallbacks (no Math.random)', () => {
+    afterEach(() => {
+      // Restore the real global crypto after each stubbed scenario.
+      vi.unstubAllGlobals();
+    });
+
+    it('uses getRandomValues hex when randomUUID is unavailable', () => {
+      // WebCrypto present but without randomUUID -> exercises the hex branch.
+      vi.stubGlobal('crypto', {
+        getRandomValues: (arr: Uint8Array) => {
+          for (let i = 0; i < arr.length; i++) arr[i] = (i * 17 + 3) & 0xff;
+          return arr;
+        },
+      });
+      const id = profiler.startSession();
+      // 8 bytes -> 16 lowercase hex chars, no UUID dashes.
+      expect(id).toMatch(/^session_[0-9a-f]{16}$/);
+    });
+
+    it('falls back to a monotonic counter when WebCrypto is absent', () => {
+      // No global crypto at all -> exercises the counter fallback branch.
+      vi.stubGlobal('crypto', undefined);
+      const id1 = profiler.startSession();
+      const id2 = profiler.startSession();
+      expect(id1).toMatch(/^session_\d+_\d+$/);
+      expect(id2).toMatch(/^session_\d+_\d+$/);
+      expect(id1).not.toBe(id2);
+    });
+  });
+
   describe('endSession', () => {
     it('ends a session and calculates total duration', () => {
       const id = profiler.startSession('end-test');

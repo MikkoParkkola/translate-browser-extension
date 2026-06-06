@@ -3,12 +3,22 @@ name: AI Review
 on:
   pull_request:
 
+# TX-04 (MIK-2973): explicit minimal permissions block.
+# Without this, the GITHUB_TOKEN defaults to write-all under classic repos.
+# This workflow posts a PR comment via github.rest.issues.createComment,
+# which requires issues:write (PRs are issues under the hood). pull-requests:write
+# is retained for any PR-specific API additions (labels, review state).
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
 jobs:
   ai_review:
     if: ${{ vars.AI_REVIEW_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const body = `AI Review requested. Please provide structured verdict:\n\n\
