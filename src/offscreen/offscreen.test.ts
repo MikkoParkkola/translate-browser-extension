@@ -660,6 +660,28 @@ describe('offscreen message handler', () => {
       expect(r.success).toBe(false);
       expect(r.error as string).toMatch(/targetLang/);
     });
+
+    it('rejects an over-length sourceLang code', async () => {
+      const r = await dispatch({
+        type: 'translate',
+        text: 'hi',
+        sourceLang: 'x'.repeat(21),
+        targetLang: 'de',
+      });
+      expect(r.success).toBe(false);
+      expect(r.error as string).toMatch(/Invalid sourceLang/);
+    });
+
+    it('rejects an over-length targetLang code', async () => {
+      const r = await dispatch({
+        type: 'translate',
+        text: 'hi',
+        sourceLang: 'en',
+        targetLang: 'y'.repeat(21),
+      });
+      expect(r.success).toBe(false);
+      expect(r.error as string).toMatch(/Invalid targetLang/);
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -682,6 +704,40 @@ describe('offscreen message handler', () => {
       expect(r.success).toBe(true);
       expect(r.result).toBe('Hallo aus dem Cache');
       expect(fakePipe).not.toHaveBeenCalled();
+    });
+
+    it('defaults to the opus-mt provider when none is given', async () => {
+      mockCacheGet.mockResolvedValue('Hallo (default provider)');
+      const fakePipe = vi.fn();
+      mockGetCachedPipeline.mockReturnValue(fakePipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Hello',
+        sourceLang: 'en',
+        targetLang: 'de',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toBe('Hallo (default provider)');
+      expect(fakePipe).not.toHaveBeenCalled();
+    });
+
+    it('forwards a string pageContext as translation context', async () => {
+      mockCacheGet.mockResolvedValue('Pankki (cached)');
+      const fakePipe = vi.fn();
+      mockGetCachedPipeline.mockReturnValue(fakePipe);
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'Bank',
+        sourceLang: 'en',
+        targetLang: 'fi',
+        pageContext: 'Financial news article',
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toBe('Pankki (cached)');
     });
   });
 

@@ -316,6 +316,100 @@ describe('getSegmentTranslationContext', () => {
       pageContext: 'Standalone Article > article body',
     });
   });
+
+  it('returns page-only context when the node has no block ancestor', () => {
+    document.title = 'Loose Text Page';
+    const text = document.createTextNode('orphan');
+    document.body.insertBefore(text, null);
+
+    const context = getSegmentTranslationContext(text);
+
+    expect(context).toEqual({
+      before: '',
+      after: '',
+      pageContext: 'Loose Text Page',
+    });
+  });
+
+  it('returns undefined when there is no block ancestor and no page context', () => {
+    const text = document.createTextNode('orphan');
+    document.body.insertBefore(text, null);
+
+    expect(getSegmentTranslationContext(text)).toBeUndefined();
+  });
+
+  it('returns page-only context when the node is inside a hidden subtree', () => {
+    document.title = 'Hidden Sidebar';
+    const aside = document.createElement('aside');
+    const hidden = document.createElement('span');
+    hidden.setAttribute('hidden', '');
+    hidden.appendChild(document.createTextNode('secret'));
+    aside.appendChild(hidden);
+    document.body.appendChild(aside);
+
+    const context = getSegmentTranslationContext(hidden.firstChild as Text);
+
+    expect(context).toEqual({
+      before: '',
+      after: '',
+      pageContext: 'Hidden Sidebar > sidebar',
+    });
+  });
+
+  it('returns undefined for a hidden node with no page context', () => {
+    const div = document.createElement('div');
+    const hidden = document.createElement('span');
+    hidden.setAttribute('aria-hidden', 'true');
+    hidden.appendChild(document.createTextNode('secret'));
+    div.appendChild(hidden);
+    document.body.appendChild(div);
+
+    expect(
+      getSegmentTranslationContext(hidden.firstChild as Text),
+    ).toBeUndefined();
+  });
+
+  it('returns page-only context for a whitespace-only target with visible siblings', () => {
+    document.title = 'Spacing Demo';
+    const article = document.createElement('article');
+    article.append(
+      document.createTextNode('Leading words'),
+      document.createTextNode('   '),
+      document.createTextNode('Trailing words'),
+    );
+    document.body.appendChild(article);
+
+    // The whitespace-only middle node is filtered out of the segment list,
+    // so it is never matched and only the page context survives.
+    const context = getSegmentTranslationContext(article.childNodes[1] as Text);
+
+    expect(context).toEqual({
+      before: '',
+      after: '',
+      pageContext: 'Spacing Demo > article body',
+    });
+  });
+
+  it('skips empty text nodes while collecting block context', () => {
+    const paragraph = document.createElement('p');
+    const empty = document.createTextNode('');
+    paragraph.append(
+      document.createTextNode('Visible before '),
+      empty,
+      document.createTextNode('TARGET'),
+      document.createTextNode(' visible after'),
+    );
+    document.body.appendChild(paragraph);
+
+    const target = paragraph.childNodes[2] as Text;
+    const context = getSegmentTranslationContext(target, {
+      surroundingChars: 60,
+    });
+
+    expect(context).not.toBeUndefined();
+    expect(context!.before).toContain('Visible before');
+    expect(context!.after).toContain('visible after');
+  });
 });
 
 // ============================================================================
