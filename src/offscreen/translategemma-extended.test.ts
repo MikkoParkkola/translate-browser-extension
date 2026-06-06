@@ -165,6 +165,42 @@ describe('detectWebGPU', () => {
 });
 
 // ============================================================================
+// detectWebNN
+// ============================================================================
+
+describe('detectWebNN', () => {
+  it('returns false when navigator.ml is unavailable', async () => {
+    vi.stubGlobal('navigator', {});
+    const { detectWebNN } = await import('./translategemma');
+    expect(await detectWebNN()).toBe(false);
+  });
+
+  it('returns true when navigator.ml creates a GPU context', async () => {
+    const createContext = vi.fn().mockResolvedValue({ deviceType: 'gpu' });
+    vi.stubGlobal('navigator', { ml: { createContext } });
+    const { detectWebNN } = await import('./translategemma');
+    expect(await detectWebNN()).toBe(true);
+    expect(createContext).toHaveBeenCalledWith({ deviceType: 'gpu' });
+  });
+
+  it('returns false when createContext rejects', async () => {
+    vi.stubGlobal('navigator', {
+      ml: { createContext: vi.fn().mockRejectedValue(new Error('no NPU')) },
+    });
+    const { detectWebNN } = await import('./translategemma');
+    expect(await detectWebNN()).toBe(false);
+  });
+
+  it('returns false when createContext resolves to a falsy context', async () => {
+    vi.stubGlobal('navigator', {
+      ml: { createContext: vi.fn().mockResolvedValue(null) },
+    });
+    const { detectWebNN } = await import('./translategemma');
+    expect(await detectWebNN()).toBe(false);
+  });
+});
+
+// ============================================================================
 // getTranslateGemmaPipeline — no WebGPU
 // ============================================================================
 
@@ -564,6 +600,62 @@ describe('translateWithGemma', () => {
       'financial article',
     );
     expect(result).toBeDefined();
+  });
+
+  it('applies a per-segment context array to array input', async () => {
+    mockModel.generate.mockReset();
+    mockTokenizerFn.mockReset();
+    mockTokenizerFn.mockImplementation((input: string | string[]) => ({
+      input_ids: { dims: [Array.isArray(input) ? input.length : 1, 3] },
+    }));
+    mockModel.generate.mockResolvedValue({
+      tolist: vi.fn().mockReturnValue([
+        [1, 2, 3, 101],
+        [1, 2, 3, 202],
+      ]),
+    });
+    mockTokenizerFn.decode = vi.fn(
+      (ids: number[]) => `decoded:${ids.join(',')}`,
+    );
+
+    const { translateWithGemma, getTranslateGemmaPipeline } =
+      await import('./translategemma');
+    await getTranslateGemmaPipeline();
+    const result = await translateWithGemma(['bank', 'bank'], 'en', 'fi', [
+      { before: 'the river', after: 'overflowed' },
+      { before: 'deposit at the', after: 'this morning' },
+    ]);
+
+    expect(result).toEqual(['decoded:101', 'decoded:202']);
+    // Each segment prompt embeds its own bounded context.
+    const prompts = mockTokenizerFn.mock.calls[0][0] as string[];
+    expect(prompts[0]).toContain('Before: the river');
+    expect(prompts[1]).toContain('Before: deposit at the');
+  });
+
+  it('applies the first context array entry to a single string input', async () => {
+    mockModel.generate.mockReset();
+    mockTokenizerFn.mockReset();
+    mockTokenizerFn.mockImplementation((input: string | string[]) => ({
+      input_ids: { dims: [Array.isArray(input) ? input.length : 1, 3] },
+    }));
+    mockModel.generate.mockResolvedValue({
+      tolist: vi.fn().mockReturnValue([[1, 2, 3, 303]]),
+    });
+    mockTokenizerFn.decode = vi.fn(
+      (ids: number[]) => `decoded:${ids.join(',')}`,
+    );
+
+    const { translateWithGemma, getTranslateGemmaPipeline } =
+      await import('./translategemma');
+    await getTranslateGemmaPipeline();
+    const result = (await translateWithGemma('bank', 'en', 'fi', [
+      { before: 'standing on the', after: 'watching the water' },
+    ])) as string;
+
+    expect(result).toBe('decoded:303');
+    const prompt = mockTokenizerFn.mock.calls[0][0] as string;
+    expect(prompt).toContain('Before: standing on the');
   });
 });
 

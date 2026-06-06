@@ -417,6 +417,96 @@ describe('formatTranslateGemmaPrompt with context parameter', () => {
       expect(prompt).toContain('Uutiset > Urheilu');
     });
   });
+
+  describe('whitespace-only string context', () => {
+    it('omits context line when the string normalizes to empty', () => {
+      const prompt = formatTranslateGemmaPrompt(
+        'Hello',
+        'en',
+        'fi',
+        '   \n\t ',
+      );
+      expect(prompt).not.toContain('Context:');
+      expect(prompt).not.toContain('disambiguation');
+    });
+
+    it('produces identical output to a no-context call', () => {
+      const withWhitespace = formatTranslateGemmaPrompt(
+        'Hello',
+        'en',
+        'fi',
+        '   ',
+      );
+      const withoutArg = formatTranslateGemmaPrompt('Hello', 'en', 'fi');
+      expect(withWhitespace).toBe(withoutArg);
+    });
+  });
+
+  describe('partial structured context', () => {
+    it('includes only the page field when before/after are empty', () => {
+      const prompt = formatTranslateGemmaPrompt('Bank', 'en', 'fi', {
+        before: '',
+        after: '',
+        pageContext: 'Finance Weekly > article body',
+      });
+      expect(prompt).toContain('Context:');
+      expect(prompt).toContain('Page: Finance Weekly > article body');
+      expect(prompt).not.toContain('Before:');
+      expect(prompt).not.toContain('After:');
+    });
+
+    it('includes only the before field when page/after are empty', () => {
+      const prompt = formatTranslateGemmaPrompt('Bank', 'en', 'fi', {
+        before: 'On the left river bank',
+        after: '',
+      });
+      expect(prompt).toContain('Before: On the left river bank');
+      expect(prompt).not.toContain('Page:');
+      expect(prompt).not.toContain('After:');
+    });
+
+    it('includes only the after field when page/before are empty', () => {
+      const prompt = formatTranslateGemmaPrompt('Bank', 'en', 'fi', {
+        before: '',
+        after: 'closed for the holidays',
+      });
+      expect(prompt).toContain('After: closed for the holidays');
+      expect(prompt).not.toContain('Page:');
+      expect(prompt).not.toContain('Before:');
+    });
+
+    it('omits whitespace-only structured fields', () => {
+      const prompt = formatTranslateGemmaPrompt('Bank', 'en', 'fi', {
+        before: '   ',
+        after: '\n\t',
+        pageContext: 'Loan FAQ',
+      });
+      expect(prompt).toContain('Page: Loan FAQ');
+      expect(prompt).not.toContain('Before:');
+      expect(prompt).not.toContain('After:');
+    });
+  });
+
+  describe('empty structured context', () => {
+    it('omits the context line when every field is empty', () => {
+      const prompt = formatTranslateGemmaPrompt('Bank', 'en', 'fi', {
+        before: '',
+        after: '',
+      });
+      expect(prompt).not.toContain('Context:');
+      expect(prompt).not.toContain('disambiguation');
+    });
+
+    it('matches a no-context call when every field is whitespace', () => {
+      const withEmpty = formatTranslateGemmaPrompt('Bank', 'en', 'fi', {
+        before: '   ',
+        after: '   ',
+        pageContext: '   ',
+      });
+      const withoutArg = formatTranslateGemmaPrompt('Bank', 'en', 'fi');
+      expect(withEmpty).toBe(withoutArg);
+    });
+  });
 });
 
 describe('prompt template validation', () => {
