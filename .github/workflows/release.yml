@@ -50,6 +50,13 @@ jobs:
         env:
           EXTENSION_ID: ${{ secrets.EXTENSION_ID }}
         run: |
+          if [ ! -f updates.xml ]; then
+            echo "updates.xml not present in the repo — skipping extension-ID injection."
+            echo "This step targets a self-hosted Chrome auto-update manifest; the active"
+            echo "release path publishes via changesets/npm. Add an updates.xml template"
+            echo "with the YOUR_EXTENSION_ID placeholder to re-enable injection."
+            exit 0
+          fi
           escaped_id=$(printf '%s' "$EXTENSION_ID" | sed -e 's/[\/&\\]/\\&/g')
           sed -i "s/YOUR_EXTENSION_ID/${escaped_id}/g" updates.xml
       - uses: changesets/action@63a615b9cd06ba9a3e6d13796c7fbcb080a60a0b # v1 branch
