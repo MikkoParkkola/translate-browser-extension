@@ -179,15 +179,83 @@ async function executeTranslationScript(
     target: { tabId },
     world: 'MAIN' as chrome.scripting.ExecutionWorld,
     func: async (textsToTranslate: string[], srcLang: string, tgtLang: string) => {
-      const TranslatorAPI = self.Translator;
+      const nonEmptyTexts = textsToTranslate.filter((txt) => txt.trim());
+      if (nonEmptyTexts.length === 0) {
+        return textsToTranslate;
+      }
+
+      const pageSelf = self as typeof self & {
+        Translator?: {
+          availability(options: {
+            sourceLanguage: string;
+            targetLanguage: string;
+          }): Promise<{ available: 'no' | 'readily' | 'after-download' }>;
+          create(options: {
+            sourceLanguage: string;
+            targetLanguage: string;
+          }): Promise<{
+            translate(text: string): Promise<string>;
+            destroy(): void;
+          }>;
+        };
+        LanguageDetector?: {
+          availability(): Promise<{ available: 'no' | 'readily' | 'after-download' }>;
+          create(): Promise<{
+            detect(text: string): Promise<Array<{
+              detectedLanguage: string;
+              confidence: number;
+            }>>;
+            destroy?(): void;
+          }>;
+        };
+      };
+      const TranslatorAPI = pageSelf.Translator;
       if (!TranslatorAPI) {
         throw new Error('Chrome Translator API not available (requires Chrome 138+)');
       }
-      const avail = await TranslatorAPI.availability({ sourceLanguage: srcLang, targetLanguage: tgtLang });
-      if (avail.available === 'no') {
-        throw new Error(`Language pair not supported: ${srcLang}-${tgtLang}`);
+
+      let actualSourceLang = srcLang;
+      if (srcLang === 'auto') {
+        const LanguageDetectorAPI = pageSelf.LanguageDetector;
+        if (!LanguageDetectorAPI) {
+          throw new Error(
+            'Chrome LanguageDetector API unavailable for auto source language; choose a source language manually.'
+          );
+        }
+
+        try {
+          const detectorAvailability = await LanguageDetectorAPI.availability();
+          if (detectorAvailability.available === 'no') {
+            throw new Error('LanguageDetector reported unavailable');
+          }
+
+          const detector = await LanguageDetectorAPI.create();
+          try {
+            const sample = nonEmptyTexts.join('\n').slice(0, 500);
+            const detections = await detector.detect(sample);
+            const bestDetection = detections[0];
+            if (!bestDetection || bestDetection.confidence < 0.7) {
+              throw new Error(
+                `confidence too low${bestDetection ? ` (${bestDetection.confidence})` : ''}`
+              );
+            }
+            actualSourceLang = bestDetection.detectedLanguage;
+          } finally {
+            detector.destroy?.();
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          throw new Error(
+            `Chrome LanguageDetector failed for auto source language: ${message}. Choose a source language manually.`
+          );
+        }
       }
-      const t = await TranslatorAPI.create({ sourceLanguage: srcLang, targetLanguage: tgtLang });
+
+      const avail = await TranslatorAPI.availability({ sourceLanguage: actualSourceLang, targetLanguage: tgtLang });
+      if (avail.available === 'no') {
+        throw new Error(`Language pair not supported: ${actualSourceLang}-${tgtLang}`);
+      }
+      const t = await TranslatorAPI.create({ sourceLanguage: actualSourceLang, targetLanguage: tgtLang });
       const translated: string[] = [];
       for (const txt of textsToTranslate) {
         translated.push(txt.trim() ? await t.translate(txt) : txt);

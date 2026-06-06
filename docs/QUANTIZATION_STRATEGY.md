@@ -1,14 +1,84 @@
-# TranslateGemma-4B Quantization Strategy
+# Browser Local Model Quantization Strategy
+
+Last validated: 2026-05-12 against the current repo runtime, Google Gemma 3n model card, Microsoft Phi-4-mini model card, Qwen2.5/Qwen3 Hugging Face model cards, and the deployed TranslateGemma ONNX package.
 
 ## Executive Summary
 
-This document defines the optimal quantization approach for deploying TranslateGemma-4B in a browser environment with <1.5GB target size and <2% BLEU degradation tolerance.
+This document defines the quantization approach for browser-local translation models with <1.5GB preferred download size, <4GB runtime memory, and <2% translation-quality degradation tolerance where a metric baseline exists.
 
-**Recommendation: Q4 (4-bit GGUF)** as primary, **Q3 (3-bit) as stretch goal**
+**Updated recommendation: keep the current TranslateGemma ONNX Q4/Q4F16 WebGPU path for the experimental quality tier, evaluate Gemma 3n E2B/E4B before spending new DGX time on custom quantization, and treat Qwen3-0.6B as the compact fallback candidate replacing Qwen2.5-0.5B for new work.**
+
+The original Q4 GGUF plan below is still useful as a historical DGX quantization playbook, but it is not the current default implementation plan.
+
+---
+
+## 2026-05 Validation Update
+
+### Current repo runtime
+
+The shipped experimental provider is not a freshly quantized `google/translate-gemma-4b` artifact. The current code loads `m1cc0z/translategemma-4b-it-onnx-q4-webgpu`, whose Hugging Face metadata exposes ONNX Q4 and Q4F16 files:
+
+- `onnx/model_q4.onnx`
+- `onnx/model_q4.onnx_data`
+- `onnx/model_q4.onnx_data_1`
+- `onnx/model_q4f16.onnx`
+- `onnx/model_q4f16.onnx_data`
+- `onnx/model_q4f16.onnx_data_1`
+
+The repo describes this path as experimental, approximately 3.6GB, and requiring WebGPU or WebNN acceleration. That means the active near-term question is **whether to replace or supplement the current ONNX Q4 package**, not whether to start by building a GGUF Q4 package from scratch.
+
+### Current model-target matrix
+
+| Target | Status | Quantization recommendation | Notes |
+|---|---|---|---|
+| `m1cc0z/translategemma-4b-it-onnx-q4-webgpu` | Current experimental runtime | Keep ONNX Q4/Q4F16; validate quality and load reliability before changing format | Matches current Transformers.js/WebGPU path. Low upstream adoption, so keep OPUS-MT and Chrome Built-in as stable fallbacks. |
+| Gemma 3n E2B/E4B | Preferred Google-family replacement candidate | Evaluate E2B first with WebGPU/WebNN-friendly 4-bit or 8-bit artifacts; use E4B only if quality gain justifies size | Google positions Gemma 3n for efficient low-resource devices, with effective 2B/4B operation and multilingual training. It is not translation-specific, so WMT/FLORES validation is mandatory. |
+| Phi-4-mini-instruct | Watch-list candidate | Do not prioritize for browser translation unless an ONNX/WebGPU package beats TranslateGemma/Gemma 3n in quality per byte | Microsoft lists Phi-4-mini as 3.8B parameters for memory/compute-constrained, latency-bound scenarios, but it is a general instruction model rather than a dedicated translation model. |
+| Qwen3-0.6B | Compact fallback candidate | Prefer Q4 or Q8 single-file/mobile-friendly package for ultra-low-memory experiments | Qwen3-0.6B supersedes Qwen2.5-0.5B as the new compact Qwen-family target for fresh evaluation. Disable thinking mode for translation prompts. |
+| Qwen2.5-0.5B-Instruct | Superseded baseline | Keep only as historical comparison or compatibility fallback | Still available and Apache-2.0, but no longer the first Qwen-family target for new browser-local translation work. |
+| `google/gemma-7b-it`, `meta-llama/Llama-2-7b-hf` command examples | Deprecated placeholders | Do not use for this project | These examples in older commands are not the current translation target and should not drive DGX spend. |
+
+### MIK-3480 candidate inventory and benchmark gate
+
+2026-05-12 metadata inventory used the Hugging Face model tree API plus the local extension WebGPU smoke test. It did **not** download or load multi-GB candidate models, so quality and cold-load measurements are still blocked on a dedicated browser/GPU benchmark pass.
+
+| Candidate package | Browser-fit finding | Size signal | Benchmark status |
+|---|---|---:|---|
+| `m1cc0z/translategemma-4b-it-onnx-q4-webgpu` | Current code path in `src/offscreen/translategemma.ts`; ships both q4 and q4f16 external-data ONNX artifacts. | 6.83GB total repo payload; each dtype path is roughly 3.4GB before tokenizer/config overhead. | Not rerun end-to-end. Local WebGPU detection passed with `shader-f16` and 4GB buffer limits, but loading the current model still requires a multi-GB browser download. |
+| `m1cc0z/translategemma-4b-webgpu-q4` | Smaller adjacent TranslateGemma WebGPU package worth inspecting before a DGX run. | 3.54GB total repo payload; ONNX payload is 3.51GB. | Candidate only; not wired into the extension. |
+| `onnx-community/gemma-3n-E2B-it-ONNX` | Public Transformers.js-oriented Gemma 3n package, but it is multimodal and much larger than a simple text-only browser drop-in. | 52.99GB total repo payload; q4 decoder external data alone is about 1.51GB, with additional embed/audio/vision artifacts. | Blocked until a text-only loading subset and prompt contract are selected. |
+| `onnx-community/gemma-3n-E4B-it-ONNX` | Not available to this validation environment. | Hugging Face API returned 401. | Blocked on access or an alternate public package. |
+| `onnx-community/Qwen3-0.6B-ONNX` | Best compact browser-local fallback candidate found in this pass; public ONNX package is designed for Transformers.js/WebGPU. | q4 is about 876MB; q4f16 is about 543MB. | Feasible candidate for the next actual WMT/FLORES-style benchmark, but not translation-specific. |
+
+Local checks run for this gate:
+
+- `npm run test:benchmarks -- src/__benchmarks__/translategemma-batch.test.ts` passed. This validates the scheduler-level batching optimization, not model quality.
+- `PLAYWRIGHT_BROWSERS_PATH=/tmp/pw-browsers npx playwright test e2e/webgpu-detection.spec.ts --reporter=line` passed. Chromium extension context reported WebGPU support, `shader-f16: true`, `maxBufferSize: 4294967292`, and `maxStorageBufferBindingSize: 4294967292`.
+
+Decision from this gate: do **not** start DGX quantization yet. The next useful step is a browser/GPU benchmark that compares OPUS-MT, Chrome Built-in, current TranslateGemma, and Qwen3-0.6B on a small fixed WMT/FLORES-style translation set. Gemma 3n E2B should stay in the candidate list, but only after a text-only ONNX loading subset is confirmed.
+
+### Revised quantization policy
+
+1. **Default browser-local translation path:** OPUS-MT remains the stable downloaded baseline; Chrome Built-in remains the preferred native Chrome path where available.
+2. **Experimental premium path:** keep TranslateGemma on ONNX Q4/Q4F16 because the current runtime already uses ONNX Runtime WebGPU/WebNN conventions.
+3. **Next model evaluation:** compare TranslateGemma ONNX Q4/Q4F16 against Qwen3-0.6B first, then Gemma 3n E2B after a text-only browser loading subset is confirmed. Measure translation quality, download size, cold-load time, peak memory, and WebGPU/WebNN reliability.
+4. **Format choice:** prefer ONNX for browser GPU/NPU execution. Use GGUF only for a separate llama.cpp/WASM runtime decision, because the repo does not currently ship a GGUF loader.
+5. **Precision choice:** use Q4/Q4F16 as the default quality/size trade-off; reserve Q3/Q2 for explicit low-memory experiments after per-language quality validation.
+6. **DGX policy:** keep DGX quantization blocked until the browser/GPU benchmark picks a model target and artifact format.
+
+### Validation sources
+
+- Google Gemma 3n model card: https://ai.google.dev/gemma/docs/gemma-3n/model_card
+- Microsoft Phi-4-mini-instruct model card: https://huggingface.co/microsoft/Phi-4-mini-instruct
+- Qwen2.5-0.5B-Instruct model card: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct
+- Qwen3-0.6B model card: https://huggingface.co/Qwen/Qwen3-0.6B
+- Current TranslateGemma ONNX package: https://huggingface.co/m1cc0z/translategemma-4b-it-onnx-q4-webgpu
 
 ---
 
 ## 1. Model Baseline Specifications
+
+The remaining sections preserve the original TranslateGemma-4B DGX quantization analysis for reference. Use the 2026-05 validation update above as the current recommendation when planning new work.
 
 ### TranslateGemma-4B Overview
 - **Base Size**: ~8.0 GB (FP32 weights)
@@ -277,7 +347,9 @@ const session = await ort.InferenceSession.create(
 
 ---
 
-### **Recommendation for TranslateGemma**
+### **Historical Recommendation for TranslateGemma**
+
+This subsection is superseded by the 2026-05 validation update. It remains as a reference for a future GGUF/llama.cpp runtime decision, but the current extension runtime is ONNX Q4/Q4F16 over Transformers.js and ONNX Runtime WebGPU/WebNN.
 
 **🟢 Primary: GGUF (Q4)**
 - Fits size constraint best (1.8-2.0 GB)

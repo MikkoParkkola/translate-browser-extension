@@ -2839,6 +2839,39 @@ describe('Service Worker Additional Coverage', () => {
   //  and shared/translation-background-handler.test.ts.)
   // --------------------------------------------------------------------------
   describe('Chrome Built-in Translator (handleTranslate chrome-builtin branch)', () => {
+    async function invokeChromeBuiltinWithPageApis(
+      pageApis: Record<string, unknown>,
+      message: Record<string, unknown> = {},
+    ) {
+      chromeTabsScriptingMocks.queueActiveTab({ id: 1 });
+      vi.mocked(chrome.scripting.executeScript).mockImplementationOnce(
+        async (details: any) => {
+          const originalSelf = globalThis.self;
+          Object.defineProperty(globalThis, 'self', {
+            value: pageApis,
+            configurable: true,
+          });
+          try {
+            return [{ result: await details.func(...details.args) }];
+          } finally {
+            Object.defineProperty(globalThis, 'self', {
+              value: originalSelf,
+              configurable: true,
+            });
+          }
+        },
+      );
+
+      return invoke({
+        type: 'translate',
+        text: 'Hello world',
+        sourceLang: 'auto',
+        targetLang: 'fi',
+        provider: 'chrome-builtin',
+        ...message,
+      }) as Promise<{ success: boolean; result?: string; error?: string }>;
+    }
+
     it('routes translate message through chrome-builtin provider end-to-end', async () => {
       chromeTabsScriptingMocks.queueActiveTab({ id: 1 });
       chromeTabsScriptingMocks.queueExecuteScriptResult(['Hola mundo']);
@@ -2853,6 +2886,136 @@ describe('Service Worker Additional Coverage', () => {
 
       expect(response.success).toBe(true);
       expect(response.result).toBe('Hola mundo');
+    });
+
+    it('detects auto source language inside the injected main-world translator script', async () => {
+      const callOrder: string[] = [];
+      const detector = {
+        detect: vi.fn(async () => [
+          { detectedLanguage: 'en', confidence: 0.92 },
+        ]),
+        destroy: vi.fn(),
+      };
+      const LanguageDetector = {
+        availability: vi.fn(async () => {
+          callOrder.push('detector.availability');
+          return { available: 'readily' };
+        }),
+        create: vi.fn(async () => {
+          callOrder.push('detector.create');
+          return detector;
+        }),
+      };
+      const translator = {
+        translate: vi.fn(async (text: string) => `fi:${text}`),
+        destroy: vi.fn(),
+      };
+      const Translator = {
+        availability: vi.fn(async (options: { sourceLanguage: string }) => {
+          callOrder.push(`translator.availability:${options.sourceLanguage}`);
+          return { available: 'readily' };
+        }),
+        create: vi.fn(async (options: { sourceLanguage: string }) => {
+          callOrder.push(`translator.create:${options.sourceLanguage}`);
+          return translator;
+        }),
+      };
+
+      const response = await invokeChromeBuiltinWithPageApis({
+        Translator,
+        LanguageDetector,
+      });
+
+      expect(response.success).toBe(true);
+      expect(response.result).toBe('fi:Hello world');
+      expect(detector.detect).toHaveBeenCalledWith('Hello world');
+      expect(Translator.availability).toHaveBeenCalledWith({
+        sourceLanguage: 'en',
+        targetLanguage: 'fi',
+      });
+      expect(Translator.create).toHaveBeenCalledWith({
+        sourceLanguage: 'en',
+        targetLanguage: 'fi',
+      });
+      expect(callOrder).toEqual([
+        'detector.availability',
+        'detector.create',
+        'translator.availability:en',
+        'translator.create:en',
+      ]);
+    });
+
+    it('returns a clear error when LanguageDetector is unavailable for auto source language', async () => {
+      const Translator = {
+        availability: vi.fn(async () => ({ available: 'readily' })),
+        create: vi.fn(async () => ({
+          translate: vi.fn(async (text: string) => `fi:${text}`),
+          destroy: vi.fn(),
+        })),
+      };
+
+      const response = await invokeChromeBuiltinWithPageApis({ Translator });
+
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('Chrome LanguageDetector API unavailable');
+      expect(Translator.availability).not.toHaveBeenCalled();
+    });
+
+    it('returns a clear error when LanguageDetector confidence is too low', async () => {
+      const Translator = {
+        availability: vi.fn(async () => ({ available: 'readily' })),
+        create: vi.fn(async () => ({
+          translate: vi.fn(async (text: string) => `fi:${text}`),
+          destroy: vi.fn(),
+        })),
+      };
+      const LanguageDetector = {
+        availability: vi.fn(async () => ({ available: 'readily' })),
+        create: vi.fn(async () => ({
+          detect: vi.fn(async () => [
+            { detectedLanguage: 'en', confidence: 0.42 },
+          ]),
+          destroy: vi.fn(),
+        })),
+      };
+
+      const response = await invokeChromeBuiltinWithPageApis({
+        Translator,
+        LanguageDetector,
+      });
+
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('confidence too low');
+      expect(Translator.availability).not.toHaveBeenCalled();
+    });
+
+    it('returns a clear error when LanguageDetector fails', async () => {
+      const Translator = {
+        availability: vi.fn(async () => ({ available: 'readily' })),
+        create: vi.fn(async () => ({
+          translate: vi.fn(async (text: string) => `fi:${text}`),
+          destroy: vi.fn(),
+        })),
+      };
+      const LanguageDetector = {
+        availability: vi.fn(async () => ({ available: 'readily' })),
+        create: vi.fn(async () => ({
+          detect: vi.fn(async () => {
+            throw new Error('detector crashed');
+          }),
+          destroy: vi.fn(),
+        })),
+      };
+
+      const response = await invokeChromeBuiltinWithPageApis({
+        Translator,
+        LanguageDetector,
+      });
+
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('Chrome LanguageDetector failed');
+      expect(response.error).toContain('detector crashed');
+      expect(Translator.availability).not.toHaveBeenCalled();
     });
   });
 

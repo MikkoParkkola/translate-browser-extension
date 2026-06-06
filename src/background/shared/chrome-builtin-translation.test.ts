@@ -89,6 +89,22 @@ describe('createChromeBuiltinTranslationRunner', () => {
       await run('Hello', 'en', 'fi');
       expect(executeTranslationScript).toHaveBeenCalledWith(1, ['Hello'], 'en', 'fi');
     });
+
+    it('forwards auto source language to the main-world script for in-page detection', async () => {
+      const executeTranslationScript = vi.fn().mockResolvedValue(['Hei']);
+      const run = createChromeBuiltinTranslationRunner(
+        createDeps({ executeTranslationScript })
+      );
+
+      await run('Hello', 'auto', 'fi');
+
+      expect(executeTranslationScript).toHaveBeenCalledWith(
+        1,
+        ['Hello'],
+        'auto',
+        'fi'
+      );
+    });
   });
 
   describe('array input', () => {

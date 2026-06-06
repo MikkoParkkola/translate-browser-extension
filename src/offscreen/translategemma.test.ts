@@ -8,6 +8,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   TRANSLATEGEMMA_MODEL,
+  TRANSLATEGEMMA_CONTEXT_FIELD_LIMIT,
   LANG_NAMES,
   formatTranslateGemmaPrompt,
   isTranslateGemmaLoaded,
@@ -46,7 +47,9 @@ vi.stubGlobal('navigator', {
 
 describe('TRANSLATEGEMMA_MODEL', () => {
   it('points to WebGPU quantized model', () => {
-    expect(TRANSLATEGEMMA_MODEL).toBe('m1cc0z/translategemma-4b-it-onnx-q4-webgpu');
+    expect(TRANSLATEGEMMA_MODEL).toBe(
+      'm1cc0z/translategemma-4b-it-onnx-q4-webgpu',
+    );
   });
 });
 
@@ -194,13 +197,16 @@ describe('formatTranslateGemmaPrompt', () => {
       ['de', 'fr', 'German', 'French'],
       ['zh', 'ja', 'Chinese', 'Japanese'],
       ['ar', 'ru', 'Arabic', 'Russian'],
-    ])('formats prompt for %s -> %s correctly', (src, tgt, srcName, tgtName) => {
-      const prompt = formatTranslateGemmaPrompt('Test text', src, tgt);
-      expect(prompt).toContain(srcName);
-      expect(prompt).toContain(tgtName);
-      expect(prompt).toContain(`(${src})`);
-      expect(prompt).toContain(`(${tgt})`);
-    });
+    ])(
+      'formats prompt for %s -> %s correctly',
+      (src, tgt, srcName, tgtName) => {
+        const prompt = formatTranslateGemmaPrompt('Test text', src, tgt);
+        expect(prompt).toContain(srcName);
+        expect(prompt).toContain(tgtName);
+        expect(prompt).toContain(`(${src})`);
+        expect(prompt).toContain(`(${tgt})`);
+      },
+    );
   });
 
   describe('special characters in text', () => {
@@ -210,7 +216,11 @@ describe('formatTranslateGemmaPrompt', () => {
     });
 
     it('handles special characters', () => {
-      const prompt = formatTranslateGemmaPrompt('Hello <world> & "quotes"', 'en', 'fi');
+      const prompt = formatTranslateGemmaPrompt(
+        'Hello <world> & "quotes"',
+        'en',
+        'fi',
+      );
       expect(prompt).toContain('Hello <world> & "quotes"');
     });
 
@@ -243,18 +253,33 @@ describe('isTranslateGemmaLoading', () => {
 describe('formatTranslateGemmaPrompt with context parameter', () => {
   describe('when context is provided', () => {
     it('injects context line into prompt', () => {
-      const prompt = formatTranslateGemmaPrompt('Bank', 'en', 'fi', 'Financial news article');
+      const prompt = formatTranslateGemmaPrompt(
+        'Bank',
+        'en',
+        'fi',
+        'Financial news article',
+      );
       expect(prompt).toContain('Context:');
       expect(prompt).toContain('Financial news article');
     });
 
     it('includes disambiguation instruction', () => {
-      const prompt = formatTranslateGemmaPrompt('Bank', 'en', 'fi', 'River description');
+      const prompt = formatTranslateGemmaPrompt(
+        'Bank',
+        'en',
+        'fi',
+        'River description',
+      );
       expect(prompt).toContain('disambiguation');
     });
 
     it('places context between translator instruction and translation request', () => {
-      const prompt = formatTranslateGemmaPrompt('Bank', 'en', 'fi', 'Financial article');
+      const prompt = formatTranslateGemmaPrompt(
+        'Bank',
+        'en',
+        'fi',
+        'Financial article',
+      );
       const contextIndex = prompt.indexOf('Context:');
       const translatorIndex = prompt.indexOf('professional');
       const translateIndex = prompt.indexOf('Produce only');
@@ -264,18 +289,43 @@ describe('formatTranslateGemmaPrompt with context parameter', () => {
     });
 
     it('wraps context in quotes within the prompt', () => {
-      const prompt = formatTranslateGemmaPrompt('Test', 'en', 'fi', 'page header');
+      const prompt = formatTranslateGemmaPrompt(
+        'Test',
+        'en',
+        'fi',
+        'page header',
+      );
       expect(prompt).toContain('"page header"');
     });
 
     it('still contains all standard prompt elements with context', () => {
-      const prompt = formatTranslateGemmaPrompt('Hello', 'en', 'fi', 'main content');
+      const prompt = formatTranslateGemmaPrompt(
+        'Hello',
+        'en',
+        'fi',
+        'main content',
+      );
       expect(prompt).toMatch(/^<start_of_turn>user\n/);
       expect(prompt).toMatch(/<start_of_turn>model\n$/);
       expect(prompt).toContain('<end_of_turn>');
       expect(prompt).toContain('Hello');
       expect(prompt).toContain('English');
       expect(prompt).toContain('Finnish');
+    });
+
+    it('formats structured page semantic context while preserving source text fidelity', () => {
+      const source = 'Bank "A" stays untranslated in the prompt body.';
+      const prompt = formatTranslateGemmaPrompt(source, 'en', 'fi', {
+        before: 'The river overflowed near the',
+        after: 'after heavy rain',
+        pageContext: 'Travel Blog > article body',
+      });
+
+      expect(prompt).toContain('Context:');
+      expect(prompt).toContain('Page: Travel Blog > article body');
+      expect(prompt).toContain('Before: The river overflowed near the');
+      expect(prompt).toContain('After: after heavy rain');
+      expect(prompt).toContain(`${source}<end_of_turn>`);
     });
   });
 
@@ -286,7 +336,12 @@ describe('formatTranslateGemmaPrompt with context parameter', () => {
     });
 
     it('produces identical output to no-context call', () => {
-      const withUndefined = formatTranslateGemmaPrompt('Hello', 'en', 'fi', undefined);
+      const withUndefined = formatTranslateGemmaPrompt(
+        'Hello',
+        'en',
+        'fi',
+        undefined,
+      );
       const withoutArg = formatTranslateGemmaPrompt('Hello', 'en', 'fi');
       expect(withUndefined).toBe(withoutArg);
     });
@@ -308,17 +363,57 @@ describe('formatTranslateGemmaPrompt with context parameter', () => {
   describe('context with various content', () => {
     it('handles long context strings', () => {
       const longContext = 'A'.repeat(500);
-      const prompt = formatTranslateGemmaPrompt('Test', 'en', 'fi', longContext);
-      expect(prompt).toContain(longContext);
+      const prompt = formatTranslateGemmaPrompt(
+        'Test',
+        'en',
+        'fi',
+        longContext,
+      );
+      expect(prompt).toContain('A'.repeat(TRANSLATEGEMMA_CONTEXT_FIELD_LIMIT));
+      expect(prompt).toContain('...');
+      expect(prompt).not.toContain(longContext);
+      expect(prompt).toContain('Test<end_of_turn>');
+    });
+
+    it('limits each structured context field independently', () => {
+      const prompt = formatTranslateGemmaPrompt('Target text', 'en', 'fi', {
+        before: 'B'.repeat(TRANSLATEGEMMA_CONTEXT_FIELD_LIMIT + 40),
+        after: 'C'.repeat(TRANSLATEGEMMA_CONTEXT_FIELD_LIMIT + 40),
+        pageContext: 'D'.repeat(TRANSLATEGEMMA_CONTEXT_FIELD_LIMIT + 40),
+      });
+
+      expect(prompt).toContain('B'.repeat(TRANSLATEGEMMA_CONTEXT_FIELD_LIMIT));
+      expect(prompt).toContain('C'.repeat(TRANSLATEGEMMA_CONTEXT_FIELD_LIMIT));
+      expect(prompt).toContain('D'.repeat(TRANSLATEGEMMA_CONTEXT_FIELD_LIMIT));
+      expect(prompt).not.toContain(
+        'B'.repeat(TRANSLATEGEMMA_CONTEXT_FIELD_LIMIT + 1),
+      );
+      expect(prompt).not.toContain(
+        'C'.repeat(TRANSLATEGEMMA_CONTEXT_FIELD_LIMIT + 1),
+      );
+      expect(prompt).not.toContain(
+        'D'.repeat(TRANSLATEGEMMA_CONTEXT_FIELD_LIMIT + 1),
+      );
+      expect(prompt).toContain('Target text<end_of_turn>');
     });
 
     it('handles context with special characters', () => {
-      const prompt = formatTranslateGemmaPrompt('Test', 'en', 'fi', 'News > Sports > Football');
+      const prompt = formatTranslateGemmaPrompt(
+        'Test',
+        'en',
+        'fi',
+        'News > Sports > Football',
+      );
       expect(prompt).toContain('News > Sports > Football');
     });
 
     it('handles context with unicode', () => {
-      const prompt = formatTranslateGemmaPrompt('Test', 'en', 'fi', 'Uutiset > Urheilu');
+      const prompt = formatTranslateGemmaPrompt(
+        'Test',
+        'en',
+        'fi',
+        'Uutiset > Urheilu',
+      );
       expect(prompt).toContain('Uutiset > Urheilu');
     });
   });
@@ -359,7 +454,7 @@ describe('TranslateGemma dtype/device selection', () => {
   // Replicate the initial selection from getTranslateGemmaPipeline
   function selectInitialDeviceAndDtype(
     gpuSupported: boolean,
-    fp16: boolean
+    fp16: boolean,
   ): { device: 'webgpu' | 'wasm'; dtype: string } {
     if (!gpuSupported) {
       return { device: 'wasm', dtype: 'q4' };
@@ -426,7 +521,10 @@ describe('TranslateGemma dtype/device selection', () => {
 
     it('does not hard-reject when WebGPU unavailable (falls back to WASM)', () => {
       expect(() => selectInitialDeviceAndDtype(false, false)).not.toThrow();
-      expect(selectInitialDeviceAndDtype(false, false)).toEqual({ device: 'wasm', dtype: 'q4' });
+      expect(selectInitialDeviceAndDtype(false, false)).toEqual({
+        device: 'wasm',
+        dtype: 'q4',
+      });
     });
   });
 });
@@ -447,7 +545,7 @@ describe('TRANSLATEGEMMA_MODEL constant', () => {
 describe('isOnnxTypeMismatch (exported)', () => {
   it('detects "Type parameter" error as type mismatch', () => {
     const error = new Error(
-      'Type parameter (T) of Optype (Add) bound to different types (tensor(float) and tensor(float16))'
+      'Type parameter (T) of Optype (Add) bound to different types (tensor(float) and tensor(float16))',
     );
     expect(isOnnxTypeMismatch(error)).toBe(true);
   });
@@ -491,8 +589,13 @@ describe('TranslateGemma loading strategy with progressive fallback', () => {
   async function loadWithStrategy(
     loadModel: (device: string, dtype: string) => Promise<{ model: string }>,
     gpuSupported: boolean,
-    fp16: boolean
-  ): Promise<{ model: string; device: string; dtype: string; tainted: boolean }> {
+    fp16: boolean,
+  ): Promise<{
+    model: string;
+    device: string;
+    dtype: string;
+    tainted: boolean;
+  }> {
     let tainted = false;
 
     // No WebGPU: straight to WASM
@@ -540,8 +643,11 @@ describe('TranslateGemma loading strategy with progressive fallback', () => {
 
   describe('q4f16 fails -> WebGPU + q4 succeeds', () => {
     it('falls back to WebGPU + q4 on q4f16 type mismatch', async () => {
-      const loadModel = vi.fn()
-        .mockRejectedValueOnce(new Error('Type parameter (T) bound to different types'))
+      const loadModel = vi
+        .fn()
+        .mockRejectedValueOnce(
+          new Error('Type parameter (T) bound to different types'),
+        )
         .mockResolvedValueOnce({ model: 'ok-q4' });
 
       const result = await loadWithStrategy(loadModel, true, true);
@@ -555,7 +661,8 @@ describe('TranslateGemma loading strategy with progressive fallback', () => {
     });
 
     it('falls back to WebGPU + q4 on any q4f16 error', async () => {
-      const loadModel = vi.fn()
+      const loadModel = vi
+        .fn()
         .mockRejectedValueOnce(new Error('GPU device lost'))
         .mockResolvedValueOnce({ model: 'ok-q4' });
 
@@ -581,7 +688,8 @@ describe('TranslateGemma loading strategy with progressive fallback', () => {
 
   describe('both WebGPU fail -> WASM fallback', () => {
     it('falls back to WASM when both WebGPU attempts fail', async () => {
-      const loadModel = vi.fn()
+      const loadModel = vi
+        .fn()
         .mockRejectedValueOnce(new Error('q4f16 type mismatch'))
         .mockRejectedValueOnce(new Error('q4 GPU crash'))
         .mockResolvedValueOnce({ model: 'wasm-ok' });
@@ -596,7 +704,8 @@ describe('TranslateGemma loading strategy with progressive fallback', () => {
     });
 
     it('sets tainted flag when all WebGPU attempts fail', async () => {
-      const loadModel = vi.fn()
+      const loadModel = vi
+        .fn()
         .mockRejectedValueOnce(new Error('q4f16 fail'))
         .mockRejectedValueOnce(new Error('q4 fail'))
         .mockResolvedValueOnce({ model: 'wasm-ok' });
@@ -622,7 +731,8 @@ describe('TranslateGemma loading strategy with progressive fallback', () => {
 
   describe('WebGPU q4 fails without fp16 -> WASM', () => {
     it('falls back to WASM when q4 on WebGPU fails (no fp16 available)', async () => {
-      const loadModel = vi.fn()
+      const loadModel = vi
+        .fn()
         .mockRejectedValueOnce(new Error('WebGPU q4 crash'))
         .mockResolvedValueOnce({ model: 'wasm-ok' });
 
@@ -639,14 +749,15 @@ describe('TranslateGemma loading strategy with progressive fallback', () => {
 
   describe('total failure', () => {
     it('throws when WASM fallback also fails', async () => {
-      const loadModel = vi.fn()
+      const loadModel = vi
+        .fn()
         .mockRejectedValueOnce(new Error('q4f16 fail'))
         .mockRejectedValueOnce(new Error('q4 fail'))
         .mockRejectedValueOnce(new Error('WASM OOM'));
 
-      await expect(
-        loadWithStrategy(loadModel, true, true)
-      ).rejects.toThrow('WASM OOM');
+      await expect(loadWithStrategy(loadModel, true, true)).rejects.toThrow(
+        'WASM OOM',
+      );
     });
   });
 });
@@ -655,9 +766,35 @@ describe('LANG_NAMES completeness', () => {
   it('covers all OPUS-MT supported languages', () => {
     // Languages that OPUS-MT supports should also be in LANG_NAMES
     // so TranslateGemma can be used as a fallback for any pair
-    const opusMtLangs = ['en', 'fi', 'de', 'fr', 'es', 'it', 'nl', 'sv', 'da',
-      'ru', 'uk', 'cs', 'hu', 'ro', 'zh', 'ja', 'ko', 'vi', 'th', 'hi',
-      'id', 'ar', 'af', 'pl', 'tr', 'no', 'pt'];
+    const opusMtLangs = [
+      'en',
+      'fi',
+      'de',
+      'fr',
+      'es',
+      'it',
+      'nl',
+      'sv',
+      'da',
+      'ru',
+      'uk',
+      'cs',
+      'hu',
+      'ro',
+      'zh',
+      'ja',
+      'ko',
+      'vi',
+      'th',
+      'hi',
+      'id',
+      'ar',
+      'af',
+      'pl',
+      'tr',
+      'no',
+      'pt',
+    ];
 
     for (const lang of opusMtLangs) {
       expect(LANG_NAMES[lang]).toBeDefined();
@@ -680,11 +817,12 @@ describe('error logging paths (lines 224-225, 237-238)', () => {
       new Error('GPU device lost'),
       new Error('OOM'),
       'String error',
-      42,  // non-Error, non-string
+      42, // non-Error, non-string
     ];
 
     for (const errorInput of testCases) {
-      const errorMsg = errorInput instanceof Error ? errorInput.message : String(errorInput);
+      const errorMsg =
+        errorInput instanceof Error ? errorInput.message : String(errorInput);
       expect(errorMsg).toBeDefined();
       expect(typeof errorMsg).toBe('string');
       // Message should not be empty
@@ -708,9 +846,10 @@ describe('error logging paths (lines 224-225, 237-238)', () => {
     ];
 
     for (const testCase of testCases) {
-      const message = (testCase.value as any) instanceof Error
-        ? ((testCase.value as any) as any).message
-        : String(testCase.value);
+      const message =
+        (testCase.value as any) instanceof Error
+          ? (testCase.value as any as any).message
+          : String(testCase.value);
       expect(message).toBe(testCase.expected);
     }
   });
@@ -721,10 +860,10 @@ describe('token slicing for inference output (line 286)', () => {
     // Line 286: const generatedTokenIds = (allTokenIds[0] ?? []).slice(inputLength);
     // This tests that we properly skip the input tokens and extract only generated tokens
 
-    const inputLength = 15;  // Input prompt is 15 tokens
-    const generatedTokens = [123, 456, 789, 999];  // 4 generated tokens
+    const inputLength = 15; // Input prompt is 15 tokens
+    const generatedTokens = [123, 456, 789, 999]; // 4 generated tokens
     const allTokenIds = [
-      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, ...generatedTokens],  // Input + generated
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, ...generatedTokens], // Input + generated
     ];
 
     const extracted = (allTokenIds[0] ?? []).slice(inputLength);
@@ -733,7 +872,7 @@ describe('token slicing for inference output (line 286)', () => {
 
   it('handles empty generated tokens', () => {
     const inputLength = 15;
-    const allTokenIds = [Array.from({ length: 15 }, (_, i) => i + 1)];  // Only input, no generated
+    const allTokenIds = [Array.from({ length: 15 }, (_, i) => i + 1)]; // Only input, no generated
 
     const extracted = (allTokenIds[0] ?? []).slice(inputLength);
     expect(extracted).toEqual([]);
@@ -741,7 +880,7 @@ describe('token slicing for inference output (line 286)', () => {
 
   it('handles missing allTokenIds array entry', () => {
     const inputLength = 10;
-    const allTokenIds: number[][] = [];  // Empty array
+    const allTokenIds: number[][] = []; // Empty array
 
     const extracted = (allTokenIds[0] ?? []).slice(inputLength);
     expect(extracted).toEqual([]);
@@ -757,12 +896,12 @@ describe('token slicing for inference output (line 286)', () => {
 
   it('preserves correct token order after slicing', () => {
     const inputLength = 3;
-    const tokens = [100, 101, 102, 200, 201, 202, 203];  // 3 input + 4 generated
+    const tokens = [100, 101, 102, 200, 201, 202, 203]; // 3 input + 4 generated
     const allTokenIds = [tokens];
 
     const generated = (allTokenIds[0] ?? []).slice(inputLength);
     expect(generated).toEqual([200, 201, 202, 203]);
-    expect(generated[0]).toBe(200);  // First generated token
-    expect(generated[3]).toBe(203);  // Last generated token
+    expect(generated[0]).toBe(200); // First generated token
+    expect(generated[3]).toBe(203); // Last generated token
   });
 });

@@ -14,7 +14,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mockCanvasElement, setupImageConstructorMock } from '../test-helpers/dom-property-mocks';
+import {
+  mockCanvasElement,
+  setupImageConstructorMock,
+} from '../test-helpers/dom-property-mocks';
 import { selectOpusMtDtype } from './opus-runtime';
 
 // ---------------------------------------------------------------------------
@@ -23,7 +26,7 @@ import { selectOpusMtDtype } from './opus-runtime';
 type MessageListener = (
   message: Record<string, unknown>,
   sender: unknown,
-  sendResponse: (r: unknown) => void
+  sendResponse: (r: unknown) => void,
 ) => boolean | void;
 
 // ---------------------------------------------------------------------------
@@ -94,29 +97,37 @@ vi.mock('./pipeline-cache', () => ({
 // Language detection
 const mockDetectLanguage = vi.fn().mockReturnValue('en');
 const mockBuildLanguageDetectionSample = vi.fn((text: string | string[]) =>
-  Array.isArray(text) ? text.join(' ') : text
+  Array.isArray(text) ? text.join(' ') : text,
 );
 vi.mock('./language-detection', () => ({
   detectLanguage: (text: string) => mockDetectLanguage(text),
-  buildLanguageDetectionSample: (text: string | string[]) => mockBuildLanguageDetectionSample(text),
+  buildLanguageDetectionSample: (text: string | string[]) =>
+    mockBuildLanguageDetectionSample(text),
 }));
 
 // TranslateGemma
-const mockDetectWebGPU = vi.fn().mockResolvedValue({ supported: false, fp16: false });
+const mockDetectWebGPU = vi
+  .fn()
+  .mockResolvedValue({ supported: false, fp16: false });
 const mockDetectWebNN = vi.fn().mockResolvedValue(false);
-const mockGetTranslateGemmaPipeline = vi.fn().mockResolvedValue({ model: {}, tokenizer: {} });
+const mockGetTranslateGemmaPipeline = vi
+  .fn()
+  .mockResolvedValue({ model: {}, tokenizer: {} });
 const mockTranslateWithGemma = vi.fn().mockResolvedValue('gemma translated');
 
 vi.mock('./translategemma', () => ({
   detectWebGPU: (...args: unknown[]) => mockDetectWebGPU(...args),
   detectWebNN: (...args: unknown[]) => mockDetectWebNN(...args),
-  getTranslateGemmaPipeline: (...args: unknown[]) => mockGetTranslateGemmaPipeline(...args),
+  getTranslateGemmaPipeline: (...args: unknown[]) =>
+    mockGetTranslateGemmaPipeline(...args),
   translateWithGemma: (...args: unknown[]) => mockTranslateWithGemma(...args),
 }));
 
 // Chrome translator
 const mockChromeTranslatorIsAvailable = vi.fn().mockResolvedValue(false);
-const mockChromeTranslatorTranslate = vi.fn().mockResolvedValue('chrome translated');
+const mockChromeTranslatorTranslate = vi
+  .fn()
+  .mockResolvedValue('chrome translated');
 const mockGetChromeTranslator = vi.fn().mockReturnValue({
   isAvailable: mockChromeTranslatorIsAvailable,
   translate: mockChromeTranslatorTranslate,
@@ -125,14 +136,17 @@ const mockIsChromeTranslatorAvailable = vi.fn().mockResolvedValue(false);
 
 vi.mock('../providers/chrome-translator', () => ({
   getChromeTranslator: (...args: unknown[]) => mockGetChromeTranslator(...args),
-  isChromeTranslatorAvailable: (...args: unknown[]) => mockIsChromeTranslatorAvailable(...args),
+  isChromeTranslatorAvailable: (...args: unknown[]) =>
+    mockIsChromeTranslatorAvailable(...args),
 }));
 
 // DeepL
 const mockDeeplInitialize = vi.fn().mockResolvedValue(undefined);
 const mockDeeplIsAvailable = vi.fn().mockResolvedValue(false);
 const mockDeeplTranslate = vi.fn().mockResolvedValue('deepl translated');
-const mockDeeplGetUsage = vi.fn().mockResolvedValue({ tokens: 100, cost: 0.002, limitReached: false });
+const mockDeeplGetUsage = vi
+  .fn()
+  .mockResolvedValue({ tokens: 100, cost: 0.002, limitReached: false });
 const mockDeeplFlush = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../providers/deepl', () => ({
@@ -149,7 +163,9 @@ vi.mock('../providers/deepl', () => ({
 const mockOpenaiInitialize = vi.fn().mockResolvedValue(undefined);
 const mockOpenaiIsAvailable = vi.fn().mockResolvedValue(false);
 const mockOpenaiTranslate = vi.fn().mockResolvedValue('openai translated');
-const mockOpenaiGetUsage = vi.fn().mockResolvedValue({ tokens: 200, cost: 0.004, limitReached: false });
+const mockOpenaiGetUsage = vi
+  .fn()
+  .mockResolvedValue({ tokens: 200, cost: 0.004, limitReached: false });
 const mockOpenaiFlush = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../providers/openai', () => ({
@@ -165,8 +181,12 @@ vi.mock('../providers/openai', () => ({
 // Anthropic
 const mockAnthropicInitialize = vi.fn().mockResolvedValue(undefined);
 const mockAnthropicIsAvailable = vi.fn().mockResolvedValue(false);
-const mockAnthropicTranslate = vi.fn().mockResolvedValue('anthropic translated');
-const mockAnthropicGetUsage = vi.fn().mockResolvedValue({ tokens: 300, cost: 0.006, limitReached: false });
+const mockAnthropicTranslate = vi
+  .fn()
+  .mockResolvedValue('anthropic translated');
+const mockAnthropicGetUsage = vi
+  .fn()
+  .mockResolvedValue({ tokens: 300, cost: 0.006, limitReached: false });
 const mockAnthropicFlush = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../providers/anthropic', () => ({
@@ -183,7 +203,9 @@ vi.mock('../providers/anthropic', () => ({
 const mockGoogleInitialize = vi.fn().mockResolvedValue(undefined);
 const mockGoogleIsAvailable = vi.fn().mockResolvedValue(false);
 const mockGoogleTranslate = vi.fn().mockResolvedValue('google translated');
-const mockGoogleGetUsage = vi.fn().mockResolvedValue({ tokens: 400, cost: 0.008, limitReached: false });
+const mockGoogleGetUsage = vi
+  .fn()
+  .mockResolvedValue({ tokens: 400, cost: 0.008, limitReached: false });
 const mockGoogleFlush = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../providers/google-cloud', () => ({
@@ -205,15 +227,18 @@ const mockExtractTextFromImage = vi.fn().mockResolvedValue({
 const mockTerminateOCR = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../core/ocr-service', () => ({
-  extractTextFromImage: (...args: unknown[]) => mockExtractTextFromImage(...args),
+  extractTextFromImage: (...args: unknown[]) =>
+    mockExtractTextFromImage(...args),
   terminateOCR: (...args: unknown[]) => mockTerminateOCR(...args),
 }));
 
 // Network status
 const mockIsOnline = vi.fn().mockReturnValue(true);
-const mockIsCloudProvider = vi.fn().mockImplementation((p: string) =>
-  ['deepl', 'openai', 'anthropic', 'google-cloud'].includes(p)
-);
+const mockIsCloudProvider = vi
+  .fn()
+  .mockImplementation((p: string) =>
+    ['deepl', 'openai', 'anthropic', 'google-cloud'].includes(p),
+  );
 
 vi.mock('../core/network-status', () => ({
   isOnline: (...args: unknown[]) => mockIsOnline(...args),
@@ -274,7 +299,9 @@ await import('./offscreen');
 // ---------------------------------------------------------------------------
 
 /** Dispatch a message through the last registered listener and capture response */
-function dispatch(message: Record<string, unknown>): Promise<Record<string, unknown>> {
+function dispatch(
+  message: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
   return new Promise((resolve) => {
     const listener = registeredListeners[registeredListeners.length - 1];
     listener({ target: 'offscreen', ...message }, {}, (response) => {
@@ -293,8 +320,8 @@ beforeEach(() => {
   mockGetCachedPipeline.mockReturnValue(null);
   mockClearPipelineCache.mockResolvedValue(undefined);
   mockDetectLanguage.mockReturnValue('en');
-  mockBuildLanguageDetectionSample.mockImplementation((text: string | string[]) =>
-    Array.isArray(text) ? text.join(' ') : text
+  mockBuildLanguageDetectionSample.mockImplementation(
+    (text: string | string[]) => (Array.isArray(text) ? text.join(' ') : text),
   );
   mockDetectWebGPU.mockResolvedValue({ supported: false, fp16: false });
   mockGetTranslateGemmaPipeline.mockResolvedValue({ model: {}, tokenizer: {} });
@@ -309,28 +336,48 @@ beforeEach(() => {
   mockDeeplInitialize.mockResolvedValue(undefined);
   mockDeeplIsAvailable.mockResolvedValue(false);
   mockDeeplTranslate.mockResolvedValue('deepl translated');
-  mockDeeplGetUsage.mockResolvedValue({ tokens: 100, cost: 0.002, limitReached: false });
+  mockDeeplGetUsage.mockResolvedValue({
+    tokens: 100,
+    cost: 0.002,
+    limitReached: false,
+  });
   mockDeeplFlush.mockResolvedValue(undefined);
   mockOpenaiInitialize.mockResolvedValue(undefined);
   mockOpenaiIsAvailable.mockResolvedValue(false);
   mockOpenaiTranslate.mockResolvedValue('openai translated');
-  mockOpenaiGetUsage.mockResolvedValue({ tokens: 200, cost: 0.004, limitReached: false });
+  mockOpenaiGetUsage.mockResolvedValue({
+    tokens: 200,
+    cost: 0.004,
+    limitReached: false,
+  });
   mockOpenaiFlush.mockResolvedValue(undefined);
   mockAnthropicInitialize.mockResolvedValue(undefined);
   mockAnthropicIsAvailable.mockResolvedValue(false);
   mockAnthropicTranslate.mockResolvedValue('anthropic translated');
-  mockAnthropicGetUsage.mockResolvedValue({ tokens: 300, cost: 0.006, limitReached: false });
+  mockAnthropicGetUsage.mockResolvedValue({
+    tokens: 300,
+    cost: 0.006,
+    limitReached: false,
+  });
   mockAnthropicFlush.mockResolvedValue(undefined);
   mockGoogleInitialize.mockResolvedValue(undefined);
   mockGoogleIsAvailable.mockResolvedValue(false);
   mockGoogleTranslate.mockResolvedValue('google translated');
-  mockGoogleGetUsage.mockResolvedValue({ tokens: 400, cost: 0.008, limitReached: false });
+  mockGoogleGetUsage.mockResolvedValue({
+    tokens: 400,
+    cost: 0.008,
+    limitReached: false,
+  });
   mockGoogleFlush.mockResolvedValue(undefined);
-  mockExtractTextFromImage.mockResolvedValue({ text: 'extracted text', confidence: 95, blocks: [] });
+  mockExtractTextFromImage.mockResolvedValue({
+    text: 'extracted text',
+    confidence: 95,
+    blocks: [],
+  });
   mockTerminateOCR.mockResolvedValue(undefined);
   mockIsOnline.mockReturnValue(true);
   mockIsCloudProvider.mockImplementation((p: string) =>
-    ['deepl', 'openai', 'anthropic', 'google-cloud'].includes(p)
+    ['deepl', 'openai', 'anthropic', 'google-cloud'].includes(p),
   );
   mockCacheGet.mockResolvedValue(null);
   mockCacheSet.mockResolvedValue(undefined);
@@ -358,7 +405,6 @@ beforeEach(() => {
 // ===========================================================================
 
 describe('offscreen message handler', () => {
-
   // -------------------------------------------------------------------------
   // Message target routing
   // -------------------------------------------------------------------------
@@ -368,7 +414,7 @@ describe('offscreen message handler', () => {
       const result = listener(
         { target: 'service-worker', type: 'ping' },
         {},
-        () => {}
+        () => {},
       );
       expect(result).toBe(false);
     });
@@ -397,7 +443,7 @@ describe('offscreen message handler', () => {
             throw new Error(`send failure ${attempts}`);
           }
           finalResponse = response as Record<string, unknown>;
-        }
+        },
       );
 
       expect(result).toBe(true);
@@ -424,7 +470,11 @@ describe('offscreen message handler', () => {
 
     it('direct pairs have src and tgt without pivot flag', async () => {
       const r = await dispatch({ type: 'getSupportedLanguages' });
-      const langs = r.languages as Array<{ src: string; tgt: string; pivot?: boolean }>;
+      const langs = r.languages as Array<{
+        src: string;
+        tgt: string;
+        pivot?: boolean;
+      }>;
       const direct = langs.filter((l) => !l.pivot);
       expect(direct.length).toBeGreaterThan(0);
       expect(direct.some((p) => p.src === 'en' && p.tgt === 'de')).toBe(true);
@@ -432,7 +482,11 @@ describe('offscreen message handler', () => {
 
     it('pivot pairs include pivot:true', async () => {
       const r = await dispatch({ type: 'getSupportedLanguages' });
-      const langs = r.languages as Array<{ src: string; tgt: string; pivot?: boolean }>;
+      const langs = r.languages as Array<{
+        src: string;
+        tgt: string;
+        pivot?: boolean;
+      }>;
       const pivot = langs.filter((l) => l.pivot === true);
       expect(pivot.length).toBeGreaterThan(0);
     });
@@ -534,7 +588,7 @@ describe('offscreen message handler', () => {
       expect(r.confidence).toBe(95);
       expect(mockExtractTextFromImage).toHaveBeenCalledWith(
         'data:image/png;base64,abc123',
-        'en'
+        'en',
       );
     });
 
@@ -544,7 +598,10 @@ describe('offscreen message handler', () => {
         imageData: 'data:image/png;base64,xyz',
         lang: 'fi',
       });
-      expect(mockExtractTextFromImage).toHaveBeenCalledWith(expect.any(String), 'fi');
+      expect(mockExtractTextFromImage).toHaveBeenCalledWith(
+        expect.any(String),
+        'fi',
+      );
     });
   });
 
@@ -564,27 +621,44 @@ describe('offscreen message handler', () => {
   // -------------------------------------------------------------------------
   describe('translate — field validation', () => {
     it('rejects null text', async () => {
-      const r = await dispatch({ type: 'translate', text: null, sourceLang: 'en', targetLang: 'de' });
+      const r = await dispatch({
+        type: 'translate',
+        text: null,
+        sourceLang: 'en',
+        targetLang: 'de',
+      });
       expect(r.success).toBe(false);
-      expect((r.error as string)).toContain('text');
+      expect(r.error as string).toContain('text');
     });
 
     it('rejects missing text (undefined)', async () => {
-      const r = await dispatch({ type: 'translate', sourceLang: 'en', targetLang: 'de' });
+      const r = await dispatch({
+        type: 'translate',
+        sourceLang: 'en',
+        targetLang: 'de',
+      });
       expect(r.success).toBe(false);
-      expect((r.error as string)).toContain('text');
+      expect(r.error as string).toContain('text');
     });
 
     it('rejects missing sourceLang', async () => {
-      const r = await dispatch({ type: 'translate', text: 'hi', targetLang: 'de' });
+      const r = await dispatch({
+        type: 'translate',
+        text: 'hi',
+        targetLang: 'de',
+      });
       expect(r.success).toBe(false);
-      expect((r.error as string)).toMatch(/sourceLang/);
+      expect(r.error as string).toMatch(/sourceLang/);
     });
 
     it('rejects missing targetLang', async () => {
-      const r = await dispatch({ type: 'translate', text: 'hi', sourceLang: 'en' });
+      const r = await dispatch({
+        type: 'translate',
+        text: 'hi',
+        sourceLang: 'en',
+      });
       expect(r.success).toBe(false);
-      expect((r.error as string)).toMatch(/targetLang/);
+      expect(r.error as string).toMatch(/targetLang/);
     });
   });
 
@@ -616,7 +690,9 @@ describe('offscreen message handler', () => {
   // -------------------------------------------------------------------------
   describe('translate — OPUS-MT pipeline', () => {
     it('translates a single string via pipeline', async () => {
-      const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Hallo Welt' }]);
+      const pipe = vi
+        .fn()
+        .mockResolvedValue([{ translation_text: 'Hallo Welt' }]);
       mockGetCachedPipeline.mockReturnValue(pipe);
 
       const r = await dispatch({
@@ -666,7 +742,8 @@ describe('offscreen message handler', () => {
     });
 
     it('translates an array of texts', async () => {
-      const pipe = vi.fn()
+      const pipe = vi
+        .fn()
         .mockResolvedValueOnce([{ translation_text: 'Hallo' }])
         .mockResolvedValueOnce([{ translation_text: 'Welt' }]);
       mockGetCachedPipeline.mockReturnValue(pipe);
@@ -726,7 +803,11 @@ describe('offscreen message handler', () => {
       });
 
       expect(mockCacheSet).toHaveBeenCalledWith(
-        'Hello', 'en', 'fr', 'opus-mt', 'Bonjour'
+        'Hello',
+        'en',
+        'fr',
+        'opus-mt',
+        'Bonjour',
       );
     });
   });
@@ -776,7 +857,9 @@ describe('offscreen message handler', () => {
 
       const r = await dispatch({
         type: 'translate',
-        text: ['Mock translation harness used for automated browser tests on an English page.'],
+        text: [
+          'Mock translation harness used for automated browser tests on an English page.',
+        ],
         sourceLang: 'en',
         targetLang: 'en',
         provider: 'opus-mt',
@@ -809,10 +892,10 @@ describe('offscreen message handler', () => {
       });
 
       expect(mockBuildLanguageDetectionSample).toHaveBeenCalledWith(
-        expect.arrayContaining(['Beschrijving'])
+        expect.arrayContaining(['Beschrijving']),
       );
       expect(mockDetectLanguage).toHaveBeenCalledWith(
-        expect.stringContaining('Hoi ik ben Rosie')
+        expect.stringContaining('Hoi ik ben Rosie'),
       );
     });
   });
@@ -834,7 +917,7 @@ describe('offscreen message handler', () => {
       });
 
       expect(r.success).toBe(false);
-      expect((r.error as string)).toContain('WebGPU');
+      expect(r.error as string).toContain('WebGPU');
     });
 
     it('calls translateWithGemma when WebGPU supported', async () => {
@@ -850,7 +933,12 @@ describe('offscreen message handler', () => {
       });
 
       expect(r.success).toBe(true);
-      expect(mockTranslateWithGemma).toHaveBeenCalledWith('Hello', 'en', 'de', undefined);
+      expect(mockTranslateWithGemma).toHaveBeenCalledWith(
+        'Hello',
+        'en',
+        'de',
+        undefined,
+      );
     });
 
     it('passes pageContext to translateWithGemma', async () => {
@@ -867,7 +955,79 @@ describe('offscreen message handler', () => {
       });
 
       expect(mockTranslateWithGemma).toHaveBeenCalledWith(
-        'Hello', 'en', 'de', 'Wikipedia article about Germany'
+        'Hello',
+        'en',
+        'de',
+        'Wikipedia article about Germany',
+      );
+    });
+
+    it('bypasses the text-only cache for contextual TranslateGemma single-text requests', async () => {
+      mockDetectWebGPU.mockResolvedValue({ supported: true, fp16: false });
+      mockCacheGet.mockResolvedValue('Cached without context');
+      mockTranslateWithGemma.mockResolvedValue('Kontextuelle Bank');
+      const context = {
+        before: 'Open an account at the',
+        after: 'before depositing funds',
+        pageContext: 'banking article',
+      };
+
+      const r = await dispatch({
+        type: 'translate',
+        text: 'bank',
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'translategemma',
+        context,
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toBe('Kontextuelle Bank');
+      expect(mockCacheGet).not.toHaveBeenCalled();
+      expect(mockCacheSet).not.toHaveBeenCalled();
+      expect(mockTranslateWithGemma).toHaveBeenCalledWith(
+        'bank',
+        'en',
+        'de',
+        context,
+      );
+    });
+
+    it('bypasses the text-only cache for contextual TranslateGemma batches', async () => {
+      mockDetectWebGPU.mockResolvedValue({ supported: true, fp16: false });
+      mockCacheGet.mockResolvedValue('Cached without context');
+      mockTranslateWithGemma.mockResolvedValue(['Finanzbank', 'Sitzbank']);
+      const context = [
+        {
+          before: 'Open an account at the',
+          after: '',
+          pageContext: 'banking article',
+        },
+        {
+          before: 'Sit on the',
+          after: 'near the trail',
+          pageContext: 'park guide',
+        },
+      ];
+
+      const r = await dispatch({
+        type: 'translate',
+        text: ['bank', 'bench'],
+        sourceLang: 'en',
+        targetLang: 'de',
+        provider: 'translategemma',
+        context,
+      });
+
+      expect(r.success).toBe(true);
+      expect(r.result).toEqual(['Finanzbank', 'Sitzbank']);
+      expect(mockCacheGet).not.toHaveBeenCalled();
+      expect(mockCacheSet).not.toHaveBeenCalled();
+      expect(mockTranslateWithGemma).toHaveBeenCalledWith(
+        ['bank', 'bench'],
+        'en',
+        'de',
+        context,
       );
     });
   });
@@ -889,7 +1049,7 @@ describe('offscreen message handler', () => {
       });
 
       expect(r.success).toBe(false);
-      expect((r.error as string)).toContain('no network connection');
+      expect(r.error as string).toContain('no network connection');
     });
   });
 
@@ -930,7 +1090,7 @@ describe('offscreen message handler', () => {
       });
 
       expect(r.success).toBe(false);
-      expect((r.error as string)).toContain('not configured');
+      expect(r.error as string).toContain('not configured');
     });
   });
 
@@ -970,7 +1130,7 @@ describe('offscreen message handler', () => {
       });
 
       expect(r.success).toBe(false);
-      expect((r.error as string)).toContain('not configured');
+      expect(r.error as string).toContain('not configured');
     });
   });
 
@@ -1068,7 +1228,9 @@ describe('offscreen message handler', () => {
       });
 
       expect(r.success).toBe(false);
-      expect((r.error as string)).toContain('Chrome Translator API not available');
+      expect(r.error as string).toContain(
+        'Chrome Translator API not available',
+      );
     });
 
     it('delegates to Chrome Translator when available', async () => {
@@ -1088,7 +1250,11 @@ describe('offscreen message handler', () => {
       });
 
       expect(r.success).toBe(true);
-      expect(mockChromeTranslatorTranslate).toHaveBeenCalledWith('Hello', 'en', 'de');
+      expect(mockChromeTranslatorTranslate).toHaveBeenCalledWith(
+        'Hello',
+        'en',
+        'de',
+      );
     });
   });
 
@@ -1097,9 +1263,10 @@ describe('offscreen message handler', () => {
   // -------------------------------------------------------------------------
   describe('translate — pivot routing', () => {
     it('routes nl-fi via two-hop pivot (nl-en + en-fi)', async () => {
-      const pipe = vi.fn()
-        .mockResolvedValueOnce([{ translation_text: 'Hello' }])   // nl->en
-        .mockResolvedValueOnce([{ translation_text: 'Hei' }]);    // en->fi
+      const pipe = vi
+        .fn()
+        .mockResolvedValueOnce([{ translation_text: 'Hello' }]) // nl->en
+        .mockResolvedValueOnce([{ translation_text: 'Hei' }]); // en->fi
       mockGetCachedPipeline.mockReturnValue(pipe);
 
       const r = await dispatch({
@@ -1127,7 +1294,9 @@ describe('offscreen message handler', () => {
       mockDeeplTranslate.mockRejectedValue(new Error('Network timeout'));
 
       // opus-mt fallback succeeds
-      const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Fallback result' }]);
+      const pipe = vi
+        .fn()
+        .mockResolvedValue([{ translation_text: 'Fallback result' }]);
       mockGetCachedPipeline.mockReturnValue(pipe);
 
       const r = await dispatch({
@@ -1145,7 +1314,7 @@ describe('offscreen message handler', () => {
     it('does NOT fallback for API key configuration errors', async () => {
       mockIsOnline.mockReturnValue(true);
       mockIsCloudProvider.mockReturnValue(true);
-      mockDeeplIsAvailable.mockResolvedValue(false);  // triggers "not configured"
+      mockDeeplIsAvailable.mockResolvedValue(false); // triggers "not configured"
 
       const r = await dispatch({
         type: 'translate',
@@ -1156,7 +1325,7 @@ describe('offscreen message handler', () => {
       });
 
       expect(r.success).toBe(false);
-      expect((r.error as string)).toContain('not configured');
+      expect(r.error as string).toContain('not configured');
     });
   });
 
@@ -1177,14 +1346,22 @@ describe('offscreen message handler', () => {
         sessionId: 'session-42',
       });
 
-      expect(mockStartTiming).toHaveBeenCalledWith('session-42', 'offscreen_processing');
-      expect(mockEndTiming).toHaveBeenCalledWith('session-42', 'offscreen_processing');
+      expect(mockStartTiming).toHaveBeenCalledWith(
+        'session-42',
+        'offscreen_processing',
+      );
+      expect(mockEndTiming).toHaveBeenCalledWith(
+        'session-42',
+        'offscreen_processing',
+      );
     });
 
     it('includes profilingData in response when sessionId provided', async () => {
       const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Test' }]);
       mockGetCachedPipeline.mockReturnValue(pipe);
-      mockGetSessionData.mockReturnValue({ timings: [{ name: 'model_load', duration: 100 }] });
+      mockGetSessionData.mockReturnValue({
+        timings: [{ name: 'model_load', duration: 100 }],
+      });
 
       const r = await dispatch({
         type: 'translate',
@@ -1259,7 +1436,7 @@ describe('offscreen message handler', () => {
       });
 
       expect(r.success).toBe(false);
-      expect((r.error as string)).toContain('WebGPU');
+      expect(r.error as string).toContain('WebGPU');
     });
 
     it('preloads TranslateGemma when WebGPU is available', async () => {
@@ -1315,9 +1492,16 @@ describe('offscreen message handler', () => {
   // -------------------------------------------------------------------------
   describe('getCloudProviderUsage', () => {
     it('returns DeepL usage stats', async () => {
-      mockDeeplGetUsage.mockResolvedValue({ tokens: 50000, cost: 1.0, limitReached: false });
+      mockDeeplGetUsage.mockResolvedValue({
+        tokens: 50000,
+        cost: 1.0,
+        limitReached: false,
+      });
 
-      const r = await dispatch({ type: 'getCloudProviderUsage', provider: 'deepl' });
+      const r = await dispatch({
+        type: 'getCloudProviderUsage',
+        provider: 'deepl',
+      });
 
       expect(r.success).toBe(true);
       expect((r.usage as Record<string, unknown>).tokens).toBe(50000);
@@ -1325,34 +1509,58 @@ describe('offscreen message handler', () => {
     });
 
     it('returns OpenAI usage stats', async () => {
-      mockOpenaiGetUsage.mockResolvedValue({ tokens: 1000, cost: 0.02, limitReached: false });
+      mockOpenaiGetUsage.mockResolvedValue({
+        tokens: 1000,
+        cost: 0.02,
+        limitReached: false,
+      });
 
-      const r = await dispatch({ type: 'getCloudProviderUsage', provider: 'openai' });
+      const r = await dispatch({
+        type: 'getCloudProviderUsage',
+        provider: 'openai',
+      });
 
       expect(r.success).toBe(true);
       expect(mockOpenaiGetUsage).toHaveBeenCalled();
     });
 
     it('returns Anthropic usage stats', async () => {
-      mockAnthropicGetUsage.mockResolvedValue({ tokens: 2000, cost: 0.03, limitReached: false });
+      mockAnthropicGetUsage.mockResolvedValue({
+        tokens: 2000,
+        cost: 0.03,
+        limitReached: false,
+      });
 
-      const r = await dispatch({ type: 'getCloudProviderUsage', provider: 'anthropic' });
+      const r = await dispatch({
+        type: 'getCloudProviderUsage',
+        provider: 'anthropic',
+      });
 
       expect(r.success).toBe(true);
       expect(mockAnthropicGetUsage).toHaveBeenCalled();
     });
 
     it('returns Google Cloud usage stats', async () => {
-      mockGoogleGetUsage.mockResolvedValue({ tokens: 3000, cost: 0.06, limitReached: false });
+      mockGoogleGetUsage.mockResolvedValue({
+        tokens: 3000,
+        cost: 0.06,
+        limitReached: false,
+      });
 
-      const r = await dispatch({ type: 'getCloudProviderUsage', provider: 'google-cloud' });
+      const r = await dispatch({
+        type: 'getCloudProviderUsage',
+        provider: 'google-cloud',
+      });
 
       expect(r.success).toBe(true);
       expect(mockGoogleGetUsage).toHaveBeenCalled();
     });
 
     it('returns zero usage for unknown provider', async () => {
-      const r = await dispatch({ type: 'getCloudProviderUsage', provider: 'unknown' });
+      const r = await dispatch({
+        type: 'getCloudProviderUsage',
+        provider: 'unknown',
+      });
 
       expect(r.success).toBe(true);
       const usage = r.usage as Record<string, unknown>;
@@ -1429,8 +1637,11 @@ describe('offscreen message handler', () => {
   // -------------------------------------------------------------------------
   describe('translate — pipeline loading via transformers', () => {
     it('calls transformers pipeline when no cached pipeline exists', async () => {
-      const { pipeline: mockPipeline } = await import('@huggingface/transformers');
-      const fakePipe = vi.fn().mockResolvedValue([{ translation_text: 'Bonjour' }]);
+      const { pipeline: mockPipeline } =
+        await import('@huggingface/transformers');
+      const fakePipe = vi
+        .fn()
+        .mockResolvedValue([{ translation_text: 'Bonjour' }]);
       (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValue(fakePipe);
       // Force cache miss — no pipeline in LRU cache
       mockGetCachedPipeline.mockReturnValue(null);
@@ -1447,13 +1658,16 @@ describe('offscreen message handler', () => {
       expect(mockPipeline).toHaveBeenCalledWith(
         'translation',
         'Xenova/opus-mt-en-fr',
-        expect.objectContaining({ device: 'wasm', dtype: 'q8' })
+        expect.objectContaining({ device: 'wasm', dtype: 'q8' }),
       );
     });
 
     it('caches newly loaded pipeline', async () => {
-      const { pipeline: mockPipeline } = await import('@huggingface/transformers');
-      const fakePipe = vi.fn().mockResolvedValue([{ translation_text: 'Bonjour' }]);
+      const { pipeline: mockPipeline } =
+        await import('@huggingface/transformers');
+      const fakePipe = vi
+        .fn()
+        .mockResolvedValue([{ translation_text: 'Bonjour' }]);
       (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValue(fakePipe);
       mockGetCachedPipeline.mockReturnValue(null);
 
@@ -1465,7 +1679,10 @@ describe('offscreen message handler', () => {
         provider: 'opus-mt',
       });
 
-      expect(mockCachePipeline).toHaveBeenCalledWith('Xenova/opus-mt-en-fr', fakePipe);
+      expect(mockCachePipeline).toHaveBeenCalledWith(
+        'Xenova/opus-mt-en-fr',
+        fakePipe,
+      );
     });
   });
 
@@ -1501,7 +1718,7 @@ describe('offscreen message handler', () => {
       });
 
       expect(r.success).toBe(false);
-      expect((r.error as string)).toContain('Failed to load image');
+      expect(r.error as string).toContain('Failed to load image');
     });
   });
 
@@ -1510,7 +1727,8 @@ describe('offscreen message handler', () => {
   // -----------------------------------------------------------------
   describe('batch cache write failures', () => {
     it('logs warning for first two cache write failures (line 287)', async () => {
-      const pipe = vi.fn()
+      const pipe = vi
+        .fn()
         .mockResolvedValueOnce([{ translation_text: 'Hallo' }])
         .mockResolvedValueOnce([{ translation_text: 'Welt' }]);
       mockGetCachedPipeline.mockReturnValue(pipe);
@@ -1529,7 +1747,8 @@ describe('offscreen message handler', () => {
     });
 
     it('logs summary when cache write fails for more than 2 items (line 295)', async () => {
-      const pipe = vi.fn()
+      const pipe = vi
+        .fn()
         .mockResolvedValueOnce([{ translation_text: 'A1' }])
         .mockResolvedValueOnce([{ translation_text: 'B1' }])
         .mockResolvedValueOnce([{ translation_text: 'C1' }]);
@@ -1550,7 +1769,8 @@ describe('offscreen message handler', () => {
 
     it('logs identity translation when output equals input (line 291)', async () => {
       // OPUS-MT returns the same text for proper nouns / brand names
-      const pipe = vi.fn()
+      const pipe = vi
+        .fn()
         .mockResolvedValueOnce([{ translation_text: 'Google' }])
         .mockResolvedValueOnce([{ translation_text: 'Welt' }]);
       mockGetCachedPipeline.mockReturnValue(pipe);
@@ -1589,7 +1809,8 @@ describe('offscreen message handler', () => {
 
   describe('batch per-item translation error', () => {
     it('returns original text when pipe rejects for one item (line 169)', async () => {
-      const pipe = vi.fn()
+      const pipe = vi
+        .fn()
         .mockResolvedValueOnce([{ translation_text: 'Hallo' }])
         .mockRejectedValueOnce(new Error('ONNX runtime error'))
         .mockResolvedValueOnce([{ translation_text: 'Gut' }]);
@@ -1614,7 +1835,8 @@ describe('offscreen message handler', () => {
   // -------------------------------------------------------------------------
   describe('translate — array with empty/whitespace items', () => {
     it('preserves empty and whitespace-only strings without calling pipeline', async () => {
-      const pipe = vi.fn()
+      const pipe = vi
+        .fn()
         .mockResolvedValueOnce([{ translation_text: 'Hallo' }])
         .mockResolvedValueOnce([{ translation_text: 'Welt' }]);
       mockGetCachedPipeline.mockReturnValue(pipe);
@@ -1641,7 +1863,9 @@ describe('offscreen message handler', () => {
   // -------------------------------------------------------------------------
   describe('translate — sessionId with auto-detect', () => {
     it('passes sessionId for profiling during auto-detection', async () => {
-      const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Hello world' }]);
+      const pipe = vi
+        .fn()
+        .mockResolvedValue([{ translation_text: 'Hello world' }]);
       mockGetCachedPipeline.mockReturnValue(pipe);
       mockDetectLanguage.mockReturnValue('fr');
 
@@ -1712,10 +1936,17 @@ describe('Offscreen Model Mapping', () => {
 });
 
 describe('withTimeout utility', () => {
-  function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  function withTimeout<T>(
+    promise: Promise<T>,
+    ms: number,
+    message: string,
+  ): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`Timeout: ${message} (${ms / 1000}s)`)), ms);
+      timer = setTimeout(
+        () => reject(new Error(`Timeout: ${message} (${ms / 1000}s)`)),
+        ms,
+      );
     });
     return Promise.race([promise, timeoutPromise]).finally(() => {
       if (timer !== undefined) clearTimeout(timer);
@@ -1729,20 +1960,27 @@ describe('withTimeout utility', () => {
 
   it('rejects with timeout error when promise never resolves', async () => {
     const neverResolves = new Promise<string>(() => {});
-    await expect(
-      withTimeout(neverResolves, 50, 'slow op')
-    ).rejects.toThrow('Timeout: slow op (0.05s)');
+    await expect(withTimeout(neverResolves, 50, 'slow op')).rejects.toThrow(
+      'Timeout: slow op (0.05s)',
+    );
   });
 
   it('rejects with original error when promise rejects before timeout', async () => {
     await expect(
-      withTimeout(Promise.reject(new Error('original')), 1000, 'test')
+      withTimeout(Promise.reject(new Error('original')), 1000, 'test'),
     ).rejects.toThrow('original');
   });
 });
 
 describe('getFallbackProviders logic', () => {
-  type TPI = 'opus-mt' | 'translategemma' | 'chrome-builtin' | 'deepl' | 'openai' | 'anthropic' | 'google-cloud';
+  type TPI =
+    | 'opus-mt'
+    | 'translategemma'
+    | 'chrome-builtin'
+    | 'deepl'
+    | 'openai'
+    | 'anthropic'
+    | 'google-cloud';
 
   async function getFallbackProviders(primary: TPI): Promise<TPI[]> {
     const fallbacks: TPI[] = [];
@@ -1766,7 +2004,15 @@ describe('getFallbackProviders logic', () => {
   });
 
   it('never includes chrome-builtin as a fallback', async () => {
-    const all: TPI[] = ['opus-mt', 'translategemma', 'chrome-builtin', 'deepl', 'openai', 'anthropic', 'google-cloud'];
+    const all: TPI[] = [
+      'opus-mt',
+      'translategemma',
+      'chrome-builtin',
+      'deepl',
+      'openai',
+      'anthropic',
+      'google-cloud',
+    ];
     for (const p of all) {
       expect(await getFallbackProviders(p)).not.toContain('chrome-builtin');
     }
@@ -1783,7 +2029,8 @@ describe('selectOpusMtDtype', () => {
 
 describe('model load and inference profiling (lines 129, 177-179, 189-194)', () => {
   it('records model_load timing when pipeline not cached and sessionId provided', async () => {
-    const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+    const { pipeline: mockPipeline } =
+      await import('@huggingface/transformers');
     const fakePipe = vi.fn().mockResolvedValue([{ translation_text: 'Test' }]);
     (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValue(fakePipe);
     mockGetCachedPipeline.mockReturnValue(null);
@@ -1806,7 +2053,7 @@ describe('model load and inference profiling (lines 129, 177-179, 189-194)', () 
         cached: false,
         modelId: 'Xenova/opus-mt-en-fi',
         device: 'wasm',
-      })
+      }),
     );
   });
 
@@ -1831,7 +2078,7 @@ describe('model load and inference profiling (lines 129, 177-179, 189-194)', () 
       expect.objectContaining({
         cached: true,
         modelId: 'Xenova/opus-mt-en-fi',
-      })
+      }),
     );
   });
 
@@ -1856,15 +2103,17 @@ describe('model load and inference profiling (lines 129, 177-179, 189-194)', () 
       expect.objectContaining({
         batchSize: 1,
         totalChars: expect.any(Number),
-      })
+      }),
     );
   });
 
   it('records model_inference timing for batch translation', async () => {
-    const pipe = vi.fn().mockResolvedValue([
-      { translation_text: 'Hola' },
-      { translation_text: 'Mundo' },
-    ]);
+    const pipe = vi
+      .fn()
+      .mockResolvedValue([
+        { translation_text: 'Hola' },
+        { translation_text: 'Mundo' },
+      ]);
     mockGetCachedPipeline.mockReturnValue(pipe);
 
     await dispatch({
@@ -1884,12 +2133,13 @@ describe('model load and inference profiling (lines 129, 177-179, 189-194)', () 
       expect.objectContaining({
         batchSize: 2,
         totalChars: expect.any(Number),
-      })
+      }),
     );
   });
 
   it('does not record model_load timing when sessionId not provided', async () => {
-    const { pipeline: mockPipeline } = await import('@huggingface/transformers');
+    const { pipeline: mockPipeline } =
+      await import('@huggingface/transformers');
     const fakePipe = vi.fn().mockResolvedValue([{ translation_text: 'Test' }]);
     (mockPipeline as ReturnType<typeof vi.fn>).mockResolvedValue(fakePipe);
     mockGetCachedPipeline.mockReturnValue(null);
@@ -1904,9 +2154,9 @@ describe('model load and inference profiling (lines 129, 177-179, 189-194)', () 
     });
 
     // recordTiming should not be called for model_load (only startTiming/endTiming for overall timing)
-    const modelLoadCalls = (mockRecordTiming as ReturnType<typeof vi.fn>).mock.calls.filter(
-      call => call[1] === 'model_load'
-    );
+    const modelLoadCalls = (
+      mockRecordTiming as ReturnType<typeof vi.fn>
+    ).mock.calls.filter((call) => call[1] === 'model_load');
     expect(modelLoadCalls).toHaveLength(0);
   });
 
@@ -1969,7 +2219,7 @@ describe('model load and inference profiling (lines 129, 177-179, 189-194)', () 
     const pipe = vi.fn().mockResolvedValue([{ translation_text: 'Resultado' }]);
     mockGetCachedPipeline.mockReturnValue(pipe);
 
-    const testText = 'Hello World';  // 11 characters
+    const testText = 'Hello World'; // 11 characters
 
     await dispatch({
       type: 'translate',
@@ -1986,19 +2236,21 @@ describe('model load and inference profiling (lines 129, 177-179, 189-194)', () 
       expect.any(Number),
       expect.objectContaining({
         totalChars: testText.length,
-      })
+      }),
     );
   });
 
   it('calculates batch totalChars correctly from array items', async () => {
-    const pipe = vi.fn().mockResolvedValue([
-      { translation_text: 'Hola' },
-      { translation_text: 'Mundo' },
-      { translation_text: 'Test' },
-    ]);
+    const pipe = vi
+      .fn()
+      .mockResolvedValue([
+        { translation_text: 'Hola' },
+        { translation_text: 'Mundo' },
+        { translation_text: 'Test' },
+      ]);
     mockGetCachedPipeline.mockReturnValue(pipe);
 
-    const textArray = ['Hello', 'World', 'Test'];  // 5 + 5 + 4 = 14 chars
+    const textArray = ['Hello', 'World', 'Test']; // 5 + 5 + 4 = 14 chars
     const expectedTotalChars = textArray.reduce((sum, t) => sum + t.length, 0);
 
     await dispatch({
@@ -2016,7 +2268,7 @@ describe('model load and inference profiling (lines 129, 177-179, 189-194)', () 
       expect.any(Number),
       expect.objectContaining({
         totalChars: expectedTotalChars,
-      })
+      }),
     );
   });
 
