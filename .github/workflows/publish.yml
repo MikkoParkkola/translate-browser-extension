@@ -41,7 +41,19 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Detect CRX signing key
+        id: signing
+        env:
+          CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
+        run: |
+          if [ -n "$CRX_PRIVATE_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CRX_PRIVATE_KEY secret is not set - skipping self-hosted CRX sign + updates.xml commit. The extension build itself succeeded; only the opt-in self-host distribution path is skipped. Set CRX_PRIVATE_KEY (base64-encoded RSA key matching the Chrome Web Store extension ID) to enable it."
+          fi
       - name: Decode, sign, and clean
+        if: steps.signing.outputs.enabled == 'true'
         # TX-01: key.pem is removed via EXIT trap even if signing fails mid-step.
         # Previously rm was a separate step; a signing failure would leave key.pem
         # on disk and risk inclusion in any subsequent artifact upload.
@@ -63,6 +75,7 @@ jobs:
           # The old key is not revocable from GHA; only the CWS developer
           # dashboard controls which key is trusted for your extension ID.
       - name: Prepare update files
+        if: steps.signing.outputs.enabled == 'true'
         run: |
           printf '%s\n' \
             '<?xml version="1.0" encoding="UTF-8"?>' \
@@ -72,6 +85,7 @@ jobs:
             '  </app>' \
             '</gupdate>' > updates.xml
       - name: Commit update files
+        if: steps.signing.outputs.enabled == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
