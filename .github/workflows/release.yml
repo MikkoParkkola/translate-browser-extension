@@ -62,8 +62,14 @@ jobs:
           sed -i "s/YOUR_EXTENSION_ID/${escaped_id}/g" updates.xml
       - uses: changesets/action@63a615b9cd06ba9a3e6d13796c7fbcb080a60a0b # v1 branch
         with:
-          publish: npm publish
-          createGithubRelease: true
+          # Gate npm publish on NPM_TOKEN: when the secret is set, publish to
+          # npm; when absent, skip with a notice (exit 0) so the release still
+          # versions + creates the GitHub release instead of failing ENEEDAUTH.
+          publish: bash .github/scripts/changesets-publish.sh
+          # NOTE: input is the plural 'createGithubReleases'. The previous
+          # 'createGithubRelease' (singular) was silently ignored by the action
+          # (logged 'Unexpected input'), so GitHub releases were never created.
+          createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
