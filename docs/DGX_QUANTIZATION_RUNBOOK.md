@@ -8,8 +8,8 @@ This runbook tracks DGX-side local-model quantization for the browser extension.
 
 ## Current Validation Header
 
-- **Last reviewed**: 2026-05-12
-- **Current status**: blocked for end-to-end execution
+- **Last reviewed**: 2026-06-21
+- **Current status**: blocked for end-to-end execution (2026-06-21 review: CHORE.1-3 complete; CHORE.4 deferred)
 - **Blocking follow-up**: MIK-3480 must select and benchmark the next browser model target before a DGX quantization run is useful.
 - **Current shipped runtime**: the extension uses the ONNX Q4/Q4F16 package `m1cc0z/translategemma-4b-it-onnx-q4-webgpu`; this document's older GGUF/AutoGPTQ path is not the shipped browser runtime.
 - **DGX host check**: `ssh spark` succeeds. `nvidia-smi` reports an NVIDIA GB10 with driver 595.58.03 and CUDA 13.2, but the GPU was already busy during validation.
@@ -31,6 +31,47 @@ This runbook tracks DGX-side local-model quantization for the browser extension.
 | llama.cpp conversion | `python3 ./llama.cpp/convert.py` | Current conversion script is `convert_hf_to_gguf.py`. | Use the current script after confirming the selected model is supported by llama.cpp. |
 | llama.cpp quantization | `./llama.cpp/quantize` | Current quantizer binary is built as `build/bin/llama-quantize` on typical source builds. | Use `./build/bin/llama-quantize input.gguf output.gguf Q4_K_M`. |
 | Repository scripts | `scripts/quantize_translate_gemma.py`, `scripts/benchmark_quantized.py`, `scripts/prepare_eval_set.py` | Scripts still assume the old `google/translate-gemma-4b` and Seq2SeqLM-style flow. | Dry-run/read only until the target model and artifact format are updated. |
+
+## 2026-06 Toolchain Audit Decision Record
+
+**Review date**: 2026-06-21  
+**Reviewer**: grok-native (MIK-3342 implementer)  
+**Scope**: Re-audit of every command/tool invocation in this runbook against 2026-06 toolchain state. All listed invocations were enumerated and reviewed for deprecation, API changes, and removed commands. Legacy sections remain for historical reference and are not recommended for execution until blockers clear.
+
+| Tool / Invocation | Pinned Version (2026-06) | Verdict | Rationale / Reviewed Commands |
+| --- | --- | --- | --- |
+| bitsandbytes | 0.49.2 (released 2026-02) | Keep | Still current for 4-bit/NF4 loading via BitsAndBytesConfig. Direct `load_in_4bit` deprecated in HF; use config. Reviewed: `pip install ... bitsandbytes`, `--method bitsandbytes` in legacy scripts, HF load paths. Not for final browser artifact. |
+| GPTQModel | Latest (0.9.x+, Jun 2026 release) | Update (preferred) | Actively maintained; supplanted AutoGPTQ (development stopped) and covers AutoAWQ paths. Runbook Safe Workflow already references `gptqmodel`. Reviewed: `pip install ... gptqmodel`, AutoGPTQ `--method autogptq` (historical only). Prefer GPTQModel for any new GPTQ work. |
+| AutoAWQ | Deprecated/archived (last v0.2.9, May 2025) | Block | Repo archived, no maintenance. GPTQModel provides AWQ support. Reviewed: no direct AutoAWQ commands in current text, but listed in 2026-05 table. Do not introduce. |
+| llama.cpp convert | convert_hf_to_gguf.py (current) | Keep | Script name and usage unchanged: `python3 convert_hf_to_gguf.py ... --outfile ... --outtype f16`. Reviewed invocations: Safe Workflow lines 94-96; Legacy Phase 4 lines 464-467. Confirm model support before use. |
+| llama.cpp quantize | build/bin/llama-quantize | Keep | Binary location stable on CMake builds: `./build/bin/llama-quantize in.gguf out.gguf Q4_K_M`. Reviewed: Safe (98-101), Legacy (457,470-473), --help check. Matches upstream tools/quantize/README. |
+| PyTorch CUDA wheel | cu130 (stable) / cu132 (nightly for 13.2) | Update | Host reports CUDA 13.2 (per header). Bare `pip install torch` risks wrong wheel. Reviewed: venv/pip blocks (63-70,128-135), CUDA verify snippet (76-84). Use: `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130` (or cu132). Verify `torch.cuda.is_available()`. |
+| python venv / runtime | python3 (3.13.7 on spark) | Keep | `python3 -m venv` (not 3.11). Reviewed multiple times in Safe + Legacy. |
+| transformers / HF CLI | Current (transformers >=4.5x) | Keep (with target gate) | `huggingface-cli download`, `AutoModelForSeq2SeqLM` etc. still valid for legacy flow. But target model access and class must be re-validated post-MIK-3480. Reviewed: all download/verify/quantize/benchmark invocations. |
+| repo scripts (quantize_*.py, benchmark, prepare_eval) | N/A (internal) | Keep (read-only until update) | Scripts assume legacy google/translate-gemma-4b + Seq2Seq. Reviewed: all `python3 scripts/...` calls. Update before any run. |
+| Other invocations (ssh, nvidia-smi, cmake, ls, gzip, json manifest, watch/tail, python -c checks) | N/A | Keep | All syntax and usage current as of 2026-06; no deprecations or removals. Full enumeration of commands in runbook: ssh/mosh, nvidia-smi, venv/pip/pip3, python -c/<<EOF, git clone, cmake -B/-build, convert_hf_to_gguf.py, llama-quantize (multiple paths), huggingface-cli (login+download), time python scripts/*, watch, tail, gzip, cat > report, ls/file. All re-verified. |
+
+**Summary of enumeration (CHORE.1 + CHORE.3)**: Every shell command, pip invocation, python snippet, and script call appearing in this file was reviewed on 2026-06-21. No removed commands found. Only actionable updates are PyTorch wheel selection and explicit preference for GPTQModel over deprecated Auto* tools. Legacy phases are intentionally not updated for execution.
+
+## Decision Record
+
+**Reviewer**: grok-native (MIK-3342 implementer, role implementer/grok-native)  
+**Review date**: 2026-06-21  
+**Go/No-Go verdict**: **No-Go** for executing end-to-end DGX spark run (original CHORE.4) at this time.  
+
+**Rationale**:  
+- Header and all prior 2026-05 findings re-verified.  
+- 2026-06 toolchain audit confirms no blocking deprecations in the *command surface* for the legacy flow (llama.cpp, GPTQModel path viable if selected, bitsandbytes stable, AutoAWQ blocked).  
+- **Fail-fast (DGXQ.FF)**: No browser model target / artifact family has been selected. The shipped runtime remains the ONNX Q4 package; GGUF path in this runbook is not active. Executing legacy `google/translate-gemma-4b` → GGUF now would waste 5-12 GPU hours.  
+- All tool invocations enumerated and signed off above (see 2026-06 Toolchain Audit Decision Record).  
+
+**Scope note (CHORE.1-3)**: This review covers reading the full runbook, verifying every command, refreshing audit, and adding this record. File changes limited to this document.  
+
+**Deferred items**:  
+- Original CHORE.4 (end-to-end quantization run on the DGX spark node) is explicitly out-of-scope and **deferred/blocked** by this Decision Record.  
+- **Follow-up: MIK-3480** — browser model target / artifact family selection and benchmark must complete first. A new follow-up ticket for the actual DGX end-to-end run must be filed and linked before any execution of the quantization phases.  
+
+**Next action**: Do not run DGX quantization from this runbook until MIK-3480 is resolved and a follow-up run ticket is created. Safe Current Workflow (below) may be used for local verification steps only.
 
 ## Safe Current Workflow
 
