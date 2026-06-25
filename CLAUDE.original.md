@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working w/ this repo.
+This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-**TRANSLATE!** is browser extension for local-first translation across Chrome (MV3) and Firefox (MV2). shipped paths are Chrome Built-in (native, Chrome 138+), OPUS-MT (stable downloaded local baseline), TranslateGemma (experimental accelerated local path via offscreen WebGPU/WebNN at `src/offscreen/translategemma.ts`), and optional cloud providers (DeepL, OpenAI, Anthropic, Google Cloud). NLLB-200 is in tree at `src/providers/nllb-200.ts` as opt-in research path. PR #509 shipped content-script WebMCP surface, which exposes extension as MCP tools (`translate_page` `translate_selection` `detect_language`) via `src/content/webmcp.ts` for in-page agent integrations.
+**TRANSLATE!** is a browser extension for local-first translation across Chrome (MV3) and Firefox (MV2). The shipped paths are Chrome Built-in (native, Chrome 138+), OPUS-MT (stable downloaded local baseline), TranslateGemma (experimental accelerated local path via offscreen WebGPU/WebNN at `src/offscreen/translategemma.ts`), and optional cloud providers (DeepL, OpenAI, Anthropic, Google Cloud). NLLB-200 is in tree at `src/providers/nllb-200.ts` as an opt-in research path. PR #509 shipped the content-script WebMCP surface, which exposes the extension as MCP tools (`translate_page`, `translate_selection`, `detect_language`) via `src/content/webmcp.ts` for in-page agent integrations.
 
 ## Architecture (v2.0+)
 
@@ -34,7 +34,7 @@ src/
 └── manifest.firefox.json  # Firefox (MV2)
 ```
 
- src/ tree is far richer than this skeleton; treat listing above as load-bearing surfaces for agent onboarding. For full file inventory run `fd -t f . src/` rather than asking doc.
+The src/ tree is far richer than this skeleton; treat the listing above as the load-bearing surfaces for agent onboarding. For a full file inventory run `fd -t f . src/` rather than asking the doc.
 
 ## Canonical shipped runtime paths
 
@@ -42,7 +42,7 @@ src/
 - `popup/content -> background service worker -> offscreen document`
   - `opus-mt` (stable downloaded baseline)
   - `translategemma` (experimental, WebGPU/WebNN)
-  - cloud providers (`deepl` `openai` `anthropic` `google-cloud`)
+  - cloud providers (`deepl`, `openai`, `anthropic`, `google-cloud`)
 - `popup/content -> chrome.scripting.executeScript(...)`
   - `chrome-builtin` (preferred native path when available, Chrome 138+)
 
@@ -54,17 +54,17 @@ src/
 - `chrome-builtin` is not available on Firefox.
 
 ### Guidance
-- Treat `chrome-builtin`  `opus-mt` as canonical shipped user-facing translation paths.
+- Treat `chrome-builtin` and `opus-mt` as the canonical shipped user-facing translation paths.
 - Treat `translategemma` as experimental.
-- Do not treat `translation-router` `localModel` `llama.cpp` `wllama` surfaces as canonical shipped runtime unless task explicitly targets those legacy/experimental paths.
--  content-script WebMCP surface in `src/content/webmcp.ts` is canonical for in-page MCP-aware agent integrations (Claude.ai, agent harnesses). Do not assume agents only reach extension via popup.
+- Do not treat `translation-router`, `localModel`, `llama.cpp`, or `wllama` surfaces as the canonical shipped runtime unless a task explicitly targets those legacy/experimental paths.
+- The content-script WebMCP surface in `src/content/webmcp.ts` is canonical for in-page MCP-aware agent integrations (Claude.ai, agent harnesses). Do not assume agents only reach the extension via the popup.
 
 ## Tech Stack
 
 - **Language**: TypeScript (strict mode)
 - **UI Framework**: Solid.js
 - **Build Tool**: Vite
-- **ML Runtime**: Transformers.js w/ WebGPU/WASM
+- **ML Runtime**: Transformers.js with WebGPU/WASM
 - **Models**: Helsinki-NLP OPUS-MT (quantized)
 
 ## Common Commands
@@ -84,7 +84,7 @@ npm run test         # Run Vitest tests
 
 ### Rate Limiting (`src/core/throttle.ts`)
 - Sliding window rate limiting
-- Exponential backoff w/ jitter
+- Exponential backoff with jitter
 - Predictive batching for optimal API usage
 - Token estimation (~4 chars per token)
 
@@ -95,30 +95,30 @@ npm run test         # Run Vitest tests
 - WebGPU acceleration when available
 
 ### Translation Flow
-1. Popup/content sends typed message to background runtime
-2. Chrome routes local/cloud work through service worker (and offscreen when needed)
-3. Firefox routes work through persistent background page
-4. Native/cloud/local provider execution runs on selected path
+1. Popup/content sends a typed message to the background runtime
+2. Chrome routes local/cloud work through the service worker (and offscreen when needed)
+3. Firefox routes work through the persistent background page
+4. Native/cloud/local provider execution runs on the selected path
 5. Content script replaces DOM text nodes
 
 ## Development Notes
 
 ### Adding New Providers
 1. Extend `BaseProvider` in `src/providers/`
-2. Implement `translate()` `isAvailable()` `getSupportedLanguages()`
+2. Implement `translate()`, `isAvailable()`, `getSupportedLanguages()`
 3. Register in `translation-router.ts`
 
 ### Testing
 - **Chrome**: Load unpacked extension from `dist/` folder
 - **Firefox**: Load temporary add-on from `dist-firefox/manifest.json` via `about:debugging`
 - Use `test/test-page.html` for manual testing
-- Check DevTools console for `[Router]` `[OPUS-MT]` `[Content]` logs
+- Check DevTools console for `[Router]`, `[OPUS-MT]`, `[Content]` logs
 
 ### Firefox-Specific Notes
-- Uses Manifest V2 w/ persistent background page (not service worker)
+- Uses Manifest V2 with persistent background page (not service worker)
 - ML inference runs directly in background page (no offscreen document)
 - WebGPU requires `about:config` -> `dom.webgpu.enabled` = `true`
-- See `docs/FIREFOX_PORT.md` for full docs
+- See `docs/FIREFOX_PORT.md` for full documentation
 
 ### Legacy Code
 Previous implementation archived in `_legacy/src/` for reference.
@@ -133,7 +133,7 @@ Do NOT import from `_legacy/` - it contains broken vanilla JS code.
 
 ## MANDATORY: Quality Gates Before Deployment
 
-**NEVER deploy features w/o completing these steps:**
+**NEVER deploy features without completing these steps:**
 
 ### 1. Build Verification (BLOCKING)
 ```bash
@@ -146,8 +146,8 @@ npm run test         # ALL tests must pass
 For any new feature implementation:
 - Write unit tests BEFORE marking complete
 - Add integration tests for cross-component interactions
-- Update `QA_CHECKLIST.md` w/ manual test items
-- Document error handling w/ user-friendly messages
+- Update `QA_CHECKLIST.md` with manual test items
+- Document error handling with user-friendly messages
 
 ### 3. Code Quality Checks
 - Event listeners MUST have cleanup paths (add/remove pairs)
@@ -159,14 +159,14 @@ For any new feature implementation:
 Before declaring any feature "done":
 1. Run full test suite: `npm run test`
 2. Load extension in Chrome and verify no console errors
-3. Test specific feature manually in browser
+3. Test the specific feature manually in browser
 4. Check `QA_CHECKLIST.md` for applicable items
 
 ### 5. Anti-Patterns (REJECT)
 - "Build succeeds" does NOT mean "feature works"
 - "Code compiles" does NOT mean "logic is correct"
-- Parallel agent implementation w/o integration testing
-- Trusting automated builds w/o manual verification
+- Parallel agent implementation without integration testing
+- Trusting automated builds without manual verification
 
 **Reference**: `QA_CHECKLIST.md` for full pre-deployment checklist
 
@@ -174,13 +174,12 @@ Before declaring any feature "done":
 **When spawning agents to implement features, EVERY agent prompt MUST include:**
 1. "Write unit tests for all new functions"
 2. "Verify tests pass before reporting completion"
-3. "New code w/o corresponding test files = NOT DONE"
+3. "New code without corresponding test files = NOT DONE"
 
 **Orchestrator responsibility**: After ALL implementation agents complete, ALWAYS spawn
- verification agent that runs full test suite AND checks that new source files
-have corresponding test files. Never commit agent output w/o this gate.
+a verification agent that runs the full test suite AND checks that new source files
+have corresponding test files. Never commit agent output without this gate.
 
 **Why this exists**: On 2025-07-19, three agents shipped 1055 lines of new feature code
-w/ zero new tests. All existing 798 tests passed, creating false confidence.
- code compiled but was never verified to work. This rule prevents that.
-
+with zero new tests. All existing 798 tests passed, creating false confidence.
+The code compiled but was never verified to actually work. This rule prevents that.
