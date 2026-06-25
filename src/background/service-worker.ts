@@ -166,9 +166,135 @@ const { acquireKeepAlive, releaseKeepAlive } = createKeepAliveController({
 // serialises and injects into the tab's MAIN world must remain here.
 // ============================================================================
 
-/* v8 ignore start — executeTranslationScript runs in the tab's main world via
-   chrome.scripting.executeScript; the inline `func` is never called directly
-   in the service-worker context and cannot be exercised by unit tests. */
+/**
+ * The body injected into the active tab's MAIN world by
+ * `executeTranslationScript`. Kept as a self-contained top-level function (no
+ * closure over module scope) so Chrome can serialise it via `Function.toString`
+ * AND so it can be unit-tested directly with `self.Translator` /
+ * `self.LanguageDetector` stubs.
+ *
+ * DETECT.1: when `sourceLanguage === 'auto'` this detects the concrete source
+ * language with `LanguageDetector.detect()` IN THIS SAME script — before the
+ * first `Translator.availability()` / `Translator.create()` call — and uses the
+ * top-ranked `detectedLanguage` as the concrete `sourceLanguage`. There is no
+ * detection bypass: `Translator.create()` is only ever reached with a concrete
+ * language, never `'auto'`.
+ */
+export async function chromeBuiltinMainWorldTranslate(
+  textsToTranslate: string[],
+  sourceLanguage: string,
+  targetLanguage: string
+): Promise<string[]> {
+  // Minimum confidence required to trust a `LanguageDetector.detect()` result.
+  // Mirrors the threshold used by `ChromeTranslatorProvider.detectLanguage`
+  // (src/providers/chrome-translator.ts). Declared inside the function so the
+  // value survives Function.toString() serialisation into the page's MAIN world,
+  // where module-scope bindings are not available.
+  const MIN_DETECT_CONFIDENCE = 0.7;
+
+  const nonEmptyTexts = textsToTranslate.filter((txt) => txt.trim());
+  if (nonEmptyTexts.length === 0) {
+    return textsToTranslate;
+  }
+
+  const pageSelf = self as typeof self & {
+    Translator?: {
+      availability(options: {
+        sourceLanguage: string;
+        targetLanguage: string;
+      }): Promise<{ available: 'no' | 'readily' | 'after-download' }>;
+      create(options: {
+        sourceLanguage: string;
+        targetLanguage: string;
+      }): Promise<{
+        translate(text: string): Promise<string>;
+        destroy(): void;
+      }>;
+    };
+    LanguageDetector?: {
+      availability(): Promise<{ available: 'no' | 'readily' | 'after-download' }>;
+      create(): Promise<{
+        detect(text: string): Promise<Array<{
+          detectedLanguage: string;
+          confidence: number;
+        }>>;
+        destroy?(): void;
+      }>;
+    };
+  };
+  const TranslatorAPI = pageSelf.Translator;
+  if (!TranslatorAPI) {
+    throw new Error('Chrome Translator API not available (requires Chrome 138+)');
+  }
+
+  let actualSourceLang = sourceLanguage;
+  if (sourceLanguage === 'auto') {
+    // DETECT.1: resolve 'auto' to a concrete language via LanguageDetector in
+    // this same main-world script, before any Translator.availability/create.
+    const LanguageDetectorAPI = pageSelf.LanguageDetector;
+    if (!LanguageDetectorAPI) {
+      // DETECT.2 fallback: detector API absent (older Chrome). Do not bypass
+      // detection — surface a clear error rather than mis-forwarding 'auto'.
+      throw new Error(
+        'Chrome LanguageDetector API unavailable for auto source language; choose a source language manually.'
+      );
+    }
+
+    try {
+      const detectorAvailability = await LanguageDetectorAPI.availability();
+      // DETECT.2 fallback: availability not usable ('no').
+      if (detectorAvailability.available === 'no') {
+        throw new Error('LanguageDetector reported unavailable');
+      }
+
+      const detector = await LanguageDetectorAPI.create();
+      try {
+        const sample = nonEmptyTexts.join('\n').slice(0, 500);
+        const detections = await detector.detect(sample);
+        const bestDetection = detections[0];
+        // DETECT.2 fallback: no detection, low confidence, or undetermined
+        // ('und') language — all treated as "could not detect".
+        if (
+          !bestDetection ||
+          bestDetection.confidence < MIN_DETECT_CONFIDENCE ||
+          bestDetection.detectedLanguage === 'und'
+        ) {
+          throw new Error(
+            `confidence too low${bestDetection ? ` (${bestDetection.confidence})` : ''}`
+          );
+        }
+        actualSourceLang = bestDetection.detectedLanguage;
+      } finally {
+        detector.destroy?.();
+      }
+    } catch (error) {
+      // DETECT.2 fallback: any detector failure (throw included) becomes a
+      // single descriptive error; the caller converts it to a graceful
+      // { success: false } response so the pipeline does not crash.
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Chrome LanguageDetector failed for auto source language: ${message}. Choose a source language manually.`
+      );
+    }
+  }
+
+  const avail = await TranslatorAPI.availability({ sourceLanguage: actualSourceLang, targetLanguage });
+  if (avail.available === 'no') {
+    throw new Error(`Language pair not supported: ${actualSourceLang}-${targetLanguage}`);
+  }
+  const t = await TranslatorAPI.create({ sourceLanguage: actualSourceLang, targetLanguage });
+  const translated: string[] = [];
+  for (const txt of textsToTranslate) {
+    translated.push(txt.trim() ? await t.translate(txt) : txt);
+  }
+  t.destroy();
+  return translated;
+}
+
+/* v8 ignore start — executeTranslationScript runs the serialised main-world
+   adapter via chrome.scripting.executeScript; this thin wrapper cannot be
+   exercised by unit tests (the testable logic lives in
+   chromeBuiltinMainWorldTranslate above). */
 async function executeTranslationScript(
   tabId: number,
   texts: string[],
@@ -178,91 +304,7 @@ async function executeTranslationScript(
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     world: 'MAIN' as chrome.scripting.ExecutionWorld,
-    func: async (textsToTranslate: string[], srcLang: string, tgtLang: string) => {
-      const nonEmptyTexts = textsToTranslate.filter((txt) => txt.trim());
-      if (nonEmptyTexts.length === 0) {
-        return textsToTranslate;
-      }
-
-      const pageSelf = self as typeof self & {
-        Translator?: {
-          availability(options: {
-            sourceLanguage: string;
-            targetLanguage: string;
-          }): Promise<{ available: 'no' | 'readily' | 'after-download' }>;
-          create(options: {
-            sourceLanguage: string;
-            targetLanguage: string;
-          }): Promise<{
-            translate(text: string): Promise<string>;
-            destroy(): void;
-          }>;
-        };
-        LanguageDetector?: {
-          availability(): Promise<{ available: 'no' | 'readily' | 'after-download' }>;
-          create(): Promise<{
-            detect(text: string): Promise<Array<{
-              detectedLanguage: string;
-              confidence: number;
-            }>>;
-            destroy?(): void;
-          }>;
-        };
-      };
-      const TranslatorAPI = pageSelf.Translator;
-      if (!TranslatorAPI) {
-        throw new Error('Chrome Translator API not available (requires Chrome 138+)');
-      }
-
-      let actualSourceLang = srcLang;
-      if (srcLang === 'auto') {
-        const LanguageDetectorAPI = pageSelf.LanguageDetector;
-        if (!LanguageDetectorAPI) {
-          throw new Error(
-            'Chrome LanguageDetector API unavailable for auto source language; choose a source language manually.'
-          );
-        }
-
-        try {
-          const detectorAvailability = await LanguageDetectorAPI.availability();
-          if (detectorAvailability.available === 'no') {
-            throw new Error('LanguageDetector reported unavailable');
-          }
-
-          const detector = await LanguageDetectorAPI.create();
-          try {
-            const sample = nonEmptyTexts.join('\n').slice(0, 500);
-            const detections = await detector.detect(sample);
-            const bestDetection = detections[0];
-            if (!bestDetection || bestDetection.confidence < 0.7) {
-              throw new Error(
-                `confidence too low${bestDetection ? ` (${bestDetection.confidence})` : ''}`
-              );
-            }
-            actualSourceLang = bestDetection.detectedLanguage;
-          } finally {
-            detector.destroy?.();
-          }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          throw new Error(
-            `Chrome LanguageDetector failed for auto source language: ${message}. Choose a source language manually.`
-          );
-        }
-      }
-
-      const avail = await TranslatorAPI.availability({ sourceLanguage: actualSourceLang, targetLanguage: tgtLang });
-      if (avail.available === 'no') {
-        throw new Error(`Language pair not supported: ${actualSourceLang}-${tgtLang}`);
-      }
-      const t = await TranslatorAPI.create({ sourceLanguage: actualSourceLang, targetLanguage: tgtLang });
-      const translated: string[] = [];
-      for (const txt of textsToTranslate) {
-        translated.push(txt.trim() ? await t.translate(txt) : txt);
-      }
-      t.destroy();
-      return translated;
-    },
+    func: chromeBuiltinMainWorldTranslate,
     args: [texts, sourceLang, targetLang],
   });
   return results[0]?.result as string[] | undefined;

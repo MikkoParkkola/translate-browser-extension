@@ -5,7 +5,7 @@
  * Tests the message handling and lifecycle events of the background service worker.
  */
 
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { setupCachesMock } from '../test-helpers/browser-mocks';
 import { setupChromeApiMock } from '../test-helpers/chrome-mocks';
 import { setupChromeTabsScriptingMocks } from '../test-helpers/chrome-tabs-scripting-mocks';
@@ -7053,5 +7053,197 @@ describe('streaming port hardening', () => {
       type: 'chunk',
       partial: 'translated stream result',
     });
+  });
+});
+
+// ============================================================================
+// MIK-3470 — chrome-builtin main-world auto source-language detection
+// ============================================================================
+//
+// AC.1 (DETECT.1): When `provider === 'chrome-builtin'` and `sourceLang === 'auto'`,
+// the main-world injected adapter calls `LanguageDetector.detect(text)` and uses
+// the top-ranked `detectedLanguage` as the concrete `sourceLanguage` passed to
+// `Translator.availability()` / `Translator.create()`, in the **same** main-world
+// script (no detection bypass).
+//
+// AC.2 (DETECT.2): A documented fallback path exists for when `LanguageDetector`
+// is unavailable (`availability()` not `'available'`/`'downloadable'`), returns
+// confidence below a named threshold constant, returns `und`, or throws — behavior
+// is explicit in code and does not crash the translation.
+//
+// AC.4 (TEST.4): Unit coverage is added around ... the service-worker main-world
+// adapter behavior (detect→availability→create ordering, fallback branch, ...).
+describe('MIK-3470: chromeBuiltinMainWorldTranslate (main-world adapter)', () => {
+  let chromeBuiltinMainWorldTranslate: (
+    texts: string[],
+    sourceLanguage: string,
+    targetLanguage: string,
+  ) => Promise<string[]>;
+
+  const pageGlobals = self as unknown as {
+    Translator?: unknown;
+    LanguageDetector?: unknown;
+  };
+  let originalTranslator: unknown;
+  let originalLanguageDetector: unknown;
+
+  beforeAll(async () => {
+    const mod = await import('./service-worker');
+    chromeBuiltinMainWorldTranslate = mod.chromeBuiltinMainWorldTranslate;
+  });
+
+  beforeEach(() => {
+    originalTranslator = pageGlobals.Translator;
+    originalLanguageDetector = pageGlobals.LanguageDetector;
+  });
+
+  afterEach(() => {
+    pageGlobals.Translator = originalTranslator;
+    pageGlobals.LanguageDetector = originalLanguageDetector;
+  });
+
+  function installTranslator(calls: string[]) {
+    const translatorInstance = {
+      translate: vi.fn(async (txt: string) => `T(${txt})`),
+      destroy: vi.fn(),
+    };
+    pageGlobals.Translator = {
+      availability: vi.fn(async () => {
+        calls.push('translator.availability');
+        return { available: 'readily' };
+      }),
+      create: vi.fn(async () => {
+        calls.push('translator.create');
+        return translatorInstance;
+      }),
+    };
+    return translatorInstance;
+  }
+
+  function installDetector(
+    calls: string[],
+    detections: Array<{ detectedLanguage: string; confidence: number }>,
+    opts: {
+      availability?: 'no' | 'readily' | 'after-download';
+      detectThrows?: boolean;
+    } = {},
+  ) {
+    pageGlobals.LanguageDetector = {
+      availability: vi.fn(async () => {
+        calls.push('detector.availability');
+        return { available: opts.availability ?? 'readily' };
+      }),
+      create: vi.fn(async () => ({
+        detect: vi.fn(async () => {
+          calls.push('detector.detect');
+          if (opts.detectThrows) throw new Error('detector boom');
+          return detections;
+        }),
+        destroy: vi.fn(),
+      })),
+    };
+  }
+
+  it('AC.1: detects the source language and passes it concretely (detect→availability→create order) when sourceLang === auto', async () => {
+    const calls: string[] = [];
+    const translator = installTranslator(calls);
+    installDetector(calls, [{ detectedLanguage: 'de', confidence: 0.95 }]);
+
+    const result = await chromeBuiltinMainWorldTranslate(['Hallo Welt'], 'auto', 'en');
+
+    // Detection (availability + detect) runs FIRST, before Translator.availability
+    // and Translator.create — no detection bypass.
+    expect(calls).toEqual([
+      'detector.availability',
+      'detector.detect',
+      'translator.availability',
+      'translator.create',
+    ]);
+    // The detected language (not 'auto') is forwarded to create()
+    expect((pageGlobals.Translator as { create: ReturnType<typeof vi.fn> }).create)
+      .toHaveBeenCalledWith({ sourceLanguage: 'de', targetLanguage: 'en' });
+    expect((pageGlobals.Translator as { availability: ReturnType<typeof vi.fn> }).availability)
+      .toHaveBeenCalledWith({ sourceLanguage: 'de', targetLanguage: 'en' });
+    expect(translator.translate).toHaveBeenCalledWith('Hallo Welt');
+    expect(result).toEqual(['T(Hallo Welt)']);
+  });
+
+  it('AC.1: does not invoke LanguageDetector at all when a concrete source language is given', async () => {
+    const calls: string[] = [];
+    installTranslator(calls);
+    installDetector(calls, [{ detectedLanguage: 'de', confidence: 0.95 }]);
+
+    await chromeBuiltinMainWorldTranslate(['Hello'], 'en', 'fi');
+
+    expect(calls).toEqual(['translator.availability', 'translator.create']);
+    expect(
+      (pageGlobals.LanguageDetector as { availability: ReturnType<typeof vi.fn> })
+        .availability,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('AC.2: falls back (throws, never calls Translator.create) when LanguageDetector API is unavailable', async () => {
+    const calls: string[] = [];
+    installTranslator(calls);
+    pageGlobals.LanguageDetector = undefined;
+
+    await expect(
+      chromeBuiltinMainWorldTranslate(['Hola'], 'auto', 'en'),
+    ).rejects.toThrow(/LanguageDetector API unavailable/);
+    expect(calls).not.toContain('translator.create');
+  });
+
+  it('AC.2: falls back when detector availability is "no"', async () => {
+    const calls: string[] = [];
+    installTranslator(calls);
+    installDetector(calls, [{ detectedLanguage: 'de', confidence: 0.95 }], {
+      availability: 'no',
+    });
+
+    await expect(
+      chromeBuiltinMainWorldTranslate(['Hallo'], 'auto', 'en'),
+    ).rejects.toThrow(/Chrome LanguageDetector failed/);
+    expect(calls).not.toContain('translator.create');
+  });
+
+  it('AC.2: falls back when detected confidence is below MIN_DETECT_CONFIDENCE', async () => {
+    const calls: string[] = [];
+    installTranslator(calls);
+    installDetector(calls, [{ detectedLanguage: 'de', confidence: 0.3 }]);
+
+    await expect(
+      chromeBuiltinMainWorldTranslate(['Hallo'], 'auto', 'en'),
+    ).rejects.toThrow(/Chrome LanguageDetector failed/);
+    expect(calls).not.toContain('translator.create');
+  });
+
+  it('AC.2: falls back when detected language is "und" (undetermined)', async () => {
+    const calls: string[] = [];
+    installTranslator(calls);
+    installDetector(calls, [{ detectedLanguage: 'und', confidence: 0.99 }]);
+
+    await expect(
+      chromeBuiltinMainWorldTranslate(['???'], 'auto', 'en'),
+    ).rejects.toThrow(/Chrome LanguageDetector failed/);
+    expect(calls).not.toContain('translator.create');
+  });
+
+  it('AC.2: falls back when detector.detect throws (does not crash, surfaces error)', async () => {
+    const calls: string[] = [];
+    installTranslator(calls);
+    installDetector(calls, [], { detectThrows: true });
+
+    await expect(
+      chromeBuiltinMainWorldTranslate(['boom'], 'auto', 'en'),
+    ).rejects.toThrow(/Chrome LanguageDetector failed/);
+    expect(calls).not.toContain('translator.create');
+  });
+
+  it('returns the inputs unchanged when there is no non-empty text to translate', async () => {
+    const calls: string[] = [];
+    installTranslator(calls);
+    const result = await chromeBuiltinMainWorldTranslate(['', '   '], 'auto', 'en');
+    expect(result).toEqual(['', '   ']);
+    expect(calls).toEqual([]);
   });
 });

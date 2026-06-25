@@ -497,3 +497,87 @@ describe('handleTranslateCore', () => {
     expect(vi.mocked(isNetworkError)).toHaveBeenCalledWith('network timeout');
   });
 });
+
+// ============================================================================
+// MIK-3470 — auto-detect cache-key behavior for the chrome-builtin path
+// ============================================================================
+//
+// AC.3 (CACHE.3): Existing cache behavior is preserved — the implementation does
+// NOT write a source-language-keyed cache entry for an auto-detected request
+// UNLESS it explicitly stores the validated detected language as the source key.
+// CHECK: a unit test asserts cache-key derivation for an `auto` request either
+// omits the source-language segment or uses the validated detected language.
+describe('MIK-3470: finalizeTranslationExecution auto-detect cache key', () => {
+  function makeExecution(sourceLang: string, cacheKey = 'chrome-builtin:auto-en:abc') {
+    return {
+      startTime: Date.now(),
+      message: { text: 'Hallo', sourceLang, targetLang: 'en' },
+      text: 'Hallo',
+      provider: 'chrome-builtin',
+      cacheKey,
+      tokenEstimate: 3,
+    };
+  }
+
+  it('omits the auto source-language cache entry when cacheSourceLang is null for an auto request', async () => {
+    const { finalizeTranslationExecution } = await import('./translation-core');
+    const cache = makeCache();
+
+    const response = await finalizeTranslationExecution(
+      makeExecution('auto') as never,
+      cache as never,
+      'Hello',
+      {
+        recordUsage: false,
+        // chrome-builtin auto path passes null because the validated detected
+        // language is resolved in the page's MAIN world and never returned to
+        // the worker, so no concrete source-language key can be stored.
+        cacheSourceLang: null,
+        responsePatch: { provider: 'chrome-builtin' },
+      },
+    );
+
+    expect(response.success).toBe(true);
+    // No source-language-keyed cache entry is written for the auto request.
+    expect(cache.set).not.toHaveBeenCalled();
+  });
+
+  it('writes a cache entry keyed by the validated detected language when cacheSourceLang is provided for an auto request', async () => {
+    const { finalizeTranslationExecution } = await import('./translation-core');
+    const cache = makeCache();
+
+    await finalizeTranslationExecution(
+      makeExecution('auto') as never,
+      cache as never,
+      'Hello',
+      {
+        recordUsage: false,
+        // If a validated detected language were available, it would be stored
+        // as the concrete source key — never the literal 'auto'.
+        cacheSourceLang: 'de',
+        responsePatch: { provider: 'chrome-builtin' },
+      },
+    );
+
+    expect(cache.set).toHaveBeenCalledTimes(1);
+    const [, , storedSourceLang] = vi.mocked(cache.set).mock.calls[0];
+    expect(storedSourceLang).toBe('de');
+    expect(storedSourceLang).not.toBe('auto');
+  });
+
+  it('writes a source-keyed cache entry for a concrete (non-auto) source language', async () => {
+    const { finalizeTranslationExecution } = await import('./translation-core');
+    const cache = makeCache();
+
+    await finalizeTranslationExecution(
+      makeExecution('de', 'chrome-builtin:de-en:abc') as never,
+      cache as never,
+      'Hello',
+      { recordUsage: false, responsePatch: { provider: 'chrome-builtin' } },
+    );
+
+    expect(cache.set).toHaveBeenCalledTimes(1);
+    const [, , storedSourceLang] = vi.mocked(cache.set).mock.calls[0];
+    expect(storedSourceLang).toBe('de');
+  });
+});
