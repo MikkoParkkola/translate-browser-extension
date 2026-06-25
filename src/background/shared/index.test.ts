@@ -156,4 +156,11 @@ describe('shared/index barrel export', () => {
     const barrel = await import('./index');
     expect(barrel.createKeepAliveController).toBeDefined();
   });
+
+  it('re-exports all expected symbols from chrome-builtin-detection', async () => {
+    const barrel = await import('./index');
+    expect(barrel.MIN_DETECT_CONFIDENCE).toBeDefined();
+    expect(barrel.detectSourceLanguage).toBeDefined();
+    expect(barrel.resolveCacheSourceLang).toBeDefined();
+  });
 });

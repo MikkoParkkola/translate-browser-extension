@@ -215,7 +215,14 @@ async function executeTranslationScript(
       }
 
       let actualSourceLang = srcLang;
+
+      // Auto-detect source language via LanguageDetector before Translator.
+      // Mirrors the algorithm in shared/chrome-builtin-detection.ts.
+      // Fallback: when LanguageDetector is unavailable, returns confidence
+      // below MIN_DETECT_CONFIDENCE, returns `und`, or throws — the adapter
+      // surfaces a clear error and does NOT guess or crash the translation.
       if (srcLang === 'auto') {
+        const MIN_DETECT_CONFIDENCE = 0.7;
         const LanguageDetectorAPI = pageSelf.LanguageDetector;
         if (!LanguageDetectorAPI) {
           throw new Error(
@@ -234,7 +241,7 @@ async function executeTranslationScript(
             const sample = nonEmptyTexts.join('\n').slice(0, 500);
             const detections = await detector.detect(sample);
             const bestDetection = detections[0];
-            if (!bestDetection || bestDetection.confidence < 0.7) {
+            if (!bestDetection || bestDetection.confidence < MIN_DETECT_CONFIDENCE) {
               throw new Error(
                 `confidence too low${bestDetection ? ` (${bestDetection.confidence})` : ''}`
               );

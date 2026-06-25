@@ -201,3 +201,10 @@ export { createKeepAliveController } from './keep-alive-controller';
 
 export type { ChromeBuiltinTranslationDeps } from './chrome-builtin-translation';
 export { createChromeBuiltinTranslationRunner } from './chrome-builtin-translation';
+
+export type { LanguageDetectorLike, DetectionResult } from './chrome-builtin-detection';
+export {
+  MIN_DETECT_CONFIDENCE,
+  detectSourceLanguage,
+  resolveCacheSourceLang,
+} from './chrome-builtin-detection';
