@@ -9,11 +9,13 @@
 ![Safari](https://img.shields.io/badge/Safari-macOS%20%7C%20iOS-blue?logo=safari&logoColor=white)
 ![Firefox](https://img.shields.io/badge/Firefox-supported-orange?logo=firefox&logoColor=white)
 
-Browser extension that translates web pages, PDFs, and selected text. Works where built-in browser translation falls short.
+Browser extension that translates web pages, PDFs, and selected text, including content that keeps loading and updating after the page first renders. Works where built-in browser translation falls short.
 
 ## Why use this instead of built-in translation?
 
 Built-in browser translation (Chrome, Safari, Firefox) works well for many pages. But if you've run into any of these, TRANSLATE! is for you:
+
+**The page keeps changing and translation falls behind.** Single-page apps, live feeds, chat threads, infinite scroll -- content that loads and updates after the page first renders. Google Translate and built-in translators usually translate once and miss whatever arrives later. TRANSLATE! watches the page and translates new content as it appears.
 
 **The translate bar never shows up.** Browsers decide whether to offer translation based on the page's language tag. If the tag is missing, wrong, or matches your browser language, the translate bar silently doesn't appear -- even when the page is clearly in another language. TRANSLATE! lets you translate any page on demand, regardless of what the page declares.
 
