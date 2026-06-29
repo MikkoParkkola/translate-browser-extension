@@ -8,7 +8,40 @@ TRANSLATE! is a browser extension that translates web page content, PDFs, and se
 
 ## Data Collection
 
-**TRANSLATE! does not collect, transmit, or store any user analytics, telemetry, or tracking data.** There are no third-party analytics services, no usage statistics, and no crash reporting.
+### Active-User Telemetry
+
+TRANSLATE! sends a lightweight, privacy-preserving active-user heartbeat to the MIK-6565 public collector (project `translate-browser-extension`). This helps the developer understand how many people use the extension and plan maintenance accordingly.
+
+**What is collected** — the heartbeat payload contains ONLY:
+- `projectId` — identifies the project (`translate-browser-extension`)
+- `eventType` — always `heartbeat`
+- `clientVersion` — the extension version number
+- `runtime` — `chrome-mv3` or `firefox-mv2`
+- `installId` — a random UUID generated once at install time (not linked to any identity)
+
+**What is NEVER collected:**
+- No personal information (name, email, IP address)
+- No browsing history or visited URLs
+- No page content or translation text
+- No device fingerprinting
+
+**How it works:**
+- At most one heartbeat per install per UTC day.
+- The send is failure-open — if the collector is unreachable, the extension continues working normally.
+- The heartbeat uses a 3-second timeout and never blocks the extension.
+
+**Geography** is derived server-side in aggregate by the MIK-6565 backend. The client never sends its raw IP address. Aggregated active-user counts are reported with **k-anonymity ≥ 5** — no counts smaller than 5 are ever shown.
+
+### How to Disable Telemetry
+
+You can opt out in three ways:
+1. **Do Not Track** — if your browser sends `DNT: 1`, telemetry is automatically suppressed.
+2. **Environment flag** — set `VITE_NO_TELEMETRY=1` at build time to compile telemetry out.
+3. **Settings opt-out** — set `telemetryEnabled` to `false` in the extension settings (available in a future release).
+
+### Other Data
+
+**TRANSLATE! does not collect, transmit, or store any other user analytics or tracking data.** There are no third-party analytics services, no usage statistics beyond the active-user heartbeat described above, and no crash reporting.
 
 ## How Your Data Is Handled
 
@@ -37,7 +70,7 @@ Translated text may be cached locally in your browser session to avoid redundant
 
 - No personal information (name, email, demographics)
 - No browsing history or visited URLs
-- No analytics or telemetry
+- No analytics beyond the active-user heartbeat documented above
 - No device fingerprinting
 - No advertising identifiers
 - No data sold or shared with third parties

@@ -22,6 +22,7 @@ import { createLogger } from '../core/logger';
 import { safeStorageGet, safeStorageSet, strictStorageSet } from '../core/storage';
 import { getPredictionEngine } from '../core/prediction-engine';
 import { CONFIG } from '../config';
+import { maybeSendHeartbeat } from '../core/telemetry';
 import { profiler } from '../core/profiler';
 import { sleep } from '../core/async-utils';
 import { splitIntoSentences } from '../core/text-utils';
@@ -643,6 +644,11 @@ chrome.action.onClicked.addListener(async (tab) => {
 // Installation Handler
 // ============================================================================
 
+// AC.1: Emit telemetry heartbeat on install / update (independent listener)
+chrome.runtime.onInstalled.addListener(() => {
+  maybeSendHeartbeat();
+});
+
 chrome.runtime.onInstalled.addListener(createInstallationHandler({
   log,
   setupContextMenus,
@@ -741,6 +747,8 @@ chrome.runtime.onStartup.addListener(() => {
   offscreenTransport.ensureDocument().catch((error) => {
     log.warn(' Pre-warm failed (will retry on first use):', error);
   });
+  // AC.1: Emit privacy-preserving telemetry heartbeat on startup
+  maybeSendHeartbeat();
 });
 
 // Initialize prediction engine

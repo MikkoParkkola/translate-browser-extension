@@ -47,6 +47,7 @@ TRANSLATE! is not a drop-in replacement for built-in translation in every scenar
 - **Setup required.** Most providers need an API key. Built-in translation works with zero configuration.
 - **API costs.** Cloud providers charge per character or token. Chrome Built-in and OPUS-MT avoid per-request API billing, but OPUS-MT usually has lower quality than the best cloud pairs.
 - **Not instant.** Built-in translation is tightly integrated with the browser engine. TRANSLATE! works as a content script, which means a short delay on large pages.
+- **Telemetry.** A single anonymous heartbeat is sent once per day to help track active users. It contains only the extension version, browser runtime, and a random install ID — no personal data, no browsing history, no IP address. You can disable it via DNT, an environment flag, or a settings option. See the [Privacy Policy](PRIVACY_POLICY.md) for details on the MIK-6565 collector and k-anonymity aggregation (k ≥ 5).
 
 If built-in translation works reliably for your languages and pages, you probably don't need this. TRANSLATE! is for the cases where it doesn't.
 

@@ -3,7 +3,7 @@
  * All hardcoded values extracted here for maintainability.
  */
 
-function readBooleanEnvFlag(value: unknown): boolean {
+export function readBooleanEnvFlag(value: unknown): boolean {
   if (typeof value !== 'string') return false;
 
   switch (value.trim().toLowerCase()) {
