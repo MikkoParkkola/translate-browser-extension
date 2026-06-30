@@ -49,7 +49,7 @@
     "assets/*",
     "chunks/*"
   ],
-  "content_security_policy": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://cdn-lfs.huggingface.co https://cdn-lfs-us-1.hf.co https://cdn-lfs-eu-1.hf.co https://cdn-lfs-ap-1.hf.co https://huggingface.co https://hf.co https://api.deepl.com https://api-free.deepl.com https://api.openai.com https://generativelanguage.googleapis.com https://api.anthropic.com;",
+  "content_security_policy": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://cdn-lfs.huggingface.co https://cdn-lfs-us-1.hf.co https://cdn-lfs-eu-1.hf.co https://cdn-lfs-ap-1.hf.co https://huggingface.co https://hf.co https://*.aws.cdn.hf.co https://api.deepl.com https://api-free.deepl.com https://api.openai.com https://generativelanguage.googleapis.com https://api.anthropic.com;",
   "browser_specific_settings": {
     "gecko": {
       "id": "translate@mikko.dev",
