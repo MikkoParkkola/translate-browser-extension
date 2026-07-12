@@ -37,10 +37,11 @@ jobs:
       - name: Audit dependencies
         run: npm audit --audit-level=high
 
-      - name: Scan for secrets
-        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Secret scanning gate lives solely in .github/workflows/gitleaks.yml now.
+      # It ran here too (duplicate gitleaks/gitleaks-action invocation, same
+      # ruleset, same commit) on every single push/PR — pure waste, zero added
+      # coverage. Removing this copy does not reduce secret-scan coverage:
+      # gitleaks.yml still runs on the same push/pull_request triggers.
 
       - name: Validate core quality gates
         run: npm run validate:ci
@@ -69,6 +70,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       pdf: ${{ steps.filter.outputs.pdf }}
+      code: ${{ steps.filter.outputs.code }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -87,9 +89,25 @@ jobs:
               - 'src/content/pdf-translator.test.ts'
               - 'src/content/index.ts'
               - 'src/content/index.test.ts'
+            code:
+              - 'src/**'
+              - 'e2e/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'playwright.config*'
+              - 'vite.config*'
+              - 'tsconfig*.json'
+              - '.github/workflows/ci.yml'
 
+  # e2e-web is NOT a required status check (only build-and-test is). Skipping
+  # it on doc/README/policy-only diffs cuts ~2-3min of runner time (Playwright
+  # install + browser boot) per such PR with zero coverage loss: nothing under
+  # src/e2e/config changed, so there is nothing new for the smoke suite to
+  # exercise. Falls through to a real run for any code/config change,
+  # including on push to any branch (changes.outputs.code covers push too).
   e2e-web:
-    needs: build-and-test
+    needs: [build-and-test, changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -113,6 +131,13 @@ jobs:
 
       - name: Verify dist artifact layout
         run: test -f dist/manifest.json && test -f dist/src/popup/index.html
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
