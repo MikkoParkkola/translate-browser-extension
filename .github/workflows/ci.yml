@@ -87,12 +87,39 @@ jobs:
               print(json.dumps(data, indent=2)[:2000])
               sys.exit(1)
 
+          all_vulns = data.get("vulnerabilities", {})
+
+          def resolve_urls(pkg_name, seen=None):
+              # gpt-review, 2026-07-26: a top-level entry's own `via` can be
+              # pure package-name strings ("depends on vulnerable X") with NO
+              # url-bearing advisory of its own -- e.g. @huggingface/transformers
+              # -> via: ["sharp"]. The old code computed an empty url set for
+              # that shape and let it pass unchecked. Walk the chain down to
+              # the package(s) that actually carry an advisory URL instead of
+              # trusting an empty result.
+              seen = seen or set()
+              if pkg_name in seen:
+                  return set()
+              seen.add(pkg_name)
+              v = all_vulns.get(pkg_name)
+              if v is None:
+                  return set()
+              urls = set()
+              for entry in v.get("via", []):
+                  if isinstance(entry, dict) and entry.get("url"):
+                      urls.add(entry["url"])
+                  elif isinstance(entry, str):
+                      urls |= resolve_urls(entry, seen)
+              return urls
+
           unexpected = []
-          for name, v in data.get("vulnerabilities", {}).items():
+          for name, v in all_vulns.items():
               if v.get("severity") not in ("high", "critical"):
                   continue
-              urls = {x.get("url") for x in v.get("via", []) if isinstance(x, dict) and x.get("url")}
-              if urls - ALLOWED:
+              urls = resolve_urls(name)
+              if not urls:
+                  unexpected.append((name, ["<no advisory URL resolved anywhere in this entry's dependency chain>"]))
+              elif urls - ALLOWED:
                   unexpected.append((name, sorted(urls - ALLOWED)))
 
           if unexpected:
