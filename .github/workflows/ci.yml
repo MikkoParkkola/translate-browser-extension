@@ -44,17 +44,31 @@ jobs:
         # available (CVE-2026-33327/33328/35590/35591, libvips). Verified NOT
         # reachable in the shipped extension, not just assumed:
         #   1. transformers' own source (src/utils/image.js) guards the sharp
-        #      branch behind `typeof self !== 'undefined'` taking priority --
-        #      `self` always exists in a browser or worker, so that branch
-        #      always wins and the sharp branch is dead code there.
+        #      branch behind an IS_BROWSER_ENV || IS_WEBWORKER_ENV check
+        #      (gpt-review, 2026-07-26: precisely -- the browser/worker
+        #      branch tests specific global-scope constructor names, not
+        #      merely `typeof self`) taking priority, so the sharp branch is
+        #      dead code in that environment.
         #   2. the exact bundle Vite resolves for this build
         #      (dist/transformers.web.js, per @huggingface/transformers'
         #      own package.json "exports" map) has sharp explicitly
         #      neutered by webpack's own IgnorePlugin -- confirmed via that
-        #      build's own log comment: "!*** sharp (ignored) ***!".
+        #      build's own log comment: "!*** sharp (ignored) ***!". This is
+        #      the load-bearing evidence: the built extension contains no
+        #      executable sharp/libvips payload, independent of exactly how
+        #      the source-level guard is worded.
         # Explicit allowlist below, not a blanket ignore: fails if ANY
         # advisory outside this exact list appears. Drop the entry the
         # moment a fixed sharp release ships.
+        #
+        # gpt-review, 2026-07-26: the original `|| true` on the audit
+        # command discarded ALL failures, including operational ones (npm
+        # registry unreachable, malformed args) that produce JSON with no
+        # "vulnerabilities" key at all -- the parser then iterated an empty
+        # dict and reported success on data it never actually got. Fixed by
+        # requiring "vulnerabilities" to be present and rejecting an
+        # "error"/"message" top-level shape as a hard failure, not a clean
+        # audit.
         run: |
           set -euo pipefail
           npm audit --audit-level=high --omit=dev --json > /tmp/audit.json || true
@@ -67,6 +81,12 @@ jobs:
           }
 
           data = json.load(open("/tmp/audit.json"))
+
+          if "vulnerabilities" not in data or "error" in data:
+              print("npm audit did not return a valid report (operational failure, not a clean audit):")
+              print(json.dumps(data, indent=2)[:2000])
+              sys.exit(1)
+
           unexpected = []
           for name, v in data.get("vulnerabilities", {}).items():
               if v.get("severity") not in ("high", "critical"):
