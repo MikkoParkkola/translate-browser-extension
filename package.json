@@ -121,7 +121,7 @@
     "@huggingface/transformers": "^3.8.1",
     "franc-min": "^6.2.0",
     "mupdf": "^1.26.4",
-    "pdfjs-dist": "^5.4.54",
+    "pdfjs-dist": "^6.2.108",
     "tesseract.js": "^7.0.0"
   },
   "overrides": {
