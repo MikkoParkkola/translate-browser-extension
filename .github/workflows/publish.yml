@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: '22.13'
           cache: npm
       - run: npm ci
       - run: npm run build
@@ -64,8 +64,8 @@ jobs:
           echo "$CRX_PRIVATE_KEY" | base64 -d > key.pem
           VERSION=$(jq -r .version src/manifest.json)
           NAME="translate-by-mikko-extension-${VERSION}"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "NAME=$NAME" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "NAME=$NAME" >> "$GITHUB_ENV"
           npx -y crx pack dist -o "$NAME.crx" --zip-output "$NAME.zip" -p key.pem
           # NOTE: CRX_PRIVATE_KEY secret rotation steps (TX-01):
           #   1. Generate new key: openssl genrsa -out new_key.pem 2048

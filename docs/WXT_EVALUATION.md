@@ -41,7 +41,7 @@ This results in **4 Vite build configs plus shared Vite config code** and a buil
 - Current release: `wxt@0.20.26`, published as GitHub release `wxt-v0.20.26` on 2026-05-11.
 - WXT is still pre-1.0. The upstream upgrade guide states `v0.X` bumps can carry breaking changes, and v0.20 is intended as a release candidate for v1.0.
 - Active maintenance: latest release includes manifest generation fixes, Safari options UI fixes, content-script options, and Chrome Web Store submission dependency updates.
-- Current package metadata supports Vite `^5.4.19 || ^6.3.4 || ^7.0.0 || ^8.0.0-0`, Node `>=20.12.0`, and ESLint `^8.57.0 || ^9.0.0 || ^10.0.0`.
+- WXT's package metadata supports Vite `^5.4.19 || ^6.3.4 || ^7.0.0 || ^8.0.0-0`, Node `>=20.12.0`, and ESLint `^8.57.0 || ^9.0.0 || ^10.0.0`. This repository requires Node `>=22.13.0` because of its current PDF.js dependency.
 - Community size has grown from the old snapshot: GitHub reports roughly 9.8k stars on 2026-05-12.
 
 ---
