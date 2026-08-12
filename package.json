@@ -50,6 +50,9 @@
   "keywords": [],
   "author": "",
   "license": "GPL-3.0-or-later",
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "type": "commonjs",
   "size-limit": [
     {
@@ -126,6 +129,7 @@
   },
   "overrides": {
     "protobufjs": "^7.5.5",
-    "js-yaml": "^4.2.0"
+    "js-yaml": "^4.3.1",
+    "sharp": "^0.35.3"
   }
 }

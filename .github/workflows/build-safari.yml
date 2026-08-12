@@ -37,7 +37,7 @@ jobs:
             name=$(echo "$d" | sed 's/[\/ ]/_/g; s/_$//')
             zip -r "../${name}.zip" "$d"
           done
-          ls -la .. | sed -n '1,200p'
+          find .. -maxdepth 1 -mindepth 1 -print | sort | sed -n '1,200p'
 
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -54,4 +54,3 @@ jobs:
             *.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

@@ -20,7 +20,7 @@
 
 Ensure you have the following tools installed:
 
-- **Node.js**: v18.x or later (LTS recommended)
+- **Node.js**: v22.13.0 or later
 - **npm**: v8.x or later (comes with Node.js)
 - **Git**: Latest version
 - **Playwright Chromium**: Preferred for extension E2E (`npm run playwright:install:chromium`)
