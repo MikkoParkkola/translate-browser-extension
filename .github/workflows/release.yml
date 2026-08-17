@@ -60,7 +60,7 @@ jobs:
           fi
           escaped_id=$(printf '%s' "$EXTENSION_ID" | sed -e 's/[\/&\\]/\\&/g')
           sed -i "s/YOUR_EXTENSION_ID/${escaped_id}/g" updates.xml
-      - uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1 branch
+      - uses: changesets/action@198f833dd7d863100ea6e28967bc9a9fdefadb0a # v1 branch
         with:
           # Gate npm publish on NPM_TOKEN: when the secret is set, publish to
           # npm; when absent, skip with a notice (exit 0) so the release still
