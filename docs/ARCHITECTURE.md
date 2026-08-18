@@ -87,7 +87,7 @@ DOM Update (visible to user)
 
 ## Security Model
 
-- **API keys** - AES-256-GCM encrypted at rest
+- **API keys** - stored in plain text in extension storage (`browser.storage.local`); no encryption at rest
 - **Transport** - TLS 1.3+ for all provider communications
 - **Permissions** - Minimal required: storage, activeTab, scripting
 - **CSP** - Strict Content Security Policy with WASM support

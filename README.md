@@ -39,6 +39,7 @@ Built-in browser translation (Chrome, Safari, Firefox) works well for many pages
 - **Smart batching and caching** -- identical strings translated once and reused. Hidden elements skipped. Session cache minimizes repeat API calls.
 - **Auto-translate** -- optionally translate pages on load.
 - **Source language auto-detection** -- browser-native detectors first, with offline trigram/script fallback when needed.
+- **Screenshot translation** -- drag a rectangle over any part of the page, and the extension captures that region, reads the text out of it with Tesseract.js (optical character recognition, running in the extension itself), translates it, and shows the result in an overlay under the selection. The overlay has a close button and disappears on its own after 30 seconds. It runs from the "Screenshot translate mode" command, which ships without a default key: assign one at `chrome://extensions/shortcuts`.
 - **Keyboard shortcuts** -- `Ctrl+Shift+P` translate page, `Ctrl+Shift+T` translate selection, `Ctrl+Shift+U` undo.
 - **Diagnostics dashboard** -- live usage metrics, cost tracking, latency histogram.
 

@@ -19,7 +19,7 @@ This document provides comprehensive API documentation for the Translate by Mikk
 
 ### Configuration Manager (`ConfigManager`)
 
-Centralized configuration management with encryption support and validation.
+Centralized configuration management with validation.
 
 #### Interface Definition
 
@@ -51,10 +51,10 @@ const uiPrefs = await configManager.get('ui', { theme: 'modern' });
 
 **`set<T>(key: string, value: T): Promise<void>`**
 
-Sets a configuration value with automatic validation and encryption for sensitive data.
+Sets a configuration value with automatic validation. Values are stored as given; there is no encryption layer.
 
 ```javascript
-// Store API key (automatically encrypted)
+// Store API key (stored in plain text in extension storage)
 await configManager.set('apiKey', 'sk-1234567890abcdef');
 
 // Store provider configuration
