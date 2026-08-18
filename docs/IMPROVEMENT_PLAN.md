@@ -8,7 +8,6 @@
 ### P0: Product Differentiators Still Open
 
 - [ ] **Contextual page-semantic translation** — Track in Linear as MIK-3469. Inject bounded page/section context into TranslateGemma prompts without changing the model. `formatTranslateGemmaPrompt()` remains a prompt-formatting seam; no shipped page-semantic prompt path was found in the current repo.
-- [ ] **Screenshot OCR translation overlay** — Track in Linear as MIK-3471. Capture/crop/OCR plumbing exists, but the user-facing region selection, translation, positioned overlay, and cleanup/undo path still need to be wired.
 
 ### P1: Performance Work Still Open
 
@@ -30,6 +29,7 @@
 - [x] **IndexedDB translation memory** — Shipped. `src/core/translation-cache.ts` implements a 100MB IndexedDB-backed LRU cache with stats and eviction.
 - [x] **Inline editing + correction learning** — Shipped. `src/content/correction.ts` makes translated elements editable and saves corrections via `addCorrection`.
 - [x] **PDF layout-preserving translation** — Shipped. `src/content/pdf-translator.ts` uses pdf.js text spans, groups them, translates them, and renders a toggleable layout overlay.
+- [x] **Screenshot OCR translation overlay** — Shipped (MIK-3471). `src/content/screenshot-ocr.ts` draws the region selection, sends `captureScreenshot` and `ocrImage` to the background, translates the recognized text, and shows a positioned overlay with a close button and a 30-second auto-remove. Entry point is the `screenshot-translate` command in `src/manifest.json`, routed by `src/background/shared/ui-event-handlers.ts`.
 - [x] **Video subtitle translation** — Shipped. `src/content/subtitle-translator.ts` supports standard TextTrack cues and YouTube caption segments.
 - [x] **SharedWorker migration** — Killed. The original premise is superseded: the service worker/offscreen architecture already gives shared cache/model behavior, and content scripts cannot reliably connect to an extension SharedWorker from page origin.
 
@@ -43,7 +43,7 @@
 - IndexedDB cache: `src/core/translation-cache.ts`
 - Correction learning: `src/content/correction.ts`
 - PDF translation: `src/content/pdf-translator.ts`
-- Screenshot/OCR plumbing: `src/background/shared/media-handlers.ts`, `src/offscreen/offscreen.ts`
+- Screenshot/OCR plumbing: `src/background/shared/media-handlers.ts`, `src/offscreen/offscreen.ts`, `src/content/screenshot-ocr.ts`
 - Subtitle translation: `src/content/subtitle-translator.ts`
 - Runtime acceleration checks: `src/offscreen/offscreen.ts`, `src/shared/provider-options.ts`
 

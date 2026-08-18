@@ -199,7 +199,7 @@ interface ExtensionResponse<T = any> {
 interface ProviderConfig {
   id: string;                    // Unique identifier
   name: string;                  // Human readable name
-  apiKey: string;               // Encrypted API key
+  apiKey: string;               // API key (stored in plain text)
   apiEndpoint: string;          // Base URL for API
   model: string;                // Default model
   models: string[];             // Available models
@@ -220,7 +220,7 @@ interface ProviderConfig {
 ### Threat Model
 
 **Assets Protected:**
-- User's translation API keys (stored encrypted)
+- User's translation API keys (stored in plain text in extension storage)
 - Personal data in web page content  
 - User browsing patterns and preferences
 - Translation history and cached results
@@ -243,14 +243,8 @@ Input Validation Layer:
 │ • API responses │    │ • Encoding      │    │ • Range bounds  │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 
-Encryption Layer:
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Plaintext     │───▶│   AES-256-GCM   │───▶│   Ciphertext    │
-│                 │    │                 │    │                 │
-│ • API keys      │    │ • Key derivation│    │ • Storage safe │
-│ • Preferences   │    │ • IV generation │    │ • Tamper proof  │
-│ • Cache data    │    │ • Auth tags     │    │ • Forward sec   │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+Encryption Layer: none. API keys, preferences, and cached translations are
+written to extension storage as plain text.
 
 Communication Security:
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
@@ -286,9 +280,7 @@ connect-src https://*.aliyuncs.com https://api.openai.com https://api.deepl.com;
 ### Data Protection
 
 **Encryption at Rest:**
-- API keys: AES-256-GCM with PBKDF2-derived keys
-- Configuration: Selective encryption of sensitive fields
-- Cache: Plaintext (non-sensitive translation results)
+- None. API keys, configuration, and cached translations are stored as plain text in extension storage, which is readable by anyone with access to the browser profile.
 
 **Encryption in Transit:**
 - TLS 1.3+ for all API communications
