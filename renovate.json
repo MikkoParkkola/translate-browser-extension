@@ -6,6 +6,12 @@
   "prHourlyLimit": 2,
   "packageRules": [
     {
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["changesets/action"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
       "matchManagers": ["npm", "pip_requirements", "poetry", "pip_setup", "pipenv"],
       "groupName": "all-patch-minors",
       "matchUpdateTypes": ["patch", "minor"],
@@ -14,4 +20,3 @@
     }
   ]
 }
-
