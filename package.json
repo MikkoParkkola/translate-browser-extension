@@ -116,7 +116,7 @@
     "typescript": "^5.9.3",
     "vite": "^8.0.8",
     "vite-plugin-solid": "^2.11.11",
-    "vitest": "^4.1.0",
+    "vitest": "^4.1.11",
     "webpack": "^5.95.0",
     "webpack-bundle-analyzer": "^4.10.0"
   },
