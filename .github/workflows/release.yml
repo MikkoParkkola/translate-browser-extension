@@ -4,6 +4,10 @@ on:
   push:
     branches: [ main ]
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
   packages: write
@@ -60,11 +64,11 @@ jobs:
           fi
           escaped_id=$(printf '%s' "$EXTENSION_ID" | sed -e 's/[\/&\\]/\\&/g')
           sed -i "s/YOUR_EXTENSION_ID/${escaped_id}/g" updates.xml
-      - uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v1 branch
+      - uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
-          # Gate npm publish on NPM_TOKEN: when the secret is set, publish to
-          # npm; when absent, skip with a notice (exit 0) so the release still
-          # versions + creates the GitHub release instead of failing ENEEDAUTH.
+          # Gate npm publish on NPM_TOKEN. When absent, the wrapper creates or
+          # repairs the root version tag and emits Changesets v1's `New tag:`
+          # contract so the action still creates the GitHub release.
           publish: bash .github/scripts/changesets-publish.sh
           # NOTE: input is the plural 'createGithubReleases'. The previous
           # 'createGithubRelease' (singular) was silently ignored by the action
