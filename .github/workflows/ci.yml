@@ -270,9 +270,12 @@ jobs:
       - name: Run PDF module tests
         run: npm run test:pdf
 
+  # Restricted to dependabot on purpose. A human PR that passes CI must still be
+  # merged by a human; without the actor check this job merged #606 a minute
+  # before its author approved it.
   automerge:
     needs: [build-and-test, e2e-web]
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: write
