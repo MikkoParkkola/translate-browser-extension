@@ -290,10 +290,11 @@ jobs:
   #     major and breaking bumps stay open for human review. A fallback that merges
   #     what the primary refuses is not a fallback, it is a bypass.
   #
-  # The `|| echo` on the merge is deliberate. Enabling auto-merge is idempotent, but
-  # this job races the merge the primary already queued, so the call legitimately
-  # fails on an already-merged PR. Failing the step there would paint CI red on
-  # healthy dependabot runs.
+  # The merge call must not fail the step. Enabling auto-merge is idempotent, but
+  # this job races the merge the primary already queued, so the call can legitimately
+  # find nothing left to do. Failing there would paint CI red on healthy dependabot
+  # runs. It is raised as a warning annotation instead, so a real failure is visible
+  # in the run summary rather than buried in a green log.
   automerge:
     needs: [build-and-test, e2e-web]
     if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
@@ -321,7 +322,7 @@ jobs:
         run: |
           gh pr merge --auto --squash "$PR_URL" \
             && echo "Auto-merge enabled" \
-            || echo "Auto-merge not allowed; skipping"
+            || echo "::warning::gh pr merge --auto failed for $PR_URL; dependabot-auto-merge.yml may already have merged it, or this needs a human"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
