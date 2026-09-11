@@ -270,9 +270,20 @@ jobs:
       - name: Run PDF module tests
         run: npm run test:pdf
 
-  # Restricted to dependabot on purpose. A human PR that passes CI must still be
-  # merged by a human; without the actor check this job merged #606 a minute
-  # before its author approved it.
+  # Post-CI fallback for the dedicated dependabot-auto-merge.yml workflow -- NOT a
+  # duplicate of it, do not delete as one. That workflow runs on pull_request_target
+  # at PR open; when its merge call hits a transient GitHub API error this job
+  # retries after CI is green. It is the only reason #603 (browserslist 4.28.2 ->
+  # 4.28.8, a clean semver-patch) landed: run 33707353450 died on
+  # "GraphQL: Something went wrong while executing your query", and run 33707355613
+  # here merged it.
+  #
+  # Two gates, both load-bearing:
+  #   actor -- a human PR that passes CI must still be merged by a human. Without
+  #     this check the job merged #606 a minute before its author approved it.
+  #   update-type -- must mirror dependabot-auto-merge.yml. Patch and minor only;
+  #     major and breaking bumps stay open for human review. A fallback that merges
+  #     what the primary refuses is not a fallback, it is a bypass.
   automerge:
     needs: [build-and-test, e2e-web]
     if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
@@ -281,7 +292,14 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      - name: Fetch dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Enable auto-merge if supported
+        if: ${{ steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor' }}
         run: |
           gh pr merge --auto --squash "$PR_URL" \
             && echo "Auto-merge enabled" \
