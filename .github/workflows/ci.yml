@@ -270,19 +270,59 @@ jobs:
       - name: Run PDF module tests
         run: npm run test:pdf
 
+  # Post-CI fallback for the dedicated dependabot-auto-merge.yml workflow -- NOT a
+  # duplicate of it, do not delete as one. That workflow runs on pull_request_target
+  # at PR open; when its merge call hits a transient GitHub API error this job
+  # retries after CI is green. It is the only reason #603 (browserslist 4.28.2 ->
+  # 4.28.8, a clean semver-patch) landed: run 33707353450 died on
+  # "GraphQL: Something went wrong while executing your query", and run 33707355613
+  # here merged it.
+  #
+  # Coverage is narrower than it looks: `needs` includes e2e-web, which is itself
+  # gated on changes.outputs.code, so this job is skipped for any bump that touches
+  # no code path -- an action-gh-release bump skipped it on run 34089860763. For
+  # those PRs dependabot-auto-merge.yml is the only path, with no retry.
+  #
+  # Two gates, both load-bearing:
+  #   actor -- a human PR that passes CI must still be merged by a human. Without
+  #     this check the job merged #606 a minute before its author approved it.
+  #   update-type -- must mirror dependabot-auto-merge.yml. Patch and minor only;
+  #     major and breaking bumps stay open for human review. A fallback that merges
+  #     what the primary refuses is not a fallback, it is a bypass.
+  #
+  # The merge call must not fail the step. Enabling auto-merge is idempotent, but
+  # this job races the merge the primary already queued, so the call can legitimately
+  # find nothing left to do. Failing there would paint CI red on healthy dependabot
+  # runs. It is raised as a warning annotation instead, so a real failure is visible
+  # in the run summary rather than buried in a green log.
   automerge:
     needs: [build-and-test, e2e-web]
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
     steps:
+      - name: Fetch dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Without this, a gate that skips looks identical in the log to a gate that
+      # never evaluated -- an empty update-type from a failed metadata read would
+      # silently stop merging with a green run.
+      - name: Record the observed update type
+        run: echo "update-type=[${UPDATE_TYPE}]"
+        env:
+          UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+
       - name: Enable auto-merge if supported
+        if: ${{ steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor' }}
         run: |
           gh pr merge --auto --squash "$PR_URL" \
             && echo "Auto-merge enabled" \
-            || echo "Auto-merge not allowed; skipping"
+            || echo "::warning::gh pr merge --auto failed for $PR_URL; dependabot-auto-merge.yml may already have merged it, or this needs a human"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
