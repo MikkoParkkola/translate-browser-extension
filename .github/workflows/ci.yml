@@ -278,10 +278,11 @@ jobs:
   # "GraphQL: Something went wrong while executing your query", and run 33707355613
   # here merged it.
   #
-  # Coverage is narrower than it looks: `needs` includes e2e-web, which is itself
-  # gated on changes.outputs.code, so this job is skipped for any bump that touches
-  # no code path -- an action-gh-release bump skipped it on run 34089860763. For
-  # those PRs dependabot-auto-merge.yml is the only path, with no retry.
+  # `e2e-web` is skipped when `changes.outputs.code` is false. A skipped job in
+  # `needs` skips dependents unless `always()` is set, which is why an
+  # action-gh-release bump never reached this fallback (run 34089860763, #609).
+  # Distinguish skip from failure: skipped e2e-web (no code path) still retries
+  # auto-merge; a failed e2e-web on a src/ PR must not.
   #
   # Two gates, both load-bearing:
   #   actor -- a human PR that passes CI must still be merged by a human. Without
@@ -297,7 +298,12 @@ jobs:
   # in the run summary rather than buried in a green log.
   automerge:
     needs: [build-and-test, e2e-web]
-    if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
+    if: |
+      always() &&
+      github.event_name == 'pull_request' &&
+      github.actor == 'dependabot[bot]' &&
+      needs.build-and-test.result == 'success' &&
+      (needs.e2e-web.result == 'success' || needs.e2e-web.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
