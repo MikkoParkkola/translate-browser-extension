@@ -37,3 +37,13 @@
 #
 # Keep this list EMPTY unless a vuln genuinely has no fix. The right fix for a
 # fixable vuln is to bump the dependency, not to ignore it.
+
+[[IgnoredVulns]]
+id = "GHSA-hp3w-g68c-fv3c"
+ignoreUntil = 2027-01-14
+reason = "sprintf-js <=1.1.3 DoS; no patched release. Reached only via @huggingface/transformers -> onnxruntime-node -> global-agent -> roarr; the built extension marks onnxruntime-node ignored and no dist/*.js contains it. Reviewed 2026-10-14."
+
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+ignoreUntil = 2027-01-14
+reason = "braces <=3.0.3 DoS; no patched release. Dev-only, via @changesets/cli -> micromatch; never in the built extension. Reviewed 2026-10-14."
