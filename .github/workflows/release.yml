@@ -71,8 +71,9 @@ jobs:
           # file the action reads, so the action still creates the GitHub release.
           publish-script: bash .github/scripts/changesets-publish.sh
           create-github-releases: true
+          # Tags are created through the GitHub API at the released commit.
+          push-with-git-cli: false
           # github-token defaults to the workflow token, which the action also
-          # passes to the publish script as GITHUB_TOKEN. Tags are created through
-          # the GitHub API at the released commit (push-with-git-cli: false).
+          # passes to the publish script as GITHUB_TOKEN.
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

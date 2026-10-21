@@ -12,7 +12,8 @@ cp package.json "${scratch}/repo/"
 # on the token path the release event comes from the CLI inheriting that variable.
 cat > "${scratch}/bin/npm" <<'EOF'
 #!/usr/bin/env bash
-printf '%s output=%s\n' "$*" "${CHANGESETS_OUTPUT:+set}" >> "${FAKE_NPM_LOG}"
+printf '%s output=%s\n' "$*" "${CHANGESETS_OUTPUT:-}" >> "${FAKE_NPM_LOG}"
+exit "${FAKE_NPM_EXIT:-0}"
 EOF
 cat > "${scratch}/bin/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -60,7 +61,7 @@ tag_events() {
 }
 
 run_publish token-new NPM_TOKEN=test-token
-test "$(tr -d '\n' < "${FAKE_NPM_LOG}")" = "run release output=set"
+test "$(tr -d '\n' < "${FAKE_NPM_LOG}")" = "run release output=${CHANGESETS_OUTPUT}"
 grep -q '_authToken=test-token' "${HOME}/.npmrc"
 
 run_publish tokenless-new FAKE_RELEASE_STATUS=404 NPM_TOKEN=''
@@ -72,7 +73,7 @@ test "$(tag_events "${CHANGESETS_OUTPUT}")" -eq 1
 
 : > "${FAKE_NPM_LOG}"
 run_publish token-repair FAKE_RELEASE_STATUS=404 NPM_TOKEN=test-token
-test "$(tr -d '\n' < "${FAKE_NPM_LOG}")" = "run release -- --no-git-tag output=set"
+test "$(tr -d '\n' < "${FAKE_NPM_LOG}")" = "run release -- --no-git-tag output=${CHANGESETS_OUTPUT}"
 test "$(tag_events "${CHANGESETS_OUTPUT}")" -eq 1
 
 run_publish complete FAKE_RELEASE_STATUS=200 NPM_TOKEN='' > "${scratch}/complete.log"
@@ -91,6 +92,19 @@ if run_publish curl-fail FAKE_RELEASE_STATUS=200 FAKE_CURL_EXIT=7 NPM_TOKEN=''; 
   echo "release verification unexpectedly accepted a curl transport failure" >&2
   exit 1
 fi
+
+# A failed npm publish must fail the run and record nothing, on both token paths.
+if run_publish token-repair-fail FAKE_RELEASE_STATUS=404 FAKE_NPM_EXIT=1 NPM_TOKEN=test-token; then
+  echo "token repair unexpectedly succeeded after npm failed" >&2
+  exit 1
+fi
+test ! -s "${CHANGESETS_OUTPUT}"
+git -C "${scratch}/repo" tag -d "${expected_tag}" >/dev/null
+if run_publish token-new-fail FAKE_NPM_EXIT=1 NPM_TOKEN=test-token; then
+  echo "token publish unexpectedly succeeded after npm failed" >&2
+  exit 1
+fi
+test ! -s "${CHANGESETS_OUTPUT}"
 
 # Without CHANGESETS_OUTPUT the script must stop before publishing anything.
 : > "${FAKE_NPM_LOG}"
