@@ -64,16 +64,16 @@ jobs:
           fi
           escaped_id=$(printf '%s' "$EXTENSION_ID" | sed -e 's/[\/&\\]/\\&/g')
           sed -i "s/YOUR_EXTENSION_ID/${escaped_id}/g" updates.xml
-      - uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+      - uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
           # Gate npm publish on NPM_TOKEN. When absent, the wrapper creates or
-          # repairs the root version tag and emits Changesets v1's `New tag:`
-          # contract so the action still creates the GitHub release.
-          publish: bash .github/scripts/changesets-publish.sh
-          # NOTE: input is the plural 'createGithubReleases'. The previous
-          # 'createGithubRelease' (singular) was silently ignored by the action
-          # (logged 'Unexpected input'), so GitHub releases were never created.
-          createGithubReleases: true
+          # repairs the root version tag and records it in the CHANGESETS_OUTPUT
+          # file the action reads, so the action still creates the GitHub release.
+          publish-script: bash .github/scripts/changesets-publish.sh
+          create-github-releases: true
+          # Tags are created through the GitHub API at the released commit.
+          push-with-git-cli: false
+          # github-token defaults to the workflow token, which the action also
+          # passes to the publish script as GITHUB_TOKEN.
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
