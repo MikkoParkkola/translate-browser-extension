@@ -87,3 +87,5 @@ vitest-coverage-measure.config.ts
 coverage.json
 reports/
 .claude/worktrees/
+# Claude Code saves approved commands here; they can contain credentials
+.claude/settings.local.json
