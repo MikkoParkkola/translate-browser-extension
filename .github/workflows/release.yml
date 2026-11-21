@@ -13,6 +13,10 @@ permissions:
   packages: write
   pull-requests: write
 
+# MIK-9937: skip onnxruntime-node's CUDA download (404s, unused in CI).
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
 jobs:
   # Dependency-vulnerability backstop. ci.yml gates PRs on
   # `npm audit --audit-level=high` (HIGH+ only). This gate has no severity
