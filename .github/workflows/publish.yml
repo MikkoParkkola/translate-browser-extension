@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+# MIK-9937: skip onnxruntime-node's CUDA download (404s, unused in CI).
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
 jobs:
   # Dependency-vulnerability backstop for the dev-build publish path. publish.yml
   # signs a CRX and commits updates.xml, which is what installed extensions pull

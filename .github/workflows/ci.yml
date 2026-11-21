@@ -11,6 +11,11 @@ on:
 permissions:
   contents: read
 
+# MIK-9937: onnxruntime-node's install script fetches a CUDA build from GitHub
+# releases on linux-x64; that asset 404s and CI never uses CUDA. Documented skip.
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true

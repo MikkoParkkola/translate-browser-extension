@@ -20,6 +20,10 @@ on:
 permissions:
   contents: read
 
+# MIK-9937: skip onnxruntime-node's CUDA download (404s, unused in CI).
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
